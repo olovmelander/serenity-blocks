@@ -1,184 +1,241 @@
+/**
+ * Neon Dusk Theme - Three.js Masterpiece Edition
+ *
+ * A stunning 3D synthwave experience featuring:
+ * - Gradient sky with twinkling neon stars
+ * - Procedural FBM mountains with signature neon rim lighting
+ * - Multi-layer glowing sun with drift animation
+ * - Perspective synthwave grid with tetromino highlights
+ * - Dynamic particle effects and hologram rings
+ * - Post-processing bloom and VHS effects
+ */
+
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { NEON_DUSK_TETROMINOS } from './neon-dusk-tetrominos.js';
-import WebGLNeonEnvironment from './webgl-neon-environment.js';
-import WebGLNeonEffects from './webgl-neon-effects.js';
-import WebGLNeonSun from './webgl-neon-sun.js';
-import WebGLNeonMountains from './webgl-neon-mountains.js';
-import WebGLNeonGrid from './webgl-neon-grid.js';
-import WebGLNeonOverlay from './webgl-neon-overlay.js';
+
+import {
+    skyVertexShader,
+    skyFragmentShader,
+    starVertexShader,
+    starFragmentShader,
+    sunVertexShader,
+    sunFragmentShader,
+    sunGlowVertexShader,
+    sunGlowFragmentShader,
+    mountainVertexShader,
+    mountainFragmentShader,
+    gridVertexShader,
+    gridFragmentShader,
+    highlightVertexShader,
+    highlightFragmentShader,
+    particleVertexShader,
+    particleFragmentShader,
+    ringVertexShader,
+    ringFragmentShader,
+    VHSShader,
+    VignetteShader
+} from './neon-dusk-shaders.js';
+
+// ============================================================================
+// QUALITY PRESETS
+// ============================================================================
+
+const QUALITY_PRESETS = {
+    Minimal: {
+        starCount: 800,
+        mountainSegments: 32,
+        glowLayers: 2,
+        maxBurstParticles: 100,
+        maxGridHighlights: 20,
+        maxRings: 3,
+        enableBloom: false,
+        enableVHS: false,
+        bloomStrength: 0,
+        gridScrollSpeed: 4.0,
+    },
+    Low: {
+        starCount: 1200,
+        mountainSegments: 64,
+        glowLayers: 3,
+        maxBurstParticles: 200,
+        maxGridHighlights: 40,
+        maxRings: 5,
+        enableBloom: false,
+        enableVHS: true,
+        bloomStrength: 0,
+        gridScrollSpeed: 4.5,
+        pixelCount: 100, // Added for retro pixels
+    },
+    Medium: {
+        starCount: 1800,
+        mountainSegments: 128,
+        glowLayers: 4,
+        maxBurstParticles: 400,
+        maxGridHighlights: 60,
+        maxRings: 8,
+        enableBloom: true,
+        enableVHS: true,
+        bloomStrength: 0.15,
+        bloomThreshold: 0.6,
+        bloomRadius: 0.3,
+        gridScrollSpeed: 5.0,
+        pixelCount: 200, // Added for retro pixels
+    },
+    High: {
+        starCount: 2500,
+        mountainSegments: 192,
+        glowLayers: 5,
+        maxBurstParticles: 600,
+        maxGridHighlights: 80,
+        maxRings: 10,
+        enableBloom: true,
+        enableVHS: true,
+        bloomStrength: 0.2,
+        bloomThreshold: 0.55,
+        bloomRadius: 0.35,
+        gridScrollSpeed: 5.0,
+        pixelCount: 300, // Added for retro pixels
+    },
+    Ultra: {
+        starCount: 3500,
+        mountainSegments: 256,
+        glowLayers: 6,
+        maxBurstParticles: 800,
+        maxGridHighlights: 100,
+        maxRings: 12,
+        enableBloom: true,
+        enableVHS: true,
+        bloomStrength: 0.25,
+        bloomThreshold: 0.5,
+        bloomRadius: 0.4,
+        gridScrollSpeed: 5.0,
+        pixelCount: 400, // Added for retro pixels
+    },
+    Extreme: {
+        starCount: 5000,
+        mountainSegments: 512,
+        glowLayers: 8,
+        maxBurstParticles: 1000,
+        maxGridHighlights: 150,
+        maxRings: 15,
+        enableBloom: true,
+        enableVHS: true,
+        bloomStrength: 0.3,
+        bloomThreshold: 0.45,
+        bloomRadius: 0.45,
+        gridScrollSpeed: 5.0,
+        pixelCount: 500, // Added for retro pixels
+    },
+};
+
+// ============================================================================
+// MAIN THEME CLASS
+// ============================================================================
 
 export default class NeonDuskTheme extends BaseTheme {
     constructor() {
         super('neon-dusk');
-        // Performance limits
-        this.MAX_PARTICLES = 180;
-        this.MAX_ARCS = 6;
-        this.MAX_SCANLINES = 12;
-        this.MAX_RINGS = 8;
-        this.MAX_VORTEXES = 3;
-        this.MAX_GLITCHES = 15;
 
-        // Pre-calculated color cache for performance
-        this.colorCache = new Map();
-        this.initColorCache();
+        // Three.js core
+        this.renderer = null;
+        this.scene = null;
+        this.camera = null;
+        this.composer = null;
+        this.clock = new THREE.Clock();
 
-        // Gameplay effects
-        this.neonBurstParticles = [];
-        this.electricArcs = [];
-        this.digitalScanLines = [];
+        // Scene elements
+        this.skyGradient = null;
+        this.starfield = null;
+        this.sun = null;
+        this.sunGlow = null;
+        this.mountains = [];
+        this.grid = null;
+        this.gridHighlights = [];
+        this.highlightPool = [];
+        this.retroPixels = null; // New: Retro pixels
+
+        // Particle systems (minimal - only burst for effects)
+        this.burstParticles = null;
+        this.burstParticleData = [];
         this.hologramRings = [];
-        this.cyberVortexes = [];
-        this.glitchPulses = [];
-        this.gridWaves = []; // Wave effects for grid
-        this.comboMultiplier = 1.0;
-        this.effectsAnimationFrame = null;
-        this.lastEffectsFrameTime = 0;
-        this.eventUnsubscribers = [];
 
-        // WebGL Renderers
-        this.webglEnvironment = null; // Unified Background
-        this.webglBackEffects = null; // Background Effects (Rings behind sun)
-        this.webglEffects = null;     // Particles
-        this.webglSun = null;         // Sun Renderer
-        this.webglMountains = null;   // Mountains Renderer
-        this.webglGrid = null;        // Grid Renderer (Foreground)
-        this.bgCanvas = null;
-        this.backEffectsCanvas = null;
-        this.sunCanvas = null;
-        this.mountainsCanvas = null;
-        this.gridCanvas = null;
-        this.effectsCanvas = null;
+        // Post-processing
+        this.bloomPass = null;
+        this.vhsPass = null;
+        this.vignettePass = null;
 
-        // DOM references for rebuilds
-        this.particlesContainer = null;
-
-        // Graphics quality state
-        this.qualityChangeHandler = null;
-        this.qualityPresets = {
-            Minimal: {
-                floatingParticles: 12,
-                maxParticles: 60,
-                maxArcs: 2,
-                maxScanlines: 3,
-                maxRings: 2,
-                maxVortexes: 0,
-                maxGlitches: 4,
-            },
-            Low: {
-                floatingParticles: 18,
-                maxParticles: 100,
-                maxArcs: 3,
-                maxScanlines: 5,
-                maxRings: 3,
-                maxVortexes: 1,
-                maxGlitches: 6,
-            },
-            Medium: {
-                floatingParticles: 28,
-                maxParticles: 140,
-                maxArcs: 5,
-                maxScanlines: 8,
-                maxRings: 5,
-                maxVortexes: 2,
-                maxGlitches: 10,
-            },
-            High: {
-                floatingParticles: 40,
-                maxParticles: 180,
-                maxArcs: 6,
-                maxScanlines: 12,
-                maxRings: 8,
-                maxVortexes: 3,
-                maxGlitches: 15,
-            },
-            Ultra: {
-                floatingParticles: 60,
-                maxParticles: 240,
-                maxArcs: 10,
-                maxScanlines: 18,
-                maxRings: 12,
-                maxVortexes: 5,
-                maxGlitches: 22,
-            },
-            Extreme: {
-                floatingParticles: 85,
-                maxParticles: 350,
-                maxArcs: 15,
-                maxScanlines: 25,
-                maxRings: 18,
-                maxVortexes: 8,
-                maxGlitches: 35,
-            },
-        };
-
-        this.currentQuality = 'High';
-        this.activePreset = this.qualityPresets.High;
-
-        // Random starting time offset so sun starts at different position each time
+        // Animation state
+        this.time = 0;
         this.timeOffset = Math.random() * 10000;
+        this.sunPosition = { x: 0, y: 0 };
 
-        this.currentSunPos = { x: 0, y: 0.25 };
-        this.mountainGlowIntensity = 0.0;
-    }
-
-    // Initialize color cache to avoid repeated hex conversions
-    initColorCache() {
-        const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ff0088', '#ffff00'];
-        // Pre-calculate alpha variations for common values
-        for (const color of colors) {
-            for (let alpha = 0; alpha <= 255; alpha += 5) {
-                const key = `${color}-${alpha}`;
-                const hex = alpha.toString(16).padStart(2, '0');
-                this.colorCache.set(key, `${color}${hex}`);
-            }
-        }
-    }
-
-    // Fast color with alpha lookup
-    getColorWithAlpha(color, alpha) {
-        const alphaValue = Math.floor(alpha * 255);
-        const quantized = Math.floor(alphaValue / 5) * 5; // Quantize to nearest 5
-        const key = `${color}-${quantized}`;
-        return this.colorCache.get(key) || `${color}${alphaValue.toString(16).padStart(2, '0')}`;
-    }
-
-    applyQualityPreset(quality) {
-        if (!this.qualityPresets[quality]) {
-            console.warn(`Neon Dusk: Unknown quality preset "${quality}", defaulting to High`);
-            quality = 'High';
-        }
-
-        this.currentQuality = quality;
-        this.activePreset = this.qualityPresets[quality];
-
-        const preset = this.activePreset;
-        this.MAX_PARTICLES = preset.maxParticles;
-        this.MAX_ARCS = preset.maxArcs;
-        this.MAX_SCANLINES = preset.maxScanlines;
-        this.MAX_RINGS = preset.maxRings;
-        this.MAX_VORTEXES = preset.maxVortexes;
-        this.MAX_GLITCHES = preset.maxGlitches;
-
-        this.trimEffectCollections();
-
-        console.log(`🌆 Neon Dusk: Applying ${quality} quality preset`);
-    }
-
-    trimEffectCollections() {
-        const clamp = (collection, limit) => {
-            if (!collection || typeof limit !== 'number') return;
-            if (collection.length > limit) {
-                collection.splice(0, collection.length - limit);
-            }
+        // Effect state
+        this.effectState = {
+            gridPulseIntensity: 0,
+            sunPulseIntensity: 0,
+            mountainPulseIntensity: 0,
+            mountainShockwave: 0,
+            rimGlowIntensity: 1.0,
+            highlightTwinkle: 0,
+            colorShift: 0,
+            vhsIntensity: 0,
+            pixelTwinkle: 0, // NEW: Pixel twinkle intensity
         };
 
-        clamp(this.neonBurstParticles, this.MAX_PARTICLES);
-        clamp(this.electricArcs, this.MAX_ARCS);
-        clamp(this.digitalScanLines, this.MAX_SCANLINES);
-        clamp(this.hologramRings, this.MAX_RINGS);
-        clamp(this.cyberVortexes, this.MAX_VORTEXES);
-        clamp(this.glitchPulses, this.MAX_GLITCHES);
+        // Event handlers
+        this.eventUnsubscribers = [];
+        this.resizeHandler = null;
+
+        // Quality
+        this.currentQuality = 'High';
+        this.activePreset = QUALITY_PRESETS.High;
+
+        // Colors - classic synthwave sunset palette (like reference images)
+        this.colors = {
+            skyTop: new THREE.Color(0x1a0033),      // Deep dark purple
+            skyMid: new THREE.Color(0x660066),      // Magenta/purple
+            skyBottom: new THREE.Color(0xff6699),   // Pink/magenta at horizon (NOT orange)
+            sunTop: new THREE.Color(0xffee88),      // Bright yellow (sun top)
+            sunMid: new THREE.Color(0xffaa44),      // Orange (sun middle)
+            sunBottom: new THREE.Color(0xff6699),   // Pink (sun bottom)
+            gridColor: new THREE.Color(0xff00ff),   // Magenta grid
+            gridGlow: new THREE.Color(0x00ffff),    // Cyan glow
+            mountainDark: new THREE.Color(0x0a0515), // Very dark purple for silhouettes
+            mountainRim: new THREE.Color(0x6633aa),  // Subtle purple edge
+        };
+
+        // Neon palette for highlights/effects
+        this.neonColors = [
+            new THREE.Color(0xff00ff),  // Magenta
+            new THREE.Color(0x00ffff),  // Cyan
+            new THREE.Color(0xff0088),  // Hot pink
+            new THREE.Color(0xffff00),  // Yellow
+            new THREE.Color(0xff4400),  // Orange
+        ];
+
+        // Tetromino shapes for grid highlights
+        this.tetrominoShapes = {
+            'I': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }],
+            'J': [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            'L': [{ x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            'O': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+            'S': [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+            'T': [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            'Z': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+        };
+
+        console.log('[NeonDusk] Theme constructed');
+    }
+
+    getTetrominoConfig() {
+        return NEON_DUSK_TETROMINOS;
     }
 
     getGraphicsQuality() {
@@ -186,417 +243,703 @@ export default class NeonDuskTheme extends BaseTheme {
         return settings?.effectQuality || 'High';
     }
 
-    setupQualityListener() {
-        if (typeof window === 'undefined') return;
-
-        if (this.qualityChangeHandler) {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-        }
-
-        this.qualityChangeHandler = (event) => {
-            const newQuality = event.detail?.effectQuality;
-            if (!newQuality || newQuality === this.currentQuality) return;
-
-            this.applyQualityPreset(newQuality);
-            this.refreshQualityDependentElements();
-        };
-
-        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    applyQualityPreset(quality) {
+        this.currentQuality = quality;
+        this.activePreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
+        console.log(`[NeonDusk] Applied ${quality} quality preset`);
     }
 
-    refreshQualityDependentElements() {
-        // WebGL Environment handles quality updates internally via uniforms if needed
-        // For now, we just trim effects
-        this.trimEffectCollections();
-    }
-
-    // Legacy DOM methods removed to prevent 'two suns' and clutter
-    // All background elements are now rendered in WebGLNeonEnvironment
+    // =========================================================================
+    // SCENE CREATION
+    // =========================================================================
 
     async createScene() {
-        // Force background to black to hide any previous theme artifacts
-        const themeContainer = document.getElementById('neon-dusk-theme');
-        if (themeContainer) {
-            themeContainer.style.background = '#050010'; // Deep dark purple/black
-            // Force clear any background image
-            themeContainer.style.backgroundImage = 'none';
+        console.log('[NeonDusk] Creating Three.js scene...');
+
+        const container = document.getElementById('neon-dusk-theme');
+        if (!container) {
+            console.error('[NeonDusk] Container not found');
+            return;
         }
 
-        // Aggressive cleanup of potential leftover elements from other themes
-        // Specifically target Synthwave Sunset and other theme elements that might persist
-        const potentialLeftovers = document.querySelectorAll(
-            '.sun, .mountain, .grid, .starfield, ' +
-            '#synthwave-sunset-sun, .synthwave-sun-canvas, ' +
-            '#synthwave-sunset-grid, .synthwave-grid-canvas, ' +
-            '.synthwave-effects-canvas, [class*="synthwave"]'
-        );
-        potentialLeftovers.forEach(el => {
-            el.remove();
-        });
+        container.innerHTML = '';
 
-        // Also remove any canvases in our container that aren't ours
-        if (themeContainer) {
-            const allCanvases = themeContainer.querySelectorAll('canvas');
-            allCanvases.forEach(canvas => {
-                if (!canvas.id.startsWith('neon-dusk-')) {
-                    canvas.remove();
-                }
-            });
-        }
-
-        // Apply graphics quality preset before building the scene
+        // Apply quality
         const quality = this.getGraphicsQuality();
         this.applyQualityPreset(quality);
 
-        // Setup WebGL Background (Environment: Sky, Grid)
-        this.setupWebGLBackground();
+        // Initialize renderer
+        this.initRenderer(container);
 
-        // Setup WebGL Background Effects (Rings behind sun)
-        this.setupBackEffects();
+        // Create scene elements
+        this.createSkyGradient();
+        this.createStarfield();
+        this.createSun();
+        this.createMountains();
+        this.createGrid();
+        this.createHighlightPool();
+        this.createBurstParticleSystem();
+        this.createRetroPixels(); // New: Create retro pixels
 
-        // Setup WebGL Sun (Separate layer for better control)
-        this.setupWebGLSun();
+        // Setup post-processing
+        this.setupPostProcessing();
 
-        // Setup WebGL Mountains (In front of sun)
-        this.setupWebGLMountains();
+        // Setup events
+        this.setupEventListeners();
+        this.resizeHandler = () => this.onResize();
+        window.addEventListener('resize', this.resizeHandler);
 
-        // Setup WebGL Grid (In front of mountains)
-        this.setupWebGLGrid();
+        // Start animation
+        this.animate();
 
-        // Setup WebGL Overlay (Topmost layer for VHS effects)
-        this.setupWebGLOverlay(); // Add Overlay
-
-        // Setup WebGL Effects (Particles: Ambient & Gameplay)
-        this.setupGameplayEffects();
-
-        // Initialize ambient particles (now WebGL-based)
-        this.initAmbientParticles();
-
-        // Listen for runtime changes to graphics quality
-        this.setupQualityListener();
+        console.log(`[NeonDusk] Scene created with ${quality} quality`);
     }
 
-    setupWebGLBackground() {
-        const themeContainer = document.getElementById('neon-dusk-theme');
-        if (!themeContainer) return;
+    initRenderer(container) {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
 
-        // Clear any existing canvases to prevent duplicates
-        const existingBg = document.getElementById('neon-dusk-background-canvas');
-        if (existingBg) existingBg.remove();
+        // Create renderer
+        this.renderer = new THREE.WebGLRenderer({
+            antialias: this.getAntialiasEnabled(),
+            alpha: false,
+            powerPreference: 'high-performance',
+        });
+        this.renderer.setClearColor(0x08000f, 1);
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
+        this.renderer.setSize(width, height);
+        this.renderer.sortObjects = true;
 
-        // Remove any old DOM containers if they exist
-        const containers = [
-            'neon-dusk-stars', 'neon-dusk-clouds', 'neon-dusk-meteors',
-            'neon-dusk-particles', 'neon-dusk-mountains-back',
-            'neon-dusk-mountains-mid', 'neon-dusk-mountains-front'
-        ];
-        containers.forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.remove();
+        this.renderer.domElement.style.cssText =
+            'position:absolute;top:0;left:0;width:100%;height:100%';
+        container.appendChild(this.renderer.domElement);
+        this.registerContainer(container);
+
+        // Create scene
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x08000f);
+
+        // Create perspective camera - positioned to see horizon
+        this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 10000);
+        this.camera.position.set(0, 25, 50);
+        this.camera.lookAt(0, 10, -100);
+
+        console.log('[NeonDusk] Renderer initialized');
+    }
+
+    // =========================================================================
+    // SKY GRADIENT
+    // =========================================================================
+
+    createSkyGradient() {
+        const geometry = new THREE.PlaneGeometry(3000, 1600);
+
+        // Use vertex colors for gradient
+        const colors = new Float32Array(geometry.attributes.position.count * 3);
+        const positions = geometry.attributes.position.array;
+
+        for (let i = 0; i < geometry.attributes.position.count; i++) {
+            const y = positions[i * 3 + 1];
+            const t = (y + 800) / 1600;
+
+            let color;
+            if (t < 0.4) {
+                color = this.colors.skyBottom.clone().lerp(this.colors.skyMid, t / 0.4);
+            } else {
+                color = this.colors.skyMid.clone().lerp(this.colors.skyTop, (t - 0.4) / 0.6);
+            }
+
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+        }
+
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.MeshBasicMaterial({
+            vertexColors: true,
+            side: THREE.DoubleSide,
+            depthWrite: false,
         });
 
-        // Create new background canvas
-        let canvas = document.createElement('canvas');
-        canvas.id = 'neon-dusk-background-canvas';
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-        canvas.style.zIndex = '0'; // Behind everything
-        themeContainer.insertBefore(canvas, themeContainer.firstChild);
-
-        this.bgCanvas = canvas;
-
-        // Initialize Environment Renderer
-        this.webglEnvironment = new WebGLNeonEnvironment(canvas);
-        if (!this.webglEnvironment.init()) {
-            console.warn('Neon Dusk: Failed to init WebGL Environment');
-        }
-
-        // Handle resize
-        const resize = () => {
-            const rect = themeContainer.getBoundingClientRect();
-            if (this.bgCanvas && this.webglEnvironment) {
-                this.webglEnvironment.resize(rect.width, rect.height);
-            }
-        };
-        resize();
-        window.addEventListener('resize', resize);
-        resize();
-        window.addEventListener('resize', resize);
+        this.skyGradient = new THREE.Mesh(geometry, material);
+        this.skyGradient.position.z = -900;
+        this.skyGradient.position.y = 50;
+        this.skyGradient.renderOrder = -5000;
+        this.scene.add(this.skyGradient);
     }
 
-    setupBackEffects() {
-        const themeContainer = document.getElementById('neon-dusk-theme');
-        if (!themeContainer) return;
+    // =========================================================================
+    // STARFIELD
+    // =========================================================================
 
-        // Clear existing
-        const existing = document.getElementById('neon-dusk-back-effects-canvas');
-        if (existing) existing.remove();
+    createStarfield() {
+        const count = this.activePreset.starCount;
+        const geometry = new THREE.BufferGeometry();
 
-        // Create canvas (layer behind sun)
-        let canvas = document.createElement('canvas');
-        canvas.id = 'neon-dusk-back-effects-canvas';
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-        canvas.style.zIndex = '0.5'; // Above bg (0), below sun (1)
-        canvas.style.pointerEvents = 'none';
-        themeContainer.appendChild(canvas);
+        const positions = new Float32Array(count * 3);
+        const colors = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        const twinkleData = new Float32Array(count * 2);
+        const brightness = new Float32Array(count);
 
-        this.backEffectsCanvas = canvas;
-
-        // Initialize Effects Renderer for background
-        this.webglBackEffects = new WebGLNeonEffects(canvas);
-        if (!this.webglBackEffects.init()) {
-            console.warn('Neon Dusk: Failed to init WebGL Back Effects');
-        }
-
-        // Handle resize
-        const resize = () => {
-            const rect = themeContainer.getBoundingClientRect();
-            if (this.backEffectsCanvas && this.webglBackEffects) {
-                this.webglBackEffects.resize(rect.width, rect.height);
-            }
-        };
-        resize();
-        window.addEventListener('resize', resize);
-    }
-
-    setupWebGLSun() {
-        const themeContainer = document.getElementById('neon-dusk-theme');
-        if (!themeContainer) return;
-
-        // Clear any existing sun canvas
-        const existingSun = document.getElementById('neon-dusk-sun-canvas');
-        if (existingSun) existingSun.remove();
-
-        // Create sun canvas (layer between background and effects)
-        let canvas = document.createElement('canvas');
-        canvas.id = 'neon-dusk-sun-canvas';
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-        canvas.style.zIndex = '1'; // Above background (0), below effects (100)
-        canvas.style.pointerEvents = 'none';
-        themeContainer.appendChild(canvas);
-
-        this.sunCanvas = canvas;
-
-        // Initialize Sun Renderer
-        this.webglSun = new WebGLNeonSun(canvas);
-        if (!this.webglSun.init()) {
-            console.warn('Neon Dusk: Failed to init WebGL Sun');
-        }
-
-        // Handle resize
-        const resize = () => {
-            const rect = themeContainer.getBoundingClientRect();
-            if (this.sunCanvas && this.webglSun) {
-                this.webglSun.resize(rect.width, rect.height);
-            }
-        };
-        resize();
-        window.addEventListener('resize', resize);
-    }
-
-    setupWebGLMountains() {
-        const themeContainer = document.getElementById('neon-dusk-theme');
-        if (!themeContainer) return;
-
-        // Clear any existing mountains canvas
-        const existingMountains = document.getElementById('neon-dusk-mountains-canvas');
-        if (existingMountains) existingMountains.remove();
-
-        // Create mountains canvas (layer in front of sun)
-        let canvas = document.createElement('canvas');
-        canvas.id = 'neon-dusk-mountains-canvas';
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-        canvas.style.zIndex = '2'; // Above sun (1), below effects (100)
-        canvas.style.pointerEvents = 'none';
-        themeContainer.appendChild(canvas);
-
-        this.mountainsCanvas = canvas;
-
-        // Initialize Mountains Renderer
-        this.webglMountains = new WebGLNeonMountains(canvas);
-        if (!this.webglMountains.init()) {
-            console.warn('Neon Dusk: Failed to init WebGL Mountains');
-        }
-
-        // Handle resize
-        const resize = () => {
-            const rect = themeContainer.getBoundingClientRect();
-            if (this.mountainsCanvas && this.webglMountains) {
-                this.webglMountains.resize(rect.width, rect.height);
-            }
-        };
-        resize();
-        window.addEventListener('resize', resize);
-    }
-
-    setupWebGLGrid() {
-        const themeContainer = document.getElementById('neon-dusk-theme');
-        if (!themeContainer) return;
-
-        // Clear any existing grid canvas
-        const existingGrid = document.getElementById('neon-dusk-grid-canvas');
-        if (existingGrid) existingGrid.remove();
-
-        // Create grid canvas (layer in front of mountains)
-        let canvas = document.createElement('canvas');
-        canvas.id = 'neon-dusk-grid-canvas';
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-        canvas.style.zIndex = '3'; // Above mountains (2), below effects (100)
-        canvas.style.pointerEvents = 'none';
-        themeContainer.appendChild(canvas);
-
-        this.gridCanvas = canvas;
-
-        // Initialize Grid Renderer
-        this.webglGrid = new WebGLNeonGrid(canvas);
-        if (!this.webglGrid.init()) {
-            console.warn('Neon Dusk: Failed to init WebGL Grid');
-        }
-
-        // Handle resize
-        const resize = () => {
-            const rect = themeContainer.getBoundingClientRect();
-            if (this.gridCanvas && this.webglGrid) {
-                this.webglGrid.resize(rect.width, rect.height);
-            }
-        };
-        resize();
-        window.addEventListener('resize', resize);
-    }
-
-    setupWebGLOverlay() {
-        const themeContainer = document.getElementById('neon-dusk-theme');
-        if (!themeContainer) return;
-
-        // Clear any existing overlay canvas
-        const existingOverlay = document.getElementById('neon-dusk-overlay-canvas');
-        if (existingOverlay) existingOverlay.remove();
-
-        // Create overlay canvas (Topmost layer)
-        let canvas = document.createElement('canvas');
-        canvas.id = 'neon-dusk-overlay-canvas';
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-        canvas.style.zIndex = '2000'; // Topmost layer, above everything
-        canvas.style.pointerEvents = 'none';
-        // Use mix-blend-mode if needed, but WebGL blending handles it
-        themeContainer.appendChild(canvas);
-
-        this.overlayCanvas = canvas;
-
-        // Initialize Overlay Renderer
-        this.webglOverlay = new WebGLNeonOverlay(canvas);
-        if (!this.webglOverlay.init()) {
-            console.warn('Neon Dusk: Failed to init WebGL Overlay');
-        }
-
-        // Handle resize
-        const resize = () => {
-            const rect = themeContainer.getBoundingClientRect();
-            if (this.overlayCanvas && this.webglOverlay) {
-                this.webglOverlay.resize(rect.width, rect.height);
-            }
-        };
-        resize();
-        window.addEventListener('resize', resize);
-    }
-
-    initAmbientParticles() {
-        // Clear existing
-        this.ambientParticles = [];
-
-        const count = this.activePreset?.floatingParticles ?? 40;
-        const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ff0088', '#ffff00'];
+        const starColors = [
+            new THREE.Color(0xffffff),
+            new THREE.Color(0x00ffff),
+            new THREE.Color(0xff00ff),
+            new THREE.Color(0xff88ff),
+            new THREE.Color(0x88ffff),
+        ];
 
         for (let i = 0; i < count; i++) {
-            this.ambientParticles.push({
-                x: Math.random() * window.innerWidth,
-                y: Math.random() * window.innerHeight,
-                vx: (Math.random() - 0.5) * 0.5,
-                vy: (Math.random() - 0.5) * 0.5,
-                size: Math.random() * 2 + 1, // Smaller size (was 3+1)
-                baseSize: 0, // Will be set below
-                color: colors[Math.floor(Math.random() * colors.length)],
-                life: 1.0, // Always alive
-                maxLife: 1.0,
-                type: 0, // Circle/Particle
-                rotation: Math.random() * Math.PI * 2,
-                rotationSpeed: (Math.random() - 0.5) * 2.0 // Radians per second
+            const i3 = i * 3;
+            const i2 = i * 2;
+
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+
+            // Distribute in layers - further back
+            const layerRand = Math.random();
+            let radius;
+            if (layerRand < 0.33) {
+                radius = 500 + Math.random() * 150;
+            } else if (layerRand < 0.66) {
+                radius = 700 + Math.random() * 200;
+            } else {
+                radius = 950 + Math.random() * 250;
+            }
+
+            // Only upper hemisphere (above horizon)
+            if (phi > Math.PI * 0.5) {
+                positions[i3] = 0;
+                positions[i3 + 1] = -10000;
+                positions[i3 + 2] = 0;
+                continue;
+            }
+
+            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i3 + 1] = radius * Math.cos(phi) * 0.4 + 30;
+            positions[i3 + 2] = -Math.abs(radius * Math.sin(phi) * Math.sin(theta)) - 200;
+
+            const color = starColors[Math.floor(Math.random() * starColors.length)];
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
+
+            sizes[i] = 8 + Math.random() * 17;  // LARGER stars (8-25 pixels)
+            twinkleData[i2] = Math.random() * Math.PI * 2;
+            twinkleData[i2 + 1] = 0.5 + Math.random() * 2.0;
+            brightness[i] = 0.4 + Math.random() * 0.6;  // Much brighter stars
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
+        geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+                uEventBoost: { value: 0 },
+            },
+            vertexShader: starVertexShader,
+            fragmentShader: starFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            vertexColors: true,
+        });
+
+        this.starfield = new THREE.Points(geometry, material);
+        this.starfield.renderOrder = -4000;
+        this.scene.add(this.starfield);
+    }
+
+    // =========================================================================
+    // NEBULA CLOUDS
+    // =========================================================================
+
+    createNebulaClouds() {
+        const textureLoader = new THREE.TextureLoader();
+        const texturePath = './textures/wolfhour/';
+
+        // Reuse wolfhour textures with neon tinting
+        const textures = [
+            textureLoader.load(texturePath + 'nebula-silver-1.png'),
+            textureLoader.load(texturePath + 'nebula-silver-2.png'),
+            textureLoader.load(texturePath + 'nebula-silver-3.png'),
+        ];
+
+        textures.forEach((t) => {
+            t.wrapS = THREE.ClampToEdgeWrapping;
+            t.wrapT = THREE.ClampToEdgeWrapping;
+        });
+
+        const nebulaConfigs = [
+            { texture: textures[0], x: 0, y: 60, z: -750, size: 700, speed: 2, opacity: 0.06 },
+            { texture: textures[1], x: -80, y: 70, z: -800, size: 800, speed: 1.5, opacity: 0.05 },
+            { texture: textures[2], x: 80, y: 80, z: -850, size: 850, speed: 1, opacity: 0.04 },
+        ];
+
+        const count = Math.min(this.activePreset.nebulaCount, nebulaConfigs.length);
+
+        for (let i = 0; i < count; i++) {
+            const config = nebulaConfigs[i];
+            const geometry = new THREE.PlaneGeometry(config.size, config.size * 0.6);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    tDiffuse: { value: config.texture },
+                    uOpacity: { value: config.opacity },
+                    uPulse: { value: 0 },
+                    uTime: { value: 0 },
+                },
+                vertexShader: nebulaVertexShader,
+                fragmentShader: nebulaFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
             });
-            // Initialize baseSize
-            this.ambientParticles[i].baseSize = this.ambientParticles[i].size;
 
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(config.x, config.y, config.z);
+            mesh.renderOrder = -3500 - i;
+
+            mesh.userData.speed = config.speed;
+            mesh.userData.startX = config.x;
+            mesh.userData.wrapBoundary = config.size;
+
+            this.nebulaClouds.push(mesh);
+            this.scene.add(mesh);
         }
     }
 
-    setupGameplayEffects() {
-        // Create canvas for gameplay effects
-        const themeContainer = document.getElementById('neon-dusk-theme');
-        if (!themeContainer) return;
+    // =========================================================================
+    // MASSIVE BANDED SUN (Classic Synthwave)
+    // =========================================================================
 
-        let canvas = document.getElementById('neon-dusk-effects-canvas');
-        if (!canvas) {
-            canvas = document.createElement('canvas');
-            canvas.id = 'neon-dusk-effects-canvas';
-            canvas.style.position = 'absolute';
-            canvas.style.top = '0';
-            canvas.style.left = '0';
-            canvas.style.width = '100%';
-            canvas.style.height = '100%';
-            canvas.style.pointerEvents = 'none';
-            canvas.style.zIndex = '100';
-            themeContainer.appendChild(canvas);
-        }
+    createSun() {
+        // Very large sun sphere - positioned FAR BACK behind mountains
+        const sunGeometry = new THREE.SphereGeometry(300, 64, 64);  // MASSIVE sun
+        const sunMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uColorTop: { value: this.colors.sunTop },
+                uColorMid: { value: this.colors.sunMid },
+                uColorBottom: { value: this.colors.sunBottom },
+                uPulseIntensity: { value: 0 },
+                uStripeCount: { value: 8.0 },
+            },
+            vertexShader: sunVertexShader,
+            fragmentShader: sunFragmentShader,
+            transparent: true,
+            side: THREE.FrontSide,
+            depthWrite: false,
+        });
 
-        this.effectsCanvas = canvas;
+        this.sun = new THREE.Mesh(sunGeometry, sunMaterial);
+        // Position sun FAR behind mountains (mountains are at z=-250 to -550)
+        this.sun.position.set(0, 50, -900);
+        this.sun.renderOrder = -2000;  // Render before mountains
+        this.scene.add(this.sun);
 
-        // Initialize WebGL Effects
-        this.webglEffects = new WebGLNeonEffects(canvas);
-        if (!this.webglEffects.init()) {
-            console.warn('Neon Dusk: Failed to init WebGL Effects');
-            // Fallback?
-        }
+        // Large atmospheric glow behind sun
+        const glowGeometry = new THREE.PlaneGeometry(1200, 1200);  // MASSIVE glow
+        const glowMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uGlowColor: { value: new THREE.Color(0xff6688) },
+                uOpacity: { value: 0.4 },
+                uPulseIntensity: { value: 0 },
+            },
+            vertexShader: sunGlowVertexShader,
+            fragmentShader: sunGlowFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+        });
 
-        // Size canvas
-        const resizeCanvas = () => {
-            if (!this.effectsCanvas) return;
-            const rect = themeContainer.getBoundingClientRect();
-            // WebGL needs explicit width/height
-            this.webglEffects.resize(rect.width, rect.height);
+        this.sunGlow = new THREE.Mesh(glowGeometry, glowMaterial);
+        this.sunGlow.position.copy(this.sun.position);
+        this.sunGlow.position.z -= 10;
+        this.sunGlow.renderOrder = -2100;  // Render before sun
+        this.scene.add(this.sunGlow);
+    }
+
+    // =========================================================================
+    // SILHOUETTE MOUNTAINS (Valley Formation)
+    // =========================================================================
+
+    createMountains() {
+        // Configure mountains to form a valley - left and right sides
+        // Mountains extend far to the edges to fill screen when camera moves
+        const mountainConfigs = [
+            // LEFT SIDE - FOREGROUND (closest, largest, fill edge)
+            { x: -250, z: -150, size: 400, height: 100, layer: 0.0, seed: 11111 },
+            { x: -350, z: -200, size: 500, height: 120, layer: 0.05, seed: 11112 },
+            { x: -180, z: -280, size: 350, height: 90, layer: 0.1, seed: 22222 },
+
+            // LEFT SIDE - MIDGROUND
+            { x: -280, z: -380, size: 450, height: 110, layer: 0.25, seed: 33333 },
+            { x: -200, z: -480, size: 400, height: 100, layer: 0.4, seed: 33334 },
+
+            // LEFT SIDE - BACKGROUND (further, hazier)
+            { x: -150, z: -600, size: 500, height: 130, layer: 0.6, seed: 44444 },
+            { x: -250, z: -700, size: 550, height: 140, layer: 0.75, seed: 44445 },
+
+            // RIGHT SIDE - FOREGROUND (closest, largest, fill edge)
+            { x: 250, z: -150, size: 400, height: 100, layer: 0.0, seed: 55555 },
+            { x: 350, z: -200, size: 500, height: 120, layer: 0.05, seed: 55556 },
+            { x: 180, z: -280, size: 350, height: 90, layer: 0.1, seed: 66666 },
+
+            // RIGHT SIDE - MIDGROUND
+            { x: 280, z: -380, size: 450, height: 110, layer: 0.25, seed: 77777 },
+            { x: 200, z: -480, size: 400, height: 100, layer: 0.4, seed: 77778 },
+
+            // RIGHT SIDE - BACKGROUND (further, hazier)
+            { x: 150, z: -600, size: 500, height: 130, layer: 0.6, seed: 88888 },
+            { x: 250, z: -700, size: 550, height: 140, layer: 0.75, seed: 88889 },
+
+            // CENTER PEAKS near horizon (small distant mountains)
+            { x: -60, z: -750, size: 300, height: 80, layer: 0.85, seed: 99999 },
+            { x: 60, z: -750, size: 300, height: 80, layer: 0.85, seed: 99998 },
+            { x: 0, z: -800, size: 350, height: 90, layer: 0.9, seed: 99997 },
+        ];
+
+        mountainConfigs.forEach((config) => {
+            const mountain = this.createSilhouetteMountain(config);
+            this.mountains.push(mountain);
+            this.scene.add(mountain);
+        });
+    }
+
+    createSilhouetteMountain(config) {
+        const segments = Math.min(this.activePreset.mountainSegments, 128);
+        const geometry = new THREE.PlaneGeometry(config.size, config.size, segments, segments);
+        geometry.rotateX(-Math.PI / 2);
+
+        // CPU-side procedural mountain shape
+        const posAttribute = geometry.attributes.position;
+        const seed = config.seed;
+
+        const fract = (n) => n - Math.floor(n);
+        const mix = (a, b, t) => a * (1 - t) + b * t;
+        const rand = (x, y) => Math.sin(x * 12.9898 + y * 78.233 + seed) * 43758.5453;
+
+        const noise = (x, y) => {
+            const i = Math.floor(x);
+            const j = Math.floor(y);
+            const f = fract(x);
+            const g = fract(y);
+            const u = f * f * (3.0 - 2.0 * f);
+            const v = g * g * (3.0 - 2.0 * g);
+            return mix(
+                mix(fract(rand(i, j)), fract(rand(i + 1, j)), u),
+                mix(fract(rand(i, j + 1)), fract(rand(i + 1, j + 1)), u),
+                v
+            );
         };
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
 
-        // Setup event listeners
-        this.setupEventListeners();
+        const fbm = (x, y) => {
+            let v = 0.0;
+            let a = 0.5;
+            for (let i = 0; i < 4; i++) {
+                v += a * noise(x, y);
+                x *= 2.0;
+                y *= 2.0;
+                a *= 0.5;
+            }
+            return v;
+        };
 
-        // Start effects animation loop
-        this.startEffectsLoop();
+        for (let i = 0; i < posAttribute.count; i++) {
+            const x = posAttribute.getX(i);
+            const z = posAttribute.getZ(i);
+
+            // Create jagged mountain shape
+            const dist = Math.sqrt(x * x + z * z);
+            const maxDist = config.size * 0.45;
+
+            if (dist > maxDist) {
+                posAttribute.setY(i, -500);
+                continue;
+            }
+
+            const normDist = dist / maxDist;
+            const base = Math.pow(1.0 - normDist, 1.2) * config.height;
+            const jagged = fbm(x * 0.02, z * 0.02) * config.height * 0.5 * (1.0 - normDist);
+
+            posAttribute.setY(i, base + jagged);
+        }
+
+        geometry.computeVertexNormals();
+
+        // Simple dark silhouette material - NO rim lighting
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uBaseColor: { value: this.colors.mountainDark },
+                uMountainLayer: { value: config.layer },
+                uTime: { value: 0 },
+            },
+            vertexShader: mountainVertexShader,
+            fragmentShader: mountainFragmentShader,
+            transparent: false,
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(config.x, -30, config.z);
+        mesh.renderOrder = -500 + Math.round(config.layer * 100);
+        return mesh;
     }
+
+    // =========================================================================
+    // SYNTHWAVE GRID
+    // =========================================================================
+
+    createGrid() {
+        const geometry = new THREE.PlaneGeometry(400, 300, 100, 75);
+        geometry.rotateX(-Math.PI / 2);
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uSpeed: { value: this.activePreset.gridScrollSpeed },
+                uGridColor: { value: this.colors.gridColor },
+                uGlowIntensity: { value: 1.0 },
+                uPulseIntensity: { value: 0 },
+                uColorShift: { value: this.colors.gridGlow },
+            },
+            vertexShader: gridVertexShader,
+            fragmentShader: gridFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+        });
+
+        this.grid = new THREE.Mesh(geometry, material);
+        this.grid.position.y = 0;
+        this.grid.position.z = -50;
+        this.grid.renderOrder = -200;
+        this.scene.add(this.grid);
+    }
+
+    // =========================================================================
+    // GRID HIGHLIGHT POOL
+    // =========================================================================
+
+    createHighlightPool() {
+        const poolSize = this.activePreset.maxGridHighlights;
+
+        for (let i = 0; i < poolSize; i++) {
+            const geometry = new THREE.PlaneGeometry(3.05, 3.05); // 3.05 size for overlapped solid look
+            geometry.rotateX(-Math.PI / 2);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uColor: { value: new THREE.Color(0x00ffff) },
+                    uIntensity: { value: 0 },
+                    uTime: { value: 0 },
+                    uTwinkle: { value: 0 },
+                },
+                vertexShader: highlightVertexShader,
+                fragmentShader: highlightFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide,
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.visible = false;
+            mesh.userData = {
+                active: false,
+                life: 0,
+                maxLife: 15.0,
+                intensity: 0,
+                gridZ: 0,
+                scrollOffset: 0,
+            };
+
+            mesh.renderOrder = 10;
+            this.scene.add(mesh);
+            this.highlightPool.push(mesh);
+        }
+    }
+
+    // =========================================================================
+    // AMBIENT PARTICLES
+    // =========================================================================
+
+    createAmbientParticles() {
+        const count = this.activePreset.ambientParticles;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(count * 3);
+        const colors = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        const lives = new Float32Array(count);
+        const types = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+            const i3 = i * 3;
+
+            positions[i3] = (Math.random() - 0.5) * 200;
+            positions[i3 + 1] = Math.random() * 100 + 10;
+            positions[i3 + 2] = (Math.random() - 0.5) * 150 - 30;
+
+            const color = this.neonColors[Math.floor(Math.random() * this.neonColors.length)];
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
+
+            sizes[i] = 8 + Math.random() * 15;
+            lives[i] = 1.0;
+            types[i] = 0; // Circle type
+
+            this.ambientParticleData.push({
+                vx: (Math.random() - 0.5) * 0.3,
+                vy: (Math.random() - 0.5) * 0.2,
+                vz: (Math.random() - 0.5) * 0.3,
+                baseSize: sizes[i],
+            });
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aLife', new THREE.BufferAttribute(lives, 1));
+        geometry.setAttribute('aType', new THREE.BufferAttribute(types, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+                uTwinkle: { value: 0 }, // Added uTwinkle uniform
+            },
+            vertexShader: particleVertexShader,
+            fragmentShader: particleFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            vertexColors: true,
+        });
+
+        this.ambientParticles = new THREE.Points(geometry, material);
+        this.ambientParticles.renderOrder = 200;
+        this.scene.add(this.ambientParticles);
+    }
+
+    // =========================================================================
+    // BURST PARTICLE SYSTEM
+    // =========================================================================
+
+    createBurstParticleSystem() {
+        const count = this.activePreset.maxBurstParticles;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(count * 3);
+        const colors = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        const lives = new Float32Array(count);
+        const types = new Float32Array(count);
+
+        // Initialize all particles as inactive (off-screen)
+        for (let i = 0; i < count; i++) {
+            positions[i * 3 + 1] = -10000;
+            lives[i] = 0;
+            this.burstParticleData.push({
+                active: false,
+                x: 0, y: 0, z: 0,
+                vx: 0, vy: 0, vz: 0,
+                life: 0, maxLife: 1,
+                size: 1, type: 0,
+                color: new THREE.Color(0xffffff),
+            });
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aLife', new THREE.BufferAttribute(lives, 1));
+        geometry.setAttribute('aType', new THREE.BufferAttribute(types, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+                uTwinkle: { value: 0 }, // Added uTwinkle uniform
+            },
+            vertexShader: particleVertexShader,
+            fragmentShader: particleFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            vertexColors: true,
+        });
+
+        this.burstParticles = new THREE.Points(geometry, material);
+        this.burstParticles.renderOrder = 300;
+        this.scene.add(this.burstParticles);
+    }
+
+
+
+    // =========================================================================
+    // POST-PROCESSING
+    // =========================================================================
+
+    setupPostProcessing() {
+        if (!this.activePreset.enableBloom && !this.activePreset.enableVHS) {
+            return;
+        }
+
+        this.composer = new EffectComposer(this.renderer);
+
+        const renderPass = new RenderPass(this.scene, this.camera);
+        this.composer.addPass(renderPass);
+
+        if (this.activePreset.enableBloom) {
+            this.bloomPass = new UnrealBloomPass(
+                new THREE.Vector2(window.innerWidth, window.innerHeight),
+                this.activePreset.bloomStrength,
+                this.activePreset.bloomRadius || 0.3,
+                this.activePreset.bloomThreshold || 0.6
+            );
+            this.composer.addPass(this.bloomPass);
+        }
+
+        if (this.activePreset.enableVHS) {
+            this.vhsPass = new ShaderPass(VHSShader);
+            this.vhsPass.uniforms.uResolution.value = new THREE.Vector2(
+                window.innerWidth,
+                window.innerHeight
+            );
+            this.vhsPass.uniforms.uIntensity.value = 0.6;
+            this.composer.addPass(this.vhsPass);
+        }
+
+        // Vignette pass
+        this.vignettePass = new ShaderPass(VignetteShader);
+        this.vignettePass.uniforms.uDarkness.value = 0.5;
+        this.vignettePass.uniforms.uOffset.value = 1.2;
+        this.composer.addPass(this.vignettePass);
+    }
+
+    // =========================================================================
+    // EVENT LISTENERS
+    // =========================================================================
 
     setupEventListeners() {
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
+            const settings = typeof window !== 'undefined' ? window.settings : null;
+            if (this.isActive && settings?.backgroundComboEffects === true) {
+                this.handlePieceLock(data);
+            }
+        });
+
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects === true) {
@@ -611,540 +954,632 @@ export default class NeonDuskTheme extends BaseTheme {
             }
         });
 
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
-            const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.handlePieceLock(data);
-            }
-        });
+        this.eventUnsubscribers.push(pieceLockUnsub, lineClearUnsub, comboUnsub);
+    }
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+    // =========================================================================
+    // EVENT HANDLERS
+    // =========================================================================
+
+    handlePieceLock(data) {
+        const piece = data?.piece;
+        const currentTime = this.clock.getElapsedTime();
+        const scrollSpeed = this.activePreset.gridScrollSpeed;
+        const scrollOffset = (currentTime * scrollSpeed) / 3.0; // Convert distance to cells (spacing 3.0)
+
+        // Spawn grid highlights for tetromino shape
+        if (piece) {
+            const pieceType = piece.type;
+            const shape = this.tetrominoShapes[pieceType] || this.tetrominoShapes['T'];
+            const color = this.getPieceColor(pieceType);
+
+            let gridX = piece.x !== undefined ? (piece.x - 4.5) : (Math.random() - 0.5) * 10;
+            // Spread pieces across the fuller grid (multiply by 4) while keeping shape contiguous
+            const spreadFactor = 4.0;
+            gridX = Math.round(gridX * spreadFactor);
+
+            const gridZ = Math.floor(scrollOffset + 5 + Math.random() * 10);
+            const rotation = piece.rotation || 0;
+
+            // Trigger pixel twinkle
+            this.effectState.pixelTwinkle = 1.0;
+
+            for (const block of shape) {
+                let rx = block.x;
+                let ry = block.y;
+
+                for (let r = 0; r < rotation; r++) {
+                    const temp = rx;
+                    rx = -ry;
+                    ry = temp;
+                }
+
+                this.spawnHighlightCell(gridX + rx * 1.5, gridZ + ry, color, scrollOffset);
+            }
+        }
+
+        // Create rising squares burst
+        this.createRisingSquares((Math.random() - 0.5) * 100);
+
+        // Effect state updates
+        this.effectState.gridPulseIntensity = Math.min(1, this.effectState.gridPulseIntensity + 0.25);
+        this.effectState.mountainShockwave = 0.5;
+
+        if (this.starfield) {
+            this.starfield.material.uniforms.uEventBoost.value = 0.3;
+        }
     }
 
     handleLineClear(data) {
-        const { lineCount } = data;
-        // Removed createNeonBurst to stop center sparkles
+        const lineCount = data?.lineCount || 1;
 
+        this.effectState.gridPulseIntensity = Math.min(1, this.effectState.gridPulseIntensity + 0.3 * lineCount);
+        this.effectState.mountainPulseIntensity = Math.min(1, lineCount * 0.25);
+
+        // Spawn hologram rings from sun
         if (lineCount >= 2) {
-            this.createDigitalScanLines(lineCount);
+            this.createHologramRing();
         }
-
         if (lineCount >= 3) {
-            this.createHologramRings(lineCount);
+            this.effectState.sunPulseIntensity = Math.min(1, this.effectState.sunPulseIntensity + 0.4);
+            this.createHologramRing();
+        }
+        if (lineCount >= 4) {
+            this.effectState.sunPulseIntensity = 1.0;
+            this.createHologramRing();
+            this.createHologramRing();
         }
     }
 
     handleCombo(data) {
-        const { comboCount } = data;
-        this.comboMultiplier = Math.min(1 + comboCount * 0.25, 3.5);
+        const comboCount = data?.comboCount || 0;
 
-        // Boost mountain glow
-        this.mountainGlowIntensity = Math.min(this.mountainGlowIntensity + 0.3, 1.0);
-        this.createElectricArcs(comboCount);
-    }
+        this.effectState.rimGlowIntensity = Math.min(2.0, 1.0 + comboCount * 0.15);
+        this.effectState.highlightTwinkle = Math.min(1.5, comboCount * 0.2);
+        this.effectState.colorShift = Math.min(1, comboCount * 0.12);
 
-    // Removed createCyberVortex to stop center sparkles
-
-    handlePieceLock(data) {
-        // 1. Pulse existing ambient particles
-        for (const p of this.ambientParticles) {
-            // Randomly trigger pulse on some particles
-            // Only trigger if not already pulsing to avoid compounding growth
-            if (!p.pulsing && Math.random() > 0.3) {
-                p.pulsing = true;
-                p.pulseTime = 0;
-                // p.baseSize is already set during initialization
-            }
+        if (comboCount >= 2) {
+            this.effectState.sunPulseIntensity = Math.min(1, this.effectState.sunPulseIntensity + 0.2);
         }
 
-        // 2. Spawn a burst of rising squared particles
-        // Random position across full screen width
-        const spawnX = Math.random() * window.innerWidth;
-        this.createRisingSquares(spawnX);
+        if (this.starfield) {
+            this.starfield.material.uniforms.uEventBoost.value = Math.min(0.5, comboCount * 0.08);
+        }
+
+        // Trigger VHS glitch on combos
+        this.effectState.vhsIntensity = Math.min(1.5, this.effectState.vhsIntensity + 0.5 + comboCount * 0.1);
+    }
+
+    // =========================================================================
+    // EFFECT HELPERS
+    // =========================================================================
+
+    getPieceColor(pieceType) {
+        const colorMap = {
+            'I': new THREE.Color(0x00ffff),
+            'O': new THREE.Color(0xffff00),
+            'T': new THREE.Color(0xff00ff),
+            'S': new THREE.Color(0x00ff88),
+            'Z': new THREE.Color(0xff0088),
+            'J': new THREE.Color(0x00aaff),
+            'L': new THREE.Color(0xff8800),
+        };
+        return colorMap[pieceType] || this.neonColors[0];
+    }
+
+    spawnHighlightCell(gridX, gridZ, color, scrollOffset) {
+        const highlight = this.highlightPool.find(h => !h.userData.active);
+        if (!highlight) return;
+
+        highlight.userData.active = true;
+        highlight.userData.life = 1.0;
+        highlight.userData.maxLife = 15.0 + Math.random() * 10.0;
+        highlight.userData.intensity = 2.0 + Math.random() * 0.5;
+        highlight.userData.gridZ = gridZ;
+        highlight.userData.scrollOffset = scrollOffset;
+
+
+        highlight.position.x = gridX * 3.0 + 1.5;
+        highlight.position.y = 0.02; // Very close to grid to minimize parallax
+        highlight.position.z = -(gridZ - scrollOffset) * 3.0 + this.grid.position.z + 0.5;
+
+        highlight.material.uniforms.uColor.value.copy(color);
+        highlight.material.uniforms.uIntensity.value = highlight.userData.intensity;
+
+        highlight.visible = true;
+        this.gridHighlights.push(highlight);
     }
 
     createRisingSquares(x) {
-        if (!this.effectsCanvas) return;
-
         const count = 8;
-        const colors = ['#00ffff', '#ff00ff', '#ffff00'];
+        const positions = this.burstParticles.geometry.attributes.position.array;
+        const colors = this.burstParticles.geometry.attributes.color.array;
+        const sizes = this.burstParticles.geometry.attributes.aSize.array;
+        const lives = this.burstParticles.geometry.attributes.aLife.array;
+        const types = this.burstParticles.geometry.attributes.aType.array;
 
         for (let i = 0; i < count; i++) {
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            const size = Math.random() * 3 + 1; // Smaller size (was 5+3)
+            const idx = this.burstParticleData.findIndex(p => !p.active);
+            if (idx === -1) break;
 
-            this.neonBurstParticles.push({
-                x: x + (Math.random() - 0.5) * 100,
-                y: window.innerHeight, // Start from bottom
-                vx: (Math.random() - 0.5) * 2,
-                vy: -(Math.random() * 5 + 5), // Fast upward
-                life: 1.0,
-                maxLife: 1.5,
-                size: size,
-                color: color,
-                type: 2, // Squared particle
-                rotation: Math.random() * Math.PI * 2,
-                rotationSpeed: (Math.random() - 0.5) * 4.0 // Faster rotation for rising squares
-            });
+            const p = this.burstParticleData[idx];
+            const color = this.neonColors[Math.floor(Math.random() * this.neonColors.length)];
+
+            p.active = true;
+            p.x = x + (Math.random() - 0.5) * 30;
+            p.y = -10;
+            p.z = (Math.random() - 0.5) * 20 - 30;
+            p.vx = (Math.random() - 0.5) * 1;
+            p.vy = 15 + Math.random() * 10;
+            p.vz = (Math.random() - 0.5) * 1;
+            p.life = 1.0;
+            p.maxLife = 2.0 + Math.random() * 1.0;
+            p.size = 15 + Math.random() * 10;
+            p.type = 2; // Square
+            p.color = color;
+
+            const i3 = idx * 3;
+            positions[i3] = p.x;
+            positions[i3 + 1] = p.y;
+            positions[i3 + 2] = p.z;
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
+            sizes[idx] = p.size;
+            lives[idx] = p.life;
+            types[idx] = p.type;
         }
+
+        this.burstParticles.geometry.attributes.position.needsUpdate = true;
+        this.burstParticles.geometry.attributes.color.needsUpdate = true;
+        this.burstParticles.geometry.attributes.aSize.needsUpdate = true;
+        this.burstParticles.geometry.attributes.aLife.needsUpdate = true;
+        this.burstParticles.geometry.attributes.aType.needsUpdate = true;
     }
 
+    createHologramRing() {
+        if (this.hologramRings.length >= this.activePreset.maxRings) return;
 
+        const geometry = new THREE.PlaneGeometry(1200, 1200);  // Much BIGGER rings
+        const color = this.neonColors[Math.floor(Math.random() * this.neonColors.length)];
 
-    createElectricArcs(comboCount) {
-        if (!this.effectsCanvas) return;
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uColor: { value: color },
+                uLife: { value: 1.0 },
+                uRadius: { value: 0.05 },
+                uMaxRadius: { value: 1.0 },
+            },
+            vertexShader: ringVertexShader,
+            fragmentShader: ringFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+        });
 
-        // Limit arcs
-        if (this.electricArcs.length >= this.MAX_ARCS) return;
+        const ring = new THREE.Mesh(geometry, material);
+        ring.position.copy(this.sun.position);
+        ring.position.z += 10;
+        ring.renderOrder = 100;
 
-        const { width } = this.effectsCanvas;
-        const { height } = this.effectsCanvas;
-        const arcCount = Math.min(Math.floor(comboCount / 2), this.MAX_ARCS - this.electricArcs.length);
-        const colors = ['#00ffff', '#ff00ff', '#00ff88'];
-
-        for (let i = 0; i < arcCount; i++) {
-            const startX = Math.random() * width;
-            const startY = Math.random() * height;
-            const endX = Math.random() * width;
-            const endY = Math.random() * height;
-            const color = colors[Math.floor(Math.random() * colors.length)];
-
-            this.electricArcs.push({
-                startX,
-                startY,
-                endX,
-                endY,
-                life: 1.0,
-                maxLife: 0.4 + Math.random() * 0.3,
-                color,
-                segments: this.generateArcSegments(startX, startY, endX, endY, 6),
-                width: Math.random() * 3 + 2,
-            });
-        }
-    }
-
-    generateArcSegments(x1, y1, x2, y2, count) {
-        const segments = [{ x: x1, y: y1 }];
-        const dx = (x2 - x1) / count;
-        const dy = (y2 - y1) / count;
-
-        for (let i = 1; i < count; i++) {
-            const deviation = (Math.random() - 0.5) * 40;
-            segments.push({
-                x: x1 + dx * i + deviation,
-                y: y1 + dy * i + deviation,
-            });
-        }
-        segments.push({ x: x2, y: y2 });
-        return segments;
-    }
-
-    createDigitalScanLines(lineCount) {
-        if (!this.effectsCanvas) return;
-
-        // Limit scan lines
-        if (this.digitalScanLines.length >= this.MAX_SCANLINES) return;
-
-        const { height } = this.effectsCanvas;
-        const colors = ['#00ffff', '#ff00ff', '#00ff88'];
-        const scanCount = Math.min(lineCount * 2, this.MAX_SCANLINES - this.digitalScanLines.length);
-
-        for (let i = 0; i < scanCount; i++) {
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            this.digitalScanLines.push({
-                y: Math.random() * height,
-                life: 1.0,
-                maxLife: 0.8 + Math.random() * 0.4,
-                speed: (Math.random() * 200 + 150) * (Math.random() > 0.5 ? 1 : -1),
-                height: Math.random() * 3 + 1,
-                color,
-                opacity: Math.random() * 0.4 + 0.6,
-            });
-        }
-    }
-
-    createHologramRings(lineCount) {
-        if (!this.effectsCanvas) return;
-
-        // Limit rings
-        if (this.hologramRings.length >= this.MAX_RINGS) return;
-
-        // Rings now pulse from the sun position
-        let centerX = this.effectsCanvas.width / 2;
-        let centerY = this.effectsCanvas.height / 2;
-
-        if (this.currentSunPos) {
-            // Convert sun UV coordinates to pixel coordinates
-            // uv.x = (pixelX - width/2) / height  => pixelX = uv.x * height + width/2
-            // uv.y = (pixelY - height/2) / height => pixelY = uv.y * height + height/2 (but Y is inverted in canvas)
-            // Actually sunY is 0.25 (up), so pixelY should be (0.5 - sunY) * height
-            centerX = this.currentSunPos.x * this.effectsCanvas.height + this.effectsCanvas.width / 2;
-            centerY = (0.5 - this.currentSunPos.y) * this.effectsCanvas.height;
-        }
-
-        const colors = ['#00ffff', '#ff00ff', '#00ff88', '#ffff00'];
-        const ringCount = Math.min(lineCount, this.MAX_RINGS - this.hologramRings.length);
-        const maxDim = Math.max(this.effectsCanvas.width, this.effectsCanvas.height);
-
-        for (let i = 0; i < ringCount; i++) {
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            this.hologramRings.push({
-                x: centerX,
-                y: centerY,
-                radius: 10,
-                maxRadius: maxDim * 1.2, // Expand to cover screen
-                life: 1.0,
-                maxLife: 1.2 + Math.random() * 0.5,
-                color,
-                width: Math.random() * 3 + 2,
-            });
-        }
-    }
-
-    createGlitchPulse(comboCount) {
-        if (!this.effectsCanvas) return;
-
-        // Limit glitch pulses
-        if (this.glitchPulses.length >= this.MAX_GLITCHES) return;
-
-        const { width } = this.effectsCanvas;
-        const { height } = this.effectsCanvas;
-        const colors = ['#00ffff', '#ff00ff', '#ffff00'];
-        const glitchCount = Math.min(comboCount * 2, this.MAX_GLITCHES - this.glitchPulses.length);
-
-        for (let i = 0; i < glitchCount; i++) {
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            this.glitchPulses.push({
-                x: Math.random() * width,
-                y: Math.random() * height,
-                width: Math.random() * 100 + 50,
-                height: Math.random() * 20 + 10,
-                life: 1.0,
-                maxLife: 0.3 + Math.random() * 0.2,
-                color,
-                offsetX: (Math.random() - 0.5) * 20,
-            });
-        }
-    }
-
-
-
-    startEffectsLoop() {
-        if (this.effectsAnimationFrame) return;
-
-        const tick = (timestamp) => {
-            if (!this.effectsAnimationFrame || !this.isActive) {
-                return;
-            }
-
-            if (!this.lastEffectsFrameTime) {
-                this.lastEffectsFrameTime = timestamp;
-            }
-
-            const delta = Math.min((timestamp - this.lastEffectsFrameTime) / 1000, 0.1);
-            this.lastEffectsFrameTime = timestamp;
-
-            this.updateEffects(delta);
-            this.renderEffects(timestamp / 1000);
-
-            this.effectsAnimationFrame = requestAnimationFrame(tick);
+        ring.userData = {
+            startTime: this.time,
+            duration: 1.5 + Math.random() * 0.5,
+            maxRadius: 1.0,
         };
 
-        this.lastEffectsFrameTime = 0;
-        this.effectsAnimationFrame = requestAnimationFrame(tick);
+        this.hologramRings.push(ring);
+        this.scene.add(ring);
     }
 
-    stopEffectsLoop() {
-        if (this.effectsAnimationFrame) {
-            cancelAnimationFrame(this.effectsAnimationFrame);
-            this.effectsAnimationFrame = null;
+    // =========================================================================
+    // ANIMATION
+    // =========================================================================
+
+    animate() {
+        if (!this.isActive) return;
+
+        const animId = requestAnimationFrame(() => this.animate());
+        this.registerAnimation(animId);
+
+        const delta = this.clock.getDelta();
+        this.time += delta;
+
+        this.updateCamera();
+        this.updateSun(delta);
+        this.updateMountains(delta);
+        this.updateGrid(delta);
+        this.updateHighlights(delta);
+        this.updateRetroPixels(delta); // Update pixels
+        this.updateBurstParticles(delta);
+        this.updateHologramRings(delta);
+        this.updateStars();
+        this.decayEffects(delta);
+
+        if (this.composer) {
+            if (this.vhsPass) {
+                this.vhsPass.uniforms.uTime.value = this.time;
+                this.vhsPass.uniforms.uIntensity.value = this.effectState.vhsIntensity; // Update intensity
+            }
+            this.composer.render();
+        } else {
+            this.renderer.render(this.scene, this.camera);
         }
-        this.lastEffectsFrameTime = 0;
     }
 
-    updateEffects(delta) {
-        // Update neon burst particles (and rising squares)
-        let writeIndex = 0;
-        for (let i = 0; i < this.neonBurstParticles.length; i++) {
-            const p = this.neonBurstParticles[i];
-            p.x += p.vx;
-            p.y += p.vy;
-            // Gravity/Physics
-            if (p.type === 2) {
-                // Rising squares: No gravity, just friction on X
-                p.vx *= 0.95;
-            } else {
-                // Standard burst: Gravity
-                p.vy += 0.15;
+    updateCamera() {
+        // Gentle sway animation
+        const t = this.time * 0.03;
+        this.camera.position.x = Math.sin(t) * 4;
+        this.camera.position.y = 25 + Math.cos(t * 0.7) * 2;
+        this.camera.position.z = 50 + Math.sin(t * 0.5) * 3;
+
+        this.camera.lookAt(
+            Math.sin(t * 0.4) * 3,
+            10 + Math.cos(t * 0.3),
+            -100
+        );
+    }
+
+    updateSun(delta) {
+        // Sun stays centered - no drift for clean look
+        this.sun.material.uniforms.uTime.value = this.time;
+        this.sun.material.uniforms.uPulseIntensity.value = this.effectState.sunPulseIntensity;
+
+        // Update single glow layer
+        if (this.sunGlow) {
+            this.sunGlow.material.uniforms.uPulseIntensity.value = this.effectState.sunPulseIntensity;
+            const scale = 1 + Math.sin(this.time * 0.3) * 0.03 + this.effectState.sunPulseIntensity * 0.1;
+            this.sunGlow.scale.setScalar(scale);
+        }
+
+        this.sunPosition = { x: this.sun.position.x, y: this.sun.position.y };
+    }
+
+    updateMountains(delta) {
+        this.mountains.forEach((mountain) => {
+            mountain.material.uniforms.uTime.value = this.time;
+        });
+    }
+
+    updateGrid(delta) {
+        this.grid.material.uniforms.uTime.value = this.time;
+        this.grid.material.uniforms.uPulseIntensity.value = this.effectState.gridPulseIntensity;
+    }
+
+    updateHighlights(delta) {
+        const scrollSpeed = this.activePreset.gridScrollSpeed;
+        const currentScroll = (this.time * scrollSpeed) / 3.0; // Cells
+
+        for (let i = this.gridHighlights.length - 1; i >= 0; i--) {
+            const highlight = this.gridHighlights[i];
+            const data = highlight.userData;
+
+            // Update position with grid scroll
+            const relativeZ = data.gridZ - currentScroll;
+            highlight.position.z = -relativeZ * 3.0 + this.grid.position.z + 0.5;
+
+            // Distance fade
+            const distanceFade = Math.max(0.3, 1.0 - Math.max(0, -relativeZ - 30) / 50);
+
+            // Twinkle effect
+            let twinkle = 1.0;
+            if (this.effectState.highlightTwinkle > 0) {
+                const phase = (data.gridZ * 0.5 + data.intensity * 2.0) % 6.28;
+                twinkle = 1.0 + Math.sin(this.time * 15.0 + phase) * this.effectState.highlightTwinkle * 0.4;
             }
 
-            // Update rotation
-            if (p.rotationSpeed) {
-                p.rotation += p.rotationSpeed * delta;
+            highlight.material.uniforms.uIntensity.value = data.intensity * distanceFade * twinkle;
+            highlight.material.uniforms.uTime.value = this.time;
+            highlight.material.uniforms.uTwinkle.value = this.effectState.highlightTwinkle;
+
+            // Remove when past horizon
+            if (relativeZ < -60) {
+                highlight.visible = false;
+                data.active = false;
+                this.gridHighlights.splice(i, 1);
+            }
+        }
+    }
+
+    // =========================================================================
+    // RETRO PIXELS (Floating Squares)
+    // =========================================================================
+
+    createRetroPixels() {
+        const count = this.activePreset.pixelCount || 150;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(count * 3);
+        const colors = new Float32Array(count * 3); // Missing color attribute!
+        const sizes = new Float32Array(count);
+        const lives = new Float32Array(count);
+        const types = new Float32Array(count); // All type 2 (square)
+
+        const palette = [
+            new THREE.Color(0x00ffff), // Cyan
+            new THREE.Color(0xff00ff), // Magenta
+            new THREE.Color(0xffff00), // Yellow
+            new THREE.Color(0xffffff), // White
+        ];
+
+        this.retroPixelData = [];
+
+        for (let i = 0; i < count; i++) {
+            const i3 = i * 3;
+
+            // Spread across the world
+            // Spread across the world - closer to camera
+            const x = (Math.random() - 0.5) * 500;
+            const y = Math.random() * 100 + 10;
+            // Z from 50 (camera) to -600 (horizon)
+            const z = 50 - Math.random() * 650;
+
+            positions[i3] = x;
+            positions[i3 + 1] = y;
+            positions[i3 + 2] = z;
+
+            const col = palette[Math.floor(Math.random() * palette.length)];
+            colors[i3] = col.r;
+            colors[i3 + 1] = col.g;
+            colors[i3 + 2] = col.b;
+
+            sizes[i] = 0.5 + Math.random() * 1.5; // Tiny specks (0.5-2 base size)
+            lives[i] = Math.random();
+            types[i] = 2.0; // Square type
+
+            this.retroPixelData.push({
+                vx: (Math.random() - 0.5) * 5, // Subtle drift x
+                vy: 5 + Math.random() * 10,    // Float UP
+                vz: (Math.random() - 0.5) * 5, // Subtle drift z
+                maxLife: 1.0,
+                colorType: Math.floor(Math.random() * 5)
+            });
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aLife', new THREE.BufferAttribute(lives, 1));
+        geometry.setAttribute('aType', new THREE.BufferAttribute(types, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
+                uColor: { value: new THREE.Color(0xffffff) },
+                uTwinkle: { value: 0 }, // NEW
+            },
+            vertexShader: particleVertexShader,
+            fragmentShader: particleFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            vertexColors: true, // Required for vColor attribute
+        });
+
+        this.retroPixels = new THREE.Points(geometry, material);
+        this.retroPixels.renderOrder = 0; // Render properly in scene
+        this.scene.add(this.retroPixels);
+    }
+
+    updateRetroPixels(delta) {
+        if (!this.retroPixels) return;
+
+        const positions = this.retroPixels.geometry.attributes.position.array;
+        const lives = this.retroPixels.geometry.attributes.aLife.array;
+
+        for (let i = 0; i < this.retroPixelData.length; i++) {
+            const p = this.retroPixelData[i];
+            const i3 = i * 3;
+
+            // Move up
+            positions[i3] += p.vx * delta;
+            positions[i3 + 1] += p.vy * delta;
+            positions[i3 + 2] += p.vz * delta;
+
+            // Wrap around
+            if (positions[i3 + 1] > 150) {
+                positions[i3 + 1] = 0;
+                positions[i3] = (Math.random() - 0.5) * 500;
+                positions[i3 + 2] = 50 - Math.random() * 650; // Random Z including close
+            }
+
+            // Pulse life
+            lives[i] = 0.5 + 0.5 * Math.sin(this.time * 2 + i * 10);
+        }
+
+        this.retroPixels.geometry.attributes.position.needsUpdate = true;
+        this.retroPixels.geometry.attributes.aLife.needsUpdate = true;
+        this.retroPixels.material.uniforms.uTime.value = this.time;
+        this.retroPixels.material.uniforms.uTwinkle.value = this.effectState.pixelTwinkle; // Update uniform
+    }
+
+    updateBurstParticles(delta) {
+        if (!this.burstParticles) return;
+
+        const positions = this.burstParticles.geometry.attributes.position.array;
+        const lives = this.burstParticles.geometry.attributes.aLife.array;
+
+        for (let i = 0; i < this.burstParticleData.length; i++) {
+            const p = this.burstParticleData[i];
+            if (!p.active) continue;
+
+            // Physics
+            p.x += p.vx * delta;
+            p.y += p.vy * delta;
+            p.z += p.vz * delta;
+
+            // Rising squares: no gravity, just slow down
+            if (p.type === 2) {
+                p.vy *= 0.98;
+            } else {
+                p.vy -= 20 * delta;
             }
 
             p.life -= delta / p.maxLife;
 
-            if (p.life > 0) {
-                this.neonBurstParticles[writeIndex++] = p;
-            }
-        }
-        this.neonBurstParticles.length = writeIndex;
-
-        // Decay mountain glow
-        if (this.mountainGlowIntensity > 0) {
-            this.mountainGlowIntensity -= delta * 0.5; // Slow decay
-            if (this.mountainGlowIntensity < 0) this.mountainGlowIntensity = 0;
-        }
-
-        // Update electric arcs - reduced flicker frequency for performance
-        writeIndex = 0;
-        for (let i = 0; i < this.electricArcs.length; i++) {
-            const arc = this.electricArcs[i];
-            arc.life -= delta / arc.maxLife;
-
-            // Regenerate segments less frequently (30% -> 15% chance)
-            if (Math.random() > 0.85) {
-                arc.segments = this.generateArcSegments(
-                    arc.startX,
-                    arc.startY,
-                    arc.endX,
-                    arc.endY,
-                    6, // Reduced from 8 segments to 6 for performance
-                );
+            if (p.life <= 0) {
+                p.active = false;
+                p.life = 0;
             }
 
-            if (arc.life > 0) {
-                this.electricArcs[writeIndex++] = arc;
-            }
+            const i3 = i * 3;
+            positions[i3] = p.x;
+            positions[i3 + 1] = p.y;
+            positions[i3 + 2] = p.z;
+            lives[i] = Math.max(0, p.life);
         }
-        this.electricArcs.length = writeIndex;
 
-        // Update digital scan lines
-        writeIndex = 0;
-        for (let i = 0; i < this.digitalScanLines.length; i++) {
-            const line = this.digitalScanLines[i];
-            line.y += line.speed * delta;
-            line.life -= delta / line.maxLife;
+        this.burstParticles.geometry.attributes.position.needsUpdate = true;
+        this.burstParticles.geometry.attributes.aLife.needsUpdate = true;
+    }
 
-            if (line.life > 0) {
-                this.digitalScanLines[writeIndex++] = line;
-            }
-        }
-        this.digitalScanLines.length = writeIndex;
-
-        // Update hologram rings
-        writeIndex = 0;
-        for (let i = 0; i < this.hologramRings.length; i++) {
+    updateHologramRings(delta) {
+        for (let i = this.hologramRings.length - 1; i >= 0; i--) {
             const ring = this.hologramRings[i];
-            ring.radius += (ring.maxRadius / ring.maxLife) * delta;
-            ring.life -= delta / ring.maxLife;
+            const data = ring.userData;
+            const elapsed = this.time - data.startTime;
+            const progress = elapsed / data.duration;
 
-            if (ring.life > 0) {
-                this.hologramRings[writeIndex++] = ring;
-            }
-        }
-        this.hologramRings.length = writeIndex;
-
-        // Update glitch pulses - reduce offset recalculation frequency
-        writeIndex = 0;
-        for (let i = 0; i < this.glitchPulses.length; i++) {
-            const pulse = this.glitchPulses[i];
-            pulse.life -= delta / pulse.maxLife;
-            // Only update offset 50% of the time for performance
-            if (Math.random() > 0.5) {
-                pulse.offsetX = (Math.random() - 0.5) * 20;
+            if (progress >= 1.0) {
+                this.scene.remove(ring);
+                ring.geometry.dispose();
+                ring.material.dispose();
+                this.hologramRings.splice(i, 1);
+                continue;
             }
 
-            if (pulse.life > 0) {
-                this.glitchPulses[writeIndex++] = pulse;
-            }
-        }
-        this.glitchPulses.length = writeIndex;
+            ring.material.uniforms.uLife.value = 1.0 - progress;
+            ring.material.uniforms.uRadius.value = progress;
 
-        // Removed cyber vortex update logic
-        this.cyberVortexes = []; // Ensure empty
-
-
-
-        // Update ambient particles
-        for (let i = 0; i < this.ambientParticles.length; i++) {
-            const p = this.ambientParticles[i];
-            p.x += p.vx;
-            p.y += p.vy;
-
-            // Update rotation
-            if (p.rotationSpeed) {
-                p.rotation += p.rotationSpeed * delta;
-            }
-
-            // Handle pulsing
-            if (p.pulsing) {
-                p.pulseTime += delta * 5.0; // Speed of pulse
-
-                // Sine wave pulse: starts at 0, goes to 1, back to 0
-                // We want it to go from 1.0 to 1.5 back to 1.0
-                // sin(0) = 0, sin(PI/2) = 1, sin(PI) = 0
-
-                if (p.pulseTime <= Math.PI) {
-                    const scale = 1.0 + Math.sin(p.pulseTime) * 0.5; // Scale 1.0 -> 1.5 -> 1.0
-                    p.size = p.baseSize * scale;
-                } else {
-                    // End pulse
-                    p.pulsing = false;
-                    p.size = p.baseSize; // Reset to original size
-                }
-            }
-
-            // Wrap around screen
-            if (p.x < 0) p.x = window.innerWidth;
-            if (p.x > window.innerWidth) p.x = 0;
-            if (p.y < 0) p.y = window.innerHeight;
-            if (p.y > window.innerHeight) p.y = 0;
+            // Expand and follow sun
+            ring.position.x = this.sunPosition.x;
+            const scale = 1 + progress * 6;  // Expand much further (6x instead of 2x)
+            ring.scale.setScalar(scale);
         }
     }
 
-    calculateSunPosition(time) {
-        // Smooth left-to-right horizontal drift centered around screen center
-        // The sun drifts continuously from left to right in a straight line
-
-        // Movement range (percentage of viewport from center)
-        // Movement range (percentage of viewport from center)
-        const horizontalRange = 0.6; // Reduced from 1.8 to keep sun on screen longer (screen half-width is 0.5 * aspect)
-
-        // Apply time offset so sun starts at different position each time
-        const t = time + this.timeOffset;
-
-        // Continuous left-to-right drift using modulo to loop smoothly
-        const driftSpeed = 0.0007; // Very slow speed
-        const driftProgress = (t * driftSpeed) % 1; // 0 to 1 progress
-
-        // Map progress to position: -horizontalRange (left) to +horizontalRange (right)
-        const aspect = window.innerWidth / window.innerHeight;
-        const sunX = (driftProgress * 2 - 1) * horizontalRange * aspect;
-
-        // Fixed vertical position
-        const sunY = 0.25;
-
-        return { x: sunX, y: sunY };
+    updateNebulas(delta) {
+        this.nebulaClouds.forEach((nebula) => {
+            nebula.position.x += nebula.userData.speed * delta;
+            if (nebula.position.x > nebula.userData.wrapBoundary) {
+                nebula.position.x = -nebula.userData.wrapBoundary;
+            }
+            nebula.material.uniforms.uPulse.value = this.effectState.gridPulseIntensity * 0.5;
+            nebula.material.uniforms.uTime.value = this.time;
+        });
     }
 
-    renderEffects(time) {
-        // Render Environment (Sky only now)
-        if (this.webglEnvironment) {
-            this.webglEnvironment.render(time);
+    updateStars() {
+        if (this.starfield) {
+            this.starfield.material.uniforms.uTime.value = this.time;
+        }
+    }
+
+    decayEffects(delta) {
+        const decay = Math.pow(0.92, delta * 60);
+
+        this.effectState.gridPulseIntensity *= decay;
+        this.effectState.sunPulseIntensity *= decay;
+        this.effectState.mountainPulseIntensity *= decay;
+        this.effectState.mountainShockwave *= decay;
+        this.effectState.highlightTwinkle *= decay;
+        this.effectState.colorShift *= decay;
+        this.effectState.vhsIntensity *= Math.pow(0.85, delta * 60);
+        this.effectState.pixelTwinkle *= Math.pow(0.95, delta * 60); // Slower decay for visible flash
+
+        // Rim glow decays back to 1.0
+        this.effectState.rimGlowIntensity = 1.0 + (this.effectState.rimGlowIntensity - 1.0) * decay;
+
+        // Star boost decay
+        if (this.starfield) {
+            this.starfield.material.uniforms.uEventBoost.value *= decay;
         }
 
-        // Calculate dynamic sun position
-        const sunPos = this.calculateSunPosition(time);
-        this.currentSunPos = sunPos;
+        // Clamp small values
+        if (this.effectState.gridPulseIntensity < 0.01) this.effectState.gridPulseIntensity = 0;
+        if (this.effectState.sunPulseIntensity < 0.01) this.effectState.sunPulseIntensity = 0;
+        if (this.effectState.mountainPulseIntensity < 0.01) this.effectState.mountainPulseIntensity = 0;
+        if (this.effectState.mountainShockwave < 0.01) this.effectState.mountainShockwave = 0;
+    }
 
-        // Render Sun (Separate layer for vibrant effects)
-        if (this.webglSun) {
-            this.webglSun.render(time, {
-                x: sunPos.x,
-                y: sunPos.y,
-                radius: 0.25,        // Size
-                colorTop: [1.0, 0.0, 1.0],    // Magenta top
-                colorBottom: [0.0, 1.0, 1.0]  // Cyan bottom
-            });
+    // =========================================================================
+    // LIFECYCLE
+    // =========================================================================
+
+    onResize() {
+        if (!this.camera || !this.renderer) return;
+
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        this.camera.aspect = width / height;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(width, height);
+
+        if (this.composer) {
+            this.composer.setSize(width, height);
         }
 
-        // Render Background Effects (Rings behind sun)
-        if (this.webglBackEffects) {
-            this.webglBackEffects.render(
-                null, // bursts
-                null, // arcs
-                null, // scanlines
-                this.hologramRings, // RINGS HERE
-                null, // vortexes
-                null, // glitches
-                null  // ambient
-            );
-        }
-
-        // Render Mountains (In front of sun)
-        if (this.webglMountains) {
-            this.webglMountains.render(this.mountainGlowIntensity);
-        }
-
-        // Render Grid (In front of mountains)
-        if (this.webglGrid) {
-            this.webglGrid.render(time, []);
-        }
-
-        // Render Effects
-        if (this.webglEffects) {
-            this.webglEffects.render(
-                this.neonBurstParticles,
-                this.electricArcs,
-                this.digitalScanLines,
-                null, // Rings moved to background
-                this.cyberVortexes,
-                this.glitchPulses,
-                this.ambientParticles // Pass ambient particles
-            );
-        }
-
-        // Render Overlay (VHS Effects)
-        if (this.webglOverlay) {
-            this.webglOverlay.render(time);
+        if (this.vhsPass) {
+            this.vhsPass.uniforms.uResolution.value.set(width, height);
         }
     }
 
     stop() {
-        if (this.qualityChangeHandler && typeof window !== 'undefined') {
-            window.removeEventListener('settingsChanged', this.qualityChangeHandler);
-            this.qualityChangeHandler = null;
-        }
-
-        this.stopEffectsLoop();
-        super.stop();
-    }
-
-    cleanup() {
-        this.cleanupEffects();
-        super.cleanup();
-    }
-
-    cleanupEffects() {
-        // Unsubscribe from events
-        this.eventUnsubscribers.forEach((unsub) => unsub());
+        // Unsubscribe events
+        this.eventUnsubscribers.forEach(unsub => unsub());
         this.eventUnsubscribers = [];
 
-        // Clear effect arrays
-        this.neonBurstParticles = [];
-        this.electricArcs = [];
-        this.digitalScanLines = [];
+        // Remove resize handler
+        if (this.resizeHandler) {
+            window.removeEventListener('resize', this.resizeHandler);
+            this.resizeHandler = null;
+        }
+
+        // Clear highlights
+        this.gridHighlights = [];
+        this.hologramRings.forEach(ring => {
+            this.scene.remove(ring);
+            ring.geometry.dispose();
+            ring.material.dispose();
+        });
         this.hologramRings = [];
-        this.cyberVortexes = [];
-        this.glitchPulses = [];
 
-        // Stop animation loop
-        this.stopEffectsLoop();
-
-        // Remove canvas
-        if (this.effectsCanvas) {
-            this.effectsCanvas.remove();
-            this.effectsCanvas = null;
+        // Dispose Three.js resources
+        if (this.renderer) {
+            this.renderer.dispose();
+            const container = document.getElementById('neon-dusk-theme');
+            if (container && container.contains(this.renderer.domElement)) {
+                container.removeChild(this.renderer.domElement);
+            }
         }
-        if (this.backEffectsCanvas) {
-            this.backEffectsCanvas.remove();
-            this.backEffectsCanvas = null;
-        }
-        if (this.overlayCanvas) {
-            this.overlayCanvas.remove();
-            this.overlayCanvas = null;
-        }
-    }
 
-    // Meteor methods removed as they are no longer used
+        if (this.scene) {
+            this.scene.traverse(obj => {
+                if (obj.geometry) obj.geometry.dispose();
+                if (obj.material) {
+                    if (Array.isArray(obj.material)) {
+                        obj.material.forEach(m => m.dispose());
+                    } else {
+                        obj.material.dispose();
+                    }
+                }
+            });
+        }
 
-    /**
-     * Provide neon-themed tetromino styling so blocks match the skyline palette
-     * @returns {Object} Neon Dusk tetromino configuration
-     */
-    getTetrominoConfig() {
-        return NEON_DUSK_TETROMINOS;
+        if (this.composer) {
+            this.composer.dispose();
+            this.composer = null;
+        }
+
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+
+        super.stop();
+        console.log('[NeonDusk] Theme stopped');
     }
 }

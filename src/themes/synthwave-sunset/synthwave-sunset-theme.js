@@ -70,12 +70,12 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Quality presets
         this.qualityPresets = {
-            Minimal: { starCount: 500, buildingCount: 20, glowLayers: 1, maxHighlights: 30, particleBudget: 500 },
-            Low: { starCount: 1000, buildingCount: 30, glowLayers: 2, maxHighlights: 40, particleBudget: 1000 },
-            Medium: { starCount: 1800, buildingCount: 45, glowLayers: 3, maxHighlights: 60, particleBudget: 2000 },
-            High: { starCount: 2500, buildingCount: 60, glowLayers: 4, maxHighlights: 80, particleBudget: 3500 },
-            Ultra: { starCount: 4000, buildingCount: 80, glowLayers: 5, maxHighlights: 100, particleBudget: 6000 },
-            Extreme: { starCount: 6000, buildingCount: 100, glowLayers: 6, maxHighlights: 150, particleBudget: 10000 }
+            Minimal: { starCount: 500, buildingCount: 30, glowLayers: 1, maxHighlights: 30, particleBudget: 500 },
+            Low: { starCount: 1000, buildingCount: 50, glowLayers: 2, maxHighlights: 40, particleBudget: 1000 },
+            Medium: { starCount: 1800, buildingCount: 70, glowLayers: 3, maxHighlights: 60, particleBudget: 2000 },
+            High: { starCount: 2500, buildingCount: 90, glowLayers: 4, maxHighlights: 80, particleBudget: 3500 },
+            Ultra: { starCount: 4000, buildingCount: 120, glowLayers: 5, maxHighlights: 100, particleBudget: 6000 },
+            Extreme: { starCount: 6000, buildingCount: 150, glowLayers: 6, maxHighlights: 150, particleBudget: 10000 }
         };
         this.currentQuality = 'High';
         this.activePreset = this.qualityPresets.High;
@@ -180,8 +180,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     createSkyGradient() {
-        // Create a much larger background plane so edges are never visible and it sits behind stars
-        const geometry = new THREE.PlaneGeometry(3000, 1600);
+        // Create a sphere that surrounds the entire scene (radius 4000)
+        // BackSide so we see it from inside
+        const geometry = new THREE.SphereGeometry(4000, 32, 32);
 
         // Use vertex colors for gradient
         const colors = new Float32Array(geometry.attributes.position.count * 3);
@@ -189,13 +190,16 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         for (let i = 0; i < geometry.attributes.position.count; i++) {
             const y = positions[i * 3 + 1];
-            const t = (y + 800) / 1600; // Normalize to 0-1 for new 1600 height
+            // Normalize y from -4000..4000 to 0..1
+            // Use a slightly shifted range to keep the "sunset" colors more visible near horizon
+            const t = (y + 1000) / 3000;
+            const clampedT = Math.max(0, Math.min(1, t));
 
             let color;
-            if (t < 0.4) {
-                color = this.colors.skyBottom.clone().lerp(this.colors.skyMid, t / 0.4);
+            if (clampedT < 0.5) {
+                color = this.colors.skyBottom.clone().lerp(this.colors.skyMid, clampedT / 0.5);
             } else {
-                color = this.colors.skyMid.clone().lerp(this.colors.skyTop, (t - 0.4) / 0.6);
+                color = this.colors.skyMid.clone().lerp(this.colors.skyTop, (clampedT - 0.5) / 0.5);
             }
 
             colors[i * 3] = color.r;
@@ -207,14 +211,17 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         const material = new THREE.MeshBasicMaterial({
             vertexColors: true,
-            side: THREE.DoubleSide,
-            depthWrite: false // Don't write depth so stars/sun can composite nicely
+            side: THREE.BackSide, // Render inside of sphere
+            depthWrite: false
         });
 
         const sky = new THREE.Mesh(geometry, material);
-        sky.position.z = -900; // Far back behind stars/sun
-        sky.position.y = 100;
+        // Center at origin
+        sky.position.set(0, 0, 0);
         this.scene.add(sky);
+
+        // Also add a bottom fading plane to mask the "south pole" if needed, 
+        // but sphere usually covers it well.
     }
 
     createStarField() {
@@ -281,8 +288,8 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     createSun() {
-        // Main sun sphere
-        const sunGeometry = new THREE.SphereGeometry(12, 64, 32);
+        // Main sun sphere - Slightly smaller as requested
+        const sunGeometry = new THREE.SphereGeometry(25, 64, 32);
         const sunMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 time: { value: 0 },
@@ -315,7 +322,8 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         for (let i = 0; i < glowCount; i++) {
             const scale = 1.5 + i * 0.8;
-            const glowGeometry = new THREE.PlaneGeometry(30 * scale, 30 * scale);
+            // Larger glow planes to match bigger sun
+            const glowGeometry = new THREE.PlaneGeometry(60 * scale, 60 * scale);
             const glowMaterial = new THREE.ShaderMaterial({
                 uniforms: {
                     glowColor: { value: glowColors[i % glowColors.length] },
@@ -395,7 +403,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 time: { value: 0 },
-                speed: { value: 5.0 },
+                speed: { value: -5.0 }, // Negative speed moves grid TOWARDS camera (driving forward)
                 gridColor: { value: this.colors.gridPink },
                 glowIntensity: { value: 1.0 },
                 pulseIntensity: { value: 0 }
@@ -522,7 +530,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
     handlePieceLock(data) {
         const currentTime = this.clock.getElapsedTime();
-        const scrollOffset = currentTime * 5.0; // Match grid scroll speed
+        // Grid shader speed is 5.0 world units/sec. Grid cell spacing is 1.5.
+        // Highlight logic multiplies relative grid index by 1.5.
+        // So internal scroll speed must be 5.0 / 1.5 to result in 5.0 world speed.
+        const scrollSpeed = 5.0 / 1.5;
+        const scrollOffset = currentTime * scrollSpeed;
 
         // Get the actual piece that was locked
         const piece = data?.piece;
@@ -749,9 +761,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
     updateSun(time, delta) {
         // Sun drift (left to right)
+        // Much wider range so it starts OFF SCREEN left and ends OFF SCREEN right
         const driftTime = time + this.timeOffset;
-        const driftProgress = (driftTime * 0.0003) % 1;
-        const sunX = (driftProgress * 2 - 1) * 80;
+        const driftProgress = (driftTime * 0.002) % 1; // Even slower progress (0.002 scale)
+        // Range -350 to 350 covers full width at z=-100 and more
+        const sunX = (driftProgress * 2 - 1) * 350;
 
         this.sun.position.x = sunX;
 
@@ -801,7 +815,8 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     updateHighlights(time, delta) {
-        const scrollSpeed = 5.0;
+        // Grid shader speed is 5.0 world units/sec. Grid cell spacing is 1.5.
+        const scrollSpeed = 5.0 / 1.5;
         const currentScroll = time * scrollSpeed;
 
         for (let i = this.gridHighlights.length - 1; i >= 0; i--) {
