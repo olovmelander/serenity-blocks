@@ -67,9 +67,45 @@ void main() {
     float glow = max(lineX, lineZ) * 0.3;
     
     vec3 color = gridColor * (intensity + glow * 0.5);
-    float alpha = intensity * 0.9 + glow * 0.3;
     
-    gl_FragColor = vec4(color, alpha * distanceFade);
+    // ------------------------------------------------------------------------
+    // NEW: Wet Reflection Effect
+    // ------------------------------------------------------------------------
+    // Calculate reflection of the sun on the "wet" grid
+    // Simple vertical streak reflection
+    float sunX = 0.0; // Sun is effectively at x=0
+    float reflectionWidth = 10.0;
+    float reflectionIntensity = 1.0 - smoothstep(0.0, reflectionWidth, abs(vWorldPos.x - sunX));
+    
+    // Fade reflection with distance (stronger near horizon)
+    reflectionIntensity *= smoothstep(0.0, -100.0, vWorldPos.z);
+    
+    // Add varying noise to reflection for "wet street" look
+    float noise = sin(vWorldPos.z * 0.5 + time) * sin(vWorldPos.x * 2.0) * 0.5 + 0.5;
+    vec3 reflectionColor = vec3(1.0, 0.4, 0.8) * reflectionIntensity * noise * 0.4;
+    
+    color += reflectionColor;
+    
+    // ------------------------------------------------------------------------
+    // NEW: Volumetric Horizon Fog
+    // ------------------------------------------------------------------------
+    // Soft blend into sky color at the horizon (z < -80)
+    // Sky gradient starts around z = -200, but fog should start earlier
+    float fogDensity = 0.02;
+    float fogFactor = 1.0 - exp(-abs(vWorldPos.z) * fogDensity * 0.05);
+    fogFactor = smoothstep(0.0, 1.0, fogFactor * 2.5); // Strengthen fog at distance
+    
+    // Horizon glow color (pink/purple mix)
+    vec3 horizonColor = vec3(0.5, 0.0, 0.3);
+    
+    // Mix grid with fog
+    vec3 finalColor = mix(color, horizonColor, fogFactor);
+    
+    // Keep alpha but fade out at extreme distance
+    float alpha = intensity * 0.9 + glow * 0.3;
+    alpha = max(alpha, reflectionIntensity * 0.5); // Reflection adds visibility
+    
+    gl_FragColor = vec4(finalColor, alpha * distanceFade);
 }
 `;
 
