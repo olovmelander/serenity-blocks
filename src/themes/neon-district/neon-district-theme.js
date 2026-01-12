@@ -193,14 +193,17 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Camera sway parameters (gentle floating drift)
         // Camera sway parameters (gentle floating drift) - increased movement
-        this.cameraBasePosition = new THREE.Vector3(0, 50, 40);
+        this.cameraBasePosition = new THREE.Vector3(0, 4, 40);
         this.cameraBaseLookAt = new THREE.Vector3(0, 80, -400);
         this.cameraSwayAmplitude = { x: 5.0, y: 3.0, z: 2.0 };
-        this.cameraSwaySpeed = { x: 0.18, y: 0.25, z: 0.15 };
+        this.cameraSwaySpeed = { x: 0.1, y: 0.05, z: 0.08 };
         this.cameraLookAtSway = { x: 6.0, y: 4.0 };
 
         // VHS billboards with shader effects
         this.vhsBillboards = [];
+
+        // Building Pool for smart caching
+        this.buildingPool = [];
 
         console.log('[NeonDistrict] Theme constructed');
     }
@@ -278,54 +281,32 @@ export default class NeonDistrictTheme extends BaseTheme {
         console.log('[NeonDistrict] SynthCity textures loaded and materials created');
 
         // ═══════════════════════════════════════════════════════════════════════
-        // PHASE 2: Create EVERYTHING immediately (all operations are fast)
+        // PHASE 2: Progressive Loading (Non-blocking)
         // ═══════════════════════════════════════════════════════════════════════
-        await this.deferToNextFrame();
-        if (!this.isActive) return;
-
+        // Create street immediately (fast) - required before buildings
         this.createStreet();
-        this.createAllBuildings();
-        this.createNeonSignsForBuildings(0, this.buildings.length);
-        this.createOverheadWires();
-        this.createHolographicBillboards();
-        this.createRain();
-        this.createFlyingVehicles();
-        this.updateGroundReflections();
+        this.createMegaTower(); // Add hero building at horizon
+        this.createDistantCityLayers(); // Add silhouette backdrop
+        this.createMoon(); // Add Cyber Moon
 
-        console.log('[NeonDistrict] Scene fully loaded!');
+        // Start building creation in chunks - DO NOT AWAIT
+        // This allows the first frame to render immediately with sky/street/fog
+        this.createBuildings().then(() => {
+            if (this.isActive) {
+                this.loadRemainingContentInBackground();
+            }
+        });
+
+        console.log('[NeonDistrict] Scene core initialized - starting progressive load');
     }
 
     /**
-     * Creates ALL buildings immediately - this is a fast operation.
+     * Legacy method - replaced by chunked createBuildings
+     * Kept for reference but unused
      */
     createAllBuildings() {
-        const streetWidth = 180;
-        const buildingSpacing = 120;
-        const buildingCount = this.qualityPreset.buildingCount;
-        const buildingsPerSide = Math.floor(buildingCount / 2);
-
-        // Create buildings on both sides of the street
-        for (let i = 0; i < buildingsPerSide; i++) {
-            const zPos = -i * buildingSpacing - 100;
-
-            // Left side
-            const xLeft = -(streetWidth / 2 + 50 + Math.random() * 30);
-            this.createBuilding(xLeft, zPos, 70 + Math.random() * 80, 500 + Math.random() * 1000, 70 + Math.random() * 80);
-
-            // Right side (offset by half spacing for variety)
-            const xRight = streetWidth / 2 + 50 + Math.random() * 30;
-            this.createBuilding(xRight, zPos - buildingSpacing / 2, 70 + Math.random() * 80, 500 + Math.random() * 1000, 70 + Math.random() * 80);
-        }
-
-        // Background buildings (distant, larger)
-        const alleyLength = buildingsPerSide * buildingSpacing;
-        for (let i = 0; i < 6; i++) {
-            const zPos = -alleyLength - 200 - Math.random() * 500;
-            const xPos = (Math.random() - 0.5) * 800;
-            this.createBuilding(xPos, zPos, 100 + Math.random() * 150, 800 + Math.random() * 1500, 100 + Math.random() * 150);
-        }
-
-        console.log(`[NeonDistrict] Created ${this.buildings.length} buildings`);
+        // Deprecated - usage replaced by progressive createBuildings()
+        console.warn('createAllBuildings called but is deprecated');
     }
 
     /**
@@ -423,24 +404,24 @@ export default class NeonDistrictTheme extends BaseTheme {
     loadRemainingContentInBackground() {
         const workQueue = [];
 
-        // Neon signs for all buildings
-        workQueue.push(() => {
-            if (!this.isActive) return;
-            this.createNeonSignsForBuildings(0, this.buildings.length);
-        });
-
-        // Wires and billboards
+        // Wires and billboards (PRIORITY: Overhead sign user complained about)
         workQueue.push(() => {
             if (!this.isActive) return;
             this.createOverheadWires();
             this.createHolographicBillboards();
         });
 
-        // Rain and vehicles
+        // Rain and vehicles (PRIORITY: Startup life)
         workQueue.push(() => {
             if (!this.isActive) return;
             this.createRain();
             this.createFlyingVehicles();
+        });
+
+        // Neon signs for all buildings (HEAVY: Do this last as it takes time)
+        workQueue.push(() => {
+            if (!this.isActive) return;
+            this.createNeonSignsForBuildings(0, this.buildings.length);
         });
 
         // Final touches
@@ -514,14 +495,47 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     /**
-     * Creates holographic billboards - reduced count for performance.
+    /**
+     * Creates holographic billboards attached to buildings.
      */
     createHolographicBillboards() {
-        // Reduced from 10 to 4 for performance
-        this.createHolographicBillboard(-300, 400, -600);
-        this.createHolographicBillboard(350, 350, -400);
-        this.createHolographicBillboard(0, 500, -800);
-        this.createHolographicBillboard(-200, 300, -200);
+        if (!this.buildings || this.buildings.length === 0) return;
+
+        // Find the closest building on the RIGHT side
+        // Camera is at z=40, looking -z. Buildings are mostly negative z.
+        // Closest building will have the largest Z value (closest to 40).
+        const rightBuildings = this.buildings.filter(b => b.position.x > 0);
+
+        if (rightBuildings.length === 0) return;
+
+        // Sort by Z descending (largest Z is closest to camera start)
+        rightBuildings.sort((a, b) => b.position.z - a.position.z);
+
+        const targetBuilding = rightBuildings[0]; // The closest one
+
+        if (!targetBuilding) return;
+
+        // Add a stack of billboards to this specific building
+        // "Wall against the street" for a right-side building is the negative-X face (Left face)
+        const isLeft = false; // It's on the right side of the street
+
+        // We attach to the left face of the building (-width/2)
+        const sideOffset = (targetBuilding.userData.width / 2) + 2;
+
+        // Create 3 signs on this wall
+        const configs = [
+            { yPct: 0.35, h: 80 },
+            { yPct: 0.65, h: 70 },
+            { yPct: 0.90, h: 60 }
+        ];
+
+        configs.forEach(cfg => {
+            const localX = -sideOffset; // Left face (facing street)
+            const localY = targetBuilding.userData.height * cfg.yPct;
+            const localZ = 0; // Center of wall
+
+            this.createHolographicBillboardOnBuilding(targetBuilding, localX, localY, localZ, isLeft);
+        });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -666,10 +680,15 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.scene = new THREE.Scene();
 
         // SYNTHCITY FOG - Pushed further away for clearer center view
-        this.scene.fog = new THREE.Fog(0x1a0a2e, 600, 4500);
+        // SYNTHCITY FOG - Pushed further away for clearer center view
+        // Extent to 8000 to reveal the new Mega Tower at -4000
+        // Adjusted fog: Closer start (3000) to blend the Mega Tower base better
+        this.scene.fog = new THREE.Fog(0x1a0a2e, 2000, 7000);
 
         // Street-level camera IN THE ALLEY - more horizontal view
-        this.camera = new THREE.PerspectiveCamera(70, width / height, 1, 3000);
+        // Street-level camera IN THE ALLEY - more horizontal view
+        // Far clip increased to 10000 to see the horizon tower
+        this.camera = new THREE.PerspectiveCamera(70, width / height, 1, 10000);
         this.camera.position.set(0, 50, 40);  // Forward, slightly higher
         this.camera.lookAt(0, 80, -400);  // Looking more horizontal, at buildings
 
@@ -681,8 +700,8 @@ export default class NeonDistrictTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createSkybox() {
-        // Create gradient sky dome
-        const skyGeometry = new THREE.SphereGeometry(3000, 32, 32);
+        // Create gradient sky dome - size increased to cover new far clip
+        const skyGeometry = new THREE.SphereGeometry(9000, 32, 32);
         const skyMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
@@ -766,15 +785,36 @@ export default class NeonDistrictTheme extends BaseTheme {
             const depth = 70 + Math.random() * 80;
             const height = 500 + Math.random() * 1000;
             buildingConfigs.push({ x: xPos, z: zPos, width, height, depth });
+
+            // FILLER BUILDING: Add extra building to the right of the first one to cover void
+            if (i === 0) {
+                const gap = 40; // Proper alleyway gap
+                const fillerW = 200 + Math.random() * 100; // Wide filler
+                // Precise math: Center of Building 1 + Half Width of B1 + Gap + Half Width of Filler
+                const fillerX = xPos + (width / 2) + gap + (fillerW / 2);
+
+                // Align Z slightly behind (further from camera) or aligned to create a corner
+                // zPos is negative. zPos is center.
+                // Let's align it exactly with the street front (zPos)
+                const fillerZ = zPos;
+
+                buildingConfigs.push({ x: fillerX, z: fillerZ, width: fillerW, height: height * 0.9, depth: depth * 1.5 });
+            }
         }
 
-        // Background buildings
-        for (let i = 0; i < 6; i++) {
-            const zPos = -alleyLength - 200 - Math.random() * 500;
-            const xPos = (Math.random() - 0.5) * 800;
-            const width = 100 + Math.random() * 150;
-            const depth = 100 + Math.random() * 150;
-            const height = 800 + Math.random() * 1500;
+        // Background buildings (distant, larger) - Increased range and count
+        // alleyLength is already defined above
+        for (let i = 0; i < 20; i++) {
+            const zPos = -alleyLength - 200 - Math.random() * 4000; // Extend way back
+
+            // EXCLUSION ZONE: Keep center clear for Mega Tower visibility
+            // Spawn either far left (<-300) or far right (>300)
+            const side = Math.random() > 0.5 ? 1 : -1;
+            const xPos = side * (300 + Math.random() * 600);
+
+            const width = 150 + Math.random() * 200;
+            const depth = 150 + Math.random() * 200;
+            const height = 1000 + Math.random() * 2000; // Taller background towers
             buildingConfigs.push({ x: xPos, z: zPos, width, height, depth });
         }
 
@@ -783,7 +823,17 @@ export default class NeonDistrictTheme extends BaseTheme {
             if (!this.isActive) return; // Check if stopped
 
             const chunk = buildingConfigs.slice(i, i + CHUNK_SIZE);
-            chunk.forEach(cfg => this.createBuilding(cfg.x, cfg.z, cfg.width, cfg.height, cfg.depth));
+
+            // Use Pool for 80% of buildings (perf), create fresh for 20% (variety)
+            chunk.forEach(cfg => {
+                if (Math.random() < 0.8) {
+                    this.createBuildingFromPool(cfg.x, cfg.z);
+                } else {
+                    const b = this.createBuilding(cfg.x, cfg.z, cfg.width, cfg.height, cfg.depth);
+                    this.scene.add(b);
+                    this.buildings.push(b);
+                }
+            });
 
             // Wait for idle time before next chunk - doesn't compete with gameplay
             if (i + CHUNK_SIZE < buildingConfigs.length) {
@@ -791,7 +841,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             }
         }
 
-        console.log(`[NeonDistrict] Created alley with ${buildingCount} buildings (idle-chunked)`);
+        console.log(`[NeonDistrict] Created alley with ${buildingCount} buildings (idle-chunked + pooled)`);
     }
 
     createBuilding(x, z, width, height, depth) {
@@ -817,15 +867,179 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Add Storefront (Ground Floor)
         this.createStorefront(building, width, depth);
 
-        // Add building-attached ads to most buildings further back (z < -150)
-        const buildingZ = building.position.z;
-        if (Math.random() > 0.3 && buildingZ < -50 && this.assets?.loaded) {
+        // Add building-attached ads
+        // For pool generation, we assume it might be far back, or we randomize
+        // If z is provided (not 0), check it. If 0 (pool), 50% chance.
+        const shouldAddAds = (z !== 0 && z < -50) || (z === 0 && Math.random() > 0.5);
+        if (shouldAddAds && this.assets?.loaded) {
             this.attachAdsToBuilding(building, width, height, depth);
         }
 
-        this.buildings.push(building);
+        // NOTE: building is NOT added to scene/arrays here anymore. caller must do it.
+        return building;
+    }
+
+    /**
+     * Generate a pool of varied building prototypes
+     */
+    generateBuildingPool() {
+        if (this.buildingPool.length > 0) return; // Already generated
+
+        console.log('[NeonDistrict] Generating building pool...');
+        const poolSize = 15;
+
+        for (let i = 0; i < poolSize; i++) {
+            // Generate generic dimensions
+            const width = 70 + Math.random() * 80;
+            const depth = 70 + Math.random() * 80;
+            const height = 500 + Math.random() * 1000;
+
+            // Create building at 0,0 (prototype)
+            const building = this.createBuilding(0, 0, width, height, depth);
+            this.buildingPool.push(building);
+        }
+    }
+
+    createMegaTower() {
+        // Massive hero building at the end of the road
+        const width = 400;
+        const depth = 400;
+        const height = 3000;
+
+        // Positioned dead center at the far end
+        // Slightly off-center to the right (refined from 300 to 150)
+        const x = 150;
+        const z = -4000;
+
+        const building = new THREE.Group();
+        building.position.set(x, 0, z);
+
+        // Core tower
+        // PROCEDURAL WINDOW SHADER: Create a grid of bright windows
+        // Store reference for animation loop
+        this.megaTowerMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uColor: { value: new THREE.Color(0x100018) }, // Darker purple base (almost black)
+                uWindowColor: { value: new THREE.Color(0xff00ff) }, // Bright pink windows
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vPosition;
+                void main() {
+                    vUv = uv;
+                    vPosition = position;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec3 uColor;
+                uniform vec3 uWindowColor;
+                varying vec2 vUv;
+                varying vec3 vPosition;
+
+                float random(vec2 st) {
+                    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+                }
+
+                void main() {
+                    // Create window grid - Higher density for "massive" scale feel
+                    // Scale UVs for tiling - Reduced slightly from 40x200 to 20x100 for less noise
+                    vec2 gridUv = vUv * vec2(25.0, 100.0); 
+                    vec2 cell = floor(gridUv);
+                    vec2 st = fract(gridUv);
+
+                    // Window shape (more padding = smaller windows)
+                    // step(0.3, st.x) means left gap is 0.3
+                    float window = step(0.35, st.x) * step(0.3, st.y) * step(st.x, 0.65) * step(st.y, 0.8);
+
+                    // Randomly turn windows on/off - STATIC placement
+                    float noise = random(cell); 
+                    // Only light up 15% of windows (was 30%) for much more subtle effect
+                    float state = step(0.85, noise); 
+
+                    // Vary intensity - Softer
+                    float intensity = 0.5 + random(cell) * 1.5;
+
+                    // COLOR DRIFT ANIMATION
+                    // Cycle: Pink -> Purple -> Cyan -> Pink
+                    vec3 colPink = vec3(1.0, 0.0, 1.0);
+                    vec3 colCyan = vec3(0.0, 1.0, 1.0);
+                    vec3 colPurple = vec3(0.6, 0.0, 1.0);
+                    
+                    // Slow time cycle
+                    float t = uTime * 0.2; 
+                    vec3 mixedColor = mix(colPink, colPurple, 0.5 + 0.5 * sin(t));
+                    mixedColor = mix(mixedColor, colCyan, 0.5 + 0.5 * sin(t * 0.7 + 2.0));
+
+                    vec3 finalColor = uColor;
+                    if (window > 0.5 && state > 0.5) {
+                        finalColor = mixedColor * intensity;
+                    }
+
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `
+        });
+
+        const geom = new THREE.BoxGeometry(width, height, depth);
+        const mesh = new THREE.Mesh(geom, this.megaTowerMaterial);
+        mesh.position.y = height / 2;
+        building.add(mesh);
+
+        // Add some glowing rings or details
+        const ringGeom = new THREE.TorusGeometry(width * 0.8, 10, 16, 100);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0xff00ff });
+        const ring = new THREE.Mesh(ringGeom, ringMat);
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = height * 0.8;
+        building.add(ring);
+
+        // Add to scene
         this.scene.add(building);
-        return building; // Return for essential buildings Kanji signs
+        this.buildings.push(building);
+
+        console.log('[NeonDistrict] Mega Tower created at horizon');
+    }
+
+    /**
+     * Create a building by cloning from the pool
+     */
+    createBuildingFromPool(x, z) {
+        // Ensure pool exists
+        if (this.buildingPool.length === 0) {
+            this.generateBuildingPool();
+        }
+
+        // Pick random prototype
+        const prototype = this.buildingPool[Math.floor(Math.random() * this.buildingPool.length)];
+        const clone = prototype.clone();
+
+        // Position
+        clone.position.set(x, 0, z);
+
+        // Random Y rotation (90 degree increments) for variety
+        clone.rotation.y = Math.floor(Math.random() * 4) * (Math.PI / 2);
+
+        // Register animated components from the clone
+        clone.traverse((child) => {
+            if (child.userData.isAd) {
+                this.neonSigns.push(child);
+            }
+            if (child.userData.isVHS) {
+                this.vhsBillboards.push(child);
+            }
+            if (child.userData.blinkPhase !== undefined) {
+                this.streetLights.push(child);
+            }
+        });
+
+        // Add to scene and tracking array
+        this.scene.add(clone);
+        this.buildings.push(clone);
+
+        return clone;
     }
 
     /**
@@ -1463,9 +1677,9 @@ export default class NeonDistrictTheme extends BaseTheme {
 
     createStreet() {
         // ═══════════════════════════════════════════════════════════════════════
-        // HIGH QUALITY WET ASPHALT - Start with placeholder, async load textures
+        // HIGH QUALITY WET ASPHALT - Extended Road
         // ═══════════════════════════════════════════════════════════════════════
-        const groundGeometry = new THREE.PlaneGeometry(2000, 2000, 1, 1);
+        const groundGeometry = new THREE.PlaneGeometry(2000, 6000, 1, 1);
 
         // Need UV2 for AO map
         groundGeometry.setAttribute('uv2', groundGeometry.attributes.uv);
@@ -1501,7 +1715,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             // Configure loaded textures
             [diffuseMap, normalMap, roughnessMap, aoMap].filter(t => t).forEach(tex => {
                 tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-                tex.repeat.set(4, 4); // Lower tiling for visible texture detail (was 15)
+                tex.repeat.set(4, 12); // Tiling adjusted for much longer road
             });
 
             // Apply textures to material (upgrade from placeholder)
@@ -1898,21 +2112,155 @@ export default class NeonDistrictTheme extends BaseTheme {
         lineTexture.magFilter = THREE.LinearFilter;
         lineTexture.anisotropy = this.renderer?.capabilities?.getMaxAnisotropy() || 16;
 
-        const lineGeometry = new THREE.PlaneGeometry(4, 3000);
+        const lineGeometry = new THREE.PlaneGeometry(4, 10000); // Extended from 3000
         const lineMaterial = new THREE.MeshBasicMaterial({
             map: lineTexture,
             transparent: true,
-            opacity: 0.55,  // Reduced from 0.85 for less glow
+            opacity: 0.55,
         });
         const centerLine = new THREE.Mesh(lineGeometry, lineMaterial);
         centerLine.rotation.x = -Math.PI / 2;
-        centerLine.position.set(0, 2, -400);
+        centerLine.position.set(0, 2, -1500); // Shifted back to cover -4000 (Length/2 - Offset)
         this.scene.add(centerLine);
 
         // REMOVED: Circular mesh puddles - now using SHADER-BASED FBM puddles only
         // This creates organic, natural shapes instead of obvious round circles
 
         console.log('[NeonDistrict] Road markings created (high-res texture)');
+    }
+
+    createDistantCityLayers() {
+        // Create a backdrop of simple geometry to fill the horizon void
+
+        // Layer 1: Dense silhouettes just behind the fog start (z: -3000 to -4000)
+        // Layer 2: Sparse tall towers in the far back (z: -4000 to -6000)
+
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        const material = new THREE.MeshBasicMaterial({ color: 0x050010 }); // Very dark purple silhouette
+
+        const count = 300;
+        const mesh = new THREE.InstancedMesh(geometry, material, count);
+
+        const dummy = new THREE.Object3D();
+        let idx = 0;
+
+        for (let i = 0; i < count; i++) {
+            // WIDER distribution to fill side gaps
+            const x = (Math.random() - 0.5) * 3000;
+
+            // Deep distance
+            const z = -3500 - Math.random() * 2000;
+
+            const w = 100 + Math.random() * 300;
+            const h = 500 + Math.random() * 1500; // Tall
+            const d = 100 + Math.random() * 300;
+
+            // Avoid the very center where the Mega Tower sits (x: -150 to 150)
+            if (Math.abs(x) < 250) continue;
+
+            dummy.position.set(x, h / 2, z);
+            dummy.scale.set(w, h, d);
+            dummy.updateMatrix();
+            mesh.setMatrixAt(idx++, dummy.matrix);
+        }
+
+        mesh.count = idx;
+        mesh.instanceMatrix.needsUpdate = true;
+        this.scene.add(mesh);
+
+        // Add a few "hero" distant lights (simple sprites)
+        this.createDistantLights();
+    }
+
+    createMoon() {
+        // Huge Synthwave Moon/Sun
+        const geometry = new THREE.CircleGeometry(800, 64);
+
+        // Custom shader for retro gradient look
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                color1: { value: new THREE.Color(0xff00ff) }, // Magenta bottom
+                color2: { value: new THREE.Color(0x00ffff) }, // Cyan top
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 color1;
+                uniform vec3 color2;
+                varying vec2 vUv;
+                
+                void main() {
+                    // Vertical gradient
+                    vec3 color = mix(color1, color2, vUv.y);
+                    
+                    // Circular mask (soft edge)
+                    float dist = distance(vUv, vec2(0.5));
+                    float alpha = smoothstep(0.5, 0.48, dist);
+                    
+                    // Add scanlines for retro feel
+                    float scanline = sin(vUv.y * 100.0) * 0.1;
+                    color -= scanline;
+
+                    // Reduce brightness significantly (30% intensity)
+                    gl_FragColor = vec4(color * 0.3, alpha);
+                }
+            `,
+            transparent: true,
+            depthWrite: false, // Render behind everything opaque
+            blending: THREE.AdditiveBlending
+        });
+
+        const moon = new THREE.Mesh(geometry, material);
+
+        // Position: Far background, high up, slightly left (as requested)
+        // Mega Tower is at z=-4000. We want this BEHIND it.
+        moon.position.set(-500, 5000, -6000);
+
+        // Face camera
+        moon.lookAt(0, 50, 0);
+
+        this.scene.add(moon);
+        console.log('[NeonDistrict] Cyber Moon created');
+    }
+
+    createDistantLights() {
+        const geometry = new THREE.BufferGeometry();
+        const positions = [];
+        const colors = [];
+
+        for (let i = 0; i < 200; i++) {
+            const x = (Math.random() - 0.5) * 3000;
+            if (Math.abs(x) < 200) continue; // Skip center
+
+            const y = Math.random() * 1500;
+            const z = -3500 - Math.random() * 2000;
+
+            positions.push(x, y, z);
+
+            const color = new THREE.Color();
+            color.setHSL(Math.random(), 0.8, 0.5);
+            colors.push(color.r, color.g, color.b);
+        }
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+        const material = new THREE.PointsMaterial({
+            size: 40,
+            vertexColors: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            opacity: 0.6,
+            transparent: true
+        });
+
+        const points = new THREE.Points(geometry, material);
+        this.scene.add(points);
     }
 
     // Ground-level city glow lights - Coming from building sides
@@ -2370,7 +2718,7 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
 
-    createHolographicBillboard(x, y, z) {
+    createHolographicBillboardOnBuilding(building, x, y, z, isLeft) {
         const width = 100 + Math.random() * 100;
         const height = 60 + Math.random() * 80;
 
@@ -2432,10 +2780,18 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         const billboard = new THREE.Mesh(geometry, material);
         billboard.position.set(x, y, z);
-        billboard.rotation.y = x > 0 ? -0.3 : 0.3;
+
+        // Face the street
+        // For Right Building (!isLeft): Attached to -X face. Needs to face -X. Rotation = +PI/2.
+        // For Left Building (isLeft): Attached to +X face. Needs to face +X. Rotation = -PI/2.
+
+        const baseAngle = isLeft ? -Math.PI / 2 : Math.PI / 2;
+
+        // Tilt slightly down/forward for effect
+        billboard.rotation.y = baseAngle;
 
         this.neonSigns.push(billboard);
-        this.scene.add(billboard);
+        building.add(billboard); // Add as child of building
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -3686,6 +4042,11 @@ export default class NeonDistrictTheme extends BaseTheme {
                 this.groundUniforms.uCameraPos.value.copy(this.camera.position);
             }
 
+            // Animate Mega Tower Shader (Color Drift)
+            if (this.megaTowerMaterial) {
+                this.megaTowerMaterial.uniforms.uTime.value = this.time;
+            }
+
             // Update rain
             this.updateRain(delta);
 
@@ -3741,7 +4102,13 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Position sway - multiple frequencies for organic feel
         const swayX = Math.sin(t * spd.x) * amp.x + Math.sin(t * spd.x * 0.7 + 1.3) * amp.x * 0.4;
-        const swayY = Math.sin(t * spd.y + 0.5) * amp.y + Math.sin(t * spd.y * 0.6 + 2.1) * amp.y * 0.3;
+
+        // Vertical sway: Strictly positive (up from base)
+        // Map sine from [-1, 1] to [0, 1] then scale
+        // Phase shifted to -1.57 (-PI/2) so at t=0, sin is -1, making swayY = 0 (Start at bottom)
+        const rawY = Math.sin(t * spd.y - 1.57);
+        const swayY = (rawY * 0.5 + 0.5) * (amp.y * 120.0); // 0 to ~360 units up (Near building tops)
+
         const swayZ = Math.sin(t * spd.z + 1.0) * amp.z;
 
         this.camera.position.set(
@@ -3750,15 +4117,27 @@ export default class NeonDistrictTheme extends BaseTheme {
             this.cameraBasePosition.z + swayZ
         );
 
+
         // LookAt sway - subtle rotation of view target
         const lookSwayX = Math.sin(t * 0.1 + 0.8) * this.cameraLookAtSway.x;
         const lookSwayY = Math.sin(t * 0.14 + 1.5) * this.cameraLookAtSway.y;
 
+        // Dynamic pitch adjustment:
+        // As we go up (swayY increases), we raise the lookAt target LESS than the camera
+        // (multiplier 0.4 instead of 0.9) so that effectively we tilt DOWN to look at the street/city below.
+        const dynamicLookY = this.cameraBaseLookAt.y + lookSwayY + (swayY * 0.4);
+
         this.camera.lookAt(
             this.cameraBaseLookAt.x + lookSwayX,
-            this.cameraBaseLookAt.y + lookSwayY,
+            dynamicLookY,
             this.cameraBaseLookAt.z
         );
+
+        // Breathing Motion (FOV Oscillation)
+        // Slow, rhythmic pulse to simulate breathing or organic life
+        const breath = Math.sin(t * 0.4) * 1.5; // +/- 1.5 FOV
+        this.camera.fov = 75 + breath; // Base FOV 75 (assumed default)
+        this.camera.updateProjectionMatrix();
     }
 
     /**

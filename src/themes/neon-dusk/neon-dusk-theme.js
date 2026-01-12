@@ -100,7 +100,7 @@ const QUALITY_PRESETS = {
         bloomStrength: 0.2,
         bloomThreshold: 0.55,
         bloomRadius: 0.35,
-        gridScrollSpeed: 5.0,
+        gridScrollSpeed: 10.0, // Increased to 10.0
         pixelCount: 300, // Added for retro pixels
     },
     Ultra: {
@@ -115,7 +115,7 @@ const QUALITY_PRESETS = {
         bloomStrength: 0.25,
         bloomThreshold: 0.5,
         bloomRadius: 0.4,
-        gridScrollSpeed: 5.0,
+        gridScrollSpeed: 10.0, // Increased to 10.0
         pixelCount: 400, // Added for retro pixels
     },
     Extreme: {
@@ -130,7 +130,7 @@ const QUALITY_PRESETS = {
         bloomStrength: 0.3,
         bloomThreshold: 0.45,
         bloomRadius: 0.45,
-        gridScrollSpeed: 5.0,
+        gridScrollSpeed: 10.0, // Increased to 10.0
         pixelCount: 500, // Added for retro pixels
     },
 };
@@ -199,16 +199,16 @@ export default class NeonDuskTheme extends BaseTheme {
 
         // Colors - classic synthwave sunset palette (like reference images)
         this.colors = {
-            skyTop: new THREE.Color(0x1a0033),      // Deep dark purple
-            skyMid: new THREE.Color(0x660066),      // Magenta/purple
-            skyBottom: new THREE.Color(0xff6699),   // Pink/magenta at horizon (NOT orange)
-            sunTop: new THREE.Color(0xffee88),      // Bright yellow (sun top)
-            sunMid: new THREE.Color(0xffaa44),      // Orange (sun middle)
-            sunBottom: new THREE.Color(0xff6699),   // Pink (sun bottom)
+            skyTop: new THREE.Color(0x1a0528),      // Deep purple/black
+            skyMid: new THREE.Color(0x550044),      // Dark magenta
+            skyBottom: new THREE.Color(0xaa2266),   // Deep pinkish-red
+            sunTop: new THREE.Color(0xffff66),      // Bright retro yellow
+            sunMid: new THREE.Color(0xff8822),      // Deep orange
+            sunBottom: new THREE.Color(0xff4477),   // Hot pink/red
             gridColor: new THREE.Color(0xff00ff),   // Magenta grid
             gridGlow: new THREE.Color(0x00ffff),    // Cyan glow
-            mountainDark: new THREE.Color(0x0a0515), // Very dark purple for silhouettes
-            mountainRim: new THREE.Color(0x6633aa),  // Subtle purple edge
+            mountainDark: new THREE.Color(0x1a0525), // Dark purple (visible against black fog)
+            mountainRim: new THREE.Color(0xcc44ff),  // Bright neon violet rim
         };
 
         // Neon palette for highlights/effects
@@ -577,35 +577,42 @@ export default class NeonDuskTheme extends BaseTheme {
         // Mountains extend far to the edges to fill screen when camera moves
         const mountainConfigs = [
             // LEFT SIDE - FOREGROUND (closest, largest, fill edge)
-            { x: -250, z: -150, size: 400, height: 100, layer: 0.0, seed: 11111 },
-            { x: -350, z: -200, size: 500, height: 120, layer: 0.05, seed: 11112 },
-            { x: -180, z: -280, size: 350, height: 90, layer: 0.1, seed: 22222 },
+            // LEFT SIDE - EXTREME FOREGROUND (New framing mountains)
+            { x: -550, z: 30, size: 700, height: 160, layer: -0.1, seed: 10001 },
+
+            // LEFT SIDE - FOREGROUND (closest, largest, fill edge)
+            { x: -350, z: -10, size: 500, height: 110, layer: 0.0, seed: 11111 },
+            { x: -380, z: -80, size: 500, height: 120, layer: 0.05, seed: 11112 },
+            { x: -180, z: -140, size: 350, height: 90, layer: 0.1, seed: 22222 },
 
             // LEFT SIDE - MIDGROUND
-            { x: -280, z: -380, size: 450, height: 110, layer: 0.25, seed: 33333 },
-            { x: -200, z: -480, size: 400, height: 100, layer: 0.4, seed: 33334 },
+            { x: -280, z: -240, size: 450, height: 110, layer: 0.25, seed: 33333 },
+            { x: -200, z: -340, size: 400, height: 100, layer: 0.4, seed: 33334 },
 
             // LEFT SIDE - BACKGROUND (further, hazier)
-            { x: -150, z: -600, size: 500, height: 130, layer: 0.6, seed: 44444 },
-            { x: -250, z: -700, size: 550, height: 140, layer: 0.75, seed: 44445 },
+            { x: -150, z: -460, size: 500, height: 130, layer: 0.6, seed: 44444 },
+            { x: -250, z: -560, size: 550, height: 140, layer: 0.75, seed: 44445 },
+
+            // RIGHT SIDE - EXTREME FOREGROUND (New framing mountains)
+            { x: 550, z: 30, size: 700, height: 160, layer: -0.1, seed: 50001 },
 
             // RIGHT SIDE - FOREGROUND (closest, largest, fill edge)
-            { x: 250, z: -150, size: 400, height: 100, layer: 0.0, seed: 55555 },
-            { x: 350, z: -200, size: 500, height: 120, layer: 0.05, seed: 55556 },
-            { x: 180, z: -280, size: 350, height: 90, layer: 0.1, seed: 66666 },
+            { x: 350, z: -10, size: 500, height: 110, layer: 0.0, seed: 55555 },
+            { x: 380, z: -80, size: 500, height: 120, layer: 0.05, seed: 55556 },
+            { x: 180, z: -140, size: 350, height: 90, layer: 0.1, seed: 66666 },
 
             // RIGHT SIDE - MIDGROUND
-            { x: 280, z: -380, size: 450, height: 110, layer: 0.25, seed: 77777 },
-            { x: 200, z: -480, size: 400, height: 100, layer: 0.4, seed: 77778 },
+            { x: 280, z: -240, size: 450, height: 110, layer: 0.25, seed: 77777 },
+            { x: 200, z: -340, size: 400, height: 100, layer: 0.4, seed: 77778 },
 
             // RIGHT SIDE - BACKGROUND (further, hazier)
-            { x: 150, z: -600, size: 500, height: 130, layer: 0.6, seed: 88888 },
-            { x: 250, z: -700, size: 550, height: 140, layer: 0.75, seed: 88889 },
+            { x: 150, z: -460, size: 500, height: 130, layer: 0.6, seed: 88888 },
+            { x: 250, z: -560, size: 550, height: 140, layer: 0.75, seed: 88889 },
 
-            // CENTER PEAKS near horizon (small distant mountains)
-            { x: -60, z: -750, size: 300, height: 80, layer: 0.85, seed: 99999 },
-            { x: 60, z: -750, size: 300, height: 80, layer: 0.85, seed: 99998 },
-            { x: 0, z: -800, size: 350, height: 90, layer: 0.9, seed: 99997 },
+            // CENTER PEAKS near horizon - REMOVED to clear sun view
+            // { x: -60, z: -750, size: 300, height: 80, layer: 0.85, seed: 99999 },
+            // { x: 60, z: -750, size: 300, height: 80, layer: 0.85, seed: 99998 },
+            // { x: 0, z: -800, size: 350, height: 90, layer: 0.9, seed: 99997 },
         ];
 
         mountainConfigs.forEach((config) => {
@@ -676,10 +683,11 @@ export default class NeonDuskTheme extends BaseTheme {
 
         geometry.computeVertexNormals();
 
-        // Simple dark silhouette material - NO rim lighting
+        // Detailed mountain material with rim lighting
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 uBaseColor: { value: this.colors.mountainDark },
+                uRimColor: { value: this.colors.mountainRim },
                 uMountainLayer: { value: config.layer },
                 uTime: { value: 0 },
             },
@@ -710,6 +718,7 @@ export default class NeonDuskTheme extends BaseTheme {
                 uGlowIntensity: { value: 1.0 },
                 uPulseIntensity: { value: 0 },
                 uColorShift: { value: this.colors.gridGlow },
+                uSunPosition: { value: new THREE.Vector3(0, 50, -900) }, // Reflection target
             },
             vertexShader: gridVertexShader,
             fragmentShader: gridFragmentShader,
@@ -734,7 +743,7 @@ export default class NeonDuskTheme extends BaseTheme {
         const poolSize = this.activePreset.maxGridHighlights;
 
         for (let i = 0; i < poolSize; i++) {
-            const geometry = new THREE.PlaneGeometry(3.05, 3.05); // 3.05 size for overlapped solid look
+            const geometry = new THREE.PlaneGeometry(6.1, 6.1); // Updated for 6.0 grid size (was 3.05)
             geometry.rotateX(-Math.PI / 2);
 
             const material = new THREE.ShaderMaterial({
@@ -896,7 +905,22 @@ export default class NeonDuskTheme extends BaseTheme {
             return;
         }
 
-        this.composer = new EffectComposer(this.renderer);
+        // Use a multisampled render target to enable MSAA with post-processing (WebGL 2)
+        // This is critical for preventing aliasing/flickering on the grid lines
+        const renderTarget = new THREE.WebGLRenderTarget(
+            window.innerWidth,
+            window.innerHeight,
+            {
+                samples: 4, // 4x MSAA
+                type: THREE.HalfFloatType, // HDR support
+                minFilter: THREE.LinearFilter,
+                magFilter: THREE.LinearFilter,
+                stencilBuffer: false,
+                depthBuffer: true,
+            }
+        );
+
+        this.composer = new EffectComposer(this.renderer, renderTarget);
 
         const renderPass = new RenderPass(this.scene, this.camera);
         this.composer.addPass(renderPass);
@@ -911,6 +935,7 @@ export default class NeonDuskTheme extends BaseTheme {
             this.composer.addPass(this.bloomPass);
         }
 
+        /* 
         if (this.activePreset.enableVHS) {
             this.vhsPass = new ShaderPass(VHSShader);
             this.vhsPass.uniforms.uResolution.value = new THREE.Vector2(
@@ -920,6 +945,7 @@ export default class NeonDuskTheme extends BaseTheme {
             this.vhsPass.uniforms.uIntensity.value = 0.6;
             this.composer.addPass(this.vhsPass);
         }
+        */
 
         // Vignette pass
         this.vignettePass = new ShaderPass(VignetteShader);
@@ -965,7 +991,7 @@ export default class NeonDuskTheme extends BaseTheme {
         const piece = data?.piece;
         const currentTime = this.clock.getElapsedTime();
         const scrollSpeed = this.activePreset.gridScrollSpeed;
-        const scrollOffset = (currentTime * scrollSpeed) / 3.0; // Convert distance to cells (spacing 3.0)
+        const scrollOffset = (currentTime * scrollSpeed) / 6.0; // Convert distance to cells (spacing 6.0)
 
         // Spawn grid highlights for tetromino shape
         if (piece) {
@@ -982,7 +1008,9 @@ export default class NeonDuskTheme extends BaseTheme {
             const rotation = piece.rotation || 0;
 
             // Trigger pixel twinkle
-            this.effectState.pixelTwinkle = 1.0;
+            // Trigger pixel twinkle/glitch
+            this.effectState.pixelTwinkle = 2.0;
+            this.effectState.highlightTwinkle = 1.2; // Medium glitch effect (was 0.8)
 
             for (const block of shape) {
                 let rx = block.x;
@@ -994,7 +1022,7 @@ export default class NeonDuskTheme extends BaseTheme {
                     ry = temp;
                 }
 
-                this.spawnHighlightCell(gridX + rx * 1.5, gridZ + ry, color, scrollOffset);
+                this.spawnHighlightCell(gridX + rx, gridZ + ry, color, scrollOffset);
             }
         }
 
@@ -1079,9 +1107,17 @@ export default class NeonDuskTheme extends BaseTheme {
         highlight.userData.scrollOffset = scrollOffset;
 
 
-        highlight.position.x = gridX * 3.0 + 1.5;
-        highlight.position.y = 0.02; // Very close to grid to minimize parallax
-        highlight.position.z = -(gridZ - scrollOffset) * 3.0 + this.grid.position.z + 0.5;
+        highlight.position.x = gridX * 6.0; // Centered on grid line or cell? 
+        // If grid lines are at 0, 6, 12... and we want to fill the cell between 0 and 6, center is 3.
+        // Actually, the shader draws lines based on gridSpacing.
+        // Let's assume gridX is the cell index.
+        // gridX * 6.0 is the line position.
+        // We probably want to be ON the cell, so + 3.0?
+        // Old was * 3.0 + 1.5. So it was centered in the 3.0 cell.
+        // New should be * 6.0 + 3.0.
+        highlight.position.x = gridX * 6.0 + 3.0;
+        highlight.position.y = 0.06; // Raised from 0.02 to 0.06 to prevent Z-fighting/flickering
+        highlight.position.z = -(gridZ - scrollOffset) * 6.0 + this.grid.position.z - 1.0; // Adjusted offset for grid alignment
 
         highlight.material.uniforms.uColor.value.copy(color);
         highlight.material.uniforms.uIntensity.value = highlight.userData.intensity;
@@ -1209,11 +1245,11 @@ export default class NeonDuskTheme extends BaseTheme {
     }
 
     updateCamera() {
-        // Gentle sway animation
-        const t = this.time * 0.03;
-        this.camera.position.x = Math.sin(t) * 4;
-        this.camera.position.y = 25 + Math.cos(t * 0.7) * 2;
-        this.camera.position.z = 50 + Math.sin(t * 0.5) * 3;
+        // Gentle sway animation - REDUCED to prevent grid aliasing movement
+        const t = this.time * 0.02; // Slower
+        this.camera.position.x = Math.sin(t) * 0.5; // Was 4 - drastically reduced
+        this.camera.position.y = 25 + Math.cos(t * 0.7) * 1.0;
+        this.camera.position.z = 50 + Math.sin(t * 0.5) * 1.0;
 
         this.camera.lookAt(
             Math.sin(t * 0.4) * 3,
@@ -1246,11 +1282,16 @@ export default class NeonDuskTheme extends BaseTheme {
     updateGrid(delta) {
         this.grid.material.uniforms.uTime.value = this.time;
         this.grid.material.uniforms.uPulseIntensity.value = this.effectState.gridPulseIntensity;
+
+        // Update sun position for reflection
+        if (this.sun) {
+            this.grid.material.uniforms.uSunPosition.value.copy(this.sun.position);
+        }
     }
 
     updateHighlights(delta) {
         const scrollSpeed = this.activePreset.gridScrollSpeed;
-        const currentScroll = (this.time * scrollSpeed) / 3.0; // Cells
+        const currentScroll = (this.time * scrollSpeed) / 6.0; // Cells - Updated divisor to 6.0 for new grid size
 
         for (let i = this.gridHighlights.length - 1; i >= 0; i--) {
             const highlight = this.gridHighlights[i];
@@ -1258,22 +1299,24 @@ export default class NeonDuskTheme extends BaseTheme {
 
             // Update position with grid scroll
             const relativeZ = data.gridZ - currentScroll;
-            highlight.position.z = -relativeZ * 3.0 + this.grid.position.z + 0.5;
+            highlight.position.z = -relativeZ * 6.0 + this.grid.position.z - 1.0; // Adjusted offset for grid alignment
 
             // Distance fade
             const distanceFade = Math.max(0.3, 1.0 - Math.max(0, -relativeZ - 30) / 50);
 
-            // Twinkle effect
+            // Twinkle effect (Glitchy blink)
             let twinkle = 1.0;
             if (this.effectState.highlightTwinkle > 0) {
-                const phase = (data.gridZ * 0.5 + data.intensity * 2.0) % 6.28;
-                twinkle = 1.0 + Math.sin(this.time * 15.0 + phase) * this.effectState.highlightTwinkle * 0.4;
+                // Medium frequency blink - visible glitch feel
+                const phase = (data.gridZ * 0.5 + data.intensity * 2.0);
+                // Faster wave (20.0) for glitch feel
+                const glitch = Math.sin(this.time * 20.0 + phase);
+                twinkle = 1.0 + glitch * this.effectState.highlightTwinkle * 0.4;
             }
 
             highlight.material.uniforms.uIntensity.value = data.intensity * distanceFade * twinkle;
             highlight.material.uniforms.uTime.value = this.time;
             highlight.material.uniforms.uTwinkle.value = this.effectState.highlightTwinkle;
-
             // Remove when past horizon
             if (relativeZ < -60) {
                 highlight.visible = false;

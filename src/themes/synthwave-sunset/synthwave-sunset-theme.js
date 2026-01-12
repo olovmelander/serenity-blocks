@@ -427,7 +427,8 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         for (let i = 0; i < poolSize; i++) {
             // Match the grid cell size (gridSpacing = 1.5)
-            const geometry = new THREE.PlaneGeometry(1.5, 1.5);
+            // Increased to 1.55 for better fit/overlap (retro solid look)
+            const geometry = new THREE.PlaneGeometry(1.55, 1.55);
             geometry.rotateX(-Math.PI / 2);
 
             const material = new THREE.ShaderMaterial({
@@ -551,9 +552,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         if (piece.x !== undefined) {
             // Center 0 is at piece.x = 4.5
             // Scale by 6 to cover a good portion of the width without being too extreme
-            gridX = (piece.x - 4.5) * 6;
-            // Add a little bit of random scatter so it doesn't look too rigid
-            gridX += (Math.random() - 0.5) * 2;
+            // Center 0 is at piece.x = 4.5
+            // Scale by 6 to cover a good portion of the width without being too extreme
+            // ROUND to nearest integer to snap to grid lines
+            gridX = Math.round((piece.x - 4.5) * 6);
+            // Removed random scatter for perfect alignment
         } else {
             // Fallback to random if no position data
             gridX = Math.floor(Math.random() * 80 - 40);
@@ -583,6 +586,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Grid pulse
         this.gridPulseIntensity = Math.min(1, this.gridPulseIntensity + 0.25);
+
+        // Trigger highlight glitch effect - stronger
+        this.highlightTwinkleIntensity = 1.6;
     }
 
     getPieceColor(pieceType) {
@@ -628,6 +634,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         // Position in world space - scale by gridSpacing (1.5) and offset to center in cell
         highlight.position.x = gridX * 1.5 + 0.75;
         highlight.position.y = 0.05;
+        // Reverted to -0.75 (mathematical center) as X-jitter was likely the issue
         highlight.position.z = -(gridZ - scrollOffset) * 1.5 + this.grid.position.z - 0.75;
 
         // Set color
@@ -824,8 +831,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             const data = highlight.userData;
 
             // Update position to match grid scroll - scale by gridSpacing (1.5)
+            // Update position to match grid scroll - scale by gridSpacing (1.5)
             const relativeZ = data.gridZ - currentScroll;
-            highlight.position.z = -relativeZ * 1.5 + this.grid.position.z - 0.75;
+            highlight.position.z = -relativeZ * 1.5 + this.grid.position.z - 0.75; // Reverted to -0.75
 
             // Keep at full intensity - no time-based fade
             // Only fade slightly based on distance to horizon for visual effect
@@ -834,9 +842,10 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             // Add twinkle effect during combos
             let twinkle = 1.0;
             if (this.highlightTwinkleIntensity > 0) {
-                // Fast pulsing twinkle with some randomness per highlight
-                const phase = (data.gridZ * 0.5 + data.intensity * 2.0) % 6.28;
-                twinkle = 1.0 + Math.sin(time * 15.0 + phase) * this.highlightTwinkleIntensity * 0.5;
+                // Medium-High frequency blink - visible glitch feel matching Neon Dusk
+                const phase = (data.gridZ * 0.5 + data.intensity * 2.0);
+                const glitch = Math.sin(time * 30.0 + phase);
+                twinkle = 1.0 + glitch * this.highlightTwinkleIntensity * 0.5;
             }
 
             highlight.material.uniforms.intensity.value = data.intensity * distanceFade * twinkle;

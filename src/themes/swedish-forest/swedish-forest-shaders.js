@@ -355,8 +355,9 @@ void main() {
     pulse = pow(pulse, 2.0);
     vAlpha = 0.3 + pulse * 0.7;
     
-    float hueShift = aRandom * 0.1;
-    vColor = vec3(0.8 + hueShift, 1.0, 0.65 - hueShift);
+    // Warm amber/orange fireflies for sunset
+    float hueShift = aRandom * 0.15;
+    vColor = vec3(1.0, 0.7 + hueShift, 0.25 + hueShift * 0.3);
 }
 `;
 
@@ -419,16 +420,17 @@ varying vec3 vColor;
 void main() {
     vec2 coord = gl_PointCoord - vec2(0.5);
     float dist = length(coord);
-    
+
     if (dist > 0.5) discard;
-    
+
     float core = 1.0 - smoothstep(0.0, 0.15, dist);
     float glow = 1.0 - smoothstep(0.0, 0.5, dist);
     glow = pow(glow, 2.0);
-    
+
     vec3 color = vColor * (core + glow * 0.5);
-    float alpha = (core + glow * 0.3) * vAlpha;
-    
+    // Reduced visibility for sunset sky - stars barely visible
+    float alpha = (core + glow * 0.3) * vAlpha * 0.25;
+
     gl_FragColor = vec4(color, alpha);
 }
 `;
@@ -691,9 +693,9 @@ void main() {
     vec3 highlight = color * 1.15;
     color = mix(color, highlight, (1.0 - edge) * 0.3);
     
-    // Magic glow during events
-    vec3 glowColor = vec3(0.3, 0.9, 0.7);
-    color += glowColor * vGlowIntensity * 0.2;
+    // Warm glow during events (sunset amber)
+    vec3 glowColor = vec3(1.0, 0.7, 0.3);
+    color += glowColor * vGlowIntensity * 0.25;
     
     gl_FragColor = vec4(color, 1.0);
 }
@@ -726,12 +728,125 @@ varying vec3 vInstanceColor;
 void main() {
     vec3 color = vInstanceColor;
     color *= 0.9 + vUv.y * 0.1;
-    
-    // Rune glow during events
+
+    // Rune glow during events - warm orange instead of cyan
     float runeGlow = smoothstep(0.3, 0.5, vUv.y) * smoothstep(0.7, 0.5, vUv.y);
     runeGlow *= smoothstep(0.3, 0.5, vUv.x) * smoothstep(0.7, 0.5, vUv.x);
-    color += vec3(0.4, 1.0, 0.8) * runeGlow * uGlowIntensity * 0.4;
-    
+    color += vec3(1.0, 0.6, 0.3) * runeGlow * uGlowIntensity * 0.4;
+
     gl_FragColor = vec4(color, 1.0);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUN SHADER - Large glowing sun for Firewatch-style sunset
+// ─────────────────────────────────────────────────────────────────────────────
+export const sunVertexShader = `
+varying vec2 vUv;
+varying vec3 vNormal;
+
+void main() {
+    vUv = uv;
+    vNormal = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+export const sunFragmentShader = `
+uniform float uTime;
+uniform float uIntensity;
+uniform vec3 uCoreColor;
+uniform vec3 uCoronaColor;
+uniform vec3 uEdgeColor;
+
+varying vec2 vUv;
+varying vec3 vNormal;
+
+${noiseCommon}
+
+void main() {
+    vec2 center = vUv - 0.5;
+    float dist = length(center);
+
+    // Animated turbulence for living sun effect
+    float turb = snoise(vec3(vUv * 6.0, uTime * 0.3)) * 0.08;
+    turb += snoise(vec3(vUv * 12.0, -uTime * 0.2)) * 0.04;
+
+    // Core glow - bright center
+    float core = 1.0 - smoothstep(0.0, 0.25 + turb, dist);
+
+    // Corona - mid glow
+    float corona = 1.0 - smoothstep(0.1, 0.4 + turb, dist);
+
+    // Edge glow
+    float edge = 1.0 - smoothstep(0.2, 0.5, dist);
+
+    // Combine colors with layered intensity
+    vec3 color = uCoreColor * core * 2.0;
+    color += uCoronaColor * corona * 1.0;
+    color += uEdgeColor * edge * 0.5;
+
+    // Subtle pulse animation
+    float pulse = 1.0 + sin(uTime * 1.2) * 0.06;
+    color *= pulse * uIntensity;
+
+    // Soft alpha falloff
+    float alpha = smoothstep(0.5, 0.3, dist);
+
+    gl_FragColor = vec4(color, alpha);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DUST MOTES SHADER - Floating particles in sunlight
+// ─────────────────────────────────────────────────────────────────────────────
+export const dustVertexShader = `
+uniform float uTime;
+uniform float uSize;
+
+attribute float aPhase;
+attribute float aRandom;
+
+varying float vAlpha;
+varying vec3 vColor;
+
+void main() {
+    vec3 pos = position;
+
+    // Gentle floating motion
+    float t = uTime * 0.2;
+    pos.x += sin(t + aPhase * 10.0) * 2.0;
+    pos.y += cos(t * 0.7 + aPhase * 8.0) * 1.5 + sin(t * 0.3) * 0.5;
+    pos.z += sin(t * 0.5 + aPhase * 6.0) * 1.0;
+
+    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+
+    gl_PointSize = uSize * (150.0 / -mvPosition.z);
+    gl_PointSize = clamp(gl_PointSize, 1.0, 8.0);
+
+    // Twinkling effect
+    float twinkle = sin(uTime * 4.0 + aPhase * 20.0) * 0.3 + 0.7;
+    vAlpha = twinkle * (0.3 + aRandom * 0.4);
+
+    // Warm golden color with slight variation
+    vColor = vec3(1.0, 0.85 + aRandom * 0.1, 0.5 + aRandom * 0.2);
+}
+`;
+
+export const dustFragmentShader = `
+varying float vAlpha;
+varying vec3 vColor;
+
+void main() {
+    vec2 coord = gl_PointCoord - vec2(0.5);
+    float dist = length(coord);
+
+    if (dist > 0.5) discard;
+
+    float glow = 1.0 - smoothstep(0.0, 0.5, dist);
+    glow = pow(glow, 2.0);
+
+    gl_FragColor = vec4(vColor, glow * vAlpha);
 }
 `;
