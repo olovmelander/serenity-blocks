@@ -558,8 +558,8 @@ export const sandSmokeVertexShader = `
         float wormPathSlope = (cycleHash2 - 0.5) * 0.6;
         float wormHeadX = wormPathBaseX + wormHeadZ * wormPathSlope;
         
-        // 40% of particles are worm-attracted (increased from 30%)
-        float isWormSmoke = step(0.6, random);
+        // 30% of particles are worm-attracted (optimized for performance)
+        float isWormSmoke = step(0.7, random);
         
         if (isWormSmoke > 0.5) {
             // Particles attracted strongly to worm head with turbulent spread
@@ -602,16 +602,19 @@ export const sandSmokeVertexShader = `
         wormVisibility *= horizonFade; // Apply smooth entrance
         vWormIntensity = wormVisibility;
         
-        // Billowing turbulence on worm trail
-        float billow = sin(pos.z * 0.02 + time * 2.5) * cos(pos.x * 0.03 + time * 1.8);
-        pos.x += billow * 20.0 * wormVisibility;
+        // Billowing turbulence on worm trail (only for worm particles)
+        if (wormVisibility > 0.1) {
+            float billow = sin(pos.z * 0.02 + time * 2.5) * cos(pos.x * 0.03 + time * 1.8);
+            pos.x += billow * 20.0 * wormVisibility;
+        }
 
-        // --- TERRAIN FOLLOWING ---
-        float groundH = getApproxTerrainHeight(pos.x, pos.z);
-        
+        // --- TERRAIN FOLLOWING (optimized) ---
+        // Simplified height for ambient particles, full calc for worm trail
+        float groundH = wormVisibility > 0.2 ? getApproxTerrainHeight(pos.x, pos.z) : -15.0;
+
         // Worm smoke rises higher and billows more
         float baseHeight = -5.0 + random * 25.0;
-        float wormLift = wormVisibility * 35.0; // Higher lift for worm smoke
+        float wormLift = wormVisibility * 35.0;
         float breath = sin(time * 2.0 + random * 80.0) * 8.0 * (1.0 + wormVisibility);
         pos.y = groundH + baseHeight + wormLift + breath;
 
@@ -621,10 +624,10 @@ export const sandSmokeVertexShader = `
         vWorldXZ = pos.xz * 0.01;
         vDepth = -mvPosition.z;
 
-        // Size: Reduced significantly - worm smoke is larger but not overwhelming
-        float sizeBoost = 1.0 + wormVisibility * 5.0; // Reduced from 8x to 5x
+        // Size: Optimized for performance - larger base particles, smaller boost
+        float sizeBoost = 1.0 + wormVisibility * 3.5; // Further reduced for performance
         float distToCam = max(10.0, vDepth);
-        gl_PointSize = size * sizeBoost * (600.0 / distToCam); // Reduced from 1200 to 600
+        gl_PointSize = size * sizeBoost * (500.0 / distToCam); // Balanced with larger base sizes
 
         // Opacity: Nearly invisible ambient, subtle worm trail
         float farFade = smoothstep(-2500.0, -400.0, pos.z);
@@ -662,15 +665,11 @@ export const sandSmokeFragmentShader = `
         return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
     }
     
-    // Smooth FBM for billowing texture (3 octaves)
+    // Smooth FBM for billowing texture (2 octaves - optimized)
     float fbm(vec2 p) {
         float v = 0.0;
-        float amp = 0.5;
-        for (int i = 0; i < 3; i++) {
-            v += amp * smoothNoise(p);
-            p *= 2.2;
-            amp *= 0.5;
-        }
+        v += 0.5 * smoothNoise(p);
+        v += 0.25 * smoothNoise(p * 2.2);
         return v;
     }
 
@@ -687,17 +686,16 @@ export const sandSmokeFragmentShader = `
         vec2 noiseCoord = uv * 5.0 + vWorldXZ + vec2(smokeTime * 0.25, smokeTime * 0.15);
         noiseCoord += vec2(vRand * 6.0);
         
-        // Turbulent billowing effect - more layers for advanced look
-        float turbulence = fbm(noiseCoord);
+        // Turbulent billowing effect - optimized for performance
+        float turbulence = smoothNoise(noiseCoord);
         float billow = fbm(noiseCoord * 1.8 + vec2(turbulence * 0.6, -smokeTime * 0.15));
-        float microDetail = smoothNoise(noiseCoord * 5.0 + smokeTime * 0.5) * 0.3;
-        
-        // Enhanced wispy edge erosion
-        float edgeNoise = fbm(uv * 6.0 + vec2(vRand * 15.0, smokeTime * 0.8));
+
+        // Simplified wispy edge erosion
+        float edgeNoise = smoothNoise(uv * 6.0 + vec2(vRand * 15.0, smokeTime * 0.8));
         float wispyEdge = smoothstep(0.25 + edgeNoise * 0.2, 0.48, dist);
-        
+
         // Combine for final smoke shape - more wispy and transparent
-        float density = coreMask * (0.3 + billow * 0.35 + microDetail);
+        float density = coreMask * (0.3 + billow * 0.5);
         density *= (1.0 - wispyEdge * 0.9);
         
         // Worm trail smoke is only slightly denser

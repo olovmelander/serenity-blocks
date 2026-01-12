@@ -102,10 +102,11 @@ export default class ShiftingSandsTheme extends BaseTheme {
         // Effect elements
         this.shockwaves = [];
         this.spiceBlows = [];
+        this.circleTexture = null; // Reusable circular particle texture
 
         // Camera shake
         this.cameraShake = { intensity: 0, duration: 0 };
-        this.baseCameraPos = new THREE.Vector3(0, 45, 100);
+        this.baseCameraPos = new THREE.Vector3(0, 65, 180);
 
         // Animation uniforms
         this.uniforms = {
@@ -180,27 +181,27 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.qualityPresets = {
             Minimal: {
                 starCount: 300, duneRes: 64, spiceParticleCount: 400, dustParticleCount: 150,
-                sandSmokeCount: 30, enableHeatShimmer: false, enableComboEffects: false
+                sandSmokeCount: 20, enableHeatShimmer: false, enableComboEffects: false
             },
             Low: {
                 starCount: 500, duneRes: 96, spiceParticleCount: 800, dustParticleCount: 300,
-                sandSmokeCount: 60, enableHeatShimmer: false, enableComboEffects: true
+                sandSmokeCount: 35, enableHeatShimmer: false, enableComboEffects: true
             },
             Medium: {
                 starCount: 800, duneRes: 128, spiceParticleCount: 1500, dustParticleCount: 450,
-                sandSmokeCount: 120, enableHeatShimmer: true, enableComboEffects: true
+                sandSmokeCount: 60, enableHeatShimmer: true, enableComboEffects: true
             },
             High: {
                 starCount: 1200, duneRes: 196, spiceParticleCount: 2000, dustParticleCount: 600,
-                sandSmokeCount: 200, enableHeatShimmer: true, enableComboEffects: true
+                sandSmokeCount: 100, enableHeatShimmer: true, enableComboEffects: true
             },
             Ultra: {
                 starCount: 2000, duneRes: 256, spiceParticleCount: 3000, dustParticleCount: 800,
-                sandSmokeCount: 350, enableHeatShimmer: true, enableComboEffects: true
+                sandSmokeCount: 150, enableHeatShimmer: true, enableComboEffects: true
             },
             Extreme: {
                 starCount: 3000, duneRes: 350, spiceParticleCount: 5000, dustParticleCount: 1000,
-                sandSmokeCount: 500, enableHeatShimmer: true, enableComboEffects: true
+                sandSmokeCount: 250, enableHeatShimmer: true, enableComboEffects: true
             },
         };
 
@@ -300,11 +301,11 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
         // Scene
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(this.palette.fog.getHex(), 0.002);
+        this.scene.fog = new THREE.FogExp2(this.palette.fog.getHex(), 0.0012);
 
         // Cameraconst
         this.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.camera.position.set(0, 45, 100);
+        this.camera.position.set(0, 65, 180);
         this.camera.lookAt(0, 0, 0);
 
         this.mainGroup = new THREE.Group();
@@ -447,7 +448,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
         ];
 
         layers.forEach((layer) => {
-            const width = 800;
+            const width = 1200;
             const segments = 100;
             const shape = new THREE.Shape();
             shape.moveTo(-width / 2, -50); // Bottom left
@@ -510,7 +511,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
     }
 
     createDunes() {
-        const size = 400;
+        const size = 800;
         const res = this.activePreset.duneRes;
         const geometry = new THREE.PlaneGeometry(size, size, res, res);
         geometry.rotateX(-Math.PI / 2);
@@ -533,8 +534,8 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 uColorC: { value: this.palette.sandC },
                 uMoonDirection: { value: new THREE.Vector3(0.5, 0.6, -0.3).normalize() },
                 uFogColor: { value: this.palette.fog },
-                uFogNear: { value: 60 },
-                uFogFar: { value: 350 },
+                uFogNear: { value: 200 },
+                uFogFar: { value: 600 },
             },
             vertexShader: duneVertexShader,
             fragmentShader: duneFragmentShader,
@@ -555,9 +556,9 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
         for (let i = 0; i < count; i++) {
             // Spread across the desert
-            positions[i * 3] = (Math.random() - 0.5) * 400;
+            positions[i * 3] = (Math.random() - 0.5) * 800;
             positions[i * 3 + 1] = -15 + Math.random() * 80;
-            positions[i * 3 + 2] = (Math.random() - 0.5) * 400;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 800;
 
             phases[i] = Math.random();
             sizes[i] = 2 + Math.random() * 6;
@@ -604,9 +605,9 @@ export default class ShiftingSandsTheme extends BaseTheme {
         const sizes = new Float32Array(count);
 
         for (let i = 0; i < count; i++) {
-            positions[i * 3] = (Math.random() - 0.5) * 500;
+            positions[i * 3] = (Math.random() - 0.5) * 900;
             positions[i * 3 + 1] = -20 + Math.random() * 100;
-            positions[i * 3 + 2] = (Math.random() - 0.5) * 500;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 900;
             phases[i] = Math.random();
             sizes[i] = 1 + Math.random() * 3;
         }
@@ -646,7 +647,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
             const z = -2000 + Math.random() * 2800; // -2000 to +800 coverage
 
             positions.push(x, y, z);
-            sizes.push(600 + Math.random() * 400); // Larger particles
+            sizes.push(700 + Math.random() * 500); // Larger particles for better coverage
             randoms.push(Math.random());
         }
 
@@ -999,7 +1000,23 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
+        // Create circular particle texture
+        if (!this.circleTexture) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            const gradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+            gradient.addColorStop(0, 'rgba(255,255,255,1)');
+            gradient.addColorStop(0.5, 'rgba(255,255,255,0.5)');
+            gradient.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 32, 32);
+            this.circleTexture = new THREE.CanvasTexture(canvas);
+        }
+
         const material = new THREE.PointsMaterial({
+            map: this.circleTexture,
             color: this.palette.spiceCore,
             size: 4,
             transparent: true,
@@ -1103,6 +1120,12 @@ export default class ShiftingSandsTheme extends BaseTheme {
             this.blueGlowOverlay.geometry?.dispose();
             this.blueGlowOverlay.material?.dispose();
             this.blueGlowOverlay = null;
+        }
+
+        // Cleanup textures
+        if (this.circleTexture) {
+            this.circleTexture.dispose();
+            this.circleTexture = null;
         }
 
         // Cleanup composer

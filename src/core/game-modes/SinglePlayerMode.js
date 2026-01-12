@@ -172,6 +172,9 @@ export class SinglePlayerMode extends BaseGameMode {
         // Initialize game state (lazy initialization)
         this.gameState = new GameState();
 
+        // Reset game over processing flag so game over can trigger again
+        this.isProcessingGameOver = false;
+
         // Handle Demo Playback
         if (options.demo) {
             console.log('[SinglePlayer] Demo playback mode detected');
