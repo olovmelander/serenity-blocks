@@ -46,6 +46,12 @@ export class NeonDistrictAssets {
      * Load all textures (call once during init) - PARALLEL loading for speed
      */
     async loadAllTextures() {
+        // Prevent reloading if already loaded
+        if (this.loaded) {
+            console.log('[NeonDistrictAssets] Already loaded, skipping...');
+            return;
+        }
+
         console.log('[NeonDistrictAssets] Loading textures...');
 
         const loader = this.textureLoader;
