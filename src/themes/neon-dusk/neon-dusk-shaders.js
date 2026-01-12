@@ -176,36 +176,44 @@ void main() {
     // Smooth vertical gradient through colors
     float y = vUv.y;
     vec3 baseColor;
-    if (y < 0.4) {
-        baseColor = mix(uColorBottom, uColorMid, y / 0.4);
+    
+    // Sharper gradient transition for that retro look
+    if (y < 0.5) {
+        baseColor = mix(uColorBottom, uColorMid, y * 2.0);
     } else {
-        baseColor = mix(uColorMid, uColorTop, (y - 0.4) / 0.6);
+        baseColor = mix(uColorMid, uColorTop, (y - 0.5) * 2.0);
     }
 
-    // === HORIZONTAL STRIPES (lower half only) ===
-    // Classic synthwave banded sun effect
+    // === RETRO SUN STRIPES ===
     float stripeAlpha = 1.0;
-    if (y < 0.5) {
-        // Create horizontal bands with smooth edges
-        float stripeY = y * uStripeCount * 2.0;
-        float stripe = smoothstep(0.3, 0.5, fract(stripeY));
+    
+    // Only stripe the bottom half (mostly)
+    if (y < 0.6) {
+        // Variable frequency stripes - thinner at top, thicker at bottom
+        // This creates the perspective effect on the sun itself
+        float stripePhase = pow(1.0 - y, 2.5) * uStripeCount * 3.0; // Non-linear spacing
         
-        // Stripes get thinner towards bottom (more cut out)
-        float cutAmount = (0.5 - y) * 1.5;  // 0 at middle, increases towards bottom
-        stripeAlpha = mix(1.0, stripe, cutAmount);
+        // Sharp cuts
+        float pattern = fract(stripePhase);
+        float stripe = step(0.5, pattern); // Hard steps, no smoothstep
+        
+        // Fade stripes out towards the middle to blend with solid top
+        float blend = smoothstep(0.5, 0.6, y);
+        stripeAlpha = mix(stripe, 1.0, blend);
     }
 
     // Fresnel for soft edge glow
-    float fresnel = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 2.0);
+    float fresnel = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 3.0);
 
     // Combine color with stripes
     vec3 finalColor = baseColor;
     finalColor += finalColor * uPulseIntensity * 0.4;
+    
+    // Add inner glow
+    finalColor += vec3(1.0, 0.8, 0.5) * fresnel * 0.5;
 
-    // Soft edge fade
-    float edgeFade = 1.0 - fresnel * 0.3;
-
-    gl_FragColor = vec4(finalColor, edgeFade * stripeAlpha);
+    // Soft circular mask for the edge
+    gl_FragColor = vec4(finalColor, stripeAlpha);
 }
 `;
 
@@ -245,7 +253,7 @@ void main() {
 `;
 
 // ============================================================================
-// MOUNTAIN SHADERS (Simple Silhouettes)
+// MOUNTAIN SHADERS (Detailed with Rim Lighting)
 // ============================================================================
 
 export const mountainVertexShader = `
@@ -253,12 +261,16 @@ uniform float uTime;
 
 varying vec3 vNormal;
 varying vec3 vWorldPosition;
+varying vec3 vViewDir;
+varying float vHeight;
 
 void main() {
     vNormal = normalize(normalMatrix * normal);
 
     vec4 worldPos = modelMatrix * vec4(position, 1.0);
     vWorldPosition = worldPos.xyz;
+    vViewDir = normalize(cameraPosition - worldPos.xyz);
+    vHeight = position.y; // Local height for gradient
 
     gl_Position = projectionMatrix * viewMatrix * worldPos;
 }
@@ -266,38 +278,106 @@ void main() {
 
 export const mountainFragmentShader = `
 uniform vec3 uBaseColor;
+uniform vec3 uRimColor;
 uniform float uMountainLayer;
 uniform float uTime;
 
 varying vec3 vNormal;
 varying vec3 vWorldPosition;
+varying vec3 vViewDir;
+varying float vHeight;
+
+// Simplex noise for detail texture
+vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+
+float snoise(vec2 v) {
+  const vec4 C = vec4(0.211324865405187,  // (3.0-sqrt(3.0))/6.0
+                      0.366025403784439,  // 0.5*(sqrt(3.0)-1.0)
+                     -0.577350269189626,  // -1.0 + 2.0 * C.x
+                      0.024390243902439); // 1.0 / 41.0
+  vec2 i  = floor(v + dot(v, C.yy) );
+  vec2 x0 = v - i + dot(i, C.xx);
+  vec2 i1;
+  i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+  vec4 x12 = x0.xyxy + C.xxzz;
+  x12.xy -= i1;
+  i = mod289(i); // Avoid truncation effects in permutation
+  vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
+        + i.x + vec3(0.0, i1.x, 1.0 ));
+  vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+  m = m*m ;
+  m = m*m ;
+  vec3 x = 2.0 * fract(p * C.www) - 1.0;
+  vec3 h = abs(x) - 0.5;
+  vec3 ox = floor(x + 0.5);
+  vec3 a0 = x - ox;
+  m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+  vec3 g;
+  g.x  = a0.x  * x0.x  + h.x  * x0.y;
+  g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+  return 130.0 * dot(m, g);
+}
 
 void main() {
-    // Pure dark silhouette - very simple
-    vec3 color = uBaseColor;
+    // 1. Base Gradient (Dark purple/blue based on height)
+    // Map height 0-150 to a color gradient
+    float heightFactor = smoothstep(0.0, 150.0, vHeight);
+    vec3 detailColor = mix(uBaseColor, uRimColor * 0.3, heightFactor); // Tips are lighter
+    
+    // 2. Texture/Noise Detail
+    float noiseVal = snoise(vWorldPosition.xz * 0.03 + uTime * 0.05); 
+    noiseVal = snoise(vWorldPosition.xz * 0.02);
+    detailColor += uRimColor * max(0.0, noiseVal) * 0.1 * heightFactor;
 
-    // Slight atmospheric fade for distant mountains
-    float atmosphericFade = uMountainLayer * 0.4;
-    vec3 fogColor = vec3(0.08, 0.02, 0.12);  // Dark purple fog
-    color = mix(color, fogColor, atmosphericFade);
+    // 3. Rim Lighting
+    float fresnel = 1.0 - max(dot(vNormal, vViewDir), 0.0);
+    fresnel = pow(fresnel, 3.0);
+    
+    // Rim light mostly on top
+    float topLight = smoothstep(40.0, 150.0, vHeight); 
+    vec3 rim = uRimColor * fresnel * topLight * 2.5;
 
-    gl_FragColor = vec4(color, 1.0);
+    // 4. Ground Fog (Dark mist against the grid)
+    // Creates a smooth dark transitions at the bottom without losing all detail
+    float groundFog = 1.0 - smoothstep(-10.0, 80.0, vHeight);
+    vec3 gridFogColor = vec3(0.02, 0.0, 0.05); // Very dark purple/black fog
+    
+    vec3 finalColor = mix(detailColor, gridFogColor, groundFog * 0.9); // Heavy fog at very bottom
+
+    // Rim cuts through a bit, but fades in deep fog
+    finalColor += rim * (1.0 - groundFog * 0.6);
+
+    // 5. Distance Fade (Global Atmosphere)
+    float dist = length(vWorldPosition.xz);
+    float fogFactor = smoothstep(200.0, 900.0, dist);
+    vec3 fogColor = vec3(0.1, 0.05, 0.2); // Global haze
+    
+    finalColor = mix(finalColor, fogColor, fogFactor * 0.7);
+
+    gl_FragColor = vec4(finalColor, 1.0);
 }
 `;
 
 // ============================================================================
-// GRID SHADERS (Synthwave Perspective Grid)
+// GRID SHADERS (Synthwave Perspective Grid with Reflections)
 // ============================================================================
 
 export const gridVertexShader = `
 varying vec2 vUv;
 varying vec3 vWorldPos;
+varying vec3 vViewPos;
 
 void main() {
     vUv = uv;
     vec4 worldPosition = modelMatrix * vec4(position, 1.0);
     vWorldPos = worldPosition.xyz;
-    gl_Position = projectionMatrix * viewMatrix * worldPosition;
+    
+    vec4 mvPosition = viewMatrix * worldPosition;
+    vViewPos = -mvPosition.xyz;
+    
+    gl_Position = projectionMatrix * mvPosition;
 }
 `;
 
@@ -308,52 +388,114 @@ uniform vec3 uGridColor;
 uniform float uGlowIntensity;
 uniform float uPulseIntensity;
 uniform vec3 uColorShift;
+uniform vec3 uSunPosition; // Added for reflection
 
 varying vec2 vUv;
 varying vec3 vWorldPos;
+varying vec3 vViewPos;
 
 void main() {
     // Grid line calculation with scrolling
-    float gridSpacing = 3.0;  // LARGER grid cells
-    float lineWidth = 0.05;   // Slightly thicker lines
+    float gridSpacing = 6.0; // Increased from 3.0 for larger cells
+    float lineWidth = 0.08;  // Slightly thicker lines for larger grid
 
-    // Scroll Z coordinate - NEGATIVE to move TOWARDS camera
+    // Scroll Z coordinate
     float scrolledZ = vWorldPos.z - uTime * uSpeed;
 
     // Calculate distance to nearest grid line
     float gridX = abs(fract(vWorldPos.x / gridSpacing + 0.5) - 0.5) * gridSpacing;
     float gridZ = abs(fract(scrolledZ / gridSpacing + 0.5) - 0.5) * gridSpacing;
 
-    // Create grid lines with glow falloff
+    // Create grid lines
     float lineX = smoothstep(lineWidth * 2.5, 0.0, gridX);
     float lineZ = smoothstep(lineWidth * 2.5, 0.0, gridZ);
     float gridLine = max(lineX, lineZ);
 
-    // Distance fade (horizon falloff)
+    // Distance fade
     float dist = length(vWorldPos.xz);
-    float distanceFade = 1.0 - smoothstep(10.0, 80.0, dist);
+    // Even shorter fade distance - Aggressively dark closer to camera
+    float distanceFade = 1.0 - smoothstep(10.0, 80.0, dist); 
+    float horizonFade = smoothstep(200.0, 50.0, dist); // Fade out at very far distance
 
-    // Perspective fade (further = dimmer)
-    float perspectiveFade = 1.0 - smoothstep(0.0, 100.0, -vWorldPos.z);
+    // Perspective fade
+    float perspectiveFade = 1.0 - smoothstep(0.0, 200.0, -vWorldPos.z);
 
-    // Combine with glow intensity
-    float intensity = gridLine * uGlowIntensity * distanceFade * perspectiveFade;
-    intensity += intensity * uPulseIntensity * 0.5;
+    // --- REFLECTION LOGIC ---
+    // Calculate reflection of the sun on the grid floor ("wet road" look)
+    vec3 viewDir = normalize(vViewPos);
+    vec3 sunDir = normalize(uSunPosition - vWorldPos);
+    
+    // Simple specular reflection on the floor plane (normal is roughly 0,1,0)
+    // But since this is a 2D plane shader, we approximate.
+    // We want a highlight along the Z-axis aligned with the sun's X
+    
+    float sunX = uSunPosition.x;
+    float sunWidth = 100.0; // Width of the reflection path
+    
+    // Distance from the center path (Sun is usually at x=0)
+    float pathDist = abs(vWorldPos.x - sunX);
+    
+    // Intensity of reflection based on alignment with sun
+    float reflection = 1.0 - smoothstep(0.0, sunWidth, pathDist);
+    reflection = pow(reflection, 2.0) * 0.5; // Narrow and intensify
+    
+    // REMOVED NOISE to prevent flickering/aliasing in the distance
+    // float roadNoise = sin(vWorldPos.x * 0.5) * sin(vWorldPos.z * 0.5);
+    // reflection *= (0.8 + 0.2 * roadNoise);
 
-    // Add subtle glow around lines
-    float glow = max(lineX, lineZ) * 0.4;
+    // Grid Glow + Reflection
+    
+    // Mix grid color with shift color
+    vec3 baseGridColor = mix(uGridColor, uColorShift, uPulseIntensity * 0.5);
+    
+    // Add reflection color (Sun color approx - smooth gradient)
+    vec3 reflectionColor = vec3(1.0, 0.5, 0.8); 
+    
+    // Distance-based line thickness to reduce aliasing
+    // Thicken lines MORE aggressively in the distance
+    // Distance-based line thickness to reduce aliasing
+    // Thicken lines MORE aggressively and SOONER in the distance
+    float distFactor = smoothstep(20.0, 100.0, dist); // Start thickening at 20 (was 50)
+    float thicknessMod = 1.0 + distFactor * 6.0; // Increased max thickness multiplier from 4.0 to 6.0
+    
+    // Re-calculate grid lines with modified thickness
+    float modLineX = smoothstep(lineWidth * 2.5 * thicknessMod, 0.0, gridX);
+    float modLineZ = smoothstep(lineWidth * 2.5 * thicknessMod, 0.0, gridZ);
+    float modGridLine = max(modLineX, modLineZ);
+    
+    vec3 finalColor = baseGridColor * modGridLine;
+    
+    // SMOOTHER REFLECTION:
+    // 1. Floor Glow (Fill the gaps) - Stronger
+    finalColor += reflectionColor * reflection * 0.6 * horizonFade; 
+    
+    // 2. Line Boost - Weaker and faded with distance
+    vec3 lineReflection = reflectionColor * modGridLine * reflection * 1.5;
+    
+    // Fade out line reflection at distance to prevent sparkling
+    // Aggressive fade: starts at 10, completely gone by 60
+    float lineDistFade = 1.0 - smoothstep(10.0, 60.0, dist);
+    finalColor += lineReflection * (1.0 - distFactor) * lineDistFade;
 
-    // Mix grid color with shift color for combo effects
-    vec3 finalColor = mix(uGridColor, uColorShift, uPulseIntensity * 0.5);
-    finalColor *= (intensity + glow * 0.5);
+    // Combine intensities
+    float intensity = (modGridLine * uGlowIntensity) + (reflection * 0.4);
+    intensity *= distanceFade * perspectiveFade;
 
-    float alpha = intensity * 0.9 + glow * 0.3;
-
-    // Scanline effect
-    float scanline = sin(scrolledZ * 8.0 - uTime * 3.0) * 0.1 + 0.9;
-    alpha *= scanline;
-
-    gl_FragColor = vec4(finalColor, alpha * distanceFade);
+    float alpha = intensity;
+    
+    // Clamp alpha but allow glow to bloom
+    alpha = min(alpha, 1.0);
+    
+    // IMPROVED SCANLINE EFFECT - DISTANCE FADED
+    // Only apply scanlines closer to camera to prevent distant moiré/flickering
+    // Aggressive fade: starts at 0, gone by 40
+    float scanlineFade = 1.0 - smoothstep(0.0, 40.0, dist);
+    if (scanlineFade > 0.01) {
+        float scanline = 0.95 + 0.05 * sin(scrolledZ * 8.0 - uTime * 2.0);
+        alpha *= mix(1.0, scanline, scanlineFade);
+    }
+    
+    gl_FragColor = vec4(finalColor, alpha);
 }
 `;
 
