@@ -14,12 +14,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SWEDISH_FOREST_TETROMINOS } from './swedish-forest-tetrominos.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
-// Import mossy ground PBR texture URLs
-import forestFloorAlbedoUrl from './assets/mossy-ground1-albedo.png';
-import forestFloorNormalUrl from './assets/mossy-groundnormal.png';
-import forestFloorRoughnessUrl from './assets/mossy-ground1-roughness.png';
-import forestFloorHeightUrl from './assets/mossy-ground1-height.png';
-import forestFloorAoUrl from './assets/mossy-ground1-ao.png';
+// PBR textures removed - using simple Firewatch-style ground
 import {
     groundVertexShader,
     groundFragmentShader,
@@ -47,6 +42,12 @@ import {
     sunFragmentShader,
     dustVertexShader,
     dustFragmentShader,
+    mountainVertexShader,
+    mountainFragmentShader,
+    hazeVertexShader,
+    hazeFragmentShader,
+    branchVertexShader,
+    branchFragmentShader,
 } from './swedish-forest-shaders.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -54,38 +55,38 @@ import {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const COLORS = {
-    // Sky gradient - Firewatch golden hour style
-    skyTop: new THREE.Color(0x2D1B4E),      // Deep purple (dusk)
-    skyMid: new THREE.Color(0xFF6B35),      // Warm orange
-    skyHorizon: new THREE.Color(0xFFD93D),  // Golden yellow at horizon
+    // Sky gradient - TRUE Firewatch style (deep red-orange, NO purple)
+    skyTop: new THREE.Color(0x8B2010),      // Deep burnt red-orange at top
+    skyMid: new THREE.Color(0xDD5522),      // Rich orange
+    skyHorizon: new THREE.Color(0xFFAA44),  // Bright golden-orange at horizon
 
     // Tree layers (front to back) - Firewatch layered depth
-    // Front trees are darkest (pure silhouette), back trees are warmer
+    // Front trees are warm dark (NOT pure black), back trees warmer/hazier
     treeLayers: [
-        new THREE.Color(0x1A0A08),  // Front - very dark reddish-brown (silhouette)
-        new THREE.Color(0x3D1810),  // Mid-front - dark warm brown
-        new THREE.Color(0x6B3520),  // Mid-back - warm brown with orange hint
-        new THREE.Color(0xA35530),  // Back - warm orange-brown (atmospheric)
-        new THREE.Color(0xCC7040),  // Far back - lighter orange
+        new THREE.Color(0x2A1008),  // Front - warm very dark brown (NOT black)
+        new THREE.Color(0x4A2015),  // Mid-front - dark warm brown
+        new THREE.Color(0x7A4028),  // Mid-back - warm brown-orange
+        new THREE.Color(0xAA6040),  // Back - warm orange-brown
+        new THREE.Color(0xCC8055),  // Far back - lighter warm orange
     ],
 
     // Trunk colors matching tree layers
     trunkLayers: [
-        new THREE.Color(0x0D0504),
-        new THREE.Color(0x1F0C08),
-        new THREE.Color(0x351A10),
-        new THREE.Color(0x52281A),
-        new THREE.Color(0x6B3520),
+        new THREE.Color(0x1A0804),
+        new THREE.Color(0x2A1008),
+        new THREE.Color(0x4A2015),
+        new THREE.Color(0x6A3520),
+        new THREE.Color(0x8A5035),
     ],
 
-    // Ground floor colors - warm earth tones
-    groundBase: new THREE.Color(0x3A2A1A),   // Warm brown forest floor
-    groundMoss: new THREE.Color(0x4A4A2A),   // Golden-tinted moss
-    groundDirt: new THREE.Color(0x2A1A0A),   // Dark warm dirt
+    // Ground floor colors - Firewatch warm aesthetic
+    groundBase: new THREE.Color(0x6D4528),   // Mid warm brown
+    groundMoss: new THREE.Color(0xFFAA44),   // Golden highlight (sunlit areas)
+    groundDirt: new THREE.Color(0x2A150A),   // Deep dark shadow (foreground)
 
-    // Effects - all warm tones
-    mist: new THREE.Color(0xFFB070),         // Golden mist
-    godRay: new THREE.Color(0xFFCC66),       // Warm golden god rays
+    // Effects - warm golden tones
+    mist: new THREE.Color(0xFFAA55),         // Rich golden mist
+    godRay: new THREE.Color(0xFFBB66),       // Warm golden god rays
     firefly: new THREE.Color(0xFFAA44),      // Amber-gold fireflies
 
     // Spirit colors - warm ethereal
@@ -155,7 +156,13 @@ export default class SwedishForestTheme extends BaseTheme {
         this.sun = null;
         this.sunGlowLayers = [];
         this.sunPosition = new THREE.Vector3(0, 15, -90);
+        this.sunBaseY = 15; // For sun movement animation
         this.dustMotes = null;
+
+        // Mountains, haze, and foreground
+        this.mountains = [];
+        this.hazeLayers = [];
+        this.foregroundBranches = [];
 
         // Shared uniforms
         this.uniforms = {
@@ -234,19 +241,22 @@ export default class SwedishForestTheme extends BaseTheme {
         // CREATE SCENE ELEMENTS (order matters for depth)
         // ─────────────────────────────────────────────────────────────────────
 
-        this.createStarfield();      // Background stars (reduced for sunset)
+        // this.createStarfield();      // Disabled - sunset is too bright for stars
+        this.createMountains();      // Distant mountain silhouettes (Firewatch style)
         this.createSun();            // Large glowing sun at horizon
         // this.createAuroraLayers();   // Disabled - doesn't fit sunset theme
         this.createGodRays();        // Light beams from sun
         this.createTrees();          // Layered trees
-        this.createForestFloor();    // Textured ground
-        this.createGrass();          // 3D animated grass
-        this.createGlowingMushrooms(); // Bioluminescent mushrooms
+        this.createHazeLayers();     // Atmospheric haze between tree layers
+        this.createForestFloor();    // Warm gradient ground (Firewatch style)
+        this.createGrass();          // Golden sunset grass
+        // this.createGlowingMushrooms(); // Disabled - cleaner Firewatch look
         this.createMistLayers();     // Atmospheric golden fog
         this.createSpiritWinds();    // Flowing warm energy
         this.createDustMotes();      // Floating particles in sunlight
         this.createFireflySystem();  // Glowing amber particles
         this.createForestSpirits();  // Warm ethereal orbs
+        // this.createForegroundBranches(); // Disabled - foreground branch silhouettes
         // this.createFallingLeavesSystem();  // Disabled - no falling leaves
         this.setupLighting();
 
@@ -285,15 +295,15 @@ export default class SwedishForestTheme extends BaseTheme {
         canvas.height = 512;
         const ctx = canvas.getContext('2d');
 
-        // Firewatch-inspired sunset gradient
+        // TRUE Firewatch sunset gradient - NO purple, all warm orange/red
         const gradient = ctx.createLinearGradient(0, 0, 0, 512);
-        gradient.addColorStop(0, '#1A0A20');    // Deep purple-black at top
-        gradient.addColorStop(0.15, '#2D1B4E'); // Purple
-        gradient.addColorStop(0.35, '#5C2040'); // Magenta-purple transition
-        gradient.addColorStop(0.55, '#CC4422'); // Deep orange
-        gradient.addColorStop(0.75, '#FF6B35'); // Bright orange
-        gradient.addColorStop(0.9, '#FFB040');  // Golden
-        gradient.addColorStop(1, '#FFD93D');    // Bright yellow at horizon
+        gradient.addColorStop(0, '#5A1508');    // Deep burnt red at top
+        gradient.addColorStop(0.15, '#7A2010'); // Dark red-orange
+        gradient.addColorStop(0.30, '#AA3318'); // Rich red-orange
+        gradient.addColorStop(0.50, '#DD5520'); // Bright orange-red
+        gradient.addColorStop(0.70, '#FF7730'); // Vivid orange
+        gradient.addColorStop(0.85, '#FFAA45'); // Golden orange
+        gradient.addColorStop(1, '#FFCC55');    // Bright golden at horizon
 
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, 2, 512);
@@ -359,15 +369,15 @@ export default class SwedishForestTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     createSun() {
-        // Large sun sphere positioned at horizon
-        const sunGeometry = new THREE.SphereGeometry(28, 32, 32);
+        // LARGE sun sphere - Firewatch style prominent sun
+        const sunGeometry = new THREE.SphereGeometry(38, 32, 32);
         const sunMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: this.uniforms.time,
-                uIntensity: { value: 1.0 },
-                uCoreColor: { value: COLORS.sun.core },
-                uCoronaColor: { value: COLORS.sun.corona },
-                uEdgeColor: { value: COLORS.sun.edge },
+                uIntensity: { value: 1.2 },
+                uCoreColor: { value: new THREE.Color(0xFFFFDD) },
+                uCoronaColor: { value: new THREE.Color(0xFFCC44) },
+                uEdgeColor: { value: new THREE.Color(0xFF8822) },
             },
             vertexShader: sunVertexShader,
             fragmentShader: sunFragmentShader,
@@ -380,16 +390,16 @@ export default class SwedishForestTheme extends BaseTheme {
         this.sun.position.copy(this.sunPosition);
         this.scene.add(this.sun); // Add to scene, not mainGroup for fixed position
 
-        // Multi-layer glow sprites for atmospheric halo effect
+        // Multi-layer glow sprites - BIGGER for Firewatch atmospheric look
         const glowTexture = this.createSunGlowTexture();
         this.sunGlowLayers = [];
 
         const glowConfigs = [
-            { scale: 70, opacity: 0.9, color: COLORS.sun.corona },
-            { scale: 120, opacity: 0.6, color: COLORS.sun.edge },
-            { scale: 180, opacity: 0.35, color: COLORS.sun.halo },
-            { scale: 280, opacity: 0.15, color: new THREE.Color(0xFF3300) },
-            { scale: 400, opacity: 0.08, color: new THREE.Color(0xFF2200) }, // Atmospheric bleed
+            { scale: 90, opacity: 1.0, color: new THREE.Color(0xFFDD66) },
+            { scale: 150, opacity: 0.7, color: new THREE.Color(0xFFAA44) },
+            { scale: 220, opacity: 0.45, color: new THREE.Color(0xFF8833) },
+            { scale: 320, opacity: 0.25, color: new THREE.Color(0xFF6622) },
+            { scale: 450, opacity: 0.12, color: new THREE.Color(0xFF4411) },
         ];
 
         glowConfigs.forEach(config => {
@@ -434,7 +444,7 @@ export default class SwedishForestTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     createDustMotes() {
-        const dustCount = 120;
+        const dustCount = 150;  // More dust particles floating in sunlight
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(dustCount * 3);
         const phases = new Float32Array(dustCount);
@@ -472,97 +482,162 @@ export default class SwedishForestTheme extends BaseTheme {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // FOREST FLOOR - Textured ground with moss
+    // MOUNTAINS - Firewatch-style layered silhouettes with atmospheric perspective
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createMountains() {
+        this.mountains = [];
+
+        // Mountain layer configurations - Firewatch style prominent silhouettes
+        const mountainConfigs = [
+            { z: -88, height: 55, fogAmount: 0.6, color: new THREE.Color(0xDD8855) },   // Far - warmest, haziest
+            { z: -80, height: 50, fogAmount: 0.4, color: new THREE.Color(0xBB6644) },   // Mid
+            { z: -73, height: 45, fogAmount: 0.2, color: new THREE.Color(0x884433) },   // Near - darker
+        ];
+
+        // Fog color for atmospheric blending (matches sky orange)
+        const fogColor = new THREE.Color(0xFF9944);
+
+        mountainConfigs.forEach((config, index) => {
+            const geometry = new THREE.PlaneGeometry(280, config.height, 1, 1);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uMountainColor: { value: config.color },
+                    uFogColor: { value: fogColor },
+                    uFogAmount: { value: config.fogAmount },
+                    uLayer: { value: index / (mountainConfigs.length - 1) },
+                    uTime: this.uniforms.time,
+                },
+                vertexShader: mountainVertexShader,
+                fragmentShader: mountainFragmentShader,
+                transparent: true,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            });
+
+            const mountain = new THREE.Mesh(geometry, material);
+            // Position mountains higher so peaks are visible above tree line
+            mountain.position.set(0, 22 + index * 2, config.z);
+
+            this.mountains.push(mountain);
+            this.scene.add(mountain); // Add to scene, not mainGroup
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HAZE LAYERS - Atmospheric haze between tree depth layers
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createHazeLayers() {
+        this.hazeLayers = [];
+
+        // Haze configurations between tree layers
+        const hazeConfigs = [
+            { z: -55, y: 8, width: 120, height: 25, density: 0.35, color: new THREE.Color(0xFFBB88) },
+            { z: -35, y: 6, width: 100, height: 20, density: 0.25, color: new THREE.Color(0xFFAA77) },
+            { z: -18, y: 4, width: 80, height: 15, density: 0.18, color: new THREE.Color(0xFF9966) },
+        ];
+
+        hazeConfigs.forEach((config) => {
+            const geometry = new THREE.PlaneGeometry(config.width, config.height);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uHazeColor: { value: config.color },
+                    uDensity: { value: config.density },
+                },
+                vertexShader: hazeVertexShader,
+                fragmentShader: hazeFragmentShader,
+                transparent: true,
+                blending: THREE.NormalBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+            });
+
+            const haze = new THREE.Mesh(geometry, material);
+            haze.position.set(0, config.y, config.z);
+
+            this.hazeLayers.push(haze);
+            this.mainGroup.add(haze);
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FOREGROUND BRANCHES - Silhouette frame at screen edges (Firewatch style)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createForegroundBranches() {
+        this.foregroundBranches = [];
+
+        // Very dark silhouette color (almost black)
+        const branchColor = new THREE.Color(0x0A0502);
+
+        // Branch configurations for both sides
+        const branchConfigs = [
+            { side: -1, x: -22, y: 12, z: 8, width: 18, height: 25, rotZ: 0.2, opacity: 0.95 },   // Left top
+            { side: -1, x: -25, y: 3, z: 6, width: 15, height: 18, rotZ: 0.35, opacity: 0.9 },    // Left bottom
+            { side: 1, x: 24, y: 14, z: 7, width: 16, height: 22, rotZ: -0.15, opacity: 0.95 },   // Right top
+            { side: 1, x: 26, y: 5, z: 5, width: 14, height: 16, rotZ: -0.3, opacity: 0.85 },     // Right bottom
+        ];
+
+        branchConfigs.forEach((config) => {
+            const geometry = new THREE.PlaneGeometry(config.width, config.height);
+
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uBranchColor: { value: branchColor },
+                    uOpacity: { value: config.opacity },
+                    uSide: { value: config.side },
+                },
+                vertexShader: branchVertexShader,
+                fragmentShader: branchFragmentShader,
+                transparent: true,
+                blending: THREE.NormalBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+            });
+
+            const branch = new THREE.Mesh(geometry, material);
+            branch.position.set(config.x, config.y, config.z);
+            branch.rotation.z = config.rotZ;
+
+            this.foregroundBranches.push(branch);
+            this.mainGroup.add(branch);
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FOREST FLOOR - Simple dark ground (Firewatch style)
     // ═══════════════════════════════════════════════════════════════════════════
 
     createForestFloor() {
-        // Higher subdivision for smoother displacement
-        const geometry = new THREE.PlaneGeometry(200, 80, 256, 128);
 
-        // Load forest floor PBR textures
-        const textureLoader = new THREE.TextureLoader();
+        const geometry = new THREE.PlaneGeometry(300, 150, 64, 64); // Increased segments for vertex displacement if needed
 
-        const albedoMap = textureLoader.load(forestFloorAlbedoUrl);
-        const normalMap = textureLoader.load(forestFloorNormalUrl);
-        const roughnessMap = textureLoader.load(forestFloorRoughnessUrl);
-        const heightMap = textureLoader.load(forestFloorHeightUrl);
-        const aoMap = textureLoader.load(forestFloorAoUrl);
-
-        // Configure texture tiling and wrapping for seamless repeat
-        const textureRepeat = 6;
-        [albedoMap, normalMap, roughnessMap, heightMap, aoMap].forEach(texture => {
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(textureRepeat, textureRepeat * 0.4);
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uGroundColor: { value: COLORS.groundBase },
+                uMossColor: { value: COLORS.groundMoss },
+                uDirtColor: { value: COLORS.groundDirt },
+                uGlowIntensity: { value: 0 },
+                uFogColor: { value: COLORS.fog },
+            },
+            vertexShader: groundVertexShader,
+            fragmentShader: groundFragmentShader,
+            side: THREE.DoubleSide
         });
-
-        // Set proper color spaces
-        albedoMap.colorSpace = THREE.SRGBColorSpace;
-        normalMap.colorSpace = THREE.LinearSRGBColorSpace;
-        roughnessMap.colorSpace = THREE.LinearSRGBColorSpace;
-        heightMap.colorSpace = THREE.LinearSRGBColorSpace;
-        aoMap.colorSpace = THREE.LinearSRGBColorSpace;
-
-        // Create brighter procedural environment cubemap for spirit/sky reflections
-        const envMapSize = 64;
-        const envMapData = new Uint8Array(envMapSize * envMapSize * 4 * 6);
-        for (let face = 0; face < 6; face++) {
-            for (let y = 0; y < envMapSize; y++) {
-                for (let x = 0; x < envMapSize; x++) {
-                    const i = (face * envMapSize * envMapSize + y * envMapSize + x) * 4;
-                    // Brighter teal/cyan atmosphere for better reflections
-                    const yFactor = y / envMapSize;
-                    envMapData[i] = Math.floor(30 + yFactor * 50);      // R - brighter
-                    envMapData[i + 1] = Math.floor(80 + yFactor * 80);  // G - much brighter  
-                    envMapData[i + 2] = Math.floor(90 + yFactor * 90);  // B - cyan tint
-                    envMapData[i + 3] = 255;
-                }
-            }
-        }
-        const envCubeTexture = new THREE.DataTexture(envMapData, envMapSize, envMapSize * 6);
-        envCubeTexture.needsUpdate = true;
-
-        // Use MeshPhysicalMaterial for advanced PBR with reflections
-        const material = new THREE.MeshPhysicalMaterial({
-            map: albedoMap,
-            normalMap: normalMap,
-            normalScale: new THREE.Vector2(3.0, 3.0), // Strong normal for maximum depth
-            roughnessMap: roughnessMap,
-            roughness: 0.6, // Lower roughness = more reflective for dew/moisture
-            metalness: 0.05, // Slight metalness for better reflections
-            // Ambient occlusion - reduced to prevent too much darkening
-            aoMap: aoMap,
-            aoMapIntensity: 0.5,
-            // Displacement creates real 3D undulations  
-            displacementMap: heightMap,
-            displacementScale: 2.5, // Stronger displacement for visible terrain
-            displacementBias: -1.0,
-            // Sheen for soft moss-like sheen effect
-            sheen: 0.5, // Stronger sheen
-            sheenColor: new THREE.Color(0x4a8a6a), // Brighter forest green sheen
-            sheenRoughness: 0.6,
-            // Environment reflections - stronger for spirit light pickup
-            envMapIntensity: 0.8,
-            // Emissive for visibility - brighter
-            emissive: new THREE.Color(0x1a3025), // Brighter forest green
-            emissiveMap: albedoMap,
-            emissiveIntensity: 0.35, // Stronger emissive glow
-            // Color tint - brighter to catch more light
-            color: new THREE.Color(0x8aaa9a), // Brighter tint
-            side: THREE.DoubleSide,
-        });
-
-        // Add UV2 for AO map
-        geometry.setAttribute('uv2', geometry.attributes.uv);
 
         this.groundPlane = new THREE.Mesh(geometry, material);
         this.groundPlane.rotation.x = -Math.PI / 2;
         this.groundPlane.position.set(0, -0.5, -10);
-        this.groundPlane.receiveShadow = true;
 
         this.mainGroup.add(this.groundPlane);
 
-        // Store material reference for potential glow effects
+        // Store material reference
         this.groundMaterial = material;
     }
 
@@ -614,14 +689,14 @@ export default class SwedishForestTheme extends BaseTheme {
         clumpGeo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
         clumpGeo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
 
-        // Forest grass shader material - warm golden sunset tones
+        // Forest grass shader material - bright golden Firewatch sunset tones
         const grassMat = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
-                uWindStrength: { value: 0.15 },
+                uWindStrength: { value: 0.18 },
                 uGrassTexture: { value: grassTexture },
-                uBaseColor: { value: new THREE.Color(0x2A2010) },  // Warm dark brown
-                uTipColor: { value: new THREE.Color(0x8A7A40) },   // Golden amber tips
+                uBaseColor: { value: new THREE.Color(0x4A3015) },  // Warm brown base
+                uTipColor: { value: new THREE.Color(0xDDAA44) },   // Bright golden tips (Firewatch)
                 uFogColor: { value: COLORS.fog },
                 uSpiritGlow: { value: 0.0 }, // Reactive to spirits
             },
@@ -1077,18 +1152,18 @@ export default class SwedishForestTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     createGodRays() {
-        const rayCount = 14; // More rays for dramatic effect
+        const rayCount = 16; // More dramatic god rays
 
         for (let i = 0; i < rayCount; i++) {
-            const width = 5 + Math.random() * 7;
-            const height = 55 + Math.random() * 35; // Taller rays
+            const width = 5 + Math.random() * 8;
+            const height = 55 + Math.random() * 40;
 
             const geometry = new THREE.PlaneGeometry(width, height);
 
             const material = new THREE.ShaderMaterial({
                 uniforms: {
                     uTime: this.uniforms.time,
-                    uOpacity: { value: 0.15 + Math.random() * 0.12 }, // Stronger opacity
+                    uOpacity: { value: 0.12 + Math.random() * 0.12 }, // Stronger opacity
                     uRayColor: { value: COLORS.godRay },
                 },
                 vertexShader: godRayVertexShader,
@@ -1597,6 +1672,32 @@ export default class SwedishForestTheme extends BaseTheme {
         this.camera.lookAt(lookX, lookY, -30);
 
         // ─────────────────────────────────────────────────────────────────────
+        // SUN MOVEMENT - Slow rise/fall with gentle pulse
+        // ─────────────────────────────────────────────────────────────────────
+
+        if (this.sun) {
+            // Slow vertical oscillation (like sun slowly setting/rising)
+            const sunTime = elapsed * 0.02;
+            const sunY = this.sunBaseY + Math.sin(sunTime) * 3.0;
+            const sunX = Math.sin(sunTime * 0.3) * 2.0;
+
+            this.sun.position.y = sunY;
+            this.sun.position.x = sunX;
+
+            // Update glow layers to follow sun
+            this.sunGlowLayers.forEach(sprite => {
+                sprite.position.y = sunY;
+                sprite.position.x = sunX;
+            });
+
+            // Subtle pulse on sun intensity
+            const pulse = 1.0 + Math.sin(elapsed * 0.8) * 0.05;
+            if (this.sun.material.uniforms?.uIntensity) {
+                this.sun.material.uniforms.uIntensity.value = pulse;
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
         // GOD RAY SWAY
         // ─────────────────────────────────────────────────────────────────────
 
@@ -1664,6 +1765,11 @@ export default class SwedishForestTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
         // GRASS ANIMATION
         // ─────────────────────────────────────────────────────────────────────
+
+        if (this.groundMaterial && this.groundMaterial.uniforms) {
+            this.groundMaterial.uniforms.uTime.value = elapsed;
+            this.groundMaterial.uniforms.uGlowIntensity.value = this.uniforms.glowIntensity.value;
+        }
 
         if (this.grassMaterial) {
             this.grassMaterial.uniforms.uTime.value = elapsed;
@@ -1798,5 +1904,8 @@ export default class SwedishForestTheme extends BaseTheme {
         this.sun = null;
         this.sunGlowLayers = [];
         this.dustMotes = null;
+        this.mountains = [];
+        this.hazeLayers = [];
+        this.foregroundBranches = [];
     }
 }

@@ -4107,7 +4107,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Map sine from [-1, 1] to [0, 1] then scale
         // Phase shifted to -1.57 (-PI/2) so at t=0, sin is -1, making swayY = 0 (Start at bottom)
         const rawY = Math.sin(t * spd.y - 1.57);
-        const swayY = (rawY * 0.5 + 0.5) * (amp.y * 120.0); // 0 to ~360 units up (Near building tops)
+        const swayY = (rawY * 0.5 + 0.5) * (amp.y * 180.0); // 0 to ~540 units up
 
         const swayZ = Math.sin(t * spd.z + 1.0) * amp.z;
 
@@ -4122,10 +4122,19 @@ export default class NeonDistrictTheme extends BaseTheme {
         const lookSwayX = Math.sin(t * 0.1 + 0.8) * this.cameraLookAtSway.x;
         const lookSwayY = Math.sin(t * 0.14 + 1.5) * this.cameraLookAtSway.y;
 
-        // Dynamic pitch adjustment:
-        // As we go up (swayY increases), we raise the lookAt target LESS than the camera
-        // (multiplier 0.4 instead of 0.9) so that effectively we tilt DOWN to look at the street/city below.
-        const dynamicLookY = this.cameraBaseLookAt.y + lookSwayY + (swayY * 0.4);
+        // Dynamic pitch adjustment with "nod" at the peak
+        // normalizedY: 0 at bottom, 1 at peak
+        const normalizedY = rawY * 0.5 + 0.5;
+
+        // Peak nod: when near the top (normalizedY > 0.6), tilt UP towards the moon
+        // Uses smoothstep-like curve for smooth transition
+        const peakThreshold = 0.6;
+        const peakFactor = Math.max(0, (normalizedY - peakThreshold) / (1.0 - peakThreshold));
+        const peakNod = peakFactor * peakFactor * 400; // Quadratic ease-in, look up strongly at the moon
+
+        // Base behavior: look down as we go up (multiplier 0.2)
+        // At peak: add peakNod to look UP towards the moon
+        const dynamicLookY = this.cameraBaseLookAt.y + lookSwayY + (swayY * 0.2) + peakNod;
 
         this.camera.lookAt(
             this.cameraBaseLookAt.x + lookSwayX,
