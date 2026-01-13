@@ -196,9 +196,10 @@ void main() {
 export const groundFragmentShader = `
 uniform float uTime;
 uniform vec3 uGroundColor;
-uniform vec3 uMossColor;
-uniform vec3 uDirtColor;
+uniform vec3 uMossColor; // Acts as Sunlight/Highlight
+uniform vec3 uDirtColor; // Acts as Shadow/Foreground
 uniform float uGlowIntensity;
+uniform vec3 uFogColor;
 
 varying vec2 vUv;
 varying vec3 vWorldPos;
@@ -207,41 +208,58 @@ varying float vDepth;
 ${noiseCommon}
 
 void main() {
-    vec2 uv = vUv;
+    // 1. Distorted UVs for painterly effect
+    vec2 p = vUv * 8.0; // Scale of texture
     
-    // Multi-layer noise for organic texture
-    float noise1 = fbm(vec3(uv * 8.0, 0.0));
-    float noise2 = snoise(vec3(uv * 15.0, uTime * 0.01));
-    float noise3 = snoise(vec3(uv * 30.0, 0.5));
+    // Add some "warp" to the coordinates using low freq noise
+    float warp = snoise(vec3(p * 0.5, 0.0)); 
+    p += warp * 0.5;
+
+    // 2. Large Scale Pattern (The "Blobs" / Brush strokes)
+    float pattern = snoise(vec3(p, 0.0));
     
-    vec3 color = uGroundColor;
+    // 3. Depth Gradient (The "Lighting")
+    // Map depth to 0-1 range. 
+    // Near (0) -> Depth ~10. Far (1) -> Depth ~100.
+    float depthFactor = smoothstep(10.0, 90.0, vDepth);
     
-    // Add moss patches
-    float mossMask = smoothstep(0.3, 0.6, noise1);
-    color = mix(color, uMossColor, mossMask * 0.5);
+    // 4. Color Mixing
     
-    // Add dirt/dark patches
-    float dirtMask = smoothstep(0.5, 0.7, noise2);
-    color = mix(color, uDirtColor, dirtMask * 0.35);
+    // Start with base ground color
+    vec3 finalColor = uGroundColor;
     
-    // Fine texture detail
-    color += vec3(noise3 * 0.04);
+    // Mix in SHADOW (Dirt Color) based on:
+    // - Being near the camera (1.0 - depthFactor)
+    // - Pattern noise (to break up straight lines)
+    float shadowMix = (1.0 - depthFactor) * 1.2 + pattern * 0.2;
+    shadowMix = clamp(shadowMix, 0.0, 1.0);
+    finalColor = mix(finalColor, uDirtColor, smoothstep(0.2, 0.9, shadowMix));
     
-    // Fallen needles/debris
-    float debris = snoise(vec3(uv * 50.0, 0.0));
-    if (debris > 0.85) {
-        color *= 0.82;
-    }
+    // Mix in SUNLIGHT (Moss Color) based on:
+    // - Being far away (depthFactor)
+    // - Pattern noise
+    float sunMix = depthFactor * 1.2 - pattern * 0.1; 
+    sunMix = clamp(sunMix, 0.0, 1.0);
     
-    // Glow during events
-    color += vec3(0.1, 0.2, 0.15) * uGlowIntensity * 0.25;
+    // Firewatch ground often looks "burned" or glowing in distance
+    // We mix nicely into the golden highlight
+    finalColor = mix(finalColor, uMossColor, smoothstep(0.3, 1.0, sunMix));
+
+    // 5. Stylized Hard Edges (Optional, but adds to the "Vector Art" feel)
+    // We can sharpen the transition slightly if it's too blurry
+    // (Left soft for now as standard Firewatch terrain is often soft gradients)
+
+    // 6. Atmospheric Fog integration
+    // Standard fog might wash it out too much, so we do a custom blend
+    // to keep the colors rich.
     
-    // Fade with depth
-    float fogFactor = smoothstep(5.0, 50.0, vDepth);
-    vec3 fogColor = vec3(0.04, 0.10, 0.12);
-    color = mix(color, fogColor, fogFactor * 0.6);
+    float fogStrength = smoothstep(40.0, 150.0, vDepth);
+    finalColor = mix(finalColor, uFogColor, fogStrength * 0.8); // 0.8 max fog to keep some color
     
-    gl_FragColor = vec4(color, 1.0);
+    // 7. Event Glow
+    finalColor += vec3(1.0, 0.8, 0.4) * uGlowIntensity * 0.3;
+
+    gl_FragColor = vec4(finalColor, 1.0);
 }
 `;
 
@@ -848,5 +866,178 @@ void main() {
     glow = pow(glow, 2.0);
 
     gl_FragColor = vec4(vColor, glow * vAlpha);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MOUNTAIN SHADER - Firewatch-style layered silhouettes with atmospheric depth
+// ─────────────────────────────────────────────────────────────────────────────
+export const mountainVertexShader = `
+varying vec2 vUv;
+
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+export const mountainFragmentShader = `
+uniform vec3 uMountainColor;
+uniform vec3 uFogColor;
+uniform float uFogAmount;
+uniform float uLayer;
+uniform float uTime;
+
+varying vec2 vUv;
+
+${noiseCommon}
+
+void main() {
+    vec2 uv = vUv;
+
+    // Mountain shape using layered noise - Firewatch style jagged peaks
+    float mountainHeight = 0.0;
+
+    // Different patterns for each layer with offset for variety
+    float offset = uLayer * 87.654;
+    mountainHeight += snoise(vec3(uv.x * 0.8 + offset, 0.0, 0.0)) * 0.35;
+    mountainHeight += snoise(vec3(uv.x * 1.8 + offset, 0.5, 0.0)) * 0.25;
+    mountainHeight += snoise(vec3(uv.x * 4.0 + offset, 1.0, 0.0)) * 0.15;
+    mountainHeight += snoise(vec3(uv.x * 8.0 + offset, 1.5, 0.0)) * 0.08;
+
+    // Normalize to 0-1 range and scale to fill more of the plane
+    mountainHeight = mountainHeight * 0.5 + 0.5;
+    // Far mountains (layer 0) are shorter, near mountains taller
+    mountainHeight *= (0.55 + uLayer * 0.25);
+
+    // Add slight animation for heat shimmer
+    float shimmer = sin(uTime * 0.4 + uv.x * 8.0) * 0.008 * (1.0 - uLayer * 0.5);
+    mountainHeight += shimmer;
+
+    // Check if we're inside the mountain silhouette
+    if (uv.y > mountainHeight) discard;
+
+    // Apply atmospheric fog based on layer depth
+    vec3 color = mix(uMountainColor, uFogColor, uFogAmount);
+
+    // Slight vertical gradient for depth on peaks
+    float heightGrad = (mountainHeight - uv.y) / mountainHeight;
+    color = mix(color * 0.85, color, heightGrad);
+
+    gl_FragColor = vec4(color, 1.0);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HAZE LAYER SHADER - Atmospheric haze between tree layers
+// ─────────────────────────────────────────────────────────────────────────────
+export const hazeVertexShader = `
+varying vec2 vUv;
+varying float vFogDepth;
+
+void main() {
+    vUv = uv;
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    vFogDepth = -mvPosition.z;
+    gl_Position = projectionMatrix * mvPosition;
+}
+`;
+
+export const hazeFragmentShader = `
+uniform float uTime;
+uniform vec3 uHazeColor;
+uniform float uDensity;
+
+varying vec2 vUv;
+varying float vFogDepth;
+
+${noiseCommon}
+
+void main() {
+    vec2 uv = vUv;
+
+    // Animated noise for organic haze movement
+    float noise1 = snoise(vec3(uv.x * 2.0 + uTime * 0.05, uv.y * 1.5, uTime * 0.02)) * 0.5 + 0.5;
+    float noise2 = snoise(vec3(uv.x * 4.0 - uTime * 0.03, uv.y * 3.0, uTime * 0.015)) * 0.5 + 0.5;
+
+    float haze = noise1 * 0.7 + noise2 * 0.3;
+
+    // Vertical falloff - more haze at bottom
+    float verticalFade = 1.0 - smoothstep(0.0, 0.7, uv.y);
+
+    // Horizontal variation
+    float horizontalVar = 0.85 + sin(uv.x * 3.14159) * 0.15;
+
+    float alpha = haze * verticalFade * horizontalVar * uDensity;
+
+    // Warmer color toward bottom
+    vec3 color = mix(uHazeColor, uHazeColor * 1.15, verticalFade * 0.3);
+
+    gl_FragColor = vec4(color, alpha * 0.5);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FOREGROUND BRANCH SHADER - Procedural silhouette branches at screen edges
+// ─────────────────────────────────────────────────────────────────────────────
+export const branchVertexShader = `
+uniform float uTime;
+
+varying vec2 vUv;
+
+void main() {
+    vUv = uv;
+
+    vec3 pos = position;
+
+    // Subtle sway animation
+    float sway = sin(uTime * 0.6 + position.y * 0.3) * 0.12;
+    pos.x += sway * uv.y;
+
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+}
+`;
+
+export const branchFragmentShader = `
+uniform vec3 uBranchColor;
+uniform float uOpacity;
+uniform float uSide;
+uniform float uTime;
+
+varying vec2 vUv;
+
+${noiseCommon}
+
+void main() {
+    vec2 uv = vUv;
+
+    // Flip UV for right side
+    if (uSide > 0.0) {
+        uv.x = 1.0 - uv.x;
+    }
+
+    // Create organic branch/leaf shapes using noise
+    float shape = 0.0;
+
+    // Main diagonal branch from corner
+    float diagonal = uv.x * 0.8 + uv.y * 0.5;
+    float mainBranch = smoothstep(0.03, 0.0, abs(diagonal - 0.4)) * smoothstep(0.0, 0.3, uv.x);
+
+    // Secondary branches
+    float b1 = smoothstep(0.02, 0.0, abs(uv.x - 0.15 - uv.y * 0.4)) * step(0.1, uv.y) * step(uv.y, 0.6);
+    float b2 = smoothstep(0.02, 0.0, abs(uv.x - 0.25 - uv.y * 0.25)) * step(0.2, uv.y) * step(uv.y, 0.5);
+
+    // Leaf clusters using noise
+    float leafNoise = snoise(vec3(uv * 6.0 + uTime * 0.05, 0.0));
+    float leaves = smoothstep(0.25, 0.55, leafNoise);
+    // Mask leaves to branch areas
+    float leafMask = smoothstep(0.6, 0.0, uv.x) * smoothstep(0.0, 0.4, uv.y) * smoothstep(0.9, 0.5, uv.y);
+    leaves *= leafMask;
+
+    shape = max(max(mainBranch, b1), max(b2, leaves * 0.9));
+
+    if (shape < 0.05) discard;
+
+    gl_FragColor = vec4(uBranchColor, shape * uOpacity);
 }
 `;
