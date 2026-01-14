@@ -7,8 +7,57 @@
  */
 
 import * as THREE from 'three';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 
 const TEXTURE_PATH = './textures/synthcity/';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Star Shader - Soft, twinkling neon sky stars
+// ─────────────────────────────────────────────────────────────────────────────
+export const NEON_DISTRICT_STAR_VERTEX_SHADER = `
+attribute float aSize;
+attribute vec2 aTwinkle; // x = phase, y = speed
+attribute float aBrightness;
+
+uniform float uTime;
+uniform float uPixelRatio;
+
+varying float vBrightness;
+varying vec3 vColor;
+
+void main() {
+    vColor = color;
+
+    float twinkle = sin(uTime * aTwinkle.y + aTwinkle.x);
+    vBrightness = aBrightness * (0.65 + twinkle * 0.35);
+
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = aSize * uPixelRatio * (200.0 / -mvPosition.z);
+    gl_PointSize = clamp(gl_PointSize, 2.0, 50.0);
+
+    gl_Position = projectionMatrix * mvPosition;
+}
+`;
+
+export const NEON_DISTRICT_STAR_FRAGMENT_SHADER = `
+varying float vBrightness;
+varying vec3 vColor;
+
+void main() {
+    vec2 center = gl_PointCoord - 0.5;
+    float dist = length(center) * 2.0;
+    if (dist > 1.0) discard;
+
+    float softCircle = 1.0 - smoothstep(0.0, 1.0, dist);
+    softCircle = pow(softCircle, 0.9);
+
+    float core = 1.0 - smoothstep(0.0, 0.3, dist);
+    vec3 coreColor = vColor * vBrightness * 1.2 + vec3(0.08) * core;
+    float alpha = softCircle * (vBrightness + 0.15);
+
+    gl_FragColor = vec4(coreColor, alpha);
+}
+`;
 
 /**
  * Asset Manager for Neon District theme
@@ -21,8 +70,14 @@ export class NeonDistrictAssets {
         this.loadingManager = new THREE.LoadingManager();
         this.textureLoader = new THREE.TextureLoader(this.loadingManager);
 
+        // KTX2 Loader setup
+        this.ktx2Loader = new KTX2Loader(this.loadingManager);
+        this.ktx2Loader.setTranscoderPath('./basics/basis/'); // Standard path for Basis transcoder
+        this.ktx2Loader.detectSupport(new THREE.WebGLRenderer()); // Temp renderer for detection
+
         // Configuration - balanced brightness
-        this.textureAnisotropy = 8;
+        // Use maximum anisotropy for sharp textures at oblique angles
+        this.textureAnisotropy = 16;
         this.windowsEmissiveIntensity = 3.0;  // Higher to punch through fog on distant buildings
         this.adsEmissiveIntensity = 0.35;      // Reduced for less glare
         this.storefrontEmissiveIntensity = 0.4; // Further reduced for less glare
@@ -43,6 +98,45 @@ export class NeonDistrictAssets {
     }
 
     /**
+     * Helper to setup texture parameters
+     */
+    setupTexture(tex, wrap, aniso, name) {
+        if (wrap) {
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+        }
+        if (aniso) {
+            tex.anisotropy = this.textureAnisotropy;
+        }
+        // High-quality filtering for sharp textures
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.generateMipmaps = true;
+
+        // Store in cache
+        this.textures[name] = tex;
+    }
+
+    /**
+     * Fallback to standard texture loading
+     */
+    loadStandardTexture(name, wrap, aniso) {
+        return new Promise((resolve) => {
+            this.textureLoader.load(TEXTURE_PATH + name,
+                (tex) => {
+                    this.setupTexture(tex, wrap, aniso, name.replace('.jpg', '').replace('.png', ''));
+                    resolve(tex);
+                },
+                undefined,
+                () => {
+                    // Silently resolve null for missing textures
+                    resolve(null);
+                }
+            );
+        });
+    }
+
+    /**
      * Load all textures (call once during init) - PARALLEL loading for speed
      */
     async loadAllTextures() {
@@ -55,29 +149,41 @@ export class NeonDistrictAssets {
         console.log('[NeonDistrictAssets] Loading textures...');
 
         const loader = this.textureLoader;
+        const ktx2Loader = this.ktx2Loader;
         const texPath = TEXTURE_PATH;
 
-        // Helper to load texture with settings
+        // Helper to load texture with high-quality settings and KTX2 fallback
         const loadTex = (name, wrap = false, aniso = true) => {
+            const baseName = name.replace('.jpg', '').replace('.png', '');
+
             return new Promise((resolve) => {
-                loader.load(texPath + name,
+                // TRY KTX2 FIRST (if file exists logic would be here, but we try/fail)
+                // For now, we assume if .ktx2 exists we use it, otherwise fall back.
+                // Since checking file existence via HTTP is slow/complex without manifest,
+                // we will stick to standard loading but provide the mechanism to easy switch.
+
+                // NOTE: To enable KTX2, ensure .ktx2 files exist and uncomment logic below
+                // or ensure server serves .ktx2. 
+                // For this implementation, we default to standard loader to avoid 404 console spam
+                // until user generates the assets.
+
+                /*
+                ktx2Loader.load(
+                    texPath + baseName + '.ktx2',
                     (tex) => {
-                        if (wrap) {
-                            tex.wrapS = THREE.RepeatWrapping;
-                            tex.wrapT = THREE.RepeatWrapping;
-                        }
-                        if (aniso) {
-                            tex.anisotropy = this.textureAnisotropy;
-                        }
-                        this.textures[name.replace('.jpg', '').replace('.png', '')] = tex;
+                        this.setupTexture(tex, wrap, aniso, baseName);
                         resolve(tex);
                     },
                     undefined,
                     () => {
-                        // Silently resolve null for missing textures
-                        resolve(null);
+                        // Fallback to standard image
+                        this.loadStandardTexture(name, wrap, aniso).then(resolve);
                     }
                 );
+                */
+
+                // Default path (Standard)
+                this.loadStandardTexture(name, wrap, aniso).then(resolve);
             });
         };
 
