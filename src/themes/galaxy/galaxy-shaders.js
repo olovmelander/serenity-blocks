@@ -188,7 +188,7 @@ void main() {
     
     // Size attenuation - larger stars appear bigger
     // Pulse increases size significantly
-    float baseSize = 2.0 + aRandom * 4.0;
+    float baseSize = 3.0 + aRandom * 5.0;
     // Boost size most at the leading edge
     float pulseSize = baseSize * (1.0 + pulseIntensity * 3.0);
     gl_PointSize = pulseSize * (15.0 / -mvPosition.z);
@@ -395,12 +395,12 @@ void main() {
     gl_Position = projectionMatrix * mvPosition;
     
     // Size based on distance and randomness
-    float baseSize = 1.0 + aRandom * 2.5;
+    float baseSize = 1.5 + aRandom * 3.0;
     gl_PointSize = baseSize * (30.0 / -mvPosition.z);
     
     vColor = aColor;
     // Twinkling effect
-    vAlpha = 0.5 + 0.5 * sin(time * (1.0 + aRandom * 2.0) + aRandom * 6.28);
+    vAlpha = 0.8 + 0.2 * sin(time * (1.0 + aRandom * 2.0) + aRandom * 6.28);
 }
 `;
 

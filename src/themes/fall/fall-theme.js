@@ -990,6 +990,7 @@ export default class FallTheme extends BaseTheme {
             this.time += delta;
 
             this.updatePhysics(delta);
+            this.updateCamera(delta);
             this.updateLeaves(delta);
             this.updateEmbers(delta);
             this.updateBurst(delta);
@@ -1028,6 +1029,20 @@ export default class FallTheme extends BaseTheme {
             this.gustDuration -= delta * 60;
             this.gust = Math.max(0, this.gustDuration / 120);
         } else this.gust = 0;
+    }
+
+    updateCamera(delta) {
+        if (!this.camera) return;
+
+        // Breathing movement
+        // Z-axis: Gentle move in/out (Base 100)
+        const breatheZ = Math.sin(this.time * 0.5) * 2.0;
+
+        // Y-axis: Very subtle vertical bob (Base 0)
+        const breatheY = Math.cos(this.time * 0.3) * 0.5;
+
+        this.camera.position.z = 100 + breatheZ;
+        this.camera.position.y = breatheY;
     }
 
     updateLeaves(delta) {

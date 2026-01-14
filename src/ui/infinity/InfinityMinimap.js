@@ -78,6 +78,10 @@ export class InfinityMinimap {
         this.handleMouseEnter = this._onMouseEnter.bind(this);
         this.handleMouseLeave = this._onMouseLeave.bind(this);
 
+        // Global event handlers for drag operations
+        this.handleWindowMouseUp = this._onWindowMouseUp.bind(this);
+        this.handleWindowMouseMove = this._onWindowMouseMove.bind(this);
+
         // Initialize
         this._initialize();
     }
@@ -810,13 +814,21 @@ export class InfinityMinimap {
 
         // Dispatch initial jump to clicked position
         this._dispatchJump(event);
+
+        // Attach global listeners to handle dragging outside the minimap
+        window.addEventListener('mouseup', this.handleWindowMouseUp);
+        window.addEventListener('mousemove', this.handleWindowMouseMove);
     }
 
     /**
      * Handle mouse move - update camera during exploration
      * @private
      */
-    _onMouseMove(event) {
+    /**
+     * Handle global mouse move during exploration
+     * @private
+     */
+    _onWindowMouseMove(event) {
         if (!this.isDragging) return;
 
         // Already exploring - dispatch continuous camera updates
@@ -826,12 +838,12 @@ export class InfinityMinimap {
     }
 
     /**
-     * Handle mouse up - end exploration if active
+     * Handle global mouse up - end exploration
      * @private
      */
-    _onMouseUp(event) {
+    _onWindowMouseUp(event) {
         if (this.isExploring) {
-            console.log('[InfinityMinimap] Exploration ended - mouse released');
+            console.log('[InfinityMinimap] Exploration ended - global mouse released');
 
             // Dispatch exploration-end event (InfinityMode will resume the game)
             this.container.dispatchEvent(new CustomEvent('minimap-exploration-end', {
@@ -843,6 +855,26 @@ export class InfinityMinimap {
         this.isDragging = false;
         this.isExploring = false;
         this.dragStartY = null;
+
+        // Remove global listeners
+        window.removeEventListener('mouseup', this.handleWindowMouseUp);
+        window.removeEventListener('mousemove', this.handleWindowMouseMove);
+    }
+
+    /**
+     * Handle mouse move (local) - kept for safety/fallback but mainly handled by window listener
+     * @private
+     */
+    _onMouseMove(event) {
+        // No-op, handled by window listener when dragging
+    }
+
+    /**
+     * Handle mouse up (local) - no-op, handled by global listener
+     * @private
+     */
+    _onMouseUp(event) {
+        // No-op
     }
 
     /**
@@ -862,20 +894,8 @@ export class InfinityMinimap {
         this.isHovering = false;
         this.canvas.style.opacity = '0.8';
 
-        // If we were exploring, end exploration on mouseleave
-        if (this.isExploring && this.isDragging) {
-            console.log('[InfinityMinimap] Exploration ended - mouse left minimap');
-
-            // Dispatch exploration-end event
-            this.container.dispatchEvent(new CustomEvent('minimap-exploration-end', {
-                bubbles: true,
-            }));
-        }
-
-        // Reset all drag state
-        this.isDragging = false;
-        this.isExploring = false;
-        this.dragStartY = null;
+        // NOTE: We do NOT end exploration on mouse leave anymore.
+        // Exploration continues until mouse is released (handled by global listener).
     }
 
     /**
@@ -970,6 +990,10 @@ export class InfinityMinimap {
         this.canvas.removeEventListener('mouseup', this.handleMouseUp);
         this.canvas.removeEventListener('mouseenter', this.handleMouseEnter);
         this.canvas.removeEventListener('mouseleave', this.handleMouseLeave);
+
+        // Remove global listeners just in case
+        window.removeEventListener('mouseup', this.handleWindowMouseUp);
+        window.removeEventListener('mousemove', this.handleWindowMouseMove);
 
         // Remove from DOM
         if (this.container.parentElement) {
