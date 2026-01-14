@@ -319,6 +319,9 @@ void main() {
 export const godRayFragmentShader = `
 uniform float uTime;
 uniform float uOpacity;
+uniform float uRayWidth;
+uniform float uRayStrength;
+uniform float uSeed;
 uniform vec3 uRayColor;
 
 varying vec2 vUv;
@@ -326,18 +329,28 @@ varying vec2 vUv;
 ${noiseCommon}
 
 void main() {
-    float beam = 1.0 - abs(vUv.x - 0.5) * 2.0;
-    beam = pow(beam, 2.0);
+    float center = abs(vUv.x - 0.5);
+    float core = smoothstep(uRayWidth * 0.55, 0.0, center);
+    float halo = smoothstep(uRayWidth + 0.14, uRayWidth * 0.2, center);
+    float beam = max(core, halo * 0.65);
+    beam = pow(beam, 1.5);
+
+    float vertFade = pow(vUv.y, 0.65);
+    float sunBoost = smoothstep(0.6, 1.0, vUv.y);
+
+    float streaks = snoise(vec3(vUv.y * 10.0 + uSeed, vUv.x * 4.0, uTime * 0.18));
+    streaks = smoothstep(-0.1, 0.65, streaks);
+
+    float breakup = snoise(vec3(vUv * vec2(2.2, 6.0) + uSeed * 2.1, uTime * 0.05));
+    breakup = mix(0.75, 1.0, breakup * 0.5 + 0.5);
+
+    float flicker = 0.85 + 0.15 * sin(uTime * 0.7 + uSeed * 6.2831);
+
+    float alpha = beam * vertFade * streaks * breakup * uOpacity * uRayStrength * flicker;
+    alpha *= 0.7 + sunBoost * 0.6;
     
-    float vertFade = 1.0 - vUv.y;
-    vertFade = pow(vertFade, 0.8);
-    
-    float noise = snoise(vec3(vUv * 3.0, uTime * 0.1));
-    noise = noise * 0.2 + 0.8;
-    
-    float alpha = beam * vertFade * noise * uOpacity;
-    
-    gl_FragColor = vec4(uRayColor, alpha * 0.4);
+    vec3 color = mix(uRayColor, vec3(1.0, 0.95, 0.8), core * (0.35 + sunBoost * 0.25));
+    gl_FragColor = vec4(color, alpha * 0.75);
 }
 `;
 
@@ -347,6 +360,7 @@ void main() {
 export const fireflyVertexShader = `
 uniform float uTime;
 uniform float uSize;
+uniform float uBoost;  // Boost from piece lock effect
 
 attribute float aRandom;
 attribute float aPhase;
@@ -354,6 +368,7 @@ attribute vec3 aVelocity;
 
 varying float vAlpha;
 varying vec3 vColor;
+varying float vBoost;
 
 void main() {
     vec3 pos = position;
@@ -366,22 +381,34 @@ void main() {
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     
-    gl_PointSize = uSize * (180.0 / -mvPosition.z);
-    gl_PointSize = clamp(gl_PointSize, 2.0, 20.0);
+    // Size increases with boost
+    float boostedSize = uSize * (1.0 + uBoost * 1.5);
+    gl_PointSize = boostedSize * (180.0 / -mvPosition.z);
+    gl_PointSize = clamp(gl_PointSize, 2.0, 30.0);
     
-    float pulse = sin(uTime * 6.28 + aPhase * 15.0) * 0.5 + 0.5;
-    pulse = pow(pulse, 2.0);
-    vAlpha = 0.3 + pulse * 0.7;
+    // Each firefly has unique twinkle timing based on phase + boost
+    float twinkleSpeed = 6.28 + uBoost * 12.0;  // Faster twinkle when boosted
+    float pulse = sin(uTime * twinkleSpeed + aPhase * 15.0) * 0.5 + 0.5;
     
-    // Warm amber/orange fireflies for sunset
+    // Sharp twinkle effect when boosted
+    float twinklePow = mix(2.0, 0.5, uBoost);  // Sharper peaks when boosted
+    pulse = pow(pulse, twinklePow);
+    
+    // Alpha boosted strongly
+    vAlpha = 0.3 + pulse * 0.7 + uBoost * 0.5;
+    
+    // Warm amber/orange fireflies for sunset - brighter when boosted
     float hueShift = aRandom * 0.15;
     vColor = vec3(1.0, 0.7 + hueShift, 0.25 + hueShift * 0.3);
+    
+    vBoost = uBoost;
 }
 `;
 
 export const fireflyFragmentShader = `
 varying float vAlpha;
 varying vec3 vColor;
+varying float vBoost;
 
 void main() {
     vec2 coord = gl_PointCoord - vec2(0.5);
@@ -391,9 +418,13 @@ void main() {
     float glow = 1.0 - smoothstep(0.0, 0.5, dist);
     glow = pow(glow, 1.5);
     
-    float core = 1.0 - smoothstep(0.0, 0.15, dist);
+    // Brighter, larger core when boosted
+    float coreSize = 0.15 + vBoost * 0.1;
+    float core = 1.0 - smoothstep(0.0, coreSize, dist);
     
-    vec3 color = vColor * (glow + core * 0.5);
+    // Color intensity increases with boost
+    vec3 boostedColor = vColor * (1.0 + vBoost * 0.8);
+    vec3 color = boostedColor * (glow + core * (0.5 + vBoost * 1.0));
     float alpha = glow * vAlpha;
     
     gl_FragColor = vec4(color, alpha);
@@ -1039,5 +1070,223 @@ void main() {
     if (shape < 0.05) discard;
 
     gl_FragColor = vec4(uBranchColor, shape * uOpacity);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LAKE WATER SHADER - Firewatch-style reflective water with horizontal ripples
+// ─────────────────────────────────────────────────────────────────────────────
+export const lakeVertexShader = `
+uniform float uTime;
+
+varying vec2 vUv;
+varying vec3 vWorldPos;
+varying float vDepth;
+
+void main() {
+    vUv = uv;
+    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+    vWorldPos = worldPos.xyz;
+    
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    vDepth = -mvPosition.z;
+    
+    gl_Position = projectionMatrix * mvPosition;
+}
+`;
+
+export const lakeFragmentShader = `
+uniform float uTime;
+uniform vec3 uWaterColorDeep;      // Deep water color (darker, near camera)
+uniform vec3 uWaterColorShallow;   // Shallow/sunset reflection color (golden/orange)
+uniform vec3 uSkyReflection;       // Sky color for reflection
+uniform vec3 uTreeReflectionColor; // Dark tree silhouette color
+uniform float uRippleIntensity;
+
+varying vec2 vUv;
+varying vec3 vWorldPos;
+varying float vDepth;
+
+${noiseCommon}
+
+void main() {
+    vec2 uv = vUv;
+    
+    // ═══════════════════════════════════════════════════════════════
+    // 1. HORIZONTAL RIPPLE ANIMATION (Firewatch style)
+    // ═══════════════════════════════════════════════════════════════
+    
+    // Multiple wave layers for organic movement
+    float wave1 = sin(uv.y * 60.0 + uTime * 1.2) * 0.003;
+    float wave2 = sin(uv.y * 35.0 - uTime * 0.8 + uv.x * 5.0) * 0.005;
+    float wave3 = sin(uv.y * 90.0 + uTime * 2.0) * 0.002;
+    
+    // Subtle noise-based distortion
+    float noiseWarp = snoise(vec3(uv.x * 3.0, uv.y * 8.0, uTime * 0.15)) * 0.008;
+    
+    vec2 distortedUV = uv;
+    distortedUV.x += (wave1 + wave2 + wave3 + noiseWarp) * uRippleIntensity;
+    
+    // ═══════════════════════════════════════════════════════════════
+    // 2. DEPTH-BASED COLOR GRADIENT
+    // ═══════════════════════════════════════════════════════════════
+    
+    // Distance from shore (uv.x = 0 is shore, uv.x = 1 is deep water)
+    float depthGradient = smoothstep(0.0, 0.6, uv.x);
+    
+    // Also consider view depth for atmospheric perspective
+    float viewDepthFactor = smoothstep(20.0, 80.0, vDepth);
+    
+    // ═══════════════════════════════════════════════════════════════
+    // 3. SUNSET SKY REFLECTION
+    // ═══════════════════════════════════════════════════════════════
+    
+    // Reflection is strongest in distance, looking toward horizon
+    float reflectionStrength = (1.0 - depthGradient) * 0.7 + 0.3;
+    
+    // Vertical gradient in reflection (sun higher = warmer at top of water)
+    float verticalReflect = 1.0 - uv.y;
+    
+    // Animated sun reflection shimmer
+    float sunReflect = snoise(vec3(distortedUV.x * 2.0, distortedUV.y * 15.0 - uTime * 0.5, uTime * 0.1));
+    sunReflect = smoothstep(0.2, 0.8, sunReflect * 0.5 + 0.5);
+    
+    // ═══════════════════════════════════════════════════════════════
+    // 4. TREE SILHOUETTE REFLECTIONS (Firewatch style)
+    // ═══════════════════════════════════════════════════════════════
+    
+    // Create procedural tree reflection pattern
+    // Trees are reflected from the far shore (high Y in UV)
+    float treeReflectY = 1.0 - uv.y; // Flip for reflection
+    
+    // Procedural tree shapes using layered noise
+    float treeNoise = snoise(vec3(distortedUV.x * 0.8, treeReflectY * 2.0, 0.0));
+    float treeNoise2 = snoise(vec3(distortedUV.x * 2.0 + 10.0, treeReflectY * 4.0, 0.0));
+    float treeNoise3 = snoise(vec3(distortedUV.x * 4.0 + 20.0, treeReflectY * 3.0, 0.0));
+    
+    // Combine for tree silhouette (triangular spruce shapes)
+    float treeShape = treeNoise * 0.5 + treeNoise2 * 0.3 + treeNoise3 * 0.2;
+    
+    // Trees only appear in upper portion of water (reflection from distant shore)
+    float treeMask = smoothstep(0.35, 0.65, uv.y); // Trees in middle-far distance
+    treeMask *= smoothstep(0.0, 0.3, uv.x); // Fade near shore edge
+    
+    // Threshold for tree shape
+    float treeReflection = smoothstep(0.15, 0.45, treeShape) * treeMask;
+    
+    // Ripple-distorted tree edges
+    float rippleBreak = sin(uv.y * 80.0 + uTime * 1.5) * 0.5 + 0.5;
+    treeReflection *= 0.6 + rippleBreak * 0.4;
+    
+    // ═══════════════════════════════════════════════════════════════
+    // 5. HORIZONTAL LIGHT BANDS (Water ripple highlights)
+    // ═══════════════════════════════════════════════════════════════
+    
+    float lightBand1 = sin(uv.y * 100.0 + uTime * 0.8) * 0.5 + 0.5;
+    float lightBand2 = sin(uv.y * 70.0 - uTime * 0.5 + 1.5) * 0.5 + 0.5;
+    float lightBands = lightBand1 * 0.6 + lightBand2 * 0.4;
+    lightBands = smoothstep(0.5, 0.9, lightBands) * 0.15;
+    
+    // ═══════════════════════════════════════════════════════════════
+    // 6. FINAL COLOR COMPOSITION
+    // ═══════════════════════════════════════════════════════════════
+    
+    // Base water color (deep to shallow/reflective)
+    vec3 waterBase = mix(uWaterColorShallow, uWaterColorDeep, depthGradient * 0.5);
+    
+    // Add sky/sun reflection
+    vec3 reflectedSky = mix(uSkyReflection, uWaterColorShallow, sunReflect * 0.3);
+    waterBase = mix(waterBase, reflectedSky, reflectionStrength * verticalReflect);
+    
+    // Add shimmer highlights
+    waterBase += vec3(1.0, 0.9, 0.7) * lightBands * reflectionStrength;
+    
+    // Mix in tree reflections as dark silhouettes
+    vec3 finalColor = mix(waterBase, uTreeReflectionColor, treeReflection * 0.7);
+    
+    // Atmospheric fog toward distance
+    float fogFactor = smoothstep(30.0, 100.0, vDepth);
+    vec3 fogColor = uSkyReflection * 0.9;
+    finalColor = mix(finalColor, fogColor, fogFactor * 0.4);
+    
+    // Shore edge fade (soft, irregular transition to ground)
+    float shoreEdgeMask = 1.0 - smoothstep(0.0, 0.25, uv.x);
+    float shoreNoiseLarge = snoise(vec3(vWorldPos.x * 0.03, vWorldPos.z * 0.05, 0.0));
+    float shoreNoiseDetail = snoise(vec3(vWorldPos.x * 0.09 + 12.0, vWorldPos.z * 0.12 - 6.0, 0.0));
+    float shoreNoise = (shoreNoiseLarge * 0.7 + shoreNoiseDetail * 0.3) * 0.06;
+    float sidePinch = smoothstep(0.2, 0.95, abs(uv.y - 0.5) * 2.0) * 0.05;
+    float shoreDist = uv.x + (shoreNoise + sidePinch) * shoreEdgeMask;
+    float shoreAlpha = smoothstep(0.02, 0.12, shoreDist);
+    
+    gl_FragColor = vec4(finalColor, shoreAlpha);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LENS FLARE SHADER - Camera lens flare elements from sun
+// ─────────────────────────────────────────────────────────────────────────────
+export const lensFlareVertexShader = `
+varying vec2 vUv;
+
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+export const lensFlareFragmentShader = `
+uniform float uTime;
+uniform float uOpacity;
+uniform vec3 uFlareColor;
+uniform float uFlareType;  // 0=circle, 1=ring, 2=hexagon, 3=streak
+
+varying vec2 vUv;
+
+void main() {
+    vec2 center = vUv - 0.5;
+    float dist = length(center);
+    float angle = atan(center.y, center.x);
+    
+    float alpha = 0.0;
+    vec3 color = uFlareColor;
+    
+    if (uFlareType < 0.5) {
+        // Circle/orb flare
+        float glow = 1.0 - smoothstep(0.0, 0.5, dist);
+        glow = pow(glow, 2.0);
+        alpha = glow;
+        
+        // Bright core
+        float core = 1.0 - smoothstep(0.0, 0.15, dist);
+        color = mix(color, vec3(1.0), core * 0.5);
+        
+    } else if (uFlareType < 1.5) {
+        // Ring flare
+        float ring = 1.0 - abs(dist - 0.35) * 5.0;
+        ring = max(0.0, ring);
+        ring = pow(ring, 1.5);
+        alpha = ring;
+        
+    } else if (uFlareType < 2.5) {
+        // Hexagon flare
+        float hex = cos(angle * 3.0) * 0.1;
+        float hexDist = dist + hex;
+        float glow = 1.0 - smoothstep(0.2, 0.45, hexDist);
+        glow *= 1.0 - smoothstep(0.0, 0.2, hexDist);
+        alpha = glow * 0.8;
+        
+    } else {
+        // Streak/anamorphic flare
+        float streak = 1.0 - smoothstep(0.0, 0.5, abs(center.y) * 3.0);
+        streak *= 1.0 - smoothstep(0.0, 0.5, abs(center.x));
+        streak = pow(streak, 1.2);
+        alpha = streak;
+    }
+    
+    // Subtle pulse animation
+    float pulse = 0.9 + sin(uTime * 1.5) * 0.1;
+    alpha *= pulse * uOpacity;
+    
+    gl_FragColor = vec4(color, alpha);
 }
 `;
