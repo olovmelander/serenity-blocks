@@ -489,38 +489,40 @@ void main() {
     float size = 0.0;
 
     // Effect parameters
-    float maxLife = 70.0;
+    float maxLife = 150.0;
 
     if (age > 0.0 && age < maxLife) {
         // EXPLOSION! Burst outward from moon surface
 
         // Add slight random spread to the radial direction
-        float spreadX = (aRandom - 0.5) * 0.3;
-        float spreadY = (fract(aRandom * 7.0) - 0.5) * 0.3;
-        float spreadZ = (fract(aRandom * 13.0) - 0.5) * 0.3;
+        float spreadX = (aRandom - 0.5) * 0.4;
+        float spreadY = (fract(aRandom * 7.0) - 0.5) * 0.4;
+        float spreadZ = (fract(aRandom * 13.0) - 0.5) * 0.4;
         vec3 burstDir = normalize(radialDir + vec3(spreadX, spreadY, spreadZ));
 
-        // Strong outward velocity - explosive burst
-        float speed = 15.0 + aRandom * 8.0;
+        // Epic outward velocity - explosive burst
+        float speed = 25.0 + aRandom * 15.0;
         vec3 velocity = burstDir * speed;
 
-        // Apply velocity over time
-        animatedPos += velocity * age;
+        // Apply velocity over time with drag/deceleration for a more natural expansion
+        float t = age;
+        float drag = 1.0 - (t / maxLife) * 0.7;
+        animatedPos += velocity * t * drag;
 
-        // Fade out over lifetime
+        // Fade out over a much longer lifetime - stays dense longer
         alpha = 1.0 - (age / maxLife);
-        alpha = pow(alpha, 0.4);
+        alpha = pow(alpha, 0.5); // Slower initial fade
 
-        // Large particles that shrink slightly
-        size = (1.0 - (age / maxLife) * 0.5) * 35.0;
+        // Larger particles that shrink gracefully
+        size = (1.5 - (age / maxLife) * 0.8) * 50.0;
     }
 
     vec4 mvPosition = modelViewMatrix * vec4(animatedPos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
 
     // Large point size for dramatic explosion
-    gl_PointSize = size * (300.0 / -mvPosition.z);
-    gl_PointSize = clamp(gl_PointSize, 3.0, 100.0);
+    gl_PointSize = size * (350.0 / -mvPosition.z);
+    gl_PointSize = clamp(gl_PointSize, 4.0, 140.0);
 
     vColor = aColor;
     vAlpha = alpha;

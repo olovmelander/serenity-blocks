@@ -14,6 +14,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SWEDISH_FOREST_TETROMINOS } from './swedish-forest-tetrominos.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { SwedishForestWater } from './SwedishForestWater.js';
+import { SwedishForestBirds } from './swedish-forest-birds.js';
 
 // PBR textures removed - using simple Firewatch-style ground
 import {
@@ -41,6 +42,10 @@ import {
     instancedTrunkFragmentShader,
     sunVertexShader,
     sunFragmentShader,
+    skyDomeVertexShader,
+    skyDomeFragmentShader,
+    cloudCardVertexShader,
+    cloudCardFragmentShader,
     dustVertexShader,
     dustFragmentShader,
     mountainVertexShader,
@@ -109,6 +114,13 @@ const COLORS = {
     // Fog - warm atmospheric haze
     fog: new THREE.Color(0x3A2510),
 
+    // Cloud palette - warm, low-contrast Firewatch tones
+    cloud: {
+        base: new THREE.Color(0xFFC89E),
+        highlight: new THREE.Color(0xFFE2C4),
+        fog: new THREE.Color(0xFFB274),
+    },
+
     // Sun colors (NEW)
     sun: {
         core: new THREE.Color(0xFFFFEE),      // Bright white-yellow core
@@ -142,8 +154,13 @@ export default class SwedishForestTheme extends BaseTheme {
         this.trunkInstancedMesh = null;    // Single InstancedMesh for all tree trunks
         this.groundPlane = null;
         this.starfield = null;
+        this.skyDome = null;
+        this.skyMaterial = null;
+        this.clouds = [];
+        this.cloudMaterials = [];
         this.mistPlanes = [];
         this.godRays = [];
+        this.godRayMaterial = null;
         this.fireflySystem = null;
         this.spirits = [];
         this.auroraPlanes = [];
@@ -160,8 +177,8 @@ export default class SwedishForestTheme extends BaseTheme {
         // Sun and atmospheric effects
         this.sun = null;
         this.sunGlowLayers = [];
-        this.sunPosition = new THREE.Vector3(0, 25, -140); // Check: Y=25, Z=-140
-        this.sunBaseY = 25; // Update base Y for animation
+        this.sunPosition = new THREE.Vector3(0, 30, -140); // Y=35, Z=-140
+        this.sunBaseY = 30; // Update base Y for animation
         this.dustMotes = null;
         this.lensFlares = []; // Lens flare elements
 
@@ -171,6 +188,10 @@ export default class SwedishForestTheme extends BaseTheme {
         this.foregroundBranches = [];
         this.lakeMesh = null;
         this.lakeMaterial = null;
+        this.shoreRocks = [];
+        this.rockTextureSet = null;
+        this.rockMaterials = [];
+        this.rockShadowCatcher = null;
 
         // 3D Silhouette Mountain (Firewatch-style)
         this.silhouetteMountain = null;
@@ -229,7 +250,7 @@ export default class SwedishForestTheme extends BaseTheme {
 
         this.scene = new THREE.Scene();
         this.scene.fog = new THREE.FogExp2(COLORS.fog.getHex(), 0.008); // Reduced fog for sunset visibility
-        this.scene.background = this.createGradientBackground();
+        this.scene.background = null;
 
         // ─────────────────────────────────────────────────────────────────────
         // CAMERA
@@ -243,6 +264,9 @@ export default class SwedishForestTheme extends BaseTheme {
         );
         this.camera.position.set(0, 5, 160); // Even further back (z=160) to see entire shore
         this.camera.lookAt(0, 6, -20);    // Look at lake and distant tree line
+        this.baseFov = 55; // Store base FOV for breathing effect
+
+        this.createSkyDome(); // Procedural sky base (gradient + sun halo)
 
         // ─────────────────────────────────────────────────────────────────────
         // RENDERER
@@ -253,6 +277,8 @@ export default class SwedishForestTheme extends BaseTheme {
             antialias: this.getAntialiasEnabled(),
             powerPreference: 'high-performance'
         });
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         container.appendChild(this.renderer.domElement);
@@ -288,6 +314,14 @@ export default class SwedishForestTheme extends BaseTheme {
         this.createGrass();          // Golden sunset grass
         // this.createGlowingMushrooms(); // Disabled - cleaner Firewatch look
         this.createMistLayers();     // Atmospheric golden fog
+        this.createStylizedClouds(); // Flat cloud layers near horizon
+        this.createSilhouetteGrass(); // Dense foreground grass framing
+
+        // Initialize GPGPU Birds
+        this.birds = new SwedishForestBirds(this.renderer, this.scene);
+        this.birds.init();
+        this.mainGroup.add(this.birds.mesh);
+
         this.createSpiritWinds();    // Flowing warm energy
         this.createDustMotes();      // Floating particles in sunlight
         this.createFireflySystem();  // Glowing amber particles
@@ -331,15 +365,16 @@ export default class SwedishForestTheme extends BaseTheme {
         canvas.height = 512;
         const ctx = canvas.getContext('2d');
 
-        // TRUE Firewatch sunset gradient - NO purple, all warm orange/red
+        // Saturated Firewatch sunset - deep orange to golden
         const gradient = ctx.createLinearGradient(0, 0, 0, 512);
-        gradient.addColorStop(0, '#5A1508');    // Deep burnt red at top
-        gradient.addColorStop(0.15, '#7A2010'); // Dark red-orange
-        gradient.addColorStop(0.30, '#AA3318'); // Rich red-orange
-        gradient.addColorStop(0.50, '#DD5520'); // Bright orange-red
-        gradient.addColorStop(0.70, '#FF7730'); // Vivid orange
-        gradient.addColorStop(0.85, '#FFAA45'); // Golden orange
-        gradient.addColorStop(1, '#FFCC55');    // Bright golden at horizon
+        gradient.addColorStop(0, '#4A1005');    // Very deep burnt orange at top
+        gradient.addColorStop(0.12, '#6A1808'); // Dark burnt orange
+        gradient.addColorStop(0.25, '#8A2510'); // Rich dark orange
+        gradient.addColorStop(0.40, '#BB4015'); // Deep orange
+        gradient.addColorStop(0.55, '#DD5520'); // Bright orange
+        gradient.addColorStop(0.70, '#FF7725'); // Vivid orange
+        gradient.addColorStop(0.85, '#FFAA40'); // Golden orange
+        gradient.addColorStop(1, '#FFCC50');    // Bright golden at horizon
 
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, 2, 512);
@@ -348,6 +383,45 @@ export default class SwedishForestTheme extends BaseTheme {
         texture.needsUpdate = true;
 
         return texture;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PROCEDURAL SKY DOME - Sunset gradient with sun disc and subtle halo
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createSkyDome() {
+        if (!this.scene || !this.camera) return;
+
+        const geometry = new THREE.SphereGeometry(600, 32, 20);
+        const sunDir = new THREE.Vector3()
+            .subVectors(this.sunPosition, this.camera.position)
+            .normalize();
+
+        this.skyMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTopColor: { value: COLORS.skyTop },
+                uMidColor: { value: COLORS.skyMid },
+                uHorizonColor: { value: COLORS.skyHorizon },
+                uSunColor: { value: new THREE.Color(0xFFF1C8) },
+                uHaloColor: { value: new THREE.Color(0xFFB46A) },
+                uSunDirection: { value: sunDir },
+                uSunDiscRadius: { value: 0.015 },
+                uSunHaloRadius: { value: 0.22 },
+                uSunDiscIntensity: { value: 0.22 },
+                uSunHaloIntensity: { value: 0.18 },
+            },
+            vertexShader: skyDomeVertexShader,
+            fragmentShader: skyDomeFragmentShader,
+            side: THREE.BackSide,
+            depthWrite: false,
+        });
+
+        this.skyDome = new THREE.Mesh(geometry, this.skyMaterial);
+        this.skyDome.frustumCulled = false;
+        this.skyDome.renderOrder = -100;
+        this.skyDome.position.copy(this.camera.position);
+
+        this.scene.add(this.skyDome);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -745,16 +819,18 @@ export default class SwedishForestTheme extends BaseTheme {
         // Create shader material for atmospheric perspective
         this.silhouetteMountainMaterial = new THREE.ShaderMaterial({
             uniforms: {
-                uBaseColor: { value: new THREE.Color(0x553344) },   // Dark purplish base
-                uPeakColor: { value: new THREE.Color(0xFF8844) },   // Orange glow at peak
-                uFogColor: { value: new THREE.Color(0xFF9944) },    // Atmospheric fog matches sky
-                uSkyColor: { value: new THREE.Color(0xFFBB77) },    // Sky color integration
+                uShadowColor: { value: new THREE.Color(0x2A1518) },    // Deep shadow (facing camera)
+                uMidColor: { value: new THREE.Color(0x6B3525) },       // Mid-tone warm brown
+                uHighlightColor: { value: new THREE.Color(0xCC6633) }, // Warm orange highlight
+                uRimColor: { value: new THREE.Color(0xFF8844) },       // Bright orange rim
+                uFogColor: { value: new THREE.Color(0xDD7744) },       // Warm atmospheric fog
             },
             vertexShader: `
                 varying vec2 vUv;
                 varying float vHeight;
                 varying vec3 vWorldPosition;
                 varying vec3 vNormal;
+                varying vec3 vViewDir;
                 attribute float aHeight;
 
                 void main() {
@@ -763,71 +839,70 @@ export default class SwedishForestTheme extends BaseTheme {
                     vNormal = normalize(normalMatrix * normal);
                     vec4 worldPosition = modelMatrix * vec4(position, 1.0);
                     vWorldPosition = worldPosition.xyz;
+                    vViewDir = normalize(cameraPosition - worldPosition.xyz);
                     gl_Position = projectionMatrix * viewMatrix * worldPosition;
                 }
             `,
             fragmentShader: `
-                uniform vec3 uBaseColor;
-                uniform vec3 uPeakColor;
+                uniform vec3 uShadowColor;
+                uniform vec3 uMidColor;
+                uniform vec3 uHighlightColor;
+                uniform vec3 uRimColor;
                 uniform vec3 uFogColor;
-                uniform vec3 uSkyColor;
                 varying float vHeight;
                 varying vec3 vWorldPosition;
                 varying vec3 vNormal;
-
-                // Simple noise function
-                float random(vec2 st) {
-                    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
-                }
-
-                float noise(vec2 st) {
-                    vec2 i = floor(st);
-                    vec2 f = fract(st);
-                    float a = random(i);
-                    float b = random(i + vec2(1.0, 0.0));
-                    float c = random(i + vec2(0.0, 1.0));
-                    float d = random(i + vec2(1.0, 1.0));
-                    vec2 u = f * f * (3.0 - 2.0 * f);
-                    return mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
-                }
+                varying vec3 vViewDir;
 
                 void main() {
-                    // Start with base silhouette color
-                    vec3 finalColor = uBaseColor;
+                    // Sun is BEHIND the mountains (negative Z), shining toward camera
+                    vec3 sunDir = normalize(vec3(0.0, 0.3, -1.0));
 
-                    // Light direction (from the setting sun)
-                    vec3 lightDir = normalize(vec3(0.5, 0.2, 1.0));
-                    float lighting = max(0.2, dot(vNormal, lightDir));
+                    // === DIRECTIONAL LIGHTING ===
+                    // Surfaces facing camera are in SHADOW (backlit scene)
+                    float facingCamera = max(0.0, dot(vNormal, vViewDir));
 
-                    // === HEIGHT-BASED COLOR ===
-                    // Darker at base, lighter toward peak (Firewatch style)
-                    vec3 mountainColor = mix(uBaseColor, uPeakColor, vHeight * 0.8);
+                    // Surfaces facing away from camera catch the sun
+                    float facingSun = max(0.0, dot(vNormal, -sunDir));
 
-                    // Add subtle lighting variation
-                    mountainColor *= lighting;
+                    // Surfaces facing up get some ambient light
+                    float facingUp = max(0.0, vNormal.y);
 
-                    // Add noise variation for texture
-                    float noiseVal = noise(vWorldPosition.xz * 0.03);
-                    mountainColor += vec3(noiseVal * 0.05 - 0.025);
+                    // === COLOR ZONES (Firewatch style) ===
+                    vec3 mountainColor;
 
-                    // === ATMOSPHERIC FOG ===
+                    // Start with shadow color (most of front-facing surface)
+                    mountainColor = uShadowColor;
+
+                    // Blend to mid-tone based on height and angle
+                    float midBlend = vHeight * 0.6 + facingUp * 0.3;
+                    mountainColor = mix(mountainColor, uMidColor, midBlend);
+
+                    // Add warm highlights on sun-catching surfaces
+                    float highlightBlend = facingSun * 0.5 + facingUp * vHeight * 0.4;
+                    mountainColor = mix(mountainColor, uHighlightColor, highlightBlend * 0.6);
+
+                    // === STRONG RIM LIGHTING ===
+                    // Edges perpendicular to view get bright rim light from sun behind
+                    float rim = 1.0 - facingCamera;
+                    rim = pow(rim, 2.0);
+                    // Rim is stronger on upper parts and edges facing up/back
+                    float rimStrength = rim * (0.5 + facingUp * 0.3 + facingSun * 0.4);
+                    mountainColor = mix(mountainColor, uRimColor, rimStrength * 0.5 * vHeight);
+
+                    // === ATMOSPHERIC PERSPECTIVE ===
                     float dist = length(vWorldPosition - cameraPosition);
-                    float fogFactor = smoothstep(80.0, 200.0, dist);
+                    float fogFactor = smoothstep(100.0, 280.0, dist);
+                    mountainColor = mix(mountainColor, uFogColor, fogFactor * 0.5);
 
-                    // Height-aware atmosphere (higher = more sky color)
-                    vec3 atmosphereColor = mix(uFogColor, uSkyColor, vHeight * 0.5);
-                    mountainColor = mix(mountainColor, atmosphereColor, fogFactor * 0.6);
+                    // === BASE MIST (darker/hazier at bottom) ===
+                    float baseMist = smoothstep(0.25, 0.0, vHeight);
+                    vec3 mistColor = uFogColor * 0.7;
+                    mountainColor = mix(mountainColor, mistColor, baseMist * 0.6);
 
-                    // === BASE FOG/MIST ===
-                    float baseFog = smoothstep(0.3, 0.0, vHeight);
-                    baseFog *= 0.8;
-                    mountainColor = mix(mountainColor, uFogColor, baseFog);
-
-                    // === RIM LIGHTING (edge glow from sun) ===
-                    float rim = 1.0 - max(0.0, dot(vNormal, vec3(0.0, 0.0, 1.0)));
-                    rim = pow(rim, 3.0);
-                    vec3 rimColor = vec3(1.0, 0.6, 0.3); // Warm orange rim
-                    mountainColor += rimColor * rim * 0.15 * vHeight;
+                    // === PEAK GLOW (subtle bright cap) ===
+                    float peakGlow = smoothstep(0.7, 1.0, vHeight);
+                    mountainColor = mix(mountainColor, uRimColor * 0.9, peakGlow * 0.25);
 
                     gl_FragColor = vec4(mountainColor, 1.0);
                 }
@@ -1778,6 +1853,116 @@ export default class SwedishForestTheme extends BaseTheme {
         this.grassMesh = grassMesh;
     }
 
+    createSilhouetteGrass() {
+        if (!this.scene) return;
+        const grassTexture = this.createGrassTexture();
+
+        // Billboard geometry - 4 quads at 45° intervals
+        const clumpSize = 3.5; // Larger for foreground
+        const clumpHeight = 1.6; // Taller
+        const numPlanes = 3; // Less dense planes, but more instances
+
+        const positions = [];
+        const uvs = [];
+        const normals = [];
+
+        const uvTop = 0.85;
+
+        for (let i = 0; i < numPlanes; i++) {
+            const angle = (i / numPlanes) * Math.PI;
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            const halfSize = clumpSize / 2;
+
+            positions.push(-halfSize * cos, 0, -halfSize * sin);
+            positions.push(halfSize * cos, 0, halfSize * sin);
+            positions.push(halfSize * cos, clumpHeight, halfSize * sin);
+            positions.push(-halfSize * cos, 0, -halfSize * sin);
+            positions.push(halfSize * cos, clumpHeight, halfSize * sin);
+            positions.push(-halfSize * cos, clumpHeight, -halfSize * sin);
+
+            uvs.push(0, 0, 1, 0, 1, uvTop);
+            uvs.push(0, 0, 1, uvTop, 0, uvTop);
+
+            for (let j = 0; j < 6; j++) {
+                normals.push(0, 1, 0);
+            }
+        }
+
+        const clumpGeo = new THREE.BufferGeometry();
+        clumpGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+        clumpGeo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
+        clumpGeo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
+
+        // Dark silhouette shader material
+        const grassMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uWindStrength: { value: 0.15 },
+                uGrassTexture: { value: grassTexture },
+                uBaseColor: { value: new THREE.Color(0x150505) },  // Very dark brown/black
+                uTipColor: { value: new THREE.Color(0x2A1005) },   // Slightly warmer tip
+            },
+            vertexShader: `
+                uniform float uTime;
+                uniform float uWindStrength;
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    vec3 pos = position;
+                    #ifdef USE_INSTANCING
+                        vec4 worldPos = modelMatrix * instanceMatrix * vec4(position, 1.0);
+                    #else
+                        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                    #endif
+                    float windPhase = worldPos.x * 0.2 + worldPos.z * 0.15 + uTime * 1.0;
+                    float wind = sin(windPhase) * uWindStrength;
+                    float heightFactor = uv.y * uv.y;
+                    pos.x += wind * heightFactor;
+                    vec4 mvPosition = viewMatrix * worldPos; 
+                    mvPosition.xyz += pos; 
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D uGrassTexture;
+                uniform vec3 uBaseColor;
+                uniform vec3 uTipColor;
+                varying vec2 vUv;
+                void main() {
+                    vec4 texColor = texture2D(uGrassTexture, vUv);
+                    if (texColor.a < 0.6) discard; // Sharper cutout
+                    vec3 color = mix(uBaseColor, uTipColor, vUv.y);
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `,
+            side: THREE.DoubleSide
+        });
+
+        // Dense foreground instances
+        const instanceCount = 800;
+        const grassMesh = new THREE.InstancedMesh(clumpGeo, grassMat, instanceCount);
+        const dummy = new THREE.Object3D();
+
+        for (let i = 0; i < instanceCount; i++) {
+            // Very close to camera: z = 140 to 160 (camera is at 160)
+            const x = (Math.random() - 0.5) * 120; // Wide spread left/right
+            const z = 140 + Math.random() * 25;    // Right in front of camera
+
+            const scale = 0.8 + Math.random() * 0.7;
+            dummy.scale.set(scale, scale * (0.9 + Math.random() * 0.3), scale);
+            dummy.position.set(x, -2.5, z); // Slightly lower
+            dummy.rotation.y = Math.random() * Math.PI * 2;
+            dummy.updateMatrix();
+            grassMesh.setMatrixAt(i, dummy.matrix);
+        }
+
+        grassMesh.instanceMatrix.needsUpdate = true;
+        grassMesh.frustumCulled = false;
+        this.mainGroup.add(grassMesh);
+        this.silhouetteGrassMesh = grassMesh;
+    }
+
     createGrassTexture() {
         const canvas = document.createElement('canvas');
         const size = 512;
@@ -1895,9 +2080,9 @@ export default class SwedishForestTheme extends BaseTheme {
             textureHeight: 512,
             waterNormals: waterNormals,
             sunDirection: this.sunPosition.clone().normalize(),
-            sunColor: 0xff6600,     // Orange sun
-            waterColor: 0xff4400,   // Intense orange water
-            distortionScale: 0.8,   // Calm ripples
+            sunColor: 0xffcc88,     // Brighter warm sun highlight
+            waterColor: 0x8b4513,   // Rich saddle brown/orange for deep water
+            distortionScale: 0.6,   // Gentler ripples
             fog: false
         });
 
@@ -2148,6 +2333,108 @@ export default class SwedishForestTheme extends BaseTheme {
         }
     }
 
+    loadRockTextureSet() {
+        const loader = new THREE.TextureLoader();
+        const maxAnisotropy = this.renderer?.capabilities.getMaxAnisotropy?.() || 1;
+
+        const albedo = loader.load(
+            new URL('./assets/mossy-ground1-albedo.png', import.meta.url).href
+        );
+        const normal = loader.load(
+            new URL('./assets/mossy-groundnormal.png', import.meta.url).href
+        );
+        const roughness = loader.load(
+            new URL('./assets/mossy-ground1-roughness.png', import.meta.url).href
+        );
+        const ao = loader.load(
+            new URL('./assets/mossy-ground1-ao.png', import.meta.url).href
+        );
+
+        albedo.colorSpace = THREE.SRGBColorSpace;
+
+        const repeat = new THREE.Vector2(1.8, 1.8);
+        [albedo, normal, roughness, ao].forEach((texture) => {
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.copy(repeat);
+            texture.anisotropy = maxAnisotropy;
+        });
+
+        return {
+            albedo,
+            normal,
+            roughness,
+            ao,
+            repeat,
+        };
+    }
+
+    createRockMaterials(rockColors) {
+        if (!this.rockTextureSet) {
+            this.rockTextureSet = this.loadRockTextureSet();
+        }
+
+        const { albedo, normal, roughness, ao, repeat } = this.rockTextureSet;
+        const maxAnisotropy = this.renderer?.capabilities.getMaxAnisotropy?.() || 1;
+        const offsets = [
+            new THREE.Vector2(0.05, 0.1),
+            new THREE.Vector2(0.38, 0.22),
+            new THREE.Vector2(0.17, 0.46),
+        ];
+
+        const makeTextureVariant = (source, offset, isColor = false) => {
+            const texture = source.clone();
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.copy(repeat);
+            texture.offset.copy(offset);
+            texture.anisotropy = maxAnisotropy;
+            if (isColor) {
+                texture.colorSpace = THREE.SRGBColorSpace;
+            }
+            texture.needsUpdate = true;
+            return texture;
+        };
+
+        return rockColors.map((tint, index) => {
+            const offset = offsets[index % offsets.length];
+
+            return new THREE.MeshStandardMaterial({
+                color: tint,
+                map: makeTextureVariant(albedo, offset, true),
+                normalMap: makeTextureVariant(normal, offset),
+                roughnessMap: makeTextureVariant(roughness, offset),
+                aoMap: makeTextureVariant(ao, offset),
+                roughness: 0.92,
+                metalness: 0.0,
+                normalScale: new THREE.Vector2(0.9, 0.9),
+                aoMapIntensity: 1.15,
+            });
+        });
+    }
+
+    createRockShadowCatcher() {
+        if (this.rockShadowCatcher || !this.mainGroup) return;
+
+        const geometry = new THREE.PlaneGeometry(300, 250);
+        const material = new THREE.ShadowMaterial({ opacity: 0.28 });
+        material.transparent = true;
+        material.depthWrite = false;
+        material.polygonOffset = true;
+        material.polygonOffsetFactor = -0.2;
+        material.polygonOffsetUnits = -0.2;
+
+        const shadowCatcher = new THREE.Mesh(geometry, material);
+        shadowCatcher.rotation.x = -Math.PI / 2;
+        shadowCatcher.position.set(0, -0.34, -40);
+        shadowCatcher.receiveShadow = true;
+        shadowCatcher.castShadow = false;
+        shadowCatcher.renderOrder = 1;
+
+        this.rockShadowCatcher = shadowCatcher;
+        this.mainGroup.add(shadowCatcher);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // SHORE ROCKS - Warm-colored silhouette boulders along the shoreline
     // ═══════════════════════════════════════════════════════════════════════════
@@ -2158,10 +2445,15 @@ export default class SwedishForestTheme extends BaseTheme {
         this.shoreRocks = [];
 
         const rockColors = [
-            new THREE.Color(0x2A1510),  // Dark warm
-            new THREE.Color(0x3A2015),  // Medium warm
-            new THREE.Color(0x4A2A20),  // Lighter warm
+            new THREE.Color(0x5A3926),  // Dark warm
+            new THREE.Color(0x6B4631),  // Medium warm
+            new THREE.Color(0x7C5740),  // Lighter warm
         ];
+
+        if (!this.rockMaterials || this.rockMaterials.length === 0) {
+            this.rockMaterials = this.createRockMaterials(rockColors);
+        }
+        this.createRockShadowCatcher();
 
         // Rock positions along the near shore and lake edges for natural framing
         // Lake edges visible in camera are around x=±120-160, near shore around z=35-55
@@ -2209,14 +2501,6 @@ export default class SwedishForestTheme extends BaseTheme {
             const geometry = new THREE.IcosahedronGeometry(1, 2);
 
             const positions = geometry.attributes.position;
-            const colors = new Float32Array(positions.count * 3);
-
-            // FIREWATCH COLOR PALETTE - warm oranges and browns
-            const shadowColor = new THREE.Color(0x2A1508);   // Deep warm shadow
-            const midColor = new THREE.Color(0x7A4020);      // Warm brown mid-tone
-            const lightColor = new THREE.Color(0xC86030);    // Bright orange-brown
-            const rimColor = new THREE.Color(0xFF8040);      // Intense orange rim highlight
-            const crackColor = new THREE.Color(0x150A04);    // Very dark for cracks
 
             // Random seed per rock for variety
             const seed = config.x * 0.1 + config.z * 0.2;
@@ -2275,84 +2559,14 @@ export default class SwedishForestTheme extends BaseTheme {
                 positions.setX(i, nx);
                 positions.setY(i, ny);
                 positions.setZ(i, nz);
-
-
-                // ─── FIREWATCH DIRECTIONAL LIGHTING ───
-                // Calculate surface normal (approximate from position)
-                const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-                const normX = nx / len;
-                const normY = ny / len;
-                const normZ = nz / len;
-
-                // Sun is BEHIND the scene (negative Z), shining toward camera
-                // So surfaces facing camera (positive normZ) are in SHADOW
-                // Surfaces facing away from camera (negative normZ) catch backlight
-
-                // Front-facing factor: how much the surface faces the camera
-                const frontFacing = Math.max(0, normZ);  // 0 to 1, 1 = directly facing camera
-
-                // Back-facing factor: how much the surface faces the sun (behind scene)
-                const backFacing = Math.max(0, -normZ);  // 0 to 1, 1 = facing away from camera
-
-                // Upward factor for top highlights
-                const upFacing = Math.max(0, normY);
-
-                // Bold color bands based on lighting
-                let r, g, b;
-
-                // Start with mid-tone
-                r = midColor.r;
-                g = midColor.g;
-                b = midColor.b;
-
-                // CAMERA-FACING = SHADOW (front of rock is dark)
-                if (frontFacing > 0.2) {
-                    const shadowMix = Math.min((frontFacing - 0.2) * 1.5, 0.85);
-                    r = r * (1.0 - shadowMix) + shadowColor.r * shadowMix;
-                    g = g * (1.0 - shadowMix) + shadowColor.g * shadowMix;
-                    b = b * (1.0 - shadowMix) + shadowColor.b * shadowMix;
-                }
-
-                // BACK-FACING + UP = CATCHES SUN (bright warm highlights)
-                const sunCatch = backFacing * 0.7 + upFacing * 0.5;
-                if (sunCatch > 0.3) {
-                    const lightMix = Math.min((sunCatch - 0.3) * 1.4, 0.9);
-                    r = r * (1.0 - lightMix) + lightColor.r * lightMix;
-                    g = g * (1.0 - lightMix) + lightColor.g * lightMix;
-                    b = b * (1.0 - lightMix) + lightColor.b * lightMix;
-                }
-
-                // RIM LIGHTING - bright orange on silhouette edges (backlit effect)
-                // Edges perpendicular to camera that face upward or backward get rim light
-                const edgeFactor = 1.0 - Math.abs(normZ);  // 1 = edge, 0 = facing camera
-                const rimStrength = edgeFactor * (upFacing * 0.6 + backFacing * 0.4 + 0.2);
-                if (rimStrength > 0.35) {
-                    const rimMix = Math.min((rimStrength - 0.35) * 2.0, 0.8);
-                    r = r + (rimColor.r - r) * rimMix;
-                    g = g + (rimColor.g - g) * rimMix;
-                    b = b + (rimColor.b - b) * rimMix;
-                }
-
-                // CRACK DARKENING - make cracks very dark
-                if (crack > 0.1) {
-                    const crackMix = Math.min(crack * 2.0, 0.9);
-                    r = r * (1.0 - crackMix) + crackColor.r * crackMix;
-                    g = g * (1.0 - crackMix) + crackColor.g * crackMix;
-                    b = b * (1.0 - crackMix) + crackColor.b * crackMix;
-                }
-
-                colors[i * 3] = Math.min(r, 1.0);
-                colors[i * 3 + 1] = Math.min(g, 1.0);
-                colors[i * 3 + 2] = Math.min(b, 1.0);
             }
 
-            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
             geometry.computeVertexNormals();
+            if (geometry.attributes.uv && !geometry.attributes.uv2) {
+                geometry.setAttribute('uv2', geometry.attributes.uv.clone());
+            }
 
-            // Flat shading material with vertex colors
-            const material = new THREE.MeshBasicMaterial({
-                vertexColors: true,
-            });
+            const material = this.rockMaterials[config.colorIdx % this.rockMaterials.length];
 
             const rock = new THREE.Mesh(geometry, material);
             rock.position.set(config.x, -0.3, config.z);
@@ -2360,6 +2574,8 @@ export default class SwedishForestTheme extends BaseTheme {
             rock.rotation.y = config.rotY;
             rock.rotation.x = (Math.random() - 0.5) * 0.15;  // Less random tilt
             rock.rotation.z = (Math.random() - 0.5) * 0.1;
+            rock.castShadow = true;
+            rock.receiveShadow = true;
 
             this.shoreRocks.push(rock);
             this.mainGroup.add(rock);
@@ -2952,76 +3168,138 @@ export default class SwedishForestTheme extends BaseTheme {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // GOD RAYS - Warm golden light beams from sun through trees
-    // ═══════════════════════════════════════════════════════════════════════════
+    createStylizedClouds() {
+        // Firewatch-style cloud cards layered into the upper sky
+        this.clouds = [];
+        this.cloudMaterials = [];
 
-    createGodRays() {
-        const rayCount = 24; // Denser, more dramatic god rays
+        const cloudFog = COLORS.cloud.fog;
+        const cloudBase = COLORS.cloud.base;
+        const cloudHighlight = COLORS.cloud.highlight;
 
-        for (let i = 0; i < rayCount; i++) {
-            const isHero = i % 5 === 0;
-            const width = (isHero ? 10 : 5) + Math.random() * (isHero ? 10 : 9);
-            const height = (isHero ? 80 : 60) + Math.random() * (isHero ? 55 : 40);
+        const cloudLayers = [
+            {
+                size: new THREE.Vector2(700, 140),
+                position: new THREE.Vector3(-10, 88, -340),
+                color: cloudBase.clone().lerp(cloudFog, 0.4),
+                highlight: cloudHighlight.clone().lerp(cloudFog, 0.5),
+                opacity: 0.12,
+                noiseScale: 1.05,
+                softness: 0.42,
+                coverage: 0.52,
+                drift: new THREE.Vector2(0.0011, 0.0002),
+                seed: 1.2,
+            },
+            {
+                size: new THREE.Vector2(600, 110),
+                position: new THREE.Vector3(18, 76, -270),
+                color: cloudBase.clone().lerp(cloudFog, 0.25),
+                highlight: cloudHighlight.clone().lerp(cloudFog, 0.35),
+                opacity: 0.17,
+                noiseScale: 1.2,
+                softness: 0.35,
+                coverage: 0.49,
+                drift: new THREE.Vector2(0.0018, 0.0003),
+                seed: 2.6,
+            },
+            {
+                size: new THREE.Vector2(520, 90),
+                position: new THREE.Vector3(-32, 64, -220),
+                color: cloudBase.clone().lerp(cloudFog, 0.1),
+                highlight: cloudHighlight.clone().lerp(cloudFog, 0.2),
+                opacity: 0.22,
+                noiseScale: 1.35,
+                softness: 0.3,
+                coverage: 0.46,
+                drift: new THREE.Vector2(0.0026, 0.0004),
+                seed: 4.1,
+            },
+        ];
 
-            const geometry = new THREE.PlaneGeometry(width, height);
-            geometry.translate(0, -height * 0.5, 0); // Anchor ray top at origin (sun position)
+        cloudLayers.forEach((layer, index) => {
+            const geometry = new THREE.PlaneGeometry(layer.size.x, layer.size.y, 1, 1);
 
             const material = new THREE.ShaderMaterial({
                 uniforms: {
                     uTime: this.uniforms.time,
-                    uOpacity: { value: (isHero ? 0.22 : 0.14) + Math.random() * (isHero ? 0.18 : 0.12) },
-                    uRayWidth: { value: (isHero ? 0.24 : 0.16) + Math.random() * (isHero ? 0.1 : 0.1) },
-                    uRayStrength: { value: (isHero ? 1.25 : 0.85) + Math.random() * (isHero ? 0.35 : 0.35) },
-                    uSeed: { value: Math.random() * 10.0 },
-                    uRayColor: { value: COLORS.godRay },
+                    uCloudColor: { value: layer.color },
+                    uHighlightColor: { value: layer.highlight },
+                    uFogColor: { value: cloudFog },
+                    uOpacity: { value: layer.opacity },
+                    uNoiseScale: { value: layer.noiseScale },
+                    uSoftness: { value: layer.softness },
+                    uCoverage: { value: layer.coverage },
+                    uDrift: { value: layer.drift },
+                    uSeed: { value: layer.seed },
+                    uFogStart: { value: 100 },
+                    uFogEnd: { value: 420 },
                 },
-                vertexShader: godRayVertexShader,
-                fragmentShader: godRayFragmentShader,
+                vertexShader: cloudCardVertexShader,
+                fragmentShader: cloudCardFragmentShader,
                 transparent: true,
-                blending: THREE.AdditiveBlending,
+                premultipliedAlpha: true,
                 depthWrite: false,
+                blending: THREE.NormalBlending,
+                alphaTest: 0.02,
                 side: THREE.DoubleSide,
             });
 
-            const ray = new THREE.Mesh(geometry, material);
+            const cloud = new THREE.Mesh(geometry, material);
+            cloud.position.copy(layer.position);
+            cloud.quaternion.copy(this.camera.quaternion);
+            cloud.renderOrder = -35 + index;
 
-            // Position rays to fan out from sun position
-            const angleSpread = (i / (rayCount - 1) - 0.5) * 0.9;
-            const sunX = this.sunPosition.x;
-            const sunY = this.sunPosition.y;
-            const sunZ = this.sunPosition.z;
+            this.scene.add(cloud);
+            this.clouds.push(cloud);
+            this.cloudMaterials.push(material);
+        });
+    }
 
-            const originRadius = isHero ? 18 : 12;
-            const offsetX = Math.sin(angleSpread * Math.PI) * (isHero ? 10 : 6) + (Math.random() - 0.5) * originRadius;
-            const offsetY = (Math.random() - 0.5) * originRadius * 0.45 + Math.random() * 2.0;
-            const offsetZ = (Math.random() - 0.5) * 10 + 6;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GOD RAYS - Advanced volumetric light shafts from sun
+    // ═══════════════════════════════════════════════════════════════════════════
 
-            ray.position.set(
-                sunX + offsetX,
-                sunY + offsetY,
-                sunZ + offsetZ
-            );
+    createGodRays() {
+        // Large plane covering entire view with volumetric god ray shader
+        // Position FORWARD of trees so rays overlay the scene
+        const width = 250;   // Very wide to cover full scene
+        const height = 180;  // Tall to reach from sky to ground
+        const geometry = new THREE.PlaneGeometry(width, height);
 
-            const baseRotZ = angleSpread * 0.6 + (Math.random() - 0.5) * 0.12;
-            const baseRotY = angleSpread * 0.25 + (Math.random() - 0.5) * 0.08;
-            const baseRotX = -0.32 + Math.random() * 0.1;
-            ray.rotation.set(baseRotX, baseRotY, baseRotZ);
+        // Create volumetric god ray material using advanced shader
+        this.godRayMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uOpacity: { value: 0.22 },  // Very subtle god rays
+                uSunPosition: { value: this.sunPosition.clone() },
+                uRayColor: { value: new THREE.Color(0xFFCC66) },
+                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            },
+            vertexShader: godRayVertexShader,
+            fragmentShader: godRayFragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            depthTest: false,  // Ignore depth - render on top of everything
+            side: THREE.DoubleSide,
+        });
 
-            ray.userData = {
-                offsetX,
-                offsetY,
-                offsetZ,
-                baseRotX,
-                baseRotY,
-                baseRotZ,
-                swayPhase: Math.random() * Math.PI * 2,
-                swaySpeed: 0.2 + Math.random() * 0.15,
-            };
+        const godRayPlane = new THREE.Mesh(geometry, this.godRayMaterial);
 
-            this.godRays.push(ray);
-            this.mainGroup.add(ray);
-        }
+        // Position plane CENTERED on the sun (which is at 0, 30, -60 typically)
+        // We place it slightly in front at z=-45
+        godRayPlane.position.set(0, 30, -45);
+
+        // Face the camera
+        godRayPlane.rotation.x = 0;
+
+        // Very high render order to draw after everything else
+        godRayPlane.renderOrder = 999;
+
+        this.godRays.push(godRayPlane);
+        this.scene.add(godRayPlane);
+
+        console.log('[SwedishForest] Created advanced volumetric god rays (overlay mode)');
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -3305,6 +3583,17 @@ export default class SwedishForestTheme extends BaseTheme {
         // Sunset directional light from sun position
         const sunLight = new THREE.DirectionalLight(0xFFAA44, 0.7);
         sunLight.position.set(0, 30, -60);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.set(1024, 1024);
+        sunLight.shadow.camera.near = 10;
+        sunLight.shadow.camera.far = 220;
+        sunLight.shadow.camera.left = -180;
+        sunLight.shadow.camera.right = 180;
+        sunLight.shadow.camera.top = 160;
+        sunLight.shadow.camera.bottom = -120;
+        sunLight.shadow.bias = -0.00035;
+        sunLight.shadow.normalBias = 0.02;
+        sunLight.shadow.camera.updateProjectionMatrix();
         this.scene.add(sunLight);
 
         // Warm rim light for tree silhouette edges
@@ -3622,23 +3911,30 @@ export default class SwedishForestTheme extends BaseTheme {
             }
         }
 
+        // Keep sky dome centered on camera and aligned to sun direction
+        if (this.skyDome && this.skyDome.material?.uniforms?.uSunDirection) {
+            const sunTarget = this.sun ? this.sun.position : this.sunPosition;
+            this.skyDome.material.uniforms.uSunDirection.value
+                .copy(sunTarget)
+                .sub(this.camera.position)
+                .normalize();
+            this.skyDome.position.copy(this.camera.position);
+        }
+
+        // Billboard cloud cards to camera for clean silhouettes
+        if (this.clouds && this.camera) {
+            this.clouds.forEach(cloud => {
+                cloud.quaternion.copy(this.camera.quaternion);
+            });
+        }
+
         // ─────────────────────────────────────────────────────────────────────
-        // GOD RAY SWAY
+        // GOD RAY SHADER UPDATE
         // ─────────────────────────────────────────────────────────────────────
 
-        const sunPos = this.sun ? this.sun.position : this.sunPosition;
-        this.godRays.forEach(ray => {
-            const sway = Math.sin(elapsed * ray.userData.swaySpeed + ray.userData.swayPhase);
-            const swayX = sway * 1.2;
-            const swayY = Math.sin(elapsed * ray.userData.swaySpeed * 0.7 + ray.userData.swayPhase) * 0.35;
-
-            ray.position.x = sunPos.x + ray.userData.offsetX + swayX;
-            ray.position.y = sunPos.y + ray.userData.offsetY + swayY;
-            ray.position.z = sunPos.z + ray.userData.offsetZ;
-
-            ray.rotation.z = ray.userData.baseRotZ + sway * 0.02;
-            ray.rotation.y = ray.userData.baseRotY + sway * 0.01;
-        });
+        if (this.godRayMaterial) {
+            this.godRayMaterial.uniforms.uTime.value = elapsed;
+        }
 
         // ─────────────────────────────────────────────────────────────────────
         // SPIRIT MOVEMENT
@@ -3757,8 +4053,23 @@ export default class SwedishForestTheme extends BaseTheme {
         });
 
         // ─────────────────────────────────────────────────────────────────────
+        // CAMERA BREATHING
+        // ─────────────────────────────────────────────────────────────────────
+        if (this.camera && this.baseFov) {
+            const breathingSpeed = 0.5; // Slow, meditative cycle
+            const breathingRange = 0.5; // +/- 0.5 degrees
+            this.camera.fov = this.baseFov + Math.sin(elapsed * breathingSpeed) * breathingRange;
+            this.camera.updateProjectionMatrix();
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
         // RENDER
         // ─────────────────────────────────────────────────────────────────────
+
+        // Update GPGPU Birds
+        if (this.birds) {
+            this.birds.update(elapsed, delta);
+        }
 
         this.renderer.render(this.scene, this.camera);
     }
@@ -3834,6 +4145,21 @@ export default class SwedishForestTheme extends BaseTheme {
             });
         }
 
+        if (this.rockMaterials && this.rockMaterials.length) {
+            this.rockMaterials.forEach((material) => {
+                material.map?.dispose();
+                material.normalMap?.dispose();
+                material.roughnessMap?.dispose();
+                material.aoMap?.dispose();
+            });
+        }
+        if (this.rockTextureSet) {
+            this.rockTextureSet.albedo?.dispose();
+            this.rockTextureSet.normal?.dispose();
+            this.rockTextureSet.roughness?.dispose();
+            this.rockTextureSet.ao?.dispose();
+        }
+
         this.scene = null;
         this.camera = null;
         this.renderer = null;
@@ -3842,8 +4168,13 @@ export default class SwedishForestTheme extends BaseTheme {
         this.trunkInstancedMesh = null;
         this.groundPlane = null;
         this.starfield = null;
+        this.skyDome = null;
+        this.skyMaterial = null;
+        this.clouds = [];
+        this.cloudMaterials = [];
         this.mistPlanes = [];
         this.godRays = [];
+        this.godRayMaterial = null;
         this.fireflySystem = null;
         this.spirits = [];
         this.auroraPlanes = [];
@@ -3858,5 +4189,9 @@ export default class SwedishForestTheme extends BaseTheme {
         this.foregroundBranches = [];
         this.silhouetteMountain = null;
         this.silhouetteMountainMaterial = null;
+        this.shoreRocks = [];
+        this.rockTextureSet = null;
+        this.rockMaterials = [];
+        this.rockShadowCatcher = null;
     }
 }
