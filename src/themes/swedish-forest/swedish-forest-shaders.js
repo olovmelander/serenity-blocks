@@ -305,13 +305,16 @@ void main() {
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GOD RAY SHADER
+// VOLUMETRIC GOD RAY SHADER - Advanced light scattering simulation
 // ─────────────────────────────────────────────────────────────────────────────
 export const godRayVertexShader = `
 varying vec2 vUv;
+varying vec3 vWorldPos;
 
 void main() {
     vUv = uv;
+    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+    vWorldPos = worldPosition.xyz;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;
@@ -319,38 +322,151 @@ void main() {
 export const godRayFragmentShader = `
 uniform float uTime;
 uniform float uOpacity;
-uniform float uRayWidth;
-uniform float uRayStrength;
-uniform float uSeed;
+uniform vec3 uSunPosition;
 uniform vec3 uRayColor;
+uniform vec2 uResolution;
 
 varying vec2 vUv;
+varying vec3 vWorldPos;
 
 ${noiseCommon}
 
-void main() {
-    float center = abs(vUv.x - 0.5);
-    float core = smoothstep(uRayWidth * 0.55, 0.0, center);
-    float halo = smoothstep(uRayWidth + 0.14, uRayWidth * 0.2, center);
-    float beam = max(core, halo * 0.65);
-    beam = pow(beam, 1.5);
-
-    float vertFade = pow(vUv.y, 0.65);
-    float sunBoost = smoothstep(0.6, 1.0, vUv.y);
-
-    float streaks = snoise(vec3(vUv.y * 10.0 + uSeed, vUv.x * 4.0, uTime * 0.18));
-    streaks = smoothstep(-0.1, 0.65, streaks);
-
-    float breakup = snoise(vec3(vUv * vec2(2.2, 6.0) + uSeed * 2.1, uTime * 0.05));
-    breakup = mix(0.75, 1.0, breakup * 0.5 + 0.5);
-
-    float flicker = 0.85 + 0.15 * sin(uTime * 0.7 + uSeed * 6.2831);
-
-    float alpha = beam * vertFade * streaks * breakup * uOpacity * uRayStrength * flicker;
-    alpha *= 0.7 + sunBoost * 0.6;
+// Soft beam function - creates individual ray beams
+float rayBeam(vec2 uv, float angle, float width, float softness) {
+    // Rotate UV around sun center (CENTERED)
+    vec2 center = vec2(0.5, 0.5);
+    vec2 p = uv - center;
     
-    vec3 color = mix(uRayColor, vec3(1.0, 0.95, 0.8), core * (0.35 + sunBoost * 0.25));
-    gl_FragColor = vec4(color, alpha * 0.75);
+    float c = cos(angle);
+    float s = sin(angle);
+    vec2 rotUV = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+
+    // Distance from ray center line
+    float dist = abs(rotUV.x);
+
+    // Soft-edged beam
+    float beam = smoothstep(width, width * softness, dist);
+
+    // Fade with distance from sun
+    float lengthFade = 1.0 - smoothstep(0.0, 0.8, length(p));
+
+    // Full 360 degrees visibility (removed directional mask)
+    // But we focus on downward rays by keeping the angles as they are
+    
+    return beam * lengthFade;
+}
+
+void main() {
+    vec2 uv = vUv;
+
+    // Sun position in UV space (CENTERED)
+    vec2 sunUV = vec2(0.5, 0.5);
+    vec2 toSun = sunUV - uv;
+    float distToSun = length(toSun);
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // VOLUMETRIC RAY ACCUMULATION
+    // ═══════════════════════════════════════════════════════════════════════
+
+    float rays = 0.0;
+
+    // Create multiple ray beams at different angles
+    // WIDER and more INTENSE rays for visibility through forest
+    float rayAngles[7];
+    rayAngles[0] = -0.40;   // Wider spread
+    rayAngles[1] = -0.22;
+    rayAngles[2] = -0.08;
+    rayAngles[3] = 0.0;
+    rayAngles[4] = 0.10;
+    rayAngles[5] = 0.25;
+    rayAngles[6] = 0.45;    // Wider spread
+
+    // MUCH WIDER rays for visibility
+    float rayWidths[7];
+    rayWidths[0] = 0.055;   // ~2x wider
+    rayWidths[1] = 0.045;
+    rayWidths[2] = 0.065;
+    rayWidths[3] = 0.080;   // Center ray very wide
+    rayWidths[4] = 0.050;
+    rayWidths[5] = 0.060;
+    rayWidths[6] = 0.048;
+
+    // Subtle ray intensities for natural atmospheric effect
+    float rayIntensities[7];
+    rayIntensities[0] = 0.15;
+    rayIntensities[1] = 0.2;
+    rayIntensities[2] = 0.28;
+    rayIntensities[3] = 0.35;  // Center ray brightest but subtle
+    rayIntensities[4] = 0.25;
+    rayIntensities[5] = 0.18;
+    rayIntensities[6] = 0.12;
+
+    for (int i = 0; i < 7; i++) {
+        float angle = rayAngles[i];
+        float width = rayWidths[i];
+        float intensity = rayIntensities[i];
+
+        // Add subtle time-based sway
+        float sway = sin(uTime * 0.12 + float(i) * 1.8) * 0.025;
+        angle += sway;
+
+        // Create the beam with softer edges for more glow
+        float beam = rayBeam(uv, angle, width, 0.2);  // Softer edges (was 0.3)
+
+        // Add intensity variation along the ray (dust particles catching light)
+        float dustNoise = snoise(vec3(uv * 6.0, uTime * 0.04 + float(i)));
+        dustNoise = 0.75 + dustNoise * 0.25;
+
+        rays += beam * intensity * dustNoise;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ATMOSPHERIC SCATTERING
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Subtle glow emanating from sun
+    float sunGlow = 1.0 - smoothstep(0.0, 0.35, distToSun);
+    sunGlow = pow(sunGlow, 2.5) * 0.2;  // Very subtle glow
+
+    // Vertical gradient - subtle fade at very bottom/top only
+    float verticalFade = 1.0; // Keep it uniform for now to ensure visibility
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // VOLUMETRIC NOISE (dust in the air catching light)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Large-scale atmospheric variation
+    float atmosphere = snoise(vec3(uv * 3.0, uTime * 0.03));
+    atmosphere = 0.85 + atmosphere * 0.15;
+
+    // Fine dust particles
+    float dust = snoise(vec3(uv * 15.0 + uTime * 0.02, uTime * 0.08));
+    dust = 0.92 + dust * 0.08;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FINAL COMPOSITION
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // Combine rays with atmospheric effects
+    float totalLight = rays * verticalFade * atmosphere * dust;
+    totalLight += sunGlow * atmosphere;
+
+    // Subtle pulsing
+    float pulse = 0.97 + 0.03 * sin(uTime * 0.25);
+    totalLight *= pulse;
+
+    // Color gradient - warmer near sun, slightly cooler at edges
+    vec3 warmColor = uRayColor;
+    vec3 hotColor = vec3(1.0, 0.95, 0.85);
+    vec3 color = mix(warmColor, hotColor, sunGlow + rays * 0.4);
+
+    // Apply final opacity
+    float alpha = totalLight * uOpacity;
+
+    // Allow brighter peaks
+    alpha = min(alpha, 0.95);
+
+    gl_FragColor = vec4(color, alpha);
 }
 `;
 
@@ -1288,5 +1404,117 @@ void main() {
     alpha *= pulse * uOpacity;
     
     gl_FragColor = vec4(color, alpha);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SKY DOME SHADER - Procedural sunset gradient with sun disc + halo
+// ─────────────────────────────────────────────────────────────────────────────
+export const skyDomeVertexShader = `
+varying vec3 vWorldDir;
+
+void main() {
+    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+    vWorldDir = normalize(worldPosition.xyz - cameraPosition);
+    gl_Position = projectionMatrix * viewMatrix * worldPosition;
+}
+`;
+
+export const skyDomeFragmentShader = `
+uniform vec3 uTopColor;
+uniform vec3 uMidColor;
+uniform vec3 uHorizonColor;
+uniform vec3 uSunColor;
+uniform vec3 uHaloColor;
+uniform vec3 uSunDirection;
+uniform float uSunDiscRadius;
+uniform float uSunHaloRadius;
+uniform float uSunDiscIntensity;
+uniform float uSunHaloIntensity;
+
+varying vec3 vWorldDir;
+
+void main() {
+    vec3 dir = normalize(vWorldDir);
+    float t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
+
+    vec3 sky = mix(uHorizonColor, uMidColor, smoothstep(0.0, 0.55, t));
+    sky = mix(sky, uTopColor, smoothstep(0.3, 1.0, t));
+
+    float sunDot = max(dot(dir, normalize(uSunDirection)), 0.0);
+    float sunDistance = 1.0 - sunDot;
+    float sunDisk = 1.0 - smoothstep(0.0, uSunDiscRadius, sunDistance);
+    float sunHalo = 1.0 - smoothstep(0.0, uSunHaloRadius, sunDistance);
+
+    vec3 color = sky;
+    color += uSunColor * sunDisk * uSunDiscIntensity;
+    color += uHaloColor * pow(sunHalo, 2.0) * uSunHaloIntensity;
+
+    gl_FragColor = vec4(color, 1.0);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLOUD CARD SHADER - Painterly Firewatch-style clouds
+// ─────────────────────────────────────────────────────────────────────────────
+export const cloudCardVertexShader = `
+varying vec2 vUv;
+varying vec3 vWorldPos;
+
+void main() {
+    vUv = uv;
+    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+    vWorldPos = worldPos.xyz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+export const cloudCardFragmentShader = `
+uniform float uTime;
+uniform vec3 uCloudColor;
+uniform vec3 uHighlightColor;
+uniform vec3 uFogColor;
+uniform float uOpacity;
+uniform float uNoiseScale;
+uniform float uSoftness;
+uniform float uCoverage;
+uniform vec2 uDrift;
+uniform float uSeed;
+uniform float uFogStart;
+uniform float uFogEnd;
+
+varying vec2 vUv;
+varying vec3 vWorldPos;
+
+${noiseCommon}
+
+void main() {
+    vec2 uv = vUv;
+    vec2 driftUv = uv + uDrift * uTime;
+
+    float edgeX = smoothstep(0.0, 0.12, uv.x) * smoothstep(1.0, 0.88, uv.x);
+    float edgeY = smoothstep(0.0, 0.2, uv.y) * smoothstep(1.0, 0.8, uv.y);
+    float edgeFade = edgeX * edgeY;
+
+    vec2 noiseUv = (driftUv - 0.5) * vec2(2.0, 0.75);
+    float baseNoise = fbm(vec3(noiseUv * uNoiseScale + uSeed, uTime * 0.02));
+    baseNoise = baseNoise * 0.5 + 0.5;
+    float detailNoise = fbm(vec3(noiseUv * (uNoiseScale * 1.8) + vec2(6.7, 3.1), uTime * 0.015));
+    detailNoise = detailNoise * 0.5 + 0.5;
+    float combined = mix(baseNoise, detailNoise, 0.35);
+
+    float softness = 0.08 + uSoftness * 0.3;
+    float coverage = smoothstep(uCoverage - softness, uCoverage + softness, combined);
+    float alpha = coverage * edgeFade * uOpacity;
+
+    vec3 color = mix(uCloudColor, uHighlightColor, combined * 0.25);
+    color *= 0.95 + combined * 0.08;
+
+    float dist = length(vWorldPos - cameraPosition);
+    float fogFactor = smoothstep(uFogStart, uFogEnd, dist);
+    color = mix(color, uFogColor, fogFactor);
+    alpha *= (1.0 - fogFactor * 0.65);
+
+    gl_FragColor = vec4(color * alpha, alpha);
 }
 `;

@@ -153,7 +153,7 @@ varying float vAlpha;
 
 void main() {
     // Spiral rotation based on radius
-    float spiralAngle = aAngle + aRadius * spiralTightness + time * 0.05;
+    float spiralAngle = aAngle + aRadius * spiralTightness - time * 0.05;
     
     // Add some organic wobble
     float wobble = sin(time * 0.3 + aRandom * 6.28) * 0.1;
@@ -181,8 +181,8 @@ void main() {
             // Optional: curve the falloff for a "hotter" head
             intensity = pow(intensity, 1.5);
             
-            // Take the strongest pulse affecting this particle
-            pulseIntensity = max(pulseIntensity, intensity);
+            // Additive blending for multiple overlapping pulses
+            pulseIntensity += intensity;
         }
     }
     
@@ -343,7 +343,7 @@ void main() {
     vec3 pos = position;
     
     // Slow orbital drift
-    float angle = time * 0.03 * (0.5 + aRandom);
+    float angle = -time * 0.03 * (0.5 + aRandom);
     float s = sin(angle);
     float c = cos(angle);
     vec3 rotatedPos = vec3(pos.x * c - pos.z * s, pos.y, pos.x * s + pos.z * c);
@@ -444,7 +444,7 @@ varying float vAlpha;
 
 void main() {
     // Initial Spiral Position (where the spark is born)
-    float paramAngle = aAngle + aRadius * spiralTightness + time * 0.05;
+    float paramAngle = aAngle + aRadius * spiralTightness - time * 0.05;
     
     vec3 initialPos;
     initialPos.x = cos(paramAngle) * aRadius;
@@ -456,16 +456,19 @@ void main() {
     float bestAge = -1.0;
     float maxLife = 100.0;
     
-    for (int i = 0; i < 8; i++) {
-        if (i >= uPulseCount) break;
-        float age = uPulseTimers[i] - aRadius;
-        
-        if (age > 0.0 && age < maxLife) {
-            // Pick the pulse with smallest age (most recent trigger for this radius)
-            if (bestAge < 0.0 || age < bestAge) {
-                bestAge = age;
-            }
-        }
+    // Assign this particle to a specific pulse slot to allow multiple independent rings
+    // We use the particle's random value to pick one of the 8 pulse slots
+    // This distributes the ~8000 sparks into 8 groups of ~1000 sparks each.
+    // Each group only responds to ITS assigned pulse slot.
+    // This prevents particles from snapping between different active pulses.
+    int mySlot = int(floor(aRandom * 8.0));
+    if (mySlot >= 8) mySlot = 7; // Safety clamp
+    
+    // Check ONLY this assigned slot
+    float age = uPulseTimers[mySlot] - aRadius;
+    
+    if (age > 0.0 && age < maxLife) {
+        bestAge = age; // This is the only age that matters for this particle
     }
     
     vec3 animatedPos = initialPos;

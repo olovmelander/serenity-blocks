@@ -109,10 +109,18 @@ class SwedishForestWater extends Mesh {
 
 				void main() {
 					vUv = uv;
-					mirrorCoord = modelMatrix * vec4( position, 1.0 );
+
+					// Gentle wave displacement - slow rolling motion
+					vec3 pos = position;
+					float wave1 = sin(position.x * 0.015 + time * 0.4) * cos(position.z * 0.012 + time * 0.3);
+					float wave2 = sin(position.x * 0.008 - time * 0.25) * cos(position.z * 0.01 + time * 0.35);
+					float wave3 = sin((position.x + position.z) * 0.006 + time * 0.2);
+					pos.y += (wave1 * 0.8 + wave2 * 0.5 + wave3 * 0.3) * 0.4;
+
+					mirrorCoord = modelMatrix * vec4( pos, 1.0 );
 					worldPosition = mirrorCoord.xyzw;
 					mirrorCoord = textureMatrix * mirrorCoord;
-					vec4 mvPosition =  modelViewMatrix * vec4( position, 1.0 );
+					vec4 mvPosition =  modelViewMatrix * vec4( pos, 1.0 );
 					gl_Position = projectionMatrix * mvPosition;
 
 				#include <beginnormal_vertex>
@@ -148,13 +156,38 @@ class SwedishForestWater extends Mesh {
 					return noise * 0.25 - 0.25;  // Reduced intensity for subtler waves
 				}
 
-				// Sun specular reflection
+				// Sun specular reflection - enhanced for bright sun path
 				void sunLight( const vec3 surfaceNormal, const vec3 eyeDirection, float shiny, float spec, float diffuse, inout vec3 diffuseColor, inout vec3 specularColor ) {
 					vec3 reflection = normalize( reflect( -sunDirection, surfaceNormal ) );
 					float direction = max( 0.0, dot( eyeDirection, reflection ) );
-					// Increased specular for visible sun reflection
-					specularColor += pow( direction, shiny ) * sunColor * spec * 1.2;
+					// Bright sun specular highlight
+					specularColor += pow( direction, shiny ) * sunColor * spec * 4.5;
+					// Add wider, softer sun glow for sun path effect
+					specularColor += pow( direction, shiny * 0.2 ) * sunColor * spec * 1.0;
 					diffuseColor += max( dot( sunDirection, surfaceNormal ), 0.0 ) * sunColor * diffuse;
+				}
+
+				// Procedural tree shadow function for reflections (Firewatch style)
+				float treeReflectionPattern( vec2 pos, float t ) {
+					// Soft tree silhouettes reflected in water
+					float trees = 0.0;
+
+					// Layer 1 - Distant tree line (soft gradient)
+					float x1 = pos.x * 0.04;
+					float treeLine1 = sin(x1 * 2.0) * 0.3 + sin(x1 * 5.0) * 0.15;
+					float treeHeight1 = 0.5 + treeLine1;
+					// Soft transition instead of hard step
+					float inTree1 = smoothstep(treeHeight1 + 0.08, treeHeight1 - 0.02, pos.y) * smoothstep(0.1, 0.2, pos.y);
+					trees = max(trees, inTree1 * 0.7);
+
+					// Layer 2 - Mid trees
+					float x2 = pos.x * 0.07 + 2.0;
+					float treeLine2 = sin(x2 * 3.0) * 0.22 + sin(x2 * 7.0) * 0.1;
+					float treeHeight2 = 0.38 + treeLine2;
+					float inTree2 = smoothstep(treeHeight2 + 0.06, treeHeight2 - 0.02, pos.y) * smoothstep(0.08, 0.15, pos.y);
+					trees = max(trees, inTree2 * 0.5);
+
+					return trees;
 				}
 
 				// Subtle cel-shading quantization
@@ -183,8 +216,8 @@ class SwedishForestWater extends Mesh {
 
 					vec3 worldToEye = eye-worldPosition.xyz;
 					vec3 eyeDirection = normalize( worldToEye );
-					// Sun reflection - higher spec for visible sun glint
-					sunLight( surfaceNormal, eyeDirection, 60.0, 1.5, 0.5, diffuseLight, specularLight );
+					// Sun reflection - bright specular for visible sun path
+					sunLight( surfaceNormal, eyeDirection, 50.0, 2.2, 0.6, diffuseLight, specularLight );
 
 					float distance = length(worldToEye);
 
@@ -200,12 +233,12 @@ class SwedishForestWater extends Mesh {
 
 					vec3 scatter = max( 0.0, dot( surfaceNormal, eyeDirection ) ) * waterColor;
 
-					// DEPTH GRADIENT: Darker near camera, lighter golden toward horizon
-					vec3 nearColor = vec3( 0.75, 0.4, 0.1 );    // Warm orange (foreground)
-					vec3 farColor = vec3( 0.95, 0.65, 0.25 );   // Light golden orange (horizon)
-
-					// Smooth depth falloff - starts blending at ~20 units, fully far at ~150 units
-					float depthFactor = smoothstep( 20.0, 150.0, distance );
+					// DEPTH GRADIENT: Rich orange sunset reflection (Firewatch aesthetic)
+					vec3 nearColor = vec3( 0.82, 0.38, 0.1 );  // Saturated warm orange (foreground)
+					vec3 farColor = vec3( 1.0, 0.75, 0.35 );    // Bright glowing gold (horizon)
+					
+					// Smooth depth falloff - slightly further blend for more orange coverage
+					float depthFactor = smoothstep( 25.0, 180.0, distance );
 					vec3 orangeBase = mix( nearColor, farColor, depthFactor );
 					
 					// SHORE SHADOW (Vignette based on UV distance from center)
@@ -217,27 +250,151 @@ class SwedishForestWater extends Mesh {
 					// Start darkening at 0.85, fully dark at 1.0
 					float shoreShadow = smoothstep(0.85, 1.0, distFromCenter);
 					
-					// Deep burgundy/brown for shore shadow
-					vec3 shoreDarkColor = vec3(0.2, 0.05, 0.02);
+					// Warm dark brown for shore shadow
+					vec3 shoreDarkColor = vec3(0.25, 0.12, 0.05);
+
+					// Apply subtle shore shadow to base color
+					orangeBase = mix(orangeBase, shoreDarkColor, shoreShadow * 0.6);
+
+					// ════════════════════════════════════════════════════════════════
+					// SHORE FOAM (animated foam near edges)
+					// ════════════════════════════════════════════════════════════════
+
+					// Foam appears near the shore edges
+					float foamZone = smoothstep(0.75, 0.95, distFromCenter);
+
+					// Animated foam pattern - multiple overlapping waves
+					float foam1 = sin(worldPosition.x * 0.8 + time * 1.2) * sin(worldPosition.z * 0.6 + time * 0.9);
+					float foam2 = sin(worldPosition.x * 1.5 - time * 0.8) * sin(worldPosition.z * 1.2 + time * 1.1);
+					float foam3 = sin((worldPosition.x + worldPosition.z) * 0.5 + time * 0.7);
+
+					// Combine foam patterns - creates organic, bubbly look
+					float foamPattern = (foam1 + foam2 * 0.6 + foam3 * 0.4) * 0.5 + 0.5;
+					foamPattern = smoothstep(0.3, 0.7, foamPattern); // sharpen the foam edges
+
+					// Foam intensity increases toward shore edge
+					float foamIntensity = foamZone * foamPattern;
+
+					// ════════════════════════════════════════════════════════════════
+					// OBJECT FOAM - foam around rocks and logs in the water
+					// Uses UV coordinates for reliable positioning
+					// ════════════════════════════════════════════════════════════════
+
+					float objectFoam = 0.0;
+
+					// Animated foam wave for objects
+					float objFoamWave = sin(worldPosition.x * 0.8 + time * 1.0) * sin(worldPosition.z * 0.6 + time * 0.8);
+					objFoamWave = objFoamWave * 0.25 + 0.75;
+
+					// Object positions in UV space (matched to actual scene objects)
+					// Log 1 (Left far)
+					vec2 rock1UV = vec2(0.37, 0.82);
+					float d1 = length(vUv - rock1UV);
+					float rock1Foam = smoothstep(0.14, 0.04, d1); // Slightly wider, softer foam
+					objectFoam = max(objectFoam, rock1Foam);
+
+					// Log 2 (Center far)
+					vec2 rock2UV = vec2(0.46, 0.77);
+					float d2 = length(vUv - rock2UV);
+					float rock2Foam = smoothstep(0.12, 0.03, d2);
+					objectFoam = max(objectFoam, rock2Foam);
+
+					// Log 3 / Shore stone (Center-right far)
+					vec2 logUV = vec2(0.58, 0.81);
+					float dLog = length(vUv - logUV);
+					float foamLog = smoothstep(0.1, 0.02, dLog);
+					objectFoam = max(objectFoam, foamLog);
 					
-					// Apply shore shadow to base color
-					orangeBase = mix(orangeBase, shoreDarkColor, shoreShadow * 0.9);
+					// Log 4 (Right-side water log)
+					vec2 log4UV = vec2(0.74, 0.5);
+					float d4 = length(vUv - log4UV);
+					float foam4 = smoothstep(0.12, 0.04, d4);
+					objectFoam = max(objectFoam, foam4);
+
+					// Log 5 (Right far)
+					vec2 log5UV = vec2(0.79, 0.39);
+					float d5 = length(vUv - log5UV);
+					float foam5 = smoothstep(0.12, 0.04, d5);
+					objectFoam = max(objectFoam, foam5);
+
+					// Apply wave animation
+					objectFoam *= objFoamWave * 0.8; // Reduced object foam intensity
+
+					// Combine shore foam and object foam
+					foamIntensity = max(foamIntensity, objectFoam);
+
+					// Add subtle variation
+					float foamVariation = sin(worldPosition.x * 2.0) * sin(worldPosition.z * 2.5) * 0.15 + 0.85;
+					foamIntensity *= foamVariation;
+
+					// Warm cream/orange foam color
+					vec3 foamColor = vec3(1.0, 0.9, 0.75);
+
+					// Apply foam to base color
+					orangeBase = mix(orangeBase, foamColor, foamIntensity * 0.4); // Subtler foam blend
+
+					// ════════════════════════════════════════════════════════════════
+					// TREE SHADOW REFLECTIONS (Firewatch style)
+					// ════════════════════════════════════════════════════════════════
+
+					// Calculate tree reflection position (flip Y for reflection)
+					vec2 treeReflectPos = vec2(worldPosition.x, 1.0 - vUv.y);
+
+					// Add ripple distortion to break up tree reflections
+					float rippleDistort = sin(worldPosition.z * 1.5 + time * 0.6) * 0.06;
+					rippleDistort += sin(worldPosition.z * 3.0 - time * 0.4) * 0.03;
+					rippleDistort += sin(worldPosition.x * 0.8 + time * 0.3) * 0.02;
+					treeReflectPos.y += rippleDistort;
+
+					// Get tree shadow pattern
+					float treeShadow = treeReflectionPattern(treeReflectPos, time);
+
+					// Trees only visible in mid-to-far distance (not right at shore)
+					float treeMask = smoothstep(0.2, 0.5, vUv.y) * smoothstep(0.95, 0.7, distFromCenter);
+					treeShadow *= treeMask;
+
+					// Dark tree silhouette color (dark brown with warmth)
+					vec3 treeShadowColor = vec3(0.2, 0.1, 0.05);
+
+					// Apply tree shadows - subtle darkening where trees reflect
+					orangeBase = mix(orangeBase, treeShadowColor, treeShadow * 0.35);
+
+					// ════════════════════════════════════════════════════════════════
+					// SUN PATH REFLECTION (bright vertical column toward sun)
+					// ════════════════════════════════════════════════════════════════
+
+					// Sun is roughly centered, create a bright path toward it
+					float sunPathX = abs(worldPosition.x) / 80.0; // Normalize X distance from center
+					float sunPath = 1.0 - smoothstep(0.0, 0.4, sunPathX); // Bright in center, fades to sides
+					sunPath *= sunPath; // Sharpen the falloff
+
+					// Sun path is strongest toward horizon (far from camera)
+					sunPath *= depthFactor * 1.2;
+
+					// Add shimmer/sparkle to sun path
+					float sparkle = sin(worldPosition.z * 8.0 + time * 2.0) * 0.5 + 0.5;
+					sparkle *= sin(worldPosition.x * 3.0 + time * 1.5) * 0.5 + 0.5;
+					sunPath *= (0.7 + sparkle * 0.5);
+
+					// Blend reflections with stronger warm/orange tint
+					vec3 warmReflection = reflectionSample * 0.3 + vec3(0.25, 0.12, 0.04);
 
 					vec3 albedo = mix(
-						( sunColor * diffuseLight * 0.4 + scatter ) * getShadowMask(),
-						( orangeBase + reflectionSample * 0.3 + reflectionSample * specularLight * 1.5 ),
-						reflectance
+						( sunColor * diffuseLight * 0.15 + scatter * 0.2 ) * getShadowMask(),
+						( orangeBase * 0.9 + warmReflection * 0.15 + reflectionSample * specularLight * 0.4 ),
+						reflectance * 0.7
 					);
-					
+
+					// Add bright sun path on top
+					vec3 sunPathColor = vec3(1.0, 0.85, 0.5); // Bright warm gold
+					albedo += sunPathColor * sunPath * 0.8;
+
 					// SHORE FADE - Transparency at the very edge to blend with ground
 					// Start fading at 0.98, fully transparent at 1.0
 					float edgeAlpha = 1.0 - smoothstep(0.98, 1.0, distFromCenter);
 
-					// Subtle cel-shading (20 levels for softer banding)
-					vec3 outgoingLight = quantizeColor( albedo, 20.0 );
-					
-					// Combine global alpha with edge fade
-					gl_FragColor = vec4( outgoingLight, alpha * edgeAlpha );
+					// Smooth output without cel-shading for natural look
+					gl_FragColor = vec4( albedo, alpha * edgeAlpha );
 
 					#include <tonemapping_fragment>
 					#include <colorspace_fragment>
