@@ -51,7 +51,8 @@ export default class GalaxyTheme extends BaseTheme {
 
         // Multiple stacking pulse waves
         this.MAX_PULSES = 8;
-        this.activePulses = []; // Array of {timer: number}
+        this.pulseSlots = Array(this.MAX_PULSES).fill(null).map(() => ({ active: false, timer: -100.0 }));
+        this.currentPulseSlot = 0;
 
         // Animation
         this.animationFrame = null;
@@ -235,7 +236,7 @@ export default class GalaxyTheme extends BaseTheme {
 
     createSpiralArms() {
         // More particles for denser spiral arms like in reference
-        const particleCount = 8000;
+        const particleCount = 16000;
         const geometry = new THREE.BufferGeometry();
 
         const angles = new Float32Array(particleCount);
@@ -331,7 +332,7 @@ export default class GalaxyTheme extends BaseTheme {
 
     createSpiralSparks() {
         // More particles for impressive combo effects
-        const count = 8000;
+        const count = 100000;
         const geometry = new THREE.BufferGeometry();
 
         const angles = new Float32Array(count);
@@ -613,27 +614,23 @@ export default class GalaxyTheme extends BaseTheme {
         this.updateFlares(delta);
 
         // Update Multiple Pulse Waves
-        if (this.spiralStars && this.activePulses.length > 0) {
+        if (this.spiralStars) {
             const pulseTimers = this.spiralStars.material.uniforms.uPulseTimers.value;
 
-            // Update each active pulse
-            for (let i = this.activePulses.length - 1; i >= 0; i--) {
-                const pulse = this.activePulses[i];
-                pulse.timer += delta * 8.0; // Move wave outwards
-
-                // Remove expired pulses (after sparks finish)
-                if (pulse.timer > 120.0) {
-                    this.activePulses.splice(i, 1);
-                }
-            }
-
-            // Update shader uniforms with current pulse timers
+            // Update each slot
             for (let i = 0; i < this.MAX_PULSES; i++) {
-                if (i < this.activePulses.length) {
-                    pulseTimers[i] = this.activePulses[i].timer;
-                } else {
-                    pulseTimers[i] = -100.0; // Inactive
+                const slot = this.pulseSlots[i];
+                if (slot.active) {
+                    slot.timer += delta * 8.0;
+
+                    if (slot.timer > 120.0) {
+                        slot.active = false;
+                        slot.timer = -100.0;
+                    }
                 }
+
+                // Update uniform directly
+                pulseTimers[i] = slot.timer;
             }
 
             // Sync Sparks
@@ -797,11 +794,11 @@ export default class GalaxyTheme extends BaseTheme {
 
     onLineClear(count) {
         this.uniforms.coreIntensity.value += count * 0.4;
-        this.createShockwave(count);
+        // this.createShockwave(count);
 
         if (count >= 4) {
             // Tetris - extra effects
-            this.createShockwave(count * 0.5);
+            // this.createShockwave(count * 0.5);
             for (let i = 0; i < 3; i++) {
                 setTimeout(() => this.createSolarFlare(), i * 100);
             }
@@ -811,16 +808,17 @@ export default class GalaxyTheme extends BaseTheme {
     onCombo(count) {
         if (count > 1) {
             this.uniforms.coreIntensity.value += 0.25;
-            this.createShockwave(count * 0.4);
+            // this.createShockwave(count * 0.4);
 
-            // Add a new Pulse Wave (stacking, not restarting)
+            // Add a new Pulse Wave (stacking, in strict slots)
             if (this.spiralStars) {
-                // If at max capacity, remove the oldest pulse
-                if (this.activePulses.length >= this.MAX_PULSES) {
-                    this.activePulses.shift();
-                }
-                // Add new pulse starting at timer = 0
-                this.activePulses.push({ timer: 0.0 });
+                // Use next slot in circular buffer
+                const slotIdx = this.currentPulseSlot;
+                this.pulseSlots[slotIdx].active = true;
+                this.pulseSlots[slotIdx].timer = 0.0;
+
+                // Advance pointer
+                this.currentPulseSlot = (this.currentPulseSlot + 1) % this.MAX_PULSES;
             }
         }
         if (count >= 4) {

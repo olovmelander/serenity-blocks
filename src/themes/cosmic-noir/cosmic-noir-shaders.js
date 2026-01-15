@@ -725,39 +725,39 @@ void main() {
     vec3 radialDir = normalize(initialPos);
 
     // Stagger eruption timing based on random value
-    float triggerTime = aRandom * 2.5;
+    float triggerTime = aRandom * 3.5; // Wider stagger
     float age = uPulseTimer - triggerTime;
 
     vec3 animatedPos = initialPos;
     float alpha = 0.0;
     float size = 0.0;
 
-    // Effect parameters
-    float maxLife = 60.0;
+    // Effect parameters - increased life for longer visibility
+    float maxLife = 90.0;
 
     if (age > 0.0 && age < maxLife) {
         // VOID EXPLOSION! Burst outward from planet surface
 
-        // Add slight random spread to the radial direction
-        float spreadX = (aRandom - 0.5) * 0.25;
-        float spreadY = (fract(aRandom * 7.0) - 0.5) * 0.25;
-        float spreadZ = (fract(aRandom * 13.0) - 0.5) * 0.25;
+        // Add random spread to the radial direction - increased for more volume
+        float spreadX = (aRandom - 0.5) * 0.45;
+        float spreadY = (fract(aRandom * 7.0) - 0.5) * 0.45;
+        float spreadZ = (fract(aRandom * 13.0) - 0.5) * 0.45;
         vec3 burstDir = normalize(radialDir + vec3(spreadX, spreadY, spreadZ));
 
-        // Strong outward velocity - explosive burst
-        float speed = 25.0 + aRandom * 10.0;
+        // Strong outward velocity - speed increased significantly
+        float speed = 40.0 + aRandom * 25.0;
         vec3 velocity = burstDir * speed;
 
-        // Apply velocity over time with slight deceleration
-        float decel = 1.0 - age * 0.003;
-        animatedPos += velocity * age * max(decel, 0.5);
+        // Apply velocity over time with better deceleration curve
+        float decel = 1.0 - pow(age / maxLife, 1.2);
+        animatedPos += velocity * age * max(decel, 0.35);
 
         // Fade out over lifetime
         alpha = 1.0 - (age / maxLife);
-        alpha = pow(alpha, 0.5);
+        alpha = pow(alpha, 0.45); // Slower initial fade
 
-        // Large particles that shrink
-        size = (1.0 - (age / maxLife) * 0.6) * 30.0;
+        // Larger particles that scale down
+        size = (1.2 - (age / maxLife) * 0.8) * 45.0;
     }
 
     vec4 mvPosition = modelViewMatrix * vec4(animatedPos, 1.0);
@@ -765,7 +765,7 @@ void main() {
 
     // Large point size for dramatic explosion
     gl_PointSize = size * (300.0 / -mvPosition.z);
-    gl_PointSize = clamp(gl_PointSize, 2.0, 80.0);
+    gl_PointSize = clamp(gl_PointSize, 3.0, 100.0); // Slightly higher max clamp
 
     vColor = aColor;
     vAlpha = alpha;

@@ -44,10 +44,10 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
     Extreme: {
-        starCount: 50000,
-        nebulaCount: 25,
-        ambientParticles: 400,
-        bloodSparks: 3000,
+        starCount: 60000,
+        nebulaCount: 30,
+        ambientParticles: 600,
+        bloodSparks: 10000,
         bloomStrength: 0.6,
         bloomRadius: 0.5,
         enablePostProcessing: true,
@@ -55,10 +55,10 @@ const QUALITY_PRESETS = {
         glowLayers: 8,
     },
     Ultra: {
-        starCount: 40000,
-        nebulaCount: 20,
-        ambientParticles: 300,
-        bloodSparks: 2500,
+        starCount: 45000,
+        nebulaCount: 25,
+        ambientParticles: 450,
+        bloodSparks: 8000,
         bloomStrength: 0.55,
         bloomRadius: 0.45,
         enablePostProcessing: true,
@@ -66,10 +66,10 @@ const QUALITY_PRESETS = {
         glowLayers: 7,
     },
     High: {
-        starCount: 30000,
-        nebulaCount: 15,
-        ambientParticles: 200,
-        bloodSparks: 2000,
+        starCount: 35000,
+        nebulaCount: 20,
+        ambientParticles: 300,
+        bloodSparks: 6400,
         bloomStrength: 0.5,
         bloomRadius: 0.4,
         enablePostProcessing: true,
@@ -77,10 +77,10 @@ const QUALITY_PRESETS = {
         glowLayers: 6,
     },
     Medium: {
-        starCount: 18000,
-        nebulaCount: 10,
-        ambientParticles: 120,
-        bloodSparks: 1500,
+        starCount: 22000,
+        nebulaCount: 12,
+        ambientParticles: 180,
+        bloodSparks: 4800,
         bloomStrength: 0.4,
         bloomRadius: 0.35,
         enablePostProcessing: true,
@@ -88,10 +88,10 @@ const QUALITY_PRESETS = {
         glowLayers: 5,
     },
     Low: {
-        starCount: 10000,
-        nebulaCount: 6,
-        ambientParticles: 60,
-        bloodSparks: 1000,
+        starCount: 12000,
+        nebulaCount: 8,
+        ambientParticles: 100,
+        bloodSparks: 3200,
         bloomStrength: 0.3,
         bloomRadius: 0.3,
         enablePostProcessing: false,
@@ -562,8 +562,8 @@ export default class BloodMoonTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createBloodSparks() {
-        const poolSize = 8; // Number of overlapping bursts allowed
-        const countPerSystem = Math.floor(this.qualityPreset.bloodSparks / 2); // Split particles across pool
+        const poolSize = 16; // Number of overlapping bursts allowed
+        const countPerSystem = Math.floor(this.qualityPreset.bloodSparks / 4); // Use more particles per system in the pool
 
         const moonRadius = 180; // Start at moon surface
 
@@ -714,11 +714,11 @@ export default class BloodMoonTheme extends BaseTheme {
 
                 // Update pulse wave
                 if (sparks.material.uniforms.uPulseTimer.value > -50.0) {
-                    // Move wave outwards at 15 units/sec for punchy explosion
-                    sparks.material.uniforms.uPulseTimer.value += delta * 15.0;
+                    // Move wave outwards at 10 units/sec for longer-lasting, sweeping explosion
+                    sparks.material.uniforms.uPulseTimer.value += delta * 10.0;
 
-                    // Turn off when wave completes (maxLife 70 + stagger 3 + buffer)
-                    if (sparks.material.uniforms.uPulseTimer.value > 85.0) {
+                    // Turn off when wave completes (maxLife 150 + stagger 3 + buffer)
+                    if (sparks.material.uniforms.uPulseTimer.value > 160.0) {
                         sparks.material.uniforms.uPulseTimer.value = -100.0;
                     }
                 }
@@ -994,12 +994,19 @@ export default class BloodMoonTheme extends BaseTheme {
 
         // Trigger blood spark burst on combos - cycle through pool for overlapping
         if (comboCount >= 2 && this.bloodSparks.length > 0) {
-            const sparks = this.bloodSparks[this.bloodSparkIndex];
-            if (sparks && sparks.material.uniforms) {
-                sparks.material.uniforms.uPulseTimer.value = 0.0;
+            // Trigger multiple systems for higher combos for more density
+            const systemsToTrigger = Math.min(1 + Math.floor(comboCount / 3), 4);
+
+            for (let i = 0; i < systemsToTrigger; i++) {
+                const index = (this.bloodSparkIndex + i) % this.bloodSparks.length;
+                const sparks = this.bloodSparks[index];
+                if (sparks && sparks.material.uniforms) {
+                    sparks.material.uniforms.uPulseTimer.value = 0.0;
+                }
             }
-            // Cycle to next system in pool
-            this.bloodSparkIndex = (this.bloodSparkIndex + 1) % this.bloodSparks.length;
+
+            // Cycle the pool index
+            this.bloodSparkIndex = (this.bloodSparkIndex + systemsToTrigger) % this.bloodSparks.length;
         }
 
         // Create blood waves
