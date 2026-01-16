@@ -1229,20 +1229,40 @@ export default class WinterTheme extends BaseTheme {
     updateCameraAnimation() {
         if (!this.qualityPreset.enableCameraAnimation) return;
 
-        const driftSpeed = 0.035;
-        const slowDrift = 0.02;
+        // ─────────────────────────────────────────────────────────────────────
+        // Immersive Breathing Camera Animation
+        // Creates a natural, calming "breathing" feel with layered motion
+        // ─────────────────────────────────────────────────────────────────────
 
-        // Horizontal drift with layered motion
-        const xDrift = Math.sin(this.time * driftSpeed) * 50 +
+        // Primary drift period: ~28 seconds, secondary: ~50 seconds
+        const driftSpeed = 0.04;
+        const slowDrift = 0.022;
+
+        // Horizontal drift with layered motion for organic feel
+        // Combined range: ±75 units
+        const xDrift = Math.sin(this.time * driftSpeed) * 55 +
             Math.sin(this.time * slowDrift * 0.7) * 20;
 
-        // Vertical breathing movement
-        const yDrift = Math.sin(this.time * driftSpeed * 0.8 + 1.0) * 35 +
-            Math.cos(this.time * slowDrift * 0.5) * 15;
+        // Vertical breathing movement - larger range for noticeable effect
+        // Combined range: ±60 units
+        const yDrift = Math.sin(this.time * driftSpeed * 0.7 + 1.0) * 40 +
+            Math.cos(this.time * slowDrift * 0.5) * 20;
 
-        // Apply drift on top of shake
+        // Depth breathing - gentle forward/back motion
+        // Range: ±8 units, period ~20 seconds
+        const zDrift = Math.sin(this.time * 0.05) * 8;
+
+        // Apply position drift on top of camera shake
         this.camera.position.x = this.baseCameraPosition.x + xDrift + this.cameraShake.x;
         this.camera.position.y = this.baseCameraPosition.y + yDrift + this.cameraShake.y;
+        this.camera.position.z = this.baseCameraPosition.z + zDrift;
+
+        // FOV breathing - subtle zoom in/out for immersive effect
+        // Period: ~18 seconds, range: ±1.5 degrees
+        const baseFov = 60; // Match the initial perspective camera FOV
+        const fovBreath = Math.sin(this.time * 0.08) * 1.5;
+        this.camera.fov = baseFov + fovBreath;
+        this.camera.updateProjectionMatrix();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
