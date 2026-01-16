@@ -172,23 +172,48 @@ export const skyFragmentShader = `
             skyColor = mix(bottomColor, midColor, smoothBlend(height * 2.0));
         }
         
-        // Add sun glow near horizon
+        // ═══════════════════════════════════════════════════════════════
+        // ATMOSPHERIC SCATTERING (Rayleigh + Mie approximation)
+        // ═══════════════════════════════════════════════════════════════
+        
         vec3 sunDir = normalize(uSunPosition);
         float sunDot = max(0.0, dot(normalizedPos, sunDir));
-        float sunGlow = pow(sunDot, 6.0) * 0.6;
-        
-        // Sun glow color varies with time
-        float dayAmount = wMorning + wNoon + wAfternoon;
-        float sunsetAmount = wGolden + wSunset;
-        vec3 glowColor = mix(
-            mix(vec3(1.0, 0.8, 0.5), vec3(1.0, 0.5, 0.2), sunsetAmount),
-            vec3(1.0, 0.9, 0.7),
-            dayAmount
-        );
-        
-        // Only show sun glow when sun is up
         float sunUp = 1.0 - totalNight - wPreDawn * 0.5 - wDusk * 0.5;
-        skyColor += glowColor * sunGlow * max(0.0, sunUp);
+        
+        // Rayleigh scattering - blue sky scatter (view-angle dependent)
+        // More blue light scattered at 90° from sun
+        float rayleighPhase = 0.75 * (1.0 + sunDot * sunDot);
+        float rayleighScatter = (1.0 - height) * 0.3 * rayleighPhase;
+        vec3 rayleighColor = vec3(0.3, 0.5, 0.9) * rayleighScatter * sunUp;
+        
+        // Mie scattering - atmospheric haze around sun
+        // Creates the bright halo effect at lower sun angles
+        float miePhaseFactor = 1.0 / (1.0 + 30.0 * pow(1.0 - sunDot, 2.0));
+        float mieScatter = miePhaseFactor * 0.08;
+        
+        // Mie color shifts from white at noon to orange/red at sunset
+        float sunsetAmount = wGolden + wSunset + wDawn * 0.5;
+        float dayAmount = wMorning + wNoon + wAfternoon;
+        vec3 mieColor = mix(
+            vec3(1.0, 0.95, 0.85),           // Warm white during day
+            vec3(1.0, 0.6, 0.25),             // Orange at sunset/sunrise
+            sunsetAmount * 0.8
+        );
+        vec3 mieGlow = mieColor * mieScatter * sunUp;
+        
+        // Add atmospheric scattering to sky
+        skyColor += rayleighColor * 0.15;
+        skyColor += mieGlow * 0.4;
+        
+        // Horizon atmospheric depth - more haze at horizon
+        float horizonHaze = pow(1.0 - abs(normalizedPos.y), 4.0);
+        vec3 hazeColor = mix(bottomColor, vec3(0.9, 0.85, 0.8), sunUp * 0.5);
+        skyColor = mix(skyColor, hazeColor, horizonHaze * 0.25 * sunUp);
+        
+        // Sun disc glow - tight, controlled
+        float sunGlow = pow(sunDot, 16.0) * 0.12;
+        vec3 glowColor = mix(vec3(1.0, 0.5, 0.2), vec3(1.0, 0.95, 0.8), dayAmount);
+        skyColor += glowColor * sunGlow * sunUp;
         
         gl_FragColor = vec4(skyColor, 1.0);
     }
@@ -255,10 +280,10 @@ export const sunFragmentShader = `
         // Edge glow
         float edge = 1.0 - smoothstep(0.3, 0.55, dist);
         
-        // Combine colors
-        vec3 color = uCoreColor * core * 1.5;
-        color += uCoronaColor * corona * 0.8;
-        color += uEdgeColor * edge * 0.4;
+        // Combine colors - reduced multipliers to prevent over-brightness
+        vec3 color = uCoreColor * core * 0.9;
+        color += uCoronaColor * corona * 0.5;
+        color += uEdgeColor * edge * 0.25;
         
         // Pulsing intensity
         float pulse = 1.0 + sin(uTime * 2.0) * 0.1;
@@ -275,53 +300,81 @@ export const sunFragmentShader = `
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const starVertexShader = `
-    uniform float uTime;
-    uniform float uDayProgress;
-    
     attribute float aSize;
-    attribute float aPhase;
-    attribute vec3 aColor;
+    attribute vec2 aTwinkle; // x = phase offset, y = speed multiplier
+    attribute float aBrightness;
+    attribute vec3 aColor; // Renamed from color to avoid conflict
+
+    uniform float uTime;
+    uniform float uPixelRatio;
+    uniform float uDayProgress;
+    uniform float uEventBoost; // Optional
     
+    varying float vBrightness;
     varying vec3 vColor;
-    varying float vAlpha;
     
     void main() {
-        vColor = aColor;
+        vColor = aColor; // Assign from custom attribute
         
-        // Calculate star visibility based on day progress
-        // Stars visible at night (0.6 - 1.0 and 0.0 - 0.15)
+        // ─────────────────────────────────────────────────────────────────────
+        // Day/Night Visibility Logic
+        // ─────────────────────────────────────────────────────────────────────
         float nightVisibility = 0.0;
+        // Stars visible at night (0.65 - 1.0 and 0.0 - 0.20)
         if (uDayProgress > 0.65) {
             nightVisibility = smoothstep(0.65, 0.8, uDayProgress);
         } else if (uDayProgress < 0.2) {
             nightVisibility = 1.0 - smoothstep(0.1, 0.2, uDayProgress);
         }
         
-        // Twinkling
-        float twinkle = 0.5 + 0.5 * sin(uTime * 3.0 + aPhase * 10.0);
-        vAlpha = nightVisibility * twinkle;
+        // Twinkle animation with varied speed per star (Blood Moon style)
+        float twinkle = sin(uTime * aTwinkle.y + aTwinkle.x);
+        
+        // Combine base brightness, twinkle, and day/night visibility
+        vBrightness = aBrightness * (0.7 + twinkle * 0.3);
+        vBrightness *= nightVisibility;
+        vBrightness *= (1.0 + uEventBoost * 0.5);
         
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
         gl_Position = projectionMatrix * mvPosition;
         
-        // Size with attenuation
-        gl_PointSize = aSize * (300.0 / -mvPosition.z) * nightVisibility;
+        // Size attenuation for depth - larger for atmospheric look
+        gl_PointSize = aSize * uPixelRatio * (300.0 / -mvPosition.z);
+        
+        // Clamp size but keep them visible (fading done via alpha/brightness)
+        gl_PointSize = clamp(gl_PointSize, 0.0, 80.0);
+        
+        // If it's day, kill the size to prevent rendering artifacts
+        if (nightVisibility < 0.01) gl_PointSize = 0.0;
     }
 `;
 
 export const starFragmentShader = `
+    varying float vBrightness;
     varying vec3 vColor;
-    varying float vAlpha;
-    
+
     void main() {
+        // Soft circular point with atmospheric glow (Blood Moon style)
         vec2 center = gl_PointCoord - 0.5;
-        float dist = length(center);
+        float dist = length(center) * 2.0;
         
-        // Soft circular star
-        float alpha = 1.0 - smoothstep(0.0, 0.5, dist);
-        alpha *= vAlpha;
+        // Discard outside circle for round shape
+        if (dist > 1.0) discard;
         
-        gl_FragColor = vec4(vColor, alpha);
+        // Soft atmospheric falloff - smooth gradient from center
+        float softCircle = 1.0 - smoothstep(0.0, 1.0, dist);
+        softCircle = pow(softCircle, 0.8); // Slightly wider glow
+        
+        // Bright core with halo
+        float core = 1.0 - smoothstep(0.0, 0.25, dist);
+        
+        // Color with boosted core brightness
+        vec3 coreColor = vColor * vBrightness * 1.5 + vec3(0.15) * core;
+        
+        // Atmospheric alpha based on brightnes intensity
+        float alpha = softCircle * (vBrightness + 0.2);
+        
+        gl_FragColor = vec4(coreColor, alpha);
     }
 `;
 
@@ -345,25 +398,50 @@ export const godRayFragmentShader = `
     
     varying vec2 vUv;
     
+    // Pseudo-random noise for organic variation
+    float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+    }
+    
     void main() {
-        // Radial from center
-        vec2 center = vUv - 0.5;
-        float dist = length(center);
-        float angle = atan(center.y, center.x);
+        // ═══════════════════════════════════════════════════════════════
+        // VOLUMETRIC GOD RAYS - Radial blur sampling
+        // ═══════════════════════════════════════════════════════════════
         
-        // Create ray pattern
-        float rays = sin(angle * 12.0 + uTime * 0.5) * 0.5 + 0.5;
-        rays *= sin(angle * 8.0 - uTime * 0.3) * 0.5 + 0.5;
+        vec2 center = vec2(0.5, 0.5);
+        vec2 delta = vUv - center;
+        float dist = length(delta);
+        float angle = atan(delta.y, delta.x);
         
-        // Fade with distance from center
-        float fade = 1.0 - smoothstep(0.0, 0.5, dist);
+        // Radial blur sampling toward center
+        float accumLight = 0.0;
+        vec2 samplePos = vUv;
+        vec2 sampleDir = normalize(-delta) * 0.02;
         
-        // Flickering
-        float flicker = 0.8 + 0.2 * sin(uTime * 4.0 + angle * 3.0);
+        for(int i = 0; i < 8; i++) {
+            float sampleDist = length(samplePos - center);
+            float lightSample = 1.0 - smoothstep(0.0, 0.45, sampleDist);
+            lightSample *= lightSample;
+            
+            // Noise-based organic rays
+            float noise = hash(samplePos * 8.0 + vec2(uTime * 0.05));
+            lightSample *= 0.6 + noise * 0.8;
+            
+            accumLight += lightSample;
+            samplePos += sampleDir;
+        }
+        accumLight /= 8.0;
         
-        float alpha = rays * fade * uIntensity * flicker;
+        // Angular ray pattern overlay
+        float rays = sin(angle * 14.0 + uTime * 0.4) * 0.4 + 0.6;
+        rays *= sin(angle * 9.0 - uTime * 0.25) * 0.3 + 0.7;
         
-        gl_FragColor = vec4(uColor, alpha * 0.4);
+        // Combine
+        float fade = 1.0 - smoothstep(0.35, 0.55, dist);
+        float pulse = 0.85 + 0.15 * sin(uTime * 1.5);
+        float alpha = accumLight * rays * fade * uIntensity * pulse;
+        
+        gl_FragColor = vec4(uColor, alpha * 0.45);
     }
 `;
 
@@ -561,6 +639,8 @@ export const moonVertexShader = `
 export const moonFragmentShader = `
     uniform float uTime;
     uniform float uOpacity;
+    uniform vec3 uSunDirection;
+    uniform sampler2D uMap;  // High-res moon texture based on image generation
     
     varying vec2 vUv;
     varying vec3 vNormal;
@@ -568,145 +648,95 @@ export const moonFragmentShader = `
     varying vec3 vLocalPos;
     varying vec3 vViewPosition;
     
-    // Noise functions for surface detail
-    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-    vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-    vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
-    vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
-    
-    float snoise(vec3 v) {
-        const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-        const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-        
-        vec3 i = floor(v + dot(v, C.yyy));
-        vec3 x0 = v - i + dot(i, C.xxx);
-        
-        vec3 g = step(x0.yzx, x0.xyz);
-        vec3 l = 1.0 - g;
-        vec3 i1 = min(g.xyz, l.zxy);
-        vec3 i2 = max(g.xyz, l.zxy);
-        
-        vec3 x1 = x0 - i1 + C.xxx;
-        vec3 x2 = x0 - i2 + C.yyy;
-        vec3 x3 = x0 - D.yyy;
-        
-        i = mod289(i);
-        vec4 p = permute(permute(permute(
-            i.z + vec4(0.0, i1.z, i2.z, 1.0))
-            + i.y + vec4(0.0, i1.y, i2.y, 1.0))
-            + i.x + vec4(0.0, i1.x, i2.x, 1.0));
-        
-        float n_ = 0.142857142857;
-        vec3 ns = n_ * D.wyz - D.xzx;
-        
-        vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-        
-        vec4 x_ = floor(j * ns.z);
-        vec4 y_ = floor(j - 7.0 * x_);
-        
-        vec4 x = x_ * ns.x + ns.yyyy;
-        vec4 y = y_ * ns.x + ns.yyyy;
-        vec4 h = 1.0 - abs(x) - abs(y);
-        
-        vec4 b0 = vec4(x.xy, y.xy);
-        vec4 b1 = vec4(x.zw, y.zw);
-        
-        vec4 s0 = floor(b0) * 2.0 + 1.0;
-        vec4 s1 = floor(b1) * 2.0 + 1.0;
-        vec4 sh = -step(h, vec4(0.0));
-        
-        vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
-        vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
-        
-        vec3 p0 = vec3(a0.xy, h.x);
-        vec3 p1 = vec3(a0.zw, h.y);
-        vec3 p2 = vec3(a1.xy, h.z);
-        vec3 p3 = vec3(a1.zw, h.w);
-        
-        vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-        p0 *= norm.x;
-        p1 *= norm.y;
-        p2 *= norm.z;
-        p3 *= norm.w;
-        
-        vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-        m = m * m;
-        return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+    // Pseudo-random noise for shimmer only (simplified)
+    float hash(vec3 p) {
+        return fract(sin(dot(p, vec3(12.9898, 78.233, 54.53))) * 43758.5453);
     }
     
-    float fbm(vec3 p) {
-        float v = 0.0;
-        float a = 0.5;
-        for (int i = 0; i < 4; i++) {
-            v += a * snoise(p);
-            p *= 2.0;
-            a *= 0.5;
-        }
-        return v;
-    }
-    
-    // Sharp crater with bowl and rim
-    float sharpCrater(vec3 pos, vec3 center, float size, float depth) {
-        float d = length(pos - center);
-        float bowl = smoothstep(size, size * 0.15, d);
-        float rim = smoothstep(size * 1.35, size * 0.95, d) * smoothstep(size * 0.8, size * 1.0, d);
-        return -bowl * depth + rim * depth * 0.6;
+    float noise1D(vec3 p) {
+        vec3 i = floor(p);
+        vec3 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x),
+                       mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                   mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                       mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
     }
     
     void main() {
         vec3 viewDir = normalize(vViewPosition);
-        vec3 pos = normalize(vLocalPos) * 5.0;
+        vec3 pos = normalize(vLocalPos);
         
-        // === WARM CREAM/BEIGE MOON PALETTE ===
-        vec3 brightHighland = vec3(0.95, 0.92, 0.85);   // Bright cream highlands
-        vec3 darkMaria = vec3(0.55, 0.52, 0.48);        // Grey-brown maria
-        vec3 craterFloor = vec3(0.35, 0.33, 0.30);      // Dark grey crater floors
-        vec3 craterRim = vec3(1.0, 0.98, 0.92);         // Bright white rims
+        // ═══════════════════════════════════════════════════════════════
+        // BASE TEXTURE - PLANAR MAPPING
+        // ═══════════════════════════════════════════════════════════════
         
-        // === MARIA (darker regions) ===
-        float maria1 = smoothstep(0.2, 0.6, fbm(pos * 0.5 + vec3(1.5, 0.8, 0.3)));
-        float maria2 = smoothstep(0.25, 0.65, fbm(pos * 0.6 + vec3(-2.0, 1.2, 0.8)));
-        float totalMaria = max(maria1, maria2 * 0.9);
+        // The texture is a flat "orthographic" moon. We map it planarly to the sphere's front face.
+        // using local position to ensure it stays fixed to the moon geometry
+        vec3 localNormal = normalize(vLocalPos);
+        vec2 uv = localNormal.xy * 0.5 + 0.5; // Exact fit
         
-        vec3 baseColor = mix(brightHighland, darkMaria, totalMaria * 0.6);
+        // Sample the generated texture
+        vec4 texColor = texture2D(uMap, uv);
         
-        // === CRATERS ===
-        float craters = 0.0;
-        craters += sharpCrater(pos, vec3(2.0, 0.5, 0.8), 1.2, 0.5);
-        craters += sharpCrater(pos, vec3(-1.5, 1.2, 1.0), 1.0, 0.45);
-        craters += sharpCrater(pos, vec3(0.5, -1.5, 1.3), 0.9, 0.4);
-        craters += sharpCrater(pos, vec3(-0.8, 0.3, -1.8), 1.1, 0.48);
-        craters += sharpCrater(pos, vec3(1.5, -0.8, 1.2), 0.8, 0.38);
-        craters += sharpCrater(pos, vec3(-1.8, -1.0, 0.5), 0.95, 0.42);
-        craters += sharpCrater(pos, vec3(0.3, 2.0, 0.5), 0.85, 0.4);
+        // No masking! Let the texture's black background handle the edge.
+        // With ClampToEdgeWrapping, this works perfectly.
         
-        // Smaller craters via noise
-        float smallCraters = fbm(pos * 3.0) * 0.15;
-        craters += smallCraters;
+        vec3 baseColor = texColor.rgb;
         
-        // Surface roughness
-        float roughness = fbm(pos * 8.0) * 0.08 + snoise(pos * 15.0) * 0.04;
+        // Color correction - Significant boost to match water reflection intensity
+        baseColor = pow(baseColor, vec3(0.7)); // Stronger gamma for contrast
+        baseColor *= 1.8; // High brightness
         
-        // Apply crater coloring
-        float floorDepth = max(0.0, -craters * 3.0);
-        baseColor = mix(baseColor, craterFloor, smoothstep(0.0, 1.0, floorDepth) * 0.8);
+        // Add subtle warm sunset glow to the moon surface itself
+        baseColor = mix(baseColor, vec3(1.0, 0.9, 0.98) * baseColor, 0.25);
+
+        // ═══════════════════════════════════════════════════════════════
+        // LIGHTING
+        // ═══════════════════════════════════════════════════════════════
         
-        float rimBrightness = max(0.0, craters * 2.5);
-        baseColor = mix(baseColor, craterRim, smoothstep(0.0, 0.6, rimBrightness) * 0.5);
+        vec3 lightDir = normalize(uSunDirection);
+        float NdotL = max(0.0, dot(vNormal, lightDir));
         
-        baseColor += vec3(roughness * 0.3);
+        // Soft diffuse with high ambient to always show texture detail
+        float diffuse = NdotL * 0.7;
+        float ambient = 0.35;  // High ambient so texture is always visible
         
-        // === LIGHTING ===
-        vec3 lightDir = normalize(vec3(0.5, 0.4, 0.7));
-        float diffuse = max(0.0, dot(vNormal, lightDir));
-        diffuse = pow(diffuse, 0.9);
+        // Terminator softening for smooth day/night transition
+        float terminator = smoothstep(-0.1, 0.25, dot(vNormal, lightDir));
         
-        float lighting = 0.25 + diffuse * 0.75;
+        float lighting = ambient + diffuse * terminator;
         vec3 litColor = baseColor * lighting;
         
-        // Subtle rim glow
-        float fresnel = pow(1.0 - abs(dot(vNormal, viewDir)), 3.0);
-        litColor += vec3(0.8, 0.75, 0.65) * fresnel * 0.3;
+        // ═══════════════════════════════════════════════════════════════
+        // EARTHSHINE - Blue illumination on dark side shows texture
+        // ═══════════════════════════════════════════════════════════════
+        float darkSide = 1.0 - NdotL;
+        darkSide = smoothstep(0.2, 0.8, darkSide);
+        vec3 earthshineColor = vec3(0.3, 0.4, 0.6);
+        litColor += baseColor * earthshineColor * darkSide * 0.15;
+        
+        // ═══════════════════════════════════════════════════════════════
+        // FRESNEL CORONA - Soft glow at edges
+        // ═══════════════════════════════════════════════════════════════
+        float viewDot = abs(dot(vNormal, viewDir));
+        
+        float corona1 = pow(1.0 - viewDot, 4.0);
+        float corona2 = pow(1.0 - viewDot, 2.5);
+        float corona3 = pow(1.0 - viewDot, 1.5);
+        
+        vec3 coronaColor = vec3(0.9, 0.88, 0.8);
+        litColor += coronaColor * corona1 * 0.25;
+        litColor += coronaColor * corona2 * 0.12;
+        litColor += vec3(0.75, 0.8, 0.9) * corona3 * 0.06;
+        
+        // ═══════════════════════════════════════════════════════════════
+        // ANIMATED SHIMMER
+        // ═══════════════════════════════════════════════════════════════
+        float shimmerNoise = noise1D(pos * 8.0 + vec3(uTime * 0.3));
+        float shimmer = shimmerNoise * 0.03;
+        shimmer *= corona2;
+        litColor += vec3(shimmer);
         
         gl_FragColor = vec4(litColor, uOpacity);
     }
