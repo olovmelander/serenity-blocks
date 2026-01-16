@@ -128,6 +128,37 @@ const COLORS = {
         edge: new THREE.Color(0xFF6600),      // Orange edge
         halo: new THREE.Color(0xFF4400),      // Outer red-orange halo
     },
+
+    // Mountain palettes for layered silhouettes
+    mountains: {
+        fog: new THREE.Color(0xFF9944),
+        layers: [
+            {
+                shadow: new THREE.Color(0x3B110A),
+                mid: new THREE.Color(0x8C4025),
+                highlight: new THREE.Color(0xF28A45),
+                rim: new THREE.Color(0xFFB067),
+                mist: new THREE.Color(0xFFAA6A),
+                mistStrength: 0.65,
+            },
+            {
+                shadow: new THREE.Color(0x2C0C07),
+                mid: new THREE.Color(0x722D1A),
+                highlight: new THREE.Color(0xD56B35),
+                rim: new THREE.Color(0xFF9C55),
+                mist: new THREE.Color(0xF68A54),
+                mistStrength: 0.55,
+            },
+            {
+                shadow: new THREE.Color(0x1F0805),
+                mid: new THREE.Color(0x592113),
+                highlight: new THREE.Color(0xB45330),
+                rim: new THREE.Color(0xFF8644),
+                mist: new THREE.Color(0xDF7443),
+                mistStrength: 0.45,
+            },
+        ],
+    },
 };
 
 export default class SwedishForestTheme extends BaseTheme {
@@ -667,24 +698,31 @@ export default class SwedishForestTheme extends BaseTheme {
 
         // Mountain layer configurations - Firewatch style prominent silhouettes
         const mountainConfigs = [
-            { z: -88, height: 55, fogAmount: 0.6, color: new THREE.Color(0xDD8855), x: 0, width: 280, y: 22 },   // Far - warmest, haziest
-            { z: -80, height: 50, fogAmount: 0.4, color: new THREE.Color(0xBB6644), x: 0, width: 280, y: 24 },   // Mid
-            { z: -73, height: 45, fogAmount: 0.2, color: new THREE.Color(0x884433), x: 0, width: 280, y: 26 },   // Near - darker
+            { z: -88, height: 55, fogAmount: 0.75, layerIndex: 0, width: 280, y: 22 },   // Far - warmest, haziest
+            { z: -80, height: 50, fogAmount: 0.55, layerIndex: 1, width: 280, y: 24 },   // Mid
+            { z: -73, height: 45, fogAmount: 0.35, layerIndex: 2, width: 280, y: 26 },   // Near - darker
         ];
 
-        // Fog color for atmospheric blending (matches sky orange)
-        const fogColor = new THREE.Color(0xFF9944);
+        const fogColor = COLORS.mountains.fog.clone();
+        const lightDirection = new THREE.Vector3(0.15, 0.35, -1.0).normalize();
 
         mountainConfigs.forEach((config, index) => {
             const geometry = new THREE.PlaneGeometry(config.width, config.height, 1, 1);
+            const palette = COLORS.mountains.layers[Math.min(config.layerIndex, COLORS.mountains.layers.length - 1)];
 
             const material = new THREE.ShaderMaterial({
                 uniforms: {
-                    uMountainColor: { value: config.color },
+                    uShadowColor: { value: palette.shadow },
+                    uMidColor: { value: palette.mid },
+                    uHighlightColor: { value: palette.highlight },
+                    uRimColor: { value: palette.rim },
+                    uMistColor: { value: palette.mist },
                     uFogColor: { value: fogColor },
+                    uLightDirection: { value: lightDirection },
                     uFogAmount: { value: config.fogAmount },
                     uLayer: { value: index / (mountainConfigs.length - 1) },
                     uTime: this.uniforms.time,
+                    uMistStrength: { value: palette.mistStrength },
                 },
                 vertexShader: mountainVertexShader,
                 fragmentShader: mountainFragmentShader,
@@ -1062,6 +1100,75 @@ export default class SwedishForestTheme extends BaseTheme {
         this.farLeftMountain.renderOrder = -8; // Behind tall peak
         this.scene.add(this.farLeftMountain);
 
+        // ─────────────────────────────────────────────────────────────────────
+        // EXTREME LEFT RIDGE - pushes silhouette farther left for camera framing
+        // ─────────────────────────────────────────────────────────────────────
+
+        const extremeLeftConfig = {
+            size: 360,
+            segments: 64,
+            peakHeight: 165,
+            position: new THREE.Vector3(-320, -12, -185),
+        };
+
+        const extremeLeftGeometry = new THREE.PlaneGeometry(
+            extremeLeftConfig.size,
+            extremeLeftConfig.size,
+            extremeLeftConfig.segments,
+            extremeLeftConfig.segments
+        );
+        extremeLeftGeometry.rotateX(-Math.PI / 2);
+
+        const extremeLeftPositions = extremeLeftGeometry.attributes.position;
+        const extremeLeftHeights = [];
+
+        for (let i = 0; i < extremeLeftPositions.count; i++) {
+            vertex.fromBufferAttribute(extremeLeftPositions, i);
+
+            const dx = vertex.x;
+            const dz = vertex.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+            const maxDist = extremeLeftConfig.size * 0.43;
+            const normDist = distance / maxDist;
+
+            let height = 0;
+
+            if (normDist < 1.0) {
+                // Tall ridge that frames the left edge but still leans inward
+                const peakProfile = Math.pow(1.0 - normDist, 1.28);
+                height = peakProfile * extremeLeftConfig.peakHeight;
+
+                // Offset asymmetry so slope leans toward center of frame
+                const angle = Math.atan2(dz, dx);
+                height *= (1.0 + Math.sin(angle + 1.15) * 0.15);
+
+                // Rugged ridges cascading down toward trees
+                const ridges = Math.sin(angle * 5.2) * 0.085 * (1.0 - normDist * 0.85);
+                height += ridges * extremeLeftConfig.peakHeight;
+
+                // Subtle FBM noise for breakup
+                const noiseScale = 0.01;
+                const rockNoise = fbm(vertex.x * noiseScale + 640, vertex.z * noiseScale + 640, 3);
+                height += rockNoise * extremeLeftConfig.peakHeight * 0.06;
+            }
+
+            extremeLeftHeights.push(Math.max(0, height));
+            extremeLeftPositions.setY(i, Math.max(0, height));
+        }
+
+        extremeLeftGeometry.computeVertexNormals();
+
+        const extremeLeftHeightAttr = new Float32Array(extremeLeftPositions.count);
+        for (let i = 0; i < extremeLeftPositions.count; i++) {
+            extremeLeftHeightAttr[i] = extremeLeftHeights[i] / extremeLeftConfig.peakHeight;
+        }
+        extremeLeftGeometry.setAttribute('aHeight', new THREE.BufferAttribute(extremeLeftHeightAttr, 1));
+
+        this.extremeLeftMountain = new THREE.Mesh(extremeLeftGeometry, this.silhouetteMountainMaterial);
+        this.extremeLeftMountain.position.copy(extremeLeftConfig.position);
+        this.extremeLeftMountain.renderOrder = -7;
+        this.scene.add(this.extremeLeftMountain);
+
 
         // ─────────────────────────────────────────────────────────────────────
         // CREATE RIGHT SIDE MOUNTAIN (Background silhouette matching left mountain depth)
@@ -1130,7 +1237,74 @@ export default class SwedishForestTheme extends BaseTheme {
         this.rightHill.renderOrder = -15; // Far behind
         this.scene.add(this.rightHill);
 
-        console.log('[SwedishForest] 3D silhouette mountains created (4 left + 1 right)');
+        // ─────────────────────────────────────────────────────────────────────
+        // FAR RIGHT PEAK - extends silhouette past the existing right hill
+        // ─────────────────────────────────────────────────────────────────────
+
+        const farRightConfig = {
+            size: 300,
+            segments: 64,
+            peakHeight: 135,
+            position: new THREE.Vector3(215, -12, -185),
+        };
+
+        const farRightGeometry = new THREE.PlaneGeometry(
+            farRightConfig.size,
+            farRightConfig.size,
+            farRightConfig.segments,
+            farRightConfig.segments
+        );
+        farRightGeometry.rotateX(-Math.PI / 2);
+
+        const farRightPositions = farRightGeometry.attributes.position;
+        const farRightHeights = [];
+
+        for (let i = 0; i < farRightPositions.count; i++) {
+            vertex.fromBufferAttribute(farRightPositions, i);
+
+            const dx = vertex.x;
+            const dz = vertex.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+            const maxDist = farRightConfig.size * 0.44;
+            const normDist = distance / maxDist;
+
+            let height = 0;
+
+            if (normDist < 1.0) {
+                // Narrower, steeper peak to punctuate the skyline
+                const peakProfile = Math.pow(1.0 - normDist, 1.35);
+                height = peakProfile * farRightConfig.peakHeight;
+
+                // Lean slightly inward toward the sun
+                const angle = Math.atan2(dz, dx);
+                height *= (1.0 + Math.sin(angle * 1.5 + 2.4) * 0.12);
+
+                const ridges = Math.sin(angle * 4.0 + 0.8) * 0.08 * (1.0 - normDist);
+                height += ridges * farRightConfig.peakHeight;
+
+                const noiseScale = 0.011;
+                const rockNoise = fbm(vertex.x * noiseScale + 320, vertex.z * noiseScale + 320, 3);
+                height += rockNoise * farRightConfig.peakHeight * 0.045;
+            }
+
+            farRightHeights.push(Math.max(0, height));
+            farRightPositions.setY(i, Math.max(0, height));
+        }
+
+        farRightGeometry.computeVertexNormals();
+
+        const farRightHeightAttr = new Float32Array(farRightPositions.count);
+        for (let i = 0; i < farRightPositions.count; i++) {
+            farRightHeightAttr[i] = farRightHeights[i] / farRightConfig.peakHeight;
+        }
+        farRightGeometry.setAttribute('aHeight', new THREE.BufferAttribute(farRightHeightAttr, 1));
+
+        this.farRightMountain = new THREE.Mesh(farRightGeometry, this.silhouetteMountainMaterial);
+        this.farRightMountain.position.copy(farRightConfig.position);
+        this.farRightMountain.renderOrder = -16;
+        this.scene.add(this.farRightMountain);
+
+        console.log('[SwedishForest] 3D silhouette mountains created (4 left + 2 right)');
     }
 
     /* REMOVED DUPLICATE CODE

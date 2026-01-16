@@ -82,7 +82,7 @@ const QUALITY_PRESETS = {
         maxStarBursts: 5,
         maxCosmicRifts: 2,
         maxCelestialBeams: 0,
-        maxMeteorCrashes: 2,
+        maxMeteorCrashes: 4,
         starTwinkleSpeed: 0.7,
     },
     Medium: {
@@ -95,7 +95,7 @@ const QUALITY_PRESETS = {
         maxStarBursts: 8,
         maxCosmicRifts: 3,
         maxCelestialBeams: 2,
-        maxMeteorCrashes: 3,
+        maxMeteorCrashes: 5,
         starTwinkleSpeed: 1.0,
     },
     High: {
@@ -108,7 +108,7 @@ const QUALITY_PRESETS = {
         maxStarBursts: 12,
         maxCosmicRifts: 4,
         maxCelestialBeams: 4,
-        maxMeteorCrashes: 4,
+        maxMeteorCrashes: 6,
         starTwinkleSpeed: 1.0,
     },
     Ultra: {
@@ -121,7 +121,7 @@ const QUALITY_PRESETS = {
         maxStarBursts: 15,
         maxCosmicRifts: 5,
         maxCelestialBeams: 6,
-        maxMeteorCrashes: 4,
+        maxMeteorCrashes: 8,
         starTwinkleSpeed: 1.0,
     },
     Extreme: {
@@ -134,7 +134,7 @@ const QUALITY_PRESETS = {
         maxStarBursts: 20,
         maxCosmicRifts: 6,
         maxCelestialBeams: 8,
-        maxMeteorCrashes: 5,
+        maxMeteorCrashes: 10,
         starTwinkleSpeed: 1.2,
     },
 };
@@ -168,7 +168,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.cosmicWaves = [];
         this.meteors = []; // Shooting star meteors
         this.lastMeteorTime = 0; // Time of last meteor spawn
-        this.nextMeteorDelay = 15 + Math.random() * 15; // 15-30 seconds
+        this.nextMeteorDelay = 5 + Math.random() * 7; // 5-12 seconds
         this.meteorCrashes = []; // Dramatic meteor crash impacts
 
         // Effect state (smooth decay)
@@ -779,16 +779,20 @@ export default class WolfhourTheme extends BaseTheme {
 
         // Spawn shooting stars based on combo count (more stars at higher combos)
         if (comboCount >= 3) {
-            const starCount = Math.min(comboCount - 2, 4); // 1 star at combo 3, up to 4 stars at combo 6+
+            const starCount = Math.min((comboCount - 1) * 2, 8); // 4 stars at combo 3, up to 8 stars at combo 5+
             for (let i = 0; i < starCount; i++) {
                 this.createMeteor();
             }
         }
 
-        // Spawn dramatic meteor crash on combos of 6+
-        if (comboCount >= 6) {
-            if (this.meteorCrashes.length < this.qualityPreset.maxMeteorCrashes) {
-                this.createMeteorCrash();
+        // Spawn dramatic meteor crashes on combos of 5+ (more crashes at higher combos)
+        if (comboCount >= 5) {
+            // 1 crash at combo 5, 2 at combo 6-7, 3 at combo 8+
+            const crashCount = comboCount >= 8 ? 3 : (comboCount >= 6 ? 2 : 1);
+            for (let i = 0; i < crashCount; i++) {
+                if (this.meteorCrashes.length < this.qualityPreset.maxMeteorCrashes) {
+                    this.createMeteorCrash();
+                }
             }
         }
 
@@ -1079,8 +1083,8 @@ export default class WolfhourTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createMeteor() {
-        // Limit to 2 simultaneous meteors for elegance
-        if (this.meteors.length >= 2) return;
+        // Limit to 5 simultaneous meteors for more dramatic effect
+        if (this.meteors.length >= 5) return;
 
         // Random start position in upper portion of sky
         const startX = (Math.random() - 0.5) * 1200;
@@ -1172,11 +1176,15 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     updateMeteors() {
-        // Auto-spawn meteors periodically
+        // Auto-spawn meteors periodically (more frequently for dramatic sky)
         if (this.time - this.lastMeteorTime > this.nextMeteorDelay) {
-            this.createMeteor();
+            // Spawn 1-2 shooting stars at a time
+            const spawnCount = Math.random() > 0.5 ? 2 : 1;
+            for (let s = 0; s < spawnCount; s++) {
+                this.createMeteor();
+            }
             this.lastMeteorTime = this.time;
-            this.nextMeteorDelay = 15 + Math.random() * 15; // 15-30 seconds
+            this.nextMeteorDelay = 5 + Math.random() * 7; // 5-12 seconds
         }
 
         // Update existing meteors
