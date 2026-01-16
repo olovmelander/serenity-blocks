@@ -1029,49 +1029,91 @@ void main() {
 `;
 
 export const mountainFragmentShader = `
-uniform vec3 uMountainColor;
+uniform vec3 uShadowColor;
+uniform vec3 uMidColor;
+uniform vec3 uHighlightColor;
+uniform vec3 uRimColor;
+uniform vec3 uMistColor;
 uniform vec3 uFogColor;
+uniform vec3 uLightDirection;
 uniform float uFogAmount;
 uniform float uLayer;
 uniform float uTime;
+uniform float uMistStrength;
 
 varying vec2 vUv;
 
 ${noiseCommon}
 
+float sampleMountainHeight(vec2 uv, float layer, float time) {
+    // Mountain shape using layered noise - Firewatch style jagged peaks
+    float height = 0.0;
+    float offset = layer * 87.654;
+
+    height += snoise(vec3(uv.x * 0.8 + offset, 0.0, 0.0)) * 0.35;
+    height += snoise(vec3(uv.x * 1.8 + offset, 0.5, 0.0)) * 0.25;
+    height += snoise(vec3(uv.x * 4.0 + offset, 1.0, 0.0)) * 0.15;
+    height += snoise(vec3(uv.x * 8.0 + offset, 1.5, 0.0)) * 0.08;
+
+    height = height * 0.5 + 0.5;
+    height *= (0.55 + layer * 0.25);
+
+    float shimmer = sin(time * 0.4 + uv.x * 8.0) * 0.008 * (1.0 - layer * 0.5);
+    height += shimmer;
+
+    return height;
+}
+
 void main() {
     vec2 uv = vUv;
+    float mountainHeight = sampleMountainHeight(uv, uLayer, uTime);
 
-    // Mountain shape using layered noise - Firewatch style jagged peaks
-    float mountainHeight = 0.0;
-
-    // Different patterns for each layer with offset for variety
-    float offset = uLayer * 87.654;
-    mountainHeight += snoise(vec3(uv.x * 0.8 + offset, 0.0, 0.0)) * 0.35;
-    mountainHeight += snoise(vec3(uv.x * 1.8 + offset, 0.5, 0.0)) * 0.25;
-    mountainHeight += snoise(vec3(uv.x * 4.0 + offset, 1.0, 0.0)) * 0.15;
-    mountainHeight += snoise(vec3(uv.x * 8.0 + offset, 1.5, 0.0)) * 0.08;
-
-    // Normalize to 0-1 range and scale to fill more of the plane
-    mountainHeight = mountainHeight * 0.5 + 0.5;
-    // Far mountains (layer 0) are shorter, near mountains taller
-    mountainHeight *= (0.55 + uLayer * 0.25);
-
-    // Add slight animation for heat shimmer
-    float shimmer = sin(uTime * 0.4 + uv.x * 8.0) * 0.008 * (1.0 - uLayer * 0.5);
-    mountainHeight += shimmer;
-
-    // Check if we're inside the mountain silhouette
+    // Outside silhouette → discard
     if (uv.y > mountainHeight) discard;
 
-    // Apply atmospheric fog based on layer depth
-    vec3 color = mix(uMountainColor, uFogColor, uFogAmount);
+    float depthFromPeak = clamp((mountainHeight - uv.y) / max(mountainHeight, 0.0001), 0.0, 1.0);
+    float peakFactor = 1.0 - depthFromPeak;
 
-    // Slight vertical gradient for depth on peaks
-    float heightGrad = (mountainHeight - uv.y) / mountainHeight;
-    color = mix(color * 0.85, color, heightGrad);
+    // Approximate normals from the height map to drive lighting
+    const float EPS = 0.002;
+    float heightX = sampleMountainHeight(vec2(uv.x + EPS, uv.y), uLayer, uTime);
+    float heightY = sampleMountainHeight(vec2(uv.x, uv.y + EPS), uLayer, uTime);
+    float slopeScale = 45.0;
+    vec3 dx = vec3(EPS, (heightX - mountainHeight) * slopeScale, 0.0);
+    vec3 dy = vec3(0.0, (heightY - mountainHeight) * slopeScale, EPS);
+    vec3 normal = normalize(cross(dy, dx));
 
-    gl_FragColor = vec4(color, 1.0);
+    vec3 lightDir = normalize(uLightDirection);
+    float diffuse = clamp(dot(normal, lightDir), 0.0, 1.0);
+
+    vec3 viewDir = vec3(0.0, 0.0, 1.0);
+    float rim = pow(1.0 - clamp(dot(normal, viewDir), 0.0, 1.0), 1.8);
+    rim *= smoothstep(0.25, 0.95, peakFactor);
+
+    // Base gradient: darker base, lighter peaks
+    float shadedMix = mix(0.35, 0.9, peakFactor);
+    vec3 color = mix(uShadowColor, uMidColor, shadedMix);
+    color = mix(color, uHighlightColor, diffuse * (0.4 + peakFactor * 0.5));
+
+    // Crevice darkening for downward slopes
+    float creviceShadow = smoothstep(0.0, 0.7, depthFromPeak) * (1.0 - diffuse) * 0.35;
+    color = mix(color, uShadowColor, creviceShadow);
+
+    // Subtle noise detail so silhouettes feel organic
+    float detail = snoise(vec3(uv.x * 8.0 + uLayer * 4.0, uv.y * 10.0, uTime * 0.05));
+    color += detail * 0.04 * (0.6 + peakFactor * 0.4);
+
+    // Warm mist hugging the base
+    float baseMist = smoothstep(0.2, 1.0, depthFromPeak);
+    color = mix(color, uMistColor, baseMist * uMistStrength);
+
+    // Rim highlight where the sun silhouettes the edge
+    color = mix(color, uRimColor, rim * 0.6);
+
+    float fogMix = clamp(uFogAmount * (0.6 + depthFromPeak * 0.4), 0.0, 1.0);
+    vec3 foggedColor = mix(color, uFogColor, fogMix);
+
+    gl_FragColor = vec4(foggedColor, 1.0);
 }
 `;
 

@@ -77,6 +77,7 @@ export const LAVA_FRAGMENT_SHADER = `
     uniform vec3 uCoreColor;
     uniform vec3 uCrustColor;
     uniform float uFlowSpeed;
+    uniform float uLavaPulse; // New uniform for piece lock glow
     
     varying vec2 vUv;
     varying vec3 vWorldPosition;
@@ -145,14 +146,18 @@ export const LAVA_FRAGMENT_SHADER = `
         float combinedNoise = flowNoise * 0.5 + 0.5 + detail1 + detail2;
         
         // Crust/core threshold with intensity modulation
-        // Use a sharper transition for "plated" look
-        float threshold = uCrustThreshold - uIntensity * 0.2;
+        // Pulse Effect: lower threshold to reveal more lava
+        float pulseThresholdMod = uLavaPulse * 0.3; 
+        float threshold = uCrustThreshold - uIntensity * 0.2 - pulseThresholdMod;
+        
         // Sharpen the noise to create distinct "islands" of crust
         float coreFactor = smoothstep(threshold - 0.05, threshold + 0.05, combinedNoise);
         
         // Color mixing - moderate emissive values for bloom (reduced from HDR)
-        vec3 coreColorHDR = uCoreColor * (1.2 + uIntensity * 0.5);
-        vec3 edgeGlow = vec3(1.0, 0.3, 0.0) * (0.8 + uIntensity * 0.3);
+        // Pulse Effect: boost brightness and saturation
+        vec3 pulseColor = vec3(0.5, 0.2, 0.0) * uLavaPulse;
+        vec3 coreColorHDR = (uCoreColor + pulseColor) * (1.2 + uIntensity * 0.5 + uLavaPulse * 1.5);
+        vec3 edgeGlow = vec3(1.0, 0.3, 0.0) * (0.8 + uIntensity * 0.3 + uLavaPulse);
         
         // Create glowing cracks effect at boundary
         float edgeFactor = smoothstep(0.4, 0.5, coreFactor) - smoothstep(0.5, 0.6, coreFactor);
@@ -408,24 +413,39 @@ export const SKY_FRAGMENT_SHADER = `
         vec3 dir = normalize(vWorldPosition);
         float height = dir.y;
         
-        // Base Gradient: Warm Sunset -> Void
-        vec3 magma = vec3(0.6, 0.1, 0.0);    // Orange Horizon
-        vec3 mid   = vec3(0.08, 0.02, 0.04); // Dark Purple/Red
-        vec3 space = vec3(0.005, 0.002, 0.015); // Deep Void
+        // Base Gradient: Warm glow -> Dark sky -> Void
+        // Use darker base for horizon to prevent harsh lines
+        vec3 horizonGlow = vec3(0.35, 0.08, 0.02);  // Dimmer orange/red at horizon
+        vec3 midSky = vec3(0.12, 0.03, 0.05);       // Dark red/purple
+        vec3 upperSky = vec3(0.05, 0.015, 0.03);    // Darker purple
+        vec3 space = vec3(0.005, 0.002, 0.015);     // Deep void
         
-        vec3 color = mix(magma, mid, smoothstep(-0.2, 0.3, height));
-        color = mix(color, space, smoothstep(0.3, 0.8, height));
+        // Multi-step gradient for smoother transition
+        vec3 color;
+        if (height < 0.15) {
+            // Near horizon - very gradual fade
+            color = mix(horizonGlow * 0.5, horizonGlow, smoothstep(-0.1, 0.15, height));
+        } else if (height < 0.35) {
+            // Lower sky
+            color = mix(horizonGlow, midSky, smoothstep(0.15, 0.35, height));
+        } else if (height < 0.6) {
+            // Mid sky
+            color = mix(midSky, upperSky, smoothstep(0.35, 0.6, height));
+        } else {
+            // Upper sky to space
+            color = mix(upperSky, space, smoothstep(0.6, 0.9, height));
+        }
         
         // Large-scale smooth Nebula clouds
         float n = snoise(dir * 2.0 + uTime * 0.03);
         float clouds = smoothstep(0.3, 0.8, n);
-        vec3 nebulaColor = vec3(0.2, 0.0, 0.12); // Deep Magenta nebulae
-        color = mix(color, nebulaColor + color, clouds * 0.4);
+        vec3 nebulaColor = vec3(0.15, 0.0, 0.08); // Dimmer nebulae
+        color = mix(color, nebulaColor + color * 0.5, clouds * 0.3);
         
         // Soft Starfield (Smooth noise blobs, not single pixels)
         float s = snoise(dir * 50.0);
         float stars = smoothstep(0.96, 0.99, s);
-        color += vec3(stars) * (1.0 - height * 0.6); // Fade stars towards horizon
+        color += vec3(stars) * (1.0 - height * 0.6) * 0.7; // Fade stars towards horizon
         
         gl_FragColor = vec4(color, 1.0);
     }
@@ -466,6 +486,7 @@ export const MOUNTAIN_FRAGMENT_SHADER = `
     uniform float uTime;
     uniform float uIntensity;
     uniform vec3 uRimColor;
+    uniform float uLavaPulse; // New uniform for piece lock glow
     
     varying vec3 vNormal;
     varying vec3 vWorldPosition;
@@ -564,7 +585,9 @@ export const MOUNTAIN_FRAGMENT_SHADER = `
         float riverMask = riverPath + riverDetail * 0.4;
         
         // Threshold to create distinct channels (Wider and clearer)
-        float riverIntensity = smoothstep(0.4, 0.65, riverMask);
+        // Pulse Effect: Widen the channels by lowering the threshold start
+        float pulseWiden = uLavaPulse * 0.25;
+        float riverIntensity = smoothstep(0.4 - pulseWiden, 0.65 - pulseWiden * 0.5, riverMask);
         
         // 2. Flow Animation
         // Noise flowing ALONG the radius (down the mountain)
@@ -586,11 +609,14 @@ export const MOUNTAIN_FRAGMENT_SHADER = `
         // High frequency noise for "floating" crust details
         float crustMap = snoise(vWorldPosition * 0.15 + vec3(uTime * 0.15, 0.0, 0.0));
         // Create dark chunks (crust) floating in the stream
-        float crustFactor = smoothstep(0.1, 0.7, crustMap);
+        // Pulse Effect: melt crust
+        float crustThreshold = 0.1 - uLavaPulse * 0.2;
+        float crustFactor = smoothstep(crustThreshold, 0.7, crustMap);
 
         // Core colors
-        vec3 magmaBright = vec3(3.0, 1.0, 0.2); // Hot liquid (HDR)
-        vec3 magmaDark   = vec3(1.1, 0.1, 0.0); // Cooling liquid
+        // Pulse Effect: brighter, hotter magma
+        vec3 magmaBright = vec3(3.0, 1.0, 0.2) * (1.0 + uLavaPulse * 2.0); // Hot liquid (HDR)
+        vec3 magmaDark   = vec3(1.1, 0.1, 0.0) * (1.0 + uLavaPulse); // Cooling liquid
         vec3 crustRock   = vec3(0.1, 0.02, 0.0); // Solid black/red chunks
 
         // 1. Base Gradient (Center is hotter)
@@ -599,13 +625,20 @@ export const MOUNTAIN_FRAGMENT_SHADER = `
         // 2. Apply Crust (Dark spots)
         // Crust appears more in the slower/cooler areas, but we mix it everywhere for texture
         vec3 finalLavaColor = mix(flowColor, crustRock, crustFactor * 0.7); 
+        
+        // Pulse Effect: add overall heat glow to lava
+        finalLavaColor += vec3(0.5, 0.2, 0.0) * uLavaPulse * riverIntensity;
 
         vec3 riverColor = finalLavaColor * lavaRiver;
         
         // Veins overlay (thin cracks) - Reduce these to be very subtle
+        // Pulse Effect: Make veins glow significantly
         float crackNoise = snoise(vWorldPosition * 0.02);
         float crk = 1.0 - smoothstep(0.0, 0.1, abs(crackNoise));
-        vec3 veins = vec3(0.5, 0.1, 0.0) * crk * (1.0 - lavaRiver) * 0.2; // Only where no river
+        
+        float pulseVeinBoost = uLavaPulse * 2.0;
+        vec3 veinColor = vec3(0.5, 0.1, 0.0) * (1.0 + pulseVeinBoost);
+        vec3 veins = veinColor * crk * (1.0 - lavaRiver) * (0.2 + pulseVeinBoost * 0.3); // Glows more when pulse is active
 
         // Lighting
         vec3 viewDir = normalize(cameraPosition - vWorldPosition);
@@ -1097,6 +1130,448 @@ export const GOD_RAYS_FRAGMENT_SHADER = `
 
         if (alpha < 0.005) discard;
 
+        gl_FragColor = vec4(color, alpha);
+    }
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Epic Background: Pyroclastic Storm Clouds with Internal Lightning
+// Roiling, angry storm clouds with crimson/orange internal glow
+// ─────────────────────────────────────────────────────────────────────────────
+export const STORM_CLOUDS_VERTEX_SHADER = `
+    varying vec3 vWorldPosition;
+    varying vec2 vUv;
+    
+    void main() {
+        vUv = uv;
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPos.xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+export const STORM_CLOUDS_FRAGMENT_SHADER = `
+    uniform float uTime;
+    uniform float uIntensity;
+    uniform float uLightningFlash;
+    uniform vec3 uGlowColor;
+    uniform vec3 uCloudColor;
+    
+    varying vec3 vWorldPosition;
+    varying vec2 vUv;
+    
+    // 3D Simplex noise
+    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec4 permute(vec4 x) { return mod289(((x * 34.0) + 1.0) * x); }
+    vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+    float snoise(vec3 v) {
+        const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+        const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+        vec3 i  = floor(v + dot(v, C.yyy));
+        vec3 x0 = v - i + dot(i, C.xxx);
+        vec3 g = step(x0.yzx, x0.xyz);
+        vec3 l = 1.0 - g;
+        vec3 i1 = min(g.xyz, l.zxy);
+        vec3 i2 = max(g.xyz, l.zxy);
+        vec3 x1 = x0 - i1 + C.xxx;
+        vec3 x2 = x0 - i2 + C.yyy;
+        vec3 x3 = x0 - D.yyy;
+        i = mod289(i);
+        vec4 p = permute(permute(permute(
+                 i.z + vec4(0.0, i1.z, i2.z, 1.0))
+               + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+               + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+        float n_ = 0.142857142857;
+        vec3 ns = n_ * D.wyz - D.xzx;
+        vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+        vec4 x_ = floor(j * ns.z);
+        vec4 y_ = floor(j - 7.0 * x_);
+        vec4 x = x_ * ns.x + ns.yyyy;
+        vec4 y = y_ * ns.x + ns.yyyy;
+        vec4 h = 1.0 - abs(x) - abs(y);
+        vec4 b0 = vec4(x.xy, y.xy);
+        vec4 b1 = vec4(x.zw, y.zw);
+        vec4 s0 = floor(b0) * 2.0 + 1.0;
+        vec4 s1 = floor(b1) * 2.0 + 1.0;
+        vec4 sh = -step(h, vec4(0.0));
+        vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+        vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+        vec3 p0 = vec3(a0.xy, h.x);
+        vec3 p1 = vec3(a0.zw, h.y);
+        vec3 p2 = vec3(a1.xy, h.z);
+        vec3 p3 = vec3(a1.zw, h.w);
+        vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+        p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+        vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+        m = m * m;
+        return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+    }
+    
+    // FBM for volumetric clouds
+    float fbm(vec3 p) {
+        float value = 0.0;
+        float amplitude = 0.5;
+        float frequency = 1.0;
+        for (int i = 0; i < 5; i++) {
+            value += amplitude * snoise(p * frequency);
+            amplitude *= 0.5;
+            frequency *= 2.0;
+        }
+        return value;
+    }
+
+    void main() {
+        vec3 dir = normalize(vWorldPosition);
+        
+        // Smooth fade near horizon instead of hard cutoff
+        float horizonFade = smoothstep(0.05, 0.2, dir.y);
+        if (horizonFade < 0.01) discard;
+        
+        // Scale for cloud detail
+        vec3 cloudPos = dir * 3.0;
+        
+        // Animated churning motion
+        vec3 motion = vec3(uTime * 0.02, uTime * 0.015, uTime * 0.01);
+        
+        // Multi-layer cloud density
+        float cloud1 = fbm(cloudPos + motion);
+        float cloud2 = fbm(cloudPos * 2.0 - motion * 0.5);
+        float cloud3 = fbm(cloudPos * 0.5 + motion * 0.3);
+        
+        float density = cloud1 * 0.5 + cloud2 * 0.3 + cloud3 * 0.2;
+        density = smoothstep(-0.1, 0.5, density);
+        
+        // Height-based fade (thicker near horizon, but not at the very edge)
+        float heightFade = 1.0 - smoothstep(0.15, 0.6, dir.y);
+        density *= heightFade;
+        
+        // Internal glow from lava below
+        float glowIntensity = snoise(cloudPos * 2.0 + vec3(0.0, -uTime * 0.1, 0.0));
+        glowIntensity = smoothstep(0.2, 0.7, glowIntensity);
+        vec3 internalGlow = uGlowColor * glowIntensity * (1.0 - dir.y * 2.0);
+        
+        // Lightning flash effect
+        vec3 lightningGlow = vec3(1.0, 0.9, 0.7) * uLightningFlash * density;
+        
+        // Random lightning hotspots
+        float lightningNoise = snoise(cloudPos * 5.0 + vec3(uTime * 3.0, 0.0, 0.0));
+        float lightningSpot = smoothstep(0.85, 0.95, lightningNoise) * uLightningFlash * 3.0;
+        lightningGlow += vec3(1.0, 1.0, 0.95) * lightningSpot;
+        
+        // Combine colors
+        vec3 cloudBase = uCloudColor * (0.3 + density * 0.4);
+        vec3 color = cloudBase + internalGlow * 0.6 + lightningGlow;
+        
+        // Intensity boost
+        color *= (1.0 + uIntensity * 0.5);
+        
+        // Apply horizon fade to alpha for smooth blending
+        float alpha = density * 0.7 * heightFade * horizonFade;
+        
+        if (alpha < 0.01) discard;
+        
+        gl_FragColor = vec4(color, alpha);
+    }
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Epic Background: Infernal Aurora (Fire Ribbons)
+// Flowing ribbons of deep red, orange, and gold dancing across the sky
+// ─────────────────────────────────────────────────────────────────────────────
+export const INFERNAL_AURORA_VERTEX_SHADER = `
+    uniform float uTime;
+    
+    varying vec3 vWorldPosition;
+    varying vec2 vUv;
+    varying float vWave;
+    
+    void main() {
+        vUv = uv;
+        
+        vec3 pos = position;
+        
+        // Flowing wave animation
+        float wave = sin(pos.x * 0.002 + uTime * 0.5) * 200.0;
+        wave += sin(pos.x * 0.005 + uTime * 0.3) * 100.0;
+        wave += cos(pos.x * 0.001 + uTime * 0.2) * 150.0;
+        
+        pos.y += wave;
+        vWave = wave / 450.0; // Normalize for color variation
+        
+        // Subtle horizontal drift
+        pos.x += sin(uTime * 0.1) * 100.0;
+        
+        vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+        vWorldPosition = worldPos.xyz;
+        
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+    }
+`;
+
+export const INFERNAL_AURORA_FRAGMENT_SHADER = `
+    uniform float uTime;
+    uniform float uIntensity;
+    uniform vec3 uColor1; // Deep red
+    uniform vec3 uColor2; // Orange
+    uniform vec3 uColor3; // Gold
+    
+    varying vec3 vWorldPosition;
+    varying vec2 vUv;
+    varying float vWave;
+    
+    // Noise for organic edges
+    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec3 permute(vec3 x) { return mod289(((x * 34.0) + 1.0) * x); }
+    
+    float snoise(vec2 v) {
+        const vec4 C = vec4(0.211324865405187, 0.366025403784439,
+                           -0.577350269189626, 0.024390243902439);
+        vec2 i  = floor(v + dot(v, C.yy));
+        vec2 x0 = v - i + dot(i, C.xx);
+        vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+        vec4 x12 = x0.xyxy + C.xxzz;
+        x12.xy -= i1;
+        i = mod289(i);
+        vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0)) + i.x + vec3(0.0, i1.x, 1.0));
+        vec3 m = max(0.5 - vec3(dot(x0, x0), dot(x12.xy, x12.xy), dot(x12.zw, x12.zw)), 0.0);
+        m = m * m;
+        m = m * m;
+        vec3 x = 2.0 * fract(p * C.www) - 1.0;
+        vec3 h = abs(x) - 0.5;
+        vec3 ox = floor(x + 0.5);
+        vec3 a0 = x - ox;
+        m *= 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h * h);
+        vec3 g;
+        g.x = a0.x * x0.x + h.x * x0.y;
+        g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+        return 130.0 * dot(m, g);
+    }
+
+    void main() {
+        // Vertical gradient for ribbon shape
+        float ribbonShape = 1.0 - abs(vUv.y - 0.5) * 2.0;
+        ribbonShape = pow(ribbonShape, 1.5);
+        
+        // Noise for organic, flowing edges
+        float edgeNoise = snoise(vec2(vUv.x * 10.0 + uTime * 0.5, vUv.y * 5.0));
+        ribbonShape *= smoothstep(-0.3, 0.3, edgeNoise);
+        
+        // Flowing intensity variation
+        float flowNoise = snoise(vec2(vUv.x * 3.0 - uTime * 0.3, vUv.y * 2.0));
+        float intensity = 0.5 + flowNoise * 0.5;
+        
+        // Color gradient based on horizontal position and wave
+        float colorMix1 = sin(vUv.x * 2.0 + uTime * 0.2) * 0.5 + 0.5;
+        float colorMix2 = sin(vUv.x * 3.0 + uTime * 0.15 + 1.0) * 0.5 + 0.5;
+        
+        vec3 color = mix(uColor1, uColor2, colorMix1);
+        color = mix(color, uColor3, colorMix2 * (0.3 + vWave * 0.5));
+        
+        // Add bright core along center of ribbon
+        float core = pow(1.0 - abs(vUv.y - 0.5) * 2.0, 4.0);
+        color += uColor3 * core * 0.5;
+        
+        // Shimmer effect
+        float shimmer = sin(vUv.x * 50.0 + uTime * 5.0) * 0.1 + 0.9;
+        color *= shimmer;
+        
+        // HDR boost
+        color *= (1.2 + uIntensity * 0.5);
+        
+        float alpha = ribbonShape * intensity * 0.5;
+        
+        if (alpha < 0.01) discard;
+        
+        gl_FragColor = vec4(color, alpha);
+    }
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Epic Background: Distant Erupting Volcanos
+// Secondary volcanos on the horizon with periodic eruptions
+// ─────────────────────────────────────────────────────────────────────────────
+export const DISTANT_VOLCANO_VERTEX_SHADER = `
+    varying vec3 vWorldPosition;
+    varying vec2 vUv;
+    varying float vHeight;
+    
+    void main() {
+        vUv = uv;
+        vHeight = position.y;
+        
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPos.xyz;
+        
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+export const DISTANT_VOLCANO_FRAGMENT_SHADER = `
+    uniform float uTime;
+    uniform float uIntensity;
+    uniform float uEruptionPhase;
+    uniform vec3 uSilhouetteColor;
+    uniform vec3 uLavaColor;
+    uniform vec3 uGlowColor;
+    
+    varying vec3 vWorldPosition;
+    varying vec2 vUv;
+    varying float vHeight;
+    
+    // Noise functions
+    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec3 permute(vec3 x) { return mod289(((x * 34.0) + 1.0) * x); }
+    
+    float snoise(vec2 v) {
+        const vec4 C = vec4(0.211324865405187, 0.366025403784439,
+                           -0.577350269189626, 0.024390243902439);
+        vec2 i  = floor(v + dot(v, C.yy));
+        vec2 x0 = v - i + dot(i, C.xx);
+        vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+        vec4 x12 = x0.xyxy + C.xxzz;
+        x12.xy -= i1;
+        i = mod289(i);
+        vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0)) + i.x + vec3(0.0, i1.x, 1.0));
+        vec3 m = max(0.5 - vec3(dot(x0, x0), dot(x12.xy, x12.xy), dot(x12.zw, x12.zw)), 0.0);
+        m = m * m;
+        m = m * m;
+        vec3 x = 2.0 * fract(p * C.www) - 1.0;
+        vec3 h = abs(x) - 0.5;
+        vec3 ox = floor(x + 0.5);
+        vec3 a0 = x - ox;
+        m *= 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h * h);
+        vec3 g;
+        g.x = a0.x * x0.x + h.x * x0.y;
+        g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+        return 130.0 * dot(m, g);
+    }
+
+    void main() {
+        // Normalize height (0 at base, 1 at peak)
+        float normalizedHeight = vUv.y;
+        
+        // Base silhouette - dark mountain
+        vec3 color = uSilhouetteColor;
+        
+        // Lava rivers flowing down the sides
+        float riverNoise = snoise(vec2(vUv.x * 15.0, vUv.y * 5.0 - uTime * 0.3));
+        float riverMask = smoothstep(0.3, 0.5, riverNoise);
+        
+        // More rivers near top (crater area)
+        float topMask = smoothstep(0.6, 0.9, normalizedHeight);
+        riverMask *= 0.3 + topMask * 0.7;
+        
+        // Flowing lava color
+        vec3 lavaFlow = uLavaColor * (1.5 + sin(uTime * 2.0 + vUv.y * 10.0) * 0.3);
+        color = mix(color, lavaFlow, riverMask * 0.8);
+        
+        // Crater glow at the top
+        float craterGlow = smoothstep(0.85, 1.0, normalizedHeight);
+        float craterPulse = 0.7 + sin(uTime * 1.5) * 0.3;
+        vec3 glowEmit = uGlowColor * craterGlow * craterPulse * 2.0;
+        color += glowEmit;
+        
+        // Eruption effect (fountain of lava particles above crater)
+        if (normalizedHeight > 0.95) {
+            float eruptionHeight = (normalizedHeight - 0.95) / 0.05;
+            float eruptionNoise = snoise(vec2(vUv.x * 20.0 + uTime * 3.0, eruptionHeight * 10.0 - uTime * 5.0));
+            float eruptionMask = smoothstep(-0.2, 0.4, eruptionNoise) * uEruptionPhase;
+            
+            // Fade out at top of eruption
+            float eruptionFade = 1.0 - eruptionHeight;
+            eruptionMask *= eruptionFade;
+            
+            vec3 eruptionColor = vec3(1.0, 0.5, 0.1) * (2.0 + uIntensity);
+            color += eruptionColor * eruptionMask;
+        }
+        
+        // Atmospheric haze (distance fog)
+        float haze = 0.2 + normalizedHeight * 0.1;
+        vec3 hazeColor = vec3(0.3, 0.1, 0.05);
+        color = mix(color, hazeColor, haze * 0.3);
+        
+        // Intensity boost on combos
+        color *= (1.0 + uIntensity * 0.3);
+        
+        // Alpha - solid silhouette
+        float alpha = 1.0;
+        
+        // Soft edges at the base
+        alpha *= smoothstep(0.0, 0.05, normalizedHeight);
+        
+        gl_FragColor = vec4(color, alpha);
+    }
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Eruption Particle Shader (for lava fountains)
+// ─────────────────────────────────────────────────────────────────────────────
+export const ERUPTION_PARTICLE_VERTEX_SHADER = `
+    uniform float uTime;
+    uniform float uSize;
+    
+    attribute float aLife;
+    attribute float aRandom;
+    attribute vec3 aVelocity;
+    
+    varying float vLife;
+    varying float vRandom;
+    
+    void main() {
+        vLife = aLife;
+        vRandom = aRandom;
+        
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        
+        // Size based on life
+        float lifeFactor = smoothstep(0.0, 0.1, aLife) * smoothstep(1.0, 0.7, aLife);
+        
+        gl_PointSize = uSize * lifeFactor * (500.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+    }
+`;
+
+export const ERUPTION_PARTICLE_FRAGMENT_SHADER = `
+    uniform float uTime;
+    uniform float uIntensity;
+    
+    varying float vLife;
+    varying float vRandom;
+    
+    void main() {
+        // Circular particle
+        vec2 center = gl_PointCoord - 0.5;
+        float dist = length(center);
+        if (dist > 0.5) discard;
+        
+        float alpha = 1.0 - smoothstep(0.2, 0.5, dist);
+        alpha *= vLife;
+        
+        // Hot->cool color gradient
+        vec3 hotColor = vec3(1.0, 0.9, 0.5);  // White-hot
+        vec3 warmColor = vec3(1.0, 0.4, 0.0); // Orange
+        vec3 coolColor = vec3(0.5, 0.1, 0.0); // Dark red
+        
+        vec3 color;
+        if (vLife > 0.6) {
+            color = mix(warmColor, hotColor, (vLife - 0.6) / 0.4);
+        } else if (vLife > 0.2) {
+            color = mix(coolColor, warmColor, (vLife - 0.2) / 0.4);
+        } else {
+            color = coolColor * (vLife / 0.2);
+        }
+        
+        // HDR glow
+        color *= (1.5 + uIntensity * 0.5);
+        
+        // Flicker
+        float flicker = sin(uTime * 15.0 + vRandom * 50.0) * 0.15 + 0.85;
+        color *= flicker;
+        
         gl_FragColor = vec4(color, alpha);
     }
 `;

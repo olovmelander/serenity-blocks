@@ -17,6 +17,7 @@ import * as THREE from 'three';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SUNSET_TETROMINOS } from './sunset-tetrominos.js';
+import { SunsetOceanWater } from './SunsetOceanWater.js';
 import {
     skyVertexShader,
     skyFragmentShader,
@@ -32,8 +33,6 @@ import {
     shockwaveFragmentShader,
     flareVertexShader,
     flareFragmentShader,
-    horizonVertexShader,
-    horizonFragmentShader,
     moonVertexShader,
     moonFragmentShader,
 } from './sunset-shaders.js';
@@ -88,33 +87,33 @@ const QUALITY_PRESETS = {
 const PALETTE = {
     // Dawn colors (early morning)
     dawn: {
-        top: new THREE.Color(0x1a1a3e),    // Deep purple-blue
-        mid: new THREE.Color(0xff6b8a),    // Rose pink
+        top: new THREE.Color(0x1a1a3e), // Deep purple-blue
+        mid: new THREE.Color(0xff6b8a), // Rose pink
         bottom: new THREE.Color(0xffb347), // Warm orange
     },
     // Day colors (midday)
     day: {
-        top: new THREE.Color(0x87ceeb),    // Sky blue
-        mid: new THREE.Color(0xffecd2),    // Soft cream
+        top: new THREE.Color(0x87ceeb), // Sky blue
+        mid: new THREE.Color(0xffecd2), // Soft cream
         bottom: new THREE.Color(0xffd89b), // Golden glow
     },
     // Sunset colors (golden hour)
     sunset: {
-        top: new THREE.Color(0x2d1b4e),    // Deep purple
-        mid: new THREE.Color(0xff4500),    // Orange-red
+        top: new THREE.Color(0x2d1b4e), // Deep purple
+        mid: new THREE.Color(0xff4500), // Orange-red
         bottom: new THREE.Color(0xffd700), // Golden yellow
     },
     // Night colors
     night: {
-        top: new THREE.Color(0x0a0a1a),    // Deep night blue
-        mid: new THREE.Color(0x1a1a2e),    // Dark purple
+        top: new THREE.Color(0x0a0a1a), // Deep night blue
+        mid: new THREE.Color(0x1a1a2e), // Dark purple
         bottom: new THREE.Color(0x2d1b4e), // Purple horizon
     },
     // Sun colors
     sun: {
-        core: new THREE.Color(0xffffff),     // Bright white core
-        corona: new THREE.Color(0xffdd44),   // Golden corona
-        edge: new THREE.Color(0xff6b1a),     // Orange edge
+        core: new THREE.Color(0xffffff), // Bright white core
+        corona: new THREE.Color(0xffdd44), // Golden corona
+        edge: new THREE.Color(0xff6b1a), // Orange edge
     },
     // God ray color
     godRays: new THREE.Color(0xffcc66),
@@ -127,14 +126,14 @@ const PALETTE = {
     ],
     // Horizon
     horizon: {
-        day: new THREE.Color(0x4a3728),   // Warm brown
+        day: new THREE.Color(0x4a3728), // Warm brown
         night: new THREE.Color(0x1a1a2e), // Dark blue
     },
     // Moon colors for night
     moon: {
-        core: new THREE.Color(0xf5f5dc),    // Beige/cream moon
-        glow: new THREE.Color(0xd4c4a8),    // Soft warm glow
-        halo: new THREE.Color(0x6b5b4f),    // Subtle outer halo
+        core: new THREE.Color(0xf5f5dc), // Beige/cream moon
+        glow: new THREE.Color(0xd4c4a8), // Soft warm glow
+        halo: new THREE.Color(0x6b5b4f), // Subtle outer halo
     },
 };
 
@@ -163,6 +162,7 @@ export default class SunsetTheme extends BaseTheme {
         this.stars = null;
         this.particles = null;
         this.horizon = null;
+        this.ocean = null;
         this.moon = null;
         this.moonGlowLayers = [];
 
@@ -171,7 +171,7 @@ export default class SunsetTheme extends BaseTheme {
         this.celestialFlares = [];
 
         // Moon position (opposite of sun)
-        this.moonPosition = new THREE.Vector3(0, -30, -50);
+        this.moonPosition = new THREE.Vector3(0, -30, -120);
 
         // Day-night cycle state
         this.dayProgress = 0.55; // Start at golden hour (0.5-0.75 is sunset)
@@ -188,7 +188,7 @@ export default class SunsetTheme extends BaseTheme {
         };
 
         // Sun position (moves based on day progress)
-        this.sunPosition = new THREE.Vector3(0, 5, -50);
+        this.sunPosition = new THREE.Vector3(0, 5, -100);
 
         // Quality settings
         this.currentQuality = 'High';
@@ -252,7 +252,7 @@ export default class SunsetTheme extends BaseTheme {
             60,
             window.innerWidth / window.innerHeight,
             0.1,
-            2000
+            2000,
         );
         this.camera.position.copy(this.baseCameraPos);
         this.camera.lookAt(0, 0, 0);
@@ -265,10 +265,10 @@ export default class SunsetTheme extends BaseTheme {
         this.createSky();
         this.createSun();
         this.createGodRays();
-        this.createMoon();  // Beautiful moon for night
+        this.createMoon(); // Beautiful moon for night
         this.createStars();
         this.createParticles();
-        this.createHorizon();
+        this.createOcean(); // Ocean water with reflections
         this.setupLighting();
 
         // Event listeners
@@ -510,27 +510,149 @@ export default class SunsetTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Horizon
+    // Ocean Water
     // ─────────────────────────────────────────────────────────────────────────
 
-    createHorizon() {
-        const geometry = new THREE.PlaneGeometry(400, 100, 1, 1);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uDayProgress: this.uniforms.dayProgress,
-                uDayColor: { value: PALETTE.horizon.day },
-                uNightColor: { value: PALETTE.horizon.night },
+    createOcean() {
+        // Large ocean plane extending to horizon
+        // Higher resolution geometry for smoother waves
+        const geometry = new THREE.PlaneGeometry(800, 400, 128, 64);
+
+        // Load water normal texture
+        const textureLoader = new THREE.TextureLoader();
+        const waterNormals = textureLoader.load(
+            'textures/water-normal.jpg',
+            (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                // Ensure the uniform is updated after load
+                if (this.ocean?.material?.uniforms?.normalSampler) {
+                    this.ocean.material.uniforms.normalSampler.value = texture;
+                }
+                console.log('[Sunset3D] Ocean water normal texture loaded');
             },
-            vertexShader: horizonVertexShader,
-            fragmentShader: horizonFragmentShader,
-            transparent: true,
-            depthWrite: false,
+            undefined,
+            (error) => {
+                console.warn('[Sunset3D] Failed to load water normal texture', error);
+            },
+        );
+
+        this.ocean = new SunsetOceanWater(geometry, {
+            textureWidth: 512,
+            textureHeight: 512,
+            waterNormals,
+            sunDirection: new THREE.Vector3(0, 0.5, -1).normalize(),
+            sunColor: 0xffd700,
+            waterColor: 0x1a3a5c,
+            distortionScale: 2.0,  // Reduced for smoother appearance
+            fog: false,
         });
 
-        this.horizon = new THREE.Mesh(geometry, material);
-        this.horizon.position.set(0, -30, -80);
-        this.horizon.rotation.x = -0.1;
-        this.mainGroup.add(this.horizon);
+        // Set size uniform for proper noise scaling
+        if (this.ocean.material?.uniforms?.size) {
+            this.ocean.material.uniforms.size.value = 0.5;
+        }
+
+        this.ocean.rotation.x = -Math.PI / 2;
+        this.ocean.position.set(0, -28, -35); // At horizon level, in front of celestial bodies
+        this.mainGroup.add(this.ocean);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Ocean Color Interpolation for Day-Night Cycle
+    // ─────────────────────────────────────────────────────────────────────────
+
+    getOceanColorsForTime(dayProgress) {
+        // Define color palettes for different times of day
+        const palettes = {
+            // Night (0.0) - Deep navy
+            night: {
+                near: new THREE.Color(0x0a1628),
+                far: new THREE.Color(0x1a2840),
+                sunReflect: new THREE.Color(0xc0c0ff),
+            },
+            // Dawn (0.22) - Purple to rose
+            dawn: {
+                near: new THREE.Color(0x2a1a40),
+                far: new THREE.Color(0xff6b8a),
+                sunReflect: new THREE.Color(0xffb347),
+            },
+            // Morning (0.35) - Teal to sky blue
+            morning: {
+                near: new THREE.Color(0x1a4a6a),
+                far: new THREE.Color(0x87ceeb),
+                sunReflect: new THREE.Color(0xffd89b),
+            },
+            // Noon (0.5) - Ocean blue
+            noon: {
+                near: new THREE.Color(0x1a5a7a),
+                far: new THREE.Color(0x4a90c0),
+                sunReflect: new THREE.Color(0xffffff),
+            },
+            // Golden Hour (0.72) - Brown-orange to orange
+            golden: {
+                near: new THREE.Color(0x4a3020),
+                far: new THREE.Color(0xff8c00),
+                sunReflect: new THREE.Color(0xffd700),
+            },
+            // Sunset (0.82) - Purple-brown to red-orange
+            sunset: {
+                near: new THREE.Color(0x2a1a30),
+                far: new THREE.Color(0xff4500),
+                sunReflect: new THREE.Color(0xff6b1a),
+            },
+            // Dusk (0.92) - Dark purple to magenta
+            dusk: {
+                near: new THREE.Color(0x1a1a2e),
+                far: new THREE.Color(0x4a2040),
+                sunReflect: new THREE.Color(0xd4c4a8),
+            },
+        };
+
+        // Helper function to interpolate between palettes
+        const lerpPalette = (p1, p2, t) => ({
+            near: new THREE.Color().lerpColors(p1.near, p2.near, t),
+            far: new THREE.Color().lerpColors(p1.far, p2.far, t),
+            sunReflect: new THREE.Color().lerpColors(p1.sunReflect, p2.sunReflect, t),
+        });
+
+        // Determine which palettes to blend based on dayProgress
+        if (dayProgress < 0.12) {
+            // Night -> Pre-dawn
+            const t = dayProgress / 0.12;
+            return lerpPalette(palettes.night, palettes.dawn, t * 0.3);
+        } if (dayProgress < 0.22) {
+            // Pre-dawn -> Dawn
+            const t = (dayProgress - 0.12) / 0.10;
+            return lerpPalette(palettes.night, palettes.dawn, 0.3 + t * 0.7);
+        } if (dayProgress < 0.35) {
+            // Dawn -> Morning
+            const t = (dayProgress - 0.22) / 0.13;
+            return lerpPalette(palettes.dawn, palettes.morning, t);
+        } if (dayProgress < 0.50) {
+            // Morning -> Noon
+            const t = (dayProgress - 0.35) / 0.15;
+            return lerpPalette(palettes.morning, palettes.noon, t);
+        } if (dayProgress < 0.65) {
+            // Noon -> Afternoon (stay similar)
+            const t = (dayProgress - 0.50) / 0.15;
+            return lerpPalette(palettes.noon, palettes.golden, t * 0.3);
+        } if (dayProgress < 0.72) {
+            // Afternoon -> Golden Hour
+            const t = (dayProgress - 0.65) / 0.07;
+            return lerpPalette(palettes.noon, palettes.golden, 0.3 + t * 0.7);
+        } if (dayProgress < 0.82) {
+            // Golden Hour -> Sunset
+            const t = (dayProgress - 0.72) / 0.10;
+            return lerpPalette(palettes.golden, palettes.sunset, t);
+        } if (dayProgress < 0.92) {
+            // Sunset -> Dusk
+            const t = (dayProgress - 0.82) / 0.10;
+            return lerpPalette(palettes.sunset, palettes.dusk, t);
+        }
+        // Dusk -> Night
+        const t = (dayProgress - 0.92) / 0.08;
+        return lerpPalette(palettes.dusk, palettes.night, t);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -543,7 +665,7 @@ export default class SunsetTheme extends BaseTheme {
         const moonMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: this.uniforms.time,
-                uOpacity: { value: 0 },  // Start hidden, fade in at night
+                uOpacity: { value: 0 }, // Start hidden, fade in at night
             },
             vertexShader: moonVertexShader,
             fragmentShader: moonFragmentShader,
@@ -568,7 +690,7 @@ export default class SunsetTheme extends BaseTheme {
                 map: glowTexture,
                 color: layer.color,
                 transparent: true,
-                opacity: 0,  // Start hidden
+                opacity: 0, // Start hidden
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
             });
@@ -588,9 +710,9 @@ export default class SunsetTheme extends BaseTheme {
         const ctx = canvas.getContext('2d');
 
         const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-        gradient.addColorStop(0, 'rgba(245, 245, 220, 1)');    // Beige center
+        gradient.addColorStop(0, 'rgba(245, 245, 220, 1)'); // Beige center
         gradient.addColorStop(0.3, 'rgba(212, 196, 168, 0.6)'); // Soft glow
-        gradient.addColorStop(0.6, 'rgba(107, 91, 79, 0.2)');   // Subtle halo
+        gradient.addColorStop(0.6, 'rgba(107, 91, 79, 0.2)'); // Subtle halo
         gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
         ctx.fillStyle = gradient;
@@ -641,7 +763,7 @@ export default class SunsetTheme extends BaseTheme {
             this.uniforms.sunIntensity.value = THREE.MathUtils.lerp(
                 this.uniforms.sunIntensity.value,
                 1.0,
-                delta * 2.0
+                delta * 2.0,
             );
         }
 
@@ -657,6 +779,9 @@ export default class SunsetTheme extends BaseTheme {
             this.stars.rotation.y = elapsed * 0.005;
         }
 
+        // Update ocean uniforms
+        this.updateOcean(elapsed);
+
         // Render
         this.renderer.render(this.scene, this.camera);
     }
@@ -667,14 +792,14 @@ export default class SunsetTheme extends BaseTheme {
         // dayProgress: 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset, 1 = midnight
 
         const angle = this.dayProgress * Math.PI * 2 - Math.PI * 0.5;
-        const x = Math.cos(angle) * 50;  // Horizontal sweep
+        const x = Math.cos(angle) * 50; // Horizontal sweep
 
         // Y position: peaks at noon (dayProgress=0.5), dips far below at night
         // Using sin of angle gives us: -1 at midnight, +1 at noon
         // Scale and offset so: noon = +30, midnight = -60 (well below horizon at -30)
         const y = Math.sin(angle) * 45 - 10;
 
-        this.sunPosition.set(x, y, -50);
+        this.sunPosition.set(x, y, -100);
 
         // Update sun mesh and glow layers
         if (this.sun) {
@@ -724,7 +849,7 @@ export default class SunsetTheme extends BaseTheme {
         // This makes the moon rise from below the screen
         const moonY = Math.sin(moonAngle) * 50 - 25;
 
-        this.moonPosition.set(moonX, moonY, -70);
+        this.moonPosition.set(moonX, moonY, -120);
 
         // Moon visibility - only visible when above horizon AND sun is down
         // Horizon is around Y = -30
@@ -750,36 +875,91 @@ export default class SunsetTheme extends BaseTheme {
     updateCameraDrift(elapsed) {
         if (!this.camera) return;
 
-        // "Smart" organic floating motion using Sum of Sines
-        // Combines multiple non-harmonic frequencies to avoid obvious repetition
-        const t = elapsed * 0.15; // Global speed factor
+        // ═══════════════════════════════════════════════════════════════════════
+        // IMMERSIVE BREATHING CAMERA MOVEMENT
+        // More pronounced, meditative motion with layered frequencies
+        // ═══════════════════════════════════════════════════════════════════════
 
-        // X Axis: Wide gentle drift + subtle variation
-        const floatX =
-            Math.sin(t * 1.0) * 1.5 +      // Primary sway (was 2.5)
-            Math.cos(t * 0.42) * 0.8 +     // Secondary drift (was 1.5)
-            Math.sin(t * 2.3) * 0.2;       // Subtle jitter (was 0.3)
+        const t = elapsed;
 
-        // Y Axis: Breathing vertical motion
-        const floatY =
-            Math.cos(t * 0.85) * 0.8 +     // Primary breathe (was 1.5)
-            Math.sin(t * 0.31) * 0.5 +     // Secondary drift (was 1.0)
-            Math.cos(t * 1.7) * 0.1;       // Subtle bob (was 0.2)
+        // Primary breathing speed (~10 second cycle)
+        const breatheSpeed = 0.1;
+        // Secondary slow drift (~25 second cycle)
+        const driftSpeed = 0.04;
 
-        // Z Axis: Depth breathing
-        const floatZ =
-            Math.sin(t * 0.55) * 0.8 +     // Primary push/pull (was 1.5)
-            Math.cos(t * 1.3) * 0.3;       // Secondary variation (was 0.5)
+        // ─────────────────────────────────────────────────────────────────────
+        // X Axis: Gentle horizontal sway
+        // ─────────────────────────────────────────────────────────────────────
+        const floatX = Math.sin(t * driftSpeed) * 4.0           // Primary sway
+            + Math.sin(t * driftSpeed * 0.7 + 1.0) * 2.0        // Secondary offset
+            + Math.cos(t * driftSpeed * 1.3) * 1.0;             // Subtle variation
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Y Axis: Deep vertical breathing movement
+        // ─────────────────────────────────────────────────────────────────────
+        const floatY = Math.sin(t * breatheSpeed) * 3.0         // Primary breathe (up/down)
+            + Math.cos(t * breatheSpeed * 0.6 + 0.5) * 1.5      // Secondary drift
+            + Math.sin(t * breatheSpeed * 1.8) * 0.5;           // Subtle bob
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Z Axis: Forward/back depth breathing
+        // ─────────────────────────────────────────────────────────────────────
+        const floatZ = Math.sin(t * breatheSpeed * 0.8) * 4.0   // Primary push/pull
+            + Math.cos(t * driftSpeed * 0.5) * 2.0;             // Secondary variation
 
         this.camera.position.x = this.baseCameraPos.x + floatX;
         this.camera.position.y = this.baseCameraPos.y + floatY;
         this.camera.position.z = this.baseCameraPos.z + floatZ;
 
-        // Smart LookAt: Target moves slightly out of phase to create "stabilized" feel
-        const targetX = Math.sin(t * 0.7 + 1.0) * 1.5 + Math.cos(t * 0.2) * 1.0;
-        const targetY = Math.cos(t * 0.6 + 0.5) * 1.0 + Math.sin(t * 0.3) * 0.8;
+        // ─────────────────────────────────────────────────────────────────────
+        // FOV Breathing - subtle zoom in/out for immersive effect
+        // ─────────────────────────────────────────────────────────────────────
+        const baseFov = 60;
+        const fovBreathing = Math.sin(t * breatheSpeed * 0.7) * 2.0; // ±2 degrees
+        this.camera.fov = baseFov + fovBreathing;
+        this.camera.updateProjectionMatrix();
+
+        // Smart LookAt: Target moves slightly out of phase for stabilized feel
+        const targetX = Math.sin(t * driftSpeed * 0.8 + 1.0) * 2.0;
+        const targetY = Math.cos(t * breatheSpeed * 0.5 + 0.5) * 1.5;
 
         this.camera.lookAt(targetX, targetY, 0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Ocean Update
+    // ─────────────────────────────────────────────────────────────────────────
+
+    updateOcean(elapsed) {
+        if (!this.ocean || !this.ocean.material?.uniforms) return;
+
+        const { uniforms } = this.ocean.material;
+
+        // Update time
+        uniforms.time.value = elapsed;
+        uniforms.uDayProgress.value = this.dayProgress;
+
+        // Calculate sun/moon visibility (reuse logic from updateSunPosition)
+        const sunY = this.sunPosition.y;
+        const moonY = this.moonPosition.y;
+        const sunVisibility = THREE.MathUtils.clamp((sunY + 30) / 40, 0, 1);
+        const moonAboveHorizon = THREE.MathUtils.clamp((moonY + 35) / 50, 0, 1);
+        const moonVisibility = (1 - sunVisibility) * moonAboveHorizon;
+
+        // Pass celestial positions
+        uniforms.uSunPosition.value.copy(this.sunPosition);
+        uniforms.uMoonPosition.value.copy(this.moonPosition);
+        uniforms.uSunIntensity.value = sunVisibility;
+        uniforms.uMoonIntensity.value = moonVisibility;
+
+        // Update colors based on day-night cycle
+        const colors = this.getOceanColorsForTime(this.dayProgress);
+        uniforms.uNearColor.value.copy(colors.near);
+        uniforms.uFarColor.value.copy(colors.far);
+        uniforms.uSunReflectColor.value.copy(colors.sunReflect);
+
+        // Moon reflection is always silvery
+        uniforms.uMoonReflectColor.value.setHex(0xd4c4ff);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -902,7 +1082,7 @@ export default class SunsetTheme extends BaseTheme {
             flare.userData.life -= delta;
 
             const positions = flare.geometry.attributes.position.array;
-            const velocities = flare.userData.velocities;
+            const { velocities } = flare.userData;
 
             for (let j = 0; j < velocities.length; j++) {
                 positions[j * 3] += velocities[j].x * delta;
@@ -1003,13 +1183,12 @@ export default class SunsetTheme extends BaseTheme {
                 position: this.sunPosition,
                 color: PALETTE.particles[0], // Gold/Orange
             };
-        } else {
-            return {
-                isSun: false,
-                position: this.moonPosition,
-                color: 0xd4c4a8, // Moon glow color
-            };
         }
+        return {
+            isSun: false,
+            position: this.moonPosition,
+            color: 0xd4c4a8, // Moon glow color
+        };
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1126,6 +1305,7 @@ export default class SunsetTheme extends BaseTheme {
         this.stars = null;
         this.particles = null;
         this.horizon = null;
+        this.ocean = null;
 
         console.log('[Sunset3D] Theme stopped and cleaned up');
     }

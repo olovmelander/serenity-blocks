@@ -156,13 +156,18 @@ export class SwedishForestBirds {
                 if (selfPosition.x > 950.0) velocity.x -= 10.0 * delta;
                 if (selfPosition.x < -950.0) velocity.x += 10.0 * delta;
                 
-                // Keep above trees
-                if (selfPosition.y > 450.0) velocity.y -= 5.0 * delta;
-                if (selfPosition.y < 20.0) velocity.y += 10.0 * delta; // Avoid ground
+                // Keep above trees but allow canopy skimming
+                if (selfPosition.y > 380.0) velocity.y -= 6.0 * delta;
+                if (selfPosition.y < 18.0) velocity.y += 8.0 * delta; // Avoid ground
+                else if (selfPosition.y < 40.0) velocity.y += 1.5 * delta;
                 
                 // Allow flying behind camera (z > 0) and far into distance
                 if (selfPosition.z > 400.0) velocity.z -= 10.0 * delta;
                 if (selfPosition.z < -900.0) velocity.z += 10.0 * delta;
+
+                // Encourage occasional low glides near canopy
+                float canopyBand = smoothstep(35.0, 140.0, selfPosition.y);
+                velocity.y -= canopyBand * 2.5 * delta;
 
                 // Speed Limit
                 velocity = normalize(velocity) * limit;
@@ -240,11 +245,10 @@ export class SwedishForestBirds {
             uniform vec3 color;
 
             void main() {
-                // Fade distant birds slightly
-                float zFactor = smoothstep(-400.0, -100.0, z);
-                vec4 c = vec4(color, 1.0);
-                // Keep them as silhouettes
-                gl_FragColor = c;
+                // Keep birds as dark silhouettes with slight atmospheric fade
+                float distanceFade = smoothstep(-520.0, -120.0, z) * 0.25;
+                vec3 finalColor = mix(color, vColor.rgb, 0.1) + distanceFade;
+                gl_FragColor = vec4(finalColor, 1.0);
             }
         `;
     }
@@ -325,7 +329,7 @@ export class SwedishForestBirds {
 
         // Scale birds
         for (let i = 0; i < vertices.length; i++) {
-            vertices[i] *= 1.5; // Make them visible
+            vertices[i] *= 1.8; // Slightly larger silhouette for visibility
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
@@ -344,7 +348,7 @@ export class SwedishForestBirds {
             const y = ~~(i / this.WIDTH) / this.WIDTH;
 
             // Dark silhouette colors
-            const c = new THREE.Color(0x2A1515);
+            const c = new THREE.Color(0x0C0504);
 
             for (let v = 0; v < 9; v++) {
                 birdColor.array[i * 3 * 9 + v * 3 + 0] = c.r;
@@ -365,7 +369,7 @@ export class SwedishForestBirds {
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
-                color: { value: new THREE.Color(0x150505) },
+                color: { value: new THREE.Color(0x050202) },
                 texturePosition: { value: null },
                 textureVelocity: { value: null },
                 time: { value: 1.0 },
@@ -390,7 +394,10 @@ export class SwedishForestBirds {
         for (let k = 0, kl = posArray.length; k < kl; k += 4) {
             // Random start positions everywhere!
             const x = Math.random() * 2000 - 1000; // -1000 to 1000
-            const y = Math.random() * 200 + 40;    // 40 to 240
+            const nearCanopy = Math.random() < 0.45;
+            const y = nearCanopy
+                ? 28 + Math.random() * 30   // Glide close to treetops
+                : 60 + Math.random() * 160; // Higher soaring
             const z = Math.random() * 1200 - 800;  // -800 to 400
 
             posArray[k + 0] = x;
