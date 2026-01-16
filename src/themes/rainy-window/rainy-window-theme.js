@@ -53,6 +53,23 @@ export default class RainyWindowTheme extends BaseTheme {
         // Event handlers
         this.resizeHandler = this.resize.bind(this);
         this.eventUnsubscribers = [];
+
+        // Camera Animation State
+        this.baseCameraPosition = new THREE.Vector3(30, 30, 100);
+        this.baseLookAt = new THREE.Vector3(0, 0, 0);
+        this.cameraAnimTime = 0;
+
+        // Dip animation state
+        this.isDipping = false;
+        this.dipStartTime = 0;
+        this.dipDuration = 0;
+        this.dipProgress = 0;
+        this.nextDipTime = 10 + Math.random() * 15; // Random 10-25s for first dip
+        this.dipCurveType = 0; // Different curve patterns
+        this.dipIntensity = 1;
+
+        // Breathing state
+        this.breathingPhase = Math.random() * Math.PI * 2;
     }
 
     async createScene() {
@@ -818,10 +835,184 @@ export default class RainyWindowTheme extends BaseTheme {
         this.windStrength = 0.3 + combo * 0.1;
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Camera Animation System
+    // ─────────────────────────────────────────────────────────────────────────
+
+    updateCameraAnimation() {
+        const deltaTime = 1.0 / 60.0;
+        this.cameraAnimTime += deltaTime;
+
+        // ── BASE BREATHING MOVEMENTS ───────────────────────────────────────────
+        // Multiple layered sine waves for organic breathing feel
+        const breatheSpeed1 = 0.15;  // Primary breath (~6.5s cycle)
+        const breatheSpeed2 = 0.08;  // Secondary slow drift (~12s cycle)
+        const breatheSpeed3 = 0.25;  // Tertiary subtle pulse (~4s cycle)
+
+        // Vertical breathing - like gentle waves lifting the viewer
+        // INCREASED amplitude significantly so it never feels like it stops
+        const breathY =
+            Math.sin(this.cameraAnimTime * breatheSpeed1 + this.breathingPhase) * 12.0 +
+            Math.sin(this.cameraAnimTime * breatheSpeed2 + 1.5) * 6.0 +
+            Math.sin(this.cameraAnimTime * breatheSpeed3 * 0.7) * 3.0;
+
+        // Horizontal sway - subtle side-to-side drift
+        // INCREASED amplitude
+        const breathX =
+            Math.sin(this.cameraAnimTime * breatheSpeed2 * 0.8 + 2.3) * 15.0 +
+            Math.cos(this.cameraAnimTime * breatheSpeed1 * 0.6) * 8.0;
+
+        // Forward/back breathing - subtle zoom effect
+        // INCREASED amplitude
+        const breathZ =
+            Math.sin(this.cameraAnimTime * breatheSpeed1 * 0.5 + 0.8) * 15.0 +
+            Math.cos(this.cameraAnimTime * breatheSpeed3 * 0.4) * 5.0;
+
+        // Gentle roll for immersion
+        const rollAngle =
+            Math.sin(this.cameraAnimTime * breatheSpeed2 * 0.5 + 3.1) * 0.015 +
+            Math.sin(this.cameraAnimTime * breatheSpeed1 * 0.3) * 0.01;
+
+        // ── DIP TOWARDS WATER ANIMATION ─────────────────────────────────────────
+        let dipOffsetY = 0;
+        let dipOffsetZ = 0;
+        let dipLookOffsetY = 0;
+
+        // Check if it's time to start a new dip
+        if (!this.isDipping && this.cameraAnimTime >= this.nextDipTime) {
+            this.startCameraDip();
+        }
+
+        // Process active dip animation
+        if (this.isDipping) {
+            const elapsed = this.cameraAnimTime - this.dipStartTime;
+            this.dipProgress = Math.min(elapsed / this.dipDuration, 1.0);
+
+            // Calculate dip offsets based on curve type
+            const dipOffsets = this.calculateDipOffsets(this.dipProgress, this.dipCurveType);
+            dipOffsetY = dipOffsets.y * this.dipIntensity;
+            dipOffsetZ = dipOffsets.z * this.dipIntensity;
+            dipLookOffsetY = dipOffsets.lookY * this.dipIntensity;
+
+            // End dip when complete
+            if (this.dipProgress >= 1.0) {
+                this.isDipping = false;
+                // REDUCED DELAY: Schedule next dip much sooner (1-8 seconds) so it feels continuous
+                this.nextDipTime = this.cameraAnimTime + 1 + Math.random() * 7;
+            }
+        }
+
+        // ── APPLY CAMERA TRANSFORMATIONS ─────────────────────────────────────────
+        if (this.camera) {
+            // Combine all movements
+            this.camera.position.set(
+                this.baseCameraPosition.x + breathX,
+                this.baseCameraPosition.y + breathY + dipOffsetY,
+                this.baseCameraPosition.z + breathZ + dipOffsetZ
+            );
+
+            // Look at adjusted target (follows dip for dramatic effect)
+            const lookTarget = new THREE.Vector3(
+                this.baseLookAt.x,
+                this.baseLookAt.y + dipLookOffsetY,
+                this.baseLookAt.z
+            );
+            this.camera.lookAt(lookTarget);
+
+            // Apply subtle roll
+            this.camera.rotation.z = rollAngle;
+        }
+    }
+
+    startCameraDip() {
+        this.isDipping = true;
+        this.dipStartTime = this.cameraAnimTime;
+
+        // Random dip duration (5-10 seconds for full dive and return)
+        this.dipDuration = 5 + Math.random() * 5;
+
+        // Random dip intensity (0.7 to 1.3 of base effect)
+        this.dipIntensity = 0.7 + Math.random() * 0.6;
+
+        // Random curve type for variety
+        this.dipCurveType = Math.floor(Math.random() * 4);
+
+        this.dipProgress = 0;
+    }
+
+    calculateDipOffsets(progress, curveType) {
+        // All curves go down towards water (y = -50) and back up
+        // Using different easing functions for variety
+
+        let dipFactor = 0;
+        let zFactor = 0;
+        let lookFactor = 0;
+
+        switch (curveType) {
+            case 0:
+                // Smooth bell curve - gentle swoop
+                dipFactor = Math.sin(progress * Math.PI);
+                zFactor = Math.sin(progress * Math.PI) * 0.5;
+                lookFactor = Math.sin(progress * Math.PI) * 0.4;
+                break;
+
+            case 1:
+                // Asymmetric dive - quick down, slow rise
+                const quickDown = progress < 0.3
+                    ? this.easeOutQuad(progress / 0.3)
+                    : 1.0 - this.easeInOutCubic((progress - 0.3) / 0.7);
+                dipFactor = quickDown;
+                zFactor = quickDown * 0.7;
+                lookFactor = quickDown * 0.5;
+                break;
+
+            case 2:
+                // Swooping arc - with horizontal drift
+                const swoopPhase = progress * Math.PI;
+                dipFactor = Math.sin(swoopPhase);
+                // Dramatic forward push then back
+                zFactor = Math.sin(swoopPhase) * 0.9 - Math.sin(swoopPhase * 2) * 0.2;
+                lookFactor = Math.sin(swoopPhase) * 0.6;
+                break;
+
+            case 3:
+                // Double dip - slight pause near water
+                const doubleDip = Math.sin(progress * Math.PI * 1.5);
+                const envelope = Math.sin(progress * Math.PI);
+                dipFactor = doubleDip * envelope * 0.9;
+                zFactor = envelope * 0.6;
+                lookFactor = envelope * 0.4;
+                break;
+        }
+
+        // Maximum dip brings camera from y=30 closer to water at y=-50
+        // We want to go about 60% of the way down (48 units)
+        const maxDipY = -48;
+        const maxDipZ = 30;  // Move forward towards the water
+        const maxLookDipY = -25; // Look down towards water
+
+        return {
+            y: dipFactor * maxDipY,
+            z: zFactor * maxDipZ,
+            lookY: lookFactor * maxLookDipY
+        };
+    }
+
+    easeOutQuad(t) {
+        return t * (2 - t);
+    }
+
+    easeInOutCubic(t) {
+        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
     animate() {
         if (!this.renderer) return;
 
         this.time += 1.0 / 60.0;
+
+        // Update camera animation (breathing + dip movements)
+        this.updateCameraAnimation();
 
         // Random lightning
         if (this.time >= this.nextLightningTime) {
@@ -838,64 +1029,6 @@ export default class RainyWindowTheme extends BaseTheme {
         if (this.water) {
             this.water.material.uniforms['time'].value += 1.0 / 60.0;
             this.water.material.uniforms['distortionScale'].value = 5.0 + (this.stormIntensity * 3.0);
-        }
-
-        // Lightning Decay
-        if (this.lightningIntensity > 0) {
-            this.lightningIntensity *= 0.8; // Sharp decay for bolt
-
-            // Main light with flicker
-            let intensity1 = this.lightningIntensity * 3;
-            let intensity2 = this.lightningIntensity * 2;
-
-            // Random flicker for BOLT only
-            if (Math.random() < 0.4) {
-                intensity1 *= 0.3 + Math.random() * 0.7;
-                intensity2 *= 0.3 + Math.random() * 0.7;
-            }
-
-            if (this.lightningLight) this.lightningLight.intensity = intensity1;
-            if (this.lightningLight2) this.lightningLight2.intensity = intensity2;
-
-            if (this.lightningIntensity < 0.05) this.lightningIntensity = 0;
-        }
-
-        // Sky Flash Decay (Smooth, constant)
-        if (this.skyFlashIntensity > 0) {
-            this.skyFlashIntensity *= 0.96; // Very slow decay (approx 1s)
-            if (this.skyFlashIntensity < 0.01) this.skyFlashIntensity = 0;
-        }
-
-        // Update shaders with smooth skyFlashIntensity
-        // Animate Clouds
-        if (this.clouds && this.clouds.material.uniforms) {
-            this.clouds.material.uniforms.time.value = this.time;
-            this.clouds.material.uniforms.lightningFlash.value = this.skyFlashIntensity;
-        }
-
-        // Animate Sky
-        if (this.sky && this.sky.material.uniforms) {
-            this.sky.material.uniforms.time.value = this.time;
-            this.sky.material.uniforms.lightningFlash.value = this.skyFlashIntensity * 0.7;
-        }
-
-        // Animate Horizon Haze
-        if (this.horizonHaze && this.horizonHaze.material.uniforms) {
-            this.horizonHaze.material.uniforms.lightningFlash.value = this.skyFlashIntensity * 0.6;
-        }
-
-        // Animate Rain
-        if (this.rainSystem && this.rainSystem.material.uniforms) {
-            this.rainSystem.material.uniforms.time.value = this.time * (0.5 + this.stormIntensity * 0.5);
-            this.rainSystem.material.uniforms.windStrength.value = this.windStrength;
-            this.rainSystem.material.uniforms.lightningFlash.value = this.lightningIntensity;
-        }
-
-        // Animate Fog
-        if (this.fogSystem && this.fogSystem.material.uniforms) {
-            this.fogSystem.material.uniforms.time.value = this.time;
-            this.fogSystem.material.uniforms.windStrength.value = this.windStrength;
-            this.fogSystem.material.uniforms.lightningFlash.value = this.skyFlashIntensity;
         }
 
         // Lightning Decay
@@ -940,6 +1073,39 @@ export default class RainyWindowTheme extends BaseTheme {
             this.skyFlashIntensity *= 0.96; // Very slow decay (approx 1s)
             if (this.skyFlashIntensity < 0.01) this.skyFlashIntensity = 0;
         }
+
+        // Update shaders with smooth skyFlashIntensity
+        // Animate Clouds
+        if (this.clouds && this.clouds.material.uniforms) {
+            this.clouds.material.uniforms.time.value = this.time;
+            this.clouds.material.uniforms.lightningFlash.value = this.skyFlashIntensity;
+        }
+
+        // Animate Sky
+        if (this.sky && this.sky.material.uniforms) {
+            this.sky.material.uniforms.time.value = this.time;
+            this.sky.material.uniforms.lightningFlash.value = this.skyFlashIntensity * 0.7;
+        }
+
+        // Animate Horizon Haze
+        if (this.horizonHaze && this.horizonHaze.material.uniforms) {
+            this.horizonHaze.material.uniforms.lightningFlash.value = this.skyFlashIntensity * 0.6;
+        }
+
+        // Animate Rain
+        if (this.rainSystem && this.rainSystem.material.uniforms) {
+            this.rainSystem.material.uniforms.time.value = this.time * (0.5 + this.stormIntensity * 0.5);
+            this.rainSystem.material.uniforms.windStrength.value = this.windStrength;
+            this.rainSystem.material.uniforms.lightningFlash.value = this.lightningIntensity;
+        }
+
+        // Animate Fog
+        if (this.fogSystem && this.fogSystem.material.uniforms) {
+            this.fogSystem.material.uniforms.time.value = this.time;
+            this.fogSystem.material.uniforms.windStrength.value = this.windStrength;
+            this.fogSystem.material.uniforms.lightningFlash.value = this.skyFlashIntensity;
+        }
+
 
         // Render
         if (this.renderer && this.scene && this.camera) {

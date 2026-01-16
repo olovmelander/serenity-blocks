@@ -14,6 +14,10 @@
  */
 
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SUNSET_TETROMINOS } from './sunset-tetrominos.js';
@@ -43,40 +47,64 @@ import {
 
 const QUALITY_PRESETS = {
     Extreme: {
-        starCount: 4000,
-        particleCount: 300,
+        starCount: 35000,
+        particleCount: 600,
         godRaySegments: 64,
         enablePostEffects: true,
+        enableBloom: true,
+        bloomStrength: 0.35,
+        bloomRadius: 0.4,
+        bloomThreshold: 0.92,
     },
     Ultra: {
-        starCount: 3000,
-        particleCount: 200,
+        starCount: 25000,
+        particleCount: 450,
         godRaySegments: 48,
         enablePostEffects: true,
+        enableBloom: true,
+        bloomStrength: 0.3,
+        bloomRadius: 0.35,
+        bloomThreshold: 0.92,
     },
     High: {
-        starCount: 2000,
-        particleCount: 150,
+        starCount: 15000,
+        particleCount: 300,
         godRaySegments: 32,
         enablePostEffects: true,
+        enableBloom: true,
+        bloomStrength: 0.28,
+        bloomRadius: 0.3,
+        bloomThreshold: 0.94,
     },
     Medium: {
-        starCount: 1200,
-        particleCount: 100,
+        starCount: 8000,
+        particleCount: 200,
         godRaySegments: 24,
         enablePostEffects: true,
+        enableBloom: true,
+        bloomStrength: 0.25,
+        bloomRadius: 0.25,
+        bloomThreshold: 0.95,
     },
     Low: {
-        starCount: 600,
-        particleCount: 50,
+        starCount: 3000,
+        particleCount: 100,
         godRaySegments: 16,
         enablePostEffects: false,
+        enableBloom: false,
+        bloomStrength: 0.2,
+        bloomRadius: 0.2,
+        bloomThreshold: 0.96,
     },
     Minimal: {
-        starCount: 300,
+        starCount: 1000,
         particleCount: 25,
         godRaySegments: 12,
         enablePostEffects: false,
+        enableBloom: false,
+        bloomStrength: 0,
+        bloomRadius: 0,
+        bloomThreshold: 1.0,
     },
 };
 
@@ -170,6 +198,10 @@ export default class SunsetTheme extends BaseTheme {
         this.shockwaves = [];
         this.celestialFlares = [];
 
+        // Post-processing
+        this.composer = null;
+        this.bloomPass = null;
+
         // Moon position (opposite of sun)
         this.moonPosition = new THREE.Vector3(0, -30, -120);
 
@@ -252,7 +284,7 @@ export default class SunsetTheme extends BaseTheme {
             60,
             window.innerWidth / window.innerHeight,
             0.1,
-            2000,
+            30000,
         );
         this.camera.position.copy(this.baseCameraPos);
         this.camera.lookAt(0, 0, 0);
@@ -267,9 +299,20 @@ export default class SunsetTheme extends BaseTheme {
         this.createGodRays();
         this.createMoon(); // Beautiful moon for night
         this.createStars();
-        this.createParticles();
+        // this.createParticles(); // Disabled per user request
         this.createOcean(); // Ocean water with reflections
         this.setupLighting();
+
+        // Setup dynamic atmospheric fog
+        // Color and density will be updated based on time of day
+        this.scene.fog = new THREE.FogExp2(0xffd89b, 0.003);
+
+        // Setup ACES Filmic tone mapping for cinematic HDR
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 0.85;
+
+        // Setup post-processing (bloom, etc.)
+        this.setupPostProcessing();
 
         // Event listeners
         this.setupEventListeners();
@@ -302,6 +345,7 @@ export default class SunsetTheme extends BaseTheme {
         });
 
         this.sky = new THREE.Mesh(geometry, material);
+        this.sky.renderOrder = -100; // Background should be rendered first
         this.scene.add(this.sky);
     }
 
@@ -331,12 +375,12 @@ export default class SunsetTheme extends BaseTheme {
         this.sun.position.copy(this.sunPosition);
         this.mainGroup.add(this.sun);
 
-        // Add glow layers (sprites)
+        // Add glow layers (sprites) - reduced opacity to prevent over-brightness
         const glowTexture = this.createGlowTexture();
         const glowLayers = [
-            { scale: 30, opacity: 0.6, color: PALETTE.sun.corona },
-            { scale: 50, opacity: 0.35, color: PALETTE.sun.edge },
-            { scale: 80, opacity: 0.15, color: new THREE.Color(0xff6600) },
+            { scale: 25, opacity: 0.2, color: PALETTE.sun.corona },
+            { scale: 40, opacity: 0.12, color: PALETTE.sun.edge },
+            { scale: 60, opacity: 0.06, color: new THREE.Color(0xff6600) },
         ];
 
         glowLayers.forEach((layer) => {
@@ -363,9 +407,9 @@ export default class SunsetTheme extends BaseTheme {
         const ctx = canvas.getContext('2d');
 
         const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        gradient.addColorStop(0.2, 'rgba(255, 220, 100, 0.8)');
-        gradient.addColorStop(0.5, 'rgba(255, 150, 50, 0.3)');
+        gradient.addColorStop(0, 'rgba(255, 240, 200, 0.7)');
+        gradient.addColorStop(0.2, 'rgba(255, 200, 100, 0.5)');
+        gradient.addColorStop(0.5, 'rgba(255, 150, 50, 0.2)');
         gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
         ctx.fillStyle = gradient;
@@ -404,7 +448,7 @@ export default class SunsetTheme extends BaseTheme {
     // Starfield
     // ─────────────────────────────────────────────────────────────────────────
 
-    createStars() {
+    createStarsOld() {
         const count = this.activePreset.starCount;
         const geometry = new THREE.BufferGeometry();
 
@@ -662,10 +706,19 @@ export default class SunsetTheme extends BaseTheme {
     createMoon() {
         // Create moon sphere with crater shader
         const moonGeometry = new THREE.SphereGeometry(8, 48, 48);
+
+        // Load high-res moon texture
+        const textureLoader = new THREE.TextureLoader();
+        const moonTexture = textureLoader.load('./textures/moon-albedo.png'); // Use relative path for Vite
+        moonTexture.wrapS = THREE.ClampToEdgeWrapping;
+        moonTexture.wrapT = THREE.ClampToEdgeWrapping;
+
         const moonMaterial = new THREE.ShaderMaterial({
             uniforms: {
+                uMap: { value: moonTexture },
                 uTime: this.uniforms.time,
                 uOpacity: { value: 0 }, // Start hidden, fade in at night
+                uSunDirection: { value: new THREE.Vector3(1, 0, 0) }, // Will be updated
             },
             vertexShader: moonVertexShader,
             fragmentShader: moonFragmentShader,
@@ -675,6 +728,7 @@ export default class SunsetTheme extends BaseTheme {
 
         this.moon = new THREE.Mesh(moonGeometry, moonMaterial);
         this.moon.position.copy(this.moonPosition);
+        this.moon.renderOrder = 10; // Ensure moon renders AFTER stars (foreground)
         this.mainGroup.add(this.moon);
 
         // Create glow layers for moon
@@ -737,6 +791,70 @@ export default class SunsetTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Post-Processing
+    // ─────────────────────────────────────────────────────────────────────────
+
+    setupPostProcessing() {
+        if (!this.activePreset.enableBloom) {
+            console.log('[Sunset3D] Bloom disabled for quality preset');
+            return;
+        }
+
+        // Create EffectComposer
+        this.composer = new EffectComposer(this.renderer);
+
+        // Base render pass
+        const renderPass = new RenderPass(this.scene, this.camera);
+        this.composer.addPass(renderPass);
+
+        // UnrealBloomPass for sun/star light bleed
+        this.bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            this.activePreset.bloomStrength,
+            this.activePreset.bloomRadius,
+            this.activePreset.bloomThreshold,
+        );
+        this.composer.addPass(this.bloomPass);
+
+        // Vignette pass for cinematic feel
+        const VignetteShader = {
+            uniforms: {
+                tDiffuse: { value: null },
+                darkness: { value: 0.5 },
+                offset: { value: 1.2 },
+            },
+            vertexShader: /* glsl */`
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: /* glsl */`
+                uniform sampler2D tDiffuse;
+                uniform float darkness;
+                uniform float offset;
+                varying vec2 vUv;
+                
+                void main() {
+                    vec4 texel = texture2D(tDiffuse, vUv);
+                    vec2 uv = (vUv - 0.5) * 2.0;
+                    float vignette = 1.0 - smoothstep(offset - 0.5, offset, length(uv));
+                    texel.rgb = mix(texel.rgb, texel.rgb * (1.0 - darkness), 1.0 - vignette);
+                    gl_FragColor = texel;
+                }
+            `,
+        };
+
+        const vignettePass = new ShaderPass(VignetteShader);
+        vignettePass.uniforms.darkness.value = 0.4;
+        vignettePass.uniforms.offset.value = 1.3;
+        this.composer.addPass(vignettePass);
+
+        console.log('[Sunset3D] Post-processing initialized with bloom and vignette');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Animation Loop
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -774,16 +892,30 @@ export default class SunsetTheme extends BaseTheme {
         this.updateShockwaves(delta);
         this.updateCelestialFlares(delta);
 
-        // Rotate stars slowly
+        // Rotate stars slowly and handle event boost decay
         if (this.stars) {
             this.stars.rotation.y = elapsed * 0.005;
+            // Decay event boost smoothly
+            if (this.stars.material.uniforms.uEventBoost && this.stars.material.uniforms.uEventBoost.value > 0) {
+                this.stars.material.uniforms.uEventBoost.value *= 0.95;
+                if (this.stars.material.uniforms.uEventBoost.value < 0.01) {
+                    this.stars.material.uniforms.uEventBoost.value = 0;
+                }
+            }
         }
 
         // Update ocean uniforms
         this.updateOcean(elapsed);
 
-        // Render
-        this.renderer.render(this.scene, this.camera);
+        // Update dynamic fog
+        this.updateFog();
+
+        // Render - use composer if available for post-processing
+        if (this.composer) {
+            this.composer.render();
+        } else {
+            this.renderer.render(this.scene, this.camera);
+        }
     }
 
     updateSunPosition() {
@@ -792,12 +924,13 @@ export default class SunsetTheme extends BaseTheme {
         // dayProgress: 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset, 1 = midnight
 
         const angle = this.dayProgress * Math.PI * 2 - Math.PI * 0.5;
-        const x = Math.cos(angle) * 50; // Horizontal sweep
 
-        // Y position: peaks at noon (dayProgress=0.5), dips far below at night
-        // Using sin of angle gives us: -1 at midnight, +1 at noon
-        // Scale and offset so: noon = +30, midnight = -60 (well below horizon at -30)
-        const y = Math.sin(angle) * 45 - 10;
+        // Widen the arc significantly to use full desktop screen width
+        // Z is -100, so X needs to be ~180-200 to cover full 16:9 FOV
+        const x = Math.cos(angle) * 200; // Much wider sweep
+
+        // Y position: Peak higher in the sky for a grander feel
+        const y = Math.sin(angle) * 70 - 15; // Peak +55, Dip -85
 
         this.sunPosition.set(x, y, -100);
 
@@ -843,11 +976,12 @@ export default class SunsetTheme extends BaseTheme {
         // Moon angle: offset so it peaks at midnight (dayProgress = 0 or 1)
         // When dayProgress = 0 (midnight), moonAngle should give max Y
         const moonAngle = (this.dayProgress + 0.5) * Math.PI * 2 - Math.PI * 0.5;
-        const moonX = Math.cos(moonAngle) * 35;
 
-        // Moon Y: starts much lower (-80), peaks at +25 around midnight
-        // This makes the moon rise from below the screen
-        const moonY = Math.sin(moonAngle) * 50 - 25;
+        // Widen moon path even more as it is further away (Z=-120)
+        const moonX = Math.cos(moonAngle) * 240;
+
+        // Moon Y: Peak higher (+50) to match sun's grandeur
+        const moonY = Math.sin(moonAngle) * 75 - 25;
 
         this.moonPosition.set(moonX, moonY, -120);
 
@@ -859,9 +993,14 @@ export default class SunsetTheme extends BaseTheme {
 
         if (this.moon) {
             this.moon.position.copy(this.moonPosition);
-            // Update shader uniform for opacity
+            // Update shader uniforms
             if (this.moon.material.uniforms?.uOpacity) {
                 this.moon.material.uniforms.uOpacity.value = moonVisibility * 0.95;
+            }
+            // Update sun direction for realistic phase lighting
+            if (this.moon.material.uniforms?.uSunDirection) {
+                const sunDir = this.sunPosition.clone().normalize();
+                this.moon.material.uniforms.uSunDirection.value.copy(sunDir);
             }
             this.moon.visible = moonVisibility > 0.01;
         }
@@ -870,6 +1009,49 @@ export default class SunsetTheme extends BaseTheme {
             const baseOpacity = sprite.userData?.baseOpacity || 0.3;
             sprite.material.opacity = baseOpacity * moonVisibility;
         });
+    }
+
+    updateFog() {
+        if (!this.scene?.fog) return;
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // DYNAMIC ATMOSPHERIC FOG
+        // Density and color change based on time of day
+        // ═══════════════════════════════════════════════════════════════════════
+
+        const dayProgress = this.dayProgress;
+
+        // Calculate fog density based on time of day
+        // Thicker at dawn (~0.22) and dusk (~0.82), lighter at noon and night
+        const dawnWeight = Math.exp(-Math.pow((dayProgress - 0.22) * 8, 2));
+        const duskWeight = Math.exp(-Math.pow((dayProgress - 0.82) * 8, 2));
+        const noonWeight = Math.exp(-Math.pow((dayProgress - 0.5) * 5, 2));
+        const nightWeight = dayProgress < 0.15 || dayProgress > 0.9 ? 1.0 : 0.0;
+
+        // Fog density: thick at dawn/dusk, light at noon, very light at night
+        const baseDensity = 0.002;
+        const dawnDuskDensity = 0.006;
+        const nightDensity = 0.001;
+
+        let fogDensity = baseDensity;
+        fogDensity += (dawnWeight + duskWeight) * (dawnDuskDensity - baseDensity);
+        fogDensity = THREE.MathUtils.lerp(fogDensity, nightDensity, nightWeight * 0.7);
+
+        this.scene.fog.density = fogDensity;
+
+        // Fog color matches horizon palette
+        const fogColorNight = new THREE.Color(0x0a0812);
+        const fogColorDawn = new THREE.Color(0xffb090);
+        const fogColorNoon = new THREE.Color(0xc8dff8);
+        const fogColorDusk = new THREE.Color(0xff8060);
+
+        const fogColor = new THREE.Color();
+        fogColor.copy(fogColorNoon);
+        fogColor.lerp(fogColorDawn, dawnWeight);
+        fogColor.lerp(fogColorDusk, duskWeight);
+        fogColor.lerp(fogColorNight, nightWeight * 0.8);
+
+        this.scene.fog.color.copy(fogColor);
     }
 
     updateCameraDrift(elapsed) {
@@ -1219,6 +1401,14 @@ export default class SunsetTheme extends BaseTheme {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // Update post-processing
+        if (this.composer) {
+            this.composer.setSize(window.innerWidth, window.innerHeight);
+        }
+        if (this.bloomPass) {
+            this.bloomPass.setSize(window.innerWidth, window.innerHeight);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1270,6 +1460,13 @@ export default class SunsetTheme extends BaseTheme {
         });
         this.moonGlowLayers = [];
 
+        // Dispose post-processing
+        if (this.composer) {
+            this.composer.dispose();
+            this.composer = null;
+        }
+        this.bloomPass = null;
+
         // Dispose renderer
         if (this.renderer) {
             this.renderer.dispose();
@@ -1308,5 +1505,80 @@ export default class SunsetTheme extends BaseTheme {
         this.ocean = null;
 
         console.log('[Sunset3D] Theme stopped and cleaned up');
+    }
+    createStars() {
+        // Use High Quality settings from Blood Moon as baseline (35k stars) or respect preset
+        const count = this.activePreset.starCount >= 20000 ? this.activePreset.starCount : 35000;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(count * 3);
+        const colors = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        const twinkleData = new Float32Array(count * 2); // vec2: phase, speed
+        const brightness = new Float32Array(count);
+
+        // Sunset star colors - whites, pale golds, soft blues
+        const starColors = [
+            new THREE.Color(0xffffff), // Pure white
+            new THREE.Color(0xfff4e0), // Warm white
+            new THREE.Color(0xffd700), // Pale gold
+            new THREE.Color(0xd0e0ff), // Soft blue
+            new THREE.Color(0xffcccc), // Very pale pink
+        ];
+
+        for (let i = 0; i < count; i++) {
+            const i3 = i * 3;
+            const i2 = i * 2;
+
+            // Spherical distribution for depth (parallax)
+            // Radius: min 2500 (beyond camera), max 14000
+            const radius = 2500 + Math.random() * 11500;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1); // Full sphere (0 to PI)
+
+            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i3 + 1] = radius * Math.cos(phi);
+            positions[i3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
+
+            // Color selection
+            const color = starColors[Math.floor(Math.random() * starColors.length)];
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
+
+            // Scaled sizes - larger stars for atmospheric effect
+            sizes[i] = 30 + Math.random() * 60;
+
+            // Twinkle: phase offset, varied speed (0.8 to 2.5 Hz)
+            twinkleData[i2] = Math.random() * Math.PI * 2;      // phase
+            twinkleData[i2 + 1] = 0.8 + Math.random() * 1.7;    // speed
+
+            brightness[i] = 0.3 + Math.random() * 0.7;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
+        geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: this.uniforms.time,
+                uDayProgress: this.uniforms.dayProgress,
+                uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
+                uEventBoost: { value: 0 },
+            },
+            vertexShader: starVertexShader,
+            fragmentShader: starFragmentShader,
+            transparent: true,
+            // vertexColors: true, // Disabled since we use custom aColor attribute
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        this.stars = new THREE.Points(geometry, material);
+        this.stars.renderOrder = -50; // Ensure stars render AFTER sky but BEFORE other elements
+        this.mainGroup.add(this.stars);
     }
 }
