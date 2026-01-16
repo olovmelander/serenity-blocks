@@ -130,6 +130,11 @@ class SunsetOceanWater extends Mesh {
                     // Larger, slower swells for open ocean feel
                     // ═══════════════════════════════════════════════════════════════
                     
+                    // Calculate distance from camera for wave attenuation
+                    // Reduce wave amplitude at distance to prevent visible mesh edges
+                    float distFromCenter = length(pos.xz);
+                    float distanceFade = 1.0 - smoothstep(50.0, 250.0, distFromCenter);
+                    
                     // Primary ocean swell - long wavelength
                     float wave1 = sin(pos.x * 0.008 + time * 0.25) * cos(pos.z * 0.006 + time * 0.2);
                     
@@ -139,13 +144,15 @@ class SunsetOceanWater extends Mesh {
                     // Long rolling wave
                     float wave3 = sin((pos.x + pos.z) * 0.005 + time * 0.15);
                     
-                    // Medium surface ripples
-                    float wave4 = sin(pos.x * 0.02 + time * 0.35) * cos(pos.z * 0.018 + time * 0.28) * 0.4;
+                    // Medium surface ripples - fade faster with distance
+                    float wave4 = sin(pos.x * 0.02 + time * 0.35) * cos(pos.z * 0.018 + time * 0.28) * 0.4 * distanceFade;
                     
-                    // Small detail waves
-                    float wave5 = sin(pos.x * 0.04 - time * 0.5) * cos(pos.z * 0.035 + time * 0.4) * 0.15;
+                    // Small detail waves - fade most with distance
+                    float wave5 = sin(pos.x * 0.04 - time * 0.5) * cos(pos.z * 0.035 + time * 0.4) * 0.15 * distanceFade * distanceFade;
                     
-                    float elevation = (wave1 * 1.2 + wave2 * 0.8 + wave3 * 0.6 + wave4 + wave5) * 0.5;
+                    // Apply overall distance attenuation to wave height
+                    float waveScale = mix(0.3, 1.0, distanceFade);
+                    float elevation = (wave1 * 1.2 + wave2 * 0.8 + wave3 * 0.6 + wave4 + wave5) * 0.5 * waveScale;
                     pos.y += elevation;
                     vElevation = elevation;
 
@@ -208,6 +215,33 @@ class SunsetOceanWater extends Mesh {
                                  texture2D(normalSampler, uv2) * 0.5;
                     
                     return noise * 0.2 - 0.3;
+                }
+
+                // ═══════════════════════════════════════════════════════════════
+                // 3D NOISE FOR FOAM EFFECTS
+                // ═══════════════════════════════════════════════════════════════
+                vec3 hash3(vec3 p) {
+                    p = vec3(dot(p, vec3(127.1, 311.7, 74.7)),
+                             dot(p, vec3(269.5, 183.3, 246.1)),
+                             dot(p, vec3(113.5, 271.9, 124.6)));
+                    return fract(sin(p) * 43758.5453123);
+                }
+                
+                float noise3D(vec3 p) {
+                    vec3 i = floor(p);
+                    vec3 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    
+                    float n = mix(
+                        mix(mix(dot(hash3(i), f),
+                                dot(hash3(i + vec3(1,0,0)), f - vec3(1,0,0)), f.x),
+                            mix(dot(hash3(i + vec3(0,1,0)), f - vec3(0,1,0)),
+                                dot(hash3(i + vec3(1,1,0)), f - vec3(1,1,0)), f.x), f.y),
+                        mix(mix(dot(hash3(i + vec3(0,0,1)), f - vec3(0,0,1)),
+                                dot(hash3(i + vec3(1,0,1)), f - vec3(1,0,1)), f.x),
+                            mix(dot(hash3(i + vec3(0,1,1)), f - vec3(0,1,1)),
+                                dot(hash3(i + vec3(1,1,1)), f - vec3(1,1,1)), f.x), f.y), f.z);
+                    return n * 0.5 + 0.5;
                 }
 
                 // ═══════════════════════════════════════════════════════════════
@@ -299,35 +333,34 @@ class SunsetOceanWater extends Mesh {
 
                     // ═══════════════════════════════════════════════════════════════
                     // SUN REFLECTION PATH
-                    // Bright shimmering column toward the sun
+                    // Bright shimmering column toward the sun - smoothed
                     // ═══════════════════════════════════════════════════════════════
                     
-                    float sunPathX = abs(worldPosition.x - uSunPosition.x) / 120.0;
-                    float sunPath = 1.0 - smoothstep(0.0, 0.4, sunPathX);
+                    float sunPathX = abs(worldPosition.x - uSunPosition.x) / 150.0;
+                    float sunPath = 1.0 - smoothstep(0.0, 0.5, sunPathX);
                     sunPath *= sunPath;  // Sharpen falloff
-                    sunPath *= depthFactor * 1.3;  // Stronger toward horizon
+                    sunPath *= smoothstep(50.0, 200.0, distance);  // Only toward horizon
                     sunPath *= uSunIntensity;
                     
-                    // Shimmer sparkle effect
-                    float sunSparkle = sin(worldPosition.z * 5.0 + time * 2.2) * 0.5 + 0.5;
-                    sunSparkle *= sin(worldPosition.x * 2.0 + time * 1.6) * 0.5 + 0.5;
-                    sunSparkle *= sin(worldPosition.z * 12.0 - time * 3.0) * 0.3 + 0.7;
-                    sunPath *= (0.5 + sunSparkle * 0.7);
+                    // Smooth shimmer - use noise-based approach instead of grid-aligned sin
+                    float shimmerTime = time * 1.5;
+                    float shimmer = noise.x * 0.7 + 0.3;  // Use normal texture for organic shimmer
+                    shimmer *= smoothstep(0.2, 0.6, noise.y + 0.3);  // Add variation
+                    sunPath *= (0.4 + shimmer * 0.6);
 
                     // ═══════════════════════════════════════════════════════════════
                     // MOON REFLECTION PATH
-                    // Softer, silvery shimmer column
+                    // Softer, silvery shimmer column - smoothed
                     // ═══════════════════════════════════════════════════════════════
                     
-                    float moonPathX = abs(worldPosition.x - uMoonPosition.x) / 100.0;
-                    float moonPath = 1.0 - smoothstep(0.0, 0.3, moonPathX);
+                    float moonPathX = abs(worldPosition.x - uMoonPosition.x) / 130.0;
+                    float moonPath = 1.0 - smoothstep(0.0, 0.4, moonPathX);
                     moonPath *= moonPath;
-                    moonPath *= depthFactor * 1.2;
+                    moonPath *= smoothstep(50.0, 200.0, distance);  // Only toward horizon
                     moonPath *= uMoonIntensity;
                     
-                    // Gentler moonlight shimmer
-                    float moonShimmer = sin(worldPosition.z * 3.5 + time * 1.4) * 0.4 + 0.6;
-                    moonShimmer *= sin(worldPosition.x * 1.5 + time * 1.0) * 0.3 + 0.7;
+                    // Smooth moon shimmer using noise texture
+                    float moonShimmer = noise.z * 0.5 + 0.5;
                     moonPath *= moonShimmer;
 
                     // ═══════════════════════════════════════════════════════════════
@@ -366,6 +399,30 @@ class SunsetOceanWater extends Mesh {
                     // Add celestial reflection paths
                     albedo += uSunReflectColor * sunPath * 0.9;
                     albedo += uMoonReflectColor * moonPath * 0.7;
+
+                    // ═══════════════════════════════════════════════════════════════
+                    // BIOLUMINESCENT FOAM AT WAVE CRESTS
+                    // Magical teal glow that appears on wave peaks
+                    // ═══════════════════════════════════════════════════════════════
+                    
+                    // Foam appears at wave crests (high elevation)
+                    float foamMask = smoothstep(0.15, 0.5, vElevation);
+                    
+                    // Animated noise for organic foam pattern
+                    float foamNoise = noise3D(worldPosition.xyz * 0.08 + vec3(time * 0.4, time * 0.2, time * 0.3));
+                    foamNoise *= noise3D(worldPosition.xyz * 0.15 - vec3(time * 0.25));
+                    
+                    // Combine mask with noise for natural distribution
+                    float foam = foamMask * foamNoise * 2.0;
+                    foam = clamp(foam, 0.0, 1.0);
+                    
+                    // Bioluminescent teal color - stronger at night
+                    float nightAmount = 1.0 - uSunIntensity;
+                    vec3 bioColor = vec3(0.1, 0.85, 0.75);  // Luminous teal
+                    vec3 foamGlow = bioColor * foam * (0.15 + nightAmount * 0.35);
+                    
+                    // Add foam to final color
+                    albedo += foamGlow;
 
                     // Edge fade for smooth blending with scene edges
                     vec2 uvOffset = vUv - 0.5;
