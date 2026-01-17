@@ -80,7 +80,7 @@ export const CHAPTER_CONFIGS = [
         levelRange: [12, 21],
 
         themes: {
-            primary: ['forest', 'moonlit-forest', 'swedish-forest', 'moonlit-greenhouse', 'spring', 'summer', 'fall', 'meadow', 'sakura-twilight', 'verdant-hills'],
+            primary: ['forest', 'moonlit-forest', 'swedish-forest', 'moonlit-greenhouse', 'tornado', 'summer', 'fall', 'meadow', 'sakura-twilight', 'verdant-hills'],
             supporting: [],
         },
 

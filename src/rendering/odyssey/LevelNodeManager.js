@@ -6,6 +6,12 @@
  */
 
 import * as THREE from 'three';
+import cinderDriftIcon from '../../themes/cinder-drift/cinder-drift-theme-icon.png';
+import crystalCaveIcon from '../../themes/crystal-cave/crystal-cave-theme-icon.png';
+import geodeIcon from '../../themes/geode/geode-theme-icon.png';
+import pyrestormIcon from '../../themes/pyrestorm/pyrestorm-theme-icon.png';
+import bioluminescenceIcon from '../../themes/bioluminescence/bioluminescence-theme-icon.png';
+import oceanIcon from '../../themes/ocean/ocean-theme-icon.png';
 
 /**
  * LevelNodeManager - Manages level selection orbs
@@ -40,6 +46,11 @@ export class LevelNodeManager {
      * @returns {Object}
      */
     createNode(levelConfig) {
+        // SPECIAL CASE: Glass Orbs for Levels 1-10
+        if (levelConfig.id >= 1 && levelConfig.id <= 10) {
+            return this.createGlassNode(levelConfig);
+        }
+
         const group = new THREE.Group();
         group.userData.levelId = levelConfig.id;
         group.userData.locked = true;
@@ -196,6 +207,187 @@ export class LevelNodeManager {
             config: levelConfig,
             pathPosition,
         };
+    }
+
+    createGlassNode(levelConfig) {
+        const group = new THREE.Group();
+        group.userData.levelId = levelConfig.id;
+        group.userData.locked = true;
+        group.userData.completed = false;
+        group.userData.stars = 0;
+
+        // Position on path
+        const pathPosition = levelConfig.pathPosition || (levelConfig.id - 1) / 55;
+        const point = this.pathCurve.getPointAt(THREE.MathUtils.clamp(pathPosition, 0, 1));
+        group.position.copy(point);
+
+        // Offset Z slightly to ensure path is visually behind
+        group.position.z += 1.0;
+
+
+        // 1. Inner "Theme" Sphere (Solid textured sphere inside)
+        const textureLoader = new THREE.TextureLoader();
+
+        let iconPath = cinderDriftIcon;
+        if (levelConfig.id === 2) iconPath = crystalCaveIcon;
+        if (levelConfig.id === 3) iconPath = geodeIcon;
+        if (levelConfig.id === 4) iconPath = pyrestormIcon;
+        if (levelConfig.id === 5) iconPath = bioluminescenceIcon;
+        if (levelConfig.id === 6) iconPath = oceanIcon;
+
+        // PLACEHOLDERS (Due to generation limit) - All are water themed, so Ocean fits best for now
+        if (levelConfig.id === 7) iconPath = oceanIcon; // Luminous Tides
+        if (levelConfig.id === 8) iconPath = oceanIcon; // Koi Pond
+        if (levelConfig.id === 9) iconPath = oceanIcon; // Waves
+        if (levelConfig.id === 10) iconPath = oceanIcon; // Misty Lake
+
+        const themeTex = textureLoader.load(iconPath);
+        themeTex.colorSpace = THREE.SRGBColorSpace;
+        themeTex.mapping = THREE.EquirectangularReflectionMapping;
+        // FrontSide means we don't need to flip X, standard mapping works
+
+        // Inner sphere acts as the solid core, hiding the path line that passes through
+        const innerGeo = new THREE.SphereGeometry(0.95, 64, 64);
+        const innerMat = new THREE.MeshBasicMaterial({
+            map: themeTex,
+            side: THREE.FrontSide, // Opaque block
+            color: 0x666666, // Darker tint for better contrast
+            toneMapped: false,
+        });
+        const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+        group.add(innerMesh);
+
+        // 2. Outer Glass Sphere
+        const glassGeo = new THREE.SphereGeometry(1.0, 128, 128);
+        const glassMat = new THREE.MeshPhysicalMaterial({
+            transmission: 0.0,      // Disable transmission to prevent glitches
+            opacity: 0.15,          // More subtle glass
+            transparent: true,
+            thickness: 0.0,
+            roughness: 0.2,         // Softer reflections
+            ior: 1.5,
+            metalness: 0.1,
+            specularIntensity: 1.0,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.1,
+            color: 0xffffff,
+            side: THREE.FrontSide,  // Explicitly render front side
+            depthWrite: false,      // Prevent depth sorting issues with transparency
+        });
+        const glassMesh = new THREE.Mesh(glassGeo, glassMat);
+        group.add(glassMesh);
+
+        // 3. Internal Particles (Snow globe effect)
+        this.addGlassParticles(group);
+
+        // 4. Standard UI Elements (Lock, Stars)
+        // Lock icon
+        const lockGroup = this.createLockIcon();
+        lockGroup.visible = true; // Managed by setNodeState
+        group.add(lockGroup);
+
+        // Star indicators
+        const starGroup = this.createStarIndicators();
+        starGroup.visible = false; // Managed by setNodeState
+        group.add(starGroup);
+
+        // Return standard node structure
+        // We use glassMesh as 'coreMesh' for raycasting/interaction provided it's the outer shell
+        // We use innerMat/glassMat as fallbacks for shader updates (though we might need to override setNodeState for this specific node if uniforms differ)
+
+        // Mock the shader uniforms on the materials so standard setNodeState doesn't crash
+        // OR better: Create a shim or update setNodeState to handle this node type.
+        // For now, let's inject dummy uniforms to prevent crashes.
+        glassMat.uniforms = {
+            uLocked: { value: 1.0 },
+            uCompleted: { value: 0.0 },
+            uHovered: { value: 0.0 },
+            uSelected: { value: 0.0 },
+            uTime: { value: 0 },
+        };
+        // We don't really have a 'glowMesh' separate from glass, but we can reuse glassMesh for that slot or add a faint glow.
+        // Let's add a fake glow mesh behind/around to act as the selection highlight if needed.
+        const glowGeometry = new THREE.IcosahedronGeometry(1.3, 2);
+        const glowMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uColor: { value: new THREE.Color(0xff4400) }, // Cinder Drift Orange
+                uLocked: { value: 1.0 },
+                uHovered: { value: 0.0 },
+            },
+            vertexShader: `
+                varying vec3 vNormal;
+                void main() {
+                    vNormal = normalize(normalMatrix * normal);
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 uColor;
+                uniform float uLocked;
+                uniform float uHovered;
+                varying vec3 vNormal;
+
+                void main() {
+                    float rim = 1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
+                    rim = pow(rim, 3.0);
+                    float alpha = rim * (0.2 + uHovered * 0.3) * (1.0 - uLocked * 0.7);
+                    gl_FragColor = vec4(uColor, alpha);
+                }
+            `,
+            transparent: true,
+            depthWrite: false,
+            side: THREE.BackSide,
+            blending: THREE.AdditiveBlending,
+        });
+        const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
+        group.add(glowMesh);
+
+        return {
+            group,
+            coreMesh: glassMesh,
+            coreMaterial: glassMat, // Warning: setNodeState expects ShaderMaterial uniforms. We handled this with dummy uniforms.
+            glowMesh,
+            glowMaterial,
+            lockGroup,
+            starGroup,
+            config: levelConfig,
+            pathPosition,
+            isGlassNode: true, // Marker
+            innerMesh, // Ref for updates if needed
+        };
+    }
+
+    addGlassParticles(group) {
+        const count = 30;
+        const geometry = new THREE.BufferGeometry();
+        const positions = [];
+
+        for (let i = 0; i < count; i++) {
+            // Random points inside sphere r=0.9
+            const r = Math.random() * 0.8;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+
+            positions.push(
+                r * Math.sin(phi) * Math.cos(theta),
+                r * Math.sin(phi) * Math.sin(theta),
+                r * Math.cos(phi)
+            );
+        }
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+
+        // Simple glowing dots
+        const material = new THREE.PointsMaterial({
+            color: 0xffaa00,
+            size: 0.05,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending,
+        });
+
+        const particles = new THREE.Points(geometry, material);
+        group.add(particles);
     }
 
     createLockIcon() {
@@ -499,6 +691,25 @@ export class LevelNodeManager {
         // Toggle lock icon
         node.lockGroup.visible = state.locked;
 
+        if (node.isGlassNode) {
+            // Custom state handling for glass node
+            // 1. Update dummy uniforms for compatibility if needed
+            if (node.coreMaterial.uniforms) {
+                node.coreMaterial.uniforms.uLocked.value = state.locked ? 1.0 : 0.0;
+                node.coreMaterial.uniforms.uCompleted.value = state.completed ? 1.0 : 0.0;
+            }
+
+            // 2. Visually dim the inner image if locked
+            if (node.innerMesh && node.innerMesh.material) {
+                node.innerMesh.material.color.setHex(state.locked ? 0x444444 : 0xffffff);
+            }
+        }
+        else {
+            // Updated standard shader uniforms
+            node.coreMaterial.uniforms.uLocked.value = state.locked ? 1.0 : 0.0;
+            node.coreMaterial.uniforms.uCompleted.value = state.completed ? 1.0 : 0.0;
+        }
+
         // Toggle and update star indicators (handles both stars and glow sprites)
         node.starGroup.visible = state.completed && state.stars > 0;
         if (node.starGroup.visible) {
@@ -520,12 +731,26 @@ export class LevelNodeManager {
         const node = this.nodes.get(levelId);
         if (!node) return;
 
-        node.coreMaterial.uniforms.uHovered.value = hovered ? 1.0 : 0.0;
-        node.glowMaterial.uniforms.uHovered.value = hovered ? 1.0 : 0.0;
+        if (node.isGlassNode) {
+            if (node.coreMaterial.uniforms) node.coreMaterial.uniforms.uHovered.value = hovered ? 1.0 : 0.0;
+            node.glowMaterial.uniforms.uHovered.value = hovered ? 1.0 : 0.0;
 
-        // Scale up on hover
-        const targetScale = hovered ? 1.2 : 1.0;
-        node.group.scale.setScalar(targetScale);
+            // Scale up
+            const targetScale = hovered ? 1.2 : 1.0;
+            node.group.scale.setScalar(targetScale);
+
+            // Maybe brighten glass?
+            if (node.coreMaterial) {
+                node.coreMaterial.color.setHex(hovered ? 0xffffff : 0xdddddd);
+            }
+        } else {
+            node.coreMaterial.uniforms.uHovered.value = hovered ? 1.0 : 0.0;
+            node.glowMaterial.uniforms.uHovered.value = hovered ? 1.0 : 0.0;
+
+            // Scale up on hover
+            const targetScale = hovered ? 1.2 : 1.0;
+            node.group.scale.setScalar(targetScale);
+        }
 
         this.hoveredNode = hovered ? node : null;
     }

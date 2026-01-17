@@ -39,8 +39,8 @@ Autumn colors dominate with rich reds, oranges, and yellows. Falling leaves drif
 ### Summer
 Bright, warm summer days with vibrant colors and sunny skies. The atmosphere is cheerful and energetic, evoking long summer afternoons.
 
-### Spring
-Fresh spring scenery with blooming flowers and new growth. The palette is bright and hopeful, with greens and pastels celebrating renewal and life.
+### Tornado
+Swirling wind forms with streaked glow and storm-lit atmosphere. The palette is warm and dramatic, emphasizing motion and energy.
 
 ### Sakura Twilight
 A beautiful sunset scene with cherry blossom trees. Pink petals fall continuously while glowing paper lanterns and flying bird silhouettes add to the magical twilight atmosphere.

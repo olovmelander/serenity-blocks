@@ -1126,7 +1126,7 @@ export const LEVEL_CONFIGS = [
         pathPosition: 0.278,
 
         theme: {
-            primary: 'spring',
+            primary: 'tornado',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 2500,

@@ -1,22 +1,21 @@
 /**
- * Spring Theme - Tetromino Visual Configuration
+ * Tornado Theme - Tetromino Visual Configuration
  *
- * A vibrant celebration of spring: cherry blossoms, fresh leaves,
- * golden sunlight, and the magical essence of renewal.
+ * Warm glow palette with rich contrast for storm-lit backgrounds.
  */
 
-export const SPRING_TETROMINOS = {
+export const TORNADO_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#87CEEB', // Clear spring sky blue
-        O: '#FFD700', // Brilliant sunshine gold
-        T: '#E6A8D7', // Cherry blossom pink
-        S: '#98FB98', // Fresh mint sprout
-        Z: '#FFB7C5', // Soft sakura petal
-        J: '#9DC8E8', // Morning dewdrop blue
-        L: '#FFCC5C', // Warm buttercup yellow
-        GARBAGE: '#4a6741', // Rich forest soil
+        I: '#87CEEB', // Cool contrast
+        O: '#FFD700', // Bright gold
+        T: '#E6A8D7', // Soft accent
+        S: '#98FB98', // Fresh green
+        Z: '#FFB7C5', // Warm pink
+        J: '#9DC8E8', // Light blue
+        L: '#FFCC5C', // Warm amber
+        GARBAGE: '#4a6741', // Deep neutral
     },
 
     renderMode: 'glow',

@@ -707,9 +707,9 @@ export default class SunsetTheme extends BaseTheme {
         // Create moon sphere with crater shader
         const moonGeometry = new THREE.SphereGeometry(8, 48, 48);
 
-        // Load high-res moon texture
+        // Load high-res moon texture (Source: https://www.solarsystemscope.com/textures/)
         const textureLoader = new THREE.TextureLoader();
-        const moonTexture = textureLoader.load('./textures/moon-albedo.png'); // Use relative path for Vite
+        const moonTexture = textureLoader.load('./textures/2k_moon.jpg'); // Use relative path for Vite
         moonTexture.wrapS = THREE.ClampToEdgeWrapping;
         moonTexture.wrapT = THREE.ClampToEdgeWrapping;
 
@@ -723,7 +723,7 @@ export default class SunsetTheme extends BaseTheme {
             vertexShader: moonVertexShader,
             fragmentShader: moonFragmentShader,
             transparent: true,
-            depthWrite: false,
+            depthWrite: true,
         });
 
         this.moon = new THREE.Mesh(moonGeometry, moonMaterial);
@@ -904,6 +904,11 @@ export default class SunsetTheme extends BaseTheme {
             }
         }
 
+        // Rotate moon slowly
+        if (this.moon) {
+            this.moon.rotation.y += delta * 0.05;
+        }
+
         // Update ocean uniforms
         this.updateOcean(elapsed);
 
@@ -995,7 +1000,7 @@ export default class SunsetTheme extends BaseTheme {
             this.moon.position.copy(this.moonPosition);
             // Update shader uniforms
             if (this.moon.material.uniforms?.uOpacity) {
-                this.moon.material.uniforms.uOpacity.value = moonVisibility * 0.95;
+                this.moon.material.uniforms.uOpacity.value = moonVisibility;
             }
             // Update sun direction for realistic phase lighting
             if (this.moon.material.uniforms?.uSunDirection) {
@@ -1518,12 +1523,13 @@ export default class SunsetTheme extends BaseTheme {
         const brightness = new Float32Array(count);
 
         // Sunset star colors - whites, pale golds, soft blues
+        // Sunset star colors - Natural stellar types
         const starColors = [
             new THREE.Color(0xffffff), // Pure white
-            new THREE.Color(0xfff4e0), // Warm white
-            new THREE.Color(0xffd700), // Pale gold
-            new THREE.Color(0xd0e0ff), // Soft blue
-            new THREE.Color(0xffcccc), // Very pale pink
+            new THREE.Color(0xfff4e8), // Warm white (G-type)
+            new THREE.Color(0xffdcd4), // Pale red-orange (M-type)
+            new THREE.Color(0xdceeff), // Soft blue-white (A-type)
+            new THREE.Color(0xfbeeb8), // Soft yellowish (F-type)
         ];
 
         for (let i = 0; i < count; i++) {

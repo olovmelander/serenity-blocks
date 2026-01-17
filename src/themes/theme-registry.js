@@ -77,11 +77,11 @@ export const THEME_REGISTRY = [
         icon: './summer/summer-theme-icon.png',
     },
     {
-        id: 'spring',
-        displayName: 'Spring',
-        module: './spring/spring-theme.js',
-        group: 'biomes',
-        icon: './spring/spring-theme-icon.png',
+        id: 'tornado',
+        displayName: 'Tornado',
+        module: './tornado/tornado-theme.js',
+        group: 'atmospheric',
+        icon: './tornado/tornado-theme-icon.png',
     },
     {
         id: 'sakura-twilight',

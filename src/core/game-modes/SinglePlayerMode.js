@@ -870,7 +870,13 @@ export class SinglePlayerMode extends BaseGameMode {
         await showGameOverModal(
             this.deps.modalManager,
             this.gameState,
-            this.deps.highScoreManager
+            this.deps.highScoreManager,
+            {
+                onMainMenu: () => {
+                    console.log('[SinglePlayer] Main Menu - exiting to main menu');
+                    eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
+                }
+            }
         );
 
         // Trigger game over event

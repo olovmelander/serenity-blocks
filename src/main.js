@@ -3291,8 +3291,7 @@ class SerenityBlocks {
             const garbageQueue = multiplayerState.getGarbageQueue(playerIdentifier);
 
             if (!garbageQueue.isEmpty()) {
-                // Get line-type garbage entries from the queue
-                const queuedEntries = garbageQueue.entries.filter((e) => e.type === 'line');
+                const queuedEntries = garbageQueue.dequeueLineBurst();
 
                 if (queuedEntries.length > 0) {
                     console.log(
@@ -3314,9 +3313,6 @@ class SerenityBlocks {
                             this.animateGarbageRise(result.garbagePieces);
                         }
                     }
-
-                    // Clear the processed garbage entries from queue
-                    garbageQueue.entries = garbageQueue.entries.filter((e) => e.type !== 'line');
 
                     // Check if garbage caused top-out
                     // (Note: insertGarbageEntries doesn't return topOut, we check board height)
