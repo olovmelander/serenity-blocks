@@ -117,8 +117,9 @@ export function showStartModal(modalManager) {
  * @param {ModalManager} modalManager - Modal manager instance
  * @param {Object} gameState - Current game state
  * @param {Object} highScoreManager - High score manager instance
+ * @param {Object} callbacks - Optional callbacks for buttons { onMainMenu, onRestart }
  */
-export async function showGameOverModal(modalManager, gameState, highScoreManager) {
+export async function showGameOverModal(modalManager, gameState, highScoreManager, callbacks = {}) {
     const {
         score, lines, level, dropInterval, startTime, piecesPlaced,
     } = gameState;
@@ -291,6 +292,26 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
                 </div>
             </div>
         `;
+    }
+
+    // Render Buttons
+    const buttonsContainer = document.getElementById('game-over-buttons');
+    if (buttonsContainer) {
+        buttonsContainer.innerHTML = `
+            <button id="game-over-main-menu" class="demo-btn tertiary">🏠 Main Menu</button>
+        `;
+
+        // Wire up button event listeners
+        const mainMenuBtn = document.getElementById('game-over-main-menu');
+        if (mainMenuBtn) {
+            mainMenuBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[Modal] Game Over: Main Menu clicked');
+                modalManager.hide('gameOver');
+                if (callbacks.onMainMenu) callbacks.onMainMenu();
+            });
+        }
     }
 
     modalManager.show('gameOver');

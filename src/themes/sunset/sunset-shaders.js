@@ -369,7 +369,7 @@ export const starFragmentShader = `
         float core = 1.0 - smoothstep(0.0, 0.25, dist);
         
         // Color with boosted core brightness
-        vec3 coreColor = vColor * vBrightness * 1.5 + vec3(0.15) * core;
+        vec3 coreColor = vColor * vBrightness * 1.5 + vec3(0.05) * core;
         
         // Atmospheric alpha based on brightnes intensity
         float alpha = softCircle * (vBrightness + 0.2);
@@ -674,10 +674,8 @@ export const moonFragmentShader = `
         // The texture is a flat "orthographic" moon. We map it planarly to the sphere's front face.
         // using local position to ensure it stays fixed to the moon geometry
         vec3 localNormal = normalize(vLocalPos);
-        vec2 uv = localNormal.xy * 0.5 + 0.5; // Exact fit
-        
         // Sample the generated texture
-        vec4 texColor = texture2D(uMap, uv);
+        vec4 texColor = texture2D(uMap, vUv);
         
         // No masking! Let the texture's black background handle the edge.
         // With ClampToEdgeWrapping, this works perfectly.

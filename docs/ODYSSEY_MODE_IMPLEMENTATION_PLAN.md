@@ -443,7 +443,7 @@ export class EnvironmentManager {
         const chapterConfigs = [
             { id: 1, name: 'Earth Core', themes: ['crystal-cave', 'geode', 'cinder-drift'] },
             { id: 2, name: 'Deep Ocean', themes: ['ocean', 'bioluminescence', 'luminous-tides'] },
-            { id: 3, name: 'Surface World', themes: ['forest', 'meadow', 'spring', 'summer'] },
+            { id: 3, name: 'Surface World', themes: ['forest', 'meadow', 'tornado', 'summer'] },
             { id: 4, name: 'Mountains', themes: ['mountain', 'himalayan-peak', 'ice-temple'] },
             { id: 5, name: 'Sky', themes: ['nimbus-veil', 'aurora'] },
             { id: 6, name: 'Space', themes: ['galaxy', 'stellar-drift', 'astral-weave'] },

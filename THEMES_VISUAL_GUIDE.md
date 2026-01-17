@@ -52,7 +52,7 @@ A comprehensive summary of each theme's atmosphere, feeling, visuals, and recomm
 | 14 | Spring Bloom | `moonlit-forest` | Nighttime in the woods |
 | 15 | Meadow Dance | `swedish-forest` | Deep northern woods |
 | 16 | Summer Heat | `moonlit-greenhouse`| Cultivated nature at night |
-| 17 | Fall Harvest | `spring` | Celebration of new life |
+| 17 | Fall Harvest | `tornado` | Swirling winds and rising energy |
 | 18 | Sakura Twilight | `summer` | Peak sun and warmth |
 | 19 | Verdant Heights | `fall` | Turning of the seasons |
 | 20 | Sunset Ascension | `meadow` | Open fields |
