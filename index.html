@@ -103,36 +103,36 @@
         <div id="summer-theme" class="theme-container">
             <!-- 3D canvas will be dynamically added by SummerTheme -->
         </div>
-        <div id="spring-theme" class="theme-container">
+        <div id="tornado-theme" class="theme-container">
             <!-- Ethereal dawn sky with magical atmosphere -->
             <!-- Radiant Sun with rotating rays -->
-            <div id="spring-sun"></div>
+            <div id="tornado-sun"></div>
             <!-- God rays / Sunbeams -->
-            <div id="spring-sunbeams"></div>
+            <div id="tornado-sunbeams"></div>
             <!-- Volumetric Clouds -->
-            <div id="spring-clouds"></div>
+            <div id="tornado-clouds"></div>
             <!-- Floating magical particles / pollen -->
-            <div id="spring-particles"></div>
+            <div id="tornado-particles"></div>
             <!-- Cherry blossom petals -->
-            <div id="spring-petals"></div>
+            <div id="tornado-petals"></div>
             <!-- Enchanted butterflies -->
-            <div id="spring-butterflies"></div>
-            <!-- Gentle spring rain -->
-            <div id="spring-rain">
+            <div id="tornado-butterflies"></div>
+            <!-- Gentle tornado rain -->
+            <div id="tornado-rain">
                 <div id="rain-back" class="rain-layer"></div>
                 <div id="rain-mid" class="rain-layer"></div>
                 <div id="rain-front" class="rain-layer"></div>
             </div>
             <!-- Glowing fireflies -->
-            <div id="spring-fireflies"></div>
+            <div id="tornado-fireflies"></div>
             <!-- Lush meadow ground -->
-            <div class="spring-ground"></div>
+            <div class="tornado-ground"></div>
             <!-- Wildflower meadow -->
-            <div id="spring-meadow"></div>
+            <div id="tornado-meadow"></div>
             <!-- Growing sprouts -->
             <div id="sprouts-container"></div>
             <!-- Magical growing combo flower -->
-            <div id="spring-combo-flower"></div>
+            <div id="tornado-combo-flower"></div>
         </div>
         <div id="sakura-twilight-theme" class="theme-container">
             <!-- 3D canvas dynamically added by SakuraTwilightTheme (Three.js) -->
@@ -600,6 +600,11 @@
                         <span class="stat-label">Frags</span>
                         <span class="stat-value" id="p1-frags">0</span>
                     </div>
+                    <div class="stat-item stat-deaths">
+                        <span class="stat-icon">💀</span>
+                        <span class="stat-label">Deaths</span>
+                        <span class="stat-value" id="p1-deaths">0</span>
+                    </div>
                     <div class="stat-item stat-score">
                         <span class="stat-icon">🏆</span>
                         <span class="stat-label">Score</span>
@@ -672,6 +677,11 @@
                         <span class="stat-icon">⚔️</span>
                         <span class="stat-label">Frags</span>
                         <span class="stat-value" id="p2-frags">0</span>
+                    </div>
+                    <div class="stat-item stat-deaths">
+                        <span class="stat-icon">💀</span>
+                        <span class="stat-label">Deaths</span>
+                        <span class="stat-value" id="p2-deaths">0</span>
                     </div>
                     <div class="stat-item stat-score">
                         <span class="stat-icon">🏆</span>
@@ -747,6 +757,11 @@
                         <span class="stat-label">Frags</span>
                         <span class="stat-value" id="p3-frags">0</span>
                     </div>
+                    <div class="stat-item stat-deaths">
+                        <span class="stat-icon">💀</span>
+                        <span class="stat-label">Deaths</span>
+                        <span class="stat-value" id="p3-deaths">0</span>
+                    </div>
                     <div class="stat-item stat-score">
                         <span class="stat-icon">🏆</span>
                         <span class="stat-label">Score</span>
@@ -820,6 +835,11 @@
                         <span class="stat-icon">⚔️</span>
                         <span class="stat-label">Frags</span>
                         <span class="stat-value" id="p4-frags">0</span>
+                    </div>
+                    <div class="stat-item stat-deaths">
+                        <span class="stat-icon">💀</span>
+                        <span class="stat-label">Deaths</span>
+                        <span class="stat-value" id="p4-deaths">0</span>
                     </div>
                     <div class="stat-item stat-score">
                         <span class="stat-icon">🏆</span>
@@ -1070,6 +1090,9 @@
             <div class="stats-scroll-container">
                 <div id="final-stats"></div>
             </div>
+            <div class="game-over-buttons" id="game-over-buttons">
+                <!-- Buttons populated by JS -->
+            </div>
             <p>Press any key or tap to restart</p>
         </div>
     </div>
@@ -1104,8 +1127,8 @@
                 <div class="settings-tab-content active" id="settings-general">
                     <div class="settings-grid">
                         <div class="setting">
-                            <label>Game Mode:</label>
-                            <button id="change-game-mode-btn" class="setting-button">Change Game Mode</button>
+                            <label>Main Menu:</label>
+                            <button id="change-game-mode-btn" class="setting-button">Return to Main Menu</button>
                         </div>
                         <div class="setting">
                             <label for="das-delay">DAS Delay (ms):</label>

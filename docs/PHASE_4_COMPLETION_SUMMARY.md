@@ -43,7 +43,7 @@ src/themes/
 ### 3. Complete Theme List
 
 **Seasonal Themes (4):**
-- ✅ spring, summer, fall, winter
+- ✅ tornado, summer, fall, winter
 
 **Nature Themes (12):**
 - ✅ forest, ocean, sunset, mountain

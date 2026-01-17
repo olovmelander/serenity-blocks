@@ -4745,7 +4745,7 @@ body {
    ============================================ */
 
 /* Main Theme Container - Dreamy Ethereal Dawn */
-#spring-theme {
+#tornado-theme {
     background:
         /* Ethereal sun glow - golden dawn light */
         radial-gradient(ellipse 100% 100% at 75% 5%, rgba(255, 248, 220, 0.9) 0%, rgba(255, 223, 186, 0.6) 15%, transparent 45%),
@@ -4757,7 +4757,7 @@ body {
         radial-gradient(ellipse 120% 80% at 20% 30%, rgba(230, 190, 255, 0.2) 0%, transparent 40%),
         /* Dreamy cyan accent */
         radial-gradient(ellipse 100% 60% at 90% 50%, rgba(175, 238, 238, 0.15) 0%, transparent 45%),
-        /* Main sky gradient - ethereal spring dawn */
+        /* Main sky gradient - ethereal tornado dawn */
         linear-gradient(175deg,
             #1e3a5f 0%,
             /* Pre-dawn deep blue */
@@ -4787,7 +4787,7 @@ body {
 }
 
 /* Animated ambient atmosphere overlay */
-#spring-theme::before {
+#tornado-theme::before {
     content: '';
     position: absolute;
     top: 0;
@@ -4797,12 +4797,12 @@ body {
     background:
         radial-gradient(ellipse 80% 50% at 75% 10%, rgba(255, 250, 240, 0.4) 0%, transparent 50%),
         radial-gradient(ellipse 60% 40% at 25% 80%, rgba(144, 238, 144, 0.15) 0%, transparent 50%);
-    animation: spring-atmosphere-breathe 12s ease-in-out infinite;
+    animation: tornado-atmosphere-breathe 12s ease-in-out infinite;
     pointer-events: none;
     z-index: 0;
 }
 
-@keyframes spring-atmosphere-breathe {
+@keyframes tornado-atmosphere-breathe {
 
     0%,
     100% {
@@ -4816,12 +4816,12 @@ body {
     }
 }
 
-#spring-theme.light-pulse {
+#tornado-theme.light-pulse {
     filter: brightness(calc(1 + var(--pulse-intensity, 0.1)));
 }
 
 /* ===== Magical Sun with Radiating Rays - OPTIMIZED ===== */
-#spring-sun {
+#tornado-sun {
     position: absolute;
     top: -5%;
     right: 10%;
@@ -4831,7 +4831,7 @@ body {
     pointer-events: none;
 }
 
-.spring-sun-core {
+.tornado-sun-core {
     position: absolute;
     top: 50%;
     left: 50%;
@@ -4846,11 +4846,11 @@ body {
     border-radius: 50%;
     /* REMOVED expensive box-shadow animation */
     /* Using simple opacity pulse instead */
-    animation: spring-sun-pulse 8s ease-in-out infinite;
+    animation: tornado-sun-pulse 8s ease-in-out infinite;
 }
 
 /* Static glow using a pseudo-element instead of animated box-shadow */
-.spring-sun-core::after {
+.tornado-sun-core::after {
     content: '';
     position: absolute;
     top: 50%;
@@ -4866,7 +4866,7 @@ body {
     z-index: -1;
 }
 
-@keyframes spring-sun-pulse {
+@keyframes tornado-sun-pulse {
 
     0%,
     100% {
@@ -4880,7 +4880,7 @@ body {
     }
 }
 
-.spring-sun-ray {
+.tornado-sun-ray {
     position: absolute;
     top: 50%;
     left: 50%;
@@ -4888,55 +4888,55 @@ body {
     height: 3px;
     background: linear-gradient(90deg, rgba(255, 248, 220, 0.8) 0%, rgba(255, 215, 0, 0.3) 50%, transparent 100%);
     transform-origin: left center;
-    animation: spring-sun-ray-rotate 30s linear infinite;
+    animation: tornado-sun-ray-rotate 30s linear infinite;
     /* REMOVED blur */
 }
 
-.spring-sun-ray:nth-child(2) {
+.tornado-sun-ray:nth-child(2) {
     animation-delay: -2.5s;
 }
 
-.spring-sun-ray:nth-child(3) {
+.tornado-sun-ray:nth-child(3) {
     animation-delay: -5s;
 }
 
-.spring-sun-ray:nth-child(4) {
+.tornado-sun-ray:nth-child(4) {
     animation-delay: -7.5s;
 }
 
-.spring-sun-ray:nth-child(5) {
+.tornado-sun-ray:nth-child(5) {
     animation-delay: -10s;
 }
 
-.spring-sun-ray:nth-child(6) {
+.tornado-sun-ray:nth-child(6) {
     animation-delay: -12.5s;
 }
 
-.spring-sun-ray:nth-child(7) {
+.tornado-sun-ray:nth-child(7) {
     animation-delay: -15s;
 }
 
-.spring-sun-ray:nth-child(8) {
+.tornado-sun-ray:nth-child(8) {
     animation-delay: -17.5s;
 }
 
-.spring-sun-ray:nth-child(9) {
+.tornado-sun-ray:nth-child(9) {
     animation-delay: -20s;
 }
 
-.spring-sun-ray:nth-child(10) {
+.tornado-sun-ray:nth-child(10) {
     animation-delay: -22.5s;
 }
 
-.spring-sun-ray:nth-child(11) {
+.tornado-sun-ray:nth-child(11) {
     animation-delay: -25s;
 }
 
-.spring-sun-ray:nth-child(12) {
+.tornado-sun-ray:nth-child(12) {
     animation-delay: -27.5s;
 }
 
-@keyframes spring-sun-ray-rotate {
+@keyframes tornado-sun-ray-rotate {
     from {
         transform: rotate(0deg);
     }
@@ -4947,7 +4947,7 @@ body {
 }
 
 /* ===== Floating Magical Particles (Pollen/Dust) - OPTIMIZED ===== */
-#spring-particles {
+#tornado-particles {
     position: absolute;
     top: 0;
     left: 0;
@@ -4958,7 +4958,7 @@ body {
     overflow: hidden;
 }
 
-.spring-particle {
+.tornado-particle {
     position: absolute;
     width: var(--particle-size, 4px);
     height: var(--particle-size, 4px);
@@ -4968,14 +4968,14 @@ body {
             var(--particle-color, rgba(255, 248, 220, 0.8)) 40%,
             transparent 80%);
     border-radius: 50%;
-    animation: spring-particle-float var(--float-duration, 15s) ease-in-out infinite;
+    animation: tornado-particle-float var(--float-duration, 15s) ease-in-out infinite;
     animation-delay: var(--float-delay, 0s);
     opacity: 0;
     /* REMOVED filter: blur and box-shadow */
     will-change: transform, opacity;
 }
 
-@keyframes spring-particle-float {
+@keyframes tornado-particle-float {
     0% {
         transform: translate(var(--start-x, 0), 110vh) scale(0);
         opacity: 0;
@@ -5003,7 +5003,7 @@ body {
 }
 
 /* ===== Glowing Fireflies - OPTIMIZED ===== */
-#spring-fireflies {
+#tornado-fireflies {
     position: absolute;
     top: 0;
     left: 0;
@@ -5013,7 +5013,7 @@ body {
     pointer-events: none;
 }
 
-.spring-firefly {
+.tornado-firefly {
     position: absolute;
     width: 8px;
     /* Slightly larger to compensate for removed shadow */
@@ -5026,12 +5026,12 @@ body {
     border-radius: 50%;
     /* REMOVED box-shadow */
     animation:
-        spring-firefly-glow 2s ease-in-out infinite,
-        spring-firefly-drift var(--drift-duration, 20s) ease-in-out infinite;
+        tornado-firefly-glow 2s ease-in-out infinite,
+        tornado-firefly-drift var(--drift-duration, 20s) ease-in-out infinite;
     animation-delay: var(--firefly-delay, 0s);
 }
 
-@keyframes spring-firefly-glow {
+@keyframes tornado-firefly-glow {
 
     0%,
     100% {
@@ -5045,7 +5045,7 @@ body {
     }
 }
 
-@keyframes spring-firefly-drift {
+@keyframes tornado-firefly-drift {
 
     0%,
     100% {
@@ -5066,7 +5066,7 @@ body {
 }
 
 /* ===== Ethereal Sunbeams / God Rays - OPTIMIZED ===== */
-#spring-sunbeams {
+#tornado-sunbeams {
     position: absolute;
     top: 0;
     left: 0;
@@ -5077,7 +5077,7 @@ body {
     overflow: hidden;
 }
 
-.spring-sunbeam {
+.tornado-sunbeam {
     position: absolute;
     top: -20%;
     right: 5%;
@@ -5090,13 +5090,13 @@ body {
             transparent 100%);
     transform-origin: top right;
     transform: rotate(var(--beam-angle, 25deg)) skewX(-5deg);
-    animation: spring-sunbeam-pulse var(--beam-duration, 10s) ease-in-out infinite;
+    animation: tornado-sunbeam-pulse var(--beam-duration, 10s) ease-in-out infinite;
     animation-delay: var(--beam-delay, 0s);
     /* REMOVED filter: blur */
     opacity: 0.7;
 }
 
-@keyframes spring-sunbeam-pulse {
+@keyframes tornado-sunbeam-pulse {
 
     0%,
     100% {
@@ -5112,7 +5112,7 @@ body {
 }
 
 /* ===== Volumetric Dreamy Clouds - OPTIMIZED ===== */
-#spring-clouds {
+#tornado-clouds {
     position: absolute;
     top: 0;
     left: 0;
@@ -5122,14 +5122,14 @@ body {
     pointer-events: none;
 }
 
-.spring-cloud {
+.tornado-cloud {
     position: absolute;
     background:
         radial-gradient(ellipse 70% 70% at 50% 50%, rgba(255, 255, 255, 0.9) 0%, transparent 70%);
     border-radius: 50%;
     /* REMOVED filter: blur */
     animation:
-        spring-cloud-drift var(--cloud-duration, 120s) linear infinite;
+        tornado-cloud-drift var(--cloud-duration, 120s) linear infinite;
     /* Removed expensive morph animation */
     animation-delay: var(--cloud-delay, 0s);
     /* REMOVED complex box-shadow */
@@ -5137,12 +5137,12 @@ body {
     opacity: 0.8;
 }
 
-.spring-cloud::before,
-.spring-cloud::after {
+.tornado-cloud::before,
+.tornado-cloud::after {
     display: none;
 }
 
-@keyframes spring-cloud-drift {
+@keyframes tornado-cloud-drift {
     from {
         transform: translateX(-30vw);
     }
@@ -5211,7 +5211,7 @@ body {
 }
 
 /* ===== Enchanting Cherry Blossom Petals ===== */
-#spring-petals {
+#tornado-petals {
     position: absolute;
     top: 0;
     left: 0;
@@ -5222,7 +5222,7 @@ body {
     overflow: hidden;
 }
 
-.spring-petal {
+.tornado-petal {
     position: absolute;
     top: 0;
     left: 0;
@@ -5237,7 +5237,7 @@ body {
     border-radius: 50% 0 50% 0;
     transform: scale(var(--petal-scale, 1));
     /* REMOVED filter */
-    animation: spring-petal-fall var(--fall-duration, 12s) linear infinite;
+    animation: tornado-petal-fall var(--fall-duration, 12s) linear infinite;
     animation-delay: var(--fall-delay, 0s);
     box-shadow:
         inset 3px 3px 6px rgba(255, 255, 255, 0.7),
@@ -5246,7 +5246,7 @@ body {
     will-change: transform;
 }
 
-.spring-petal::before {
+.tornado-petal::before {
     content: '';
     position: absolute;
     top: 20%;
@@ -5258,15 +5258,15 @@ body {
     /* REMOVED filter */
 }
 
-.spring-petal::after {
+.tornado-petal::after {
     display: none;
 }
 
-.spring-petal.extra {
-    animation: spring-petal-fall-burst linear forwards;
+.tornado-petal.extra {
+    animation: tornado-petal-fall-burst linear forwards;
 }
 
-@keyframes spring-petal-fall {
+@keyframes tornado-petal-fall {
     0% {
         transform: translate3d(var(--x-start, 50vw), -30px, 0) scale(var(--petal-scale, 1)) rotate(var(--rotate-start, 0deg)) rotateY(0deg);
         opacity: 0;
@@ -5298,7 +5298,7 @@ body {
     }
 }
 
-@keyframes spring-petal-fall-burst {
+@keyframes tornado-petal-fall-burst {
     0% {
         transform: translate3d(var(--x-start, 50vw), -30px, 0) scale(var(--petal-scale, 1)) rotate(var(--rotate-start, 0deg));
         opacity: 1;
@@ -5311,7 +5311,7 @@ body {
 }
 
 /* ===== Enchanting Butterflies - OPTIMIZED ===== */
-#spring-butterflies {
+#tornado-butterflies {
     position: absolute;
     top: 0;
     left: 0;
@@ -5321,20 +5321,20 @@ body {
     pointer-events: none;
 }
 
-.spring-butterfly {
+.tornado-butterfly {
     position: absolute;
     width: 24px;
     height: 16px;
     left: var(--start-x, 50vw);
     top: var(--start-y, 50vh);
     animation:
-        spring-butterfly-path-1 var(--path-duration, 30s) ease-in-out infinite,
-        spring-butterfly-flutter 0.25s ease-in-out infinite;
+        tornado-butterfly-path-1 var(--path-duration, 30s) ease-in-out infinite,
+        tornado-butterfly-flutter 0.25s ease-in-out infinite;
     /* REMOVED filter: drop-shadow */
 }
 
-.spring-butterfly::before,
-.spring-butterfly::after {
+.tornado-butterfly::before,
+.tornado-butterfly::after {
     content: '';
     position: absolute;
     top: 0;
@@ -5352,20 +5352,20 @@ body {
     box-shadow: inset 0 2px 6px rgba(255, 255, 255, 0.4);
 }
 
-.spring-butterfly::before {
+.tornado-butterfly::before {
     left: 0;
     transform-origin: right center;
-    animation: spring-butterfly-wing-left 0.12s ease-in-out infinite alternate;
+    animation: tornado-butterfly-wing-left 0.12s ease-in-out infinite alternate;
 }
 
-.spring-butterfly::after {
+.tornado-butterfly::after {
     right: 0;
     transform-origin: left center;
-    animation: spring-butterfly-wing-right 0.12s ease-in-out infinite alternate;
+    animation: tornado-butterfly-wing-right 0.12s ease-in-out infinite alternate;
 }
 
 /* Butterfly body */
-.spring-butterfly-body {
+.tornado-butterfly-body {
     position: absolute;
     top: 50%;
     left: 50%;
@@ -5377,7 +5377,7 @@ body {
     z-index: 1;
 }
 
-@keyframes spring-butterfly-wing-left {
+@keyframes tornado-butterfly-wing-left {
     from {
         transform: rotateY(0deg) rotateZ(-12deg) scale(1);
     }
@@ -5387,7 +5387,7 @@ body {
     }
 }
 
-@keyframes spring-butterfly-wing-right {
+@keyframes tornado-butterfly-wing-right {
     from {
         transform: rotateY(0deg) rotateZ(12deg) scale(1);
     }
@@ -5397,7 +5397,7 @@ body {
     }
 }
 
-@keyframes spring-butterfly-path-1 {
+@keyframes tornado-butterfly-path-1 {
     0% {
         transform: translate(0, 0) scale(1);
     }
@@ -5431,11 +5431,11 @@ body {
     }
 }
 
-.spring-butterfly.path-2 {
-    animation-name: spring-butterfly-path-2, spring-butterfly-flutter;
+.tornado-butterfly.path-2 {
+    animation-name: tornado-butterfly-path-2, tornado-butterfly-flutter;
 }
 
-@keyframes spring-butterfly-path-2 {
+@keyframes tornado-butterfly-path-2 {
     0% {
         transform: translate(0, 0) scale(1);
     }
@@ -5461,11 +5461,11 @@ body {
     }
 }
 
-.spring-butterfly.path-3 {
-    animation-name: spring-butterfly-path-3, spring-butterfly-flutter;
+.tornado-butterfly.path-3 {
+    animation-name: tornado-butterfly-path-3, tornado-butterfly-flutter;
 }
 
-@keyframes spring-butterfly-path-3 {
+@keyframes tornado-butterfly-path-3 {
     0% {
         transform: translate(0, 0) scale(1);
     }
@@ -5487,7 +5487,7 @@ body {
     }
 }
 
-@keyframes spring-butterfly-flutter {
+@keyframes tornado-butterfly-flutter {
 
     0%,
     100% {
@@ -5502,7 +5502,7 @@ body {
 }
 
 /* ===== Rain Layers - OPTIMIZED ===== */
-#spring-rain {
+#tornado-rain {
     position: absolute;
     top: 0;
     left: 0;
@@ -5538,7 +5538,7 @@ body {
     /* REMOVED filter: brightness */
 }
 
-.spring-raindrop {
+.tornado-raindrop {
     position: absolute;
     bottom: 100%;
     background: linear-gradient(to bottom,
@@ -5546,17 +5546,17 @@ body {
             rgba(173, 216, 230, 0.7) 50%,
             rgba(135, 206, 250, 0.9) 100%);
     border-radius: 0 0 50% 50%;
-    animation: spring-rain-fall linear infinite;
+    animation: tornado-rain-fall linear infinite;
 }
 
-@keyframes spring-rain-fall {
+@keyframes tornado-rain-fall {
     to {
         transform: translateY(calc(100vh + 100px)) translateX(var(--x-drift, 0px));
     }
 }
 
 /* ===== Lush Enchanted Meadow Ground ===== */
-.spring-ground {
+.tornado-ground {
     position: absolute;
     bottom: 0;
     left: 0;
@@ -5581,7 +5581,7 @@ body {
             #6fb856 60%,
             /* Bright meadow */
             #81c784 75%,
-            /* Fresh spring green */
+            /* Fresh tornado green */
             #a5d6a7 88%,
             /* Light highlights */
             transparent 100%);
@@ -5591,7 +5591,7 @@ body {
         inset 0 -10px 30px rgba(0, 50, 0, 0.2);
 }
 
-.spring-ground::before {
+.tornado-ground::before {
     content: '';
     position: absolute;
     top: -25px;
@@ -5600,10 +5600,10 @@ body {
     height: 35px;
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 25'%3E%3Cdefs%3E%3ClinearGradient id='grass' x1='0%25' y1='0%25' x2='0%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%2398fb98'/%3E%3Cstop offset='100%25' style='stop-color:%2366bb6a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0 25 Q3 12 6 22 Q9 8 12 20 Q15 5 18 18 Q21 10 24 21 Q27 6 30 19 Q33 12 36 22 Q39 4 42 17 Q45 10 48 20 Q51 7 54 18 Q57 12 60 21 Q63 5 66 19 Q69 10 72 22 Q75 6 78 18 Q81 11 84 20 Q87 4 90 17 Q93 9 96 21 Q99 7 102 19 Q105 12 108 22 Q111 5 114 18 Q117 10 120 21 L120 25 Z' fill='url(%23grass)'/%3E%3C/svg%3E") repeat-x;
     background-size: 180px 25px;
-    animation: spring-grass-sway 4s ease-in-out infinite;
+    animation: tornado-grass-sway 4s ease-in-out infinite;
 }
 
-.spring-ground::after {
+.tornado-ground::after {
     content: '';
     position: absolute;
     top: 0;
@@ -5615,10 +5615,10 @@ body {
         radial-gradient(ellipse 25% 40% at 70% 40%, rgba(255, 255, 200, 0.06) 0%, transparent 60%),
         radial-gradient(ellipse 20% 30% at 50% 50%, rgba(255, 255, 200, 0.04) 0%, transparent 50%);
     pointer-events: none;
-    animation: spring-ground-shimmer 8s ease-in-out infinite;
+    animation: tornado-ground-shimmer 8s ease-in-out infinite;
 }
 
-@keyframes spring-grass-sway {
+@keyframes tornado-grass-sway {
 
     0%,
     100% {
@@ -5630,7 +5630,7 @@ body {
     }
 }
 
-@keyframes spring-ground-shimmer {
+@keyframes tornado-ground-shimmer {
 
     0%,
     100% {
@@ -5643,7 +5643,7 @@ body {
 }
 
 /* ===== Enchanted Meadow Wildflowers ===== */
-#spring-meadow {
+#tornado-meadow {
     position: absolute;
     bottom: 6%;
     left: 0;
@@ -5653,19 +5653,19 @@ body {
     pointer-events: none;
 }
 
-.spring-wildflower {
+.tornado-wildflower {
     position: absolute;
-    animation: spring-wildflower-sway var(--sway-duration, 3s) ease-in-out infinite alternate;
+    animation: tornado-wildflower-sway var(--sway-duration, 3s) ease-in-out infinite alternate;
     transform-origin: bottom center;
     filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.15));
     transition: filter 0.3s ease;
 }
 
-.spring-wildflower:hover {
+.tornado-wildflower:hover {
     filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2)) brightness(1.1);
 }
 
-@keyframes spring-wildflower-sway {
+@keyframes tornado-wildflower-sway {
     from {
         transform: rotate(-6deg) translateX(-2px);
     }
@@ -5809,7 +5809,7 @@ body {
    A breathtaking flower that grows with your combos
    ============================================ */
 
-#spring-combo-flower {
+#tornado-combo-flower {
     position: absolute;
     bottom: 0;
     left: 0;
@@ -6699,7 +6699,7 @@ body {
 }
 
 /* ===== Petal Burst Effect ===== */
-.spring-burst-petal {
+.tornado-burst-petal {
     position: absolute;
     width: 15px;
     height: 15px;
@@ -6707,11 +6707,11 @@ body {
     border-radius: 50% 0 50% 0;
     pointer-events: none;
     z-index: 60;
-    animation: spring-burst-fly 1.5s ease-out forwards;
+    animation: tornado-burst-fly 1.5s ease-out forwards;
     box-shadow: 0 2px 8px rgba(255, 150, 180, 0.4);
 }
 
-@keyframes spring-burst-fly {
+@keyframes tornado-burst-fly {
     0% {
         transform: translate(-50%, 0) rotate(0deg) scale(1);
         opacity: 1;
@@ -6725,7 +6725,7 @@ body {
 }
 
 /* ===== Screen Glow Effect ===== */
-.spring-screen-glow {
+.tornado-screen-glow {
     position: absolute;
     top: 0;
     left: 0;
@@ -6755,7 +6755,7 @@ body {
 }
 
 /* ===== Canvas for Particles ===== */
-#spring-combo-canvas {
+#tornado-combo-canvas {
     position: fixed;
     top: 0;
     left: 0;
@@ -26928,4 +26928,17 @@ body.cursor-hidden * {
     50% {
         opacity: 1;
     }
+}
+/* Game Over Modal Buttons */
+.game-over-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 25px;
+    margin-bottom: 10px;
+    animation: slideUp 0.5s ease-out forwards;
+}
+
+#game-over-main-menu {
+    min-width: 180px;
 }

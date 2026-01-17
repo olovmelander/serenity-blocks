@@ -5,6 +5,7 @@
 
 import { THEME_REGISTRY } from '../../themes/theme-registry.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { TORNADO_PARAM_DEFAULTS, TORNADO_PARAM_RANGES } from '../../themes/tornado/params.ts';
 
 export class ThemesTab {
     constructor(hubInstance, themeManager, settingsManager) {
@@ -19,6 +20,7 @@ export class ThemesTab {
 
         // Group themes by category
         this.categories = this.getCategories();
+        this.themeParamInputHandler = (event) => this.handleThemeParamInput(event);
 
         this.init();
     }
@@ -62,6 +64,7 @@ export class ThemesTab {
             fantasy: { name: 'Fantasy', icon: '🔮' },
             abstract: { name: 'Abstract', icon: '🎨' },
             sky: { name: 'Sky', icon: '☁️' },
+            atmospheric: { name: 'Atmospheric', icon: '🌪️' },
         };
 
         Array.from(categorySet).sort().forEach((cat) => {
@@ -127,7 +130,7 @@ export class ThemesTab {
             Winter: '☃️',
             Fall: '🍂',
             Summer: '☀️',
-            Spring: '🌸',
+            Tornado: '🌪️',
             Aurora: '🌌',
             Galaxy: '🌌',
             'Rainy Window': '🌧️',
@@ -201,6 +204,11 @@ export class ThemesTab {
                         <span class="btn-text">Random Theme</span>
                     </button>
                 </div>
+
+                <!-- Theme Parameters -->
+                <div class="theme-params" id="theme-params">
+                    ${this.renderThemeParams()}
+                </div>
             </div>
         `;
     }
@@ -260,6 +268,83 @@ export class ThemesTab {
     }
 
     /**
+     * Render theme parameter controls (Tornado only for now)
+     * @returns {string} HTML for theme controls
+     */
+    renderThemeParams() {
+        if (this.currentTheme !== 'tornado') {
+            return `
+                <div class="theme-params-empty">
+                    Select Tornado to adjust live parameters.
+                </div>
+            `;
+        }
+
+        const params = this.getTornadoParams();
+
+        return `
+            <div class="theme-params-panel">
+                <div class="theme-params-title">Tornado Controls</div>
+                ${this.renderThemeParamColor('emissiveColor', params.emissiveColor)}
+                ${this.renderThemeParamRange('timeScale', params.timeScale)}
+                ${this.renderThemeParamRange('parabolaStrength', params.parabolaStrength)}
+                ${this.renderThemeParamRange('parabolaOffset', params.parabolaOffset)}
+                ${this.renderThemeParamRange('parabolaAmplitude', params.parabolaAmplitude)}
+                ${this.renderThemeParamRange('bloomStrength', params.bloomStrength)}
+                ${this.renderThemeParamRange('bloomRadius', params.bloomRadius)}
+            </div>
+        `;
+    }
+
+    renderThemeParamColor(key, value) {
+        return `
+            <div class="theme-param-row">
+                <label class="theme-param-label" for="theme-param-${key}">${key}</label>
+                <input class="theme-param-input theme-param-color"
+                       id="theme-param-${key}"
+                       type="color"
+                       data-theme-param="${key}"
+                       value="${value}">
+                <span class="theme-param-value" data-theme-param-value="${key}">${value}</span>
+            </div>
+        `;
+    }
+
+    renderThemeParamRange(key, value) {
+        const range = TORNADO_PARAM_RANGES[key];
+        const displayValue = this.formatParamValue(key, value);
+
+        return `
+            <div class="theme-param-row">
+                <label class="theme-param-label" for="theme-param-${key}">${key}</label>
+                <input class="theme-param-input"
+                       id="theme-param-${key}"
+                       type="range"
+                       min="${range.min}"
+                       max="${range.max}"
+                       step="${range.step}"
+                       data-theme-param="${key}"
+                       value="${value}">
+                <span class="theme-param-value" data-theme-param-value="${key}">${displayValue}</span>
+            </div>
+        `;
+    }
+
+    formatParamValue(key, value) {
+        if (key === 'emissiveColor') return value;
+        const decimals = key === 'parabolaOffset' ? 2 : 2;
+        return Number(value).toFixed(decimals);
+    }
+
+    getTornadoParams() {
+        const settings = this.settingsManager.get();
+        return {
+            ...TORNADO_PARAM_DEFAULTS,
+            ...(settings.tornadoThemeParams || {}),
+        };
+    }
+
+    /**
      * Get category display name
      * @param {string} id - Category ID
      * @returns {string} Display name
@@ -305,6 +390,42 @@ export class ThemesTab {
         if (randomBtn) {
             randomBtn.addEventListener('click', () => this.selectRandomTheme());
         }
+
+        this.attachThemeParamListeners();
+    }
+
+    attachThemeParamListeners() {
+        const panel = document.getElementById('theme-params');
+        if (!panel) return;
+        const inputs = panel.querySelectorAll('[data-theme-param]');
+        inputs.forEach((input) => {
+            input.addEventListener('input', this.themeParamInputHandler);
+        });
+    }
+
+    handleThemeParamInput(event) {
+        const input = event.target;
+        if (!input?.dataset?.themeParam) return;
+
+        const key = input.dataset.themeParam;
+        const value = input.type === 'color' ? input.value : parseFloat(input.value);
+        const params = this.getTornadoParams();
+
+        params[key] = value;
+        this.settingsManager.update({ tornadoThemeParams: params });
+        this.settingsManager.save();
+
+        const valueEl = document.querySelector(`[data-theme-param-value="${key}"]`);
+        if (valueEl) {
+            valueEl.textContent = this.formatParamValue(key, value);
+        }
+    }
+
+    refreshThemeParams() {
+        const panel = document.getElementById('theme-params');
+        if (!panel) return;
+        panel.innerHTML = this.renderThemeParams();
+        this.attachThemeParamListeners();
     }
 
     /**
@@ -360,6 +481,7 @@ export class ThemesTab {
         // Update UI
         this.updateThemeSelection();
         this.updateCurrentThemeBadge();
+        this.refreshThemeParams();
     }
 
     /**
@@ -444,6 +566,7 @@ export class ThemesTab {
                 this.currentTheme = themeName;
                 this.updateThemeSelection();
                 this.updateCurrentThemeBadge();
+                this.refreshThemeParams();
             }
         };
 
@@ -463,6 +586,7 @@ export class ThemesTab {
             this.currentTheme = activeTheme;
             this.updateThemeSelection();
             this.updateCurrentThemeBadge();
+            this.refreshThemeParams();
         }
     }
 

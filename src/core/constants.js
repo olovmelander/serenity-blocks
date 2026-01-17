@@ -239,6 +239,15 @@ export const DEFAULT_SETTINGS = {
     comboPopupEffect: true,
     lineClearEffects: true,
     backgroundComboEffects: true,
+    tornadoThemeParams: {
+        emissiveColor: '#ff8a3b',
+        timeScale: 1.0,
+        parabolaStrength: 1.0,
+        parabolaOffset: 0.35,
+        parabolaAmplitude: 0.45,
+        bloomStrength: 1.0,
+        bloomRadius: 0.2,
+    },
     effectQuality: 'High',
 
     // Serenity Mode settings

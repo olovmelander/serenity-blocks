@@ -1061,6 +1061,10 @@ export class OdysseyMode extends BaseGameMode {
         // Show goal complete overlay
         this._showGoalCompleteOverlay();
 
+        // Trigger theme combo effects for victory celebration
+        eventBus.emit(EVENTS.COMBO, { comboCount: 10 });
+        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 4, comboCount: 10 });
+
         // Update HUD to show victory lap state
         if (this.odysseyHUD) {
             this.odysseyHUD.enterVictoryLap();

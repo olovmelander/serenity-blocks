@@ -1549,16 +1549,16 @@ body {
 }
 
 /* --- Spring Theme --- */
-#spring-theme {
+#tornado-theme {
     background: linear-gradient(to top, #b0c4de, #dcedc1, #e0f0e8);
     overflow: hidden;
 }
-#spring-clouds {
+#tornado-clouds {
     position: absolute; top: 0; left: 0;
     width: 100%; height: 40%;
     z-index: 0;
 }
-.spring-cloud {
+.tornado-cloud {
     position: absolute;
     background-color: rgba(255, 255, 255, 0.7);
     border-radius: 50%;
@@ -1601,15 +1601,15 @@ body {
 #rain-mid { z-index: 4; }
 #rain-front { z-index: 6; filter: brightness(1.2); }
 
-.spring-raindrop {
+.tornado-raindrop {
     position: absolute; bottom: 100%;
     background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(200,220,240,0.8));
-    animation: spring-rain-fall linear infinite;
+    animation: tornado-rain-fall linear infinite;
 }
-@keyframes spring-rain-fall {
+@keyframes tornado-rain-fall {
     to { transform: translateY(calc(100vh + 100px)) translateX(var(--x-drift)); }
 }
-.spring-ground {
+.tornado-ground {
     position: absolute; bottom: 0; left: 0; width: 100%; height: 10%;
     background: linear-gradient(to top, #6a994e, #89c2d9);
     z-index: 1;
