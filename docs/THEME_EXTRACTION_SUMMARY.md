@@ -13,7 +13,7 @@ All requested themes have been extracted from `script.js` into individual theme 
 5. ✓ **winter** - Snowfall with ice crystals
 6. ✓ **fall** - Autumn leaves with ground coverage
 7. ✓ **summer** - Summer scene with god rays, dandelion seeds, and swaying grass
-8. ✓ **spring** - Spring rain with clouds and sprouts
+8. ✓ **tornado** - Swirling winds with storm-lit atmosphere
 9. ✓ **aurora** - Aurora borealis (simplified - complex dynamic animations)
 10. ✓ **galaxy** - Galaxy with twinkling stars
 11. ✓ **rainy-window** - Animated rain drops on window with canvas
@@ -50,7 +50,7 @@ Each theme module:
 ## Notes and Caveats
 
 ### Fully Implemented Themes (Complete Extraction):
-- ocean, sunset, mountain, zen, winter, fall, summer, spring
+- ocean, sunset, mountain, zen, winter, fall, summer, tornado
 - galaxy, rainy-window, koi-pond, meadow, cosmic-chimes, singing-bowl
 - starlight, swedish-forest, geode, bioluminescence, electric-dreams
 
@@ -105,4 +105,3 @@ Each theme should be tested for:
 - Container registration and removal
 - Timeout/interval cleanup
 - WebGL layer management (where applicable)
-

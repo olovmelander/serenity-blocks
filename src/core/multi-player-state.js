@@ -58,7 +58,6 @@ export class MultiPlayerState {
         for (let i = 0; i < numPlayers; i++) {
             this.players.push(new GameState());
             this.garbageQueues.push(new GarbageQueue());
-            this.playerColors.push(PLAYER_COLORS[i]);
         }
 
         // Match configuration (set by LocalMultiplayerMode)
@@ -68,7 +67,11 @@ export class MultiPlayerState {
             startLevel: 1,
             levelProgression: false,
             boringRules: false,
+            isTeamMode: false,
+            playerTeams: [],
         };
+
+        this._assignPlayerColors();
 
         // Match state
         this.isGameOver = false;
@@ -76,8 +79,9 @@ export class MultiPlayerState {
         this.winner = null; // Player index (0-3) or null
         this.matchStartTime = 0;
 
-        // Frag tracking (kills)
+        // Frag tracking (kills) and deaths tracking
         this.frags = new Array(numPlayers).fill(0);
+        this.deaths = new Array(numPlayers).fill(0); // Quadra-style death counter
         this.lastAttackerIds = new Array(numPlayers).fill(null); // Track who last attacked each player
 
         // Timing (shared between players)
@@ -96,6 +100,7 @@ export class MultiPlayerState {
      */
     setMatchConfig(config) {
         this.matchConfig = { ...this.matchConfig, ...config };
+        this._assignPlayerColors();
     }
 
     /**
@@ -124,8 +129,11 @@ export class MultiPlayerState {
 
             this.garbageQueues[i].clear();
             this.frags[i] = 0;
+            this.deaths[i] = 0;
             this.lastAttackerIds[i] = null;
         }
+
+        this._assignPlayerColors();
 
         this.isGameOver = false;
         this.isPaused = false;
@@ -161,10 +169,31 @@ export class MultiPlayerState {
     }
 
     /**
+     * Assign player colors based on match configuration
+     */
+    _assignPlayerColors() {
+        if (this.matchConfig?.isTeamMode) {
+            const teamColors = [PLAYER_COLORS[0], PLAYER_COLORS[1]];
+            this.playerColors = this.players.map((_, index) => {
+                const teamId = this.matchConfig?.playerTeams?.[index];
+                const resolvedTeamId = teamId === 0 || teamId === 1
+                    ? teamId
+                    : index % teamColors.length;
+                return teamColors[resolvedTeamId] || teamColors[0];
+            });
+            return;
+        }
+
+        this.playerColors = this.players.map((_, index) => (
+            PLAYER_COLORS[index % PLAYER_COLORS.length] || PLAYER_COLORS[0]
+        ));
+    }
+
+    /**
      * Get player color scheme by index
      */
     getPlayerColor(playerIndex) {
-        return this.playerColors[playerIndex];
+        return this.playerColors[playerIndex] || PLAYER_COLORS[0];
     }
 
     /**
@@ -202,9 +231,16 @@ export class MultiPlayerState {
 
         // Get attacker's color for garbage blocks
         const attackerColor = this.getPlayerColor(playerIndex);
+        const teamId = this.matchConfig?.isTeamMode
+            ? this.matchConfig?.playerTeams?.[playerIndex]
+            : null;
+        const resolvedTeamId = this.matchConfig?.isTeamMode
+            ? (teamId === 0 || teamId === 1 ? teamId : playerIndex % 2)
+            : null;
 
         const context = {
             color: attackerColor ? attackerColor.primary : '#808080',
+            team: resolvedTeamId,
         };
 
         const entries = attack.expandEntries(context);
@@ -272,9 +308,14 @@ export class MultiPlayerState {
      */
     _getAttackTargets(attackerIndex) {
         const targets = [];
+        const attackerTeam = this.matchConfig.isTeamMode ? this.matchConfig.playerTeams[attackerIndex] : null;
 
         for (let i = 0; i < this.numPlayers; i++) {
             if (i !== attackerIndex && this.players[i].isAlive) {
+                // In team mode, skip targets on the same team
+                if (this.matchConfig.isTeamMode && this.matchConfig.playerTeams[i] === attackerTeam) {
+                    continue;
+                }
                 targets.push(i);
             }
         }
@@ -319,6 +360,9 @@ export class MultiPlayerState {
 
         player.isAlive = false;
 
+        // Increment death counter
+        this.deaths[playerIndex]++;
+
         // Award frag to last attacker
         const killerId = this.lastAttackerIds[playerIndex];
 
@@ -345,56 +389,109 @@ export class MultiPlayerState {
 
         // Check specific win conditions (frags, time, points, lines, never)
         // DO NOT check "last player standing" here - that's a round-end, not match-end
+        if (config.isTeamMode) {
+            // Aggregate stats by team
+            const teamStats = {};
+            for (let i = 0; i < this.numPlayers; i++) {
+                const teamId = config.playerTeams[i];
+                if (!teamStats[teamId]) {
+                    teamStats[teamId] = { frags: 0, score: 0, lines: 0 };
+                }
+                teamStats[teamId].frags += this.frags[i];
+                teamStats[teamId].score += this.players[i].score;
+                teamStats[teamId].lines += this.players[i].totalLinesCleared;
+            }
+
+            for (const teamId in teamStats) {
+                const stats = teamStats[teamId];
+                if (config.endCondition === 'frags' && stats.frags >= config.endConditionValue) {
+                    this.endMatchByTeam(parseInt(teamId));
+                    return true;
+                }
+                if (config.endCondition === 'points' && stats.score >= config.endConditionValue * 1000) {
+                    this.endMatchByTeam(parseInt(teamId));
+                    return true;
+                }
+                if (config.endCondition === 'lines' && stats.lines >= config.endConditionValue) {
+                    this.endMatchByTeam(parseInt(teamId));
+                    return true;
+                }
+            }
+
+            // For time-based, wait for switch below or handle here?
+            // Switch below handles individual winners, team mode needs its own time-end logic
+        }
+
         switch (config.endCondition) {
-        case 'frags': {
-            const maxFrags = Math.max(...this.frags);
-            const topPlayerIndex = this.frags.indexOf(maxFrags);
-            if (maxFrags >= config.endConditionValue) {
-                this.endMatch(topPlayerIndex);
-                return true;
-            }
-            break;
-        }
-
-        case 'time': {
-            const elapsed = (Date.now() - this.matchStartTime) / 1000 / 60; // minutes
-            if (elapsed >= config.endConditionValue) {
-                // Winner is player with highest score
-                const scores = this.players.map((p) => p.score);
-                const topPlayerIndex = scores.indexOf(Math.max(...scores));
-                this.endMatch(topPlayerIndex);
-                return true;
-            }
-            break;
-        }
-
-        case 'points': {
-            const targetScore = config.endConditionValue * 1000;
-            for (let i = 0; i < this.numPlayers; i++) {
-                if (this.players[i].score >= targetScore) {
-                    this.endMatch(i);
+            case 'frags': {
+                const maxFrags = Math.max(...this.frags);
+                const topPlayerIndex = this.frags.indexOf(maxFrags);
+                if (maxFrags >= config.endConditionValue) {
+                    this.endMatch(topPlayerIndex);
                     return true;
                 }
+                break;
             }
-            break;
-        }
 
-        case 'lines': {
-            for (let i = 0; i < this.numPlayers; i++) {
-                if (this.players[i].totalLinesCleared >= config.endConditionValue) {
-                    this.endMatch(i);
+            case 'time': {
+                const elapsed = (Date.now() - this.matchStartTime) / 1000 / 60; // minutes
+                if (elapsed >= config.endConditionValue) {
+                    if (config.isTeamMode) {
+                        // Winner is team with highest aggregate score
+                        const teamScores = {};
+                        for (let i = 0; i < this.numPlayers; i++) {
+                            const teamId = config.playerTeams[i];
+                            teamScores[teamId] = (teamScores[teamId] || 0) + this.players[i].score;
+                        }
+                        const winnerTeamId = Object.keys(teamScores).reduce((a, b) => (teamScores[a] > teamScores[b] ? a : b));
+                        this.endMatchByTeam(parseInt(winnerTeamId));
+                    } else {
+                        // Winner is player with highest score
+                        const scores = this.players.map((p) => p.score);
+                        const topPlayerIndex = scores.indexOf(Math.max(...scores));
+                        this.endMatch(topPlayerIndex);
+                    }
                     return true;
                 }
+                break;
             }
-            break;
-        }
 
-        case 'never':
-            // Never end automatically
-            break;
+            case 'points': {
+                const targetScore = config.endConditionValue * 1000;
+                for (let i = 0; i < this.numPlayers; i++) {
+                    if (this.players[i].score >= targetScore) {
+                        this.endMatch(i);
+                        return true;
+                    }
+                }
+                break;
+            }
+
+            case 'lines': {
+                for (let i = 0; i < this.numPlayers; i++) {
+                    if (this.players[i].totalLinesCleared >= config.endConditionValue) {
+                        this.endMatch(i);
+                        return true;
+                    }
+                }
+                break;
+            }
+
+            case 'never':
+                // Never end automatically
+                break;
         }
 
         return false;
+    }
+
+    /**
+     * End match declaring a team as the winner
+     */
+    endMatchByTeam(teamId) {
+        this.isGameOver = true;
+        this.winner = `Team ${teamId === 0 ? 'A' : 'B'}`;
+        console.log(`[MultiPlayerState] 🏆 ${this.winner} wins the match!`);
     }
 
     /**

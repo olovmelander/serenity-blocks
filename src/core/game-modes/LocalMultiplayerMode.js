@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
 import { MultiplayerGameState } from '../multiplayer.js';
-import { MultiPlayerState } from '../multi-player-state.js';
+import { MultiPlayerState, PLAYER_COLORS } from '../multi-player-state.js';
 import {
     GAME_MODES, COLS, ROWS, BLOCK_SIZE,
 } from '../constants.js';
@@ -54,6 +54,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             player3: 0,
             player4: 0,
         };
+        this.teamRoundWins = { 0: 0, 1: 0 };
 
         // Cumulative match stats (preserved across rounds)
         this.matchStats = {
@@ -230,6 +231,34 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 if (i <= numPlayers) {
                     playerCard.style.display = 'flex';
                     playerCard.removeAttribute('aria-hidden');
+
+                    // Add team marker if in team mode
+                    if (this.matchConfig?.isTeamMode) {
+                        const teamId = this._getResolvedTeamId(i - 1);
+                        const teamName = teamId === 0 ? 'TEAM A' : 'TEAM B';
+                        const teamColor = this._getTeamColorScheme(teamId).primary;
+
+                        let teamMarker = playerCard.querySelector('.team-marker');
+                        if (!teamMarker) {
+                            teamMarker = document.createElement('div');
+                            teamMarker.className = 'team-marker';
+                            playerCard.appendChild(teamMarker);
+                        }
+                        teamMarker.textContent = teamName;
+                        teamMarker.style.backgroundColor = teamColor;
+                        teamMarker.style.color = 'white';
+                        teamMarker.style.fontSize = '10px';
+                        teamMarker.style.padding = '2px 6px';
+                        teamMarker.style.borderRadius = '4px';
+                        teamMarker.style.position = 'absolute';
+                        teamMarker.style.top = '10px';
+                        teamMarker.style.right = '10px';
+                        teamMarker.style.fontWeight = 'bold';
+                        teamMarker.style.zIndex = '10';
+                    } else {
+                        const teamMarker = playerCard.querySelector('.team-marker');
+                        if (teamMarker) teamMarker.remove();
+                    }
                 } else {
                     playerCard.style.display = 'none';
                     playerCard.setAttribute('aria-hidden', 'true');
@@ -261,6 +290,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Hide start modal immediately
         this.deps.modalManager.hideAll();
 
+        // Clear any existing death animations (from previous match)
+        this._clearDeathAnimations();
+
         // Reset match stats for new game
         this.matchStats = {
             player1: { score: 0, lines: 0 },
@@ -274,6 +306,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             player3: 0,
             player4: 0,
         };
+        this.teamRoundWins = { 0: 0, 1: 0 };
 
         // Store match start time for time-based win conditions
         this.matchStartTime = Date.now();
@@ -669,8 +702,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const totalLevel = playerState.level ?? 1;
             const totalGarbage = this.multiplayerState.garbageQueues?.[i]?.getTotalLines?.() ?? 0;
             const roundFrags = this.roundWins[matchKey] ?? 0;
+            const totalDeaths = this.multiplayerState.deaths?.[i] ?? 0;
 
             const fragsEl = document.getElementById(`p${playerNum}-frags`);
+            const deathsEl = document.getElementById(`p${playerNum}-deaths`);
             const scoreEl = document.getElementById(`p${playerNum}-score`);
             const linesEl = document.getElementById(`p${playerNum}-lines`);
             const levelEl = document.getElementById(`p${playerNum}-level`);
@@ -679,7 +714,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             // Track previous values for pulse animation
             const prevKey = `p${playerNum}`;
             if (!this._prevStats[prevKey]) {
-                this._prevStats[prevKey] = { frags: 0, score: 0, lines: 0, level: 1, garbage: 0 };
+                this._prevStats[prevKey] = { frags: 0, deaths: 0, score: 0, lines: 0, level: 1, garbage: 0 };
             }
             const prev = this._prevStats[prevKey];
 
@@ -689,6 +724,13 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 if (roundFrags !== prev.frags) {
                     this._pulseElement(fragsEl);
                     prev.frags = roundFrags;
+                }
+            }
+            if (deathsEl) {
+                deathsEl.textContent = totalDeaths;
+                if (totalDeaths !== prev.deaths) {
+                    this._pulseElement(deathsEl);
+                    prev.deaths = totalDeaths;
                 }
             }
             if (scoreEl) {
@@ -729,7 +771,21 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const boardFragDisplay = document.getElementById(`p${i}-board-frags`);
             if (boardFragDisplay) {
                 const playerKey = `player${i}`;
-                boardFragDisplay.textContent = `${this.roundWins[playerKey] || 0} F`;
+                let displayVal = `${this.roundWins[playerKey] || 0} F`;
+
+                // If team mode, show team total frags on the board
+                if (this.matchConfig?.isTeamMode) {
+                    const teamId = this.matchConfig.playerTeams[i - 1];
+                    let teamTotalFrags = 0;
+                    for (let j = 0; j < numPlayers; j++) {
+                        if (this.matchConfig.playerTeams[j] === teamId) {
+                            teamTotalFrags += this.multiplayerState.frags[j];
+                        }
+                    }
+                    displayVal = `${teamTotalFrags} TF`;
+                }
+
+                boardFragDisplay.textContent = displayVal;
             }
         }
     }
@@ -820,6 +876,31 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Show death animation for the eliminated player
         this._showPlayerDeathAnimation(playerIndex);
 
+        if (this.matchConfig?.isTeamMode) {
+            const teamOutcome = this._getTeamRoundOutcome();
+            if (!teamOutcome) {
+                return;
+            }
+
+            // Round ends when a team is fully eliminated
+            this.multiplayerState.isPaused = true;
+
+            if (!teamOutcome.isDraw && teamOutcome.winnerTeamId !== null) {
+                const winningPlayers = teamOutcome.teamStats.get(teamOutcome.winnerTeamId)?.alivePlayers || [];
+                winningPlayers.forEach((winnerIndex) => {
+                    this._showVictoryAnimation(winnerIndex);
+                });
+
+                await new Promise((resolve) => setTimeout(resolve, 500));
+                await this.handleRoundEnd({ type: 'team', teamId: teamOutcome.winnerTeamId });
+            } else {
+                console.log('[LocalMultiplayer] Round ended in a draw (no teams remaining)');
+                await new Promise((resolve) => setTimeout(resolve, 500));
+                await this._startNewRound();
+            }
+            return;
+        }
+
         // For 2 players, determine winner immediately and pause
         if (this.multiplayerState.numPlayers === 2) {
             // ONLY pause when round ends (2 players)
@@ -831,7 +912,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             this._showVictoryAnimation(winnerIndex);
 
             // Wait for victory animation before showing round end
-            await new Promise((resolve) => setTimeout(resolve, 1500));
+            await new Promise((resolve) => setTimeout(resolve, 500));
 
             await this.handleRoundEnd(winnerKey);
         } else {
@@ -851,7 +932,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     this._showVictoryAnimation(winnerIndex);
 
                     // Wait a bit for victory animation before showing round end
-                    await new Promise((resolve) => setTimeout(resolve, 1500));
+                    await new Promise((resolve) => setTimeout(resolve, 500));
 
                     await this.handleRoundEnd(winnerKey);
                 }
@@ -867,7 +948,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
     async _showCountdown() {
         console.log('[LocalMultiplayer] Starting countdown...');
         return new Promise((resolve) => {
-            let count = 3;
+            let count = 5;
 
             // Create overlay background
             const overlay = document.createElement('div');
@@ -1390,49 +1471,221 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
+     * Resolve team/color data for multiplayer UI
+     * @private
+     */
+    _getResolvedTeamId(playerIndex) {
+        const teamId = this.matchConfig?.playerTeams?.[playerIndex];
+        if (teamId === 0 || teamId === 1) {
+            return teamId;
+        }
+        return playerIndex % 2;
+    }
+
+    _getTeamColorScheme(teamId) {
+        const resolvedTeamId = teamId === 1 ? 1 : 0;
+        return PLAYER_COLORS[resolvedTeamId] || PLAYER_COLORS[0];
+    }
+
+    _getPlayerColorScheme(playerIndex) {
+        const stateColor = this.multiplayerState?.getPlayerColor?.(playerIndex);
+        if (stateColor) {
+            return stateColor;
+        }
+
+        if (this.matchConfig?.isTeamMode) {
+            const teamId = this._getResolvedTeamId(playerIndex);
+            return this._getTeamColorScheme(teamId);
+        }
+
+        return PLAYER_COLORS[playerIndex % PLAYER_COLORS.length] || PLAYER_COLORS[0];
+    }
+
+    _getTeamLabel(teamId) {
+        return teamId === 1 ? 'Team B' : 'Team A';
+    }
+
+    _getTeamRoundStats() {
+        const teamStats = new Map();
+        const numPlayers = this.multiplayerState?.numPlayers || 0;
+
+        for (let i = 0; i < numPlayers; i++) {
+            const teamId = this._getResolvedTeamId(i);
+            if (!teamStats.has(teamId)) {
+                teamStats.set(teamId, { alivePlayers: [] });
+            }
+            if (this.multiplayerState.players[i]?.isAlive) {
+                teamStats.get(teamId).alivePlayers.push(i);
+            }
+        }
+
+        return teamStats;
+    }
+
+    _getTeamRoundOutcome() {
+        if (!this.matchConfig?.isTeamMode) {
+            return null;
+        }
+
+        const teamStats = this._getTeamRoundStats();
+        const teamIds = Array.from(teamStats.keys());
+        const aliveTeams = teamIds.filter(
+            (teamId) => teamStats.get(teamId).alivePlayers.length > 0,
+        );
+
+        if (teamIds.length <= 1) {
+            return null;
+        }
+
+        if (aliveTeams.length === 0) {
+            return { winnerTeamId: null, teamStats, isDraw: true };
+        }
+
+        if (aliveTeams.length === 1) {
+            return { winnerTeamId: aliveTeams[0], teamStats, isDraw: false };
+        }
+
+        return null;
+    }
+
+    _syncTeamRoundWins(teamId) {
+        const numPlayers = this.multiplayerState?.numPlayers || 0;
+        const teamWins = this.teamRoundWins[teamId] || 0;
+
+        for (let i = 0; i < numPlayers; i++) {
+            if (this._getResolvedTeamId(i) === teamId) {
+                this.roundWins[`player${i + 1}`] = teamWins;
+            }
+        }
+    }
+
+    _recordTeamRoundWin(teamId) {
+        const resolvedTeamId = teamId === 1 ? 1 : 0;
+        this.teamRoundWins[resolvedTeamId] = (this.teamRoundWins[resolvedTeamId] || 0) + 1;
+        this._syncTeamRoundWins(resolvedTeamId);
+        return this.teamRoundWins[resolvedTeamId];
+    }
+
+    _getTeamAggregateStats(teamId) {
+        const numPlayers = this.multiplayerState?.numPlayers || 0;
+        let score = 0;
+        let lines = 0;
+
+        for (let i = 0; i < numPlayers; i++) {
+            if (this._getResolvedTeamId(i) !== teamId) {
+                continue;
+            }
+
+            const matchKey = `player${i + 1}`;
+            const matchTotals = this.matchStats[matchKey] || { score: 0, lines: 0 };
+            const playerState = this.multiplayerState?.players?.[i];
+
+            score += (matchTotals.score || 0) + (playerState?.score || 0);
+            lines += (matchTotals.lines || 0) + (playerState?.totalLinesCleared || 0);
+        }
+
+        return { score, lines };
+    }
+
+    _checkTeamMatchWinCondition(teamId) {
+        if (!this.matchConfig) {
+            return (this.teamRoundWins[teamId] || 0) >= 7;
+        }
+
+        const config = this.matchConfig;
+
+        switch (config.endCondition) {
+            case 'frags':
+                return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
+
+            case 'time': {
+                const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
+                return elapsedMinutes >= config.endConditionValue;
+            }
+
+            case 'points': {
+                const targetScore = config.endConditionValue * 1000;
+                const totals = this._getTeamAggregateStats(teamId);
+                return totals.score >= targetScore;
+            }
+
+            case 'lines': {
+                const totals = this._getTeamAggregateStats(teamId);
+                return totals.lines >= config.endConditionValue;
+            }
+
+            case 'never':
+                return false;
+
+            default:
+                return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
+        }
+    }
+
+    /**
      * Apply player-specific colors to UI elements
      * @private
      */
     _applyPlayerColors() {
         const numPlayers = this.matchConfig?.numPlayers || 2;
-        const colors = [
-            '#3b82f6', // P1 Blue
-            '#ef4444', // P2 Red
-            '#10b981', // P3 Green
-            '#f59e0b'  // P4 Orange
-        ];
 
         for (let i = 1; i <= numPlayers; i++) {
-            const color = colors[i - 1];
+            const scheme = this._getPlayerColorScheme(i - 1);
+            const primary = scheme?.primary || '#3b82f6';
+            const light = scheme?.light || primary;
+            const glow = scheme?.glow || `${primary}80`;
+            const backgroundTint = `${primary}0D`;
 
             // Update player card border
             const playerCard = document.getElementById(`player-${i}-card`);
             if (playerCard) {
-                playerCard.style.borderColor = `${color}80`; // 50% opacity
-                playerCard.style.boxShadow = `0 0 20px ${color}20`; // Glow
+                playerCard.style.setProperty('--player-primary', primary);
+                playerCard.style.setProperty('--player-primary-light', light);
+                playerCard.style.setProperty('--player-glow', glow);
+                playerCard.style.borderColor = `${primary}80`; // 50% opacity
+                playerCard.style.boxShadow = `0 0 20px ${primary}20`; // Glow
+                playerCard.style.background = `linear-gradient(145deg, rgba(0, 0, 0, 0.5), ${backgroundTint})`;
             }
 
             // Update label color
             const label = document.querySelector(`#player-${i}-card .player-board-label`);
             if (label) {
-                label.style.color = color;
-                label.style.borderColor = `${color}40`;
-                label.style.textShadow = `0 0 10px ${color}80`;
+                label.style.color = primary;
+                label.style.borderColor = `${primary}40`;
+                label.style.textShadow = `0 0 10px ${primary}80`;
             }
 
             // Update border overlay
             const border = document.getElementById(`p${i}-border`);
             if (border) {
-                border.style.borderColor = color;
-                border.style.boxShadow = `0 0 15px ${color}60, inset 0 0 10px ${color}40`;
+                border.style.borderColor = primary;
+                border.style.boxShadow = `0 0 15px ${primary}60, inset 0 0 10px ${primary}40`;
             }
 
             // Update phaser container border
             const container = document.getElementById(`p${i}-phaser-container`);
             if (container) {
-                container.style.border = `2px solid ${color}`;
-                container.style.boxShadow = `0 0 20px ${color}40`;
+                container.style.border = `2px solid ${primary}`;
+                container.style.boxShadow = `0 0 20px ${primary}40`;
             }
+
+            const avatar = document.querySelector(`#player-${i}-card .player-avatar`);
+            if (avatar) {
+                avatar.style.borderColor = primary;
+                avatar.style.setProperty('--player-primary', primary);
+                avatar.style.setProperty('--player-glow', glow);
+            }
+
+            const avatarText = document.querySelector(`#player-${i}-card .avatar-text`);
+            if (avatarText) {
+                avatarText.style.color = primary;
+                avatarText.style.textShadow = `0 0 6px ${primary}80`;
+            }
+
+            const cornerBrackets = document.querySelectorAll(`#player-${i}-card .corner-bracket`);
+            cornerBrackets.forEach((bracket) => {
+                bracket.style.borderColor = primary;
+            });
         }
     }
 
@@ -1508,27 +1761,51 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * @param {string} winner - 'player1' or 'player2'
      */
     async handleRoundEnd(winner) {
+        if (winner && typeof winner === 'object' && winner.type === 'team') {
+            await this._handleTeamRoundEnd(winner.teamId);
+            return;
+        }
+
         console.log(`[LocalMultiplayer] Round ended! Winner: ${winner} `);
 
         // Increment round wins (frags)
         this.roundWins[winner]++;
 
-        const winnerName = winner === 'player1' ? 'Player 1' : 'Player 2';
-        const p1Wins = this.roundWins.player1;
-        const p2Wins = this.roundWins.player2;
+        const winnerIndex = parseInt(winner.replace('player', ''), 10) - 1;
+        const winnerName = `Player ${winnerIndex + 1}`;
+        const winnerWins = this.roundWins[winner];
 
         // Check if someone won the match based on win condition
         const wonMatch = this._checkMatchWinCondition(winner);
 
         if (wonMatch) {
-            console.log(`[LocalMultiplayer] ${winnerName} wins the match!(${p1Wins} - ${p2Wins})`);
-            await this._showMatchEnd(winner, p1Wins, p2Wins);
+            console.log(`[LocalMultiplayer] ${winnerName} wins the match!`);
+            await this._showMatchEnd(winner);
             return;
         }
 
-        // Show round end and start next round
-        console.log(`[LocalMultiplayer] Starting next round...Score: ${p1Wins} -${p2Wins} `);
-        await this._showRoundEnd(winner, p1Wins, p2Wins);
+        // Quadra-style: Instant restart, just log it
+        console.log(`[LocalMultiplayer] Starting next round... Winner: ${winnerName}, Wins: ${winnerWins}`);
+        // Removed _showRoundEnd delay for instant transition
+        await this._startNewRound();
+    }
+
+    async _handleTeamRoundEnd(teamId) {
+        const resolvedTeamId = teamId === 1 ? 1 : 0;
+        const teamName = this._getTeamLabel(resolvedTeamId);
+
+        console.log(`[LocalMultiplayer] Round ended! Winner: ${teamName}`);
+
+        const teamWins = this._recordTeamRoundWin(resolvedTeamId);
+        const wonMatch = this._checkTeamMatchWinCondition(resolvedTeamId);
+
+        if (wonMatch) {
+            console.log(`[LocalMultiplayer] ${teamName} wins the match!`);
+            await this._showMatchEnd({ type: 'team', teamId: resolvedTeamId });
+            return;
+        }
+
+        console.log(`[LocalMultiplayer] Starting next round... Winner: ${teamName}, Wins: ${teamWins}`);
         await this._startNewRound();
     }
 
@@ -1643,20 +1920,45 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         const { numPlayers } = this.multiplayerState;
 
+        // Calculate round duration
+        const now = Date.now();
+        const roundDuration = now - (this.roundStartTime || this.matchStartTime);
+
         // Accumulate stats from this round into match totals before resetting
         const accumulatedLog = {};
         for (let i = 0; i < numPlayers; i++) {
             const playerNum = i + 1;
-            const matchKey = `player${playerNum} `;
+            const matchKey = `player${playerNum}`;
             const playerState = this.multiplayerState.players[i];
             if (!playerState) continue;
 
             if (!this.matchStats[matchKey]) {
-                this.matchStats[matchKey] = { score: 0, lines: 0 };
+                this.matchStats[matchKey] = {
+                    score: 0,
+                    lines: 0,
+                    pieceCounts: { I: 0, J: 0, L: 0, O: 0, S: 0, T: 0, Z: 0 },
+                    lineClearCounts: { 1: 0, 2: 0, 3: 0, 4: 0 }
+                };
             }
+
+            // Ensure substructures exist
+            if (!this.matchStats[matchKey].pieceCounts) this.matchStats[matchKey].pieceCounts = { I: 0, J: 0, L: 0, O: 0, S: 0, T: 0, Z: 0 };
+            if (!this.matchStats[matchKey].lineClearCounts) this.matchStats[matchKey].lineClearCounts = { 1: 0, 2: 0, 3: 0, 4: 0 };
 
             this.matchStats[matchKey].score += playerState.score || 0;
             this.matchStats[matchKey].lines += playerState.totalLinesCleared || 0;
+            this.matchStats[matchKey].deaths = (this.matchStats[matchKey].deaths || 0) + (this.multiplayerState.deaths[i] || 0);
+            this.matchStats[matchKey].duration = (this.matchStats[matchKey].duration || 0) + roundDuration;
+
+            // Aggregate pieces
+            for (const key in playerState.pieceCounts) {
+                this.matchStats[matchKey].pieceCounts[key] = (this.matchStats[matchKey].pieceCounts[key] || 0) + (playerState.pieceCounts[key] || 0);
+            }
+            // Aggregate clears
+            for (const key in playerState.lineClearCounts) {
+                this.matchStats[matchKey].lineClearCounts[key] = (this.matchStats[matchKey].lineClearCounts[key] || 0) + (playerState.lineClearCounts[key] || 0);
+            }
+
             accumulatedLog[matchKey] = this.matchStats[matchKey];
         }
 
@@ -1688,11 +1990,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Update stats
         this._updateMultiplayerStats();
 
-        // Wait 1 second before showing countdown
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        // Show countdown
-        await this._showCountdown();
+        // Quadra-style instant restart: no countdown between rounds
+        // Play a start sound to signal the round beginning
+        this.deps.soundManager.sfxPlayer.playDrop?.();
 
         // Spawn initial pieces for all configured players
         for (let i = 0; i < numPlayers; i++) {
@@ -1723,105 +2023,371 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this._startGameLoop();
 
         console.log('[LocalMultiplayer] New round started!');
+        this.roundStartTime = Date.now();
     }
 
     /**
      * Show match end (someone won the required number of rounds)
      * @private
      */
-    async _showMatchEnd(winner, p1Wins, p2Wins) {
-        const winnerName = winner === 'player1' ? 'Player 1' : 'Player 2';
+    async _showMatchEnd(winner) {
+        let winnerName = 'Player 1';
+        if (winner && typeof winner === 'object' && winner.type === 'team') {
+            const resolvedTeamId = winner.teamId === 1 ? 1 : 0;
+            winnerName = this._getTeamLabel(resolvedTeamId);
+        } else if (typeof winner === 'string') {
+            const winnerIndex = parseInt(winner.replace('player', ''), 10) - 1;
+            winnerName = `Player ${winnerIndex + 1}`;
+        }
+        const numPlayers = this.multiplayerState.numPlayers;
 
-        // Accumulate final round stats before showing match end
-        const finalP1Score = this.matchStats.player1.score + this.multiplayerState.players[0].score;
-        const finalP1Lines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
-        const finalP2Score = this.matchStats.player2.score + this.multiplayerState.players[1].score;
-        const finalP2Lines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
+        let fragsText = '';
+        for (let i = 0; i < numPlayers; i++) {
+            if (i > 0) fragsText += ' - ';
+            fragsText += this.roundWins[`player${i + 1}`];
+        }
 
-        console.log('[LocalMultiplayer] Match ended! Final stats:', {
-            p1: { frags: p1Wins, score: finalP1Score, lines: finalP1Lines },
-            p2: { frags: p2Wins, score: finalP2Score, lines: finalP2Lines },
-        });
+        console.log(`[LocalMultiplayer] Match ended! Winner: ${winnerName}`);
 
         // Stop the game
         await this.onStop();
 
         // Show match result
+
+
+        // Prepare detailed stats data
+        const now = Date.now();
+        const currentDuration = now - (this.roundStartTime || this.matchStartTime);
+        const players = [];
+        for (let i = 0; i < numPlayers; i++) {
+            const key = `player${i + 1}`;
+            const stats = this.matchStats[key] || {};
+            const current = this.multiplayerState.players[i] || {};
+
+            const finalScore = (stats.score || 0) + (current.score || 0);
+            const finalLines = (stats.lines || 0) + (current.totalLinesCleared || 0);
+            const finalDeaths = (stats.deaths || 0) + (this.multiplayerState.deaths[i] || 0);
+            const frags = this.roundWins[key] || 0;
+
+            // Aggregate pieces
+            const pieces = { ...stats.pieceCounts };
+            if (current.pieceCounts) {
+                for (const k in current.pieceCounts) {
+                    pieces[k] = (pieces[k] || 0) + (current.pieceCounts[k] || 0);
+                }
+            }
+
+            // Calculate BPM/PPM
+            const totalDuration = (stats.duration || 0) + currentDuration;
+            const minutes = Math.max(totalDuration / 60000, 0.001);
+            const totalPieces = Object.values(pieces).reduce((a, b) => a + b, 0);
+
+            const bpm = Math.round(totalPieces / minutes);
+            const ppm = Math.round(finalScore / minutes);
+
+            // Aggregate clears
+            const clears = { ...stats.lineClearCounts };
+            if (current.lineClearCounts) {
+                for (const k in current.lineClearCounts) {
+                    clears[k] = (clears[k] || 0) + (current.lineClearCounts[k] || 0);
+                }
+            }
+
+            players.push({
+                name: `P${i + 1}`,
+                score: finalScore,
+                lines: finalLines,
+                deaths: finalDeaths,
+                frags: frags,
+                bpm,
+                ppm,
+                pieces,
+                clears
+            });
+        }
+
+        // CSS Styles Injection
+        const styleBlock = `
+            <style>
+                @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+                @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+                @keyframes pulseGlow { 0% { text-shadow: 0 0 20px rgba(16, 185, 129, 0.4); } 50% { text-shadow: 0 0 40px rgba(16, 185, 129, 0.8); } 100% { text-shadow: 0 0 20px rgba(16, 185, 129, 0.4); } }
+                
+                #match-end-overlay {
+                    font-family: 'Inter', system-ui, sans-serif;
+                }
+
+                .glass-panel {
+                    background: rgba(15, 23, 42, 0.7);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+                    border-radius: 24px;
+                    padding: 40px;
+                    max-width: 1000px;
+                    width: 95%;
+                    animation: scaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                    opacity: 0; 
+                }
+                
+                .winner-title {
+                    font-size: 64px;
+                    font-weight: 900;
+                    margin-bottom: 8px;
+                    background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    filter: drop-shadow(0 0 30px rgba(16, 185, 129, 0.4));
+                    letter-spacing: -2px;
+                    animation: slideUp 0.6s ease-out forwards;
+                }
+
+                .win-condition {
+                    font-size: 18px;
+                    color: #94a3b8;
+                    margin-bottom: 30px;
+                    animation: slideUp 0.6s ease-out 0.1s forwards;
+                    opacity: 0;
+                }
+
+                .stat-grid {
+                    display: grid;
+                    grid-template-columns: 180px repeat(${numPlayers}, 1fr);
+                    margin: 0 0 40px 0;
+                    border-radius: 12px;
+                    overflow: hidden;
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    background: rgba(0, 0, 0, 0.2);
+                    animation: slideUp 0.6s ease-out 0.2s forwards;
+                    opacity: 0;
+                }
+                
+                .grid-header-row {
+                    display: contents;
+                    font-weight: 700;
+                    font-size: 13px;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    color: #94a3b8;
+                }
+
+                .grid-header-cell {
+                    padding: 16px;
+                    background: rgba(255, 255, 255, 0.03);
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                    text-align: center;
+                }
+                .grid-header-cell:first-child { text-align: left; }
+
+                .grid-row { display: contents; }
+                
+                .grid-cell {
+                    padding: 14px 16px;
+                    color: #e2e8f0;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+                    font-size: 16px;
+                    text-align: center;
+                    transition: background 0.2s;
+                }
+                
+                .grid-cell.label {
+                    text-align: left;
+                    font-weight: 500;
+                    color: #cbd5e1;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                
+                .grid-cell.highlight {
+                    background: rgba(16, 185, 129, 0.05);
+                    color: #34d399;
+                    font-weight: 600;
+                }
+
+                .grid-row:hover .grid-cell {
+                    background: rgba(255, 255, 255, 0.04);
+                }
+                .grid-row:hover .grid-cell.highlight {
+                    background: rgba(16, 185, 129, 0.08);
+                }
+
+                .separator {
+                    grid-column: 1 / -1;
+                    height: 1px;
+                    background: rgba(255, 255, 255, 0.08);
+                    margin: 4px 0;
+                }
+
+                .btn-primary {
+                    font-size: 18px;
+                    padding: 14px 32px;
+                    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+                    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+                    border: none;
+                    border-radius: 12px;
+                    color: white;
+                    cursor: pointer;
+                    font-weight: 600;
+                    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                    animation: slideUp 0.6s ease-out 0.4s forwards;
+                    opacity: 0;
+                }
+                .btn-primary:hover {
+                    box-shadow: 0 8px 30px rgba(99, 102, 241, 0.5);
+                    transform: translateY(-2px);
+                }
+                .btn-primary:active {
+                    transform: translateY(0);
+                }
+            </style>
+        `;
+
+        // Helper to generate a stat row
+        const genRow = (icon, label, accessor) => {
+            let html = `<div class="grid-row">
+                          <div class="grid-cell label">${icon} ${label}</div>`;
+            players.forEach(p => {
+                const value = accessor(p);
+                // Mark value for animation
+                const isNum = typeof value === 'number';
+                const formatted = isNum ? 0 : value; // Start at 0
+                const target = isNum ? value : '';
+                const highlightClass = p.isWinner ? 'highlight' : '';
+
+                html += `<div class="grid-cell ${highlightClass}">
+                            <span class="stat-value" data-target="${target}">${formatted}</span>
+                         </div>`;
+            });
+            html += `</div>`;
+            return html;
+        };
+
+        // Screen HTML
         const overlay = document.createElement('div');
         overlay.id = 'match-end-overlay';
         overlay.style.cssText = `
             position: fixed;
-        top: 0;
-        left: 0;
-        width: 100 %;
-        height: 100 %;
-        background: rgba(0, 0, 0, 0.9);
-        display: flex;
-        flex - direction: column;
-        align - items: center;
-        justify - content: center;
-        z - index: 10000;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center; 
+            justify-content: center;
+            z-index: 10000;
         `;
 
         overlay.innerHTML = `
-            < div style = "text-align: center; color: white;" >
-                <div style="font-size: 64px; margin-bottom: 30px; color: #10b981; font-weight: bold;">
-                    👑 ${winnerName} WINS THE MATCH! 👑
-                </div>
-                <div style="font-size: 42px; margin-bottom: 20px;">
-                    Final Frags: ${p1Wins} - ${p2Wins}
-                </div>
-                <div style="font-size: 28px; margin-bottom: 30px; color: #94a3b8;">
-                    ${this._getWinConditionText()}
-                </div>
-                <div style="display: flex; gap: 80px; justify-content: center; margin-bottom: 60px;">
-                    <div>
-                        <div style="font-size: 24px; color: #94a3b8; margin-bottom: 10px;">Player 1</div>
-                        <div style="font-size: 20px; color: #e2e8f0;">Score: ${finalP1Score.toLocaleString()}</div>
-                        <div style="font-size: 20px; color: #e2e8f0;">Lines: ${finalP1Lines}</div>
+            ${styleBlock}
+            <div class="glass-panel">
+                <div style="text-align: center;">
+                    <div class="winner-title">
+                        👑 ${winnerName} WINS! 👑
                     </div>
-                    <div>
-                        <div style="font-size: 24px; color: #94a3b8; margin-bottom: 10px;">Player 2</div>
-                        <div style="font-size: 20px; color: #e2e8f0;">Score: ${finalP2Score.toLocaleString()}</div>
-                        <div style="font-size: 20px; color: #e2e8f0;">Lines: ${finalP2Lines}</div>
+                    <div class="win-condition">
+                        ${this._getWinConditionText()}
                     </div>
                 </div>
-                <button id="return-to-menu-btn" style="
-                    font-size: 24px;
-                    padding: 15px 40px;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    border: none;
-                    border-radius: 8px;
-                    color: white;
-                    cursor: pointer;
-                    font-weight: bold;
-                    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-                    transition: transform 0.2s;
-                ">
-                    Return to Menu
-                </button>
-            </div >
-            `;
+
+                <div class="stat-grid">
+                    <!-- Header -->
+                    <div class="grid-header-row">
+                        <div class="grid-header-cell">Statistic</div>
+                        ${players.map(p => `<div class="grid-header-cell ${p.isWinner ? 'highlight' : ''}">${p.name}</div>`).join('')}
+                    </div>
+
+                    <!-- Core Stats -->
+                    ${genRow('🏆', 'Score', p => p.score)}
+                    ${genRow('⚡', 'BPM', p => p.bpm)}
+                    ${genRow('📈', 'PPM', p => p.ppm)}
+                    
+                    <div class="separator"></div>
+                    
+                    ${genRow('⚔️', 'Frags', p => p.frags)}
+                    ${genRow('💀', 'Deaths', p => p.deaths)}
+                    ${genRow('📊', 'Lines', p => p.lines)}
+
+                    <div class="separator"></div>
+
+                    <!-- Clears -->
+                    ${genRow('1️⃣', 'Single', p => p.clears[1] || 0)}
+                    ${genRow('2️⃣', 'Double', p => p.clears[2] || 0)}
+                    ${genRow('3️⃣', 'Triple', p => p.clears[3] || 0)}
+                    ${genRow('4️⃣', 'Tetris', p => p.clears[4] || 0)}
+                </div>
+
+                <div style="text-align: center; display: flex; gap: 20px; justify-content: center;">
+                    <button id="restart-match-btn" class="btn-primary" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);">
+                        Restart Match
+                    </button>
+                    <button id="return-to-menu-btn" class="btn-primary">
+                        Return to Menu
+                    </button>
+                </div>
+            </div>
+        `;
 
         document.body.appendChild(overlay);
 
-        // Handle return to menu button
+        // Animation Logic
+        const animateValue = (obj, start, end, duration) => {
+            let startTimestamp = null;
+            const step = (timestamp) => {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                // Ease out quart
+                const ease = 1 - Math.pow(1 - progress, 4);
+
+                const current = Math.floor(ease * (end - start) + start);
+                obj.innerHTML = current.toLocaleString();
+                if (progress < 1) {
+                    window.requestAnimationFrame(step);
+                }
+            };
+            window.requestAnimationFrame(step);
+        };
+
+        // Trigger animations
+        setTimeout(() => {
+            const counters = overlay.querySelectorAll('.stat-value');
+            counters.forEach(counter => {
+                const target = parseInt(counter.getAttribute('data-target'), 10);
+                if (!isNaN(target) && target > 0) {
+                    animateValue(counter, 0, target, 1500);
+                } else if (!isNaN(target)) {
+                    counter.innerHTML = target.toLocaleString();
+                }
+            });
+        }, 500);
+
+        // Handle buttons
+        const restartBtn = document.getElementById('restart-match-btn');
+        restartBtn.addEventListener('click', () => {
+            overlay.style.transition = 'opacity 0.3s';
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                overlay.remove();
+                this.onStart();
+            }, 300);
+        });
+
+        // Handle return button
         const returnBtn = document.getElementById('return-to-menu-btn');
-        returnBtn.addEventListener('mouseenter', () => {
-            returnBtn.style.transform = 'scale(1.05)';
-        });
-        returnBtn.addEventListener('mouseleave', () => {
-            returnBtn.style.transform = 'scale(1)';
-        });
         returnBtn.addEventListener('click', () => {
-            overlay.remove();
-            // Reset round wins for next match
-            this.roundWins.player1 = 0;
-            this.roundWins.player2 = 0;
-            this.roundWins.player3 = 0;
-            this.roundWins.player4 = 0;
-            // Trigger mode change back to start screen
-            window.location.reload(); // Simple approach - reload to start screen
+            // Fade out
+            overlay.style.transition = 'opacity 0.3s';
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                overlay.remove();
+                // Reset round wins
+                this.roundWins.player1 = 0;
+                this.roundWins.player2 = 0;
+                this.roundWins.player3 = 0;
+                this.roundWins.player4 = 0;
+                this.teamRoundWins = { 0: 0, 1: 0 };
+                window.location.reload();
+            }, 300);
         });
     }
 

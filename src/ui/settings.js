@@ -24,6 +24,15 @@ const DEFAULT_CONFIG = {
     comboPopupEffect: true,
     lineClearEffects: true,
     backgroundComboEffects: true,
+    tornadoThemeParams: {
+        emissiveColor: '#ff8a3b',
+        timeScale: 1.0,
+        parabolaStrength: 1.0,
+        parabolaOffset: 0.35,
+        parabolaAmplitude: 0.45,
+        bloomStrength: 1.0,
+        bloomRadius: 0.2,
+    },
     // Tetromino Visual Settings
     themeBasedTetrominos: true, // Use theme-specific tetromino colors and effects
     controlScheme: 'Keyboard',

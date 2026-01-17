@@ -164,6 +164,10 @@ export class GameState {
         this.level = 1;
         this.linesUntilNextLevel = 15; // Quadra: 15 lines per level
 
+        // Detailed Stats
+        this.pieceCounts = { I: 0, J: 0, L: 0, O: 0, S: 0, T: 0, Z: 0 };
+        this.lineClearCounts = { 1: 0, 2: 0, 3: 0, 4: 0 };
+
         // Timing
         this.dropInterval = LEVEL_SPEEDS[0];
         this.dropCounter = 0;
@@ -286,6 +290,14 @@ export class GameState {
         this.handicaps = {};
         this.handicapCrowd = 0;
     }
+
+    /**
+     * Getter for totalLinesCleared - aliases this.lines for multiplayer compatibility
+     * Multiplayer code expects totalLinesCleared but GameState uses lines
+     */
+    get totalLinesCleared() {
+        return this.lines;
+    }
 }
 
 /**
@@ -324,6 +336,10 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
 
     if (!shapeKey || !shape) {
         return;
+    }
+
+    if (gameState.pieceCounts) {
+        gameState.pieceCounts[shapeKey] = (gameState.pieceCounts[shapeKey] || 0) + 1;
     }
 
     if (gameState.currentPiece) {

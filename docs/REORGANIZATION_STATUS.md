@@ -198,7 +198,7 @@ docs/               # Documentation
 
   **All 41 themes successfully extracted:**
   1. ✅ forest, ocean, sunset, mountain, zen
-  2. ✅ winter, fall, summer, spring
+  2. ✅ winter, fall, summer, tornado
   3. ✅ aurora, galaxy, starlight
   4. ✅ rainy-window, koi-pond, meadow
   5. ✅ cosmic-chimes, singing-bowl

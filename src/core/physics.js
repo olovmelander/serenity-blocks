@@ -126,7 +126,9 @@ export function findConnectedComponents(boardData) {
                 });
 
                 const shapeKey = cellData.type || cellData.color;
-                const baseColor = COLORS[shapeKey] || cellData.color || '#808080';
+                // Preserve attacker's player color for garbage blocks
+                // Check cellData.color first before falling back to COLORS lookup
+                const baseColor = cellData.color || COLORS[shapeKey] || '#808080';
                 pieces.push({
                     x: minC,
                     y: minR,
@@ -641,6 +643,11 @@ export async function processPhysics(gameState, callbacks) {
 
         if (fullLines.length === 0) {
             break; // No more lines to clear, physics are stable
+        }
+
+        if (gameState.lineClearCounts) {
+            const count = fullLines.length;
+            gameState.lineClearCounts[count] = (gameState.lineClearCounts[count] || 0) + 1;
         }
 
         cascadeCount++;

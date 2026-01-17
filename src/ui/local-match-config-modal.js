@@ -6,23 +6,23 @@
  */
 
 export class LocalMatchConfigModal {
-    constructor(onStartMatch, onCancel = null) {
-        this.onStartMatch = onStartMatch;
-        this.onCancel = onCancel;
-        this.container = null;
+  constructor(onStartMatch, onCancel = null) {
+    this.onStartMatch = onStartMatch;
+    this.onCancel = onCancel;
+    this.container = null;
 
-        this.createUI();
-    }
+    this.createUI();
+  }
 
-    /**
-   * Create the match config UI
-   */
-    createUI() {
-        this.container = document.createElement('div');
-        this.container.id = 'local-match-config-modal';
-        this.container.className = 'match-config-modal hidden';
+  /**
+ * Create the match config UI
+ */
+  createUI() {
+    this.container = document.createElement('div');
+    this.container.id = 'local-match-config-modal';
+    this.container.className = 'match-config-modal hidden';
 
-        this.container.innerHTML = `
+    this.container.innerHTML = `
       <div class="match-config-overlay"></div>
       <div class="match-config-content">
         <div class="match-config-header">
@@ -110,6 +110,27 @@ export class LocalMatchConfigModal {
               </label>
               <small class="form-help">Attacks always deal full damage (no reduction for 3-4 players)</small>
             </div>
+
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input 
+                        type="checkbox" 
+                        id="team-mode" 
+                        name="teamMode"
+                    />
+                    <span>Play in Teams</span>
+                </label>
+                <small class="form-help">Allies share frags and do not attack each other</small>
+            </div>
+
+            <div id="team-selection-area" class="team-selection-area hidden" style="margin-top: 20px; padding-top: 20px; border-top: 2px solid rgba(139, 92, 246, 0.3);">
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label>Team Assignments</label>
+                </div>
+                <div id="player-team-assignments" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <!-- Player team dropdowns inserted here -->
+                </div>
+            </div>
           </details>
           
           <!-- Action Buttons -->
@@ -125,227 +146,290 @@ export class LocalMatchConfigModal {
       </div>
     `;
 
-        document.body.appendChild(this.container);
-        this.setupEventListeners();
-    }
+    document.body.appendChild(this.container);
+    this.setupEventListeners();
+  }
 
-    /**
-   * Setup event listeners
-   */
-    setupEventListeners() {
+  /**
+ * Setup event listeners
+ */
+  setupEventListeners() {
     // Close button
-        const closeBtn = this.container.querySelector('#close-local-match-config');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => this.cancel());
-        }
-
-        // Cancel button
-        const cancelBtn = this.container.querySelector('#cancel-local-match');
-        if (cancelBtn) {
-            cancelBtn.addEventListener('click', () => this.cancel());
-        }
-
-        // Overlay click to close
-        const overlay = this.container.querySelector('.match-config-overlay');
-        if (overlay) {
-            overlay.addEventListener('click', () => this.cancel());
-        }
-
-        // End condition change handler
-        const endCondition = this.container.querySelector('#end-condition');
-        if (endCondition) {
-            endCondition.addEventListener('change', (e) => {
-                this.updateEndConditionUI(e.target.value);
-            });
-        }
-
-        // Form submit
-        const form = this.container.querySelector('#local-match-config-form');
-        if (form) {
-            form.addEventListener('submit', (e) => {
-                e.preventDefault();
-                this.handleSubmit();
-            });
-        }
+    const closeBtn = this.container.querySelector('#close-local-match-config');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => this.cancel());
     }
 
-    /**
-   * Update end condition UI based on selection
+    // Cancel button
+    const cancelBtn = this.container.querySelector('#cancel-local-match');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => this.cancel());
+    }
+
+    // Overlay click to close
+    const overlay = this.container.querySelector('.match-config-overlay');
+    if (overlay) {
+      overlay.addEventListener('click', () => this.cancel());
+    }
+
+    // End condition change handler
+    const endCondition = this.container.querySelector('#end-condition');
+    if (endCondition) {
+      endCondition.addEventListener('change', (e) => {
+        this.updateEndConditionUI(e.target.value);
+      });
+    }
+
+    // Form submit
+    const form = this.container.querySelector('#local-match-config-form');
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.handleSubmit();
+      });
+    }
+
+    // Team mode toggle
+    const teamModeToggle = this.container.querySelector('#team-mode');
+    if (teamModeToggle) {
+      teamModeToggle.addEventListener('change', (e) => {
+        this.updateTeamUI(e.target.checked);
+      });
+    }
+
+    // Num players change should re-render team UI if open
+    const numPlayers = this.container.querySelector('#num-players');
+    if (numPlayers) {
+      numPlayers.addEventListener('change', () => {
+        if (teamModeToggle && teamModeToggle.checked) {
+          this.updateTeamUI(true);
+        }
+      });
+    }
+  }
+
+  /**
+   * Update team assignment UI based on player count and toggle
    */
-    updateEndConditionUI(condition) {
-        const valueGroup = this.container.querySelector('#end-value-group');
-        const valueLabel = this.container.querySelector('#end-value-label');
-        const valueInput = this.container.querySelector('#end-condition-value');
-        const valueHelp = this.container.querySelector('#end-value-help');
+  updateTeamUI(isActive) {
+    const teamArea = this.container.querySelector('#team-selection-area');
+    const assignmentsArea = this.container.querySelector('#player-team-assignments');
+    if (!teamArea || !assignmentsArea) return;
 
-        if (!valueGroup || !valueLabel || !valueInput || !valueHelp) {
-            return;
-        }
-
-        const configs = {
-            frags: {
-                label: 'Frags to Win',
-                defaultValue: 7,
-                help: 'First player to reach this many frags wins',
-                min: 1,
-                max: 100,
-                placeholder: '7',
-            },
-            time: {
-                label: 'Time Limit (minutes)',
-                defaultValue: 3,
-                help: 'Player with highest score after this time wins',
-                min: 1,
-                max: 60,
-                placeholder: '3',
-            },
-            points: {
-                label: 'Score Target (thousands)',
-                defaultValue: 10,
-                help: 'First player to reach this score wins (e.g., 10 = 10,000 points)',
-                min: 1,
-                max: 999,
-                placeholder: '10',
-            },
-            lines: {
-                label: 'Lines to Clear',
-                defaultValue: 100,
-                help: 'First player to clear this many lines wins',
-                min: 10,
-                max: 999,
-                placeholder: '100',
-            },
-            never: {
-                label: 'No Win Condition',
-                defaultValue: 0,
-                help: 'Match continues until manually ended',
-                min: 0,
-                max: 0,
-                placeholder: '0',
-            },
-        };
-
-        const config = configs[condition];
-
-        if (!config) {
-            console.warn(`Unknown end condition: ${condition}`);
-            return;
-        }
-
-        if (condition === 'never') {
-            valueGroup.style.display = 'none';
-        } else {
-            valueGroup.style.display = 'block';
-            valueLabel.textContent = config.label;
-            valueInput.value = config.defaultValue;
-            valueInput.min = config.min;
-            valueInput.max = config.max;
-            valueInput.placeholder = config.placeholder;
-            valueHelp.textContent = config.help;
-        }
+    if (!isActive) {
+      teamArea.classList.add('hidden');
+      return;
     }
 
-    /**
-   * Handle form submission
-   */
-    handleSubmit() {
-        const form = this.container.querySelector('#local-match-config-form');
-        if (!form) {
-            console.error('[LocalMatchConfig] Form not found');
-            return;
-        }
+    teamArea.classList.remove('hidden');
+    assignmentsArea.innerHTML = '';
 
-        const formData = new FormData(form);
+    const numPlayers = parseInt(this.container.querySelector('#num-players').value);
+    for (let i = 1; i <= numPlayers; i++) {
+      const div = document.createElement('div');
+      div.className = 'form-group';
 
-        const config = {
-            numPlayers: parseInt(formData.get('numPlayers')),
-            endCondition: formData.get('endCondition'),
-            endConditionValue: parseInt(formData.get('endConditionValue')) || 0,
-            startLevel: parseInt(formData.get('startLevel')) || 1,
-            levelProgression: formData.get('levelProgression') === 'on',
-            boringRules: formData.get('boringRules') === 'on',
-        };
+      const label = document.createElement('label');
+      label.textContent = `Player ${i} Team`;
 
-        // Validate
-        if (config.numPlayers < 2 || config.numPlayers > 4) {
-            alert('Number of players must be between 2 and 4');
-            return;
-        }
+      const select = document.createElement('select');
+      select.name = `player${i}Team`;
+      select.innerHTML = `
+                <option value="0" ${i <= numPlayers / 2 ? 'selected' : ''}>Team A</option>
+                <option value="1" ${i > numPlayers / 2 ? 'selected' : ''}>Team B</option>
+            `;
 
-        if (config.startLevel < 1 || config.startLevel > 9) {
-            alert('Starting level must be between 1 and 9');
-            return;
-        }
+      div.appendChild(label);
+      div.appendChild(select);
+      assignmentsArea.appendChild(div);
+    }
+  }
 
-        if (config.endCondition !== 'never' && config.endConditionValue <= 0) {
-            alert('Win condition value must be greater than 0');
-            return;
-        }
+  /**
+ * Update end condition UI based on selection
+ */
+  updateEndConditionUI(condition) {
+    const valueGroup = this.container.querySelector('#end-value-group');
+    const valueLabel = this.container.querySelector('#end-value-label');
+    const valueInput = this.container.querySelector('#end-condition-value');
+    const valueHelp = this.container.querySelector('#end-value-help');
 
-        console.log('[LocalMatchConfig] Starting match with config:', config);
-
-        this.hide();
-
-        if (this.onStartMatch) {
-            this.onStartMatch(config);
-        }
+    if (!valueGroup || !valueLabel || !valueInput || !valueHelp) {
+      return;
     }
 
-    /**
-   * Show the modal
-   */
-    show() {
-        if (!this.container) {
-            console.error('[LocalMatchConfig] Container not found');
-            return;
-        }
+    const configs = {
+      frags: {
+        label: 'Frags to Win',
+        defaultValue: 7,
+        help: 'First player to reach this many frags wins',
+        min: 1,
+        max: 100,
+        placeholder: '7',
+      },
+      time: {
+        label: 'Time Limit (minutes)',
+        defaultValue: 3,
+        help: 'Player with highest score after this time wins',
+        min: 1,
+        max: 60,
+        placeholder: '3',
+      },
+      points: {
+        label: 'Score Target (thousands)',
+        defaultValue: 10,
+        help: 'First player to reach this score wins (e.g., 10 = 10,000 points)',
+        min: 1,
+        max: 999,
+        placeholder: '10',
+      },
+      lines: {
+        label: 'Lines to Clear',
+        defaultValue: 100,
+        help: 'First player to clear this many lines wins',
+        min: 10,
+        max: 999,
+        placeholder: '100',
+      },
+      never: {
+        label: 'No Win Condition',
+        defaultValue: 0,
+        help: 'Match continues until manually ended',
+        min: 0,
+        max: 0,
+        placeholder: '0',
+      },
+    };
 
-        this.container.classList.remove('hidden');
-        this.container.classList.add('show');
+    const config = configs[condition];
 
-        // Initialize UI state
-        const endCondition = this.container.querySelector('#end-condition');
-        if (endCondition) {
-            this.updateEndConditionUI(endCondition.value);
-        }
-
-        console.log('[LocalMatchConfig] Modal shown');
+    if (!config) {
+      console.warn(`Unknown end condition: ${condition}`);
+      return;
     }
 
-    /**
-   * Hide the modal
-   */
-    hide() {
-        if (!this.container) {
-            return;
-        }
+    if (condition === 'never') {
+      valueGroup.style.display = 'none';
+    } else {
+      valueGroup.style.display = 'block';
+      valueLabel.textContent = config.label;
+      valueInput.value = config.defaultValue;
+      valueInput.min = config.min;
+      valueInput.max = config.max;
+      valueInput.placeholder = config.placeholder;
+      valueHelp.textContent = config.help;
+    }
+  }
 
-        this.container.classList.remove('show');
-        this.container.classList.add('hidden');
-
-        console.log('[LocalMatchConfig] Modal hidden');
+  /**
+ * Handle form submission
+ */
+  handleSubmit() {
+    const form = this.container.querySelector('#local-match-config-form');
+    if (!form) {
+      console.error('[LocalMatchConfig] Form not found');
+      return;
     }
 
-    /**
-   * Cancel the configuration (hide and trigger cancel callback)
-   */
-    async cancel() {
-        this.hide();
+    const formData = new FormData(form);
 
-        if (this.onCancel) {
-            console.log('[LocalMatchConfig] Triggering cancel callback');
-            await this.onCancel();
-            console.log('[LocalMatchConfig] Cancel callback completed');
-        }
+    const config = {
+      numPlayers: parseInt(formData.get('numPlayers')),
+      endCondition: formData.get('endCondition'),
+      endConditionValue: parseInt(formData.get('endConditionValue')) || 0,
+      startLevel: parseInt(formData.get('startLevel')) || 1,
+      levelProgression: formData.get('levelProgression') === 'on',
+      boringRules: formData.get('boringRules') === 'on',
+      isTeamMode: formData.get('teamMode') === 'on',
+      playerTeams: [],
+    };
+
+    if (config.isTeamMode) {
+      for (let i = 1; i <= config.numPlayers; i++) {
+        config.playerTeams.push(parseInt(formData.get(`player${i}Team`)) || 0);
+      }
     }
 
-    /**
-   * Destroy the modal and remove from DOM
-   */
-    destroy() {
-        if (this.container && this.container.parentNode) {
-            this.container.parentNode.removeChild(this.container);
-            this.container = null;
-        }
+    // Validate
+    if (config.numPlayers < 2 || config.numPlayers > 4) {
+      alert('Number of players must be between 2 and 4');
+      return;
     }
+
+    if (config.startLevel < 1 || config.startLevel > 9) {
+      alert('Starting level must be between 1 and 9');
+      return;
+    }
+
+    if (config.endCondition !== 'never' && config.endConditionValue <= 0) {
+      alert('Win condition value must be greater than 0');
+      return;
+    }
+
+    console.log('[LocalMatchConfig] Starting match with config:', config);
+
+    this.hide();
+
+    if (this.onStartMatch) {
+      this.onStartMatch(config);
+    }
+  }
+
+  /**
+ * Show the modal
+ */
+  show() {
+    if (!this.container) {
+      console.error('[LocalMatchConfig] Container not found');
+      return;
+    }
+
+    this.container.classList.remove('hidden');
+    this.container.classList.add('show');
+
+    // Initialize UI state
+    const endCondition = this.container.querySelector('#end-condition');
+    if (endCondition) {
+      this.updateEndConditionUI(endCondition.value);
+    }
+
+    console.log('[LocalMatchConfig] Modal shown');
+  }
+
+  /**
+ * Hide the modal
+ */
+  hide() {
+    if (!this.container) {
+      return;
+    }
+
+    this.container.classList.remove('show');
+    this.container.classList.add('hidden');
+
+    console.log('[LocalMatchConfig] Modal hidden');
+  }
+
+  /**
+ * Cancel the configuration (hide and trigger cancel callback)
+ */
+  async cancel() {
+    this.hide();
+
+    if (this.onCancel) {
+      console.log('[LocalMatchConfig] Triggering cancel callback');
+      await this.onCancel();
+      console.log('[LocalMatchConfig] Cancel callback completed');
+    }
+  }
+
+  /**
+ * Destroy the modal and remove from DOM
+ */
+  destroy() {
+    if (this.container && this.container.parentNode) {
+      this.container.parentNode.removeChild(this.container);
+      this.container = null;
+    }
+  }
 }
