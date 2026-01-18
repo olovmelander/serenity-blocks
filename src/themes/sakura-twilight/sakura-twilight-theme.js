@@ -1464,11 +1464,20 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.moonGroup.position.set(-300, 250, -800);  // Upper left, far back
         this.scene.add(this.moonGroup);
 
-        // Moon sphere with detailed crater shader (adapted from blood-moon)
+        // Moon sphere with texture-based shader (matching sunset theme)
         const geometry = new THREE.SphereGeometry(moonSize, 48, 48);
+
+        // Load high-res moon texture
+        const textureLoader = new THREE.TextureLoader();
+        const moonTexture = textureLoader.load('./textures/2k_moon.jpg');
+        moonTexture.wrapS = THREE.ClampToEdgeWrapping;
+        moonTexture.wrapT = THREE.ClampToEdgeWrapping;
+
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
+                uMap: { value: moonTexture },
+                uSunDirection: { value: new THREE.Vector3(0.5, 0.6, 0.5).normalize() },
             },
             vertexShader: `
                 varying vec2 vUv;
@@ -1476,147 +1485,95 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 varying vec3 vLocalPos;
                 varying vec3 vViewPosition;
 
-            void main() {
-                vUv = uv;
-                vNormal = normalize(normalMatrix * normal);
-                vLocalPos = position;
+                void main() {
+                    vUv = uv;
+                    vNormal = normalize(normalMatrix * normal);
+                    vLocalPos = position;
                     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                vViewPosition = -mvPosition.xyz;
-                gl_Position = projectionMatrix * mvPosition;
-            }
+                    vViewPosition = -mvPosition.xyz;
+                    gl_Position = projectionMatrix * mvPosition;
+                }
             `,
             fragmentShader: `
                 uniform float uTime;
+                uniform sampler2D uMap;
+                uniform vec3 uSunDirection;
                 
                 varying vec2 vUv;
                 varying vec3 vNormal;
                 varying vec3 vLocalPos;
                 varying vec3 vViewPosition;
 
-                // Noise functions for surface detail
-                vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-                vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-                vec4 permute(vec4 x) { return mod289(((x * 34.0) + 1.0) * x); }
-                vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
-                
-                float snoise(vec3 v) {
-                const vec2 C = vec2(1.0 / 6.0, 1.0 / 3.0);
-                const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-                    vec3 i = floor(v + dot(v, C.yyy));
-                    vec3 x0 = v - i + dot(i, C.xxx);
-                    vec3 g = step(x0.yzx, x0.xyz);
-                    vec3 l = 1.0 - g;
-                    vec3 i1 = min(g.xyz, l.zxy);
-                    vec3 i2 = max(g.xyz, l.zxy);
-                    vec3 x1 = x0 - i1 + C.xxx;
-                    vec3 x2 = x0 - i2 + C.yyy;
-                    vec3 x3 = x0 - D.yyy;
-                i = mod289(i);
-                    vec4 p = permute(permute(permute(
-                    i.z + vec4(0.0, i1.z, i2.z, 1.0))
-                    + i.y + vec4(0.0, i1.y, i2.y, 1.0))
-                    + i.x + vec4(0.0, i1.x, i2.x, 1.0));
-                    float n_ = 0.142857142857;
-                    vec3 ns = n_ * D.wyz - D.xzx;
-                    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-                    vec4 x_ = floor(j * ns.z);
-                    vec4 y_ = floor(j - 7.0 * x_);
-                    vec4 x = x_ * ns.x + ns.yyyy;
-                    vec4 y = y_ * ns.x + ns.yyyy;
-                    vec4 h = 1.0 - abs(x) - abs(y);
-                    vec4 b0 = vec4(x.xy, y.xy);
-                    vec4 b1 = vec4(x.zw, y.zw);
-                    vec4 s0 = floor(b0) * 2.0 + 1.0;
-                    vec4 s1 = floor(b1) * 2.0 + 1.0;
-                    vec4 sh = -step(h, vec4(0.0));
-                    vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
-                    vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
-                    vec3 p0 = vec3(a0.xy, h.x);
-                    vec3 p1 = vec3(a0.zw, h.y);
-                    vec3 p2 = vec3(a1.xy, h.z);
-                    vec3 p3 = vec3(a1.zw, h.w);
-                    vec4 norm = taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
-                p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
-                    vec4 m = max(0.6 - vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0);
-                m = m * m;
-                return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
-            }
-                
-                float fbm(vec3 p) {
-                    float v = 0.0;
-                    float a = 0.5;
-                for (int i = 0; i < 5; i++) {
-                    v += a * snoise(p);
-                    p *= 2.0;
-                    a *= 0.5;
+                // Pseudo-random noise for shimmer
+                float hash(vec3 p) {
+                    return fract(sin(dot(p, vec3(12.9898, 78.233, 54.53))) * 43758.5453);
                 }
-                return v;
-            }
+                
+                float noise1D(vec3 p) {
+                    vec3 i = floor(p);
+                    vec3 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x),
+                                   mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                               mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                                   mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+                }
 
-                // Crater with bowl and rim
-                float sharpCrater(vec3 pos, vec3 center, float size, float depth) {
-                    float d = length(pos - center);
-                    float bowl = smoothstep(size, size * 0.15, d);
-                    float rim = smoothstep(size * 1.35, size * 0.95, d) * smoothstep(size * 0.8, size * 1.0, d);
-                return -bowl * depth + rim * depth * 0.7;
-            }
-
-            void main() {
+                void main() {
                     vec3 viewDir = normalize(vViewPosition);
-                    vec3 pos = normalize(vLocalPos) * 5.0;
+                    vec3 pos = normalize(vLocalPos);
 
-                    // Natural silver moon colors
-                    vec3 brightHighland = vec3(0.92, 0.90, 0.85);
-                    vec3 darkMaria = vec3(0.45, 0.43, 0.40);
-                    vec3 craterFloor = vec3(0.25, 0.24, 0.22);
-                    vec3 craterRim = vec3(1.0, 0.98, 0.95);
-
-                    // Maria (dark seas)
-                    float maria1 = smoothstep(0.2, 0.6, fbm(pos * 0.5 + vec3(1.5, 0.8, 0.3)));
-                    float maria2 = smoothstep(0.25, 0.65, fbm(pos * 0.6 + vec3(-2.0, 1.2, 0.8)));
-                    float totalMaria = max(maria1, maria2 * 0.9);
-                    vec3 baseColor = mix(brightHighland, darkMaria, totalMaria);
-
-                    // Major craters (visible bowl shapes)
-                    float craters = 0.0;
-                craters += sharpCrater(pos, vec3(2.2, 0.5, 0.8), 1.2, 0.5);
-                craters += sharpCrater(pos, vec3(-1.5, 1.5, 1.0), 1.0, 0.45);
-                craters += sharpCrater(pos, vec3(0.5, -1.8, 1.3), 0.9, 0.4);
-                craters += sharpCrater(pos, vec3(-0.8, 0.2, -2.0), 1.1, 0.45);
-                craters += sharpCrater(pos, vec3(1.8, -0.8, 1.5), 0.8, 0.38);
-
-                // Medium craters
-                craters += sharpCrater(pos, vec3(1.5, 0.0, 2.0), 0.5, 0.3);
-                craters += sharpCrater(pos, vec3(-1.0, 1.8, 1.2), 0.45, 0.28);
-                craters += sharpCrater(pos, vec3(0.8, -1.2, 1.8), 0.4, 0.25);
-
-                    // Apply crater coloring
-                    float floorDepth = max(0.0, -craters * 4.0);
-                baseColor = mix(baseColor, craterFloor, smoothstep(0.0, 1.0, floorDepth) * 0.8);
-                    float rimBrightness = max(0.0, craters * 3.0);
-                baseColor = mix(baseColor, craterRim, smoothstep(0.0, 0.7, rimBrightness) * 0.6);
-
-                    // Surface texture
-                    float roughness = fbm(pos * 4.0) * 0.08 + snoise(pos * 12.0) * 0.04;
-                baseColor += vec3(roughness);
-
-                    // Dramatic lighting
-                    vec3 lightDir = normalize(vec3(0.5, 0.6, 0.5));
-                    float diffuse = max(0.0, dot(vNormal, lightDir));
-                diffuse = 0.2 + diffuse * 0.8;
+                    // Sample the moon texture
+                    vec4 texColor = texture2D(uMap, vUv);
+                    vec3 baseColor = texColor.rgb;
                     
-                    vec3 litColor = baseColor * diffuse;
+                    // Color correction - boost brightness for moonlit night
+                    baseColor = pow(baseColor, vec3(0.7)); // Gamma for contrast
+                    baseColor *= 1.8; // Brightness boost
+                    
+                    // Add subtle cool moonlight tint
+                    baseColor = mix(baseColor, vec3(0.9, 0.92, 1.0) * baseColor, 0.15);
 
-                    // Strong rim glow (silver-blue)
-                    float fresnel = pow(1.0 - abs(dot(vNormal, viewDir)), 4.0);
-                    vec3 rimGlow = vec3(0.85, 0.9, 1.0);
-                litColor += rimGlow * fresnel * 0.8;
+                    // Lighting
+                    vec3 lightDir = normalize(uSunDirection);
+                    float NdotL = max(0.0, dot(vNormal, lightDir));
+                    
+                    // Soft diffuse with high ambient
+                    float diffuse = NdotL * 0.7;
+                    float ambient = 0.35;
+                    
+                    // Terminator softening
+                    float terminator = smoothstep(-0.1, 0.25, dot(vNormal, lightDir));
+                    
+                    float lighting = ambient + diffuse * terminator;
+                    vec3 litColor = baseColor * lighting;
+                    
+                    // Earthshine - blue illumination on dark side
+                    float darkSide = 1.0 - NdotL;
+                    darkSide = smoothstep(0.2, 0.8, darkSide);
+                    vec3 earthshineColor = vec3(0.3, 0.4, 0.6);
+                    litColor += baseColor * earthshineColor * darkSide * 0.15;
+                    
+                    // Fresnel corona - soft glow at edges
+                    float viewDot = abs(dot(vNormal, viewDir));
+                    
+                    float corona1 = pow(1.0 - viewDot, 4.0);
+                    float corona2 = pow(1.0 - viewDot, 2.5);
+                    float corona3 = pow(1.0 - viewDot, 1.5);
+                    
+                    vec3 coronaColor = vec3(0.9, 0.88, 0.8);
+                    litColor += coronaColor * corona1 * 0.25;
+                    litColor += coronaColor * corona2 * 0.12;
+                    litColor += vec3(0.75, 0.8, 0.9) * corona3 * 0.06;
+                    
+                    // Animated shimmer
+                    float shimmerNoise = noise1D(pos * 8.0 + vec3(uTime * 0.3));
+                    float shimmer = shimmerNoise * 0.03;
+                    shimmer *= corona2;
+                    litColor += vec3(shimmer);
 
-                // Emissive glow for brightness
-                litColor *= 1.3;
-
-                gl_FragColor = vec4(litColor, 1.0);
-            }
+                    gl_FragColor = vec4(litColor, 1.0);
+                }
             `,
         });
 
