@@ -4,17 +4,30 @@ import { normalizeQuality } from '../../utils/quality.js';
 import { TORNADO_TETROMINOS } from './tornado-tetrominos.js';
 import { TORNADO_PARAM_DEFAULTS } from './params.ts';
 import { TornadoGround } from './TornadoGround.ts';
+import { TornadoParticles } from './TornadoParticles.ts';
 import { TornadoPost } from './TornadoPost.ts';
 import { TornadoRibbons } from './TornadoRibbons.ts';
 
 const BACKGROUND_COLOR = new THREE.Color(0x0b0604);
 const QUALITY_PRESETS = {
-    Minimal: { ribbonCount: 50, ribbonSegments: 180, groundSegments: 120 },
-    Low: { ribbonCount: 70, ribbonSegments: 200, groundSegments: 140 },
-    Medium: { ribbonCount: 100, ribbonSegments: 220, groundSegments: 160 },
-    High: { ribbonCount: 130, ribbonSegments: 250, groundSegments: 180 },
-    Ultra: { ribbonCount: 160, ribbonSegments: 280, groundSegments: 200 },
-    Extreme: { ribbonCount: 200, ribbonSegments: 320, groundSegments: 240 },
+    Minimal: {
+        ribbonCount: 50, ribbonSegments: 180, groundSegments: 120, particleCount: 300,
+    },
+    Low: {
+        ribbonCount: 70, ribbonSegments: 200, groundSegments: 140, particleCount: 450,
+    },
+    Medium: {
+        ribbonCount: 100, ribbonSegments: 220, groundSegments: 160, particleCount: 700,
+    },
+    High: {
+        ribbonCount: 130, ribbonSegments: 250, groundSegments: 180, particleCount: 1000,
+    },
+    Ultra: {
+        ribbonCount: 160, ribbonSegments: 280, groundSegments: 200, particleCount: 1400,
+    },
+    Extreme: {
+        ribbonCount: 200, ribbonSegments: 320, groundSegments: 240, particleCount: 1800,
+    },
 };
 type QualityName = keyof typeof QUALITY_PRESETS;
 
@@ -24,6 +37,7 @@ export default class TornadoTheme extends BaseTheme {
     private renderer: THREE.WebGPURenderer | null;
     private ribbons: TornadoRibbons | null;
     private ground: TornadoGround | null;
+    private particles: TornadoParticles | null;
     private post: TornadoPost | null;
     private resizeHandler: (() => void) | null;
     private renderLoop: (() => void) | null;
@@ -40,6 +54,7 @@ export default class TornadoTheme extends BaseTheme {
         this.renderer = null;
         this.ribbons = null;
         this.ground = null;
+        this.particles = null;
         this.post = null;
         this.resizeHandler = null;
         this.renderLoop = null;
@@ -142,7 +157,7 @@ export default class TornadoTheme extends BaseTheme {
             count: this.qualityPreset.ribbonCount,
             segments: this.qualityPreset.ribbonSegments,
             height: 12,
-            width: 0.6,
+            width: 0.85,
             radiusBottom: 0.6,
             radiusTop: 4.2,
             turns: 5.5,
@@ -165,6 +180,28 @@ export default class TornadoTheme extends BaseTheme {
             },
         });
         this.ground.addToScene(this.scene);
+
+        this.particles = new TornadoParticles({
+            count: this.qualityPreset.particleCount,
+            height: 16,
+            radiusBottom: 2.5,
+            radiusTop: 18.0,
+            turns: 5.0,
+            spinSpeed: 1.2,
+            noiseAmplitude: 4.0,
+            liftSpeed: 0.15,
+            sizeMin: 0.4,
+            sizeMax: 1.0,
+            params: {
+                emissiveColor: this.params.emissiveColor,
+                timeScale: this.params.timeScale,
+                parabolaStrength: this.params.parabolaStrength,
+                parabolaOffset: this.params.parabolaOffset,
+                parabolaAmplitude: this.params.parabolaAmplitude,
+            },
+        });
+        this.particles.group.position.y = 0.5;
+        this.particles.addToScene(this.scene);
     }
 
     private getStoredParams() {
@@ -185,6 +222,7 @@ export default class TornadoTheme extends BaseTheme {
                 this.params = { ...this.params, ...detail.tornadoThemeParams };
                 this.ribbons?.updateParams(this.params);
                 this.ground?.updateParams(this.params);
+                this.particles?.updateParams(this.params);
                 this.post?.updateParams(this.params);
             }
 
@@ -230,6 +268,7 @@ export default class TornadoTheme extends BaseTheme {
         if (!this.scene) return;
         this.disposeRibbons();
         this.disposeGround();
+        this.disposeParticles();
         this.createTornadoObjects();
     }
 
@@ -251,6 +290,15 @@ export default class TornadoTheme extends BaseTheme {
         this.ground = null;
     }
 
+    private disposeParticles() {
+        if (!this.particles) return;
+        if (this.scene) {
+            this.scene.remove(this.particles.group);
+        }
+        this.particles.dispose();
+        this.particles = null;
+    }
+
     private disposeScene() {
         if (this.renderer) {
             this.renderer.setAnimationLoop(null);
@@ -265,6 +313,7 @@ export default class TornadoTheme extends BaseTheme {
 
         this.disposeRibbons();
         this.disposeGround();
+        this.disposeParticles();
 
         if (this.post) {
             this.post.dispose();

@@ -928,22 +928,30 @@ export default class StellarDriftTheme extends BaseTheme {
     createPlanet() {
         const planetSize = 500;
 
-        // Planet sphere with pink/salmon flowing bands shader
+        // Planet sphere with Jupiter texture
         const geometry = new THREE.SphereGeometry(planetSize, this.qualityPreset.planetDetail, this.qualityPreset.planetDetail);
+
+        // Load high-res Jupiter texture
+        const textureLoader = new THREE.TextureLoader();
+        const jupiterTexture = textureLoader.load('./textures/2k_jupiter.jpg');
+        jupiterTexture.wrapS = THREE.ClampToEdgeWrapping;
+        jupiterTexture.wrapT = THREE.ClampToEdgeWrapping;
+
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
+                uMap: { value: jupiterTexture },
             },
             vertexShader: `
                 varying vec2 vUv;
                 varying vec3 vNormal;
                 varying vec3 vViewPosition;
-                varying vec3 vLocalPos; // Local position for rotation-visible texture
+                varying vec3 vLocalPos;
                 
                 void main() {
                     vUv = uv;
                     vNormal = normalize(normalMatrix * normal);
-                    vLocalPos = position; // Pass local position (stays fixed to mesh)
+                    vLocalPos = position;
                     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                     vViewPosition = -mvPosition.xyz;
                     gl_Position = projectionMatrix * mvPosition;
@@ -951,135 +959,55 @@ export default class StellarDriftTheme extends BaseTheme {
             `,
             fragmentShader: `
                 uniform float uTime;
+                uniform sampler2D uMap;
+                
                 varying vec2 vUv;
                 varying vec3 vNormal;
                 varying vec3 vViewPosition;
-                varying vec3 vLocalPos; // Local position for rotation-visible texture
-                
-                // Noise functions using 3D position (no UV seam)
-                float hash(float n) { return fract(sin(n) * 43758.5453); }
-                float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
-                
-                float noise3D(vec3 p) {
-                    vec3 i = floor(p);
-                    vec3 f = fract(p);
-                    f = f * f * (3.0 - 2.0 * f);
-                    
-                    float n = i.x + i.y * 57.0 + i.z * 113.0;
-                    return mix(
-                        mix(mix(hash(n), hash(n + 1.0), f.x),
-                            mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y),
-                        mix(mix(hash(n + 113.0), hash(n + 114.0), f.x),
-                            mix(hash(n + 170.0), hash(n + 171.0), f.x), f.y),
-                        f.z
-                    );
-                }
-                
-                float fbm3D(vec3 p) {
-                    float v = 0.0;
-                    float a = 0.5;
-                    for (int i = 0; i < 4; i++) {
-                        v += a * noise3D(p);
-                        p *= 2.0;
-                        a *= 0.5;
-                    }
-                    return v;
-                }
-                
-                // Color Shift Function
-                vec3 hueShift(vec3 color, float shift) {
-                    vec3 k = vec3(0.57735);
-                    float cosAngle = cos(shift);
-                    return vec3(color * cosAngle + cross(k, color) * sin(shift) + k * dot(k, color) * (1.0 - cosAngle));
-                }
-                
+                varying vec3 vLocalPos;
+
                 void main() {
-                    // Use LOCAL position for seamless noise that ROTATES with mesh
-                    vec3 pos = normalize(vLocalPos) * 5.0;
-                    float y = vUv.y;
-                    
-                    // Flowing horizontal bands (seamless using Y)
-                    float flow = uTime * 0.02;
-                    float bandNoise = fbm3D(pos * vec3(2.0, 4.0, 2.0) + vec3(flow * 0.3, 0.0, 0.0));
-                    float bands = sin(y * 25.0 + bandNoise * 2.5) * 0.5 + 0.5;
-                    
-                    // Secondary detail
-                    float detail = fbm3D(pos * vec3(4.0, 8.0, 4.0) - vec3(flow * 0.5, 0.0, 0.0)) * 0.3;
-                    bands = bands + detail;
-                    
-                    // STORM SPOTS - visible features for rotation
-                    float storm1 = smoothstep(0.85, 0.5, length(pos.xz - vec2(2.5, 1.0)));
-                    float storm2 = smoothstep(0.6, 0.3, length(pos.xz - vec2(-1.5, 2.0)));
-                    float storm3 = smoothstep(0.5, 0.2, length(pos.xz - vec2(0.5, -2.5)));
-                    float storms = storm1 * 0.4 + storm2 * 0.3 + storm3 * 0.25;
-                    
-                    // ─────────────────────────────────────────────────────────────
-                    // DYNAMIC COLOR PALETTE
-                    // Start: Mars-like (Red, Rust, Orange)
-                    // Evolution: Very slow hue shift
-                    // ─────────────────────────────────────────────────────────────
-                    
-                    float timeShift = uTime * 0.05; // Very slow color evolution
-                    
-                    // Base Mars Palette
-                    vec3 baseDeep    = vec3(0.3, 0.05, 0.05); // Dark Red
-                    vec3 baseMid     = vec3(0.8, 0.2, 0.1);   // Rust
-                    vec3 baseBright  = vec3(1.0, 0.5, 0.2);   // Orange
-                    vec3 baseHighlight = vec3(1.0, 0.8, 0.6); // Pale Yellow
-                    
-                    // Apply Shift
-                    vec3 deepColor   = hueShift(baseDeep, timeShift);
-                    vec3 midColor    = hueShift(baseMid, timeShift);
-                    vec3 brightColor = hueShift(baseBright, timeShift);
-                    vec3 highlight   = hueShift(baseHighlight, timeShift);
-                    
-                    // Mix colors based on bands
-                    vec3 bandColor;
-                    if (bands < 0.3) {
-                        bandColor = mix(deepColor, midColor, bands * 3.3);
-                    } else if (bands < 0.6) {
-                        bandColor = mix(midColor, brightColor, (bands - 0.3) * 3.3);
-                    } else {
-                        bandColor = mix(brightColor, highlight, (bands - 0.6) * 2.5);
-                    }
-                    
-                    // Apply storm spots - darker areas that are visible during rotation
-                    vec3 stormColor = deepColor * 0.6; // Dark storm centers
-                    bandColor = mix(bandColor, stormColor, storms);
-                    
-                    // REALISTIC LIGHTING tuned for Nebula
-                    // Light direction from upper-right
-                    vec3 lightDir = normalize(vec3(0.7, 0.3, 0.6));
                     vec3 viewDir = normalize(vViewPosition);
                     
-                    // Main directional shadow (like the reference photo)
+                    // Sample the Jupiter texture
+                    vec4 texColor = texture2D(uMap, vUv);
+                    vec3 baseColor = texColor.rgb;
+                    
+                    // Slight color adjustment for the nebula setting
+                    baseColor = pow(baseColor, vec3(1.0)); // No gamma boost
+                    baseColor *= 0.9; // Dimmer for space atmosphere
+                    
+                    // REALISTIC LIGHTING tuned for Nebula environment
+                    // Light direction from upper-right
+                    vec3 lightDir = normalize(vec3(0.7, 0.3, 0.6));
+                    
+                    // Main directional shadow
                     float NdotL = dot(vNormal, lightDir);
                     float shadow = smoothstep(-0.1, 0.3, NdotL); // Soft terminator line
                     
                     // Apply deep shadow to unlit side
-                    vec3 shadowColor = bandColor * 0.1; // Very dark shadow
-                    vec3 litColor = bandColor;
+                    vec3 shadowColor = baseColor * 0.15; // Dark shadow
+                    vec3 litColor = baseColor;
                     vec3 finalColor = mix(shadowColor, litColor, shadow);
                     
-                    // Add ambient light from nebula (green/purple glow)
-                    float ambient = 0.12;
+                    // Add ambient light from nebula (purple glow)
                     vec3 ambientColor = vec3(0.4, 0.2, 0.6); // Purple ambient
-                    finalColor += bandColor * ambientColor * (1.0 - shadow) * 2.0;
+                    finalColor += baseColor * ambientColor * (1.0 - shadow) * 0.4;
                     
                     // Rim light on the dark edge (Backlight from nebula)
                     float rimLight = pow(1.0 - abs(dot(vNormal, viewDir)), 3.0);
-                    rimLight *= (1.0 - shadow) * 0.6; // Only on shadow side, stronger
+                    rimLight *= (1.0 - shadow) * 0.6; // Only on shadow side
                     finalColor += vec3(0.5, 0.8, 0.6) * rimLight; // Emerald rim light
                     
                     // Specular highlight on lit side
                     vec3 halfDir = normalize(lightDir + viewDir);
                     float spec = pow(max(dot(vNormal, halfDir), 0.0), 20.0) * shadow;
-                    finalColor += vec3(1.0, 0.95, 0.8) * spec * 0.2;
+                    finalColor += vec3(1.0, 0.95, 0.8) * spec * 0.15;
                     
-                    // Very subtle atmospheric haze at edges
+                    // Atmospheric haze at edges
                     float fresnel = pow(1.0 - abs(dot(vNormal, viewDir)), 2.5);
                     vec3 atmosphereColor = vec3(0.6, 0.4, 0.9); // Violet atmosphere
-                    finalColor += atmosphereColor * fresnel * shadow * 0.25;
+                    finalColor += atmosphereColor * fresnel * shadow * 0.2;
                     
                     gl_FragColor = vec4(finalColor, 1.0);
                 }
@@ -1655,7 +1583,7 @@ export default class StellarDriftTheme extends BaseTheme {
             let planetX = 0;
             let planetY = 0;
             if (this.planet) {
-                this.planet.rotation.y += 0.0001; // Ultra slow spin
+                this.planet.rotation.y += 0.001; // Visible spin
 
                 // Large orbit so planet appears on different sides of the screen
                 // Use phase offset for random starting position

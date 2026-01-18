@@ -21,6 +21,7 @@ import {
 type TornadoRibbonParams = {
     emissiveColor: string;
     timeScale: number;
+    ribbonWidth: number;
     parabolaStrength: number;
     parabolaOffset: number;
     parabolaAmplitude: number;
@@ -45,6 +46,7 @@ export class TornadoRibbons {
     group: THREE.Group;
     private mesh: THREE.InstancedMesh;
     private uTimeScale: ReturnType<typeof uniform>;
+    private uRibbonWidth: ReturnType<typeof uniform>;
     private uParabolaStrength: ReturnType<typeof uniform>;
     private uParabolaOffset: ReturnType<typeof uniform>;
     private uParabolaAmplitude: ReturnType<typeof uniform>;
@@ -54,6 +56,7 @@ export class TornadoRibbons {
         this.group = new THREE.Group();
 
         this.uTimeScale = uniform(config.params.timeScale);
+        this.uRibbonWidth = uniform(config.params.ribbonWidth);
         this.uParabolaStrength = uniform(config.params.parabolaStrength);
         this.uParabolaOffset = uniform(config.params.parabolaOffset);
         this.uParabolaAmplitude = uniform(config.params.parabolaAmplitude);
@@ -69,6 +72,7 @@ export class TornadoRibbons {
 
     updateParams(params: Partial<TornadoRibbonParams>) {
         if (params.timeScale !== undefined) this.uTimeScale.value = params.timeScale;
+        if (params.ribbonWidth !== undefined) this.uRibbonWidth.value = params.ribbonWidth;
         if (params.parabolaStrength !== undefined) this.uParabolaStrength.value = params.parabolaStrength;
         if (params.parabolaOffset !== undefined) this.uParabolaOffset.value = params.parabolaOffset;
         if (params.parabolaAmplitude !== undefined) this.uParabolaAmplitude.value = params.parabolaAmplitude;
@@ -94,7 +98,7 @@ export class TornadoRibbons {
         for (let i = 0; i < config.count; i += 1) {
             phases[i] = Math.random() * Math.PI * 2;
             radiusOffsets[i] = (Math.random() - 0.5) * 0.6;
-            widthScales[i] = 0.6 + Math.random() * 1.1;
+            widthScales[i] = 0.9 + Math.random() * 1.0;
             streakOffsets[i] = Math.random() * 6.0;
             brightness[i] = 0.7 + Math.random() * 0.7;
         }
@@ -150,7 +154,7 @@ export class TornadoRibbons {
         const cosAngle = cos(angle);
         const center = vec3(cosAngle.mul(radius), positionLocal.y, sinAngle.mul(radius));
 
-        const widthOffset = positionLocal.x.mul(aWidthScale);
+        const widthOffset = positionLocal.x.mul(aWidthScale).mul(this.uRibbonWidth);
         const tangent = vec3(sinAngle.mul(float(-1.0)), float(0.0), cosAngle);
         const twist = sin(
             u.mul(float(config.twistFrequency))
@@ -166,7 +170,7 @@ export class TornadoRibbons {
         material.positionNode = ribbonPosition;
 
         const uvNode = uv();
-        const edgeSoft = float(0.18);
+        const edgeSoft = float(0.12);
         const edgeFade = smoothstep(float(0.0), edgeSoft, uvNode.x)
             .mul(smoothstep(float(0.0), edgeSoft, float(1.0).sub(uvNode.x)));
 
@@ -174,12 +178,12 @@ export class TornadoRibbons {
             .mul(smoothstep(float(0.0), float(0.2), float(1.0).sub(uvNode.y)));
 
         // Streaky emission from animated UV noise for broken, fast ribbons.
-        const streakUv = uvNode.mul(vec2(float(8.0), float(26.0)))
+        const streakUv = uvNode.mul(vec2(float(6.0), float(20.0)))
             .add(vec2(float(0.0), aStreakOffset));
         const streakNoise = mx_noise_float(
             vec3(streakUv, time.mul(this.uTimeScale).mul(float(1.4)).add(aStreakOffset)),
         );
-        const streakMask = smoothstep(float(0.4), float(0.75), streakNoise);
+        const streakMask = smoothstep(float(0.3), float(0.7), streakNoise);
 
         const breakupNoise = mx_noise_float(
             vec3(streakUv.mul(float(0.35)), time.mul(this.uTimeScale).mul(float(0.5)).add(aStreakOffset.mul(float(0.5)))),
