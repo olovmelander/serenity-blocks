@@ -287,6 +287,7 @@ export class ThemesTab {
                 <div class="theme-params-title">Tornado Controls</div>
                 ${this.renderThemeParamColor('emissiveColor', params.emissiveColor)}
                 ${this.renderThemeParamRange('timeScale', params.timeScale)}
+                ${this.renderThemeParamRange('ribbonWidth', params.ribbonWidth)}
                 ${this.renderThemeParamRange('parabolaStrength', params.parabolaStrength)}
                 ${this.renderThemeParamRange('parabolaOffset', params.parabolaOffset)}
                 ${this.renderThemeParamRange('parabolaAmplitude', params.parabolaAmplitude)}

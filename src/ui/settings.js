@@ -27,6 +27,7 @@ const DEFAULT_CONFIG = {
     tornadoThemeParams: {
         emissiveColor: '#ff8a3b',
         timeScale: 1.0,
+        ribbonWidth: 1.0,
         parabolaStrength: 1.0,
         parabolaOffset: 0.35,
         parabolaAmplitude: 0.45,

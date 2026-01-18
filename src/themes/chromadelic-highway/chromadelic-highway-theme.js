@@ -146,6 +146,18 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.starfield = null;
         this.speedParticles = null;
         this.ambientParticles = null; // Colorful floating particles in space
+        this.planet = null; // Rainbow planet
+        this.planetGlows = []; // Glow layers around planet
+        this.shootingStars = []; // Rainbow shooting star trails
+        this.shootingStarTimer = 0; // Timer for spawning new stars
+        this.nextShootingStarDelay = 3; // Seconds until next star
+
+        // Planet journey - 3 minute approach and flyby
+        this.journeyTime = 0;
+        this.journeyDuration = 180; // 3 minutes
+        this.planetStartPos = new THREE.Vector3(1500, 450, -2000); // Far right, distant
+        this.planetClosePos = new THREE.Vector3(700, 150, 250);    // Close flyby on right
+        this.planetEndPos = new THREE.Vector3(1000, 350, 600);     // Past player, then reset
 
         // Effect intensities
         this.pulseIntensity = 0;
@@ -198,8 +210,10 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.createDynamicRoad();
         this.createTunnelRings();
         this.createStarfield();
+        this.createRainbowPlanet();
         this.createSpeedParticles();
         this.createAmbientParticles();
+        this.createShootingStars();
         this.setupPostProcessing();
         this.setupEventListeners();
         this.startAnimation();
@@ -603,6 +617,150 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Rainbow Planet - Massive celestial body with neon glow
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createRainbowPlanet() {
+        const planetSize = 450;
+
+        // Planet sphere with rainbow texture
+        const geometry = new THREE.SphereGeometry(planetSize, 48, 48);
+
+        // Load rainbow planet texture
+        const textureLoader = new THREE.TextureLoader();
+        const planetTexture = textureLoader.load('./textures/2k_rainbow_planet.png');
+        planetTexture.wrapS = THREE.ClampToEdgeWrapping;
+        planetTexture.wrapT = THREE.ClampToEdgeWrapping;
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uMap: { value: planetTexture },
+                uPulse: { value: 0 },
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                varying vec3 vViewPosition;
+                
+                void main() {
+                    vUv = uv;
+                    vNormal = normalize(normalMatrix * normal);
+                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                    vViewPosition = -mvPosition.xyz;
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform sampler2D uMap;
+                uniform float uPulse;
+                
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                varying vec3 vViewPosition;
+
+                // HSV to RGB conversion for rainbow rim
+                vec3 hsv2rgb(vec3 c) {
+                    vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+                    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+                }
+
+                void main() {
+                    vec3 viewDir = normalize(vViewPosition);
+                    
+                    // Sample the rainbow planet texture
+                    vec4 texColor = texture2D(uMap, vUv);
+                    vec3 baseColor = texColor.rgb;
+                    
+                    // Lighting - dramatic side lighting
+                    vec3 lightDir = normalize(vec3(0.6, 0.4, 0.5));
+                    float NdotL = dot(vNormal, lightDir);
+                    float shadow = smoothstep(-0.2, 0.4, NdotL);
+                    
+                    // Apply shadow
+                    vec3 shadowColor = baseColor * 0.15;
+                    vec3 litColor = baseColor;
+                    vec3 finalColor = mix(shadowColor, litColor, shadow);
+                    
+                    // NEON RAINBOW RIM GLOW - psychedelic fresnel effect
+                    float viewDot = abs(dot(vNormal, viewDir));
+                    float fresnel = pow(1.0 - viewDot, 3.0);
+                    
+                    // Animated rainbow hue cycling around the rim
+                    float hue = fract(uTime * 0.1 + fresnel * 2.0);
+                    vec3 rainbowRim = hsv2rgb(vec3(hue, 0.9, 1.0));
+                    
+                    // Add neon rim glow
+                    finalColor += rainbowRim * fresnel * 0.8 * (1.0 + uPulse * 0.5);
+                    
+                    // Additional inner glow for more neon feel
+                    float innerFresnel = pow(1.0 - viewDot, 1.5);
+                    finalColor += baseColor * innerFresnel * 0.3;
+                    
+                    // Pulse brightness boost
+                    finalColor *= 1.0 + uPulse * 0.2;
+                    
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `,
+        });
+
+        this.planet = new THREE.Mesh(geometry, material);
+        // Position: Upper-right, far back, partially visible
+        this.planet.position.set(1500, 450, -2000);
+        this.planet.renderOrder = -50;
+        this.scene.add(this.planet);
+
+        // Create neon glow layers behind the planet
+        const glowConfigs = [
+            { size: planetSize * 2.4, opacity: 0.4, z: -30, hueOffset: 0 },
+            { size: planetSize * 3.2, opacity: 0.25, z: -60, hueOffset: 0.33 },
+            { size: planetSize * 4.2, opacity: 0.12, z: -100, hueOffset: 0.66 },
+        ];
+
+        glowConfigs.forEach((config, index) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            // Create rainbow gradient glow
+            const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.2, 'rgba(255, 200, 255, 0.8)');
+            gradient.addColorStop(0.5, 'rgba(150, 100, 255, 0.4)');
+            gradient.addColorStop(0.8, 'rgba(100, 200, 255, 0.15)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 256, 256);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const glowGeo = new THREE.PlaneGeometry(config.size, config.size);
+            const glowMat = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+                opacity: config.opacity,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+
+            const glow = new THREE.Mesh(glowGeo, glowMat);
+            glow.position.copy(this.planet.position);
+            glow.position.z += config.z;
+            glow.renderOrder = -60 - index;
+            glow.userData.hueOffset = config.hueOffset;
+            glow.userData.baseOpacity = config.opacity;
+            glow.userData.zOffset = config.z;
+            this.planetGlows.push(glow);
+            this.scene.add(glow);
+        });
+
+        console.log('[ChromadelicHighway] Rainbow planet created with neon glow');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Speed Particles - Flow toward camera along road
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -851,6 +1009,203 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Shooting Stars - Rainbow gradient trails across the sky
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createShootingStars() {
+        // Just initializes the system - stars spawn dynamically in animate()
+        console.log('[ChromadelicHighway] Shooting star system initialized');
+    }
+
+    spawnShootingStar() {
+        // Random spawn position - ALL OVER THE SCREEN
+        const startX = (Math.random() - 0.5) * 2500; // Full width spread
+        const startY = 100 + Math.random() * 600;    // Low to high on screen
+        const startZ = -800 - Math.random() * 1500;  // Various depths
+
+        // Direction: random diagonal arc
+        const angle = Math.random() * Math.PI * 2;
+        const dirX = Math.cos(angle) * (0.5 + Math.random() * 0.5);
+        const dirY = -0.2 - Math.random() * 0.4; // Mostly downward
+        const dirZ = 0.2 + Math.random() * 0.3;
+
+        // Trail - more particles for bigger, vibrant fire effect
+        const trailLength = 350 + Math.random() * 200; // LONGER TAIL
+        const particleCount = 80; // More particles for longer tail
+
+        // Create geometry for fire particles
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+        const sizes = new Float32Array(particleCount);
+
+        // Vibrant fire rainbow gradient (hot core -> colorful fire tail)
+        const fireColors = [
+            { r: 1.0, g: 1.0, b: 1.0 },   // Brilliant white (head)
+            { r: 1.0, g: 1.0, b: 0.8 },   // Hot white
+            { r: 1.0, g: 0.9, b: 0.4 },   // Bright yellow
+            { r: 1.0, g: 0.7, b: 0.1 },   // Intense orange-yellow
+            { r: 1.0, g: 0.4, b: 0.1 },   // Fiery orange
+            { r: 1.0, g: 0.2, b: 0.1 },   // Hot red-orange
+            { r: 0.9, g: 0.1, b: 0.2 },   // Vibrant red
+            { r: 0.8, g: 0.1, b: 0.4 },   // Red-magenta
+            { r: 0.6, g: 0.1, b: 0.7 },   // Magenta-purple
+            { r: 0.4, g: 0.2, b: 0.9 },   // Vibrant purple
+            { r: 0.3, g: 0.3, b: 1.0 },   // Electric blue
+            { r: 0.2, g: 0.5, b: 0.9 },   // Cyan-blue
+        ];
+
+        for (let i = 0; i < particleCount; i++) {
+            const t = i / (particleCount - 1);
+            // REVERSED: negative offset so tail trails BEHIND the head (head is at i=0)
+            const trailOffset = -t * trailLength;
+
+            // Add some randomness for fire-like spread (more at tail)
+            const spread = t * 12;
+            const offsetX = (Math.random() - 0.5) * spread;
+            const offsetY = (Math.random() - 0.5) * spread;
+
+            // Position along trail with spread (head at start position, tail behind)
+            positions[i * 3] = startX + dirX * trailOffset + offsetX;
+            positions[i * 3 + 1] = startY + dirY * trailOffset + offsetY;
+            positions[i * 3 + 2] = startZ + dirZ * trailOffset;
+
+            // Color from fire gradient
+            const colorIdx = Math.min(Math.floor(t * (fireColors.length - 1)), fireColors.length - 2);
+            const colorT = (t * (fireColors.length - 1)) - colorIdx;
+            const c1 = fireColors[colorIdx];
+            const c2 = fireColors[colorIdx + 1];
+
+            colors[i * 3] = c1.r + (c2.r - c1.r) * colorT;
+            colors[i * 3 + 1] = c1.g + (c2.g - c1.g) * colorT;
+            colors[i * 3 + 2] = c1.b + (c2.b - c1.b) * colorT;
+
+            // Size: large bright head (i=0), smaller tail particles
+            const baseSize = 30 + Math.random() * 20;
+            sizes[i] = baseSize * (1 - t * 0.6);
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+
+        // Store random offsets for tail animation
+        const randoms = new Float32Array(particleCount);
+        for (let i = 0; i < particleCount; i++) {
+            randoms[i] = Math.random();
+        }
+        geometry.setAttribute('aRandom', new THREE.Float32BufferAttribute(randoms, 1));
+
+        // Shader material for glowing fire particles with animated tail
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uOpacity: { value: 1.0 },
+                uTime: { value: 0.0 },
+            },
+            vertexShader: `
+                attribute float size;
+                attribute vec3 color;
+                attribute float aRandom;
+                varying vec3 vColor;
+                varying float vRandom;
+                uniform float uTime;
+                
+                void main() {
+                    vColor = color;
+                    vRandom = aRandom;
+                    
+                    // Add animated shimmer to tail particles - MUCH MORE VISIBLE
+                    vec3 pos = position;
+                    float tailFactor = 1.0 - size / 50.0; // More shimmer on smaller (tail) particles
+                    pos.x += sin(uTime * 12.0 + aRandom * 20.0) * tailFactor * 10.0;
+                    pos.y += cos(uTime * 10.0 + aRandom * 20.0) * tailFactor * 10.0;
+                    
+                    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    gl_PointSize = size * (400.0 / -mvPosition.z);
+                    gl_PointSize = clamp(gl_PointSize, 2.0, 100.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uOpacity;
+                varying vec3 vColor;
+                varying float vRandom;
+                
+                void main() {
+                    vec2 center = gl_PointCoord - vec2(0.5);
+                    float dist = length(center);
+                    
+                    // Soft glowing circle
+                    float alpha = smoothstep(0.5, 0.0, dist) * uOpacity;
+                    
+                    // Add bright core
+                    float core = smoothstep(0.25, 0.0, dist) * 0.6;
+                    vec3 finalColor = vColor + core;
+                    
+                    gl_FragColor = vec4(finalColor, alpha);
+                }
+            `,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        const points = new THREE.Points(geometry, material);
+        points.userData = {
+            velocity: new THREE.Vector3(dirX, dirY, dirZ).multiplyScalar(200 + Math.random() * 100), // Slower for longer screen time
+            life: 0,
+            maxLife: 6 + Math.random() * 4, // LONGER ON SCREEN (6-10 seconds)
+        };
+
+        this.shootingStars.push(points);
+        this.scene.add(points);
+    }
+
+    updateShootingStars(delta) {
+        // Spawn new stars periodically
+        this.shootingStarTimer += delta;
+        if (this.shootingStarTimer >= this.nextShootingStarDelay) {
+            this.spawnShootingStar();
+            this.shootingStarTimer = 0;
+            this.nextShootingStarDelay = 4 + Math.random() * 8; // 4-12 seconds between stars
+        }
+
+        // Update existing stars
+        for (let i = this.shootingStars.length - 1; i >= 0; i--) {
+            const star = this.shootingStars[i];
+            star.userData.life += delta;
+
+            // Move the trail
+            const positions = star.geometry.attributes.position.array;
+            for (let j = 0; j < positions.length; j += 3) {
+                positions[j] += star.userData.velocity.x * delta;
+                positions[j + 1] += star.userData.velocity.y * delta;
+                positions[j + 2] += star.userData.velocity.z * delta;
+            }
+            star.geometry.attributes.position.needsUpdate = true;
+
+            // Update time for tail animation
+            if (star.material.uniforms && star.material.uniforms.uTime) {
+                star.material.uniforms.uTime.value = this.time;
+            }
+
+            // Fade out near end of life
+            const lifeRatio = star.userData.life / star.userData.maxLife;
+            if (lifeRatio > 0.7 && star.material.uniforms) {
+                star.material.uniforms.uOpacity.value = 1.0 * (1 - (lifeRatio - 0.7) / 0.3);
+            }
+
+            // Remove dead stars
+            if (star.userData.life >= star.userData.maxLife) {
+                this.scene.remove(star);
+                star.geometry.dispose();
+                star.material.dispose();
+                this.shootingStars.splice(i, 1);
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Post-Processing
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -987,6 +1342,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             // Update road curve dynamically
             this.updateRoadCurve();
 
+            // Update shooting stars
+            this.updateShootingStars(delta);
+
             // Update road shader
             if (this.roadMaterial) {
                 this.roadMaterial.uniforms.uTime.value = this.time;
@@ -1038,6 +1396,68 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                     line.material.color.setHSL(line.userData.hue, 0.9, 0.55);
                     const baseOpacity = 0.5 - line.userData.offset * 0.12;
                     line.material.opacity = baseOpacity + this.pulseIntensity * 0.25;
+                });
+            }
+
+            // Animate rainbow planet - 3 minute journey approach and flyby
+            if (this.planet) {
+                this.planet.rotation.y += 0.0008; // Slow majestic spin
+
+                // Update journey time (loops every 3 minutes)
+                this.journeyTime += delta;
+                if (this.journeyTime >= this.journeyDuration) {
+                    this.journeyTime = 0; // Reset for next loop
+                }
+
+                // Smoothstep helper for natural easing
+                const smoothstep = (t) => t * t * (3 - 2 * t);
+
+                // Journey phases:
+                // 0-120s: Approach (distant to close)
+                // 120-160s: Flyby (close pass)
+                // 160-180s: Departure (past player, then reset)
+
+                const approachEnd = 120;
+                const flybyEnd = 160;
+
+                let targetPos = new THREE.Vector3();
+                let glowBoost = 0;
+
+                if (this.journeyTime < approachEnd) {
+                    // APPROACH PHASE: Start -> Close
+                    const t = smoothstep(this.journeyTime / approachEnd);
+                    targetPos.lerpVectors(this.planetStartPos, this.planetClosePos, t);
+                    glowBoost = t * 0.5; // Glow increases as planet nears
+                } else if (this.journeyTime < flybyEnd) {
+                    // FLYBY PHASE: Close pass (slight movement, dramatic presence)
+                    const phaseTime = (this.journeyTime - approachEnd) / (flybyEnd - approachEnd);
+                    const t = smoothstep(phaseTime);
+                    targetPos.lerpVectors(this.planetClosePos, this.planetEndPos, t);
+                    glowBoost = 0.5 - t * 0.3; // Peak glow at start of flyby, then fades
+                } else {
+                    // DEPARTURE PHASE: Past player, quick reset back to start
+                    const phaseTime = (this.journeyTime - flybyEnd) / (this.journeyDuration - flybyEnd);
+                    const t = smoothstep(phaseTime);
+                    targetPos.lerpVectors(this.planetEndPos, this.planetStartPos, t);
+                    glowBoost = 0.2 * (1 - t); // Fading glow as it resets
+                }
+
+                // Apply position
+                this.planet.position.copy(targetPos);
+
+                // Update shader uniforms
+                if (this.planet.material.uniforms) {
+                    this.planet.material.uniforms.uTime.value = this.time;
+                    this.planet.material.uniforms.uPulse.value = this.pulseIntensity + glowBoost;
+                }
+
+                // Sync glow layers with planet
+                this.planetGlows.forEach((glow, i) => {
+                    glow.position.x = this.planet.position.x;
+                    glow.position.y = this.planet.position.y;
+                    glow.position.z = this.planet.position.z + glow.userData.zOffset;
+                    // Enhanced glow during close approach
+                    glow.material.opacity = glow.userData.baseOpacity * (1.0 + this.pulseIntensity * 0.3 + glowBoost);
                 });
             }
 
