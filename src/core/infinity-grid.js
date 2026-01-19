@@ -264,10 +264,11 @@ export function checkInfinityGameOver(gameState) {
     }
 
     // Game over condition 2: Grid at max size and can't expand further
-    if (gameState.board.length >= gameState.maxRows && topRow < 10) {
-        console.log('[InfinityGrid] Game Over: Max grid size reached and building too high');
-        return true;
-    }
+    // REMOVED: User requested to only die when hitting the absolute roof (row 0)
+    // if (gameState.board.length >= gameState.maxRows && topRow < 10) {
+    //     console.log('[InfinityGrid] Game Over: Max grid size reached and building too high');
+    //     return true;
+    // }
 
     // Game over condition 3: Can't spawn next piece at spawn position
     // This will be checked by the game loop when spawning pieces

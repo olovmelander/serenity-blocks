@@ -114,6 +114,8 @@ export const planetFragmentShader = `
 uniform float uTime;
 uniform float uPulseIntensity;
 uniform float uGlowIntensity;
+uniform sampler2D uMap;
+uniform vec3 uSunDirection;
 
 varying vec2 vUv;
 varying vec3 vNormal;
@@ -123,196 +125,91 @@ varying vec3 vViewPosition;
 
 ${noiseCommon}
 
-// Voronoi for crater placement - creates natural random distribution
-vec2 hash2(vec2 p) {
-    return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453);
-}
-
-float voronoiCraters(vec3 pos, float scale, float depth) {
-    vec3 p = pos * scale;
-    vec3 i = floor(p);
-    vec3 f = fract(p);
-    
-    float res = 0.0;
-    
-    for(int x = -1; x <= 1; x++) {
-        for(int y = -1; y <= 1; y++) {
-            for(int z = -1; z <= 1; z++) {
-                vec3 b = vec3(float(x), float(y), float(z));
-                vec3 cellPos = i + b;
-                
-                // Random point in cell
-                vec3 r = vec3(
-                    fract(sin(dot(cellPos.xy, vec2(127.1, 311.7))) * 43758.5453),
-                    fract(sin(dot(cellPos.yz, vec2(269.5, 183.3))) * 43758.5453),
-                    fract(sin(dot(cellPos.xz, vec2(419.2, 371.9))) * 43758.5453)
-                );
-                
-                vec3 toPoint = b + r - f;
-                float d = length(toPoint);
-                
-                // Crater shape: bowl with rim
-                float craterSize = 0.3 + r.x * 0.4;
-                if (d < craterSize) {
-                    float bowl = smoothstep(craterSize, craterSize * 0.15, d);
-                    float rim = smoothstep(craterSize * 1.2, craterSize, d) * smoothstep(craterSize * 0.8, craterSize, d);
-                    res += (-bowl + rim * 0.5) * depth * (0.5 + r.y * 0.5);
-                }
-            }
-        }
-    }
-    
-    return res;
-}
-
-// Sharp crater with visible floor and walls
-float sharpCrater(vec3 pos, vec3 center, float size, float depth) {
-    float d = length(pos - center);
-    
-    // Crater bowl - sharper edges
-    float bowl = smoothstep(size, size * 0.15, d);
-    
-    // Raised rim
-    float rim = smoothstep(size * 1.35, size * 0.95, d) * smoothstep(size * 0.8, size * 1.0, d);
-    
-    // Central peak (only for larger craters)
-    float peak = smoothstep(size * 0.15, size * 0.02, d) * 0.5;
-    
-    // Terraced walls
-    float walls = smoothstep(size * 0.7, size * 0.5, d) * smoothstep(size * 0.4, size * 0.6, d) * 0.2;
-    
-    return -bowl * depth + rim * depth * 0.7 + peak * depth * 0.4 + walls;
-}
-
 void main() {
-    vec3 viewDir = normalize(vViewPosition);
-    vec3 pos = normalize(vLocalPos) * 5.0;
+    vec3 viewDir = normalize(vViewPosition); // View direction
+    vec3 normal = normalize(vNormal); // Surface normal
+
+    // 1. Sample Texture
+    vec4 texColor = texture2D(uMap, vUv);
+    vec3 baseMap = texColor.rgb;
+
+    // Calculate luminance for height/detail
+    float luma = dot(baseMap, vec3(0.299, 0.587, 0.114));
+
+    // 2. Bump Mapping (Fake Normal)
+    // Use texture gradients to perturb normal for crater depth
+    float bumpScale = 4.0;
+    vec3 dPdx = dFdx(vPosition);
+    vec3 dPdy = dFdy(vPosition);
+    vec3 R1 = cross(dPdy, normal);
+    vec3 R2 = cross(normal, dPdx);
+    float det = dot(dPdx, R1);
     
-    // === COSMIC NOIR COLOR PALETTE - Deep blacks with visible detail ===
-    vec3 voidBlack = vec3(0.01, 0.01, 0.012);         // Near-total void
-    vec3 deepCharcoal = vec3(0.03, 0.03, 0.035);      // Dark surface
-    vec3 craterFloor = vec3(0.005, 0.005, 0.006);     // Nearly black crater floors
-    vec3 craterRim = vec3(0.12, 0.12, 0.14);          // Visible gray rims
-    vec3 craterWall = vec3(0.02, 0.02, 0.025);        // Shadowed crater walls
-    vec3 highlightSilver = vec3(0.25, 0.25, 0.30);    // Rim highlights
+    // Gradient of height (luma)
+    float dHdx = dFdx(luma);
+    float dHdy = dFdy(luma);
     
-    // === MARIA (DARK SEAS) ===
-    float maria1 = smoothstep(0.2, 0.6, fbm(pos * 0.5 + vec3(1.5, 0.8, 0.3)));
-    float maria2 = smoothstep(0.25, 0.65, fbm(pos * 0.6 + vec3(-2.0, 1.2, 0.8)));
-    float maria3 = smoothstep(0.3, 0.7, fbm(pos * 0.55 + vec3(0.5, -1.5, 1.2)));
-    float totalMaria = max(max(maria1, maria2 * 0.9), maria3 * 0.85);
+    // Perturb normal
+    vec3 surfGrad = sign(det) * (dHdx * R1 + dHdy * R2);
+    vec3 bumpNormal = normalize(abs(det) * normal - bumpScale * surfGrad);
+
+    // 3. Noir Color Grading
+    // Darken base significantly - Deep black void with silver highlights
+    vec3 deepCharcoal = vec3(0.002, 0.002, 0.005); // Much darker base
+    vec3 brightSilver = vec3(0.55, 0.55, 0.65); // Slightly muted silver
     
-    // Base color with contrast
-    vec3 baseColor = mix(deepCharcoal, voidBlack, totalMaria);
+    // Enhance contrast - Crush the blacks, keep highlights sharp
+    // Higher power = more contrast, sharper separation
+    float detailLuma = pow(luma, 2.5); 
     
-    // === MAJOR IMPACT CRATERS (Visible) ===
-    float majorCraters = 0.0;
-    majorCraters += sharpCrater(pos, vec3(2.2, 0.5, 0.8), 1.4, 0.6);
-    majorCraters += sharpCrater(pos, vec3(-1.5, 1.5, 1.0), 1.2, 0.55);
-    majorCraters += sharpCrater(pos, vec3(0.5, -1.8, 1.3), 1.1, 0.5);
-    majorCraters += sharpCrater(pos, vec3(-0.8, 0.2, -2.0), 1.3, 0.55);
-    majorCraters += sharpCrater(pos, vec3(1.8, -0.8, 1.5), 1.0, 0.48);
-    majorCraters += sharpCrater(pos, vec3(-2.0, -1.0, 0.8), 1.15, 0.52);
-    majorCraters += sharpCrater(pos, vec3(0.3, 2.3, 0.5), 1.05, 0.5);
-    majorCraters += sharpCrater(pos, vec3(-0.5, -0.5, 2.3), 0.95, 0.45);
-    majorCraters += sharpCrater(pos, vec3(1.2, 1.2, 1.8), 0.9, 0.42);
+    // Mix based on contrast-enhanced luma
+    vec3 surfaceColor = mix(deepCharcoal, brightSilver, detailLuma);
+
+    // 4. Lighting
+    vec3 lightDir = normalize(uSunDirection);
     
-    // === MEDIUM CRATERS ===
-    float medCraters = 0.0;
-    medCraters += sharpCrater(pos, vec3(1.5, 0.0, 2.0), 0.6, 0.35);
-    medCraters += sharpCrater(pos, vec3(-1.0, 1.8, 1.2), 0.55, 0.32);
-    medCraters += sharpCrater(pos, vec3(0.8, -1.2, 1.8), 0.5, 0.3);
-    medCraters += sharpCrater(pos, vec3(-0.3, -1.5, 1.6), 0.58, 0.33);
-    medCraters += sharpCrater(pos, vec3(2.0, 1.0, 0.5), 0.52, 0.31);
-    medCraters += sharpCrater(pos, vec3(-1.8, 0.5, 1.5), 0.48, 0.28);
-    medCraters += sharpCrater(pos, vec3(0.5, 1.5, 1.8), 0.55, 0.32);
-    medCraters += sharpCrater(pos, vec3(-0.8, -0.8, 2.0), 0.5, 0.3);
+    // Use bumped normal for lighting - makes craters pop
+    float NdotL = max(0.0, dot(bumpNormal, lightDir));
     
-    // === VORONOI SMALL CRATERS ===
-    float smallCraters = voronoiCraters(pos, 3.0, 0.25);
-    float tinyCraters = voronoiCraters(pos, 6.0, 0.12);
-    float microCraters = voronoiCraters(pos, 12.0, 0.06);
+    // Sharp terminator for dramatic noir look
+    float terminator = smoothstep(-0.1, 0.3, NdotL);
     
-    float allCraters = majorCraters + medCraters + smallCraters + tinyCraters + microCraters;
+    // Ambient light - purely visible silhouette
+    vec3 ambient = vec3(0.002, 0.002, 0.005);
     
-    // === SURFACE TEXTURE ===
-    float roughLarge = fbm(pos * 4.0) * 0.08;
-    float roughMed = fbm(pos * 10.0) * 0.04;
-    float roughFine = snoise(pos * 25.0) * 0.02;
-    float totalRough = roughLarge + roughMed + roughFine;
+    // Diffuse light with boosted intensity for illuminated parts
+    vec3 diffuse = surfaceColor * terminator * 2.0;
     
-    // === APPLY CRATER EFFECTS TO COLOR ===
-    // Deep crater floors (very dark)
-    float floorDepth = max(0.0, -allCraters * 4.0);
-    baseColor = mix(baseColor, craterFloor, smoothstep(0.0, 1.0, floorDepth) * 0.9);
+    // 5. Specular / Rim Highlights using Bump Normal
     
-    // Crater walls (medium darkness)
-    float wallFactor = max(0.0, -allCraters * 2.0) * (1.0 - floorDepth);
-    baseColor = mix(baseColor, craterWall, wallFactor * 0.6);
+    // Fresnel rim glow
+    float fresnel = pow(1.0 - abs(dot(normal, viewDir)), 4.0); // Sharper rim
+    fresnel *= smoothstep(-0.2, 0.2, dot(normal, lightDir));
     
-    // Visible crater rims (catch light)
-    float rimBrightness = max(0.0, allCraters * 3.5);
-    baseColor = mix(baseColor, craterRim, smoothstep(0.0, 0.8, rimBrightness) * 0.7);
+    vec3 rimColor = vec3(0.5, 0.5, 0.6);
+    vec3 rim = rimColor * fresnel * (0.6 + uPulseIntensity * 0.5);
+
+    // Specular highlight on crater edges - distinct sparkle
+    vec3 halfVector = normalize(lightDir + viewDir);
+    float NdotH = max(0.0, dot(bumpNormal, halfVector));
+    float specular = pow(NdotH, 24.0) * luma * 0.8; // Sharp small highlights on craters
+
     
-    // Surface roughness adds variation
-    baseColor += vec3(totalRough * 0.3);
+    // Texture shimmer (subtle animation on bright spots)
+    float shimmerNoise = snoise(vLocalPos * 0.05 + vec3(uTime * 0.1));
+    float shimmer = max(0.0, shimmerNoise) * detailLuma * 0.1;
     
-    // === DRAMATIC LIGHTING ===
-    vec3 lightDir = normalize(vec3(0.6, 0.5, 0.6));
-    
-    // Calculate surface normal from height
-    float eps = 0.08;
-    float hCenter = allCraters + totalRough;
-    float hRight = sharpCrater(pos + vec3(eps, 0.0, 0.0), vec3(0.0), 0.5, 0.3) + fbm((pos + vec3(eps, 0.0, 0.0)) * 4.0) * 0.1;
-    float hUp = sharpCrater(pos + vec3(0.0, eps, 0.0), vec3(0.0), 0.5, 0.3) + fbm((pos + vec3(0.0, eps, 0.0)) * 4.0) * 0.1;
-    float hForward = sharpCrater(pos + vec3(0.0, 0.0, eps), vec3(0.0), 0.5, 0.3) + fbm((pos + vec3(0.0, 0.0, eps)) * 4.0) * 0.1;
-    
-    vec3 surfaceNormal = normalize(vNormal + vec3(
-        (hCenter - hRight) * 8.0,
-        (hCenter - hUp) * 8.0,
-        (hCenter - hForward) * 8.0
-    ));
-    
-    // Strong directional light
-    float diffuse = max(0.0, dot(surfaceNormal, lightDir));
-    diffuse = pow(diffuse, 0.9);
-    
-    // Ambient occlusion in craters
-    float ao = 1.0 - floorDepth * 0.5;
-    
-    // Final lighting - still dark but with visible detail
-    float lighting = 0.08 + diffuse * 0.5 * ao;
-    
-    // Specular on rims only
-    vec3 reflectDir = reflect(-lightDir, surfaceNormal);
-    float spec = pow(max(0.0, dot(reflectDir, viewDir)), 32.0);
-    spec *= rimBrightness * 0.3;
-    
-    vec3 litColor = baseColor * lighting + vec3(0.5, 0.5, 0.55) * spec;
-    
-    // === NOIR RIM GLOW - Silver/white edge light ===
-    float fresnel = pow(1.0 - abs(dot(vNormal, viewDir)), 3.5);
-    vec3 rimGlow = vec3(0.6, 0.6, 0.65);
-    float rimIntensity = 0.5 + uPulseIntensity * 0.4;
-    litColor += rimGlow * fresnel * rimIntensity * uGlowIntensity;
-    
-    // === SUBTLE ANIMATION ===
-    float shimmer = snoise(pos * 6.0 + vec3(uTime * 0.15, 0.0, uTime * 0.12));
-    if (shimmer > 0.7) {
-        litColor += vec3(0.04) * (shimmer - 0.7) * 2.0;
-    }
-    
-    // === GAMEPLAY PULSE ===
-    float pulse = sin(uTime * 1.2) * 0.03 + 1.0;
-    litColor *= pulse * (1.0 + uPulseIntensity * 0.3);
-    
-    // Boost contrast slightly
-    litColor = pow(litColor, vec3(0.95));
-    
-    // Keep noir aesthetic but allow some brightness for detail
-    litColor = clamp(litColor, 0.0, 0.5);
-    
-    gl_FragColor = vec4(litColor, 1.0);
+    // 6. Final Composition
+    vec3 finalColor = ambient + diffuse + rim + vec3(specular) + vec3(shimmer);
+
+    // Apply Glow Intensity uniform
+    finalColor *= uGlowIntensity;
+
+    // Gameplay Pulse Effect
+    float pulse = 1.0 + uPulseIntensity * 0.2;
+    finalColor *= pulse;
+
+    gl_FragColor = vec4(finalColor, 1.0);
 }
 `;
 

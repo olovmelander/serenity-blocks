@@ -23,22 +23,22 @@ const COMBO_COLORS = [
 
 const QUALITY_PRESETS = {
     Minimal: {
-        ribbonCount: 50, ribbonSegments: 60, groundSegments: 80, windStreakCount: 0, enableBloom: false,
+        ribbonCount: 40, ribbonSegments: 40, groundSegments: 60, windStreakCount: 0, enableBloom: false,
     },
     Low: {
-        ribbonCount: 70, ribbonSegments: 70, groundSegments: 100, windStreakCount: 8, enableBloom: false,
+        ribbonCount: 60, ribbonSegments: 50, groundSegments: 80, windStreakCount: 8, enableBloom: false,
     },
     Medium: {
-        ribbonCount: 100, ribbonSegments: 80, groundSegments: 120, windStreakCount: 12, enableBloom: true,
+        ribbonCount: 100, ribbonSegments: 60, groundSegments: 100, windStreakCount: 12, enableBloom: true,
     },
     High: {
-        ribbonCount: 130, ribbonSegments: 100, groundSegments: 140, windStreakCount: 16, enableBloom: true,
+        ribbonCount: 130, ribbonSegments: 80, groundSegments: 120, windStreakCount: 16, enableBloom: true,
     },
     Ultra: {
-        ribbonCount: 160, ribbonSegments: 120, groundSegments: 160, windStreakCount: 20, enableBloom: true,
+        ribbonCount: 160, ribbonSegments: 100, groundSegments: 140, windStreakCount: 20, enableBloom: true,
     },
     Extreme: {
-        ribbonCount: 200, ribbonSegments: 150, groundSegments: 180, windStreakCount: 24, enableBloom: true,
+        ribbonCount: 200, ribbonSegments: 120, groundSegments: 160, windStreakCount: 24, enableBloom: true,
     },
 };
 type QualityName = keyof typeof QUALITY_PRESETS;
@@ -74,6 +74,14 @@ export default class TornadoTheme extends BaseTheme {
     private currentColorObject: THREE.Color;
     private targetColorObject: THREE.Color;
 
+    // Scale interpolation state
+    private currentScale: THREE.Vector3;
+    private targetScale: THREE.Vector3;
+
+    // Animation state
+    private clock: THREE.Clock;
+    private time: number;
+
     constructor() {
         super('tornado');
 
@@ -97,6 +105,12 @@ export default class TornadoTheme extends BaseTheme {
         this.baseParams = { ...TORNADO_PARAM_DEFAULTS };
         this.targetParams = { ...TORNADO_PARAM_DEFAULTS };
         this.transitionSpeed = 0.05; // Smooth transition speed
+
+        // Scale interpolation
+        this.currentScale = new THREE.Vector3(1, 1, 1);
+        this.targetScale = new THREE.Vector3(1, 1, 1);
+        this.clock = new THREE.Clock();
+        this.time = 0;
 
         // Camera shake
         this.cameraBasePosition = new THREE.Vector3(0, 6, 18);
@@ -150,7 +164,7 @@ export default class TornadoTheme extends BaseTheme {
         this.renderer.setClearColor(BACKGROUND_COLOR, 1);
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-        const canvas = this.renderer.domElement;
+        const canvas = this.renderer.domElement as unknown as HTMLElement;
         canvas.style.position = 'absolute';
         canvas.style.top = '0';
         canvas.style.left = '0';
@@ -184,8 +198,8 @@ export default class TornadoTheme extends BaseTheme {
             // Update combo effects
             this.updateComboEffects();
 
-            // Update camera shake
-            this.updateCameraShake();
+            // Update camera movement (orbit + breathing + shake)
+            this.updateCameraMovement();
 
             // Update wind streaks animation
             this.windStreaks?.update();
@@ -205,9 +219,80 @@ export default class TornadoTheme extends BaseTheme {
         console.log('[TornadoTheme] WebGPU tornado ribbons ready');
     }
 
+    /**
+     * Update camera position with fluid orbital movement and breathing
+     */
+    private updateCameraMovement() {
+        if (!this.camera) return;
+
+        const dt = this.clock.getDelta();
+        this.time += dt;
+
+        // Base Orbital Movement
+        // Oscillating sway (pendulum) instead of full rotation, so it sweeps left/right
+        // to reveal the tornado from behind the game board.
+        const swaySpeed = 0.15;
+        const orbitAngle = Math.sin(this.time * swaySpeed) * 0.8      // Main sweep (+/- 45 deg)
+            + Math.cos(this.time * swaySpeed * 0.6) * 0.3; // Secondary drift
+
+        // Breathing effect (gentle in/out and up/down)
+        // Pyrestorm uses: radius +/- 80, height +/- 60 (on 1100/380 base)
+        // Tornado base: radius ~18, height 6. Scale down breathing proportionally.
+        const breathSpeed = 0.5;
+        const radiusBreath = Math.sin(this.time * breathSpeed) * 1.5 + Math.cos(this.time * breathSpeed * 0.7) * 0.5;
+        const heightBreath = Math.sin(this.time * breathSpeed * 0.6) * 0.8 + Math.cos(this.time * breathSpeed * 0.4) * 0.4;
+
+        // Calculate target base position (without shake)
+        const baseRadius = 18;
+        const baseHeight = 6;
+
+        const currentRadius = baseRadius + radiusBreath;
+        const currentHeight = baseHeight + heightBreath;
+
+        // Calculate orbital position
+        // Initial pos was (0, 6, 18) -> looking at (0, 3, 0)
+        // We orbit around Y axis.
+        const orbX = Math.sin(orbitAngle) * currentRadius;
+        const orbZ = Math.cos(orbitAngle) * currentRadius;
+
+        // Apply position with Shake
+        // Shake is applied as an offset to this calculated fluid position
+        let shakeX = 0, shakeY = 0, shakeZ = 0;
+
+        if (this.cameraShakeIntensity > 0.001) {
+            shakeX = (Math.random() - 0.5) * this.cameraShakeIntensity;
+            shakeY = (Math.random() - 0.5) * this.cameraShakeIntensity;
+            shakeZ = (Math.random() - 0.5) * this.cameraShakeIntensity * 0.5;
+
+            // Decay shake
+            this.cameraShakeIntensity *= this.cameraShakeDecay;
+        } else {
+            this.cameraShakeIntensity = 0;
+        }
+
+        this.camera.position.set(
+            orbX + shakeX,
+            currentHeight + shakeY,
+            orbZ + shakeZ
+        );
+
+        // Fluid Focus Drift (Pyrestorm style)
+        // Slowly drift the look-at point so the tornado isn't dead center
+        const focusDriftX = Math.sin(this.time * 0.2) * 1.5;
+        const focusDriftY = Math.cos(this.time * 0.15) * 0.5;
+
+        this.camera.lookAt(focusDriftX, 3 + focusDriftY, 0);
+    }
+
+    /**
+     * Update camera shake effect - DEPRECATED (merged into updateCameraMovement)
+     * Keeping empty method if called elsewhere, or remove if unused.
+     * Logic moved to updateCameraMovement to compose correctly.
+     */
     private applyQualityPreset(qualityOverride?: string) {
+        const settings = (window as any).settings;
         const quality = normalizeQuality(qualityOverride
-            ?? (typeof window !== 'undefined' ? window.settings?.effectQuality : null));
+            ?? (typeof window !== 'undefined' ? settings?.effectQuality : null));
         this.qualityName = quality as QualityName;
         this.qualityPreset = QUALITY_PRESETS[this.qualityName] || QUALITY_PRESETS.High;
     }
@@ -337,18 +422,8 @@ export default class TornadoTheme extends BaseTheme {
             bloomRadius: Math.min(this.baseParams.bloomRadius * bloomScale, 1.0),
         };
 
-        // Apply 3D scaling to tornado groups (grows bigger overall)
-        if (this.ribbons) {
-            this.ribbons.group.scale.set(widthScale, heightScale, widthScale);
-        }
-        if (this.ground) {
-            // Ground also grows wider to match
-            this.ground.mesh?.scale.set(widthScale, 1.0, widthScale);
-        }
-        if (this.windStreaks) {
-            // Wind streaks also scale with combo
-            this.windStreaks.group.scale.set(widthScale, heightScale, widthScale);
-        }
+        // Update target scale instead of setting directly
+        this.targetScale.set(widthScale, heightScale, widthScale);
     }
 
     /**
@@ -383,6 +458,21 @@ export default class TornadoTheme extends BaseTheme {
             }
         });
 
+        // Smoothly interpolate scale
+        this.currentScale.lerp(this.targetScale, this.transitionSpeed);
+
+        // Apply interpolated scale to objects
+        if (this.ribbons) {
+            this.ribbons.group.scale.copy(this.currentScale);
+        }
+        if (this.ground?.mesh) {
+            // Ground mainly grows in width/depth, keep height (y) at 1.0 or scale subtly
+            this.ground.mesh.scale.set(this.currentScale.x, 1.0, this.currentScale.z);
+        }
+        if (this.windStreaks) {
+            this.windStreaks.group.scale.copy(this.currentScale);
+        }
+
         // Update all tornado objects with current params
         this.ribbons?.updateParams(this.params);
         this.ground?.updateParams(this.params);
@@ -390,57 +480,21 @@ export default class TornadoTheme extends BaseTheme {
         this.post?.updateParams(this.params);
 
         // Decay combo level over time (return to baseline)
-        // Use exponential decay for smooth, natural falloff
         if (this.comboLevel > 0) {
-            // Exponential decay: reduces by 8% per frame (~2-3 seconds to baseline)
-            this.comboLevel *= 0.92;
+            // Mixed decay: Exponential (smooth falloff) + Linear (avoids infinite tail)
+            // 0.99 decay maintains size longer, -0.005 ensures it eventually hits 0 cleanly
+            this.comboLevel = Math.max(0, this.comboLevel * 0.992 - 0.005);
 
-            // When combo level is very low, snap to zero and reset
-            if (this.comboLevel < 0.1) {
+            // Lower cutoff threshold since we have linear decay helping us finish
+            if (this.comboLevel < 0.01) {
                 this.comboLevel = 0;
                 // Reset target params to base when combo ends
                 this.targetParams = { ...this.baseParams };
-                // Reset all scales to 1.0
-                if (this.ribbons) {
-                    this.ribbons.group.scale.set(1.0, 1.0, 1.0);
-                }
-                if (this.ground?.mesh) {
-                    this.ground.mesh.scale.set(1.0, 1.0, 1.0);
-                }
-                if (this.windStreaks) {
-                    this.windStreaks.group.scale.set(1.0, 1.0, 1.0);
-                }
+                this.targetScale.set(1.0, 1.0, 1.0);
             } else {
                 // Continue updating target params as combo decays
                 this.updateComboTargetParams(this.comboLevel);
             }
-        }
-    }
-
-    /**
-     * Update camera shake effect
-     */
-    private updateCameraShake() {
-        if (!this.camera) return;
-
-        if (this.cameraShakeIntensity > 0.001) {
-            // Apply shake offset
-            const shakeX = (Math.random() - 0.5) * this.cameraShakeIntensity;
-            const shakeY = (Math.random() - 0.5) * this.cameraShakeIntensity;
-            const shakeZ = (Math.random() - 0.5) * this.cameraShakeIntensity * 0.5;
-
-            this.camera.position.set(
-                this.cameraBasePosition.x + shakeX,
-                this.cameraBasePosition.y + shakeY,
-                this.cameraBasePosition.z + shakeZ,
-            );
-
-            // Decay shake intensity
-            this.cameraShakeIntensity *= this.cameraShakeDecay;
-        } else {
-            // Reset to base position when shake is negligible
-            this.camera.position.copy(this.cameraBasePosition);
-            this.cameraShakeIntensity = 0;
         }
     }
 
@@ -573,7 +627,7 @@ export default class TornadoTheme extends BaseTheme {
         }
 
         if (this.renderer) {
-            const canvas = this.renderer.domElement;
+            const canvas = this.renderer.domElement as unknown as HTMLElement;
             if (canvas && canvas.parentNode) {
                 canvas.parentNode.removeChild(canvas);
             }

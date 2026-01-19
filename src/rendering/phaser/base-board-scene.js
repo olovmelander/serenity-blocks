@@ -788,7 +788,7 @@ export function createBaseBoardScene(
                             const worldX = piece.x + localX;
                             const worldY = piece.y + localY + piece.animationOffset;
 
-                            if (worldY < this.hiddenRows || worldY >= this.rows + this.hiddenRows) return;
+                            if ((!this.gameState?.isInfinityMode && worldY < this.hiddenRows) || worldY >= this.rows + this.hiddenRows) return;
 
                             this.drawBlock(worldX, worldY, themedColor, 1.0);
                         });
@@ -808,7 +808,7 @@ export function createBaseBoardScene(
                         const worldX = piece.x + x;
                         const worldY = ghostY + y;
 
-                        if (worldY >= this.hiddenRows) {
+                        if (this.gameState?.isInfinityMode || worldY >= this.hiddenRows) {
                             const minAlpha = 0.1;
                             const maxAlpha = 0.35;
                             const pulse = this._getPulseIntensity(worldX, worldY);
@@ -832,7 +832,7 @@ export function createBaseBoardScene(
                 row.forEach((cell, x) => {
                     if (cell > 0) {
                         const worldY = piece.y + y;
-                        if (worldY >= this.hiddenRows) {
+                        if (this.gameState?.isInfinityMode || worldY >= this.hiddenRows) {
                             this.drawBlock(piece.x + x, worldY, themedColor, 1.0, false, piece.shape, x, y);
                         }
                     }
@@ -901,7 +901,7 @@ export function createBaseBoardScene(
                         const worldX = piece.x + x;
                         const worldY = piece.y + y;
 
-                        if (worldY < this.hiddenRows) return;
+                        if (!this.gameState?.isInfinityMode && worldY < this.hiddenRows) return;
 
                         // Use world coordinates directly - camera handles the viewport
                         const px = Math.round(worldX * this.blockSize);
