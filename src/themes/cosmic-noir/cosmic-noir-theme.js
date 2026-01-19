@@ -440,6 +440,12 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.planetGroup = new THREE.Group();
         this.scene.add(this.planetGroup);
 
+        // Load Planet Texture
+        const textureLoader = new THREE.TextureLoader();
+        const planetTexture = textureLoader.load('./textures/2k_haumea_fictional_black.png');
+        planetTexture.wrapS = THREE.ClampToEdgeWrapping;
+        planetTexture.wrapT = THREE.ClampToEdgeWrapping;
+
         // Planet sphere with shader material
         const geometry = new THREE.SphereGeometry(planetSize, this.qualityPreset.planetDetail, this.qualityPreset.planetDetail);
         const material = new THREE.ShaderMaterial({
@@ -447,6 +453,8 @@ export default class CosmicNoirTheme extends BaseTheme {
                 uTime: { value: 0 },
                 uPulseIntensity: { value: 0 },
                 uGlowIntensity: { value: 1.0 },
+                uMap: { value: planetTexture },
+                uSunDirection: { value: new THREE.Vector3(0.6, 0.4, 0.7).normalize() }, // Cinematic side lighting
             },
             vertexShader: planetVertexShader,
             fragmentShader: planetFragmentShader,
@@ -459,7 +467,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         // Create glow layers around the planet
         this.createPlanetGlowLayers(planetSize);
 
-        console.log('[CosmicNoir] 3D Black Planet created');
+        console.log('[CosmicNoir] 3D Black Planet created with texture');
     }
 
     createPlanetGlowLayers(planetSize) {
@@ -693,6 +701,9 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.planet.material.uniforms.uTime.value = this.time;
             this.planet.material.uniforms.uPulseIntensity.value = this.planetPulseIntensity;
             this.planet.material.uniforms.uGlowIntensity.value = this.planetGlowIntensity;
+
+            // Spin planet around own axis
+            this.planet.rotation.y += delta * 0.05; // Slow, majestic rotation
         }
 
         if (this.starfield && this.starfield.material.uniforms) {

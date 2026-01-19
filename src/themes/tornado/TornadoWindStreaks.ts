@@ -3,15 +3,11 @@ import {
     attribute,
     cos,
     float,
-    length,
-    mix,
     mx_noise_float,
-    positionLocal,
     sin,
     smoothstep,
     time,
     uniform,
-    vec2,
     vec3,
 } from 'three/tsl';
 
@@ -47,7 +43,7 @@ export class TornadoWindStreaks {
         this.uEmissiveColor = uniform(new THREE.Color(config.params.emissiveColor));
         this.uTimeScale = uniform(config.params.timeScale);
 
-        this.createWindStreaks(config);
+        this.createWindStreaksMerged(config);
     }
 
     addToScene(scene: THREE.Scene) {
@@ -67,47 +63,55 @@ export class TornadoWindStreaks {
         }
     }
 
-    private createWindStreaks(config: WindStreakConfig) {
-        for (let i = 0; i < config.count; i += 1) {
-            const ribbon = this.createSingleStreak(config, i);
-            this.ribbons.push(ribbon);
-            this.group.add(ribbon);
-        }
-    }
-
-    private createSingleStreak(config: WindStreakConfig, index: number) {
-        // Create a curved ribbon as a series of points
+    private createWindStreaksMerged(config: WindStreakConfig) {
         const pointsPerStreak = 50;
+        const totalPoints = config.count * pointsPerStreak;
+
         const geometry = new THREE.BufferGeometry();
 
-        const positions = new Float32Array(pointsPerStreak * 3);
-        const streakOffsets = new Float32Array(pointsPerStreak);
-        const streakProgress = new Float32Array(pointsPerStreak);
-        const sizes = new Float32Array(pointsPerStreak);
-        const brightness = new Float32Array(pointsPerStreak);
+        const positions = new Float32Array(totalPoints * 3);
+        const streakOffsets = new Float32Array(totalPoints);
+        const streakProgress = new Float32Array(totalPoints);
+        const sizes = new Float32Array(totalPoints);
+        const brightness = new Float32Array(totalPoints);
+        const streakParams = new Float32Array(totalPoints * 4); // radius, height, speed, spiral
 
-        // Per-streak configuration
-        const angleStart = (index / config.count) * Math.PI * 2;
-        const height = config.heightMin + Math.random() * (config.heightMax - config.heightMin);
-        const radius = config.baseRadius + (Math.random() - 0.5) * config.radiusVariation;
-        const speedMultiplier = 1.5 + Math.random() * 1.5;
-        const spiralTightness = 2.0 + Math.random() * 3.0;
+        let ptr = 0;
 
-        for (let i = 0; i < pointsPerStreak; i += 1) {
-            // Dummy positions - will be set by shader
-            positions[i * 3] = 0;
-            positions[i * 3 + 1] = 0;
-            positions[i * 3 + 2] = 0;
+        for (let i = 0; i < config.count; i++) {
+            // Per-streak configuration
+            const angleStart = (i / config.count) * Math.PI * 2;
+            const height = config.heightMin + Math.random() * (config.heightMax - config.heightMin);
+            const radius = config.baseRadius + (Math.random() - 0.5) * config.radiusVariation;
+            const speedMultiplier = 1.5 + Math.random() * 1.5;
+            const spiralTightness = 2.0 + Math.random() * 3.0;
 
-            const progress = i / (pointsPerStreak - 1);
-            streakOffsets[i] = angleStart;
-            streakProgress[i] = progress;
+            // Generate points for this streak
+            for (let j = 0; j < pointsPerStreak; j++) {
+                // Dummy positions - will be set by shader
+                positions[ptr * 3] = 0;
+                positions[ptr * 3 + 1] = 0;
+                positions[ptr * 3 + 2] = 0;
 
-            // Size taper - larger in middle, smaller at ends
-            const sizeFactor = Math.sin(progress * Math.PI);
-            sizes[i] = config.thickness * sizeFactor * (0.8 + Math.random() * 0.4);
+                const progress = j / (pointsPerStreak - 1);
 
-            brightness[i] = 0.6 + Math.random() * 0.4;
+                streakOffsets[ptr] = angleStart;
+                streakProgress[ptr] = progress;
+
+                // Size taper
+                const sizeFactor = Math.sin(progress * Math.PI);
+                sizes[ptr] = config.thickness * sizeFactor * (0.8 + Math.random() * 0.4);
+
+                brightness[ptr] = 0.6 + Math.random() * 0.4;
+
+                // Pack params
+                streakParams[ptr * 4] = radius;
+                streakParams[ptr * 4 + 1] = height;
+                streakParams[ptr * 4 + 2] = speedMultiplier;
+                streakParams[ptr * 4 + 3] = spiralTightness;
+
+                ptr++;
+            }
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -115,6 +119,7 @@ export class TornadoWindStreaks {
         geometry.setAttribute('aProgress', new THREE.BufferAttribute(streakProgress, 1));
         geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
         geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
+        geometry.setAttribute('aStreakParams', new THREE.BufferAttribute(streakParams, 4));
 
         const material = new THREE.PointsNodeMaterial({
             transparent: true,
@@ -124,16 +129,17 @@ export class TornadoWindStreaks {
             sizeAttenuation: true,
         });
 
-        const aStreakOffset = attribute('aStreakOffset');
-        const aProgress = attribute('aProgress');
-        const aSize = attribute('aSize');
-        const aBrightness = attribute('aBrightness');
+        const aStreakOffset = attribute('aStreakOffset', 'float');
+        const aProgress = attribute('aProgress', 'float');
+        const aSize = attribute('aSize', 'float');
+        const aBrightness = attribute('aBrightness', 'float');
+        const aStreakParams = attribute('aStreakParams', 'vec4'); // vec4(radius, height, speed, spiral)
 
-        // Spiral parameters
-        const streakSpeed = float(speedMultiplier);
-        const streakRadius = float(radius);
-        const streakHeight = float(height);
-        const streakSpiral = float(spiralTightness);
+        // Unpack params from attribute
+        const streakRadius = aStreakParams.x;
+        const streakHeight = aStreakParams.y;
+        const streakSpeed = aStreakParams.z;
+        const streakSpiral = aStreakParams.w;
 
         // Animate the streak spiraling around the tornado
         const animatedAngle = time.mul(this.uTimeScale).mul(float(2.0)).mul(streakSpeed).add(aStreakOffset);
@@ -142,9 +148,9 @@ export class TornadoWindStreaks {
         // Position along spiral path
         const x = cos(spiralAngle).mul(streakRadius);
         const z = sin(spiralAngle).mul(streakRadius);
-        const y = float(streakHeight).sub(aProgress.mul(float(3.0))); // Slight downward curve
+        const y = streakHeight.sub(aProgress.mul(float(3.0))); // Slight downward curve
 
-        // Add some noise for turbulence
+        // Add some noise for turbulence (using baked-in seed from offset + progress)
         const noiseCoord = vec3(
             aProgress.mul(float(3.0)),
             time.mul(this.uTimeScale).mul(float(0.8)),
@@ -158,7 +164,7 @@ export class TornadoWindStreaks {
             z.add(turbulence),
         );
 
-        material.sizeNode = aSize.mul(float(200.0));
+        material.sizeNode = aSize.mul(float(200.0)); // Adjusted scalar for visibility
 
         // Fade at both ends of the streak
         const edgeFade = smoothstep(float(0.0), float(0.1), aProgress)
@@ -178,7 +184,9 @@ export class TornadoWindStreaks {
         points.frustumCulled = false;
         points.renderOrder = 5;
 
-        return points;
+        // Add single points object
+        this.ribbons.push(points);
+        this.group.add(points);
     }
 
     dispose() {
@@ -195,6 +203,6 @@ export class TornadoWindStreaks {
                 }
             }
         });
-        this.meshes = [];
+        this.ribbons = [];
     }
 }

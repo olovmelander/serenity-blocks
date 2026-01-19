@@ -8,10 +8,11 @@ import {
 } from '../constants.js';
 import { spawnPiece, fillBag, softDrop } from '../game.js';
 
-import { expandGridIfNeeded, checkInfinityGameOver } from '../infinity-grid.js';
+import { expandGridIfNeeded, checkInfinityGameOver, calculateBuildHeight } from '../infinity-grid.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { drawNextPieces } from '../../rendering/draw.js';
 import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 /**
  * LocalMultiplayerMode - Local 2-4 player competitive mode
@@ -802,6 +803,36 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 }
                 const prev = this._prevStats[prevKey];
 
+                // Infinity LMS: Update Distance to Ceiling
+                if (this.matchConfig?.isInfinityLMS) {
+                    const ceilingContainerEl = document.getElementById(`p${playerNum}-ceiling-container`);
+                    const ceilingEl = document.getElementById(`p${playerNum}-ceiling`);
+
+                    if (ceilingContainerEl && ceilingEl) {
+                        ceilingContainerEl.style.display = 'flex';
+
+                        // Calculate distance to absolute ceiling
+                        const buildHeight = calculateBuildHeight(playerState);
+                        const distanceToCeiling = Math.max(0, (playerState.maxRows || 100) - buildHeight);
+
+                        ceilingEl.textContent = distanceToCeiling;
+
+                        // Initialize previous tracking for ceiling if needed
+                        if (prev.ceiling === undefined) prev.ceiling = distanceToCeiling;
+
+                        if (distanceToCeiling !== prev.ceiling) {
+                            this._pulseElement(ceilingEl);
+                            prev.ceiling = distanceToCeiling;
+                        }
+                    }
+                } else {
+                    // Hide if not in Infinity LMS mode
+                    const ceilingContainerEl = document.getElementById(`p${playerNum}-ceiling-container`);
+                    if (ceilingContainerEl) {
+                        ceilingContainerEl.style.display = 'none';
+                    }
+                }
+
                 // Update values with pulse animation if changed
                 if (fragsEl) {
                     fragsEl.textContent = roundFrags;
@@ -1454,12 +1485,21 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const blockSizeByHeight = Math.floor(maxHeight / visibleRows);
 
             // Calculate block size from width constraint
-            const availableWidth = windowWidth - 200; // Reserve for padding/gaps
+            // We need to account for significant UI overhead in the layout:
+            // - Minimaps: 65px per player
+            // - Card Padding: ~40px per player (20px left + 20px right)
+            // - Card Borders/Gaps: ~10px per player
+            // - Grid Gaps: Between players
+            // - Global Screen Padding: ~100px total
+
+            const perPlayerFixedOverhead = 65 + 40 + 10; // Minimap + Padding + Border
+            const totalFixedOverhead = (perPlayerFixedOverhead * numPlayers) + 100;
+
             const baseGap = numPlayers === 2 ? 40 : numPlayers === 3 ? 30 : 20;
             const gapWidth = baseGap * (numPlayers - 1);
-            const minimapWidth = 65 * numPlayers; // Reserve space for minimaps (optimized: 65px vs 90px)
-            const boardsWidth = availableWidth - gapWidth - minimapWidth;
-            const boardWidthPerPlayer = boardsWidth / numPlayers;
+
+            const availableWidthForBoards = windowWidth - totalFixedOverhead - gapWidth;
+            const boardWidthPerPlayer = availableWidthForBoards / numPlayers;
             const blockSizeByWidth = Math.floor(boardWidthPerPlayer / COLS);
 
             // Use smaller of the two to ensure fit
@@ -2835,7 +2875,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 this.roundWins.player3 = 0;
                 this.roundWins.player4 = 0;
                 this.teamRoundWins = { 0: 0, 1: 0 };
-                window.location.reload();
+                eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
             }, 300);
         });
     }
