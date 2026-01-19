@@ -8,7 +8,7 @@ import {
 } from '../constants.js';
 import { spawnPiece, fillBag, softDrop } from '../game.js';
 
-import { expandGridIfNeeded, checkInfinityGameOver } from '../infinity-grid.js';
+import { expandGridIfNeeded, checkInfinityGameOver, calculateBuildHeight } from '../infinity-grid.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { drawNextPieces } from '../../rendering/draw.js';
 import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
@@ -802,6 +802,36 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     this._prevStats[prevKey] = { frags: 0, deaths: 0, score: 0, lines: 0, level: 1, garbage: 0 };
                 }
                 const prev = this._prevStats[prevKey];
+
+                // Infinity LMS: Update Distance to Ceiling
+                if (this.matchConfig?.isInfinityLMS) {
+                    const ceilingContainerEl = document.getElementById(`p${playerNum}-ceiling-container`);
+                    const ceilingEl = document.getElementById(`p${playerNum}-ceiling`);
+
+                    if (ceilingContainerEl && ceilingEl) {
+                        ceilingContainerEl.style.display = 'flex';
+
+                        // Calculate distance to absolute ceiling
+                        const buildHeight = calculateBuildHeight(playerState);
+                        const distanceToCeiling = Math.max(0, (playerState.maxRows || 100) - buildHeight);
+
+                        ceilingEl.textContent = distanceToCeiling;
+
+                        // Initialize previous tracking for ceiling if needed
+                        if (prev.ceiling === undefined) prev.ceiling = distanceToCeiling;
+
+                        if (distanceToCeiling !== prev.ceiling) {
+                            this._pulseElement(ceilingEl);
+                            prev.ceiling = distanceToCeiling;
+                        }
+                    }
+                } else {
+                    // Hide if not in Infinity LMS mode
+                    const ceilingContainerEl = document.getElementById(`p${playerNum}-ceiling-container`);
+                    if (ceilingContainerEl) {
+                        ceilingContainerEl.style.display = 'none';
+                    }
+                }
 
                 // Update values with pulse animation if changed
                 if (fragsEl) {
