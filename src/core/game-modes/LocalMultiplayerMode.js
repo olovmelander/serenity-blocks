@@ -2,10 +2,13 @@ import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
 import { MultiplayerGameState } from '../multiplayer.js';
 import { MultiPlayerState, PLAYER_COLORS } from '../multi-player-state.js';
+import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import {
     GAME_MODES, COLS, ROWS, BLOCK_SIZE,
 } from '../constants.js';
 import { spawnPiece, fillBag, softDrop } from '../game.js';
+
+import { expandGridIfNeeded, checkInfinityGameOver } from '../infinity-grid.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { drawNextPieces } from '../../rendering/draw.js';
 import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
@@ -29,6 +32,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.animationFrameId = null;
         this.boardScenes = [];
         this.cleanupHandlers = [];
+        this.playerMinimaps = [];
+        this.minimapCleanupHandlers = [];
         this.boardGap = 80; // Space between player boards
 
         // Separate Phaser game instances for each player
@@ -219,18 +224,30 @@ export class LocalMultiplayerMode extends BaseGameMode {
         if (!gameArea) return;
 
         // Remove all player count classes
-        gameArea.classList.remove('players-2', 'players-3', 'players-4');
+        gameArea.classList.remove('players-2', 'players-3', 'players-4', 'infinity-lms');
 
         // Add appropriate class for current player count
         gameArea.classList.add(`players-${numPlayers}`);
 
-        // Show/hide player cards
+        // Add infinity class if needed
+        if (this.matchConfig?.isInfinityLMS) {
+            gameArea.classList.add('infinity-lms');
+        }
+
+        // Show/hide player cards and apply infinity class
         for (let i = 1; i <= 4; i++) {
             const playerCard = document.getElementById(`player-${i}-card`);
             if (playerCard) {
                 if (i <= numPlayers) {
-                    playerCard.style.display = 'flex';
+                    playerCard.style.display = this.matchConfig?.isInfinityLMS ? 'grid' : 'flex';
                     playerCard.removeAttribute('aria-hidden');
+
+                    // Add infinity class to card
+                    if (this.matchConfig?.isInfinityLMS) {
+                        playerCard.classList.add('infinity-lms');
+                    } else {
+                        playerCard.classList.remove('infinity-lms');
+                    }
 
                     // Add team marker if in team mode
                     if (this.matchConfig?.isTeamMode) {
@@ -266,7 +283,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             }
         }
 
-        console.log(`[LocalMultiplayer] Layout updated for ${numPlayers} players`);
+        console.log(`[LocalMultiplayer] Layout updated for ${numPlayers} players${this.matchConfig?.isInfinityLMS ? ' (Infinity LMS mode)' : ''}`);
     }
 
     /**
@@ -330,6 +347,43 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         console.log(`[LocalMultiplayer] Using ${this.boardScenes.length} board scenes`);
 
+        // Sync scenes early so infinity cameras are configured before the first spawn
+        this._syncBoardScenes();
+
+        // Ensure stale minimaps are removed (e.g., rematch without deactivation)
+        this._destroyMinimaps();
+
+        // Initialize minimaps for Infinity Mode
+        if (this.matchConfig?.isInfinityLMS) {
+            console.log('[LocalMultiplayer] Initializing Infinity Minimaps...');
+            const numPlayers = this.matchConfig?.numPlayers || 2;
+
+            for (let i = 0; i < numPlayers; i++) {
+                const playerNum = i + 1;
+                const playerCard = document.getElementById(`player-${playerNum}-card`);
+
+                if (playerCard) {
+                    const minimap = new InfinityMinimap({
+                        container: playerCard,
+                        id: `infinity-minimap-p${playerNum}`,
+                        width: 55,
+                        height: 420,
+                        maxRows: this.matchConfig?.infinityMaxRows || 100,
+                    });
+
+                    minimap.show();
+                    this.playerMinimaps[i] = minimap;
+
+                    // Setup exploration handlers
+                    this._setupMinimapExploration(minimap, i);
+
+                    console.log(`[LocalMultiplayer] Created minimap for Player ${playerNum}`);
+                } else {
+                    console.warn(`[LocalMultiplayer] Player card not found for Player ${playerNum}`);
+                }
+            }
+        }
+
         // Create shared RNG seed for fairness
         const sharedSeed = Math.floor(Math.random() * 1000000) || 1;
         this.multiplayerState.sharedPieceSeed = sharedSeed;
@@ -352,7 +406,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         // Update stats display
-        this._updateMultiplayerStats();
+        this._updateMultiplayerStats(0);
 
         // Show countdown
         await this._showCountdown();
@@ -476,6 +530,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.multiplayerState = null;
         this.boardScenes = [];
 
+        // Clean up minimaps and minimap event listeners
+        this._destroyMinimaps();
+
         // Clean up event listeners
         this._cleanupEventListeners(this.cleanupHandlers);
     }
@@ -582,6 +639,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     continue;
                 }
 
+                // Skip players paused for minimap exploration
+                if (this.multiplayerState.playerPaused?.[playerIndex]) {
+                    continue;
+                }
+
                 // Debug log for first few frames
                 if (frameCount <= 5) {
                     console.log(`[LocalMultiplayer] P${playerNum} state:`, {
@@ -594,6 +656,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 }
 
                 if (!playerState.isProcessingPhysics && playerState.currentPiece) {
+                    // Check if grid expansion is needed
+                    if (this.matchConfig?.isInfinityLMS && frameCount % 30 === 0) {
+                        this._maybeExpandPlayerGrid(playerState, this.boardScenes[playerIndex]);
+                    }
                     // Log before and after adding delta (first few frames)
                     if (frameCount <= 3) {
                         console.log(`[LocalMultiplayer] P${playerNum} BEFORE: dropCounter=${playerState.dropCounter}, delta=${delta}`);
@@ -619,10 +685,18 @@ export class LocalMultiplayerMode extends BaseGameMode {
                         );
                     }
                 }
+
+                if (this.matchConfig?.isInfinityLMS && !playerState.isGameOver) {
+                    if (checkInfinityGameOver(playerState)) {
+                        playerState.isGameOver = true;
+                        void this._handleGameOver(playerIndex);
+                        continue;
+                    }
+                }
             }
 
             // Update stats display
-            this._updateMultiplayerStats();
+            this._updateMultiplayerStats(frameCount);
 
             // Sync board scenes
             this._syncBoardScenes();
@@ -676,7 +750,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * Update multiplayer stats display
      * @private
      */
-    _updateMultiplayerStats() {
+    /**
+     * Update multiplayer stats display
+     * @private
+     * @param {number} frameCount - Current frame count for throttling
+     */
+    _updateMultiplayerStats(frameCount = 0) {
         if (!this.multiplayerState) {
             console.warn('[LocalMultiplayer] Cannot update stats: multiplayerState is null');
             return;
@@ -684,109 +763,132 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         const { numPlayers } = this.multiplayerState;
 
-        // Initialize previous values tracking if not exists
-        if (!this._prevStats) {
-            this._prevStats = {};
-        }
+        // Skip DOM updates most frames (run at ~6fps for text stats)
+        // But ALWAYS update minimaps for smooth animation
+        const shouldUpdateText = frameCount % 10 === 0;
 
-        for (let i = 0; i < numPlayers; i++) {
-            const playerNum = i + 1;
-            const playerState = this.multiplayerState.players[i];
-            if (!playerState) continue;
-
-            const matchKey = `player${playerNum}`;
-            const matchTotals = this.matchStats[matchKey] || { score: 0, lines: 0 };
-
-            const totalScore = (matchTotals.score || 0) + (playerState.score || 0);
-            const totalLines = (matchTotals.lines || 0) + (playerState.totalLinesCleared || 0);
-            const totalLevel = playerState.level ?? 1;
-            const totalGarbage = this.multiplayerState.garbageQueues?.[i]?.getTotalLines?.() ?? 0;
-            const roundFrags = this.roundWins[matchKey] ?? 0;
-            const totalDeaths = this.multiplayerState.deaths?.[i] ?? 0;
-
-            const fragsEl = document.getElementById(`p${playerNum}-frags`);
-            const deathsEl = document.getElementById(`p${playerNum}-deaths`);
-            const scoreEl = document.getElementById(`p${playerNum}-score`);
-            const linesEl = document.getElementById(`p${playerNum}-lines`);
-            const levelEl = document.getElementById(`p${playerNum}-level`);
-            const garbageEl = document.getElementById(`p${playerNum}-garbage`);
-
-            // Track previous values for pulse animation
-            const prevKey = `p${playerNum}`;
-            if (!this._prevStats[prevKey]) {
-                this._prevStats[prevKey] = { frags: 0, deaths: 0, score: 0, lines: 0, level: 1, garbage: 0 };
+        if (shouldUpdateText) {
+            // Initialize previous values tracking if not exists
+            if (!this._prevStats) {
+                this._prevStats = {};
             }
-            const prev = this._prevStats[prevKey];
 
-            // Update values with pulse animation if changed
-            if (fragsEl) {
-                fragsEl.textContent = roundFrags;
-                if (roundFrags !== prev.frags) {
-                    this._pulseElement(fragsEl);
-                    prev.frags = roundFrags;
+            for (let i = 0; i < numPlayers; i++) {
+                const playerNum = i + 1;
+                const playerState = this.multiplayerState.players[i];
+                if (!playerState) continue;
+
+                const matchKey = `player${playerNum}`;
+                const matchTotals = this.matchStats[matchKey] || { score: 0, lines: 0 };
+
+                const totalScore = (matchTotals.score || 0) + (playerState.score || 0);
+                const totalLines = (matchTotals.lines || 0) + (playerState.totalLinesCleared || 0);
+                const totalLevel = playerState.level ?? 1;
+                const totalGarbage = this.multiplayerState.garbageQueues?.[i]?.getTotalLines?.() ?? 0;
+                const roundFrags = this.roundWins[matchKey] ?? 0;
+                const totalDeaths = this.multiplayerState.deaths?.[i] ?? 0;
+
+                const fragsEl = document.getElementById(`p${playerNum}-frags`);
+                const deathsEl = document.getElementById(`p${playerNum}-deaths`);
+                const scoreEl = document.getElementById(`p${playerNum}-score`);
+                const linesEl = document.getElementById(`p${playerNum}-lines`);
+                const levelEl = document.getElementById(`p${playerNum}-level`);
+                const garbageEl = document.getElementById(`p${playerNum}-garbage`);
+
+                // Track previous values for pulse animation
+                const prevKey = `p${playerNum}`;
+                if (!this._prevStats[prevKey]) {
+                    this._prevStats[prevKey] = { frags: 0, deaths: 0, score: 0, lines: 0, level: 1, garbage: 0 };
                 }
-            }
-            if (deathsEl) {
-                deathsEl.textContent = totalDeaths;
-                if (totalDeaths !== prev.deaths) {
-                    this._pulseElement(deathsEl);
-                    prev.deaths = totalDeaths;
-                }
-            }
-            if (scoreEl) {
-                scoreEl.textContent = totalScore;
-                if (totalScore !== prev.score) {
-                    this._pulseElement(scoreEl);
-                    prev.score = totalScore;
-                }
-            }
-            if (linesEl) {
-                linesEl.textContent = totalLines;
-                if (totalLines !== prev.lines) {
-                    this._pulseElement(linesEl);
-                    prev.lines = totalLines;
-                }
-            }
-            if (levelEl) {
-                levelEl.textContent = totalLevel;
-                if (totalLevel !== prev.level) {
-                    this._pulseElement(levelEl);
-                    prev.level = totalLevel;
-                }
-            }
-            if (garbageEl) {
-                garbageEl.textContent = totalGarbage;
-                if (totalGarbage !== prev.garbage) {
-                    this._pulseElement(garbageEl);
-                    prev.garbage = totalGarbage;
-                }
-            }
+                const prev = this._prevStats[prevKey];
 
-            // Update garbage indicator bar
-            this._updateGarbageIndicator(playerNum, totalGarbage);
-        }
-
-        // Update board-level frag displays for all players (used in 3-4 player mode)
-        for (let i = 1; i <= numPlayers; i++) {
-            const boardFragDisplay = document.getElementById(`p${i}-board-frags`);
-            if (boardFragDisplay) {
-                const playerKey = `player${i}`;
-                let displayVal = `${this.roundWins[playerKey] || 0} F`;
-
-                // If team mode, show team total frags on the board
-                if (this.matchConfig?.isTeamMode) {
-                    const teamId = this.matchConfig.playerTeams[i - 1];
-                    let teamTotalFrags = 0;
-                    for (let j = 0; j < numPlayers; j++) {
-                        if (this.matchConfig.playerTeams[j] === teamId) {
-                            teamTotalFrags += this.multiplayerState.frags[j];
-                        }
+                // Update values with pulse animation if changed
+                if (fragsEl) {
+                    fragsEl.textContent = roundFrags;
+                    if (roundFrags !== prev.frags) {
+                        this._pulseElement(fragsEl);
+                        prev.frags = roundFrags;
                     }
-                    displayVal = `${teamTotalFrags} TF`;
+                }
+                if (deathsEl) {
+                    deathsEl.textContent = totalDeaths;
+                    if (totalDeaths !== prev.deaths) {
+                        this._pulseElement(deathsEl);
+                        prev.deaths = totalDeaths;
+                    }
+                }
+                if (scoreEl) {
+                    scoreEl.textContent = totalScore;
+                    if (totalScore !== prev.score) {
+                        this._pulseElement(scoreEl);
+                        prev.score = totalScore;
+                    }
+                }
+                if (linesEl) {
+                    linesEl.textContent = totalLines;
+                    if (totalLines !== prev.lines) {
+                        this._pulseElement(linesEl);
+                        prev.lines = totalLines;
+                    }
+                }
+                if (levelEl) {
+                    levelEl.textContent = totalLevel;
+                    if (totalLevel !== prev.level) {
+                        this._pulseElement(levelEl);
+                        prev.level = totalLevel;
+                    }
+                }
+                if (garbageEl) {
+                    garbageEl.textContent = totalGarbage;
+                    if (totalGarbage !== prev.garbage) {
+                        this._pulseElement(garbageEl);
+                        prev.garbage = totalGarbage;
+                    }
                 }
 
-                boardFragDisplay.textContent = displayVal;
+                // Update garbage indicator bar
+                this._updateGarbageIndicator(playerNum, totalGarbage);
             }
+
+            // Update board-level frag displays for all players (used in 3-4 player mode)
+            for (let i = 1; i <= numPlayers; i++) {
+                const boardFragDisplay = document.getElementById(`p${i}-board-frags`);
+                if (boardFragDisplay) {
+                    const playerKey = `player${i}`;
+                    let displayVal = `${this.roundWins[playerKey] || 0} F`;
+
+                    // If team mode, show team total frags on the board
+                    if (this.matchConfig?.isTeamMode) {
+                        const teamId = this.matchConfig.playerTeams[i - 1];
+                        let teamTotalFrags = 0;
+                        for (let j = 0; j < numPlayers; j++) {
+                            if (this.matchConfig.playerTeams[j] === teamId) {
+                                teamTotalFrags += this.multiplayerState.frags[j];
+                            }
+                        }
+                        displayVal = `${teamTotalFrags} TF`;
+                    }
+
+                    boardFragDisplay.textContent = displayVal;
+                }
+            }
+        }
+
+        // Update minimaps for infinity mode
+        if (this.matchConfig?.isInfinityLMS && this.playerMinimaps.length > 0) {
+            this.playerMinimaps.forEach((minimap, index) => {
+                if (!minimap) return;
+
+                const playerState = this.multiplayerState.players[index];
+                const scene = this.boardScenes[index];
+
+                if (playerState && scene && scene.cameraSettings) {
+                    const currentTopRow = scene.cameraSettings.currentTopRow || 0;
+                    const visibleRows = scene.cameraSettings.visibleRows || 20;
+
+                    minimap.update(playerState, currentTopRow, visibleRows);
+                }
+            });
         }
     }
 
@@ -853,7 +955,244 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     hasSyncMethod: scene ? !!scene.syncFromGameState : false,
                 });
             }
+
+            // Update camera for infinity mode
+            if (playerState.isInfinityMode && scene && scene.cameraSettings) {
+                this._updatePlayerCamera(scene, playerState, index);
+            }
         });
+    }
+
+    _updatePlayerCamera(scene, playerState, playerIndex) {
+        // Skip if manually controlled (exploration mode)
+        if (scene.cameraSettings.manualControl) {
+            return;
+        }
+
+        // Skip if player is paused for exploration
+        if (this.multiplayerState.playerPaused && this.multiplayerState.playerPaused[playerIndex]) {
+            return;
+        }
+
+        const visibleRows = scene.cameraSettings.visibleRows || 20;
+        const board = playerState.boardGrid || playerState.board;
+        if (!board) {
+            return;
+        }
+        const currentPiece = playerState.currentPiece;
+
+        if (currentPiece) {
+            // Follow piece if it goes below 50% of viewport
+            const pieceBottomRow = currentPiece.y + (currentPiece.shape ? currentPiece.shape.length : 0);
+            const currentCameraRow = scene.cameraSettings.currentTopRow;
+            const followThreshold = currentCameraRow + Math.floor(visibleRows * 0.5);
+
+            if (pieceBottomRow > followThreshold) {
+                // Follow piece downward
+                const targetCameraRow = pieceBottomRow - Math.floor(visibleRows * 0.5);
+                const maxCameraRow = Math.max(0, board.length - visibleRows);
+                const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
+
+                scene.updateCameraPosition(clampedCameraRow);
+                return;
+            }
+        }
+
+        // Follow building upward when blocks reach top 30% of viewport
+        const highestBlockRow = this._findHighestBlockRow(board);
+        if (highestBlockRow < board.length) {
+            const currentCameraRow = scene.cameraSettings.currentTopRow;
+            const scrollThreshold = currentCameraRow + Math.floor(visibleRows * 0.3);
+
+            if (highestBlockRow < scrollThreshold) {
+                const targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.3);
+                const maxCameraRow = Math.max(0, board.length - visibleRows);
+                const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
+
+                scene.updateCameraPosition(clampedCameraRow);
+            }
+        }
+    }
+
+    _findHighestBlockRow(board) {
+        for (let row = 0; row < board.length; row++) {
+            for (let col = 0; col < board[row].length; col++) {
+                if (board[row][col] !== null) {
+                    return row;
+                }
+            }
+        }
+        return board.length;
+    }
+
+    _maybeExpandPlayerGrid(playerState, scene) {
+        if (!playerState?.isInfinityMode || !scene?.cameraSettings) {
+            return;
+        }
+
+        if (scene.cameraSettings.manualControl) {
+            return;
+        }
+
+        const board = playerState.boardGrid || playerState.board;
+        if (!board || board.length >= playerState.maxRows) {
+            return;
+        }
+
+        const highestBlockRow = this._findHighestBlockRow(board);
+        const EXPANSION_THRESHOLD = 30;
+        if (highestBlockRow > EXPANSION_THRESHOLD) {
+            return;
+        }
+
+        const currentSize = board.length;
+        const requiredRows = Math.min(playerState.maxRows, currentSize + 10);
+        const oldCameraRow = scene.cameraSettings.currentTopRow || 0;
+        const oldTargetRow = scene.cameraSettings.targetTopRow ?? oldCameraRow;
+
+        if (!expandGridIfNeeded(playerState, requiredRows)) {
+            return;
+        }
+
+        const expandedBoard = playerState.boardGrid || playerState.board;
+        const rowsAdded = expandedBoard.length - currentSize;
+        if (rowsAdded <= 0) {
+            return;
+        }
+
+        scene.updateCameraBounds();
+
+        const newCameraRow = oldCameraRow + rowsAdded;
+        const newTargetRow = oldTargetRow + rowsAdded;
+
+        scene.cameraSettings.currentTopRow = newCameraRow;
+        scene.cameraSettings.activeTopRow = newCameraRow;
+        scene.cameraSettings.targetTopRow = newTargetRow;
+
+        const visibleRows = scene.cameraSettings.visibleRows || 20;
+        scene.cameraSettings.centerRow = newCameraRow + visibleRows / 2;
+        const blockSize = scene.boardConfig?.blockSize || BLOCK_SIZE;
+        const centerY = newCameraRow * blockSize + (visibleRows * blockSize) / 2;
+        const { width } = scene.getBoardDimensions();
+        scene.cameras?.main?.centerOn(width / 2, centerY);
+
+        playerState.cameraRow = newCameraRow;
+        playerState.cameraCenterRow = newCameraRow + visibleRows / 2;
+
+        if (playerState.infinityStats) {
+            playerState.infinityStats.rowsReached = Math.max(
+                playerState.infinityStats.rowsReached || 0,
+                expandedBoard.length,
+            );
+        }
+    }
+
+    _destroyMinimaps() {
+        this._cleanupEventListeners(this.minimapCleanupHandlers);
+        this.minimapCleanupHandlers = [];
+
+        if (this.playerMinimaps.length > 0) {
+            this.playerMinimaps.forEach((minimap) => {
+                if (minimap) {
+                    minimap.destroy();
+                }
+            });
+            this.playerMinimaps = [];
+        }
+    }
+
+    _setupMinimapExploration(minimap, playerIndex) {
+        const playerNum = playerIndex + 1;
+
+        // Exploration start
+        const startHandler = () => {
+            console.log(`[LocalMP] Player ${playerNum} exploration started`);
+
+            // Allow this player to pause for exploration
+            // Initialize playerPaused array if not exists
+            if (!this.multiplayerState.playerPaused) {
+                this.multiplayerState.playerPaused = new Array(this.multiplayerState.numPlayers).fill(false);
+            }
+            this.multiplayerState.playerPaused[playerIndex] = true;
+
+            if (this.boardScenes[playerIndex]) {
+                this.boardScenes[playerIndex].enableManualCameraControl();
+            }
+
+            minimap.onPause();
+        };
+
+        // Exploration end
+        const endHandler = () => {
+            console.log(`[LocalMP] Player ${playerNum} exploration ended`);
+
+            if (this.multiplayerState.playerPaused) {
+                this.multiplayerState.playerPaused[playerIndex] = false;
+            }
+
+            if (this.boardScenes[playerIndex]) {
+                const scene = this.boardScenes[playerIndex];
+                scene.disableManualCameraControl();
+
+                // Snap back to gameplay position (show active piece)
+                const playerState = this.multiplayerState.players[playerIndex];
+                const cameraRow = this._calculateGameplayCameraPosition(playerState);
+                scene.updateCameraPosition(cameraRow);
+            }
+
+            minimap.onUnpause();
+        };
+
+        // Camera jump during exploration
+        const jumpHandler = (event) => {
+            if (this.boardScenes[playerIndex]) {
+                const targetRow = event.detail.targetRow;
+                const scene = this.boardScenes[playerIndex];
+                const visibleRows = scene.cameraSettings?.visibleRows || 20;
+
+                // Calculate top row (center target in viewport)
+                const targetTopRow = targetRow - Math.floor(visibleRows / 2);
+                const maxCameraRow = Math.max(0, this.multiplayerState.players[playerIndex].board.length - visibleRows);
+                const clampedRow = Math.max(0, Math.min(maxCameraRow, targetTopRow));
+
+                scene.updateCameraPosition(clampedRow, true); // Immediate update
+            }
+        };
+
+        // Add event listeners
+        minimap.container.addEventListener('minimap-exploration-start', startHandler);
+        minimap.container.addEventListener('minimap-exploration-end', endHandler);
+        minimap.container.addEventListener('minimap-jump', jumpHandler);
+
+        // Store for cleanup
+        this.minimapCleanupHandlers.push(() => {
+            minimap.container.removeEventListener('minimap-exploration-start', startHandler);
+            minimap.container.removeEventListener('minimap-exploration-end', endHandler);
+            minimap.container.removeEventListener('minimap-jump', jumpHandler);
+        });
+    }
+
+    _calculateGameplayCameraPosition(playerState) {
+        const visibleRows = 20;
+        const board = playerState.boardGrid || playerState.board;
+        const totalRows = board ? board.length : visibleRows;
+        const maxCameraRow = Math.max(0, totalRows - visibleRows);
+
+        // Center on active piece
+        if (playerState.currentPiece) {
+            const pieceBottomRow = playerState.currentPiece.y + (playerState.currentPiece.shape?.length || 0);
+            const targetRow = pieceBottomRow - Math.floor(visibleRows * 0.5);
+            return Math.max(0, Math.min(maxCameraRow, targetRow));
+        }
+
+        // Fallback: show highest blocks
+        const highestRow = board ? this._findHighestBlockRow(board) : totalRows;
+        if (highestRow < totalRows) {
+            const targetRow = highestRow - Math.floor(visibleRows * 0.3);
+            return Math.max(0, Math.min(maxCameraRow, targetRow));
+        }
+
+        return maxCameraRow;
     }
 
     /**
@@ -876,6 +1215,73 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Show death animation for the eliminated player
         this._showPlayerDeathAnimation(playerIndex);
 
+        // === INFINITY LMS LOGIC ===
+        if (this.matchConfig?.isInfinityLMS) {
+            console.log('[LocalMultiplayer] Checking Infinity LMS win conditions...');
+
+            // Team Mode Check
+            if (this.matchConfig?.isTeamMode) {
+                const teamOutcome = this._getTeamRoundOutcome();
+                // We only care if a team has WON (other teams eliminated), not draws yet unless everyone died
+                if (teamOutcome && teamOutcome.winnerTeamId !== null) {
+                    this.multiplayerState.isPaused = true;
+
+                    const winningPlayers = teamOutcome.teamStats.get(teamOutcome.winnerTeamId)?.alivePlayers || [];
+                    console.log(`[LocalMultiplayer] Infinity Team Victory! Team ${teamOutcome.winnerTeamId} wins.`);
+
+                    // Show victory for all survivors
+                    winningPlayers.forEach((winnerIndex) => {
+                        this._showVictoryAnimation(winnerIndex);
+                    });
+
+                    // Direct to match end
+                    await new Promise((resolve) => setTimeout(resolve, 1000)); // Short pause for effect
+                    await this._showMatchEnd({ type: 'team', teamId: teamOutcome.winnerTeamId });
+                    return;
+                }
+
+                // If everyone died (draw), handle it
+                if (teamOutcome && teamOutcome.isDraw) {
+                    console.log('[LocalMultiplayer] Infinity Draw (all teams eliminated)');
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
+                    // Use specific draw message or just end match with no winner?
+                    // For now, let's just end it as a draw
+                    await this._showMatchEnd('draw');
+                    return;
+                }
+
+                // If match continues...
+                return;
+            }
+
+            // FFA Check (2-4 players)
+            const alivePlayers = this.multiplayerState.players.filter((p) => p.isAlive);
+            if (alivePlayers.length <= 1) {
+                this.multiplayerState.isPaused = true;
+
+                let winnerKey = null;
+                if (alivePlayers.length === 1) {
+                    // Find the actual index of the survivor
+                    const winnerIndex = this.multiplayerState.players.findIndex(p => p.isAlive);
+                    winnerKey = `player${winnerIndex + 1}`;
+                    console.log(`[LocalMultiplayer] Infinity FFA Victory! Player ${winnerIndex + 1} wins.`);
+                    this._showVictoryAnimation(winnerIndex);
+                } else {
+                    console.log('[LocalMultiplayer] Infinity FFA Draw (all players eliminated)');
+                    // Handle draw case
+                    winnerKey = 'draw';
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+                await this._showMatchEnd(winnerKey);
+                return;
+            }
+
+            // Game continues
+            return;
+        }
+
+        // === STANDARD MODE LOGIC ===
         if (this.matchConfig?.isTeamMode) {
             const teamOutcome = this._getTeamRoundOutcome();
             if (!teamOutcome) {
@@ -1037,7 +1443,42 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const windowHeight = window.innerHeight;
         const windowWidth = window.innerWidth;
         const numPlayers = this.matchConfig?.numPlayers || 2;
+        const isInfinity = this.matchConfig?.isInfinityLMS;
 
+        if (isInfinity) {
+            // Infinity mode: prioritize vertical space for 20 visible rows
+            const maxHeight = windowHeight * 0.80; // Use 80% of viewport height
+            const visibleRows = 20; // Standard infinity viewport
+
+            // Calculate block size from height constraint
+            const blockSizeByHeight = Math.floor(maxHeight / visibleRows);
+
+            // Calculate block size from width constraint
+            const availableWidth = windowWidth - 200; // Reserve for padding/gaps
+            const baseGap = numPlayers === 2 ? 40 : numPlayers === 3 ? 30 : 20;
+            const gapWidth = baseGap * (numPlayers - 1);
+            const minimapWidth = 65 * numPlayers; // Reserve space for minimaps (optimized: 65px vs 90px)
+            const boardsWidth = availableWidth - gapWidth - minimapWidth;
+            const boardWidthPerPlayer = boardsWidth / numPlayers;
+            const blockSizeByWidth = Math.floor(boardWidthPerPlayer / COLS);
+
+            // Use smaller of the two to ensure fit
+            const blockSize = Math.min(blockSizeByHeight, blockSizeByWidth);
+
+            // Clamp to playable range (smaller than normal multiplayer)
+            const clampedSize = Math.max(12, Math.min(32, blockSize));
+
+            console.log(`[LocalMultiplayer] Infinity Mode Sizing:
+                Window: ${windowWidth}x${windowHeight}
+                Block size by height (${visibleRows} rows): ${blockSizeByHeight}px
+                Block size by width (${numPlayers} players): ${blockSizeByWidth}px
+                Final size: ${clampedSize}px
+            `);
+
+            return clampedSize;
+        }
+
+        // Normal multiplayer mode
         // Height constraint
         // Fixed elements: top/bottom screen padding (40px each), player label (~30px),
         // stats section (~50px), card padding (~30px), bottom gap (~30px)
@@ -1740,6 +2181,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         const config = this.matchConfig;
+        if (config.isInfinityLMS) {
+            const maxRows = config.infinityMaxRows || 100;
+            return config.isTeamMode
+                ? `Last team standing wins (${maxRows} rows)`
+                : `Last player standing wins (${maxRows} rows)`;
+        }
         switch (config.endCondition) {
             case 'frags':
                 return `First to ${config.endConditionValue} frags wins`;
@@ -2032,7 +2479,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
      */
     async _showMatchEnd(winner) {
         let winnerName = 'Player 1';
-        if (winner && typeof winner === 'object' && winner.type === 'team') {
+        if (winner === 'draw') {
+            winnerName = 'Draw';
+        } else if (winner && typeof winner === 'object' && winner.type === 'team') {
             const resolvedTeamId = winner.teamId === 1 ? 1 : 0;
             winnerName = this._getTeamLabel(resolvedTeamId);
         } else if (typeof winner === 'string') {

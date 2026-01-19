@@ -90,28 +90,37 @@ export function columnsToMask(columns) {
 }
 
 function normalizeMaskRow(row, manualColumns) {
+    const fallbackColumns = manualColumns.length ? manualColumns : [Math.floor(COLS / 2)];
+    const fallbackMask = columnsToMask(fallbackColumns);
+    const safeFallback = fallbackMask.every((flag) => flag)
+        ? columnsToMask([Math.floor(COLS / 2)])
+        : fallbackMask;
+
     if (!row) {
-        return columnsToMask(manualColumns.length ? manualColumns : [Math.floor(COLS / 2)]);
+        return safeFallback;
     }
 
     if (Array.isArray(row) && row.length === COLS && typeof row[0] === 'boolean') {
-        return row.slice();
+        const normalized = row.slice();
+        const hasHole = normalized.some((flag) => flag);
+        const allHoles = normalized.every((flag) => flag);
+        if (!hasHole || allHoles) {
+            return safeFallback;
+        }
+        return normalized;
     }
 
     if (Array.isArray(row)) {
         const mask = columnsToMask(row);
-        if (!mask.some((flag) => flag)) {
-            const fallback = manualColumns.length ? manualColumns : [Math.floor(COLS / 2)];
-            fallback.forEach((col) => {
-                if (col >= 0 && col < COLS) {
-                    mask[col] = true;
-                }
-            });
+        const hasHole = mask.some((flag) => flag);
+        const allHoles = mask.every((flag) => flag);
+        if (!hasHole || allHoles) {
+            return safeFallback.slice();
         }
         return mask;
     }
 
-    return columnsToMask(manualColumns.length ? manualColumns : [Math.floor(COLS / 2)]);
+    return safeFallback;
 }
 
 function determineAttackType(depth, complexity, cleanBonus, rules = {}) {
@@ -439,12 +448,17 @@ export function calculateGarbage(summary, rules = {}) {
 }
 
 function getHighestOccupiedRow(board) {
+    if (!board) {
+        return ROWS + HIDDEN_ROWS;
+    }
+
     for (let y = 0; y < board.length; y++) {
         if (board[y].some((cell) => cell !== null)) {
             return y;
         }
     }
-    return ROWS + HIDDEN_ROWS;
+
+    return board.length;
 }
 
 /**
@@ -458,6 +472,16 @@ function getHighestOccupiedRow(board) {
 function settleFloatingBlocksAfterGarbage(lockedPieces) {
     if (!Array.isArray(lockedPieces) || lockedPieces.length === 0) {
         return 0;
+    }
+
+    const hasSolidCells = (piece) => piece?.shape?.some((row) => (
+        Array.isArray(row) && row.some((cell) => cell > 0)
+    ));
+
+    for (let i = lockedPieces.length - 1; i >= 0; i--) {
+        if (!hasSolidCells(lockedPieces[i])) {
+            lockedPieces.splice(i, 1);
+        }
     }
 
     let totalSteps = 0;
@@ -550,11 +574,12 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
     console.log(`[insertGarbageEntries] Inserting ${lineEntries.length} garbage row(s)`);
 
     const board = generateBoard(lockedPieces, { boardGrid });
+    const totalRows = board.length;
     const highestOccupiedRow = getHighestOccupiedRow(board);
     const newHighestRow = highestOccupiedRow - lineEntries.length;
 
     console.log(
-        `[insertGarbageEntries] Highest row: ${highestOccupiedRow}, New highest: ${newHighestRow}, Hidden rows: ${HIDDEN_ROWS}`,
+        `[insertGarbageEntries] Highest row: ${highestOccupiedRow}, New highest: ${newHighestRow}, Hidden rows: ${HIDDEN_ROWS}, Total rows: ${totalRows}`,
     );
 
     if (newHighestRow < HIDDEN_ROWS) {
@@ -573,12 +598,20 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
         piece.y -= lineEntries.length;
     });
 
-    const baseY = ROWS + HIDDEN_ROWS - lineEntries.length;
+    const baseY = totalRows - lineEntries.length;
     const garbagePieces = [];
 
     lineEntries.forEach((entry, index) => {
         const y = baseY + index;
-        const holeColumns = bitsToColumns(entry.holeMask);
+        let holeColumns = bitsToColumns(entry.holeMask);
+        if (holeColumns.length === COLS) {
+            const fallbackColumn = Math.floor(COLS / 2);
+            console.warn(
+                '[insertGarbageEntries] All-hole garbage row detected; applying fallback hole column',
+                fallbackColumn,
+            );
+            holeColumns = [fallbackColumn];
+        }
         const holeSet = new Set(holeColumns);
         const row = [];
 

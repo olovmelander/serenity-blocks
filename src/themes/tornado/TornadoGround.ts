@@ -66,7 +66,7 @@ export class TornadoGround {
             transparent: true,
             depthWrite: false,
             blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
+            side: THREE.FrontSide, // Performance: Cull back faces (not visible)
         });
 
         const radialCoord = vec2(positionLocal.x, positionLocal.y);
@@ -96,7 +96,7 @@ export class TornadoGround {
         const mesh = new THREE.Mesh(geometry, material);
         mesh.rotation.x = -Math.PI / 2;
         mesh.position.y = -3.9;
-        mesh.frustumCulled = false;
+        mesh.frustumCulled = true; // Performance: Enable automatic culling when off-screen
 
         return mesh;
     }

@@ -1,6 +1,6 @@
 /**
  * @fileoverview Infinity Mode Minimap Component
- * Displays an overview of the entire 1000-row build with viewport indicator
+ * Displays an overview of the Infinity build with viewport indicator
  * Allows click-to-jump navigation and shows height milestones
  */
 
@@ -10,10 +10,10 @@ import { calculateTopRow, calculateBuildHeight } from '../../core/infinity-grid.
  * InfinityMinimap - Visual overview of entire build
  *
  * Features:
- * - Shows entire grid (up to 1000 rows)
+ * - Shows entire grid (up to configured max rows)
  * - Current viewport indicator
  * - Click-to-jump navigation
- * - Height milestone markers (100, 250, 500, 750, 1000)
+ * - Height milestone markers (scaled to max rows)
  * - Auto-scrolls during gameplay
  */
 export class InfinityMinimap {
@@ -23,12 +23,15 @@ export class InfinityMinimap {
      * @param {HTMLElement} options.container - Container element for minimap
      * @param {number} options.width - Minimap width in pixels (default: 60)
      * @param {number} options.height - Minimap height in pixels (default: 400)
+     * @param {number} options.maxRows - Max rows to render (default: 1000)
      */
     constructor(options = {}) {
         this.options = {
             width: options.width || 180,
             height: options.height || 420,
             container: options.container || null,
+            id: options.id || null,
+            maxRows: options.maxRows || 1000,
         };
 
         // Canvas for rendering
@@ -55,8 +58,8 @@ export class InfinityMinimap {
         this.mouseX = 50; // Center by default (percentage)
         this.mouseY = 50;
 
-        // Height milestones
-        this.milestones = [100, 250, 500, 750, 1000];
+        // Height milestones (computed from maxRows)
+        this.milestones = [];
 
         // PERFORMANCE: Dirty flag system to prevent unnecessary redraws
         // Only render when something actually changed
@@ -77,6 +80,8 @@ export class InfinityMinimap {
         this.handleMouseUp = this._onMouseUp.bind(this);
         this.handleMouseEnter = this._onMouseEnter.bind(this);
         this.handleMouseLeave = this._onMouseLeave.bind(this);
+        this.handleContainerMouseMove = this._onContainerMouseMove.bind(this);
+        this.handleContainerMouseLeave = this._onContainerMouseLeave.bind(this);
 
         // Global event handlers for drag operations
         this.handleWindowMouseUp = this._onWindowMouseUp.bind(this);
@@ -93,7 +98,11 @@ export class InfinityMinimap {
     _initialize() {
         // Create minimap container
         this.container = document.createElement('div');
-        this.container.id = 'infinity-minimap';
+        if (this.options.id) {
+            this.container.id = this.options.id;
+        } else if (!this.options.container) {
+            this.container.id = 'infinity-minimap';
+        }
         this.container.className = 'infinity-minimap';
         this.container.style.cssText = `
             position: relative;
@@ -131,8 +140,10 @@ export class InfinityMinimap {
         this.ctx = this.canvas.getContext('2d');
 
         // Add animations and hover styles
-        const hoverStyle = document.createElement('style');
-        hoverStyle.textContent = `
+        if (!document.getElementById('infinity-minimap-styles')) {
+            const hoverStyle = document.createElement('style');
+            hoverStyle.id = 'infinity-minimap-styles';
+            hoverStyle.textContent = `
             /* Slide-in animation from right with spring effect */
             @keyframes minimapSlideIn {
                 0% {
@@ -218,7 +229,8 @@ export class InfinityMinimap {
                 text-shadow: 0 0 10px rgba(100, 255, 200, 0.5);
             }
         `;
-        document.head.appendChild(hoverStyle);
+            document.head.appendChild(hoverStyle);
+        }
 
         // Create title label
         const title = document.createElement('div');
@@ -267,8 +279,8 @@ export class InfinityMinimap {
         this.canvas.addEventListener('mouseleave', this.handleMouseLeave);
 
         // Add container-level mousemove for cursor glow effect
-        this.container.addEventListener('mousemove', this._onContainerMouseMove.bind(this));
-        this.container.addEventListener('mouseleave', this._onContainerMouseLeave.bind(this));
+        this.container.addEventListener('mousemove', this.handleContainerMouseMove);
+        this.container.addEventListener('mouseleave', this.handleContainerMouseLeave);
 
         console.log('[InfinityMinimap] Initialized');
     }
@@ -277,10 +289,10 @@ export class InfinityMinimap {
      * Show minimap (always visible, no entrance animation)
      */
     show() {
-        const panel = document.getElementById('single-player-container');
+        const host = this.options.container || document.getElementById('single-player-container');
 
-        if (panel && this.container.parentElement !== panel) {
-            panel.appendChild(this.container);
+        if (host && this.container.parentElement !== host) {
+            host.appendChild(this.container);
         }
 
         // Simply show without animation
@@ -428,6 +440,8 @@ export class InfinityMinimap {
 
         const { width, height } = this.canvas;
         const { ctx } = this;
+        const maxRows = this._getMaxRows();
+        const rowOffset = this._getRowOffset(maxRows);
 
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
@@ -442,13 +456,13 @@ export class InfinityMinimap {
         // Draw animated scanline effect
         this._drawScanlineEffect(ctx, width, height);
 
-        const totalRows = this.gameState.board.length;
+        const totalRows = maxRows;
         const pixelsPerRow = height / totalRows;
 
         // Update border color based on progress
-        const topRow = calculateTopRow(this.gameState);
-        const borderColor = this._getBorderColor(topRow);
-        const glowColor = this._getBorderGlowColor(topRow);
+        const topRow = rowOffset + calculateTopRow(this.gameState);
+        const borderColor = this._getBorderColor(topRow, maxRows);
+        const glowColor = this._getBorderGlowColor(topRow, maxRows);
 
         this.container.style.borderColor = borderColor;
         this.container.style.boxShadow = `
@@ -457,19 +471,52 @@ export class InfinityMinimap {
         `;
 
         // Draw height milestones
+        this.milestones = this._buildMilestones(maxRows);
         this._drawMilestones(ctx, width, height, totalRows, pixelsPerRow);
 
         // Draw row labels
-        this._drawRowLabels(ctx, width, height, totalRows, pixelsPerRow);
+        this._drawRowLabels(ctx, width, height, totalRows, pixelsPerRow, maxRows);
 
         // Draw build (blocks)
-        this._drawBuild(ctx, width, height, totalRows, pixelsPerRow);
+        this._drawBuild(ctx, width, height, totalRows, pixelsPerRow, topRow);
 
         // Draw viewport indicator
-        this._drawViewport(ctx, width, height, totalRows, pixelsPerRow);
+        this._drawViewport(ctx, width, height, totalRows, pixelsPerRow, rowOffset);
 
         // Draw top row indicator
-        this._drawTopRowIndicator(ctx, width, height, totalRows, pixelsPerRow);
+        this._drawTopRowIndicator(ctx, width, height, totalRows, pixelsPerRow, topRow);
+    }
+
+    _getMaxRows() {
+        const stateMax = Number(this.gameState?.maxRows);
+        if (Number.isFinite(stateMax) && stateMax > 0) {
+            return Math.min(1000, Math.max(1, stateMax));
+        }
+        const optionMax = Number(this.options?.maxRows);
+        if (Number.isFinite(optionMax) && optionMax > 0) {
+            return Math.min(1000, Math.max(1, optionMax));
+        }
+        return 1000;
+    }
+
+    _getRowOffset(maxRows) {
+        const boardLength = this.gameState?.board?.length
+            || this.gameState?.boardGrid?.length
+            || 0;
+        return Math.max(0, maxRows - boardLength);
+    }
+
+    _buildMilestones(maxRows) {
+        const normalizedMax = Math.max(1, maxRows);
+        const step = Math.max(1, Math.floor(normalizedMax / 4));
+        const raw = [step, step * 2, step * 3, normalizedMax];
+        const milestones = [];
+        raw.forEach((value) => {
+            if (value > 0 && value <= normalizedMax && !milestones.includes(value)) {
+                milestones.push(value);
+            }
+        });
+        return milestones;
     }
 
     /**
@@ -527,12 +574,14 @@ export class InfinityMinimap {
     /**
      * Calculate border color based on current progress
      * @private
-     * @param {number} topRow - Current top row (0 = goal, 1000 = start)
+     * @param {number} topRow - Current top row (0 = goal, maxRows = start)
+     * @param {number} maxRows - Max rows for the mode
      * @returns {string} RGB color string
      */
-    _getBorderColor(topRow) {
+    _getBorderColor(topRow, maxRows = 1000) {
+        const normalizedMax = Math.max(1, maxRows);
         // Invert so higher achievement = higher value
-        const progress = (1000 - topRow) / 1000; // 0.0 to 1.0
+        const progress = (normalizedMax - topRow) / normalizedMax; // 0.0 to 1.0
 
         // Define color stops
         const colors = [
@@ -569,11 +618,13 @@ export class InfinityMinimap {
     /**
      * Get brighter version for glow effect
      * @private
-     * @param {number} topRow - Current top row (0 = goal, 1000 = start)
+     * @param {number} topRow - Current top row (0 = goal, maxRows = start)
+     * @param {number} maxRows - Max rows for the mode
      * @returns {string} RGB color string
      */
-    _getBorderGlowColor(topRow) {
-        const progress = (1000 - topRow) / 1000;
+    _getBorderGlowColor(topRow, maxRows = 1000) {
+        const normalizedMax = Math.max(1, maxRows);
+        const progress = (normalizedMax - topRow) / normalizedMax;
 
         const colors = [
             { pos: 0.00, color: [100, 255, 200] },
@@ -606,7 +657,7 @@ export class InfinityMinimap {
 
     /**
      * Draw height milestone markers
-     * CORRECTED: Row 0 at TOP, Row 1000 at BOTTOM
+     * CORRECTED: Row 0 at TOP, Row maxRows at BOTTOM
      * @private
      */
     _drawMilestones(ctx, width, height, totalRows, pixelsPerRow) {
@@ -617,7 +668,7 @@ export class InfinityMinimap {
 
         this.milestones.forEach((milestone) => {
             if (milestone <= totalRows) {
-                // Row 0 at top (y=0), Row 1000 at bottom (y=height)
+                // Row 0 at top (y=0), Row maxRows at bottom (y=height)
                 const y = milestone * pixelsPerRow;
 
                 // Draw line
@@ -637,24 +688,32 @@ export class InfinityMinimap {
 
     /**
      * Draw row number labels
-     * CORRECTED: Row 0 at TOP, Row 1000 at BOTTOM
+     * CORRECTED: Row 0 at TOP, Row maxRows at BOTTOM
      * @private
      */
-    _drawRowLabels(ctx, width, height, totalRows, pixelsPerRow) {
-        const labels = [
-            { row: 0, text: '0', color: '#ff0000' }, // Top (goal)
-            { row: 250, text: '250', color: '#ffff00' },
-            { row: 500, text: '500', color: '#ffff00' },
-            { row: 750, text: '750', color: '#ffff00' },
-            { row: 1000, text: '1000', color: '#00ff00' }, // Bottom (start)
-        ];
+    _drawRowLabels(ctx, width, height, totalRows, pixelsPerRow, maxRows) {
+        const normalizedMax = Math.max(1, maxRows);
+        const step = Math.max(1, Math.floor(normalizedMax / 4));
+        const rawRows = [0, step, step * 2, step * 3, normalizedMax];
+        const uniqueRows = [];
+        rawRows.forEach((row) => {
+            if (!uniqueRows.includes(row)) {
+                uniqueRows.push(row);
+            }
+        });
+
+        const labels = uniqueRows.map((row) => ({
+            row,
+            text: row.toString(),
+            color: row === 0 ? '#ff0000' : row === normalizedMax ? '#00ff00' : '#ffff00',
+        }));
 
         ctx.font = '10px monospace';
         ctx.textAlign = 'right';
 
         labels.forEach(({ row, text, color }) => {
             if (row <= totalRows) {
-                // Row 0 at top (y=0), Row 1000 at bottom (y=height)
+                // Row 0 at top (y=0), Row maxRows at bottom (y=height)
                 const y = row * pixelsPerRow;
 
                 // Background for readability
@@ -672,13 +731,11 @@ export class InfinityMinimap {
      * Draw build (all placed blocks)
      * @private
      */
-    _drawBuild(ctx, width, height, totalRows, pixelsPerRow) {
+    _drawBuild(ctx, width, height, totalRows, pixelsPerRow, topRow) {
         const { board } = this.gameState;
 
         // Sample blocks for minimap (can't draw every single block at this scale)
         // Draw a simplified representation using actual row positions
-        const topRow = calculateTopRow(this.gameState);
-
         // Only draw if there are blocks on the board
         if (topRow >= totalRows) {
             // No blocks yet
@@ -707,15 +764,15 @@ export class InfinityMinimap {
 
     /**
      * Draw viewport indicator (current camera view)
-     * CORRECTED: Row 0 at TOP, Row 1000 at BOTTOM
+     * CORRECTED: Row 0 at TOP, Row maxRows at BOTTOM
      * cameraRow represents the TOP of the viewport
      * @private
      */
-    _drawViewport(ctx, width, height, totalRows, pixelsPerRow) {
+    _drawViewport(ctx, width, height, totalRows, pixelsPerRow, rowOffset) {
         // Calculate viewport position
         // cameraRow is the TOP row of the viewport
-        const viewportTopRow = this.cameraRow;
-        const viewportBottomRow = this.cameraRow + this.visibleRows;
+        const viewportTopRow = rowOffset + this.cameraRow;
+        const viewportBottomRow = rowOffset + this.cameraRow + this.visibleRows;
 
         // Row 0 at top (y=0), so viewportTopRow maps directly to Y
         const viewportY = viewportTopRow * pixelsPerRow;
@@ -758,11 +815,10 @@ export class InfinityMinimap {
 
     /**
      * Draw top row indicator (highest block)
-     * CORRECTED: Row 0 at TOP, Row 1000 at BOTTOM
+     * CORRECTED: Row 0 at TOP, Row maxRows at BOTTOM
      * @private
      */
-    _drawTopRowIndicator(ctx, width, height, totalRows, pixelsPerRow) {
-        const topRow = calculateTopRow(this.gameState);
+    _drawTopRowIndicator(ctx, width, height, totalRows, pixelsPerRow, topRow) {
         // Row 0 at top (y=0), so topRow maps directly to Y
         const topRowY = topRow * pixelsPerRow;
 
@@ -990,6 +1046,8 @@ export class InfinityMinimap {
         this.canvas.removeEventListener('mouseup', this.handleMouseUp);
         this.canvas.removeEventListener('mouseenter', this.handleMouseEnter);
         this.canvas.removeEventListener('mouseleave', this.handleMouseLeave);
+        this.container.removeEventListener('mousemove', this.handleContainerMouseMove);
+        this.container.removeEventListener('mouseleave', this.handleContainerMouseLeave);
 
         // Remove global listeners just in case
         window.removeEventListener('mouseup', this.handleWindowMouseUp);
