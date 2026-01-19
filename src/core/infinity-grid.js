@@ -130,11 +130,11 @@ export function expandGridAndInvalidateCache(gameState, requiredRows) {
  * @returns {number} - Row index of highest block (lower number = higher position)
  */
 export function calculateTopRow(gameState) {
-    if (!gameState || !gameState.board) {
+    if (!gameState || (!gameState.board && !gameState.boardGrid)) {
         return 0;
     }
 
-    const { board } = gameState;
+    const board = gameState.board || gameState.boardGrid;
     let topRow = board.length; // Start with max (bottom)
 
     // Scan from top to bottom
@@ -163,12 +163,13 @@ export function calculateTopRow(gameState) {
  * @returns {number} - Height in rows (0 = empty, higher = taller structure)
  */
 export function calculateBuildHeight(gameState) {
-    if (!gameState || !gameState.board) {
+    if (!gameState || (!gameState.board && !gameState.boardGrid)) {
         return 0;
     }
 
+    const board = gameState.board || gameState.boardGrid;
     const topRow = calculateTopRow(gameState);
-    const totalRows = gameState.board.length;
+    const totalRows = board.length;
 
     // Height = distance from top block to bottom of grid
     return totalRows - topRow;
@@ -205,7 +206,7 @@ export function shouldExpandGrid(gameState, threshold = 30) {
  * @returns {Object} - Grid statistics
  */
 export function getGridStats(gameState) {
-    if (!gameState || !gameState.board) {
+    if (!gameState || (!gameState.board && !gameState.boardGrid)) {
         return {
             totalRows: 0,
             topRow: 0,
@@ -215,30 +216,31 @@ export function getGridStats(gameState) {
         };
     }
 
+    const board = gameState.board || gameState.boardGrid;
     const topRow = calculateTopRow(gameState);
     const buildHeight = calculateBuildHeight(gameState);
 
     // Count total blocks
     let blocksCount = 0;
-    for (let r = 0; r < gameState.board.length; r++) {
-        for (let c = 0; c < gameState.board[r].length; c++) {
-            if (gameState.board[r][c] !== null) {
+    for (let r = 0; r < board.length; r++) {
+        for (let c = 0; c < board[r].length; c++) {
+            if (board[r][c] !== null) {
                 blocksCount++;
             }
         }
     }
 
-    const totalCells = gameState.board.length * COLS;
+    const totalCells = board.length * COLS;
     const percentageFull = (blocksCount / totalCells) * 100;
 
     return {
-        totalRows: gameState.board.length,
+        totalRows: board.length,
         topRow,
         buildHeight,
         blocksCount,
         percentageFull: percentageFull.toFixed(2),
         maxRows: gameState.maxRows,
-        canExpand: gameState.board.length < gameState.maxRows,
+        canExpand: board.length < gameState.maxRows,
     };
 }
 

@@ -1030,7 +1030,15 @@ export function createBaseBoardScene(
          * @param {Object} gameState
          */
         syncFromGameState(gameState) {
+            const previousMode = this.gameState?.isInfinityMode;
             this.gameState = gameState;
+
+            // Check if we need to reconfigure camera (e.g. switching to/from infinity mode)
+            // or if it's the first sync and camera isn't configured for infinity yet
+            const currentMode = gameState?.isInfinityMode;
+            if (previousMode !== currentMode || (currentMode && !this.cameraSettings)) {
+                this.configureCamera();
+            }
         }
     }
 

@@ -113,7 +113,7 @@ export class TornadoRibbons {
             transparent: true,
             depthWrite: false,
             blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
+            side: THREE.FrontSide, // Performance: Cull back faces (not visible in tornado)
         });
 
         const aPhase = attribute('aPhase');
@@ -185,12 +185,9 @@ export class TornadoRibbons {
         );
         const streakMask = smoothstep(float(0.3), float(0.7), streakNoise);
 
-        const breakupNoise = mx_noise_float(
-            vec3(streakUv.mul(float(0.35)), time.mul(this.uTimeScale).mul(float(0.5)).add(aStreakOffset.mul(float(0.5)))),
-        );
-        const breakupMask = smoothstep(float(0.25), float(0.7), breakupNoise);
-
-        const mask = streakMask.mul(breakupMask).mul(edgeFade).mul(verticalFade);
+        // Performance optimization: Removed second noise layer (breakupNoise)
+        // Ribbons still maintain dynamic broken appearance with single noise layer
+        const mask = streakMask.mul(edgeFade).mul(verticalFade);
         const intensity = mask.mul(aBrightness).mul(float(2.4));
 
         const emissive = this.uEmissiveColor.mul(intensity);
@@ -199,7 +196,7 @@ export class TornadoRibbons {
         material.opacityNode = clamp(mask.mul(aBrightness), float(0.0), float(1.0));
 
         const mesh = new THREE.InstancedMesh(geometry, material, config.count);
-        mesh.frustumCulled = false;
+        mesh.frustumCulled = true; // Performance: Enable automatic culling when off-screen
 
         const dummy = new THREE.Object3D();
         for (let i = 0; i < config.count; i += 1) {

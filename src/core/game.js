@@ -54,9 +54,20 @@ function ensureBoardCache(gameState) {
     if (!gameState) return null;
 
     if (!gameState.boardCache || gameState.boardCacheDirty) {
-        console.log(`[BoardCache] Rebuilding cache. boardGrid.length=${gameState.boardGrid?.length}, lockedPieces=${gameState.lockedPieces?.length}`);
-        gameState.boardCache = generateBoard(gameState.lockedPieces, {
-            boardGrid: gameState.boardGrid,
+        const lockedPieces = gameState.lockedPieces || [];
+        const boardGrid = gameState.boardGrid;
+
+        if (boardGrid && lockedPieces.length > 0 && !hasLockedCells(boardGrid)) {
+            rebuildBoardGridFromPieces(lockedPieces, boardGrid);
+        }
+
+        if (gameState.isInfinityMode && boardGrid && gameState.board !== boardGrid) {
+            gameState.board = boardGrid;
+        }
+
+        console.log(`[BoardCache] Rebuilding cache. boardGrid.length=${boardGrid?.length}, lockedPieces=${lockedPieces.length}`);
+        gameState.boardCache = generateBoard(lockedPieces, {
+            boardGrid,
         });
         console.log(`[BoardCache] Cache rebuilt. boardCache.length=${gameState.boardCache?.length}`);
         gameState.boardCacheDirty = false;
@@ -74,6 +85,20 @@ function invalidateGhostCache(gameState) {
     gameState.ghostCache.piece = null;
 }
 
+function hasLockedCells(grid) {
+    if (!grid) return false;
+    for (let y = 0; y < grid.length; y++) {
+        const row = grid[y];
+        if (!row) continue;
+        for (let x = 0; x < row.length; x++) {
+            if (row[x] !== null) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 function isValidPositionCached(gameState, piece, checkX, checkY) {
     if (!piece) return false;
 
@@ -82,8 +107,8 @@ function isValidPositionCached(gameState, piece, checkX, checkY) {
     for (let y = 0; y < piece.shape.length; y++) {
         for (let x = 0; x < piece.shape[y].length; x++) {
             if (piece.shape[y][x] > 0) {
-                const boardX = checkX + x;
-                const boardY = checkY + y;
+                const boardX = Math.floor(checkX + x);
+                const boardY = Math.floor(checkY + y);
 
                 if (boardX < 0 || boardX >= COLS || boardY >= boardData.length) {
                     return false;
@@ -359,7 +384,7 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
         // This ensures pieces always spawn just above the visible area
         const cameraTopRow = gameState.cameraRow || 0;
         const spawnOffset = 2; // Spawn 2 rows above the camera's top edge
-        piece.y = Math.max(0, cameraTopRow - spawnOffset);
+        piece.y = Math.max(0, Math.floor(cameraTopRow) - spawnOffset);
     } else {
         piece.y = HIDDEN_ROWS - 2; // Spawn 2 rows above visible area for smooth drop-in animation
     }
