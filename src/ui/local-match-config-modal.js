@@ -41,9 +41,19 @@ export class LocalMatchConfigModal {
             </select>
             <small class="form-help">Local players on same computer</small>
           </div>
+
+          <!-- Game Mode -->
+          <div class="form-group">
+            <label for="match-mode">Game Mode</label>
+            <select id="match-mode" name="matchMode">
+              <option value="ffa" selected>FFA (Free-for-All)</option>
+              <option value="infinity-lms">Infinity LMS (Last Standing)</option>
+            </select>
+            <small class="form-help" id="match-mode-help">Classic FFA with customizable win conditions</small>
+          </div>
           
           <!-- Win Condition -->
-          <div class="form-group">
+          <div class="form-group" id="end-condition-group">
             <label for="end-condition">Win Condition</label>
             <select id="end-condition" name="endCondition">
               <option value="frags" selected>Frags (Kills)</option>
@@ -52,6 +62,21 @@ export class LocalMatchConfigModal {
               <option value="lines">Lines Cleared</option>
               <option value="never">Never (Play Forever)</option>
             </select>
+          </div>
+
+          <!-- Infinity LMS Row Cap -->
+          <div class="form-group" id="infinity-rows-group">
+            <label for="infinity-max-rows">Infinity Row Cap</label>
+            <input
+              type="number"
+              id="infinity-max-rows"
+              name="infinityMaxRows"
+              min="100"
+              max="1000"
+              value="100"
+              placeholder="100"
+            />
+            <small class="form-help">Default 100, max 1000 rows</small>
           </div>
           
           <!-- Win Condition Value -->
@@ -177,6 +202,14 @@ export class LocalMatchConfigModal {
     if (endCondition) {
       endCondition.addEventListener('change', (e) => {
         this.updateEndConditionUI(e.target.value);
+      });
+    }
+
+    // Match mode change handler
+    const matchMode = this.container.querySelector('#match-mode');
+    if (matchMode) {
+      matchMode.addEventListener('change', () => {
+        this.refreshFormState();
       });
     }
 
@@ -310,14 +343,60 @@ export class LocalMatchConfigModal {
 
     if (condition === 'never') {
       valueGroup.style.display = 'none';
-    } else {
-      valueGroup.style.display = 'block';
-      valueLabel.textContent = config.label;
-      valueInput.value = config.defaultValue;
-      valueInput.min = config.min;
-      valueInput.max = config.max;
-      valueInput.placeholder = config.placeholder;
-      valueHelp.textContent = config.help;
+      return;
+    }
+
+    valueGroup.style.display = 'block';
+    valueLabel.textContent = config.label;
+    valueInput.value = config.defaultValue;
+    valueInput.min = config.min;
+    valueInput.max = config.max;
+    valueInput.placeholder = config.placeholder;
+    valueHelp.textContent = config.help;
+  }
+
+  /**
+ * Sync form UI state based on selected match mode
+ */
+  refreshFormState() {
+    const matchMode = this.container.querySelector('#match-mode');
+    const modeHelp = this.container.querySelector('#match-mode-help');
+    const endConditionGroup = this.container.querySelector('#end-condition-group');
+    const endCondition = this.container.querySelector('#end-condition');
+    const valueGroup = this.container.querySelector('#end-value-group');
+    const infinityRowsGroup = this.container.querySelector('#infinity-rows-group');
+    const startLevelGroup = this.container.querySelector('#start-level')?.parentElement;
+    const levelProgressionGroup = this.container.querySelector('#level-progression')?.parentElement;
+
+    if (!matchMode) {
+      return;
+    }
+
+    const isInfinity = matchMode.value === 'infinity-lms';
+
+    if (modeHelp) {
+      modeHelp.textContent = isInfinity
+        ? 'Last player standing wins. Set the row cap below (100-1000)'
+        : 'Classic FFA with customizable win conditions';
+    }
+
+    if (endConditionGroup) {
+      endConditionGroup.style.display = isInfinity ? 'none' : '';
+    }
+
+    if (valueGroup) {
+      valueGroup.style.display = isInfinity ? 'none' : '';
+    }
+
+    if (infinityRowsGroup) {
+      infinityRowsGroup.style.display = isInfinity ? 'flex' : 'none';
+    }
+
+    if (startLevelGroup) startLevelGroup.style.display = isInfinity ? 'none' : '';
+    if (levelProgressionGroup) levelProgressionGroup.style.display = isInfinity ? 'none' : '';
+
+    if (!isInfinity && endCondition) {
+      this.updateEndConditionUI(endCondition.value);
     }
   }
 
@@ -332,17 +411,30 @@ export class LocalMatchConfigModal {
     }
 
     const formData = new FormData(form);
+    const matchMode = formData.get('matchMode');
+    const endCondition = formData.get('endCondition');
+    const isInfinityLMS = matchMode === 'infinity-lms';
+    const rawInfinityRows = parseInt(formData.get('infinityMaxRows'), 10);
+    const infinityMaxRows = Number.isFinite(rawInfinityRows)
+      ? Math.min(1000, Math.max(100, rawInfinityRows))
+      : 100;
 
     const config = {
       numPlayers: parseInt(formData.get('numPlayers')),
-      endCondition: formData.get('endCondition'),
-      endConditionValue: parseInt(formData.get('endConditionValue')) || 0,
-      startLevel: parseInt(formData.get('startLevel')) || 1,
-      levelProgression: formData.get('levelProgression') === 'on',
-      boringRules: formData.get('boringRules') === 'on',
+      endCondition: isInfinityLMS ? 'infinity-lms' : endCondition,
+      isInfinityLMS: isInfinityLMS,
+      infinityMaxRows,
       isTeamMode: formData.get('teamMode') === 'on',
       playerTeams: [],
+      boringRules: formData.get('boringRules') === 'on',
     };
+
+    // Only include these fields if NOT in infinity mode
+    if (!isInfinityLMS) {
+      config.endConditionValue = parseInt(formData.get('endConditionValue')) || 0;
+      config.startLevel = parseInt(formData.get('startLevel')) || 1;
+      config.levelProgression = formData.get('levelProgression') === 'on';
+    }
 
     if (config.isTeamMode) {
       for (let i = 1; i <= config.numPlayers; i++) {
@@ -356,14 +448,16 @@ export class LocalMatchConfigModal {
       return;
     }
 
-    if (config.startLevel < 1 || config.startLevel > 9) {
-      alert('Starting level must be between 1 and 9');
-      return;
-    }
+    if (!isInfinityLMS) {
+      if (config.startLevel < 1 || config.startLevel > 9) {
+        alert('Starting level must be between 1 and 9');
+        return;
+      }
 
-    if (config.endCondition !== 'never' && config.endConditionValue <= 0) {
-      alert('Win condition value must be greater than 0');
-      return;
+      if (config.endCondition !== 'never' && config.endConditionValue <= 0) {
+        alert('Win condition value must be greater than 0');
+        return;
+      }
     }
 
     console.log('[LocalMatchConfig] Starting match with config:', config);
@@ -392,6 +486,7 @@ export class LocalMatchConfigModal {
     if (endCondition) {
       this.updateEndConditionUI(endCondition.value);
     }
+    this.refreshFormState();
 
     console.log('[LocalMatchConfig] Modal shown');
   }
