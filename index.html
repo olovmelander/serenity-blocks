@@ -104,35 +104,7 @@
             <!-- 3D canvas will be dynamically added by SummerTheme -->
         </div>
         <div id="tornado-theme" class="theme-container">
-            <!-- Ethereal dawn sky with magical atmosphere -->
-            <!-- Radiant Sun with rotating rays -->
-            <div id="tornado-sun"></div>
-            <!-- God rays / Sunbeams -->
-            <div id="tornado-sunbeams"></div>
-            <!-- Volumetric Clouds -->
-            <div id="tornado-clouds"></div>
-            <!-- Floating magical particles / pollen -->
-            <div id="tornado-particles"></div>
-            <!-- Cherry blossom petals -->
-            <div id="tornado-petals"></div>
-            <!-- Enchanted butterflies -->
-            <div id="tornado-butterflies"></div>
-            <!-- Gentle tornado rain -->
-            <div id="tornado-rain">
-                <div id="rain-back" class="rain-layer"></div>
-                <div id="rain-mid" class="rain-layer"></div>
-                <div id="rain-front" class="rain-layer"></div>
-            </div>
-            <!-- Glowing fireflies -->
-            <div id="tornado-fireflies"></div>
-            <!-- Lush meadow ground -->
-            <div class="tornado-ground"></div>
-            <!-- Wildflower meadow -->
-            <div id="tornado-meadow"></div>
-            <!-- Growing sprouts -->
-            <div id="sprouts-container"></div>
-            <!-- Magical growing combo flower -->
-            <div id="tornado-combo-flower"></div>
+            <!-- 3D canvas dynamically added by TornadoTheme (Three.js) -->
         </div>
         <div id="sakura-twilight-theme" class="theme-container">
             <!-- 3D canvas dynamically added by SakuraTwilightTheme (Three.js) -->
@@ -625,6 +597,11 @@
                         <span class="stat-label">Incoming</span>
                         <span class="stat-value" id="p1-garbage">0</span>
                     </div>
+                    <div class="stat-item stat-ceiling" id="p1-ceiling-container" style="display: none;">
+                        <span class="stat-icon">🏗️</span>
+                        <span class="stat-label">To Roof</span>
+                        <span class="stat-value" id="p1-ceiling">0</span>
+                    </div>
                 </div>
             </div>
 
@@ -702,6 +679,11 @@
                         <span class="stat-icon">💥</span>
                         <span class="stat-label">Incoming</span>
                         <span class="stat-value" id="p2-garbage">0</span>
+                    </div>
+                    <div class="stat-item stat-ceiling" id="p2-ceiling-container" style="display: none;">
+                        <span class="stat-icon">🏗️</span>
+                        <span class="stat-label">To Roof</span>
+                        <span class="stat-value" id="p2-ceiling">0</span>
                     </div>
                 </div>
             </div>
@@ -782,6 +764,11 @@
                         <span class="stat-label">Incoming</span>
                         <span class="stat-value" id="p3-garbage">0</span>
                     </div>
+                    <div class="stat-item stat-ceiling" id="p3-ceiling-container" style="display: none;">
+                        <span class="stat-icon">🏗️</span>
+                        <span class="stat-label">To Roof</span>
+                        <span class="stat-value" id="p3-ceiling">0</span>
+                    </div>
                 </div>
             </div>
 
@@ -860,6 +847,11 @@
                         <span class="stat-icon">💥</span>
                         <span class="stat-label">Incoming</span>
                         <span class="stat-value" id="p4-garbage">0</span>
+                    </div>
+                    <div class="stat-item stat-ceiling" id="p4-ceiling-container" style="display: none;">
+                        <span class="stat-icon">🏗️</span>
+                        <span class="stat-label">To Roof</span>
+                        <span class="stat-value" id="p4-ceiling">0</span>
                     </div>
                 </div>
             </div>
