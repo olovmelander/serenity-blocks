@@ -10,7 +10,8 @@ import {
     GarbageQueue, calculateGarbage, insertGarbageEntries, ATTACK_TYPES,
 } from './garbage.js';
 import { processPhysics } from './physics.js';
-import { LEVEL_SPEEDS } from './constants.js';
+import { LEVEL_SPEEDS, COLS, ROWS } from './constants.js';
+import { createInfinityGrid } from './infinity-grid.js';
 
 /**
  * Player color scheme for visual distinction
@@ -69,6 +70,7 @@ export class MultiPlayerState {
             boringRules: false,
             isTeamMode: false,
             playerTeams: [],
+            infinityMaxRows: 100,
         };
 
         this._assignPlayerColors();
@@ -91,6 +93,9 @@ export class MultiPlayerState {
         // Attack sequencing per player for deterministic IDs
         this.attackSequences = new Array(numPlayers).fill(0);
 
+        // Per-player pause state for infinity minimap exploration
+        this.playerPaused = new Array(numPlayers).fill(false);
+
         // Shared RNG seed for fairness (set by mode)
         this.sharedPieceSeed = 0;
     }
@@ -99,7 +104,16 @@ export class MultiPlayerState {
      * Set match configuration
      */
     setMatchConfig(config) {
-        this.matchConfig = { ...this.matchConfig, ...config };
+        const rawInfinityRows = Number(config?.infinityMaxRows);
+        const infinityMaxRows = Number.isFinite(rawInfinityRows)
+            ? Math.min(1000, Math.max(100, rawInfinityRows))
+            : 100;
+
+        this.matchConfig = {
+            ...this.matchConfig,
+            ...config,
+            infinityMaxRows,
+        };
         this._assignPlayerColors();
     }
 
@@ -110,20 +124,53 @@ export class MultiPlayerState {
         for (let i = 0; i < this.numPlayers; i++) {
             this.players[i].reset();
 
-            // Apply match configuration settings
-            if (this.matchConfig) {
-                // Set start level from match config
-                if (this.matchConfig.startLevel) {
-                    this.players[i].level = this.matchConfig.startLevel;
+            // Apply Infinity LMS configuration
+            if (this.matchConfig?.isInfinityLMS) {
+                // Enable infinity mode
+                this.players[i].isInfinityMode = true;
+                this.players[i].maxRows = this.matchConfig?.infinityMaxRows || 100;
+                this.players[i].disableLevelProgression = true;
+                this.players[i].disableGarbage = false; // Keep garbage for multiplayer
 
-                    // Update drop interval based on start level
-                    const speedIndex = Math.min(
-                        this.matchConfig.startLevel - 1,
-                        LEVEL_SPEEDS.length - 1,
-                    );
-                    this.players[i].dropInterval = LEVEL_SPEEDS[speedIndex];
+                // Create infinity grid (starts at 44 rows, expands dynamically)
+                const infinityGrid = createInfinityGrid(COLS, 44);
+                this.players[i].board = infinityGrid;
+                this.players[i].boardGrid = infinityGrid;
 
-                    console.log(`[MultiPlayerState] Player ${i + 1} reset: level=${this.players[i].level}, dropInterval=${this.players[i].dropInterval}ms`);
+                // Initialize infinity stats
+                this.players[i].infinityStats = {
+                    blocksPlaced: 0,
+                    maxCascadeScore: 0,
+                    maxComboComplexity: 0,
+                    maxComboDepth: 0,
+                    totalCascades: 0,
+                    rowsReached: 44,
+                };
+
+                // Camera tracking
+                const startingCameraRow = Math.max(0, infinityGrid.length - ROWS);
+                this.players[i].cameraRow = startingCameraRow;
+                this.players[i].currentTopRow = startingCameraRow;
+
+                console.log(`[MultiPlayerState] Player ${i + 1} initialized for Infinity LMS: 44 rows, max ${this.players[i].maxRows}`);
+            } else {
+                // Apply normal match configuration settings
+                if (this.matchConfig) {
+                    this.players[i].disableLevelProgression = !this.matchConfig.levelProgression;
+
+                    // Set start level from match config
+                    if (this.matchConfig.startLevel) {
+                        this.players[i].level = this.matchConfig.startLevel;
+
+                        // Update drop interval based on start level
+                        const speedIndex = Math.min(
+                            this.matchConfig.startLevel - 1,
+                            LEVEL_SPEEDS.length - 1,
+                        );
+                        this.players[i].dropInterval = LEVEL_SPEEDS[speedIndex];
+
+                        console.log(`[MultiPlayerState] Player ${i + 1} reset: level=${this.players[i].level}, dropInterval=${this.players[i].dropInterval}ms`);
+                    }
                 }
             }
 
@@ -131,6 +178,7 @@ export class MultiPlayerState {
             this.frags[i] = 0;
             this.deaths[i] = 0;
             this.lastAttackerIds[i] = null;
+            this.playerPaused[i] = false;
         }
 
         this._assignPlayerColors();

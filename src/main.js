@@ -1989,6 +1989,7 @@ class SerenityBlocks {
             // Check if game is paused (important for multiplayer round transitions)
             const currentMode = this.gameModeManager?.getCurrentMode();
             if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
+            if (isPlayerPaused(currentMode?.multiplayerState, 1)) return;
 
             coreMove(
                 gameState,
@@ -2005,6 +2006,7 @@ class SerenityBlocks {
             // Check if game is paused (important for multiplayer round transitions)
             const currentMode = this.gameModeManager?.getCurrentMode();
             if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
+            if (isPlayerPaused(currentMode?.multiplayerState, 1)) return;
 
             coreRotate(
                 gameState,
@@ -2023,6 +2025,7 @@ class SerenityBlocks {
 
             // Check if game is paused (important for multiplayer round transitions)
             if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
+            if (isPlayerPaused(currentMode?.multiplayerState, 1)) return;
 
             const callbacks = (currentMode && currentMode.multiplayerState)
                 ? this.getMultiplayerPhysicsCallbacks(1)
@@ -2044,6 +2047,7 @@ class SerenityBlocks {
 
             // Check if game is paused (important for multiplayer round transitions)
             if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
+            if (isPlayerPaused(currentMode?.multiplayerState, 1)) return;
 
             const callbacks = (currentMode && currentMode.multiplayerState)
                 ? this.getMultiplayerPhysicsCallbacks(1)
@@ -2120,12 +2124,17 @@ class SerenityBlocks {
             return playerNum === 1 ? multiplayerState.player1 : multiplayerState.player2;
         };
 
+        const isPlayerPaused = (multiplayerState, playerNum) => (
+            Boolean(multiplayerState?.playerPaused?.[playerNum - 1])
+        );
+
         // Expose Player 2 controls for multiplayer
         window.moveP2 = (dir) => {
             const multiplayerState = getMultiplayerState();
             const player2State = getPlayerState(2);
             // Check if game is paused or game over
             if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (isPlayerPaused(multiplayerState, 2)) return;
 
             coreMove(
                 player2State,
@@ -2140,6 +2149,7 @@ class SerenityBlocks {
             const player2State = getPlayerState(2);
             // Check if game is paused or game over
             if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (isPlayerPaused(multiplayerState, 2)) return;
 
             coreRotate(
                 player2State,
@@ -2154,6 +2164,7 @@ class SerenityBlocks {
             const player2State = getPlayerState(2);
             // Check if game is paused or game over
             if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (isPlayerPaused(multiplayerState, 2)) return;
 
             coreSoftDrop(
                 player2State,
@@ -2167,6 +2178,7 @@ class SerenityBlocks {
             const player2State = getPlayerState(2);
             // Check if game is paused or game over
             if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (isPlayerPaused(multiplayerState, 2)) return;
 
             coreHardDrop(
                 player2State,
@@ -2181,6 +2193,7 @@ class SerenityBlocks {
             const player3State = getPlayerState(3);
             // Check if game is paused or game over
             if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (isPlayerPaused(multiplayerState, 3)) return;
 
             coreMove(
                 player3State,
@@ -2195,6 +2208,7 @@ class SerenityBlocks {
             const player3State = getPlayerState(3);
             // Check if game is paused or game over
             if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (isPlayerPaused(multiplayerState, 3)) return;
 
             coreRotate(
                 player3State,
@@ -2209,6 +2223,7 @@ class SerenityBlocks {
             const player3State = getPlayerState(3);
             // Check if game is paused or game over
             if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (isPlayerPaused(multiplayerState, 3)) return;
 
             coreSoftDrop(
                 player3State,
@@ -2222,6 +2237,7 @@ class SerenityBlocks {
             const player3State = getPlayerState(3);
             // Check if game is paused or game over
             if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (isPlayerPaused(multiplayerState, 3)) return;
 
             coreHardDrop(
                 player3State,
@@ -2236,6 +2252,7 @@ class SerenityBlocks {
             const player4State = getPlayerState(4);
             // Check if game is paused or game over
             if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (isPlayerPaused(multiplayerState, 4)) return;
 
             coreMove(
                 player4State,
@@ -2250,6 +2267,7 @@ class SerenityBlocks {
             const player4State = getPlayerState(4);
             // Check if game is paused or game over
             if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (isPlayerPaused(multiplayerState, 4)) return;
 
             coreRotate(
                 player4State,
@@ -2264,6 +2282,7 @@ class SerenityBlocks {
             const player4State = getPlayerState(4);
             // Check if game is paused or game over
             if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (isPlayerPaused(multiplayerState, 4)) return;
 
             coreSoftDrop(
                 player4State,
@@ -2277,6 +2296,7 @@ class SerenityBlocks {
             const player4State = getPlayerState(4);
             // Check if game is paused or game over
             if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
+            if (isPlayerPaused(multiplayerState, 4)) return;
 
             coreHardDrop(
                 player4State,
@@ -2360,6 +2380,11 @@ class SerenityBlocks {
      * Setup Player 2 keyboard controls
      */
     setupPlayer2Controls() {
+        if (this.inputController) {
+            console.log('[Main] Skipping legacy Player 2 keyboard controls (handled by InputController)');
+            return;
+        }
+
         document.addEventListener('keydown', (e) => {
             // Only process in local multiplayer mode
             const currentGameMode = this.gameModeUI.getMode();
