@@ -7,14 +7,14 @@ import { SteamConfig } from './config.js';
 
 // Detect if we're running in Electron
 const isElectron = typeof window !== 'undefined'
-                   && typeof window.process !== 'undefined'
-                   && window.process.type === 'renderer';
+    && typeof window.process !== 'undefined'
+    && window.process.type === 'renderer';
 
 // Try to import greenworks (only works in Electron)
 let greenworks;
 if (isElectron) {
     try {
-    // Use dynamic require in Electron context
+        // Use dynamic require in Electron context
         greenworks = window.require('greenworks');
     } catch (err) {
         console.warn('⚠️ Greenworks not available in Electron, using mock mode');
@@ -48,7 +48,7 @@ export class SteamNetworking {
    * Initialize Steam API
    */
     async init() {
-    // Mock mode for local testing
+        // Mock mode for local testing
         if (this.mockMode) {
             console.log('🧪 MOCK STEAM MODE - Local testing only');
             this.initialized = true;
@@ -304,14 +304,20 @@ export class SteamNetworking {
                 console.log(`✅ New peer connected: ${fromSteamId}`);
             }
 
-            // Call registered message handlers
-            const handler = this.messageHandlers.get(message.type);
-            if (handler) {
-                handler({
-                    from: fromSteamId,
-                    type: message.type,
-                    data: message.data,
-                    timestamp: message.timestamp,
+            // Call registered message handlers (array-based)
+            const handlers = this.messageHandlers.get(message.type);
+            if (handlers && handlers.length > 0) {
+                handlers.forEach((handler) => {
+                    try {
+                        handler({
+                            from: fromSteamId,
+                            type: message.type,
+                            data: message.data,
+                            timestamp: message.timestamp,
+                        });
+                    } catch (err) {
+                        console.error('Error in message handler:', err);
+                    }
                 });
             }
         } catch (err) {
@@ -319,12 +325,7 @@ export class SteamNetworking {
         }
     }
 
-    /**
-   * Register a message handler
-   */
-    on(messageType, callback) {
-        this.messageHandlers.set(messageType, callback);
-    }
+    // Note: on() method is defined at the end of the class (array-based version)
 
     /**
    * Leave current lobby

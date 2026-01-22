@@ -558,7 +558,9 @@ function settleFloatingBlocksAfterGarbage(lockedPieces) {
  * @returns {Object} Result with success, topOut flags, and animation data
  */
 export function insertGarbageEntries(lockedPieces, entries, options = {}) {
-    const { boardGrid } = options;
+    const { boardGrid, debug = false } = options;
+    const log = debug ? console.log : () => {};
+    const warn = debug ? console.warn : () => {};
     const lineEntries = entries.filter((entry) => entry.type === 'line');
     if (lineEntries.length === 0) {
         return {
@@ -570,20 +572,20 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
         };
     }
 
-    console.log('[insertGarbageEntries] ========================================');
-    console.log(`[insertGarbageEntries] Inserting ${lineEntries.length} garbage row(s)`);
+    log('[insertGarbageEntries] ========================================');
+    log(`[insertGarbageEntries] Inserting ${lineEntries.length} garbage row(s)`);
 
     const board = generateBoard(lockedPieces, { boardGrid });
     const totalRows = board.length;
     const highestOccupiedRow = getHighestOccupiedRow(board);
     const newHighestRow = highestOccupiedRow - lineEntries.length;
 
-    console.log(
+    log(
         `[insertGarbageEntries] Highest row: ${highestOccupiedRow}, New highest: ${newHighestRow}, Hidden rows: ${HIDDEN_ROWS}, Total rows: ${totalRows}`,
     );
 
     if (newHighestRow < HIDDEN_ROWS) {
-        console.log('[insertGarbageEntries] TOP OUT detected while inserting garbage burst');
+        log('[insertGarbageEntries] TOP OUT detected while inserting garbage burst');
         return {
             success: false,
             topOut: true,
@@ -606,7 +608,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
         let holeColumns = bitsToColumns(entry.holeMask);
         if (holeColumns.length === COLS) {
             const fallbackColumn = Math.floor(COLS / 2);
-            console.warn(
+            warn(
                 '[insertGarbageEntries] All-hole garbage row detected; applying fallback hole column',
                 fallbackColumn,
             );
@@ -625,13 +627,13 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
             if (!holeSet.has(x)) solidCols.push(x);
         }
 
-        console.log(`[insertGarbageEntries] Row ${index + 1}/${lineEntries.length}:`);
-        console.log(
+        log(`[insertGarbageEntries] Row ${index + 1}/${lineEntries.length}:`);
+        log(
             `[insertGarbageEntries]   holeMask bits: ${entry.holeMask.toString(2).padStart(COLS, '0')} (${entry.holeMask})`,
         );
-        console.log(`[insertGarbageEntries]   holes at columns: [${holeColumns.join(', ')}]`);
-        console.log(`[insertGarbageEntries]   solid at columns: [${solidCols.join(', ')}]`);
-        console.log(`[insertGarbageEntries]   variant: ${entry.variant || 'normal'}`);
+        log(`[insertGarbageEntries]   holes at columns: [${holeColumns.join(', ')}]`);
+        log(`[insertGarbageEntries]   solid at columns: [${solidCols.join(', ')}]`);
+        log(`[insertGarbageEntries]   variant: ${entry.variant || 'normal'}`);
 
         const garbagePiece = {
             shapeKey: entry.variant === 'clean' ? 'CLEAN_GARBAGE' : 'GARBAGE',
@@ -662,7 +664,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
     if (options.settleFloatingBlocks !== false) {
         settledSteps = settleFloatingBlocksAfterGarbage(lockedPieces);
         if (settledSteps > 0) {
-            console.log(
+            log(
                 `[insertGarbageEntries] Settled floating blocks with ${settledSteps} fall step(s)`,
             );
         }
@@ -671,7 +673,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
     const postBoard = generateBoard(lockedPieces, { boardGrid });
     const linesAfterInsertion = findCompleteLines(postBoard).filter((y) => y >= HIDDEN_ROWS);
 
-    console.log('[insertGarbageEntries] ========================================');
+    log('[insertGarbageEntries] ========================================');
     return {
         success: true,
         topOut: false,

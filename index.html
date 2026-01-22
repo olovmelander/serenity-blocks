@@ -861,6 +861,96 @@
 
     </div>
 
+    <!-- Online Multiplayer Container (3-column Quadra-style layout) -->
+    <div id="online-multiplayer-container" class="online-game-area" style="display: none;">
+
+        <!-- LEFT: Opponent Watch Panel (Max 4 visible) -->
+        <div class="opponents-panel">
+            <div class="watch-controls">
+                <button id="auto-watch-btn" class="watch-btn">Auto Watch</button>
+                <span class="watching-count" id="watching-count">0/4</span>
+            </div>
+            <div class="watch-grid" id="watch-grid">
+                <!-- Opponent mini-boards will be dynamically inserted here -->
+            </div>
+            <div class="unwatched-list" id="unwatched-list">
+                <!-- List of unwatched players (clickable to swap) -->
+            </div>
+        </div>
+
+        <!-- CENTER: Main Board Panel (Your big board) -->
+        <div class="main-board-panel">
+            <div id="online-next-queue-wrapper" class="online-next-queue-wrapper">
+                <div id="online-next-queue-container" class="next-queue-container vertical"></div>
+            </div>
+            <div class="player-board-wrapper">
+                <div class="garbage-indicator" id="online-garbage-bar">
+                    <div class="garbage-fill"></div>
+                    <div class="garbage-segments"></div>
+                    <div class="garbage-glow"></div>
+                </div>
+                <div id="online-main-board" class="online-main-board">
+                    <!-- Phaser game will be mounted here -->
+                </div>
+            </div>
+            <div class="main-stats-bar">
+                <div class="stat-item stat-frags">
+                    <span class="stat-icon">⚔️</span>
+                    <span class="stat-label">Frags</span>
+                    <span class="stat-value" id="online-frags">0</span>
+                </div>
+                <div class="stat-item stat-deaths">
+                    <span class="stat-icon">💀</span>
+                    <span class="stat-label">Deaths</span>
+                    <span class="stat-value" id="online-deaths">0</span>
+                </div>
+                <div class="stat-item stat-score">
+                    <span class="stat-icon">🏆</span>
+                    <span class="stat-label">Score</span>
+                    <span class="stat-value" id="online-score">0</span>
+                </div>
+                <div class="stat-item stat-lines">
+                    <span class="stat-icon">📊</span>
+                    <span class="stat-label">Lines</span>
+                    <span class="stat-value" id="online-lines">0</span>
+                </div>
+                <div class="stat-item stat-garbage">
+                    <span class="stat-icon">💥</span>
+                    <span class="stat-label">Incoming</span>
+                    <span class="stat-value" id="online-garbage-value">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: Info Panel (Scoreboard, Kill Feed, Chat) -->
+        <div class="right-panel">
+            <div class="online-scoreboard" id="online-scoreboard">
+                <div class="scoreboard-header">
+                    <span class="scoreboard-title">Scoreboard</span>
+                    <span class="scoreboard-goal" id="scoreboard-goal"></span>
+                </div>
+                <div class="scoreboard-list" id="scoreboard-list">
+                    <!-- Player rankings will be dynamically inserted -->
+                </div>
+            </div>
+            <div class="online-kill-feed" id="online-kill-feed">
+                <div class="kill-feed-header">Kill Feed</div>
+                <div class="kill-feed-list" id="kill-feed-list">
+                    <!-- Kill events will be dynamically inserted -->
+                </div>
+            </div>
+            <div class="online-chat">
+                <div class="chat-messages" id="chat-messages">
+                    <!-- Chat messages will be dynamically inserted -->
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chat-input" placeholder="Type message..." maxlength="200" />
+                    <button id="chat-send" class="chat-send-btn">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Odyssey Mode Container -->
     <div id="odyssey-container" class="odyssey-container" style="display: none;">
         <!-- Odyssey Board (3D World) - Rendered by OdysseyBoardController -->

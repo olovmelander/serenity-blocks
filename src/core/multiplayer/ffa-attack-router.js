@@ -11,10 +11,17 @@ export class FFAAttackRouter {
     constructor(ffaGameState) {
         this.gameState = ffaGameState;
         this.isHost = ffaGameState.isHost;
+        this.debugGarbage = ffaGameState.debugGarbage === true;
 
         // Track recent attacks for debugging
         this.attackHistory = [];
         this.MAX_HISTORY = 50;
+    }
+
+    _logGarbage(...args) {
+        if (this.debugGarbage) {
+            console.log(...args);
+        }
     }
 
     /**
@@ -40,7 +47,7 @@ export class FFAAttackRouter {
             return; // No attack (too small)
         }
 
-        console.log(`💥 ${attacker.name} cleared lines → sending ${totalLines} garbage lines`);
+        this._logGarbage(`💥 ${attacker.name} cleared lines → sending ${totalLines} garbage lines`);
 
         // PHASE 3.2: Apply garbage counter (defensive mechanic)
         // Sending garbage reduces your incoming garbage
@@ -51,7 +58,7 @@ export class FFAAttackRouter {
             .filter((p) => p.steamId !== attackerSteamId && p.isAlive);
 
         if (opponents.length === 0) {
-            console.log('  ⚠️ No opponents alive - attack wasted');
+            this._logGarbage('  ⚠️ No opponents alive - attack wasted');
             return;
         }
 
@@ -97,32 +104,32 @@ export class FFAAttackRouter {
             attackerId: attacker.steamId, // Track who sent the garbage for frag attribution
         };
 
-        console.log(`📦 Creating garbage entries with attackerId: ${attacker.steamId} (${attacker.name})`);
+        this._logGarbage(`📦 Creating garbage entries with attackerId: ${attacker.steamId} (${attacker.name})`);
 
         // Expand garbage into actual entries
         const garbageAttack = calculateGarbage(cascadeSummary);
         const entries = garbageAttack.expandEntries(context);
 
         // Verify attackerId is set
-        console.log(`📦 Generated ${entries.length} entries, checking attackerId...`);
+        this._logGarbage(`📦 Generated ${entries.length} entries, checking attackerId...`);
         entries.forEach((entry, idx) => {
             if (entry.attackerId) {
-                console.log(`  ✅ Entry ${idx}: attackerId = ${entry.attackerId}`);
+                this._logGarbage(`  ✅ Entry ${idx}: attackerId = ${entry.attackerId}`);
             } else {
-                console.log(`  ❌ Entry ${idx}: NO attackerId!`);
+                this._logGarbage(`  ❌ Entry ${idx}: NO attackerId!`);
             }
         });
 
         // Add to opponent's garbage queue
         opponent.garbageQueue.enqueue(entries);
 
-        console.log(`  → ${opponent.name} receives ${lines} lines (queue: ${opponent.garbageQueue.getTotalLines()})`);
-        console.log(`  → Opponent's queue now has ${opponent.garbageQueue.entries.length} entries`);
+        this._logGarbage(`  → ${opponent.name} receives ${lines} lines (queue: ${opponent.garbageQueue.getTotalLines()})`);
+        this._logGarbage(`  → Opponent's queue now has ${opponent.garbageQueue.entries.length} entries`);
 
         // PHASE 3.1: If opponent has no piece (between spawns), insert immediately
         // This makes garbage more responsive and prevents stalling
         if (!opponent.gameState.currentPiece && !opponent.gameState.isGameOver) {
-            console.log('  ⚡ Immediate insertion (no piece active)');
+            this._logGarbage('  ⚡ Immediate insertion (no piece active)');
             this.gameState.insertPendingGarbage(opponent.steamId);
         }
     }
