@@ -11,6 +11,10 @@ export const MessageTypes = {
     LOBBY_GAME_START: 'lobby:game:start',
     LOBBY_CONFIG_UPDATE: 'lobby:config:update',
 
+    // Network QoS (ping/pong)
+    NET_PING: 'net:ping',
+    NET_PONG: 'net:pong',
+
     // Game messages (sent from peers to host)
     GAME_INPUT_MOVE: 'game:input:move', // Peer → Host
     GAME_INPUT_ROTATE: 'game:input:rotate', // Peer → Host
