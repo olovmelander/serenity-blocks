@@ -8,9 +8,16 @@
 import { MessageTypes } from '../network/message-types.js';
 import {
     GameState,
-    fillBag, spawnPiece, move, rotate, softDrop, hardDrop, markBoardDirty,
+    fillBag,
+    spawnPiece,
+    move,
+    rotate,
+    softDrop,
+    hardDrop,
+    markBoardDirty,
 } from '../game.js';
-import { GarbageQueue, bitsToColumns, columnsToMask } from '../garbage.js';
+import { rebuildBoardGridFromPieces } from '../board.js';
+import { GarbageQueue, insertGarbageEntries } from '../garbage.js';
 import { InputValidator } from '../validation/input-validator.js';
 import { processPhysics } from '../physics.js';
 import { PLAYER_COLORS } from '../constants.js';
@@ -45,9 +52,12 @@ export class FFAGameStateP2P {
         };
         this.winner = null;
         this.matchStartTime = 0;
+        this.lastMatchResults = null;
 
         // Input validation (host only)
         this.inputValidator = this.isHost ? new InputValidator() : null;
+        this.debugGarbage = typeof window !== 'undefined'
+            && window.__MULTIPLAYER_DEBUG_GARBAGE__ === true;
 
         // State sync (host broadcasts at 30Hz)
         this.stateSyncInterval = null;
@@ -72,6 +82,12 @@ export class FFAGameStateP2P {
         // If peer, announce joining to host
         if (!this.isHost) {
             this.announceJoin();
+        }
+    }
+
+    _logGarbage(...args) {
+        if (this.debugGarbage) {
+            console.log(...args);
         }
     }
 
@@ -180,7 +196,7 @@ export class FFAGameStateP2P {
    * Setup network message handlers
    */
     setupNetworkHandlers() {
-    // === INPUT MESSAGES (Peer → Host) ===
+        // === INPUT MESSAGES (Peer → Host) ===
 
         this.network.on(MessageTypes.GAME_INPUT_MOVE, (msg) => {
             if (this.isHost) {
@@ -284,14 +300,49 @@ export class FFAGameStateP2P {
             console.log(`🏆 ${msg.data.killerName} fragged ${msg.data.victimName}!`);
         });
 
-        this.network.on('game:match:end', (msg) => {
-            console.log(`🎊 MATCH OVER! Winner: ${msg.data.winnerName}`);
+        this.network.on(MessageTypes.GAME_MATCH_END, (msg) => {
+            const data = msg.data || {};
+            const winnerName = data.winnerName || 'Draw';
+            console.log(`🎊 MATCH OVER! Winner: ${winnerName}`);
+
             this.gamePhase = 'finished';
-            this.winner = msg.data.winner;
+            this.winner = data.winner
+                ? (this.players.get(data.winner) || { steamId: data.winner, name: winnerName })
+                : { steamId: null, name: winnerName };
+            this.lastMatchResults = data;
+
+            this.stopGameLoop();
+            this.stopStateSyncLoop();
+
+            if (data.isGameOver) {
+                emitMultiplayerEvent(MULTIPLAYER_EVENTS.GAME_OVER, {
+                    winner: this.winner,
+                    winnerName,
+                    finalStats: data.finalStats || [],
+                    endCondition: data.endCondition,
+                    endConditionValue: data.endConditionValue,
+                    duration: data.duration,
+                    killFeed: data.killFeed || [],
+                    isGameOver: true,
+                });
+            }
         });
 
         this.network.on('game:garbage:sent', (msg) => {
             console.log(`💥 ${msg.data.fromName} sent ${msg.data.totalLines} lines to ${msg.data.targetCount} players`);
+        });
+
+        // Handle attack requests from peers (host routes attacks)
+        this.network.on('game:attack:request', (msg) => {
+            if (!this.isHost) return; // Only host routes attacks
+
+            const attackerSteamId = msg.from; // from is set by steam-networking
+            const { cascadeSummary } = msg.data;
+
+            if (attackerSteamId && cascadeSummary) {
+                console.log(`⚔️ Routing attack from peer ${attackerSteamId}`);
+                this.attackRouter.routeAttack(attackerSteamId, cascadeSummary);
+            }
         });
 
         this.network.on('game:host:migrated', (msg) => {
@@ -363,9 +414,10 @@ export class FFAGameStateP2P {
                 this.gamePhase = 'playing';
 
                 // Re-initialize players with the same seed from host (for deterministic pieces)
+                // CRITICAL: All players must use the EXACT same seed for fair play
                 const { newSeed } = msg.data;
                 this.players.forEach((player, steamId) => {
-                    player.gameState.randomGenerator = this.createSeededRNG(newSeed + player.steamId.charCodeAt(0));
+                    player.gameState.randomGenerator = this.createSeededRNG(newSeed);
 
                     // Fill bag and spawn first piece
                     fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
@@ -395,6 +447,49 @@ export class FFAGameStateP2P {
         });
     }
 
+    _applyInputToPlayer(steamId, inputType, data, physicsCallbacks) {
+        const player = this.players.get(steamId);
+        if (!player || !player.isAlive) {
+            return false;
+        }
+
+        const { gameState } = player;
+
+        // Buffer input if processing physics (prevents dropped inputs during animations)
+        // The queue is consumed in game.js spawnPiece()
+        if (gameState.isProcessingPhysics || !gameState.currentPiece) {
+            if (inputType === 'move' || inputType === 'rotate') {
+                gameState.inputQueue = {
+                    type: inputType,
+                    dir: data.direction,
+                };
+            }
+            return false;
+        }
+
+        const callbacks = physicsCallbacks || this.buildPhysicsCallbacks(steamId);
+
+        switch (inputType) {
+            case 'move':
+                move(gameState, data.direction, null, null);
+                break;
+            case 'rotate':
+                rotate(gameState, data.direction, null, null);
+                break;
+            case 'drop':
+                if (data.type === 'soft') {
+                    softDrop(gameState, null, callbacks);
+                } else if (data.type === 'hard') {
+                    hardDrop(gameState, null, callbacks);
+                }
+                break;
+            default:
+                return false;
+        }
+
+        return true;
+    }
+
     /**
    * Process player input (HOST ONLY)
    */
@@ -420,30 +515,23 @@ export class FFAGameStateP2P {
         // Track input for pattern detection
         this.inputValidator.trackInput(steamId, inputType, data);
 
-        const { gameState } = player;
+        // Use different callbacks for local vs remote players:
+        // - Local player (host): full callbacks including garbage routing
+        // - Remote player (peer): no garbage routing (peer sends their own game:attack:request)
+        const isRemotePlayer = steamId !== this.localPlayerId;
+        const callbacks = isRemotePlayer
+            ? this.buildRemotePlayerCallbacks(steamId)
+            : this.buildPhysicsCallbacks(steamId);
 
-        // Skip if processing physics or no piece
-        if (gameState.isProcessingPhysics || !gameState.currentPiece) {
+        const applied = this._applyInputToPlayer(
+            steamId,
+            inputType,
+            data,
+            callbacks,
+        );
+
+        if (!applied) {
             return;
-        }
-
-        // Apply input to player's game state
-        const physicsCallbacks = this.buildPhysicsCallbacks(steamId);
-
-        switch (inputType) {
-        case 'move':
-            move(gameState, data.direction, null, null);
-            break;
-        case 'rotate':
-            rotate(gameState, data.direction, null, null);
-            break;
-        case 'drop':
-            if (data.type === 'soft') {
-                softDrop(gameState, null, physicsCallbacks);
-            } else if (data.type === 'hard') {
-                hardDrop(gameState, null, physicsCallbacks);
-            }
-            break;
         }
 
         // CRITICAL: Force immediate visual update after input
@@ -474,6 +562,25 @@ export class FFAGameStateP2P {
                 ...data,
                 timestamp,
             });
+
+            this._applyLocalPrediction(inputType, data);
+        }
+    }
+
+    _applyLocalPrediction(inputType, data) {
+        if (this.isHost) {
+            return;
+        }
+
+        const applied = this._applyInputToPlayer(
+            this.localPlayerId,
+            inputType,
+            data,
+            this.buildLocalPredictionCallbacks(this.localPlayerId),
+        );
+
+        if (applied) {
+            this.renderAllPlayers();
         }
     }
 
@@ -492,19 +599,19 @@ export class FFAGameStateP2P {
 
         if (totalLines === 0) return;
 
-        console.log(`💥 Inserting ${totalLines} garbage lines for ${player.name}`);
-        console.log(`💥 Queue has ${garbageQueue.entries.length} total entries before dequeue`);
+        this._logGarbage(`💥 Inserting ${totalLines} garbage lines for ${player.name}`);
+        this._logGarbage(`💥 Queue has ${garbageQueue.entries.length} total entries before dequeue`);
 
         // Take lines from queue
         const burst = garbageQueue.dequeueLineBurst();
 
         if (!burst || burst.length === 0) return;
 
-        console.log(`💥 Dequeued ${burst.length} entries from garbage queue`);
+        this._logGarbage(`💥 Dequeued ${burst.length} entries from garbage queue`);
 
         // Log all entries in burst to debug attackerId
         burst.forEach((entry, idx) => {
-            console.log(`  Entry ${idx}: type=${entry.type}, attackerId=${entry.attackerId || 'MISSING'}, color=${entry.color}`);
+            this._logGarbage(`  Entry ${idx}: type=${entry.type}, attackerId=${entry.attackerId || 'MISSING'}, color=${entry.color}`);
         });
 
         // Track who sent the garbage for kill attribution
@@ -515,17 +622,46 @@ export class FFAGameStateP2P {
 
         if (attackerId) {
             const attacker = this.players.get(attackerId);
-            console.log(`💥 ✅ Garbage from ${attacker?.name || attackerId} is being inserted into ${player.name}'s board`);
+            this._logGarbage(`💥 ✅ Garbage from ${attacker?.name || attackerId} is being inserted into ${player.name}'s board`);
             // Track this attacker as the last one who sent garbage to this player
             player.lastAttackerId = attackerId;
         } else {
-            console.log('💥 ❌ NO ATTACKER FOUND in garbage burst! This will be a self-kill.');
+            this._logGarbage('💥 ❌ NO ATTACKER FOUND in garbage burst! This will be a self-kill.');
         }
 
-        // Insert into game board
-        burst.forEach((entry) => {
-            this.insertGarbageLine(player.gameState, entry);
+        const result = insertGarbageEntries(player.gameState.lockedPieces, burst, {
+            boardGrid: player.gameState.boardGrid,
+            debug: this.debugGarbage,
         });
+
+        if (!result || result.topOut) {
+            this._logGarbage(`💀 ${player.name} topped out from garbage insertion!`);
+            player.isAlive = false;
+            player.gameState.isGameOver = true;
+
+            if (attackerId) {
+                const attacker = this.players.get(attackerId);
+                this._logGarbage(`🏆 Kill attributed to: ${attacker?.name || attackerId}`);
+            } else {
+                this._logGarbage('💀 Self-kill (no attacker found in garbage entries)');
+            }
+
+            this.fragTracker.recordDeath(steamId, attackerId);
+
+            emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, {
+                steamId,
+                playerName: player.name,
+                isLocal: steamId === this.localPlayerId,
+            });
+            return;
+        }
+
+        if (player.gameState.boardGrid) {
+            rebuildBoardGridFromPieces(player.gameState.lockedPieces, player.gameState.boardGrid);
+            player.gameState.boardCache = null;
+            player.gameState.boardCacheDirty = true;
+        }
+        markBoardDirty(player.gameState);
 
         // PHASE 3.2: Dispatch garbage insertion event for visual effects
         emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, {
@@ -537,16 +673,16 @@ export class FFAGameStateP2P {
 
         // Check if player topped out
         if (this.checkTopOut(player.gameState)) {
-            console.log(`💀 ${player.name} topped out!`);
+            this._logGarbage(`💀 ${player.name} topped out!`);
             player.isAlive = false;
             player.gameState.isGameOver = true;
 
             // Award frag to the player who sent the garbage
             if (attackerId) {
                 const attacker = this.players.get(attackerId);
-                console.log(`🏆 Kill attributed to: ${attacker?.name || attackerId}`);
+                this._logGarbage(`🏆 Kill attributed to: ${attacker?.name || attackerId}`);
             } else {
-                console.log('💀 Self-kill (no attacker found in garbage entries)');
+                this._logGarbage('💀 Self-kill (no attacker found in garbage entries)');
             }
             this.fragTracker.recordDeath(steamId, attackerId);
 
@@ -593,7 +729,7 @@ export class FFAGameStateP2P {
                 }
             }
 
-            console.log(`🛡️ ${attacker.name} countered ${removed} garbage lines (${incomingLines} → ${attacker.garbageQueue.getTotalLines()})`);
+            this._logGarbage(`🛡️ ${attacker.name} countered ${removed} garbage lines (${incomingLines} → ${attacker.garbageQueue.getTotalLines()})`);
 
             // Dispatch counter event for visual/audio feedback
             emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_COUNTERED, {
@@ -604,65 +740,6 @@ export class FFAGameStateP2P {
                 isLocal: attackerSteamId === this.localPlayerId,
             });
         }
-    }
-
-    /**
-   * Insert a single garbage line into the board
-   */
-    insertGarbageLine(gameState, garbageEntry) {
-    // Shift all locked pieces up by 1 row
-        gameState.lockedPieces.forEach((piece) => {
-            piece.y -= 1;
-        });
-
-        // Create garbage row with holes based on entry.holeMask
-        const COLS = 10; // Board width
-        const ROWS = 20; // Visible rows
-        const HIDDEN_ROWS = 4; // Hidden rows at top
-        const garbageRow = Array(COLS).fill(true);
-
-        let holeMask = null;
-        if (garbageEntry.holeMask !== undefined && garbageEntry.holeMask !== null) {
-            // Convert holeMask based on its type:
-            // - If it's a number (bitfield), convert it to boolean array
-            // - If it's already an array, use it (or convert object-with-numeric-keys)
-            if (typeof garbageEntry.holeMask === 'number') {
-                // Convert bitfield to column indices, then to boolean mask
-                const holeColumns = bitsToColumns(garbageEntry.holeMask);
-                holeMask = columnsToMask(holeColumns);
-            } else if (Array.isArray(garbageEntry.holeMask)) {
-                holeMask = garbageEntry.holeMask;
-            } else {
-                // Handle object-with-numeric-keys case (from JSON deserialization)
-                holeMask = Array.from(garbageEntry.holeMask);
-            }
-
-            holeMask.forEach((hasHole, col) => {
-                if (hasHole) {
-                    garbageRow[col] = false;
-                }
-            });
-        }
-
-        // Add garbage as locked pieces at bottom of visible area
-        const garbageY = ROWS + HIDDEN_ROWS - 1;
-        garbageRow.forEach((isSolid, col) => {
-            if (isSolid) {
-                gameState.lockedPieces.push({
-                    x: col,
-                    y: garbageY,
-                    shape: [[1]],
-                    color: garbageEntry.color || '#808080',
-                    shapeKey: 'garbage',
-                });
-            }
-        });
-
-        console.log(
-            `  Added garbage line at y=${garbageY}, holes at:`,
-            holeMask ? holeMask.map((h, i) => (h ? i : null)).filter((x) => x !== null) : 'none',
-        );
-        markBoardDirty(gameState);
     }
 
     /**
@@ -737,17 +814,20 @@ export class FFAGameStateP2P {
    * Initialize a player for the match with deterministic RNG
    */
     initializePlayerForMatch(player, seed) {
-    // Reset game state
+        // Reset game state
         player.gameState.reset();
         player.garbageQueue = new GarbageQueue();
         player.isAlive = true;
         // DO NOT reset frags here - they persist across rounds until full game reset
 
-        // Set deterministic RNG (same seed = same pieces)
-        player.gameState.randomGenerator = this.createSeededRNG(seed + player.steamId.charCodeAt(0));
+        // Set deterministic RNG (same seed = same pieces for ALL players)
+        // CRITICAL: All players must use the EXACT same seed for fair play
+        player.gameState.randomGenerator = this.createSeededRNG(seed);
 
         // Fill initial bag with deterministic pieces
         fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
+
+
 
         // Spawn first piece (no game over callback needed at start)
         spawnPiece(player.gameState, null, null);
@@ -760,7 +840,10 @@ export class FFAGameStateP2P {
    * This ensures all players get the same piece sequence!
    */
     createSeededRNG(seed) {
-        let state = seed;
+        let state = seed % 233280;
+        if (state < 0) state += 233280;
+        console.log(`🎲 [RNG] Created generator with seed=${seed} (state=${state})`);
+
         return function () {
             // Linear congruential generator (LCG)
             state = (state * 9301 + 49297) % 233280;
@@ -831,13 +914,13 @@ export class FFAGameStateP2P {
             // Check for significant changes
             const hasChanges = (
                 lastState.score !== currentState.score
-        || lastState.lines !== currentState.lines
-        || lastState.level !== currentState.level
-        || lastState.currentPieceY !== currentState.currentPiece?.y
-        || lastState.currentPieceX !== currentState.currentPiece?.x
-        || lastState.dropCounter !== currentState.dropCounter
-        || player.frags !== lastState.frags
-        || player.isAlive !== lastState.isAlive
+                || lastState.lines !== currentState.lines
+                || lastState.level !== currentState.level
+                || lastState.currentPieceY !== currentState.currentPiece?.y
+                || lastState.currentPieceX !== currentState.currentPiece?.x
+                || lastState.dropCounter !== currentState.dropCounter
+                || player.frags !== lastState.frags
+                || player.isAlive !== lastState.isAlive
             );
 
             if (hasChanges) {
@@ -881,11 +964,20 @@ export class FFAGameStateP2P {
                 garbagePending: player.garbageQueue.getTotalLines(),
 
                 // CRITICAL: Full board state for rendering
-                grid: player.gameState.grid,
+                grid: player.gameState.boardGrid,
                 currentPiece: player.gameState.currentPiece,
                 nextPieces: player.gameState.nextPieces,
                 dropCounter: player.gameState.dropCounter,
                 dropInterval: player.gameState.dropInterval,
+
+                // Garbage queue for meter display
+                garbageEntries: player.garbageQueue.entries.map((entry) => ({
+                    type: entry.type,
+                    attackerId: entry.attackerId,
+                    color: entry.color,
+                    holeMask: entry.holeMask,
+                    variant: entry.variant,
+                })),
 
                 // CRITICAL: Include locked pieces for accurate rendering
                 lockedPieces: player.gameState.lockedPieces.map((piece) => ({
@@ -918,26 +1010,53 @@ export class FFAGameStateP2P {
         state.players.forEach((playerData) => {
             const player = this.players.get(playerData.steamId);
             if (player) {
-                // Update stats
+                const isLocalPlayer = playerData.steamId === this.localPlayerId;
+
+                // Update stats for all players (including local)
                 player.gameState.score = playerData.score;
                 player.gameState.lines = playerData.lines;
                 player.gameState.level = playerData.level;
                 player.frags = playerData.frags;
                 player.isAlive = playerData.isAlive;
+                player.gameState.isGameOver = !playerData.isAlive;
 
-                // CRITICAL: Update full board state for rendering
-                player.gameState.grid = playerData.grid;
-                player.gameState.currentPiece = playerData.currentPiece ? {
-                    ...playerData.currentPiece,
-                } : null;
-                player.gameState.nextPieces = playerData.nextPieces ? [...playerData.nextPieces] : [];
+                // CRITICAL: Only update board state for OPPONENTS (not local player)
+                // Local player runs their own physics and input handling.
+                // Syncing board state for local player causes race conditions where
+                // host state overwrites local line clears mid-animation.
+                if (!isLocalPlayer) {
+                    // Update full board state for opponent rendering
+                    if (playerData.grid) {
+                        player.gameState.boardGrid = playerData.grid;
+                        player.gameState.grid = playerData.grid;
+                    }
+                    player.gameState.currentPiece = playerData.currentPiece ? {
+                        ...playerData.currentPiece,
+                    } : null;
+                    player.gameState.lockedPieces = playerData.lockedPieces || [];
+                    player.gameState.boardCache = null;
+                    player.gameState.boardCacheDirty = true;
+                }
+
+                // Sync timing for all players
                 player.gameState.dropCounter = playerData.dropCounter || 0;
                 player.gameState.dropInterval = playerData.dropInterval || 1000;
 
-                // CRITICAL: Update locked pieces (critical for rendering)
-                player.gameState.lockedPieces = playerData.lockedPieces || [];
-                player.gameState.boardCache = null;
-                player.gameState.boardCacheDirty = true;
+                // Sync next pieces only for opponents (local player uses their own seeded RNG)
+                if (!isLocalPlayer) {
+                    player.gameState.nextPieces = playerData.nextPieces ? [...playerData.nextPieces] : [];
+                }
+
+                // Reconstruct garbage queue from network data for meter display
+                if (playerData.garbageEntries && player.garbageQueue) {
+                    player.garbageQueue.entries = playerData.garbageEntries.map((e) => ({
+                        type: e.type,
+                        attackerId: e.attackerId,
+                        color: e.color,
+                        holeMask: e.holeMask,
+                        variant: e.variant,
+                    }));
+                }
             }
         });
 
@@ -986,6 +1105,19 @@ export class FFAGameStateP2P {
                     isReady,
                 });
             }
+        }
+    }
+
+    /**
+   * Reset all player ready states (host broadcasts)
+   */
+    resetReadyStates() {
+        this.players.forEach((player) => {
+            player.isReady = false;
+        });
+
+        if (this.isHost) {
+            this.broadcastPlayerList();
         }
     }
 
@@ -1191,12 +1323,114 @@ export class FFAGameStateP2P {
         };
     }
 
+    buildLocalPredictionCallbacks(steamId) {
+        const callbacks = this.buildPhysicsCallbacks(steamId);
+        // Peers send their attack info to the host for routing
+        callbacks.onGarbageReady = (summary) => {
+            this.sendGarbageAttack(summary);
+        };
+        // Peers handle their own piece spawning and garbage insertion locally
+        // This is necessary because we don't sync board state from host for local player
+        callbacks.spawnPiece = () => {
+            const player = this.players.get(steamId);
+            if (!player) return;
+
+            const { gameState } = player;
+            // Don't spawn if piece already exists or game is over
+            if (gameState.currentPiece || gameState.isGameOver) {
+                return;
+            }
+
+            // Insert local garbage prediction on piece lock
+            this._insertLocalGarbagePrediction(steamId);
+
+            // Check if garbage insertion caused game over
+            if (gameState.isGameOver) {
+                return;
+            }
+
+            // Spawn next piece locally (peers manage their own piece spawning)
+            spawnPiece(gameState, null, null);
+        };
+        return callbacks;
+    }
+
+    /**
+     * Build callbacks for processing REMOTE player input on the host
+     * These callbacks do NOT route garbage attacks because remote players
+     * send their own game:attack:request messages
+     */
+    buildRemotePlayerCallbacks(steamId) {
+        const callbacks = this.buildPhysicsCallbacks(steamId);
+        // Don't route garbage - remote players send their own attack requests
+        callbacks.onGarbageReady = () => { };
+        return callbacks;
+    }
+
+    /**
+     * Insert garbage locally for visual prediction (peers only)
+     * Host's broadcast will overwrite with authoritative state
+     */
+    _insertLocalGarbagePrediction(steamId) {
+        if (this.isHost) return; // Host uses _spawnNextPieceForPlayer
+
+        const player = this.players.get(steamId);
+        if (!player || !player.isAlive) return;
+
+        const { garbageQueue, gameState } = player;
+        const totalLines = garbageQueue.getTotalLines();
+
+        if (totalLines > 0) {
+            // Take lines from queue and insert locally
+            const burst = garbageQueue.dequeueLineBurst();
+            if (burst && burst.length > 0) {
+                const normalizedBurst = burst.map((entry) => ({
+                    ...entry,
+                    holeMask: typeof entry.holeMask === 'number' ? entry.holeMask : 0,
+                    variant: entry.variant || 'normal',
+                }));
+
+                const result = insertGarbageEntries(gameState.lockedPieces, normalizedBurst, {
+                    boardGrid: gameState.boardGrid,
+                    debug: this.debugGarbage,
+                });
+
+                if (result && !result.topOut && gameState.boardGrid) {
+                    rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+                    gameState.boardCache = null;
+                    gameState.boardCacheDirty = true;
+                }
+                markBoardDirty(gameState);
+
+                // Dispatch event for UI feedback
+                emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, {
+                    steamId,
+                    playerName: player.name,
+                    linesInserted: burst.length,
+                    isLocal: true,
+                });
+            }
+        }
+
+        // Trigger render to show the garbage
+        this.renderAllPlayers();
+    }
+
     _spawnNextPieceForPlayer(steamId) {
         const player = this.players.get(steamId);
         if (!player) return;
 
         const { gameState } = player;
         if (gameState.currentPiece || gameState.isGameOver) {
+            return;
+        }
+
+        // CRITICAL: Insert garbage BEFORE spawning new piece
+        // This ensures garbage appears on the board at the same time the meter goes down
+        this.insertPendingGarbage(steamId);
+
+        // Check if garbage insertion caused top-out
+        if (gameState.isGameOver) {
             return;
         }
 
@@ -1230,10 +1464,6 @@ export class FFAGameStateP2P {
                 });
             },
         );
-
-        if (!gameState.isGameOver) {
-            this.insertPendingGarbage(steamId);
-        }
     }
 
     /**
@@ -1267,6 +1497,16 @@ export class FFAGameStateP2P {
             this.syncUnifiedLoopPlayers();
         } else if (this.unifiedLoop) {
             this.unifiedLoop.clearPlayers();
+            const localPlayer = this.players.get(this.localPlayerId);
+            if (localPlayer) {
+                const physicsCallbacks = this.buildLocalPredictionCallbacks(this.localPlayerId);
+                this.unifiedLoop.registerPlayer(
+                    this.localPlayerId,
+                    localPlayer.gameState,
+                    physicsCallbacks,
+                    null,
+                );
+            }
         }
 
         if (this.unifiedLoop && !this.loopRunning) {
@@ -1281,7 +1521,7 @@ export class FFAGameStateP2P {
    * This is called every frame to update visuals
   */
     renderAllPlayers() {
-    // Notify main.js that rendering is needed
+        // Notify main.js that rendering is needed
         emitMultiplayerEvent(MULTIPLAYER_EVENTS.RENDER_FRAME, {
             players: Array.from(this.players.entries()).map(([steamId, player]) => ({
                 steamId,
@@ -1401,9 +1641,10 @@ export class FFAGameStateP2P {
             this.gamePhase = 'playing';
 
             // Re-initialize players for next round (use the same seed we broadcast)
+            // CRITICAL: All players must use the EXACT same seed for fair play
             this.players.forEach((player, steamId) => {
-                // Set new deterministic RNG for this round
-                player.gameState.randomGenerator = this.createSeededRNG(newSeed + player.steamId.charCodeAt(0));
+                // Set new deterministic RNG for this round - same seed for all players
+                player.gameState.randomGenerator = this.createSeededRNG(newSeed);
 
                 // Fill bag and spawn first piece
                 fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
@@ -1464,23 +1705,13 @@ export class FFAGameStateP2P {
 
         console.log('🎮 Starting new game...');
 
-        // Broadcast full game restart to all peers BEFORE showing countdown
-        const newSeed = Math.floor(Math.random() * 1000000);
-        this.network.broadcastToAll(MessageTypes.GAME_ROUND_RESTART, {
-            newSeed,
-            prefixText: 'GAME START',
-            fullReset: true, // Indicates this is a full game restart (reset frags)
-        });
-
         // Dispatch event to clear death visuals
         emitMultiplayerEvent(MULTIPLAYER_EVENTS.ROUND_RESTART, {
             players: Array.from(this.players.keys()),
         });
 
-        // Show "GAME START" then countdown
-        this.showCountdown(() => {
-            this.startMatch();
-        }, 'GAME START'); // Show "GAME START" before countdown
+        // Start a fresh match (broadcasts to peers with countdown)
+        this.startMatch();
     }
 
     /**

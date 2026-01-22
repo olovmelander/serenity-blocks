@@ -161,11 +161,11 @@ export function drawPiece(canvas, pieceKey) {
     ctx.restore();
 }
 
-export function updateNextQueue(nextPieces) {
+export function updateNextQueue(nextPieces, containerId = 'next-queue-container') {
     ensureListeners();
     cachedNextPieces = Array.isArray(nextPieces) ? [...nextPieces] : [];
 
-    const queueContainer = document.getElementById('next-queue-container');
+    const queueContainer = document.getElementById(containerId);
     if (!queueContainer) return;
     queueContainer.innerHTML = '';
 
