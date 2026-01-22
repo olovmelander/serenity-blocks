@@ -15,8 +15,8 @@ export class InputValidator {
         this.inputCounts = new Map();
 
         // Anti-cheat limits (tuned for responsive 60fps gameplay)
-        this.MAX_INPUTS_PER_SECOND = 60; // Allow fast inputs for smooth 60fps gameplay
-        this.MIN_INPUT_INTERVAL = 1000 / this.MAX_INPUTS_PER_SECOND; // ~16.67ms (60fps)
+        this.MAX_INPUTS_PER_SECOND = 140; // Allow fast inputs + DAS/soft drop without false positives
+        this.MIN_INPUT_INTERVAL = 1000 / this.MAX_INPUTS_PER_SECOND; // ~7.14ms @ 140/s
         this.RATE_LIMIT_WINDOW = 1000; // 1 second window
 
         // Input history for pattern detection
@@ -30,7 +30,7 @@ export class InputValidator {
    */
     validateInput(steamId, inputType, data, timestamp = Date.now()) {
     // Check rate limiting first (prevent spam/bots)
-        const rateCheck = this.checkInputRate(steamId, timestamp);
+        const rateCheck = this.checkInputRate(steamId, inputType);
         if (!rateCheck.valid) {
             return rateCheck;
         }
@@ -57,11 +57,12 @@ export class InputValidator {
     /**
    * Check if player is exceeding input rate limits
    */
-    checkInputRate(steamId, timestamp) {
-        const now = timestamp || Date.now();
+    checkInputRate(steamId, inputType) {
+        const now = Date.now();
 
         // Get last input time
-        const lastInput = this.lastInputTime.get(steamId) || 0;
+        const lastKey = `${steamId}:${inputType}`;
+        const lastInput = this.lastInputTime.get(lastKey) || 0;
         const timeSinceLastInput = now - lastInput;
 
         // Too fast? Likely a bot or macro
@@ -98,7 +99,7 @@ export class InputValidator {
         }
 
         // Update last input time
-        this.lastInputTime.set(steamId, now);
+        this.lastInputTime.set(lastKey, now);
 
         return { valid: true };
     }
@@ -213,7 +214,9 @@ export class InputValidator {
    */
     resetPlayer(steamId) {
         this.inputRates.delete(steamId);
-        this.lastInputTime.delete(steamId);
+        Array.from(this.lastInputTime.keys())
+            .filter((key) => key.startsWith(`${steamId}:`))
+            .forEach((key) => this.lastInputTime.delete(key));
         this.inputCounts.delete(steamId);
         this.inputHistory.delete(steamId);
     }

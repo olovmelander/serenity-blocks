@@ -3607,16 +3607,48 @@ async function bootstrap() {
                 try {
                     console.log(`🧪 [TEST] Creating test lobby with ${numPlayers} players...`);
 
+                    const prepareForMatchStart = async () => {
+                        const startModal = document.getElementById('start-modal');
+                        if (startModal) {
+                            startModal.classList.remove('visible');
+                        }
+                        document.body.classList.remove('start-modal-open');
+
+                        if (app.modalManager) {
+                            app.modalManager.hideAll();
+                        }
+                        if (app.gamepadController?.disableMenuNavigation) {
+                            app.gamepadController.disableMenuNavigation();
+                        }
+                        if (app.gamepadController?.disableGameModeSelection) {
+                            app.gamepadController.disableGameModeSelection();
+                        }
+
+                        if (introAnimation?.dismiss) {
+                            introAnimation.dismiss();
+                        }
+
+                        await new Promise((resolve) => setTimeout(resolve, 100));
+                    };
+
                     // Switch to online multiplayer mode if not already
                     const currentMode = app.gameModeManager.getCurrentModeId();
                     if (currentMode !== GAME_MODES.ONLINE_MULTIPLAYER) {
                         console.log('🧪 [TEST] Switching to online multiplayer mode...');
                         await app.gameModeManager.stopCurrentMode();
                         await app.gameModeManager.deactivateCurrentMode();
+                        await prepareForMatchStart();
                         await app.gameModeManager.activateMode(GAME_MODES.ONLINE_MULTIPLAYER);
 
                         // Wait for mode to initialize
                         await new Promise((resolve) => setTimeout(resolve, 500));
+                    } else {
+                        await prepareForMatchStart();
+                    }
+
+                    const activeMode = app.gameModeManager.getCurrentMode();
+                    if (activeMode && !activeMode.isRunning) {
+                        await app.gameModeManager.startCurrentMode();
                     }
 
                     // Get the online multiplayer mode
@@ -3637,6 +3669,14 @@ async function bootstrap() {
                     };
 
                     await onlineMode.handleCreateLobby(config);
+
+                    await prepareForMatchStart();
+                    if (onlineMode.lobbyBrowser?.hide) {
+                        onlineMode.lobbyBrowser.hide();
+                    }
+                    if (onlineMode.matchConfigModal?.hide) {
+                        onlineMode.matchConfigModal.hide();
+                    }
 
                     // Get the FFA game state
                     const { ffaGameState } = onlineMode;
@@ -3669,9 +3709,23 @@ async function bootstrap() {
                         }
                     }
 
+                    const localPlayer = ffaGameState.getLocalPlayer?.();
+                    if (localPlayer) {
+                        localPlayer.isReady = true;
+                    }
+                    if (ffaGameState.isHost) {
+                        ffaGameState.broadcastPlayerList();
+                    }
+
+                    if (onlineMode.lobbyWaitingRoom?.startMatch) {
+                        onlineMode.lobbyWaitingRoom.startMatch();
+                    } else if (ffaGameState.startMatch) {
+                        ffaGameState.startMatch();
+                    }
+
                     console.log(`✅ [TEST] Test lobby created with ${numPlayers} players!`);
                     console.log('📋 [TEST] All dummy players are auto-ready');
-                    console.log('🎮 [TEST] You can now click "Start Match" to begin');
+                    console.log('🎮 [TEST] Match starting automatically (lobby flow)');
 
                     return {
                         lobbyId: onlineMode.currentLobbyId,
