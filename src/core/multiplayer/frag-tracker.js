@@ -25,7 +25,7 @@ export class FragTracker {
    * Record a player death and award frag to killer
    * (HOST ONLY)
    */
-    recordDeath(deadPlayerSteamId, killerSteamId = null) {
+    recordDeath(deadPlayerSteamId, killerSteamId = null, explicitKillerName = null) {
         if (!this.isHost) {
             console.warn('⚠️ Only host can record deaths');
             return;
@@ -77,11 +77,26 @@ export class FragTracker {
             });
         }
 
+        // Resolve killer name
+        let killerName = explicitKillerName;
+        if (!killerName && killerSteamId) {
+            const killer = this.gameState.players.get(killerSteamId);
+            if (killer) {
+                killerName = killer.name;
+            } else {
+                // Fallback: try looking up by string if ID mismatch
+                const killerStr = String(killerSteamId);
+                const killerByStr = this.gameState.players.get(killerStr);
+                killerName = killerByStr ? killerByStr.name : `Unknown (ID: ${killerSteamId})`;
+            }
+        }
+
         // Broadcast death event
         this.gameState.network.broadcastToAll('game:player:died', {
             player: deadPlayerSteamId,
             playerName: deadPlayer.name,
             killer: killerSteamId,
+            killerName: killerName, // Add explicit killer name
         });
 
         // Log death
@@ -89,7 +104,7 @@ export class FragTracker {
             victim: deadPlayerSteamId,
             victimName: deadPlayer.name,
             killer: killerSteamId,
-            killerName: killerSteamId ? this.gameState.players.get(killerSteamId)?.name : null,
+            killerName: killerName,
             timestamp: Date.now(),
         });
 
@@ -147,61 +162,61 @@ export class FragTracker {
 
         // Check specific end conditions
         switch (config.endCondition) {
-        case 'frags': {
-        // First to X frags wins
-            const topPlayer = Array.from(this.gameState.players.values())
-                .reduce((top, p) => (p.frags > top.frags ? p : top));
+            case 'frags': {
+                // First to X frags wins
+                const topPlayer = Array.from(this.gameState.players.values())
+                    .reduce((top, p) => (p.frags > top.frags ? p : top));
 
-            if (topPlayer.frags >= config.endConditionValue) {
-                console.log(`🏆 ${topPlayer.name} reached ${topPlayer.frags} frags!`);
-                return topPlayer;
+                if (topPlayer.frags >= config.endConditionValue) {
+                    console.log(`🏆 ${topPlayer.name} reached ${topPlayer.frags} frags!`);
+                    return topPlayer;
+                }
+                break;
             }
-            break;
-        }
 
-        case 'time': {
-        // Highest score after X minutes
-            const elapsed = (Date.now() - this.gameState.matchStartTime) / 1000 / 60; // minutes
+            case 'time': {
+                // Highest score after X minutes
+                const elapsed = (Date.now() - this.gameState.matchStartTime) / 1000 / 60; // minutes
 
-            if (elapsed >= config.endConditionValue) {
+                if (elapsed >= config.endConditionValue) {
+                    const topPlayer = Array.from(this.gameState.players.values())
+                        .reduce((top, p) => (p.gameState.score > top.gameState.score ? p : top));
+
+                    console.log(`⏱️ Time's up! ${topPlayer.name} wins with ${topPlayer.gameState.score} points`);
+                    return topPlayer;
+                }
+                break;
+            }
+
+            case 'points': {
+                // First to X thousand points wins
+                const targetScore = config.endConditionValue * 1000;
                 const topPlayer = Array.from(this.gameState.players.values())
                     .reduce((top, p) => (p.gameState.score > top.gameState.score ? p : top));
 
-                console.log(`⏱️ Time's up! ${topPlayer.name} wins with ${topPlayer.gameState.score} points`);
-                return topPlayer;
+                if (topPlayer.gameState.score >= targetScore) {
+                    console.log(`🏆 ${topPlayer.name} reached ${topPlayer.gameState.score} points!`);
+                    return topPlayer;
+                }
+                break;
             }
-            break;
-        }
 
-        case 'points': {
-        // First to X thousand points wins
-            const targetScore = config.endConditionValue * 1000;
-            const topPlayer = Array.from(this.gameState.players.values())
-                .reduce((top, p) => (p.gameState.score > top.gameState.score ? p : top));
+            case 'lines': {
+                // First to clear X lines wins
+                const topPlayer = Array.from(this.gameState.players.values())
+                    .reduce((top, p) => (p.gameState.lines > top.gameState.lines ? p : top));
 
-            if (topPlayer.gameState.score >= targetScore) {
-                console.log(`🏆 ${topPlayer.name} reached ${topPlayer.gameState.score} points!`);
-                return topPlayer;
+                if (topPlayer.gameState.lines >= config.endConditionValue) {
+                    console.log(`🏆 ${topPlayer.name} cleared ${topPlayer.gameState.lines} lines!`);
+                    return topPlayer;
+                }
+                break;
             }
-            break;
-        }
 
-        case 'lines': {
-        // First to clear X lines wins
-            const topPlayer = Array.from(this.gameState.players.values())
-                .reduce((top, p) => (p.gameState.lines > top.gameState.lines ? p : top));
-
-            if (topPlayer.gameState.lines >= config.endConditionValue) {
-                console.log(`🏆 ${topPlayer.name} cleared ${topPlayer.gameState.lines} lines!`);
-                return topPlayer;
+            case 'never': {
+                // Match never ends automatically (manual stop only)
+                return null;
             }
-            break;
-        }
-
-        case 'never': {
-        // Match never ends automatically (manual stop only)
-            return null;
-        }
         }
 
         return null; // No winner yet
@@ -291,6 +306,10 @@ export class FragTracker {
         const finalStats = Array.from(this.gameState.players.values()).map((p) => {
             const attack = attackStatsById.get(p.steamId);
             const apm = Math.round(((attack && attack.totalAttacks) || 0) / minutes);
+            const piecesPlaced = p.gameState.piecesPlaced || 0;
+            const bpm = Math.round(piecesPlaced / minutes); // BPM = Blocks(Pieces) Per Minute (matches SP)
+            const ppm = Math.round(p.gameState.score / minutes); // PPM = Points Per Minute (matches SP)
+
             return {
                 steamId: p.steamId,
                 name: p.name,
@@ -300,6 +319,8 @@ export class FragTracker {
                 frags: p.frags,
                 deaths: deathCounts.get(p.steamId) || 0,
                 apm,
+                ppm,
+                bpm,
                 isAlive: p.isAlive,
                 placement: 0,
             };
@@ -346,17 +367,17 @@ export class FragTracker {
         // Last player standing or all dead is just a round win, not game over
         // Game only ends when someone reaches the actual goal
         switch (config.endCondition) {
-        case 'frags':
-            return winner && winner.frags >= config.endConditionValue;
-        case 'points':
-            return winner && winner.gameState && winner.gameState.score >= (config.endConditionValue * 1000);
-        case 'lines':
-            return winner && winner.gameState && winner.gameState.lines >= config.endConditionValue;
-        case 'time':
-            const elapsed = (Date.now() - this.gameState.matchStartTime) / 1000 / 60;
-            return elapsed >= config.endConditionValue;
-        default:
-            return false;
+            case 'frags':
+                return winner && winner.frags >= config.endConditionValue;
+            case 'points':
+                return winner && winner.gameState && winner.gameState.score >= (config.endConditionValue * 1000);
+            case 'lines':
+                return winner && winner.gameState && winner.gameState.lines >= config.endConditionValue;
+            case 'time':
+                const elapsed = (Date.now() - this.gameState.matchStartTime) / 1000 / 60;
+                return elapsed >= config.endConditionValue;
+            default:
+                return false;
         }
     }
 

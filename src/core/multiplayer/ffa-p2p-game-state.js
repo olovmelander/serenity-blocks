@@ -619,6 +619,9 @@ export class FFAGameStateP2P {
         const attackerId = burst.length > 0
             ? (burst[burst.length - 1].attackerId || burst.find((entry) => entry.attackerId)?.attackerId || null)
             : null;
+        const attackerName = burst.length > 0
+            ? (burst[burst.length - 1].attackerName || burst.find((entry) => entry.attackerName)?.attackerName || null)
+            : null;
 
         if (attackerId) {
             const attacker = this.players.get(attackerId);
@@ -646,7 +649,7 @@ export class FFAGameStateP2P {
                 this._logGarbage('💀 Self-kill (no attacker found in garbage entries)');
             }
 
-            this.fragTracker.recordDeath(steamId, attackerId);
+            this.fragTracker.recordDeath(steamId, attackerId, attackerName);
 
             emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, {
                 steamId,
@@ -684,7 +687,7 @@ export class FFAGameStateP2P {
             } else {
                 this._logGarbage('💀 Self-kill (no attacker found in garbage entries)');
             }
-            this.fragTracker.recordDeath(steamId, attackerId);
+            this.fragTracker.recordDeath(steamId, attackerId, attackerName);
 
             // Dispatch top-out event
             emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, {
@@ -1455,6 +1458,7 @@ export class FFAGameStateP2P {
                     console.log('💀 Death on spawn with no attacker tracked (self-kill)');
                 }
 
+                // TODO: Store lastAttackerName on player too? For now, we rely on ID lookup for this edge case
                 this.fragTracker.recordDeath(steamId, lastAttackerId);
 
                 emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, {
