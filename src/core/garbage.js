@@ -190,6 +190,7 @@ export class GarbageAttack {
         const color = context.color || '#808080';
         const team = context.team || null;
         const attackerId = context.attackerId || null; // Track attacker for frag attribution
+        const attackerName = context.attackerName || null; // Track attacker name directly
 
         if (this.attackType === ATTACK_TYPES.BLIND && this.param > 0) {
             entries.push({
@@ -214,6 +215,7 @@ export class GarbageAttack {
                 color,
                 team,
                 attackerId, // Store who sent this garbage line
+                attackerName,
                 blindTime: 0,
                 connectAbove: ordinal > 0,
                 connectBelow: ordinal < totalLines - 1,
@@ -559,8 +561,8 @@ function settleFloatingBlocksAfterGarbage(lockedPieces) {
  */
 export function insertGarbageEntries(lockedPieces, entries, options = {}) {
     const { boardGrid, debug = false } = options;
-    const log = debug ? console.log : () => {};
-    const warn = debug ? console.warn : () => {};
+    const log = debug ? console.log : () => { };
+    const warn = debug ? console.warn : () => { };
     const lineEntries = entries.filter((entry) => entry.type === 'line');
     if (lineEntries.length === 0) {
         return {
