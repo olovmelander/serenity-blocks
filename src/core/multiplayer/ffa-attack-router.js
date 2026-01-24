@@ -102,6 +102,7 @@ export class FFAAttackRouter {
         const context = {
             color: attacker.color || '#808080', // Use player's assigned color
             attackerId: attacker.steamId, // Track who sent the garbage for frag attribution
+            attackerName: attacker.name, // Track name directly
         };
 
         this._logGarbage(`📦 Creating garbage entries with attackerId: ${attacker.steamId} (${attacker.name})`);

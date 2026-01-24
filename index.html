@@ -867,15 +867,25 @@
         <!-- LEFT: Opponent Watch Panel (Max 4 visible) -->
         <div class="opponents-panel">
             <div class="watch-controls">
-                <button id="auto-watch-btn" class="watch-btn">Auto Watch</button>
-                <span class="watching-count" id="watching-count">0/4</span>
+                <div class="watch-controls-row">
+                    <div class="watch-controls-left">
+                        <button id="auto-watch-btn" class="watch-btn watch-toggle" type="button" title="Toggle auto watch (auto-select alive players)" aria-pressed="true">Auto Watch</button>
+                        <span class="watch-mode-indicator" id="watch-mode-indicator">AUTO</span>
+                    </div>
+                    <div class="watch-controls-right">
+                        <div class="watching-status">
+                            <span class="watching-label">Watching</span>
+                            <span class="watching-count" id="watching-count">0/4</span>
+                        </div>
+                        <button id="select-opponents-btn" class="watch-btn watch-select-btn" type="button" title="Select opponents to watch" aria-expanded="false">Select</button>
+                    </div>
+                </div>
+                <div id="opponent-selection-popup" class="opponent-selection-popup hidden" role="dialog" aria-label="Select opponents"></div>
             </div>
             <div class="watch-grid" id="watch-grid">
                 <!-- Opponent mini-boards will be dynamically inserted here -->
             </div>
-            <div class="unwatched-list" id="unwatched-list">
-                <!-- List of unwatched players (clickable to swap) -->
-            </div>
+            <!-- Unwatched list moved to popup -->
         </div>
 
         <!-- CENTER: Main Board Panel (Your big board) -->
