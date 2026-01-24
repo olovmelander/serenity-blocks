@@ -625,7 +625,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Auto-watch button handler
         const autoWatchBtn = document.getElementById('auto-watch-btn');
         if (autoWatchBtn) {
-            autoWatchBtn.onclick = () => this.opponentWatchManager.autoSelectOpponents();
+            autoWatchBtn.onclick = () => this.opponentWatchManager.toggleAutoWatch();
         }
 
         console.log('[OnlineMultiplayer] Opponent watch manager created');
@@ -790,6 +790,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 : 0;
 
             this._updateNetworkHud();
+
+            // Critical fix: Actually process the state update!
+            this._handleStateUpdate(msg.data);
         };
 
         const pingHandler = (msg) => {
@@ -939,6 +942,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.playerToppedOutUnsub = onMultiplayerEvent(
             MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT,
             (detail) => {
+                // Record completion in kill feed
+                this._handlePlayerDeath(detail);
+
                 // Show death animation for local player
                 if (detail.isLocal || detail.steamId === localSteamId) {
                     console.log('[OnlineMultiplayer] Local player topped out - showing death animation');
@@ -988,8 +994,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     _handleStateUpdate(state) {
         if (!state || !state.players) return;
 
+        const normalizedPlayers = state.players.map((player) => ({
+            ...player,
+            id: player.id ?? player.steamId,
+        }));
+
         // Update local board if we have state for this player
-        const myState = state.players.find((p) => p.id === this.steamNetworking.steamId);
+        const myState = normalizedPlayers.find((p) => p.id === this.steamNetworking.steamId);
         if (myState && this.mainBoardScene) {
             // Sync board scene with network state
             if (this.mainBoardScene.syncFromNetworkState) {
@@ -1005,18 +1016,19 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         // Update opponent boards
         if (this.opponentWatchManager) {
-            const opponents = state.players.filter((p) => p.id !== this.steamNetworking.steamId);
+            const opponents = normalizedPlayers.filter((p) => p.id !== this.steamNetworking.steamId);
             this.opponentWatchManager.updateFromState(opponents);
         }
 
         // Update scoreboard
-        const scoreboardPlayers = state.players.map((p) => ({
+        const scoreboardPlayers = normalizedPlayers.map((p) => ({
             id: p.id,
             name: p.name,
             frags: p.frags || 0,
             score: p.score || 0,
             lines: p.lines || 0,
             isAlive: p.isAlive !== false,
+            color: p.color || this._getPlayerColor(p.id) || p.steamId && this._getPlayerColor(p.steamId),
         }));
         if (this.scoreboard) {
             this.scoreboard.updatePlayers(scoreboardPlayers);
@@ -1098,6 +1110,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 grid: p.gameState?.boardGrid || p.gameState?.grid,
                 currentPiece: p.gameState?.currentPiece,
                 nextPieces: p.nextPieces || p.gameState?.nextPieces,
+                garbageQueue: p.garbageQueue,
+                garbagePending: p.garbageQueue?.getTotalLines?.() || 0,
                 color: p.color || this._getPlayerColor(p.steamId),
             }));
 
@@ -1127,6 +1141,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             score: p.gameState?.score || 0,
             lines: p.gameState?.lines || 0,
             isAlive: p.isAlive !== false,
+            color: p.color || this._getPlayerColor(p.steamId),
         }));
         if (this.scoreboard) {
             this.scoreboard.updatePlayers(scoreboardPlayers);
@@ -1598,8 +1613,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 // Render loop updates
                 if (frame % 30 === 0) { // Broadcast state at 30Hz
                     this._broadcastGameState();
-                    timeSinceSync = 0; // Reset timeSinceSync if still using it for other things, or remove if frame is primary
+                    timeSinceSync = 0;
                 }
+
+                // Update local UI for host matching the broadcast rate or higher (e.g. every frame or 30Hz)
+                this._updateHostUI();
             }
 
             // Continue loop

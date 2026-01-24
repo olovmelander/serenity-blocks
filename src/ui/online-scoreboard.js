@@ -30,6 +30,26 @@ export class OnlineScoreboard {
             || this.container.querySelector('.scoreboard-list');
         this.goalContainer = this.container.querySelector('#scoreboard-goal')
             || this.container.querySelector('.scoreboard-goal');
+
+        // Inject column header if not present
+        if (!this.container.querySelector('.scoreboard-columns-header')) {
+            const header = document.createElement('div');
+            header.className = 'scoreboard-columns-header';
+            header.innerHTML = `
+                <span class="col-rank">#</span>
+                <span class="col-name">Player</span>
+                <span class="col-frags">Frags</span>
+                <span class="col-score">Score</span>
+                <span class="col-status">Status</span>
+            `;
+            // Insert after scoreboard-header
+            const titleHeader = this.container.querySelector('.scoreboard-header');
+            if (titleHeader) {
+                titleHeader.after(header);
+            } else if (this.listContainer) {
+                this.listContainer.before(header);
+            }
+        }
     }
 
     /**
@@ -100,16 +120,21 @@ export class OnlineScoreboard {
         const html = this.players.map((player, index) => {
             const isLocal = player.id === this.localPlayerId;
             const isDead = player.isAlive === false;
+            const status = isDead ? 'Dead' : 'Alive';
 
             const classes = ['scoreboard-row'];
             if (isLocal) classes.push('local-player');
             if (isDead) classes.push('dead');
 
+            const colorStyle = player.color ? `--player-row-color: ${player.color}` : '--player-row-color: #a0aec0';
+
             return `
-                <div class="${classes.join(' ')}" data-player-id="${player.id}">
-                    <span class="rank">${this._getMedal(index)}</span>
-                    <span class="player-name">${this._escapeHtml(player.name)}</span>
-                    <span class="frags">${player[this.sortBy] || 0}</span>
+                <div class="${classes.join(' ')}" data-player-id="${player.id}" style="${colorStyle}">
+                    <span class="col-rank">${this._getMedal(index)}</span>
+                    <span class="col-name">${this._escapeHtml(player.name)}</span>
+                    <span class="col-frags">${player.frags || 0}</span>
+                    <span class="col-score">${player.score || 0}</span>
+                    <span class="col-status">${status}</span>
                 </div>
             `;
         }).join('');
@@ -122,10 +147,10 @@ export class OnlineScoreboard {
      */
     _getMedal(index) {
         switch (index) {
-        case 0: return '🥇';
-        case 1: return '🥈';
-        case 2: return '🥉';
-        default: return `${index + 1}.`;
+            case 0: return '🥇';
+            case 1: return '🥈';
+            case 2: return '🥉';
+            default: return `${index + 1}.`;
         }
     }
 
