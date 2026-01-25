@@ -10,19 +10,27 @@ export const MessageTypes = {
     LOBBY_PLAYER_READY: 'lobby:player:ready',
     LOBBY_GAME_START: 'lobby:game:start',
     LOBBY_CONFIG_UPDATE: 'lobby:config:update',
+    LOBBY_MATCH_CONFIG: 'lobby:match:config',
 
     // Network QoS (ping/pong)
     NET_PING: 'net:ping',
     NET_PONG: 'net:pong',
+    NET_HELLO: 'net:hello',
+    NET_WELCOME: 'net:welcome',
+    NET_ERROR: 'net:error',
 
     // Game messages (sent from peers to host)
     GAME_INPUT_MOVE: 'game:input:move', // Peer → Host
     GAME_INPUT_ROTATE: 'game:input:rotate', // Peer → Host
     GAME_INPUT_DROP: 'game:input:drop', // Peer → Host
+    GAME_INPUT_BATCH: 'game:input:batch', // Peer → Host (batched inputs)
 
     // Game state (broadcast from host to all peers)
     GAME_STATE_FULL: 'game:state:full', // Host → All (full sync)
     GAME_STATE_DELTA: 'game:state:delta', // Host → All (delta update)
+    GAME_STATE_RESYNC: 'game:state:resync', // Host → Peer (chunked resync)
+    GAME_STATE_RESYNC_ACK: 'game:state:resync:ack', // Peer → Host (chunk ack/final)
+    GAME_SYNCPOINT: 'game:syncpoint', // Host → All (safe state marker)
     GAME_PIECE_LOCK: 'game:piece:lock', // Host → All
     GAME_LINES_CLEAR: 'game:lines:clear', // Host → All
     GAME_GARBAGE_SENT: 'game:garbage:sent', // Host → All
