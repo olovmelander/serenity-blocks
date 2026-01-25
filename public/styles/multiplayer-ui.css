@@ -1625,7 +1625,7 @@
 /* 2 players - wider boards */
 .multiplayer-game-area.infinity-lms.players-2 {
   display: grid;
-  grid-template-columns: repeat(2, minmax(240px, 30vw));
+  grid-template-columns: repeat(2, max-content);
   gap: 40px;
   justify-content: center;
   align-items: center;
@@ -1638,7 +1638,7 @@
 /* 3 players - medium width */
 .multiplayer-game-area.infinity-lms.players-3 {
   display: grid;
-  grid-template-columns: repeat(3, minmax(200px, 24vw));
+  grid-template-columns: repeat(3, max-content);
   gap: 30px;
   justify-content: center;
   align-items: center;
@@ -1717,8 +1717,8 @@
 /* 4 players - narrow boards */
 .multiplayer-game-area.infinity-lms.players-4 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(calc(var(--board-width) + 70px), 1fr));
-  gap: 2px;
+  grid-template-columns: repeat(4, max-content);
+  gap: 12px;
   justify-content: center;
   align-items: center;
 }
@@ -1729,31 +1729,42 @@
 
 /* Minimap positioning in player card - OPTIMIZED for space efficiency */
 .player-card.infinity-lms {
+  --infinity-minimap-column: 65px;
+  --infinity-minimap-gap: 8px;
+  --infinity-card-padding-x: 14px;
+  --infinity-card-padding-y: 12px;
   display: grid;
   grid-template-areas:
-    "header header minimap"
-    "next next minimap"
-    "board board minimap"
-    "stats stats stats";
-  grid-template-columns: 1fr auto 65px;
+    "header header"
+    "next next"
+    "board minimap"
+    "stats .";
+  grid-template-columns: auto var(--infinity-minimap-column);
   /* Slimmer: 65px vs 90px */
-  gap: 4px 8px;
+  column-gap: var(--infinity-minimap-gap);
+  row-gap: 6px;
+  padding: var(--infinity-card-padding-y) var(--infinity-card-padding-x);
+  width: max-content;
+  box-sizing: border-box;
+  align-items: start;
+  justify-items: center;
+  margin-top: 0;
 }
 
 .player-card.infinity-lms .infinity-minimap {
   grid-area: minimap;
   width: 55px !important;
   /* Slimmer: 55px vs 80px (saves 100px for 4 players) */
-  height: 420px !important;
-  /* Taller: better aspect ratio for 10:rows */
-  margin: 8px 0;
+  height: calc(var(--board-height) + 2px) !important;
+  margin: 0 !important;
   padding: 6px 3px 8px !important;
   text-align: center;
   display: grid;
   grid-template-rows: auto 1fr auto;
   align-items: center;
   justify-items: center;
-  justify-self: center;
+  justify-self: start;
+  align-self: start;
   opacity: 0.8;
   transition: opacity 0.2s, transform 0.2s;
   cursor: pointer;
@@ -1809,6 +1820,13 @@
 /* Board takes main area */
 .player-card.infinity-lms .player-board-wrapper {
   grid-area: board;
+  justify-self: center;
+}
+
+/* Next section wrapper */
+.player-card.infinity-lms .player-next-section {
+  grid-area: next;
+  justify-self: center;
 }
 
 /* Next piece area */
@@ -1816,14 +1834,18 @@
   grid-area: next;
 }
 
-/* Stats span full width */
+/* Stats align with board column */
 .player-card.infinity-lms .player-stats-bar {
   grid-area: stats;
+  justify-self: center;
 }
 
 /* Header */
 .player-card.infinity-lms .player-header {
   grid-area: header;
+  top: calc(-1 * var(--infinity-card-padding-y) - 1px);
+  left: 50%;
+  transform: translate(-50%, -50%);
 }
 
 /* ========================================

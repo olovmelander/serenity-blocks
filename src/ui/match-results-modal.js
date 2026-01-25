@@ -52,7 +52,7 @@ export class MatchResultsModal {
             <div class="standings-list" id="match-results-standings"></div>
           </div>
           <div class="match-results-kill-feed">
-            <div class="section-title">Kill Feed</div>
+            <div class="section-title">Battle Log</div>
             <div class="match-results-kill-list" id="match-results-kill-feed"></div>
           </div>
         </div>
