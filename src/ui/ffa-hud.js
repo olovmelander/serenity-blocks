@@ -64,17 +64,23 @@ export class FFAHud {
         });
 
         onMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, (detail) => {
+            const killerSteamId = detail.killerId || detail.killer || null;
+            const isSelfKill = detail.isSelfKill ?? (!killerSteamId || killerSteamId === detail.steamId);
+            const killerName = isSelfKill
+                ? null
+                : (detail.killerName || (killerSteamId ? String(killerSteamId) : null));
+
             // Emit to activity feed
             window.dispatchEvent(new CustomEvent('activity:kill', {
                 detail: {
-                    killer: null,
+                    killer: killerName,
                     victim: detail.playerName,
-                    killerSteamId: null,
+                    killerSteamId,
                     victimSteamId: detail.steamId,
-                    isLocalKill: false,
+                    isLocalKill: killerSteamId === this.gameState?.localPlayerId,
                     isLocalDeath: detail.steamId === this.gameState?.localPlayerId,
                     timestamp: Date.now(),
-                    isSelfKill: true,
+                    isSelfKill,
                 },
             }));
         });

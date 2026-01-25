@@ -788,14 +788,20 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 if (!playerState) continue;
 
                 const matchKey = `player${playerNum}`;
-                const matchTotals = this.matchStats[matchKey] || { score: 0, lines: 0 };
+                const matchTotals = this.matchStats[matchKey] || {
+                    score: 0,
+                    lines: 0,
+                    deaths: 0
+                };
 
                 const totalScore = (matchTotals.score || 0) + (playerState.score || 0);
                 const totalLines = (matchTotals.lines || 0) + (playerState.totalLinesCleared || 0);
                 const totalLevel = playerState.level ?? 1;
                 const totalGarbage = this.multiplayerState.garbageQueues?.[i]?.getTotalLines?.() ?? 0;
                 const roundFrags = this.roundWins[matchKey] ?? 0;
-                const totalDeaths = this.multiplayerState.deaths?.[i] ?? 0;
+
+                // Fix: Sum match deaths + current round deaths
+                const totalDeaths = (matchTotals.deaths || 0) + (this.multiplayerState.deaths?.[i] ?? 0);
 
                 const fragsEl = document.getElementById(`p${playerNum}-frags`);
                 const deathsEl = document.getElementById(`p${playerNum}-deaths`);
@@ -1241,6 +1247,15 @@ export class LocalMultiplayerMode extends BaseGameMode {
     async _handleGameOver(playerIndex) {
         console.log(`[LocalMultiplayer] Player ${playerIndex + 1} lost!`);
 
+        // Check if this was a suicide (no attacker) BEFORE handling death (which might clear state)
+        // MultiPlayerState.handlePlayerDeath uses the same logic to log, but we need it here for round logic
+        const killerId = this.multiplayerState.lastAttackerIds[playerIndex];
+        const isSelfKill = killerId === null || killerId === playerIndex;
+
+        if (isSelfKill) {
+            console.log(`[LocalMultiplayer] Player ${playerIndex + 1} self-destructed (self-kill). No frag awarded.`);
+        }
+
         // Mark player as dead and handle frag attribution
         this.multiplayerState.handlePlayerDeath(playerIndex);
 
@@ -1359,7 +1374,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
             // Wait for victory animation before showing round end
             await new Promise((resolve) => setTimeout(resolve, 500));
 
-            await this.handleRoundEnd(winnerKey);
+            // Pass isSelfKill flag to handleRoundEnd
+            await this.handleRoundEnd(winnerKey, isSelfKill);
         } else {
             // For 3-4 players, check if we need to end the round
             const alivePlayers = this.multiplayerState.players.filter((p) => p.isAlive);
@@ -1379,12 +1395,40 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     // Wait a bit for victory animation before showing round end
                     await new Promise((resolve) => setTimeout(resolve, 500));
 
-                    await this.handleRoundEnd(winnerKey);
+                    await this.handleRoundEnd(winnerKey, isSelfKill);
                 }
             }
             // If multiple players still alive, DO NOT pause - continue the match
         }
     }
+
+    /**
+     * Show countdown before game starts
+     * @private
+     */
+    async _showCountdown() {
+        console.log('[LocalMultiplayer] Starting countdown...');
+        return new Promise((resolve) => {
+            let count = 5;
+
+            // Create overlay background
+            const overlay = document.createElement('div');
+            overlay.id = 'countdown-overlay';
+            // ... (rest of function - ensuring I don't cut it off, but I need to jump to handleRoundEnd)
+            // Wait, I am replacing a huge chunk including _handleGameOver.
+            // I need to make sure I don't delete _showCountdown or handleRoundEnd if I don't include them in replacement.
+            // The tool `replace_file_content` replaces a contiguous block.
+            // My previous `view_file` showed `_showCountdown` starting at 1393.
+            // `_handleGameOver` starts at 1241 and ends around 1387.
+            // `handleRoundEnd` is way down at 2260.
+            // I should use `multi_replace_file_content` because I'm editing two separate functions that are far apart.
+            // I cannot use `replace_file_content` for both effectively without reading the whole file in between.
+            // I will ABORT this `replace_file_content` and use `multi_replace_file_content`.
+        });
+    }
+
+    // Placeholder to make valid JS for thought process - I will return error to myself to switch tools.
+
 
     /**
      * Show countdown before game starts
@@ -2257,16 +2301,20 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * Handle round end - check if match is over or start new round
      * @param {string} winner - 'player1' or 'player2'
      */
-    async handleRoundEnd(winner) {
+    async handleRoundEnd(winner, isSelfKill = false) {
         if (winner && typeof winner === 'object' && winner.type === 'team') {
             await this._handleTeamRoundEnd(winner.teamId);
             return;
         }
 
-        console.log(`[LocalMultiplayer] Round ended! Winner: ${winner} `);
+        console.log(`[LocalMultiplayer] Round ended! Winner: ${winner}, isSelfKill: ${isSelfKill}`);
 
-        // Increment round wins (frags)
-        this.roundWins[winner]++;
+        // Increment round wins (frags), unless it was a self-kill (self-death)
+        if (!isSelfKill) {
+            this.roundWins[winner]++;
+        } else {
+            console.log(`[LocalMultiplayer] No frag awarded to ${winner} due to self-kill`);
+        }
 
         const winnerIndex = parseInt(winner.replace('player', ''), 10) - 1;
         const winnerName = `Player ${winnerIndex + 1}`;
@@ -2410,18 +2458,16 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * @private
      */
     async _startNewRound() {
-        console.log('[LocalMultiplayer] Resetting for new round...');
+        console.log('[LocalMultiplayer] Starting new round...');
 
         // Clear death animations from previous round
         this._clearDeathAnimations();
 
-        const { numPlayers } = this.multiplayerState;
-
-        // Calculate round duration
+        // Aggregate current round stats into match totals BEFORE resetting logic
+        const numPlayers = this.multiplayerState.numPlayers;
         const now = Date.now();
         const roundDuration = now - (this.roundStartTime || this.matchStartTime);
 
-        // Accumulate stats from this round into match totals before resetting
         const accumulatedLog = {};
         for (let i = 0; i < numPlayers; i++) {
             const playerNum = i + 1;
@@ -3023,16 +3069,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         // Also search for any lingering overlays in the DOM (safety cleanup)
-        const numPlayers = this.multiplayerState?.numPlayers || 4;
-        for (let i = 1; i <= numPlayers; i++) {
-            const container = document.getElementById(`p${i}-phaser-container`);
-            if (container) {
-                const overlays = container.querySelectorAll('.player-death-overlay');
-                overlays.forEach((overlay) => {
-                    console.log(`[LocalMultiplayer] Force removing overlay from P${i} container`);
-                    overlay.remove();
-                });
-            }
+        // Search globally for any death overlays and remove them
+        const lingeringOverlays = document.querySelectorAll('.player-death-overlay');
+        if (lingeringOverlays.length > 0) {
+            console.log(`[LocalMultiplayer] Found ${lingeringOverlays.length} lingering overlays via global search`);
+            lingeringOverlays.forEach((overlay) => {
+                console.log('[LocalMultiplayer] Force removing lingering overlay');
+                overlay.remove();
+            });
         }
 
         // Reset array

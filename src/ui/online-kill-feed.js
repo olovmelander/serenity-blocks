@@ -1,7 +1,7 @@
 /**
- * OnlineKillFeed - Kill feed component for online multiplayer
+ * OnlineKillFeed - Battle log component for online multiplayer
  *
- * Shows recent kills/deaths in chronological order
+ * Shows recent kills/deaths and combat events in chronological order
  */
 export class OnlineKillFeed {
     constructor(container) {
@@ -30,6 +30,9 @@ export class OnlineKillFeed {
      * @param {Object} event - { killer: string, victim: string, linesCleared?: number }
      */
     addKill(event) {
+        const isSelfKill = typeof event.isSelfKill === 'boolean'
+            ? event.isSelfKill
+            : !event.killer;
         const item = {
             type: 'kill',
             killer: event.killer,
@@ -37,7 +40,7 @@ export class OnlineKillFeed {
             linesCleared: event.linesCleared,
             killerColor: event.killerColor,
             victimColor: event.victimColor,
-            isSelfKill: event.isSelfKill || !event.killer,
+            isSelfKill,
             timestamp: Date.now(),
             expiresAt: Date.now() + this.itemTTL,
         };
@@ -94,9 +97,19 @@ export class OnlineKillFeed {
             if (expiringSoon) classes.push('expiring');
 
             if (item.type === 'kill') {
-                const killerLabel = item.killer || 'Self';
-                const killerStyle = item.killerColor ? ` style="color: ${item.killerColor};"` : '';
                 const victimStyle = item.victimColor ? ` style="color: ${item.victimColor};"` : '';
+                if (item.isSelfKill) {
+                    return `
+                    <div class="${classes.join(' ')} self-kill">
+                        <span class="kill-icon">☠️</span>
+                        <span class="victim"${victimStyle}>${this._escapeHtml(item.victim)}</span>
+                        <span class="kill-note">topped out</span>
+                    </div>
+                `;
+                }
+
+                const killerLabel = item.killer || 'Unknown';
+                const killerStyle = item.killerColor ? ` style="color: ${item.killerColor};"` : '';
 
                 return `
                     <div class="${classes.join(' ')}">

@@ -2,7 +2,7 @@
 
 **Date:** January 22, 2026
 **Status:** 📋 Planning Complete
-**Goal:** Fully functional Online FFA Multiplayer with Steam Spacewar testing support
+**Goal:** Fully functional Online FFA Multiplayer (8 players) with Steam Spacewar testing support
 
 ---
 
@@ -13,24 +13,32 @@
 |-----------|--------|-------|
 | Steam Networking Layer | 100% | Real Steam + Mock mode both functional |
 | Lobby Browser UI | 100% | Browse, create, join lobbies |
-| Waiting Room UI | 100% | Player list, ready states, host controls |
-| Match Config Modal | 100% | Name, players, win condition |
-| Game State Management | 95% | Player sync, attacks, frags |
-| Attack/Garbage System | 100% | FFA routing, kill attribution |
+| Waiting Room UI | 90% | Player list + ready flow done; lobby chat input pending |
+| Match Config Modal | 90% | Core settings done; advanced options pending |
+| Game Rendering | 100% | 3-column layout + Phaser main board + opponent canvases |
+| Match Results Screen | 100% | Full standings + stats + kill summary |
+| In-Game Chat | 80% | Send/receive working; channels/moderation pending |
+| Scoreboard + Overlay | 100% | Right panel + TAB overlay |
+| Battle Log (Kill Feed) | 90% | Kills + garbage; add more event types |
+| Game State Management | 90% | Authoritative host + validation; resync missing |
+| Attack/Garbage System | 95% | Queue sync + prediction; attack scaling pending |
 | Win Conditions | 100% | Frags, Time, Points, Lines, Never |
-| Anti-Cheat Validation | 100% | Rate limiting, input validation |
+| Anti-Cheat Validation | 70% | Input validation present; protocol hardening pending |
 | Deterministic RNG | 100% | Seeded piece generation |
 
-### What's Missing (❌)
+### What's Missing / Needs Hardening (❌)
 | Component | Status | Impact |
 |-----------|--------|--------|
-| **Game Rendering** | 0% | CRITICAL - Can't play the game |
-| Match Results Screen | 0% | HIGH - No end game feedback |
-| Chat UI | 10% | MEDIUM - Infrastructure ready |
-| Host Migration | 20% | MEDIUM - Framework only |
-| Disconnect Handling | 0% | MEDIUM - No grace period |
+| Protocol envelope + seq/tick + matchId | 0% | CRITICAL - out-of-order/stray packets not rejected |
+| Resync + syncpoint gating | 0% | HIGH - no safe late-join or desync recovery |
+| Host migration handoff | 40% | HIGH - election only, no state transfer |
+| Disconnect detection + reconnection | 0% | HIGH - no grace period or resume |
+| Prediction reconciliation | 0% | HIGH - local prediction can drift |
+| Snapshot compression (binary/delta) | 0% | MEDIUM - bandwidth spikes at 8 players |
+| Attack scaling toggle | 0% | MEDIUM - config exists but scaling disabled |
+| Chat channels + moderation | 0% | MEDIUM - no team/spectator channels, no rate limit |
 
-### Development Progress: ~70% Complete
+### Development Progress: ~80% Complete (core gameplay) / ~55% Complete (net robustness)
 
 ---
 
@@ -73,23 +81,24 @@
 | Feature | Quadra Implementation | Adoption Plan |
 |---------|----------------------|---------------|
 | **Deterministic Sync** | Shared seed = same pieces | ✅ Already implemented |
-| **Join Sync + Full Download** | Server sends full canvas on join at safe syncpoint | 🔴 Add in Phase 1.4/5 (snapshot/resync) |
-| **Syncpoints** | Server broadcasts state gates to align transitions | 🔴 Add match phase syncpoints |
-| **Client-Side Prediction** | TCP acceptable in dial-up era, modern needs prediction | 🔴 Add in Phase 1.3 (CRITICAL for game feel) |
-| **Move Compression** | Bit-packed input stream (P_MOVES) | 🔶 Batch inputs per tick |
-| **Delta State Sync** | Only send changes | 🔶 Optimize later (30Hz acceptable) |
-| **Attack Balancing** | Reduce damage with many players | 🔴 Add "Fair Attack Scaling" toggle to match config |
-| **Binary Encoding** | Raw bytes for grid (320 bytes/player) | 🔶 Add in Phase 1.4 (reduces bandwidth 5-10x) |
+| **Join Sync + Full Download** | Server sends full canvas on join at safe syncpoint | 🔴 Not implemented; add in Phase 4 (resync) |
+| **Syncpoints** | Server broadcasts state gates to align transitions | 🔴 Not implemented; add with resync gating |
+| **Client-Side Prediction** | TCP acceptable in dial-up era, modern needs prediction | 🟡 Partial (input buffering + local prediction); add reconciliation |
+| **Move Compression** | Bit-packed input stream (P_MOVES) | 🔴 Not implemented; batch inputs per tick |
+| **Delta State Sync** | Only send changes | 🟡 Partial (skip broadcasts on no-change); add delta/binary |
+| **Attack Balancing** | Reduce damage with many players | 🔴 Config exists; scaling disabled in router |
+| **Binary Encoding** | Raw bytes for grid (320 bytes/player) | 🔴 Not implemented; target Phase 4.2 |
 | **Survivor Mode** | Round-based, respawn mechanics | 📋 Phase 5+ enhancement |
-| **Recording/Replay** | Packet logging for replays | 🔴 Add passive logging now (Phase 1), replay UI later |
-| **Handicap System** | Skill-based starting levels | 📋 Add to match config |
+| **Recording/Replay** | Packet logging for replays | 🔴 Not implemented; add passive logging + export |
+| **Handicap System** | Skill-based starting levels | 🟡 Core fields exist; add UI + validation |
 
 ### Steam Spacewar P2P Architecture (Best Practice for Serenity Blocks)
 - **Transport:** Steam lobbies for discovery + metadata; Steam P2P for gameplay (SDR-backed if available).
 - **API choice:** Prefer SteamNetworkingSockets; if staying on `sendP2PPacket`, still use channels + reliability tiers.
 - **Authority:** Host-authoritative simulation; clients send input only; host validates and broadcasts state.
 - **Reliability tiers:** Reliable for lobby/config/start/end/chat; UnreliableNoDelay for 30Hz snapshots; separate channels per tier.
-- **Message envelope:** Add `matchId`, `seq`, `tick`, `sentAt` to every packet; drop stale/out-of-order snapshots.
+- **8-player throughput:** Cap snapshot size and pace per peer; degrade to 20Hz or lower-LOD snapshots if host uplink or send queues grow.
+- **Message envelope:** Add `matchId`, `matchNonce`, `hostSteamId`, `seq`, `tick`, `sentAt` to every packet; drop stale/out-of-order snapshots.
 - **Join/resync:** Full snapshot on join at safe syncpoint; clients wait for snapshot ack before starting.
 - **Health:** Ping/RTT tracking, packet loss counters, disconnect timeouts, host migration fallbacks.
 - **Security:** Rate limit input, reject impossible moves, include per-match nonce to ignore stray packets.
@@ -98,9 +107,28 @@
 - **Protocol versioning:** `NET_HELLO/NET_WELCOME` handshake with version + feature flags.
 - **Lobby → match state machine:** Open → Locked → In-Match → Post-Match → Rematch, with late-join rules.
 - **Packet budgets:** Binary snapshots for 30Hz; JSON only for control/config.
+- **Per-peer LOD:** Local board full-rate; opponents reduced; spectators lowest.
+- **Adaptive snapshot rate:** 30Hz target, drop to 20Hz under loss/queue pressure.
 - **Host migration handoff:** New host sends authoritative snapshot + matchId continuity.
 - **QoS UX:** Show RTT, loss, relay/direct, and throttling indicators.
 - **Network test harness:** Simulate latency/loss/jitter for regression testing.
+
+### Best-in-Class Quality Gates (NEW)
+- **Input latency:** < 50ms local feel; < 120ms at 150ms RTT with prediction + reconciliation.
+- **Snapshot budget:** <= 4KB total per 8-player snapshot @ 30Hz; drop rate < 1%.
+- **Desync recovery:** hash mismatch triggers resync within 1 second.
+- **Host migration:** resume play within 2 seconds with authoritative resync.
+- **Security:** reject stale/out-of-match packets; rate limit input bursts.
+
+### 8-Player Target Constraints (NEW)
+- **Host uplink:** Keep total outgoing snapshots under ~6-7 Mbps; reduce rate/LOD if exceeded.
+- **Snapshot pacing:** Local board 30Hz, opponents 20Hz, spectators 10Hz (adaptive).
+- **Queue protection:** If send queue > 2 snapshots, drop older snapshots and keep latest only.
+
+### Test & Validation Harness (NEW)
+- **Network simulation:** latency/loss/jitter profiles (20/50/100/200ms, 1-5% loss).
+- **Soak tests:** 10-30 minute sessions with 4-8 players.
+- **Regression tests:** input buffering, garbage sync, match end + rematch.
 
 ### Quadra Networking Model to Mirror (from `/quadra`)
 - **Full state download on join** (Packet_download + Packet_gameserver) only when syncpoint is safe and all canvases are idle. (`quadra/source/net_server.cc`, `quadra/source/packets.h`)
@@ -682,9 +710,72 @@ CHAT_MESSAGE: {
 | 🟡 MEDIUM | Not blocking for MVP, but required for full Quadra parity |
 | Phase 3+ | Implement after core FFA is working |
 
+## Infinity LMS (NEW - Online Mode)
+
+Infinity LMS brings the tall-board Infinity experience to online play: last player (or last team) standing wins. Uses a configurable "Infinity Row Cap" (100-1000 rows; default 100).
+
+### Lobby + Match Config
+- Add `mode: 'infinity-lms'` to online match config (host only).
+- Show `Infinity Row Cap` input (100-1000, default 100) and hide standard win condition + level progression fields.
+- Allow team mode selection; Infinity LMS uses last team standing when teams are enabled.
+- Lobby browser + waiting room display mode + row cap (e.g., "Infinity LMS - Cap 200").
+- Row cap locks on lobby lock/start; reconnect within grace window restores player, otherwise join as spectator.
+
+### UI Layout (Online Infinity)
+```
++----------------------------------------------------------------------------+
+|                    INFINITY LMS ONLINE LAYOUT                              |
++----------------------------------------------------------------------------+
+|  +-------------+   +-----------------------+   +-------------------------+ |
+|  | Opponents   |   |     YOUR BOARD        |   |  SCOREBOARD / INFO      | |
+|  | mini boards |   |     (tall)            |   |  - Survivors            | |
+|  | height bars |   |                       |   |  - Row Cap              | |
+|  +-------------+   |  [Minimap]            |   |  Battle Log + Chat      | |
+|                    +-----------------------+   +-------------------------+ |
++----------------------------------------------------------------------------+
+```
+- Right panel adds an Infinity panel with row cap, survivors, distance to ceiling, and the main minimap.
+- Opponent cards show mini boards + height bars + compact opponent minimaps.
+- Keep the 3-column layout; prioritize vertical space for the main board.
+
+### Minimap (Main Player)
+- Reuse `src/ui/infinity/InfinityMinimap.js` with online settings.
+- Show row cap marker + danger zone (last 10 rows) + viewport indicator.
+- Allow minimap exploration; do not pause the match. Exploration temporarily detaches camera follow and restores it on exit.
+- Update from `currentTopRow` + `visibleRows` (camera) and `buildHeight`.
+- Opponent minimaps are passive (no exploration) and show height to cap.
+
+### Gameplay Feel (Infinity)
+- Preserve Infinity camera smoothing and slow-burn pacing.
+- Keep attack scaling on by default for 5+ players; clamp garbage bursts near the cap.
+- Add danger cues when within 10 rows of cap; clear elimination banner + survivor count updates.
+
+### Network + State (Tall Grid)
+- Extend match config + snapshots with `isInfinityLMS`, `infinityRowCap`, `buildHeight`, `currentTopRow`, and `infinityStats`.
+- LOD to protect bandwidth:
+  - Local player: full grid (authoritative/predicted).
+  - Opponents: top 24 rows + column height map + current piece (drives compact minimaps).
+  - Spectators: same as opponents, lower update rate (10Hz).
+- Height map payload: 10 columns with uint16 row indices (0-1000) + optional `topRow` for viewport.
+- Reuse `infinity-grid.js` helpers for top-out checks + height calculation.
+
+### Win Condition
+- Last player standing (or last team standing when team mode is enabled).
+- Simultaneous top-outs: declare draw or tie-break by distance to cap, then time survived.
+
+### Implementation Checklist
+- [ ] Add Infinity LMS option + row cap to `src/ui/match-config-modal.js` + lobby metadata.
+- [ ] Update `src/ui/lobby-browser.js` + `src/ui/lobby-waiting-room.js` to display mode + row cap.
+- [ ] Extend `src/core/game-modes/OnlineMultiplayerMode.js` for Infinity layout + main player minimap.
+- [ ] Update `src/core/multiplayer/ffa-p2p-game-state.js` for tall-grid init + last-standing logic.
+- [ ] Add Infinity HUD/scoreboard elements (survivors + distance to ceiling) in `src/ui/online-scoreboard.js`.
+- [ ] Add compact opponent minimaps to player cards (height-map driven).
+- [ ] Add tall-grid LOD (height map / top rows) to snapshot encoding.
+- [ ] Ensure team-mode flow uses last team standing + team survivor counts in Infinity LMS.
+
 ---
 
-## 📦 Binary Snapshot Encoding (NEW - Phase 1.4)
+## 📦 Binary Snapshot Encoding (NEW - Phase 4.2)
 
 ### Problem
 JSON snapshots at 30Hz for 8 players = **~4-8KB per snapshot**, potentially hitting bandwidth limits.
@@ -792,10 +883,12 @@ class BinaryEncoder {
 | Binary | ~145 bytes | ~1.2KB | 36 KB/s |
 | **Savings** | **90%** | **90%** | **90%** |
 
+**8-player note:** At 30Hz the host may exceed 6 Mbps total outgoing; plan to drop to 20Hz or reduce LOD for opponents/spectators when needed.
+
 ### Implementation Priority
-- Phase 1: Use JSON (simpler debugging)
-- Phase 1.4: Add binary encoding as option
-- Phase 2+: Default to binary for GAME_STATE_FULL
+- Phase 4: Use JSON (simpler debugging)
+- Phase 4.2: Add binary encoding as option
+- Phase 5+: Default to binary for GAME_STATE_FULL
 
 ---
 
@@ -834,9 +927,11 @@ const SYNCPOINT = {
 2. Host checks current syncpoint
 3. IF syncpoint == IDLE or DOWNLOAD:
    a. Send LOBBY_MATCH_CONFIG
-   b. Send GAME_STATE_RESYNC (full snapshot for each player)
-   c. Client acknowledges
-   d. Host broadcasts GAME_SYNCPOINT to advance phase
+   b. Send GAME_STATE_RESYNC in reliable chunks (16 KB, max 32 KB) with
+      `resyncId`, `index`, `count`, `byteOffset`, `crc32` (window = 4 in-flight)
+   c. Client acks each chunk; host retries missing chunks (300 ms timeout, 5x max)
+   d. Client sends RESYNC_ACK after all chunks are applied
+   e. Host broadcasts GAME_SYNCPOINT to advance phase
 4. ELSE:
    a. Queue join request
    b. Wait for next IDLE syncpoint
@@ -936,7 +1031,7 @@ const NET_ERROR_CODES = {
 ## 📼 Passive Replay Logging (NEW - Enable Now, UI Later)
 
 ### Concept
-Log all significant network events during matches. Replay UI can be built later, but logging infrastructure should be in place from Phase 1.
+Log all significant network events during matches. Replay UI can be built later, but logging infrastructure should be in place by Phase 7 (optionally lightweight logging in Phase 4).
 
 ### What to Log
 
@@ -1490,8 +1585,8 @@ CHAT_MESSAGE: {
 ### Join/Resync Flow (Quadra-Style Download)
 1. **Safe join gate:** Host only accepts join/resync when match is at a safe syncpoint (not mid-tick).
 2. **Send config first:** Host sends match config + seed + phase to the joining client.
-3. **Full snapshot download:** Host sends a full snapshot for each player (grid, piece queue, attacks, last attacker, stats).
-4. **Client ack:** Client applies snapshot, then acknowledges readiness.
+3. **Full snapshot download:** Host sends chunked `GAME_STATE_RESYNC` (16 KB chunks, window = 4, 300 ms timeout, 5 retries).
+4. **Client ack:** Client acks each chunk, applies snapshot, then sends final `RESYNC_ACK`.
 5. **Syncpoint advance:** Host broadcasts `GAME_SYNCPOINT` to move everyone into the next phase.
 
 ### Packet Budget + Encoding Strategy (Spacewar P2P)
@@ -1502,581 +1597,75 @@ CHAT_MESSAGE: {
 
 ---
 
-## 🎯 Improvement Phases
+## 🎯 Updated Roadmap (Post-Phase 2)
 
-### Phase 1: Game Rendering Integration (CRITICAL)
-**Priority:** 🔴 HIGHEST
-**Goal:** Players can see and play the game after match starts
+### Completed (Phases 1-3) ✅
+- Three-column online layout with Phaser main board + Canvas opponent boards.
+- Match results modal + game over flow.
+- Scoreboard, scoreboard overlay, Battle Log, QoS HUD.
+- Input buffering + local prediction for peers.
+- Garbage sync + local garbage prediction.
 
-#### 1.0 Steam P2P Transport Layer (Spacewar Best Practice)
-**Task:** Add reliability tiers + message envelope to the P2P layer  
-**Location:** `src/core/steam/steam-networking.js`
-
-**Requirements:**
-- [ ] Add `sendReliable()` and `sendUnreliable()` helpers (channel + send type)
-- [ ] Wrap all messages in the envelope (`matchId`, `seq`, `tick`, `sentAt`)
-- [ ] Track last-seen `seq` per channel; drop stale snapshots
-- [ ] Implement `NET_PING/NET_PONG` and expose RTT/packet loss
-- [ ] Add host-only broadcast for unreliable snapshots
-- [ ] Poll channels 0/1/2 in `startP2PPolling()`
-
-#### 1.0a Protocol + Match Flow Hardening
-**Task:** Versioned protocol handshake + lobby/match state machine  
-**Location:** `src/core/network/message-types.js`, `src/core/network/match-flow.js` (new)
+### Phase 4: Protocol & Sync Hardening (HIGH)
+**Goal:** Make transport safe, ordered, and resync-capable.  
+**Primary files:** `src/core/steam/steam-networking.js`, `src/core/network/message-types.js`, `src/core/multiplayer/ffa-p2p-game-state.js`
 
 **Requirements:**
-- [ ] `NET_HELLO/NET_WELCOME` handshake (protocolVersion + featureFlags)
-- [ ] `matchId` + per-match nonce on all gameplay traffic
-- [ ] Lobby state machine: Open → Locked → In-Match → Post-Match → Rematch
-- [ ] Late-join rules (spectate vs resync) + rejoin gating
-- [ ] Packet budget guardrails for snapshots vs control messages
+- [ ] Add message envelope fields: `matchId`, `matchNonce`, `hostSteamId`, `seq`, `tick`, `sentAt`, `protocolVersion`.
+- [ ] Use 64-bit `matchNonce` + `hostSteamId` binding; reject packets with mismatched nonce/host.
+- [ ] Separate reliable vs unreliable channels; use unreliable for `GAME_STATE_FULL`.
+- [ ] Drop stale/out-of-order snapshots using per-peer `seq`.
+- [ ] Implement `NET_HELLO/NET_WELCOME` handshake + feature flags.
+- [ ] Add `GAME_STATE_RESYNC` and `GAME_SYNCPOINT` (safe join/resync).
+- [ ] Add snapshot digest (hash) for desync detection + auto resync.
+- [ ] Define resync chunking for large snapshots: reliable channel, 16 KB chunks (max 32 KB), window = 4 in-flight, 300 ms timeout, retry up to 5x, then fall back to spectator/rejoin.
+- [ ] Add send-queue backpressure: per-peer queue cap = 2 snapshots, drop old snapshots and keep latest; throttle snapshot rate 30 → 20 → 10 Hz while queue exceeds cap, then restore.
+- [ ] Enforce strict version negotiation: exact `protocolVersion` match or reject with `NET_ERROR`.
 
-#### 1.1 Create Online-Specific Three-Column Layout
+**Exit criteria:** Late-join/resync works at safe syncpoints with chunked resync + ack/retry; stale packets rejected; per-peer queues stay <= 2 snapshots and throttle under loss.
 
-**⚠️ KEY LAYOUT DIFFERENCE:**
-- **Local Multiplayer:** Equal-sized boards in a grid (all players local)
-- **Online Multiplayer:** YOUR board BIG in center, opponents SMALL on left (Quadra-style)
-
-**New HTML Structure Needed (different from local multiplayer):**
-```html
-<!-- Add to public/index.html -->
-<div id="online-multiplayer-container" class="online-game-area" style="display: none;">
-
-    <!-- LEFT: Opponent Watch Panel (Max 4 visible, Quadra-style) -->
-    <div class="opponents-panel">
-        <!-- Watch Controls -->
-        <div class="watch-controls">
-            <button id="auto-watch-btn" class="watch-btn">Auto Watch</button>
-            <div class="player-selector">
-                <span>Watching: <span id="watch-count">0</span>/4</span>
-                <button id="select-players-btn" class="watch-btn">Select ▼</button>
-            </div>
-        </div>
-
-        <!-- Player Selection Dropdown (hidden by default) -->
-        <div id="player-select-dropdown" class="player-dropdown" style="display: none;">
-            <!-- Dynamically populated with all opponents -->
-            <!-- Watched players highlighted, click to toggle -->
-        </div>
-
-        <!-- 2x2 Grid of Mini Boards (max 4) -->
-        <div class="watch-grid">
-            <div class="opponent-board" id="opponent-slot-0">
-                <div class="opponent-header">
-                    <span class="opponent-color"></span>
-                    <span class="opponent-name">-</span>
-                </div>
-                <div class="opponent-canvas-container">
-                    <canvas id="opponent-0-canvas"></canvas>
-                </div>
-                <div class="opponent-stats">
-                    <span class="opponent-frags">0</span> frags
-                </div>
-            </div>
-            <div class="opponent-board" id="opponent-slot-1">
-                <!-- Same structure -->
-            </div>
-            <div class="opponent-board" id="opponent-slot-2">
-                <!-- Same structure -->
-            </div>
-            <div class="opponent-board" id="opponent-slot-3">
-                <!-- Same structure -->
-            </div>
-        </div>
-
-        <!-- Unwatched Players List (when >4 opponents) -->
-        <div class="unwatched-players" id="unwatched-list">
-            <!-- Shows names of opponents not currently being watched -->
-            <!-- Click to swap with a watched player -->
-        </div>
-    </div>
-
-    <!-- CENTER: Your Big Board -->
-    <div class="main-board-panel">
-        <div class="main-board-header">
-            <span class="your-name">YOU</span>
-        </div>
-        
-        <!-- Next Pieces Section -->
-        <div class="main-next-section">
-            <div class="main-next-pieces">
-                <canvas id="main-next-0" width="88" height="88"></canvas>
-                <canvas id="main-next-1" width="76" height="76"></canvas>
-                <canvas id="main-next-2" width="76" height="76"></canvas>
-            </div>
-        </div>
-        
-        <!-- Board Section with Garbage Indicator (MATCHING LOCAL MP) -->
-        <div class="player-board-wrapper">
-            <!-- Garbage Meter Bar (reuse local MP CSS) -->
-            <div class="garbage-indicator" id="main-garbage-bar">
-                <div class="garbage-fill"></div>
-                <div class="garbage-glow"></div>
-            </div>
-            
-            <!-- Phaser Board Container -->
-            <div class="player-board-section">
-                <div id="main-phaser-container" class="main-board-container"></div>
-                <div class="board-border-overlay" id="main-border">
-                    <div class="corner-bracket top-left"></div>
-                    <div class="corner-bracket top-right"></div>
-                    <div class="corner-bracket bottom-left"></div>
-                    <div class="corner-bracket bottom-right"></div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Stats Bar -->
-        <div class="main-stats-bar player-stats-bar">
-            <div class="stat-item stat-frags">
-                <span class="stat-icon">⚔️</span>
-                <span class="stat-label">Frags</span>
-                <span class="stat-value" id="main-frags">0</span>
-            </div>
-            <div class="stat-item stat-deaths">
-                <span class="stat-icon">💀</span>
-                <span class="stat-label">Deaths</span>
-                <span class="stat-value" id="main-deaths">0</span>
-            </div>
-            <div class="stat-item stat-score">
-                <span class="stat-icon">🏆</span>
-                <span class="stat-label">Score</span>
-                <span class="stat-value" id="main-score">0</span>
-            </div>
-            <div class="stat-item stat-lines">
-                <span class="stat-icon">📊</span>
-                <span class="stat-label">Lines</span>
-                <span class="stat-value" id="main-lines">0</span>
-            </div>
-            <div class="stat-item stat-level">
-                <span class="stat-icon">⬆️</span>
-                <span class="stat-label">Level</span>
-                <span class="stat-value" id="main-level">1</span>
-            </div>
-            <div class="stat-item stat-garbage">
-                <span class="stat-icon">💥</span>
-                <span class="stat-label">Incoming</span>
-                <span class="stat-value" id="main-garbage-value">0</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- RIGHT: Scoreboard + Kill Feed + Chat -->
-    <div class="right-panel">
-        <div class="online-scoreboard">
-            <h3>Scoreboard</h3>
-            <div class="goal-display">First to <span id="goal-value">10</span> frags</div>
-            <div class="player-standings" id="player-standings"></div>
-        </div>
-
-        <div class="online-kill-feed">
-            <h4>Activity</h4>
-            <div class="kill-feed-entries" id="kill-feed"></div>
-        </div>
-
-        <div class="online-chat">
-            <div class="chat-messages" id="chat-messages"></div>
-            <div class="chat-input-area">
-                <input type="text" id="chat-input" placeholder="Type message..." />
-                <button id="chat-send">Send</button>
-            </div>
-        </div>
-    </div>
-</div>
-```
-
-**CSS for Three-Column Layout** (add to `multiplayer-ui.css` or new file):
-```css
-/* Three-column layout: Opponents | Main Board | Right Panel */
-.online-game-area {
-    display: grid;
-    grid-template-columns: 220px 1fr 280px;
-    gap: 16px;
-    height: 100vh;
-    padding: 16px;
-    background: var(--game-bg);
-}
-
-/* LEFT: Opponents panel with watch system */
-.opponents-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    overflow-y: auto;
-    padding: 8px;
-}
-
-/* Watch controls (Auto Watch + Select buttons) */
-.watch-controls {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 8px;
-}
-
-.watch-btn {
-    padding: 4px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.watch-btn.active {
-    background: #4ade80;  /* Green when auto-watch active */
-}
-
-/* 2x2 grid for mini boards (max 4) */
-.watch-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    grid-template-rows: repeat(2, 1fr);
-    gap: 8px;
-}
-
-.opponent-board {
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 8px;
-    padding: 4px;
-    cursor: pointer;  /* Click to swap */
-}
-
-.opponent-board:hover {
-    background: rgba(100, 100, 255, 0.3);
-}
-
-.opponent-board.empty {
-    opacity: 0.5;
-}
-
-.opponent-canvas-container canvas {
-    width: 100%;
-    height: auto;
-    image-rendering: pixelated;
-}
-
-/* Unwatched players list */
-.unwatched-players {
-    padding: 8px;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 8px;
-    font-size: 12px;
-}
-
-.unwatched-player {
-    display: inline-block;
-    padding: 2px 6px;
-    margin: 2px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.unwatched-player:hover {
-    background: rgba(100, 100, 255, 0.3);
-}
-
-/* Player selection dropdown */
-.player-dropdown {
-    position: absolute;
-    background: rgba(30, 30, 50, 0.95);
-    border-radius: 8px;
-    padding: 8px;
-    z-index: 100;
-}
-
-.player-dropdown-item {
-    padding: 4px 8px;
-    cursor: pointer;
-    border-radius: 4px;
-}
-
-.player-dropdown-item.watched {
-    background: rgba(100, 255, 100, 0.3);
-}
-
-.player-dropdown-item:hover {
-    background: rgba(100, 100, 255, 0.3);
-}
-
-/* CENTER: Your main board - BIG */
-.main-board-panel {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-}
-
-.main-board-container {
-    /* Full size Phaser board */
-    width: 100%;
-    max-width: 400px;
-    aspect-ratio: 10 / 24;
-}
-
-/* RIGHT: Scoreboard + Kill Feed + Chat */
-.right-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    overflow-y: auto;
-}
-
-.online-scoreboard,
-.online-kill-feed,
-.online-chat {
-    background: rgba(0, 0, 0, 0.4);
-    border-radius: 8px;
-    padding: 12px;
-}
-```
-
----
-
-### 📊 Garbage Meter / Incoming Garbage Indicator (REUSE FROM LOCAL MP)
-
-The local multiplayer already has a beautiful, animated garbage indicator bar that shows pending incoming garbage lines. This should be **reused directly** for online multiplayer on the main board.
-
-#### Existing Local Multiplayer Implementation
-
-**HTML Structure** (from `index.html` lines 552-556):
-```html
-<!-- Board Section with Garbage Indicator -->
-<div class="player-board-wrapper">
-    <div class="garbage-indicator" id="main-garbage-bar">
-        <div class="garbage-fill"></div>
-        <div class="garbage-glow"></div>
-    </div>
-    <div class="player-board-section">
-        <div id="main-phaser-container" class="main-board-container"></div>
-    </div>
-</div>
-```
-
-**CSS Styling** (from `main.css` lines 22151-22186):
-```css
-/* Garbage Indicator Bar */
-.garbage-indicator {
-    position: relative;
-    width: 8px;
-    height: var(--board-height, 200px);
-    background: rgba(0, 0, 0, 0.5);
-    border-radius: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    overflow: hidden;
-}
-
-.garbage-indicator .garbage-fill {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 0%;
-    background: linear-gradient(to top,
-            #ef4444 0%,      /* Red at bottom (danger) */
-            #f97316 30%,     /* Orange */
-            #fbbf24 60%,     /* Yellow */
-            #a3e635 100%);   /* Green at top (safe) */
-    border-radius: 0 0 3px 3px;
-    transition: height 0.3s ease-out;
-}
-
-.garbage-indicator .garbage-glow {
-    position: absolute;
-    bottom: 0;
-    left: -4px;
-    right: -4px;
-    height: 0%;
-    background: radial-gradient(ellipse at bottom, rgba(239, 68, 68, 0.6), transparent);
-    filter: blur(4px);
-    pointer-events: none;
-    transition: height 0.3s ease-out;
-}
-```
-
-**JavaScript Update Logic** (to add to `OnlineMultiplayerMode.js`):
-```javascript
-/**
- * Update the garbage meter visual based on pending garbage lines
- * Reuses the exact same approach from local multiplayer
- */
-updateGarbageMeter(garbageQueue) {
-    const totalLines = garbageQueue?.getTotalLines?.() ?? 0;
-    
-    // Calculate percentage (board height is 20-24 rows depending on mode)
-    const maxVisibleLines = 20;  // Max lines before "full danger"
-    const percentage = Math.min(100, (totalLines / maxVisibleLines) * 100);
-    
-    // Update the garbage bar fill and glow
-    const garbageIndicator = document.getElementById('main-garbage-bar');
-    if (garbageIndicator) {
-        const fill = garbageIndicator.querySelector('.garbage-fill');
-        const glow = garbageIndicator.querySelector('.garbage-glow');
-        
-        if (fill) fill.style.height = `${percentage}%`;
-        if (glow) glow.style.height = `${percentage}%`;
-    }
-    
-    // Also update the numeric value in the stats bar
-    const garbageStat = document.getElementById('main-garbage-value');
-    if (garbageStat) {
-        garbageStat.textContent = totalLines;
-        
-        // Pulse animation on change
-        if (garbageStat.prevValue !== totalLines) {
-            garbageStat.classList.add('pulse');
-            setTimeout(() => garbageStat.classList.remove('pulse'), 300);
-            garbageStat.prevValue = totalLines;
-        }
-    }
-}
-```
-
-#### Integration with Network State
-
-The garbage queue is included in network state updates. On each `GAME_STATE_FULL` received:
-
-```javascript
-// In OnlineMultiplayerMode.js handleNetworkStateUpdate()
-handleNetworkStateUpdate(state) {
-    // Find local player's data
-    const myPlayerState = state.players.find(p => p.id === this.localPlayerId);
-    
-    if (myPlayerState) {
-        // Update garbage meter with incoming garbage count
-        this.updateGarbageMeter({
-            getTotalLines: () => myPlayerState.pendingGarbage || 0
-        });
-        
-        // Also update the GarbageQueue object if needed for piece lock timing
-        if (this.localGarbageQueue) {
-            this.localGarbageQueue.syncFromNetwork(myPlayerState.garbageEntries);
-        }
-    }
-}
-```
-
-#### Garbage Data in Network Messages
-
-**In `GAME_STATE_FULL` player data:**
-```javascript
-players: [{
-    id: 'steam_123456',
-    // ... other fields ...
-    pendingGarbage: 6,          // Total lines pending
-    garbageEntries: [           // Detailed entries for hole positions
-        { lines: 4, holeColumn: 3, attackerId: 'steam_789' },
-        { lines: 2, holeColumn: 7, attackerId: 'steam_456' }
-    ]
-}, ...]
-```
-
-**In `GAME_GARBAGE_SENT` message:**
-```javascript
-GAME_GARBAGE_SENT: {
-    from: 'steam_123456',           // Attacker
-    targets: ['steam_789', ...],    // All opponents in FFA
-    amount: 4,                      // Lines cleared / sent
-    holes: [3, 3, 7, 7],            // Hole columns for each line
-    color: 'garbage',               // Garbage block color
-    attackId: 'atk_12345',          // Unique attack ID
-    scaled: true                    // Whether attack scaling was applied
-}
-```
-
-#### Garbage Meter on Opponent Mini-Boards (Optional Enhancement)
-
-For the small opponent boards on the left panel, show a simplified garbage indicator:
-
-```javascript
-/**
- * Draw a mini garbage bar on the side of a Canvas opponent board
- */
-drawMiniGarbageBar(ctx, pendingGarbage, boardWidth, boardHeight) {
-    const barWidth = 4;
-    const barHeight = boardHeight;
-    const x = boardWidth - barWidth;
-    
-    // Background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(x, 0, barWidth, barHeight);
-    
-    // Fill based on garbage amount
-    const percentage = Math.min(1, pendingGarbage / 20);
-    const fillHeight = barHeight * percentage;
-    
-    // Gradient from green (top) to red (bottom of fill)
-    const gradient = ctx.createLinearGradient(x, barHeight - fillHeight, x, barHeight);
-    gradient.addColorStop(0, '#a3e635');  // Green at top of fill
-    gradient.addColorStop(1, '#ef4444');  // Red at bottom
-    
-    ctx.fillStyle = gradient;
-    ctx.fillRect(x, barHeight - fillHeight, barWidth, fillHeight);
-}
-```
-
-#### Implementation Checklist
-
-- [ ] Add garbage indicator HTML to `#online-multiplayer-container` main board section
-- [ ] Reuse CSS from local multiplayer (already exists in `main.css`)
-- [ ] Add `updateGarbageMeter()` method to `OnlineMultiplayerMode.js`
-- [ ] Call `updateGarbageMeter()` on each `GAME_STATE_FULL` receive
-- [ ] Include `pendingGarbage` and `garbageEntries` in network state sync
-- [ ] (Optional) Add mini garbage bars to opponent Canvas boards
-
----
+### Phase 5: Prediction, Reconciliation & Fair Play (HIGH)
+**Goal:** Keep inputs responsive while preserving authoritative correctness.  
+**Primary files:** `src/core/multiplayer/ffa-p2p-game-state.js`, `src/core/validation/input-validator.js`
 
 **Requirements:**
-- [ ] Create new HTML container `#online-multiplayer-container` with three-column layout
-- [ ] Create CSS for three-column grid (opponents | main board | right panel)
-- [ ] Opponent boards use Canvas (lightweight, view-only)
-- [ ] Main board uses Phaser (full features, input handling)
-- [ ] **Main board includes garbage indicator bar** (reuse local MP CSS/HTML)
-- [ ] Right panel has scoreboard, kill feed, and chat sections
+- [ ] Add `GAME_INPUT_BATCH` with tick-based input queueing.
+- [ ] Host sends input acks; clients reconcile or resim at syncpoints.
+- [ ] Implement attack scaling (respect `boringRules` toggle).
+- [ ] Add clock sync smoothing to improve timing-based validation.
 
-#### 1.2 Create Board Renderers (Phaser for Main, Canvas for Opponents)
+**Exit criteria:** < 120ms feel at 150ms RTT; no visible desyncs in 10-minute soak.
 
-**⚠️ THREE-COLUMN RENDERING STRATEGY:**
+### Phase 6: Robustness & UX (MEDIUM)
+**Goal:** Graceful handling of disconnects, rejoin, and chat completeness.  
+**Primary files:** `src/core/multiplayer/host-migration.js`, `src/ui/lobby-waiting-room.js`, `src/ui/online-chat.js`
 
-| Panel | Renderer | Why |
-|-------|----------|-----|
-| **CENTER (Your Board)** | Phaser | Full features, input handling, effects |
-| **LEFT (Opponents)** | Canvas | Lightweight, view-only, many small boards |
-| **RIGHT (Info Panel)** | DOM | Scoreboard, kill feed, chat |
+**Requirements:**
+- [ ] Heartbeat + disconnect detection with grace period.
+- [ ] Reconnect flow + spectator fallback after grace expiry.
+- [ ] Host migration handoff (freeze, elect, resync, resume).
+- [ ] Lobby chat input + mute/rate-limit; add channels (all/team/spectator).
 
-**Main Board (Phaser) - Copy LocalMultiplayerMode pattern:**
-```javascript
-// Create ONE Phaser instance for local player's main board
-_createMainBoard() {
-    const BLOCK_SIZE = 32;  // Full size for main board
+**Exit criteria:** Host migration resumes in < 2 seconds; reconnects restore state.
 
-    const config = {
-        width: 10 * BLOCK_SIZE,
-        height: 24 * BLOCK_SIZE,
-        parent: 'main-phaser-container',
-        type: Phaser.WEBGL,
-        transparent: true,
-        scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    };
+### Phase 7: Advanced Features (LOW)
+- Spectator mode UX + watch controls.
+- Team mode with team-based score/garbage routing.
+- Replay logging + export; match history + stats.
 
-    this.mainPhaserGame = new Phaser.Game(config);
-    this.mainBoardScene = new BoardScene('MainBoard', { blockSize: BLOCK_SIZE });
-    this.mainPhaserGame.scene.add('MainBoard', this.mainBoardScene, true);
+### Phase 8: Infinity LMS (MEDIUM)
+**Goal:** Online Infinity LMS (Last Man Standing) with row cap and Infinity UI feel.  
+**Primary files:** `src/core/game-modes/OnlineMultiplayerMode.js`, `src/core/multiplayer/ffa-p2p-game-state.js`, `src/ui/match-config-modal.js`, `src/ui/lobby-waiting-room.js`, `src/ui/online-scoreboard.js`, `src/ui/infinity/InfinityMinimap.js`
 
-    // Set up input handlers for local player
-    this._setupInputHandlers(this.mainBoardScene);
-}
-```
+**Requirements:**
+- [ ] Add `mode: 'infinity-lms'` with `infinityRowCap` (100-1000, default 100) to match config + lobby metadata.
+- [ ] Enable team mode for Infinity LMS (last team standing).
+- [ ] Extend snapshots for Infinity fields (`isInfinityMode`, `maxRows`, `buildHeight`, `currentTopRow`) with LOD for opponents.
+- [ ] Online Infinity UI: minimap for main player + distance-to-ceiling indicator; compact opponent height bars + minimaps.
+- [ ] Win condition: last player or last team standing; handle simultaneous top-outs (draw or tie-break).
+- [ ] Allow minimap exploration without pausing the match; keep Infinity camera smoothing and pacing.
 
-**Opponent Boards (Canvas) - Lightweight rendering:**
-```javascript
-// Create Canvas renderers for opponent mini boards
-_createOpponentBoards(opponents) {
-    this.opponentCanvases = new Map();
-
-    opponents.forEach((opponent, index) => {
-        const canvas = document.getElementById(`opponent-${index + 1}-canvas`);
-        const ctx = canvas.getContext('2d');
+**Exit criteria:** 2-8 player Infinity LMS matches complete with correct eliminations; row cap enforced; minimap/row cap UX matches Infinity feel; snapshot budget remains within limits.
 
         // Mini board: 10x24 grid, small block size
         const MINI_BLOCK_SIZE = 8;  // Small blocks for mini boards
@@ -2575,6 +2164,8 @@ npm run electron
 {
     msgType: string,
     matchId: string,
+    matchNonce: string, // 64-bit per match (hex or base64)
+    hostSteamId: string,
     seq: number,       // Per-channel sequence for ordering
     tick: number,      // Server tick for inputs/snapshots
     sentAt: number,    // Epoch ms (debug/RTT)
@@ -2593,8 +2184,11 @@ npm run electron
 - Drop stale snapshots by `seq` and/or `tick`
 - Always ack join/resync snapshots on a reliable channel
 - Keep per-channel last-seen `seq` to avoid out-of-order updates
+- Reject packets with mismatched `matchNonce`, `hostSteamId`, or `protocolVersion`
 
-### Message Protocol Reference
+### Message Protocol Reference (Target Schema)
+
+Note: This is the target protocol schema; several fields are planned but not yet implemented.
 
 ```javascript
 // Lobby Phase Messages
@@ -2602,7 +2196,7 @@ LOBBY_PLAYER_JOINED    { playerId, name, steamId }
 LOBBY_PLAYER_LEFT      { playerId }
 LOBBY_PLAYER_READY     { playerId, ready: boolean }
 LOBBY_GAME_START       { seed, players[], config }
-LOBBY_MATCH_CONFIG     { matchId, seed, config, phase }
+LOBBY_MATCH_CONFIG     { matchId, seed, config, phase }        // config includes mode + infinityRowCap
 LOBBY_STATE            { matchId, state, locked, players[] }
 LOBBY_LOCK             { matchId }                            // NEW
 LOBBY_UNLOCK           { matchId }                            // NEW
@@ -2612,11 +2206,12 @@ GAME_INPUT_MOVE        { playerId, direction, timestamp }
 GAME_INPUT_ROTATE      { playerId, direction, timestamp }
 GAME_INPUT_DROP        { playerId, type: 'soft'|'hard', timestamp }
 GAME_INPUT_BATCH       { playerId, tick, inputs[] }
+GAME_STATE_RESYNC_ACK  { resyncId, chunkIndex, isFinal }
 
 // Gameplay Messages (Host → All)
 GAME_SYNCPOINT         { syncpoint, tick, reason }            // ENHANCED
-GAME_STATE_FULL        { players[], tick, seq, timestamp }    // ENHANCED with tick/seq
-GAME_STATE_RESYNC      { players[], tick, timestamp }         // Reliable full snapshot (join/resync)
+GAME_STATE_FULL        { players[], tick, seq, timestamp }    // ENHANCED with tick/seq (Infinity LMS adds buildHeight/currentTopRow)
+GAME_STATE_RESYNC      { resyncId, chunkIndex, chunkCount, byteOffset, crc32, data }  // Reliable chunked snapshot
 GAME_PIECE_LOCK        { playerId, piece, position, lines[] }
 GAME_GARBAGE_SENT      { from, targets[], amount, holes, color, attackId, scaled }  // ENHANCED
 GAME_PLAYER_DIED       { playerId, killerId, method }
@@ -2637,7 +2232,7 @@ REMATCH_RESULT         { accepted: boolean, nextAction: 'countdown' | 'lobby' }
 
 // Transport/Health (ENHANCED)
 NET_HELLO              { protocolVersion, featureFlags[], clientVersion }
-NET_WELCOME            { protocolVersion, featureFlags[], matchId, accepted, reason }
+NET_WELCOME            { protocolVersion, featureFlags[], matchId, matchNonce, hostSteamId, accepted, reason }
 NET_PING               { nonce, sentAt }
 NET_PONG               { nonce, receivedAt, sentAt }
 NET_HEARTBEAT          { matchId, hostTick, playerCount, serverTime }    // NEW
@@ -2657,37 +2252,36 @@ NET_ERROR              { code, message, originalMsgType, originalSeq }
 src/
 ├── core/
 │   ├── game-modes/
-│   │   ├── OnlineMultiplayerMode.js    ← Main orchestrator (NEEDS RENDERING)
+│   │   ├── OnlineMultiplayerMode.js    ← Main orchestrator (COMPLETE)
 │   │   └── LocalMultiplayerMode.js     ← Reference for reusable patterns
 │   ├── steam/
-│   │   └── steam-networking.js         ← P2P layer (COMPLETE)
+│   │   └── steam-networking.js         ← P2P layer (COMPLETE; add envelope)
 │   ├── multiplayer/
-│   │   ├── ffa-p2p-game-state.js       ← Game state (MOSTLY COMPLETE)
+│   │   ├── ffa-p2p-game-state.js       ← Game state (COMPLETE; needs resync/reconcile)
 │   │   ├── ffa-attack-router.js        ← Attack system (COMPLETE)
 │   │   └── frag-tracker.js             ← Win conditions (COMPLETE)
 │   ├── network/
 │   │   ├── message-types.js            ← Message definitions (COMPLETE)
 │   │   ├── input-validator.js          ← Anti-cheat (COMPLETE)
-│   │   ├── host-migration.js           ← Failover (NEEDS WORK)
-│   │   ├── match-flow.js               ← Match state machine (NEW - CRITICAL)
-│   │   ├── client-prediction.js        ← Input prediction + reconciliation (NEW - CRITICAL)
-│   │   ├── binary-encoding.js          ← Snapshot compression (NEW - Phase 1.4)
-│   │   ├── replay-logger.js            ← Passive match logging (NEW)
-│   │   └── disconnect-detector.js      ← Heartbeat + timeout handling (NEW)
+│   │   ├── host-migration.js           ← Failover (PARTIAL)
+│   │   ├── match-flow.js               ← Match state machine (PLANNED)
+│   │   ├── client-prediction.js        ← Reconciliation helpers (PLANNED)
+│   │   ├── binary-encoding.js          ← Snapshot compression (PLANNED)
+│   │   ├── replay-logger.js            ← Passive match logging (PLANNED)
+│   │   └── disconnect-detector.js      ← Heartbeat + timeout handling (PLANNED)
 │   ├── engine/
 │   │   └── unified-game-loop.js        ← Game loop (COMPLETE)
 │   └── garbage.js                      ← Quadra-compatible attacks (REUSE)
 │
 ├── ui/
 │   ├── lobby-browser.js                ← Browse lobbies (COMPLETE)
-│   ├── lobby-waiting-room.js           ← Pre-match UI (COMPLETE)
-│   ├── match-config-modal.js           ← Match settings (COMPLETE + add fairAttackScaling toggle)
-│   ├── online-board-renderer.js        ← Board rendering (TO CREATE)
-│   ├── online-scoreboard.js            ← Right panel scoreboard (TO CREATE)
-│   ├── online-kill-feed.js             ← Kill/event feed (TO CREATE)
-│   ├── online-chat.js                  ← Chat component (TO CREATE)
-│   ├── match-results-modal.js          ← Results screen (TO CREATE)
-│   ├── spectator-ui.js                 ← Spectator mode UI (NEW)
+│   ├── lobby-waiting-room.js           ← Pre-match UI (PARTIAL - no chat input)
+│   ├── match-config-modal.js           ← Match settings (COMPLETE; add advanced toggles)
+│   ├── online-scoreboard.js            ← Right panel scoreboard (COMPLETE)
+│   ├── online-kill-feed.js             ← Battle log feed (COMPLETE)
+│   ├── online-chat.js                  ← Chat component (COMPLETE; add channels/moderation)
+│   ├── match-results-modal.js          ← Results screen (COMPLETE)
+│   ├── spectator-ui.js                 ← Spectator mode UI (PLANNED)
 │   ├── multi-player-canvas-layout.js   ← Reference for board rendering (REUSE)
 │   └── effects/
 │       └── canvas-board-effects.js     ← Board effects (REUSE)
@@ -2699,169 +2293,50 @@ public/
 ├── index.html                          ← Add online game container (MODIFY)
 └── styles/
     ├── multiplayer-ui.css              ← Lobby styles (EXISTS)
-    └── online-multiplayer.css          ← Game screen styles (TO CREATE)
+    └── online-multiplayer.css          ← Game screen styles (OPTIONAL)
 ```
 
-### Files to Create (Phase 1) - UPDATED
+## 📦 Remaining Implementation Backlog
 
-| File | Purpose | Priority |
-|------|---------|----------|
-| `src/core/network/match-flow.js` | Match state machine + protocol gating | 🔴 CRITICAL |
-| `src/core/network/client-prediction.js` | Input prediction + server reconciliation | 🔴 CRITICAL |
-| `src/core/network/disconnect-detector.js` | Heartbeat tracking + timeout handling | 🔴 High |
-| `src/core/network/replay-logger.js` | Passive match event logging | 🟠 Medium |
-| `src/core/network/binary-encoding.js` | Snapshot compression (Phase 1.4) | 🟡 Later |
-| `src/ui/online-scoreboard.js` | Right panel scoreboard | 🟠 Second |
-| `src/ui/online-kill-feed.js` | Activity/kill feed | 🟠 Second |
-| `src/ui/online-chat.js` | Chat component | 🟡 Third |
-| `src/ui/match-results-modal.js` | End game results | 🟠 Second |
-| `src/ui/spectator-ui.js` | Spectator mode controls | 🟡 Third |
+### Files to Create
+| File | Purpose | Phase |
+|------|---------|-------|
+| `src/core/network/match-flow.js` | Match state machine + syncpoint gating | 4 |
+| `src/core/network/protocol-envelope.js` | Envelope encode/decode + seq tracking | 4 |
+| `src/core/network/snapshot-encoder.js` | Binary/delta snapshot encoding | 4 |
+| `src/core/network/disconnect-detector.js` | Heartbeat tracking + reconnect | 6 |
+| `src/core/network/replay-logger.js` | Passive replay logging | 7 |
+| `src/ui/spectator-ui.js` | Spectator controls + watch UX | 7 |
 
-### Files to Modify (Phase 1)
+### Files to Modify (Highest Impact)
+| File | Focus | Phase |
+|------|-------|-------|
+| `src/core/steam/steam-networking.js` | Channelized send + seq drop + heartbeat hooks | 4/6 |
+| `src/core/network/message-types.js` | Handshake, resync, input batch, syncpoint msgs | 4/5 |
+| `src/core/multiplayer/ffa-p2p-game-state.js` | Input batching + reconciliation + resync + Infinity tall grid | 5/8 |
+| `src/core/multiplayer/host-migration.js` | Freeze/elect/resync/resume | 6 |
+| `src/core/multiplayer/ffa-attack-router.js` | Attack scaling toggle | 5 |
+| `src/ui/lobby-waiting-room.js` | Lobby chat input + system messages | 6 |
+| `src/ui/online-chat.js` | Channels + moderation | 6 |
+| `src/ui/match-config-modal.js` | Infinity LMS mode + row cap | 8 |
+| `src/core/game-modes/OnlineMultiplayerMode.js` | Infinity LMS layout + minimap wiring | 8 |
+| `src/ui/online-scoreboard.js` | Survivors + distance to ceiling | 8 |
+| `src/ui/infinity/InfinityMinimap.js` | Online mode tweaks (no pause + LOD) | 8 |
+| `src/ui/lobby-browser.js` | Display Infinity LMS + row cap | 8 |
 
-| File | Changes | Priority |
-|------|---------|----------|
-| `src/core/steam/steam-networking.js` | **FIX BUG:** Remove duplicate `on()` method + add envelope + channelized send helpers | 🔴 FIRST |
-| `src/core/network/message-types.js` | Add protocol handshake + match state messages | 🔴 First |
-| `src/core/game-modes/OnlineMultiplayerMode.js` | Add `_createPhaserGamesForOnline()`, implement `handleMatchStart()` | 🔴 First |
-| `public/styles/multiplayer-ui.css` | Extend grid layouts for 5-8 players, add right panel styles | 🔴 First |
-| `public/index.html` | Add right panel (scoreboard, kill feed, chat) for online mode | 🟠 Second |
-| `src/events/multiplayer-events.js` | Add network-specific events if needed | 🟡 Third |
+### Definition of Done (Network Robustness Release)
+- [ ] Message envelope enforced (`matchId`, `matchNonce`, `hostSteamId`, `seq`, `tick`, `protocolVersion`) with stale-drop.
+- [ ] Late join/resync works only at syncpoints with full snapshot.
+- [ ] Input batch + reconciliation keeps local board aligned under jitter.
+- [ ] Attack scaling toggle works and matches config.
+- [ ] Heartbeat + disconnect + host migration resumes within 2 seconds.
 
-### Key Insight: REUSE, Don't Recreate
-
-**From LocalMultiplayerMode, copy these patterns:**
-- `_createSeparatePhaserGames()` → `_createPhaserGamesForOnline()`
-- `_startGameLoop()` → adapt for network sync instead of local physics
-- `_syncBoardScenes()` → same, but data comes from network
-- `_updateMultiplayerStats()` → reuse directly
-- `_handleGameOver()` → adapt for network broadcast
-
----
-
-## 📅 Implementation Priority Matrix - UPDATED
-
-| Phase | Item | Priority | Effort | Impact | Dependencies |
-|-------|------|----------|--------|--------|--------------|
-| **1.0** | Fix duplicate `on()` bug | 🔴 CRITICAL | LOW | BLOCKING | None |
-| **1.0** | Steam P2P Transport + Envelope | 🔴 CRITICAL | MEDIUM | HIGH | Bug fix |
-| **1.0a** | Match State Machine | 🔴 CRITICAL | MEDIUM | HIGH | None |
-| **1.1** | Three-Column Layout HTML/CSS | 🔴 CRITICAL | MEDIUM | BLOCKING | None |
-| **1.2** | Board Renderers (Phaser + Canvas) | 🔴 CRITICAL | HIGH | BLOCKING | 1.1 |
-| **1.3** | **Client-Side Prediction** | 🔴 CRITICAL | HIGH | HIGH (game feel) | 1.2 |
-| **1.3** | Input Handlers + Network Send | 🔴 CRITICAL | MEDIUM | HIGH | 1.2 |
-| **1.4** | State Synchronization | 🔴 CRITICAL | MEDIUM | HIGH | 1.3 |
-| **1.4** | Binary Encoding (optional) | 🟡 MEDIUM | LOW | MEDIUM (bandwidth) | 1.4 |
-| **1.5** | Garbage System Integration | 🔴 CRITICAL | MEDIUM | HIGH | 1.4 |
-| **1.5** | **Attack Scaling Toggle** | 🟠 HIGH | LOW | MEDIUM (balance) | 1.5 |
-| **1.6** | Scoreboard + Kill Feed | 🟠 HIGH | MEDIUM | MEDIUM | 1.4 |
-| **2.1** | Match Results Modal | 🟠 HIGH | MEDIUM | HIGH | Phase 1 |
-| **2.2** | Game Over Detection | 🟠 HIGH | LOW | HIGH | Phase 1 |
-| **2.3** | Round Restart (optional) | 🟡 MEDIUM | MEDIUM | MEDIUM | 2.2 |
-| **3.x** | Gameplay Polish (animations, visuals) | 🟡 MEDIUM | MEDIUM | MEDIUM | Phase 1 |
-| **3.5** | **Network QoS HUD** | 🟡 MEDIUM | LOW | MEDIUM (debugging) | 1.0 |
-| **4.x** | Chat System | 🟡 MEDIUM | LOW | MEDIUM | Phase 1 |
-| **5.1** | Host Migration | 🟡 MEDIUM | HIGH | HIGH (robustness) | Phase 1 |
-| **5.1** | **Heartbeat + Disconnect Detection** | 🟠 HIGH | MEDIUM | HIGH | 1.0 |
-| **5.2** | Player Disconnect Handling | 🟡 MEDIUM | MEDIUM | HIGH | 5.1 |
-| **5.3** | Reconnection Flow | 🟡 MEDIUM | HIGH | HIGH | 5.2 |
-| **6.x** | **Late-Join Spectator Mode** | 🟡 MEDIUM | MEDIUM | MEDIUM | 5.x |
-| **6.x** | **Team Mode** | 🟡 MEDIUM | HIGH | HIGH (Quadra parity) | Phase 3 |
-| **6.x** | Survivor Mode | 🟢 LOW | HIGH | MEDIUM | Team Mode |
-| **6.x** | Recording/Replay UI | 🟢 LOW | HIGH | LOW | Passive logging |
-
-### Phase 1 Critical Path (Must Complete)
-```
-Bug Fix → Transport Layer → State Machine → Layout → Renderers → 
-Prediction → Input → Sync → Garbage → Scoreboard
-```
-
----
-
-## ✅ Definition of Done - UPDATED
-
-### Minimum Viable Multiplayer (MVM)
-- [ ] Players can create/join lobbies via Steam Spacewar
-- [ ] Waiting room shows all players and ready states
-- [ ] Host can start match when all ready
-- [ ] All players see game boards rendered
-- [ ] **Local inputs feel responsive (client-side prediction)**
-- [ ] Garbage attacks work (clear lines → send garbage)
-- [ ] **Attack scaling works for 5+ player games**
-- [ ] Deaths and frags tracked correctly
-- [ ] Win condition triggers match end
-- [ ] Results screen shows winner and stats
-- [ ] "Play Again" returns to waiting room
-
-### Full Feature Multiplayer
-- [ ] All MVM features
-- [ ] Chat in waiting room and in-game
-- [ ] Kill feed overlay
-- [ ] Scoreboard overlay (TAB)
-- [ ] Host migration on disconnect
-- [ ] Player reconnection support
-- [ ] Garbage queue visual indicators
-- [ ] Death/respawn animations
-- [ ] **Spectator mode for late joiners**
-- [ ] **Network QoS HUD (RTT, packet loss)**
-- [ ] **Passive replay logging enabled**
-
----
-
-## 🧪 Testing Checklist
-
-### Mock Mode (Browser) - Basic Flow
-- [ ] Create lobby in Window 1
-- [ ] Join lobby in Window 2
-- [ ] Both players see each other
-- [ ] Ready up works
-- [ ] Start match shows game boards
-- [ ] Inputs work in both windows
-- [ ] Attacks cross between players
-- [ ] Win condition ends match
-- [ ] Results screen appears
-
-### Mock Mode - Edge Cases
-- [ ] 3+ tabs can join the same lobby
-- [ ] Closing tab removes player from lobby
-- [ ] Host leaving promotes new host
-- [ ] Late join during countdown works
-- [ ] Rematch cycle works correctly
-- [ ] Chat messages appear in all tabs
-
-### Steam Spacewar (Real P2P)
-- [ ] Launch two Steam clients (different accounts or Steam Family Sharing)
-- [ ] Create lobby visible in Steam overlay
-- [ ] Friend can join via Steam invite
-- [ ] P2P connection established
-- [ ] Full gameplay works
-- [ ] No significant lag (<100ms)
-- [ ] Host disconnect triggers migration
-- [ ] Reconnection within grace period works
-
-### Network Simulation (Regression Harness)
-- [ ] Simulate 80-150ms latency and 1-3% packet loss
-- [ ] Verify join/resync works under jitter
-- [ ] Confirm snapshot drops do not freeze the UI
-- [ ] Client-side prediction masks latency up to 150ms
-- [ ] Attack scaling formula produces expected results
-
-### Stress Testing
-- [ ] 8-player FFA runs smoothly
-- [ ] Rapid line clears (T-spin + tetris combos) don't desync
-- [ ] 60+ minute session has no memory leaks
-- [ ] Browser tab sleep/wake doesn't break connection
-
-### Quality Gates (Must Pass Before Release)
-| Test | Criteria | Pass? |
-|------|----------|-------|
-| Join Flow | Player can join and play within 5 seconds | [ ] |
-| Input Latency | Local prediction masks up to 100ms RTT | [ ] |
-| Garbage Accuracy | Garbage lines match sender's line clears | [ ] |
-| Frag Attribution | Correct killer attributed for all deaths | [ ] |
-| State Consistency | No visual desync after 100 piece locks | [ ] |
-| Disconnect Grace | 10s reconnect window works | [ ] |
-| Host Migration | New host takes over within 3s | [ ] |
+### Testing Checklist (Updated)
+- [ ] Mock mode: 2-8 tabs join, play, and rematch without desync.
+- [ ] Simulated 100-200ms RTT and 1-3% loss: no frozen state, resync works.
+- [ ] Host migration mid-round preserves state and Battle Log continuity.
+- [ ] Reconnect within 10 seconds restores player state; after 60 seconds becomes spectator.
+- [ ] Infinity LMS: row cap enforced (100-1000), minimap updates, last-standing logic stable at 2-8 players.
 
 ---
 
@@ -2889,12 +2364,12 @@ Prediction → Input → Sync → Garbage → Scoreboard
 
 ## 🔒 Security Considerations
 
-### Anti-Cheat Measures (Already Implemented ✅)
+### Anti-Cheat Measures (Implemented / Planned)
 
 | Measure | Location | Status |
 |---------|----------|--------|
-| **Input Validation** | `src/core/network/input-validator.js` | ✅ Complete |
-| **Rate Limiting** | `steam-networking.js` | ✅ Complete |
+| **Input Validation** | `src/core/validation/input-validator.js` | ✅ Complete |
+| **Rate Limiting** | `src/core/validation/input-validator.js` | 🟡 Basic limits (per-input) |
 | **Host-Authoritative Model** | Architecture-level | ✅ Enforced |
 
 ### Input Validation Rules
@@ -2921,11 +2396,11 @@ const VALIDATION_RULES = {
 
 | Threat | Mitigation |
 |--------|------------|
-| **State spoofing** | Only host sends `GAME_STATE_FULL`; peers ignore state from non-host |
-| **Input replay** | Tick-based inputs; host drops inputs for past ticks |
-| **Match hijacking** | `matchId` + per-match `nonce` on all packets; ignore stray packets |
-| **Spam attacks** | Rate limiting per player; auto-drop after threshold |
-| **Protocol mismatch** | `NET_HELLO/NET_WELCOME` handshake validates version |
+| **State spoofing** | Only host sends `GAME_STATE_FULL`; peers ignore state from non-host (implemented) |
+| **Input replay** | Planned: tick-based inputs + seq drop (Phase 5) |
+| **Match hijacking** | Planned: `matchId` + per-match `nonce` on all packets (Phase 4) |
+| **Spam attacks** | Planned: per-peer rate limits + auto-drop (Phase 6) |
+| **Protocol mismatch** | Planned: `NET_HELLO/NET_WELCOME` handshake (Phase 4) |
 
 ### Host Authority Enforcement
 
@@ -2959,258 +2434,17 @@ const VALIDATION_RULES = {
 
 ---
 
-## 📋 Implementation Order (Step by Step)
+## 📋 Implementation Order (Remaining Work)
 
-### Step 0: Fix Critical Bug ⚠️
-```bash
-# FIRST: Fix duplicate on() method in steam-networking.js
-# Location: src/core/steam/steam-networking.js
-# Remove line 325 version, keep line 532 array-based version
-```
+1. Phase 4: Protocol envelope + seq/tick + resync + syncpoints.
+2. Phase 5: Input batching + reconciliation + attack scaling.
+3. Phase 6: Heartbeat + reconnect + host migration + chat completeness.
+4. Phase 7: Spectator + team mode + replay logging.
+5. Phase 8: Infinity LMS mode + row cap + minimap + tall-grid LOD.
 
-### Step 1: Upgrade Steam P2P Transport (Spacewar Best Practice)
-```bash
-# In: src/core/steam/steam-networking.js
-# - Add sendReliable/sendUnreliable helpers (channels + send type)
-# - Wrap messages in envelope (matchId, seq, tick, sentAt)
-# - Track per-channel seq and drop stale snapshots
-# - Add NET_PING/NET_PONG and expose RTT/packet loss
-```
+## 📊 Plan Status Snapshot
 
-### Step 2: Define Protocol + Match Flow (Handshake + State Machine)
-```bash
-# In: src/core/network/message-types.js, src/core/network/match-flow.js
-# - NET_HELLO/NET_WELCOME (version + feature flags)
-# - Lobby -> match state machine (open/locked/in-match/post-match/rematch)
-# - matchId + nonce enforced on gameplay messages
-# - Packet budget rules (binary snapshots, JSON control)
-```
-
-### Step 3: Create Three-Column HTML Container
-```bash
-# Add to: public/index.html
-# Create: #online-multiplayer-container with:
-#   - .opponents-panel (left) - watch controls + 2x2 mini boards + unwatched list
-#   - .main-board-panel (center) - your big board
-#   - .right-panel (right) - scoreboard, kill feed, chat
-```
-
-### Step 4: Create Three-Column CSS Layout
-```bash
-# Add to: public/styles/multiplayer-ui.css (or new online-multiplayer.css)
-# - .online-game-area { grid-template-columns: 220px 1fr 280px; }
-# - .opponents-panel { column layout: watch controls + grid }
-# - .watch-grid { 2x2 grid for mini boards (max 4) }
-# - .main-board-panel { centered, full-size Phaser board }
-# - .right-panel { vertical stack: scoreboard, kill feed, chat }
-```
-
-### Step 5: Create Main Board (Phaser)
-```bash
-# In: src/core/game-modes/OnlineMultiplayerMode.js
-# Create: _createMainBoard()
-# - ONE Phaser.Game for local player's main board
-# - Full-size (32px blocks)
-# - Set up input handlers (move, rotate, drop)
-# - Send inputs to host via network
-```
-
-### Step 6: Create Opponent Watch System (Max 4 Visible)
-```bash
-# In: src/core/game-modes/OnlineMultiplayerMode.js
-# Create: OpponentWatchManager class
-# - watchedPlayers[] array (max 4 player IDs)
-# - toggleWatch(playerId) - tag/untag with sliding window
-# - autoSelectOpponents() - auto-pick 4 (alive first)
-# - updateDisplay() - refresh 2x2 grid
-
-# Create: _createOpponentBoards()
-# - Fixed 2x2 grid with 4 Canvas slots
-# - Canvas2D for lightweight rendering (8px blocks)
-# - View-only (no input)
-# - Update from GAME_STATE_FULL for watched players only
-
-# UI Controls:
-# - "Auto Watch" button (auto-selects 4 opponents, alive > dead)
-# - "Watching" counter (e.g., 4/4)
-# - "Select" dropdown/list (tag/untag; 5th swaps oldest)
-# - Click unwatched name to swap with oldest watched
-# - Click mini board to open swap menu
-# - Unwatched players list at bottom (clickable)
-```
-
-### Step 7: Implement handleMatchStart()
-```bash
-# In: src/core/game-modes/OnlineMultiplayerMode.js
-# handleMatchStart() should:
-# 1. Hide waiting room
-# 2. Show #online-multiplayer-container
-# 3. Create opponent mini boards (left panel)
-# 4. Create main Phaser board (center panel)
-# 5. Initialize right panel (scoreboard, kill feed)
-# 6. Start game loop
-# 7. Subscribe to GAME_STATE_FULL for updates
-```
-
-### Step 8: Implement Game Loop with Network Sync
-```bash
-# In: src/core/game-modes/OnlineMultiplayerMode.js
-# Game loop handles:
-# - Host: runs physics, broadcasts state at 30Hz
-# - Peer: receives state, updates all boards
-# - All: render main board (Phaser), opponent boards (Canvas)
-```
-
-### Step 9: Test Mock Mode
-```bash
-# Test in browser (mock mode auto-activates):
-npm run dev
-
-# Open 2 browser tabs
-# Tab 1: Create lobby, wait
-# Tab 2: Join lobby, ready up
-# Tab 1: Start match
-# VERIFY:
-#   - Your board BIG in center
-#   - Opponent board SMALL on left
-#   - Scoreboard + chat on right
-```
-
-### Step 10: Test with Steam Spacewar (Optional)
-```bash
-# Only if you have Electron + greenworks set up:
-echo "480" > steam_appid.txt
-npm run electron
-# Test real P2P with another Steam user
-```
-
----
-
-**Next Action:** Begin Phase 1 - Game Rendering Integration
-
-**⚠️ CORRECTED Layout (Quadra-Style Three-Column):**
-
-```
-┌────────────────┬─────────────────────────┬──────────────────┐
-│   OPPONENTS    │      YOUR BOARD         │   SCOREBOARD     │
-│   (small)      │        (BIG)            │   + KILL FEED    │
-│   Canvas       │        Phaser           │   + CHAT         │
-└────────────────┴─────────────────────────┴──────────────────┘
-```
-
-**Implementation Order (UPDATED):**
-
-1. **Step 0:** Fix `steam-networking.js` duplicate `on()` method bug
-2. **Step 1:** Upgrade Steam P2P transport (envelope + channels)
-3. **Step 2:** Define protocol + match flow (handshake + state machine)
-4. **Step 2a:** Create `match-flow.js` with state machine
-5. **Step 2b:** Create `disconnect-detector.js` with heartbeat tracking
-6. **Step 2c:** Create `replay-logger.js` for passive logging
-7. **Step 3:** Create three-column HTML container in `index.html`
-8. **Step 4:** Create three-column CSS layout
-9. **Step 5:** Create main board (Phaser, center, full-size)
-10. **Step 6:** Create opponent mini boards (Canvas, left, small)
-11. **Step 6a:** **Create `client-prediction.js`** (CRITICAL for game feel)
-12. **Step 7:** Implement `handleMatchStart()` to wire everything
-13. **Step 8:** Implement game loop with network sync + prediction reconciliation
-14. **Step 8a:** Add attack scaling formula to garbage system
-15. **Step 8b:** Add `fairAttackScaling` toggle to match config
-16. **Step 9:** Test in mock mode (2 browser tabs)
-17. **Step 10:** Test with Steam Spacewar (optional)
-
-**Primary Focus Files (UPDATED):**
-- `src/core/steam/steam-networking.js` (fix duplicate `on()`, add envelope + channelized send)
-- `src/core/network/message-types.js` (protocol handshake + match state + error messages)
-- `src/core/network/match-flow.js` (NEW: match state machine + lobby lock)
-- `src/core/network/client-prediction.js` (NEW: input prediction + server reconciliation)
-- `src/core/network/disconnect-detector.js` (NEW: heartbeat + timeout handling)
-- `src/core/network/replay-logger.js` (NEW: passive match logging)
-- `public/index.html` (ADD `#online-multiplayer-container` with 3 columns)
-- `public/styles/multiplayer-ui.css` (ADD three-column CSS)
-- `src/core/game-modes/OnlineMultiplayerMode.js` (IMPLEMENT board creation + handleMatchStart)
-- `src/ui/match-config-modal.js` (ADD `fairAttackScaling` toggle)
-- `src/core/multiplayer/ffa-attack-router.js` (ADD attack scaling formula)
-
-**Key Differences from Local Multiplayer:**
-| Aspect | Local MP | Online MP |
-|--------|----------|-----------|
-| Layout | Equal-sized grid | 3-column (opp \| main \| info) |
-| Your board | One of many | BIG in center |
-| Other boards | All Phaser | Canvas mini boards |
-| Data source | Local state | Network state from host |
-| Input handling | Direct | Predicted locally, validated by host |
-| State authority | Shared | Host-authoritative |
-
-**The main work is in OnlineMultiplayerMode.js:**
-- `_createMainBoard()` → Phaser board for local player (center)
-- `_createOpponentBoards()` → Canvas boards for opponents (left)
-- `_updateScoreboard()` → Update right panel
-- `handleMatchStart()` → Wire everything together
-- **`_setupClientPrediction()`** → Wire input prediction + reconciliation
-
----
-
-## 📊 Summary of Improvements Made to This Plan
-
-| Category | Added Items |
-|----------|-------------|
-| **Architecture** | Match state machine, syncpoint states, late-join rules |
-| **Game Feel** | Client-side prediction with reconciliation |
-| **Balance** | Attack scaling formula + toggle for 5+ players |
-| **Robustness** | Heartbeat detection, disconnect handling, error messages |
-| **Debugging** | Passive replay logging, Network QoS HUD |
-| **Optimization** | Binary snapshot encoding specification |
-| **Protocol** | 15+ new message types (spectator, rematch, errors) |
-| **Files** | 5 new source files to create |
-| **Visual** | Garbage meter integrated with network state |
-| **Security** | Comprehensive anti-cheat and validation rules |
-| **Testing** | Quality gates, edge cases, stress tests |
-
----
-
-## ✅ Final Audit Status
-
-**Plan Completeness Checklist:**
-
-| Section | Status | Notes |
-|---------|--------|-------|
-| Current State Assessment | ✅ Complete | 70% done, clear gap analysis |
-| Quadra Comparison | ✅ Complete | Best practices mapped and adopted |
-| Match State Machine | ✅ Complete | 6-state diagram with transitions |
-| Late-Join Rules | ✅ Complete | Decision matrix for all scenarios |
-| Client-Side Prediction | ✅ Complete | Full implementation spec |
-| Attack Scaling | ✅ Complete | Formula + scaling table |
-| Binary Encoding | ✅ Complete | 90% bandwidth reduction spec |
-| Syncpoints | ✅ Complete | Quadra-style join/resync flow |
-| Heartbeat Detection | ✅ Complete | Timeout rules + migration triggers |
-| Error Handling | ✅ Complete | 10 error codes defined |
-| Replay Logging | ✅ Complete | Passive logging infrastructure |
-| Three-Column Layout | ✅ Complete | HTML + CSS + component specs |
-| Garbage Meter | ✅ Complete | Network-integrated, reuses local MP |
-| Message Protocol | ✅ Complete | 30+ message types documented |
-| Implementation Phases | ✅ Complete | 6 phases with priorities |
-| Testing Coverage | ✅ Complete | Quality gates + edge cases |
-| Security Considerations | ✅ Complete | Anti-cheat measures documented |
-
-**Industry Best Practices Coverage:**
-
-| Best Practice | Implemented |
-|---------------|-------------|
-| Deterministic simulation | ✅ Shared seed |
-| Host-authoritative model | ✅ Single source of truth |
-| Client-side prediction | ✅ Input prediction + reconciliation |
-| Reliable/unreliable channels | ✅ Multi-channel transport |
-| Protocol versioning | ✅ NET_HELLO/NET_WELCOME handshake |
-| State machine for match flow | ✅ 6-state machine |
-| Attack scaling for balance | ✅ Fair attack toggle |
-| Disconnect handling | ✅ Grace period + migration |
-| Input validation | ✅ Rate limiting + rejection |
-| Replay/debug support | ✅ Passive logging |
-
-**🎯 Plan is COMPLETE and industry-standard ready!**
-
-The implementation can now proceed with confidence that all edge cases, best practices, and quality requirements have been specified. The plan draws from proven implementations (Quadra), modern networking practices (Steam P2P), and includes comprehensive testing criteria.
-
-**Total Document Size:** ~2900 lines
-**Estimated Implementation Time:** 4-6 weeks for Phase 1 (MVP), 2-3 months for full feature set
-
+- Phases 1-3 are complete (see progress docs).
+- Primary risk is network robustness (ordering, resync, migration).
+- Next review after Phase 4 completion and soak tests.
+- Phase 8 (Infinity LMS) scoped after Phase 7 completion.
