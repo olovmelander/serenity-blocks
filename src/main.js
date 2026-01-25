@@ -3306,6 +3306,23 @@ class SerenityBlocks {
             },
         };
 
+        const drainGarbageEntries = (queue, drainAll) => {
+            if (!queue || queue.isEmpty()) {
+                return [];
+            }
+            if (!drainAll) {
+                return queue.dequeueLineBurst();
+            }
+
+            const entries = [];
+            let burst = queue.dequeueLineBurst();
+            while (burst.length > 0) {
+                entries.push(...burst);
+                burst = queue.dequeueLineBurst();
+            }
+            return entries;
+        };
+
         callbacks.spawnPiece = async () => {
             // Convert playerNum to appropriate format based on multiplayerState structure
             const playerIdentifier = multiplayerState.players
@@ -3316,7 +3333,7 @@ class SerenityBlocks {
             const garbageQueue = multiplayerState.getGarbageQueue(playerIdentifier);
 
             if (!garbageQueue.isEmpty()) {
-                const queuedEntries = garbageQueue.dequeueLineBurst();
+                const queuedEntries = drainGarbageEntries(garbageQueue, !!multiplayerState.players);
 
                 if (queuedEntries.length > 0) {
                     console.log(
@@ -3327,6 +3344,12 @@ class SerenityBlocks {
                     const result = insertGarbageEntries(playerState.lockedPieces, queuedEntries, {
                         boardGrid: playerState.boardGrid,
                     });
+
+                    if (result?.topOut) {
+                        console.log(`[Garbage] Player ${playerNum} topped out from garbage!`);
+                        this.endMultiplayerGame(playerNum);
+                        return; // Don't spawn next piece
+                    }
 
                     if (result && result.garbagePieces) {
                         // Mark board as dirty to trigger re-render

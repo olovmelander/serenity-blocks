@@ -129,7 +129,7 @@ Each game mode follows this lifecycle:
         Classic Tetris experience with progressive difficulty
     </p>
     <p id="local-multiplayer-desc" class="mode-desc">
-        Compete head-to-head with a friend on the same device
+        Compete head-to-head with friends on the same device
     </p>
     <p id="online-multiplayer-desc" class="mode-desc">
         Free-for-all online battles (Coming Soon)

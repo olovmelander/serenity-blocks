@@ -27,6 +27,74 @@ import { HostMigration } from './host-migration.js';
 import { unifiedLoop } from './unified-game-loop.js';
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 
+const RESYNC_CHUNK_SIZE = 16 * 1024;
+const RESYNC_WINDOW = 4;
+const RESYNC_TIMEOUT_MS = 300;
+const RESYNC_MAX_RETRIES = 5;
+
+const CRC32_TABLE = (() => {
+    const table = new Uint32Array(256);
+    for (let i = 0; i < 256; i += 1) {
+        let c = i;
+        for (let k = 0; k < 8; k += 1) {
+            c = ((c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1));
+        }
+        table[i] = c >>> 0;
+    }
+    return table;
+})();
+
+const crc32 = (bytes) => {
+    let crc = 0 ^ -1;
+    for (let i = 0; i < bytes.length; i += 1) {
+        crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ bytes[i]) & 0xFF];
+    }
+    return (crc ^ -1) >>> 0;
+};
+
+const encodeUtf8 = (str) => {
+    if (typeof TextEncoder !== 'undefined') {
+        return new TextEncoder().encode(str);
+    }
+    if (typeof Buffer !== 'undefined') {
+        return Uint8Array.from(Buffer.from(str, 'utf8'));
+    }
+    return Uint8Array.from(unescape(encodeURIComponent(str)).split('').map((c) => c.charCodeAt(0)));
+};
+
+const decodeUtf8 = (bytes) => {
+    if (typeof TextDecoder !== 'undefined') {
+        return new TextDecoder().decode(bytes);
+    }
+    if (typeof Buffer !== 'undefined') {
+        return Buffer.from(bytes).toString('utf8');
+    }
+    return decodeURIComponent(escape(String.fromCharCode(...bytes)));
+};
+
+const encodeBase64 = (bytes) => {
+    if (typeof Buffer !== 'undefined') {
+        return Buffer.from(bytes).toString('base64');
+    }
+    let binary = '';
+    bytes.forEach((b) => {
+        binary += String.fromCharCode(b);
+    });
+    return btoa(binary);
+};
+
+const decodeBase64 = (base64) => {
+    if (typeof Buffer !== 'undefined') {
+        return Uint8Array.from(Buffer.from(base64, 'base64'));
+    }
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+};
+
 export class FFAGameStateP2P {
     constructor(steamNetworking, localPlayerId) {
         this.network = steamNetworking;
@@ -75,6 +143,16 @@ export class FFAGameStateP2P {
         this.unifiedLoop = unifiedLoop;
         this.loopRunning = false;
         this.loopCallbacksConfigured = false;
+        this.hostTick = 0;
+        this.syncpoint = 'idle';
+        this.pendingResyncs = [];
+        this.resyncTransfers = new Map();
+        this.resyncBuffers = new Map();
+        this.resyncChunkSize = RESYNC_CHUNK_SIZE;
+        this.resyncWindow = RESYNC_WINDOW;
+        this.resyncTimeoutMs = RESYNC_TIMEOUT_MS;
+        this.resyncMaxRetries = RESYNC_MAX_RETRIES;
+        this.handshakeComplete = this.isHost;
 
         // Setup network handlers
         this.setupNetworkHandlers();
@@ -181,13 +259,13 @@ export class FFAGameStateP2P {
 
         console.log('📢 Announcing join to host...');
 
-        // Send join message to host
         this.network.sendP2PMessage(
             this.network.hostSteamId,
-            MessageTypes.LOBBY_PLAYER_JOINED,
+            MessageTypes.NET_HELLO,
             {
-                steamId: this.localPlayerId,
-                name: this.network.playerName,
+                protocolVersion: this.network.protocolVersion,
+                clientVersion: this.network.protocolVersion,
+                featureFlags: [],
             },
         );
     }
@@ -197,6 +275,30 @@ export class FFAGameStateP2P {
    */
     setupNetworkHandlers() {
         // === INPUT MESSAGES (Peer → Host) ===
+
+        this.network.on(MessageTypes.NET_HELLO, (msg) => {
+            if (!this.isHost) return;
+            const requested = msg.data?.protocolVersion;
+            const accepted = requested === this.network.protocolVersion;
+            this.network.sendP2PMessage(msg.from, MessageTypes.NET_WELCOME, {
+                protocolVersion: this.network.protocolVersion,
+                featureFlags: [],
+                matchId: this.network.matchId,
+                matchNonce: this.network.matchNonce,
+                hostSteamId: this.network.hostSteamId,
+                accepted,
+                reason: accepted ? 'ok' : 'protocol_mismatch',
+            });
+        });
+
+        this.network.on(MessageTypes.NET_WELCOME, (msg) => {
+            if (this.isHost) return;
+            if (msg.data?.accepted) {
+                console.log('✅ NET_WELCOME received from host');
+            } else {
+                console.warn(`⚠️ NET_WELCOME rejected: ${msg.data?.reason || 'unknown'}`);
+            }
+        });
 
         this.network.on(MessageTypes.GAME_INPUT_MOVE, (msg) => {
             if (this.isHost) {
@@ -224,6 +326,24 @@ export class FFAGameStateP2P {
             }
         });
 
+        this.network.on(MessageTypes.GAME_STATE_RESYNC, (msg) => {
+            if (!this.isHost) {
+                this._handleResyncChunk(msg);
+            }
+        });
+
+        this.network.on(MessageTypes.GAME_STATE_RESYNC_ACK, (msg) => {
+            if (this.isHost) {
+                this._handleResyncAck(msg);
+            }
+        });
+
+        this.network.on(MessageTypes.GAME_SYNCPOINT, (msg) => {
+            if (!this.isHost) {
+                this.syncpoint = msg.data?.syncpoint ?? this.syncpoint;
+            }
+        });
+
         this.network.on(MessageTypes.LOBBY_PLAYER_JOINED, (msg) => {
             console.log('📬 LOBBY_PLAYER_JOINED received:', msg);
             console.log('   isHost:', this.isHost);
@@ -234,6 +354,7 @@ export class FFAGameStateP2P {
                 console.log(`📢 Host received join from: ${msg.data.name} (${msg.data.steamId})`);
                 if (msg.data.steamId !== this.localPlayerId) {
                     this.addPlayer(msg.data.steamId, msg.data.name);
+                    this.queueResync(msg.data.steamId);
                 }
             }
 
@@ -409,26 +530,29 @@ export class FFAGameStateP2P {
                 players: Array.from(this.players.keys()),
             });
 
-            // Show countdown with the same prefix text as host
-            this.showCountdown(() => {
-                this.gamePhase = 'playing';
+            // Dispatch event to clear death visuals
+            emitMultiplayerEvent(MULTIPLAYER_EVENTS.ROUND_RESTART, {
+                players: Array.from(this.players.keys()),
+            });
 
-                // Re-initialize players with the same seed from host (for deterministic pieces)
-                // CRITICAL: All players must use the EXACT same seed for fair play
-                const { newSeed } = msg.data;
-                this.players.forEach((player, steamId) => {
-                    player.gameState.randomGenerator = this.createSeededRNG(newSeed);
+            // IMMEDIATE START (No countdown between rounds)
+            this.gamePhase = 'playing';
 
-                    // Fill bag and spawn first piece
-                    fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
-                    spawnPiece(player.gameState, null, null);
-                });
+            // Re-initialize players with the same seed from host (for deterministic pieces)
+            // CRITICAL: All players must use the EXACT same seed for fair play
+            const { newSeed } = msg.data;
+            this.players.forEach((player, steamId) => {
+                player.gameState.randomGenerator = this.createSeededRNG(newSeed);
 
-                // Start game loop (needed for rendering on peer side)
-                this.startGameLoop();
+                // Fill bag and spawn first piece
+                fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
+                spawnPiece(player.gameState, null, null);
+            });
 
-                console.log(`🎮 ${isFullReset ? 'Game' : 'Round'} started on peer!`);
-            }, msg.data.prefixText || 'ROUND OVER');
+            // Start game loop (needed for rendering on peer side)
+            this.startGameLoop();
+
+            console.log(`🎮 ${isFullReset ? 'Game' : 'Round'} started on peer! (Immediate)`);
         });
 
         // PHASE 4.4: Chat messages
@@ -632,6 +756,10 @@ export class FFAGameStateP2P {
             this._logGarbage('💥 ❌ NO ATTACKER FOUND in garbage burst! This will be a self-kill.');
         }
 
+        const killerId = attackerId || null;
+        const killerName = attackerName || (killerId ? this.players.get(killerId)?.name : null);
+        const isSelfKill = !killerId || killerId === steamId;
+
         const result = insertGarbageEntries(player.gameState.lockedPieces, burst, {
             boardGrid: player.gameState.boardGrid,
             debug: this.debugGarbage,
@@ -654,6 +782,10 @@ export class FFAGameStateP2P {
             emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, {
                 steamId,
                 playerName: player.name,
+                killer: killerId,
+                killerId,
+                killerName,
+                isSelfKill,
                 isLocal: steamId === this.localPlayerId,
             });
             return;
@@ -693,6 +825,10 @@ export class FFAGameStateP2P {
             emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, {
                 steamId,
                 playerName: player.name,
+                killer: killerId,
+                killerId,
+                killerName,
+                isSelfKill,
                 isLocal: steamId === this.localPlayerId,
             });
         }
@@ -771,6 +907,17 @@ export class FFAGameStateP2P {
             // Initialize all players with shared seed
             this.players.forEach((player) => {
                 this.initializePlayerForMatch(player, this.sharedSeed);
+            });
+
+            const session = this.network.refreshMatchSession();
+            this.network.broadcastToAll(MessageTypes.NET_WELCOME, {
+                protocolVersion: session.protocolVersion,
+                featureFlags: [],
+                matchId: session.matchId,
+                matchNonce: session.matchNonce,
+                hostSteamId: session.hostSteamId,
+                accepted: true,
+                reason: 'match_start',
             });
 
             // Broadcast game start to all peers
@@ -881,6 +1028,9 @@ export class FFAGameStateP2P {
                     this.broadcastGameState();
                     lastBroadcastTime = now;
                 }
+
+                this._updateSyncpoint();
+                this._processPendingResyncs();
             }
         }, minBroadcastInterval);
 
@@ -896,6 +1046,82 @@ export class FFAGameStateP2P {
             this.stateSyncInterval = null;
             console.log('📡 State sync stopped');
         }
+    }
+
+    _computeSyncpoint() {
+        if (this.gamePhase !== 'playing') return 'download';
+        const busy = Array.from(this.players.values()).some((player) => player.gameState?.isProcessingPhysics);
+        return busy ? 'busy' : 'idle';
+    }
+
+    _updateSyncpoint() {
+        const next = this._computeSyncpoint();
+        if (next !== this.syncpoint) {
+            this.syncpoint = next;
+            this.network.broadcastToAll(MessageTypes.GAME_SYNCPOINT, {
+                syncpoint: this.syncpoint,
+                tick: this.hostTick,
+                reason: 'state_change',
+            });
+        }
+    }
+
+    _processPendingResyncs() {
+        if (!this.isHost || this.pendingResyncs.length === 0) return;
+        if (this.syncpoint === 'busy') return;
+        const steamId = this.pendingResyncs.shift();
+        if (steamId) {
+            this._sendResyncToPeer(steamId);
+        }
+    }
+
+    buildStateSnapshot() {
+        return {
+            players: Array.from(this.players.entries()).map(([steamId, player]) => ({
+                steamId,
+                name: player.name,
+                color: player.color,
+                score: player.gameState.score,
+                lines: player.gameState.lines,
+                level: player.gameState.level,
+                frags: player.frags,
+                isAlive: player.isAlive,
+                garbagePending: player.garbageQueue.getTotalLines(),
+
+                grid: player.gameState.boardGrid,
+                currentPiece: player.gameState.currentPiece,
+                nextPieces: player.gameState.nextPieces,
+                dropCounter: player.gameState.dropCounter,
+                dropInterval: player.gameState.dropInterval,
+
+                garbageEntries: player.garbageQueue.entries.map((entry) => ({
+                    type: entry.type,
+                    attackerId: entry.attackerId,
+                    color: entry.color,
+                    holeMask: entry.holeMask,
+                    variant: entry.variant,
+                })),
+
+                lockedPieces: player.gameState.lockedPieces.map((piece) => ({
+                    x: piece.x,
+                    y: piece.y,
+                    shape: piece.shape,
+                    color: piece.color,
+                    shapeKey: piece.shapeKey,
+                })),
+            })),
+            gamePhase: this.gamePhase,
+            winner: this.winner ? {
+                steamId: this.winner.steamId,
+                name: this.winner.name,
+            } : null,
+            timestamp: Date.now(),
+            tick: this.hostTick,
+        };
+    }
+
+    getFullState() {
+        return this.buildStateSnapshot();
     }
 
     /**
@@ -940,6 +1166,7 @@ export class FFAGameStateP2P {
    */
     broadcastGameState() {
         if (!this.isHost) return;
+        this.hostTick += 1;
 
         // Update last broadcast state snapshots
         for (const [steamId, player] of this.players) {
@@ -955,51 +1182,8 @@ export class FFAGameStateP2P {
             });
         }
 
-        const state = {
-            players: Array.from(this.players.entries()).map(([steamId, player]) => ({
-                steamId,
-                name: player.name,
-                score: player.gameState.score,
-                lines: player.gameState.lines,
-                level: player.gameState.level,
-                frags: player.frags,
-                isAlive: player.isAlive,
-                garbagePending: player.garbageQueue.getTotalLines(),
-
-                // CRITICAL: Full board state for rendering
-                grid: player.gameState.boardGrid,
-                currentPiece: player.gameState.currentPiece,
-                nextPieces: player.gameState.nextPieces,
-                dropCounter: player.gameState.dropCounter,
-                dropInterval: player.gameState.dropInterval,
-
-                // Garbage queue for meter display
-                garbageEntries: player.garbageQueue.entries.map((entry) => ({
-                    type: entry.type,
-                    attackerId: entry.attackerId,
-                    color: entry.color,
-                    holeMask: entry.holeMask,
-                    variant: entry.variant,
-                })),
-
-                // CRITICAL: Include locked pieces for accurate rendering
-                lockedPieces: player.gameState.lockedPieces.map((piece) => ({
-                    x: piece.x,
-                    y: piece.y,
-                    shape: piece.shape,
-                    color: piece.color,
-                    shapeKey: piece.shapeKey,
-                })),
-            })),
-            gamePhase: this.gamePhase,
-            winner: this.winner ? {
-                steamId: this.winner.steamId,
-                name: this.winner.name,
-            } : null,
-            timestamp: Date.now(),
-        };
-
-        this.network.broadcastToAll(MessageTypes.GAME_STATE_FULL, state);
+        const state = this.buildStateSnapshot();
+        this.network.broadcastSnapshot(MessageTypes.GAME_STATE_FULL, state);
     }
 
     /**
@@ -1009,11 +1193,19 @@ export class FFAGameStateP2P {
     syncFromHost(state) {
         if (this.isHost) return;
 
+        this._applySnapshotState(state, { forceLocal: false });
+    }
+
+    _applySnapshotState(state, { forceLocal }) {
         // Update all player states from host
         state.players.forEach((playerData) => {
             const player = this.players.get(playerData.steamId);
             if (player) {
                 const isLocalPlayer = playerData.steamId === this.localPlayerId;
+
+                if (playerData.color) {
+                    player.color = playerData.color;
+                }
 
                 // Update stats for all players (including local)
                 player.gameState.score = playerData.score;
@@ -1027,7 +1219,7 @@ export class FFAGameStateP2P {
                 // Local player runs their own physics and input handling.
                 // Syncing board state for local player causes race conditions where
                 // host state overwrites local line clears mid-animation.
-                if (!isLocalPlayer) {
+                if (forceLocal || !isLocalPlayer) {
                     // Update full board state for opponent rendering
                     if (playerData.grid) {
                         player.gameState.boardGrid = playerData.grid;
@@ -1046,7 +1238,7 @@ export class FFAGameStateP2P {
                 player.gameState.dropInterval = playerData.dropInterval || 1000;
 
                 // Sync next pieces only for opponents (local player uses their own seeded RNG)
-                if (!isLocalPlayer) {
+                if (forceLocal || !isLocalPlayer) {
                     player.gameState.nextPieces = playerData.nextPieces ? [...playerData.nextPieces] : [];
                 }
 
@@ -1070,6 +1262,207 @@ export class FFAGameStateP2P {
         // Note: The render loop also calls this, but we call it here too
         // to ensure immediate visual update when state arrives
         this.renderAllPlayers();
+    }
+
+    queueResync(steamId) {
+        if (!this.isHost) return;
+        if (!steamId || steamId === this.localPlayerId) return;
+        if (this.gamePhase !== 'playing' || this.syncpoint !== 'busy') {
+            this._sendResyncToPeer(steamId);
+            return;
+        }
+        if (!this.pendingResyncs.includes(steamId)) {
+            this.pendingResyncs.push(steamId);
+        }
+    }
+
+    _buildResyncPayload() {
+        return {
+            ...this.buildStateSnapshot(),
+            matchConfig: this.matchConfig,
+            sharedSeed: this.sharedSeed,
+            matchStartTime: this.matchStartTime,
+        };
+    }
+
+    _sendResyncToPeer(steamId) {
+        if (!this.isHost) return;
+
+        const payload = this._buildResyncPayload();
+        const bytes = encodeUtf8(JSON.stringify(payload));
+        const chunkCount = Math.ceil(bytes.length / this.resyncChunkSize);
+        const resyncId = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+
+        const chunks = [];
+        for (let i = 0; i < chunkCount; i += 1) {
+            const start = i * this.resyncChunkSize;
+            const end = Math.min(bytes.length, start + this.resyncChunkSize);
+            const slice = bytes.slice(start, end);
+            chunks.push({
+                resyncId,
+                chunkIndex: i,
+                chunkCount,
+                byteOffset: start,
+                crc32: crc32(slice),
+                data: encodeBase64(slice),
+            });
+        }
+
+        const transfer = {
+            resyncId,
+            steamId,
+            chunks,
+            inFlight: new Set(),
+            retries: new Map(),
+            lastSentAt: new Map(),
+            cursor: 0,
+            timer: null,
+        };
+
+        this.resyncTransfers.set(resyncId, transfer);
+        this._sendResyncWindow(transfer);
+        transfer.timer = setInterval(() => this._tickResyncTransfer(transfer), 50);
+    }
+
+    _sendResyncWindow(transfer) {
+        while (transfer.inFlight.size < this.resyncWindow && transfer.cursor < transfer.chunks.length) {
+            const chunk = transfer.chunks[transfer.cursor];
+            this._sendResyncChunk(transfer, chunk);
+            transfer.cursor += 1;
+        }
+    }
+
+    _sendResyncChunk(transfer, chunk) {
+        this.network.sendP2PMessage(transfer.steamId, MessageTypes.GAME_STATE_RESYNC, chunk);
+        transfer.inFlight.add(chunk.chunkIndex);
+        transfer.lastSentAt.set(chunk.chunkIndex, Date.now());
+        const retryCount = transfer.retries.get(chunk.chunkIndex) || 0;
+        transfer.retries.set(chunk.chunkIndex, retryCount + 1);
+    }
+
+    _tickResyncTransfer(transfer) {
+        const now = Date.now();
+        let abort = false;
+        transfer.inFlight.forEach((chunkIndex) => {
+            const lastSent = transfer.lastSentAt.get(chunkIndex) || 0;
+            if (now - lastSent < this.resyncTimeoutMs) return;
+            const retryCount = transfer.retries.get(chunkIndex) || 0;
+            if (retryCount >= this.resyncMaxRetries) {
+                abort = true;
+                return;
+            }
+            const chunk = transfer.chunks[chunkIndex];
+            if (chunk) {
+                this._sendResyncChunk(transfer, chunk);
+            }
+        });
+
+        if (abort) {
+            clearInterval(transfer.timer);
+            transfer.timer = null;
+            this.resyncTransfers.delete(transfer.resyncId);
+            return;
+        }
+
+        if (transfer.inFlight.size === 0 && transfer.cursor >= transfer.chunks.length) {
+            clearInterval(transfer.timer);
+            transfer.timer = null;
+            this.resyncTransfers.delete(transfer.resyncId);
+        }
+    }
+
+    _handleResyncAck(msg) {
+        const { resyncId, chunkIndex, isFinal } = msg.data || {};
+        const transfer = this.resyncTransfers.get(resyncId);
+        if (!transfer || transfer.steamId !== msg.from) return;
+
+        if (typeof chunkIndex === 'number') {
+            transfer.inFlight.delete(chunkIndex);
+            this._sendResyncWindow(transfer);
+        }
+
+        if (isFinal) {
+            clearInterval(transfer.timer);
+            transfer.timer = null;
+            this.resyncTransfers.delete(resyncId);
+        }
+    }
+
+    _handleResyncChunk(msg) {
+        const { resyncId, chunkIndex, chunkCount, byteOffset, crc32: expectedCrc, data } = msg.data || {};
+        if (!resyncId || typeof chunkIndex !== 'number') return;
+
+        const bytes = decodeBase64(data || '');
+        if (expectedCrc !== crc32(bytes)) {
+            return;
+        }
+
+        const buffer = this.resyncBuffers.get(resyncId) || {
+            chunkCount,
+            chunks: new Map(),
+            received: 0,
+        };
+
+        if (!buffer.chunks.has(chunkIndex)) {
+            buffer.chunks.set(chunkIndex, { bytes, byteOffset });
+            buffer.received += 1;
+        }
+
+        this.resyncBuffers.set(resyncId, buffer);
+
+        this.network.sendP2PMessage(this.network.hostSteamId, MessageTypes.GAME_STATE_RESYNC_ACK, {
+            resyncId,
+            chunkIndex,
+            isFinal: false,
+        });
+
+        if (buffer.received === buffer.chunkCount) {
+            const totalLength = Array.from(buffer.chunks.values()).reduce((max, chunk) => {
+                return Math.max(max, chunk.byteOffset + chunk.bytes.length);
+            }, 0);
+            const merged = new Uint8Array(totalLength);
+            buffer.chunks.forEach((chunk) => {
+                merged.set(chunk.bytes, chunk.byteOffset);
+            });
+
+            try {
+                const payload = JSON.parse(decodeUtf8(merged));
+                this._applyResyncState(payload);
+                this.network.sendP2PMessage(this.network.hostSteamId, MessageTypes.GAME_STATE_RESYNC_ACK, {
+                    resyncId,
+                    chunkIndex: null,
+                    isFinal: true,
+                });
+            } catch (err) {
+                console.error('❌ Failed to parse resync payload:', err);
+            }
+
+            this.resyncBuffers.delete(resyncId);
+        }
+    }
+
+    _applyResyncState(state) {
+        if (state.matchConfig) {
+            this.matchConfig = { ...this.matchConfig, ...state.matchConfig };
+        }
+        if (state.sharedSeed) {
+            this.sharedSeed = state.sharedSeed;
+        }
+        if (state.matchStartTime) {
+            this.matchStartTime = state.matchStartTime;
+        }
+
+        state.players.forEach((playerData) => {
+            if (!this.players.has(playerData.steamId)) {
+                this.addPlayer(playerData.steamId, playerData.name || 'Player');
+            }
+        });
+
+        this._applySnapshotState(state, { forceLocal: true });
+
+        if (this.gamePhase === 'playing' && !this.loopRunning) {
+            this.startGameLoop();
+        }
     }
 
     /**
@@ -1451,9 +1844,9 @@ export class FFAGameStateP2P {
                 latestPlayer.isAlive = false;
 
                 const { lastAttackerId } = latestPlayer;
+                const lastAttacker = lastAttackerId ? this.players.get(lastAttackerId) : null;
                 if (lastAttackerId) {
-                    const attacker = this.players.get(lastAttackerId);
-                    console.log(`🏆 Death on spawn attributed to last attacker: ${attacker?.name || lastAttackerId}`);
+                    console.log(`🏆 Death on spawn attributed to last attacker: ${lastAttacker?.name || lastAttackerId}`);
                 } else {
                     console.log('💀 Death on spawn with no attacker tracked (self-kill)');
                 }
@@ -1464,6 +1857,10 @@ export class FFAGameStateP2P {
                 emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, {
                     steamId,
                     playerName: latestPlayer.name,
+                    killer: lastAttackerId || null,
+                    killerId: lastAttackerId || null,
+                    killerName: lastAttacker?.name || null,
+                    isSelfKill: !lastAttackerId || lastAttackerId === steamId,
                     isLocal: steamId === this.localPlayerId,
                 });
             },
@@ -1640,31 +2037,34 @@ export class FFAGameStateP2P {
             players: Array.from(this.players.keys()),
         });
 
-        // Show "ROUND OVER" then countdown: 3, 2, 1, GO!
-        this.showCountdown(() => {
-            this.gamePhase = 'playing';
+        // Dispatch event to clear death visuals for all players
+        emitMultiplayerEvent(MULTIPLAYER_EVENTS.ROUND_RESTART, {
+            players: Array.from(this.players.keys()),
+        });
 
-            // Re-initialize players for next round (use the same seed we broadcast)
-            // CRITICAL: All players must use the EXACT same seed for fair play
-            this.players.forEach((player, steamId) => {
-                // Set new deterministic RNG for this round - same seed for all players
-                player.gameState.randomGenerator = this.createSeededRNG(newSeed);
+        // IMMEDIATE START (No countdown between rounds)
+        this.gamePhase = 'playing';
 
-                // Fill bag and spawn first piece
-                fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
-                spawnPiece(player.gameState, null, null);
-            });
+        // Re-initialize players for next round (use the same seed we broadcast)
+        // CRITICAL: All players must use the EXACT same seed for fair play
+        this.players.forEach((player, steamId) => {
+            // Set new deterministic RNG for this round - same seed for all players
+            player.gameState.randomGenerator = this.createSeededRNG(newSeed);
 
-            // Start game loop
-            this.startGameLoop();
+            // Fill bag and spawn first piece
+            fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
+            spawnPiece(player.gameState, null, null);
+        });
 
-            // Host: Start state sync loop (30Hz broadcasts to peers)
-            if (this.isHost) {
-                this.startStateSyncLoop();
-            }
+        // Start game loop
+        this.startGameLoop();
 
-            console.log('🎮 Round started!');
-        }, 'ROUND OVER'); // Show "ROUND OVER" before countdown
+        // Host: Start state sync loop (30Hz broadcasts to peers)
+        if (this.isHost) {
+            this.startStateSyncLoop();
+        }
+
+        console.log('🎮 Round started! (Immediate)');
     }
 
     /**
@@ -1734,7 +2134,7 @@ export class FFAGameStateP2P {
 
         console.log('🎬 Starting countdown animation...', { prefixText });
 
-        let count = 3;
+        let count = 5;
 
         // Enhanced full-screen overlay with animation support
         const forceFullScreen = () => {
@@ -1791,7 +2191,7 @@ export class FFAGameStateP2P {
                 requestAnimationFrame(() => {
                     countdownElement.textContent = count;
                     countdownElement.style.fontSize = '140px';
-                    countdownElement.style.color = count === 3 ? '#ef4444' : count === 2 ? '#f59e0b' : '#10b981'; // Red -> Orange -> Green
+                    countdownElement.style.color = count >= 3 ? '#ef4444' : count === 2 ? '#f59e0b' : '#10b981'; // Red (5,4,3) -> Orange (2) -> Green (1)
                     countdownElement.style.animation = 'none'; // Clear previous animation
 
                     // Force reflow to restart animation

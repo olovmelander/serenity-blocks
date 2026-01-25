@@ -1157,19 +1157,26 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     _handlePlayerDeath(data) {
         const killerId = data.killer || data.killerId || null;
         const victimId = data.victimId || data.steamId || data.player || null;
-        const killerName = data.killerName || this._getPlayerName(killerId) || (killerId ? String(killerId) : null);
-        const victimName = data.victimName || data.playerName || this._getPlayerName(victimId) || (victimId ? String(victimId) : 'Unknown');
+        const isSelfKill = data.isSelfKill ?? (!killerId || killerId === victimId);
+        const resolvedKillerName = data.killerName
+            || this._getPlayerName(killerId)
+            || (killerId ? String(killerId) : null);
+        const killerName = isSelfKill ? null : resolvedKillerName;
+        const victimName = data.victimName
+            || data.playerName
+            || this._getPlayerName(victimId)
+            || (victimId ? String(victimId) : 'Unknown');
         const killerColor = this._getPlayerColor(killerId);
         const victimColor = this._getPlayerColor(victimId);
 
         if (this.killFeed) {
             this.killFeed.addKill({
-                killer: killerName || 'Unknown',
+                killer: killerName,
                 victim: victimName || 'Unknown',
                 linesCleared: data.linesCleared,
                 killerColor,
                 victimColor,
-                isSelfKill: !killerId || killerId === victimId,
+                isSelfKill,
             });
         }
 
@@ -1428,13 +1435,20 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (this.playerColors.has(steamId)) {
             return this.playerColors.get(steamId);
         }
-        const player = this.ffaGameState?.players?.get(steamId);
+        const stringId = String(steamId);
+        if (this.playerColors.has(stringId)) {
+            return this.playerColors.get(stringId);
+        }
+        const player = this.ffaGameState?.players?.get(steamId)
+            || this.ffaGameState?.players?.get(stringId);
         return player?.color || null;
     }
 
     _getPlayerName(steamId) {
         if (!steamId) return null;
-        const player = this.ffaGameState?.players?.get(steamId);
+        const stringId = String(steamId);
+        const player = this.ffaGameState?.players?.get(steamId)
+            || this.ffaGameState?.players?.get(stringId);
         return player?.name || null;
     }
 
@@ -1635,7 +1649,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (!this.steamNetworking.isHost || !this.ffaGameState) return;
 
         const state = this.ffaGameState.getFullState();
-        this.steamNetworking.broadcastToAll('GAME_STATE_FULL', state);
+        this.steamNetworking.broadcastSnapshot(MessageTypes.GAME_STATE_FULL, state);
     }
 
     /**

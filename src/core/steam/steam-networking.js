@@ -36,6 +36,12 @@ export class SteamNetworking {
         this.currentLobbyId = null;
         this.connectedPeers = new Map(); // Map<steamId, { name, isAlive, ... }>
         this.messageHandlers = new Map();
+        this.protocolVersion = '1.0.0';
+        this.matchId = null;
+        this.matchNonce = null;
+        this.sendSeqByChannel = new Map();
+        this.recvSeqByPeer = new Map();
+        this.snapshotQueues = new Map();
 
         // Mock mode for local testing
         this.mockMode = SteamConfig.mockMode || !greenworks;
@@ -103,6 +109,8 @@ export class SteamNetworking {
             this.isHost = true;
             this.hostSteamId = this.steamId;
             this.currentLobbyId = `mock_lobby_${Date.now()}`;
+            this.matchId = this.currentLobbyId;
+            this.matchNonce = this._generateMatchNonce();
 
             // Store lobby in localStorage so it's visible across browser windows
             const lobbyData = {
@@ -137,9 +145,11 @@ export class SteamNetworking {
             greenworks.createLobby(type, maxPlayers, (lobbyId) => {
                 console.log(`✅ Lobby created: ${lobbyId}`);
 
-                this.isHost = true;
-                this.hostSteamId = this.steamId;
-                this.currentLobbyId = lobbyId;
+            this.isHost = true;
+            this.hostSteamId = this.steamId;
+            this.currentLobbyId = lobbyId;
+            this.matchId = lobbyId;
+            this.matchNonce = this._generateMatchNonce();
 
                 // Set lobby metadata
                 greenworks.setLobbyData(lobbyId, 'game_mode', 'ffa');
@@ -164,6 +174,7 @@ export class SteamNetworking {
             // Mock join for local testing
             this.isHost = false;
             this.currentLobbyId = lobbyId;
+            this.matchId = lobbyId;
 
             // Get the REAL host ID from the lobby data in localStorage
             const lobbies = this.loadMockLobbies();
@@ -190,6 +201,7 @@ export class SteamNetworking {
 
                 this.isHost = false;
                 this.currentLobbyId = lobbyId;
+                this.matchId = lobbyId;
                 this.hostSteamId = greenworks.getLobbyOwner(lobbyId);
 
                 resolve();
@@ -203,16 +215,41 @@ export class SteamNetworking {
     /**
    * Send P2P message to specific player
    */
-    sendP2PMessage(targetSteamId, messageType, data) {
+    sendP2PMessage(targetSteamId, messageType, data, options = {}) {
+        return this._sendMessage(targetSteamId, messageType, data, {
+            channel: 0,
+            delivery: 'reliable',
+            ...options,
+        });
+    }
+
+    sendUnreliable(targetSteamId, messageType, data, options = {}) {
+        return this._sendMessage(targetSteamId, messageType, data, {
+            channel: 2,
+            delivery: 'unreliable',
+            ...options,
+        });
+    }
+
+    sendUnreliableNoDelay(targetSteamId, messageType, data, options = {}) {
+        return this._sendMessage(targetSteamId, messageType, data, {
+            channel: 1,
+            delivery: 'unreliable_no_delay',
+            ...options,
+        });
+    }
+
+    _sendMessage(targetSteamId, messageType, data, options) {
+        const envelope = this._buildEnvelope(messageType, data, options);
+
         if (this.mockMode) {
             // Mock send via BroadcastChannel
             if (this.broadcastChannel) {
                 const message = {
-                    type: messageType,
-                    timestamp: Date.now(),
+                    ...envelope,
                     from: this.steamId,
                     to: targetSteamId,
-                    data,
+                    channel: options.channel,
                 };
                 this.broadcastChannel.postMessage(message);
 
@@ -223,36 +260,30 @@ export class SteamNetworking {
             return;
         }
 
-        const message = {
-            type: messageType,
-            timestamp: Date.now(),
-            from: this.steamId,
-            data,
-        };
-
-        const buffer = Buffer.from(JSON.stringify(message));
+        const buffer = Buffer.from(JSON.stringify(envelope));
+        const sendType = this._resolveDelivery(options.delivery);
 
         greenworks.sendP2PPacket(
             targetSteamId,
             buffer,
-            greenworks.P2PSend.Reliable, // Reliable delivery
-            0, // Channel 0
+            sendType,
+            options.channel ?? 0,
         );
     }
 
     /**
    * Broadcast message to all connected peers (host only)
    */
-    broadcastToAll(messageType, data) {
+    broadcastToAll(messageType, data, options = {}) {
         if (this.mockMode) {
             // Mock broadcast via BroadcastChannel
             if (this.broadcastChannel) {
+                const envelope = this._buildEnvelope(messageType, data, options);
                 const message = {
-                    type: messageType,
-                    timestamp: Date.now(),
+                    ...envelope,
                     from: this.steamId,
                     to: 'all',
-                    data,
+                    channel: options.channel ?? 0,
                 };
                 this.broadcastChannel.postMessage(message);
 
@@ -269,7 +300,18 @@ export class SteamNetworking {
         }
 
         this.connectedPeers.forEach((peerInfo, steamId) => {
-            this.sendP2PMessage(steamId, messageType, data);
+            this._sendMessage(steamId, messageType, data, {
+                channel: 0,
+                delivery: 'reliable',
+                ...options,
+            });
+        });
+    }
+
+    broadcastSnapshot(messageType, data, options = {}) {
+        if (!this.isHost) return;
+        this.connectedPeers.forEach((peerInfo, steamId) => {
+            this._queueSnapshot(steamId, messageType, data, options);
         });
     }
 
@@ -281,22 +323,30 @@ export class SteamNetworking {
 
         // Poll for P2P packets at 60Hz
         this.pollInterval = setInterval(() => {
-            while (greenworks.isP2PPacketAvailable(0)) {
-                const packet = greenworks.readP2PPacket(0);
-                if (packet) {
-                    this.handleP2PPacket(packet);
+            [0, 1, 2].forEach((channel) => {
+                while (greenworks.isP2PPacketAvailable(channel)) {
+                    const packet = greenworks.readP2PPacket(channel);
+                    if (packet) {
+                        this.handleP2PPacket(packet, channel);
+                    }
                 }
-            }
+            });
         }, 16); // ~60Hz
     }
 
     /**
    * Handle incoming P2P packet
    */
-    handleP2PPacket(packet) {
+    handleP2PPacket(packet, channel = 0) {
         try {
             const message = JSON.parse(packet.data.toString());
             const fromSteamId = packet.steamId;
+            const envelope = this._normalizeEnvelope(message, fromSteamId);
+            if (!envelope) return;
+
+            if (!this._validateEnvelope(envelope, fromSteamId, channel)) {
+                return;
+            }
 
             // Track peer connection
             if (!this.connectedPeers.has(fromSteamId)) {
@@ -305,15 +355,18 @@ export class SteamNetworking {
             }
 
             // Call registered message handlers (array-based)
-            const handlers = this.messageHandlers.get(message.type);
+            const handlers = this.messageHandlers.get(envelope.msgType);
             if (handlers && handlers.length > 0) {
                 handlers.forEach((handler) => {
                     try {
                         handler({
                             from: fromSteamId,
-                            type: message.type,
-                            data: message.data,
-                            timestamp: message.timestamp,
+                            type: envelope.msgType,
+                            data: envelope.payload,
+                            timestamp: envelope.sentAt,
+                            seq: envelope.seq,
+                            tick: envelope.tick,
+                            protocolVersion: envelope.protocolVersion,
                         });
                     } catch (err) {
                         console.error('Error in message handler:', err);
@@ -514,12 +567,25 @@ export class SteamNetworking {
             console.log(`🧪 Mock received from ${message.from}:`, message.type);
         }
 
+        const envelope = this._normalizeEnvelope(message, message.from);
+        if (!envelope) return;
+        if (!this._validateEnvelope(envelope, message.from, message.channel ?? 0)) {
+            return;
+        }
+
         // Call registered message handlers
-        const handlers = this.messageHandlers.get(message.type);
+        const handlers = this.messageHandlers.get(envelope.msgType);
         if (handlers && handlers.length > 0) {
             handlers.forEach((handler) => {
                 try {
-                    handler({ data: message.data, from: message.from });
+                    handler({
+                        data: envelope.payload,
+                        from: message.from,
+                        timestamp: envelope.sentAt,
+                        seq: envelope.seq,
+                        tick: envelope.tick,
+                        protocolVersion: envelope.protocolVersion,
+                    });
                 } catch (err) {
                     console.error('Error in message handler:', err);
                 }
@@ -548,5 +614,190 @@ export class SteamNetworking {
                 handlers.splice(index, 1);
             }
         }
+    }
+
+    _buildEnvelope(messageType, data, options = {}) {
+        const channel = options.channel ?? 0;
+        const seq = this._nextSeq(channel);
+        return {
+            msgType: messageType,
+            matchId: this.matchId,
+            matchNonce: this.matchNonce,
+            hostSteamId: this.hostSteamId,
+            seq,
+            tick: options.tick ?? data?.tick ?? null,
+            sentAt: Date.now(),
+            protocolVersion: this.protocolVersion,
+            payload: data,
+        };
+    }
+
+    _normalizeEnvelope(message, fromSteamId) {
+        if (message?.msgType) {
+            return message;
+        }
+        if (message?.type) {
+            return {
+                msgType: message.type,
+                matchId: message.matchId ?? null,
+                matchNonce: message.matchNonce ?? null,
+                hostSteamId: message.hostSteamId ?? null,
+                seq: message.seq ?? 0,
+                tick: message.tick ?? null,
+                sentAt: message.timestamp ?? Date.now(),
+                protocolVersion: message.protocolVersion ?? null,
+                payload: message.data,
+            };
+        }
+        console.warn('⚠️ Unknown packet format from', fromSteamId);
+        return null;
+    }
+
+    _validateEnvelope(envelope, fromSteamId, channel) {
+        const isHello = envelope.msgType === 'net:hello';
+        const isWelcome = envelope.msgType === 'net:welcome';
+        if (!envelope.protocolVersion) {
+            return false;
+        }
+        if (envelope.protocolVersion !== this.protocolVersion && !isHello && !isWelcome) {
+            this._sendNetError(fromSteamId, 'PROTOCOL_MISMATCH', envelope.msgType);
+            return false;
+        }
+
+        if (isWelcome && fromSteamId === this.hostSteamId) {
+            if (envelope.matchId) this.matchId = envelope.matchId;
+            if (envelope.matchNonce) this.matchNonce = envelope.matchNonce;
+            if (envelope.hostSteamId) this.hostSteamId = envelope.hostSteamId;
+            return true;
+        }
+
+        if (!this.matchId || !this.matchNonce || !this.hostSteamId) {
+            return true;
+        }
+
+        if (!isHello) {
+            if (envelope.matchId !== this.matchId) return false;
+            if (envelope.matchNonce !== this.matchNonce) return false;
+            if (envelope.hostSteamId !== this.hostSteamId) return false;
+        }
+
+        const seqKey = `${fromSteamId}:${channel}`;
+        const lastSeq = this.recvSeqByPeer.get(seqKey) ?? -1;
+        if (typeof envelope.seq === 'number' && envelope.seq <= lastSeq) {
+            return false;
+        }
+        if (typeof envelope.seq === 'number') {
+            this.recvSeqByPeer.set(seqKey, envelope.seq);
+        }
+        return true;
+    }
+
+    _sendNetError(targetSteamId, code, originalMsgType) {
+        const payload = {
+            code,
+            message: `Protocol error: ${code}`,
+            originalMsgType,
+        };
+        this.sendP2PMessage(targetSteamId, 'net:error', payload);
+    }
+
+    _nextSeq(channel) {
+        const current = this.sendSeqByChannel.get(channel) ?? 0;
+        const next = current + 1;
+        this.sendSeqByChannel.set(channel, next);
+        return next;
+    }
+
+    _resolveDelivery(delivery) {
+        if (!greenworks) return null;
+        switch (delivery) {
+            case 'unreliable':
+                return greenworks.P2PSend.Unreliable;
+            case 'unreliable_no_delay':
+                return greenworks.P2PSend.UnreliableNoDelay;
+            case 'reliable':
+            default:
+                return greenworks.P2PSend.Reliable;
+        }
+    }
+
+    _queueSnapshot(steamId, messageType, data, options = {}) {
+        const state = this.snapshotQueues.get(steamId) || {
+            pending: null,
+            lastSendAt: 0,
+            minInterval: 1000 / 30,
+            dropCount: 0,
+            windowStart: Date.now(),
+            timer: null,
+        };
+
+        const now = Date.now();
+        const elapsed = now - state.lastSendAt;
+        const envelope = this._buildEnvelope(messageType, data, {
+            channel: 1,
+            delivery: 'unreliable_no_delay',
+            ...options,
+        });
+
+        if (elapsed >= state.minInterval && !state.timer) {
+            this._sendMessage(steamId, messageType, data, {
+                channel: 1,
+                delivery: 'unreliable_no_delay',
+                ...options,
+            });
+            state.lastSendAt = now;
+        } else {
+            if (state.pending) {
+                state.dropCount += 1;
+            }
+            state.pending = envelope;
+            if (!state.timer) {
+                const delay = Math.max(0, state.minInterval - elapsed);
+                state.timer = setTimeout(() => {
+                    if (state.pending) {
+                        this._sendMessage(steamId, state.pending.msgType, state.pending.payload, {
+                            channel: 1,
+                            delivery: 'unreliable_no_delay',
+                        });
+                        state.lastSendAt = Date.now();
+                        state.pending = null;
+                    }
+                    state.timer = null;
+                }, delay);
+            }
+        }
+
+        if (now - state.windowStart > 1000) {
+            state.dropCount = 0;
+            state.windowStart = now;
+        }
+        if (state.dropCount >= 5) {
+            state.minInterval = 1000 / 10;
+        } else if (state.dropCount >= 2) {
+            state.minInterval = 1000 / 20;
+        } else {
+            state.minInterval = 1000 / 30;
+        }
+
+        this.snapshotQueues.set(steamId, state);
+    }
+
+    _generateMatchNonce() {
+        if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+            const bytes = new Uint8Array(8);
+            crypto.getRandomValues(bytes);
+            return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+        }
+        return Math.random().toString(16).slice(2) + Date.now().toString(16);
+    }
+
+    refreshMatchSession() {
+        this.matchNonce = this._generateMatchNonce();
+        return {
+            matchId: this.matchId,
+            matchNonce: this.matchNonce,
+            hostSteamId: this.hostSteamId,
+            protocolVersion: this.protocolVersion,
+        };
     }
 }
