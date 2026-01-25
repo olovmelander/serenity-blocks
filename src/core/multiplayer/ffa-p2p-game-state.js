@@ -409,26 +409,29 @@ export class FFAGameStateP2P {
                 players: Array.from(this.players.keys()),
             });
 
-            // Show countdown with the same prefix text as host
-            this.showCountdown(() => {
-                this.gamePhase = 'playing';
+            // Dispatch event to clear death visuals
+            emitMultiplayerEvent(MULTIPLAYER_EVENTS.ROUND_RESTART, {
+                players: Array.from(this.players.keys()),
+            });
 
-                // Re-initialize players with the same seed from host (for deterministic pieces)
-                // CRITICAL: All players must use the EXACT same seed for fair play
-                const { newSeed } = msg.data;
-                this.players.forEach((player, steamId) => {
-                    player.gameState.randomGenerator = this.createSeededRNG(newSeed);
+            // IMMEDIATE START (No countdown between rounds)
+            this.gamePhase = 'playing';
 
-                    // Fill bag and spawn first piece
-                    fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
-                    spawnPiece(player.gameState, null, null);
-                });
+            // Re-initialize players with the same seed from host (for deterministic pieces)
+            // CRITICAL: All players must use the EXACT same seed for fair play
+            const { newSeed } = msg.data;
+            this.players.forEach((player, steamId) => {
+                player.gameState.randomGenerator = this.createSeededRNG(newSeed);
 
-                // Start game loop (needed for rendering on peer side)
-                this.startGameLoop();
+                // Fill bag and spawn first piece
+                fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
+                spawnPiece(player.gameState, null, null);
+            });
 
-                console.log(`🎮 ${isFullReset ? 'Game' : 'Round'} started on peer!`);
-            }, msg.data.prefixText || 'ROUND OVER');
+            // Start game loop (needed for rendering on peer side)
+            this.startGameLoop();
+
+            console.log(`🎮 ${isFullReset ? 'Game' : 'Round'} started on peer! (Immediate)`);
         });
 
         // PHASE 4.4: Chat messages
@@ -1640,31 +1643,34 @@ export class FFAGameStateP2P {
             players: Array.from(this.players.keys()),
         });
 
-        // Show "ROUND OVER" then countdown: 3, 2, 1, GO!
-        this.showCountdown(() => {
-            this.gamePhase = 'playing';
+        // Dispatch event to clear death visuals for all players
+        emitMultiplayerEvent(MULTIPLAYER_EVENTS.ROUND_RESTART, {
+            players: Array.from(this.players.keys()),
+        });
 
-            // Re-initialize players for next round (use the same seed we broadcast)
-            // CRITICAL: All players must use the EXACT same seed for fair play
-            this.players.forEach((player, steamId) => {
-                // Set new deterministic RNG for this round - same seed for all players
-                player.gameState.randomGenerator = this.createSeededRNG(newSeed);
+        // IMMEDIATE START (No countdown between rounds)
+        this.gamePhase = 'playing';
 
-                // Fill bag and spawn first piece
-                fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
-                spawnPiece(player.gameState, null, null);
-            });
+        // Re-initialize players for next round (use the same seed we broadcast)
+        // CRITICAL: All players must use the EXACT same seed for fair play
+        this.players.forEach((player, steamId) => {
+            // Set new deterministic RNG for this round - same seed for all players
+            player.gameState.randomGenerator = this.createSeededRNG(newSeed);
 
-            // Start game loop
-            this.startGameLoop();
+            // Fill bag and spawn first piece
+            fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
+            spawnPiece(player.gameState, null, null);
+        });
 
-            // Host: Start state sync loop (30Hz broadcasts to peers)
-            if (this.isHost) {
-                this.startStateSyncLoop();
-            }
+        // Start game loop
+        this.startGameLoop();
 
-            console.log('🎮 Round started!');
-        }, 'ROUND OVER'); // Show "ROUND OVER" before countdown
+        // Host: Start state sync loop (30Hz broadcasts to peers)
+        if (this.isHost) {
+            this.startStateSyncLoop();
+        }
+
+        console.log('🎮 Round started! (Immediate)');
     }
 
     /**
@@ -1734,7 +1740,7 @@ export class FFAGameStateP2P {
 
         console.log('🎬 Starting countdown animation...', { prefixText });
 
-        let count = 3;
+        let count = 5;
 
         // Enhanced full-screen overlay with animation support
         const forceFullScreen = () => {
@@ -1791,7 +1797,7 @@ export class FFAGameStateP2P {
                 requestAnimationFrame(() => {
                     countdownElement.textContent = count;
                     countdownElement.style.fontSize = '140px';
-                    countdownElement.style.color = count === 3 ? '#ef4444' : count === 2 ? '#f59e0b' : '#10b981'; // Red -> Orange -> Green
+                    countdownElement.style.color = count >= 3 ? '#ef4444' : count === 2 ? '#f59e0b' : '#10b981'; // Red (5,4,3) -> Orange (2) -> Green (1)
                     countdownElement.style.animation = 'none'; // Clear previous animation
 
                     // Force reflow to restart animation

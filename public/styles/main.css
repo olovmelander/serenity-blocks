@@ -4737,6 +4737,7 @@ body {
         filter: brightness(1.5) saturate(1.4);
     }
 }
+
 /* --- Sakura Twilight Theme --- */
 @property --lantern-shift {
     syntax: '<length>';
@@ -21710,6 +21711,12 @@ body.phaser-multiplayer-active #single-player-container {
             rgba(245, 158, 11, 0.05));
 }
 
+/* Fix for Infinity LMS player header alignment */
+.player-card.infinity-lms {
+    justify-items: center;
+    align-content: start;
+}
+
 /* Next pieces section - horizontal layout */
 .player-card .player-next-pieces {
     display: flex;
@@ -24901,6 +24908,7 @@ body.cursor-hidden * {
         opacity: 1;
     }
 }
+
 /* Game Over Modal Buttons */
 .game-over-buttons {
     display: flex;
