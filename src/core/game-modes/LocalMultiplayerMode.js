@@ -248,6 +248,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
                         playerCard.classList.add('infinity-lms');
                     } else {
                         playerCard.classList.remove('infinity-lms');
+                        const header = playerCard.querySelector('.player-header');
+                        if (header) {
+                            header.style.left = '';
+                            header.style.transform = '';
+                        }
                     }
 
                     // Add team marker if in team mode
@@ -285,6 +290,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         console.log(`[LocalMultiplayer] Layout updated for ${numPlayers} players${this.matchConfig?.isInfinityLMS ? ' (Infinity LMS mode)' : ''}`);
+
     }
 
     /**
@@ -383,6 +389,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     console.warn(`[LocalMultiplayer] Player card not found for Player ${playerNum}`);
                 }
             }
+
         }
 
         // Create shared RNG seed for fairness
@@ -575,6 +582,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 });
             });
         }
+
     }
 
     /**
@@ -1485,14 +1493,16 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const blockSizeByHeight = Math.floor(maxHeight / visibleRows);
 
             // Calculate block size from width constraint
-            // We need to account for significant UI overhead in the layout:
-            // - Minimaps: 65px per player
-            // - Card Padding: ~40px per player (20px left + 20px right)
-            // - Card Borders/Gaps: ~10px per player
-            // - Grid Gaps: Between players
-            // - Global Screen Padding: ~100px total
+            // We need to account for UI overhead in the layout:
+            // - Minimap column: ~65px
+            // - Minimap gap: ~8px
+            // - Card padding: ~28px total
+            // - Card borders: ~6px total
+            // - Garbage bar + gap: ~14px
+            // - Grid gaps: Between players (handled separately)
+            // - Global screen padding: ~100px total
 
-            const perPlayerFixedOverhead = 65 + 40 + 10; // Minimap + Padding + Border
+            const perPlayerFixedOverhead = 65 + 8 + 28 + 6 + 14;
             const totalFixedOverhead = (perPlayerFixedOverhead * numPlayers) + 100;
 
             const baseGap = numPlayers === 2 ? 40 : numPlayers === 3 ? 30 : 20;
