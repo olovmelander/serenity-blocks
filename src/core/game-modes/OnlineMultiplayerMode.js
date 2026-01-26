@@ -19,6 +19,7 @@ import { MultiplayerScoreboardOverlay } from '../../ui/multiplayer-scoreboard-ov
 import { NetworkQosHud } from '../../ui/network-qos.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { MessageTypes } from '../network/message-types.js';
+import { SnapshotInterpolator } from '../network/snapshot-interpolation.js';
 
 /**
  * OnlineMultiplayerMode - Online FFA multiplayer mode with lobby system
@@ -74,6 +75,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         // Cleanup handlers
         this.cleanupHandlers = [];
+
+        // Snapshot Interpolation
+        this.snapshotInterpolator = new SnapshotInterpolator({
+            interpolationDelay: 50, // 50ms buffer for smooth 30Hz -> 60Hz
+        });
     }
 
     getModeId() {
@@ -311,6 +317,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 levelProgression: false,
                 allowHandicap: true,
                 boringRules: config.boringRules || false,
+                garbageCancellation: config.garbageCancellation || 'full',
                 maxPlayers: config.maxPlayers,
             };
 
@@ -999,6 +1006,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             id: player.id ?? player.steamId,
         }));
 
+        // Feed snapshot to interpolator
+        this.snapshotInterpolator.addSnapshot({
+            ...state,
+            players: normalizedPlayers,
+            timestamp: Date.now(), // Ensure we use arrival time if server time is drifted
+        });
+
         // Update local board if we have state for this player
         const myState = normalizedPlayers.find((p) => p.id === this.steamNetworking.steamId);
         if (myState && this.mainBoardScene) {
@@ -1016,8 +1030,18 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         // Update opponent boards
         if (this.opponentWatchManager) {
+            // This is the fallback update for low-rate updates (30Hz)
+            // Real smoothness comes from _handleRenderFrame using interpolation
+
+            // We can skip this update if we are running the render loop, 
+            // but keeping it ensures we don't miss updates if render loop pauses.
+            // However, to prevent jitter/fighting, we might relying purely on _handleRenderFrame?
+            // Actually, let's let _handleRenderFrame handle visual updates.
+            // But we need to update stats/metadata here?
+
+            // For now, we update mostly meta-data here. Visuals are in render loop.
             const opponents = normalizedPlayers.filter((p) => p.id !== this.steamNetworking.steamId);
-            this.opponentWatchManager.updateFromState(opponents);
+            this.opponentWatchManager.updateFromState(opponents); // Keep this for metadata syncing
         }
 
         // Update scoreboard
@@ -1100,37 +1124,63 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this._updateGarbageMeter(localPlayer.garbageQueue);
         }
 
-        // Update opponent boards
-        if (this.opponentWatchManager) {
-            const playerStates = players.map((p) => ({
+        // Update Opponent Boards with INTERPOLATION
+        if (this.opponentWatchManager && players) {
+            const renderTime = Date.now();
+
+            const opponents = players
+                .filter(p => p.steamId !== localId)
+                .map(p => {
+                    // Try to get interpolated state
+                    const interpolated = this.snapshotInterpolator.getInterpolatedState(p.steamId, renderTime);
+
+                    if (interpolated) {
+                        return {
+                            ...p,
+                            // Override position-sensitive data with interpolated values
+                            gameState: {
+                                ...p.gameState,
+                                ...interpolated.gameState,
+                                currentPiece: interpolated.currentPiece || p.gameState?.currentPiece,
+                                boardGrid: interpolated.grid || interpolated.gameState?.boardGrid || p.gameState?.boardGrid,
+                            }
+                        };
+                    }
+                    return p;
+                });
+
+            if (opponents.length > 0) {
+                this.opponentWatchManager.updateFromState(opponents);
+            }
+        }
+
+        // Apply local player's color to main board border
+        if (localPlayer) {
+            const mainBoard = document.getElementById('online-main-board');
+            const localColor = localPlayer.color || this._getPlayerColor(localId);
+            if (mainBoard && localColor) {
+                mainBoard.style.borderColor = localColor;
+            }
+        }
+
+        const signature = players.map((p) => p.steamId).join('|'); // Use original players for signature
+        if (signature && signature !== this.lastPlayerSignature) {
+            // Set players on opponentWatchManager, ensuring it gets all players (including local for metadata)
+            this.opponentWatchManager.setPlayers(players.map(p => ({
                 id: p.steamId,
                 name: p.name,
                 frags: p.frags || 0,
                 isAlive: p.isAlive !== false,
+                isDisconnected: p.isDisconnected, // Pass disconnect status to watcher
                 grid: p.gameState?.boardGrid || p.gameState?.grid,
                 currentPiece: p.gameState?.currentPiece,
                 nextPieces: p.nextPieces || p.gameState?.nextPieces,
                 garbageQueue: p.garbageQueue,
                 garbagePending: p.garbageQueue?.getTotalLines?.() || 0,
                 color: p.color || this._getPlayerColor(p.steamId),
-            }));
+            })));
 
-            // Apply local player's color to main board border
-            if (localPlayer) {
-                const mainBoard = document.getElementById('online-main-board');
-                const localColor = localPlayer.color || this._getPlayerColor(localId);
-                if (mainBoard && localColor) {
-                    mainBoard.style.borderColor = localColor;
-                }
-            }
-
-            const signature = playerStates.map((p) => p.id).join('|');
-            if (signature && signature !== this.lastPlayerSignature) {
-                this.opponentWatchManager.setPlayers(playerStates);
-                this.lastPlayerSignature = signature;
-            }
-
-            this.opponentWatchManager.updateFromState(playerStates);
+            this.lastPlayerSignature = signature;
         }
 
         // Update scoreboard
