@@ -223,12 +223,12 @@ export default class StellarDriftTheme extends BaseTheme {
         this.shockwaveRings = [];
         this.shootingStars = [];
         this.starTwinkleIntensity = 0;
-        this.dustRingPulse = 0;        // Smooth dust ring expansion
-        this.bloomPulseIntensity = 0;  // Smooth bloom boost
+        this.dustRingPulse = 0; // Smooth dust ring expansion
+        this.bloomPulseIntensity = 0; // Smooth bloom boost
         this.nebulaBoostIntensity = 0; // Smooth nebula brightness
-        this.glowSurgeIntensity = 0;   // Smooth planet glow surge
-        this.meteorActivity = 0;       // Dynamic meteor spin speed based on APM
-        this.nebulaPulse = 0;          // Pulse intensity for nebulas
+        this.glowSurgeIntensity = 0; // Smooth planet glow surge
+        this.meteorActivity = 0; // Dynamic meteor spin speed based on APM
+        this.nebulaPulse = 0; // Pulse intensity for nebulas
         this.cameraSway = new THREE.Vector3(0, 0, 0); // Gentle camera motion
 
         // WARP SPEED EFFECTS - Tunnel Vision & Motion Trails
@@ -236,12 +236,12 @@ export default class StellarDriftTheme extends BaseTheme {
         this.currentFOV = 75;
         this.targetFOV = 75;
         this.cameraShake = new THREE.Vector3(0, 0, 0);
-        this.chromaticIntensity = 0;         // Chromatic aberration strength
-        this.radialBlurIntensity = 0;        // Radial motion blur strength
-        this.warpSpeed = 0;                  // Current warp speed (0-1)
-        this.targetWarpSpeed = 0;            // Target warp speed
-        this.starTrailIntensity = 0;         // Star elongation intensity
-        this.speedLineOpacity = 0;           // Speed line visibility
+        this.chromaticIntensity = 0; // Chromatic aberration strength
+        this.radialBlurIntensity = 0; // Radial motion blur strength
+        this.warpSpeed = 0; // Current warp speed (0-1)
+        this.targetWarpSpeed = 0; // Target warp speed
+        this.starTrailIntensity = 0; // Star elongation intensity
+        this.speedLineOpacity = 0; // Speed line visibility
 
         // Nebula Particle Bursts
         this.nebulaBursts = [];
@@ -297,12 +297,12 @@ export default class StellarDriftTheme extends BaseTheme {
         }
 
         this.initRenderer(container);
-        this.createStarfield();      // 3D point stars
+        this.createStarfield(); // 3D point stars
         // this.createNebulaClouds();   // REMOVED: Replaced by volumetric backdrop
         // this.createOrbitingParticles(); // REMOVED: User request
-        this.createNebulaBackdrop();   // NEW: High-def majestic nebula
+        this.createNebulaBackdrop(); // NEW: High-def majestic nebula
         this.createPlanet();
-        this.createDustRing();        // Dust ring around planet
+        this.createDustRing(); // Dust ring around planet
         this.createAmbientParticles(); // Floating ambient sparkles
         this.createMeteorField();
         this.setupPostProcessing();
@@ -413,7 +413,7 @@ export default class StellarDriftTheme extends BaseTheme {
                 uPixelRatio: { value: this.renderer.getPixelRatio() },
                 uEventBoost: { value: 0 },
                 uTexture: { value: this.getStarTexture() },
-                uWarpSpeed: { value: 0 },  // NEW: Warp speed for trail effect
+                uWarpSpeed: { value: 0 }, // NEW: Warp speed for trail effect
             },
             vertexShader: `
                 attribute float aSize;
@@ -537,7 +537,8 @@ export default class StellarDriftTheme extends BaseTheme {
 
             // VIBRANT Galaxy colors
             const colorType = Math.random();
-            let hue, sat, light;
+            let hue; let sat; let
+                light;
             if (colorType < 0.3) { // Electric Teal/Cyan
                 hue = 180 + Math.random() * 30;
                 sat = 90;
@@ -589,12 +590,12 @@ export default class StellarDriftTheme extends BaseTheme {
 
         // Add EDGE nebulas - specifically positioned at screen corners/edges
         const edgePositions = [
-            { x: -2200, y: 800 },   // Top-left
-            { x: 2200, y: 800 },    // Top-right
-            { x: -2200, y: -600 },  // Bottom-left
-            { x: 2200, y: -600 },   // Bottom-right
-            { x: -2500, y: 0 },     // Left center
-            { x: 2500, y: 0 },      // Right center
+            { x: -2200, y: 800 }, // Top-left
+            { x: 2200, y: 800 }, // Top-right
+            { x: -2200, y: -600 }, // Bottom-left
+            { x: 2200, y: -600 }, // Bottom-right
+            { x: -2500, y: 0 }, // Left center
+            { x: 2500, y: 0 }, // Right center
         ];
 
         edgePositions.forEach((pos) => {
@@ -607,7 +608,7 @@ export default class StellarDriftTheme extends BaseTheme {
             // Random vibrant color for edge nebulas
             const hue = Math.random() > 0.5 ? 320 + Math.random() * 40 : 180 + Math.random() * 40;
             const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-            gradient.addColorStop(0, `hsla(${hue}, 85%, 45%, 0.3)`);  // Brighter for edges
+            gradient.addColorStop(0, `hsla(${hue}, 85%, 45%, 0.3)`); // Brighter for edges
             gradient.addColorStop(0.5, `hsla(${hue}, 80%, 40%, 0.15)`);
             gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
             ctx.fillStyle = gradient;
@@ -660,15 +661,15 @@ export default class StellarDriftTheme extends BaseTheme {
         // Attach exact colors to each texture so they stay linked after shuffle
         const texturePath = './textures/stellar-drift/';
         const textures = [
-            textureLoader.load(texturePath + 'stellar_drift_nebula.png'),     // 1: Emerald/Violet
-            textureLoader.load(texturePath + 'stellar_drift_nebula_2.png'),   // 2: Gold/Orange
-            textureLoader.load(texturePath + 'stellar_drift_nebula_3.png'),   // 3: Blue/Purple
-            textureLoader.load(texturePath + 'stellar_drift_nebula_4.png'),   // 4: Red/Magenta
-            textureLoader.load(texturePath + 'stellar_drift_nebula_5.png'),   // 5: Cyan/Teal
-            textureLoader.load(texturePath + 'stellar_drift_nebula_6.png'),   // 6: Deep Indigo
-            textureLoader.load(texturePath + 'stellar_drift_nebula_7.png'),   // 7: Crimson/Black
-            textureLoader.load(texturePath + 'stellar_drift_nebula_8.png'),   // 8: Amber/Gold
-            textureLoader.load(texturePath + 'stellar_drift_nebula_9.png'),   // 9: Silver/Ghost
+            textureLoader.load(`${texturePath}stellar_drift_nebula.png`), // 1: Emerald/Violet
+            textureLoader.load(`${texturePath}stellar_drift_nebula_2.png`), // 2: Gold/Orange
+            textureLoader.load(`${texturePath}stellar_drift_nebula_3.png`), // 3: Blue/Purple
+            textureLoader.load(`${texturePath}stellar_drift_nebula_4.png`), // 4: Red/Magenta
+            textureLoader.load(`${texturePath}stellar_drift_nebula_5.png`), // 5: Cyan/Teal
+            textureLoader.load(`${texturePath}stellar_drift_nebula_6.png`), // 6: Deep Indigo
+            textureLoader.load(`${texturePath}stellar_drift_nebula_7.png`), // 7: Crimson/Black
+            textureLoader.load(`${texturePath}stellar_drift_nebula_8.png`), // 8: Amber/Gold
+            textureLoader.load(`${texturePath}stellar_drift_nebula_9.png`), // 9: Silver/Ghost
         ];
 
         // Assign colors to textures
@@ -683,7 +684,7 @@ export default class StellarDriftTheme extends BaseTheme {
         textures[7].userData = { color: new THREE.Color(0xFFCC00) }; // Amber
         textures[8].userData = { color: new THREE.Color(0xCCCCFF) }; // Silver
 
-        textures.forEach(t => {
+        textures.forEach((t) => {
             t.wrapS = THREE.ClampToEdgeWrapping;
             t.wrapT = THREE.ClampToEdgeWrapping;
         });
@@ -701,18 +702,36 @@ export default class StellarDriftTheme extends BaseTheme {
 
         const nebulaConfigs = [
             // Center Group (Visible Now)
-            { texture: textures[0], x: 0, y: 8000, z: -35000, size: 75000, speed: 0.4, vRange: 2000 },  // Center
-            { texture: textures[1], x: 50000, y: -10000, z: -32000, size: 72000, speed: 0.6, vRange: 1500 },  // Right 1
-            { texture: textures[2], x: 100000, y: 0, z: -40000, size: 80000, speed: 0.3, vRange: 1000 },  // Right 2
-            { texture: textures[8], x: -50000, y: -5000, z: -36000, size: 70000, speed: 0.35, vRange: 2200 }, // Left 1 (Silver)
+            {
+                texture: textures[0], x: 0, y: 8000, z: -35000, size: 75000, speed: 0.4, vRange: 2000,
+            }, // Center
+            {
+                texture: textures[1], x: 50000, y: -10000, z: -32000, size: 72000, speed: 0.6, vRange: 1500,
+            }, // Right 1
+            {
+                texture: textures[2], x: 100000, y: 0, z: -40000, size: 80000, speed: 0.3, vRange: 1000,
+            }, // Right 2
+            {
+                texture: textures[8], x: -50000, y: -5000, z: -36000, size: 70000, speed: 0.35, vRange: 2200,
+            }, // Left 1 (Silver)
 
             // Outer Wings (Incoming/Outgoing)
-            { texture: textures[3], x: 150000, y: 5000, z: -38000, size: 78000, speed: 0.5, vRange: 1800 },  // Right 3
-            { texture: textures[4], x: 200000, y: -8000, z: -39000, size: 76000, speed: 0.55, vRange: 1600 }, // Right 4 (Edge)
+            {
+                texture: textures[3], x: 150000, y: 5000, z: -38000, size: 78000, speed: 0.5, vRange: 1800,
+            }, // Right 3
+            {
+                texture: textures[4], x: 200000, y: -8000, z: -39000, size: 76000, speed: 0.55, vRange: 1600,
+            }, // Right 4 (Edge)
 
-            { texture: textures[5], x: -100000, y: 8000, z: -35000, size: 74000, speed: 0.45, vRange: 2000 }, // Left 2
-            { texture: textures[6], x: -150000, y: 2000, z: -34000, size: 77000, speed: 0.3, vRange: 2500 },  // Left 3
-            { texture: textures[7], x: -200000, y: -2000, z: -37000, size: 75000, speed: 0.4, vRange: 1900 },  // Left 4 (Deep Edge)
+            {
+                texture: textures[5], x: -100000, y: 8000, z: -35000, size: 74000, speed: 0.45, vRange: 2000,
+            }, // Left 2
+            {
+                texture: textures[6], x: -150000, y: 2000, z: -34000, size: 77000, speed: 0.3, vRange: 2500,
+            }, // Left 3
+            {
+                texture: textures[7], x: -200000, y: -2000, z: -37000, size: 75000, speed: 0.4, vRange: 1900,
+            }, // Left 4 (Deep Edge)
         ];
 
         // Store nebula meshes for animation
@@ -806,8 +825,6 @@ export default class StellarDriftTheme extends BaseTheme {
     // Planet - Pink/Salmon Gas Giant with Flowing Bands
     // ─────────────────────────────────────────────────────────────────────────
 
-
-
     getRoundParticleTexture() {
         if (this._roundParticleTexture) return this._roundParticleTexture;
 
@@ -890,14 +907,14 @@ export default class StellarDriftTheme extends BaseTheme {
             velocities.push({
                 x: (Math.random() - 0.5) * 35, // More lateral spread
                 y: (Math.random() - 0.5) * 35,
-                z: speed // Toward camera
+                z: speed, // Toward camera
             });
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
         const material = new THREE.PointsMaterial({
-            color: color,
+            color,
             map: this.getRoundParticleTexture(), // USE ROUND TEXTURE
             size: 200 + Math.random() * 150, // Balanced size for visibility
             transparent: true,
@@ -909,9 +926,9 @@ export default class StellarDriftTheme extends BaseTheme {
 
         const burst = new THREE.Points(geometry, material);
         burst.userData = {
-            velocities: velocities,
+            velocities,
             life: 8.0, // EVEN LONGER LIFE (was 5.0)
-            maxLife: 8.0
+            maxLife: 8.0,
         };
 
         this.scene.add(burst);
@@ -925,6 +942,7 @@ export default class StellarDriftTheme extends BaseTheme {
             this.createNebulaBurst(nebula, particlesPerNebula);
         });
     }
+
     createPlanet() {
         const planetSize = 500;
 
@@ -1048,9 +1066,9 @@ export default class StellarDriftTheme extends BaseTheme {
         const geometry = new THREE.PlaneGeometry(size, size);
         const material = new THREE.MeshBasicMaterial({
             map: texture,
-            color: color,
+            color,
             transparent: true,
-            opacity: opacity,
+            opacity,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
         });
@@ -1086,7 +1104,7 @@ export default class StellarDriftTheme extends BaseTheme {
             // Ring distribution
             const angle = Math.random() * Math.PI * 2;
             // Radius: Planet is 500. Ring from 600 to 1200
-            const radius = 600 + Math.pow(Math.random(), 2) * 600;
+            const radius = 600 + Math.random() ** 2 * 600;
 
             // Flattened ring
             const x = Math.cos(angle) * radius;
@@ -1186,10 +1204,10 @@ export default class StellarDriftTheme extends BaseTheme {
 
         // Dark material with solid appearance - BRIGHTENED FOR VISIBILITY
         const material = new THREE.MeshStandardMaterial({
-            color: 0x776655,        // Rocky Grey/Brown (was 0x0a0a0a)
-            emissive: 0x222233,     // Subtle nebula glow (was none) -- Key for dark background
-            roughness: 0.7,         // Slightly smoother to catch light
-            metalness: 0.2,         // Slight metallic sheens
+            color: 0x776655, // Rocky Grey/Brown (was 0x0a0a0a)
+            emissive: 0x222233, // Subtle nebula glow (was none) -- Key for dark background
+            roughness: 0.7, // Slightly smoother to catch light
+            metalness: 0.2, // Slight metallic sheens
             flatShading: true,
             side: THREE.DoubleSide, // Render both sides for solid appearance
         });
@@ -1223,7 +1241,7 @@ export default class StellarDriftTheme extends BaseTheme {
 
             // Ring/Belt Distribution (Natural curve matching reference)
             const angle = (Math.random() - 0.5) * 3.5; // Wide arc (~200 degrees)
-            const radius = 600 + Math.random() * 600;  // Reduced max radius (600-1200) to keep away from camera
+            const radius = 600 + Math.random() * 600; // Reduced max radius (600-1200) to keep away from camera
 
             // Convert polar to cartesian
             mesh.position.x = Math.sin(angle) * radius;
@@ -1346,7 +1364,7 @@ export default class StellarDriftTheme extends BaseTheme {
         // Create a 3D ring geometry that expands outward from the planet
         const geometry = new THREE.RingGeometry(450, 480, 64);
         const material = new THREE.MeshBasicMaterial({
-            color: 0xffaa66,  // Mars-like orange
+            color: 0xffaa66, // Mars-like orange
             transparent: true,
             opacity: 0.6,
             side: THREE.DoubleSide,
@@ -1361,8 +1379,6 @@ export default class StellarDriftTheme extends BaseTheme {
         this.scene.add(ring);
         this.shockwaveRings.push(ring);
     }
-
-
 
     // ─────────────────────────────────────────────────────────────────────────
     // 3D COMBO EFFECTS - Smooth interpolation (no harsh setTimeout)
@@ -1405,11 +1421,11 @@ export default class StellarDriftTheme extends BaseTheme {
         if (comboCount >= 8) {
             // MAXIMUM WARP - Intense tunnel vision, heavy chromatic aberration
             this.targetWarpSpeed = 1.0;
-            this.targetFOV = this.baseFOV - 25;  // Dramatic narrow FOV
-            this.chromaticIntensity = 2.0;       // Strong color fringing
-            this.radialBlurIntensity = 1.5;      // Heavy motion blur
-            this.starTrailIntensity = 1.0;       // Full star trails
-            this.createShockwaveRing();           // Big shockwave
+            this.targetFOV = this.baseFOV - 25; // Dramatic narrow FOV
+            this.chromaticIntensity = 2.0; // Strong color fringing
+            this.radialBlurIntensity = 1.5; // Heavy motion blur
+            this.starTrailIntensity = 1.0; // Full star trails
+            this.createShockwaveRing(); // Big shockwave
         } else if (comboCount >= 5) {
             // HIGH WARP - Strong effects
             this.targetWarpSpeed = 0.7;
@@ -1438,7 +1454,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.cameraShake.set(
             (Math.random() - 0.5) * shakeStrength,
             (Math.random() - 0.5) * shakeStrength,
-            0
+            0,
         );
     }
 
@@ -1497,7 +1513,7 @@ export default class StellarDriftTheme extends BaseTheme {
             // Update Nebula Shader
             // Update and drift nebula clouds (left to right)
             if (this.nebulaMeshes && this.nebulaMeshes.length > 0) {
-                this.nebulaMeshes.forEach(mesh => {
+                this.nebulaMeshes.forEach((mesh) => {
                     // 1. Horizontal Drift (Left to Right)
                     mesh.position.x += mesh.userData.speed;
 
@@ -1693,12 +1709,12 @@ export default class StellarDriftTheme extends BaseTheme {
             // Dynamic Vignette (tunnel vision - darker edges during warp)
             if (this.vignettePass) {
                 const baseDarkness = 0.4;
-                const warpDarkness = this.warpSpeed * 0.5;  // Up to 0.9 total at max warp
+                const warpDarkness = this.warpSpeed * 0.5; // Up to 0.9 total at max warp
                 this.vignettePass.uniforms.darkness.value = baseDarkness + warpDarkness;
 
                 // Tighten the vignette offset for more tunnel effect
                 const baseOffset = 1.1;
-                const warpOffset = this.warpSpeed * 0.3;  // Smaller offset = tighter tunnel
+                const warpOffset = this.warpSpeed * 0.3; // Smaller offset = tighter tunnel
                 this.vignettePass.uniforms.offset.value = baseOffset - warpOffset;
             }
 
@@ -1710,7 +1726,7 @@ export default class StellarDriftTheme extends BaseTheme {
             // Radial Speed Lines (motion blur / zoom effect)
             if (this.radialSpeedPass) {
                 this.radialSpeedPass.uniforms.intensity.value = this.radialBlurIntensity;
-                this.radialSpeedPass.uniforms.time.value = this.time * 50;  // Fast animation
+                this.radialSpeedPass.uniforms.time.value = this.time * 50; // Fast animation
             }
 
             // SMOOTH NEBULA BOOST - Gradual opacity decay
@@ -1726,7 +1742,7 @@ export default class StellarDriftTheme extends BaseTheme {
             }
 
             // Update Nebula Uniforms (Pulse + Time)
-            this.nebulaMeshes.forEach(mesh => {
+            this.nebulaMeshes.forEach((mesh) => {
                 // 1. Horizontal Drift (Left to Right)
                 mesh.position.x += mesh.userData.speed;
 
@@ -1808,7 +1824,7 @@ export default class StellarDriftTheme extends BaseTheme {
             // Animate nebula particle bursts
             this.nebulaBursts = this.nebulaBursts.filter((burst) => {
                 const positions = burst.geometry.attributes.position.array;
-                const velocities = burst.userData.velocities;
+                const { velocities } = burst.userData;
 
                 // Move particles
                 for (let j = 0; j < velocities.length; j++) {

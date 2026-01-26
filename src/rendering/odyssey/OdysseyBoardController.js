@@ -248,7 +248,6 @@ export class OdysseyBoardController {
     // Background Elements
     // =============================
 
-
     createGlobalParticleTexture() {
         if (typeof document === 'undefined') return null;
         const canvas = document.createElement('canvas');

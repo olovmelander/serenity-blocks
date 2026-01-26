@@ -188,9 +188,6 @@ export const duneVertexShader = `
     }
 `;
 
-
-
-
 export const duneFragmentShader = `
     uniform vec3 uColorA; // Deep shadow (cool brown)
     uniform vec3 uColorB; // Golden sand (warm)

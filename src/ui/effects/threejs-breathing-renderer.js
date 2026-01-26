@@ -1,6 +1,6 @@
 /**
  * Three.js Breathing Renderer - Immersive 3D breathing visualizations
- * 
+ *
  * Replaces 2D WebGL shaders with stunning 3D scenes for each breathing technique.
  * Uses Three.js with post-processing for cinematic quality.
  */
@@ -12,11 +12,21 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 
 // Quality Presets - Optimized for calm, performant visuals
 const QUALITY_PRESETS = {
-    Extreme: { particleCount: 800, enableBloom: false, bloomStrength: 0, geometryDetail: 32 },
-    High: { particleCount: 500, enableBloom: false, bloomStrength: 0, geometryDetail: 24 },
-    Medium: { particleCount: 300, enableBloom: false, bloomStrength: 0, geometryDetail: 20 },
-    Low: { particleCount: 150, enableBloom: false, bloomStrength: 0, geometryDetail: 16 },
-    Minimal: { particleCount: 80, enableBloom: false, bloomStrength: 0, geometryDetail: 12 },
+    Extreme: {
+        particleCount: 800, enableBloom: false, bloomStrength: 0, geometryDetail: 32,
+    },
+    High: {
+        particleCount: 500, enableBloom: false, bloomStrength: 0, geometryDetail: 24,
+    },
+    Medium: {
+        particleCount: 300, enableBloom: false, bloomStrength: 0, geometryDetail: 20,
+    },
+    Low: {
+        particleCount: 150, enableBloom: false, bloomStrength: 0, geometryDetail: 16,
+    },
+    Minimal: {
+        particleCount: 80, enableBloom: false, bloomStrength: 0, geometryDetail: 12,
+    },
 };
 
 export class ThreeJSBreathingRenderer {
@@ -87,7 +97,7 @@ export class ThreeJSBreathingRenderer {
                 new THREE.Vector2(width, height),
                 this.quality.bloomStrength,
                 0.4,
-                0.85
+                0.85,
             );
             this.composer.addPass(bloomPass);
             this.bloomPass = bloomPass;
@@ -111,19 +121,19 @@ export class ThreeJSBreathingRenderer {
 
         // Build technique-specific scene
         switch (this.currentTechnique) {
-            case 'deep-relaxation': this.createAuroraScene(); break;
-            case 'ocean-breath': this.createOceanScene(); break;
-            case 'wim-hof': this.createVolcanicScene(); break;
-            case 'cosmic-breath': this.createNebulaScene(); break;
-            case 'forest-breath': this.createForestScene(); break;
-            case 'electric-storm': this.createStormScene(); break;
-            case 'energizing': this.createSolarScene(); break;
-            case 'coherence': this.createHeartScene(); break;
-            case 'calm-sleep': this.createMoonlitScene(); break;
-            case 'box-breathing': this.createSacredGeometryScene(); break;
-            case 'triangle': this.createCrystalScene(); break;
-            case 'zen-garden': this.createZenGardenScene(); break;
-            default: this.createAuroraScene(); break;
+        case 'deep-relaxation': this.createAuroraScene(); break;
+        case 'ocean-breath': this.createOceanScene(); break;
+        case 'wim-hof': this.createVolcanicScene(); break;
+        case 'cosmic-breath': this.createNebulaScene(); break;
+        case 'forest-breath': this.createForestScene(); break;
+        case 'electric-storm': this.createStormScene(); break;
+        case 'energizing': this.createSolarScene(); break;
+        case 'coherence': this.createHeartScene(); break;
+        case 'calm-sleep': this.createMoonlitScene(); break;
+        case 'box-breathing': this.createSacredGeometryScene(); break;
+        case 'triangle': this.createCrystalScene(); break;
+        case 'zen-garden': this.createZenGardenScene(); break;
+        default: this.createAuroraScene(); break;
         }
 
         console.log(`[ThreeJSBreathingRenderer] Scene built: ${this.currentTechnique}`);
@@ -139,7 +149,7 @@ export class ThreeJSBreathingRenderer {
             if (obj.geometry) obj.geometry.dispose();
             if (obj.material) {
                 if (Array.isArray(obj.material)) {
-                    obj.material.forEach(m => m.dispose());
+                    obj.material.forEach((m) => m.dispose());
                 } else {
                     obj.material.dispose();
                 }
@@ -183,18 +193,18 @@ export class ThreeJSBreathingRenderer {
 
         // Update technique-specific animations
         switch (this.currentTechnique) {
-            case 'deep-relaxation': this.updateAurora(time, breathScale); break;
-            case 'ocean-breath': this.updateOcean(time, breathScale); break;
-            case 'wim-hof': this.updateVolcanic(time, breathScale); break;
-            case 'cosmic-breath': this.updateNebula(time, breathScale); break;
-            case 'forest-breath': this.updateForest(time, breathScale); break;
-            case 'electric-storm': this.updateStorm(time, breathScale); break;
-            case 'energizing': this.updateSolar(time, breathScale); break;
-            case 'coherence': this.updateHeart(time, breathScale); break;
-            case 'calm-sleep': this.updateMoonlit(time, breathScale); break;
-            case 'box-breathing': this.updateSacredGeometry(time, breathScale); break;
-            case 'triangle': this.updateCrystal(time, breathScale); break;
-            case 'zen-garden': this.updateZenGarden(time, breathScale); break;
+        case 'deep-relaxation': this.updateAurora(time, breathScale); break;
+        case 'ocean-breath': this.updateOcean(time, breathScale); break;
+        case 'wim-hof': this.updateVolcanic(time, breathScale); break;
+        case 'cosmic-breath': this.updateNebula(time, breathScale); break;
+        case 'forest-breath': this.updateForest(time, breathScale); break;
+        case 'electric-storm': this.updateStorm(time, breathScale); break;
+        case 'energizing': this.updateSolar(time, breathScale); break;
+        case 'coherence': this.updateHeart(time, breathScale); break;
+        case 'calm-sleep': this.updateMoonlit(time, breathScale); break;
+        case 'box-breathing': this.updateSacredGeometry(time, breathScale); break;
+        case 'triangle': this.updateCrystal(time, breathScale); break;
+        case 'zen-garden': this.updateZenGarden(time, breathScale); break;
         }
     }
 
@@ -659,7 +669,7 @@ export class ThreeJSBreathingRenderer {
             const foliageMat = new THREE.MeshBasicMaterial({
                 color: new THREE.Color(c.r / 255 * 0.3, c.g / 255 * 0.3, c.b / 255 * 0.3),
                 transparent: true,
-                opacity: 0.8
+                opacity: 0.8,
             });
             const foliage = new THREE.Mesh(foliageGeom, foliageMat);
             foliage.position.y = 0.5;
@@ -934,13 +944,15 @@ export class ThreeJSBreathingRenderer {
         const heartShape = new THREE.Shape();
         const scale = 0.05;
         for (let t = 0; t <= Math.PI * 2; t += 0.1) {
-            const x = 16 * Math.pow(Math.sin(t), 3);
+            const x = 16 * Math.sin(t) ** 3;
             const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
             if (t === 0) heartShape.moveTo(x * scale, y * scale);
             else heartShape.lineTo(x * scale, y * scale);
         }
 
-        const heartGeom = new THREE.ExtrudeGeometry(heartShape, { depth: 0.3, bevelEnabled: true, bevelSize: 0.1, bevelThickness: 0.1 });
+        const heartGeom = new THREE.ExtrudeGeometry(heartShape, {
+            depth: 0.3, bevelEnabled: true, bevelSize: 0.1, bevelThickness: 0.1,
+        });
         const heartMat = new THREE.MeshBasicMaterial({
             color: new THREE.Color(c.r / 255, c.g / 255, c.b / 255),
             transparent: true,
@@ -1085,7 +1097,9 @@ export class ThreeJSBreathingRenderer {
             starPos[i * 3 + 2] = -8 - Math.random() * 5;
         }
         starGeom.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-        const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.02, transparent: true, opacity: 0.7 });
+        const starMat = new THREE.PointsMaterial({
+            color: 0xffffff, size: 0.02, transparent: true, opacity: 0.7,
+        });
         this.sceneObjects.stars = new THREE.Points(starGeom, starMat);
         this.scene.add(this.sceneObjects.stars);
     }
@@ -1140,7 +1154,7 @@ export class ThreeJSBreathingRenderer {
             const angle2 = ((i + 1) % 6 / 6) * Math.PI * 2;
             const points = [
                 new THREE.Vector3(Math.cos(angle1) * 0.8, Math.sin(angle1) * 0.8, 0),
-                new THREE.Vector3(Math.cos(angle2) * 0.8, Math.sin(angle2) * 0.8, 0)
+                new THREE.Vector3(Math.cos(angle2) * 0.8, Math.sin(angle2) * 0.8, 0),
             ];
             geomGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), lineMat));
             // Lines to center
@@ -1168,7 +1182,9 @@ export class ThreeJSBreathingRenderer {
             partPos[i * 3 + 2] = (Math.random() - 0.5) * 0.5;
         }
         partGeom.setAttribute('position', new THREE.BufferAttribute(partPos, 3));
-        const partMat = new THREE.PointsMaterial({ color: 0xffd700, size: 0.03, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending });
+        const partMat = new THREE.PointsMaterial({
+            color: 0xffd700, size: 0.03, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending,
+        });
         this.sceneObjects.geoParticles = new THREE.Points(partGeom, partMat);
         this.scene.add(this.sceneObjects.geoParticles);
     }
@@ -1204,7 +1220,9 @@ export class ThreeJSBreathingRenderer {
         this.scene.add(this.sceneObjects.prism);
 
         // Wireframe overlay
-        const wireframeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.8 });
+        const wireframeMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff, wireframe: true, transparent: true, opacity: 0.8,
+        });
         this.sceneObjects.prismWire = new THREE.Mesh(prismGeom.clone(), wireframeMat);
         this.scene.add(this.sceneObjects.prismWire);
 
@@ -1214,7 +1232,7 @@ export class ThreeJSBreathingRenderer {
         colors.forEach((color, i) => {
             const beamGeom = new THREE.PlaneGeometry(0.1, 4);
             const beamMat = new THREE.MeshBasicMaterial({
-                color: color,
+                color,
                 transparent: true,
                 opacity: 0.5,
                 side: THREE.DoubleSide,
@@ -1245,7 +1263,9 @@ export class ThreeJSBreathingRenderer {
         }
         sparkleGeom.setAttribute('position', new THREE.BufferAttribute(sparklePos, 3));
         sparkleGeom.setAttribute('color', new THREE.BufferAttribute(sparkleColors, 3));
-        const sparkleMat = new THREE.PointsMaterial({ size: 0.05, vertexColors: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
+        const sparkleMat = new THREE.PointsMaterial({
+            size: 0.05, vertexColors: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending,
+        });
         this.sceneObjects.sparkles = new THREE.Points(sparkleGeom, sparkleMat);
         this.scene.add(this.sceneObjects.sparkles);
     }
@@ -1281,7 +1301,7 @@ export class ThreeJSBreathingRenderer {
         const sandGeom = new THREE.PlaneGeometry(8, 8, 64, 64);
         const sandMat = new THREE.ShaderMaterial({
             uniforms: { uTime: { value: 0 }, uIntensity: { value: 0.5 } },
-            vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+            vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
             fragmentShader: `
                 uniform float uTime;
                 uniform float uIntensity;
@@ -1327,13 +1347,17 @@ export class ThreeJSBreathingRenderer {
             petalPos[i * 3 + 2] = (Math.random() - 0.5) * 4;
         }
         petalGeom.setAttribute('position', new THREE.BufferAttribute(petalPos, 3));
-        const petalMat = new THREE.PointsMaterial({ color: 0xffccdd, size: 0.08, transparent: true, opacity: 0.8 });
+        const petalMat = new THREE.PointsMaterial({
+            color: 0xffccdd, size: 0.08, transparent: true, opacity: 0.8,
+        });
         this.sceneObjects.petals = new THREE.Points(petalGeom, petalMat);
         this.scene.add(this.sceneObjects.petals);
 
         // Ambient lighting feel
         const ambientGeom = new THREE.SphereGeometry(10, 16, 16);
-        const ambientMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(c.r / 255, c.g / 255, c.b / 255), side: THREE.BackSide, transparent: true, opacity: 0.3 });
+        const ambientMat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(c.r / 255, c.g / 255, c.b / 255), side: THREE.BackSide, transparent: true, opacity: 0.3,
+        });
         this.sceneObjects.ambient = new THREE.Mesh(ambientGeom, ambientMat);
         this.scene.add(this.sceneObjects.ambient);
     }
@@ -1353,7 +1377,6 @@ export class ThreeJSBreathingRenderer {
             this.sceneObjects.petals.geometry.attributes.position.needsUpdate = true;
         }
     }
-
 
     resize(width, height) {
         if (!this.renderer) return;

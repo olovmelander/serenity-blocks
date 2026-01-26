@@ -333,7 +333,7 @@ const MoonShader = {
 // Atmosphere/Vignette
 const VignetteShader = {
     uniforms: { tDiffuse: { value: null }, darkness: { value: 0.6 }, offset: { value: 1.0 } },
-    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: `
         uniform sampler2D tDiffuse; uniform float darkness; uniform float offset; varying vec2 vUv;
         void main() {
@@ -355,9 +355,13 @@ const VignetteShader = {
 
 const SnowShader = {
     uniforms: {
-        uTime: { value: 0 }, uWindForce: { value: 0 }, uGustIntensity: { value: 0 },
-        uComboMultiplier: { value: 1.0 }, uFlashIntensity: { value: 0 },
-        uTexture: { value: null }, uUseTexture: { value: 0.0 },
+        uTime: { value: 0 },
+        uWindForce: { value: 0 },
+        uGustIntensity: { value: 0 },
+        uComboMultiplier: { value: 1.0 },
+        uFlashIntensity: { value: 0 },
+        uTexture: { value: null },
+        uUseTexture: { value: 0.0 },
     },
     vertexShader: `
         attribute float size; attribute float depth; attribute float phase; attribute float wobbleSpeed; attribute float rotationSpeed;
@@ -541,7 +545,9 @@ export default class WinterTheme extends BaseTheme {
 
         this.eventUnsubscribers = [];
         this.qualityPreset = QUALITY_PRESETS.High;
-        this.iceBurstData = { positions: null, velocities: null, lives: null, sizes: null, active: [], nextIndex: 0 };
+        this.iceBurstData = {
+            positions: null, velocities: null, lives: null, sizes: null, active: [], nextIndex: 0,
+        };
 
         console.log('[WinterTheme] Theme constructed');
     }
@@ -658,7 +664,9 @@ export default class WinterTheme extends BaseTheme {
                     gl_FragColor = vec4(0.9, 0.95, 1.0, (1.0 - length(coord) * 2.0) * twinkle * 0.8);
                 }
             `,
-            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
         });
 
         this.starfield = new THREE.Points(geometry, material);
@@ -670,9 +678,9 @@ export default class WinterTheme extends BaseTheme {
             uniforms: {
                 uTop: { value: new THREE.Color(0x000000) },
                 uMid: { value: new THREE.Color(0x050a18) },
-                uBot: { value: new THREE.Color(0x0f1b2d) }
+                uBot: { value: new THREE.Color(0x0f1b2d) },
             },
-            vertexShader: `varying vec3 vPos; void main(){ vPos=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+            vertexShader: 'varying vec3 vPos; void main(){ vPos=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
             fragmentShader: `
                 uniform vec3 uTop; uniform vec3 uMid; uniform vec3 uBot; varying vec3 vPos;
                 void main() {
@@ -682,7 +690,7 @@ export default class WinterTheme extends BaseTheme {
                     gl_FragColor = vec4(col, 1.0);
                 }
             `,
-            side: THREE.BackSide
+            side: THREE.BackSide,
         });
         this.scene.add(new THREE.Mesh(skyGeo, skyMat));
     }
@@ -704,11 +712,11 @@ export default class WinterTheme extends BaseTheme {
             color: 0xaaddff,
             transparent: true,
             opacity: 0.4,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
         const glow = new THREE.Sprite(spriteMat);
         glow.scale.set(600, 600, 1);
-        this.moon.userData = { glow: glow, glowBase: 600 };
+        this.moon.userData = { glow, glowBase: 600 };
         this.moon.add(glow);
 
         // === NEW: Moon God-Rays ===
@@ -770,8 +778,12 @@ export default class WinterTheme extends BaseTheme {
 
     createMountains() {
         const ranges = [
-            { z: -1800, color: 0x060c15, height: 700, width: 5000, snowLine: 0.35 },
-            { z: -1100, color: 0x091220, height: 450, width: 4000, snowLine: 0.45 },
+            {
+                z: -1800, color: 0x060c15, height: 700, width: 5000, snowLine: 0.35,
+            },
+            {
+                z: -1100, color: 0x091220, height: 450, width: 4000, snowLine: 0.45,
+            },
         ];
 
         ranges.forEach((range, index) => {
@@ -792,7 +804,7 @@ export default class WinterTheme extends BaseTheme {
                     uSnowColor: { value: new THREE.Color(0xddeeff) }, // Warmer white for snow
                     uSnowLine: { value: range.snowLine },
                     uFogColor: { value: new THREE.Color(0x050a14) },
-                    uFogDensity: { value: this.qualityPreset.fogDensity }
+                    uFogDensity: { value: this.qualityPreset.fogDensity },
                 },
                 vertexShader: `
                     varying vec3 vPos; varying vec3 vNormal; 
@@ -847,7 +859,7 @@ export default class WinterTheme extends BaseTheme {
                 const x = pos.getX(j);
                 const z = pos.getZ(j);
                 // Bend Z based on X
-                pos.setZ(j, z + Math.pow(x * 0.0005, 2.0) * 200.0);
+                pos.setZ(j, z + (x * 0.0005) ** 2.0 * 200.0);
             }
             geometry.computeVertexNormals();
 
@@ -915,7 +927,9 @@ export default class WinterTheme extends BaseTheme {
             },
             vertexShader: SnowShader.vertexShader,
             fragmentShader: SnowShader.fragmentShader,
-            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
         });
 
         this.snowParticles = new THREE.Points(geometry, material);
@@ -936,11 +950,17 @@ export default class WinterTheme extends BaseTheme {
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
         geometry.setAttribute('life', new THREE.BufferAttribute(lives, 1));
         const material = new THREE.ShaderMaterial({
-            uniforms: IceBurstShader.uniforms, vertexShader: IceBurstShader.vertexShader, fragmentShader: IceBurstShader.fragmentShader,
-            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+            uniforms: IceBurstShader.uniforms,
+            vertexShader: IceBurstShader.vertexShader,
+            fragmentShader: IceBurstShader.fragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
         });
         this.iceBurstParticles = new THREE.Points(geometry, material);
-        this.iceBurstData = { positions, velocities, lives, sizes, active: [], nextIndex: 0 };
+        this.iceBurstData = {
+            positions, velocities, lives, sizes, active: [], nextIndex: 0,
+        };
         this.scene.add(this.iceBurstParticles);
     }
 
@@ -985,7 +1005,9 @@ export default class WinterTheme extends BaseTheme {
             uniforms: StreakShader.uniforms,
             vertexShader: StreakShader.vertexShader,
             fragmentShader: StreakShader.fragmentShader,
-            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
         });
         this.windStreaks = new THREE.Points(geo, mat);
         this.scene.add(this.windStreaks);
@@ -1051,9 +1073,15 @@ export default class WinterTheme extends BaseTheme {
         if (layerCount === 0) return;
 
         const configs = [
-            { y: -150, z: -400, width: 2500, height: 350, speed: 0.008, opacity: 0.15 },
-            { y: -100, z: -700, width: 3000, height: 400, speed: 0.005, opacity: 0.12 },
-            { y: -50, z: -1000, width: 3500, height: 450, speed: 0.003, opacity: 0.08 },
+            {
+                y: -150, z: -400, width: 2500, height: 350, speed: 0.008, opacity: 0.15,
+            },
+            {
+                y: -100, z: -700, width: 3000, height: 400, speed: 0.005, opacity: 0.12,
+            },
+            {
+                y: -50, z: -1000, width: 3500, height: 450, speed: 0.003, opacity: 0.08,
+            },
         ];
 
         for (let i = 0; i < Math.min(layerCount, configs.length); i++) {
@@ -1160,9 +1188,16 @@ export default class WinterTheme extends BaseTheme {
         meteor.userData = {
             startTime: this.time,
             duration,
-            startX, startY, startZ,
-            angle, direction, speed, trailLength, trailSegments,
-            trail, head,
+            startX,
+            startY,
+            startZ,
+            angle,
+            direction,
+            speed,
+            trailLength,
+            trailSegments,
+            trail,
+            head,
         };
 
         this.shootingStars.push(meteor);
@@ -1240,13 +1275,13 @@ export default class WinterTheme extends BaseTheme {
 
         // Horizontal drift with layered motion for organic feel
         // Combined range: ±75 units
-        const xDrift = Math.sin(this.time * driftSpeed) * 55 +
-            Math.sin(this.time * slowDrift * 0.7) * 20;
+        const xDrift = Math.sin(this.time * driftSpeed) * 55
+            + Math.sin(this.time * slowDrift * 0.7) * 20;
 
         // Vertical breathing movement - larger range for noticeable effect
         // Combined range: ±60 units
-        const yDrift = Math.sin(this.time * driftSpeed * 0.7 + 1.0) * 40 +
-            Math.cos(this.time * slowDrift * 0.5) * 20;
+        const yDrift = Math.sin(this.time * driftSpeed * 0.7 + 1.0) * 40
+            + Math.cos(this.time * slowDrift * 0.5) * 20;
 
         // Depth breathing - gentle forward/back motion
         // Range: ±8 units, period ~20 seconds
@@ -1292,7 +1327,9 @@ export default class WinterTheme extends BaseTheme {
             uniforms: { uProgress: { value: 0 }, uPixelRatio: { value: this.renderer.getPixelRatio() } },
             vertexShader: iceCrystalHeadVertexShader,
             fragmentShader: iceCrystalHeadFragmentShader,
-            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
         });
         const head = new THREE.Points(headGeo, headMat);
         head.renderOrder = 300;
@@ -1312,7 +1349,9 @@ export default class WinterTheme extends BaseTheme {
             uniforms: { uTime: { value: 0 }, uProgress: { value: 0 } },
             vertexShader: iceCrystalTrailVertexShader,
             fragmentShader: iceCrystalTrailFragmentShader,
-            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
         });
         const trail = new THREE.Line(trailGeo, trailMat);
         trail.renderOrder = 299;
@@ -1325,11 +1364,16 @@ export default class WinterTheme extends BaseTheme {
             phase: 'descent', // descent, explosion
             startTime: this.time,
             duration,
-            startX, startY, startZ,
-            targetX, targetY, targetZ,
-            trail, head,
+            startX,
+            startY,
+            startZ,
+            targetX,
+            targetY,
+            targetZ,
+            trail,
+            head,
             trailPositions,
-            exploded: false
+            exploded: false,
         };
 
         this.iceCrystalCrashes.push(crash);
@@ -1415,11 +1459,13 @@ export default class WinterTheme extends BaseTheme {
         const mat = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
-                uPixelRatio: { value: this.renderer.getPixelRatio() }
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
             },
             vertexShader: frostSnapVertexShader,
             fragmentShader: frostSnapFragmentShader,
-            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
         });
 
         const snap = new THREE.Points(geo, mat);
@@ -1437,7 +1483,10 @@ export default class WinterTheme extends BaseTheme {
             uniforms: { uProgress: { value: 0 }, uOpacity: { value: 1.0 } },
             vertexShader: frostRingShockwaveVertexShader,
             fragmentShader: frostRingShockwaveFragmentShader,
-            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
         });
         const ring = new THREE.Mesh(ringGeo, ringMat);
         ring.position.set(x, y + 20, z); // Slightly above ground
@@ -1477,7 +1526,9 @@ export default class WinterTheme extends BaseTheme {
             uniforms: { uTime: { value: 0 }, uPixelRatio: { value: this.renderer.getPixelRatio() } },
             vertexShader: iceShardDebrisVertexShader,
             fragmentShader: iceShardDebrisFragmentShader,
-            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
         });
         const debris = new THREE.Points(dGeo, dMat);
         debris.userData = { life: 0, maxLife: 2.5 };
@@ -1546,11 +1597,13 @@ export default class WinterTheme extends BaseTheme {
                 uTime: { value: 0 },
                 uProgress: { value: 0 },
                 uDirection: { value: direction },
-                uPixelRatio: { value: this.renderer.getPixelRatio() }
+                uPixelRatio: { value: this.renderer.getPixelRatio() },
             },
             vertexShader: blizzardWaveVertexShader,
             fragmentShader: blizzardWaveFragmentShader,
-            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
         });
 
         const wave = new THREE.Points(geo, mat);
@@ -1591,8 +1644,12 @@ export default class WinterTheme extends BaseTheme {
         geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
         geo.setAttribute('alpha', new THREE.Float32BufferAttribute(alp, 1));
         const mat = new THREE.ShaderMaterial({
-            uniforms: { ...FrozenLightningShader.uniforms }, vertexShader: FrozenLightningShader.vertexShader, fragmentShader: FrozenLightningShader.fragmentShader,
-            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+            uniforms: { ...FrozenLightningShader.uniforms },
+            vertexShader: FrozenLightningShader.vertexShader,
+            fragmentShader: FrozenLightningShader.fragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
         });
         const mesh = new THREE.LineSegments(geo, mat);
         mesh.userData = { life: 1.0 };
@@ -1631,7 +1688,9 @@ export default class WinterTheme extends BaseTheme {
             },
             vertexShader: VortexShader.vertexShader,
             fragmentShader: VortexShader.fragmentShader,
-            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
         });
 
         const vortex = new THREE.Points(geometry, material);
@@ -1639,7 +1698,6 @@ export default class WinterTheme extends BaseTheme {
         this.vortexSystems.push(vortex);
         this.scene.add(vortex);
     }
-
 
     setupPostProcessing() {
         if (!this.qualityPreset.enablePostProcessing) return;
@@ -1651,11 +1709,11 @@ export default class WinterTheme extends BaseTheme {
     }
 
     setupEventListeners() {
-        this.eventUnsubscribers.forEach(u => u()); this.eventUnsubscribers = [];
+        this.eventUnsubscribers.forEach((u) => u()); this.eventUnsubscribers = [];
         this.eventUnsubscribers.push(
-            eventBus.on(EVENTS.LINE_CLEAR, d => this.handleLineClear(d)),
-            eventBus.on(EVENTS.COMBO, d => this.handleCombo(d)),
-            eventBus.on(EVENTS.PIECE_LOCK, d => this.handlePieceLock(d))
+            eventBus.on(EVENTS.LINE_CLEAR, (d) => this.handleLineClear(d)),
+            eventBus.on(EVENTS.COMBO, (d) => this.handleCombo(d)),
+            eventBus.on(EVENTS.PIECE_LOCK, (d) => this.handlePieceLock(d)),
         );
         this.resizeHandler = () => this.resize(window.innerWidth, window.innerHeight);
         window.addEventListener('resize', this.resizeHandler);
@@ -1684,16 +1742,18 @@ export default class WinterTheme extends BaseTheme {
 
         // === NEW: Frost Snap Effect ===
         if (data && this.qualityPreset.iceWispCount > 0) {
-            const piece = data.piece;
+            const { piece } = data;
             // Fallback to data directly if properties exist on it (legacy support)
             const obj = piece || data;
 
             // Check for positions array (from previous assumption) or x/y from piece
-            let wx = 0, wy = 0;
+            let wx = 0; let
+                wy = 0;
 
             if (obj.positions) {
-                let avgX = 0, avgY = 0;
-                obj.positions.forEach(p => { avgX += p.x; avgY += p.y; });
+                let avgX = 0; let
+                    avgY = 0;
+                obj.positions.forEach((p) => { avgX += p.x; avgY += p.y; });
                 avgX /= obj.positions.length;
                 avgY /= obj.positions.length;
                 // Scale 4.0 ensures bottom of board isn't cut off at Z=20
@@ -1733,7 +1793,7 @@ export default class WinterTheme extends BaseTheme {
         }
 
         // === NEW: Aurora Pulse Wave ===
-        // (Will implement aurora pulse logic in update loop if needed, 
+        // (Will implement aurora pulse logic in update loop if needed,
         //  but simpler to just boost intensity here for now)
         if (this.effectState) {
             this.effectState.auroraBoost = 1.0; // Decay handled in update
@@ -1757,7 +1817,7 @@ export default class WinterTheme extends BaseTheme {
 
         // AURORA REACTS TO COMBO
         if (this.auroraLayers.length > 0) {
-            this.auroraLayers.forEach(l => {
+            this.auroraLayers.forEach((l) => {
                 if (l.material.uniforms.uIntensity) l.material.uniforms.uIntensity.value = 1.5 + Math.min(combo, 2.0);
             });
         }
@@ -1799,7 +1859,7 @@ export default class WinterTheme extends BaseTheme {
                 const spd = Math.abs(this.windForce);
                 u.uOpacity.value = Math.min(Math.max((spd - 10.0) / 20.0, 0.0), 0.8) * this.gustIntensity;
             }
-            this.auroraLayers.forEach(layer => {
+            this.auroraLayers.forEach((layer) => {
                 const u = layer.material.uniforms;
                 u.uTime.value = this.time;
                 if (u.uIntensity.value > 1.0) u.uIntensity.value -= delta * 0.5;
@@ -1814,7 +1874,7 @@ export default class WinterTheme extends BaseTheme {
             }
 
             // === NEW: Fog layers uniforms ===
-            this.fogLayers.forEach(layer => {
+            this.fogLayers.forEach((layer) => {
                 layer.material.uniforms.uTime.value = this.time;
             });
 
@@ -1944,7 +2004,7 @@ export default class WinterTheme extends BaseTheme {
 
     stop() {
         if (this.resizeHandler) window.removeEventListener('resize', this.resizeHandler);
-        this.eventUnsubscribers.forEach(u => u());
+        this.eventUnsubscribers.forEach((u) => u());
         super.stop();
     }
 

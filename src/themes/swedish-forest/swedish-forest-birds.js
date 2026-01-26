@@ -266,8 +266,8 @@ export class SwedishForestBirds {
 
         this.fillTextures(dtPosition, dtVelocity);
 
-        this.velocityVariable = this.gpuCompute.addVariable("textureVelocity", this.fragmentShaderVelocity, dtVelocity);
-        this.positionVariable = this.gpuCompute.addVariable("texturePosition", this.fragmentShaderPosition, dtPosition);
+        this.velocityVariable = this.gpuCompute.addVariable('textureVelocity', this.fragmentShaderVelocity, dtVelocity);
+        this.positionVariable = this.gpuCompute.addVariable('texturePosition', this.fragmentShaderPosition, dtPosition);
 
         this.gpuCompute.setVariableDependencies(this.velocityVariable, [this.positionVariable, this.velocityVariable]);
         this.gpuCompute.setVariableDependencies(this.positionVariable, [this.positionVariable, this.velocityVariable]);
@@ -275,16 +275,16 @@ export class SwedishForestBirds {
         this.positionUniforms = this.positionVariable.material.uniforms;
         this.velocityUniforms = this.velocityVariable.material.uniforms;
 
-        this.positionUniforms["time"] = { value: 0.0 };
-        this.positionUniforms["delta"] = { value: 0.0 };
-        this.velocityUniforms["time"] = { value: 1.0 };
-        this.velocityUniforms["delta"] = { value: 0.0 };
-        this.velocityUniforms["testing"] = { value: 1.0 };
-        this.velocityUniforms["separationDistance"] = { value: 50.0 }; // Keep separation moderate
-        this.velocityUniforms["alignmentDistance"] = { value: 70.0 }; // High alignment for formations
-        this.velocityUniforms["cohesionDistance"] = { value: 70.0 }; // Gather from far away
-        this.velocityUniforms["freedomFactor"] = { value: 0.75 };
-        this.velocityUniforms["predator"] = { value: new THREE.Vector3() };
+        this.positionUniforms.time = { value: 0.0 };
+        this.positionUniforms.delta = { value: 0.0 };
+        this.velocityUniforms.time = { value: 1.0 };
+        this.velocityUniforms.delta = { value: 0.0 };
+        this.velocityUniforms.testing = { value: 1.0 };
+        this.velocityUniforms.separationDistance = { value: 50.0 }; // Keep separation moderate
+        this.velocityUniforms.alignmentDistance = { value: 70.0 }; // High alignment for formations
+        this.velocityUniforms.cohesionDistance = { value: 70.0 }; // Gather from far away
+        this.velocityUniforms.freedomFactor = { value: 0.75 };
+        this.velocityUniforms.predator = { value: new THREE.Vector3() };
         this.velocityVariable.material.defines.BOUNDS = this.WIDTH.toFixed(1);
 
         this.velocityVariable.wrapS = THREE.RepeatWrapping;
@@ -313,7 +313,7 @@ export class SwedishForestBirds {
 
             0.0, 0.0, 0.5, // 6 - spine low
             0.0, 2.0, 0.5, // 7 - wing tip right
-            0.0, 0.0, -0.5  // 8 - spine top
+            0.0, 0.0, -0.5, // 8 - spine top
         ]);
 
         // Just use a simple V shape
@@ -336,7 +336,7 @@ export class SwedishForestBirds {
         geometry.setAttribute('birdVertex', new THREE.BufferAttribute(new Float32Array([
             0, 1, 2,
             3, 4, 5,
-            6, 7, 8
+            6, 7, 8,
         ]), 1));
 
         const birdColor = new THREE.BufferAttribute(new Float32Array(this.BIRDS * 3), 3);
@@ -373,11 +373,11 @@ export class SwedishForestBirds {
                 texturePosition: { value: null },
                 textureVelocity: { value: null },
                 time: { value: 1.0 },
-                delta: { value: 0.0 }
+                delta: { value: 0.0 },
             },
             vertexShader: this.birdVertexShader,
             fragmentShader: this.birdFragmentShader,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         this.mesh = new THREE.Mesh(geometry2, material);
@@ -396,9 +396,9 @@ export class SwedishForestBirds {
             const x = Math.random() * 2000 - 1000; // -1000 to 1000
             const nearCanopy = Math.random() < 0.45;
             const y = nearCanopy
-                ? 28 + Math.random() * 30   // Glide close to treetops
+                ? 28 + Math.random() * 30 // Glide close to treetops
                 : 60 + Math.random() * 160; // Higher soaring
-            const z = Math.random() * 1200 - 800;  // -800 to 400
+            const z = Math.random() * 1200 - 800; // -800 to 400
 
             posArray[k + 0] = x;
             posArray[k + 1] = y;
@@ -416,17 +416,17 @@ export class SwedishForestBirds {
     update(time, delta) {
         if (!this.gpuCompute) return;
 
-        this.positionUniforms["time"].value = time;
-        this.positionUniforms["delta"].value = delta;
-        this.velocityUniforms["time"].value = time;
-        this.velocityUniforms["delta"].value = delta;
+        this.positionUniforms.time.value = time;
+        this.positionUniforms.delta.value = delta;
+        this.velocityUniforms.time.value = time;
+        this.velocityUniforms.delta.value = delta;
 
-        this.mesh.material.uniforms["time"].value = time;
-        this.mesh.material.uniforms["delta"].value = delta;
+        this.mesh.material.uniforms.time.value = time;
+        this.mesh.material.uniforms.delta.value = delta;
 
         this.gpuCompute.compute();
 
-        this.mesh.material.uniforms["texturePosition"].value = this.gpuCompute.getCurrentRenderTarget(this.positionVariable).texture;
-        this.mesh.material.uniforms["textureVelocity"].value = this.gpuCompute.getCurrentRenderTarget(this.velocityVariable).texture;
+        this.mesh.material.uniforms.texturePosition.value = this.gpuCompute.getCurrentRenderTarget(this.positionVariable).texture;
+        this.mesh.material.uniforms.textureVelocity.value = this.gpuCompute.getCurrentRenderTarget(this.velocityVariable).texture;
     }
 }

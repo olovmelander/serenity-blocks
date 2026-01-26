@@ -775,8 +775,8 @@
 
 .match-results-content {
   position: relative;
-  width: min(980px, 94vw);
-  max-height: 90vh;
+  width: min(1400px, 96vw);
+  max-height: 96vh;
   overflow: hidden auto;
   background: linear-gradient(160deg, rgba(17, 24, 39, 0.97) 0%, rgba(30, 27, 75, 0.95) 100%);
   border: 1px solid rgba(99, 102, 241, 0.45);
@@ -786,9 +786,108 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+  overflow: hidden;
+  /* Prevent modal scroll, internal scroll only */
   opacity: 0;
   transform: translateY(16px) scale(0.98);
   transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.match-results-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+  /* Important for scroll */
+  overflow: hidden;
+}
+
+.results-left-column {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+/* Custom Scrollbar */
+.results-left-column::-webkit-scrollbar,
+.chat-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.results-left-column::-webkit-scrollbar-thumb,
+.chat-messages::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.5);
+  border-radius: 3px;
+}
+
+.results-right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.match-results-chat {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Removed max-height: 50% to let it expand */
+}
+
+.match-results-chat .chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.match-results-chat .chat-input-row {
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  gap: 8px;
+}
+
+#results-chat-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 4px;
+  padding: 6px 10px;
+  color: white;
+  font-family: 'Space Mono', monospace;
+}
+
+#results-chat-send {
+  background: rgba(139, 92, 246, 0.5);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.match-results-kill-feed {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  height: 250px;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.match-results-kill-feed.compact {
+  padding: 10px;
+}
+
+.match-results-kill-list {
+  padding: 8px;
 }
 
 .match-results-modal.visible .match-results-content {
@@ -3200,4 +3299,260 @@
 .opponent-selection-popup .selection-footer {
   font-size: 11px;
   color: #94a3b8;
+}
+/* ========================================
+   UNIFIED LOBBY STYLES (MATCHES GAMEPLAY LAYOUT)
+   ======================================== */
+
+.online-game-area.lobby-mode {
+    z-index: 2000;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    background: rgba(13, 17, 23, 0.95);
+    backdrop-filter: blur(20px);
+}
+
+.online-game-area.lobby-mode.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    display: none !important;
+}
+
+/* Center Panel (Grid for Players) Override for Lobby */
+.lobby-center-panel {
+    display: flex;
+    flex-direction: column;
+    min-width: 0; /* Flexbox overflow fix */
+}
+
+/* Player Grid */
+.lobby-player-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 12px;
+    flex: 1;
+    overflow-y: auto;
+    align-content: flex-start;
+}
+
+/* Scrollbar for grid */
+.lobby-player-grid::-webkit-scrollbar {
+    width: 6px;
+}
+.lobby-player-grid::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+}
+.lobby-player-grid::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.4);
+    border-radius: 3px;
+}
+
+/* Hover effects for grid cards handled inline or here */
+.lobby-player-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    cursor: default;
+}
+.lobby-player-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+/* Left Panel Overrides for Lobby */
+.lobby-left-panel {
+    background: rgba(15, 20, 30, 0.6);
+    border-radius: 12px;
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+}
+
+.watch-controls {
+    border: none;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px 12px 0 0;
+    background: transparent;
+}
+
+.match-info-panel {
+    padding: 20px;
+}
+
+.lobby-controls {
+    padding: 20px;
+    background: rgba(0,0,0,0.2);
+    border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Chat Input Styling alignment */
+.chat-input-row button:hover {
+    background: #7c3aed !important;
+}
+
+/* ========================================
+   RESULTS MODE STYLES
+   ======================================== */
+
+.online-game-area.results-mode {
+    z-index: 2000;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    background: rgba(13, 17, 23, 0.95);
+    backdrop-filter: blur(20px);
+}
+
+.online-game-area.results-mode.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    display: none !important;
+}
+
+/* Center Panel Override for Results Mode */
+.results-center-panel {
+    width: auto;
+    height: auto;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* Override game board fixed sizing */
+    position: relative;
+    max-width: none;
+}
+
+/* Ensure canvas selector doesn't mess up non-canvas content */
+.results-center-panel canvas {
+    display: none !important;
+}
+
+/* Stats Table Styling adjustments */
+.stats-table-wrapper {
+    width: 100%;
+    margin-top: 10px;
+}
+
+.stats-table th, .stats-table td {
+    padding: 12px 10px;
+    font-size: 13px;
+}
+
+.stats-table th {
+    background: rgba(139, 92, 246, 0.1);
+    color: #a78bfa;
+}
+
+.match-results-stats::-webkit-scrollbar {
+    width: 6px;
+}
+.match-results-stats::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+}
+
+/* Lobby Center Panel Alignment Fix */
+.lobby-center-panel {
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    padding: 0 40px;
+}
+
+/* Center Footer Actions */
+.lobby-center-footer {
+    margin-top: auto;
+    padding: 20px;
+    background: linear-gradient(to top, rgba(0,0,0,0.4), transparent);
+    border-radius: 0 0 12px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+.lobby-action-buttons {
+    display: flex;
+    gap: 20px;
+    width: 100%;
+    justify-content: center;
+}
+
+.lobby-action-buttons button {
+    min-width: 200px;
+    padding: 15px 30px;
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.lobby-action-buttons button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+}
+
+.lobby-action-buttons .btn-start {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+}
+
+.lobby-action-buttons .btn-ready {
+    background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
+    color: white;
+}
+
+.waiting-indicator {
+    font-family: 'Space Mono', monospace;
+    color: #94a3b8;
+    font-size: 14px;
+    animation: pulseText 2s infinite;
+}
+
+@keyframes pulseText {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Room Code Display */
+.room-code-display {
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    background: rgba(13, 17, 23, 0.6) !important;
+}
+
+/* Ready Button Active State */
+.lobby-action-buttons .btn-ready.ready {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
+    transform: translateY(1px);
+}
+
+/* Fix for Content Clipping (Remove Scale) */
+.lobby-center-panel,
+.results-center-panel {
+    transform: none !important;
+    width: 100% !important;
+    height: 100% !important;
+    justify-content: space-between; /* Ensure header/footer pushed apart */
+}
+
+/* Ensure Footer doesn't get cut off */
+.lobby-center-footer {
+    flex-shrink: 0; /* Keep size */
+    padding-bottom: 40px; /* Extra padding for bottom edge */
+    background: linear-gradient(to top, rgba(13, 17, 23, 1) 20%, transparent); /* Darker bottom */
+}
+
+/* Make sure the player grid takes remaining space but doesn't push footer out */
+.lobby-player-grid {
+    flex: 1;
+    min-height: 0; /* Allow shrinking */
+    overflow-y: auto;
 }

@@ -1,6 +1,6 @@
 /**
  * @fileoverview Mountain Peaks Environment - Chapter 4 Visual Theme
- * 
+ *
  * Enhanced Version:
  * - High-quality FBM Displacement Mountains (Sakura-style)
  * - Shader-based 3D Aurora Borealis (Aurora-theme style)
@@ -20,7 +20,7 @@ export const MOUNTAIN_PEAKS_CONFIG = {
     yStart: 97.5,
     yEnd: 900,
     endProgress: 0.82, // Extend deep into Chapter 5 (which ends at 0.82)
-    transitionZone: 0.1,  // Increased transition zone for smoother fade out
+    transitionZone: 0.1, // Increased transition zone for smoother fade out
     colors: {
         primary: 0x2d3436,
         secondary: 0x636e72,
@@ -29,7 +29,6 @@ export const MOUNTAIN_PEAKS_CONFIG = {
         background: 0x090a0f,
     },
 };
-
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GLSL SHARED NOISE
@@ -369,7 +368,7 @@ export function createMountainPeaksEnvironment(options = {}) {
         size: 800,
         height: 300,
         position: new THREE.Vector3(-250, leftMountainY - chapterCenterY, -650),
-        seed: 12.34
+        seed: 12.34,
     });
     mountains.add(mountain1);
 
@@ -378,7 +377,7 @@ export function createMountainPeaksEnvironment(options = {}) {
         size: 800,
         height: 280,
         position: new THREE.Vector3(250, rightMountainY - chapterCenterY, -700),
-        seed: 45.67
+        seed: 45.67,
     });
     mountains.add(mountain2);
 
@@ -387,13 +386,12 @@ export function createMountainPeaksEnvironment(options = {}) {
         size: 1200,
         height: 500,
         position: new THREE.Vector3(0, centerMountainY - chapterCenterY, -900),
-        seed: 89.12
+        seed: 89.12,
     });
     mountains.add(mountain3);
 
     group.add(mountains);
     group.userData.mountains = mountains;
-
 
     // 3. Shader Aurora Curtains
     const aurora = createAurora(uniforms, 4); // 4 layers
@@ -440,8 +438,8 @@ function createSkyBackground(uniforms) {
     // Increased radius to 6000 to encompass the deep aurora (z=-3000 to -3800)
     const geometry = new THREE.SphereGeometry(6000, 64, 48);
     const material = new THREE.ShaderMaterial({
-        vertexShader: vertexShader,
-        fragmentShader: fragmentShader,
+        vertexShader,
+        fragmentShader,
         uniforms: uniformsSky,
         side: THREE.BackSide,
         depthWrite: false,
@@ -452,7 +450,6 @@ function createSkyBackground(uniforms) {
     mesh.renderOrder = -100;
     return mesh;
 }
-
 
 function createParticleTexture() {
     if (typeof document === 'undefined') return null;
@@ -504,7 +501,7 @@ function createStars(uniforms, count) {
         opacity: 0.8,
         depthWrite: false,
         sizeAttenuation: true,
-        bgPlane: false // Custom flag if needed
+        bgPlane: false, // Custom flag if needed
     });
 
     return new THREE.Points(geometry, material);
@@ -514,7 +511,6 @@ function createStars(uniforms, count) {
 
 // Actually, I can just append the helper and update the functions separately or in one large block.
 // I'll update createStars first.
-
 
 /**
  * Creates a mountain using PlaneGeometry and heightmap displacement
@@ -536,9 +532,7 @@ function createFBMMountain(uniforms, config) {
     const mix = (a, b, t) => a * (1 - t) + b * t;
 
     // Simple pseudo-random based on position + seed
-    const rand = (x, y) => {
-        return Math.sin(x * 12.9898 + y * 78.233 + seed) * 43758.5453;
-    };
+    const rand = (x, y) => Math.sin(x * 12.9898 + y * 78.233 + seed) * 43758.5453;
 
     const noise = (x, y) => {
         const i = Math.floor(x);
@@ -550,8 +544,11 @@ function createFBMMountain(uniforms, config) {
         const u = f * f * (3.0 - 2.0 * f);
         const v = g * g * (3.0 - 2.0 * g);
 
-        return mix(mix(fract(rand(i, j)), fract(rand(i + 1, j)), u),
-            mix(fract(rand(i, j + 1)), fract(rand(i + 1, j + 1)), u), v);
+        return mix(
+            mix(fract(rand(i, j)), fract(rand(i + 1, j)), u),
+            mix(fract(rand(i, j + 1)), fract(rand(i + 1, j + 1)), u),
+            v,
+        );
     };
 
     const fbm = (x, y) => {
@@ -565,8 +562,6 @@ function createFBMMountain(uniforms, config) {
         }
         return v;
     };
-
-
 
     // Apply displacement
     const center = new THREE.Vector2(0, 0);
@@ -587,7 +582,7 @@ function createFBMMountain(uniforms, config) {
 
         // Cone shape
         const normDist = dist / maxDist;
-        const cone = Math.pow(1.0 - normDist, 1.5) * config.height;
+        const cone = (1.0 - normDist) ** 1.5 * config.height;
 
         // Noise detail
         const n = fbm(vertex.x * 0.01, vertex.z * 0.01);
@@ -652,10 +647,8 @@ function createSnowFloor(uniforms, offsetY = -123.75) {
     const positionAttr = geometry.attributes.position;
 
     // Simple noise for subtle snow variation
-    const noise = (x, z, scale) => {
-        return Math.sin(x * scale) * Math.cos(z * scale * 0.8) * 0.5 +
-            Math.sin(x * scale * 2.3) * Math.cos(z * scale * 1.7) * 0.25;
-    };
+    const noise = (x, z, scale) => Math.sin(x * scale) * Math.cos(z * scale * 0.8) * 0.5
+            + Math.sin(x * scale * 2.3) * Math.cos(z * scale * 1.7) * 0.25;
 
     // Apply gentle height displacement
     for (let i = 0; i < positionAttr.count; i++) {
@@ -672,8 +665,8 @@ function createSnowFloor(uniforms, offsetY = -123.75) {
     // Muted snow material - softer colors to prevent glowing
     const snowMaterial = new THREE.ShaderMaterial({
         uniforms: {
-            uSnowColor: { value: new THREE.Color(0xdde4ea) },      // Muted snow white (not pure white)
-            uShadowColor: { value: new THREE.Color(0x8a9aa8) },    // Soft blue-gray shadows
+            uSnowColor: { value: new THREE.Color(0xdde4ea) }, // Muted snow white (not pure white)
+            uShadowColor: { value: new THREE.Color(0x8a9aa8) }, // Soft blue-gray shadows
             uLightDir: { value: new THREE.Vector3(0.3, 0.8, 0.5).normalize() },
             uTime: uniforms.uTime,
             uOpacity: { value: 1 },
@@ -773,13 +766,21 @@ function createAurora(uniforms, layers) {
     // Positioned BEHIND mountains (approx z=-900) but closer than before
     const auroraConfigs = [
         // Main central aurora - Behind center peak, moved closer
-        { x: 0, y: 600, z: -1500, width: 4000, height: 1500, rotY: 0, opacity: 1.0 },
+        {
+            x: 0, y: 600, z: -1500, width: 4000, height: 1500, rotY: 0, opacity: 1.0,
+        },
         // Left aurora curtain - Behind left mountain
-        { x: -500, y: 500, z: -1300, width: 2500, height: 1200, rotY: 0.1, opacity: 0.8 },
+        {
+            x: -500, y: 500, z: -1300, width: 2500, height: 1200, rotY: 0.1, opacity: 0.8,
+        },
         // Right aurora curtain - Behind right mountain
-        { x: 500, y: 550, z: -1350, width: 2500, height: 1200, rotY: -0.1, opacity: 0.8 },
+        {
+            x: 500, y: 550, z: -1350, width: 2500, height: 1200, rotY: -0.1, opacity: 0.8,
+        },
         // Far back aurora - Creates depth
-        { x: 0, y: 800, z: -2000, width: 5000, height: 1800, rotY: 0, opacity: 0.6 },
+        {
+            x: 0, y: 800, z: -2000, width: 5000, height: 1800, rotY: 0, opacity: 0.6,
+        },
     ];
 
     for (let i = 0; i < Math.min(layers, auroraConfigs.length); i++) {
@@ -837,7 +838,7 @@ function createSnow(uniforms, count) {
         transparent: true,
         opacity: 0.8,
         depthWrite: false,
-        sizeAttenuation: true
+        sizeAttenuation: true,
     });
 
     const snow = new THREE.Points(geometry, material);
@@ -845,15 +846,15 @@ function createSnow(uniforms, count) {
         velocities: Array(count).fill(0).map(() => ({
             y: -0.1 - Math.random() * 0.2,
             x: (Math.random() - 0.5) * 0.05,
-            z: (Math.random() - 0.5) * 0.05
-        }))
+            z: (Math.random() - 0.5) * 0.05,
+        })),
     };
 
     return snow;
 }
 
 export function updateMountainPeaksEnvironment(group, delta, time, camera) {
-    const uniforms = group.userData.uniforms;
+    const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
     }
@@ -882,20 +883,20 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera) {
 
     // Apply scale to entire environment group (mountains, aurora, snow floor)
     // But NOT to sky (it should stay full size)
-    const mountains = group.userData.mountains;
+    const { mountains } = group.userData;
     if (mountains) {
         mountains.scale.setScalar(mountainScale);
         // Also move mountains down slightly as they shrink to enhance "flying away" effect
         mountains.position.y = -scaleProgress * 50;
     }
 
-    const aurora = group.userData.aurora;
+    const { aurora } = group.userData;
     if (aurora) {
         aurora.scale.setScalar(mountainScale);
         aurora.position.y = -scaleProgress * 30;
     }
 
-    const snowFloor = group.userData.snowFloor;
+    const { snowFloor } = group.userData;
     if (snowFloor) {
         snowFloor.scale.setScalar(mountainScale);
         snowFloor.position.y = -scaleProgress * 50;
@@ -905,7 +906,7 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera) {
     // This ensures mountains are visible for a long time while shrinking
     const exitFade = 1.0 - THREE.MathUtils.smoothstep(progress, 0.95, 1.0);
 
-    const sky = group.userData.sky;
+    const { sky } = group.userData;
     if (sky?.material?.uniforms) {
         if (sky.material.uniforms.uTransition) sky.material.uniforms.uTransition.value = transition;
         if (sky.material.uniforms.uOpacity) sky.material.uniforms.uOpacity.value = exitFade;
@@ -937,7 +938,7 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera) {
     }
 
     // Update Snow
-    const snow = group.children.find(c => c.type === 'Points' && c.userData.velocities);
+    const snow = group.children.find((c) => c.type === 'Points' && c.userData.velocities);
     if (snow) {
         // Apply exit fade to snow particles
         if (snow.material) snow.material.opacity = 0.8 * exitFade;
@@ -959,10 +960,10 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera) {
     }
 
     // Update Stars (Exit fade)
-    // Find stars by assumption (no velocities) or name? 
+    // Find stars by assumption (no velocities) or name?
     // Usually standard stars, let's just traverse or find Points without velocity
     // Or easier:
-    const stars = group.children.find(c => c.type === 'Points' && !c.userData.velocities);
+    const stars = group.children.find((c) => c.type === 'Points' && !c.userData.velocities);
     if (stars && stars.material) {
         stars.material.opacity = 0.8 * exitFade;
     }

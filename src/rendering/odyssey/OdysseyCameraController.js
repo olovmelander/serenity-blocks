@@ -42,8 +42,8 @@ export class OdysseyCameraController {
             followLerpSpeed: 0.03,
             scrollSpeed: 0.15, // Reduced from 0.5
             focusDistance: 10,
-            minPosition: 0,    // Allow scrolling all the way to Level 1
-            maxPosition: 1,    // Allow scrolling all the way to the end
+            minPosition: 0, // Allow scrolling all the way to Level 1
+            maxPosition: 1, // Allow scrolling all the way to the end
             magneticRadius: 0.015, // Distance to feel magnetic pull
             magneticFriction: 0.2, // Multiplier for speed when near a level
         };
@@ -54,28 +54,28 @@ export class OdysseyCameraController {
         this.cinematicConfig = {
             // Subtle sway (horizontal drift)
             swayEnabled: true,
-            swayAmplitude: 0.15,      // World units of horizontal movement
-            swayFrequency: 0.3,       // Cycles per second (slow, dreamlike)
+            swayAmplitude: 0.15, // World units of horizontal movement
+            swayFrequency: 0.3, // Cycles per second (slow, dreamlike)
 
             // Gentle bob (vertical float)
             bobEnabled: true,
-            bobAmplitude: 0.08,       // World units of vertical movement
-            bobFrequency: 0.4,        // Slightly faster than sway
+            bobAmplitude: 0.08, // World units of vertical movement
+            bobFrequency: 0.4, // Slightly faster than sway
 
             // Camera roll breathing (very subtle tilt)
             rollEnabled: true,
-            rollAmplitude: 0.003,     // Radians (~0.17 degrees)
-            rollFrequency: 0.25,      // Very slow
+            rollAmplitude: 0.003, // Radians (~0.17 degrees)
+            rollFrequency: 0.25, // Very slow
 
             // FOV pulse for chapter transitions
             fovPulseEnabled: true,
             baseFov: 60,
-            fovPulseAmount: 8,        // Degrees to expand/contract
-            fovPulseDuration: 1.5,    // Seconds for full pulse cycle
+            fovPulseAmount: 8, // Degrees to expand/contract
+            fovPulseDuration: 1.5, // Seconds for full pulse cycle
 
             // Look-ahead bias (anticipate path direction)
             lookAheadEnabled: true,
-            lookAheadDistance: 0.02,  // How far ahead on path (0-1)
+            lookAheadDistance: 0.02, // How far ahead on path (0-1)
         };
 
         // Breathing animation state
@@ -109,8 +109,8 @@ export class OdysseyCameraController {
             if (distance < this.config.magneticRadius) {
                 // If we are moving AWAY from the level, don't apply as much friction
                 // If we are moving TOWARDS or ACROSS the level, apply friction
-                const movingAway = (delta > 0 && this.targetPosition > nearestLevel) ||
-                    (delta < 0 && this.targetPosition < nearestLevel);
+                const movingAway = (delta > 0 && this.targetPosition > nearestLevel)
+                    || (delta < 0 && this.targetPosition < nearestLevel);
 
                 if (!movingAway) {
                     effectiveDelta *= this.config.magneticFriction;
@@ -302,7 +302,7 @@ export class OdysseyCameraController {
         const t = Math.min(elapsed / cc.fovPulseDuration, 1);
 
         // Smooth ease-out curve
-        const eased = 1 - Math.pow(1 - t, 3);
+        const eased = 1 - (1 - t) ** 3;
 
         if (this.fovPulseType === 'expand') {
             // Expand then contract

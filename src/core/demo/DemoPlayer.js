@@ -4,7 +4,9 @@
  */
 
 import { seededRandom } from '../../utils/helpers.js';
-import { GameState, gameLoop, updateGame, spawnPiece, fillBag, move, rotate, softDrop, hardDrop } from '../game.js';
+import {
+    GameState, gameLoop, updateGame, spawnPiece, fillBag, move, rotate, softDrop, hardDrop,
+} from '../game.js';
 import { LEVEL_SPEEDS } from '../constants.js';
 
 export class DemoPlayer {
@@ -56,7 +58,7 @@ export class DemoPlayer {
         this.playbackSpeed = 1.0;
 
         // Initialize RNG with recorded seed
-        const seed = this.demo.initialState.seed;
+        const { seed } = this.demo.initialState;
         this.gameState.randomGenerator = seededRandom(seed);
 
         // Restore initial level
@@ -64,7 +66,7 @@ export class DemoPlayer {
 
         // Setup time
         this.startTime = performance.now();
-        // CRITICAL: Initialize lastTime to 0 because we will feed 'elapsedTime' (starting at 0) 
+        // CRITICAL: Initialize lastTime to 0 because we will feed 'elapsedTime' (starting at 0)
         // to updateGame, ensuring deterministic physics steps regardless of real-world start time.
         this.gameState.lastTime = 0;
         this.lastSimulatedTime = 0;
@@ -171,7 +173,7 @@ export class DemoPlayer {
 
                 // Determine our next step: either the target time or the next input time
                 // We clamp to targetTime so we don't run ahead of real time
-                let stepTime = Math.min(targetTime, nextInputTime);
+                const stepTime = Math.min(targetTime, nextInputTime);
 
                 // Ensure we make at least a tiny step to avoid infinite loops if times are identical
                 // but strictly speaking, if stepTime == lastSimulatedTime, we just process the input.
@@ -189,9 +191,8 @@ export class DemoPlayer {
                 }
 
                 // 2. If we reached an input time, apply it
-                if (this.currentInputIndex < this.demo.inputs.length &&
-                    this.lastSimulatedTime >= nextInputTime) {
-
+                if (this.currentInputIndex < this.demo.inputs.length
+                    && this.lastSimulatedTime >= nextInputTime) {
                     const input = this.demo.inputs[this.currentInputIndex];
                     this._applyInput(input);
 
@@ -203,8 +204,8 @@ export class DemoPlayer {
 
                     this.currentInputIndex++;
 
-                    // IMPORTANT: If we processed an input, we loop again. 
-                    // This allows multiple inputs at the same timestamp to be processed 
+                    // IMPORTANT: If we processed an input, we loop again.
+                    // This allows multiple inputs at the same timestamp to be processed
                     // before advancing physics further, or allows physics to run immediately after.
                     continue;
                 }
@@ -243,21 +244,21 @@ export class DemoPlayer {
         const addTrailCallback = effectiveCallbacks.addTrailCallback || (() => { });
 
         switch (action) {
-            case 'move':
-                move(this.gameState, data, playSoundCallback, addTrailCallback);
-                break;
-            case 'rotate':
-                rotate(this.gameState, data, playSoundCallback, addTrailCallback);
-                break;
-            case 'softDrop':
-                softDrop(this.gameState, playDropCallback, physicsCallbacks);
-                break;
-            case 'hardDrop':
-                hardDrop(this.gameState, playDropCallback, physicsCallbacks);
-                break;
-            case 'hold':
-                // Implement hold if/when supported
-                break;
+        case 'move':
+            move(this.gameState, data, playSoundCallback, addTrailCallback);
+            break;
+        case 'rotate':
+            rotate(this.gameState, data, playSoundCallback, addTrailCallback);
+            break;
+        case 'softDrop':
+            softDrop(this.gameState, playDropCallback, physicsCallbacks);
+            break;
+        case 'hardDrop':
+            hardDrop(this.gameState, playDropCallback, physicsCallbacks);
+            break;
+        case 'hold':
+            // Implement hold if/when supported
+            break;
         }
     }
 
@@ -292,7 +293,7 @@ export class DemoPlayer {
             }
 
             // Determine our next step
-            let stepTime = Math.min(targetTime, nextInputTime);
+            const stepTime = Math.min(targetTime, nextInputTime);
 
             // 1. Advance physics to the step time
             if (stepTime > this.lastSimulatedTime) {
@@ -307,9 +308,8 @@ export class DemoPlayer {
             }
 
             // 2. If we reached an input time, apply it
-            if (this.currentInputIndex < this.demo.inputs.length &&
-                this.lastSimulatedTime >= nextInputTime) {
-
+            if (this.currentInputIndex < this.demo.inputs.length
+                && this.lastSimulatedTime >= nextInputTime) {
                 const input = this.demo.inputs[this.currentInputIndex];
                 this._applyInput(input);
 
@@ -352,7 +352,7 @@ export class DemoPlayer {
     async _simulateGameLoop(duration) {
         let remaining = duration;
         const mutedCallbacks = this._getMutedCallbacks();
-        const physicsCallbacks = mutedCallbacks.physicsCallbacks;
+        const { physicsCallbacks } = mutedCallbacks;
 
         while (remaining > 0) {
             // If physics is running, wait for it
@@ -366,7 +366,7 @@ export class DemoPlayer {
                 continue;
             }
 
-            // If no piece, we can't drop. 
+            // If no piece, we can't drop.
             if (!this.gameState.currentPiece) {
                 // If we are here, likely waiting for spawn or game over.
                 // Consume remaining time
@@ -375,11 +375,11 @@ export class DemoPlayer {
             }
 
             // Calculate time until next auto-drop
-            let timeToDrop = this.gameState.dropInterval - this.gameState.dropCounter;
+            const timeToDrop = this.gameState.dropInterval - this.gameState.dropCounter;
 
             // Step is the smaller of remaining time or time to next drop
             // We add a small epsilon (1ms) to ensure we cross the threshold if we reach it
-            let step = Math.min(remaining, timeToDrop + 0.1);
+            const step = Math.min(remaining, timeToDrop + 0.1);
 
             // Advance counters
             this.gameState.dropCounter += step;
@@ -415,7 +415,7 @@ export class DemoPlayer {
         this.gameState.reset();
 
         // Restore Demo Specifics
-        const seed = this.demo.initialState.seed;
+        const { seed } = this.demo.initialState;
         this.gameState.randomGenerator = seededRandom(seed);
 
         // Restore Level & Speed
@@ -463,8 +463,8 @@ export class DemoPlayer {
                     triggerBackgroundPulse: () => { },
                     onPieceLock: () => { },
                     // Keep spawnPiece as it affects game state
-                    spawnPiece: originalPhysics.spawnPiece
-                }
+                    spawnPiece: originalPhysics.spawnPiece,
+                },
             };
         }
         return this._mutedCallbacks;

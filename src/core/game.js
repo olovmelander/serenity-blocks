@@ -55,7 +55,7 @@ function ensureBoardCache(gameState) {
 
     if (!gameState.boardCache || gameState.boardCacheDirty) {
         const lockedPieces = gameState.lockedPieces || [];
-        const boardGrid = gameState.boardGrid;
+        const { boardGrid } = gameState;
 
         if (boardGrid && lockedPieces.length > 0 && !hasLockedCells(boardGrid)) {
             rebuildBoardGridFromPieces(lockedPieces, boardGrid);
@@ -190,8 +190,12 @@ export class GameState {
         this.linesUntilNextLevel = 15; // Quadra: 15 lines per level
 
         // Detailed Stats
-        this.pieceCounts = { I: 0, J: 0, L: 0, O: 0, S: 0, T: 0, Z: 0 };
-        this.lineClearCounts = { 1: 0, 2: 0, 3: 0, 4: 0 };
+        this.pieceCounts = {
+            I: 0, J: 0, L: 0, O: 0, S: 0, T: 0, Z: 0,
+        };
+        this.lineClearCounts = {
+            1: 0, 2: 0, 3: 0, 4: 0,
+        };
 
         // Timing
         this.dropInterval = LEVEL_SPEEDS[0];
@@ -207,8 +211,8 @@ export class GameState {
         this.isAlive = true; // For multiplayer: tracks if player is still in the round
 
         // Victory Lap System (Odyssey Mode)
-        this.goalComplete = false;      // True when primary goal is met
-        this.victoryLapActive = false;  // True when in victory lap phase
+        this.goalComplete = false; // True when primary goal is met
+        this.victoryLapActive = false; // True when in victory lap phase
         this.victoryLapStartTime = null; // Timestamp when victory lap began
 
         // Input
@@ -672,7 +676,9 @@ const MAX_CONCURRENT_LOOPS = 2; // Allow 1-2 loops max (safety margin)
  * @param {Object} callbacks - Callbacks for draw, stats, sound, physics
  */
 export function updateGame(time, gameState, callbacks) {
-    const { drawCallback, updateStatsCallback, playDropCallback, physicsCallbacks } = callbacks;
+    const {
+        drawCallback, updateStatsCallback, playDropCallback, physicsCallbacks,
+    } = callbacks;
     const monitoring = performanceMonitor && performanceMonitor.enabled;
 
     if (monitoring) {
@@ -753,7 +759,7 @@ export function gameLoop(
         drawCallback,
         updateStatsCallback,
         playDropCallback,
-        physicsCallbacks
+        physicsCallbacks,
     });
 
     if (gameState.isGameOver) {

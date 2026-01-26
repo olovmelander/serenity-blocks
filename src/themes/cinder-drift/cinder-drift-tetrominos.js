@@ -26,8 +26,8 @@ export const CINDER_DRIFT_TETROMINOS = {
         // Molten Core look
         gradientType: 'radial',
         gradientStops: [
-            { offset: 0, color: 'lighten', opacity: 1 },  // Hot center
-            { offset: 1, color: 'base', opacity: 1 }      // Base color edge
+            { offset: 0, color: 'lighten', opacity: 1 }, // Hot center
+            { offset: 1, color: 'base', opacity: 1 }, // Base color edge
         ],
 
         // Heat Haze Glow

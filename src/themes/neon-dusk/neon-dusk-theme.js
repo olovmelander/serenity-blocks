@@ -40,7 +40,7 @@ import {
     ringVertexShader,
     ringFragmentShader,
     VHSShader,
-    VignetteShader
+    VignetteShader,
 } from './neon-dusk-shaders.js';
 
 // ============================================================================
@@ -199,36 +199,36 @@ export default class NeonDuskTheme extends BaseTheme {
 
         // Colors - classic synthwave sunset palette (like reference images)
         this.colors = {
-            skyTop: new THREE.Color(0x1a0528),      // Deep purple/black
-            skyMid: new THREE.Color(0x550044),      // Dark magenta
-            skyBottom: new THREE.Color(0xaa2266),   // Deep pinkish-red
-            sunTop: new THREE.Color(0xffff66),      // Bright retro yellow
-            sunMid: new THREE.Color(0xff8822),      // Deep orange
-            sunBottom: new THREE.Color(0xff4477),   // Hot pink/red
-            gridColor: new THREE.Color(0xff00ff),   // Magenta grid
-            gridGlow: new THREE.Color(0x00ffff),    // Cyan glow
+            skyTop: new THREE.Color(0x1a0528), // Deep purple/black
+            skyMid: new THREE.Color(0x550044), // Dark magenta
+            skyBottom: new THREE.Color(0xaa2266), // Deep pinkish-red
+            sunTop: new THREE.Color(0xffff66), // Bright retro yellow
+            sunMid: new THREE.Color(0xff8822), // Deep orange
+            sunBottom: new THREE.Color(0xff4477), // Hot pink/red
+            gridColor: new THREE.Color(0xff00ff), // Magenta grid
+            gridGlow: new THREE.Color(0x00ffff), // Cyan glow
             mountainDark: new THREE.Color(0x1a0525), // Dark purple (visible against black fog)
-            mountainRim: new THREE.Color(0xcc44ff),  // Bright neon violet rim
+            mountainRim: new THREE.Color(0xcc44ff), // Bright neon violet rim
         };
 
         // Neon palette for highlights/effects
         this.neonColors = [
-            new THREE.Color(0xff00ff),  // Magenta
-            new THREE.Color(0x00ffff),  // Cyan
-            new THREE.Color(0xff0088),  // Hot pink
-            new THREE.Color(0xffff00),  // Yellow
-            new THREE.Color(0xff4400),  // Orange
+            new THREE.Color(0xff00ff), // Magenta
+            new THREE.Color(0x00ffff), // Cyan
+            new THREE.Color(0xff0088), // Hot pink
+            new THREE.Color(0xffff00), // Yellow
+            new THREE.Color(0xff4400), // Orange
         ];
 
         // Tetromino shapes for grid highlights
         this.tetrominoShapes = {
-            'I': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }],
-            'J': [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
-            'L': [{ x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
-            'O': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
-            'S': [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
-            'T': [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
-            'Z': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            I: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }],
+            J: [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            L: [{ x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            O: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+            S: [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+            T: [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            Z: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
         };
 
         console.log('[NeonDusk] Theme constructed');
@@ -310,8 +310,7 @@ export default class NeonDuskTheme extends BaseTheme {
         this.renderer.setSize(width, height);
         this.renderer.sortObjects = true;
 
-        this.renderer.domElement.style.cssText =
-            'position:absolute;top:0;left:0;width:100%;height:100%';
+        this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
         container.appendChild(this.renderer.domElement);
         this.registerContainer(container);
 
@@ -426,10 +425,10 @@ export default class NeonDuskTheme extends BaseTheme {
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
-            sizes[i] = 8 + Math.random() * 17;  // LARGER stars (8-25 pixels)
+            sizes[i] = 8 + Math.random() * 17; // LARGER stars (8-25 pixels)
             twinkleData[i2] = Math.random() * Math.PI * 2;
             twinkleData[i2 + 1] = 0.5 + Math.random() * 2.0;
-            brightness[i] = 0.4 + Math.random() * 0.6;  // Much brighter stars
+            brightness[i] = 0.4 + Math.random() * 0.6; // Much brighter stars
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -467,9 +466,9 @@ export default class NeonDuskTheme extends BaseTheme {
 
         // Reuse wolfhour textures with neon tinting
         const textures = [
-            textureLoader.load(texturePath + 'nebula-silver-1.png'),
-            textureLoader.load(texturePath + 'nebula-silver-2.png'),
-            textureLoader.load(texturePath + 'nebula-silver-3.png'),
+            textureLoader.load(`${texturePath}nebula-silver-1.png`),
+            textureLoader.load(`${texturePath}nebula-silver-2.png`),
+            textureLoader.load(`${texturePath}nebula-silver-3.png`),
         ];
 
         textures.forEach((t) => {
@@ -478,9 +477,15 @@ export default class NeonDuskTheme extends BaseTheme {
         });
 
         const nebulaConfigs = [
-            { texture: textures[0], x: 0, y: 60, z: -750, size: 700, speed: 2, opacity: 0.06 },
-            { texture: textures[1], x: -80, y: 70, z: -800, size: 800, speed: 1.5, opacity: 0.05 },
-            { texture: textures[2], x: 80, y: 80, z: -850, size: 850, speed: 1, opacity: 0.04 },
+            {
+                texture: textures[0], x: 0, y: 60, z: -750, size: 700, speed: 2, opacity: 0.06,
+            },
+            {
+                texture: textures[1], x: -80, y: 70, z: -800, size: 800, speed: 1.5, opacity: 0.05,
+            },
+            {
+                texture: textures[2], x: 80, y: 80, z: -850, size: 850, speed: 1, opacity: 0.04,
+            },
         ];
 
         const count = Math.min(this.activePreset.nebulaCount, nebulaConfigs.length);
@@ -522,7 +527,7 @@ export default class NeonDuskTheme extends BaseTheme {
 
     createSun() {
         // Very large sun sphere - positioned FAR BACK behind mountains
-        const sunGeometry = new THREE.SphereGeometry(300, 64, 64);  // MASSIVE sun
+        const sunGeometry = new THREE.SphereGeometry(300, 64, 64); // MASSIVE sun
         const sunMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
@@ -542,11 +547,11 @@ export default class NeonDuskTheme extends BaseTheme {
         this.sun = new THREE.Mesh(sunGeometry, sunMaterial);
         // Position sun FAR behind mountains (mountains are at z=-250 to -550)
         this.sun.position.set(0, 50, -900);
-        this.sun.renderOrder = -2000;  // Render before mountains
+        this.sun.renderOrder = -2000; // Render before mountains
         this.scene.add(this.sun);
 
         // Large atmospheric glow behind sun
-        const glowGeometry = new THREE.PlaneGeometry(1200, 1200);  // MASSIVE glow
+        const glowGeometry = new THREE.PlaneGeometry(1200, 1200); // MASSIVE glow
         const glowMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 uGlowColor: { value: new THREE.Color(0xff6688) },
@@ -564,7 +569,7 @@ export default class NeonDuskTheme extends BaseTheme {
         this.sunGlow = new THREE.Mesh(glowGeometry, glowMaterial);
         this.sunGlow.position.copy(this.sun.position);
         this.sunGlow.position.z -= 10;
-        this.sunGlow.renderOrder = -2100;  // Render before sun
+        this.sunGlow.renderOrder = -2100; // Render before sun
         this.scene.add(this.sunGlow);
     }
 
@@ -578,36 +583,68 @@ export default class NeonDuskTheme extends BaseTheme {
         const mountainConfigs = [
             // LEFT SIDE - FOREGROUND (closest, largest, fill edge)
             // LEFT SIDE - EXTREME FOREGROUND (New framing mountains)
-            { x: -550, z: 30, size: 700, height: 160, layer: -0.1, seed: 10001 },
+            {
+                x: -550, z: 30, size: 700, height: 160, layer: -0.1, seed: 10001,
+            },
 
             // LEFT SIDE - FOREGROUND (closest, largest, fill edge)
-            { x: -350, z: -10, size: 500, height: 110, layer: 0.0, seed: 11111 },
-            { x: -380, z: -80, size: 500, height: 120, layer: 0.05, seed: 11112 },
-            { x: -180, z: -140, size: 350, height: 90, layer: 0.1, seed: 22222 },
+            {
+                x: -350, z: -10, size: 500, height: 110, layer: 0.0, seed: 11111,
+            },
+            {
+                x: -380, z: -80, size: 500, height: 120, layer: 0.05, seed: 11112,
+            },
+            {
+                x: -180, z: -140, size: 350, height: 90, layer: 0.1, seed: 22222,
+            },
 
             // LEFT SIDE - MIDGROUND
-            { x: -280, z: -240, size: 450, height: 110, layer: 0.25, seed: 33333 },
-            { x: -200, z: -340, size: 400, height: 100, layer: 0.4, seed: 33334 },
+            {
+                x: -280, z: -240, size: 450, height: 110, layer: 0.25, seed: 33333,
+            },
+            {
+                x: -200, z: -340, size: 400, height: 100, layer: 0.4, seed: 33334,
+            },
 
             // LEFT SIDE - BACKGROUND (further, hazier)
-            { x: -150, z: -460, size: 500, height: 130, layer: 0.6, seed: 44444 },
-            { x: -250, z: -560, size: 550, height: 140, layer: 0.75, seed: 44445 },
+            {
+                x: -150, z: -460, size: 500, height: 130, layer: 0.6, seed: 44444,
+            },
+            {
+                x: -250, z: -560, size: 550, height: 140, layer: 0.75, seed: 44445,
+            },
 
             // RIGHT SIDE - EXTREME FOREGROUND (New framing mountains)
-            { x: 550, z: 30, size: 700, height: 160, layer: -0.1, seed: 50001 },
+            {
+                x: 550, z: 30, size: 700, height: 160, layer: -0.1, seed: 50001,
+            },
 
             // RIGHT SIDE - FOREGROUND (closest, largest, fill edge)
-            { x: 350, z: -10, size: 500, height: 110, layer: 0.0, seed: 55555 },
-            { x: 380, z: -80, size: 500, height: 120, layer: 0.05, seed: 55556 },
-            { x: 180, z: -140, size: 350, height: 90, layer: 0.1, seed: 66666 },
+            {
+                x: 350, z: -10, size: 500, height: 110, layer: 0.0, seed: 55555,
+            },
+            {
+                x: 380, z: -80, size: 500, height: 120, layer: 0.05, seed: 55556,
+            },
+            {
+                x: 180, z: -140, size: 350, height: 90, layer: 0.1, seed: 66666,
+            },
 
             // RIGHT SIDE - MIDGROUND
-            { x: 280, z: -240, size: 450, height: 110, layer: 0.25, seed: 77777 },
-            { x: 200, z: -340, size: 400, height: 100, layer: 0.4, seed: 77778 },
+            {
+                x: 280, z: -240, size: 450, height: 110, layer: 0.25, seed: 77777,
+            },
+            {
+                x: 200, z: -340, size: 400, height: 100, layer: 0.4, seed: 77778,
+            },
 
             // RIGHT SIDE - BACKGROUND (further, hazier)
-            { x: 150, z: -460, size: 500, height: 130, layer: 0.6, seed: 88888 },
-            { x: 250, z: -560, size: 550, height: 140, layer: 0.75, seed: 88889 },
+            {
+                x: 150, z: -460, size: 500, height: 130, layer: 0.6, seed: 88888,
+            },
+            {
+                x: 250, z: -560, size: 550, height: 140, layer: 0.75, seed: 88889,
+            },
 
             // CENTER PEAKS near horizon - REMOVED to clear sun view
             // { x: -60, z: -750, size: 300, height: 80, layer: 0.85, seed: 99999 },
@@ -629,7 +666,7 @@ export default class NeonDuskTheme extends BaseTheme {
 
         // CPU-side procedural mountain shape
         const posAttribute = geometry.attributes.position;
-        const seed = config.seed;
+        const { seed } = config;
 
         const fract = (n) => n - Math.floor(n);
         const mix = (a, b, t) => a * (1 - t) + b * t;
@@ -645,7 +682,7 @@ export default class NeonDuskTheme extends BaseTheme {
             return mix(
                 mix(fract(rand(i, j)), fract(rand(i + 1, j)), u),
                 mix(fract(rand(i, j + 1)), fract(rand(i + 1, j + 1)), u),
-                v
+                v,
             );
         };
 
@@ -675,7 +712,7 @@ export default class NeonDuskTheme extends BaseTheme {
             }
 
             const normDist = dist / maxDist;
-            const base = Math.pow(1.0 - normDist, 1.2) * config.height;
+            const base = (1.0 - normDist) ** 1.2 * config.height;
             const jagged = fbm(x * 0.02, z * 0.02) * config.height * 0.5 * (1.0 - normDist);
 
             posAttribute.setY(i, base + jagged);
@@ -861,10 +898,16 @@ export default class NeonDuskTheme extends BaseTheme {
             lives[i] = 0;
             this.burstParticleData.push({
                 active: false,
-                x: 0, y: 0, z: 0,
-                vx: 0, vy: 0, vz: 0,
-                life: 0, maxLife: 1,
-                size: 1, type: 0,
+                x: 0,
+                y: 0,
+                z: 0,
+                vx: 0,
+                vy: 0,
+                vz: 0,
+                life: 0,
+                maxLife: 1,
+                size: 1,
+                type: 0,
                 color: new THREE.Color(0xffffff),
             });
         }
@@ -894,8 +937,6 @@ export default class NeonDuskTheme extends BaseTheme {
         this.scene.add(this.burstParticles);
     }
 
-
-
     // =========================================================================
     // POST-PROCESSING
     // =========================================================================
@@ -917,7 +958,7 @@ export default class NeonDuskTheme extends BaseTheme {
                 magFilter: THREE.LinearFilter,
                 stencilBuffer: false,
                 depthBuffer: true,
-            }
+            },
         );
 
         this.composer = new EffectComposer(this.renderer, renderTarget);
@@ -930,12 +971,12 @@ export default class NeonDuskTheme extends BaseTheme {
                 new THREE.Vector2(window.innerWidth, window.innerHeight),
                 this.activePreset.bloomStrength,
                 this.activePreset.bloomRadius || 0.3,
-                this.activePreset.bloomThreshold || 0.6
+                this.activePreset.bloomThreshold || 0.6,
             );
             this.composer.addPass(this.bloomPass);
         }
 
-        /* 
+        /*
         if (this.activePreset.enableVHS) {
             this.vhsPass = new ShaderPass(VHSShader);
             this.vhsPass.uniforms.uResolution.value = new THREE.Vector2(
@@ -996,7 +1037,7 @@ export default class NeonDuskTheme extends BaseTheme {
         // Spawn grid highlights for tetromino shape
         if (piece) {
             const pieceType = piece.type;
-            const shape = this.tetrominoShapes[pieceType] || this.tetrominoShapes['T'];
+            const shape = this.tetrominoShapes[pieceType] || this.tetrominoShapes.T;
             const color = this.getPieceColor(pieceType);
 
             let gridX = piece.x !== undefined ? (piece.x - 4.5) : (Math.random() - 0.5) * 10;
@@ -1084,19 +1125,19 @@ export default class NeonDuskTheme extends BaseTheme {
 
     getPieceColor(pieceType) {
         const colorMap = {
-            'I': new THREE.Color(0x00ffff),
-            'O': new THREE.Color(0xffff00),
-            'T': new THREE.Color(0xff00ff),
-            'S': new THREE.Color(0x00ff88),
-            'Z': new THREE.Color(0xff0088),
-            'J': new THREE.Color(0x00aaff),
-            'L': new THREE.Color(0xff8800),
+            I: new THREE.Color(0x00ffff),
+            O: new THREE.Color(0xffff00),
+            T: new THREE.Color(0xff00ff),
+            S: new THREE.Color(0x00ff88),
+            Z: new THREE.Color(0xff0088),
+            J: new THREE.Color(0x00aaff),
+            L: new THREE.Color(0xff8800),
         };
         return colorMap[pieceType] || this.neonColors[0];
     }
 
     spawnHighlightCell(gridX, gridZ, color, scrollOffset) {
-        const highlight = this.highlightPool.find(h => !h.userData.active);
+        const highlight = this.highlightPool.find((h) => !h.userData.active);
         if (!highlight) return;
 
         highlight.userData.active = true;
@@ -1106,8 +1147,7 @@ export default class NeonDuskTheme extends BaseTheme {
         highlight.userData.gridZ = gridZ;
         highlight.userData.scrollOffset = scrollOffset;
 
-
-        highlight.position.x = gridX * 6.0; // Centered on grid line or cell? 
+        highlight.position.x = gridX * 6.0; // Centered on grid line or cell?
         // If grid lines are at 0, 6, 12... and we want to fill the cell between 0 and 6, center is 3.
         // Actually, the shader draws lines based on gridSpacing.
         // Let's assume gridX is the cell index.
@@ -1135,7 +1175,7 @@ export default class NeonDuskTheme extends BaseTheme {
         const types = this.burstParticles.geometry.attributes.aType.array;
 
         for (let i = 0; i < count; i++) {
-            const idx = this.burstParticleData.findIndex(p => !p.active);
+            const idx = this.burstParticleData.findIndex((p) => !p.active);
             if (idx === -1) break;
 
             const p = this.burstParticleData[idx];
@@ -1176,7 +1216,7 @@ export default class NeonDuskTheme extends BaseTheme {
     createHologramRing() {
         if (this.hologramRings.length >= this.activePreset.maxRings) return;
 
-        const geometry = new THREE.PlaneGeometry(1200, 1200);  // Much BIGGER rings
+        const geometry = new THREE.PlaneGeometry(1200, 1200); // Much BIGGER rings
         const color = this.neonColors[Math.floor(Math.random() * this.neonColors.length)];
 
         const material = new THREE.ShaderMaterial({
@@ -1254,7 +1294,7 @@ export default class NeonDuskTheme extends BaseTheme {
         this.camera.lookAt(
             Math.sin(t * 0.4) * 3,
             10 + Math.cos(t * 0.3),
-            -100
+            -100,
         );
     }
 
@@ -1374,10 +1414,10 @@ export default class NeonDuskTheme extends BaseTheme {
 
             this.retroPixelData.push({
                 vx: (Math.random() - 0.5) * 5, // Subtle drift x
-                vy: 5 + Math.random() * 10,    // Float UP
+                vy: 5 + Math.random() * 10, // Float UP
                 vz: (Math.random() - 0.5) * 5, // Subtle drift z
                 maxLife: 1.0,
-                colorType: Math.floor(Math.random() * 5)
+                colorType: Math.floor(Math.random() * 5),
             });
         }
 
@@ -1499,7 +1539,7 @@ export default class NeonDuskTheme extends BaseTheme {
 
             // Expand and follow sun
             ring.position.x = this.sunPosition.x;
-            const scale = 1 + progress * 6;  // Expand much further (6x instead of 2x)
+            const scale = 1 + progress * 6; // Expand much further (6x instead of 2x)
             ring.scale.setScalar(scale);
         }
     }
@@ -1522,7 +1562,7 @@ export default class NeonDuskTheme extends BaseTheme {
     }
 
     decayEffects(delta) {
-        const decay = Math.pow(0.92, delta * 60);
+        const decay = 0.92 ** (delta * 60);
 
         this.effectState.gridPulseIntensity *= decay;
         this.effectState.sunPulseIntensity *= decay;
@@ -1530,8 +1570,8 @@ export default class NeonDuskTheme extends BaseTheme {
         this.effectState.mountainShockwave *= decay;
         this.effectState.highlightTwinkle *= decay;
         this.effectState.colorShift *= decay;
-        this.effectState.vhsIntensity *= Math.pow(0.85, delta * 60);
-        this.effectState.pixelTwinkle *= Math.pow(0.95, delta * 60); // Slower decay for visible flash
+        this.effectState.vhsIntensity *= 0.85 ** (delta * 60);
+        this.effectState.pixelTwinkle *= 0.95 ** (delta * 60); // Slower decay for visible flash
 
         // Rim glow decays back to 1.0
         this.effectState.rimGlowIntensity = 1.0 + (this.effectState.rimGlowIntensity - 1.0) * decay;
@@ -1573,7 +1613,7 @@ export default class NeonDuskTheme extends BaseTheme {
 
     stop() {
         // Unsubscribe events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Remove resize handler
@@ -1584,7 +1624,7 @@ export default class NeonDuskTheme extends BaseTheme {
 
         // Clear highlights
         this.gridHighlights = [];
-        this.hologramRings.forEach(ring => {
+        this.hologramRings.forEach((ring) => {
             this.scene.remove(ring);
             ring.geometry.dispose();
             ring.material.dispose();
@@ -1601,11 +1641,11 @@ export default class NeonDuskTheme extends BaseTheme {
         }
 
         if (this.scene) {
-            this.scene.traverse(obj => {
+            this.scene.traverse((obj) => {
                 if (obj.geometry) obj.geometry.dispose();
                 if (obj.material) {
                     if (Array.isArray(obj.material)) {
-                        obj.material.forEach(m => m.dispose());
+                        obj.material.forEach((m) => m.dispose());
                     } else {
                         obj.material.dispose();
                     }

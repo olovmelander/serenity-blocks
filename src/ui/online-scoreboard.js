@@ -147,10 +147,10 @@ export class OnlineScoreboard {
      */
     _getMedal(index) {
         switch (index) {
-            case 0: return '🥇';
-            case 1: return '🥈';
-            case 2: return '🥉';
-            default: return `${index + 1}.`;
+        case 0: return '🥇';
+        case 1: return '🥈';
+        case 2: return '🥉';
+        default: return `${index + 1}.`;
         }
     }
 

@@ -1,4 +1,3 @@
-
 /**
  * WebGL Meadow Flowers - Instanced rendering for swaying flowers
  */
@@ -14,7 +13,7 @@ export default class WebGLMeadowFlowers {
     init() {
         // Try WebGL 2 first
         let gl = this.canvas.getContext('webgl2', { alpha: true });
-        let isWebGL2 = !!gl;
+        const isWebGL2 = !!gl;
 
         if (!gl) {
             gl = this.canvas.getContext('webgl', { alpha: true });
@@ -385,7 +384,7 @@ export default class WebGLMeadowFlowers {
             -w, 0.0,
             w, 0.0,
             -w, h,
-            w, h
+            w, h,
         ]);
 
         this.buffers = {};
@@ -415,7 +414,7 @@ export default class WebGLMeadowFlowers {
     }
 
     generateFlowers(count, width, height) {
-        const gl = this.gl;
+        const { gl } = this;
         this.flowerCount = count;
 
         const offsets = new Float32Array(count * 3);
@@ -512,7 +511,7 @@ export default class WebGLMeadowFlowers {
 
     render(time, windStrength = 0.0) {
         if (!this.gl || !this.program || this.flowerCount === 0) return;
-        const gl = this.gl;
+        const { gl } = this;
 
         gl.useProgram(this.program);
 

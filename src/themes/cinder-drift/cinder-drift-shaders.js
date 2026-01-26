@@ -182,7 +182,6 @@ export const magmaBackgroundFragmentShader = `
     }
 `;
 
-
 // =========================================================================================
 // 2. VOLCANIC ROCK SHADER (REPLACES CORES)
 // Cracked rock with emissive glowing interior
@@ -342,7 +341,6 @@ export const rockFragmentShader = `
     }
 `;
 
-
 // =========================================================================================
 // 3. SMOKE PARTICLES
 // Soft, scrolling smoke texture
@@ -392,7 +390,6 @@ export const smokeFragmentShader = `
         gl_FragColor = vec4(color, alpha * vAlpha * 0.3);
     }
 `;
-
 
 // =========================================================================================
 // 4. INSTANCED EMBER SHADER

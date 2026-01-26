@@ -1,6 +1,6 @@
 /**
  * Cosmic Exploration Effect - Split-Layer Implementation
- * 
+ *
  * Immersive cosmic visual that activates during minimap drag-to-explore.
  * Uses TWO layers:
  *   - Background layer (z-index: -1): Stars behind the game
@@ -20,8 +20,6 @@ import {
 } from './cosmic-exploration-shaders.js';
 import { CosmicParticleSystem } from './CosmicParticleSystem.js';
 import { normalizeQuality, getCosmicExplorationConfig } from '../../utils/quality.js';
-
-
 
 export class CosmicExplorationEffect {
     constructor(options = {}) {
@@ -163,12 +161,12 @@ export class CosmicExplorationEffect {
         this.fgDust = new CosmicParticleSystem({
             maxParticles: this.qualityPreset.fgDust,
             scene: this.fgScene,
-            isForeground: true,  // Flag for subtle settings
+            isForeground: true, // Flag for subtle settings
         });
     }
 
     _createStarfield() {
-        const starCount = this.qualityPreset.starCount;
+        const { starCount } = this.qualityPreset;
         const geometry = new THREE.BufferGeometry();
 
         const positions = new Float32Array(starCount * 3);
@@ -249,7 +247,7 @@ export class CosmicExplorationEffect {
                 new THREE.Vector2(width, height),
                 this.qualityPreset.bloomStrength,
                 0.4,
-                0.85
+                0.85,
             );
             this.bgComposer.addPass(bloomPass);
         }
@@ -355,7 +353,7 @@ export class CosmicExplorationEffect {
 
         // === BACKGROUND LAYER UPDATES ===
         if (this.starfield?.material?.uniforms) {
-            const uniforms = this.starfield.material.uniforms;
+            const { uniforms } = this.starfield.material;
             uniforms.uTime.value = elapsed;
             uniforms.uDriftX.value = this.driftAccumulator.x * 50;
             uniforms.uDriftY.value = this.driftAccumulator.y * 30;

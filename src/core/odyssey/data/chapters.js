@@ -20,7 +20,7 @@ export const CHAPTER_CONFIGS = [
         environment: {
             skyColor: 0x1a0a00,
             fogColor: 0x2d1500,
-            fogDensity: 0.015,  // Increased for better crater edge fog effect
+            fogDensity: 0.015, // Increased for better crater edge fog effect
             ambientLight: 0x331100,
             ambientIntensity: 0.4,
         },

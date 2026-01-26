@@ -1,10 +1,10 @@
-
 import { describe, it, expect } from 'vitest';
-import { calculateGarbage, maskArrayToBits, bitsToColumns, columnsToMask } from '../garbage.js';
+import {
+    calculateGarbage, maskArrayToBits, bitsToColumns, columnsToMask,
+} from '../garbage.js';
 import { COLS } from '../constants.js';
 
 describe('Garbage Logic (Quadra Compliance)', () => {
-
     describe('Bitwise Encoding (Inverse Mapping)', () => {
         // Quadra encoding: MSB (Bit 9) is Column 0, LSB (Bit 0) is Column 9
         // 1 = Hole, 0 = Solid
@@ -41,7 +41,6 @@ describe('Garbage Logic (Quadra Compliance)', () => {
     });
 
     describe('calculateGarbage (Quadra Logic)', () => {
-
         it('generates correct hole mask for single line clear', () => {
             // Simulate a summary from a manual clear
             // Quadra Logic: The "moved" cells (where piece was) become holes.
@@ -52,20 +51,20 @@ describe('Garbage Logic (Quadra Compliance)', () => {
                 complexity: 1,
                 holeMask: [
                     // Row 0 mask: True at index 5
-                    Array.from({ length: COLS }, (_, i) => i === 5)
+                    Array.from({ length: COLS }, (_, i) => i === 5),
                 ],
-                manualColumns: [5]
+                manualColumns: [5],
             };
 
             const attack = calculateGarbage(summary);
 
             // Quadra: Base attack = depth - 1. So for 1 line, attack is 0.
             // Wait, Quadra logic: 1 line -> 0 attack lines?
-            // Yes: case 1: score_add=250. 
+            // Yes: case 1: score_add=250.
             // attacks are sent via Net_list::sendlines.
             // "base attack lines: depth - 1" is consistent with game.cc/canvas.cc comments?
             // Actually, for sending lines:
-            // Canvas::give_line: i = max(0, depth-1-alive_count) 
+            // Canvas::give_line: i = max(0, depth-1-alive_count)
 
             // Let's verify the mask generation even if 0 lines are effectively sent "as attack",
             // the object should still capture the masks generally.
@@ -86,9 +85,9 @@ describe('Garbage Logic (Quadra Compliance)', () => {
                 complexity: 1,
                 holeMask: [
                     col0Mask, // Line 1 hole at 0
-                    col0Mask  // Line 2 hole at 0
+                    col0Mask, // Line 2 hole at 0
                 ],
-                manualColumns: [0]
+                manualColumns: [0],
             };
 
             const attack = calculateGarbage(summary);
@@ -110,7 +109,7 @@ describe('Garbage Logic (Quadra Compliance)', () => {
                 depth: 4, // Tetris
                 complexity: 1,
                 holeMask: Array(4).fill(Array(COLS).fill(false)), // Doesn't matter for clean
-                sendForClean: true
+                sendForClean: true,
             };
 
             const attack = calculateGarbage(summary);
@@ -132,5 +131,4 @@ describe('Garbage Logic (Quadra Compliance)', () => {
             expect(cols1).toEqual([0, 3, 6, 9]);
         });
     });
-
 });

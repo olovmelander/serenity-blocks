@@ -493,7 +493,9 @@ export function createSoundSets(createTone, createRichTone) {
                     { type: 'sine', freq: 50, gain: 0.3 },
                     { type: 'sine', freq: 52, gain: 0.3 }, // Detuned pulse
                 ],
-                filter: { type: 'bandpass', frequency: 100, envAmount: 50, Q: 1 },
+                filter: {
+                    type: 'bandpass', frequency: 100, envAmount: 50, Q: 1,
+                },
                 envelope: { attack: 0.05, decay: 0.3, release: 0.1 },
                 volume: 0.35,
             }),
@@ -571,7 +573,9 @@ export function createSoundSets(createTone, createRichTone) {
                     { type: 'triangle', freq: 48, gain: 0.15 },
                 ],
                 noise: { type: 'brown', gain: 0.08 },
-                filter: { type: 'bandpass', frequency: 90, Q: 0.5, envAmount: 20 },
+                filter: {
+                    type: 'bandpass', frequency: 90, Q: 0.5, envAmount: 20,
+                },
                 envelope: { attack: 0.05, decay: 0.2, release: 0.1 },
                 volume: 0.35,
             }),
@@ -582,7 +586,9 @@ export function createSoundSets(createTone, createRichTone) {
                     { type: 'square', freq: 45, gain: 0.1 },
                 ],
                 noise: { type: 'brown', gain: 0.15 },
-                filter: { type: 'lowpass', frequency: 150, Q: 1.0, envAmount: -20 },
+                filter: {
+                    type: 'lowpass', frequency: 150, Q: 1.0, envAmount: -20,
+                },
                 envelope: { attack: 0.01, decay: 0.6, release: 0.4 },
                 volume: 0.8,
             }),
@@ -595,8 +601,12 @@ export function createSoundSets(createTone, createRichTone) {
                             { type: 'sine', freq: f, gain: 0.25 },
                             { type: 'sawtooth', freq: f * 1.005, gain: 0.06 },
                         ],
-                        filter: { type: 'lowpass', frequency: 200 + (i * 50), Q: 2, envAmount: 50 },
-                        envelope: { attack: 0.5 + (i * 0.2), decay: 2.0, sustain: 0.3, release: 3.0 },
+                        filter: {
+                            type: 'lowpass', frequency: 200 + (i * 50), Q: 2, envAmount: 50,
+                        },
+                        envelope: {
+                            attack: 0.5 + (i * 0.2), decay: 2.0, sustain: 0.3, release: 3.0,
+                        },
                         volume: 0.45,
                     }), i * 150);
                 });
@@ -607,7 +617,9 @@ export function createSoundSets(createTone, createRichTone) {
                     { type: 'sawtooth', freq: 65, gain: 0.25 },
                     { type: 'sine', freq: 50, gain: 0.4 },
                 ],
-                filter: { type: 'lowpass', frequency: 250, Q: 2, envAmount: 200 },
+                filter: {
+                    type: 'lowpass', frequency: 250, Q: 2, envAmount: 200,
+                },
                 envelope: { attack: 1.5, decay: 3.0, release: 4.0 },
                 volume: 0.6,
             }),
@@ -894,7 +906,9 @@ export function createSoundSets(createTone, createRichTone) {
             rotate: () => richTone({
                 oscillators: [
                     { type: 'sine', freq: 90, gain: 0.3 },
-                    { type: 'sawtooth', freq: 85, gain: 0.1, detune: 5 }, // Chorused texture
+                    {
+                        type: 'sawtooth', freq: 85, gain: 0.1, detune: 5,
+                    }, // Chorused texture
                 ],
                 noise: { type: 'pink', gain: 0.05 },
                 filter: {
@@ -909,7 +923,9 @@ export function createSoundSets(createTone, createRichTone) {
                     { type: 'sine', freq: 80, gain: 0.4 },
                 ],
                 noise: { type: 'brown', gain: 0.15 }, // Heavy impact thud
-                filter: { type: 'lowpass', frequency: 120, Q: 0.8, envAmount: -20 },
+                filter: {
+                    type: 'lowpass', frequency: 120, Q: 0.8, envAmount: -20,
+                },
                 envelope: { attack: 0.005, decay: 0.6, release: 0.4 },
                 volume: 0.85,
             }),
@@ -922,7 +938,9 @@ export function createSoundSets(createTone, createRichTone) {
                             { type: 'sine', freq: f, gain: 0.4 }, // Pure fundamental
                             { type: 'triangle', freq: f * 2, gain: 0.1 }, // First harmonic warmth
                         ],
-                        filter: { type: 'lowpass', frequency: 400, envAmount: 200, Q: 2 }, // Gong-like resonance
+                        filter: {
+                            type: 'lowpass', frequency: 400, envAmount: 200, Q: 2,
+                        }, // Gong-like resonance
                         envelope: { attack: 0.1 + (i * 0.05), decay: 2.5, release: 2.0 }, // Long, sustaining tail
                         volume: 0.5,
                     }), i * 40); // Slower strum for grandeur
@@ -930,7 +948,9 @@ export function createSoundSets(createTone, createRichTone) {
                 // Deep atmospheric shimmer
                 setTimeout(() => richTone({
                     noise: { type: 'pink', gain: 0.08 },
-                    filter: { type: 'lowpass', frequency: 600, envAmount: -200, Q: 1 },
+                    filter: {
+                        type: 'lowpass', frequency: 600, envAmount: -200, Q: 1,
+                    },
                     envelope: { attack: 0.5, decay: 2.0, release: 1.5 },
                     volume: 0.2,
                 }), 100);

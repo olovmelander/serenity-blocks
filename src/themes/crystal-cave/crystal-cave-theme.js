@@ -2,7 +2,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * CRYSTAL CAVE THEME - Three.js 3D Implementation (Reworked)
  * ═══════════════════════════════════════════════════════════════════════════════
- * 
+ *
  * An immersive underground crystal cave featuring:
  * - Proper multi-faceted crystal geometry with internal glow
  * - Crystal clusters emerging from cave surfaces
@@ -11,7 +11,7 @@
  * - Underground water pool with reflections
  * - Floating magical particles
  * - Stalactites and stalagmites
- * 
+ *
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
@@ -29,12 +29,24 @@ import { CRYSTAL_CAVE_TETROMINOS } from './crystal-cave-tetrominos.js';
 // Quality Presets
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
-    Extreme: { crystalClusterCount: 45, particleCount: 3000, bloomStrength: 0.6, enablePost: true },
-    Ultra: { crystalClusterCount: 35, particleCount: 2200, bloomStrength: 0.55, enablePost: true },
-    High: { crystalClusterCount: 25, particleCount: 1500, bloomStrength: 0.5, enablePost: true },
-    Medium: { crystalClusterCount: 15, particleCount: 1000, bloomStrength: 0.45, enablePost: false },
-    Low: { crystalClusterCount: 8, particleCount: 500, bloomStrength: 0.35, enablePost: false },
-    Minimal: { crystalClusterCount: 4, particleCount: 200, bloomStrength: 0.25, enablePost: false },
+    Extreme: {
+        crystalClusterCount: 45, particleCount: 3000, bloomStrength: 0.6, enablePost: true,
+    },
+    Ultra: {
+        crystalClusterCount: 35, particleCount: 2200, bloomStrength: 0.55, enablePost: true,
+    },
+    High: {
+        crystalClusterCount: 25, particleCount: 1500, bloomStrength: 0.5, enablePost: true,
+    },
+    Medium: {
+        crystalClusterCount: 15, particleCount: 1000, bloomStrength: 0.45, enablePost: false,
+    },
+    Low: {
+        crystalClusterCount: 8, particleCount: 500, bloomStrength: 0.35, enablePost: false,
+    },
+    Minimal: {
+        crystalClusterCount: 4, particleCount: 200, bloomStrength: 0.25, enablePost: false,
+    },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -124,7 +136,7 @@ const CrystalShader = {
             
             gl_FragColor = vec4(color * brightness, 0.9);
         }
-    `
+    `,
 };
 
 // Cave Wall Shader - Rocky with bioluminescent veins
@@ -172,7 +184,7 @@ const CaveWallShader = {
             
             gl_FragColor = vec4(color, 1.0);
         }
-    `
+    `,
 };
 
 // Cave Background Shader - Dark atmospheric void
@@ -219,7 +231,7 @@ const CaveBackgroundShader = {
             
             gl_FragColor = vec4(color, 1.0);
         }
-    `
+    `,
 };
 
 // Floating Particle Shader
@@ -266,7 +278,7 @@ const ParticleShader = {
             
             gl_FragColor = vec4(vColor * glow * 1.8, vAlpha * glow * 0.9);
         }
-    `
+    `,
 };
 
 // Water Pool Shader
@@ -313,7 +325,7 @@ const WaterShader = {
             
             gl_FragColor = vec4(color, 0.8 * edgeFade);
         }
-    `
+    `,
 };
 
 // Shockwave Ring Shader
@@ -341,7 +353,7 @@ const ShockwaveShader = {
             
             gl_FragColor = vec4(uColor, alpha);
         }
-    `
+    `,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -436,7 +448,7 @@ export default class CrystalCaveTheme extends BaseTheme {
                 new THREE.Vector2(window.innerWidth, window.innerHeight),
                 this.activePreset.bloomStrength,
                 0.5,
-                0.8
+                0.8,
             );
             this.composer.addPass(bloomPass);
         }
@@ -558,8 +570,8 @@ export default class CrystalCaveTheme extends BaseTheme {
         for (let i = 0; i < pos.count; i++) {
             const x = pos.getX(i);
             const y = pos.getY(i);
-            const noise = Math.sin(x * 0.03) * Math.cos(y * 0.04) * amount +
-                Math.sin(x * 0.08 + y * 0.05) * (amount * 0.4);
+            const noise = Math.sin(x * 0.03) * Math.cos(y * 0.04) * amount
+                + Math.sin(x * 0.08 + y * 0.05) * (amount * 0.4);
             pos.setZ(i, noise);
         }
         geometry.computeVertexNormals();
@@ -593,7 +605,7 @@ export default class CrystalCaveTheme extends BaseTheme {
         // Create rock stalactites hanging from ceiling
         const stalactiteCount = 25;
         const rockMat = new THREE.MeshStandardMaterial({
-            color: 0x2a1835,  // Brighter purple-tinted rock
+            color: 0x2a1835, // Brighter purple-tinted rock
             roughness: 0.8,
             metalness: 0.05,
             emissive: 0x0a0510,
@@ -610,7 +622,7 @@ export default class CrystalCaveTheme extends BaseTheme {
             stalactite.position.set(
                 (Math.random() - 0.5) * 600,
                 195 - height / 2,
-                (Math.random() - 0.5) * 400 - 50
+                (Math.random() - 0.5) * 400 - 50,
             );
             stalactite.rotation.x = Math.PI;
             stalactite.rotation.z = (Math.random() - 0.5) * 0.15;
@@ -631,7 +643,7 @@ export default class CrystalCaveTheme extends BaseTheme {
             stalagmite.position.set(
                 (Math.random() - 0.5) * 600,
                 -55 + height / 2,
-                (Math.random() - 0.5) * 400 - 50
+                (Math.random() - 0.5) * 400 - 50,
             );
             stalagmite.rotation.z = (Math.random() - 0.5) * 0.1;
 
@@ -660,7 +672,7 @@ export default class CrystalCaveTheme extends BaseTheme {
             const angle = (i / sides) * Math.PI * 2;
             points.push({
                 x: Math.cos(angle) * radius,
-                z: Math.sin(angle) * radius
+                z: Math.sin(angle) * radius,
             });
         }
 
@@ -669,9 +681,15 @@ export default class CrystalCaveTheme extends BaseTheme {
             const next = (i + 1) % sides;
             // Top face (pointing up)
             vertices.push(
-                0, topPoint, 0,
-                points[i].x, midPoint, points[i].z,
-                points[next].x, midPoint, points[next].z
+                0,
+                topPoint,
+                0,
+                points[i].x,
+                midPoint,
+                points[i].z,
+                points[next].x,
+                midPoint,
+                points[next].z,
             );
         }
 
@@ -680,15 +698,27 @@ export default class CrystalCaveTheme extends BaseTheme {
             const next = (i + 1) % sides;
             // Upper quad triangle 1
             vertices.push(
-                points[i].x, midPoint, points[i].z,
-                points[i].x * 0.9, 0, points[i].z * 0.9,
-                points[next].x, midPoint, points[next].z
+                points[i].x,
+                midPoint,
+                points[i].z,
+                points[i].x * 0.9,
+                0,
+                points[i].z * 0.9,
+                points[next].x,
+                midPoint,
+                points[next].z,
             );
             // Upper quad triangle 2
             vertices.push(
-                points[next].x, midPoint, points[next].z,
-                points[i].x * 0.9, 0, points[i].z * 0.9,
-                points[next].x * 0.9, 0, points[next].z * 0.9
+                points[next].x,
+                midPoint,
+                points[next].z,
+                points[i].x * 0.9,
+                0,
+                points[i].z * 0.9,
+                points[next].x * 0.9,
+                0,
+                points[next].z * 0.9,
             );
         }
 
@@ -696,9 +726,15 @@ export default class CrystalCaveTheme extends BaseTheme {
         for (let i = 0; i < sides; i++) {
             const next = (i + 1) % sides;
             vertices.push(
-                points[i].x * 0.9, 0, points[i].z * 0.9,
-                0, bottomPoint, 0,
-                points[next].x * 0.9, 0, points[next].z * 0.9
+                points[i].x * 0.9,
+                0,
+                points[i].z * 0.9,
+                0,
+                bottomPoint,
+                0,
+                points[next].x * 0.9,
+                0,
+                points[next].z * 0.9,
             );
         }
 
@@ -743,7 +779,7 @@ export default class CrystalCaveTheme extends BaseTheme {
             crystal.position.set(
                 Math.cos(offsetAngle) * offsetDist,
                 0,
-                Math.sin(offsetAngle) * offsetDist
+                Math.sin(offsetAngle) * offsetDist,
             );
 
             // Rotation based on surface type
@@ -785,7 +821,7 @@ export default class CrystalCaveTheme extends BaseTheme {
                 (Math.random() - 0.5) * 550,
                 180 + Math.random() * 15,
                 (Math.random() - 0.5) * 350 - 50,
-                'ceiling'
+                'ceiling',
             );
         }
 
@@ -795,7 +831,7 @@ export default class CrystalCaveTheme extends BaseTheme {
                 (Math.random() - 0.5) * 550,
                 -55 + Math.random() * 10,
                 (Math.random() - 0.5) * 350 - 50,
-                'floor'
+                'floor',
             );
         }
 
@@ -805,7 +841,7 @@ export default class CrystalCaveTheme extends BaseTheme {
                 (Math.random() - 0.5) * 500,
                 (Math.random() - 0.3) * 200,
                 -230 + Math.random() * 20,
-                'back'
+                'back',
             );
         }
 
@@ -815,7 +851,7 @@ export default class CrystalCaveTheme extends BaseTheme {
                 -330 + Math.random() * 15,
                 (Math.random() - 0.3) * 150,
                 (Math.random() - 0.5) * 350 - 50,
-                'left'
+                'left',
             );
         }
 
@@ -825,7 +861,7 @@ export default class CrystalCaveTheme extends BaseTheme {
                 330 - Math.random() * 15,
                 (Math.random() - 0.3) * 150,
                 (Math.random() - 0.5) * 350 - 50,
-                'right'
+                'right',
             );
         }
     }
@@ -842,7 +878,7 @@ export default class CrystalCaveTheme extends BaseTheme {
             sunColor: 0xffffff,
             waterColor: 0x001e0f, // Deep dark teal/green
             distortionScale: 3.7,
-            fog: this.scene.fog !== undefined
+            fog: this.scene.fog !== undefined,
         });
 
         this.waterPool.rotation.x = -Math.PI / 2;
@@ -985,7 +1021,7 @@ export default class CrystalCaveTheme extends BaseTheme {
                     const hU = getH(x, y - 1); const hD = getH(x, y + 1);
                     const dx = (hL - hR) * 2.5;
                     const dy = (hU - hD) * 2.5;
-                    let nz = 1.0;
+                    const nz = 1.0;
                     const len = Math.sqrt(dx * dx + dy * dy + nz * nz);
                     const idx = (y * SIZE + x) * 4;
                     nData.data[idx] = ((dx / len) * 0.5 + 0.5) * 255;
@@ -1052,7 +1088,7 @@ export default class CrystalCaveTheme extends BaseTheme {
             colorMap: wrap(new THREE.CanvasTexture(colorCanvas)),
             roughnessMap: wrap(new THREE.CanvasTexture(roughnessCanvas)),
             aoMap: wrap(new THREE.CanvasTexture(aoCanvas)),
-            emissiveMap: wrap(new THREE.CanvasTexture(emissiveCanvas))
+            emissiveMap: wrap(new THREE.CanvasTexture(emissiveCanvas)),
         };
     }
 
@@ -1084,7 +1120,7 @@ export default class CrystalCaveTheme extends BaseTheme {
         ];
 
         probePositions.forEach(({ pos, palette }) => {
-            const probe = this.createCrystalLightProbe(palette, 0.35);  // Increased from 0.15
+            const probe = this.createCrystalLightProbe(palette, 0.35); // Increased from 0.15
             probe.position.copy(pos);
             this.scene.add(probe);
             this.lightProbes.push(probe);
@@ -1121,7 +1157,7 @@ export default class CrystalCaveTheme extends BaseTheme {
         sh[0].set(r * 0.886, g * 0.886, b * 0.886);
 
         // L1 - directional components (subtle)
-        sh[1].set(r * 0.1, g * 0.1, b * 0.1);  // y direction
+        sh[1].set(r * 0.1, g * 0.1, b * 0.1); // y direction
         sh[2].set(r * 0.05, g * 0.05, b * 0.05); // z direction
         sh[3].set(r * 0.05, g * 0.05, b * 0.05); // x direction
 
@@ -1164,7 +1200,7 @@ export default class CrystalCaveTheme extends BaseTheme {
         const flashCount = Math.min(lineCount * 3, 10);
         for (let i = 0; i < flashCount && i < this.crystalClusters.length; i++) {
             const cluster = this.crystalClusters[Math.floor(Math.random() * this.crystalClusters.length)];
-            cluster.children.forEach(crystal => {
+            cluster.children.forEach((crystal) => {
                 if (crystal.material?.uniforms?.uPulseIntensity) {
                     crystal.material.uniforms.uPulseIntensity.value = 0.8 + lineCount * 0.15;
                 }
@@ -1182,8 +1218,8 @@ export default class CrystalCaveTheme extends BaseTheme {
 
     onCombo(comboCount) {
         // Intense crystal pulses
-        this.crystalClusters.forEach(cluster => {
-            cluster.children.forEach(crystal => {
+        this.crystalClusters.forEach((cluster) => {
+            cluster.children.forEach((crystal) => {
                 if (crystal.material?.uniforms?.uPulseIntensity) {
                     // Make ALL crystals pulse on combo
                     crystal.material.uniforms.uPulseIntensity.value = 1.2 + comboCount * 0.3;
@@ -1215,7 +1251,7 @@ export default class CrystalCaveTheme extends BaseTheme {
         const flashCount = Math.min(5, this.crystalClusters.length);
         for (let i = 0; i < flashCount; i++) {
             const cluster = this.crystalClusters[Math.floor(Math.random() * this.crystalClusters.length)];
-            cluster.children.forEach(crystal => {
+            cluster.children.forEach((crystal) => {
                 if (crystal.material?.uniforms?.uPulseIntensity) {
                     crystal.material.uniforms.uPulseIntensity.value = 1.2; // Strong flash on lock
                 }
@@ -1275,7 +1311,7 @@ export default class CrystalCaveTheme extends BaseTheme {
             velocities.push(
                 Math.sin(phi) * Math.cos(theta) * speed,
                 Math.sin(phi) * Math.sin(theta) * speed,
-                Math.cos(phi) * speed
+                Math.cos(phi) * speed,
             );
 
             // Varied colors (White/Gold for high combo)
@@ -1295,11 +1331,11 @@ export default class CrystalCaveTheme extends BaseTheme {
             transparent: true,
             opacity: 1,
             blending: THREE.AdditiveBlending,
-            depthWrite: false
+            depthWrite: false,
         });
 
         const burst = new THREE.Points(geometry, material);
-        burst.userData = { velocities: velocities, life: 1.0 };
+        burst.userData = { velocities, life: 1.0 };
         this.mainGroup.add(burst);
 
         // Track for animation
@@ -1335,7 +1371,7 @@ export default class CrystalCaveTheme extends BaseTheme {
             transparent: true,
             opacity: 1,
             linewidth: 2, // Only works on some renderers
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         const bolt = new THREE.Line(geometry, material);
@@ -1364,8 +1400,8 @@ export default class CrystalCaveTheme extends BaseTheme {
         }
 
         // Update crystal pulse decay
-        this.crystalClusters.forEach(cluster => {
-            cluster.children.forEach(crystal => {
+        this.crystalClusters.forEach((cluster) => {
+            cluster.children.forEach((crystal) => {
                 if (crystal.material?.uniforms?.uPulseIntensity) {
                     if (crystal.material.uniforms.uPulseIntensity.value > 0) {
                         crystal.material.uniforms.uPulseIntensity.value *= 0.96;
@@ -1376,7 +1412,7 @@ export default class CrystalCaveTheme extends BaseTheme {
 
         // Update water animation
         if (this.waterPool && this.waterPool.material && this.waterPool.material.uniforms) {
-            this.waterPool.material.uniforms['time'].value += delta;
+            this.waterPool.material.uniforms.time.value += delta;
         }
 
         // Update shockwaves
@@ -1404,7 +1440,7 @@ export default class CrystalCaveTheme extends BaseTheme {
         for (let i = this.comboBursts.length - 1; i >= 0; i--) {
             const burst = this.comboBursts[i];
             const positions = burst.geometry.attributes.position.array;
-            const velocities = burst.userData.velocities;
+            const { velocities } = burst.userData;
 
             burst.userData.life -= delta;
 

@@ -1,6 +1,6 @@
 /**
  * @fileoverview Lunara Theme - Enhanced Mystical Winter Scene
- * 
+ *
  * A breathtaking mystical winter landscape featuring:
  * - Twinkling starfield with colored stars
  * - Dynamic aurora borealis with multiple layers
@@ -233,16 +233,16 @@ export default class LunaraTheme extends BaseTheme {
     createStars() {
         if (!this.starsContainer || this.starsContainer.children.length > 0) return;
 
-        const starCount = this.activePreset.starCount;
+        const { starCount } = this.activePreset;
         const fragment = document.createDocumentFragment();
 
         for (let i = 0; i < starCount; i++) {
             const star = document.createElement('div');
-            
+
             // Some stars are colored
             const isColoredStar = Math.random() < 0.15;
             star.className = isColoredStar ? 'lunara-star lunara-star-colored' : 'lunara-star';
-            
+
             const size = Math.random() * 2.5 + 0.5;
             star.style.width = `${size}px`;
             star.style.height = `${size}px`;
@@ -250,12 +250,12 @@ export default class LunaraTheme extends BaseTheme {
             star.style.top = `${Math.random() * 60}%`;
             star.style.setProperty('--twinkle-duration', `${Math.random() * 3 + 2}s`);
             star.style.setProperty('--twinkle-delay', `${Math.random() * 5}s`);
-            
+
             if (isColoredStar) {
                 const colors = ['#c6fff2', '#d3b6ff', '#ffb0de', '#b7d8ff'];
                 star.style.setProperty('--star-color', colors[Math.floor(Math.random() * colors.length)]);
             }
-            
+
             fragment.appendChild(star);
         }
 
@@ -265,7 +265,7 @@ export default class LunaraTheme extends BaseTheme {
     createAurora() {
         if (!this.auroraContainer || this.auroraContainer.children.length > 0) return;
 
-        const auroraCount = this.activePreset.auroraCount;
+        const { auroraCount } = this.activePreset;
         const fragment = document.createDocumentFragment();
 
         // Main aurora layers
@@ -333,8 +333,12 @@ export default class LunaraTheme extends BaseTheme {
 
             // Draw outer glow
             const glow1 = ctx.createRadialGradient(
-                planet1X, planet1Y, planet1Radius * 0.8,
-                planet1X, planet1Y, planet1Radius * 1.8,
+                planet1X,
+                planet1Y,
+                planet1Radius * 0.8,
+                planet1X,
+                planet1Y,
+                planet1Radius * 1.8,
             );
             glow1.addColorStop(0, 'rgba(200, 150, 255, 0.35)');
             glow1.addColorStop(0.5, 'rgba(180, 120, 240, 0.15)');
@@ -344,8 +348,12 @@ export default class LunaraTheme extends BaseTheme {
 
             // Draw planet with enhanced gradient
             const planet1Grad = ctx.createRadialGradient(
-                planet1X - planet1Radius * 0.35, planet1Y - planet1Radius * 0.35, planet1Radius * 0.15,
-                planet1X, planet1Y, planet1Radius,
+                planet1X - planet1Radius * 0.35,
+                planet1Y - planet1Radius * 0.35,
+                planet1Radius * 0.15,
+                planet1X,
+                planet1Y,
+                planet1Radius,
             );
             planet1Grad.addColorStop(0, '#e8d0ff');
             planet1Grad.addColorStop(0.3, '#d8b5ff');
@@ -363,8 +371,12 @@ export default class LunaraTheme extends BaseTheme {
 
             // Draw glow
             const glow2 = ctx.createRadialGradient(
-                planet2X, planet2Y, planet2Radius * 0.8,
-                planet2X, planet2Y, planet2Radius * 1.6,
+                planet2X,
+                planet2Y,
+                planet2Radius * 0.8,
+                planet2X,
+                planet2Y,
+                planet2Radius * 1.6,
             );
             glow2.addColorStop(0, 'rgba(255, 200, 240, 0.35)');
             glow2.addColorStop(0.5, 'rgba(255, 180, 230, 0.15)');
@@ -374,8 +386,12 @@ export default class LunaraTheme extends BaseTheme {
 
             // Draw planet
             const planet2Grad = ctx.createRadialGradient(
-                planet2X - planet2Radius * 0.35, planet2Y - planet2Radius * 0.35, planet2Radius * 0.15,
-                planet2X, planet2Y, planet2Radius,
+                planet2X - planet2Radius * 0.35,
+                planet2Y - planet2Radius * 0.35,
+                planet2Radius * 0.15,
+                planet2X,
+                planet2Y,
+                planet2Radius,
             );
             planet2Grad.addColorStop(0, '#ffe8f5');
             planet2Grad.addColorStop(0.3, '#ffd4f0');
@@ -481,7 +497,7 @@ export default class LunaraTheme extends BaseTheme {
     }
 
     createForests() {
-        const treeCount = this.activePreset.treeCount;
+        const { treeCount } = this.activePreset;
 
         // Left forest
         if (this.forestLeft && this.forestLeft.children.length === 0) {
@@ -530,7 +546,7 @@ export default class LunaraTheme extends BaseTheme {
         if (!snowContainer) {
             const themeContainer = document.getElementById('lunara-theme');
             if (!themeContainer) return;
-            
+
             snowContainer = document.createElement('div');
             snowContainer.id = 'lunara-snow';
             snowContainer.className = 'lunara-snow-container';
@@ -556,12 +572,12 @@ export default class LunaraTheme extends BaseTheme {
         for (let i = 0; i < count; i++) {
             const snowflake = document.createElement('div');
             snowflake.className = 'lunara-snowflake';
-            
+
             const size = Math.random() * 4 + 2;
             const duration = Math.random() * 10 + 15;
             const delay = Math.random() * 15;
             const drift = (Math.random() - 0.5) * 100;
-            
+
             snowflake.style.cssText = `
                 position: absolute;
                 left: ${Math.random() * 100}%;
@@ -574,7 +590,7 @@ export default class LunaraTheme extends BaseTheme {
                 --drift: ${drift}px;
                 opacity: ${0.4 + Math.random() * 0.5};
             `;
-            
+
             fragment.appendChild(snowflake);
             this.snowflakes.push(snowflake);
         }
@@ -702,24 +718,25 @@ export default class LunaraTheme extends BaseTheme {
 
     spawnLockSnowflakes() {
         if (!this.effectsContainer) return;
-        
+
         const count = this.activePreset.lockSnowflakeCount;
         if (count === 0) return;
 
         for (let i = 0; i < count; i++) {
             const snowflake = document.createElement('div');
             snowflake.className = 'lunara-lock-snowflake';
-            
+
             // Position at edges/corners
             const edge = Math.floor(Math.random() * 4);
-            let x, y;
+            let x; let
+                y;
             switch (edge) {
-                case 0: x = Math.random() * 25; y = 30 + Math.random() * 40; break;
-                case 1: x = 75 + Math.random() * 25; y = 30 + Math.random() * 40; break;
-                case 2: x = Math.random() * 100; y = 60 + Math.random() * 30; break;
-                default: x = Math.random() * 100; y = 70 + Math.random() * 25;
+            case 0: x = Math.random() * 25; y = 30 + Math.random() * 40; break;
+            case 1: x = 75 + Math.random() * 25; y = 30 + Math.random() * 40; break;
+            case 2: x = Math.random() * 100; y = 60 + Math.random() * 30; break;
+            default: x = Math.random() * 100; y = 70 + Math.random() * 25;
             }
-            
+
             const size = Math.random() * 6 + 4;
             snowflake.style.cssText = `
                 position: absolute;
@@ -732,7 +749,7 @@ export default class LunaraTheme extends BaseTheme {
                 animation: lunara-lock-sparkle 0.6s ease-out forwards;
                 pointer-events: none;
             `;
-            
+
             this.effectsContainer.appendChild(snowflake);
             setTimeout(() => snowflake.remove(), 600);
         }
@@ -746,10 +763,10 @@ export default class LunaraTheme extends BaseTheme {
 
         const randomAurora = auroras[Math.floor(Math.random() * auroras.length)];
         const originalOpacity = randomAurora.style.opacity || '0.6';
-        
+
         randomAurora.style.opacity = '0.9';
         randomAurora.style.filter = 'blur(25px) drop-shadow(0 0 30px rgba(180, 255, 220, 0.5))';
-        
+
         setTimeout(() => {
             randomAurora.style.opacity = originalOpacity;
             randomAurora.style.filter = '';
@@ -767,7 +784,7 @@ export default class LunaraTheme extends BaseTheme {
         // Shooting stars
         const streaksToSpawn = Math.min(
             this.activePreset.shootingStarsPerCombo + (comboCount >= 4 ? 1 : 0),
-            this.activePreset.maxShootingStars
+            this.activePreset.maxShootingStars,
         );
         for (let i = 0; i < streaksToSpawn; i++) {
             setTimeout(() => this.spawnShootingStar(normalizedCombo), i * 100);
@@ -809,7 +826,7 @@ export default class LunaraTheme extends BaseTheme {
             animation: lunara-aurora-wave 1.5s ease-out forwards;
             pointer-events: none;
         `;
-        
+
         this.effectsContainer.appendChild(wave);
         setTimeout(() => wave.remove(), 1500);
     }
@@ -818,19 +835,19 @@ export default class LunaraTheme extends BaseTheme {
         if (!this.effectsContainer) return;
 
         const burstCount = Math.min(10 + comboCount * 2, 30);
-        
+
         for (let i = 0; i < burstCount; i++) {
             setTimeout(() => {
                 if (!this.isActive) return;
-                
+
                 const snowflake = document.createElement('div');
                 snowflake.className = 'lunara-burst-snowflake';
-                
+
                 const size = Math.random() * 8 + 4;
                 const x = Math.random() * 100;
                 const y = Math.random() * 60;
                 const duration = 1 + Math.random() * 0.5;
-                
+
                 snowflake.style.cssText = `
                     position: absolute;
                     left: ${x}%;
@@ -842,7 +859,7 @@ export default class LunaraTheme extends BaseTheme {
                     animation: lunara-burst-float ${duration}s ease-out forwards;
                     pointer-events: none;
                 `;
-                
+
                 this.effectsContainer.appendChild(snowflake);
                 setTimeout(() => snowflake.remove(), duration * 1000);
             }, i * 30);
@@ -910,7 +927,7 @@ export default class LunaraTheme extends BaseTheme {
             const spedUp = Math.max(10, baseDuration * (1 - energy * 0.35));
             aurora.style.setProperty('--aurora-duration', `${spedUp}s`);
             aurora.style.opacity = `${0.55 + energy * 0.45}`;
-            
+
             if (energy > 0) {
                 aurora.style.filter = `blur(${30 - energy * 10}px) drop-shadow(0 0 ${10 + energy * 20}px rgba(180, 255, 220, 0.4))`;
             } else {
@@ -1025,12 +1042,12 @@ export default class LunaraTheme extends BaseTheme {
 
     stop() {
         this.teardownEventListeners();
-        
+
         if (this.qualityChangeHandler) {
             window.removeEventListener('settingsChanged', this.qualityChangeHandler);
             this.qualityChangeHandler = null;
         }
-        
+
         this.comboAnimationRunning = false;
         this.comboIntensity = 0;
         this.comboTargetIntensity = 0;
@@ -1054,11 +1071,11 @@ export default class LunaraTheme extends BaseTheme {
         if (layer) {
             layer.querySelectorAll('.lunara-shooting-star').forEach((node) => node.remove());
         }
-        
+
         if (this.effectsContainer) {
             this.effectsContainer.innerHTML = '';
         }
-        
+
         this.applyComboVisuals();
     }
 

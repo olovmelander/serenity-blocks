@@ -110,18 +110,18 @@ export class DisplayManager {
             const { ipcRenderer } = window.require('electron');
 
             switch (mode) {
-                case 'fullscreen':
-                    await ipcRenderer.invoke('set-fullscreen', true);
-                    break;
+            case 'fullscreen':
+                await ipcRenderer.invoke('set-fullscreen', true);
+                break;
 
-                case 'borderless':
-                    await ipcRenderer.invoke('set-borderless', resolution);
-                    break;
+            case 'borderless':
+                await ipcRenderer.invoke('set-borderless', resolution);
+                break;
 
-                case 'windowed':
-                default:
-                    await ipcRenderer.invoke('set-windowed', resolution);
-                    break;
+            case 'windowed':
+            default:
+                await ipcRenderer.invoke('set-windowed', resolution);
+                break;
             }
 
             console.log(`[DisplayManager] Display mode set to: ${mode}`);
@@ -388,7 +388,7 @@ export class DisplayManager {
         // Otherwise: recommend 1.0
         if (totalPixels > 8_000_000) {
             return 0.5;
-        } else if (totalPixels > 4_000_000) {
+        } if (totalPixels > 4_000_000) {
             return 0.75;
         }
         return 1.0;

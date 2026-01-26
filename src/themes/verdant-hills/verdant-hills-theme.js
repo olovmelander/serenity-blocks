@@ -1,10 +1,10 @@
 /**
  * Verdant Hills Theme - WebGPU + TSL Edition
- * 
+ *
  * A peaceful rolling hills landscape with fluffy grass, stylized trees,
  * and atmospheric gradient fog. Now powered by WebGPU with TSL shaders
  * for improved performance.
- * 
+ *
  * Features automatic fallback to WebGL2 for browsers without WebGPU support.
  */
 
@@ -22,7 +22,7 @@ import {
     // Color utilities
     color,
     // Matrix access
-    modelWorldMatrix
+    modelWorldMatrix,
 } from 'three/tsl';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
@@ -130,7 +130,7 @@ export default class VerdantHillsTheme extends BaseTheme {
         this.createGrass();
 
         // Rebuild trees
-        this.trees.forEach(tree => {
+        this.trees.forEach((tree) => {
             this.scene.remove(tree);
             tree.traverse((obj) => {
                 if (obj.geometry) obj.geometry.dispose();
@@ -225,7 +225,7 @@ export default class VerdantHillsTheme extends BaseTheme {
             60,
             window.innerWidth / window.innerHeight,
             0.1,
-            1000
+            1000,
         );
         this.camera.position.set(0, 80, 120);
         this.camera.lookAt(0, 0, 0);
@@ -261,14 +261,14 @@ export default class VerdantHillsTheme extends BaseTheme {
         // TSL-based sky material
         const skyMaterial = new THREE.MeshBasicNodeMaterial({
             side: THREE.BackSide,
-            depthWrite: false
+            depthWrite: false,
         });
 
         // Uniforms for sky colors
-        const topColor = uniform(new THREE.Color(0x4a90c2));     // Deep sky blue
+        const topColor = uniform(new THREE.Color(0x4a90c2)); // Deep sky blue
         const middleColor = uniform(new THREE.Color(0x87ceeb)); // Light sky blue
         const bottomColor = uniform(new THREE.Color(0xffefd5)); // Warm horizon
-        const sunColor = uniform(new THREE.Color(0xffe4b5));    // Sun glow
+        const sunColor = uniform(new THREE.Color(0xffe4b5)); // Sun glow
         const sunPosition = uniform(new THREE.Vector3(100, 60, -150));
 
         // Calculate sky gradient using TSL
@@ -357,11 +357,11 @@ export default class VerdantHillsTheme extends BaseTheme {
 
     getTerrainHeight(x, z) {
         // Multi-layered rolling hills
-        return Math.sin(x * 0.02) * 20 +
-            Math.sin(z * 0.015) * 15 +
-            Math.sin(x * 0.05 + z * 0.03) * 8 +
-            Math.cos(x * 0.03 - z * 0.02) * 12 +
-            Math.sin(x * 0.1) * Math.cos(z * 0.08) * 5;
+        return Math.sin(x * 0.02) * 20
+            + Math.sin(z * 0.015) * 15
+            + Math.sin(x * 0.05 + z * 0.03) * 8
+            + Math.cos(x * 0.03 - z * 0.02) * 12
+            + Math.sin(x * 0.1) * Math.cos(z * 0.08) * 5;
     }
 
     createGrass() {
@@ -418,7 +418,7 @@ export default class VerdantHillsTheme extends BaseTheme {
 
         // TSL-based grass material
         const grassMaterial = new THREE.MeshBasicNodeMaterial({
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         // Color uniforms
@@ -457,7 +457,7 @@ export default class VerdantHillsTheme extends BaseTheme {
         const displaced = positionLocal.add(vec3(
             windOffset,
             abs(windOffset).mul(float(-0.1)).mul(heightFactor),
-            windOffset.mul(float(0.25))
+            windOffset.mul(float(0.25)),
         ));
 
         grassMaterial.positionNode = displaced;
@@ -568,11 +568,21 @@ export default class VerdantHillsTheme extends BaseTheme {
         const foliageColors = [0x4a7c2e, 0x5a9c3a, 0x6ab04a, 0x3d6524];
 
         const foliagePositions = [
-            { x: 0, y: 5.5, z: 0, r: 2.5 },
-            { x: 1.2, y: 4.5, z: 0.5, r: 1.8 },
-            { x: -1, y: 4.8, z: -0.5, r: 1.6 },
-            { x: 0.3, y: 6.5, z: -0.3, r: 1.5 },
-            { x: -0.5, y: 5, z: 1, r: 1.4 },
+            {
+                x: 0, y: 5.5, z: 0, r: 2.5,
+            },
+            {
+                x: 1.2, y: 4.5, z: 0.5, r: 1.8,
+            },
+            {
+                x: -1, y: 4.8, z: -0.5, r: 1.6,
+            },
+            {
+                x: 0.3, y: 6.5, z: -0.3, r: 1.5,
+            },
+            {
+                x: -0.5, y: 5, z: 1, r: 1.4,
+            },
         ];
 
         foliagePositions.forEach((pos, idx) => {
@@ -614,7 +624,7 @@ export default class VerdantHillsTheme extends BaseTheme {
             size: 0.4,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         // Set particle color/opacity via TSL
@@ -744,7 +754,7 @@ export default class VerdantHillsTheme extends BaseTheme {
         this.teardownQualityListener();
 
         // Unsubscribe from events
-        this.eventUnsubscribers.forEach(unsub => {
+        this.eventUnsubscribers.forEach((unsub) => {
             if (typeof unsub === 'function') unsub();
         });
         this.eventUnsubscribers = [];

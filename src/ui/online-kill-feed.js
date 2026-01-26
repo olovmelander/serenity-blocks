@@ -47,7 +47,7 @@ export class OnlineKillFeed {
 
         this.items.unshift(item);
 
-        // Limit to max items
+        // Verifiedt to max items
         if (this.items.length > this.maxItems) {
             this.items.pop();
         }
@@ -77,6 +77,67 @@ export class OnlineKillFeed {
         if (this.items.length > this.maxItems) {
             this.items.pop();
         }
+
+        this.render();
+        this._scheduleExpire();
+    }
+
+    /**
+     * Add a garbage cancellation event (Phase 3.5 - Quadra style)
+     * @param {Object} event - { player: string, linesCancelled: number, playerColor?: string }
+     */
+    addGarbageCancelled(event) {
+        const item = {
+            type: 'cancel',
+            player: event.player,
+            linesCancelled: event.linesCancelled,
+            playerColor: event.playerColor,
+            timestamp: Date.now(),
+            expiresAt: Date.now() + this.itemTTL,
+        };
+
+        this.items.unshift(item);
+
+        if (this.items.length > this.maxItems) {
+            this.items.pop();
+        }
+
+        this.render();
+        this._scheduleExpire();
+    }
+
+    /**
+     * Add a combo event
+     */
+    addCombo(event) {
+        this._addItem({
+            type: 'combo',
+            player: event.player,
+            count: event.count,
+            playerColor: event.playerColor,
+        });
+    }
+
+    /**
+     * Add a system event (join/leave/disconnect)
+     */
+    addSystemEvent(type, event) {
+        this._addItem({
+            type: type, // 'join', 'leave', 'disconnect'
+            player: event.player,
+            playerColor: event.playerColor,
+        });
+    }
+
+    _addItem(itemData) {
+        const item = {
+            ...itemData,
+            timestamp: Date.now(),
+            expiresAt: Date.now() + this.itemTTL,
+        };
+
+        this.items.unshift(item);
+        if (this.items.length > this.maxItems) this.items.pop();
 
         this.render();
         this._scheduleExpire();
@@ -114,11 +175,57 @@ export class OnlineKillFeed {
                 return `
                     <div class="${classes.join(' ')}">
                         <span class="killer"${killerStyle}>${this._escapeHtml(killerLabel)}</span>
-                        ⚔️ 
+                        ⚔️
                         <span class="victim"${victimStyle}>${this._escapeHtml(item.victim)}</span>
                     </div>
                 `;
             }
+
+            if (item.type === 'cancel') {
+                // Phase 3.5: Garbage cancellation event (Quadra style)
+                const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
+                return `
+                    <div class="${classes.join(' ')} cancel-event">
+                        <span class="cancel-icon">🛡️</span>
+                        <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
+                        <span class="cancel-note">cancelled ${item.linesCancelled} line${item.linesCancelled !== 1 ? 's' : ''}</span>
+                    </div>
+                `;
+            }
+
+            if (item.type === 'combo') {
+                const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
+                return `
+                    <div class="${classes.join(' ')} combo-event">
+                        <span class="combo-icon">🔥</span>
+                        <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
+                        <span class="combo-note">${item.count}x COMBO!</span>
+                    </div>
+                `;
+            }
+
+            if (item.type === 'join' || item.type === 'leave' || item.type === 'disconnect') {
+                const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
+                let icon = '👋';
+                let action = 'joined';
+
+                if (item.type === 'leave') {
+                    icon = '🚪';
+                    action = 'left';
+                } else if (item.type === 'disconnect') {
+                    icon = '🔌';
+                    action = 'disconnected';
+                }
+
+                return `
+                    <div class="${classes.join(' ')} system-event">
+                        <span class="system-icon">${icon}</span>
+                        <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
+                        <span class="system-note">${action} the match</span>
+                    </div>
+                `;
+            }
+
             const senderStyle = item.senderColor ? ` style="color: ${item.senderColor};"` : '';
             const targetStyle = item.targetColor ? ` style="color: ${item.targetColor};"` : '';
             return `
@@ -144,8 +251,25 @@ export class OnlineKillFeed {
         }
 
         const now = Date.now();
-        const nextExpiry = this.items.reduce((min, item) => Math.min(min, item.expiresAt), Infinity);
-        const delay = Math.max(0, nextExpiry - now);
+        let nextTick = Infinity;
+
+        this.items.forEach((item) => {
+            if (!item || !item.expiresAt) return;
+            if (item.expiresAt <= now) return;
+
+            const expiringAt = item.expiresAt - 1000;
+            if (expiringAt > now) {
+                nextTick = Math.min(nextTick, expiringAt);
+            }
+            nextTick = Math.min(nextTick, item.expiresAt);
+        });
+
+        if (!Number.isFinite(nextTick)) {
+            this.expireTimer = null;
+            return;
+        }
+
+        const delay = Math.max(0, nextTick - now);
 
         this.expireTimer = setTimeout(() => {
             this.expireTimer = null;

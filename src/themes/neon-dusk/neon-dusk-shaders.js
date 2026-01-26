@@ -719,7 +719,7 @@ export const VHSShader = {
         tDiffuse: { value: null },
         uTime: { value: 0 },
         uResolution: { value: null },
-        uIntensity: { value: 1.0 }
+        uIntensity: { value: 1.0 },
     },
     vertexShader: `
         varying vec2 vUv;
@@ -765,7 +765,7 @@ export const VHSShader = {
 
             gl_FragColor = color;
         }
-    `
+    `,
 };
 
 // ============================================================================
@@ -776,7 +776,7 @@ export const VignetteShader = {
     uniforms: {
         tDiffuse: { value: null },
         uDarkness: { value: 0.5 },
-        uOffset: { value: 1.0 }
+        uOffset: { value: 1.0 },
     },
     vertexShader: `
         varying vec2 vUv;
@@ -800,5 +800,5 @@ export const VignetteShader = {
             texel.rgb = mix(texel.rgb * (1.0 - uDarkness), texel.rgb, vig);
             gl_FragColor = texel;
         }
-    `
+    `,
 };

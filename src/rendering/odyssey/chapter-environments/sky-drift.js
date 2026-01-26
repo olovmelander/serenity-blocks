@@ -1,13 +1,13 @@
 /**
  * @fileoverview Sky Drift Environment - Chapter 5 Visual Theme
- * 
+ *
  * Creates a stunning cosmic vista with actual celestial objects:
  * - Distant spiral galaxy with glowing core and arms
  * - Solar eclipse with corona glow
  * - Colorful nebulae formations
  * - Floating planets
  * - Dense starfield
- * 
+ *
  * Theme: "Float among clouds" - transitioning to deep space
  */
 
@@ -210,23 +210,21 @@ const starFragmentShader = `
 // Environment Creation
 // ═══════════════════════════════════════════════════════════════════════════════
 
-
-
 function createSkyGradient(uniforms) {
-    const geometry = new THREE.SphereGeometry(2500, 64, 48);  // Large sphere like Ch4
+    const geometry = new THREE.SphereGeometry(2500, 64, 48); // Large sphere like Ch4
     const material = new THREE.ShaderMaterial({
         uniforms: {
             uTime: uniforms.uTime,
-            uOpacity: { value: 1.0 }
+            uOpacity: { value: 1.0 },
         },
         vertexShader: skyGradientVertexShader,
         fragmentShader: skyGradientFragmentShader,
         side: THREE.BackSide,
         depthWrite: false,
-        transparent: true,  // Allow Chapter 4 to show through
+        transparent: true, // Allow Chapter 4 to show through
     });
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.renderOrder = -100;  // Render behind everything
+    mesh.renderOrder = -100; // Render behind everything
     return mesh;
 }
 
@@ -287,9 +285,9 @@ function createSpiralGalaxy(uniforms) {
     coreColors.forEach(({ color, scale, opacity }) => {
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
             map: glowTexture,
-            color: color,
+            color,
             transparent: true,
-            opacity: opacity,
+            opacity,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
         }));
@@ -310,7 +308,7 @@ function createSpiralGalaxy(uniforms) {
         const arm = i % 2;
         const baseAngle = arm * Math.PI;
         const t = Math.random();
-        const radius = 0.5 + Math.pow(t, 0.4) * 18;
+        const radius = 0.5 + t ** 0.4 * 18;
         const spiralOffset = radius * 0.35;
         const spread = (Math.random() - 0.5) * (0.3 + radius * 0.02);
 
@@ -374,9 +372,9 @@ function createSolarEclipse(uniforms) {
     sunColors.forEach(({ color, scale, opacity }) => {
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
             map: glowTexture,
-            color: color,
+            color,
             transparent: true,
-            opacity: opacity,
+            opacity,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
         }));
@@ -445,8 +443,6 @@ function createSolarEclipse(uniforms) {
     return eclipseGroup;
 }
 
-
-
 // ... (skipping shaders)
 
 export function createSkyDriftEnvironment(options = {}) {
@@ -511,19 +507,31 @@ function createNebulae(uniforms) {
 
     const glowTexture = createGlowTexture();
     const configs = [
-        { pos: [-150, -40, -800], scale: 120, color: 0xFF33CC, opacity: 0.3 },
-        { pos: [150, -60, -820], scale: 140, color: 0x3399FF, opacity: 0.25 },
-        { pos: [0, 80, -850], scale: 160, color: 0x9933FF, opacity: 0.2 },
-        { pos: [-80, -90, -780], scale: 100, color: 0x66CCFF, opacity: 0.25 },
-        { pos: [100, 50, -810], scale: 110, color: 0xCC44FF, opacity: 0.22 },
+        {
+            pos: [-150, -40, -800], scale: 120, color: 0xFF33CC, opacity: 0.3,
+        },
+        {
+            pos: [150, -60, -820], scale: 140, color: 0x3399FF, opacity: 0.25,
+        },
+        {
+            pos: [0, 80, -850], scale: 160, color: 0x9933FF, opacity: 0.2,
+        },
+        {
+            pos: [-80, -90, -780], scale: 100, color: 0x66CCFF, opacity: 0.25,
+        },
+        {
+            pos: [100, 50, -810], scale: 110, color: 0xCC44FF, opacity: 0.22,
+        },
     ];
 
-    configs.forEach(({ pos, scale, color, opacity }) => {
+    configs.forEach(({
+        pos, scale, color, opacity,
+    }) => {
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
             map: glowTexture,
-            color: color,
+            color,
             transparent: true,
-            opacity: opacity,
+            opacity,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
         }));
@@ -543,12 +551,20 @@ function createPlanets(uniforms) {
     planetGroup.name = 'planets';
 
     const planetConfigs = [
-        { pos: [-120, -50, -750], size: 15, color1: 0x2E4A62, color2: 0x1A2D3D, hasRing: false },
-        { pos: [140, 60, -780], size: 25, color1: 0xA67C52, color2: 0x6B4423, hasRing: true },
-        { pos: [-40, 90, -820], size: 10, color1: 0x4A626E, color2: 0x2C3E50, hasRing: false },
+        {
+            pos: [-120, -50, -750], size: 15, color1: 0x2E4A62, color2: 0x1A2D3D, hasRing: false,
+        },
+        {
+            pos: [140, 60, -780], size: 25, color1: 0xA67C52, color2: 0x6B4423, hasRing: true,
+        },
+        {
+            pos: [-40, 90, -820], size: 10, color1: 0x4A626E, color2: 0x2C3E50, hasRing: false,
+        },
     ];
 
-    planetConfigs.forEach(({ pos, size, color1, color2, hasRing }) => {
+    planetConfigs.forEach(({
+        pos, size, color1, color2, hasRing,
+    }) => {
         const geometry = new THREE.SphereGeometry(size, 32, 32);
         const material = new THREE.ShaderMaterial({
             uniforms: {
@@ -652,25 +668,25 @@ function setupSkyLighting(group) {
 }
 
 export function updateSkyDriftEnvironment(group, delta, time) {
-    const uniforms = group.userData.uniforms;
+    const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
     }
 
     // Pulse lighting
-    const purpleGlow = group.userData.purpleGlow;
+    const { purpleGlow } = group.userData;
     if (purpleGlow) {
         purpleGlow.intensity = 0.4 + Math.sin(time * 0.3) * 0.15;
     }
 
     // Slowly rotate galaxy
-    const galaxy = group.userData.galaxy;
+    const { galaxy } = group.userData;
     if (galaxy) {
         galaxy.rotation.z += delta * 0.01;
     }
 
     // Rotate planets
-    const planets = group.userData.planets;
+    const { planets } = group.userData;
     if (planets) {
         planets.children.forEach((planet, i) => {
             planet.rotation.y += delta * (0.05 + i * 0.02);

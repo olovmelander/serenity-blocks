@@ -1,6 +1,6 @@
 /**
  * Cosmic Exploration Shaders
- * 
+ *
  * GLSL shaders for the immersive cosmic effect during minimap exploration.
  * Adapted from cosmic-noir-shaders.js for the exploration overlay.
  */

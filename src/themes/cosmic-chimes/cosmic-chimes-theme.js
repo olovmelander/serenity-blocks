@@ -4,7 +4,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 /**
  * Cosmic Chimes Theme - Ethereal space bells and cosmic harmony
- * 
+ *
  * Performance-optimized version with:
  * - Reduced particle counts
  * - Effect throttling/cooldowns
@@ -16,15 +16,15 @@ export default class CosmicChimesTheme extends BaseTheme {
         super('cosmic-chimes');
         this.eventUnsubscribers = [];
         this.chimeInstances = [];
-        
+
         // Performance: Track active effects to limit DOM elements
         this.activeEffectCount = 0;
         this.maxActiveEffects = 15;
-        
+
         // Performance: Cooldowns to prevent effect spam
         this.lastEffectTime = 0;
         this.effectCooldown = 100; // ms between effects
-        
+
         // Graphics quality presets - OPTIMIZED for performance
         this.qualityChangeHandler = null;
         this.currentQuality = 'High';
@@ -120,7 +120,7 @@ export default class CosmicChimesTheme extends BaseTheme {
                 maxActiveEffects: 25,
             },
         };
-        
+
         this.activePreset = this.qualityPresets.High;
     }
 
@@ -196,12 +196,12 @@ export default class CosmicChimesTheme extends BaseTheme {
         for (let i = 0; i < preset.dustParticleCount; i++) {
             const particle = document.createElement('div');
             particle.className = 'dust-particle';
-            
+
             if (!preset.dustAnimationEnabled) {
                 particle.style.animation = 'none';
                 particle.style.opacity = '0.3';
             }
-            
+
             const size = Math.random() * 2 + 1;
             particle.style.cssText = `
                 width: ${size}px;
@@ -212,10 +212,10 @@ export default class CosmicChimesTheme extends BaseTheme {
                 --y-end: ${Math.random() * 100}vh;
                 animation-delay: -${Math.random() * 30}s;
             `;
-            
+
             fragment.appendChild(particle);
         }
-        
+
         dustContainer.appendChild(fragment);
         this.registerContainer(dustContainer);
     }
@@ -230,12 +230,12 @@ export default class CosmicChimesTheme extends BaseTheme {
         for (let i = 0; i < preset.chimeCount; i++) {
             const chime = document.createElement('div');
             chime.className = 'chime';
-            
+
             if (!preset.chimeAnimationEnabled) {
                 chime.style.animation = 'none';
                 chime.style.opacity = '0.6';
             }
-            
+
             chime.style.cssText = `
                 left: ${5 + Math.random() * 90}%;
                 top: ${-10 + Math.random() * 30}%;
@@ -243,11 +243,11 @@ export default class CosmicChimesTheme extends BaseTheme {
                 --r-end: ${Math.random() * 10 - 5}deg;
                 animation-delay: -${Math.random() * 12}s;
             `;
-            
+
             fragment.appendChild(chime);
             this.chimeInstances.push(chime);
         }
-        
+
         chimesContainer.appendChild(fragment);
         this.registerContainer(chimesContainer);
     }
@@ -305,22 +305,38 @@ export default class CosmicChimesTheme extends BaseTheme {
 
     getEdgePosition(zone = 'any') {
         const regions = {
-            topLeft: { xMin: 0, xMax: 25, yMin: 0, yMax: 30 },
-            topRight: { xMin: 75, xMax: 100, yMin: 0, yMax: 30 },
-            bottomLeft: { xMin: 0, xMax: 25, yMin: 70, yMax: 100 },
-            bottomRight: { xMin: 75, xMax: 100, yMin: 70, yMax: 100 },
-            leftSide: { xMin: 0, xMax: 20, yMin: 20, yMax: 80 },
-            rightSide: { xMin: 80, xMax: 100, yMin: 20, yMax: 80 },
-            topEdge: { xMin: 20, xMax: 80, yMin: 0, yMax: 15 },
-            bottomEdge: { xMin: 20, xMax: 80, yMin: 85, yMax: 100 },
+            topLeft: {
+                xMin: 0, xMax: 25, yMin: 0, yMax: 30,
+            },
+            topRight: {
+                xMin: 75, xMax: 100, yMin: 0, yMax: 30,
+            },
+            bottomLeft: {
+                xMin: 0, xMax: 25, yMin: 70, yMax: 100,
+            },
+            bottomRight: {
+                xMin: 75, xMax: 100, yMin: 70, yMax: 100,
+            },
+            leftSide: {
+                xMin: 0, xMax: 20, yMin: 20, yMax: 80,
+            },
+            rightSide: {
+                xMin: 80, xMax: 100, yMin: 20, yMax: 80,
+            },
+            topEdge: {
+                xMin: 20, xMax: 80, yMin: 0, yMax: 15,
+            },
+            bottomEdge: {
+                xMin: 20, xMax: 80, yMin: 85, yMax: 100,
+            },
         };
 
         let availableRegions;
         switch (zone) {
-            case 'corner': availableRegions = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight']; break;
-            case 'top': availableRegions = ['topLeft', 'topRight', 'topEdge']; break;
-            case 'side': availableRegions = ['leftSide', 'rightSide']; break;
-            default: availableRegions = Object.keys(regions);
+        case 'corner': availableRegions = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight']; break;
+        case 'top': availableRegions = ['topLeft', 'topRight', 'topEdge']; break;
+        case 'side': availableRegions = ['leftSide', 'rightSide']; break;
+        default: availableRegions = Object.keys(regions);
         }
 
         const regionName = availableRegions[Math.floor(Math.random() * availableRegions.length)];
@@ -406,17 +422,17 @@ export default class CosmicChimesTheme extends BaseTheme {
 
         for (let i = 0; i < actualCount; i++) {
             if (!this.canSpawnEffect()) continue;
-            
+
             setTimeout(() => {
                 if (!this.isActive) return;
-                
+
                 const strike = document.createElement('div');
                 strike.className = 'chime-strike';
-                
+
                 const pos = this.getEdgePosition('top');
                 strike.style.left = `${pos.x}%`;
                 strike.style.top = `${Math.min(pos.y, 25)}%`;
-                
+
                 container.appendChild(strike);
                 this.trackEffect(strike, 1000);
 
@@ -439,18 +455,18 @@ export default class CosmicChimesTheme extends BaseTheme {
 
         for (let i = 0; i < actualCount; i++) {
             if (!this.canSpawnEffect()) continue;
-            
+
             setTimeout(() => {
                 if (!this.isActive) return;
-                
+
                 // Simplified: single ring instead of 3 nested
                 const wave = document.createElement('div');
                 wave.className = 'sound-wave-simple';
-                
+
                 const pos = this.getEdgePosition('any');
                 wave.style.left = `${pos.x}%`;
                 wave.style.top = `${pos.y}%`;
-                
+
                 container.appendChild(wave);
                 this.trackEffect(wave, 1200);
             }, i * 200);
@@ -472,7 +488,7 @@ export default class CosmicChimesTheme extends BaseTheme {
         for (let i = 0; i < actualCount; i++) {
             const dust = document.createElement('div');
             dust.className = 'stardust-burst';
-            
+
             const pos = this.getEdgePosition('any');
             dust.style.cssText = `
                 left: ${pos.x}%;
@@ -482,17 +498,17 @@ export default class CosmicChimesTheme extends BaseTheme {
                 --dust-color: ${colors[Math.floor(Math.random() * colors.length)]};
                 animation-delay: ${i * 30}ms;
             `;
-            
+
             fragment.appendChild(dust);
             particles.push(dust);
             this.activeEffectCount++;
         }
-        
+
         container.appendChild(fragment);
-        
+
         // Batch cleanup
         setTimeout(() => {
-            particles.forEach(p => p.remove());
+            particles.forEach((p) => p.remove());
             this.activeEffectCount = Math.max(0, this.activeEffectCount - particles.length);
         }, 1200);
     }
@@ -506,15 +522,15 @@ export default class CosmicChimesTheme extends BaseTheme {
 
         for (let i = 0; i < actualCount; i++) {
             if (!this.canSpawnEffect()) continue;
-            
+
             setTimeout(() => {
                 if (!this.isActive) return;
-                
+
                 const aurora = document.createElement('div');
                 aurora.className = 'aurora-wave';
                 aurora.style.top = `${20 + Math.random() * 60}%`;
                 aurora.style.setProperty('--wave-hue', `${180 + Math.random() * 120}`);
-                
+
                 container.appendChild(aurora);
                 this.trackEffect(aurora, 2000);
             }, i * 250);
@@ -530,17 +546,17 @@ export default class CosmicChimesTheme extends BaseTheme {
 
         for (let i = 0; i < actualCount; i++) {
             if (!this.canSpawnEffect()) continue;
-            
+
             setTimeout(() => {
                 if (!this.isActive) return;
-                
+
                 const pulse = document.createElement('div');
                 pulse.className = 'harmonic-pulse';
-                
+
                 const pos = this.getEdgePosition('any');
                 pulse.style.left = `${pos.x}%`;
                 pulse.style.top = `${pos.y}%`;
-                
+
                 container.appendChild(pulse);
                 this.trackEffect(pulse, 800);
             }, i * 80);
@@ -561,23 +577,23 @@ export default class CosmicChimesTheme extends BaseTheme {
         for (let i = 0; i < actualCount; i++) {
             const sparkle = document.createElement('div');
             sparkle.className = 'celestial-sparkle';
-            
+
             const pos = this.getEdgePosition('any');
             sparkle.style.cssText = `
                 left: ${pos.x}%;
                 top: ${pos.y}%;
                 animation-delay: ${i * 40}ms;
             `;
-            
+
             fragment.appendChild(sparkle);
             sparkles.push(sparkle);
             this.activeEffectCount++;
         }
-        
+
         container.appendChild(fragment);
-        
+
         setTimeout(() => {
-            sparkles.forEach(s => s.remove());
+            sparkles.forEach((s) => s.remove());
             this.activeEffectCount = Math.max(0, this.activeEffectCount - sparkles.length);
         }, 500);
     }
@@ -589,7 +605,7 @@ export default class CosmicChimesTheme extends BaseTheme {
         // Use CSS class for better performance
         nebula.style.setProperty('--pulse-intensity', intensity);
         nebula.classList.add('nebula-pulse');
-        
+
         setTimeout(() => {
             nebula.classList.remove('nebula-pulse');
         }, 400);
@@ -599,34 +615,34 @@ export default class CosmicChimesTheme extends BaseTheme {
 
     triggerPieceLockChime() {
         if (!this.canSpawnEffect()) return;
-        
+
         const container = document.getElementById('cosmic-chimes-effects');
         if (!container) return;
 
         const chime = document.createElement('div');
         chime.className = 'piece-lock-chime';
-        
+
         const pos = this.getEdgePosition('top');
         chime.style.left = `${pos.x}%`;
         chime.style.top = `${Math.min(pos.y, 20)}%`;
-        
+
         container.appendChild(chime);
         this.trackEffect(chime, 400);
     }
 
     triggerPieceLockSparkle() {
         if (!this.canSpawnEffect()) return;
-        
+
         const container = document.getElementById('cosmic-chimes-effects');
         if (!container) return;
 
         const sparkle = document.createElement('div');
         sparkle.className = 'piece-lock-sparkle-chimes';
-        
+
         const pos = this.getEdgePosition('any');
         sparkle.style.left = `${pos.x}%`;
         sparkle.style.top = `${pos.y}%`;
-        
+
         container.appendChild(sparkle);
         this.trackEffect(sparkle, 350);
     }
@@ -640,12 +656,12 @@ export default class CosmicChimesTheme extends BaseTheme {
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
         this.teardownQualityListener();
-        
+
         // Clear all active effects
         const container = document.getElementById('cosmic-chimes-effects');
         if (container) container.innerHTML = '';
         this.activeEffectCount = 0;
-        
+
         super.stop();
     }
 

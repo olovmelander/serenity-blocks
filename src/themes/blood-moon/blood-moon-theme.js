@@ -283,7 +283,7 @@ export default class BloodMoonTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createStarfield() {
-        const starCount = this.qualityPreset.starCount;
+        const { starCount } = this.qualityPreset;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(starCount * 3);
         const colors = new Float32Array(starCount * 3);
@@ -318,7 +318,7 @@ export default class BloodMoonTheme extends BaseTheme {
             // Color - mostly red-tinted stars for blood moon atmosphere
             const colorIndex = Math.random() > 0.15
                 ? Math.floor(2 + Math.random() * 4) // Red tints (85%)
-                : Math.floor(Math.random() * 2);     // White (15%)
+                : Math.floor(Math.random() * 2); // White (15%)
             const color = starColors[colorIndex];
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
@@ -328,8 +328,8 @@ export default class BloodMoonTheme extends BaseTheme {
             sizes[i] = 30 + Math.random() * 60;
 
             // Twinkle: phase offset, varied speed (0.8 to 2.5 Hz)
-            twinkleData[i2] = Math.random() * Math.PI * 2;      // phase
-            twinkleData[i2 + 1] = 0.8 + Math.random() * 1.7;    // speed
+            twinkleData[i2] = Math.random() * Math.PI * 2; // phase
+            twinkleData[i2 + 1] = 0.8 + Math.random() * 1.7; // speed
 
             brightness[i] = 0.3 + Math.random() * 0.7;
         }
@@ -363,16 +363,14 @@ export default class BloodMoonTheme extends BaseTheme {
     // Nebula Clouds - Crimson/burgundy clouds at varying depths
     // ─────────────────────────────────────────────────────────────────────────
 
-
-
     createNebulaClouds() {
         const textureLoader = new THREE.TextureLoader();
         const texturePath = './textures/blood-moon/';
 
         const textures = [
-            textureLoader.load(texturePath + 'nebula-red-1.png'),
-            textureLoader.load(texturePath + 'nebula-red-2.png'),
-            textureLoader.load(texturePath + 'nebula-red-3.png'),
+            textureLoader.load(`${texturePath}nebula-red-1.png`),
+            textureLoader.load(`${texturePath}nebula-red-2.png`),
+            textureLoader.load(`${texturePath}nebula-red-3.png`),
         ];
 
         textures.forEach((t) => {
@@ -383,11 +381,19 @@ export default class BloodMoonTheme extends BaseTheme {
         // Large planes to fill the background
         const nebulaConfigs = [
             // Deep background layer (Parallax factor 0.1)
-            { texture: textures[0], size: 6000, z: -4500, opacity: 0.3, speed: 0.0001 },
-            { texture: textures[1], size: 7000, z: -4000, opacity: 0.25, speed: 0.00015 },
+            {
+                texture: textures[0], size: 6000, z: -4500, opacity: 0.3, speed: 0.0001,
+            },
+            {
+                texture: textures[1], size: 7000, z: -4000, opacity: 0.25, speed: 0.00015,
+            },
             // Mid layer (Parallax factor 0.3)
-            { texture: textures[2], size: 5000, z: -3000, opacity: 0.2, speed: 0.0002 },
-            { texture: textures[0], size: 5500, z: -2500, opacity: 0.15, speed: 0.00025 },
+            {
+                texture: textures[2], size: 5000, z: -3000, opacity: 0.2, speed: 0.0002,
+            },
+            {
+                texture: textures[0], size: 5500, z: -2500, opacity: 0.15, speed: 0.00025,
+            },
         ];
 
         this.nebulaClouds = [];
@@ -658,7 +664,7 @@ export default class BloodMoonTheme extends BaseTheme {
             new THREE.Vector2(window.innerWidth, window.innerHeight),
             this.qualityPreset.bloomStrength,
             this.qualityPreset.bloomRadius,
-            0.2
+            0.2,
         );
         this.composer.addPass(bloomPass);
 
@@ -727,10 +733,10 @@ export default class BloodMoonTheme extends BaseTheme {
 
         // Slow drift moon across entire screen
         if (this.moonGroup) {
-            const driftX = Math.sin(this.time * 0.03 + this.moonPhaseX) * 550 +
-                Math.cos(this.time * 0.02 + this.moonPhaseX2) * 250;
-            const driftY = Math.cos(this.time * 0.025 + this.moonPhaseY) * 350 +
-                Math.sin(this.time * 0.015 + this.moonPhaseY2) * 150;
+            const driftX = Math.sin(this.time * 0.03 + this.moonPhaseX) * 550
+                + Math.cos(this.time * 0.02 + this.moonPhaseX2) * 250;
+            const driftY = Math.cos(this.time * 0.025 + this.moonPhaseY) * 350
+                + Math.sin(this.time * 0.015 + this.moonPhaseY2) * 150;
 
             this.moonGroup.position.x = driftX;
             this.moonGroup.position.y = driftY;
@@ -748,14 +754,14 @@ export default class BloodMoonTheme extends BaseTheme {
         if (this.camera) {
             const cameraTime = this.time * 0.06; // Slow but noticeable orbit
             const orbitRadiusX = 400; // Wide horizontal sway
-            const orbitRadiusY = 300;  // Vertical sway range
-            const orbitRadiusZ = 200;  // Depth breathing
+            const orbitRadiusY = 300; // Vertical sway range
+            const orbitRadiusZ = 200; // Depth breathing
 
             // Orbital sway - creates parallax with starfield/nebula
-            this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX +
-                Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4;
-            this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY +
-                Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3;
+            this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX
+                + Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4;
+            this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY
+                + Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3;
             this.camera.position.z = 1200 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
 
             // LookAt drift for dynamic framing (not following moon)
@@ -954,9 +960,7 @@ export default class BloodMoonTheme extends BaseTheme {
         this.moonPulseIntensity = Math.min(this.moonPulseIntensity + 0.15, 0.5);
         // Star twinkle boost on piece lock
         if (this.starfield && this.starfield.material.uniforms) {
-            this.starfield.material.uniforms.uEventBoost.value = Math.min(
-                this.starfield.material.uniforms.uEventBoost.value + 0.8, 2.0
-            );
+            this.starfield.material.uniforms.uEventBoost.value = Math.min(this.starfield.material.uniforms.uEventBoost.value + 0.8, 2.0);
         }
     }
 

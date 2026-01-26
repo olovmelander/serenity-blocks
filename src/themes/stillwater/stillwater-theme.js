@@ -2,7 +2,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  *  🌲✨ STILLWATER THEME - A John Bauer Dreamscape ✨🌲
  * ═══════════════════════════════════════════════════════════════════════════════
- * 
+ *
  * A realm between worlds - the enchanted twilight of Swedish folklore.
  * Where ancient forests hold secrets, spirits dwell in still waters,
  * and the boundary between magic and reality blurs.
@@ -51,55 +51,55 @@ import {
 
 const COLORS = {
     // Water - deep mystical pool
-    waterDeep: new THREE.Color(0x1a2a25),      // Deep forest green
-    waterSurface: new THREE.Color(0x2a3a35),   // Murky green
+    waterDeep: new THREE.Color(0x1a2a25), // Deep forest green
+    waterSurface: new THREE.Color(0x2a3a35), // Murky green
     spiritReflection: new THREE.Color(0xf5e8c8), // Spirit's warm glow in water
 
     // Trees - ancient, alive
-    treeBase: new THREE.Color(0x2a2520),       // Dark brown-grey
-    treeMid: new THREE.Color(0x3a3530),        // Medium
-    treeFar: new THREE.Color(0x4a4540),        // Faded into mist
+    treeBase: new THREE.Color(0x2a2520), // Dark brown-grey
+    treeMid: new THREE.Color(0x3a3530), // Medium
+    treeFar: new THREE.Color(0x4a4540), // Faded into mist
 
     // Moss - rich forest floor
-    mossDeep: new THREE.Color(0x1a2818),       // Deep forest green
-    mossMid: new THREE.Color(0x2a3820),        // Rich moss
-    mossLight: new THREE.Color(0x3a4830),      // Highlighted moss
+    mossDeep: new THREE.Color(0x1a2818), // Deep forest green
+    mossMid: new THREE.Color(0x2a3820), // Rich moss
+    mossLight: new THREE.Color(0x3a4830), // Highlighted moss
 
     // Atmosphere
-    fogColor: new THREE.Color(0x3a4035),       // Misty green-grey
-    skyTop: new THREE.Color(0x1a2520),         // Dark night forest
-    skyMid: new THREE.Color(0x2a3530),         // Twilight
-    skyHorizon: new THREE.Color(0x4a5545),     // Distant glow
+    fogColor: new THREE.Color(0x3a4035), // Misty green-grey
+    skyTop: new THREE.Color(0x1a2520), // Dark night forest
+    skyMid: new THREE.Color(0x2a3530), // Twilight
+    skyHorizon: new THREE.Color(0x4a5545), // Distant glow
 
     // Spirit - luminous being
-    spiritCore: new THREE.Color(0xfff8e8),     // Warm white
-    spiritAura: new THREE.Color(0xf5e0b0),     // Golden glow
+    spiritCore: new THREE.Color(0xfff8e8), // Warm white
+    spiritAura: new THREE.Color(0xf5e0b0), // Golden glow
 
     // Magic particles
-    lightWarm: new THREE.Color(0xfff5d0),      // Spirit spark
-    lightCool: new THREE.Color(0xd0f0f5),      // Fairy light
-    lightGold: new THREE.Color(0xffe8a0),      // Golden mote
+    lightWarm: new THREE.Color(0xfff5d0), // Spirit spark
+    lightCool: new THREE.Color(0xd0f0f5), // Fairy light
+    lightGold: new THREE.Color(0xffe8a0), // Golden mote
 
     // Effects
     ripple: new THREE.Color(0x80a090),
 
     // Mushrooms - bioluminescent
-    mushroomBase: new THREE.Color(0x4a3a30),     // Dark brown cap
-    mushroomGlow: new THREE.Color(0x80f0c0),     // Cyan-green glow
+    mushroomBase: new THREE.Color(0x4a3a30), // Dark brown cap
+    mushroomGlow: new THREE.Color(0x80f0c0), // Cyan-green glow
 
     // Aurora - subtle northern lights
-    auroraGreen: new THREE.Color(0x60f080),      // Aurora green
-    auroraPurple: new THREE.Color(0xa080f0),     // Aurora purple
+    auroraGreen: new THREE.Color(0x60f080), // Aurora green
+    auroraPurple: new THREE.Color(0xa080f0), // Aurora purple
 
     // Lily pad
-    lilyPad: new THREE.Color(0x2a4028),          // Deep green
-    lilyFlower: new THREE.Color(0xfff0e0),       // Cream white
+    lilyPad: new THREE.Color(0x2a4028), // Deep green
+    lilyFlower: new THREE.Color(0xfff0e0), // Cream white
 
     // Trolls - glowing amber eyes
-    trollEyes: new THREE.Color(0xffa040),        // Warm amber glow
+    trollEyes: new THREE.Color(0xffa040), // Warm amber glow
 
     // Golden fireflies
-    goldenMote: new THREE.Color(0xffc040),       // Warm gold
+    goldenMote: new THREE.Color(0xffc040), // Warm gold
 };
 
 export default class StillwaterTheme extends BaseTheme {
@@ -152,19 +152,19 @@ export default class StillwaterTheme extends BaseTheme {
         // WANDERING SPIRIT SYSTEM
         // ═══════════════════════════════════════════════════════════════════════════
         this.spiritSpawnPoints = [
-            { x: 0, y: 2.5, z: -6 },           // Center (original)
-            { x: -25, y: 3.5, z: -8 },         // Left mid
-            { x: 20, y: 2.0, z: -5 },          // Right mid
-            { x: -40, y: 4.0, z: -10 },        // Far left (visiting far trolls)
-            { x: 35, y: 3.0, z: -10 },         // Far right
-            { x: 0, y: 5.0, z: -15 },          // Deep center, elevated
+            { x: 0, y: 2.5, z: -6 }, // Center (original)
+            { x: -25, y: 3.5, z: -8 }, // Left mid
+            { x: 20, y: 2.0, z: -5 }, // Right mid
+            { x: -40, y: 4.0, z: -10 }, // Far left (visiting far trolls)
+            { x: 35, y: 3.0, z: -10 }, // Far right
+            { x: 0, y: 5.0, z: -15 }, // Deep center, elevated
         ];
         this.currentSpiritIndex = 0;
         this.nextSpiritIndex = 0;
-        this.spiritTransition = 1.0;          // 0 = invisible, 1 = fully visible
+        this.spiritTransition = 1.0; // 0 = invisible, 1 = fully visible
         this.spiritWanderTimer = 0;
-        this.spiritWanderInterval = 12.0;     // Seconds between moves
-        this.spiritState = 'visible';          // 'visible', 'fading_out', 'moving', 'fading_in'
+        this.spiritWanderInterval = 12.0; // Seconds between moves
+        this.spiritState = 'visible'; // 'visible', 'fading_out', 'moving', 'fading_in'
         this.spiritCurrentPos = { x: 0, y: 2.5, z: -6 };
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -204,7 +204,7 @@ export default class StillwaterTheme extends BaseTheme {
             45,
             window.innerWidth / window.innerHeight,
             0.1,
-            200
+            200,
         );
         this.camera.position.set(0, 6, 25); // Lower and further back
         this.camera.lookAt(0, 6, -15); // Look slightly up into the distance
@@ -216,7 +216,7 @@ export default class StillwaterTheme extends BaseTheme {
         this.renderer = new THREE.WebGLRenderer({
             alpha: true,
             antialias: this.getAntialiasEnabled(),
-            powerPreference: 'high-performance'
+            powerPreference: 'high-performance',
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
@@ -275,10 +275,10 @@ export default class StillwaterTheme extends BaseTheme {
         const ctx = canvas.getContext('2d');
 
         const gradient = ctx.createLinearGradient(0, 0, 0, 512);
-        gradient.addColorStop(0, '#1a2520');    // Deep forest darkness
-        gradient.addColorStop(0.3, '#2a3530');  // Twilight green
-        gradient.addColorStop(0.6, '#3a4540');  // Middle grey-green
-        gradient.addColorStop(1, '#4a5545');    // Distant soft glow
+        gradient.addColorStop(0, '#1a2520'); // Deep forest darkness
+        gradient.addColorStop(0.3, '#2a3530'); // Twilight green
+        gradient.addColorStop(0.6, '#3a4540'); // Middle grey-green
+        gradient.addColorStop(1, '#4a5545'); // Distant soft glow
 
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, 2, 512);
@@ -330,15 +330,25 @@ export default class StillwaterTheme extends BaseTheme {
         // Create organic rolling moss mounds like in the painting
         const moundConfigs = [
             // Layer 1 - closest banks (Lower and wider)
-            { y: -1.0, z: -2, scaleX: 18, scaleY: 2.5, scaleZ: 6, x: -28 }, // Left bank
-            { y: -0.5, z: -3, scaleX: 20, scaleY: 3, scaleZ: 7, x: 28 },    // Right bank
-            { y: -4.0, z: -6, scaleX: 30, scaleY: 2, scaleZ: 10, x: 0 },    // Sunken central ground (underwater/shore)
+            {
+                y: -1.0, z: -2, scaleX: 18, scaleY: 2.5, scaleZ: 6, x: -28,
+            }, // Left bank
+            {
+                y: -0.5, z: -3, scaleX: 20, scaleY: 3, scaleZ: 7, x: 28,
+            }, // Right bank
+            {
+                y: -4.0, z: -6, scaleX: 30, scaleY: 2, scaleZ: 10, x: 0,
+            }, // Sunken central ground (underwater/shore)
 
             // Layer 2 - middle undulating (Pushed back and flattened)
-            { y: 0, z: -25, scaleX: 70, scaleY: 6, scaleZ: 15 },
+            {
+                y: 0, z: -25, scaleX: 70, scaleY: 6, scaleZ: 15,
+            },
 
             // Layer 3 - back rolling hills (Background)
-            { y: 5, z: -40, scaleX: 90, scaleY: 10, scaleZ: 20 },
+            {
+                y: 5, z: -40, scaleX: 90, scaleY: 10, scaleZ: 20,
+            },
         ];
 
         for (const config of moundConfigs) {
@@ -353,8 +363,8 @@ export default class StillwaterTheme extends BaseTheme {
                 positions[i + 2] *= config.scaleZ;
 
                 // Add organic noise
-                const noise = Math.sin(positions[i] * 0.15) * 0.5 +
-                    Math.cos(positions[i] * 0.08 + positions[i + 2] * 0.1) * 0.3;
+                const noise = Math.sin(positions[i] * 0.15) * 0.5
+                    + Math.cos(positions[i] * 0.08 + positions[i + 2] * 0.1) * 0.3;
                 positions[i + 1] += noise * config.scaleY * 0.3;
 
                 // Flatten bottom
@@ -392,31 +402,69 @@ export default class StillwaterTheme extends BaseTheme {
         // Tree configurations - like pillars framing the scene
         const treeConfigs = [
             // Foreground frame trees
-            { x: -18, z: -3, height: 55, radius: 1.8, color: COLORS.treeBase, depth: 0.0 },
-            { x: 20, z: -4, height: 50, radius: 1.6, color: COLORS.treeBase, depth: 0.0 },
+            {
+                x: -18, z: -3, height: 55, radius: 1.8, color: COLORS.treeBase, depth: 0.0,
+            },
+            {
+                x: 20, z: -4, height: 50, radius: 1.6, color: COLORS.treeBase, depth: 0.0,
+            },
 
             // Close trees
-            { x: -28, z: -8, height: 48, radius: 1.4, color: COLORS.treeBase, depth: 0.1 },
-            { x: -10, z: -6, height: 52, radius: 1.5, color: COLORS.treeBase, depth: 0.05 },
-            { x: 12, z: -7, height: 45, radius: 1.3, color: COLORS.treeBase, depth: 0.08 },
-            { x: 30, z: -6, height: 50, radius: 1.5, color: COLORS.treeBase, depth: 0.05 },
+            {
+                x: -28, z: -8, height: 48, radius: 1.4, color: COLORS.treeBase, depth: 0.1,
+            },
+            {
+                x: -10, z: -6, height: 52, radius: 1.5, color: COLORS.treeBase, depth: 0.05,
+            },
+            {
+                x: 12, z: -7, height: 45, radius: 1.3, color: COLORS.treeBase, depth: 0.08,
+            },
+            {
+                x: 30, z: -6, height: 50, radius: 1.5, color: COLORS.treeBase, depth: 0.05,
+            },
 
             // Mid trees
-            { x: -35, z: -15, height: 45, radius: 1.2, color: COLORS.treeMid, depth: 0.25 },
-            { x: -22, z: -18, height: 42, radius: 1.1, color: COLORS.treeMid, depth: 0.3 },
-            { x: -5, z: -16, height: 48, radius: 1.3, color: COLORS.treeMid, depth: 0.25 },
-            { x: 8, z: -17, height: 44, radius: 1.2, color: COLORS.treeMid, depth: 0.28 },
-            { x: 25, z: -15, height: 46, radius: 1.2, color: COLORS.treeMid, depth: 0.25 },
-            { x: 38, z: -16, height: 43, radius: 1.1, color: COLORS.treeMid, depth: 0.3 },
+            {
+                x: -35, z: -15, height: 45, radius: 1.2, color: COLORS.treeMid, depth: 0.25,
+            },
+            {
+                x: -22, z: -18, height: 42, radius: 1.1, color: COLORS.treeMid, depth: 0.3,
+            },
+            {
+                x: -5, z: -16, height: 48, radius: 1.3, color: COLORS.treeMid, depth: 0.25,
+            },
+            {
+                x: 8, z: -17, height: 44, radius: 1.2, color: COLORS.treeMid, depth: 0.28,
+            },
+            {
+                x: 25, z: -15, height: 46, radius: 1.2, color: COLORS.treeMid, depth: 0.25,
+            },
+            {
+                x: 38, z: -16, height: 43, radius: 1.1, color: COLORS.treeMid, depth: 0.3,
+            },
 
             // Far trees (fading into mist)
-            { x: -40, z: -28, height: 40, radius: 1.0, color: COLORS.treeFar, depth: 0.5 },
-            { x: -28, z: -30, height: 38, radius: 0.9, color: COLORS.treeFar, depth: 0.55 },
-            { x: -15, z: -32, height: 42, radius: 1.0, color: COLORS.treeFar, depth: 0.5 },
-            { x: 0, z: -35, height: 40, radius: 0.9, color: COLORS.treeFar, depth: 0.55 },
-            { x: 18, z: -30, height: 38, radius: 0.9, color: COLORS.treeFar, depth: 0.5 },
-            { x: 32, z: -32, height: 42, radius: 1.0, color: COLORS.treeFar, depth: 0.52 },
-            { x: 45, z: -28, height: 36, radius: 0.8, color: COLORS.treeFar, depth: 0.55 },
+            {
+                x: -40, z: -28, height: 40, radius: 1.0, color: COLORS.treeFar, depth: 0.5,
+            },
+            {
+                x: -28, z: -30, height: 38, radius: 0.9, color: COLORS.treeFar, depth: 0.55,
+            },
+            {
+                x: -15, z: -32, height: 42, radius: 1.0, color: COLORS.treeFar, depth: 0.5,
+            },
+            {
+                x: 0, z: -35, height: 40, radius: 0.9, color: COLORS.treeFar, depth: 0.55,
+            },
+            {
+                x: 18, z: -30, height: 38, radius: 0.9, color: COLORS.treeFar, depth: 0.5,
+            },
+            {
+                x: 32, z: -32, height: 42, radius: 1.0, color: COLORS.treeFar, depth: 0.52,
+            },
+            {
+                x: 45, z: -28, height: 36, radius: 0.8, color: COLORS.treeFar, depth: 0.55,
+            },
         ];
 
         for (const config of treeConfigs) {
@@ -429,11 +477,11 @@ export default class StillwaterTheme extends BaseTheme {
     createTree(config) {
         // Create organic tree trunk with slight bulges
         const geometry = new THREE.CylinderGeometry(
-            config.radius * 0.4,   // Top (tapered)
-            config.radius,         // Bottom
+            config.radius * 0.4, // Top (tapered)
+            config.radius, // Bottom
             config.height,
             12,
-            8
+            8,
         );
 
         // Add organic irregularity
@@ -443,8 +491,8 @@ export default class StillwaterTheme extends BaseTheme {
             const heightRatio = (y + config.height / 2) / config.height;
 
             // Bulges at base and knots
-            const bulge = Math.sin(heightRatio * Math.PI * 3) * 0.1 +
-                Math.sin(heightRatio * Math.PI * 7) * 0.05;
+            const bulge = Math.sin(heightRatio * Math.PI * 3) * 0.1
+                + Math.sin(heightRatio * Math.PI * 7) * 0.05;
 
             const currentRadius = Math.sqrt(positions[i] * positions[i] + positions[i + 2] * positions[i + 2]);
             const scale = 1 + bulge;
@@ -471,7 +519,7 @@ export default class StillwaterTheme extends BaseTheme {
         trunk.position.set(
             config.x + (Math.random() - 0.5) * 2,
             config.height / 2,
-            config.z
+            config.z,
         );
 
         return trunk;
@@ -790,25 +838,43 @@ export default class StillwaterTheme extends BaseTheme {
         // IMPORTANT: Moss mound Layer 2 is at z:-25 with scaleZ:15, so its front face is at z:-10
         // Moss mound Layer 3 is at z:-40 with scaleZ:20, so its front face is at z:-20
         // Trolls must be at z > -10 (in front of hill geometry) to be visible!
-        // 
+        //
         // Tree z-positions for hiding: -3, -4, -6, -7, -8
 
         const trollPositions = [
             // Foreground trolls - hiding behind trees near the water (z: -3 to -8)
-            { x: -35, z: -3, y: 0.5, scale: 0.9, hideX: -2.0, startPeeking: true },    // Far Left Foreground
-            { x: 38, z: -4, y: 0.4, scale: 0.85, hideX: 2.0, startPeeking: false },    // Far Right Foreground
-            { x: -16, z: -5, y: 0.5, scale: 0.8, hideX: -1.5, startPeeking: false },   // Mid Left
+            {
+                x: -35, z: -3, y: 0.5, scale: 0.9, hideX: -2.0, startPeeking: true,
+            }, // Far Left Foreground
+            {
+                x: 38, z: -4, y: 0.4, scale: 0.85, hideX: 2.0, startPeeking: false,
+            }, // Far Right Foreground
+            {
+                x: -16, z: -5, y: 0.5, scale: 0.8, hideX: -1.5, startPeeking: false,
+            }, // Mid Left
 
             // On the hill ridge - at the front edge of the moss mound (z: -8 to -10)
             // These appear to stand on the visible hill at various heights
-            { x: -42, z: -8, y: 4.5, scale: 0.7, hideX: -1.5, startPeeking: true },    // Extreme Left Hill
-            { x: 32, z: -9, y: 3.0, scale: 0.65, hideX: 1.5, startPeeking: false },    // Right side of hill
-            { x: -5, z: -10, y: 4.0, scale: 0.6, hideX: -1.0, startPeeking: true },    // Center-left hill
+            {
+                x: -42, z: -8, y: 4.5, scale: 0.7, hideX: -1.5, startPeeking: true,
+            }, // Extreme Left Hill
+            {
+                x: 32, z: -9, y: 3.0, scale: 0.65, hideX: 1.5, startPeeking: false,
+            }, // Right side of hill
+            {
+                x: -5, z: -10, y: 4.0, scale: 0.6, hideX: -1.0, startPeeking: true,
+            }, // Center-left hill
 
             // Higher on the back hills - at z:-12 to -15, still in front of the geometry
-            { x: -25, z: -12, y: 5.5, scale: 0.55, hideX: -1.2, startPeeking: true },  // Mid-Back Left
-            { x: 42, z: -14, y: 6.0, scale: 0.5, hideX: 1.0, startPeeking: false },    // Extreme Right High
-            { x: 0, z: -13, y: 5.8, scale: 0.5, hideX: 0.8, startPeeking: false },     // Center, on ridge
+            {
+                x: -25, z: -12, y: 5.5, scale: 0.55, hideX: -1.2, startPeeking: true,
+            }, // Mid-Back Left
+            {
+                x: 42, z: -14, y: 6.0, scale: 0.5, hideX: 1.0, startPeeking: false,
+            }, // Extreme Right High
+            {
+                x: 0, z: -13, y: 5.8, scale: 0.5, hideX: 0.8, startPeeking: false,
+            }, // Center, on ridge
         ];
 
         for (let i = 0; i < trollPositions.length; i++) {
@@ -840,8 +906,8 @@ export default class StillwaterTheme extends BaseTheme {
                 fragmentShader: trollFragmentShader,
                 transparent: true,
                 side: THREE.DoubleSide,
-                depthWrite: false,  // Prevent z-fighting with other transparent objects
-                depthTest: true,    // Still respect depth buffer for proper occlusion
+                depthWrite: false, // Prevent z-fighting with other transparent objects
+                depthTest: true, // Still respect depth buffer for proper occlusion
             });
 
             const troll = new THREE.Mesh(geometry, material);
@@ -862,16 +928,16 @@ export default class StillwaterTheme extends BaseTheme {
                 mesh: troll,
                 uniforms: trollUniforms,
                 baseX: pos.x,
-                baseY: baseY,
+                baseY,
                 baseZ: pos.z,
                 hideX: pos.hideX,
                 scale: pos.scale,
 
                 // Personality traits (fixed per troll)
-                curiosity: 0.4 + Math.random() * 0.4,       // How bold this troll is
-                nervousness: 0.2 + Math.random() * 0.5,     // How easily startled
-                playfulness: Math.random(),                 // New: likeliness to hop/dance
-                patience: 2 + Math.random() * 5,            // How long before changing behavior
+                curiosity: 0.4 + Math.random() * 0.4, // How bold this troll is
+                nervousness: 0.2 + Math.random() * 0.5, // How easily startled
+                playfulness: Math.random(), // New: likeliness to hop/dance
+                patience: 2 + Math.random() * 5, // How long before changing behavior
 
                 // Current behavior state
                 behaviorState: willStartPeeking ? 'watching' : 'hiding',
@@ -1018,10 +1084,18 @@ export default class StillwaterTheme extends BaseTheme {
 
     createLightBeams() {
         const beamConfigs = [
-            { x: -5, z: -10, w: 6, h: 40, rot: 0.2 },
-            { x: 5, z: -15, w: 8, h: 50, rot: -0.15 },
-            { x: -15, z: -8, w: 5, h: 35, rot: 0.1 },
-            { x: 12, z: -20, w: 10, h: 45, rot: -0.25 },
+            {
+                x: -5, z: -10, w: 6, h: 40, rot: 0.2,
+            },
+            {
+                x: 5, z: -15, w: 8, h: 50, rot: -0.15,
+            },
+            {
+                x: -15, z: -8, w: 5, h: 35, rot: 0.1,
+            },
+            {
+                x: 12, z: -20, w: 10, h: 45, rot: -0.25,
+            },
         ];
 
         const geometry = new THREE.PlaneGeometry(1, 1);
@@ -1059,8 +1133,12 @@ export default class StillwaterTheme extends BaseTheme {
     createForegroundFraming() {
         // Large dark silhouette trees close to camera
         const positions = [
-            { x: -18, z: 15, r: 2.5, h: 25 },
-            { x: 22, z: 12, r: 3, h: 25 },
+            {
+                x: -18, z: 15, r: 2.5, h: 25,
+            },
+            {
+                x: 22, z: 12, r: 3, h: 25,
+            },
         ];
 
         const geometry = new THREE.CylinderGeometry(1, 1, 1, 16);
@@ -1085,7 +1163,7 @@ export default class StillwaterTheme extends BaseTheme {
 
             // Add slight curve
             const positions = tree.geometry.attributes.position;
-            const count = positions.count;
+            const { count } = positions;
             for (let i = 0; i < count; i++) {
                 const y = positions.getY(i);
                 if (y > 0) {
@@ -1131,7 +1209,7 @@ export default class StillwaterTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     setupEventListeners() {
-        this.eventUnsubscribers.forEach(unsub => unsub?.());
+        this.eventUnsubscribers.forEach((unsub) => unsub?.());
         this.eventUnsubscribers = [];
 
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
@@ -1292,8 +1370,8 @@ export default class StillwaterTheme extends BaseTheme {
 
             velocities.push(
                 Math.cos(angle) * speed * 0.5, // X
-                lift,                          // Y
-                Math.sin(angle) * speed * 0.5  // Z
+                lift, // Y
+                Math.sin(angle) * speed * 0.5, // Z
             );
 
             phases.push(Math.random() * Math.PI * 2);
@@ -1314,9 +1392,9 @@ export default class StillwaterTheme extends BaseTheme {
 
         const burst = new THREE.Points(geometry, material);
         burst.userData = {
-            velocities: velocities,
+            velocities,
             life: 1.2,
-            gravity: -3.0
+            gravity: -3.0,
         };
 
         this.spiritBursts.push(burst);
@@ -1343,7 +1421,7 @@ export default class StillwaterTheme extends BaseTheme {
         beam.position.set(
             (Math.random() - 0.5) * 25,
             14,
-            -10 - Math.random() * 15
+            -10 - Math.random() * 15,
         );
         beam.rotation.z = (Math.random() - 0.5) * 0.15;
 
@@ -1360,68 +1438,68 @@ export default class StillwaterTheme extends BaseTheme {
     updateWanderingSpirit(delta) {
         if (!this.spirit) return;
 
-        const fadeSpeed = 1.2;  // How fast spirit fades in/out
+        const fadeSpeed = 1.2; // How fast spirit fades in/out
 
         switch (this.spiritState) {
-            case 'visible':
-                // Count down to next wander
-                this.spiritWanderTimer += delta;
-                if (this.spiritWanderTimer >= this.spiritWanderInterval) {
-                    this.spiritWanderTimer = 0;
-                    this.spiritState = 'fading_out';
+        case 'visible':
+            // Count down to next wander
+            this.spiritWanderTimer += delta;
+            if (this.spiritWanderTimer >= this.spiritWanderInterval) {
+                this.spiritWanderTimer = 0;
+                this.spiritState = 'fading_out';
 
-                    // Pick next spawn point (different from current)
-                    let nextIndex;
-                    do {
-                        nextIndex = Math.floor(Math.random() * this.spiritSpawnPoints.length);
-                    } while (nextIndex === this.currentSpiritIndex && this.spiritSpawnPoints.length > 1);
-                    this.nextSpiritIndex = nextIndex;
+                // Pick next spawn point (different from current)
+                let nextIndex;
+                do {
+                    nextIndex = Math.floor(Math.random() * this.spiritSpawnPoints.length);
+                } while (nextIndex === this.currentSpiritIndex && this.spiritSpawnPoints.length > 1);
+                this.nextSpiritIndex = nextIndex;
+            }
+            break;
+
+        case 'fading_out':
+            // Fade out the spirit
+            this.spiritTransition -= delta * fadeSpeed;
+            if (this.spiritTransition <= 0) {
+                this.spiritTransition = 0;
+                this.spiritState = 'moving';
+
+                // Move to new position instantly while invisible
+                const newPos = this.spiritSpawnPoints[this.nextSpiritIndex];
+                this.spirit.position.set(newPos.x, newPos.y, newPos.z);
+                this.spiritCurrentPos = { ...newPos };
+                this.currentSpiritIndex = this.nextSpiritIndex;
+
+                // Update lights position
+                if (this.spiritLight) {
+                    this.spiritLight.position.set(newPos.x, newPos.y + 1, newPos.z + 1);
                 }
-                break;
-
-            case 'fading_out':
-                // Fade out the spirit
-                this.spiritTransition -= delta * fadeSpeed;
-                if (this.spiritTransition <= 0) {
-                    this.spiritTransition = 0;
-                    this.spiritState = 'moving';
-
-                    // Move to new position instantly while invisible
-                    const newPos = this.spiritSpawnPoints[this.nextSpiritIndex];
-                    this.spirit.position.set(newPos.x, newPos.y, newPos.z);
-                    this.spiritCurrentPos = { ...newPos };
-                    this.currentSpiritIndex = this.nextSpiritIndex;
-
-                    // Update lights position
-                    if (this.spiritLight) {
-                        this.spiritLight.position.set(newPos.x, newPos.y + 1, newPos.z + 1);
-                    }
-                    if (this.spiritAmbient) {
-                        this.spiritAmbient.position.set(newPos.x, newPos.y + 1.5, newPos.z + 3);
-                    }
+                if (this.spiritAmbient) {
+                    this.spiritAmbient.position.set(newPos.x, newPos.y + 1.5, newPos.z + 3);
                 }
-                break;
+            }
+            break;
 
-            case 'moving':
-                // Brief pause while invisible, then fade in
-                this.spiritWanderTimer += delta;
-                if (this.spiritWanderTimer >= 0.5) {  // 0.5 second pause
-                    this.spiritWanderTimer = 0;
-                    this.spiritState = 'fading_in';
-                }
-                break;
+        case 'moving':
+            // Brief pause while invisible, then fade in
+            this.spiritWanderTimer += delta;
+            if (this.spiritWanderTimer >= 0.5) { // 0.5 second pause
+                this.spiritWanderTimer = 0;
+                this.spiritState = 'fading_in';
+            }
+            break;
 
-            case 'fading_in':
-                // Fade in at new position
-                this.spiritTransition += delta * fadeSpeed;
-                if (this.spiritTransition >= 1.0) {
-                    this.spiritTransition = 1.0;
-                    this.spiritState = 'visible';
+        case 'fading_in':
+            // Fade in at new position
+            this.spiritTransition += delta * fadeSpeed;
+            if (this.spiritTransition >= 1.0) {
+                this.spiritTransition = 1.0;
+                this.spiritState = 'visible';
 
-                    // Randomize next interval slightly
-                    this.spiritWanderInterval = 10.0 + Math.random() * 6.0;
-                }
-                break;
+                // Randomize next interval slightly
+                this.spiritWanderInterval = 10.0 + Math.random() * 6.0;
+            }
+            break;
         }
 
         // Update spirit transition uniform
@@ -1453,7 +1531,7 @@ export default class StillwaterTheme extends BaseTheme {
                 this.uniforms.spiritPos.value.set(
                     this.spiritCurrentPos.x,
                     this.spiritCurrentPos.y,
-                    this.spiritCurrentPos.z
+                    this.spiritCurrentPos.z,
                 );
             }
             // Update transition for reflection fade
@@ -1469,15 +1547,19 @@ export default class StillwaterTheme extends BaseTheme {
 
     updateTrollAnimations(delta) {
         for (const trollData of this.trollAnimations) {
-            const { mesh, uniforms, baseX, baseY, baseZ, hideX, scale } = trollData;
-            const { curiosity, nervousness, playfulness, patience } = trollData;
+            const {
+                mesh, uniforms, baseX, baseY, baseZ, hideX, scale,
+            } = trollData;
+            const {
+                curiosity, nervousness, playfulness, patience,
+            } = trollData;
 
             // ─────────────────────────────────────────────────────────────────
             // SPIRIT AWARENESS
             // ─────────────────────────────────────────────────────────────────
             const spiritDist = Math.sqrt(
-                Math.pow(this.spiritCurrentPos.x - baseX, 2) +
-                Math.pow(this.spiritCurrentPos.z - baseZ, 2)
+                (this.spiritCurrentPos.x - baseX) ** 2
+                + (this.spiritCurrentPos.z - baseZ) ** 2,
             );
 
             const spiritAppearedClose = trollData.lastSpiritDist > 25 && spiritDist < 15;
@@ -1515,375 +1597,373 @@ export default class StillwaterTheme extends BaseTheme {
             // State Logic
             if (trollData.stateTimer <= 0) {
                 switch (trollData.behaviorState) {
-                    case 'hiding':
-                        // DECISION: Peek, Doze, or Wait
-                        const rand = Math.random();
-                        if (rand < curiosity * 0.7) {
-                            // PEEK
-                            trollData.behaviorState = 'peeking';
-                            trollData.targetPeek = 0.4 + Math.random() * 0.4;
-                            trollData.stateTimer = 2.0 + Math.random() * 3.0;
-
-                            // Sub-behavior: Playful Wiggle?
-                            if (playfulness > 0.7 && !spiritVeryClose && Math.random() < 0.4) {
-                                trollData.behaviorState = 'wiggling';
-                                trollData.targetPeek = 0.6;
-                                trollData.stateTimer = 1.5 + Math.random() * 1.5;
-                                trollData.targetExpression = 0.5; // Happy eyes
-                            }
-                            // Sub-behavior: Nervous Sneak?
-                            else if (nervousness > 0.6 && Math.random() < 0.5) {
-                                trollData.behaviorState = 'sneaking';
-                                trollData.targetPeek = 0.3;
-                                trollData.stateTimer = 2.0 + Math.random() * 2.0;
-                                trollData.targetExpression = -0.8; // Suspicious squint
-                            }
-                            else {
-                                // Normal peek behavior
-                                if (nervousness > 0.6) {
-                                    trollData.shiverIntensity = 1.0;
-                                    trollData.targetExpression = -0.5;
-                                } else {
-                                    trollData.targetExpression = 0.5;
-                                }
-                            }
-                        } else if (rand > 0.9 && patience > 3.0 && !spiritVisible) {
-                            // DOZE OFF (Rare, only if patient and safe)
-                            trollData.behaviorState = 'dozing';
-                            trollData.targetPeek = 0.15; // Barely visible
-                            trollData.stateTimer = 5.0 + Math.random() * 10.0; // Sleep for a while
-                            trollData.targetExpression = 0.0;
-                            trollData.isBlinking = true; // Eyes closed
-                        } else {
-                            // WAIT
-                            trollData.stateTimer = patience;
-                        }
-                        break;
-
-                    case 'wiggling':
-                        // Done wiggling, go to watching or hiding
-                        trollData.behaviorState = 'watching';
-                        trollData.stateTimer = 2.0;
-                        trollData.targetPeek = 0.5;
-                        break;
-
-                    case 'sneaking':
-                        // Done sneaking, retreat or watch
-                        if (Math.random() < 0.5) {
-                            trollData.behaviorState = 'retreating';
-                            trollData.targetPeek = 0;
-                            trollData.stateTimer = 1.0;
-                        } else {
-                            trollData.behaviorState = 'watching';
-                            trollData.targetPeek = 0.4;
-                            trollData.stateTimer = 2.0;
-                        }
-                        break;
-
-                    case 'dozing':
-                        // Wake up naturally - yawn or stretch
-                        if (Math.random() < 0.4) {
-                            // STRETCHING - wake up stretch
-                            trollData.behaviorState = 'stretching';
-                            trollData.animationPhase = 0;
-                            trollData.stateTimer = 3.0;
-                            trollData.targetPeek = 0.6;
-                            trollData.targetExpression = 0.3;
-                        } else {
-                            trollData.behaviorState = 'yawning';
-                            trollData.animationPhase = 0;
-                            trollData.stateTimer = 4.0;
-                            trollData.targetPeek = 0.5;
-                            trollData.isBlinking = true; // Eyes closed for yawn start
-                        }
-                        break;
-
-                    case 'yawning':
-                        // Transition to watching
-                        trollData.behaviorState = 'watching';
-                        trollData.stateTimer = 2.0;
-                        trollData.targetPeek = 0.5;
-                        trollData.targetExpression = 0.0;
-                        break;
-
-                    case 'sneezing':
-                        // Transition to watching (embarrassed?)
-                        trollData.behaviorState = 'watching';
-                        trollData.stateTimer = 1.5;
-                        trollData.targetPeek = 0.4;
-                        trollData.targetExpression = -0.5; // Scrunchy face
-                        break;
-
-                    case 'victory':
-                    case 'chuckling':
-                        trollData.behaviorState = 'watching';
-                        trollData.stateTimer = 2.0;
-                        trollData.targetPeek = 0.5;
-                        break;
-
-                    case 'burrowing':
-                        // Peek back out cautiously
+                case 'hiding':
+                    // DECISION: Peek, Doze, or Wait
+                    const rand = Math.random();
+                    if (rand < curiosity * 0.7) {
+                        // PEEK
                         trollData.behaviorState = 'peeking';
-                        trollData.targetPeek = 0.3;
+                        trollData.targetPeek = 0.4 + Math.random() * 0.4;
+                        trollData.stateTimer = 2.0 + Math.random() * 3.0;
+
+                        // Sub-behavior: Playful Wiggle?
+                        if (playfulness > 0.7 && !spiritVeryClose && Math.random() < 0.4) {
+                            trollData.behaviorState = 'wiggling';
+                            trollData.targetPeek = 0.6;
+                            trollData.stateTimer = 1.5 + Math.random() * 1.5;
+                            trollData.targetExpression = 0.5; // Happy eyes
+                        }
+                        // Sub-behavior: Nervous Sneak?
+                        else if (nervousness > 0.6 && Math.random() < 0.5) {
+                            trollData.behaviorState = 'sneaking';
+                            trollData.targetPeek = 0.3;
+                            trollData.stateTimer = 2.0 + Math.random() * 2.0;
+                            trollData.targetExpression = -0.8; // Suspicious squint
+                        } else {
+                            // Normal peek behavior
+                            if (nervousness > 0.6) {
+                                trollData.shiverIntensity = 1.0;
+                                trollData.targetExpression = -0.5;
+                            } else {
+                                trollData.targetExpression = 0.5;
+                            }
+                        }
+                    } else if (rand > 0.9 && patience > 3.0 && !spiritVisible) {
+                        // DOZE OFF (Rare, only if patient and safe)
+                        trollData.behaviorState = 'dozing';
+                        trollData.targetPeek = 0.15; // Barely visible
+                        trollData.stateTimer = 5.0 + Math.random() * 10.0; // Sleep for a while
+                        trollData.targetExpression = 0.0;
+                        trollData.isBlinking = true; // Eyes closed
+                    } else {
+                        // WAIT
+                        trollData.stateTimer = patience;
+                    }
+                    break;
+
+                case 'wiggling':
+                    // Done wiggling, go to watching or hiding
+                    trollData.behaviorState = 'watching';
+                    trollData.stateTimer = 2.0;
+                    trollData.targetPeek = 0.5;
+                    break;
+
+                case 'sneaking':
+                    // Done sneaking, retreat or watch
+                    if (Math.random() < 0.5) {
+                        trollData.behaviorState = 'retreating';
+                        trollData.targetPeek = 0;
+                        trollData.stateTimer = 1.0;
+                    } else {
+                        trollData.behaviorState = 'watching';
+                        trollData.targetPeek = 0.4;
+                        trollData.stateTimer = 2.0;
+                    }
+                    break;
+
+                case 'dozing':
+                    // Wake up naturally - yawn or stretch
+                    if (Math.random() < 0.4) {
+                        // STRETCHING - wake up stretch
+                        trollData.behaviorState = 'stretching';
+                        trollData.animationPhase = 0;
                         trollData.stateTimer = 3.0;
-                        break;
-
-                    case 'confused':
-                        // Back to normal
-                        trollData.behaviorState = 'watching';
-                        trollData.stateTimer = 2.0;
-                        trollData.targetExpression = 0.0;
-                        break;
-
-                    // === NEW PLAYFUL ANIMATION STATE TRANSITIONS ===
-                    case 'dancing':
-                    case 'waving':
-                    case 'bouncing':
-                    case 'giggling':
-                    case 'peekaboo':
-                    case 'curious_lean':
-                    case 'shimmying':
-                    case 'scratching':
-                    case 'yodeling':
-                    case 'shivering':
-                    case 'pondering':
-                    case 'listening':
-                    case 'sniffing':
-                    case 'croaking':
-                    case 'moongazing':
-                    case 'huddling':
-                    case 'mischief':
-                        // All transition back to watching
-                        trollData.behaviorState = 'watching';
-                        trollData.stateTimer = 1.5 + Math.random() * 1.0;
-                        trollData.targetPeek = 0.5;
-                        trollData.targetExpression = 0.0;
-                        break;
-
-                    case 'stretching':
-                        // After stretch, feel awake and watch
-                        trollData.behaviorState = 'watching';
-                        trollData.stateTimer = 2.0;
                         trollData.targetPeek = 0.6;
                         trollData.targetExpression = 0.3;
-                        break;
+                    } else {
+                        trollData.behaviorState = 'yawning';
+                        trollData.animationPhase = 0;
+                        trollData.stateTimer = 4.0;
+                        trollData.targetPeek = 0.5;
+                        trollData.isBlinking = true; // Eyes closed for yawn start
+                    }
+                    break;
 
-                    case 'tiptoeing':
-                        // After tiptoeing, either retreat nervously or watch
-                        if (Math.random() < 0.5) {
-                            trollData.behaviorState = 'retreating';
-                            trollData.targetPeek = 0;
-                            trollData.stateTimer = 1.0;
-                        } else {
-                            trollData.behaviorState = 'watching';
-                            trollData.stateTimer = 2.0;
-                            trollData.targetPeek = 0.4;
-                        }
-                        trollData.targetExpression = 0.0;
-                        break;
+                case 'yawning':
+                    // Transition to watching
+                    trollData.behaviorState = 'watching';
+                    trollData.stateTimer = 2.0;
+                    trollData.targetPeek = 0.5;
+                    trollData.targetExpression = 0.0;
+                    break;
 
-                    case 'celebrating':
-                        // After celebrating, happy watching
+                case 'sneezing':
+                    // Transition to watching (embarrassed?)
+                    trollData.behaviorState = 'watching';
+                    trollData.stateTimer = 1.5;
+                    trollData.targetPeek = 0.4;
+                    trollData.targetExpression = -0.5; // Scrunchy face
+                    break;
+
+                case 'victory':
+                case 'chuckling':
+                    trollData.behaviorState = 'watching';
+                    trollData.stateTimer = 2.0;
+                    trollData.targetPeek = 0.5;
+                    break;
+
+                case 'burrowing':
+                    // Peek back out cautiously
+                    trollData.behaviorState = 'peeking';
+                    trollData.targetPeek = 0.3;
+                    trollData.stateTimer = 3.0;
+                    break;
+
+                case 'confused':
+                    // Back to normal
+                    trollData.behaviorState = 'watching';
+                    trollData.stateTimer = 2.0;
+                    trollData.targetExpression = 0.0;
+                    break;
+
+                    // === NEW PLAYFUL ANIMATION STATE TRANSITIONS ===
+                case 'dancing':
+                case 'waving':
+                case 'bouncing':
+                case 'giggling':
+                case 'peekaboo':
+                case 'curious_lean':
+                case 'shimmying':
+                case 'scratching':
+                case 'yodeling':
+                case 'shivering':
+                case 'pondering':
+                case 'listening':
+                case 'sniffing':
+                case 'croaking':
+                case 'moongazing':
+                case 'huddling':
+                case 'mischief':
+                    // All transition back to watching
+                    trollData.behaviorState = 'watching';
+                    trollData.stateTimer = 1.5 + Math.random() * 1.0;
+                    trollData.targetPeek = 0.5;
+                    trollData.targetExpression = 0.0;
+                    break;
+
+                case 'stretching':
+                    // After stretch, feel awake and watch
+                    trollData.behaviorState = 'watching';
+                    trollData.stateTimer = 2.0;
+                    trollData.targetPeek = 0.6;
+                    trollData.targetExpression = 0.3;
+                    break;
+
+                case 'tiptoeing':
+                    // After tiptoeing, either retreat nervously or watch
+                    if (Math.random() < 0.5) {
+                        trollData.behaviorState = 'retreating';
+                        trollData.targetPeek = 0;
+                        trollData.stateTimer = 1.0;
+                    } else {
                         trollData.behaviorState = 'watching';
                         trollData.stateTimer = 2.0;
+                        trollData.targetPeek = 0.4;
+                    }
+                    trollData.targetExpression = 0.0;
+                    break;
+
+                case 'celebrating':
+                    // After celebrating, happy watching
+                    trollData.behaviorState = 'watching';
+                    trollData.stateTimer = 2.0;
+                    trollData.targetPeek = 0.6;
+                    trollData.targetExpression = 0.5;
+                    break;
+
+                case 'peeking':
+                case 'watching': // Unified for simplicity now
+                    // Decide next move
+                    if (spiritVeryClose || (Math.random() < nervousness * 0.3)) {
+                        // Retreat!
+                        trollData.behaviorState = 'retreating';
+                        trollData.targetPeek = 0;
+                        trollData.stateTimer = 1.0;
+                        trollData.targetExpression = 0.0;
+                    } else if (playfulness > 0.7 && Math.random() < 0.3) {
+                        // Hop logic
+                        trollData.isHopping = true;
+                        trollData.verticalVelocity = 5.0 * scale;
+                        trollData.stateTimer += 1.0;
+                    } else if (playfulness > 0.6 && Math.random() < 0.2) {
+                        // Random Chuckle
+                        trollData.behaviorState = 'chuckling';
+                        trollData.stateTimer = 1.0;
+                        trollData.targetExpression = 0.5;
+                    } else if (curiosity > 0.6 && Math.random() < 0.2) {
+                        // CONFUSED? (Puppy head tilt)
+                        trollData.behaviorState = 'confused';
+                        trollData.stateTimer = 3.0;
+                        trollData.animationPhase = 0;
+                        trollData.targetExpression = 0.5;
+                    }
+                    // Chance to RETURN from hiding spot if safe
+                    else if (Math.abs(trollData.currentOffset) > 0.1 && !spiritVisible && Math.random() < 0.2) {
+                        trollData.behaviorState = 'returning';
+                        trollData.targetPeek = 0.5;
+                        trollData.stateTimer = 3.0; // Max time to return
+                    } else if (Math.random() < 0.05) { // Rare Sianeeze
+                        // SNEEZING
+                        trollData.behaviorState = 'sneezing';
+                        trollData.stateTimer = 2.5;
+                        trollData.animationPhase = 0;
+                        trollData.targetPeek = 0.6;
+                    } else if (curiosity > 0.6 && Math.random() < 0.3) {
+                        // Start sneakily looking around
+                        trollData.behaviorState = 'sneaking';
+                        trollData.targetPeek = 0.4;
+                        trollData.stateTimer = 2.5;
+                    }
+                    // === NEW PLAYFUL ANIMATIONS ===
+                    else if (playfulness > 0.6 && Math.random() < 0.15) {
+                        // DANCING - rhythmic sway
+                        trollData.behaviorState = 'dancing';
+                        trollData.stateTimer = 3.0 + Math.random() * 2.0;
+                        trollData.targetPeek = 0.7;
+                        trollData.targetExpression = 0.8;
+                        trollData.animationPhase = 0;
+                    } else if (playfulness > 0.5 && spiritVisible && Math.random() < 0.1) {
+                        // WAVING - friendly wave
+                        trollData.behaviorState = 'waving';
+                        trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                        trollData.targetPeek = 0.9;
+                        trollData.targetExpression = 0.6;
+                    } else if (playfulness > 0.7 && Math.random() < 0.12) {
+                        // BOUNCING - excited hops
+                        trollData.behaviorState = 'bouncing';
+                        trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                        trollData.targetPeek = 0.6;
+                        trollData.targetExpression = 0.7;
+                        trollData.animationPhase = 0;
+                    } else if (playfulness > 0.6 && Math.random() < 0.1) {
+                        // GIGGLING - energetic laughter
+                        trollData.behaviorState = 'giggling';
+                        trollData.stateTimer = 1.5 + Math.random() * 0.5;
+                        trollData.targetPeek = 0.5;
+                        trollData.targetExpression = 0.8;
+                    } else if (playfulness > 0.5 && spiritVisible && Math.random() < 0.08) {
+                        // PEEKABOO - playful peek in/out
+                        trollData.behaviorState = 'peekaboo';
+                        trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                        trollData.animationPhase = 0;
+                        trollData.targetExpression = 0.6;
+                    } else if (curiosity > 0.7 && spiritVisible && Math.random() < 0.12) {
+                        // CURIOUS_LEAN - lean far out to investigate
+                        trollData.behaviorState = 'curious_lean';
+                        trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                        trollData.targetPeek = 0.95;
+                        trollData.targetExpression = 0.5;
+                    } else if (playfulness > 0.7 && Math.random() < 0.08) {
+                        // CELEBRATING - excited celebration
+                        trollData.behaviorState = 'celebrating';
+                        trollData.stateTimer = 3.0 + Math.random() * 1.0;
+                        trollData.targetPeek = 0.8;
+                        trollData.targetExpression = 1.0;
+                    } else if (playfulness > 0.6 && Math.random() < 0.1) {
+                        // SHIMMYING - quick shake
+                        trollData.behaviorState = 'shimmying';
+                        trollData.stateTimer = 1.5 + Math.random() * 0.5;
                         trollData.targetPeek = 0.6;
                         trollData.targetExpression = 0.5;
-                        break;
-
-                    case 'peeking':
-                    case 'watching': // Unified for simplicity now
-                        // Decide next move
-                        if (spiritVeryClose || (Math.random() < nervousness * 0.3)) {
-                            // Retreat!
-                            trollData.behaviorState = 'retreating';
-                            trollData.targetPeek = 0;
-                            trollData.stateTimer = 1.0;
-                            trollData.targetExpression = 0.0;
-                        } else if (playfulness > 0.7 && Math.random() < 0.3) {
-                            // Hop logic
-                            trollData.isHopping = true;
-                            trollData.verticalVelocity = 5.0 * scale;
-                            trollData.stateTimer += 1.0;
-                        } else if (playfulness > 0.6 && Math.random() < 0.2) {
-                            // Random Chuckle
-                            trollData.behaviorState = 'chuckling';
-                            trollData.stateTimer = 1.0;
-                            trollData.targetExpression = 0.5;
-                        } else if (curiosity > 0.6 && Math.random() < 0.2) {
-                            // CONFUSED? (Puppy head tilt)
-                            trollData.behaviorState = 'confused';
-                            trollData.stateTimer = 3.0;
-                            trollData.animationPhase = 0;
-                            trollData.targetExpression = 0.5;
-                        }
-                        // Chance to RETURN from hiding spot if safe
-                        else if (Math.abs(trollData.currentOffset) > 0.1 && !spiritVisible && Math.random() < 0.2) {
-                            trollData.behaviorState = 'returning';
-                            trollData.targetPeek = 0.5;
-                            trollData.stateTimer = 3.0; // Max time to return
-                        }
-                        else if (Math.random() < 0.05) { // Rare Sianeeze
-                            // SNEEZING
-                            trollData.behaviorState = 'sneezing';
-                            trollData.stateTimer = 2.5;
-                            trollData.animationPhase = 0;
-                            trollData.targetPeek = 0.6;
-                        } else if (curiosity > 0.6 && Math.random() < 0.3) {
-                            // Start sneakily looking around
-                            trollData.behaviorState = 'sneaking';
-                            trollData.targetPeek = 0.4;
-                            trollData.stateTimer = 2.5;
-                        }
-                        // === NEW PLAYFUL ANIMATIONS ===
-                        else if (playfulness > 0.6 && Math.random() < 0.15) {
-                            // DANCING - rhythmic sway
-                            trollData.behaviorState = 'dancing';
-                            trollData.stateTimer = 3.0 + Math.random() * 2.0;
-                            trollData.targetPeek = 0.7;
-                            trollData.targetExpression = 0.8;
-                            trollData.animationPhase = 0;
-                        } else if (playfulness > 0.5 && spiritVisible && Math.random() < 0.1) {
-                            // WAVING - friendly wave
-                            trollData.behaviorState = 'waving';
-                            trollData.stateTimer = 2.0 + Math.random() * 1.0;
-                            trollData.targetPeek = 0.9;
-                            trollData.targetExpression = 0.6;
-                        } else if (playfulness > 0.7 && Math.random() < 0.12) {
-                            // BOUNCING - excited hops
-                            trollData.behaviorState = 'bouncing';
-                            trollData.stateTimer = 2.0 + Math.random() * 1.0;
-                            trollData.targetPeek = 0.6;
-                            trollData.targetExpression = 0.7;
-                            trollData.animationPhase = 0;
-                        } else if (playfulness > 0.6 && Math.random() < 0.1) {
-                            // GIGGLING - energetic laughter
-                            trollData.behaviorState = 'giggling';
-                            trollData.stateTimer = 1.5 + Math.random() * 0.5;
-                            trollData.targetPeek = 0.5;
-                            trollData.targetExpression = 0.8;
-                        } else if (playfulness > 0.5 && spiritVisible && Math.random() < 0.08) {
-                            // PEEKABOO - playful peek in/out
-                            trollData.behaviorState = 'peekaboo';
-                            trollData.stateTimer = 2.0 + Math.random() * 1.0;
-                            trollData.animationPhase = 0;
-                            trollData.targetExpression = 0.6;
-                        } else if (curiosity > 0.7 && spiritVisible && Math.random() < 0.12) {
-                            // CURIOUS_LEAN - lean far out to investigate
-                            trollData.behaviorState = 'curious_lean';
-                            trollData.stateTimer = 2.0 + Math.random() * 1.0;
-                            trollData.targetPeek = 0.95;
-                            trollData.targetExpression = 0.5;
-                        } else if (playfulness > 0.7 && Math.random() < 0.08) {
-                            // CELEBRATING - excited celebration
-                            trollData.behaviorState = 'celebrating';
-                            trollData.stateTimer = 3.0 + Math.random() * 1.0;
-                            trollData.targetPeek = 0.8;
-                            trollData.targetExpression = 1.0;
-                        } else if (playfulness > 0.6 && Math.random() < 0.1) {
-                            // SHIMMYING - quick shake
-                            trollData.behaviorState = 'shimmying';
-                            trollData.stateTimer = 1.5 + Math.random() * 0.5;
-                            trollData.targetPeek = 0.6;
-                            trollData.targetExpression = 0.5;
-                        } else if (nervousness > 0.4 && curiosity > 0.5 && spiritVisible && Math.random() < 0.08) {
-                            // TIPTOEING - sneaky tiny hops toward spirit
-                            trollData.behaviorState = 'tiptoeing';
-                            trollData.stateTimer = 3.0 + Math.random() * 1.0;
-                            trollData.targetPeek = 0.4;
-                            trollData.targetExpression = -0.3;
-                            trollData.animationPhase = 0;
-                        }
-                        // === 10 NEW ANIMATIONS ===
-                        else if (Math.random() < 0.06) {
-                            // SCRATCHING - itchy troll scratches head/ear
-                            trollData.behaviorState = 'scratching';
-                            trollData.stateTimer = 2.0 + Math.random() * 1.5;
-                            trollData.targetPeek = 0.6;
-                            trollData.targetExpression = 0.3;
-                            trollData.animationPhase = 0;
-                        } else if (playfulness > 0.7 && !spiritVeryClose && Math.random() < 0.04) {
-                            // YODELING - troll throws head back and "yodels" silently
-                            trollData.behaviorState = 'yodeling';
-                            trollData.stateTimer = 3.0 + Math.random() * 1.0;
-                            trollData.targetPeek = 0.85;
-                            trollData.targetExpression = 1.0;
-                            trollData.animationPhase = 0;
-                        } else if (nervousness > 0.6 && spiritVeryClose && Math.random() < 0.15) {
-                            // SHIVERING - nervous shaking from fear
-                            trollData.behaviorState = 'shivering';
-                            trollData.stateTimer = 2.5 + Math.random() * 1.5;
-                            trollData.targetPeek = 0.3;
-                            trollData.targetExpression = -0.6;
-                        } else if (curiosity > 0.7 && !spiritVisible && Math.random() < 0.05) {
-                            // PONDERING - deep thought pose with chin resting
-                            trollData.behaviorState = 'pondering';
-                            trollData.stateTimer = 4.0 + Math.random() * 2.0;
-                            trollData.targetPeek = 0.55;
-                            trollData.targetExpression = 0.2;
-                        } else if (nervousness > 0.3 && spiritVisible && Math.random() < 0.07) {
-                            // LISTENING - ears perked, frozen, listening intently
-                            trollData.behaviorState = 'listening';
-                            trollData.stateTimer = 2.5 + Math.random() * 1.0;
-                            trollData.targetPeek = 0.45;
-                            trollData.targetExpression = 0.4;
-                        } else if (curiosity > 0.5 && Math.random() < 0.05) {
-                            // SNIFFING - sniffing the air curiously
-                            trollData.behaviorState = 'sniffing';
-                            trollData.stateTimer = 2.0 + Math.random() * 1.0;
-                            trollData.targetPeek = 0.7;
-                            trollData.targetExpression = 0.3;
-                            trollData.animationPhase = 0;
-                        } else if (playfulness > 0.5 && Math.random() < 0.04) {
-                            // CROAKING - frog-like croak/call (mouth wide)
-                            trollData.behaviorState = 'croaking';
-                            trollData.stateTimer = 1.5 + Math.random() * 0.5;
-                            trollData.targetPeek = 0.65;
-                            trollData.targetExpression = 0.9;
-                            trollData.animationPhase = 0;
-                        } else if (!spiritVisible && patience > 3 && Math.random() < 0.03) {
-                            // MOONGAZING - looking up at sky/aurora dreamily
-                            trollData.behaviorState = 'moongazing';
-                            trollData.stateTimer = 5.0 + Math.random() * 3.0;
-                            trollData.targetPeek = 0.75;
-                            trollData.targetExpression = 0.1;
-                        } else if (nervousness > 0.5 && spiritVeryClose && Math.random() < 0.1) {
-                            // HUDDLING - curling into protective ball
-                            trollData.behaviorState = 'huddling';
-                            trollData.stateTimer = 3.0 + Math.random() * 2.0;
-                            trollData.targetPeek = 0.2;
-                            trollData.targetExpression = -0.5;
-                        } else if (playfulness > 0.7 && !spiritVisible && Math.random() < 0.04) {
-                            // MISCHIEF - plotting something naughty, rubbing hands
-                            trollData.behaviorState = 'mischief';
-                            trollData.stateTimer = 2.5 + Math.random() * 1.0;
-                            trollData.targetPeek = 0.6;
-                            trollData.targetExpression = -0.3;
-                            trollData.animationPhase = 0;
+                    } else if (nervousness > 0.4 && curiosity > 0.5 && spiritVisible && Math.random() < 0.08) {
+                        // TIPTOEING - sneaky tiny hops toward spirit
+                        trollData.behaviorState = 'tiptoeing';
+                        trollData.stateTimer = 3.0 + Math.random() * 1.0;
+                        trollData.targetPeek = 0.4;
+                        trollData.targetExpression = -0.3;
+                        trollData.animationPhase = 0;
+                    }
+                    // === 10 NEW ANIMATIONS ===
+                    else if (Math.random() < 0.06) {
+                        // SCRATCHING - itchy troll scratches head/ear
+                        trollData.behaviorState = 'scratching';
+                        trollData.stateTimer = 2.0 + Math.random() * 1.5;
+                        trollData.targetPeek = 0.6;
+                        trollData.targetExpression = 0.3;
+                        trollData.animationPhase = 0;
+                    } else if (playfulness > 0.7 && !spiritVeryClose && Math.random() < 0.04) {
+                        // YODELING - troll throws head back and "yodels" silently
+                        trollData.behaviorState = 'yodeling';
+                        trollData.stateTimer = 3.0 + Math.random() * 1.0;
+                        trollData.targetPeek = 0.85;
+                        trollData.targetExpression = 1.0;
+                        trollData.animationPhase = 0;
+                    } else if (nervousness > 0.6 && spiritVeryClose && Math.random() < 0.15) {
+                        // SHIVERING - nervous shaking from fear
+                        trollData.behaviorState = 'shivering';
+                        trollData.stateTimer = 2.5 + Math.random() * 1.5;
+                        trollData.targetPeek = 0.3;
+                        trollData.targetExpression = -0.6;
+                    } else if (curiosity > 0.7 && !spiritVisible && Math.random() < 0.05) {
+                        // PONDERING - deep thought pose with chin resting
+                        trollData.behaviorState = 'pondering';
+                        trollData.stateTimer = 4.0 + Math.random() * 2.0;
+                        trollData.targetPeek = 0.55;
+                        trollData.targetExpression = 0.2;
+                    } else if (nervousness > 0.3 && spiritVisible && Math.random() < 0.07) {
+                        // LISTENING - ears perked, frozen, listening intently
+                        trollData.behaviorState = 'listening';
+                        trollData.stateTimer = 2.5 + Math.random() * 1.0;
+                        trollData.targetPeek = 0.45;
+                        trollData.targetExpression = 0.4;
+                    } else if (curiosity > 0.5 && Math.random() < 0.05) {
+                        // SNIFFING - sniffing the air curiously
+                        trollData.behaviorState = 'sniffing';
+                        trollData.stateTimer = 2.0 + Math.random() * 1.0;
+                        trollData.targetPeek = 0.7;
+                        trollData.targetExpression = 0.3;
+                        trollData.animationPhase = 0;
+                    } else if (playfulness > 0.5 && Math.random() < 0.04) {
+                        // CROAKING - frog-like croak/call (mouth wide)
+                        trollData.behaviorState = 'croaking';
+                        trollData.stateTimer = 1.5 + Math.random() * 0.5;
+                        trollData.targetPeek = 0.65;
+                        trollData.targetExpression = 0.9;
+                        trollData.animationPhase = 0;
+                    } else if (!spiritVisible && patience > 3 && Math.random() < 0.03) {
+                        // MOONGAZING - looking up at sky/aurora dreamily
+                        trollData.behaviorState = 'moongazing';
+                        trollData.stateTimer = 5.0 + Math.random() * 3.0;
+                        trollData.targetPeek = 0.75;
+                        trollData.targetExpression = 0.1;
+                    } else if (nervousness > 0.5 && spiritVeryClose && Math.random() < 0.1) {
+                        // HUDDLING - curling into protective ball
+                        trollData.behaviorState = 'huddling';
+                        trollData.stateTimer = 3.0 + Math.random() * 2.0;
+                        trollData.targetPeek = 0.2;
+                        trollData.targetExpression = -0.5;
+                    } else if (playfulness > 0.7 && !spiritVisible && Math.random() < 0.04) {
+                        // MISCHIEF - plotting something naughty, rubbing hands
+                        trollData.behaviorState = 'mischief';
+                        trollData.stateTimer = 2.5 + Math.random() * 1.0;
+                        trollData.targetPeek = 0.6;
+                        trollData.targetExpression = -0.3;
+                        trollData.animationPhase = 0;
+                    } else {
+                        // Continue watching
+                        trollData.targetPeek = 0.3 + Math.random() * 0.5;
+                        trollData.stateTimer = 2.0;
+                        if (spiritVisible) {
+                            trollData.lookTarget.x = (this.spiritCurrentPos.x - baseX) * 0.1;
+                            trollData.lookTarget.y = (this.spiritCurrentPos.y - baseY) * 0.1;
                         } else {
-                            // Continue watching
-                            trollData.targetPeek = 0.3 + Math.random() * 0.5;
-                            trollData.stateTimer = 2.0;
-                            if (spiritVisible) {
-                                trollData.lookTarget.x = (this.spiritCurrentPos.x - baseX) * 0.1;
-                                trollData.lookTarget.y = (this.spiritCurrentPos.y - baseY) * 0.1;
-                            } else {
-                                trollData.lookTarget.x = (Math.random() - 0.5) * 1.5;
-                                trollData.lookTarget.y = (Math.random() - 0.5) * 1.0;
-                            }
+                            trollData.lookTarget.x = (Math.random() - 0.5) * 1.5;
+                            trollData.lookTarget.y = (Math.random() - 0.5) * 1.0;
                         }
-                        break;
+                    }
+                    break;
 
-                    case 'retreating':
-                        trollData.behaviorState = 'hiding';
-                        trollData.stateTimer = patience * 0.5;
-                        trollData.shiverIntensity = 0;
-                        trollData.targetExpression = 0;
-                        break;
+                case 'retreating':
+                    trollData.behaviorState = 'hiding';
+                    trollData.stateTimer = patience * 0.5;
+                    trollData.shiverIntensity = 0;
+                    trollData.targetExpression = 0;
+                    break;
 
-                    case 'startled':
-                        trollData.behaviorState = 'hiding';
-                        trollData.stateTimer = 1.0 + nervousness * 2.0;
-                        break;
+                case 'startled':
+                    trollData.behaviorState = 'hiding';
+                    trollData.stateTimer = 1.0 + nervousness * 2.0;
+                    break;
                 }
             }
 
@@ -1930,7 +2010,6 @@ export default class StillwaterTheme extends BaseTheme {
                     trollData.isBlinking = true; // Force eyes closed
                 }
             }
-
 
             // YAWNING LOGIC
             if (trollData.behaviorState === 'yawning') {
@@ -2486,7 +2565,7 @@ export default class StillwaterTheme extends BaseTheme {
             // Position: base + movement offset + peek offset + fidget + breathing
             const peekOffset = -hideX * trollData.currentPeek;
             // Add wiggle offset and currentOffset (for fleeing/returning movement)
-            let finalX = baseX + trollData.currentOffset + peekOffset + trollData.fidgetOffset.x + (trollData.behaviorState === 'wiggling' ? wiggleOffset : 0);
+            const finalX = baseX + trollData.currentOffset + peekOffset + trollData.fidgetOffset.x + (trollData.behaviorState === 'wiggling' ? wiggleOffset : 0);
 
             mesh.position.x = finalX; // Use computed X including wiggle
             mesh.position.y = baseY + breathAmount + trollData.fidgetOffset.y;
@@ -2533,7 +2612,7 @@ export default class StillwaterTheme extends BaseTheme {
         this.uniforms.spiritGlow.value = THREE.MathUtils.lerp(
             this.uniforms.spiritGlow.value,
             this.targetSpiritGlow,
-            delta * 4
+            delta * 4,
         );
         if (this.targetSpiritGlow > 1.0) {
             this.targetSpiritGlow -= delta * 0.2;
@@ -2551,7 +2630,7 @@ export default class StillwaterTheme extends BaseTheme {
         this.uniforms.glowIntensity.value = THREE.MathUtils.lerp(
             this.uniforms.glowIntensity.value,
             this.targetGlowIntensity,
-            delta * 3
+            delta * 3,
         );
         this.targetGlowIntensity *= 0.95;
 
@@ -2616,14 +2695,14 @@ export default class StillwaterTheme extends BaseTheme {
             }
 
             const positions = burst.geometry.attributes.position.array;
-            const velocities = burst.userData.velocities;
-            const gravity = burst.userData.gravity;
+            const { velocities } = burst.userData;
+            const { gravity } = burst.userData;
 
             for (let j = 0; j < positions.length / 3; j++) {
                 const idx = j * 3;
 
                 // Apply velocity
-                positions[idx] += velocities[idx] * delta;     // X
+                positions[idx] += velocities[idx] * delta; // X
                 positions[idx + 1] += velocities[idx + 1] * delta; // Y
                 positions[idx + 2] += velocities[idx + 2] * delta; // Z
 
@@ -2671,7 +2750,7 @@ export default class StillwaterTheme extends BaseTheme {
             this.animationFrame = null;
         }
 
-        this.eventUnsubscribers.forEach(unsub => unsub?.());
+        this.eventUnsubscribers.forEach((unsub) => unsub?.());
         this.eventUnsubscribers = [];
 
         window.removeEventListener('resize', this.onWindowResize.bind(this));
@@ -2689,7 +2768,7 @@ export default class StillwaterTheme extends BaseTheme {
                 if (object.geometry) object.geometry.dispose();
                 if (object.material) {
                     if (Array.isArray(object.material)) {
-                        object.material.forEach(m => m.dispose());
+                        object.material.forEach((m) => m.dispose());
                     } else {
                         object.material.dispose();
                     }

@@ -1,6 +1,6 @@
 /**
  * SessionsTab - Breathwork Journeys/Sessions selection
- * 
+ *
  * Enhanced with:
  * - Pre-session preparation screen with intention setting
  * - Immersive session HUD with progress tracking
@@ -20,29 +20,61 @@ export class SessionsTab {
         // Intention options for each session type
         this.INTENTIONS = {
             BASE: [
-                { id: 'calm', icon: '🌊', label: 'Find Calm', desc: 'Release stress and anxiety' },
-                { id: 'focus', icon: '🎯', label: 'Sharpen Focus', desc: 'Clear mental fog' },
-                { id: 'ground', icon: '🌳', label: 'Ground Myself', desc: 'Feel centered and stable' },
-                { id: 'breathe', icon: '💨', label: 'Just Breathe', desc: 'No goal, simply be' }
+                {
+                    id: 'calm', icon: '🌊', label: 'Find Calm', desc: 'Release stress and anxiety',
+                },
+                {
+                    id: 'focus', icon: '🎯', label: 'Sharpen Focus', desc: 'Clear mental fog',
+                },
+                {
+                    id: 'ground', icon: '🌳', label: 'Ground Myself', desc: 'Feel centered and stable',
+                },
+                {
+                    id: 'breathe', icon: '💨', label: 'Just Breathe', desc: 'No goal, simply be',
+                },
             ],
             ELIXIR: [
-                { id: 'energy', icon: '⚡', label: 'Ignite Energy', desc: 'Wake up body and mind' },
-                { id: 'release', icon: '🔥', label: 'Release & Let Go', desc: 'Clear emotional blocks' },
-                { id: 'transform', icon: '🦋', label: 'Transform', desc: 'Catalyze inner change' },
-                { id: 'power', icon: '💪', label: 'Build Power', desc: 'Strengthen willpower' }
+                {
+                    id: 'energy', icon: '⚡', label: 'Ignite Energy', desc: 'Wake up body and mind',
+                },
+                {
+                    id: 'release', icon: '🔥', label: 'Release & Let Go', desc: 'Clear emotional blocks',
+                },
+                {
+                    id: 'transform', icon: '🦋', label: 'Transform', desc: 'Catalyze inner change',
+                },
+                {
+                    id: 'power', icon: '💪', label: 'Build Power', desc: 'Strengthen willpower',
+                },
             ],
             REST: [
-                { id: 'sleep', icon: '🌙', label: 'Prepare for Sleep', desc: 'Transition to deep rest' },
-                { id: 'unwind', icon: '🍃', label: 'Unwind', desc: 'Release the day\'s tension' },
-                { id: 'restore', icon: '🌸', label: 'Restore', desc: 'Replenish your energy' },
-                { id: 'peace', icon: '☁️', label: 'Find Peace', desc: 'Embrace stillness' }
+                {
+                    id: 'sleep', icon: '🌙', label: 'Prepare for Sleep', desc: 'Transition to deep rest',
+                },
+                {
+                    id: 'unwind', icon: '🍃', label: 'Unwind', desc: 'Release the day\'s tension',
+                },
+                {
+                    id: 'restore', icon: '🌸', label: 'Restore', desc: 'Replenish your energy',
+                },
+                {
+                    id: 'peace', icon: '☁️', label: 'Find Peace', desc: 'Embrace stillness',
+                },
             ],
             FLOW: [
-                { id: 'balance', icon: '☯️', label: 'Find Balance', desc: 'Harmonize mind and body' },
-                { id: 'clarity', icon: '💎', label: 'Gain Clarity', desc: 'See with fresh perspective' },
-                { id: 'presence', icon: '🌟', label: 'Be Present', desc: 'Anchor in the now' },
-                { id: 'rhythm', icon: '🎵', label: 'Find Rhythm', desc: 'Sync with your flow' }
-            ]
+                {
+                    id: 'balance', icon: '☯️', label: 'Find Balance', desc: 'Harmonize mind and body',
+                },
+                {
+                    id: 'clarity', icon: '💎', label: 'Gain Clarity', desc: 'See with fresh perspective',
+                },
+                {
+                    id: 'presence', icon: '🌟', label: 'Be Present', desc: 'Anchor in the now',
+                },
+                {
+                    id: 'rhythm', icon: '🎵', label: 'Find Rhythm', desc: 'Sync with your flow',
+                },
+            ],
         };
 
         // Detailed session information
@@ -54,7 +86,7 @@ export class SessionsTab {
                 about: 'A grounding practice using slow, rhythmic nose breathing to activate your parasympathetic nervous system. Each round builds CO2 tolerance, calms the mind, and brings you into a state of focused relaxation.',
                 breathingDesc: 'Slow nasal breathing (4 sec in, 4 sec out)',
                 holdsDesc: 'Breath holds from 1-2 min between rounds',
-                maxHold: '2 min'
+                maxHold: '2 min',
             },
             ELIXIR: {
                 name: 'Hale Elixir',
@@ -63,7 +95,7 @@ export class SessionsTab {
                 about: 'An energizing practice using powerful mouth breathing to flood your body with oxygen. This technique alkalizes the blood, creates tingling sensations, and can lead to profound physical and emotional release.',
                 breathingDesc: 'Active mouth breathing (fast, connected)',
                 holdsDesc: 'Extended breath holds up to 2 min',
-                maxHold: '2 min'
+                maxHold: '2 min',
             },
             REST: {
                 name: 'Hale Rest',
@@ -72,7 +104,7 @@ export class SessionsTab {
                 about: 'A soothing practice designed to activate deep relaxation. Extended exhales stimulate the vagus nerve, slowing your heart rate and calming the nervous system. Perfect for winding down or preparing for sleep.',
                 breathingDesc: 'Extended exhale breathing (4 sec in, 8 sec out)',
                 holdsDesc: 'Gentle pauses between breaths',
-                maxHold: '30 sec'
+                maxHold: '30 sec',
             },
             FLOW: {
                 name: 'Hale Flow',
@@ -81,8 +113,8 @@ export class SessionsTab {
                 about: 'A balanced box breathing practice that creates equilibrium in your nervous system. Equal inhales, holds, exhales, and pauses build focus, reduce anxiety, and cultivate a meditative state of rhythmic awareness.',
                 breathingDesc: 'Box breathing (4 sec each phase)',
                 holdsDesc: 'Holds after inhale and exhale',
-                maxHold: '1 min'
-            }
+                maxHold: '1 min',
+            },
         };
 
         this.render();
@@ -309,7 +341,7 @@ export class SessionsTab {
         if (!this.container) return;
 
         // Start buttons - now show prep screen
-        this.container.querySelectorAll('.start-session-btn').forEach(btn => {
+        this.container.querySelectorAll('.start-session-btn').forEach((btn) => {
             btn.addEventListener('click', (e) => {
                 const sessionId = e.target.dataset.session;
                 this.showPrepScreen(sessionId);
@@ -378,8 +410,8 @@ export class SessionsTab {
         if (duration) duration.textContent = info.duration;
         if (intensity) {
             intensity.textContent = info.intensity;
-            const intensityClass = sessionId === 'ELIXIR' ? 'high' :
-                sessionId === 'REST' ? 'gentle' : 'moderate';
+            const intensityClass = sessionId === 'ELIXIR' ? 'high'
+                : sessionId === 'REST' ? 'gentle' : 'moderate';
             intensity.className = `prep-intensity ${intensityClass}`;
         }
 
@@ -397,7 +429,9 @@ export class SessionsTab {
         const breathingType = prep.querySelector('.breathing-type');
         const maxHold = prep.querySelector('.max-hold');
         if (breathingType) {
-            const breathTypes = { BASE: 'Nose', ELIXIR: 'Mouth', REST: 'Nose', FLOW: 'Box' };
+            const breathTypes = {
+                BASE: 'Nose', ELIXIR: 'Mouth', REST: 'Nose', FLOW: 'Box',
+            };
             breathingType.textContent = breathTypes[sessionId] || 'Nose';
         }
         if (maxHold) maxHold.textContent = info.maxHold;
@@ -406,7 +440,7 @@ export class SessionsTab {
         const intentionGrid = prep.querySelector('.intention-grid');
         if (intentionGrid) {
             const intentions = this.INTENTIONS[sessionId];
-            intentionGrid.innerHTML = intentions.map(intent => `
+            intentionGrid.innerHTML = intentions.map((intent) => `
                 <button class="intention-card" data-intention="${intent.id}">
                     <span class="intention-icon">${intent.icon}</span>
                     <span class="intention-label">${intent.label}</span>
@@ -415,7 +449,7 @@ export class SessionsTab {
             `).join('');
 
             // Add click listeners to intention cards
-            intentionGrid.querySelectorAll('.intention-card').forEach(card => {
+            intentionGrid.querySelectorAll('.intention-card').forEach((card) => {
                 card.addEventListener('click', () => {
                     this.selectIntention(card.dataset.intention, sessionId);
                 });
@@ -454,7 +488,7 @@ export class SessionsTab {
      */
     selectIntention(intentionId, sessionId) {
         const intentions = this.INTENTIONS[sessionId];
-        this.selectedIntention = intentions.find(i => i.id === intentionId);
+        this.selectedIntention = intentions.find((i) => i.id === intentionId);
 
         // Play intention sound
         if (this.sessionManager && this.sessionManager.audioManager) {
@@ -465,7 +499,7 @@ export class SessionsTab {
         // Update UI - highlight selected card
         const intentionGrid = this.container.querySelector('.intention-grid');
         if (intentionGrid) {
-            intentionGrid.querySelectorAll('.intention-card').forEach(card => {
+            intentionGrid.querySelectorAll('.intention-card').forEach((card) => {
                 if (card.dataset.intention === intentionId) {
                     card.classList.add('selected');
                 } else {
@@ -516,7 +550,7 @@ export class SessionsTab {
             'Find a comfortable position',
             'Close your eyes',
             'Take a deep breath',
-            'Begin'
+            'Begin',
         ];
         const sequence = ['3', '2', '1', '🌬️'];
 
@@ -529,7 +563,7 @@ export class SessionsTab {
             void countdownNumber.offsetWidth;
             countdownNumber.classList.add('pulse');
 
-            await new Promise(resolve => setTimeout(resolve, i === 3 ? 800 : 1000));
+            await new Promise((resolve) => setTimeout(resolve, i === 3 ? 800 : 1000));
         }
 
         // Hide countdown, start session
@@ -661,7 +695,7 @@ export class SessionsTab {
 
                 // Could show a completion modal here
                 this.showCompletionMessage(stats);
-            }
+            },
         );
     }
 

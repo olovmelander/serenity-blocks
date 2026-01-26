@@ -285,6 +285,33 @@ export class MultiPlayerCanvasLayout {
     }
 
     /**
+   * Add a garbage cancellation notification to activity feed (Phase 3.5 - Quadra style)
+   */
+    addCancellationNotification(data) {
+        const messagesContainer = document.getElementById('match-chat-messages');
+        if (!messagesContainer) return;
+
+        const messageEl = document.createElement('div');
+        messageEl.className = 'activity-message cancel-notification';
+
+        if (data.isLocal) {
+            messageEl.classList.add('local-cancel'); // Green - your cancellation
+        } else {
+            messageEl.classList.add('other-cancel'); // Neutral - other player
+        }
+
+        const plural = data.linesCancelled !== 1 ? 's' : '';
+        messageEl.innerHTML = `
+        <span class="cancel-icon">🛡️</span>
+        <span class="player">${this.escapeHtml(data.player)}</span>
+        <span class="cancel-text">cancelled ${data.linesCancelled} line${plural}</span>
+      `;
+
+        messagesContainer.appendChild(messageEl);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    /**
    * Escape HTML to prevent XSS
    */
     escapeHtml(text) {
@@ -625,6 +652,13 @@ export class MultiPlayerCanvasLayout {
                 const controller = this.getBoardEffectsController(detail.steamId);
                 controller?.triggerFlash('#34d399', 0.8, 260);
             }
+
+            // Phase 3.5: Add cancellation notification to activity feed
+            this.addCancellationNotification({
+                player: detail.playerName,
+                linesCancelled: detail.linesCanceled,
+                isLocal: detail.isLocal,
+            });
         });
 
         this._playerToppedUnsub = onMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, (detail) => {
