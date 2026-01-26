@@ -2,17 +2,17 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  *  🌲 SWEDISH FOREST THEME - Three.js 3D Implementation 🌲
  * ═══════════════════════════════════════════════════════════════════════════════
- * 
+ *
  * A mystical Nordic forest with layered triangular spruce trees, fireflies,
  * god rays, forest spirits, aurora borealis, stars, and atmospheric mist.
  * Inspired by Swedish forest landscapes with deep blue-green atmosphere.
  */
 
 import * as THREE from 'three';
+import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SWEDISH_FOREST_TETROMINOS } from './swedish-forest-tetrominos.js';
-import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { SwedishForestWater } from './SwedishForestWater.js';
 import { SwedishForestBirds } from './swedish-forest-birds.js';
 
@@ -64,24 +64,24 @@ import {
 
 const COLORS = {
     // Sky gradient - TRUE Firewatch style (deep red-orange, NO purple)
-    skyTop: new THREE.Color(0x8B2010),      // Deep burnt red-orange at top
-    skyMid: new THREE.Color(0xDD5522),      // Rich orange
-    skyHorizon: new THREE.Color(0xFFAA44),  // Bright golden-orange at horizon
+    skyTop: new THREE.Color(0x8B2010), // Deep burnt red-orange at top
+    skyMid: new THREE.Color(0xDD5522), // Rich orange
+    skyHorizon: new THREE.Color(0xFFAA44), // Bright golden-orange at horizon
 
     // Tree layers (front to back) - Firewatch layered depth
     // Front trees are nearly black silhouettes, back trees warmer/hazier
     treeLayers: [
-        new THREE.Color(0x180604),  // Front - nearly black with warm hint
-        new THREE.Color(0x2A1008),  // Mid-front - dark brown
-        new THREE.Color(0x4A2015),  // Mid - warm brown
-        new THREE.Color(0x7A4028),  // Mid-back - brown-orange
-        new THREE.Color(0xAA6040),  // Back - warm orange
-        new THREE.Color(0xCC8055),  // Far back - light orange (for horizon layers)
+        new THREE.Color(0x180604), // Front - nearly black with warm hint
+        new THREE.Color(0x2A1008), // Mid-front - dark brown
+        new THREE.Color(0x4A2015), // Mid - warm brown
+        new THREE.Color(0x7A4028), // Mid-back - brown-orange
+        new THREE.Color(0xAA6040), // Back - warm orange
+        new THREE.Color(0xCC8055), // Far back - light orange (for horizon layers)
     ],
 
     // Trunk colors matching tree layers
     trunkLayers: [
-        new THREE.Color(0x100402),  // Darkened to match new front trees
+        new THREE.Color(0x100402), // Darkened to match new front trees
         new THREE.Color(0x1A0804),
         new THREE.Color(0x2A1008),
         new THREE.Color(0x4A2015),
@@ -90,18 +90,18 @@ const COLORS = {
     ],
 
     // Ground floor colors - Firewatch warm aesthetic
-    groundBase: new THREE.Color(0x24120A),   // Deepest Charcoal Brown
-    groundMoss: new THREE.Color(0x8B5A2B),   // Muted Warm Brown (was bright gold)
-    groundDirt: new THREE.Color(0x150805),   // Almost Black
+    groundBase: new THREE.Color(0x24120A), // Deepest Charcoal Brown
+    groundMoss: new THREE.Color(0x8B5A2B), // Muted Warm Brown (was bright gold)
+    groundDirt: new THREE.Color(0x150805), // Almost Black
 
     // Effects - warm golden tones
-    mist: new THREE.Color(0xFFAA55),         // Rich golden mist
-    godRay: new THREE.Color(0xFFBB66),       // Warm golden god rays
-    firefly: new THREE.Color(0xFFAA44),      // Amber-gold fireflies
+    mist: new THREE.Color(0xFFAA55), // Rich golden mist
+    godRay: new THREE.Color(0xFFBB66), // Warm golden god rays
+    firefly: new THREE.Color(0xFFAA44), // Amber-gold fireflies
 
     // Spirit colors - warm ethereal
-    spiritBase: new THREE.Color(0xFFAA66),   // Warm amber
-    spiritGlow: new THREE.Color(0xFFDD88),   // Golden glow
+    spiritBase: new THREE.Color(0xFFAA66), // Warm amber
+    spiritGlow: new THREE.Color(0xFFDD88), // Golden glow
 
     // Aurora colors - repurposed for warm wisps (optional use)
     aurora1: new THREE.Color(0xFF9966), // Warm orange
@@ -123,10 +123,10 @@ const COLORS = {
 
     // Sun colors (NEW)
     sun: {
-        core: new THREE.Color(0xFFFFEE),      // Bright white-yellow core
-        corona: new THREE.Color(0xFFAA22),    // Deep golden corona
-        edge: new THREE.Color(0xFF6600),      // Orange edge
-        halo: new THREE.Color(0xFF4400),      // Outer red-orange halo
+        core: new THREE.Color(0xFFFFEE), // Bright white-yellow core
+        corona: new THREE.Color(0xFFAA22), // Deep golden corona
+        edge: new THREE.Color(0xFF6600), // Orange edge
+        halo: new THREE.Color(0xFF4400), // Outer red-orange halo
     },
 
     // Mountain palettes for layered silhouettes
@@ -181,8 +181,8 @@ export default class SwedishForestTheme extends BaseTheme {
         this.animationFrame = null;
 
         // Scene elements
-        this.foliageInstancedMesh = null;  // Single InstancedMesh for all tree foliage
-        this.trunkInstancedMesh = null;    // Single InstancedMesh for all tree trunks
+        this.foliageInstancedMesh = null; // Single InstancedMesh for all tree foliage
+        this.trunkInstancedMesh = null; // Single InstancedMesh for all tree trunks
         this.groundPlane = null;
         this.starfield = null;
         this.skyDome = null;
@@ -291,10 +291,10 @@ export default class SwedishForestTheme extends BaseTheme {
             55,
             window.innerWidth / window.innerHeight,
             0.1,
-            800
+            800,
         );
         this.camera.position.set(0, 5, 160); // Even further back (z=160) to see entire shore
-        this.camera.lookAt(0, 6, -20);    // Look at lake and distant tree line
+        this.camera.lookAt(0, 6, -20); // Look at lake and distant tree line
         this.baseFov = 55; // Store base FOV for breathing effect
 
         this.createSkyDome(); // Procedural sky base (gradient + sun halo)
@@ -306,7 +306,7 @@ export default class SwedishForestTheme extends BaseTheme {
         this.renderer = new THREE.WebGLRenderer({
             alpha: true,
             antialias: this.getAntialiasEnabled(),
-            powerPreference: 'high-performance'
+            powerPreference: 'high-performance',
         });
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -326,25 +326,25 @@ export default class SwedishForestTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
 
         // this.createStarfield();      // Disabled - sunset is too bright for stars
-        this.createMountains();      // Distant mountain silhouettes (Firewatch style)
-        this.createSilhouetteMountain();  // 3D heightmap mountain on left side
-        this.createSun();            // Large glowing sun at horizon
+        this.createMountains(); // Distant mountain silhouettes (Firewatch style)
+        this.createSilhouetteMountain(); // 3D heightmap mountain on left side
+        this.createSun(); // Large glowing sun at horizon
         // this.createAuroraLayers();   // Disabled - doesn't fit sunset theme
-        this.createGodRays();        // Light beams from sun
-        this.createLensFlares();     // Camera lens flare from sun
-        this.createTrees();          // Layered trees
-        this.createHazeLayers();     // Atmospheric haze between tree layers
-        this.createForestFloor();    // Warm gradient ground (Firewatch style)
+        this.createGodRays(); // Light beams from sun
+        this.createLensFlares(); // Camera lens flare from sun
+        this.createTrees(); // Layered trees
+        this.createHazeLayers(); // Atmospheric haze between tree layers
+        this.createForestFloor(); // Warm gradient ground (Firewatch style)
         // this.createFarShore();       // Removed - merged into ForestFloor
-        this.createLake();           // Firewatch-style lake on right side
-        this.createShoreFoam();      // Animated foam ring at water's edge
-        this.createWaterLogs();      // Wooden dock posts in the water
-        this.createShoreRocks();     // Warm-colored silhouette boulders along shoreline
-        this.createShoreReeds();     // Dried grass/reeds at water's edge
+        this.createLake(); // Firewatch-style lake on right side
+        this.createShoreFoam(); // Animated foam ring at water's edge
+        this.createWaterLogs(); // Wooden dock posts in the water
+        this.createShoreRocks(); // Warm-colored silhouette boulders along shoreline
+        this.createShoreReeds(); // Dried grass/reeds at water's edge
         this.createLakeFramingTrees(); // Silhouette trees framing lake edges
-        this.createGrass();          // Golden sunset grass
+        this.createGrass(); // Golden sunset grass
         // this.createGlowingMushrooms(); // Disabled - cleaner Firewatch look
-        this.createMistLayers();     // Atmospheric golden fog
+        this.createMistLayers(); // Atmospheric golden fog
         this.createStylizedClouds(); // Flat cloud layers near horizon
         this.createSilhouetteGrass(); // Dense foreground grass framing
 
@@ -353,10 +353,10 @@ export default class SwedishForestTheme extends BaseTheme {
         this.birds.init();
         this.mainGroup.add(this.birds.mesh);
 
-        this.createSpiritWinds();    // Flowing warm energy
-        this.createDustMotes();      // Floating particles in sunlight
-        this.createFireflySystem();  // Glowing amber particles
-        this.createForestSpirits();  // Warm ethereal orbs
+        this.createSpiritWinds(); // Flowing warm energy
+        this.createDustMotes(); // Floating particles in sunlight
+        this.createFireflySystem(); // Glowing amber particles
+        this.createForestSpirits(); // Warm ethereal orbs
         // this.createForegroundBranches(); // Disabled - foreground branch silhouettes
         // this.createFallingLeavesSystem();  // Disabled - no falling leaves
         this.setupLighting();
@@ -398,14 +398,14 @@ export default class SwedishForestTheme extends BaseTheme {
 
         // Saturated Firewatch sunset - deep orange to golden
         const gradient = ctx.createLinearGradient(0, 0, 0, 512);
-        gradient.addColorStop(0, '#4A1005');    // Very deep burnt orange at top
+        gradient.addColorStop(0, '#4A1005'); // Very deep burnt orange at top
         gradient.addColorStop(0.12, '#6A1808'); // Dark burnt orange
         gradient.addColorStop(0.25, '#8A2510'); // Rich dark orange
         gradient.addColorStop(0.40, '#BB4015'); // Deep orange
         gradient.addColorStop(0.55, '#DD5520'); // Bright orange
         gradient.addColorStop(0.70, '#FF7725'); // Vivid orange
         gradient.addColorStop(0.85, '#FFAA40'); // Golden orange
-        gradient.addColorStop(1, '#FFCC50');    // Bright golden at horizon
+        gradient.addColorStop(1, '#FFCC50'); // Bright golden at horizon
 
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, 2, 512);
@@ -543,7 +543,7 @@ export default class SwedishForestTheme extends BaseTheme {
             { scale: 450, opacity: 0.12, color: new THREE.Color(0xFF4411) },
         ];
 
-        glowConfigs.forEach(config => {
+        glowConfigs.forEach((config) => {
             const material = new THREE.SpriteMaterial({
                 map: glowTexture,
                 color: config.color,
@@ -595,15 +595,29 @@ export default class SwedishForestTheme extends BaseTheme {
         // Offset is relative to sun position (0 = at sun, 1 = at camera, negative = beyond sun)
         const flareConfigs = [
             // Main flares near sun - very subtle, appearing only briefly
-            { offset: 0.08, scale: 18, opacity: 0.12, color: new THREE.Color(0xFFDD88), type: 0 },  // Circle
-            { offset: 0.12, scale: 8, opacity: 0.08, color: new THREE.Color(0xFF9955), type: 1 }, // Ring
+            {
+                offset: 0.08, scale: 18, opacity: 0.12, color: new THREE.Color(0xFFDD88), type: 0,
+            }, // Circle
+            {
+                offset: 0.12, scale: 8, opacity: 0.08, color: new THREE.Color(0xFF9955), type: 1,
+            }, // Ring
             // Secondary flares - even more subtle
-            { offset: 0.25, scale: 5, opacity: 0.06, color: new THREE.Color(0xFFAA66), type: 0 },   // Circle
-            { offset: 0.35, scale: 10, opacity: 0.05, color: new THREE.Color(0xFF8844), type: 1 }, // Ring
-            { offset: 0.5, scale: 4, opacity: 0.06, color: new THREE.Color(0xFFCC88), type: 2 },   // Hexagon
-            { offset: 0.65, scale: 6, opacity: 0.04, color: new THREE.Color(0xFFBB77), type: 0 }, // Circle
+            {
+                offset: 0.25, scale: 5, opacity: 0.06, color: new THREE.Color(0xFFAA66), type: 0,
+            }, // Circle
+            {
+                offset: 0.35, scale: 10, opacity: 0.05, color: new THREE.Color(0xFF8844), type: 1,
+            }, // Ring
+            {
+                offset: 0.5, scale: 4, opacity: 0.06, color: new THREE.Color(0xFFCC88), type: 2,
+            }, // Hexagon
+            {
+                offset: 0.65, scale: 6, opacity: 0.04, color: new THREE.Color(0xFFBB77), type: 0,
+            }, // Circle
             // Anamorphic horizontal streak - subtle light streaking through branches
-            { offset: 0.03, scale: 50, opacity: 0.06, color: new THREE.Color(0xFFAA55), type: 3, scaleY: 0.05 }, // Streak
+            {
+                offset: 0.03, scale: 50, opacity: 0.06, color: new THREE.Color(0xFFAA55), type: 3, scaleY: 0.05,
+            }, // Streak
         ];
 
         flareConfigs.forEach((config, idx) => {
@@ -652,7 +666,7 @@ export default class SwedishForestTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     createDustMotes() {
-        const dustCount = 150;  // More dust particles floating in sunlight
+        const dustCount = 150; // More dust particles floating in sunlight
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(dustCount * 3);
         const phases = new Float32Array(dustCount);
@@ -661,9 +675,9 @@ export default class SwedishForestTheme extends BaseTheme {
         for (let i = 0; i < dustCount; i++) {
             const i3 = i * 3;
             // Spread dust wider across the scene and deeper
-            positions[i3] = (Math.random() - 0.5) * 400;    // Width: 400 (-200 to 200)
+            positions[i3] = (Math.random() - 0.5) * 400; // Width: 400 (-200 to 200)
             positions[i3 + 1] = 5 + Math.random() * 25;
-            positions[i3 + 2] = 10 - Math.random() * 100;   // Depth: +10 to -90
+            positions[i3 + 2] = 10 - Math.random() * 100; // Depth: +10 to -90
 
             phases[i] = Math.random() * Math.PI * 2;
             randoms[i] = Math.random();
@@ -698,9 +712,15 @@ export default class SwedishForestTheme extends BaseTheme {
 
         // Mountain layer configurations - Firewatch style prominent silhouettes
         const mountainConfigs = [
-            { z: -88, height: 55, fogAmount: 0.75, layerIndex: 0, width: 280, y: 22 },   // Far - warmest, haziest
-            { z: -80, height: 50, fogAmount: 0.55, layerIndex: 1, width: 280, y: 24 },   // Mid
-            { z: -73, height: 45, fogAmount: 0.35, layerIndex: 2, width: 280, y: 26 },   // Near - darker
+            {
+                z: -88, height: 55, fogAmount: 0.75, layerIndex: 0, width: 280, y: 22,
+            }, // Far - warmest, haziest
+            {
+                z: -80, height: 50, fogAmount: 0.55, layerIndex: 1, width: 280, y: 24,
+            }, // Mid
+            {
+                z: -73, height: 45, fogAmount: 0.35, layerIndex: 2, width: 280, y: 26,
+            }, // Near - darker
         ];
 
         const fogColor = COLORS.mountains.fog.clone();
@@ -746,10 +766,10 @@ export default class SwedishForestTheme extends BaseTheme {
     createSilhouetteMountain() {
         // Mountain configuration - positioned left of sun, far behind trees
         const config = {
-            size: 300,           // Size of the terrain plane
-            segments: 64,        // Resolution (64x64 for performance)
-            peakHeight: 100,     // Maximum height at the peak
-            position: new THREE.Vector3(-90, -15, -160),  // Main peak shifted right to x=-90
+            size: 300, // Size of the terrain plane
+            segments: 64, // Resolution (64x64 for performance)
+            peakHeight: 100, // Maximum height at the peak
+            position: new THREE.Vector3(-90, -15, -160), // Main peak shifted right to x=-90
         };
 
         // Create plane geometry
@@ -757,7 +777,7 @@ export default class SwedishForestTheme extends BaseTheme {
             config.size,
             config.size,
             config.segments,
-            config.segments
+            config.segments,
         );
         geometry.rotateX(-Math.PI / 2);
 
@@ -823,7 +843,7 @@ export default class SwedishForestTheme extends BaseTheme {
 
             if (normDist < 1.0) {
                 // Simple conical peak with smooth falloff
-                const peakProfile = Math.pow(1.0 - normDist, 1.2);
+                const peakProfile = (1.0 - normDist) ** 1.2;
                 height = peakProfile * config.peakHeight;
 
                 // Add asymmetry - slightly steeper on one side
@@ -857,11 +877,11 @@ export default class SwedishForestTheme extends BaseTheme {
         // Create shader material for atmospheric perspective
         this.silhouetteMountainMaterial = new THREE.ShaderMaterial({
             uniforms: {
-                uShadowColor: { value: new THREE.Color(0x2A1518) },    // Deep shadow (facing camera)
-                uMidColor: { value: new THREE.Color(0x6B3525) },       // Mid-tone warm brown
+                uShadowColor: { value: new THREE.Color(0x2A1518) }, // Deep shadow (facing camera)
+                uMidColor: { value: new THREE.Color(0x6B3525) }, // Mid-tone warm brown
                 uHighlightColor: { value: new THREE.Color(0xCC6633) }, // Warm orange highlight
-                uRimColor: { value: new THREE.Color(0xFF8844) },       // Bright orange rim
-                uFogColor: { value: new THREE.Color(0xDD7744) },       // Warm atmospheric fog
+                uRimColor: { value: new THREE.Color(0xFF8844) }, // Bright orange rim
+                uFogColor: { value: new THREE.Color(0xDD7744) }, // Warm atmospheric fog
             },
             vertexShader: `
                 varying vec2 vUv;
@@ -960,10 +980,10 @@ export default class SwedishForestTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
 
         const tallPeakConfig = {
-            size: 380,           // Wide base
+            size: 380, // Wide base
             segments: 64,
-            peakHeight: 170,     // Reduced height
-            position: new THREE.Vector3(-180, -15, -185),  // Shifted left (x -20) and back (z -10)
+            peakHeight: 170, // Reduced height
+            position: new THREE.Vector3(-180, -15, -185), // Shifted left (x -20) and back (z -10)
         };
 
         // Create geometry for tall peak
@@ -971,7 +991,7 @@ export default class SwedishForestTheme extends BaseTheme {
             tallPeakConfig.size,
             tallPeakConfig.size,
             tallPeakConfig.segments,
-            tallPeakConfig.segments
+            tallPeakConfig.segments,
         );
         tallGeometry.rotateX(-Math.PI / 2);
 
@@ -985,14 +1005,14 @@ export default class SwedishForestTheme extends BaseTheme {
             const dx = vertex.x;
             const dz = vertex.z;
             const distance = Math.sqrt(dx * dx + dz * dz);
-            const maxDist = tallPeakConfig.size * 0.42;  // Slightly steeper
+            const maxDist = tallPeakConfig.size * 0.42; // Slightly steeper
             const normDist = distance / maxDist;
 
             let height = 0;
 
             if (normDist < 1.0) {
                 // Steeper peak profile for dramatic tall mountain
-                const peakProfile = Math.pow(1.0 - normDist, 1.4);
+                const peakProfile = (1.0 - normDist) ** 1.4;
                 height = peakProfile * tallPeakConfig.peakHeight;
 
                 // Add asymmetry
@@ -1026,7 +1046,7 @@ export default class SwedishForestTheme extends BaseTheme {
         // Create tall peak mesh (reuse same material)
         this.tallMountainPeak = new THREE.Mesh(tallGeometry, this.silhouetteMountainMaterial);
         this.tallMountainPeak.position.copy(tallPeakConfig.position);
-        this.tallMountainPeak.renderOrder = -6;  // Render behind the first mountain
+        this.tallMountainPeak.renderOrder = -6; // Render behind the first mountain
 
         this.scene.add(this.tallMountainPeak);
 
@@ -1037,15 +1057,15 @@ export default class SwedishForestTheme extends BaseTheme {
         const farLeftConfig = {
             size: 350,
             segments: 64,
-            peakHeight: 140,     // Intermediate height
-            position: new THREE.Vector3(-270, -15, -200),  // Shifted left (x -20) and back (z -15)
+            peakHeight: 140, // Intermediate height
+            position: new THREE.Vector3(-270, -15, -200), // Shifted left (x -20) and back (z -15)
         };
 
         const farLeftGeometry = new THREE.PlaneGeometry(
             farLeftConfig.size,
             farLeftConfig.size,
             farLeftConfig.segments,
-            farLeftConfig.segments
+            farLeftConfig.segments,
         );
         farLeftGeometry.rotateX(-Math.PI / 2);
 
@@ -1066,7 +1086,7 @@ export default class SwedishForestTheme extends BaseTheme {
 
             if (normDist < 1.0) {
                 // Slightly broader profile
-                const peakProfile = Math.pow(1.0 - normDist, 1.3);
+                const peakProfile = (1.0 - normDist) ** 1.3;
                 height = peakProfile * farLeftConfig.peakHeight;
 
                 // Asymmetry
@@ -1115,7 +1135,7 @@ export default class SwedishForestTheme extends BaseTheme {
             extremeLeftConfig.size,
             extremeLeftConfig.size,
             extremeLeftConfig.segments,
-            extremeLeftConfig.segments
+            extremeLeftConfig.segments,
         );
         extremeLeftGeometry.rotateX(-Math.PI / 2);
 
@@ -1135,7 +1155,7 @@ export default class SwedishForestTheme extends BaseTheme {
 
             if (normDist < 1.0) {
                 // Tall ridge that frames the left edge but still leans inward
-                const peakProfile = Math.pow(1.0 - normDist, 1.28);
+                const peakProfile = (1.0 - normDist) ** 1.28;
                 height = peakProfile * extremeLeftConfig.peakHeight;
 
                 // Offset asymmetry so slope leans toward center of frame
@@ -1169,17 +1189,16 @@ export default class SwedishForestTheme extends BaseTheme {
         this.extremeLeftMountain.renderOrder = -7;
         this.scene.add(this.extremeLeftMountain);
 
-
         // ─────────────────────────────────────────────────────────────────────
         // CREATE RIGHT SIDE MOUNTAIN (Background silhouette matching left mountain depth)
         // Positioned far back to blend with other background mountains
         // ─────────────────────────────────────────────────────────────────────
 
         const rightHillConfig = {
-            size: 320,           // Similar to left mountain
+            size: 320, // Similar to left mountain
             segments: 64,
-            peakHeight: 115,     // Natural height, not looming
-            position: new THREE.Vector3(120, -15, -160),   // Balanced position on right side
+            peakHeight: 115, // Natural height, not looming
+            position: new THREE.Vector3(120, -15, -160), // Balanced position on right side
         };
 
         // Create plane geometry for right mountain
@@ -1187,7 +1206,7 @@ export default class SwedishForestTheme extends BaseTheme {
             rightHillConfig.size,
             rightHillConfig.size,
             rightHillConfig.segments,
-            rightHillConfig.segments
+            rightHillConfig.segments,
         );
 
         // Rotate to horizontal
@@ -1209,7 +1228,7 @@ export default class SwedishForestTheme extends BaseTheme {
             let height = 0;
 
             if (normDist < 1.0) {
-                const peakProfile = Math.pow(1.0 - normDist, 1.1);
+                const peakProfile = (1.0 - normDist) ** 1.1;
                 height = peakProfile * rightHillConfig.peakHeight;
                 const angle = Math.atan2(dz, dx);
                 height *= (1.0 + Math.sin(angle * 2.0 + 1.0) * 0.1);
@@ -1252,7 +1271,7 @@ export default class SwedishForestTheme extends BaseTheme {
             farRightConfig.size,
             farRightConfig.size,
             farRightConfig.segments,
-            farRightConfig.segments
+            farRightConfig.segments,
         );
         farRightGeometry.rotateX(-Math.PI / 2);
 
@@ -1272,7 +1291,7 @@ export default class SwedishForestTheme extends BaseTheme {
 
             if (normDist < 1.0) {
                 // Narrower, steeper peak to punctuate the skyline
-                const peakProfile = Math.pow(1.0 - normDist, 1.35);
+                const peakProfile = (1.0 - normDist) ** 1.35;
                 height = peakProfile * farRightConfig.peakHeight;
 
                 // Lean slightly inward toward the sun
@@ -1308,95 +1327,95 @@ export default class SwedishForestTheme extends BaseTheme {
     }
 
     /* REMOVED DUPLICATE CODE
-    
+
         const smoothNoise = (x, y) => {
             const ix = Math.floor(x);
             const iy = Math.floor(y);
             const fx = x - ix;
             const fy = y - iy;
-    
+
             const sx = fx * fx * (3 - 2 * fx);
             const sy = fy * fy * (3 - 2 * fy);
-    
+
             const n00 = noise2D(ix, iy);
             const n10 = noise2D(ix + 1, iy);
             const n01 = noise2D(ix, iy + 1);
             const n11 = noise2D(ix + 1, iy + 1);
-    
+
             const nx0 = n00 + sx * (n10 - n00);
             const nx1 = n01 + sx * (n11 - n01);
-    
+
             return nx0 + sy * (nx1 - nx0);
         };
-    
+
         const fbm = (x, y, octaves = 5) => {
             let value = 0;
             let amplitude = 1;
             let frequency = 1;
             let maxValue = 0;
-    
+
             for (let i = 0; i < octaves; i++) {
                 value += amplitude * (smoothNoise(x * frequency, y * frequency) * 2 - 1);
                 maxValue += amplitude;
                 amplitude *= 0.5;
                 frequency *= 2;
             }
-    
+
             return value / maxValue;
         };
-    
+
         // --- APPLY HEIGHTMAP DISPLACEMENT - CLASSIC MOUNTAIN PEAK ---
         const positions = geometry.attributes.position;
         const vertex = new THREE.Vector3();
         const heights = [];
-    
+
         for (let i = 0; i < positions.count; i++) {
             vertex.fromBufferAttribute(positions, i);
-    
+
             // Distance from center
             const dx = vertex.x;
             const dz = vertex.z;
             const distance = Math.sqrt(dx * dx + dz * dz);
             const maxDist = config.size * 0.45;
             const normDist = distance / maxDist;
-    
+
             // === CLASSIC TRIANGULAR PEAK ===
             let height = 0;
-    
+
             if (normDist < 1.0) {
                 // Simple conical peak with smooth falloff
                 const peakProfile = Math.pow(1.0 - normDist, 1.2);
                 height = peakProfile * config.peakHeight;
-    
+
                 // Add asymmetry - slightly steeper on one side
                 const angle = Math.atan2(dz, dx);
                 const asymmetry = 1.0 + Math.sin(angle + 0.5) * 0.15;
                 height *= asymmetry;
-    
+
                 // Add subtle ridges running down from peak
                 const ridges = Math.sin(angle * 5) * 0.08 * (1.0 - normDist);
                 height += ridges * config.peakHeight;
-    
+
                 // Add subtle FBM noise for natural rock texture
                 const noiseScale = 0.01;
                 const rockNoise = fbm(vertex.x * noiseScale + 50, vertex.z * noiseScale + 50, 3);
                 height += rockNoise * config.peakHeight * 0.06 * (1.0 - normDist * 0.5);
             }
-    
+
             heights.push(Math.max(0, height));
             positions.setY(i, Math.max(0, height));
         }
-    
+
         // Recompute normals
         geometry.computeVertexNormals();
-    
+
         // Add height attribute for shader
         const heightAttr = new Float32Array(positions.count);
         for (let i = 0; i < positions.count; i++) {
             heightAttr[i] = heights[i] / config.peakHeight;
         }
         geometry.setAttribute('aHeight', new THREE.BufferAttribute(heightAttr, 1));
-    
+
         // --- CUSTOM SHADER MATERIAL - Firewatch silhouette style ---
         this.silhouetteMountainMaterial = new THREE.ShaderMaterial({
             uniforms: {
@@ -1409,18 +1428,18 @@ export default class SwedishForestTheme extends BaseTheme {
             },
             vertexShader: `
                 attribute float aHeight;
-    
+
                 varying vec3 vNormal;
                 varying vec3 vWorldPosition;
                 varying float vHeight;
-    
+
                 void main() {
                     vNormal = normalize(normalMatrix * normal);
                     vHeight = aHeight;
-    
+
                     vec4 worldPos = modelMatrix * vec4(position, 1.0);
                     vWorldPosition = worldPos.xyz;
-    
+
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                 }
             `,
@@ -1431,91 +1450,91 @@ export default class SwedishForestTheme extends BaseTheme {
                 uniform vec3 uSkyColor;
                 uniform vec3 uSunDirection;
                 uniform float uTime;
-    
+
                 varying vec3 vNormal;
                 varying vec3 vWorldPosition;
                 varying float vHeight;
-    
+
                 // Simple noise for detail
                 float hash(vec2 p) {
                     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
                 }
-    
+
                 float noise(vec2 p) {
                     vec2 i = floor(p);
                     vec2 f = fract(p);
                     f = f * f * (3.0 - 2.0 * f);
-    
+
                     float a = hash(i);
                     float b = hash(i + vec2(1.0, 0.0));
                     float c = hash(i + vec2(0.0, 1.0));
                     float d = hash(i + vec2(1.0, 1.0));
-    
+
                     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
                 }
-    
+
                 void main() {
                     // Discard pixels below ground
                     if (vHeight < 0.02) discard;
-    
+
                     // === LIGHTING ===
                     float NdotL = dot(vNormal, uSunDirection);
                     float lighting = max(0.4, NdotL * 0.5 + 0.5);
-    
+
                     // === HEIGHT-BASED COLOR ===
                     // Darker at base, lighter toward peak (Firewatch style)
                     vec3 mountainColor = mix(uBaseColor, uPeakColor, vHeight * 0.8);
-    
+
                     // Add subtle lighting variation
                     mountainColor *= lighting;
-    
+
                     // Add noise variation for texture
                     float noiseVal = noise(vWorldPosition.xz * 0.03);
                     mountainColor += vec3(noiseVal * 0.05 - 0.025);
-    
+
                     // === ATMOSPHERIC FOG ===
                     float dist = length(vWorldPosition - cameraPosition);
                     float fogFactor = smoothstep(80.0, 200.0, dist);
-    
+
                     // Height-aware atmosphere (higher = more sky color)
                     vec3 atmosphereColor = mix(uFogColor, uSkyColor, vHeight * 0.5);
                     mountainColor = mix(mountainColor, atmosphereColor, fogFactor * 0.6);
-    
+
                     // === BASE FOG/MIST ===
                     float baseFog = smoothstep(0.3, 0.0, vHeight);
                     baseFog *= 0.8;
                     mountainColor = mix(mountainColor, uFogColor, baseFog);
-    
+
                     // === RIM LIGHTING (edge glow from sun) ===
                     float rim = 1.0 - max(0.0, dot(vNormal, vec3(0.0, 0.0, 1.0)));
                     rim = pow(rim, 3.0);
                     vec3 rimColor = vec3(1.0, 0.6, 0.3); // Warm orange rim
                     mountainColor += rimColor * rim * 0.15 * vHeight;
-    
+
                     gl_FragColor = vec4(mountainColor, 1.0);
                 }
             `,
             side: THREE.DoubleSide,
         });
-    
+
         // Create the mountain mesh (original peak)
         this.silhouetteMountain = new THREE.Mesh(geometry, this.silhouetteMountainMaterial);
         this.silhouetteMountain.position.copy(config.position);
         this.silhouetteMountain.renderOrder = -5;
-    
+
         this.scene.add(this.silhouetteMountain);
-    
+
         // ─────────────────────────────────────────────────────────────────────
         // CREATE SECOND TALLER PEAK (to the left of the first one)
         // ─────────────────────────────────────────────────────────────────────
-    
+
         const tallPeakConfig = {
             size: 380,           // Wide base
             segments: 64,
             peakHeight: 170,     // Reduced height
             position: new THREE.Vector3(-260, -15, -175),  // Further left
         };
-    
+
         // Create geometry for tall peak
         const tallGeometry = new THREE.PlaneGeometry(
             tallPeakConfig.size,
@@ -1524,73 +1543,73 @@ export default class SwedishForestTheme extends BaseTheme {
             tallPeakConfig.segments
         );
         tallGeometry.rotateX(-Math.PI / 2);
-    
+
         // Apply heightmap to tall peak (reusing same noise functions)
         const tallPositions = tallGeometry.attributes.position;
         const tallHeights = [];
-    
+
         for (let i = 0; i < tallPositions.count; i++) {
             vertex.fromBufferAttribute(tallPositions, i);
-    
+
             const dx = vertex.x;
             const dz = vertex.z;
             const distance = Math.sqrt(dx * dx + dz * dz);
             const maxDist = tallPeakConfig.size * 0.42;  // Slightly steeper
             const normDist = distance / maxDist;
-    
+
             let height = 0;
-    
+
             if (normDist < 1.0) {
                 // Steeper peak profile for dramatic tall mountain
                 const peakProfile = Math.pow(1.0 - normDist, 1.4);
                 height = peakProfile * tallPeakConfig.peakHeight;
-    
+
                 // Add asymmetry
                 const angle = Math.atan2(dz, dx);
                 const asymmetry = 1.0 + Math.sin(angle + 0.8) * 0.12;
                 height *= asymmetry;
-    
+
                 // Add ridges
                 const ridges = Math.sin(angle * 4) * 0.1 * (1.0 - normDist);
                 height += ridges * tallPeakConfig.peakHeight;
-    
+
                 // Add subtle noise
                 const noiseScale = 0.012;
                 const rockNoise = fbm(vertex.x * noiseScale + 100, vertex.z * noiseScale + 100, 3);
                 height += rockNoise * tallPeakConfig.peakHeight * 0.05 * (1.0 - normDist * 0.5);
             }
-    
+
             tallHeights.push(Math.max(0, height));
             tallPositions.setY(i, Math.max(0, height));
         }
-    
+
         tallGeometry.computeVertexNormals();
-    
+
         // Add height attribute
         const tallHeightAttr = new Float32Array(tallPositions.count);
         for (let i = 0; i < tallPositions.count; i++) {
             tallHeightAttr[i] = tallHeights[i] / tallPeakConfig.peakHeight;
         }
         tallGeometry.setAttribute('aHeight', new THREE.BufferAttribute(tallHeightAttr, 1));
-    
+
         // Create tall peak mesh (reuse same material)
         this.tallMountainPeak = new THREE.Mesh(tallGeometry, this.silhouetteMountainMaterial);
         this.tallMountainPeak.position.copy(tallPeakConfig.position);
         this.tallMountainPeak.renderOrder = -6;  // Render behind the first mountain
-    
+
         this.scene.add(this.tallMountainPeak);
-    
+
         // ─────────────────────────────────────────────────────────────────────
         // CREATE THIRD PEAK (FAR LEFT) (to complete the 3-tops request)
         // ─────────────────────────────────────────────────────────────────────
-    
+
         const farLeftConfig = {
             size: 350,
             segments: 64,
             peakHeight: 140,     // Intermediate height
             position: new THREE.Vector3(-380, -15, -190),  // Far left of the tall peak
         };
-    
+
         const farLeftGeometry = new THREE.PlaneGeometry(
             farLeftConfig.size,
             farLeftConfig.size,
@@ -1598,70 +1617,70 @@ export default class SwedishForestTheme extends BaseTheme {
             farLeftConfig.segments
         );
         farLeftGeometry.rotateX(-Math.PI / 2);
-    
+
         // Apply heightmap to far left peak
         const farLeftPositions = farLeftGeometry.attributes.position;
         const farLeftHeights = [];
-    
+
         for (let i = 0; i < farLeftPositions.count; i++) {
             vertex.fromBufferAttribute(farLeftPositions, i);
-    
+
             const dx = vertex.x;
             const dz = vertex.z;
             const distance = Math.sqrt(dx * dx + dz * dz);
             const maxDist = farLeftConfig.size * 0.45;
             const normDist = distance / maxDist;
-    
+
             let height = 0;
-    
+
             if (normDist < 1.0) {
                 // Slightly broader profile
                 const peakProfile = Math.pow(1.0 - normDist, 1.3);
                 height = peakProfile * farLeftConfig.peakHeight;
-    
+
                 // Asymmetry
                 const angle = Math.atan2(dz, dx);
                 height *= (1.0 + Math.sin(angle + 2.0) * 0.1);
-    
+
                 // Ridges
                 const ridges = Math.sin(angle * 5) * 0.08 * (1.0 - normDist);
                 height += ridges * farLeftConfig.peakHeight;
-    
+
                 // Noise
                 const noiseScale = 0.01;
                 const rockNoise = fbm(vertex.x * noiseScale + 500, vertex.z * noiseScale + 500, 3);
                 height += rockNoise * farLeftConfig.peakHeight * 0.05;
             }
-    
+
             farLeftHeights.push(Math.max(0, height));
             farLeftPositions.setY(i, Math.max(0, height));
         }
-    
+
         farLeftGeometry.computeVertexNormals();
-    
+
         const farLeftHeightAttr = new Float32Array(farLeftPositions.count);
         for (let i = 0; i < farLeftPositions.count; i++) {
             farLeftHeightAttr[i] = farLeftHeights[i] / farLeftConfig.peakHeight;
         }
         farLeftGeometry.setAttribute('aHeight', new THREE.BufferAttribute(farLeftHeightAttr, 1));
-    
+
         this.farLeftMountain = new THREE.Mesh(farLeftGeometry, this.silhouetteMountainMaterial);
         this.farLeftMountain.position.copy(farLeftConfig.position);
         this.farLeftMountain.renderOrder = -8; // Behind tall peak
         this.scene.add(this.farLeftMountain);
-    
+
         // ─────────────────────────────────────────────────────────────────────
         // CREATE RIGHT SIDE MOUNTAIN (Background silhouette matching left mountain depth)
         // Positioned far back to blend with other background mountains
         // ─────────────────────────────────────────────────────────────────────
-    
+
         const rightHillConfig = {
             size: 320,           // Similar to left mountain
             segments: 64,
             peakHeight: 115,     // Natural height, not looming
             position: new THREE.Vector3(120, -15, -160),   // Balanced position on right side
         };
-    
+
         const rightGeometry = new THREE.PlaneGeometry(
             rightHillConfig.size,
             rightHillConfig.size,
@@ -1669,57 +1688,57 @@ export default class SwedishForestTheme extends BaseTheme {
             rightHillConfig.segments
         );
         rightGeometry.rotateX(-Math.PI / 2);
-    
+
         const rightPositions = rightGeometry.attributes.position;
         const rightHeights = [];
-    
+
         for (let i = 0; i < rightPositions.count; i++) {
             vertex.fromBufferAttribute(rightPositions, i);
-    
+
             const dx = vertex.x;
             const dz = vertex.z;
             const distance = Math.sqrt(dx * dx + dz * dz);
             const maxDist = rightHillConfig.size * 0.45;
             const normDist = distance / maxDist;
-    
+
             let height = 0;
-    
+
             if (normDist < 1.0) {
                 // Rounder, softer profile for hills
                 const peakProfile = Math.pow(1.0 - normDist, 1.1);
                 height = peakProfile * rightHillConfig.peakHeight;
-    
+
                 // Asymmetry
                 const angle = Math.atan2(dz, dx);
                 height *= (1.0 + Math.sin(angle * 2.0 + 1.0) * 0.1);
-    
+
                 // Rolling ridges
                 const ridges = Math.sin(angle * 3) * 0.06 * (1.0 - normDist);
                 height += ridges * rightHillConfig.peakHeight;
-    
+
                 // Noise
                 const noiseScale = 0.008;
                 const rockNoise = fbm(vertex.x * noiseScale + 200, vertex.z * noiseScale + 200, 3);
                 height += rockNoise * rightHillConfig.peakHeight * 0.04;
             }
-    
+
             rightHeights.push(Math.max(0, height));
             rightPositions.setY(i, Math.max(0, height));
         }
-    
+
         rightGeometry.computeVertexNormals();
-    
+
         const rightHeightAttr = new Float32Array(rightPositions.count);
         for (let i = 0; i < rightPositions.count; i++) {
             rightHeightAttr[i] = rightHeights[i] / rightHillConfig.peakHeight;
         }
         rightGeometry.setAttribute('aHeight', new THREE.BufferAttribute(rightHeightAttr, 1));
-    
+
         this.rightHill = new THREE.Mesh(rightGeometry, this.silhouetteMountainMaterial);
         this.rightHill.position.copy(rightHillConfig.position);
         this.rightHill.renderOrder = -15; // Far behind trees and other elements
         this.scene.add(this.rightHill);
-    
+
     */
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1731,9 +1750,15 @@ export default class SwedishForestTheme extends BaseTheme {
 
         // Haze configurations between tree layers
         const hazeConfigs = [
-            { z: -55, y: 8, width: 120, height: 25, density: 0.35, color: new THREE.Color(0xFFBB88) },
-            { z: -35, y: 6, width: 100, height: 20, density: 0.25, color: new THREE.Color(0xFFAA77) },
-            { z: -18, y: 4, width: 80, height: 15, density: 0.18, color: new THREE.Color(0xFF9966) },
+            {
+                z: -55, y: 8, width: 120, height: 25, density: 0.35, color: new THREE.Color(0xFFBB88),
+            },
+            {
+                z: -35, y: 6, width: 100, height: 20, density: 0.25, color: new THREE.Color(0xFFAA77),
+            },
+            {
+                z: -18, y: 4, width: 80, height: 15, density: 0.18, color: new THREE.Color(0xFF9966),
+            },
         ];
 
         hazeConfigs.forEach((config) => {
@@ -1773,10 +1798,18 @@ export default class SwedishForestTheme extends BaseTheme {
 
         // Branch configurations for both sides
         const branchConfigs = [
-            { side: -1, x: -22, y: 12, z: 8, width: 18, height: 25, rotZ: 0.2, opacity: 0.95 },   // Left top
-            { side: -1, x: -25, y: 3, z: 6, width: 15, height: 18, rotZ: 0.35, opacity: 0.9 },    // Left bottom
-            { side: 1, x: 24, y: 14, z: 7, width: 16, height: 22, rotZ: -0.15, opacity: 0.95 },   // Right top
-            { side: 1, x: 26, y: 5, z: 5, width: 14, height: 16, rotZ: -0.3, opacity: 0.85 },     // Right bottom
+            {
+                side: -1, x: -22, y: 12, z: 8, width: 18, height: 25, rotZ: 0.2, opacity: 0.95,
+            }, // Left top
+            {
+                side: -1, x: -25, y: 3, z: 6, width: 15, height: 18, rotZ: 0.35, opacity: 0.9,
+            }, // Left bottom
+            {
+                side: 1, x: 24, y: 14, z: 7, width: 16, height: 22, rotZ: -0.15, opacity: 0.95,
+            }, // Right top
+            {
+                side: 1, x: 26, y: 5, z: 5, width: 14, height: 16, rotZ: -0.3, opacity: 0.85,
+            }, // Right bottom
         ];
 
         branchConfigs.forEach((config) => {
@@ -1811,7 +1844,6 @@ export default class SwedishForestTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     createForestFloor() {
-
         // Extended geometry to cover from lake edge to mountains
         const geometry = new THREE.PlaneGeometry(300, 250, 64, 64);
 
@@ -1826,7 +1858,7 @@ export default class SwedishForestTheme extends BaseTheme {
             },
             vertexShader: groundVertexShader,
             fragmentShader: groundFragmentShader,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         this.groundPlane = new THREE.Mesh(geometry, material);
@@ -1894,8 +1926,8 @@ export default class SwedishForestTheme extends BaseTheme {
                 uTime: { value: 0 },
                 uWindStrength: { value: 0.18 },
                 uGrassTexture: { value: grassTexture },
-                uBaseColor: { value: new THREE.Color(0x4A3015) },  // Warm brown base
-                uTipColor: { value: new THREE.Color(0xDDAA44) },   // Bright golden tips (Firewatch)
+                uBaseColor: { value: new THREE.Color(0x4A3015) }, // Warm brown base
+                uTipColor: { value: new THREE.Color(0xDDAA44) }, // Bright golden tips (Firewatch)
                 uFogColor: { value: COLORS.fog },
                 uSpiritGlow: { value: 0.0 }, // Reactive to spirits
             },
@@ -1989,8 +2021,8 @@ export default class SwedishForestTheme extends BaseTheme {
 
         // Lake clearing parameters (matches lake at z=5, radius 70, scale 2.5x0.45)
         const lakeCenter = { x: 0, z: 5 };
-        const lakeRadiusX = 95;   // 70 * 2.5 * 0.55 margin
-        const lakeRadiusZ = 38;   // 70 * 0.45 + margin
+        const lakeRadiusX = 95; // 70 * 2.5 * 0.55 margin
+        const lakeRadiusZ = 38; // 70 * 0.45 + margin
 
         for (let i = 0; i < grassCount; i++) {
             // Distribute grass only on near shore (positive z, in front of lake)
@@ -1998,7 +2030,7 @@ export default class SwedishForestTheme extends BaseTheme {
             const dist = 5 + Math.random() * 55;
 
             const x = Math.sin(angle) * dist;
-            const z = 40 + Math.cos(angle) * dist * 0.4;  // Keep grass on near shore (z > 40)
+            const z = 40 + Math.cos(angle) * dist * 0.4; // Keep grass on near shore (z > 40)
 
             // Check if inside lake zone
             const dx = (x - lakeCenter.x) / lakeRadiusX;
@@ -2074,8 +2106,8 @@ export default class SwedishForestTheme extends BaseTheme {
                 uTime: { value: 0 },
                 uWindStrength: { value: 0.15 },
                 uGrassTexture: { value: grassTexture },
-                uBaseColor: { value: new THREE.Color(0x150505) },  // Very dark brown/black
-                uTipColor: { value: new THREE.Color(0x2A1005) },   // Slightly warmer tip
+                uBaseColor: { value: new THREE.Color(0x150505) }, // Very dark brown/black
+                uTipColor: { value: new THREE.Color(0x2A1005) }, // Slightly warmer tip
             },
             vertexShader: `
                 uniform float uTime;
@@ -2110,7 +2142,7 @@ export default class SwedishForestTheme extends BaseTheme {
                     gl_FragColor = vec4(color, 1.0);
                 }
             `,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         // Dense foreground instances
@@ -2121,7 +2153,7 @@ export default class SwedishForestTheme extends BaseTheme {
         for (let i = 0; i < instanceCount; i++) {
             // Very close to camera: z = 140 to 160 (camera is at 160)
             const x = (Math.random() - 0.5) * 120; // Wide spread left/right
-            const z = 140 + Math.random() * 25;    // Right in front of camera
+            const z = 140 + Math.random() * 25; // Right in front of camera
 
             const scale = 0.8 + Math.random() * 0.7;
             dummy.scale.set(scale, scale * (0.9 + Math.random() * 0.3), scale);
@@ -2252,12 +2284,12 @@ export default class SwedishForestTheme extends BaseTheme {
         this.lakeMesh = new SwedishForestWater(lakeGeometry, {
             textureWidth: 512,
             textureHeight: 512,
-            waterNormals: waterNormals,
+            waterNormals,
             sunDirection: this.sunPosition.clone().normalize(),
-            sunColor: 0xffcc88,     // Brighter warm sun highlight
-            waterColor: 0x8b4513,   // Rich saddle brown/orange for deep water
-            distortionScale: 0.6,   // Gentler ripples
-            fog: false
+            sunColor: 0xffcc88, // Brighter warm sun highlight
+            waterColor: 0x8b4513, // Rich saddle brown/orange for deep water
+            distortionScale: 0.6, // Gentler ripples
+            fog: false,
         });
 
         // Position: Horizontal plane
@@ -2342,7 +2374,7 @@ export default class SwedishForestTheme extends BaseTheme {
             uniforms: {
                 time: { value: 0.0 },
                 foamColor: { value: new THREE.Color(0.95, 0.75, 0.45) }, // Warm golden (subtle)
-                opacity: { value: 0.4 }
+                opacity: { value: 0.4 },
             },
             vertexShader: `
                 varying vec2 vUv;
@@ -2371,7 +2403,7 @@ export default class SwedishForestTheme extends BaseTheme {
             `,
             transparent: true,
             depthWrite: false,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         this.shoreFoamMesh = new THREE.Mesh(foamGeometry, foamMaterial);
@@ -2407,15 +2439,25 @@ export default class SwedishForestTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
         const fallenLogs = [
             // Left side - larger log at far shore
-            { x: -45, z: -15, length: 12, radius: 0.5, rotY: 0.15, tilt: 0.04 },
+            {
+                x: -45, z: -15, length: 12, radius: 0.5, rotY: 0.15, tilt: 0.04,
+            },
             // Center-left - medium log
-            { x: -15, z: -12, length: 8, radius: 0.4, rotY: -0.2, tilt: 0.03 },
+            {
+                x: -15, z: -12, length: 8, radius: 0.4, rotY: -0.2, tilt: 0.03,
+            },
             // Center - small log (near the right shoreline stone)
-            { x: 22, z: -15, length: 6, radius: 0.35, rotY: 0.2, tilt: -0.02 },
+            {
+                x: 22, z: -15, length: 6, radius: 0.35, rotY: 0.2, tilt: -0.02,
+            },
             // Right side - near the rocks, in the water
-            { x: 85, z: 5, length: 9, radius: 0.45, rotY: -0.25, tilt: 0.02 },
+            {
+                x: 85, z: 5, length: 9, radius: 0.45, rotY: -0.25, tilt: 0.02,
+            },
             // Far right - close to right rock cluster
-            { x: 100, z: 12, length: 6, radius: 0.5, rotY: 0.35, tilt: 0.03 },
+            {
+                x: 100, z: 12, length: 6, radius: 0.5, rotY: 0.35, tilt: 0.03,
+            },
         ];
 
         fallenLogs.forEach((config) => {
@@ -2425,10 +2467,10 @@ export default class SwedishForestTheme extends BaseTheme {
             // Main trunk - oriented along X-axis (horizontal log lying down)
             // Use rotated geometry so branches can attach properly
             const geometry = new THREE.CylinderGeometry(
-                config.radius * 0.85,  // Slight taper at one end
+                config.radius * 0.85, // Slight taper at one end
                 config.radius,
                 config.length,
-                8
+                8,
             );
             // Rotate geometry to lie along X-axis before creating mesh
             geometry.rotateZ(Math.PI / 2);
@@ -2443,10 +2485,10 @@ export default class SwedishForestTheme extends BaseTheme {
                 const branchLength = config.radius * (1.0 + Math.random() * 0.6);
 
                 const branchGeom = new THREE.CylinderGeometry(
-                    branchRadius * 0.4,  // Tapered end (cut-off look)
-                    branchRadius,        // Base matches log
+                    branchRadius * 0.4, // Tapered end (cut-off look)
+                    branchRadius, // Base matches log
                     branchLength,
-                    6
+                    6,
                 );
                 // Translate geometry so the base (wider end) is at origin
                 // Cylinder is centered, so move it up by half length
@@ -2512,16 +2554,16 @@ export default class SwedishForestTheme extends BaseTheme {
         const maxAnisotropy = this.renderer?.capabilities.getMaxAnisotropy?.() || 1;
 
         const albedo = loader.load(
-            new URL('./assets/mossy-ground1-albedo.png', import.meta.url).href
+            new URL('./assets/mossy-ground1-albedo.png', import.meta.url).href,
         );
         const normal = loader.load(
-            new URL('./assets/mossy-groundnormal.png', import.meta.url).href
+            new URL('./assets/mossy-groundnormal.png', import.meta.url).href,
         );
         const roughness = loader.load(
-            new URL('./assets/mossy-ground1-roughness.png', import.meta.url).href
+            new URL('./assets/mossy-ground1-roughness.png', import.meta.url).href,
         );
         const ao = loader.load(
-            new URL('./assets/mossy-ground1-ao.png', import.meta.url).href
+            new URL('./assets/mossy-ground1-ao.png', import.meta.url).href,
         );
 
         albedo.colorSpace = THREE.SRGBColorSpace;
@@ -2548,7 +2590,9 @@ export default class SwedishForestTheme extends BaseTheme {
             this.rockTextureSet = this.loadRockTextureSet();
         }
 
-        const { albedo, normal, roughness, ao, repeat } = this.rockTextureSet;
+        const {
+            albedo, normal, roughness, ao, repeat,
+        } = this.rockTextureSet;
         const maxAnisotropy = this.renderer?.capabilities.getMaxAnisotropy?.() || 1;
         const offsets = [
             new THREE.Vector2(0.05, 0.1),
@@ -2619,9 +2663,9 @@ export default class SwedishForestTheme extends BaseTheme {
         this.shoreRocks = [];
 
         const rockColors = [
-            new THREE.Color(0x5A3926),  // Dark warm
-            new THREE.Color(0x6B4631),  // Medium warm
-            new THREE.Color(0x7C5740),  // Lighter warm
+            new THREE.Color(0x5A3926), // Dark warm
+            new THREE.Color(0x6B4631), // Medium warm
+            new THREE.Color(0x7C5740), // Lighter warm
         ];
 
         if (!this.rockMaterials || this.rockMaterials.length === 0) {
@@ -2633,37 +2677,89 @@ export default class SwedishForestTheme extends BaseTheme {
         // Lake edges visible in camera are around x=±120-160, near shore around z=35-55
         const rockPositions = [
             // NEAR SHORE CENTER - close to camera, breaking up foreground
-            { x: -20, z: 42, scale: 6.0, rotY: 0.3, colorIdx: 0 },
-            { x: 15, z: 45, scale: 5.0, rotY: 1.2, colorIdx: 1 },
-            { x: -35, z: 38, scale: 5.5, rotY: 0.8, colorIdx: 2 },
-            { x: 40, z: 40, scale: 7.0, rotY: 0.8, colorIdx: 0 },
+            {
+                x: -20, z: 42, scale: 6.0, rotY: 0.3, colorIdx: 0,
+            },
+            {
+                x: 15, z: 45, scale: 5.0, rotY: 1.2, colorIdx: 1,
+            },
+            {
+                x: -35, z: 38, scale: 5.5, rotY: 0.8, colorIdx: 2,
+            },
+            {
+                x: 40, z: 40, scale: 7.0, rotY: 0.8, colorIdx: 0,
+            },
             // LEFT EDGE framing rocks - at visible left lake edge (x=-100 to -140)
-            { x: -105, z: 48, scale: 8.0, rotY: 0.9, colorIdx: 0 },
-            { x: -120, z: 42, scale: 10.0, rotY: 1.5, colorIdx: 1 },
-            { x: -110, z: 35, scale: 7.0, rotY: 2.2, colorIdx: 2 },
-            { x: -130, z: 50, scale: 12.0, rotY: 0.4, colorIdx: 0 },
-            { x: -115, z: 28, scale: 9.0, rotY: 1.8, colorIdx: 1 },
-            { x: -140, z: 45, scale: 11.0, rotY: 0.6, colorIdx: 2 },
+            {
+                x: -105, z: 48, scale: 8.0, rotY: 0.9, colorIdx: 0,
+            },
+            {
+                x: -120, z: 42, scale: 10.0, rotY: 1.5, colorIdx: 1,
+            },
+            {
+                x: -110, z: 35, scale: 7.0, rotY: 2.2, colorIdx: 2,
+            },
+            {
+                x: -130, z: 50, scale: 12.0, rotY: 0.4, colorIdx: 0,
+            },
+            {
+                x: -115, z: 28, scale: 9.0, rotY: 1.8, colorIdx: 1,
+            },
+            {
+                x: -140, z: 45, scale: 11.0, rotY: 0.6, colorIdx: 2,
+            },
             // RIGHT EDGE framing rocks - at visible right lake edge (x=100 to 140)
-            { x: 105, z: 45, scale: 8.0, rotY: 1.1, colorIdx: 0 },
-            { x: 120, z: 40, scale: 10.0, rotY: 0.7, colorIdx: 1 },
-            { x: 110, z: 32, scale: 7.5, rotY: 1.9, colorIdx: 2 },
-            { x: 130, z: 52, scale: 12.0, rotY: 2.6, colorIdx: 0 },
-            { x: 115, z: 25, scale: 9.0, rotY: 0.3, colorIdx: 1 },
-            { x: 140, z: 48, scale: 11.0, rotY: 1.4, colorIdx: 2 },
+            {
+                x: 105, z: 45, scale: 8.0, rotY: 1.1, colorIdx: 0,
+            },
+            {
+                x: 120, z: 40, scale: 10.0, rotY: 0.7, colorIdx: 1,
+            },
+            {
+                x: 110, z: 32, scale: 7.5, rotY: 1.9, colorIdx: 2,
+            },
+            {
+                x: 130, z: 52, scale: 12.0, rotY: 2.6, colorIdx: 0,
+            },
+            {
+                x: 115, z: 25, scale: 9.0, rotY: 0.3, colorIdx: 1,
+            },
+            {
+                x: 140, z: 48, scale: 11.0, rotY: 1.4, colorIdx: 2,
+            },
             // LEFT DENSE SHORE ROCKS (foreground detail)
-            { x: -85, z: 20, scale: 5.0, rotY: 0.5, colorIdx: 0 },
-            { x: -95, z: 12, scale: 6.5, rotY: 1.8, colorIdx: 1 },
-            { x: -88, z: 5, scale: 5.5, rotY: 2.5, colorIdx: 2 },
-            { x: -100, z: -5, scale: 7.0, rotY: 0.9, colorIdx: 0 },
+            {
+                x: -85, z: 20, scale: 5.0, rotY: 0.5, colorIdx: 0,
+            },
+            {
+                x: -95, z: 12, scale: 6.5, rotY: 1.8, colorIdx: 1,
+            },
+            {
+                x: -88, z: 5, scale: 5.5, rotY: 2.5, colorIdx: 2,
+            },
+            {
+                x: -100, z: -5, scale: 7.0, rotY: 0.9, colorIdx: 0,
+            },
             // RIGHT DENSE SHORE ROCKS (foreground detail)
-            { x: 85, z: 18, scale: 5.5, rotY: 1.2, colorIdx: 0 },
-            { x: 95, z: 10, scale: 6.0, rotY: 2.1, colorIdx: 1 },
-            { x: 88, z: 2, scale: 5.0, rotY: 0.3, colorIdx: 2 },
-            { x: 100, z: -8, scale: 7.5, rotY: 1.6, colorIdx: 0 },
+            {
+                x: 85, z: 18, scale: 5.5, rotY: 1.2, colorIdx: 0,
+            },
+            {
+                x: 95, z: 10, scale: 6.0, rotY: 2.1, colorIdx: 1,
+            },
+            {
+                x: 88, z: 2, scale: 5.0, rotY: 0.3, colorIdx: 2,
+            },
+            {
+                x: 100, z: -8, scale: 7.5, rotY: 1.6, colorIdx: 0,
+            },
             // FAR SHORELINE STONES - where forest meets water (z around -10 to -18)
-            { x: -25, z: -12, scale: 4.0, rotY: 0.7, colorIdx: 1 },  // Left of center, near logs
-            { x: 30, z: -14, scale: 5.0, rotY: 1.4, colorIdx: 0 },   // Right of center, breaking up shore
+            {
+                x: -25, z: -12, scale: 4.0, rotY: 0.7, colorIdx: 1,
+            }, // Left of center, near logs
+            {
+                x: 30, z: -14, scale: 5.0, rotY: 1.4, colorIdx: 0,
+            }, // Right of center, breaking up shore
         ];
 
         rockPositions.forEach((config) => {
@@ -2686,14 +2782,14 @@ export default class SwedishForestTheme extends BaseTheme {
 
                 // ─── ANGULAR BOULDER DISTORTION ───
                 // Large-scale asymmetric stretching (not uniform sphere)
-                const stretchX = 0.9 + Math.sin(seed * 3.7) * 0.3;  // 0.6 to 1.2
+                const stretchX = 0.9 + Math.sin(seed * 3.7) * 0.3; // 0.6 to 1.2
                 const stretchZ = 0.85 + Math.cos(seed * 2.3) * 0.25; // 0.6 to 1.1
 
                 // Sharp angular noise (not smooth sine waves)
                 const angularNoise = (px, py, pz) => {
                     const n = Math.sin(px * 5.0 + seed) * Math.sin(py * 4.0 + pz * 3.0);
                     // Make it sharper by squaring and preserving sign
-                    return Math.sign(n) * Math.pow(Math.abs(n), 0.5);
+                    return Math.sign(n) * Math.abs(n) ** 0.5;
                 };
 
                 // Crack detection - sharp indentations
@@ -2714,11 +2810,11 @@ export default class SwedishForestTheme extends BaseTheme {
                 const facet = facetNoise * 0.1;
 
                 // Base scale with angular features
-                let scale = 1.0 + angular + facet - crack * 0.25;
+                const scale = 1.0 + angular + facet - crack * 0.25;
 
                 // Apply asymmetric stretching
                 let nx = x * scale * stretchX;
-                let ny = y * scale * 0.5;  // Flattened
+                const ny = y * scale * 0.5; // Flattened
                 let nz = z * scale * stretchZ;
 
                 // Add large-scale irregular bumps for boulder silhouette
@@ -2746,7 +2842,7 @@ export default class SwedishForestTheme extends BaseTheme {
             rock.position.set(config.x, -0.3, config.z);
             rock.scale.setScalar(config.scale);
             rock.rotation.y = config.rotY;
-            rock.rotation.x = (Math.random() - 0.5) * 0.15;  // Less random tilt
+            rock.rotation.x = (Math.random() - 0.5) * 0.15; // Less random tilt
             rock.rotation.z = (Math.random() - 0.5) * 0.1;
             rock.castShadow = true;
             rock.receiveShadow = true;
@@ -2771,23 +2867,53 @@ export default class SwedishForestTheme extends BaseTheme {
         // Visible lake edges are around x=±100-140, near shore around z=35-55
         const reedClusters = [
             // NEAR SHORE CENTER - visible along waterline
-            { x: -25, z: 42, count: 14, height: 5.0 },
-            { x: 30, z: 45, count: 16, height: 5.5 },
-            { x: -45, z: 38, count: 12, height: 4.8 },
-            { x: 50, z: 40, count: 14, height: 5.2 },
-            { x: 5, z: 44, count: 10, height: 4.5 },
+            {
+                x: -25, z: 42, count: 14, height: 5.0,
+            },
+            {
+                x: 30, z: 45, count: 16, height: 5.5,
+            },
+            {
+                x: -45, z: 38, count: 12, height: 4.8,
+            },
+            {
+                x: 50, z: 40, count: 14, height: 5.2,
+            },
+            {
+                x: 5, z: 44, count: 10, height: 4.5,
+            },
             // LEFT EDGE reeds - frame the left shoreline at visible edge
-            { x: -100, z: 48, count: 18, height: 6.5 },
-            { x: -115, z: 42, count: 16, height: 6.0 },
-            { x: -105, z: 35, count: 14, height: 5.5 },
-            { x: -125, z: 50, count: 20, height: 7.0 },
-            { x: -110, z: 28, count: 15, height: 5.8 },
+            {
+                x: -100, z: 48, count: 18, height: 6.5,
+            },
+            {
+                x: -115, z: 42, count: 16, height: 6.0,
+            },
+            {
+                x: -105, z: 35, count: 14, height: 5.5,
+            },
+            {
+                x: -125, z: 50, count: 20, height: 7.0,
+            },
+            {
+                x: -110, z: 28, count: 15, height: 5.8,
+            },
             // RIGHT EDGE reeds - frame the right shoreline at visible edge
-            { x: 100, z: 45, count: 17, height: 6.2 },
-            { x: 115, z: 40, count: 15, height: 5.8 },
-            { x: 105, z: 32, count: 14, height: 5.5 },
-            { x: 125, z: 52, count: 20, height: 7.0 },
-            { x: 110, z: 25, count: 16, height: 6.0 },
+            {
+                x: 100, z: 45, count: 17, height: 6.2,
+            },
+            {
+                x: 115, z: 40, count: 15, height: 5.8,
+            },
+            {
+                x: 105, z: 32, count: 14, height: 5.5,
+            },
+            {
+                x: 125, z: 52, count: 20, height: 7.0,
+            },
+            {
+                x: 110, z: 25, count: 16, height: 6.0,
+            },
         ];
 
         // Reed colors - dried golden brown
@@ -2817,7 +2943,7 @@ export default class SwedishForestTheme extends BaseTheme {
                 reed.position.set(
                     (Math.random() - 0.5) * 2.5,
                     -0.5,
-                    (Math.random() - 0.5) * 2.5
+                    (Math.random() - 0.5) * 2.5,
                 );
 
                 // Random rotation and lean
@@ -2847,9 +2973,9 @@ export default class SwedishForestTheme extends BaseTheme {
 
         // Dark silhouette colors for framing trees (foreground, so darker)
         const treeColors = [
-            new THREE.Color(0x150805),  // Very dark (closest)
-            new THREE.Color(0x1A0A06),  // Dark
-            new THREE.Color(0x200C08),  // Medium dark
+            new THREE.Color(0x150805), // Very dark (closest)
+            new THREE.Color(0x1A0A06), // Dark
+            new THREE.Color(0x200C08), // Medium dark
         ];
 
         // Tree positions at left and right lake edges
@@ -2857,27 +2983,67 @@ export default class SwedishForestTheme extends BaseTheme {
         // Camera is at z=100, looking at z=-20, visible lake edges are around x=±120-160
         const treePositions = [
             // LEFT EDGE FRAMING TREES - visible at left side of camera view
-            { x: -120, z: 50, height: 25, scale: 1.8, colorIdx: 0 },
-            { x: -135, z: 42, height: 30, scale: 2.0, colorIdx: 1 },
-            { x: -125, z: 35, height: 22, scale: 1.6, colorIdx: 0 },
-            { x: -145, z: 48, height: 35, scale: 2.2, colorIdx: 2 },
-            { x: -130, z: 28, height: 28, scale: 1.9, colorIdx: 0 },
-            { x: -155, z: 55, height: 38, scale: 2.4, colorIdx: 1 },
-            { x: -140, z: 38, height: 26, scale: 1.7, colorIdx: 2 },
-            { x: -160, z: 45, height: 40, scale: 2.5, colorIdx: 0 },
-            { x: -115, z: 58, height: 20, scale: 1.5, colorIdx: 1 },
-            { x: -150, z: 32, height: 32, scale: 2.1, colorIdx: 2 },
+            {
+                x: -120, z: 50, height: 25, scale: 1.8, colorIdx: 0,
+            },
+            {
+                x: -135, z: 42, height: 30, scale: 2.0, colorIdx: 1,
+            },
+            {
+                x: -125, z: 35, height: 22, scale: 1.6, colorIdx: 0,
+            },
+            {
+                x: -145, z: 48, height: 35, scale: 2.2, colorIdx: 2,
+            },
+            {
+                x: -130, z: 28, height: 28, scale: 1.9, colorIdx: 0,
+            },
+            {
+                x: -155, z: 55, height: 38, scale: 2.4, colorIdx: 1,
+            },
+            {
+                x: -140, z: 38, height: 26, scale: 1.7, colorIdx: 2,
+            },
+            {
+                x: -160, z: 45, height: 40, scale: 2.5, colorIdx: 0,
+            },
+            {
+                x: -115, z: 58, height: 20, scale: 1.5, colorIdx: 1,
+            },
+            {
+                x: -150, z: 32, height: 32, scale: 2.1, colorIdx: 2,
+            },
             // RIGHT EDGE FRAMING TREES - visible at right side of camera view
-            { x: 120, z: 48, height: 24, scale: 1.7, colorIdx: 0 },
-            { x: 135, z: 40, height: 28, scale: 1.9, colorIdx: 1 },
-            { x: 125, z: 32, height: 22, scale: 1.6, colorIdx: 2 },
-            { x: 145, z: 52, height: 34, scale: 2.2, colorIdx: 0 },
-            { x: 130, z: 25, height: 26, scale: 1.8, colorIdx: 1 },
-            { x: 155, z: 58, height: 36, scale: 2.3, colorIdx: 0 },
-            { x: 140, z: 35, height: 30, scale: 2.0, colorIdx: 2 },
-            { x: 160, z: 42, height: 42, scale: 2.6, colorIdx: 1 },
-            { x: 115, z: 55, height: 18, scale: 1.4, colorIdx: 0 },
-            { x: 150, z: 30, height: 33, scale: 2.1, colorIdx: 2 },
+            {
+                x: 120, z: 48, height: 24, scale: 1.7, colorIdx: 0,
+            },
+            {
+                x: 135, z: 40, height: 28, scale: 1.9, colorIdx: 1,
+            },
+            {
+                x: 125, z: 32, height: 22, scale: 1.6, colorIdx: 2,
+            },
+            {
+                x: 145, z: 52, height: 34, scale: 2.2, colorIdx: 0,
+            },
+            {
+                x: 130, z: 25, height: 26, scale: 1.8, colorIdx: 1,
+            },
+            {
+                x: 155, z: 58, height: 36, scale: 2.3, colorIdx: 0,
+            },
+            {
+                x: 140, z: 35, height: 30, scale: 2.0, colorIdx: 2,
+            },
+            {
+                x: 160, z: 42, height: 42, scale: 2.6, colorIdx: 1,
+            },
+            {
+                x: 115, z: 55, height: 18, scale: 1.4, colorIdx: 0,
+            },
+            {
+                x: 150, z: 30, height: 33, scale: 2.1, colorIdx: 2,
+            },
         ];
 
         treePositions.forEach((config) => {
@@ -2932,16 +3098,36 @@ export default class SwedishForestTheme extends BaseTheme {
         // Mushroom positions - scattered around the forest floor
         // Hue 0.03-0.08 = warm orange/amber for sunset atmosphere
         const mushroomData = [
-            { x: -8, z: 2, scale: 0.4, hue: 0.05 },
-            { x: 12, z: -5, scale: 0.5, hue: 0.07 },
-            { x: -15, z: -8, scale: 0.35, hue: 0.04 },
-            { x: 5, z: 5, scale: 0.45, hue: 0.06 },
-            { x: -3, z: -3, scale: 0.3, hue: 0.05 },
-            { x: 18, z: 0, scale: 0.4, hue: 0.08 },
-            { x: -20, z: 3, scale: 0.5, hue: 0.03 },
-            { x: 8, z: 8, scale: 0.35, hue: 0.06 },
-            { x: -12, z: 6, scale: 0.4, hue: 0.07 },
-            { x: 15, z: -10, scale: 0.45, hue: 0.05 },
+            {
+                x: -8, z: 2, scale: 0.4, hue: 0.05,
+            },
+            {
+                x: 12, z: -5, scale: 0.5, hue: 0.07,
+            },
+            {
+                x: -15, z: -8, scale: 0.35, hue: 0.04,
+            },
+            {
+                x: 5, z: 5, scale: 0.45, hue: 0.06,
+            },
+            {
+                x: -3, z: -3, scale: 0.3, hue: 0.05,
+            },
+            {
+                x: 18, z: 0, scale: 0.4, hue: 0.08,
+            },
+            {
+                x: -20, z: 3, scale: 0.5, hue: 0.03,
+            },
+            {
+                x: 8, z: 8, scale: 0.35, hue: 0.06,
+            },
+            {
+                x: -12, z: 6, scale: 0.4, hue: 0.07,
+            },
+            {
+                x: 15, z: -10, scale: 0.45, hue: 0.05,
+            },
         ];
 
         mushroomData.forEach((data, idx) => {
@@ -2990,7 +3176,7 @@ export default class SwedishForestTheme extends BaseTheme {
             mushroom.userData = {
                 baseEmissive: 1.5,
                 phase: idx * 0.7,
-                capMat: capMat,
+                capMat,
             };
 
             this.mushrooms.push(mushroom);
@@ -3012,80 +3198,206 @@ export default class SwedishForestTheme extends BaseTheme {
         // Layer configurations - trees arranged by depth (Firewatch-style layers)
         // BACK TREES: Far side of lake, all at z < -40
         const layers = [
-            { count: 150, z: -42, height: 18, spacing: 3, colorIdx: 0, sway: 0.25 },   // Front tree line (dark, dense)
-            { count: 140, z: -48, height: 22, spacing: 3.5, colorIdx: 0, sway: 0.22 }, // Dense dark layer
-            { count: 130, z: -55, height: 26, spacing: 4, colorIdx: 1, sway: 0.20 },   // Mid layer
-            { count: 120, z: -62, height: 30, spacing: 4.5, colorIdx: 2, sway: 0.18 }, // Mid-back
-            { count: 100, z: -70, height: 35, spacing: 5, colorIdx: 3, sway: 0.15 },   // Back layer
-            { count: 80, z: -80, height: 42, spacing: 6, colorIdx: 4, sway: 0.12 },    // Far back
-            { count: 60, z: -92, height: 50, spacing: 8, colorIdx: 5, sway: 0.10 },    // Horizon
+            {
+                count: 150, z: -42, height: 18, spacing: 3, colorIdx: 0, sway: 0.25,
+            }, // Front tree line (dark, dense)
+            {
+                count: 140, z: -48, height: 22, spacing: 3.5, colorIdx: 0, sway: 0.22,
+            }, // Dense dark layer
+            {
+                count: 130, z: -55, height: 26, spacing: 4, colorIdx: 1, sway: 0.20,
+            }, // Mid layer
+            {
+                count: 120, z: -62, height: 30, spacing: 4.5, colorIdx: 2, sway: 0.18,
+            }, // Mid-back
+            {
+                count: 100, z: -70, height: 35, spacing: 5, colorIdx: 3, sway: 0.15,
+            }, // Back layer
+            {
+                count: 80, z: -80, height: 42, spacing: 6, colorIdx: 4, sway: 0.12,
+            }, // Far back
+            {
+                count: 60, z: -92, height: 50, spacing: 8, colorIdx: 5, sway: 0.10,
+            }, // Horizon
         ];
 
         // SIDE FRAMING TREES: Wrap around left and right edges of lake
         // These trees extend forward to frame the visible lake area
         const sideFramingTrees = [
             // LEFT SIDE - Trees coming forward along left edge
-            { x: -140, z: 50, height: 22, colorIdx: 0 },
-            { x: -145, z: 40, height: 26, colorIdx: 0 },
-            { x: -135, z: 30, height: 20, colorIdx: 0 },
-            { x: -150, z: 45, height: 28, colorIdx: 0 },
-            { x: -140, z: 20, height: 24, colorIdx: 0 },
-            { x: -155, z: 35, height: 30, colorIdx: 0 },
-            { x: -145, z: 10, height: 22, colorIdx: 0 },
-            { x: -160, z: 50, height: 32, colorIdx: 0 },
-            { x: -135, z: 0, height: 20, colorIdx: 0 },
-            { x: -150, z: -10, height: 25, colorIdx: 0 },
-            { x: -140, z: -20, height: 23, colorIdx: 0 },
-            { x: -155, z: -30, height: 27, colorIdx: 0 },
+            {
+                x: -140, z: 50, height: 22, colorIdx: 0,
+            },
+            {
+                x: -145, z: 40, height: 26, colorIdx: 0,
+            },
+            {
+                x: -135, z: 30, height: 20, colorIdx: 0,
+            },
+            {
+                x: -150, z: 45, height: 28, colorIdx: 0,
+            },
+            {
+                x: -140, z: 20, height: 24, colorIdx: 0,
+            },
+            {
+                x: -155, z: 35, height: 30, colorIdx: 0,
+            },
+            {
+                x: -145, z: 10, height: 22, colorIdx: 0,
+            },
+            {
+                x: -160, z: 50, height: 32, colorIdx: 0,
+            },
+            {
+                x: -135, z: 0, height: 20, colorIdx: 0,
+            },
+            {
+                x: -150, z: -10, height: 25, colorIdx: 0,
+            },
+            {
+                x: -140, z: -20, height: 23, colorIdx: 0,
+            },
+            {
+                x: -155, z: -30, height: 27, colorIdx: 0,
+            },
             // LEFT SHORE DENSE AREA (matching right side)
             // Smaller, closer trees for foreground density
-            { x: -95, z: 25, height: 16, colorIdx: 0 },
-            { x: -100, z: 18, height: 18, colorIdx: 0 },
-            { x: -105, z: 10, height: 15, colorIdx: 0 },
-            { x: -110, z: 22, height: 17, colorIdx: 0 },
-            { x: -98, z: 5, height: 14, colorIdx: 0 },
-            { x: -115, z: 15, height: 19, colorIdx: 0 },
-            { x: -102, z: -5, height: 16, colorIdx: 0 },
-            { x: -120, z: 8, height: 18, colorIdx: 0 },
-            { x: -108, z: -12, height: 15, colorIdx: 0 },
-            { x: -125, z: 0, height: 20, colorIdx: 0 },
-            { x: -112, z: -20, height: 17, colorIdx: 0 },
-            { x: -118, z: -28, height: 19, colorIdx: 0 },
-            { x: -105, z: -35, height: 16, colorIdx: 0 },
-            { x: -122, z: -38, height: 21, colorIdx: 0 },
-            { x: -130, z: -25, height: 22, colorIdx: 0 },
-            { x: -128, z: -15, height: 20, colorIdx: 0 },
+            {
+                x: -95, z: 25, height: 16, colorIdx: 0,
+            },
+            {
+                x: -100, z: 18, height: 18, colorIdx: 0,
+            },
+            {
+                x: -105, z: 10, height: 15, colorIdx: 0,
+            },
+            {
+                x: -110, z: 22, height: 17, colorIdx: 0,
+            },
+            {
+                x: -98, z: 5, height: 14, colorIdx: 0,
+            },
+            {
+                x: -115, z: 15, height: 19, colorIdx: 0,
+            },
+            {
+                x: -102, z: -5, height: 16, colorIdx: 0,
+            },
+            {
+                x: -120, z: 8, height: 18, colorIdx: 0,
+            },
+            {
+                x: -108, z: -12, height: 15, colorIdx: 0,
+            },
+            {
+                x: -125, z: 0, height: 20, colorIdx: 0,
+            },
+            {
+                x: -112, z: -20, height: 17, colorIdx: 0,
+            },
+            {
+                x: -118, z: -28, height: 19, colorIdx: 0,
+            },
+            {
+                x: -105, z: -35, height: 16, colorIdx: 0,
+            },
+            {
+                x: -122, z: -38, height: 21, colorIdx: 0,
+            },
+            {
+                x: -130, z: -25, height: 22, colorIdx: 0,
+            },
+            {
+                x: -128, z: -15, height: 20, colorIdx: 0,
+            },
             // RIGHT SIDE - Trees coming forward along right edge
-            { x: 140, z: 48, height: 21, colorIdx: 0 },
-            { x: 145, z: 38, height: 25, colorIdx: 0 },
-            { x: 135, z: 28, height: 19, colorIdx: 0 },
-            { x: 150, z: 42, height: 27, colorIdx: 0 },
-            { x: 140, z: 18, height: 23, colorIdx: 0 },
-            { x: 155, z: 32, height: 29, colorIdx: 0 },
-            { x: 145, z: 8, height: 21, colorIdx: 0 },
-            { x: 160, z: 48, height: 31, colorIdx: 0 },
-            { x: 135, z: -2, height: 19, colorIdx: 0 },
-            { x: 150, z: -12, height: 24, colorIdx: 0 },
-            { x: 140, z: -22, height: 22, colorIdx: 0 },
-            { x: 155, z: -32, height: 26, colorIdx: 0 },
+            {
+                x: 140, z: 48, height: 21, colorIdx: 0,
+            },
+            {
+                x: 145, z: 38, height: 25, colorIdx: 0,
+            },
+            {
+                x: 135, z: 28, height: 19, colorIdx: 0,
+            },
+            {
+                x: 150, z: 42, height: 27, colorIdx: 0,
+            },
+            {
+                x: 140, z: 18, height: 23, colorIdx: 0,
+            },
+            {
+                x: 155, z: 32, height: 29, colorIdx: 0,
+            },
+            {
+                x: 145, z: 8, height: 21, colorIdx: 0,
+            },
+            {
+                x: 160, z: 48, height: 31, colorIdx: 0,
+            },
+            {
+                x: 135, z: -2, height: 19, colorIdx: 0,
+            },
+            {
+                x: 150, z: -12, height: 24, colorIdx: 0,
+            },
+            {
+                x: 140, z: -22, height: 22, colorIdx: 0,
+            },
+            {
+                x: 155, z: -32, height: 26, colorIdx: 0,
+            },
             // RIGHT SHORE DENSE AREA (user's green marked region)
             // Smaller, closer trees for foreground density
-            { x: 95, z: 25, height: 16, colorIdx: 0 },
-            { x: 100, z: 18, height: 18, colorIdx: 0 },
-            { x: 105, z: 10, height: 15, colorIdx: 0 },
-            { x: 110, z: 22, height: 17, colorIdx: 0 },
-            { x: 98, z: 5, height: 14, colorIdx: 0 },
-            { x: 115, z: 15, height: 19, colorIdx: 0 },
-            { x: 102, z: -5, height: 16, colorIdx: 0 },
-            { x: 120, z: 8, height: 18, colorIdx: 0 },
-            { x: 108, z: -12, height: 15, colorIdx: 0 },
-            { x: 125, z: 0, height: 20, colorIdx: 0 },
-            { x: 112, z: -20, height: 17, colorIdx: 0 },
-            { x: 118, z: -28, height: 19, colorIdx: 0 },
-            { x: 105, z: -35, height: 16, colorIdx: 0 },
-            { x: 122, z: -38, height: 21, colorIdx: 0 },
-            { x: 130, z: -25, height: 22, colorIdx: 0 },
-            { x: 128, z: -15, height: 20, colorIdx: 0 },
+            {
+                x: 95, z: 25, height: 16, colorIdx: 0,
+            },
+            {
+                x: 100, z: 18, height: 18, colorIdx: 0,
+            },
+            {
+                x: 105, z: 10, height: 15, colorIdx: 0,
+            },
+            {
+                x: 110, z: 22, height: 17, colorIdx: 0,
+            },
+            {
+                x: 98, z: 5, height: 14, colorIdx: 0,
+            },
+            {
+                x: 115, z: 15, height: 19, colorIdx: 0,
+            },
+            {
+                x: 102, z: -5, height: 16, colorIdx: 0,
+            },
+            {
+                x: 120, z: 8, height: 18, colorIdx: 0,
+            },
+            {
+                x: 108, z: -12, height: 15, colorIdx: 0,
+            },
+            {
+                x: 125, z: 0, height: 20, colorIdx: 0,
+            },
+            {
+                x: 112, z: -20, height: 17, colorIdx: 0,
+            },
+            {
+                x: 118, z: -28, height: 19, colorIdx: 0,
+            },
+            {
+                x: 105, z: -35, height: 16, colorIdx: 0,
+            },
+            {
+                x: 122, z: -38, height: 21, colorIdx: 0,
+            },
+            {
+                x: 130, z: -25, height: 22, colorIdx: 0,
+            },
+            {
+                x: 128, z: -15, height: 20, colorIdx: 0,
+            },
         ];
 
         // Calculate total tree count (layers + side framing trees)
@@ -3154,9 +3466,9 @@ export default class SwedishForestTheme extends BaseTheme {
                 // Clear trees inside the elliptical lake zone, but keep trees behind
                 // Reduced size to allow more trees around lake edges (Firewatch style)
                 // ─────────────────────────────────────────────────────────────
-                const lakeCenter = { x: 0, z: -15 };  // Moved center forward slightly
-                const lakeRadiusX = 90;   // Reduced from 130 for denser tree framing
-                const lakeRadiusZ = 35;   // Reduced from 50
+                const lakeCenter = { x: 0, z: -15 }; // Moved center forward slightly
+                const lakeRadiusX = 90; // Reduced from 130 for denser tree framing
+                const lakeRadiusZ = 35; // Reduced from 50
 
                 // Ellipse distance formula
                 const dx = (x - lakeCenter.x) / lakeRadiusX;
@@ -3236,15 +3548,23 @@ export default class SwedishForestTheme extends BaseTheme {
         });
 
         // Set up instanced buffer attributes
-        foliageGeometry.setAttribute('aInstanceColor',
-            new THREE.InstancedBufferAttribute(instanceColors, 3));
-        foliageGeometry.setAttribute('aInstanceSway',
-            new THREE.InstancedBufferAttribute(instanceSways, 1));
-        foliageGeometry.setAttribute('aInstancePhase',
-            new THREE.InstancedBufferAttribute(instancePhases, 1));
+        foliageGeometry.setAttribute(
+            'aInstanceColor',
+            new THREE.InstancedBufferAttribute(instanceColors, 3),
+        );
+        foliageGeometry.setAttribute(
+            'aInstanceSway',
+            new THREE.InstancedBufferAttribute(instanceSways, 1),
+        );
+        foliageGeometry.setAttribute(
+            'aInstancePhase',
+            new THREE.InstancedBufferAttribute(instancePhases, 1),
+        );
 
-        trunkGeometry.setAttribute('aInstanceColor',
-            new THREE.InstancedBufferAttribute(trunkColors, 3));
+        trunkGeometry.setAttribute(
+            'aInstanceColor',
+            new THREE.InstancedBufferAttribute(trunkColors, 3),
+        );
 
         this.foliageInstancedMesh.instanceMatrix.needsUpdate = true;
         this.trunkInstancedMesh.instanceMatrix.needsUpdate = true;
@@ -3261,7 +3581,7 @@ export default class SwedishForestTheme extends BaseTheme {
      */
     createMergedSpruceGeometry() {
         const foliageLayers = [];
-        const numLayers = 5;  // 5 layers of cones
+        const numLayers = 5; // 5 layers of cones
         const baseHeight = 20; // Normalized base height
         const trunkHeight = baseHeight * 0.15;
         const maxRadius = baseHeight * 0.25; // Base width of the widest cone
@@ -3299,7 +3619,7 @@ export default class SwedishForestTheme extends BaseTheme {
         trunkGeometry.computeVertexNormals();
 
         // Clean up individual layer geometries
-        foliageLayers.forEach(geo => geo.dispose());
+        foliageLayers.forEach((geo) => geo.dispose());
 
         return { foliageGeometry, trunkGeometry };
     }
@@ -3310,9 +3630,15 @@ export default class SwedishForestTheme extends BaseTheme {
 
     createMistLayers() {
         const mistConfigs = [
-            { y: 2, z: 8, width: 300, height: 10, density: 0.35 },    // Much wider mist layers
-            { y: 4, z: -8, width: 320, height: 14, density: 0.3 },
-            { y: 6, z: -22, width: 350, height: 18, density: 0.25 },
+            {
+                y: 2, z: 8, width: 300, height: 10, density: 0.35,
+            }, // Much wider mist layers
+            {
+                y: 4, z: -8, width: 320, height: 14, density: 0.3,
+            },
+            {
+                y: 6, z: -22, width: 350, height: 18, density: 0.25,
+            },
         ];
 
         for (const config of mistConfigs) {
@@ -3436,15 +3762,15 @@ export default class SwedishForestTheme extends BaseTheme {
     createGodRays() {
         // Large plane covering entire view with volumetric god ray shader
         // Position FORWARD of trees so rays overlay the scene
-        const width = 250;   // Very wide to cover full scene
-        const height = 180;  // Tall to reach from sky to ground
+        const width = 250; // Very wide to cover full scene
+        const height = 180; // Tall to reach from sky to ground
         const geometry = new THREE.PlaneGeometry(width, height);
 
         // Create volumetric god ray material using advanced shader
         this.godRayMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
-                uOpacity: { value: 0.22 },  // Very subtle god rays
+                uOpacity: { value: 0.22 }, // Very subtle god rays
                 uSunPosition: { value: this.sunPosition.clone() },
                 uRayColor: { value: new THREE.Color(0xFFCC66) },
                 uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
@@ -3454,7 +3780,7 @@ export default class SwedishForestTheme extends BaseTheme {
             transparent: true,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
-            depthTest: false,  // Ignore depth - render on top of everything
+            depthTest: false, // Ignore depth - render on top of everything
             side: THREE.DoubleSide,
         });
 
@@ -3494,8 +3820,8 @@ export default class SwedishForestTheme extends BaseTheme {
 
             // Distribute evenly across the FULL scene width
             // Grid covers more width and depth
-            const gridX = (i % 20) / 19;  // 0 to 1 across 20 columns
-            const gridZ = Math.floor(i / 20) / 9;  // 0 to 1 across 10 rows
+            const gridX = (i % 20) / 19; // 0 to 1 across 20 columns
+            const gridZ = Math.floor(i / 20) / 9; // 0 to 1 across 10 rows
 
             // Add randomness to grid positions for natural look
             const randOffsetX = (Math.random() - 0.5) * 25;
@@ -3503,17 +3829,17 @@ export default class SwedishForestTheme extends BaseTheme {
 
             // Map to scene coordinates - extend deeper and WIDER
             // Width: 500 units (-250 to +250)
-            positions[i3] = -250 + gridX * 500 + randOffsetX;     // x: -250 to +250
-            positions[i3 + 1] = 1 + Math.random() * 30;           // y: 1 to 31
+            positions[i3] = -250 + gridX * 500 + randOffsetX; // x: -250 to +250
+            positions[i3 + 1] = 1 + Math.random() * 30; // y: 1 to 31
             positions[i3 + 2] = -120 + gridZ * 140 + randOffsetZ; // z: -120 to +20
 
             randoms[i] = Math.random();
             phases[i] = Math.random() * Math.PI * 2;
 
             // Gentle local movement (won't drift far from starting position)
-            velocities[i3] = (Math.random() - 0.5) * 0.4;     // Gentle X drift
+            velocities[i3] = (Math.random() - 0.5) * 0.4; // Gentle X drift
             velocities[i3 + 1] = (Math.random() - 0.5) * 0.15; // Very gentle Y
-            velocities[i3 + 2] = (Math.random() - 0.5) * 0.2;  // Gentle Z drift
+            velocities[i3 + 2] = (Math.random() - 0.5) * 0.2; // Gentle Z drift
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -3556,7 +3882,7 @@ export default class SwedishForestTheme extends BaseTheme {
             const spiritColor = new THREE.Color().setHSL(
                 0.08 + hueShift, // Warm amber hue
                 0.8 + Math.random() * 0.15,
-                0.6 + Math.random() * 0.15
+                0.6 + Math.random() * 0.15,
             );
 
             const material = new THREE.ShaderMaterial({
@@ -3577,9 +3903,9 @@ export default class SwedishForestTheme extends BaseTheme {
 
             // Spread across FULL scene width and height
             spirit.position.set(
-                (Math.random() - 0.5) * 500,    // Very wide horizontal spread (-250 to 250)
-                3 + Math.random() * 52,         // From near ground to high above canopy
-                -120 + Math.random() * 140      // Deep forest (-120) to lake (+20)
+                (Math.random() - 0.5) * 500, // Very wide horizontal spread (-250 to 250)
+                3 + Math.random() * 52, // From near ground to high above canopy
+                -120 + Math.random() * 140, // Deep forest (-120) to lake (+20)
             );
 
             spirit.userData = {
@@ -3604,9 +3930,15 @@ export default class SwedishForestTheme extends BaseTheme {
 
     createAuroraLayers() {
         const auroraConfigs = [
-            { offset: 0, color1: COLORS.aurora1, color2: COLORS.aurora2, color3: COLORS.aurora3 },
-            { offset: 1.5, color1: COLORS.aurora2, color2: COLORS.aurora3, color3: COLORS.aurora1 },
-            { offset: 3.0, color1: COLORS.aurora3, color2: COLORS.aurora1, color3: COLORS.aurora2 },
+            {
+                offset: 0, color1: COLORS.aurora1, color2: COLORS.aurora2, color3: COLORS.aurora3,
+            },
+            {
+                offset: 1.5, color1: COLORS.aurora2, color2: COLORS.aurora3, color3: COLORS.aurora1,
+            },
+            {
+                offset: 3.0, color1: COLORS.aurora3, color2: COLORS.aurora1, color3: COLORS.aurora2,
+            },
         ];
 
         for (const config of auroraConfigs) {
@@ -3647,7 +3979,7 @@ export default class SwedishForestTheme extends BaseTheme {
         const windCount = 12;
 
         for (let i = 0; i < windCount; i++) {
-            const width = 80 + Math.random() * 50;  // Wider ribbons
+            const width = 80 + Math.random() * 50; // Wider ribbons
             const height = 2.0 + Math.random() * 2.5;
 
             const geometry = new THREE.PlaneGeometry(width, height, 48, 2);
@@ -3671,16 +4003,16 @@ export default class SwedishForestTheme extends BaseTheme {
 
             // Spread across entire scene width and depth
             wind.position.set(
-                (Math.random() - 0.5) * 500,     // Full scene width (-250 to 250)
-                3 + Math.random() * 25,          // Various heights from low to high
-                -60 + Math.random() * 100        // Deep into scene and near camera
+                (Math.random() - 0.5) * 500, // Full scene width (-250 to 250)
+                3 + Math.random() * 25, // Various heights from low to high
+                -60 + Math.random() * 100, // Deep into scene and near camera
             );
             wind.rotation.z = (Math.random() - 0.5) * 0.15;
             wind.rotation.y = (Math.random() - 0.5) * 0.1; // Slight angle variation
 
             wind.userData = {
                 baseX: wind.position.x,
-                speed: 0.15 + Math.random() * 0.2,  // SLOWER speed (was 0.6-0.9)
+                speed: 0.15 + Math.random() * 0.2, // SLOWER speed (was 0.6-0.9)
                 verticalDrift: (Math.random() - 0.5) * 0.02, // Gentle vertical movement
             };
 
@@ -3777,9 +4109,9 @@ export default class SwedishForestTheme extends BaseTheme {
 
         // Hemisphere light - warm sky to warm ground
         const hemiLight = new THREE.HemisphereLight(
-            0xFF8844,  // Sky - warm orange
-            0x2A1A0A,  // Ground - dark warm brown
-            0.5
+            0xFF8844, // Sky - warm orange
+            0x2A1A0A, // Ground - dark warm brown
+            0.5,
         );
         this.scene.add(hemiLight);
 
@@ -3802,7 +4134,7 @@ export default class SwedishForestTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     setupEventListeners() {
-        this.eventUnsubscribers.forEach(unsub => unsub?.());
+        this.eventUnsubscribers.forEach((unsub) => unsub?.());
         this.eventUnsubscribers = [];
 
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
@@ -3835,12 +4167,12 @@ export default class SwedishForestTheme extends BaseTheme {
 
         this.spawnLeaves(lineCount * 4);
 
-        this.spirits.forEach(spirit => {
+        this.spirits.forEach((spirit) => {
             spirit.userData.velocity.x += (Math.random() - 0.5) * 2.5;
             spirit.userData.velocity.y += (Math.random() - 0.5) * 2.5;
             spirit.material.uniforms.uOpacity.value = Math.min(
                 spirit.material.uniforms.uOpacity.value + 0.25,
-                0.95
+                0.95,
             );
         });
 
@@ -3864,7 +4196,7 @@ export default class SwedishForestTheme extends BaseTheme {
         if (this.comboMultiplier > 1.5) {
             const centerX = 0;
             const centerY = 12;
-            this.spirits.forEach(spirit => {
+            this.spirits.forEach((spirit) => {
                 spirit.userData.velocity.x += (centerX - spirit.position.x) * 0.012 * this.comboMultiplier;
                 spirit.userData.velocity.y += (centerY - spirit.position.y) * 0.012 * this.comboMultiplier;
             });
@@ -3881,7 +4213,7 @@ export default class SwedishForestTheme extends BaseTheme {
         this.targetGlowIntensity += 0.1;
         this.mushroomPulse = 1.5; // Strong pulse on lock
 
-        this.spirits.forEach(spirit => {
+        this.spirits.forEach((spirit) => {
             spirit.material.uniforms.uOpacity.value += 0.06;
         });
 
@@ -3926,13 +4258,13 @@ export default class SwedishForestTheme extends BaseTheme {
         this.uniforms.time.value = elapsed;
 
         // Update Water Waves (slowed down for calmer, more serene look)
-        if (this.lakeMesh && this.lakeMesh.material.uniforms['time']) {
-            this.lakeMesh.material.uniforms['time'].value += delta * 0.25;
+        if (this.lakeMesh && this.lakeMesh.material.uniforms.time) {
+            this.lakeMesh.material.uniforms.time.value += delta * 0.25;
         }
 
         // Update Shore Foam animation
-        if (this.shoreFoamMesh && this.shoreFoamMesh.material.uniforms['time']) {
-            this.shoreFoamMesh.material.uniforms['time'].value = elapsed;
+        if (this.shoreFoamMesh && this.shoreFoamMesh.material.uniforms.time) {
+            this.shoreFoamMesh.material.uniforms.time.value = elapsed;
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -3942,14 +4274,14 @@ export default class SwedishForestTheme extends BaseTheme {
         this.uniforms.glowIntensity.value = THREE.MathUtils.lerp(
             this.uniforms.glowIntensity.value,
             this.targetGlowIntensity,
-            delta * 3
+            delta * 3,
         );
         this.targetGlowIntensity *= 0.95;
 
         this.uniforms.mistIntensity.value = THREE.MathUtils.lerp(
             this.uniforms.mistIntensity.value,
             this.targetMistIntensity,
-            delta * 2
+            delta * 2,
         );
         if (this.targetMistIntensity > 0.6) {
             this.targetMistIntensity -= delta * 0.04;
@@ -3958,14 +4290,14 @@ export default class SwedishForestTheme extends BaseTheme {
         this.uniforms.auroraIntensity.value = THREE.MathUtils.lerp(
             this.uniforms.auroraIntensity.value,
             this.targetAuroraIntensity,
-            delta * 2
+            delta * 2,
         );
         this.targetAuroraIntensity *= 0.97;
 
         this.uniforms.windSpeed.value = THREE.MathUtils.lerp(
             this.uniforms.windSpeed.value,
             this.targetWindSpeed,
-            delta * 2
+            delta * 2,
         );
         this.targetWindSpeed *= 0.96;
 
@@ -3990,21 +4322,21 @@ export default class SwedishForestTheme extends BaseTheme {
         // Different random path every time theme starts
         // ─────────────────────────────────────────────────────────────────────
 
-        const ro = this.cameraRandomOffsets;  // Random offsets
-        const camTime = elapsed * 0.05 * ro.speedMult;  // Randomized exploration pace
+        const ro = this.cameraRandomOffsets; // Random offsets
+        const camTime = elapsed * 0.05 * ro.speedMult; // Randomized exploration pace
         const baseX = 0;
         const baseY = 8;
         const baseZ = 30;
 
         // Exploratory camera position - uses random phase offsets for unique movement each time
-        this.camera.position.x = baseX +
-            Math.sin(camTime * 1.0 + ro.posX1) * 15.0 +
-            Math.sin(camTime * 0.37 + ro.posX2) * 8.0 +
-            Math.cos(camTime * 0.71 + ro.posX3) * 5.0;
+        this.camera.position.x = baseX
+            + Math.sin(camTime * 1.0 + ro.posX1) * 15.0
+            + Math.sin(camTime * 0.37 + ro.posX2) * 8.0
+            + Math.cos(camTime * 0.71 + ro.posX3) * 5.0;
         this.camera.position.y = baseY + Math.sin(camTime * 0.43 + ro.posY) * 2.0;
-        this.camera.position.z = baseZ +
-            Math.cos(camTime * 0.31 + ro.posZ1) * 4.0 +
-            Math.sin(camTime * 0.53 + ro.posZ2) * 2.0;
+        this.camera.position.z = baseZ
+            + Math.cos(camTime * 0.31 + ro.posZ1) * 4.0
+            + Math.sin(camTime * 0.53 + ro.posZ2) * 2.0;
 
         // Look target wanders independently with random offsets
         const lookX = Math.sin(camTime * 0.47 + ro.lookX1) * 20.0 + Math.cos(camTime * 0.29 + ro.lookX2) * 10.0;
@@ -4025,7 +4357,7 @@ export default class SwedishForestTheme extends BaseTheme {
             this.sun.position.x = sunX;
 
             // Update glow layers to follow sun
-            this.sunGlowLayers.forEach(sprite => {
+            this.sunGlowLayers.forEach((sprite) => {
                 sprite.position.y = sunY;
                 sprite.position.x = sunX;
             });
@@ -4043,9 +4375,9 @@ export default class SwedishForestTheme extends BaseTheme {
                 const toSun = sunScreenPos.clone().sub(cameraPos).normalize();
                 const sunVisibility = Math.max(0, cameraDir.dot(toSun));
 
-                this.lensFlares.forEach(flare => {
+                this.lensFlares.forEach((flare) => {
                     // Position flare along sun-to-camera axis
-                    const offset = flare.userData.offset;
+                    const { offset } = flare.userData;
                     const flarePos = sunScreenPos.clone().add(sunToCam.clone().multiplyScalar(offset));
                     flare.position.copy(flarePos);
 
@@ -4053,8 +4385,8 @@ export default class SwedishForestTheme extends BaseTheme {
                     flare.quaternion.copy(this.camera.quaternion);
 
                     // Intermittent flicker - simulates sun peeking through tree gaps
-                    const flickerPhase = flare.userData.flickerPhase;
-                    const flickerSpeed = flare.userData.flickerSpeed;
+                    const { flickerPhase } = flare.userData;
+                    const { flickerSpeed } = flare.userData;
 
                     // Multi-frequency flicker for organic light-through-trees effect
                     const flicker1 = Math.sin(elapsed * flickerSpeed + flickerPhase);
@@ -4064,11 +4396,11 @@ export default class SwedishForestTheme extends BaseTheme {
                     // Combine flickers - creates irregular on/off pattern
                     let flickerIntensity = (flicker1 + flicker2 * 0.5 + flicker3 * 0.3) / 1.8;
                     // Sharpen the flicker - mostly off, occasionally bright
-                    flickerIntensity = Math.pow(Math.max(0, flickerIntensity), 2.5);
+                    flickerIntensity = Math.max(0, flickerIntensity) ** 2.5;
 
                     // Only show when camera is mostly facing sun AND flickering is active
-                    const baseOpacity = flare.userData.baseOpacity;
-                    const viewFactor = Math.pow(sunVisibility, 2.0); // Sharper falloff when not looking at sun
+                    const { baseOpacity } = flare.userData;
+                    const viewFactor = sunVisibility ** 2.0; // Sharper falloff when not looking at sun
                     flare.material.uniforms.uOpacity.value = baseOpacity * viewFactor * flickerIntensity;
                 });
             }
@@ -4080,8 +4412,8 @@ export default class SwedishForestTheme extends BaseTheme {
             }
 
             // Update Realistic Water Reflection
-            if (this.lakeMesh && this.lakeMesh.material.uniforms['sunDirection']) {
-                this.lakeMesh.material.uniforms['sunDirection'].value.copy(this.sun.position).normalize();
+            if (this.lakeMesh && this.lakeMesh.material.uniforms.sunDirection) {
+                this.lakeMesh.material.uniforms.sunDirection.value.copy(this.sun.position).normalize();
             }
         }
 
@@ -4097,7 +4429,7 @@ export default class SwedishForestTheme extends BaseTheme {
 
         // Billboard cloud cards to camera for clean silhouettes
         if (this.clouds && this.camera) {
-            this.clouds.forEach(cloud => {
+            this.clouds.forEach((cloud) => {
                 cloud.quaternion.copy(this.camera.quaternion);
             });
         }
@@ -4114,7 +4446,7 @@ export default class SwedishForestTheme extends BaseTheme {
         // SPIRIT MOVEMENT
         // ─────────────────────────────────────────────────────────────────────
 
-        this.spirits.forEach(spirit => {
+        this.spirits.forEach((spirit) => {
             spirit.userData.wanderPhase += delta * 0.4;
 
             spirit.userData.targetX += Math.cos(spirit.userData.wanderPhase) * 0.08;
@@ -4143,7 +4475,7 @@ export default class SwedishForestTheme extends BaseTheme {
         // SPIRIT WIND MOVEMENT
         // ─────────────────────────────────────────────────────────────────────
 
-        this.spiritWinds.forEach(wind => {
+        this.spiritWinds.forEach((wind) => {
             // Slower, more graceful movement
             wind.position.x += wind.userData.speed * (1 + this.uniforms.windSpeed.value * 8);
 
@@ -4189,7 +4521,7 @@ export default class SwedishForestTheme extends BaseTheme {
             this.grassMaterial.uniforms.uSpiritGlow.value = THREE.MathUtils.lerp(
                 this.grassMaterial.uniforms.uSpiritGlow.value,
                 this.uniforms.glowIntensity.value,
-                delta * 2
+                delta * 2,
             );
         }
 
@@ -4287,7 +4619,7 @@ export default class SwedishForestTheme extends BaseTheme {
     stop() {
         super.stop();
 
-        this.eventUnsubscribers.forEach(unsub => unsub?.());
+        this.eventUnsubscribers.forEach((unsub) => unsub?.());
         this.eventUnsubscribers = [];
 
         window.removeEventListener('resize', this.onWindowResize.bind(this));
@@ -4311,7 +4643,7 @@ export default class SwedishForestTheme extends BaseTheme {
                 if (object.geometry) object.geometry.dispose();
                 if (object.material) {
                     if (Array.isArray(object.material)) {
-                        object.material.forEach(m => m.dispose());
+                        object.material.forEach((m) => m.dispose());
                     } else {
                         object.material.dispose();
                     }

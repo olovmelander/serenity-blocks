@@ -1,6 +1,6 @@
 /**
  * Ice Temple Theme - GLSL Shaders
- * 
+ *
  * Custom shaders for frost effects, ice pillars, aurora, and particle systems
  */
 

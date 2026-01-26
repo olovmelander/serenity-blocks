@@ -1,7 +1,7 @@
 import * as THREE from 'three';
+import { Water } from 'three/examples/jsm/objects/Water.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import { Water } from 'three/examples/jsm/objects/Water.js';
 
 export default class RainyWindowTheme extends BaseTheme {
     constructor() {
@@ -115,7 +115,7 @@ export default class RainyWindowTheme extends BaseTheme {
         // Setup Renderer
         this.renderer = new THREE.WebGLRenderer({
             antialias: this.getAntialiasEnabled(),
-            alpha: true
+            alpha: true,
         });
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -159,7 +159,7 @@ export default class RainyWindowTheme extends BaseTheme {
             undefined,
             (error) => {
                 console.warn('⛈️ RainyWindow: Failed to load water texture, using fallback', error);
-            }
+            },
         );
 
         this.water = new Water(
@@ -172,8 +172,8 @@ export default class RainyWindowTheme extends BaseTheme {
                 sunColor: 0x555555,
                 waterColor: 0x000205,
                 distortionScale: 5.0,
-                fog: this.scene.fog !== undefined
-            }
+                fog: this.scene.fog !== undefined,
+            },
         );
 
         this.water.rotation.x = -Math.PI / 2;
@@ -187,7 +187,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 topColor: { value: new THREE.Color(0x000005) },
                 bottomColor: { value: new THREE.Color(0x0a0a20) },
                 lightningFlash: { value: 0.0 },
-                time: { value: 0 }
+                time: { value: 0 },
             },
             vertexShader: `
                 varying vec3 vWorldPosition;
@@ -222,7 +222,7 @@ export default class RainyWindowTheme extends BaseTheme {
                     gl_FragColor = vec4(color, 1.0);
                 }
             `,
-            side: THREE.BackSide
+            side: THREE.BackSide,
         });
         this.sky = new THREE.Mesh(skyGeo, skyMat);
         this.scene.add(this.sky);
@@ -236,7 +236,7 @@ export default class RainyWindowTheme extends BaseTheme {
         const cloudMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 time: { value: 0 },
-                lightningFlash: { value: 0.0 }
+                lightningFlash: { value: 0.0 },
             },
             vertexShader: `
                 varying vec2 vUv;
@@ -310,7 +310,7 @@ export default class RainyWindowTheme extends BaseTheme {
             `,
             transparent: true,
             depthWrite: false,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         this.clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
@@ -326,7 +326,7 @@ export default class RainyWindowTheme extends BaseTheme {
             uniforms: {
                 topColor: { value: new THREE.Color(0x0a0a15) },
                 bottomColor: { value: new THREE.Color(0x0a0a15) },
-                lightningFlash: { value: 0.0 }
+                lightningFlash: { value: 0.0 },
             },
             vertexShader: `
                 varying vec2 vUv;
@@ -365,7 +365,7 @@ export default class RainyWindowTheme extends BaseTheme {
             `,
             transparent: true,
             side: THREE.BackSide,
-            depthWrite: false
+            depthWrite: false,
         });
 
         this.horizonHaze = new THREE.Mesh(hazeGeometry, hazeMaterial);
@@ -400,7 +400,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 time: { value: 0 },
                 color: { value: new THREE.Color(0x8899bb) },
                 windStrength: { value: 0.3 },
-                lightningFlash: { value: 0.0 }
+                lightningFlash: { value: 0.0 },
             },
             vertexShader: `
                 attribute float size;
@@ -456,7 +456,7 @@ export default class RainyWindowTheme extends BaseTheme {
             `,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.rainSystem = new THREE.Points(geometry, rainMaterial);
@@ -492,7 +492,7 @@ export default class RainyWindowTheme extends BaseTheme {
                 time: { value: 0 },
                 color: { value: new THREE.Color(0x8899aa) },
                 windStrength: { value: 0.3 },
-                lightningFlash: { value: 0.0 }
+                lightningFlash: { value: 0.0 },
             },
             vertexShader: `
                 attribute float size;
@@ -669,7 +669,7 @@ export default class RainyWindowTheme extends BaseTheme {
             `,
             transparent: true,
             depthWrite: false,
-            blending: THREE.NormalBlending
+            blending: THREE.NormalBlending,
         });
 
         this.fogSystem = new THREE.Points(geometry, fogMaterial);
@@ -717,7 +717,8 @@ export default class RainyWindowTheme extends BaseTheme {
             // Chance for branch
             if (Math.random() < 0.2 && i > 3 && i < segments - 3) {
                 const branchPoints = [];
-                let bx = x, by = y, bz = z;
+                let bx = x; let by = y; let
+                    bz = z;
                 const branchLen = 3 + Math.floor(Math.random() * 4);
 
                 for (let j = 0; j < branchLen; j++) {
@@ -735,7 +736,7 @@ export default class RainyWindowTheme extends BaseTheme {
             linewidth: 2,
             transparent: true,
             opacity: 1.0,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         const bolt = new THREE.Line(geometry, material);
@@ -746,7 +747,7 @@ export default class RainyWindowTheme extends BaseTheme {
             linewidth: 4,
             transparent: true,
             opacity: 0.5,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
         const glowBolt = new THREE.Line(geometry.clone(), glowMaterial);
         bolt.add(glowBolt);
@@ -822,7 +823,7 @@ export default class RainyWindowTheme extends BaseTheme {
             this.lightningLight2.position.set(
                 oldBolt.position.x + (Math.random() - 0.5) * 200,
                 400,
-                oldBolt.position.z + (Math.random() - 0.5) * 200
+                oldBolt.position.z + (Math.random() - 0.5) * 200,
             );
         }
 
@@ -845,33 +846,29 @@ export default class RainyWindowTheme extends BaseTheme {
 
         // ── BASE BREATHING MOVEMENTS ───────────────────────────────────────────
         // Multiple layered sine waves for organic breathing feel
-        const breatheSpeed1 = 0.15;  // Primary breath (~6.5s cycle)
-        const breatheSpeed2 = 0.08;  // Secondary slow drift (~12s cycle)
-        const breatheSpeed3 = 0.25;  // Tertiary subtle pulse (~4s cycle)
+        const breatheSpeed1 = 0.15; // Primary breath (~6.5s cycle)
+        const breatheSpeed2 = 0.08; // Secondary slow drift (~12s cycle)
+        const breatheSpeed3 = 0.25; // Tertiary subtle pulse (~4s cycle)
 
         // Vertical breathing - like gentle waves lifting the viewer
         // INCREASED amplitude significantly so it never feels like it stops
-        const breathY =
-            Math.sin(this.cameraAnimTime * breatheSpeed1 + this.breathingPhase) * 12.0 +
-            Math.sin(this.cameraAnimTime * breatheSpeed2 + 1.5) * 6.0 +
-            Math.sin(this.cameraAnimTime * breatheSpeed3 * 0.7) * 3.0;
+        const breathY = Math.sin(this.cameraAnimTime * breatheSpeed1 + this.breathingPhase) * 12.0
+            + Math.sin(this.cameraAnimTime * breatheSpeed2 + 1.5) * 6.0
+            + Math.sin(this.cameraAnimTime * breatheSpeed3 * 0.7) * 3.0;
 
         // Horizontal sway - subtle side-to-side drift
         // INCREASED amplitude
-        const breathX =
-            Math.sin(this.cameraAnimTime * breatheSpeed2 * 0.8 + 2.3) * 15.0 +
-            Math.cos(this.cameraAnimTime * breatheSpeed1 * 0.6) * 8.0;
+        const breathX = Math.sin(this.cameraAnimTime * breatheSpeed2 * 0.8 + 2.3) * 15.0
+            + Math.cos(this.cameraAnimTime * breatheSpeed1 * 0.6) * 8.0;
 
         // Forward/back breathing - subtle zoom effect
         // INCREASED amplitude
-        const breathZ =
-            Math.sin(this.cameraAnimTime * breatheSpeed1 * 0.5 + 0.8) * 15.0 +
-            Math.cos(this.cameraAnimTime * breatheSpeed3 * 0.4) * 5.0;
+        const breathZ = Math.sin(this.cameraAnimTime * breatheSpeed1 * 0.5 + 0.8) * 15.0
+            + Math.cos(this.cameraAnimTime * breatheSpeed3 * 0.4) * 5.0;
 
         // Gentle roll for immersion
-        const rollAngle =
-            Math.sin(this.cameraAnimTime * breatheSpeed2 * 0.5 + 3.1) * 0.015 +
-            Math.sin(this.cameraAnimTime * breatheSpeed1 * 0.3) * 0.01;
+        const rollAngle = Math.sin(this.cameraAnimTime * breatheSpeed2 * 0.5 + 3.1) * 0.015
+            + Math.sin(this.cameraAnimTime * breatheSpeed1 * 0.3) * 0.01;
 
         // ── DIP TOWARDS WATER ANIMATION ─────────────────────────────────────────
         let dipOffsetY = 0;
@@ -908,14 +905,14 @@ export default class RainyWindowTheme extends BaseTheme {
             this.camera.position.set(
                 this.baseCameraPosition.x + breathX,
                 this.baseCameraPosition.y + breathY + dipOffsetY,
-                this.baseCameraPosition.z + breathZ + dipOffsetZ
+                this.baseCameraPosition.z + breathZ + dipOffsetZ,
             );
 
             // Look at adjusted target (follows dip for dramatic effect)
             const lookTarget = new THREE.Vector3(
                 this.baseLookAt.x,
                 this.baseLookAt.y + dipLookOffsetY,
-                this.baseLookAt.z
+                this.baseLookAt.z,
             );
             this.camera.lookAt(lookTarget);
 
@@ -949,52 +946,52 @@ export default class RainyWindowTheme extends BaseTheme {
         let lookFactor = 0;
 
         switch (curveType) {
-            case 0:
-                // Smooth bell curve - gentle swoop
-                dipFactor = Math.sin(progress * Math.PI);
-                zFactor = Math.sin(progress * Math.PI) * 0.5;
-                lookFactor = Math.sin(progress * Math.PI) * 0.4;
-                break;
+        case 0:
+            // Smooth bell curve - gentle swoop
+            dipFactor = Math.sin(progress * Math.PI);
+            zFactor = Math.sin(progress * Math.PI) * 0.5;
+            lookFactor = Math.sin(progress * Math.PI) * 0.4;
+            break;
 
-            case 1:
-                // Asymmetric dive - quick down, slow rise
-                const quickDown = progress < 0.3
-                    ? this.easeOutQuad(progress / 0.3)
-                    : 1.0 - this.easeInOutCubic((progress - 0.3) / 0.7);
-                dipFactor = quickDown;
-                zFactor = quickDown * 0.7;
-                lookFactor = quickDown * 0.5;
-                break;
+        case 1:
+            // Asymmetric dive - quick down, slow rise
+            const quickDown = progress < 0.3
+                ? this.easeOutQuad(progress / 0.3)
+                : 1.0 - this.easeInOutCubic((progress - 0.3) / 0.7);
+            dipFactor = quickDown;
+            zFactor = quickDown * 0.7;
+            lookFactor = quickDown * 0.5;
+            break;
 
-            case 2:
-                // Swooping arc - with horizontal drift
-                const swoopPhase = progress * Math.PI;
-                dipFactor = Math.sin(swoopPhase);
-                // Dramatic forward push then back
-                zFactor = Math.sin(swoopPhase) * 0.9 - Math.sin(swoopPhase * 2) * 0.2;
-                lookFactor = Math.sin(swoopPhase) * 0.6;
-                break;
+        case 2:
+            // Swooping arc - with horizontal drift
+            const swoopPhase = progress * Math.PI;
+            dipFactor = Math.sin(swoopPhase);
+            // Dramatic forward push then back
+            zFactor = Math.sin(swoopPhase) * 0.9 - Math.sin(swoopPhase * 2) * 0.2;
+            lookFactor = Math.sin(swoopPhase) * 0.6;
+            break;
 
-            case 3:
-                // Double dip - slight pause near water
-                const doubleDip = Math.sin(progress * Math.PI * 1.5);
-                const envelope = Math.sin(progress * Math.PI);
-                dipFactor = doubleDip * envelope * 0.9;
-                zFactor = envelope * 0.6;
-                lookFactor = envelope * 0.4;
-                break;
+        case 3:
+            // Double dip - slight pause near water
+            const doubleDip = Math.sin(progress * Math.PI * 1.5);
+            const envelope = Math.sin(progress * Math.PI);
+            dipFactor = doubleDip * envelope * 0.9;
+            zFactor = envelope * 0.6;
+            lookFactor = envelope * 0.4;
+            break;
         }
 
         // Maximum dip brings camera from y=30 closer to water at y=-50
         // We want to go about 60% of the way down (48 units)
         const maxDipY = -48;
-        const maxDipZ = 30;  // Move forward towards the water
+        const maxDipZ = 30; // Move forward towards the water
         const maxLookDipY = -25; // Look down towards water
 
         return {
             y: dipFactor * maxDipY,
             z: zFactor * maxDipZ,
-            lookY: lookFactor * maxLookDipY
+            lookY: lookFactor * maxLookDipY,
         };
     }
 
@@ -1003,7 +1000,7 @@ export default class RainyWindowTheme extends BaseTheme {
     }
 
     easeInOutCubic(t) {
-        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
     }
 
     animate() {
@@ -1027,8 +1024,8 @@ export default class RainyWindowTheme extends BaseTheme {
 
         // Animate Water
         if (this.water) {
-            this.water.material.uniforms['time'].value += 1.0 / 60.0;
-            this.water.material.uniforms['distortionScale'].value = 5.0 + (this.stormIntensity * 3.0);
+            this.water.material.uniforms.time.value += 1.0 / 60.0;
+            this.water.material.uniforms.distortionScale.value = 5.0 + (this.stormIntensity * 3.0);
         }
 
         // Lightning Decay
@@ -1106,7 +1103,6 @@ export default class RainyWindowTheme extends BaseTheme {
             this.fogSystem.material.uniforms.lightningFlash.value = this.skyFlashIntensity;
         }
 
-
         // Render
         if (this.renderer && this.scene && this.camera) {
             this.renderer.render(this.scene, this.camera);
@@ -1155,7 +1151,7 @@ export default class RainyWindowTheme extends BaseTheme {
         }
 
         // Dispose lightning bolts
-        this.lightningBolts.forEach(bolt => {
+        this.lightningBolts.forEach((bolt) => {
             bolt.geometry.dispose();
             bolt.material.dispose();
         });
@@ -1182,7 +1178,7 @@ export default class RainyWindowTheme extends BaseTheme {
         }
 
         window.removeEventListener('resize', this.resizeHandler);
-        this.eventUnsubscribers.forEach(u => u());
+        this.eventUnsubscribers.forEach((u) => u());
         this.eventUnsubscribers = [];
 
         // Important: Call super.stop() to update base state (isActive = false)
@@ -1194,7 +1190,7 @@ export default class RainyWindowTheme extends BaseTheme {
         return {
             '--bg-color': '#050608',
             '--grid-color': 'rgba(255, 255, 255, 0.05)',
-            ...super.getStyles()
+            ...super.getStyles(),
         };
     }
 }

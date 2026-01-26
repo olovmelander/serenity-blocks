@@ -224,7 +224,6 @@ export class LevelNodeManager {
         // Offset Z slightly to ensure path is visually behind
         group.position.z += 1.0;
 
-
         // 1. Inner "Theme" Sphere (Solid textured sphere inside)
         const textureLoader = new THREE.TextureLoader();
 
@@ -260,19 +259,19 @@ export class LevelNodeManager {
         // 2. Outer Glass Sphere
         const glassGeo = new THREE.SphereGeometry(1.0, 128, 128);
         const glassMat = new THREE.MeshPhysicalMaterial({
-            transmission: 0.0,      // Disable transmission to prevent glitches
-            opacity: 0.15,          // More subtle glass
+            transmission: 0.0, // Disable transmission to prevent glitches
+            opacity: 0.15, // More subtle glass
             transparent: true,
             thickness: 0.0,
-            roughness: 0.2,         // Softer reflections
+            roughness: 0.2, // Softer reflections
             ior: 1.5,
             metalness: 0.1,
             specularIntensity: 1.0,
             clearcoat: 1.0,
             clearcoatRoughness: 0.1,
             color: 0xffffff,
-            side: THREE.FrontSide,  // Explicitly render front side
-            depthWrite: false,      // Prevent depth sorting issues with transparency
+            side: THREE.FrontSide, // Explicitly render front side
+            depthWrite: false, // Prevent depth sorting issues with transparency
         });
         const glassMesh = new THREE.Mesh(glassGeo, glassMat);
         group.add(glassMesh);
@@ -371,7 +370,7 @@ export class LevelNodeManager {
             positions.push(
                 r * Math.sin(phi) * Math.cos(theta),
                 r * Math.sin(phi) * Math.sin(theta),
-                r * Math.cos(phi)
+                r * Math.cos(phi),
             );
         }
 
@@ -505,9 +504,9 @@ export class LevelNodeManager {
 
         // Three star positions - arc above orb
         const starPositions = [
-            new THREE.Vector3(-0.5, 1.4, 1.2),  // Left star
-            new THREE.Vector3(0, 1.6, 1.3),     // Center star (higher)
-            new THREE.Vector3(0.5, 1.4, 1.2),   // Right star
+            new THREE.Vector3(-0.5, 1.4, 1.2), // Left star
+            new THREE.Vector3(0, 1.6, 1.3), // Center star (higher)
+            new THREE.Vector3(0.5, 1.4, 1.2), // Right star
         ];
 
         starPositions.forEach((pos, i) => {
@@ -575,10 +574,10 @@ export class LevelNodeManager {
 
         // Draw star with gradient fill
         const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerRadius);
-        gradient.addColorStop(0, '#ffffcc');   // Bright center
+        gradient.addColorStop(0, '#ffffcc'); // Bright center
         gradient.addColorStop(0.3, '#ffdd00'); // Golden
         gradient.addColorStop(0.7, '#ffaa00'); // Deep gold
-        gradient.addColorStop(1, '#ff8800');   // Orange edge
+        gradient.addColorStop(1, '#ff8800'); // Orange edge
 
         ctx.fillStyle = gradient;
         ctx.strokeStyle = '#ffffff';
@@ -608,6 +607,7 @@ export class LevelNodeManager {
 
         return new THREE.CanvasTexture(canvas);
     }
+
     /**
      * Create a radial glow texture for sprites
      * @param {number} size - Texture size
@@ -620,8 +620,12 @@ export class LevelNodeManager {
         const ctx = canvas.getContext('2d');
 
         const gradient = ctx.createRadialGradient(
-            size / 2, size / 2, 0,
-            size / 2, size / 2, size / 2,
+            size / 2,
+            size / 2,
+            0,
+            size / 2,
+            size / 2,
+            size / 2,
         );
         gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
         gradient.addColorStop(0.2, 'rgba(255, 220, 100, 0.8)');
@@ -703,8 +707,7 @@ export class LevelNodeManager {
             if (node.innerMesh && node.innerMesh.material) {
                 node.innerMesh.material.color.setHex(state.locked ? 0x444444 : 0xffffff);
             }
-        }
-        else {
+        } else {
             // Updated standard shader uniforms
             node.coreMaterial.uniforms.uLocked.value = state.locked ? 1.0 : 0.0;
             node.coreMaterial.uniforms.uCompleted.value = state.completed ? 1.0 : 0.0;

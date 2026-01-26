@@ -9,7 +9,7 @@
 
 export class InputValidator {
     constructor() {
-    // Track input rates per player
+        // Track input rates per player
         this.inputRates = new Map();
         this.lastInputTime = new Map();
         this.inputCounts = new Map();
@@ -29,8 +29,8 @@ export class InputValidator {
    * Returns: { valid: boolean, reason?: string }
    */
     validateInput(steamId, inputType, data, timestamp = Date.now()) {
-    // Check rate limiting first (prevent spam/bots)
-        const rateCheck = this.checkInputRate(steamId, inputType);
+        // Check rate limiting first (prevent spam/bots)
+        const rateCheck = this.checkInputRate(steamId, inputType, timestamp);
         if (!rateCheck.valid) {
             return rateCheck;
         }
@@ -55,26 +55,32 @@ export class InputValidator {
     }
 
     /**
-   * Check if player is exceeding input rate limits
-   */
-    checkInputRate(steamId, inputType) {
+     * Check if player is exceeding input rate limits
+     */
+    checkInputRate(steamId, inputType, timestamp) {
         const now = Date.now();
+        const inputTime = timestamp || now;
 
         // Get last input time
         const lastKey = `${steamId}:${inputType}`;
         const lastInput = this.lastInputTime.get(lastKey) || 0;
-        const timeSinceLastInput = now - lastInput;
+        const timeSinceLastInput = inputTime - lastInput;
 
         // Too fast? Likely a bot or macro
+        // We use client timestamp for this check to support batched inputs (which arrive safely)
         if (timeSinceLastInput < this.MIN_INPUT_INTERVAL) {
-            console.warn(`⚠️ Player ${steamId} exceeded input rate limit (${timeSinceLastInput}ms < ${this.MIN_INPUT_INTERVAL}ms)`);
-            return {
-                valid: false,
-                reason: `Input too fast (${timeSinceLastInput}ms)`,
-            };
+            // Allow small tolerance for clock weirdness or batch alignment
+            if (timeSinceLastInput < -50) {
+                // Ignore, out of order or future (handled by timestamp check separately)
+            } else {
+                // console.warn(`⚠️ Player ${steamId} exceeded input rate limit (${timeSinceLastInput}ms)`);
+                // For now, be lenient with batch processing interval check
+                // return { valid: false, reason: `Input too fast` };
+            }
         }
 
-        // Track inputs in rolling window
+        // Track inputs in rolling window (SERVER ARRIVAL TIME)
+        // This is the true anti-spam protection
         if (!this.inputCounts.has(steamId)) {
             this.inputCounts.set(steamId, []);
         }
@@ -85,7 +91,7 @@ export class InputValidator {
         const cutoff = now - this.RATE_LIMIT_WINDOW;
         const recentInputs = inputs.filter((t) => t > cutoff);
 
-        // Add current input
+        // Add current input arrival
         recentInputs.push(now);
         this.inputCounts.set(steamId, recentInputs);
 
@@ -98,8 +104,8 @@ export class InputValidator {
             };
         }
 
-        // Update last input time
-        this.lastInputTime.set(lastKey, now);
+        // Update last input time (Client timestamp)
+        this.lastInputTime.set(lastKey, inputTime);
 
         return { valid: true };
     }
@@ -128,7 +134,7 @@ export class InputValidator {
    * Validate move input
    */
     validateMove(data) {
-    // Move must be -1 (left) or 1 (right)
+        // Move must be -1 (left) or 1 (right)
         if (data.direction !== -1 && data.direction !== 1) {
             return {
                 valid: false,
@@ -143,7 +149,7 @@ export class InputValidator {
    * Validate rotate input
    */
     validateRotate(data) {
-    // Rotate must be 'left', 'right', or 'flip'
+        // Rotate must be 'left', 'right', or 'flip'
         const validDirections = ['left', 'right', 'flip'];
 
         if (!validDirections.includes(data.direction)) {
@@ -160,7 +166,7 @@ export class InputValidator {
    * Validate drop input
    */
     validateDrop(data) {
-    // Drop must be 'soft' or 'hard'
+        // Drop must be 'soft' or 'hard'
         const validTypes = ['soft', 'hard'];
 
         if (!validTypes.includes(data.type)) {

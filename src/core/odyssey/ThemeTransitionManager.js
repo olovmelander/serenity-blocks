@@ -91,7 +91,9 @@ export class ThemeTransitionManager {
         if (this.isTransitioning) {
             // Queue this transition
             return new Promise((resolve) => {
-                this.transitionQueue.push({ themeName, transitionType, duration, resolve });
+                this.transitionQueue.push({
+                    themeName, transitionType, duration, resolve,
+                });
             });
         }
 
@@ -99,26 +101,26 @@ export class ThemeTransitionManager {
 
         try {
             switch (transitionType) {
-                case 'fade':
-                    await this.fadeTransition(themeName, duration);
-                    break;
+            case 'fade':
+                await this.fadeTransition(themeName, duration);
+                break;
 
-                case 'crossfade':
-                    await this.crossfadeTransition(themeName, duration);
-                    break;
+            case 'crossfade':
+                await this.crossfadeTransition(themeName, duration);
+                break;
 
-                case 'warp':
-                    await this.warpTransition(themeName, duration);
-                    break;
+            case 'warp':
+                await this.warpTransition(themeName, duration);
+                break;
 
-                case 'none':
-                case 'instant':
-                    await this.themeManager?.switchTheme?.(themeName, true);
-                    break;
+            case 'none':
+            case 'instant':
+                await this.themeManager?.switchTheme?.(themeName, true);
+                break;
 
-                default:
-                    // Default to warp for the best experience
-                    await this.warpTransition(themeName, duration);
+            default:
+                // Default to warp for the best experience
+                await this.warpTransition(themeName, duration);
             }
         } catch (error) {
             console.error('[ThemeTransition] Error during transition:', error);
@@ -349,4 +351,3 @@ export class ThemeTransitionManager {
 }
 
 export default ThemeTransitionManager;
-

@@ -1,6 +1,6 @@
 /**
  * Synthwave Sunset Theme - Three.js Masterpiece Edition
- * 
+ *
  * A stunning 3D retrofuturistic experience featuring:
  * - Infinite perspective neon grid with glow
  * - Volumetric sun with stripes and corona
@@ -26,7 +26,7 @@ import {
     highlightVertexShader,
     highlightFragmentShader,
     particleVertexShader,
-    particleFragmentShader
+    particleFragmentShader,
 } from './synthwave-shaders.js';
 
 export default class SynthwaveSunsetTheme extends BaseTheme {
@@ -63,19 +63,31 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.sunPulseIntensity = 0;
         this.cityGlowIntensity = 0;
         this.comboColorShift = 0;
-        this.highlightTwinkleIntensity = 0;  // For combo twinkle effect on highlights
+        this.highlightTwinkleIntensity = 0; // For combo twinkle effect on highlights
 
         // Event handlers
         this.eventUnsubscribers = [];
 
         // Quality presets
         this.qualityPresets = {
-            Minimal: { starCount: 500, buildingCount: 30, glowLayers: 1, maxHighlights: 30, particleBudget: 500 },
-            Low: { starCount: 1000, buildingCount: 50, glowLayers: 2, maxHighlights: 40, particleBudget: 1000 },
-            Medium: { starCount: 1800, buildingCount: 70, glowLayers: 3, maxHighlights: 60, particleBudget: 2000 },
-            High: { starCount: 2500, buildingCount: 90, glowLayers: 4, maxHighlights: 80, particleBudget: 3500 },
-            Ultra: { starCount: 4000, buildingCount: 120, glowLayers: 5, maxHighlights: 100, particleBudget: 6000 },
-            Extreme: { starCount: 6000, buildingCount: 150, glowLayers: 6, maxHighlights: 150, particleBudget: 10000 }
+            Minimal: {
+                starCount: 500, buildingCount: 30, glowLayers: 1, maxHighlights: 30, particleBudget: 500,
+            },
+            Low: {
+                starCount: 1000, buildingCount: 50, glowLayers: 2, maxHighlights: 40, particleBudget: 1000,
+            },
+            Medium: {
+                starCount: 1800, buildingCount: 70, glowLayers: 3, maxHighlights: 60, particleBudget: 2000,
+            },
+            High: {
+                starCount: 2500, buildingCount: 90, glowLayers: 4, maxHighlights: 80, particleBudget: 3500,
+            },
+            Ultra: {
+                starCount: 4000, buildingCount: 120, glowLayers: 5, maxHighlights: 100, particleBudget: 6000,
+            },
+            Extreme: {
+                starCount: 6000, buildingCount: 150, glowLayers: 6, maxHighlights: 150, particleBudget: 10000,
+            },
         };
         this.currentQuality = 'High';
         this.activePreset = this.qualityPresets.High;
@@ -90,7 +102,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             skyTop: new THREE.Color(0x1a0033),
             skyMid: new THREE.Color(0x660066),
             skyBottom: new THREE.Color(0xff6600),
-            buildingDark: new THREE.Color(0x0a0515)
+            buildingDark: new THREE.Color(0x0a0515),
         };
 
         // Neon palette for highlights
@@ -100,7 +112,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             new THREE.Color(0xffff00), // Yellow
             new THREE.Color(0x00ff00), // Lime
             new THREE.Color(0x9900ff), // Purple
-            new THREE.Color(0xff6600)  // Orange
+            new THREE.Color(0xff6600), // Orange
         ];
 
         // Tetromino shapes (relative cell positions)
@@ -111,7 +123,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }], // O
             [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }], // S
             [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }], // T
-            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }]  // Z
+            [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }], // Z
         ];
     }
 
@@ -145,7 +157,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             70,
             window.innerWidth / window.innerHeight,
             0.1,
-            1000
+            1000,
         );
         this.camera.position.set(0, 8, 20);
         this.camera.lookAt(0, 2, -20);
@@ -154,7 +166,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.renderer = new THREE.WebGLRenderer({
             alpha: false,
             antialias: this.getAntialiasEnabled(),
-            powerPreference: 'high-performance'
+            powerPreference: 'high-performance',
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
@@ -212,7 +224,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         const material = new THREE.MeshBasicMaterial({
             vertexColors: true,
             side: THREE.BackSide, // Render inside of sphere
-            depthWrite: false
+            depthWrite: false,
         });
 
         const sky = new THREE.Mesh(geometry, material);
@@ -220,7 +232,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         sky.position.set(0, 0, 0);
         this.scene.add(sky);
 
-        // Also add a bottom fading plane to mask the "south pole" if needed, 
+        // Also add a bottom fading plane to mask the "south pole" if needed,
         // but sphere usually covers it well.
     }
 
@@ -236,7 +248,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         const starColors = [
             new THREE.Color(0xffffff),
             new THREE.Color(0xaaddff),
-            new THREE.Color(0xffddee)
+            new THREE.Color(0xffddee),
         ];
 
         for (let i = 0; i < count; i++) {
@@ -274,13 +286,13 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
-                time: { value: 0 }
+                time: { value: 0 },
             },
             vertexShader: starVertexShader,
             fragmentShader: starFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.starField = new THREE.Points(geometry, material);
@@ -297,12 +309,12 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 colorMid: { value: this.colors.sunMid },
                 colorBottom: { value: this.colors.sunBottom },
                 stripeCount: { value: 12.0 },
-                pulseIntensity: { value: 0 }
+                pulseIntensity: { value: 0 },
             },
             vertexShader: sunVertexShader,
             fragmentShader: sunFragmentShader,
             transparent: true,
-            side: THREE.FrontSide
+            side: THREE.FrontSide,
         });
 
         this.sun = new THREE.Mesh(sunGeometry, sunMaterial);
@@ -317,7 +329,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             new THREE.Color(0xff0066),
             new THREE.Color(0xaa0088),
             new THREE.Color(0x6600aa),
-            new THREE.Color(0x330066)
+            new THREE.Color(0x330066),
         ];
 
         for (let i = 0; i < glowCount; i++) {
@@ -328,14 +340,14 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 uniforms: {
                     glowColor: { value: glowColors[i % glowColors.length] },
                     opacity: { value: 0.4 - i * 0.05 },
-                    pulseIntensity: { value: 0 }
+                    pulseIntensity: { value: 0 },
                 },
                 vertexShader: sunGlowVertexShader,
                 fragmentShader: sunGlowFragmentShader,
                 transparent: true,
                 depthWrite: false,
                 blending: THREE.AdditiveBlending,
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
             });
 
             const glow = new THREE.Mesh(glowGeometry, glowMaterial);
@@ -351,8 +363,12 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Two layers of buildings
         const layers = [
-            { y: 0, zStart: -80, zEnd: -50, scaleY: 1.0, color: 0x0a0515 },
-            { y: 0, zStart: -60, zEnd: -35, scaleY: 0.7, color: 0x08040f }
+            {
+                y: 0, zStart: -80, zEnd: -50, scaleY: 1.0, color: 0x0a0515,
+            },
+            {
+                y: 0, zStart: -60, zEnd: -35, scaleY: 0.7, color: 0x08040f,
+            },
         ];
 
         layers.forEach((layer, layerIndex) => {
@@ -365,7 +381,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
                 const geometry = new THREE.BoxGeometry(width, height, depth);
                 const material = new THREE.MeshBasicMaterial({
-                    color: layer.color
+                    color: layer.color,
                 });
 
                 const building = new THREE.Mesh(geometry, material);
@@ -385,7 +401,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                     color: 0xff0066,
                     transparent: true,
                     opacity: 0,
-                    blending: THREE.AdditiveBlending // Add blending for brighter glow interaction
+                    blending: THREE.AdditiveBlending, // Add blending for brighter glow interaction
                 });
                 const edgeLines = new THREE.LineSegments(edges, edgeMaterial);
                 edgeLines.position.copy(building.position);
@@ -406,14 +422,14 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 speed: { value: -5.0 }, // Negative speed moves grid TOWARDS camera (driving forward)
                 gridColor: { value: this.colors.gridPink },
                 glowIntensity: { value: 1.0 },
-                pulseIntensity: { value: 0 }
+                pulseIntensity: { value: 0 },
             },
             vertexShader: gridVertexShader,
             fragmentShader: gridFragmentShader,
             transparent: true,
             depthWrite: false,
             blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         this.grid = new THREE.Mesh(geometry, material);
@@ -435,14 +451,14 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 uniforms: {
                     color: { value: new THREE.Color(0x00ffff) },
                     intensity: { value: 0 },
-                    time: { value: 0 }
+                    time: { value: 0 },
                 },
                 vertexShader: highlightVertexShader,
                 fragmentShader: highlightFragmentShader,
                 transparent: true,
                 depthWrite: false,
                 blending: THREE.AdditiveBlending,
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
             });
 
             const mesh = new THREE.Mesh(geometry, material);
@@ -452,7 +468,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 life: 0,
                 maxLife: 4.0,
                 intensity: 0,
-                decay: 0.01
+                decay: 0.01,
             };
 
             this.scene.add(mesh);
@@ -480,7 +496,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             fragmentShader: particleFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.particles = new THREE.Points(geometry, material);
@@ -490,12 +506,16 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         for (let i = 0; i < count; i++) {
             this.particleData.push({
                 active: false,
-                x: 0, y: 0, z: 0,
-                vx: 0, vy: 0, vz: 0,
+                x: 0,
+                y: 0,
+                z: 0,
+                vx: 0,
+                vy: 0,
+                vz: 0,
                 life: 0,
                 maxLife: 1,
                 size: 1,
-                color: new THREE.Color(0xffffff)
+                color: new THREE.Color(0xffffff),
             });
         }
     }
@@ -594,40 +614,40 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     getPieceColor(pieceType) {
         // Use the theme's tetromino colors from synthwave-sunset-tetrominos.js
         const colorMap = {
-            'I': new THREE.Color(0xff0066), // Hot Pink
-            'O': new THREE.Color(0xff4500), // Orange-Red
-            'T': new THREE.Color(0xb000ff), // Violet Purple
-            'S': new THREE.Color(0xff006e), // Deep Pink
-            'Z': new THREE.Color(0xff5e78), // Coral
-            'J': new THREE.Color(0x00d4ff), // Electric Blue
-            'L': new THREE.Color(0xffff00)  // Neon Yellow
+            I: new THREE.Color(0xff0066), // Hot Pink
+            O: new THREE.Color(0xff4500), // Orange-Red
+            T: new THREE.Color(0xb000ff), // Violet Purple
+            S: new THREE.Color(0xff006e), // Deep Pink
+            Z: new THREE.Color(0xff5e78), // Coral
+            J: new THREE.Color(0x00d4ff), // Electric Blue
+            L: new THREE.Color(0xffff00), // Neon Yellow
         };
         return colorMap[pieceType] || this.neonColors[0];
     }
 
     getShapeForType(pieceType) {
         const shapes = {
-            'I': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }],
-            'J': [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
-            'L': [{ x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
-            'O': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
-            'S': [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
-            'T': [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
-            'Z': [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }]
+            I: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }],
+            J: [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            L: [{ x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            O: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+            S: [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+            T: [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
+            Z: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }],
         };
-        return shapes[pieceType] || shapes['T'];
+        return shapes[pieceType] || shapes.T;
     }
 
     spawnHighlightCell(gridX, gridZ, color, scrollOffset) {
         // Find inactive highlight from pool
-        const highlight = this.highlightPool.find(h => !h.userData.active);
+        const highlight = this.highlightPool.find((h) => !h.userData.active);
         if (!highlight) return;
 
         highlight.userData.active = true;
         highlight.userData.life = 1.0;
-        highlight.userData.maxLife = 15.0 + Math.random() * 10.0;  // Stay very long (15-25 seconds)
+        highlight.userData.maxLife = 15.0 + Math.random() * 10.0; // Stay very long (15-25 seconds)
         highlight.userData.intensity = 2.5 + Math.random() * 0.5;
-        highlight.userData.decay = 0.001 + Math.random() * 0.001;  // Very slow decay
+        highlight.userData.decay = 0.001 + Math.random() * 0.001; // Very slow decay
         highlight.userData.gridZ = gridZ;
         highlight.userData.scrollOffset = scrollOffset;
 
@@ -677,11 +697,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             new THREE.Color(0xff0066),
             new THREE.Color(0xff4500),
             new THREE.Color(0xff006e),
-            new THREE.Color(0xb000ff)
+            new THREE.Color(0xb000ff),
         ];
 
         for (let i = 0; i < baseCount; i++) {
-            const particle = this.particleData.find(p => !p.active);
+            const particle = this.particleData.find((p) => !p.active);
             if (!particle) break;
 
             particle.active = true;
@@ -704,11 +724,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             new THREE.Color(0xff4500),
             new THREE.Color(0xff8c00),
             new THREE.Color(0xffd700),
-            new THREE.Color(0xff0000)
+            new THREE.Color(0xff0000),
         ];
 
         for (let i = 0; i < count; i++) {
-            const particle = this.particleData.find(p => !p.active);
+            const particle = this.particleData.find((p) => !p.active);
             if (!particle) break;
 
             const angle = Math.random() * Math.PI;
@@ -762,7 +782,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.camera.lookAt(
             Math.sin(t * 0.4) * 2,
             3 + Math.cos(t * 0.3),
-            -20
+            -20,
         );
     }
 
@@ -914,7 +934,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     updateBuildings(delta) {
         // Update building edge glow for combo effects
         if (this.cityGlowIntensity > 0) {
-            this.buildingEdges.forEach(edge => {
+            this.buildingEdges.forEach((edge) => {
                 // Increase multiplier for much brighter edge glow (cap at 1.0 implicitly by material)
                 edge.material.opacity = Math.min(1.0, this.cityGlowIntensity * 1.5);
                 // Also scale line width if supported by browser (often strictly 1, but worth trying)
@@ -948,12 +968,12 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
     stop() {
         // Unsubscribe events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Clear effects
         this.gridHighlights = [];
-        this.particleData.forEach(p => p.active = false);
+        this.particleData.forEach((p) => p.active = false);
 
         // Dispose Three.js resources
         if (this.renderer) {
@@ -965,11 +985,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         }
 
         if (this.scene) {
-            this.scene.traverse(obj => {
+            this.scene.traverse((obj) => {
                 if (obj.geometry) obj.geometry.dispose();
                 if (obj.material) {
                     if (Array.isArray(obj.material)) {
-                        obj.material.forEach(m => m.dispose());
+                        obj.material.forEach((m) => m.dispose());
                     } else {
                         obj.material.dispose();
                     }

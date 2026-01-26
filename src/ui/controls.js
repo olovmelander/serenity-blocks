@@ -74,55 +74,55 @@ function handlePlayer2Action(action, gameActions, inputController, settings) {
     performanceMonitor.recordInputAction();
 
     switch (action) {
-        case 'moveLeft':
-            if (moveP2) {
-                moveP2(-1);
-                inputController.dasTimerP2 = setTimeout(() => {
-                    inputController.dasIntervalTimerP2 = setInterval(
-                        () => moveP2(-1),
-                        settings.dasInterval,
-                    );
-                }, settings.dasDelay);
-            }
-            break;
+    case 'moveLeft':
+        if (moveP2) {
+            moveP2(-1);
+            inputController.dasTimerP2 = setTimeout(() => {
+                inputController.dasIntervalTimerP2 = setInterval(
+                    () => moveP2(-1),
+                    settings.dasInterval,
+                );
+            }, settings.dasDelay);
+        }
+        break;
 
-        case 'moveRight':
-            if (moveP2) {
-                moveP2(1);
-                inputController.dasTimerP2 = setTimeout(() => {
-                    inputController.dasIntervalTimerP2 = setInterval(
-                        () => moveP2(1),
-                        settings.dasInterval,
-                    );
-                }, settings.dasDelay);
-            }
-            break;
+    case 'moveRight':
+        if (moveP2) {
+            moveP2(1);
+            inputController.dasTimerP2 = setTimeout(() => {
+                inputController.dasIntervalTimerP2 = setInterval(
+                    () => moveP2(1),
+                    settings.dasInterval,
+                );
+            }, settings.dasDelay);
+        }
+        break;
 
-        case 'softDrop':
-            if (softDropP2) {
-                softDropP2();
-                inputController.softDropTimerP2 = setInterval(() => softDropP2(), 50);
-            }
-            break;
+    case 'softDrop':
+        if (softDropP2) {
+            softDropP2();
+            inputController.softDropTimerP2 = setInterval(() => softDropP2(), 50);
+        }
+        break;
 
-        case 'rotateRight':
-            if (rotateP2) rotateP2('right');
-            break;
+    case 'rotateRight':
+        if (rotateP2) rotateP2('right');
+        break;
 
-        case 'rotateLeft':
-            if (rotateP2) rotateP2('left');
-            break;
+    case 'rotateLeft':
+        if (rotateP2) rotateP2('left');
+        break;
 
-        case 'flip':
-            if (rotateP2) rotateP2('flip');
-            break;
+    case 'flip':
+        if (rotateP2) rotateP2('flip');
+        break;
 
-        case 'hardDrop':
-            if (hardDropP2) hardDropP2();
-            break;
+    case 'hardDrop':
+        if (hardDropP2) hardDropP2();
+        break;
 
-        default:
-            break;
+    default:
+        break;
     }
 }
 
@@ -273,102 +273,102 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
 
             // Execute actions
             switch (action) {
-                case 'moveLeft':
-                    if (move) {
-                        move(-1);
-                        performanceMonitor.recordInputAction();
-                        inputController.dasTimer = setTimeout(() => {
-                            inputController.dasIntervalTimer = setInterval(
-                                () => move(-1),
-                                currentSettings.dasInterval,
-                            );
-                        }, currentSettings.dasDelay);
-                    }
-                    break;
+            case 'moveLeft':
+                if (move) {
+                    move(-1);
+                    performanceMonitor.recordInputAction();
+                    inputController.dasTimer = setTimeout(() => {
+                        inputController.dasIntervalTimer = setInterval(
+                            () => move(-1),
+                            currentSettings.dasInterval,
+                        );
+                    }, currentSettings.dasDelay);
+                }
+                break;
 
-                case 'moveRight':
-                    if (move) {
-                        move(1);
-                        performanceMonitor.recordInputAction();
-                        inputController.dasTimer = setTimeout(() => {
-                            inputController.dasIntervalTimer = setInterval(
-                                () => move(1),
-                                currentSettings.dasInterval,
-                            );
-                        }, currentSettings.dasDelay);
-                    }
-                    break;
+            case 'moveRight':
+                if (move) {
+                    move(1);
+                    performanceMonitor.recordInputAction();
+                    inputController.dasTimer = setTimeout(() => {
+                        inputController.dasIntervalTimer = setInterval(
+                            () => move(1),
+                            currentSettings.dasInterval,
+                        );
+                    }, currentSettings.dasDelay);
+                }
+                break;
 
-                case 'softDrop':
-                    if (softDrop) {
-                        softDrop();
-                        performanceMonitor.recordInputAction();
-                        inputController.softDropTimer = setInterval(() => softDrop(), 50);
-                    }
-                    break;
+            case 'softDrop':
+                if (softDrop) {
+                    softDrop();
+                    performanceMonitor.recordInputAction();
+                    inputController.softDropTimer = setInterval(() => softDrop(), 50);
+                }
+                break;
 
-                case 'rotateRight':
-                    if (rotate) {
-                        rotate('right');
-                        performanceMonitor.recordInputAction();
-                    }
-                    break;
+            case 'rotateRight':
+                if (rotate) {
+                    rotate('right');
+                    performanceMonitor.recordInputAction();
+                }
+                break;
 
-                case 'rotateLeft':
-                    if (rotate) {
-                        rotate('left');
-                        performanceMonitor.recordInputAction();
-                    }
-                    break;
+            case 'rotateLeft':
+                if (rotate) {
+                    rotate('left');
+                    performanceMonitor.recordInputAction();
+                }
+                break;
 
-                case 'flip':
-                    if (rotate) {
-                        rotate('flip');
-                        performanceMonitor.recordInputAction();
-                    }
-                    break;
+            case 'flip':
+                if (rotate) {
+                    rotate('flip');
+                    performanceMonitor.recordInputAction();
+                }
+                break;
 
-                case 'hardDrop':
-                    e.preventDefault();
-                    if (hardDrop) {
-                        hardDrop();
-                        performanceMonitor.recordInputAction();
-                    }
-                    break;
+            case 'hardDrop':
+                e.preventDefault();
+                if (hardDrop) {
+                    hardDrop();
+                    performanceMonitor.recordInputAction();
+                }
+                break;
 
-                case 'nextTrack':
-                    if (gameActions.nextTrack) {
-                        gameActions.nextTrack();
-                    }
-                    break;
+            case 'nextTrack':
+                if (gameActions.nextTrack) {
+                    gameActions.nextTrack();
+                }
+                break;
 
-                case 'randomTheme':
-                    if (gameActions.randomTheme) {
-                        gameActions.randomTheme();
-                    }
-                    break;
+            case 'randomTheme':
+                if (gameActions.randomTheme) {
+                    gameActions.randomTheme();
+                }
+                break;
 
-                case 'togglePause':
-                    if (togglePause) {
-                        togglePause();
-                    }
-                    break;
+            case 'togglePause':
+                if (togglePause) {
+                    togglePause();
+                }
+                break;
 
-                case 'toggleFullscreen':
-                    if (gameActions.toggleFullscreen) {
-                        gameActions.toggleFullscreen();
-                    }
-                    break;
+            case 'toggleFullscreen':
+                if (gameActions.toggleFullscreen) {
+                    gameActions.toggleFullscreen();
+                }
+                break;
 
-                case 'showHighScores':
-                    if (gameActions.showHighScores) {
-                        gameActions.showHighScores();
-                    }
-                    break;
+            case 'showHighScores':
+                if (gameActions.showHighScores) {
+                    gameActions.showHighScores();
+                }
+                break;
 
-                default:
-                    // No action for unrecognized key binding
-                    break;
+            default:
+                // No action for unrecognized key binding
+                break;
             }
         } catch (error) {
             console.error('[Keyboard] Error in keydown handler:', error);

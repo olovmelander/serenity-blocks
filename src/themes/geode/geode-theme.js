@@ -153,11 +153,11 @@ const CRYSTAL_PALETTES = [
 
 const STAR_COLORS = [
     '#ff6030', '#ff8040', '#ffa050', '#ffb060', '#ffc070', // Oranges
-    '#ff5040', '#ff4050', '#ff3060', '#ff2070',             // Reds
-    '#ffd060', '#ffe080', '#fff0a0',                         // Yellows
+    '#ff5040', '#ff4050', '#ff3060', '#ff2070', // Reds
+    '#ffd060', '#ffe080', '#fff0a0', // Yellows
     '#ff70ff', '#ff60e0', '#e060ff', '#c060ff', '#a050ff', // Magentas/Purples
-    '#60ffff', '#50e0ff', '#40c0ff',                         // Teals
-    '#60ff90', '#50ffa0',                                    // Greens
+    '#60ffff', '#50e0ff', '#40c0ff', // Teals
+    '#60ff90', '#50ffa0', // Greens
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -307,7 +307,7 @@ export default class GeodeTheme extends BaseTheme {
             70,
             window.innerWidth / window.innerHeight,
             0.1,
-            2000
+            2000,
         );
         this.camera.position.copy(this.baseCameraPos);
         this.camera.lookAt(0, 0, 0);
@@ -368,8 +368,12 @@ export default class GeodeTheme extends BaseTheme {
 
             // Base gradient - warm cosmic void
             const gradient = ctx.createRadialGradient(
-                size / 2, size / 2, 0,
-                size / 2, size / 2, size * 0.7
+                size / 2,
+                size / 2,
+                0,
+                size / 2,
+                size / 2,
+                size * 0.7,
             );
             gradient.addColorStop(0, '#1a0808');
             gradient.addColorStop(0.3, '#0c0406');
@@ -388,7 +392,7 @@ export default class GeodeTheme extends BaseTheme {
 
                 const spotGrad = ctx.createRadialGradient(x, y, 0, x, y, r);
                 spotGrad.addColorStop(0, color);
-                spotGrad.addColorStop(0.5, color + '80');
+                spotGrad.addColorStop(0.5, `${color}80`);
                 spotGrad.addColorStop(1, 'transparent');
                 ctx.fillStyle = spotGrad;
                 ctx.fillRect(x - r, y - r, r * 2, r * 2);
@@ -443,7 +447,7 @@ export default class GeodeTheme extends BaseTheme {
             const angle = (i / sides) * Math.PI * 2;
             points.push({
                 x: Math.cos(angle) * radius,
-                z: Math.sin(angle) * radius
+                z: Math.sin(angle) * radius,
             });
         }
 
@@ -451,9 +455,15 @@ export default class GeodeTheme extends BaseTheme {
         for (let i = 0; i < sides; i++) {
             const next = (i + 1) % sides;
             vertices.push(
-                0, topPoint, 0,
-                points[i].x, midPoint, points[i].z,
-                points[next].x, midPoint, points[next].z
+                0,
+                topPoint,
+                0,
+                points[i].x,
+                midPoint,
+                points[i].z,
+                points[next].x,
+                midPoint,
+                points[next].z,
             );
         }
 
@@ -462,14 +472,26 @@ export default class GeodeTheme extends BaseTheme {
             const next = (i + 1) % sides;
             // Upper quad
             vertices.push(
-                points[i].x, midPoint, points[i].z,
-                points[i].x * 0.95, 0, points[i].z * 0.95,
-                points[next].x, midPoint, points[next].z
+                points[i].x,
+                midPoint,
+                points[i].z,
+                points[i].x * 0.95,
+                0,
+                points[i].z * 0.95,
+                points[next].x,
+                midPoint,
+                points[next].z,
             );
             vertices.push(
-                points[next].x, midPoint, points[next].z,
-                points[i].x * 0.95, 0, points[i].z * 0.95,
-                points[next].x * 0.95, 0, points[next].z * 0.95
+                points[next].x,
+                midPoint,
+                points[next].z,
+                points[i].x * 0.95,
+                0,
+                points[i].z * 0.95,
+                points[next].x * 0.95,
+                0,
+                points[next].z * 0.95,
             );
         }
 
@@ -477,9 +499,15 @@ export default class GeodeTheme extends BaseTheme {
         for (let i = 0; i < sides; i++) {
             const next = (i + 1) % sides;
             vertices.push(
-                points[i].x * 0.95, 0, points[i].z * 0.95,
-                0, bottomPoint, 0,
-                points[next].x * 0.95, 0, points[next].z * 0.95
+                points[i].x * 0.95,
+                0,
+                points[i].z * 0.95,
+                0,
+                bottomPoint,
+                0,
+                points[next].x * 0.95,
+                0,
+                points[next].z * 0.95,
             );
         }
 
@@ -493,7 +521,7 @@ export default class GeodeTheme extends BaseTheme {
         const group = new THREE.Group();
         const palette = CRYSTAL_PALETTES[Math.floor(Math.random() * CRYSTAL_PALETTES.length)];
         const crystalCount = Math.floor(
-            this.activePreset.crystalsPerCluster * (0.7 + Math.random() * 0.6)
+            this.activePreset.crystalsPerCluster * (0.7 + Math.random() * 0.6),
         );
 
         for (let i = 0; i < crystalCount; i++) {
@@ -528,7 +556,7 @@ export default class GeodeTheme extends BaseTheme {
             crystal.position.set(
                 Math.cos(offsetAngle) * offsetDist,
                 0,
-                Math.sin(offsetAngle) * offsetDist
+                Math.sin(offsetAngle) * offsetDist,
             );
 
             // Random rotation
@@ -569,7 +597,7 @@ export default class GeodeTheme extends BaseTheme {
             const position = new THREE.Vector3(
                 r * Math.sin(phi) * Math.cos(theta),
                 r * Math.cos(phi),
-                r * Math.sin(phi) * Math.sin(theta)
+                r * Math.sin(phi) * Math.sin(theta),
             );
 
             this.createCrystalCluster(position, position.clone().negate());
@@ -604,7 +632,7 @@ export default class GeodeTheme extends BaseTheme {
             positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
 
             // Size - smaller stars more common
-            const sizeBias = Math.pow(Math.random(), 2);
+            const sizeBias = Math.random() ** 2;
             sizes[i] = 0.3 + sizeBias * 3;
 
             // Twinkle
@@ -617,7 +645,7 @@ export default class GeodeTheme extends BaseTheme {
 
             // Color from palette
             const color = new THREE.Color(
-                STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)]
+                STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)],
             );
             colors[i * 3] = color.r;
             colors[i * 3 + 1] = color.g;
@@ -734,7 +762,7 @@ export default class GeodeTheme extends BaseTheme {
             phases[i] = Math.random();
 
             const color = new THREE.Color(
-                STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)]
+                STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)],
             );
             colors[i * 3] = color.r;
             colors[i * 3 + 1] = color.g;
@@ -782,7 +810,7 @@ export default class GeodeTheme extends BaseTheme {
             light.position.set(
                 Math.cos(angle) * 80,
                 (Math.random() - 0.5) * 60,
-                Math.sin(angle) * 80
+                Math.sin(angle) * 80,
             );
             this.mainGroup.add(light);
         }
@@ -806,7 +834,7 @@ export default class GeodeTheme extends BaseTheme {
             new THREE.Vector2(window.innerWidth, window.innerHeight),
             this.activePreset.bloomStrength,
             0.5,
-            0.7
+            0.7,
         );
         this.bloomPass.enabled = this.activePreset.enableBloom;
         this.composer.addPass(this.bloomPass);
@@ -849,7 +877,7 @@ export default class GeodeTheme extends BaseTheme {
     onPieceLock() {
         this.uniforms.pulseIntensity.value = Math.min(
             this.uniforms.pulseIntensity.value + 0.05,
-            0.2
+            0.2,
         );
 
         // Shooting stars - reduced
@@ -871,7 +899,7 @@ export default class GeodeTheme extends BaseTheme {
 
         this.uniforms.pulseIntensity.value = Math.min(
             this.uniforms.pulseIntensity.value + 0.1 * lineCount,
-            0.6
+            0.6,
         );
 
         // Multiple sparkle bursts - reduced
@@ -880,7 +908,7 @@ export default class GeodeTheme extends BaseTheme {
             const position = new THREE.Vector3(
                 (Math.random() - 0.5) * 80,
                 (Math.random() - 0.5) * 80,
-                (Math.random() - 0.5) * 80
+                (Math.random() - 0.5) * 80,
             );
             this.createSparkleBurst(3 + lineCount, position);
         }
@@ -895,7 +923,7 @@ export default class GeodeTheme extends BaseTheme {
         const flashCount = Math.min(lineCount * 2, 6);
         for (let i = 0; i < flashCount && i < this.crystalClusters.length; i++) {
             const cluster = this.crystalClusters[Math.floor(Math.random() * this.crystalClusters.length)];
-            cluster.children.forEach(crystal => {
+            cluster.children.forEach((crystal) => {
                 if (crystal.material?.uniforms?.uPulseIntensity) {
                     crystal.material.uniforms.uPulseIntensity.value = 0.4 + lineCount * 0.1;
                 }
@@ -917,14 +945,14 @@ export default class GeodeTheme extends BaseTheme {
         this.comboMultiplier = Math.min(1 + comboCount * 0.2, 2.5);
         this.uniforms.pulseIntensity.value = Math.min(
             this.uniforms.pulseIntensity.value + 0.2 * comboCount,
-            1.0
+            1.0,
         );
 
         // Camera shake scales with combo - reduced
         if (comboCount >= 3) {
             this.cameraShake.intensity = Math.max(
                 this.cameraShake.intensity,
-                1 + (comboCount - 3) * 0.3
+                1 + (comboCount - 3) * 0.3,
             );
         }
 
@@ -939,8 +967,8 @@ export default class GeodeTheme extends BaseTheme {
         }
 
         // All crystals pulse - reduced
-        this.crystalClusters.forEach(cluster => {
-            cluster.children.forEach(crystal => {
+        this.crystalClusters.forEach((cluster) => {
+            cluster.children.forEach((crystal) => {
                 if (crystal.material?.uniforms?.uPulseIntensity) {
                     crystal.material.uniforms.uPulseIntensity.value = 0.5 + comboCount * 0.15;
                 }
@@ -960,18 +988,18 @@ export default class GeodeTheme extends BaseTheme {
         const start = new THREE.Vector3(
             (Math.random() - 0.5) * 100,
             (Math.random() - 0.5) * 100,
-            (Math.random() - 0.5) * 100
+            (Math.random() - 0.5) * 100,
         );
 
         const direction = new THREE.Vector3(
             (Math.random() - 0.5),
             (Math.random() - 0.5),
-            (Math.random() - 0.5)
+            (Math.random() - 0.5),
         ).normalize();
 
         const speed = 8 + Math.random() * 12;
         const color = new THREE.Color(
-            STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)]
+            STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)],
         );
 
         // Create trail points
@@ -1009,12 +1037,12 @@ export default class GeodeTheme extends BaseTheme {
 
         const points = new THREE.Points(geometry, material);
         points.userData = {
-            positions: positions,
-            direction: direction,
-            speed: speed,
+            positions,
+            direction,
+            speed,
             life: 1.0,
             decay: 0.025 + Math.random() * 0.015,
-            trailLength: trailLength,
+            trailLength,
         };
 
         this.mainGroup.add(points);
@@ -1045,7 +1073,7 @@ export default class GeodeTheme extends BaseTheme {
         nova.position.set(
             (Math.random() - 0.5) * 80,
             (Math.random() - 0.5) * 80,
-            (Math.random() - 0.5) * 80
+            (Math.random() - 0.5) * 80,
         );
 
         // Face camera
@@ -1086,7 +1114,7 @@ export default class GeodeTheme extends BaseTheme {
         pulse.position.set(
             (Math.random() - 0.5) * 60,
             (Math.random() - 0.5) * 60,
-            (Math.random() - 0.5) * 60
+            (Math.random() - 0.5) * 60,
         );
 
         pulse.lookAt(this.camera.position);
@@ -1106,11 +1134,11 @@ export default class GeodeTheme extends BaseTheme {
         const position = new THREE.Vector3(
             (Math.random() - 0.5) * 80,
             (Math.random() - 0.5) * 80,
-            (Math.random() - 0.5) * 80
+            (Math.random() - 0.5) * 80,
         );
 
         this.starRipples.push({
-            position: position,
+            position,
             radius: 0,
             speed: 6 + Math.random() * 4,
             width: 30 + Math.random() * 20,
@@ -1124,20 +1152,20 @@ export default class GeodeTheme extends BaseTheme {
             position = new THREE.Vector3(
                 (Math.random() - 0.5) * 60,
                 (Math.random() - 0.5) * 60,
-                (Math.random() - 0.5) * 60
+                (Math.random() - 0.5) * 60,
             );
         }
 
         for (let i = 0; i < count && this.sparkles.length < this.activePreset.maxSparkles; i++) {
             const color = new THREE.Color(
-                STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)]
+                STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)],
             );
 
             // Random direction
             const velocity = new THREE.Vector3(
                 (Math.random() - 0.5),
                 (Math.random() - 0.5),
-                (Math.random() - 0.5)
+                (Math.random() - 0.5),
             ).normalize().multiplyScalar((1 + Math.random() * 2) * speedMultiplier);
 
             this.sparkles.push({
@@ -1145,11 +1173,11 @@ export default class GeodeTheme extends BaseTheme {
                     new THREE.Vector3(
                         (Math.random() - 0.5) * 10,
                         (Math.random() - 0.5) * 10,
-                        (Math.random() - 0.5) * 10
-                    )
+                        (Math.random() - 0.5) * 10,
+                    ),
                 ),
-                velocity: velocity,
-                color: color,
+                velocity,
+                color,
                 size: 1.5 + Math.random() * 2,
                 life: 1.0,
                 decay: 0.015 + Math.random() * 0.01,
@@ -1248,8 +1276,8 @@ export default class GeodeTheme extends BaseTheme {
     }
 
     updateCrystals(delta) {
-        this.crystalClusters.forEach(cluster => {
-            cluster.children.forEach(crystal => {
+        this.crystalClusters.forEach((cluster) => {
+            cluster.children.forEach((crystal) => {
                 if (crystal.material?.uniforms?.uPulseIntensity) {
                     if (crystal.material.uniforms.uPulseIntensity.value > 0) {
                         crystal.material.uniforms.uPulseIntensity.value *= 0.96;
@@ -1267,8 +1295,8 @@ export default class GeodeTheme extends BaseTheme {
             data.life -= data.decay;
 
             // Move trail points
-            const positions = data.positions;
-            const trailLength = data.trailLength;
+            const { positions } = data;
+            const { trailLength } = data;
 
             // Shift trail positions backward
             for (let j = trailLength - 1; j > 0; j--) {
@@ -1450,28 +1478,28 @@ export default class GeodeTheme extends BaseTheme {
             this.animationFrame = null;
         }
 
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         this.teardownQualityListener();
         window.removeEventListener('resize', this.onWindowResize.bind(this));
 
         // Clean up effects
-        this.shootingStars.forEach(star => {
+        this.shootingStars.forEach((star) => {
             this.mainGroup?.remove(star);
             star.geometry?.dispose();
             star.material?.dispose();
         });
         this.shootingStars = [];
 
-        this.novaFlashes.forEach(nova => {
+        this.novaFlashes.forEach((nova) => {
             this.mainGroup?.remove(nova);
             nova.geometry?.dispose();
             nova.material?.dispose();
         });
         this.novaFlashes = [];
 
-        this.energyPulses.forEach(pulse => {
+        this.energyPulses.forEach((pulse) => {
             this.mainGroup?.remove(pulse);
             pulse.geometry?.dispose();
             pulse.material?.dispose();
@@ -1482,7 +1510,7 @@ export default class GeodeTheme extends BaseTheme {
         this.sparkles = [];
 
         // Clean up filaments
-        this.filaments.forEach(line => {
+        this.filaments.forEach((line) => {
             this.mainGroup?.remove(line);
             line.geometry?.dispose();
             line.material?.dispose();
@@ -1490,8 +1518,8 @@ export default class GeodeTheme extends BaseTheme {
         this.filaments = [];
 
         // Clean up crystal clusters
-        this.crystalClusters.forEach(cluster => {
-            cluster.children.forEach(crystal => {
+        this.crystalClusters.forEach((cluster) => {
+            cluster.children.forEach((crystal) => {
                 crystal.geometry?.dispose();
                 crystal.material?.dispose();
             });
@@ -1516,11 +1544,11 @@ export default class GeodeTheme extends BaseTheme {
 
         // Dispose scene objects
         if (this.scene) {
-            this.scene.traverse(object => {
+            this.scene.traverse((object) => {
                 if (object.geometry) object.geometry.dispose();
                 if (object.material) {
                     if (Array.isArray(object.material)) {
-                        object.material.forEach(m => m.dispose());
+                        object.material.forEach((m) => m.dispose());
                     } else {
                         object.material.dispose();
                     }

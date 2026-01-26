@@ -3716,7 +3716,9 @@ export const LEVEL_CONFIGS = [
         stars: {
             one: { score: 250000 },
             two: { score: 350000, cascades: 25, maxCascadeDepth: 6 },
-            three: { score: 500000, cascades: 35, maxCascadeDepth: 10, combo: 18 },
+            three: {
+                score: 500000, cascades: 35, maxCascadeDepth: 10, combo: 18,
+            },
         },
 
         metadata: {
@@ -3788,7 +3790,9 @@ export const LEVEL_CONFIGS = [
         stars: {
             one: { lines: 50 },
             two: { lines: 50, tetrises: 6, time: 240 },
-            three: { lines: 50, tetrises: 8, combo: 8, time: 180 },
+            three: {
+                lines: 50, tetrises: 8, combo: 8, time: 180,
+            },
         },
 
         metadata: {
@@ -3860,7 +3864,9 @@ export const LEVEL_CONFIGS = [
         stars: {
             one: { score: 80000 },
             two: { score: 100000, cascades: 10, time: 300 },
-            three: { score: 120000, cascades: 15, combo: 10, time: 240 },
+            three: {
+                score: 120000, cascades: 15, combo: 10, time: 240,
+            },
         },
 
         metadata: {
@@ -3932,7 +3938,9 @@ export const LEVEL_CONFIGS = [
         stars: {
             one: { lines: 60 },
             two: { lines: 60, tetrises: 10, cascades: 8 },
-            three: { lines: 60, tetrises: 12, maxCascadeDepth: 5, time: 240 },
+            three: {
+                lines: 60, tetrises: 12, maxCascadeDepth: 5, time: 240,
+            },
         },
 
         metadata: {
@@ -4005,7 +4013,9 @@ export const LEVEL_CONFIGS = [
         stars: {
             one: { score: 150000 },
             two: { score: 180000, cascades: 20, combo: 10 },
-            three: { score: 220000, cascades: 25, maxCascadeDepth: 7, combo: 12 },
+            three: {
+                score: 220000, cascades: 25, maxCascadeDepth: 7, combo: 12,
+            },
         },
 
         metadata: {
@@ -4014,34 +4024,34 @@ export const LEVEL_CONFIGS = [
             estimatedTime: 300,
             tip: 'This is the bonus chapter finale. Go for glory with maximum cascade chains!',
         },
-    }
+    },
 ];
 
 // Helper functions for level access
 export function getLevelById(id) {
-    return LEVEL_CONFIGS.find(level => level.id === id);
+    return LEVEL_CONFIGS.find((level) => level.id === id);
 }
 
 export function getLevelsByChapter(chapterId) {
-    return LEVEL_CONFIGS.filter(level => level.chapter === chapterId);
+    return LEVEL_CONFIGS.filter((level) => level.chapter === chapterId);
 }
 
 export function getChapterStartLevel(chapterId) {
-    return LEVEL_CONFIGS.find(level => level.chapter === chapterId && level.isChapterStart);
+    return LEVEL_CONFIGS.find((level) => level.chapter === chapterId && level.isChapterStart);
 }
 
 export function getChapterEndLevel(chapterId) {
-    return LEVEL_CONFIGS.find(level => level.chapter === chapterId && level.isChapterEnd);
+    return LEVEL_CONFIGS.find((level) => level.chapter === chapterId && level.isChapterEnd);
 }
 
 export function getNextLevel(currentId) {
     const nextId = currentId + 1;
-    return LEVEL_CONFIGS.find(level => level.id === nextId);
+    return LEVEL_CONFIGS.find((level) => level.id === nextId);
 }
 
 export function getPreviousLevel(currentId) {
     const prevId = currentId - 1;
-    return LEVEL_CONFIGS.find(level => level.id === prevId);
+    return LEVEL_CONFIGS.find((level) => level.id === prevId);
 }
 
 export function getTotalLevelCount() {
@@ -4049,7 +4059,7 @@ export function getTotalLevelCount() {
 }
 
 export function getLevelDifficultyRange() {
-    const difficulties = LEVEL_CONFIGS.map(l => l.metadata.difficulty);
+    const difficulties = LEVEL_CONFIGS.map((l) => l.metadata.difficulty);
     return {
         min: Math.min(...difficulties),
         max: Math.max(...difficulties),

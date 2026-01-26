@@ -1,6 +1,6 @@
 /**
  * @fileoverview ChapterEnvironmentManager - Manages themed visual environments
- * 
+ *
  * Controls chapter-specific 3D backgrounds that change based on camera position
  * and player progress. Handles smooth transitions between chapter atmospheres.
  */
@@ -161,7 +161,7 @@ export class ChapterEnvironmentManager {
      * @param {number} chapterId
      */
     async createChapterEnvironment(chapterId) {
-        const def = CHAPTER_DEFS.find(d => d.id === chapterId);
+        const def = CHAPTER_DEFS.find((d) => d.id === chapterId);
 
         if (!def) {
             console.warn(`[ChapterEnvironmentManager] No definition for chapter ${chapterId}`);
@@ -412,8 +412,8 @@ export class ChapterEnvironmentManager {
             }
         }
 
-        const currentConfig = CHAPTER_CONFIGS.find(c => c.id === currentChapterId)?.environment;
-        const nextConfig = CHAPTER_CONFIGS.find(c => c.id === nextChapterId)?.environment;
+        const currentConfig = CHAPTER_CONFIGS.find((c) => c.id === currentChapterId)?.environment;
+        const nextConfig = CHAPTER_CONFIGS.find((c) => c.id === nextChapterId)?.environment;
 
         if (!currentConfig) return;
 
@@ -469,7 +469,7 @@ export class ChapterEnvironmentManager {
                 if (child.geometry) child.geometry.dispose();
                 if (child.material) {
                     if (Array.isArray(child.material)) {
-                        child.material.forEach(m => m.dispose());
+                        child.material.forEach((m) => m.dispose());
                     } else {
                         child.material.dispose();
                     }

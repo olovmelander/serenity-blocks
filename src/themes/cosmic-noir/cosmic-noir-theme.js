@@ -289,7 +289,7 @@ export default class CosmicNoirTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createStarfield() {
-        const starCount = this.qualityPreset.starCount;
+        const { starCount } = this.qualityPreset;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(starCount * 3);
         const colors = new Float32Array(starCount * 3);
@@ -314,8 +314,8 @@ export default class CosmicNoirTheme extends BaseTheme {
             // FIXED: Use Spherical Distribution to prevent black voids on rotation
             // Stars are now placed in a full 360-degree sphere around the origin
             const radius = 2000 + Math.random() * 8000; // Deep depth range
-            const theta = Math.random() * Math.PI * 2;          // Horizontal angle
-            const phi = Math.acos(2 * Math.random() - 1);       // Vertical angle (acos for uniform sphere)
+            const theta = Math.random() * Math.PI * 2; // Horizontal angle
+            const phi = Math.acos(2 * Math.random() - 1); // Vertical angle (acos for uniform sphere)
 
             positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
             positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
@@ -332,8 +332,8 @@ export default class CosmicNoirTheme extends BaseTheme {
             sizes[i] = 20 + Math.random() * 40;
 
             // Twinkle: phase offset, varied speed (0.8 to 2.5 Hz)
-            twinkleData[i2] = Math.random() * Math.PI * 2;      // phase
-            twinkleData[i2 + 1] = 0.8 + Math.random() * 1.7;    // speed
+            twinkleData[i2] = Math.random() * Math.PI * 2; // phase
+            twinkleData[i2 + 1] = 0.8 + Math.random() * 1.7; // speed
 
             brightness[i] = 0.3 + Math.random() * 0.7;
         }
@@ -372,9 +372,9 @@ export default class CosmicNoirTheme extends BaseTheme {
         const texturePath = './textures/cosmic-noir/';
 
         const textures = [
-            textureLoader.load(texturePath + 'nebula-noir-1.png'),
-            textureLoader.load(texturePath + 'nebula-noir-2.png'),
-            textureLoader.load(texturePath + 'nebula-noir-3.png'),
+            textureLoader.load(`${texturePath}nebula-noir-1.png`),
+            textureLoader.load(`${texturePath}nebula-noir-2.png`),
+            textureLoader.load(`${texturePath}nebula-noir-3.png`),
         ];
 
         textures.forEach((t) => {
@@ -385,11 +385,19 @@ export default class CosmicNoirTheme extends BaseTheme {
         // Configure nebula planes at different depths
         const nebulaConfigs = [
             // Deep background layer (Parallax factor low)
-            { texture: textures[0], size: 6000, z: -4500, opacity: 0.25, speed: 0.00008 },
-            { texture: textures[1], size: 7000, z: -4000, opacity: 0.2, speed: 0.0001 },
+            {
+                texture: textures[0], size: 6000, z: -4500, opacity: 0.25, speed: 0.00008,
+            },
+            {
+                texture: textures[1], size: 7000, z: -4000, opacity: 0.2, speed: 0.0001,
+            },
             // Mid layer
-            { texture: textures[2], size: 5000, z: -3000, opacity: 0.15, speed: 0.00015 },
-            { texture: textures[0], size: 5500, z: -2500, opacity: 0.12, speed: 0.0002 },
+            {
+                texture: textures[2], size: 5000, z: -3000, opacity: 0.15, speed: 0.00015,
+            },
+            {
+                texture: textures[0], size: 5500, z: -2500, opacity: 0.12, speed: 0.0002,
+            },
         ];
 
         this.nebulaClouds = [];
@@ -525,7 +533,6 @@ export default class CosmicNoirTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     // Ambient particles method removed
-
 
     // ─────────────────────────────────────────────────────────────────────────
     // Atmosphere - Volumetric gas shell with explosion support
@@ -664,7 +671,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             new THREE.Vector2(window.innerWidth, window.innerHeight),
             this.qualityPreset.bloomStrength,
             this.qualityPreset.bloomRadius,
-            0.15
+            0.15,
         );
         this.composer.addPass(bloomPass);
 
@@ -752,14 +759,12 @@ export default class CosmicNoirTheme extends BaseTheme {
             }
         }
 
-
-
         // Slow drift planet across entire screen (Lissajous curves for organic movement)
         if (this.planetGroup) {
-            const driftX = Math.sin(this.time * 0.025 + this.planetPhaseX) * 550 +
-                Math.cos(this.time * 0.018 + this.planetPhaseX2) * 250;
-            const driftY = Math.cos(this.time * 0.02 + this.planetPhaseY) * 350 +
-                Math.sin(this.time * 0.012 + this.planetPhaseY2) * 150;
+            const driftX = Math.sin(this.time * 0.025 + this.planetPhaseX) * 550
+                + Math.cos(this.time * 0.018 + this.planetPhaseX2) * 250;
+            const driftY = Math.cos(this.time * 0.02 + this.planetPhaseY) * 350
+                + Math.sin(this.time * 0.012 + this.planetPhaseY2) * 150;
 
             this.planetGroup.position.x = driftX;
             this.planetGroup.position.y = driftY;
@@ -772,14 +777,14 @@ export default class CosmicNoirTheme extends BaseTheme {
         if (this.camera) {
             const cameraTime = this.time * 0.06; // Slow but noticeable orbit
             const orbitRadiusX = 400; // Wide horizontal sway
-            const orbitRadiusY = 300;  // Vertical sway range
-            const orbitRadiusZ = 200;  // Depth breathing
+            const orbitRadiusY = 300; // Vertical sway range
+            const orbitRadiusZ = 200; // Depth breathing
 
             // Orbital sway - creates parallax with starfield/nebula
-            this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX +
-                Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4;
-            this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY +
-                Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3;
+            this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX
+                + Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4;
+            this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY
+                + Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3;
             this.camera.position.z = 1200 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
 
             // LookAt drift for dynamic framing (not following planet)
@@ -906,8 +911,6 @@ export default class CosmicNoirTheme extends BaseTheme {
     // Void Orbs - Glowing particles drifting outward
     // ─────────────────────────────────────────────────────────────────────────
 
-
-
     // ─────────────────────────────────────────────────────────────────────────
     // Event Handlers
     // ─────────────────────────────────────────────────────────────────────────
@@ -1022,8 +1025,6 @@ export default class CosmicNoirTheme extends BaseTheme {
         for (let i = 0; i < waveCount; i++) {
             setTimeout(() => this.createCosmicWave(comboCount), i * 100);
         }
-
-
     }
 
     // ─────────────────────────────────────────────────────────────────────────

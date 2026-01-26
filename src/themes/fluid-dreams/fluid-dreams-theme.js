@@ -282,7 +282,7 @@ export default class FluidDreamsTheme extends BaseTheme {
             60,
             window.innerWidth / window.innerHeight,
             0.1,
-            500
+            500,
         );
         this.camera.position.copy(this.baseCameraPos);
         this.camera.lookAt(this.cameraTarget);
@@ -348,8 +348,12 @@ export default class FluidDreamsTheme extends BaseTheme {
 
             // Base gradient - dreamy void (Darker)
             const gradient = ctx.createRadialGradient(
-                size / 2, size / 2, 0,
-                size / 2, size / 2, size * 0.7
+                size / 2,
+                size / 2,
+                0,
+                size / 2,
+                size / 2,
+                size * 0.7,
             );
             gradient.addColorStop(0, '#0d0414');
             gradient.addColorStop(0.4, '#06020a');
@@ -370,7 +374,7 @@ export default class FluidDreamsTheme extends BaseTheme {
 
                 const spotGrad = ctx.createRadialGradient(x, y, 0, x, y, r);
                 spotGrad.addColorStop(0, color);
-                spotGrad.addColorStop(0.5, color + '40'); // Lower alpha
+                spotGrad.addColorStop(0.5, `${color}40`); // Lower alpha
                 spotGrad.addColorStop(1, 'transparent');
                 ctx.fillStyle = spotGrad;
                 ctx.fillRect(x - r, y - r, r * 2, r * 2);
@@ -430,8 +434,8 @@ export default class FluidDreamsTheme extends BaseTheme {
                         value: new THREE.Vector3(
                             Math.random() * 100,
                             Math.random() * 100,
-                            Math.random() * 100
-                        )
+                            Math.random() * 100,
+                        ),
                     },
                     uColor1: { value: palette.color1 },
                     uColor2: { value: palette.color2 },
@@ -453,14 +457,14 @@ export default class FluidDreamsTheme extends BaseTheme {
             // Spread blobs across the FULL screen for immersive coverage
             // Use layered depth - some close, some far
             const zLayer = Math.random();
-            const zPosition = (zLayer < 0.3) ? 10 + Math.random() * 15 : // Close layer
-                (zLayer < 0.7) ? -10 + Math.random() * 20 : // Mid layer
-                    -30 + Math.random() * 20; // Far layer
+            const zPosition = (zLayer < 0.3) ? 10 + Math.random() * 15 // Close layer
+                : (zLayer < 0.7) ? -10 + Math.random() * 20 // Mid layer
+                    : -30 + Math.random() * 20; // Far layer
 
             blob.position.set(
-                (Math.random() - 0.5) * 120,  // Wide X spread across screen
-                (Math.random() - 0.5) * 70,   // Full vertical coverage
-                zPosition                      // Layered depth
+                (Math.random() - 0.5) * 120, // Wide X spread across screen
+                (Math.random() - 0.5) * 70, // Full vertical coverage
+                zPosition, // Layered depth
             );
 
             // Store animation data for drifting/floating
@@ -468,20 +472,20 @@ export default class FluidDreamsTheme extends BaseTheme {
                 basePosition: blob.position.clone(),
                 floatPhase: Math.random() * Math.PI * 2,
                 floatPhase2: Math.random() * Math.PI * 2, // Secondary phase for complex motion
-                floatSpeed: 0.15 + Math.random() * 0.15,  // Slower, dreamier
-                floatAmplitude: 3 + Math.random() * 5,     // Larger float range
+                floatSpeed: 0.15 + Math.random() * 0.15, // Slower, dreamier
+                floatAmplitude: 3 + Math.random() * 5, // Larger float range
                 // Drift velocity - slow continuous movement across screen
                 driftSpeed: new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.8,  // Slow X drift
-                    (Math.random() - 0.5) * 0.4,  // Slow Y drift
-                    (Math.random() - 0.5) * 0.5   // Slow Z drift
+                    (Math.random() - 0.5) * 0.8, // Slow X drift
+                    (Math.random() - 0.5) * 0.4, // Slow Y drift
+                    (Math.random() - 0.5) * 0.5, // Slow Z drift
                 ),
                 // Combo effect state
                 comboScale: 1.0,
                 targetComboScale: 1.0,
-                comboColorShift: 0,  // Color cycling effect
-                comboWobble: 0,      // Wobble/jiggle effect
-                comboGlow: 0,        // Subtle light pulse
+                comboColorShift: 0, // Color cycling effect
+                comboWobble: 0, // Wobble/jiggle effect
+                comboGlow: 0, // Subtle light pulse
                 originalScale: size,
             };
 
@@ -526,7 +530,7 @@ export default class FluidDreamsTheme extends BaseTheme {
             bubble.position.set(
                 (Math.random() - 0.5) * 60,
                 -30 + Math.random() * 60,
-                (Math.random() - 0.5) * 40
+                (Math.random() - 0.5) * 40,
             );
 
             // Animation data
@@ -566,7 +570,7 @@ export default class FluidDreamsTheme extends BaseTheme {
                 points.push(new THREE.Vector3(
                     Math.cos(angle) * radius,
                     height,
-                    Math.sin(angle) * radius
+                    Math.sin(angle) * radius,
                 ));
             }
 
@@ -711,7 +715,7 @@ export default class FluidDreamsTheme extends BaseTheme {
             light.position.set(
                 Math.cos(angle) * 20,
                 (Math.random() - 0.5) * 15,
-                Math.sin(angle) * 20
+                Math.sin(angle) * 20,
             );
             this.mainGroup.add(light);
         }
@@ -734,8 +738,8 @@ export default class FluidDreamsTheme extends BaseTheme {
         this.bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
             this.activePreset.bloomStrength,
-            0.2,  // radius
-            0.85   // threshold
+            0.2, // radius
+            0.85, // threshold
         );
         this.bloomPass.enabled = this.activePreset.enableBloom;
         this.composer.addPass(this.bloomPass);
@@ -803,7 +807,7 @@ export default class FluidDreamsTheme extends BaseTheme {
             const data = blob.userData;
 
             // Scale pulse - very subtle breathing effect
-            data.targetComboScale = 1.03 + comboCount * 0.01;  // Barely visible
+            data.targetComboScale = 1.03 + comboCount * 0.01; // Barely visible
 
             // Color shift - cycle through the palette
             data.comboColorShift = 1.0 + comboCount * 0.3;
@@ -923,7 +927,7 @@ export default class FluidDreamsTheme extends BaseTheme {
         const material = new THREE.MeshBasicMaterial({
             color: ringColor,
             transparent: true,
-            opacity: 0.2,  // Subtle starting opacity
+            opacity: 0.2, // Subtle starting opacity
             side: THREE.DoubleSide,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
@@ -941,7 +945,7 @@ export default class FluidDreamsTheme extends BaseTheme {
             duration: 1.5 + comboCount * 0.2,
             startScale: 1,
             maxScale: 3 + comboCount * 0.5,
-            blob: blob,  // Reference to track blob position
+            blob, // Reference to track blob position
         };
 
         this.scene.add(ripple);
@@ -956,7 +960,7 @@ export default class FluidDreamsTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     emitBlobBurstParticles(blob, comboCount) {
-        const particleCount = 5 + comboCount;  // Very few particles
+        const particleCount = 5 + comboCount; // Very few particles
         const geometry = new THREE.BufferGeometry();
 
         const positions = new Float32Array(particleCount * 3);
@@ -978,7 +982,7 @@ export default class FluidDreamsTheme extends BaseTheme {
             const direction = new THREE.Vector3(
                 Math.sin(phi) * Math.cos(theta),
                 Math.sin(phi) * Math.sin(theta),
-                Math.cos(phi)
+                Math.cos(phi),
             );
 
             // Start at blob surface
@@ -996,7 +1000,7 @@ export default class FluidDreamsTheme extends BaseTheme {
             colors[i * 3 + 1] = color.g;
             colors[i * 3 + 2] = color.b;
 
-            sizes[i] = 0.5 + Math.random() * 0.8;  // Very small particles
+            sizes[i] = 0.5 + Math.random() * 0.8; // Very small particles
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -1108,7 +1112,7 @@ export default class FluidDreamsTheme extends BaseTheme {
         const curve = new THREE.QuadraticBezierCurve3(
             blobA.position.clone(),
             midPoint,
-            blobB.position.clone()
+            blobB.position.clone(),
         );
 
         for (let i = 0; i <= segments; i++) {
@@ -1195,7 +1199,7 @@ export default class FluidDreamsTheme extends BaseTheme {
 
             // Animate color shift (passed to shader via morph seed modulation)
             if (data.comboColorShift > 0) {
-                data.comboColorShift *= 0.98;  // Decay
+                data.comboColorShift *= 0.98; // Decay
                 if (blob.material.uniforms.uMorphSpeed) {
                     blob.material.uniforms.uMorphSpeed.value = 0.3 + data.comboColorShift * 0.5;
                 }
@@ -1203,7 +1207,7 @@ export default class FluidDreamsTheme extends BaseTheme {
 
             // Animate wobble effect
             if (data.comboWobble > 0) {
-                data.comboWobble *= 0.96;  // Decay
+                data.comboWobble *= 0.96; // Decay
                 const wobbleX = Math.sin(elapsed * 8 + data.floatPhase) * data.comboWobble * 0.3;
                 const wobbleY = Math.cos(elapsed * 7 + data.floatPhase2) * data.comboWobble * 0.2;
                 blob.position.x += wobbleX * delta;
@@ -1299,7 +1303,7 @@ export default class FluidDreamsTheme extends BaseTheme {
                 } else {
                     // Update particle positions with velocity and gravity
                     const positions = burst.geometry.attributes.position.array;
-                    const velocities = burst.userData.velocities;
+                    const { velocities } = burst.userData;
 
                     for (let j = 0; j < velocities.length; j++) {
                         velocities[j].y += burst.userData.gravity * delta;
@@ -1361,8 +1365,8 @@ export default class FluidDreamsTheme extends BaseTheme {
                     this.mainGroup.remove(line);
                     this.energyLines.splice(i, 1);
                 } else {
-                    const blobA = line.userData.blobA;
-                    const blobB = line.userData.blobB;
+                    const { blobA } = line.userData;
+                    const { blobB } = line.userData;
 
                     if (blobA && blobB && blobA.position && blobB.position) {
                         // Fade in/out - quick fade in, slow fade out
@@ -1379,7 +1383,7 @@ export default class FluidDreamsTheme extends BaseTheme {
                         const curve = new THREE.QuadraticBezierCurve3(
                             blobA.position,
                             midPoint,
-                            blobB.position
+                            blobB.position,
                         );
 
                         const points = curve.getPoints(20);
@@ -1392,7 +1396,7 @@ export default class FluidDreamsTheme extends BaseTheme {
         // ═══════════════════════════════════════════════════════════════════
         // Dynamic Dreamy Camera Movement
         // ═══════════════════════════════════════════════════════════════════
-        const cameraTime = elapsed * 0.05;  // Slow overall movement
+        const cameraTime = elapsed * 0.05; // Slow overall movement
 
         // Multi-layered sine waves for organic floating motion
         const cameraWobbleX = Math.sin(cameraTime) * 4 + Math.sin(cameraTime * 1.7) * 2 + Math.sin(cameraTime * 0.3) * 3;
@@ -1409,7 +1413,7 @@ export default class FluidDreamsTheme extends BaseTheme {
         this.camera.lookAt(
             this.cameraTarget.x + this.cameraTargetOffset.x,
             this.cameraTarget.y + this.cameraTargetOffset.y,
-            this.cameraTarget.z
+            this.cameraTarget.z,
         );
 
         // Render

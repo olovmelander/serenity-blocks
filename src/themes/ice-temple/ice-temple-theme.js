@@ -1,6 +1,6 @@
 /**
  * @fileoverview Ice Temple Theme - Three.js 3D Implementation
- * 
+ *
  * Immersive frozen temple with translucent ice pillars, aurora borealis,
  * frost patterns, and dynamic snow. All effects rendered in full 3D.
  */
@@ -20,7 +20,7 @@ import {
     iceShardVertexShader,
     iceShardFragmentShader,
     shockwaveVertexShader,
-    shockwaveFragmentShader
+    shockwaveFragmentShader,
 } from './ice-temple-shaders.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -29,19 +29,19 @@ import {
 
 const COLORS = {
     // Ice colors
-    iceBase: new THREE.Color(0x0e3352),      // Deep ice blue
-    iceGlow: new THREE.Color(0x74b9ff),      // Bright cyan glow
+    iceBase: new THREE.Color(0x0e3352), // Deep ice blue
+    iceGlow: new THREE.Color(0x74b9ff), // Bright cyan glow
     iceHighlight: new THREE.Color(0xb4f5ff), // White-cyan highlight
 
     // Floor colors
-    floorIce: new THREE.Color(0x0a1f35),     // Dark frozen floor
-    floorCracks: new THREE.Color(0x55efc4),  // Teal crack glow
-    floorSnow: new THREE.Color(0xe8fcff),    // Snow white
+    floorIce: new THREE.Color(0x0a1f35), // Dark frozen floor
+    floorCracks: new THREE.Color(0x55efc4), // Teal crack glow
+    floorSnow: new THREE.Color(0xe8fcff), // Snow white
 
     // Aurora colors
-    aurora1: new THREE.Color(0x74b9ff),      // Cyan
-    aurora2: new THREE.Color(0x55efc4),      // Emerald green
-    aurora3: new THREE.Color(0xa29bfe),      // Purple
+    aurora1: new THREE.Color(0x74b9ff), // Cyan
+    aurora2: new THREE.Color(0x55efc4), // Emerald green
+    aurora3: new THREE.Color(0xa29bfe), // Purple
 
     // Particles
     snow: new THREE.Color(0xe8fcff),
@@ -63,7 +63,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.scene = null;
         this.camera = null;
         this.renderer = null;
-        this.composer = null;  // Post-processing for bloom
+        this.composer = null; // Post-processing for bloom
         this.mainGroup = null;
         this.clock = new THREE.Clock();
         this.animationFrame = null;
@@ -124,7 +124,7 @@ export default class IceTempleTheme extends BaseTheme {
             60,
             window.innerWidth / window.innerHeight,
             0.1,
-            200
+            200,
         );
         this.camera.position.set(0, 8, 25);
         this.camera.lookAt(0, 3, 0);
@@ -136,7 +136,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.renderer = new THREE.WebGLRenderer({
             alpha: true,
             antialias: this.getAntialiasEnabled(),
-            powerPreference: 'high-performance'
+            powerPreference: 'high-performance',
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
@@ -154,9 +154,9 @@ export default class IceTempleTheme extends BaseTheme {
         // UnrealBloomPass for ethereal ice glow
         const bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
-            0.5,   // strength - reduced for balanced glow
-            0.3,   // radius - spread of bloom
-            0.4    // threshold - raised to reduce over-bloom
+            0.5, // strength - reduced for balanced glow
+            0.3, // radius - spread of bloom
+            0.4, // threshold - raised to reduce over-bloom
         );
         this.composer.addPass(bloomPass);
         this.bloomPass = bloomPass;
@@ -258,21 +258,21 @@ export default class IceTempleTheme extends BaseTheme {
         // Single wide aurora curtain using cylinder arc geometry for curved sky effect
         // This creates a seamless aurora spanning the entire horizon
 
-        const arcAngle = Math.PI * 1.4;  // ~250 degrees - full left to right coverage
-        const radius = 80;               // Larger radius for wider span
+        const arcAngle = Math.PI * 1.4; // ~250 degrees - full left to right coverage
+        const radius = 80; // Larger radius for wider span
         const height = 60;
-        const segments = 160;            // Smooth curve
+        const segments = 160; // Smooth curve
 
         // Create curved geometry (partial cylinder, open-ended)
         const geometry = new THREE.CylinderGeometry(
-            radius,      // top radius
-            radius,      // bottom radius  
-            height,      // height
-            segments,    // radial segments
-            64,          // height segments
-            true,        // open-ended
-            -arcAngle / 2,  // start angle (centered)
-            arcAngle     // arc length
+            radius, // top radius
+            radius, // bottom radius
+            height, // height
+            segments, // radial segments
+            64, // height segments
+            true, // open-ended
+            -arcAngle / 2, // start angle (centered)
+            arcAngle, // arc length
         );
 
         // Rotate to face camera
@@ -295,7 +295,7 @@ export default class IceTempleTheme extends BaseTheme {
         });
 
         const aurora = new THREE.Mesh(geometry, material);
-        aurora.position.set(0, 28, -20);  // Move closer and adjust height
+        aurora.position.set(0, 28, -20); // Move closer and adjust height
 
         this.auroraPlanes.push(aurora);
         this.scene.add(aurora);
@@ -311,12 +311,12 @@ export default class IceTempleTheme extends BaseTheme {
         const reflectionMaterial = material.clone();
         // Slightly dim the reflection
         reflectionMaterial.uniforms = THREE.UniformsUtils.clone(material.uniforms);
-        // We can't easily dim the shader without changing uniforms usage, 
+        // We can't easily dim the shader without changing uniforms usage,
         // but the floor's attenuation will handle the dimming naturally!
 
         const reflectionAurora = new THREE.Mesh(reflectionGeometry, reflectionMaterial);
         reflectionAurora.position.set(0, -28, -20); // Mirror position across XZ plane (y=0)
-        reflectionAurora.scale.y = -1;              // Mirror the geometry vertically
+        reflectionAurora.scale.y = -1; // Mirror the geometry vertically
 
         this.auroraReflections = [reflectionAurora]; // Store for animation updates
         this.scene.add(reflectionAurora);
@@ -333,7 +333,7 @@ export default class IceTempleTheme extends BaseTheme {
         // Load the cracked ice texture as NORMAL MAP (not diffuse - color comes from physics)
         const textureLoader = new THREE.TextureLoader();
         const iceNormalTexture = textureLoader.load(
-            new URL('./textures/ice-diffuse.jpg', import.meta.url).href
+            new URL('./textures/ice-diffuse.jpg', import.meta.url).href,
         );
         iceNormalTexture.wrapS = THREE.MirroredRepeatWrapping;
         iceNormalTexture.wrapT = THREE.MirroredRepeatWrapping;
@@ -362,19 +362,19 @@ export default class IceTempleTheme extends BaseTheme {
         // Floor material with FULL PBR ice settings - Enhanced Blue Tint
         const material = new THREE.MeshPhysicalMaterial({
             // 1. Basic Optical Properties
-            color: 0x4488ff,              // Blue surface tint
-            roughness: 0.15,              // Low for wet ice
-            metalness: 0.1,               // Slight metalness for extra reflection
-            transmission: 0.85,           // Glass-like
-            ior: 1.31,                    // Index of Refraction for ice
+            color: 0x4488ff, // Blue surface tint
+            roughness: 0.15, // Low for wet ice
+            metalness: 0.1, // Slight metalness for extra reflection
+            transmission: 0.85, // Glass-like
+            ior: 1.31, // Index of Refraction for ice
 
             // 2. Volume / Depth (The Blue Tint)
-            thickness: 2.5,               // Thicker for deeper color
+            thickness: 2.5, // Thicker for deeper color
             attenuationColor: new THREE.Color(0x0044ff), // Richer blue
-            attenuationDistance: 0.5,     // Stronger blue absorption (lower value = bluer)
+            attenuationDistance: 0.5, // Stronger blue absorption (lower value = bluer)
 
             // 3. Surface Detail (The "Frost" layer)
-            clearcoat: 1.0,               // Polished wet layer
+            clearcoat: 1.0, // Polished wet layer
             clearcoatRoughness: 0.05,
 
             // 4. Texture as normal map for cracks
@@ -382,13 +382,13 @@ export default class IceTempleTheme extends BaseTheme {
             normalScale: new THREE.Vector2(0.5, 0.5), // Deeper cracks
 
             // 5. Glow and Edges - Enhanced for crystal effect
-            emissive: 0x0a2266,           // Subtle blue inner glow
-            emissiveIntensity: 0.3,       // Reduced glow
+            emissive: 0x0a2266, // Subtle blue inner glow
+            emissiveIntensity: 0.3, // Reduced glow
 
             transparent: true,
             alphaMap: alphaTexture,
             // alphaTest removed to allow soft blending
-            depthWrite: false,            // Prevent z-fighting and allow proper blending
+            depthWrite: false, // Prevent z-fighting and allow proper blending
             side: THREE.DoubleSide,
 
             envMapIntensity: 1.5,
@@ -483,9 +483,15 @@ export default class IceTempleTheme extends BaseTheme {
     createMistLayers() {
         // Add atmospheric mist/fog layers for depth
         const mistColors = [
-            { color: 0x1a5577, opacity: 0.15, y: 0.5, scale: 60 },
-            { color: 0x2a6688, opacity: 0.1, y: 1.5, scale: 80 },
-            { color: 0x3a7799, opacity: 0.08, y: 3, scale: 100 },
+            {
+                color: 0x1a5577, opacity: 0.15, y: 0.5, scale: 60,
+            },
+            {
+                color: 0x2a6688, opacity: 0.1, y: 1.5, scale: 80,
+            },
+            {
+                color: 0x3a7799, opacity: 0.08, y: 3, scale: 100,
+            },
         ];
 
         this.mistLayers = [];
@@ -567,13 +573,27 @@ export default class IceTempleTheme extends BaseTheme {
 
     createIcePillars() {
         const pillarPositions = [
-            { x: -12, z: -5, height: 15, radius: 1.2 },
-            { x: -8, z: -12, height: 18, radius: 1.5 },
-            { x: 8, z: -8, height: 16, radius: 1.3 },
-            { x: 14, z: -3, height: 12, radius: 1.0 },
-            { x: -5, z: 5, height: 10, radius: 0.9 },
-            { x: 6, z: 8, height: 8, radius: 0.8 },
-            { x: 0, z: -18, height: 20, radius: 1.8 },
+            {
+                x: -12, z: -5, height: 15, radius: 1.2,
+            },
+            {
+                x: -8, z: -12, height: 18, radius: 1.5,
+            },
+            {
+                x: 8, z: -8, height: 16, radius: 1.3,
+            },
+            {
+                x: 14, z: -3, height: 12, radius: 1.0,
+            },
+            {
+                x: -5, z: 5, height: 10, radius: 0.9,
+            },
+            {
+                x: 6, z: 8, height: 8, radius: 0.8,
+            },
+            {
+                x: 0, z: -18, height: 20, radius: 1.8,
+            },
         ];
 
         for (const config of pillarPositions) {
@@ -594,8 +614,8 @@ export default class IceTempleTheme extends BaseTheme {
         const profilePoints = [];
 
         // 1. Root Base (Slightly wider but mostly submerged)
-        profilePoints.push(new THREE.Vector2(config.radius * 1.5, 0));      // Base
-        profilePoints.push(new THREE.Vector2(config.radius * 1.2, 1.0));    // Transition
+        profilePoints.push(new THREE.Vector2(config.radius * 1.5, 0)); // Base
+        profilePoints.push(new THREE.Vector2(config.radius * 1.2, 1.0)); // Transition
 
         // 2. Main Shaft (Straight rise)
         profilePoints.push(new THREE.Vector2(config.radius * 1.0, 4.0));
@@ -629,17 +649,17 @@ export default class IceTempleTheme extends BaseTheme {
 
         const shardCount = 8 + Math.floor(Math.random() * 4);
         const shardMaterial = new THREE.MeshPhysicalMaterial({
-            color: 0xaaffff,        // Slightly blue-white crystal
-            emissive: 0x3388bb,     // Softer blue glow
+            color: 0xaaffff, // Slightly blue-white crystal
+            emissive: 0x3388bb, // Softer blue glow
             emissiveIntensity: 0.4, // Reduced glow
-            roughness: 0.1,         // Smooth fracture
+            roughness: 0.1, // Smooth fracture
             metalness: 0.0,
-            transmission: 0.3,      // Semi-transparent crystal
+            transmission: 0.3, // Semi-transparent crystal
             thickness: 1.0,
-            ior: 1.6,               // Crystal refraction
+            ior: 1.6, // Crystal refraction
             clearcoat: 1.0,
             clearcoatRoughness: 0.1,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         for (let i = 0; i < shardCount; i++) {
@@ -669,8 +689,8 @@ export default class IceTempleTheme extends BaseTheme {
 
             // Rotate to point UP and OUT
             shard.lookAt(0, 0, 0); // Face center first
-            shard.rotation.x -= Math.PI * 0.3; // Tilt back (30-45 degrees up from floor?) 
-            // Actually Plane is XY. lookAt(0,0,0) makes it face center. 
+            shard.rotation.x -= Math.PI * 0.3; // Tilt back (30-45 degrees up from floor?)
+            // Actually Plane is XY. lookAt(0,0,0) makes it face center.
             // We want it lying flat then angled up.
             // Let's reset and do explicit rotation
             shard.rotation.set(0, -angle + Math.PI / 2, 0); // Face outward
@@ -683,24 +703,24 @@ export default class IceTempleTheme extends BaseTheme {
         }
 
         const material = new THREE.MeshPhysicalMaterial({
-            color: 0xccEeff,              // Very pale blue-white
-            emissive: 0x225588,           // Balanced blue glow
-            emissiveIntensity: 0.6,       // Reduced glow for balance
+            color: 0xccEeff, // Very pale blue-white
+            emissive: 0x225588, // Balanced blue glow
+            emissiveIntensity: 0.6, // Reduced glow for balance
 
-            metalness: 0.0,               // Non-metallic for crystal
-            roughness: 0.05,              // Very smooth like glass
+            metalness: 0.0, // Non-metallic for crystal
+            roughness: 0.05, // Very smooth like glass
 
-            transmission: 0.4,            // Glass-like transparency (like geode)
+            transmission: 0.4, // Glass-like transparency (like geode)
             thickness: config.radius * 4, // Deep volume
-            ior: 1.8,                     // Crystal-like refraction index
+            ior: 1.8, // Crystal-like refraction index
 
-            clearcoat: 1.0,               // High polish
+            clearcoat: 1.0, // High polish
             clearcoatRoughness: 0.05,
 
             attenuationColor: new THREE.Color(0x88ddff), // Ice blue volume tint
             attenuationDistance: 1.5,
 
-            envMapIntensity: 0.8,         // Strong environment reflections
+            envMapIntensity: 0.8, // Strong environment reflections
             side: THREE.DoubleSide,
             transparent: true,
             opacity: 0.9,
@@ -721,7 +741,9 @@ export default class IceTempleTheme extends BaseTheme {
         const glowSprite = this.createPillarGlow(config);
         group.add(glowSprite);
 
-        return { group, mesh, light, config, material };
+        return {
+            group, mesh, light, config, material,
+        };
     }
 
     createPillarGlow(config) {
@@ -813,9 +835,9 @@ export default class IceTempleTheme extends BaseTheme {
 
         // Hemisphere light for sky/ground color variation
         const hemiLight = new THREE.HemisphereLight(
-            0x74b9ff,  // Sky (aurora tint)
-            0x0a1f35,  // Ground (ice)
-            0.4
+            0x74b9ff, // Sky (aurora tint)
+            0x0a1f35, // Ground (ice)
+            0.4,
         );
         this.scene.add(hemiLight);
     }
@@ -841,12 +863,12 @@ export default class IceTempleTheme extends BaseTheme {
 
         // Gradient from dark blue (bottom) to aurora colors (top)
         const gradient = skyCtx.createLinearGradient(0, 256, 0, 0);
-        gradient.addColorStop(0, '#051525');    // Dark ice floor
-        gradient.addColorStop(0.3, '#0a2a4a');  // Deep blue
-        gradient.addColorStop(0.5, '#1a4466');  // Mid blue
-        gradient.addColorStop(0.7, '#2a6688');  // Light blue
+        gradient.addColorStop(0, '#051525'); // Dark ice floor
+        gradient.addColorStop(0.3, '#0a2a4a'); // Deep blue
+        gradient.addColorStop(0.5, '#1a4466'); // Mid blue
+        gradient.addColorStop(0.7, '#2a6688'); // Light blue
         gradient.addColorStop(0.85, '#55efc4'); // Aurora green
-        gradient.addColorStop(1.0, '#74b9ff');  // Aurora cyan
+        gradient.addColorStop(1.0, '#74b9ff'); // Aurora cyan
 
         skyCtx.fillStyle = gradient;
         skyCtx.fillRect(0, 0, 512, 256);
@@ -854,7 +876,7 @@ export default class IceTempleTheme extends BaseTheme {
         // Add chromatic glowing spots for crystal reflections (like geode theme)
         const spotColors = [
             '#74b9ff', '#55efc4', '#a29bfe', '#81ecec', // Aurora palette
-            '#00cec9', '#6c5ce7', '#dfe6e9', '#b2bec3'  // Ice/crystal palette
+            '#00cec9', '#6c5ce7', '#dfe6e9', '#b2bec3', // Ice/crystal palette
         ];
 
         for (let i = 0; i < 60; i++) {
@@ -865,7 +887,7 @@ export default class IceTempleTheme extends BaseTheme {
 
             const spotGrad = skyCtx.createRadialGradient(x, y, 0, x, y, r);
             spotGrad.addColorStop(0, color);
-            spotGrad.addColorStop(0.5, color + '80');
+            spotGrad.addColorStop(0.5, `${color}80`);
             spotGrad.addColorStop(1, 'transparent');
             skyCtx.fillStyle = spotGrad;
             skyCtx.fillRect(x - r, y - r, r * 2, r * 2);
@@ -924,7 +946,7 @@ export default class IceTempleTheme extends BaseTheme {
 
     setupEventListeners() {
         // Clean up existing listeners
-        this.eventUnsubscribers.forEach(unsub => unsub?.());
+        this.eventUnsubscribers.forEach((unsub) => unsub?.());
         this.eventUnsubscribers = [];
 
         // Line Clear
@@ -1041,7 +1063,7 @@ export default class IceTempleTheme extends BaseTheme {
 
             // Start at the specified origin (pillar base)
             positions[i3] = originX + (Math.random() - 0.5) * 1.5;
-            positions[i3 + 1] = 0.5 + Math.random() * 2;  // Start near ground
+            positions[i3 + 1] = 0.5 + Math.random() * 2; // Start near ground
             positions[i3 + 2] = originZ + (Math.random() - 0.5) * 1.5;
 
             // Explosion velocity
@@ -1104,7 +1126,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.uniforms.pulseIntensity.value = THREE.MathUtils.lerp(
             this.uniforms.pulseIntensity.value,
             this.targetPulseIntensity,
-            delta * 3
+            delta * 3,
         );
         this.targetPulseIntensity *= 0.95;
 
@@ -1112,7 +1134,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.uniforms.crackGlow.value = THREE.MathUtils.lerp(
             this.uniforms.crackGlow.value,
             this.targetCrackGlow,
-            delta * 3
+            delta * 3,
         );
         this.targetCrackGlow *= 0.97;
 
@@ -1120,7 +1142,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.uniforms.auroraIntensity.value = THREE.MathUtils.lerp(
             this.uniforms.auroraIntensity.value,
             this.targetAuroraIntensity,
-            delta * 2
+            delta * 2,
         );
         if (this.targetAuroraIntensity > 0.85) {
             this.targetAuroraIntensity -= delta * 0.2;
@@ -1134,10 +1156,10 @@ export default class IceTempleTheme extends BaseTheme {
         const camRadius = 25;
         const camHeight = 8 + Math.sin(camTime * 0.5) * 2; // Gentle vertical bob
 
-        this.camera.position.x = Math.sin(camTime) * 5;       // Side-to-side sway
+        this.camera.position.x = Math.sin(camTime) * 5; // Side-to-side sway
         this.camera.position.y = camHeight;
         this.camera.position.z = camRadius + Math.cos(camTime * 0.3) * 3; // Slight forward/back
-        this.camera.lookAt(0, 3, 0);  // Always look at center
+        this.camera.lookAt(0, 3, 0); // Always look at center
 
         // ─────────────────────────────────────────────────────────────────────
         // MAIN GROUP DRIFT
@@ -1263,7 +1285,7 @@ export default class IceTempleTheme extends BaseTheme {
         }
 
         // Remove event listeners
-        this.eventUnsubscribers.forEach(unsub => unsub?.());
+        this.eventUnsubscribers.forEach((unsub) => unsub?.());
         this.eventUnsubscribers = [];
 
         // Remove resize listener
@@ -1284,7 +1306,7 @@ export default class IceTempleTheme extends BaseTheme {
                 if (object.geometry) object.geometry.dispose();
                 if (object.material) {
                     if (Array.isArray(object.material)) {
-                        object.material.forEach(m => m.dispose());
+                        object.material.forEach((m) => m.dispose());
                     } else {
                         object.material.dispose();
                     }

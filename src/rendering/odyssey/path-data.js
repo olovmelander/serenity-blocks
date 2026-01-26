@@ -10,11 +10,11 @@
  * Y-axis = vertical ascent, X/Z = horizontal variation
  */
 const CHAPTER_POSITIONS = [
-    0.0,     // Chapter 1 start
+    0.0, // Chapter 1 start
     0.03816, // Chapter 2 start
     0.070, // Chapter 3 start (Shifted earlier from 0.080)
-    0.2124,  // Chapter 4 start
-    0.5768,  // Chapter 5 start
+    0.2124, // Chapter 4 start
+    0.5768, // Chapter 5 start
     0.821325, // Chapter 6 start
     0.92098, // Chapter 7 start
     0.96519, // Chapter 8 start (bonus)
@@ -35,24 +35,24 @@ export const ODYSSEY_PATH_DATA = {
 
         // Chapter 3: Surface World (ground level) - approaching mountains
         // Straight ascent from water (up to y=55), then curve
-        { x: -3, y: 55, z: 5 },       // Continue straight up from Ch2
-        { x: -3, y: 70, z: -10 },     // Start gentle backward curve, keeping X largely stable
-        { x: -15, y: 100, z: -60 },   // Connect to mountain approach
+        { x: -3, y: 55, z: 5 }, // Continue straight up from Ch2
+        { x: -3, y: 70, z: -10 }, // Start gentle backward curve, keeping X largely stable
+        { x: -15, y: 100, z: -60 }, // Connect to mountain approach
 
         // Chapter 4: Mountains - ascend straight through aurora
         // Path goes vertically through the aurora, not curving around mountains
-        { x: -20, y: 160, z: -350 },  // Higher approach to clear Ch3 ground
-        { x: -10, y: 240, z: -480 },  // Bend EARLIER and HIGHER to clear mountain slope
-        { x: 0, y: 300, z: -480 },    // Vertical ascent (Constant Z at -480)
-        { x: 0, y: 450, z: -480 },    // Continue straight up into space
+        { x: -20, y: 160, z: -350 }, // Higher approach to clear Ch3 ground
+        { x: -10, y: 240, z: -480 }, // Bend EARLIER and HIGHER to clear mountain slope
+        { x: 0, y: 300, z: -480 }, // Vertical ascent (Constant Z at -480)
+        { x: 0, y: 450, z: -480 }, // Continue straight up into space
 
         // Chapter 5: Sky & Atmospheric Drift - straight ascent into space
-        { x: 0, y: 500, z: -480 },    // Continue vertical from Ch4
-        { x: 0, y: 600, z: -550 },    // Slow drift deeper into space
-        { x: 0, y: 700, z: -600 },    // Deep space
+        { x: 0, y: 500, z: -480 }, // Continue vertical from Ch4
+        { x: 0, y: 600, z: -550 }, // Slow drift deeper into space
+        { x: 0, y: 700, z: -600 }, // Deep space
 
         // Chapter 6: Space (cosmic expanse, shifted up and deep)
-        { x: 0, y: 750, z: -600 },    // Maintain deep Z
+        { x: 0, y: 750, z: -600 }, // Maintain deep Z
         { x: -5, y: 780, z: -595 },
         { x: 3, y: 810, z: -605 },
 

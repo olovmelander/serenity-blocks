@@ -1,6 +1,6 @@
 /**
  * Ocean Depths Theme - Immersive Stylized Underwater World
- * 
+ *
  * Premium underwater experience with:
  * - Smooth curved seaweed/kelp with proper geometry
  * - Circular soft particles (not squared)
@@ -133,16 +133,16 @@ export default class OceanTheme extends BaseTheme {
     disposeSceneContents() {
         if (!this.scene) return;
         const toRemove = [];
-        this.scene.traverse(obj => {
+        this.scene.traverse((obj) => {
             if (obj !== this.scene && obj !== this.camera && !(obj instanceof THREE.Light)) {
                 toRemove.push(obj);
             }
         });
-        toRemove.forEach(obj => {
+        toRemove.forEach((obj) => {
             this.scene.remove(obj);
             if (obj.geometry) obj.geometry.dispose();
             if (obj.material) {
-                if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+                if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
                 else obj.material.dispose();
             }
         });
@@ -202,7 +202,7 @@ export default class OceanTheme extends BaseTheme {
             60,
             window.innerWidth / window.innerHeight,
             0.5,
-            500
+            500,
         );
         this.camera.position.set(0, 20, 80);
         this.camera.lookAt(0, 5, 0);
@@ -454,8 +454,10 @@ export default class OceanTheme extends BaseTheme {
             const z = -25 - i * 10 + (Math.random() - 0.5) * 15;
             const rot = (Math.random() - 0.5) * 0.35;
 
-            const cos = Math.cos(rot), sin = Math.sin(rot);
-            const hw = w / 2, hh = h / 2;
+            const cos = Math.cos(rot); const
+                sin = Math.sin(rot);
+            const hw = w / 2; const
+                hh = h / 2;
 
             const verts = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, -hh], [hw, hh], [-hw, hh]];
             const uv = [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]];
@@ -584,10 +586,10 @@ export default class OceanTheme extends BaseTheme {
     }
 
     getSeabedHeight(x, z) {
-        return Math.sin(x * 0.018) * 14 +
-            Math.sin(z * 0.015) * 12 +
-            Math.sin(x * 0.04 + z * 0.035) * 6 +
-            Math.cos(x * 0.025 - z * 0.02) * 8 - 18;
+        return Math.sin(x * 0.018) * 14
+            + Math.sin(z * 0.015) * 12
+            + Math.sin(x * 0.04 + z * 0.035) * 6
+            + Math.cos(x * 0.025 - z * 0.02) * 8 - 18;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -776,7 +778,7 @@ export default class OceanTheme extends BaseTheme {
             const type = Math.random();
 
             const material = new THREE.MeshLambertMaterial({
-                color: color,
+                color,
                 side: THREE.DoubleSide,
             });
 
@@ -799,7 +801,7 @@ export default class OceanTheme extends BaseTheme {
                     branch.position.set(
                         x + Math.cos(angle) * dist,
                         y + bHeight * 0.5,
-                        z + Math.sin(angle) * dist
+                        z + Math.sin(angle) * dist,
                     );
                     branch.scale.set(scale * 0.4, bHeight, scale * 0.4);
                     branch.rotation.x = (Math.random() - 0.5) * 0.3;
@@ -1280,7 +1282,7 @@ export default class OceanTheme extends BaseTheme {
             this.targetGlowIntensity += (0.8 - this.targetGlowIntensity) * 0.008;
 
             // Update all registered uniforms
-            this.uniformsToUpdate.forEach(u => {
+            this.uniformsToUpdate.forEach((u) => {
                 if (u.uTime) u.uTime.value = time;
                 if (u.uCurrentStrength) u.uCurrentStrength.value = this.currentStrength;
                 if (u.uWaveIntensity) u.uWaveIntensity.value = 1.0 + this.currentStrength * 0.3;
@@ -1335,7 +1337,7 @@ export default class OceanTheme extends BaseTheme {
     // CLEANUP
     // ═══════════════════════════════════════════════════════════════════════════
     stop() {
-        this.eventUnsubscribers.forEach(unsub => {
+        this.eventUnsubscribers.forEach((unsub) => {
             if (typeof unsub === 'function') unsub();
         });
         this.eventUnsubscribers = [];

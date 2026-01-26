@@ -635,7 +635,7 @@ export default class BlackHoleTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createStarfield() {
-        const starCount = this.qualityPreset.starCount;
+        const { starCount } = this.qualityPreset;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(starCount * 3);
         const colors = new Float32Array(starCount * 3);
@@ -879,7 +879,7 @@ export default class BlackHoleTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createParticleSystem() {
-        const particleCount = this.qualityPreset.particleCount;
+        const { particleCount } = this.qualityPreset;
         const geometry = new THREE.BufferGeometry();
 
         const positions = new Float32Array(particleCount * 3);
@@ -1045,7 +1045,7 @@ export default class BlackHoleTheme extends BaseTheme {
         const height = (Math.random() - 0.5) * 120; // Thicker distribution for organic feel
 
         // Flat coordinates
-        let px = Math.cos(angle) * radius;
+        const px = Math.cos(angle) * radius;
         let py = height;
         let pz = Math.sin(angle) * radius;
 
@@ -1068,7 +1068,7 @@ export default class BlackHoleTheme extends BaseTheme {
         const orbitalSpeed = 0.3 + Math.random() * 0.3;
 
         // Tangential velocity on flat plane
-        let vx = -Math.sin(angle) * orbitalSpeed;
+        const vx = -Math.sin(angle) * orbitalSpeed;
         let vy = (Math.random() - 0.5) * 0.05;
         let vz = Math.cos(angle) * orbitalSpeed;
 
@@ -1491,14 +1491,14 @@ export default class BlackHoleTheme extends BaseTheme {
             if (this.camera) {
                 const cameraTime = this.time * 0.04; // Slower orbit
                 const orbitRadiusX = 25; // Much smaller horizontal sway
-                const orbitRadiusY = 20;  // Much smaller vertical sway
-                const orbitRadiusZ = 15;  // Subtle depth breathing
+                const orbitRadiusY = 20; // Much smaller vertical sway
+                const orbitRadiusZ = 15; // Subtle depth breathing
 
                 // Gentle orbital sway - subtle parallax with starfield/nebula
-                this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX +
-                    Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.3;
-                this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY +
-                    Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.2;
+                this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX
+                    + Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.3;
+                this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY
+                    + Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.2;
                 this.camera.position.z = 600 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
 
                 // LookAt follows black hole with minimal offset (keeps disk perspective correct)
@@ -1557,9 +1557,9 @@ export default class BlackHoleTheme extends BaseTheme {
             if (dist > 50) {
                 // Spiral motion calculation
                 const speed = Math.sqrt(
-                    velocities[i3] * velocities[i3] +
-                    velocities[i3 + 1] * velocities[i3 + 1] +
-                    velocities[i3 + 2] * velocities[i3 + 2]
+                    velocities[i3] * velocities[i3]
+                    + velocities[i3 + 1] * velocities[i3 + 1]
+                    + velocities[i3 + 2] * velocities[i3 + 2],
                 );
 
                 // BURST PHASE: Push particles outward

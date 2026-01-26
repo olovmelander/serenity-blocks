@@ -95,7 +95,16 @@ export class MatchConfigModal {
           <!-- Advanced Settings -->
           <details class="advanced-settings">
             <summary>⚙️ Advanced Settings</summary>
-            
+
+            <div class="form-group">
+              <label for="garbage-cancellation">Garbage Cancellation</label>
+              <select id="garbage-cancellation" name="garbageCancellation">
+                <option value="full" selected>Full (Modern)</option>
+                <option value="disabled">Disabled (Classic)</option>
+              </select>
+              <small class="form-help">Full: Outgoing lines cancel incoming garbage 1:1 (Quadra/TETR.IO style). Disabled: Classic mode, no cancellation.</small>
+            </div>
+
             <div class="form-group">
               <label class="checkbox-label">
                 <input type="checkbox" id="boring-rules" name="boringRules" />
@@ -234,6 +243,7 @@ export class MatchConfigModal {
             endCondition: formData.get('endCondition'),
             endConditionValue: parseInt(formData.get('endConditionValue')) || 0,
             boringRules: formData.get('boringRules') === 'on',
+            garbageCancellation: formData.get('garbageCancellation') || 'full',
         };
 
         // Validation

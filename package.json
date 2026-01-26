@@ -12,7 +12,29 @@
     "lint": "eslint src --ext .js",
     "lint:fix": "eslint src --ext .js --fix",
     "format": "prettier --write \"src/**/*.js\"",
-    "format:check": "prettier --check \"src/**/*.js\""
+    "format:check": "prettier --check \"src/**/*.js\"",
+    "build:win": "vite build && electron-builder --win --x64",
+    "build:linux": "vite build && electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.serenityblocks.game",
+    "productName": "Serenity Blocks",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "node_modules/greenworks/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Game"
+    }
   },
   "keywords": [
     "tetris",
@@ -34,6 +56,8 @@
   "devDependencies": {
     "@rollup/plugin-replace": "^6.0.2",
     "electron": "^38.3.0",
+    "electron-builder": "^26.4.0",
+    "electron-rebuild": "^3.2.9",
     "eslint": "^8.57.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-plugin-import": "^2.29.1",

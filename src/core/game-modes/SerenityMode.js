@@ -418,7 +418,7 @@ export class SerenityMode extends BaseGameMode {
         const settings = this.deps.settingsManager.get();
         const keys = settings.keyBindings;
 
-        const key = event.key; // Don't lowerCase yet, compare with settings which store as is (mostly)
+        const { key } = event; // Don't lowerCase yet, compare with settings which store as is (mostly)
         // Helper to compare keys (handling generic case insensitivity if needed, though settings usually match event.key)
         const isKey = (binding) => binding && binding.toLowerCase() === key.toLowerCase();
 
@@ -440,36 +440,36 @@ export class SerenityMode extends BaseGameMode {
 
         // Handle hardcoded Serenity-specific keys
         switch (key.toLowerCase()) {
-            case 'escape': // Exit to main menu
-                this._exitToMenu();
-                break;
+        case 'escape': // Exit to main menu
+            this._exitToMenu();
+            break;
 
-            case 'h': // Toggle Serenity Hub - Keep this hardcoded for now as it's specific to this mode
-                if (this.serenityHub) {
-                    this.serenityHub.toggle();
-                }
-                event.preventDefault(); // Prevent global high score handler
-                event.stopPropagation(); // Stop event from bubbling
-                break;
+        case 'h': // Toggle Serenity Hub - Keep this hardcoded for now as it's specific to this mode
+            if (this.serenityHub) {
+                this.serenityHub.toggle();
+            }
+            event.preventDefault(); // Prevent global high score handler
+            event.stopPropagation(); // Stop event from bubbling
+            break;
 
-            case '?': // Show keyboard shortcuts (legacy)
-            case '/': // Toggle control hints
-                if (this.serenityHub) {
-                    this.serenityHub.toggleButtonHints();
-                } else {
-                    this._showKeyboardShortcuts();
-                }
-                break;
+        case '?': // Show keyboard shortcuts (legacy)
+        case '/': // Toggle control hints
+            if (this.serenityHub) {
+                this.serenityHub.toggleButtonHints();
+            } else {
+                this._showKeyboardShortcuts();
+            }
+            break;
 
-            case ' ': // Toggle breathing indicator
-                this._toggleBreathingIndicator();
-                event.preventDefault(); // Prevent page scroll
-                break;
+        case ' ': // Toggle breathing indicator
+            this._toggleBreathingIndicator();
+            event.preventDefault(); // Prevent page scroll
+            break;
 
-            case 't': // Cycle breathing technique
-                this._cycleBreathingTechnique();
-                event.preventDefault();
-                break;
+        case 't': // Cycle breathing technique
+            this._cycleBreathingTechnique();
+            event.preventDefault();
+            break;
         }
     }
 

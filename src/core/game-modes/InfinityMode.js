@@ -1453,6 +1453,7 @@ export class InfinityMode extends BaseGameMode {
             hasMinimap: !!this.minimap,
         };
     }
+
     async onStop() {
         this._disableGamepadExploration();
         await super.onStop();
@@ -1463,7 +1464,7 @@ export class InfinityMode extends BaseGameMode {
      * @private
      */
     _enableGamepadExploration() {
-        const gamepadController = this.deps.gamepadController;
+        const { gamepadController } = this.deps;
         if (!gamepadController) return;
 
         console.log('[Infinity] Enabling gamepad exploration mode...');
@@ -1494,7 +1495,7 @@ export class InfinityMode extends BaseGameMode {
      * @private
      */
     _disableGamepadExploration() {
-        const gamepadController = this.deps.gamepadController;
+        const { gamepadController } = this.deps;
         if (gamepadController) {
             gamepadController.disableExplorationMode();
         }

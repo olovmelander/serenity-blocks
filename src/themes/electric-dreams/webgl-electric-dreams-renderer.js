@@ -1,6 +1,6 @@
 /**
  * WebGL Electric Dreams Renderer
- * 
+ *
  * Implements a high-performance "Lava Lamp" effect using metaballs in a fragment shader,
  * and a particle system for electric sparks.
  */
@@ -69,7 +69,7 @@ export default class WebGLElectricDreamsRenderer {
     }
 
     createProgram(vsSource, fsSource) {
-        const gl = this.gl;
+        const { gl } = this;
         const vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, vsSource);
         gl.compileShader(vs);
@@ -98,8 +98,8 @@ export default class WebGLElectricDreamsRenderer {
     }
 
     initBackgroundShaders() {
-        const gl = this.gl;
-        const isWebGL2 = this.isWebGL2;
+        const { gl } = this;
+        const { isWebGL2 } = this;
 
         const vsSource = isWebGL2 ? `#version 300 es
             precision highp float;
@@ -258,8 +258,8 @@ export default class WebGLElectricDreamsRenderer {
     }
 
     initParticleShaders() {
-        const gl = this.gl;
-        const isWebGL2 = this.isWebGL2;
+        const { gl } = this;
+        const { isWebGL2 } = this;
 
         const vsSource = isWebGL2 ? `#version 300 es
             precision highp float;
@@ -371,13 +371,13 @@ export default class WebGLElectricDreamsRenderer {
     }
 
     initBuffers() {
-        const gl = this.gl;
+        const { gl } = this;
 
         // Quad Buffer
         this.bgBuffers.position = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, this.bgBuffers.position);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-            -1, -1, 1, -1, -1, 1, 1, 1
+            -1, -1, 1, -1, -1, 1, 1, 1,
         ]), gl.STATIC_DRAW);
 
         // Particle Data Buffer
@@ -395,7 +395,7 @@ export default class WebGLElectricDreamsRenderer {
 
     render(time, deform = 0.0, comboIntensity = 0.0) {
         this.currentDeform = deform;
-        const gl = this.gl;
+        const { gl } = this;
         if (!gl) return;
 
         // 1. Render Background
@@ -407,22 +407,22 @@ export default class WebGLElectricDreamsRenderer {
 
         // Update Blob Positions on CPU
         for (let i = 0; i < 16; i++) {
-            let fi = i;
+            const fi = i;
             // Speed up with combo
-            let timeScale = time * (0.02 + comboIntensity * 0.03);
+            const timeScale = time * (0.02 + comboIntensity * 0.03);
 
             // Organic movement using sines
-            let nx = Math.sin(timeScale * 0.5 + fi * 2.0) + Math.sin(timeScale * 0.3 + fi * 5.0) * 0.5;
-            let ny = Math.cos(timeScale * 0.4 + fi * 1.5) + Math.sin(timeScale * 0.2 + fi * 3.0) * 0.5;
+            const nx = Math.sin(timeScale * 0.5 + fi * 2.0) + Math.sin(timeScale * 0.3 + fi * 5.0) * 0.5;
+            const ny = Math.cos(timeScale * 0.4 + fi * 1.5) + Math.sin(timeScale * 0.2 + fi * 3.0) * 0.5;
 
             let x = nx * 3.0;
             let y = ny * 2.0 + Math.sin(time * 0.01 + fi) * 1.5;
 
             // Magnetic Attraction to Center
-            x = x * (1.0 - comboIntensity * 0.6); // Pull in X
-            y = y * (1.0 - comboIntensity * 0.4); // Pull in Y
+            x *= (1.0 - comboIntensity * 0.6); // Pull in X
+            y *= (1.0 - comboIntensity * 0.4); // Pull in Y
 
-            let z = Math.sin(fi * 13.0 + time * 0.05) * 2.0;
+            const z = Math.sin(fi * 13.0 + time * 0.05) * 2.0;
 
             this.blobData[i * 3] = x;
             this.blobData[i * 3 + 1] = y;
@@ -482,9 +482,9 @@ export default class WebGLElectricDreamsRenderer {
             vx: (Math.random() - 0.5) * 0.002,
             vy: (Math.random() - 0.5) * 0.002,
             size: Math.random() * 20 + 5,
-            color: color,
+            color,
             alpha: 0.0,
-            life: 1.0
+            life: 1.0,
         });
     }
 
@@ -507,20 +507,20 @@ export default class WebGLElectricDreamsRenderer {
             else color = [0.0, 1.0, 0.0];
 
             this.particles.push({
-                x: x,
-                y: y,
+                x,
+                y,
                 vx: Math.cos(angle) * speed * (this.canvas.height / this.canvas.width), // Correct aspect ratio for velocity
                 vy: Math.sin(angle) * speed,
                 size: Math.random() * 30 + 10,
-                color: color,
+                color,
                 alpha: 1.0, // Start visible
-                life: 1.0
+                life: 1.0,
             });
         }
     }
 
     renderParticles() {
-        const gl = this.gl;
+        const { gl } = this;
         const ext = gl.getExtension('ANGLE_instanced_arrays');
         if (!this.isWebGL2 && !ext) return;
 

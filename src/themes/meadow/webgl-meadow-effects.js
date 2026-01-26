@@ -1,4 +1,3 @@
-
 /**
  * WebGL Meadow Effects - Particle system for pollen, seeds, and combo effects
  */
@@ -15,7 +14,7 @@ export default class WebGLMeadowEffects {
     init() {
         // Try WebGL 2 first
         let gl = this.canvas.getContext('webgl2', { alpha: true });
-        let isWebGL2 = !!gl;
+        const isWebGL2 = !!gl;
 
         if (!gl) {
             gl = this.canvas.getContext('webgl', { alpha: true });
@@ -135,7 +134,7 @@ export default class WebGLMeadowEffects {
             -1, -1,
             1, -1,
             -1, 1,
-            1, 1
+            1, 1,
         ]);
 
         this.buffers = {};
@@ -179,7 +178,7 @@ export default class WebGLMeadowEffects {
                 size: 1 + Math.random() * 2, // Tiny
                 color: [1.0, 1.0, 0.9, 0.4], // Very transparent
                 life: 100.0,
-                type: 'pollen'
+                type: 'pollen',
             });
         }
     }
@@ -189,15 +188,15 @@ export default class WebGLMeadowEffects {
             const angle = Math.random() * Math.PI * 2;
             const speed = 1 + Math.random() * 3; // Slower burst
             this.particles.push({
-                x: x,
-                y: y,
+                x,
+                y,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
                 size: 3 + Math.random() * 4,
                 color: color || [1.0, 1.0, 1.0, 1.0],
                 life: 1.0 + Math.random() * 0.5,
                 decay: 0.015, // Slower fade
-                type: 'burst'
+                type: 'burst',
             });
         }
     }
@@ -245,7 +244,7 @@ export default class WebGLMeadowEffects {
 
         this.update(dt);
 
-        const gl = this.gl;
+        const { gl } = this;
 
         gl.useProgram(this.program);
 

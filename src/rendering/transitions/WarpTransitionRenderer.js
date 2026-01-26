@@ -40,10 +40,10 @@ export class WarpTransitionRenderer {
             tunnelLength: 100,
             tunnelRadius: 20,
             colors: {
-                primary: new THREE.Color(0x00ccff),   // Cyan
+                primary: new THREE.Color(0x00ccff), // Cyan
                 secondary: new THREE.Color(0x8855ff), // Purple
-                accent: new THREE.Color(0xff55aa),    // Pink
-                white: new THREE.Color(0xffffff),     // White
+                accent: new THREE.Color(0xff55aa), // Pink
+                white: new THREE.Color(0xffffff), // White
             },
         };
 
@@ -259,7 +259,7 @@ export class WarpTransitionRenderer {
             const color = new THREE.Color().lerpColors(
                 this.config.colors.primary,
                 this.config.colors.secondary,
-                t
+                t,
             );
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
@@ -497,7 +497,7 @@ export class WarpTransitionRenderer {
             this.energySpiral.material.uniforms.uProgress.value = 0;
         }
         if (this.lightBeams) {
-            this.lightBeams.children.forEach(beam => {
+            this.lightBeams.children.forEach((beam) => {
                 beam.material.uniforms.uTime.value = 0;
                 beam.material.uniforms.uProgress.value = 0;
             });
@@ -536,14 +536,14 @@ export class WarpTransitionRenderer {
         if (rawProgress < 0.40) {
             // Very gradual fade in over first 40%
             const fadeInProgress = rawProgress / 0.40;
-            opacity = Math.pow(fadeInProgress, 2); // Quadratic ease-in for ultra smooth
+            opacity = fadeInProgress ** 2; // Quadratic ease-in for ultra smooth
         } else if (rawProgress < 0.50) {
             // Brief hold at full opacity
             opacity = 1;
         } else {
             // Gradual fade out over last 50%
             const fadeOutProgress = (rawProgress - 0.50) / 0.50;
-            opacity = 1 - Math.pow(fadeOutProgress, 1.5); // Smooth ease-out
+            opacity = 1 - fadeOutProgress ** 1.5; // Smooth ease-out
         }
         this.container.style.opacity = String(opacity);
 
@@ -558,7 +558,7 @@ export class WarpTransitionRenderer {
     easeInOutCubic(t) {
         return t < 0.5
             ? 4 * t * t * t
-            : 1 - Math.pow(-2 * t + 2, 3) / 2;
+            : 1 - (-2 * t + 2) ** 3 / 2;
     }
 
     updateStarTrails(time, progress) {
@@ -668,7 +668,7 @@ export class WarpTransitionRenderer {
         }
 
         // Dispose geometries and materials
-        [this.starTrails, this.energySpiral, this.centralGlow].forEach(obj => {
+        [this.starTrails, this.energySpiral, this.centralGlow].forEach((obj) => {
             if (obj) {
                 obj.geometry?.dispose();
                 obj.material?.dispose();
@@ -676,7 +676,7 @@ export class WarpTransitionRenderer {
         });
 
         if (this.lightBeams) {
-            this.lightBeams.children.forEach(beam => {
+            this.lightBeams.children.forEach((beam) => {
                 beam.geometry?.dispose();
                 beam.material?.dispose();
             });

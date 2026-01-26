@@ -23,53 +23,70 @@ export class MatchResultsModal {
   }
 
   /**
-   * Create modal UI
-   */
+ * Create modal UI
+ */
   createUI() {
     this.container = document.createElement('div');
     this.container.id = 'match-results-modal';
-    this.container.className = 'match-results-modal hidden';
+    // Use unified grid layout
+    this.container.className = 'online-game-area results-mode hidden';
+
+    // Accessibility (dialog role still valid for fullscreen overlay)
     this.container.setAttribute('role', 'dialog');
     this.container.setAttribute('aria-modal', 'true');
 
     this.container.innerHTML = `
-      <div class="match-results-overlay"></div>
-      <div class="match-results-content">
-        <div class="match-results-header">
-          <div class="match-results-title">Match Results</div>
-          <div class="match-results-subtitle" id="match-results-subtitle"></div>
-        </div>
-
-        <div class="match-results-winner">
-          <div class="winner-label">Champion</div>
-          <div class="winner-name" id="match-results-winner-name">-</div>
-          <div class="winner-meta" id="match-results-winner-meta"></div>
-        </div>
-
-        <div class="match-results-grid">
-          <div class="match-results-standings">
-            <div class="section-title">Final Standings</div>
-            <div class="standings-list" id="match-results-standings"></div>
+      <!-- LEFT PANEL: Summary & Actions -->
+      <div class="opponents-panel results-left-panel" style="background: rgba(15,20,30,0.8); border: 1px solid rgba(102,126,234,0.3); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 20px;">
+          <!-- Header -->
+          <div class="results-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
+             <h2 class="results-title" style="font-size: 20px; color: #fff; margin: 0;">MATCH RESULTS</h2>
+             <div class="results-subtitle" id="match-results-subtitle" style="color: #a0aec0; font-size: 12px; margin-top: 5px;"></div>
           </div>
-          <div class="match-results-kill-feed">
-            <div class="section-title">Battle Log</div>
-            <div class="match-results-kill-list" id="match-results-kill-feed"></div>
+          
+          <!-- Winner Display -->
+          <div class="match-results-winner" style="text-align: center; padding: 30px 20px; background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px solid rgba(251, 191, 36, 0.2);">
+             <div class="winner-label" style="color: #fbbf24; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px;">Champion</div>
+             <div class="winner-name" id="match-results-winner-name" style="font-size: 36px; font-weight: 900; color: #fff; text-shadow: 0 0 30px rgba(251, 191, 36, 0.4); margin-bottom: 5px;">-</div>
+             <div class="winner-meta" id="match-results-winner-meta" style="color: #cbd5e0; font-family: 'Space Mono', monospace;"></div>
           </div>
-        </div>
-
-        <div class="match-results-stats">
-          <div class="section-title">Player Stats</div>
-          <div class="stats-table-wrapper" id="match-results-stats-table"></div>
-        </div>
-
-        <div class="match-results-actions">
-          <div class="host-hint" id="match-results-host-hint"></div>
-          <div class="actions-right">
-            <button class="btn btn-primary" id="match-results-play-again">Play Again</button>
-            <button class="btn btn-secondary" id="match-results-return-lobby">Return to Lobby</button>
-            <button class="btn btn-danger" id="match-results-exit">Exit</button>
+          
+          <!-- Spacer -->
+          <div style="flex: 1;"></div>
+          
+          <!-- Actions (Moved to Left) -->
+          <div class="match-results-actions" style="display: flex; flex-direction: column; gap: 12px;">
+             <div class="host-hint" id="match-results-host-hint" style="color: #a0aec0; font-size: 11px; text-align: center; margin-bottom: 5px;"></div>
+             <button class="btn btn-primary" id="match-results-play-again" style="padding: 12px; width: 100%;">Vote Rematch</button>
+             <button class="btn btn-secondary" id="match-results-return-lobby" style="padding: 12px; width: 100%;">Return to Lobby</button>
+             <button class="btn btn-danger" id="match-results-exit" style="padding: 12px; width: 100%;">Exit</button>
           </div>
-        </div>
+      </div>
+
+      <!-- CENTER PANEL: Detailed Stats Table -->
+      <div class="main-board-panel results-center-panel" style="background: rgba(15,20,30,0.6); border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 12px; padding: 20px; display: flex; flex-direction: column;">
+          <div class="section-title" style="color: #c4b5fd; margin-bottom: 15px; font-size: 14px; font-weight: bold; text-transform: uppercase;">Performance Statistics</div>
+          <div class="match-results-stats" style="flex: 1; overflow-y: auto;">
+             <div class="stats-table-wrapper" id="match-results-stats-table"></div>
+          </div>
+      </div>
+
+      <!-- RIGHT PANEL: Chat & Activity -->
+      <div class="right-panel">
+         <!-- Battle Log -->
+         <div class="online-kill-feed" style="max-height: 200px; flex: 0 0 auto;">
+            <div class="kill-feed-header">Battle Log</div>
+            <div class="match-results-kill-list" id="match-results-kill-feed" style="overflow-y: auto; max-height: 160px;"></div>
+         </div>
+         
+         <!-- Chat -->
+         <div class="online-chat">
+            <div class="chat-messages" id="results-chat-messages"></div>
+            <div class="chat-input-row" style="display: flex; gap: 8px; padding: 10px; background: rgba(0,0,0,0.3);">
+                <input type="text" id="results-chat-input" placeholder="Chat..." maxlength="100" style="flex: 1; background: rgba(255,255,255,0.1); border: 1px solid rgba(139,92,246,0.3); color: white; padding: 8px; border-radius: 4px;">
+                <button id="results-chat-send" style="background: #8b5cf6; border: none; color: white; padding: 0 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">SEND</button>
+            </div>
+         </div>
       </div>
     `;
 
@@ -84,8 +101,8 @@ export class MatchResultsModal {
   }
 
   /**
-   * Setup button handlers
-   */
+ * Setup button handlers
+ */
   setupEventListeners() {
     if (this.playAgainBtn) {
       this.playAgainBtn.addEventListener('click', () => {
@@ -106,19 +123,96 @@ export class MatchResultsModal {
         this.onExit();
       });
     }
+
+    // Chat Logic
+    const chatInput = this.container.querySelector('#results-chat-input');
+    const chatSend = this.container.querySelector('#results-chat-send');
+
+    const sendChat = () => {
+      const text = chatInput.value.trim();
+      if (text && this.gameState && this.gameState.network) {
+        this.gameState.network.sendP2PMessage(this.gameState.network.hostSteamId, 'game:chat', {
+          message: text,
+          playerName: this.gameState.network.playerName,
+          steamId: this.gameState.localPlayerId,
+          timestamp: Date.now()
+        });
+
+        // Add to local history/UI immediately for responsiveness
+        // Note: GameState event handler will also catch it if we broadcast back, 
+        // but usually we want instant feedback.
+        // However, FFAGameStateP2P logic for 'game:chat' says:
+        // "If host, rebroadcast... Dispatch to UI... Log..."
+        // It does NOT auto-add to local history if it's from self UNLESS we rely on the loopback or manually add.
+        // Let's manually add here to be safe and efficient.
+        const msgData = {
+          message: text,
+          playerName: this.gameState.network.playerName,
+          steamId: this.gameState.localPlayerId,
+          timestamp: Date.now()
+        };
+
+        // Check if already handled by gamestate listener (to avoid dupes)
+        // The listener pushes to chatHistory. 
+        // If we push here, we might dupe.
+        // Let's rely on the listener if it handles local echo. 
+        // FFAGameStateP2P:375 "this.network.on('game:chat', (msg) => { ... this.chatHistory.push ... })"
+        // Does SteamNetworking trigger .on for messages sent by self? Usually NO.
+        // So we MUST add manually.
+
+        if (this.gameState.chatHistory) {
+          this.gameState.chatHistory.push(msgData);
+        }
+        this.addChatMessage(`You: ${text}`, false);
+        chatInput.value = '';
+      }
+    };
+
+    if (chatSend) chatSend.addEventListener('click', sendChat);
+    if (chatInput) chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendChat();
+      e.stopPropagation();
+    });
+  }
+
+  addChatMessage(message, isSystem = true) {
+    if (!this.container) return;
+    const chatEl = this.container.querySelector('#results-chat-messages');
+    if (!chatEl) return;
+
+    const msgClass = isSystem ? 'system-message' : 'player-message';
+    const msgDiv = document.createElement('div');
+    msgDiv.className = msgClass;
+    msgDiv.textContent = message;
+    chatEl.appendChild(msgDiv);
+    chatEl.scrollTop = chatEl.scrollHeight;
   }
 
   /**
-   * Show modal with results
-   */
+ * Show modal with results
+ */
   show(results, options = {}) {
     if (!results) return;
 
     this.isHost = options.isHost === true;
     this.localPlayerId = options.localPlayerId || null;
+    this.gameState = options.gameState;
 
     this.updateContent(results);
     this.updateHostState();
+
+    // Restore chat history
+    const chatEl = this.container.querySelector('#results-chat-messages');
+    if (chatEl) {
+      chatEl.innerHTML = '';
+      if (this.gameState && this.gameState.chatHistory) {
+        this.gameState.chatHistory.forEach(msg => {
+          const isSystem = !msg.playerName;
+          const text = isSystem ? msg.text : `${msg.playerName}: ${msg.message}`;
+          this.addChatMessage(text, isSystem);
+        });
+      }
+    }
 
     this.container.classList.remove('hidden');
     this.container.classList.add('visible');
@@ -126,8 +220,8 @@ export class MatchResultsModal {
   }
 
   /**
-   * Hide modal
-   */
+ * Hide modal
+ */
   hide() {
     if (!this.container) return;
     this.container.classList.remove('visible');
@@ -141,8 +235,8 @@ export class MatchResultsModal {
   }
 
   /**
-   * Update modal content
-   */
+ * Update modal content
+ */
   updateContent(results) {
     const standings = Array.isArray(results.finalStats) ? results.finalStats.slice() : [];
     standings.sort((a, b) => (a.placement || 0) - (b.placement || 0));
@@ -284,8 +378,8 @@ export class MatchResultsModal {
   }
 
   /**
-   * Update host-specific UI state
-   */
+ * Update host-specific UI state
+ */
   updateHostState() {
     if (!this.playAgainBtn || !this.hostHint) return;
 
@@ -341,8 +435,8 @@ export class MatchResultsModal {
   }
 
   /**
-   * Destroy modal
-   */
+ * Destroy modal
+ */
   destroy() {
     if (this.container) {
       this.container.remove();

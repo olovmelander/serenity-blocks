@@ -47,7 +47,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.8,
         bloomThreshold: 0.1,
         enablePostProcessing: true,
-        flyingVehicles: 100,  // Reduced from 200 for performance
+        flyingVehicles: 100, // Reduced from 200 for performance
     },
     Ultra: {
         buildingCount: 30,
@@ -57,7 +57,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.7,
         bloomThreshold: 0.15,
         enablePostProcessing: true,
-        flyingVehicles: 75,  // Reduced from 150 for performance
+        flyingVehicles: 75, // Reduced from 150 for performance
     },
     High: {
         buildingCount: 20,
@@ -67,7 +67,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.6,
         bloomThreshold: 0.2,
         enablePostProcessing: true,
-        flyingVehicles: 50,  // Reduced from 100 for performance
+        flyingVehicles: 50, // Reduced from 100 for performance
     },
     Medium: {
         buildingCount: 15,
@@ -77,7 +77,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.4,
         bloomThreshold: 0.3,
         enablePostProcessing: false,
-        flyingVehicles: 30,  // Reduced from 50 for performance
+        flyingVehicles: 30, // Reduced from 50 for performance
     },
     Low: {
         buildingCount: 10,
@@ -87,8 +87,8 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.0,
         bloomThreshold: 1.0,
         enablePostProcessing: false,
-        flyingVehicles: 10,  // Reduced from 20 for performance
-    }
+        flyingVehicles: 10, // Reduced from 20 for performance
+    },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ const QUALITY_PRESETS = {
 const VignetteShader = {
     uniforms: {
         tDiffuse: { value: null },
-        darkness: { value: 0.3 },  // Reduced darkness for brighter scene
+        darkness: { value: 0.3 }, // Reduced darkness for brighter scene
         offset: { value: 1.0 },
     },
     vertexShader: `
@@ -271,7 +271,7 @@ export default class NeonDistrictTheme extends BaseTheme {
      * Use for visual updates that need to render immediately.
      */
     deferToNextFrame() {
-        return new Promise(resolve => requestAnimationFrame(resolve));
+        return new Promise((resolve) => requestAnimationFrame(resolve));
     }
 
     /**
@@ -280,7 +280,7 @@ export default class NeonDistrictTheme extends BaseTheme {
      * Falls back to setTimeout if requestIdleCallback is not available.
      */
     deferToIdleTime(timeout = 100) {
-        return new Promise(resolve => {
+        return new Promise((resolve) => {
             if (typeof requestIdleCallback !== 'undefined') {
                 requestIdleCallback(resolve, { timeout });
             } else {
@@ -361,8 +361,8 @@ export default class NeonDistrictTheme extends BaseTheme {
      * Positioned to face the STREET (toward x=0)
      */
     createNeonBannerKanji(building) {
-        const w = 25 + Math.random() * 15;  // Wider
-        const h = 60 + Math.random() * 40;  // Taller
+        const w = 25 + Math.random() * 15; // Wider
+        const h = 60 + Math.random() * 40; // Taller
         const geometry = new THREE.PlaneGeometry(w, h);
 
         // Purple-biased hue
@@ -376,7 +376,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             transparent: true,
             opacity: 0.95,
             blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         const sign = new THREE.Mesh(geometry, material);
@@ -422,7 +422,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, 128, 256);
 
-        const colorStr = '#' + baseColor.getHexString();
+        const colorStr = `#${baseColor.getHexString()}`;
         ctx.strokeStyle = colorStr;
         ctx.lineWidth = 4;
         ctx.strokeRect(4, 4, 120, 248);
@@ -526,7 +526,7 @@ export default class NeonDistrictTheme extends BaseTheme {
      */
     createNeonSignsForBuildings(startIdx, endIdx) {
         // Disabled for performance
-        return;
+
     }
 
     /**
@@ -536,7 +536,7 @@ export default class NeonDistrictTheme extends BaseTheme {
      */
     createHolographicBillboards() {
         // Disabled for performance
-        return;
+
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -671,7 +671,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.renderer = new THREE.WebGLRenderer({
             antialias: this.getAntialiasEnabled(),
             alpha: false,
-            powerPreference: 'high-performance'
+            powerPreference: 'high-performance',
         });
         this.renderer.setClearColor(0x150820, 1); // Deep Cyberpunk Purple-Black
         this.applyRenderScale(true);
@@ -694,8 +694,8 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Street-level camera IN THE ALLEY - more horizontal view
         // Far clip increased to 10000 to see the horizon tower
         this.camera = new THREE.PerspectiveCamera(70, width / height, 1, 10000);
-        this.camera.position.set(0, 4, 40);  // Start at street level
-        this.camera.lookAt(0, 80, -400);  // Looking more horizontal, at buildings
+        this.camera.position.set(0, 4, 40); // Start at street level
+        this.camera.lookAt(0, 80, -400); // Looking more horizontal, at buildings
 
         console.log('[NeonDistrict] Camera positioned in alley');
     }
@@ -833,9 +833,9 @@ export default class NeonDistrictTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     async createBuildings() {
-        const buildingCount = this.qualityPreset.buildingCount;
-        const streetWidth = 180;  // Width of the alley corridor
-        const buildingSpacing = 120;  // Space between buildings along the street
+        const { buildingCount } = this.qualityPreset;
+        const streetWidth = 180; // Width of the alley corridor
+        const buildingSpacing = 120; // Space between buildings along the street
         const CHUNK_SIZE = 2; // Small chunks to avoid ANY lag during gameplay
 
         // Calculate buildings per side
@@ -843,7 +843,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         const alleyLength = buildingsPerSide * buildingSpacing;
 
         // Outer row configuration
-        const outerAlleyGap = 60;  // Gap between inner and outer rows (secondary alleys)
+        const outerAlleyGap = 60; // Gap between inner and outer rows (secondary alleys)
         const avgBuildingWidth = 110; // Average building width for offset calculation
         const outerRowOffset = streetWidth / 2 + 50 + avgBuildingWidth + outerAlleyGap;
 
@@ -859,7 +859,9 @@ export default class NeonDistrictTheme extends BaseTheme {
             const width = 70 + Math.random() * 80;
             const depth = 70 + Math.random() * 80;
             const height = 500 + Math.random() * 1000;
-            buildingConfigs.push({ x: xPos, z: zPos, width, height, depth });
+            buildingConfigs.push({
+                x: xPos, z: zPos, width, height, depth,
+            });
         }
 
         // Right side buildings (inner row)
@@ -869,7 +871,9 @@ export default class NeonDistrictTheme extends BaseTheme {
             const width = 70 + Math.random() * 80;
             const depth = 70 + Math.random() * 80;
             const height = 500 + Math.random() * 1000;
-            buildingConfigs.push({ x: xPos, z: zPos, width, height, depth });
+            buildingConfigs.push({
+                x: xPos, z: zPos, width, height, depth,
+            });
 
             // FILLER BUILDING: Add extra building to the right of the first one to cover void
             if (i === 0) {
@@ -883,7 +887,9 @@ export default class NeonDistrictTheme extends BaseTheme {
                 // Let's align it exactly with the street front (zPos)
                 const fillerZ = zPos;
 
-                buildingConfigs.push({ x: fillerX, z: fillerZ, width: fillerW, height: height * 0.9, depth: depth * 1.5 });
+                buildingConfigs.push({
+                    x: fillerX, z: fillerZ, width: fillerW, height: height * 0.9, depth: depth * 1.5,
+                });
             }
         }
 
@@ -927,7 +933,9 @@ export default class NeonDistrictTheme extends BaseTheme {
             const width = 150 + Math.random() * 200;
             const depth = 150 + Math.random() * 200;
             const height = 1000 + Math.random() * 2000; // Taller background towers
-            buildingConfigs.push({ x: xPos, z: zPos, width, height, depth });
+            buildingConfigs.push({
+                x: xPos, z: zPos, width, height, depth,
+            });
         }
 
         // CREATE BUILDINGS IN SMALL CHUNKS (idle-time loading)
@@ -937,7 +945,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             const chunk = buildingConfigs.slice(i, i + CHUNK_SIZE);
 
             // Use Pool for 80% of buildings (perf), create fresh for 20% (variety)
-            chunk.forEach(cfg => {
+            chunk.forEach((cfg) => {
                 if (Math.random() < 0.8) {
                     this.createBuildingFromPool(cfg.x, cfg.z);
                 } else {
@@ -1159,7 +1167,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                     spread: 0.5,
                     yOffset: 2,
                     heightForBoost: height,
-                }
+                },
             );
         });
 
@@ -1267,7 +1275,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
                     gl_FragColor = vec4(finalColor, 1.0);
                 }
-            `
+            `,
         });
 
         const geom = new THREE.BoxGeometry(width, height, depth);
@@ -1424,13 +1432,13 @@ export default class NeonDistrictTheme extends BaseTheme {
             transparent: true,
             depthWrite: false, // Don't write to depth buffer for proper transparency
             blending: THREE.AdditiveBlending, // Glowy fog
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         this.lowFog = new THREE.Mesh(geometry, material);
 
         // Position just above the street/ground
-        // Mega Tower is at z = -4000. 
+        // Mega Tower is at z = -4000.
         // We want this fog to start around -2000 and go to -4000
         this.lowFog.position.set(0, 5, -3000);
         this.lowFog.rotation.x = -Math.PI / 2; // Flat on ground
@@ -1651,7 +1659,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             `,
             transparent: true,
             side: THREE.DoubleSide,
-            blending: THREE.NormalBlending,  // Normal blending to show texture content
+            blending: THREE.NormalBlending, // Normal blending to show texture content
         });
 
         const billboard = new THREE.Mesh(geometry, vhsMaterial);
@@ -1704,14 +1712,14 @@ export default class NeonDistrictTheme extends BaseTheme {
             mesh.position.set(
                 sign * (width / 2 + offset),
                 height,
-                (Math.random() - 0.5) * depth * offsetScale
+                (Math.random() - 0.5) * depth * offsetScale,
             );
             mesh.rotation.y = sign > 0 ? -Math.PI / 2 : Math.PI / 2;
         } else {
             mesh.position.set(
                 (Math.random() - 0.5) * width * offsetScale,
                 height,
-                sign * (depth / 2 + offset)
+                sign * (depth / 2 + offset),
             );
             mesh.rotation.y = sign > 0 ? 0 : Math.PI;
         }
@@ -1746,7 +1754,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         const grimeGeometry = new THREE.BoxGeometry(width + 4, grimeHeight, depth + 4);
         const grimeMaterial = new THREE.MeshPhongMaterial({
             color: 0x111111,
-            emissive: 0x000000
+            emissive: 0x000000,
         });
         const grime = new THREE.Mesh(grimeGeometry, grimeMaterial);
         grime.position.y = grimeHeight / 2;
@@ -1758,7 +1766,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             const size = 1 + Math.random() * 3;
             const debrisGeom = new THREE.BoxGeometry(size, size * 0.5, size);
             const debrisMat = new THREE.MeshPhongMaterial({
-                color: 0x222222 + Math.floor(Math.random() * 0x111111)
+                color: 0x222222 + Math.floor(Math.random() * 0x111111),
             });
             const debris = new THREE.Mesh(debrisGeom, debrisMat);
 
@@ -1783,7 +1791,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                 transparent: true,
                 opacity: 0.15,
                 blending: THREE.AdditiveBlending,
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
             });
             const fog = new THREE.Mesh(fogGeometry, fogMaterial);
             fog.rotation.x = -Math.PI / 2;
@@ -2012,17 +2020,19 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         const metrics = this.renderMetrics;
         if (
-            !force &&
-            metrics &&
-            metrics.width === width &&
-            metrics.height === height &&
-            metrics.pixelRatio === pixelRatio &&
-            metrics.postScale === postScale
+            !force
+            && metrics
+            && metrics.width === width
+            && metrics.height === height
+            && metrics.pixelRatio === pixelRatio
+            && metrics.postScale === postScale
         ) {
             return;
         }
 
-        this.renderMetrics = { width, height, pixelRatio, postScale };
+        this.renderMetrics = {
+            width, height, pixelRatio, postScale,
+        };
 
         this.renderer.setPixelRatio(pixelRatio);
         this.renderer.setSize(width, height);
@@ -2131,7 +2141,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             beacon.position.set(
                 (Math.random() - 0.5) * width * spread,
                 roofHeight + yOffset,
-                (Math.random() - 0.5) * depth * spread
+                (Math.random() - 0.5) * depth * spread,
             );
             const pattern = Math.random() < 0.35 ? 'double' : 'single';
             Object.assign(beacon.userData, this.createBlinkProfile(pattern));
@@ -2164,7 +2174,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             const offset = new THREE.Vector3(
                 (Math.random() - 0.5) * width * spread,
                 roofHeight + yOffset,
-                (Math.random() - 0.5) * depth * spread
+                (Math.random() - 0.5) * depth * spread,
             );
             offset.applyAxisAngle(rotationAxis, rotationY);
 
@@ -2214,7 +2224,8 @@ export default class NeonDistrictTheme extends BaseTheme {
             const width = building.userData?.width;
             const depth = building.userData?.depth;
             const height = building.userData?.height;
-            let minX, maxX, minZ, maxZ, maxY;
+            let minX; let maxX; let minZ; let maxZ; let
+                maxY;
 
             if (width && depth && height) {
                 const rotSteps = Math.round(building.rotation.y / (Math.PI / 2)) % 4;
@@ -2236,7 +2247,9 @@ export default class NeonDistrictTheme extends BaseTheme {
             }
 
             if (maxZ < zMin || minZ > zMax) return;
-            bounds.push({ minX, maxX, minZ, maxZ, height: maxY });
+            bounds.push({
+                minX, maxX, minZ, maxZ, height: maxY,
+            });
         });
 
         this.outerBuildingBounds.forEach((bound) => {
@@ -2340,7 +2353,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             ac.position.set(
                 (Math.random() - 0.5) * width * 0.7,
                 height + 5,
-                (Math.random() - 0.5) * depth * 0.7
+                (Math.random() - 0.5) * depth * 0.7,
             );
             ac.userData.rooftopBatch = 'ac';
             building.add(ac);
@@ -2355,7 +2368,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             tank.position.set(
                 (Math.random() - 0.5) * width * 0.5,
                 height + tankHeight / 2,
-                (Math.random() - 0.5) * depth * 0.5
+                (Math.random() - 0.5) * depth * 0.5,
             );
             tank.userData.rooftopBatch = 'tank';
             building.add(tank);
@@ -2369,7 +2382,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             dish.position.set(
                 (Math.random() - 0.5) * width * 0.6,
                 height + 3,
-                (Math.random() - 0.5) * depth * 0.6
+                (Math.random() - 0.5) * depth * 0.6,
             );
             dish.rotation.x = -Math.PI / 4 + Math.random() * 0.3;
             dish.rotation.y = Math.random() * Math.PI * 2;
@@ -2387,7 +2400,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             pipe.position.set(
                 0,
                 height + 2,
-                (Math.random() > 0.5 ? 1 : -1) * depth * 0.4
+                (Math.random() > 0.5 ? 1 : -1) * depth * 0.4,
             );
             pipe.userData.rooftopBatch = 'pipe';
             building.add(pipe);
@@ -2465,7 +2478,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             emissive: 0xff8800,
             emissiveIntensity: 4.0, // Increased intensity to compensate for lack of PointLight
             roughness: 0.4,
-            metalness: 0.8
+            metalness: 0.8,
         });
 
         // Store positions for instancing
@@ -2480,7 +2493,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                     y: 20 + Math.random() * 5,
                     z: z + (Math.random() - 0.5) * 10,
                     floatOffset: Math.random() * 100,
-                    floatSpeed: 0.5 + Math.random() * 0.5
+                    floatSpeed: 0.5 + Math.random() * 0.5,
                 });
             }
 
@@ -2491,7 +2504,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                     y: 20 + Math.random() * 5,
                     z: z + (Math.random() - 0.5) * 10,
                     floatOffset: Math.random() * 100,
-                    floatSpeed: 0.5 + Math.random() * 0.5
+                    floatSpeed: 0.5 + Math.random() * 0.5,
                 });
             }
         }
@@ -2525,10 +2538,10 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Create PLACEHOLDER material first (instant display - purple asphalt color)
         const wetAsphaltMaterial = new THREE.MeshPhysicalMaterial({
             color: 0x2a1a3a, // Purple-ish asphalt color
-            roughness: 0.15,  // Low base roughness for wet look (was 0.6)
+            roughness: 0.15, // Low base roughness for wet look (was 0.6)
             metalness: 0.0,
             envMapIntensity: 2.0, // Strong env reflections
-            clearcoat: 0.8,  // Strong wet clearcoat (was 0.3)
+            clearcoat: 0.8, // Strong wet clearcoat (was 0.3)
             clearcoatRoughness: 0.0,
         });
 
@@ -2541,17 +2554,17 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Use Promise.all to load all textures in parallel
         const texturePromises = [
-            new Promise(resolve => textureLoader.load(texturePath + 'aerial_asphalt_01_diff_2k.jpg', resolve, undefined, () => resolve(null))),
-            new Promise(resolve => textureLoader.load(texturePath + 'aerial_asphalt_01_nor_gl_2k.jpg', resolve, undefined, () => resolve(null))),
-            new Promise(resolve => textureLoader.load(texturePath + 'aerial_asphalt_01_rough_2k.jpg', resolve, undefined, () => resolve(null))),
-            new Promise(resolve => textureLoader.load(texturePath + 'aerial_asphalt_01_ao_2k.jpg', resolve, undefined, () => resolve(null))),
+            new Promise((resolve) => textureLoader.load(`${texturePath}aerial_asphalt_01_diff_2k.jpg`, resolve, undefined, () => resolve(null))),
+            new Promise((resolve) => textureLoader.load(`${texturePath}aerial_asphalt_01_nor_gl_2k.jpg`, resolve, undefined, () => resolve(null))),
+            new Promise((resolve) => textureLoader.load(`${texturePath}aerial_asphalt_01_rough_2k.jpg`, resolve, undefined, () => resolve(null))),
+            new Promise((resolve) => textureLoader.load(`${texturePath}aerial_asphalt_01_ao_2k.jpg`, resolve, undefined, () => resolve(null))),
         ];
 
         Promise.all(texturePromises).then(([diffuseMap, normalMap, roughnessMap, aoMap]) => {
             if (!this.isActive) return;
 
             // Configure loaded textures
-            [diffuseMap, normalMap, roughnessMap, aoMap].filter(t => t).forEach(tex => {
+            [diffuseMap, normalMap, roughnessMap, aoMap].filter((t) => t).forEach((tex) => {
                 tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
                 tex.repeat.set(4, 12); // Tiling adjusted for much longer road
             });
@@ -2577,7 +2590,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             uTime: { value: 0 },
             uCameraPos: { value: new THREE.Vector3() },
             uLightPositions: { value: new Array(8).fill(0).map(() => new THREE.Vector3(0, 1000, 0)) },
-            uLightColors: { value: new Array(8).fill(0).map(() => new THREE.Color(0x000000)) }
+            uLightColors: { value: new Array(8).fill(0).map(() => new THREE.Color(0x000000)) },
         };
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -2597,14 +2610,14 @@ export default class NeonDistrictTheme extends BaseTheme {
                 '#include <common>',
                 `#include <common>
                 varying vec3 vWorldPos;
-                varying vec2 vUvGround;`
+                varying vec2 vUvGround;`,
             );
 
             shader.vertexShader = shader.vertexShader.replace(
                 '#include <worldpos_vertex>',
                 `#include <worldpos_vertex>
                 vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
-                vUvGround = uv;`
+                vUvGround = uv;`,
             );
 
             // ─────────────────────────────────────────────────────────────────
@@ -2752,7 +2765,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                     vec3 noiseNormalOrthogonal = noiseNormal - (dot(noiseNormal, inputNormal) * inputNormal);
                     return normalize(inputNormal - noiseNormalOrthogonal * strength);
                 }
-                `
+                `,
             );
 
             // Inject puddle/roughness modifications BEFORE lighting calculation
@@ -2771,7 +2784,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                 // Wet surfaces have VERY LOW roughness (near mirror)
                 float wetRoughness = mix(roughnessFactor, 0.01, wetness);
                 roughnessFactor = clamp(wetRoughness, 0.01, 0.3);
-                `
+                `,
             );
 
             // Inject normal perturbation for ripples
@@ -2792,7 +2805,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                 // Stronger ripples in puddle areas
                 float rippleStrength = 0.15 + puddle2 * 0.35;
                 normal = perturbNormal(normal, combinedRipple, rippleStrength);
-                `
+                `,
             );
 
             // Add neon light reflections to final color
@@ -2849,7 +2862,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                 outgoingLight += neonReflection;
                 
                 #include <output_fragment>
-                `
+                `,
             );
 
             // Store shader reference for uniform updates
@@ -3050,7 +3063,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             `,
             transparent: true,
             depthWrite: false, // Render behind everything opaque
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         const moon = new THREE.Mesh(geometry, material);
@@ -3199,7 +3212,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                 phase: Math.random() * 10,
                 speed: 0.3 + Math.random() * 0.4,
                 tiltX: 0.1 + Math.random() * 0.2,
-                tiltZ: 0.1 + Math.random() * 0.2
+                tiltZ: 0.1 + Math.random() * 0.2,
             };
 
             this.scene.add(mesh);
@@ -3209,8 +3222,8 @@ export default class NeonDistrictTheme extends BaseTheme {
 
     updateSearchlights() {
         if (!this.searchlights) return;
-        const time = this.time;
-        this.searchlights.forEach(light => {
+        const { time } = this;
+        this.searchlights.forEach((light) => {
             // Sweep motion
             const t = time * light.userData.speed + light.userData.phase;
             light.rotation.z = Math.sin(t) * light.userData.tiltZ;
@@ -3246,7 +3259,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             blending: THREE.AdditiveBlending,
             depthWrite: false,
             opacity: 0.6,
-            transparent: true
+            transparent: true,
         });
 
         const points = new THREE.Points(geometry, material);
@@ -3258,25 +3271,55 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Lights positioned at building edges, shining down onto street
         const glowPositions = [
             // LEFT SIDE (buildings at x ~ -30 to -50)
-            { x: -35, y: 20, z: 20, color: 0xff00ff, intensity: 60 },     // Magenta
-            { x: -40, y: 15, z: -30, color: 0x00ffff, intensity: 55 },    // Cyan
-            { x: -38, y: 25, z: -80, color: 0xaa00ff, intensity: 50 },    // Purple
-            { x: -42, y: 18, z: -130, color: 0xff00aa, intensity: 45 },   // Pink
-            { x: -36, y: 22, z: -180, color: 0x8800ff, intensity: 40 },   // Deep purple
-            { x: -45, y: 20, z: -250, color: 0x00ff88, intensity: 35 },   // Cyan-green
-            { x: -38, y: 16, z: -320, color: 0xff66ff, intensity: 30 },   // Light magenta
+            {
+                x: -35, y: 20, z: 20, color: 0xff00ff, intensity: 60,
+            }, // Magenta
+            {
+                x: -40, y: 15, z: -30, color: 0x00ffff, intensity: 55,
+            }, // Cyan
+            {
+                x: -38, y: 25, z: -80, color: 0xaa00ff, intensity: 50,
+            }, // Purple
+            {
+                x: -42, y: 18, z: -130, color: 0xff00aa, intensity: 45,
+            }, // Pink
+            {
+                x: -36, y: 22, z: -180, color: 0x8800ff, intensity: 40,
+            }, // Deep purple
+            {
+                x: -45, y: 20, z: -250, color: 0x00ff88, intensity: 35,
+            }, // Cyan-green
+            {
+                x: -38, y: 16, z: -320, color: 0xff66ff, intensity: 30,
+            }, // Light magenta
 
             // RIGHT SIDE (buildings at x ~ 30 to 50)
-            { x: 38, y: 18, z: 10, color: 0x00ffff, intensity: 60 },      // Cyan
-            { x: 42, y: 22, z: -50, color: 0xff00ff, intensity: 55 },     // Magenta
-            { x: 36, y: 15, z: -100, color: 0x00ff88, intensity: 50 },    // Green-cyan
-            { x: 45, y: 25, z: -160, color: 0xaa00ff, intensity: 45 },    // Purple
-            { x: 40, y: 18, z: -220, color: 0xff00aa, intensity: 40 },    // Pink
-            { x: 35, y: 20, z: -280, color: 0x8800ff, intensity: 35 },    // Deep purple
-            { x: 48, y: 16, z: -350, color: 0x66ffff, intensity: 30 },    // Light cyan
+            {
+                x: 38, y: 18, z: 10, color: 0x00ffff, intensity: 60,
+            }, // Cyan
+            {
+                x: 42, y: 22, z: -50, color: 0xff00ff, intensity: 55,
+            }, // Magenta
+            {
+                x: 36, y: 15, z: -100, color: 0x00ff88, intensity: 50,
+            }, // Green-cyan
+            {
+                x: 45, y: 25, z: -160, color: 0xaa00ff, intensity: 45,
+            }, // Purple
+            {
+                x: 40, y: 18, z: -220, color: 0xff00aa, intensity: 40,
+            }, // Pink
+            {
+                x: 35, y: 20, z: -280, color: 0x8800ff, intensity: 35,
+            }, // Deep purple
+            {
+                x: 48, y: 16, z: -350, color: 0x66ffff, intensity: 30,
+            }, // Light cyan
         ];
 
-        glowPositions.forEach(({ x, y, z, color, intensity }) => {
+        glowPositions.forEach(({
+            x, y, z, color, intensity,
+        }) => {
             const light = new THREE.PointLight(color, intensity, 120);
             light.position.set(x, y, z);
             light.decay = 1.8;
@@ -3331,8 +3374,8 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.createSynthCityBillboard(-380, 360, -550, true);
         this.createSynthCityBillboard(-180, 400, -650, false);
         this.createSynthCityBillboard(-450, 420, -500, true);
-        this.createSynthCityBillboard(-250, 320, -250, true);  // Closer foreground
-        this.createSynthCityBillboard(-350, 480, -750, true);  // Higher back
+        this.createSynthCityBillboard(-250, 320, -250, true); // Closer foreground
+        this.createSynthCityBillboard(-350, 480, -750, true); // Higher back
         this.createSynthCityBillboard(-150, 200, -200, false); // Low foreground
         this.createSynthCityBillboard(-420, 300, -400, false); // Mid-left
 
@@ -3341,10 +3384,10 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.createSynthCityBillboard(250, 380, -550, false);
         this.createSynthCityBillboard(350, 280, -300, true);
         this.createSynthCityBillboard(280, 450, -600, false);
-        this.createSynthCityBillboard(220, 250, -200, true);   // Closer foreground
-        this.createSynthCityBillboard(380, 420, -700, true);   // Higher back
-        this.createSynthCityBillboard(150, 180, -150, false);  // Low foreground
-        this.createSynthCityBillboard(420, 350, -450, false);  // Mid-right
+        this.createSynthCityBillboard(220, 250, -200, true); // Closer foreground
+        this.createSynthCityBillboard(380, 420, -700, true); // Higher back
+        this.createSynthCityBillboard(150, 180, -150, false); // Low foreground
+        this.createSynthCityBillboard(420, 350, -450, false); // Mid-right
 
         // Holographic billboards - pushed further back (z < -900)
         // Holographic billboards - REMOVED per user request
@@ -3415,7 +3458,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             smoke.position.set(
                 (Math.random() - 0.5) * 400,
                 200 + Math.random() * 300,
-                -200 - Math.random() * 600
+                -200 - Math.random() * 600,
             );
 
             // Store for billboard (face camera) animation
@@ -3446,12 +3489,12 @@ export default class NeonDistrictTheme extends BaseTheme {
             const color = colors[Math.floor(Math.random() * colors.length)];
 
             const material = new THREE.MeshBasicMaterial({
-                color: color,
+                color,
                 transparent: true,
                 opacity: 0.08,
                 blending: THREE.AdditiveBlending,
                 side: THREE.DoubleSide,
-                depthWrite: false
+                depthWrite: false,
             });
 
             const beam = new THREE.Mesh(geometry, material);
@@ -3460,7 +3503,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             beam.position.set(
                 (Math.random() - 0.5) * 400,
                 300 + Math.random() * 300,
-                -300 - Math.random() * 600
+                -300 - Math.random() * 600,
             );
 
             // Point downward with slight random tilt
@@ -3491,11 +3534,11 @@ export default class NeonDistrictTheme extends BaseTheme {
         const color = colors[Math.floor(Math.random() * colors.length)];
 
         const material = new THREE.MeshBasicMaterial({
-            color: color,
+            color,
             transparent: true,
             opacity: 0.95,
             blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         const sign = new THREE.Mesh(geometry, material);
@@ -3511,17 +3554,17 @@ export default class NeonDistrictTheme extends BaseTheme {
             const geometry = new THREE.TorusGeometry(5 + Math.random() * 15, 0.8, 8, 32);
             const color = purpleColors[Math.floor(Math.random() * purpleColors.length)];
             const material = new THREE.MeshBasicMaterial({
-                color: color,
+                color,
                 transparent: true,
                 opacity: 0.85,
-                blending: THREE.AdditiveBlending
+                blending: THREE.AdditiveBlending,
             });
 
             const ring = new THREE.Mesh(geometry, material);
             ring.position.set(
                 (Math.random() - 0.5) * 600,
                 100 + Math.random() * 400,
-                -200 - Math.random() * 800
+                -200 - Math.random() * 800,
             );
             ring.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
 
@@ -3541,22 +3584,22 @@ export default class NeonDistrictTheme extends BaseTheme {
             const geometry = new THREE.CylinderGeometry(0.5, 0.5, length, 8);
             const color = purpleColors[Math.floor(Math.random() * purpleColors.length)];
             const material = new THREE.MeshBasicMaterial({
-                color: color,
+                color,
                 transparent: true,
                 opacity: 0.9,
-                blending: THREE.AdditiveBlending
+                blending: THREE.AdditiveBlending,
             });
 
             const tube = new THREE.Mesh(geometry, material);
             tube.position.set(
                 (Math.random() - 0.5) * 500,
                 80 + Math.random() * 350,
-                -100 - Math.random() * 700
+                -100 - Math.random() * 700,
             );
             tube.rotation.set(
                 Math.random() * Math.PI * 0.3,
                 Math.random() * Math.PI,
-                Math.random() * Math.PI * 0.5
+                Math.random() * Math.PI * 0.5,
             );
 
             this.neonSigns.push(tube);
@@ -3571,10 +3614,10 @@ export default class NeonDistrictTheme extends BaseTheme {
         let scale = 1.0;
 
         switch (shapeType) {
-            case 0: geometry = new THREE.TorusGeometry(8, 1.5, 8, 24); break;
-            case 1: geometry = new THREE.ConeGeometry(10, 3, 3); scale = 1.2; break;
-            case 2: geometry = new THREE.BoxGeometry(3, 40, 3); break;
-            case 3: geometry = new THREE.SphereGeometry(6, 16, 16); break;
+        case 0: geometry = new THREE.TorusGeometry(8, 1.5, 8, 24); break;
+        case 1: geometry = new THREE.ConeGeometry(10, 3, 3); scale = 1.2; break;
+        case 2: geometry = new THREE.BoxGeometry(3, 40, 3); break;
+        case 3: geometry = new THREE.SphereGeometry(6, 16, 16); break;
         }
 
         // Purple-dominant neon colors
@@ -3582,11 +3625,11 @@ export default class NeonDistrictTheme extends BaseTheme {
         const color = colors[Math.floor(Math.random() * colors.length)];
 
         const material = new THREE.MeshBasicMaterial({
-            color: color,
+            color,
             transparent: true,
             opacity: 0.95,
             blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         const sign = new THREE.Mesh(geometry, material);
@@ -3608,12 +3651,12 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         const material = new THREE.MeshBasicMaterial({
             map: texture,
-            color: color, // Tint the white texture with color
+            color, // Tint the white texture with color
 
             transparent: true,
             opacity: 0.9,
             blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         const sign = new THREE.Mesh(geometry, material);
@@ -3623,7 +3666,7 @@ export default class NeonDistrictTheme extends BaseTheme {
     attachSignToBuilding(building, sign, colorHex) {
         // Position
         const buildingPos = building.position; // Usually 0,0,0 local? No, world pos for standard?
-        // Wait, standard buildings are MESHES added to SCENE? 
+        // Wait, standard buildings are MESHES added to SCENE?
         // In createBuilding: building.position.set(x, 0, z); this.scene.add(building);
         // Correct.
 
@@ -3639,10 +3682,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         const bx = building.position.x;
         const bz = building.position.z;
 
-        if (face === 0) { sign.position.set(bx, yPos, bz + offset); sign.rotation.y = 0; }
-        else if (face === 1) { sign.position.set(bx, yPos, bz - offset); sign.rotation.y = Math.PI; }
-        else if (face === 2) { sign.position.set(bx + offset, yPos, bz); sign.rotation.y = Math.PI / 2; }
-        else { sign.position.set(bx - offset, yPos, bz); sign.rotation.y = -Math.PI / 2; }
+        if (face === 0) { sign.position.set(bx, yPos, bz + offset); sign.rotation.y = 0; } else if (face === 1) { sign.position.set(bx, yPos, bz - offset); sign.rotation.y = Math.PI; } else if (face === 2) { sign.position.set(bx + offset, yPos, bz); sign.rotation.y = Math.PI / 2; } else { sign.position.set(bx - offset, yPos, bz); sign.rotation.y = -Math.PI / 2; }
 
         this.scene.add(sign);
         this.neonSigns.push(sign);
@@ -3703,7 +3743,6 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.neonCache[text] = texture;
         return texture;
     }
-
 
     createHolographicBillboardOnBuilding(building, x, y, z, isLeft, faceCamera = false) {
         // OPTIMIZED: Smaller size for better FPS (was 100-200 x 60-140)
@@ -3914,7 +3953,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         for (let i = 0; i < splashCount; i++) {
             splashPositions[i * 3] = (Math.random() - 0.5) * 600;
-            splashPositions[i * 3 + 1] = 0.5;  // Ground level
+            splashPositions[i * 3 + 1] = 0.5; // Ground level
             splashPositions[i * 3 + 2] = (Math.random() - 0.5) * 800 - 200;
             splashPhases[i] = Math.random() * 6.28; // Random phase 0 to 2π
         }
@@ -3995,20 +4034,19 @@ export default class NeonDistrictTheme extends BaseTheme {
     // Flying Vehicles (Spinners)
     // ─────────────────────────────────────────────────────────────────────────
 
-
     // OPTIMIZED: Merged Geometry for Wires
     createOverheadWires() {
         // Find left and right buildings
-        const leftBuildings = this.buildings.filter(b => b.position.x < 0);
-        const rightBuildings = this.buildings.filter(b => b.position.x > 0);
+        const leftBuildings = this.buildings.filter((b) => b.position.x < 0);
+        const rightBuildings = this.buildings.filter((b) => b.position.x > 0);
 
         const tubes = []; // Collect geometries
 
-        leftBuildings.forEach(leftB => {
+        leftBuildings.forEach((leftB) => {
             if (Math.random() > 0.4) return; // Not every building
 
             // Find partner
-            const rightB = rightBuildings.find(b => Math.abs(b.position.z - leftB.position.z) < 100);
+            const rightB = rightBuildings.find((b) => Math.abs(b.position.z - leftB.position.z) < 100);
 
             if (rightB) {
                 // Connection points
@@ -4050,7 +4088,6 @@ export default class NeonDistrictTheme extends BaseTheme {
         }
     }
 
-
     updateFlyingVehicles(delta) {
         if (!this.vehicleData || !this.vehicleInstances) return;
 
@@ -4081,7 +4118,8 @@ export default class NeonDistrictTheme extends BaseTheme {
 
             // Wobble calculation
             const time = this.time + data.wobbleOffset;
-            let xOff = 0, yOff = 0;
+            let xOff = 0; let
+                yOff = 0;
 
             const wobbleProfile = data.wobbleProfile
                 || (data.lane <= 1 ? 'low' : (data.lane <= 3 ? 'mid' : 'high'));
@@ -4178,14 +4216,30 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.buildFlightCollisionBounds();
 
         const altitudeBands = [
-            { xRange: 90, yMin: 40, yMax: 220, wobbleX: 20, profile: 'low', weight: 2 },
-            { xRange: 260, yMin: 200, yMax: 520, wobbleX: 30, profile: 'low', weight: 2 },
-            { xRange: 260, yMin: 520, yMax: 820, wobbleX: 38, profile: 'mid', weight: 2 },
-            { xRange: 600, yMin: 450, yMax: 850, wobbleX: 45, profile: 'mid', weight: 3 },
-            { xRange: 1000, yMin: 700, yMax: 1200, wobbleX: 70, profile: 'mid', weight: 2 },
-            { xRange: 1700, yMin: 1000, yMax: 1700, wobbleX: 120, profile: 'high', weight: 2 },
-            { xRange: 2600, yMin: 1500, yMax: 2400, wobbleX: 180, profile: 'high', weight: 1 },
-            { xRange: 3500, yMin: 2000, yMax: 3000, wobbleX: 220, profile: 'high', weight: 1 },
+            {
+                xRange: 90, yMin: 40, yMax: 220, wobbleX: 20, profile: 'low', weight: 2,
+            },
+            {
+                xRange: 260, yMin: 200, yMax: 520, wobbleX: 30, profile: 'low', weight: 2,
+            },
+            {
+                xRange: 260, yMin: 520, yMax: 820, wobbleX: 38, profile: 'mid', weight: 2,
+            },
+            {
+                xRange: 600, yMin: 450, yMax: 850, wobbleX: 45, profile: 'mid', weight: 3,
+            },
+            {
+                xRange: 1000, yMin: 700, yMax: 1200, wobbleX: 70, profile: 'mid', weight: 2,
+            },
+            {
+                xRange: 1700, yMin: 1000, yMax: 1700, wobbleX: 120, profile: 'high', weight: 2,
+            },
+            {
+                xRange: 2600, yMin: 1500, yMax: 2400, wobbleX: 180, profile: 'high', weight: 1,
+            },
+            {
+                xRange: 3500, yMin: 2000, yMax: 3000, wobbleX: 220, profile: 'high', weight: 1,
+            },
         ];
 
         const totalWeight = altitudeBands.reduce((sum, band) => sum + band.weight, 0);
@@ -4228,13 +4282,14 @@ export default class NeonDistrictTheme extends BaseTheme {
             // STATE Logic (Lane, Speed, etc)
             // 5 LAYERS OF TRAFFIC
             const lane = i % 5;
-            let x, y, z;
+            let x; let y; let
+                z;
             const altitudeBand = pickAltitudeBand();
 
             const clearPos = this.getClearFlightPosition(
                 { min: -altitudeBand.xRange, max: altitudeBand.xRange },
                 { min: altitudeBand.yMin, max: altitudeBand.yMax },
-                altitudeBand.wobbleX
+                altitudeBand.wobbleX,
             );
             x = clearPos.x;
             y = clearPos.y;
@@ -4282,8 +4337,14 @@ export default class NeonDistrictTheme extends BaseTheme {
             const exhaustType = Math.random() > 0.5 ? 'cyan' : 'orange';
 
             this.vehicleData.push({
-                x, y, z,
-                dirX, dirZ, speed, lane, wobbleOffset,
+                x,
+                y,
+                z,
+                dirX,
+                dirZ,
+                speed,
+                lane,
+                wobbleOffset,
                 exhaustType,
                 wobbleX: altitudeBand.wobbleX,
                 wobbleProfile: altitudeBand.profile,
@@ -4366,7 +4427,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Collect all neon signs with lights, sorted by Z (closer to camera first)
         const activeSigns = this.neonSigns
-            .filter(s => s.userData.light && s.userData.baseColor)
+            .filter((s) => s.userData.light && s.userData.baseColor)
             .sort((a, b) => b.position.z - a.position.z)
             .slice(0, 8);
 
@@ -4393,7 +4454,6 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.groundUniforms.uLightPositions.value = positions;
         this.groundUniforms.uLightColors.value = colors;
     }
-
 
     // ─────────────────────────────────────────────────────────────────────────
     // Lighting
@@ -4528,7 +4588,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             minFilter: THREE.LinearFilter,
             magFilter: THREE.LinearFilter,
             format: THREE.RGBAFormat,
-            type: THREE.HalfFloatType  // Better color precision for HDR bloom
+            type: THREE.HalfFloatType, // Better color precision for HDR bloom
         });
 
         this.composer = new EffectComposer(this.renderer, renderTarget);
@@ -4542,7 +4602,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             new THREE.Vector2(renderTargetWidth, renderTargetHeight),
             this.qualityPreset.bloomStrength,
             this.qualityPreset.bloomRadius,
-            this.qualityPreset.bloomThreshold || 0.4
+            this.qualityPreset.bloomThreshold || 0.4,
         );
         this.composer.addPass(this.bloomPass);
 
@@ -4551,7 +4611,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.composer.addPass(vignettePass);
 
         console.log(
-            `[NeonDistrict] Post-processing configured at ${renderTargetWidth}x${renderTargetHeight} (${pixelRatio}x, ${postScale} scale)`
+            `[NeonDistrict] Post-processing configured at ${renderTargetWidth}x${renderTargetHeight} (${pixelRatio}x, ${postScale} scale)`,
         );
     }
 
@@ -4607,7 +4667,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.rainIntensity = Math.min(1.5 + combo * 0.2, 3.0);
 
         // Spawn neon sparks (scales with combo)
-        const sparkCount = Math.min(combo * 6, 30);  // Increased from 4 to 6 per combo
+        const sparkCount = Math.min(combo * 6, 30); // Increased from 4 to 6 per combo
         this.spawnComboSparks(sparkCount, combo);
 
         // EXTRA edge sparks - specifically on screen edges where they're visible
@@ -4644,7 +4704,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         ];
 
         // Spawn MORE sparks across the ENTIRE visible screen
-        const actualCount = count * 3;  // Triple the spark count (was 2x)
+        const actualCount = count * 3; // Triple the spark count (was 2x)
 
         for (let i = 0; i < actualCount; i++) {
             const color = neonColors[Math.floor(Math.random() * neonColors.length)];
@@ -4654,19 +4714,19 @@ export default class NeonDistrictTheme extends BaseTheme {
             if (Math.random() > 0.3) {
                 // 70% chance: spawn on edges (left or right side)
                 const side = Math.random() > 0.5 ? 1 : -1;
-                spawnX = side * (200 + Math.random() * 400);  // 200-600 units from center
+                spawnX = side * (200 + Math.random() * 400); // 200-600 units from center
             } else {
                 // 30% chance: full width (some will appear behind board)
                 spawnX = (Math.random() - 0.5) * 1000;
             }
-            const spawnY = Math.random() * 350;           // Full height from ground to sky
-            const spawnZ = 100 - Math.random() * 500;     // Closer to camera for visibility
+            const spawnY = Math.random() * 350; // Full height from ground to sky
+            const spawnZ = 100 - Math.random() * 500; // Closer to camera for visibility
 
             // LARGER sparks for better visibility
-            const sparkSize = 2 + Math.random() * 3;  // 2-5 units (was 0.6-1.2)
+            const sparkSize = 2 + Math.random() * 3; // 2-5 units (was 0.6-1.2)
             const geometry = new THREE.SphereGeometry(sparkSize, 8, 8);
             const material = new THREE.MeshBasicMaterial({
-                color: color,
+                color,
                 transparent: true,
                 opacity: 1.0,
                 blending: THREE.AdditiveBlending,
@@ -4685,9 +4745,9 @@ export default class NeonDistrictTheme extends BaseTheme {
                 vy: Math.sin(elevation) * speed + 10,
                 vz: Math.sin(angle) * Math.cos(elevation) * speed * 0.5, // Less Z movement
                 life: 1.0,
-                decay: 0.008 + Math.random() * 0.01,  // Slower decay = longer visibility
-                gravity: -40,  // Gentler gravity
-                color: color,
+                decay: 0.008 + Math.random() * 0.01, // Slower decay = longer visibility
+                gravity: -40, // Gentler gravity
+                color,
                 baseSize: sparkSize,
             };
 
@@ -4710,22 +4770,22 @@ export default class NeonDistrictTheme extends BaseTheme {
         ];
 
         // More sparks for higher combos
-        const count = 15 + combo * 8;  // Increased for more visible edge effects
+        const count = 15 + combo * 8; // Increased for more visible edge effects
 
         for (let i = 0; i < count; i++) {
             const color = neonColors[Math.floor(Math.random() * neonColors.length)];
 
             // ONLY spawn on far LEFT or RIGHT edges
             const side = Math.random() > 0.5 ? 1 : -1;
-            const spawnX = side * (350 + Math.random() * 300);  // 350-650 units from center (far edges)
-            const spawnY = Math.random() * 400;  // Full height
-            const spawnZ = 150 - Math.random() * 300;  // Closer to camera for maximum visibility
+            const spawnX = side * (350 + Math.random() * 300); // 350-650 units from center (far edges)
+            const spawnY = Math.random() * 400; // Full height
+            const spawnZ = 150 - Math.random() * 300; // Closer to camera for maximum visibility
 
             // LARGER, brighter sparks for edges
-            const sparkSize = 3 + Math.random() * 4;  // 3-7 units
+            const sparkSize = 3 + Math.random() * 4; // 3-7 units
             const geometry = new THREE.SphereGeometry(sparkSize, 8, 8);
             const material = new THREE.MeshBasicMaterial({
-                color: color,
+                color,
                 transparent: true,
                 opacity: 1.0,
                 blending: THREE.AdditiveBlending,
@@ -4739,13 +4799,13 @@ export default class NeonDistrictTheme extends BaseTheme {
             const speed = 15 + Math.random() * 30;
 
             spark.userData = {
-                vx: Math.cos(angle) * speed * 0.5,  // Less horizontal movement to stay on edge
-                vy: (Math.random() - 0.3) * speed + 10,  // Mostly upward
-                vz: 0,  // No depth movement
+                vx: Math.cos(angle) * speed * 0.5, // Less horizontal movement to stay on edge
+                vy: (Math.random() - 0.3) * speed + 10, // Mostly upward
+                vz: 0, // No depth movement
                 life: 1.0,
-                decay: 0.006 + Math.random() * 0.008,  // Extra slow decay
-                gravity: -30,  // Gentle gravity
-                color: color,
+                decay: 0.006 + Math.random() * 0.008, // Extra slow decay
+                gravity: -30, // Gentle gravity
+                color,
                 baseSize: sparkSize,
             };
 
@@ -4768,17 +4828,15 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         for (let arc = 0; arc < arcCount; arc++) {
             // Find two buildings at similar Z depth for this arc
-            const leftBuildings = this.buildings.filter(b => b.position.x < 0);
-            const rightBuildings = this.buildings.filter(b => b.position.x > 0);
+            const leftBuildings = this.buildings.filter((b) => b.position.x < 0);
+            const rightBuildings = this.buildings.filter((b) => b.position.x > 0);
 
             if (leftBuildings.length === 0 || rightBuildings.length === 0) return;
 
             const leftB = leftBuildings[Math.floor(Math.random() * leftBuildings.length)];
 
             // Find a right building at similar Z depth for more natural arc
-            const sameDepthBuildings = rightBuildings.filter(b =>
-                Math.abs(b.position.z - leftB.position.z) < 200
-            );
+            const sameDepthBuildings = rightBuildings.filter((b) => Math.abs(b.position.z - leftB.position.z) < 200);
             const rightB = sameDepthBuildings.length > 0
                 ? sameDepthBuildings[Math.floor(Math.random() * sameDepthBuildings.length)]
                 : rightBuildings[Math.floor(Math.random() * rightBuildings.length)];
@@ -4793,12 +4851,12 @@ export default class NeonDistrictTheme extends BaseTheme {
             const start = new THREE.Vector3(
                 leftB.position.x + 20,
                 startY,
-                arcZ + (Math.random() - 0.5) * 50
+                arcZ + (Math.random() - 0.5) * 50,
             );
             const end = new THREE.Vector3(
                 rightB.position.x - 20,
                 endY,
-                arcZ + (Math.random() - 0.5) * 50
+                arcZ + (Math.random() - 0.5) * 50,
             );
 
             // Create lightning bolt with jagged segments
@@ -4836,7 +4894,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         const color = colors[Math.floor(Math.random() * colors.length)];
 
         const material = new THREE.LineBasicMaterial({
-            color: color,
+            color,
             transparent: true,
             opacity: 1.0,
             linewidth: 2,
@@ -4863,7 +4921,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             const branchEnd = new THREE.Vector3(
                 midPoint.x + (Math.random() - 0.5) * 100,
                 midPoint.y - 30 - Math.random() * 50,
-                midPoint.z + (Math.random() - 0.5) * 50
+                midPoint.z + (Math.random() - 0.5) * 50,
             );
             this.createLightningBolt(midPoint, branchEnd, Math.floor(combo / 2));
         }
@@ -4881,7 +4939,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         const color = glitchColors[Math.floor(Math.random() * glitchColors.length)];
 
         const material = new THREE.MeshBasicMaterial({
-            color: color,
+            color,
             transparent: true,
             opacity: 0.6,
             blending: THREE.AdditiveBlending,
@@ -4892,7 +4950,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Position on LEFT or RIGHT side - avoid center where game board is
         const side = Math.random() > 0.5 ? 1 : -1;
-        const randomX = side * (150 + Math.random() * 200);  // 150-350 units from center
+        const randomX = side * (150 + Math.random() * 200); // 150-350 units from center
         const randomZ = -50 - Math.random() * 400;
         glitchWave.position.set(randomX, 400, randomZ);
         glitchWave.rotation.x = Math.PI / 2; // Horizontal
@@ -4937,9 +4995,9 @@ export default class NeonDistrictTheme extends BaseTheme {
         ];
 
         // Spawn location - spread across the ENTIRE visible city area
-        const spawnX = (Math.random() - 0.5) * 800;  // Full city width
-        const spawnY = 10 + Math.random() * 300;    // Full height range
-        const spawnZ = 50 - Math.random() * 600;    // From foreground to deep background
+        const spawnX = (Math.random() - 0.5) * 800; // Full city width
+        const spawnY = 10 + Math.random() * 300; // Full height range
+        const spawnZ = 50 - Math.random() * 600; // From foreground to deep background
 
         // Create 8-15 sparks per piece lock
         const sparkCount = 8 + Math.floor(Math.random() * 8);
@@ -4950,7 +5008,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             // Spark geometry - small glowing point
             const geometry = new THREE.SphereGeometry(0.8 + Math.random() * 0.8, 6, 6);
             const material = new THREE.MeshBasicMaterial({
-                color: color,
+                color,
                 transparent: true,
                 opacity: 1.0,
                 blending: THREE.AdditiveBlending,
@@ -4962,7 +5020,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             spark.position.set(
                 spawnX + (Math.random() - 0.5) * 10,
                 spawnY + (Math.random() - 0.5) * 10,
-                spawnZ + (Math.random() - 0.5) * 10
+                spawnZ + (Math.random() - 0.5) * 10,
             );
 
             // Velocity - burst outward in all directions
@@ -4977,7 +5035,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                 life: 1.0,
                 decay: 0.015 + Math.random() * 0.02,
                 gravity: -80, // Gravity pulls sparks down
-                color: color,
+                color,
             };
 
             this.scene.add(spark);
@@ -4994,7 +5052,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Create a larger, quickly fading glow sphere
         const geometry = new THREE.SphereGeometry(8, 12, 12);
         const material = new THREE.MeshBasicMaterial({
-            color: color,
+            color,
             transparent: true,
             opacity: 0.8,
             blending: THREE.AdditiveBlending,
@@ -5069,9 +5127,9 @@ export default class NeonDistrictTheme extends BaseTheme {
 
                 // Trail effect - stretch based on velocity
                 const speed = Math.sqrt(
-                    spark.userData.vx ** 2 +
-                    spark.userData.vy ** 2 +
-                    spark.userData.vz ** 2
+                    spark.userData.vx ** 2
+                    + spark.userData.vy ** 2
+                    + spark.userData.vz ** 2,
                 );
                 if (speed > 20) {
                     spark.scale.y = 1 + speed * 0.01;
@@ -5190,9 +5248,8 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.camera.position.set(
             this.cameraBasePosition.x + swayX,
             this.cameraBasePosition.y + swayY,
-            this.cameraBasePosition.z + swayZ
+            this.cameraBasePosition.z + swayZ,
         );
-
 
         // LookAt sway - subtle rotation of view target
         const lookSwayX = Math.sin(t * 0.1 + 0.8) * this.cameraLookAtSway.x;
@@ -5215,7 +5272,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.camera.lookAt(
             this.cameraBaseLookAt.x + lookSwayX,
             dynamicLookY,
-            this.cameraBaseLookAt.z
+            this.cameraBaseLookAt.z,
         );
 
         // Breathing Motion (FOV Oscillation)
@@ -5229,10 +5286,10 @@ export default class NeonDistrictTheme extends BaseTheme {
      * Updates VHS billboards - shader time, texture cycling, and glitch effects
      */
     updateVHSBillboards(delta) {
-        this.vhsBillboards.forEach(billboard => {
+        this.vhsBillboards.forEach((billboard) => {
             if (!billboard.material?.uniforms) return;
 
-            const uniforms = billboard.material.uniforms;
+            const { uniforms } = billboard.material;
             const data = billboard.userData;
 
             // Update shader time
@@ -5306,14 +5363,14 @@ export default class NeonDistrictTheme extends BaseTheme {
             if (sign.userData.flickerPhase !== undefined) {
                 // Simple flicker effect
                 const flicker = Math.sin(this.time * sign.userData.flickerSpeed + sign.userData.flickerPhase);
-                const flickerAmount = sign.userData.flickerAmount;
+                const { flickerAmount } = sign.userData;
 
                 if (sign.material.opacity !== undefined) {
                     // Include combo surge intensity for dramatic flare during combos
                     const surgeBoost = this.neonSignSurgeIntensity * 0.4;
                     sign.material.opacity = Math.min(
                         0.7 + flicker * flickerAmount + this.lightPulseIntensity * 0.3 + surgeBoost,
-                        1.0
+                        1.0,
                     );
                 }
             }
@@ -5359,7 +5416,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.streetLights.forEach((light) => {
             // OPTIMIZED: InstancedMesh processing for lanterns
             if (light.isInstancedMesh && light.userData.instances) {
-                const count = light.count;
+                const { count } = light;
                 const dummy = this.vehicleHelper || new THREE.Object3D();
 
                 // Update every instance
@@ -5404,7 +5461,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                 light.position.y = light.userData.initialY + floatY * 2.5;
 
                 // Subtle rotation
-                light.rotation.y += 0.02;  // Increased to compensate for throttling
+                light.rotation.y += 0.02; // Increased to compensate for throttling
             }
         });
     }
@@ -5519,7 +5576,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Dispose shared spinner resources
         if (this.spinnerResources) {
-            Object.values(this.spinnerResources).forEach(resource => {
+            Object.values(this.spinnerResources).forEach((resource) => {
                 if (resource && typeof resource.dispose === 'function') {
                     resource.dispose();
                 }

@@ -65,9 +65,9 @@ function createLeafTexture() {
     ctx.moveTo(0, 30); ctx.lineTo(0, -26);
     // Vein lengths decrease as we go higher to stay within leaf shape
     const veinConfigs = [
-        { y: 10, xEnd: 16, yOffset: -10 },   // Bottom vein - longest
-        { y: 0, xEnd: 14, yOffset: -10 },    // Middle vein
-        { y: -10, xEnd: 10, yOffset: -6 },   // Top vein - shortest to stay in leaf
+        { y: 10, xEnd: 16, yOffset: -10 }, // Bottom vein - longest
+        { y: 0, xEnd: 14, yOffset: -10 }, // Middle vein
+        { y: -10, xEnd: 10, yOffset: -6 }, // Top vein - shortest to stay in leaf
     ];
     for (const vein of veinConfigs) {
         ctx.moveTo(0, vein.y); ctx.lineTo(vein.xEnd, vein.y + vein.yOffset);
@@ -91,7 +91,7 @@ function createBarkPBRTextures() {
     const roughnessCanvas = document.createElement('canvas');
     const aoCanvas = document.createElement('canvas');
 
-    [colorCanvas, heightCanvas, normalCanvas, roughnessCanvas, aoCanvas].forEach(c => {
+    [colorCanvas, heightCanvas, normalCanvas, roughnessCanvas, aoCanvas].forEach((c) => {
         c.width = SIZE;
         c.height = SIZE;
     });
@@ -148,26 +148,38 @@ function createBarkPBRTextures() {
             heightCtx.moveTo(0, -scaleH * 0.45);
             // Top curve
             heightCtx.bezierCurveTo(
-                scaleW * 0.4, -scaleH * 0.4,
-                scaleW * 0.5, -scaleH * 0.1,
-                scaleW * 0.45, scaleH * 0.2
+                scaleW * 0.4,
+                -scaleH * 0.4,
+                scaleW * 0.5,
+                -scaleH * 0.1,
+                scaleW * 0.45,
+                scaleH * 0.2,
             );
             // Right side curve down
             heightCtx.bezierCurveTo(
-                scaleW * 0.4, scaleH * 0.4,
-                scaleW * 0.15, scaleH * 0.5,
-                0, scaleH * 0.45
+                scaleW * 0.4,
+                scaleH * 0.4,
+                scaleW * 0.15,
+                scaleH * 0.5,
+                0,
+                scaleH * 0.45,
             );
             // Left side mirror
             heightCtx.bezierCurveTo(
-                -scaleW * 0.15, scaleH * 0.5,
-                -scaleW * 0.4, scaleH * 0.4,
-                -scaleW * 0.45, scaleH * 0.2
+                -scaleW * 0.15,
+                scaleH * 0.5,
+                -scaleW * 0.4,
+                scaleH * 0.4,
+                -scaleW * 0.45,
+                scaleH * 0.2,
             );
             heightCtx.bezierCurveTo(
-                -scaleW * 0.5, -scaleH * 0.1,
-                -scaleW * 0.4, -scaleH * 0.4,
-                0, -scaleH * 0.45
+                -scaleW * 0.5,
+                -scaleH * 0.1,
+                -scaleW * 0.4,
+                -scaleH * 0.4,
+                0,
+                -scaleH * 0.45,
             );
             heightCtx.closePath();
             heightCtx.fill();
@@ -208,7 +220,8 @@ function createBarkPBRTextures() {
         heightCtx.moveTo(startX, startY);
 
         // Draw irregular crack path
-        let px = startX, py = startY;
+        let px = startX; let
+            py = startY;
         const segments = 3 + Math.floor(Math.random() * 5);
         const isVertical = Math.random() > 0.3; // More vertical cracks like real bark
 
@@ -422,11 +435,21 @@ function createBarkPBRTextures() {
 // Quality Presets
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
-    Extreme: { leafCount: 4000, treeCount: 150, emberCount: 400, streakCount: 300, vortexCount: 300, enablePost: true, bloomStrength: 0.5 },
-    Ultra: { leafCount: 3000, treeCount: 100, emberCount: 300, streakCount: 200, vortexCount: 200, enablePost: true, bloomStrength: 0.4 },
-    High: { leafCount: 2000, treeCount: 80, emberCount: 200, streakCount: 150, vortexCount: 150, enablePost: true, bloomStrength: 0.35 },
-    Medium: { leafCount: 1000, treeCount: 40, emberCount: 100, streakCount: 80, vortexCount: 80, enablePost: true, bloomStrength: 0.3 },
-    Low: { leafCount: 500, treeCount: 20, emberCount: 50, streakCount: 40, vortexCount: 40, enablePost: false, bloomStrength: 0.2 },
+    Extreme: {
+        leafCount: 4000, treeCount: 150, emberCount: 400, streakCount: 300, vortexCount: 300, enablePost: true, bloomStrength: 0.5,
+    },
+    Ultra: {
+        leafCount: 3000, treeCount: 100, emberCount: 300, streakCount: 200, vortexCount: 200, enablePost: true, bloomStrength: 0.4,
+    },
+    High: {
+        leafCount: 2000, treeCount: 80, emberCount: 200, streakCount: 150, vortexCount: 150, enablePost: true, bloomStrength: 0.35,
+    },
+    Medium: {
+        leafCount: 1000, treeCount: 40, emberCount: 100, streakCount: 80, vortexCount: 80, enablePost: true, bloomStrength: 0.3,
+    },
+    Low: {
+        leafCount: 500, treeCount: 20, emberCount: 50, streakCount: 40, vortexCount: 40, enablePost: false, bloomStrength: 0.2,
+    },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -501,7 +524,7 @@ const InstancedLeafShader = {
             vec3 finalColor = albedo * (0.5 + 0.5 * vLighting);
             gl_FragColor = vec4(finalColor, 1.0);
         }
-    `
+    `,
 };
 
 const StreakShader = {
@@ -575,7 +598,7 @@ const EmberShader = {
             vec3 col = mix(vec3(1.0, 0.3, 0.0), vec3(1.0, 0.8, 0.3), 1.0 - length(uv)*2.0);
             gl_FragColor = vec4(col, vAlpha);
         }
-    `
+    `,
 };
 
 // TreeTrunkShader removed (Using MeshStandardMaterial)
@@ -694,7 +717,7 @@ export default class FallTheme extends BaseTheme {
                 uMid: { value: new THREE.Color(0xaa4400) }, // Rich Sunset Orange
                 uBot: { value: new THREE.Color(0x050200) }, // Almost Black Bottom
             },
-            vertexShader: `varying vec3 vPos; void main(){vPos=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+            vertexShader: 'varying vec3 vPos; void main(){vPos=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
             fragmentShader: `
                 uniform vec3 uTop; uniform vec3 uMid; uniform vec3 uBot; varying vec3 vPos;
                 void main() {
@@ -705,7 +728,7 @@ export default class FallTheme extends BaseTheme {
                     gl_FragColor = vec4(col, 1.0);
                 }
             `,
-            side: THREE.BackSide
+            side: THREE.BackSide,
         });
         this.scene.add(new THREE.Mesh(geo, mat));
     }
@@ -736,20 +759,30 @@ export default class FallTheme extends BaseTheme {
             displacementScale: 25.0,
             metalness: 0.0,
             color: 0x8a5535,
-            side: THREE.FrontSide
+            side: THREE.FrontSide,
         });
 
         this.treeTrunks = new THREE.Group();
 
         const treeConfigs = [
-            { x: -500, z: -600, ry: 0.5, rz: 0.1 },  // Left Hero
-            { x: 500, z: -600, ry: 2.0, rz: -0.1 }, // Right Hero
-            { x: -200, z: -1200, ry: 1.0, rz: 0.05 }, // Mid-Left Deep
-            { x: 200, z: -1400, ry: 3.5, rz: -0.05 }, // Mid-Right Deep
-            { x: 0, z: -1800, ry: 0.0, rz: 0.0 }   // Center Deep
+            {
+                x: -500, z: -600, ry: 0.5, rz: 0.1,
+            }, // Left Hero
+            {
+                x: 500, z: -600, ry: 2.0, rz: -0.1,
+            }, // Right Hero
+            {
+                x: -200, z: -1200, ry: 1.0, rz: 0.05,
+            }, // Mid-Left Deep
+            {
+                x: 200, z: -1400, ry: 3.5, rz: -0.05,
+            }, // Mid-Right Deep
+            {
+                x: 0, z: -1800, ry: 0.0, rz: 0.0,
+            }, // Center Deep
         ];
 
-        treeConfigs.forEach(cfg => {
+        treeConfigs.forEach((cfg) => {
             const mesh = new THREE.Mesh(geo, mat);
             mesh.position.set(cfg.x, -200, cfg.z);
             mesh.rotation.y = cfg.ry;
@@ -815,11 +848,12 @@ export default class FallTheme extends BaseTheme {
         const mat = new THREE.ShaderMaterial({
             uniforms: {
                 ...InstancedLeafShader.uniforms,
-                uTexture: { value: this.texture }
+                uTexture: { value: this.texture },
             },
             vertexShader: InstancedLeafShader.vertexShader,
             fragmentShader: InstancedLeafShader.fragmentShader,
-            transparent: true, side: THREE.DoubleSide
+            transparent: true,
+            side: THREE.DoubleSide,
         });
 
         this.instancedLeaves = new THREE.InstancedMesh(geo, mat, count);
@@ -844,8 +878,12 @@ export default class FallTheme extends BaseTheme {
         geo.setAttribute('speed', new THREE.BufferAttribute(spd, 1));
 
         const mat = new THREE.ShaderMaterial({
-            uniforms: StreakShader.uniforms, vertexShader: StreakShader.vertexShader, fragmentShader: StreakShader.fragmentShader,
-            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+            uniforms: StreakShader.uniforms,
+            vertexShader: StreakShader.vertexShader,
+            fragmentShader: StreakShader.fragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
         });
         this.windStreaks = new THREE.Points(geo, mat);
         this.windStreaks.visible = false;
@@ -869,8 +907,12 @@ export default class FallTheme extends BaseTheme {
         geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
         geo.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
         const mat = new THREE.ShaderMaterial({
-            uniforms: EmberShader.uniforms, vertexShader: EmberShader.vertexShader, fragmentShader: EmberShader.fragmentShader,
-            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+            uniforms: EmberShader.uniforms,
+            vertexShader: EmberShader.vertexShader,
+            fragmentShader: EmberShader.fragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
         });
         this.embers = new THREE.Points(geo, mat);
         this.emberData = { vel: new Float32Array(count * 3) };
@@ -891,11 +933,18 @@ export default class FallTheme extends BaseTheme {
         geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
         geo.setAttribute('life', new THREE.BufferAttribute(life, 1));
         const mat = new THREE.PointsMaterial({
-            color: 0xffaa00, size: 25, transparent: true, opacity: 1,
-            map: this.texture, depthWrite: false, blending: THREE.AdditiveBlending
+            color: 0xffaa00,
+            size: 25,
+            transparent: true,
+            opacity: 1,
+            map: this.texture,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
         });
         this.burstParticles = new THREE.Points(geo, mat);
-        this.burstData = { pos, vel: new Float32Array(max * 3), life, active: [], next: 0 };
+        this.burstData = {
+            pos, vel: new Float32Array(max * 3), life, active: [], next: 0,
+        };
         this.scene.add(this.burstParticles);
     }
 
@@ -923,7 +972,9 @@ export default class FallTheme extends BaseTheme {
             uniforms: { ...VortexShader.uniforms, uCenter: { value: new THREE.Vector3(x, y, z) }, uIntensity: { value: 1.0 } },
             vertexShader: VortexShader.vertexShader,
             fragmentShader: VortexShader.fragmentShader,
-            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
         });
         const mesh = new THREE.Points(geo, mat);
         mesh.userData = { life: 1.0 };
@@ -954,14 +1005,16 @@ export default class FallTheme extends BaseTheme {
         this.composer.addPass(new RenderPass(this.scene, this.camera));
         this.composer.addPass(new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
-            this.qualityPreset.bloomStrength, 0.5, 0.6
+            this.qualityPreset.bloomStrength,
+            0.5,
+            0.6,
         ));
     }
 
     setupEventListeners() {
         this.eventUnsubscribers = [
-            eventBus.on(EVENTS.LINE_CLEAR, d => this.onLineClear(d)),
-            eventBus.on(EVENTS.COMBO, d => this.onCombo(d))
+            eventBus.on(EVENTS.LINE_CLEAR, (d) => this.onLineClear(d)),
+            eventBus.on(EVENTS.COMBO, (d) => this.onCombo(d)),
         ];
         window.addEventListener('resize', () => this.resize(window.innerWidth, window.innerHeight));
     }
@@ -1049,7 +1102,7 @@ export default class FallTheme extends BaseTheme {
         if (!this.instancedLeaves) return;
         const attr = this.instancedLeaves.geometry.attributes.offsetPos;
         const arr = attr.array;
-        const vel = this.leafData.vel;
+        const { vel } = this.leafData;
         const c = this.leafData.count;
         const windX = this.windForce * delta;
 
@@ -1088,7 +1141,7 @@ export default class FallTheme extends BaseTheme {
     updateEmbers(delta) {
         if (!this.embers) return;
         const arr = this.embers.geometry.attributes.position.array;
-        const vel = this.emberData.vel;
+        const { vel } = this.emberData;
         for (let i = 0; i < this.qualityPreset.emberCount; i++) {
             arr[i * 3 + 1] += vel[i * 3 + 1] * delta;
             if (arr[i * 3 + 1] > 400) arr[i * 3 + 1] = -400;
@@ -1134,7 +1187,7 @@ export default class FallTheme extends BaseTheme {
     }
 
     stop() {
-        this.eventUnsubscribers.forEach(u => u && u());
+        this.eventUnsubscribers.forEach((u) => u && u());
         super.stop();
     }
 

@@ -7,7 +7,7 @@ export class BreathworkAudioManager {
         this.voiceAudio = new Audio();
         this.cueAudio = new Audio();
 
-        this.basePath = import.meta.env.BASE_URL + 'assets/audio/breathwork/';
+        this.basePath = `${import.meta.env.BASE_URL}assets/audio/breathwork/`;
         this.isEnabled = true;
         this.voiceVolume = 0.8;
         this.cueVolume = 0.6;
@@ -36,10 +36,10 @@ export class BreathworkAudioManager {
         // Extract all unique audio paths from phases
         const pathsToLoad = new Set();
 
-        sessionPhaseData.phases.forEach(phase => {
+        sessionPhaseData.phases.forEach((phase) => {
             if (phase.audio) {
-                if (phase.audio.voice) pathsToLoad.add('voices/' + phase.audio.voice);
-                if (phase.audio.transition) pathsToLoad.add('voices/' + phase.audio.transition);
+                if (phase.audio.voice) pathsToLoad.add(`voices/${phase.audio.voice}`);
+                if (phase.audio.transition) pathsToLoad.add(`voices/${phase.audio.transition}`);
                 if (phase.audio.cue) pathsToLoad.add(phase.audio.cue);
                 if (phase.audio.cues) {
                     // Handle object format { in: '...', out: '...' }
@@ -47,7 +47,7 @@ export class BreathworkAudioManager {
                     if (phase.audio.cues.out) pathsToLoad.add(phase.audio.cues.out);
                 }
                 if (phase.audio.fillers) {
-                    phase.audio.fillers.forEach(filler => pathsToLoad.add('voices/' + filler));
+                    phase.audio.fillers.forEach((filler) => pathsToLoad.add(`voices/${filler}`));
                 }
             }
         });
@@ -93,7 +93,7 @@ export class BreathworkAudioManager {
     playVoice(relativePath) {
         if (!this.isEnabled || !relativePath) return;
 
-        const fullPath = this.basePath + 'voices/' + relativePath;
+        const fullPath = `${this.basePath}voices/${relativePath}`;
 
         // Clear any pending state
         this.isVoicePending = false;
@@ -115,7 +115,7 @@ export class BreathworkAudioManager {
         this.isVoicePlaying = true; // Track voice playing state
         console.log(`[AudioManager] Playing voice: ${relativePath}`);
 
-        this.voiceAudio.play().catch(e => {
+        this.voiceAudio.play().catch((e) => {
             this.isVoicePlaying = false;
             console.warn('[AudioManager] Play failed:', e);
         });
@@ -139,7 +139,7 @@ export class BreathworkAudioManager {
             return;
         }
 
-        const fullPath = this.basePath + 'voices/' + relativePath;
+        const fullPath = `${this.basePath}voices/${relativePath}`;
 
         // Clear any pending state
         this.isVoicePending = false;
@@ -161,7 +161,7 @@ export class BreathworkAudioManager {
         this.isVoicePlaying = true;
         console.log(`[AudioManager] Playing voice (chained): ${relativePath}`);
 
-        this.voiceAudio.play().catch(e => {
+        this.voiceAudio.play().catch((e) => {
             this.isVoicePlaying = false;
             console.warn('[AudioManager] Play failed:', e);
             if (onComplete) onComplete(); // Still call callback on failure
@@ -211,7 +211,7 @@ export class BreathworkAudioManager {
         this.cueAudio.src = fullPath;
         this.cueAudio.volume = this.cueVolume;
 
-        this.cueAudio.play().catch(e => console.warn('[AudioManager] Cue failed:', e));
+        this.cueAudio.play().catch((e) => console.warn('[AudioManager] Cue failed:', e));
     }
 
     /**

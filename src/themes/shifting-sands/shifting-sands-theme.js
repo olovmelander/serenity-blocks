@@ -24,7 +24,6 @@ import {
     sandSmokeFragmentShader,
 } from './shifting-sands-shaders.js';
 
-
 // --- Perlin Noise Implementation ---
 class PerlinNoise {
     constructor(seed = Math.random()) {
@@ -35,36 +34,46 @@ class PerlinNoise {
         this.gradients = [
             [1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0],
             [1, 0, 1], [-1, 0, 1], [1, 0, -1], [-1, 0, -1],
-            [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1]
+            [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1],
         ];
         for (let i = 0; i < 512; i++) {
             this.perm[i] = p[i & 255];
             this.gradP[i] = this.gradients[this.perm[i] % 12];
         }
     }
+
     fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+
     lerp(a, b, t) { return (1 - t) * a + t * b; }
+
     grad(hash, x, y, z) {
         const g = this.gradP[hash];
         return g[0] * x + g[1] * y + g[2] * z;
     }
+
     noise(x, y, z = 0) {
         const X = Math.floor(x) & 255;
         const Y = Math.floor(y) & 255;
         const Z = Math.floor(z) & 255;
         x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
-        const u = this.fade(x), v = this.fade(y), w = this.fade(z);
-        const A = this.perm[X] + Y, AA = this.perm[A] + Z, AB = this.perm[A + 1] + Z;
-        const B = this.perm[X + 1] + Y, BA = this.perm[B] + Z, BB = this.perm[B + 1] + Z;
+        const u = this.fade(x); const v = this.fade(y); const
+            w = this.fade(z);
+        const A = this.perm[X] + Y; const AA = this.perm[A] + Z; const
+            AB = this.perm[A + 1] + Z;
+        const B = this.perm[X + 1] + Y; const BA = this.perm[B] + Z; const
+            BB = this.perm[B + 1] + Z;
         return this.lerp(
             this.lerp(
                 this.lerp(this.grad(this.perm[AA], x, y, z), this.grad(this.perm[BA], x - 1, y, z), u),
-                this.lerp(this.grad(this.perm[AB], x, y - 1, z), this.grad(this.perm[BB], x - 1, y - 1, z), u), v
+                this.lerp(this.grad(this.perm[AB], x, y - 1, z), this.grad(this.perm[BB], x - 1, y - 1, z), u),
+                v,
             ),
             this.lerp(
                 this.lerp(this.grad(this.perm[AA + 1], x, y, z - 1), this.grad(this.perm[BA + 1], x - 1, y, z - 1), u),
-                this.lerp(this.grad(this.perm[AB + 1], x, y - 1, z - 1), this.grad(this.perm[BB + 1], x - 1, y - 1, z - 1), u), v
-            ), w
+                this.lerp(this.grad(this.perm[AB + 1], x, y - 1, z - 1), this.grad(this.perm[BB + 1], x - 1, y - 1, z - 1), u),
+                v,
+            ),
+            w,
         );
     }
 }
@@ -85,12 +94,12 @@ export default class ShiftingSandsTheme extends BaseTheme {
         // Scene elements
         this.sky = null;
         this.stars = null;
-        this.moonSprites = [];  // Twin moons of Arrakis
+        this.moonSprites = []; // Twin moons of Arrakis
         this.dunes = null;
         this.distantMountains = null;
         this.spiceParticles = null;
         this.dustHaze = null;
-        this.sandSmoke = null;  // Volumetric sand smoke
+        this.sandSmoke = null; // Volumetric sand smoke
 
         // DUNE-specific elements
         this.blueGlowOverlay = null; // Blue-within-blue glow effect
@@ -116,23 +125,23 @@ export default class ShiftingSandsTheme extends BaseTheme {
             spiceIntensity: { value: 1.0 },
             dustDensity: { value: 0.3 },
             heatShimmerStrength: { value: 0.006 }, // Boosted from 0.003
-            blueGlowIntensity: { value: 0 },       // Blue-within-blue glow
-            wormHeatIntensity: { value: 0 },       // Underground heat effect
+            blueGlowIntensity: { value: 0 }, // Blue-within-blue glow
+            wormHeatIntensity: { value: 0 }, // Underground heat effect
         };
 
         // Procedural Generation Config - Larger, more dramatic Arrakis dunes
         this.terrainConfig = {
             noiseScale: {
-                dunes: 0.003,      // Larger wavelength for massive dunes
+                dunes: 0.003, // Larger wavelength for massive dunes
                 secondary: 0.012,
-                detail: 0.08
+                detail: 0.08,
             },
             heightScale: {
-                dunes: 45,         // Taller dunes
+                dunes: 45, // Taller dunes
                 secondary: 15,
-                detail: 3
+                detail: 3,
             },
-            duneDirection: Math.PI * 0.2  // Prevailing wind direction
+            duneDirection: Math.PI * 0.2, // Prevailing wind direction
         };
 
         this.noiseGenerator = new PerlinNoise(Math.random());
@@ -142,15 +151,15 @@ export default class ShiftingSandsTheme extends BaseTheme {
         // ARRAKIS COLOR PALETTE - Harsh Desert Tones
         this.palette = {
             // Sky - harsh orange/amber sunset tones
-            skyTop: new THREE.Color(0x1a0a05),      // Deep dark brown-black
-            skyMid: new THREE.Color(0x4a2010),      // Burnt orange
-            skyBottom: new THREE.Color(0x8b4513),   // Saddle brown
-            skyHorizon: new THREE.Color(0xd4a574),  // Desert tan
+            skyTop: new THREE.Color(0x1a0a05), // Deep dark brown-black
+            skyMid: new THREE.Color(0x4a2010), // Burnt orange
+            skyBottom: new THREE.Color(0x8b4513), // Saddle brown
+            skyHorizon: new THREE.Color(0xd4a574), // Desert tan
 
             // Sand - golden Arrakis tones
-            sandA: new THREE.Color(0x3d2814),       // Deep shadow (cool brown)
-            sandB: new THREE.Color(0xc4a35a),       // Golden sand (warm)
-            sandC: new THREE.Color(0xf5deb3),       // Wheat highlights
+            sandA: new THREE.Color(0x3d2814), // Deep shadow (cool brown)
+            sandB: new THREE.Color(0xc4a35a), // Golden sand (warm)
+            sandC: new THREE.Color(0xf5deb3), // Wheat highlights
 
             // Sand Smoke
             sandSmoke: new THREE.Color(0xc4a35a),
@@ -162,8 +171,8 @@ export default class ShiftingSandsTheme extends BaseTheme {
             moonHalo: new THREE.Color(0xffaa77),
 
             // Spice
-            spiceCore: new THREE.Color(0xff6600),   // Bright orange
-            spiceGlow: new THREE.Color(0xff9933),   // Amber
+            spiceCore: new THREE.Color(0xff6600), // Bright orange
+            spiceGlow: new THREE.Color(0xff9933), // Amber
             spiceParticle: new THREE.Color(0xffaa44),
 
             // Distant Mountains
@@ -171,37 +180,67 @@ export default class ShiftingSandsTheme extends BaseTheme {
             rockMid: new THREE.Color(0x5a4020),
 
             // Atmosphere
-            fog: new THREE.Color(0x3d2814),         // Dusty brown
-            haze: new THREE.Color(0x8b6914),        // Golden haze
-            dustStorm: new THREE.Color(0xc4a35a),   // Storm color
+            fog: new THREE.Color(0x3d2814), // Dusty brown
+            haze: new THREE.Color(0x8b6914), // Golden haze
+            dustStorm: new THREE.Color(0xc4a35a), // Storm color
         };
 
         // Quality presets - Arrakis elements (OPTIMIZED particle counts)
         this.currentQuality = 'High';
         this.qualityPresets = {
             Minimal: {
-                starCount: 300, duneRes: 64, spiceParticleCount: 400, dustParticleCount: 150,
-                sandSmokeCount: 20, enableHeatShimmer: false, enableComboEffects: false
+                starCount: 300,
+                duneRes: 64,
+                spiceParticleCount: 400,
+                dustParticleCount: 150,
+                sandSmokeCount: 20,
+                enableHeatShimmer: false,
+                enableComboEffects: false,
             },
             Low: {
-                starCount: 500, duneRes: 96, spiceParticleCount: 800, dustParticleCount: 300,
-                sandSmokeCount: 35, enableHeatShimmer: false, enableComboEffects: true
+                starCount: 500,
+                duneRes: 96,
+                spiceParticleCount: 800,
+                dustParticleCount: 300,
+                sandSmokeCount: 35,
+                enableHeatShimmer: false,
+                enableComboEffects: true,
             },
             Medium: {
-                starCount: 800, duneRes: 128, spiceParticleCount: 1500, dustParticleCount: 450,
-                sandSmokeCount: 60, enableHeatShimmer: true, enableComboEffects: true
+                starCount: 800,
+                duneRes: 128,
+                spiceParticleCount: 1500,
+                dustParticleCount: 450,
+                sandSmokeCount: 60,
+                enableHeatShimmer: true,
+                enableComboEffects: true,
             },
             High: {
-                starCount: 1200, duneRes: 196, spiceParticleCount: 2000, dustParticleCount: 600,
-                sandSmokeCount: 100, enableHeatShimmer: true, enableComboEffects: true
+                starCount: 1200,
+                duneRes: 196,
+                spiceParticleCount: 2000,
+                dustParticleCount: 600,
+                sandSmokeCount: 100,
+                enableHeatShimmer: true,
+                enableComboEffects: true,
             },
             Ultra: {
-                starCount: 2000, duneRes: 256, spiceParticleCount: 3000, dustParticleCount: 800,
-                sandSmokeCount: 150, enableHeatShimmer: true, enableComboEffects: true
+                starCount: 2000,
+                duneRes: 256,
+                spiceParticleCount: 3000,
+                dustParticleCount: 800,
+                sandSmokeCount: 150,
+                enableHeatShimmer: true,
+                enableComboEffects: true,
             },
             Extreme: {
-                starCount: 3000, duneRes: 350, spiceParticleCount: 5000, dustParticleCount: 1000,
-                sandSmokeCount: 250, enableHeatShimmer: true, enableComboEffects: true
+                starCount: 3000,
+                duneRes: 350,
+                spiceParticleCount: 5000,
+                dustParticleCount: 1000,
+                sandSmokeCount: 250,
+                enableHeatShimmer: true,
+                enableComboEffects: true,
             },
         };
 
@@ -314,18 +353,18 @@ export default class ShiftingSandsTheme extends BaseTheme {
         // Create Arrakis Elements
         this.createSky();
         this.createStars();
-        this.createTwinMoons();          // Twin moons of Arrakis
-        this.createDistantMountains();   // New Distant Dunes Horizon
-        this.createDunes();              // Vast procedural desert
-        this.createSpiceParticles();     // The spice must flow
-        this.createDustHaze();           // Atmospheric dust
-        this.createSandSmoke();          // Volumetric sand smoke
+        this.createTwinMoons(); // Twin moons of Arrakis
+        this.createDistantMountains(); // New Distant Dunes Horizon
+        this.createDunes(); // Vast procedural desert
+        this.createSpiceParticles(); // The spice must flow
+        this.createDustHaze(); // Atmospheric dust
+        this.createSandSmoke(); // Volumetric sand smoke
 
         // DUNE-specific effects
-        this.createBlueGlowOverlay();    // Blue-within-blue effect
+        this.createBlueGlowOverlay(); // Blue-within-blue effect
 
         this.setupLighting();
-        this.setupPostProcessing();      // Heat shimmer effect
+        this.setupPostProcessing(); // Heat shimmer effect
 
         this.setupEventListeners();
         window.addEventListener('resize', this.onWindowResize.bind(this));
@@ -411,11 +450,11 @@ export default class ShiftingSandsTheme extends BaseTheme {
         const makeMoonSprite = (scale, opacity, color, position) => {
             const s = new THREE.Sprite(new THREE.SpriteMaterial({
                 map: moonTex,
-                color: color,
+                color,
                 transparent: true,
-                opacity: opacity,
+                opacity,
                 blending: THREE.AdditiveBlending,
-                depthWrite: false
+                depthWrite: false,
             }));
             s.scale.set(scale, scale, 1);
             s.position.copy(position);
@@ -443,8 +482,12 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
         // Create layered distant dunes resembling mountains
         const layers = [
-            { z: -250, color: this.palette.rockMid, scaleX: 0.005, scaleY: 40, offsetY: -5 },
-            { z: -350, color: this.palette.rockDark, scaleX: 0.003, scaleY: 60, offsetY: -10 },
+            {
+                z: -250, color: this.palette.rockMid, scaleX: 0.005, scaleY: 40, offsetY: -5,
+            },
+            {
+                z: -350, color: this.palette.rockDark, scaleX: 0.003, scaleY: 60, offsetY: -10,
+            },
         ];
 
         layers.forEach((layer) => {
@@ -472,7 +515,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 color: layer.color,
                 transparent: true,
                 opacity: 0.9,
-                fog: true
+                fog: true,
             });
 
             const mesh = new THREE.Mesh(geometry, material);
@@ -496,11 +539,11 @@ export default class ShiftingSandsTheme extends BaseTheme {
         h *= this.terrainConfig.heightScale.dunes;
 
         // 2. Secondary shape - rolling hills
-        let h2 = this.noiseGenerator.noise(x * this.terrainConfig.noiseScale.secondary, z * this.terrainConfig.noiseScale.secondary + 100);
+        const h2 = this.noiseGenerator.noise(x * this.terrainConfig.noiseScale.secondary, z * this.terrainConfig.noiseScale.secondary + 100);
         h += h2 * this.terrainConfig.heightScale.secondary;
 
         // 3. Fine detail - sand ripples
-        let h3 = this.noiseGenerator.noise(x * this.terrainConfig.noiseScale.detail, z * this.terrainConfig.noiseScale.detail);
+        const h3 = this.noiseGenerator.noise(x * this.terrainConfig.noiseScale.detail, z * this.terrainConfig.noiseScale.detail);
         h += h3 * this.terrainConfig.heightScale.detail;
 
         // 4. Asymmetric dune profiles (windward vs slip face)
@@ -567,7 +610,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
             const col = new THREE.Color().lerpColors(
                 this.palette.spiceParticle,
                 this.palette.spiceCore,
-                Math.random()
+                Math.random(),
             );
             colors[i * 3] = col.r;
             colors[i * 3 + 1] = col.g;
@@ -642,7 +685,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
         for (let i = 0; i < count; i++) {
             // Spread across the view
-            const x = (Math.random() - 0.5) * 2000;  // Tighter X spread
+            const x = (Math.random() - 0.5) * 2000; // Tighter X spread
             const y = 0; // Height set by shader
             const z = -2000 + Math.random() * 2800; // -2000 to +800 coverage
 
@@ -806,16 +849,16 @@ export default class ShiftingSandsTheme extends BaseTheme {
         if (this.camera) {
             // Multi-layered organic motion
             let camX = this.baseCameraPos.x
-                + Math.sin(elapsed * 0.08) * 12        // Slow side-to-side sweep
-                + Math.sin(elapsed * 0.23) * 4;        // Faster subtle drift
+                + Math.sin(elapsed * 0.08) * 12 // Slow side-to-side sweep
+                + Math.sin(elapsed * 0.23) * 4; // Faster subtle drift
 
             let camY = this.baseCameraPos.y
-                + Math.cos(elapsed * 0.05) * 3         // Gentle vertical bob
-                + Math.sin(elapsed * 0.17) * 1.5;      // Secondary bob
+                + Math.cos(elapsed * 0.05) * 3 // Gentle vertical bob
+                + Math.sin(elapsed * 0.17) * 1.5; // Secondary bob
 
             let camZ = this.baseCameraPos.z
-                + Math.sin(elapsed * 0.11) * 8         // Slow forward/back drift
-                + Math.cos(elapsed * 0.31) * 3;        // Faster subtle pulse
+                + Math.sin(elapsed * 0.11) * 8 // Slow forward/back drift
+                + Math.cos(elapsed * 0.31) * 3; // Faster subtle pulse
 
             // Apply camera shake
             if (this.cameraShake.duration > 0) {
@@ -875,13 +918,13 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
     // --- EVENTS ---
     setupEventListeners() {
-        const sub = (evt, fn) => this.eventUnsubscribers.push(eventBus.on(evt, d => {
+        const sub = (evt, fn) => this.eventUnsubscribers.push(eventBus.on(evt, (d) => {
             const s = window.settings;
             if (this.isActive && s?.backgroundComboEffects !== false) fn(d);
         }));
 
-        sub(EVENTS.LINE_CLEAR, d => this.onLineClear(d.lineCount));
-        sub(EVENTS.COMBO, d => this.onCombo(d.comboCount));
+        sub(EVENTS.LINE_CLEAR, (d) => this.onLineClear(d.lineCount));
+        sub(EVENTS.COMBO, (d) => this.onCombo(d.comboCount));
         sub(EVENTS.PIECE_LOCK, () => this.onPieceLock());
     }
 
@@ -1028,15 +1071,13 @@ export default class ShiftingSandsTheme extends BaseTheme {
         const spiceBlow = new THREE.Points(geometry, material);
         spiceBlow.userData = {
             life: 2.0,
-            velocities: velocities,
-            positions: positions,
+            velocities,
+            positions,
         };
 
         this.scene.add(spiceBlow);
         this.spiceBlows.push(spiceBlow);
     }
-
-
 
     // Update shockwaves (sand swirls, dust storms)
     updateShockwaves(dt) {
@@ -1069,7 +1110,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
             blow.userData.life -= dt;
 
             const positions = blow.geometry.attributes.position.array;
-            const velocities = blow.userData.velocities;
+            const { velocities } = blow.userData;
 
             for (let j = 0; j < velocities.length; j++) {
                 positions[j * 3] += velocities[j].x * dt;
@@ -1097,17 +1138,17 @@ export default class ShiftingSandsTheme extends BaseTheme {
         window.removeEventListener('resize', this.onWindowResize);
         this.teardownQualityListener();
         if (this.animationFrame) cancelAnimationFrame(this.animationFrame);
-        this.eventUnsubscribers.forEach(u => u());
+        this.eventUnsubscribers.forEach((u) => u());
 
         // Cleanup effects
-        this.shockwaves.forEach(s => {
+        this.shockwaves.forEach((s) => {
             this.scene?.remove(s);
             s.geometry?.dispose();
             s.material?.dispose();
         });
         this.shockwaves = [];
 
-        this.spiceBlows.forEach(b => {
+        this.spiceBlows.forEach((b) => {
             this.scene?.remove(b);
             b.geometry?.dispose();
             b.material?.dispose();
@@ -1144,6 +1185,8 @@ export default class ShiftingSandsTheme extends BaseTheme {
     }
 
     stop() { if (this.isActive) this.dispose(); super.stop(); }
+
     cleanup() { this.stop(); super.cleanup(); }
+
     getTetrominoConfig() { return SHIFTING_SANDS_TETROMINOS; }
 }

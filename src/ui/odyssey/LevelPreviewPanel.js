@@ -109,15 +109,15 @@ export class LevelPreviewPanel {
             if (!this.isVisible) return;
 
             switch (e.key) {
-                case 'Escape':
-                    e.preventDefault();
-                    this.hide();
-                    break;
-                case 'Enter':
-                case ' ':
-                    e.preventDefault();
-                    this._startLevel();
-                    break;
+            case 'Escape':
+                e.preventDefault();
+                this.hide();
+                break;
+            case 'Enter':
+            case ' ':
+                e.preventDefault();
+                this._startLevel();
+                break;
             }
         };
 
@@ -159,7 +159,7 @@ export class LevelPreviewPanel {
      */
     _buildContent() {
         const level = this.levelConfig;
-        const chapter = CHAPTER_CONFIGS.find(c => c.id === level.chapter);
+        const chapter = CHAPTER_CONFIGS.find((c) => c.id === level.chapter);
 
         this.panel.innerHTML = `
             <!-- Header -->
@@ -241,7 +241,7 @@ export class LevelPreviewPanel {
             <div style="margin-bottom: 20px;">
                 <div style="font-size: 11px; color: rgba(180, 130, 255, 0.7); letter-spacing: 1.5px; margin-bottom: 8px;">ACTIVE MODIFIERS</div>
                 <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                    ${level.modifiers.active.map(mod => `
+                    ${level.modifiers.active.map((mod) => `
                         <div style="
                             padding: 8px 14px;
                             background: rgba(255, 200, 100, 0.1);
@@ -405,18 +405,18 @@ export class LevelPreviewPanel {
     _getObjectiveText(objective) {
         const { type, target } = objective;
         switch (type) {
-            case 'lines':
-                return `Clear ${target} Lines`;
-            case 'score':
-                return `Score ${target.toLocaleString()} Points`;
-            case 'cascade':
-                return `Trigger ${target} Cascades`;
-            case 'time':
-                return `Survive for ${this._formatTime(target)}`;
-            case 'height':
-                return `Build to ${target} Rows`;
-            default:
-                return 'Complete the Objective';
+        case 'lines':
+            return `Clear ${target} Lines`;
+        case 'score':
+            return `Score ${target.toLocaleString()} Points`;
+        case 'cascade':
+            return `Trigger ${target} Cascades`;
+        case 'time':
+            return `Survive for ${this._formatTime(target)}`;
+        case 'height':
+            return `Build to ${target} Rows`;
+        default:
+            return 'Complete the Objective';
         }
     }
 

@@ -211,13 +211,13 @@ export class IntroAnimation {
         // Unified chromadelic color palette
         const colors = [
             'rgba(255, 51, 102, 0.75)', // Hot Pink
-            'rgba(0, 255, 255, 0.75)',  // Cyan
+            'rgba(0, 255, 255, 0.75)', // Cyan
             'rgba(153, 51, 255, 0.75)', // Purple
             'rgba(51, 153, 255, 0.75)', // Electric Blue
-            'rgba(255, 0, 153, 0.7)',   // Magenta
-            'rgba(0, 255, 102, 0.7)',   // Mint
-            'rgba(255, 255, 0, 0.7)',   // Yellow
-            'rgba(255, 102, 0, 0.7)',   // Orange
+            'rgba(255, 0, 153, 0.7)', // Magenta
+            'rgba(0, 255, 102, 0.7)', // Mint
+            'rgba(255, 255, 0, 0.7)', // Yellow
+            'rgba(255, 102, 0, 0.7)', // Orange
         ];
 
         // PERFORMANCE: Reduced particle count from 12 to 6 for cleaner look
@@ -311,10 +311,10 @@ export class IntroAnimation {
 
         // Chromadelic foreground palette
         const colors = [
-            'rgba(255, 51, 102, 0.45)',  // Hot Pink
-            'rgba(0, 255, 255, 0.45)',   // Cyan
-            'rgba(153, 51, 255, 0.4)',   // Purple
-            'rgba(51, 153, 255, 0.4)',   // Electric Blue
+            'rgba(255, 51, 102, 0.45)', // Hot Pink
+            'rgba(0, 255, 255, 0.45)', // Cyan
+            'rgba(153, 51, 255, 0.4)', // Purple
+            'rgba(51, 153, 255, 0.4)', // Electric Blue
         ];
 
         // Minimal foreground particles

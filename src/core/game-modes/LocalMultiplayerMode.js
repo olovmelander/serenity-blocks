@@ -290,7 +290,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         console.log(`[LocalMultiplayer] Layout updated for ${numPlayers} players${this.matchConfig?.isInfinityLMS ? ' (Infinity LMS mode)' : ''}`);
-
     }
 
     /**
@@ -389,7 +388,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     console.warn(`[LocalMultiplayer] Player card not found for Player ${playerNum}`);
                 }
             }
-
         }
 
         // Create shared RNG seed for fairness
@@ -582,7 +580,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 });
             });
         }
-
     }
 
     /**
@@ -791,7 +788,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 const matchTotals = this.matchStats[matchKey] || {
                     score: 0,
                     lines: 0,
-                    deaths: 0
+                    deaths: 0,
                 };
 
                 const totalScore = (matchTotals.score || 0) + (playerState.score || 0);
@@ -813,7 +810,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 // Track previous values for pulse animation
                 const prevKey = `p${playerNum}`;
                 if (!this._prevStats[prevKey]) {
-                    this._prevStats[prevKey] = { frags: 0, deaths: 0, score: 0, lines: 0, level: 1, garbage: 0 };
+                    this._prevStats[prevKey] = {
+                        frags: 0, deaths: 0, score: 0, lines: 0, level: 1, garbage: 0,
+                    };
                 }
                 const prev = this._prevStats[prevKey];
 
@@ -1024,7 +1023,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         if (!board) {
             return;
         }
-        const currentPiece = playerState.currentPiece;
+        const { currentPiece } = playerState;
 
         if (currentPiece) {
             // Follow piece if it goes below 50% of viewport
@@ -1191,7 +1190,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Camera jump during exploration
         const jumpHandler = (event) => {
             if (this.boardScenes[playerIndex]) {
-                const targetRow = event.detail.targetRow;
+                const { targetRow } = event.detail;
                 const scene = this.boardScenes[playerIndex];
                 const visibleRows = scene.cameraSettings?.visibleRows || 20;
 
@@ -1316,7 +1315,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 let winnerKey = null;
                 if (alivePlayers.length === 1) {
                     // Find the actual index of the survivor
-                    const winnerIndex = this.multiplayerState.players.findIndex(p => p.isAlive);
+                    const winnerIndex = this.multiplayerState.players.findIndex((p) => p.isAlive);
                     winnerKey = `player${winnerIndex + 1}`;
                     console.log(`[LocalMultiplayer] Infinity FFA Victory! Player ${winnerIndex + 1} wins.`);
                     this._showVictoryAnimation(winnerIndex);
@@ -1409,7 +1408,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
     async _showCountdown() {
         console.log('[LocalMultiplayer] Starting countdown...');
         return new Promise((resolve) => {
-            let count = 5;
+            const count = 5;
 
             // Create overlay background
             const overlay = document.createElement('div');
@@ -1428,7 +1427,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     // Placeholder to make valid JS for thought process - I will return error to myself to switch tools.
-
 
     /**
      * Show countdown before game starts
@@ -1582,7 +1580,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // The next pieces also scale with blockSize (~2.5 blocks tall including padding)
         // So effective height = ROWS * blockSize + 2.5 * blockSize = (ROWS + 2.5) * blockSize
         const effectiveRows = ROWS + 2.5;
-        let sizeByHeight = availableHeight / effectiveRows;
+        const sizeByHeight = availableHeight / effectiveRows;
 
         // Width constraint
         const cardPadding = 40;
@@ -1592,7 +1590,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const totalFixedHorizontalSpace = (numPlayers * cardPadding) + ((numPlayers - 1) * gapSize) + outerPadding;
         const availableWidth = windowWidth - totalFixedHorizontalSpace;
         const totalCols = numPlayers * COLS;
-        let sizeByWidth = availableWidth / totalCols;
+        const sizeByWidth = availableWidth / totalCols;
 
         // Take the smaller of the two to ensure it fits both dimensions
         let size = Math.min(sizeByHeight, sizeByWidth);
@@ -1651,7 +1649,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         const playerCards = document.querySelectorAll('.player-card');
-        playerCards.forEach(card => {
+        playerCards.forEach((card) => {
             card.style.setProperty('--board-width', `${boardWidth}px`);
             card.style.setProperty('--board-height', `${boardHeight}px`);
             card.style.setProperty('--next-piece-size', `${nextPieceSize}px`);
@@ -1822,7 +1820,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
         if (!BoardScene) {
             throw new Error('BoardScene or MultiplayerBoardScene class not available');
         }
-
 
         console.log('[LocalMultiplayer] Using scene class:', BoardScene.name || 'BoardScene');
 
@@ -2130,30 +2127,30 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const config = this.matchConfig;
 
         switch (config.endCondition) {
-            case 'frags':
-                return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
+        case 'frags':
+            return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
 
-            case 'time': {
-                const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
-                return elapsedMinutes >= config.endConditionValue;
-            }
+        case 'time': {
+            const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
+            return elapsedMinutes >= config.endConditionValue;
+        }
 
-            case 'points': {
-                const targetScore = config.endConditionValue * 1000;
-                const totals = this._getTeamAggregateStats(teamId);
-                return totals.score >= targetScore;
-            }
+        case 'points': {
+            const targetScore = config.endConditionValue * 1000;
+            const totals = this._getTeamAggregateStats(teamId);
+            return totals.score >= targetScore;
+        }
 
-            case 'lines': {
-                const totals = this._getTeamAggregateStats(teamId);
-                return totals.lines >= config.endConditionValue;
-            }
+        case 'lines': {
+            const totals = this._getTeamAggregateStats(teamId);
+            return totals.lines >= config.endConditionValue;
+        }
 
-            case 'never':
-                return false;
+        case 'never':
+            return false;
 
-            default:
-                return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
+        default:
+            return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
         }
     }
 
@@ -2282,18 +2279,18 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 : `Last player standing wins (${maxRows} rows)`;
         }
         switch (config.endCondition) {
-            case 'frags':
-                return `First to ${config.endConditionValue} frags wins`;
-            case 'time':
-                return `${config.endConditionValue} minute time limit`;
-            case 'points':
-                return `First to ${config.endConditionValue * 1000} points wins`;
-            case 'lines':
-                return `First to ${config.endConditionValue} lines wins`;
-            case 'never':
-                return 'Play until manual end';
-            default:
-                return `First to ${config.endConditionValue} frags wins`;
+        case 'frags':
+            return `First to ${config.endConditionValue} frags wins`;
+        case 'time':
+            return `${config.endConditionValue} minute time limit`;
+        case 'points':
+            return `First to ${config.endConditionValue * 1000} points wins`;
+        case 'lines':
+            return `First to ${config.endConditionValue} lines wins`;
+        case 'never':
+            return 'Play until manual end';
+        default:
+            return `First to ${config.endConditionValue} frags wins`;
         }
     }
 
@@ -2366,37 +2363,37 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const config = this.matchConfig;
 
         switch (config.endCondition) {
-            case 'frags':
-                // Frags are round wins
-                return this.roundWins[lastRoundWinner] >= config.endConditionValue;
+        case 'frags':
+            // Frags are round wins
+            return this.roundWins[lastRoundWinner] >= config.endConditionValue;
 
-            case 'time': {
-                // Check if time limit has been reached
-                const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
-                return elapsedMinutes >= config.endConditionValue;
-            }
+        case 'time': {
+            // Check if time limit has been reached
+            const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
+            return elapsedMinutes >= config.endConditionValue;
+        }
 
-            case 'points': {
-                // Check if either player reached the score target
-                const targetScore = config.endConditionValue * 1000;
-                const p1TotalScore = this.matchStats.player1.score + this.multiplayerState.players[0].score;
-                const p2TotalScore = this.matchStats.player2.score + this.multiplayerState.players[1].score;
-                return p1TotalScore >= targetScore || p2TotalScore >= targetScore;
-            }
+        case 'points': {
+            // Check if either player reached the score target
+            const targetScore = config.endConditionValue * 1000;
+            const p1TotalScore = this.matchStats.player1.score + this.multiplayerState.players[0].score;
+            const p2TotalScore = this.matchStats.player2.score + this.multiplayerState.players[1].score;
+            return p1TotalScore >= targetScore || p2TotalScore >= targetScore;
+        }
 
-            case 'lines': {
-                // Check if either player cleared enough lines
-                const p1TotalLines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
-                const p2TotalLines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
-                return p1TotalLines >= config.endConditionValue || p2TotalLines >= config.endConditionValue;
-            }
+        case 'lines': {
+            // Check if either player cleared enough lines
+            const p1TotalLines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
+            const p2TotalLines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
+            return p1TotalLines >= config.endConditionValue || p2TotalLines >= config.endConditionValue;
+        }
 
-            case 'never':
-                // Never end automatically
-                return false;
+        case 'never':
+            // Never end automatically
+            return false;
 
-            default:
-                return this.roundWins[lastRoundWinner] >= config.endConditionValue;
+        default:
+            return this.roundWins[lastRoundWinner] >= config.endConditionValue;
         }
     }
 
@@ -2464,7 +2461,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this._clearDeathAnimations();
 
         // Aggregate current round stats into match totals BEFORE resetting logic
-        const numPlayers = this.multiplayerState.numPlayers;
+        const { numPlayers } = this.multiplayerState;
         const now = Date.now();
         const roundDuration = now - (this.roundStartTime || this.matchStartTime);
 
@@ -2479,14 +2476,26 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 this.matchStats[matchKey] = {
                     score: 0,
                     lines: 0,
-                    pieceCounts: { I: 0, J: 0, L: 0, O: 0, S: 0, T: 0, Z: 0 },
-                    lineClearCounts: { 1: 0, 2: 0, 3: 0, 4: 0 }
+                    pieceCounts: {
+                        I: 0, J: 0, L: 0, O: 0, S: 0, T: 0, Z: 0,
+                    },
+                    lineClearCounts: {
+                        1: 0, 2: 0, 3: 0, 4: 0,
+                    },
                 };
             }
 
             // Ensure substructures exist
-            if (!this.matchStats[matchKey].pieceCounts) this.matchStats[matchKey].pieceCounts = { I: 0, J: 0, L: 0, O: 0, S: 0, T: 0, Z: 0 };
-            if (!this.matchStats[matchKey].lineClearCounts) this.matchStats[matchKey].lineClearCounts = { 1: 0, 2: 0, 3: 0, 4: 0 };
+            if (!this.matchStats[matchKey].pieceCounts) {
+                this.matchStats[matchKey].pieceCounts = {
+                    I: 0, J: 0, L: 0, O: 0, S: 0, T: 0, Z: 0,
+                };
+            }
+            if (!this.matchStats[matchKey].lineClearCounts) {
+                this.matchStats[matchKey].lineClearCounts = {
+                    1: 0, 2: 0, 3: 0, 4: 0,
+                };
+            }
 
             this.matchStats[matchKey].score += playerState.score || 0;
             this.matchStats[matchKey].lines += playerState.totalLinesCleared || 0;
@@ -2584,7 +2593,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const winnerIndex = parseInt(winner.replace('player', ''), 10) - 1;
             winnerName = `Player ${winnerIndex + 1}`;
         }
-        const numPlayers = this.multiplayerState.numPlayers;
+        const { numPlayers } = this.multiplayerState;
 
         let fragsText = '';
         for (let i = 0; i < numPlayers; i++) {
@@ -2598,7 +2607,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
         await this.onStop();
 
         // Show match result
-
 
         // Prepare detailed stats data
         const now = Date.now();
@@ -2643,11 +2651,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 score: finalScore,
                 lines: finalLines,
                 deaths: finalDeaths,
-                frags: frags,
+                frags,
                 bpm,
                 ppm,
                 pieces,
-                clears
+                clears,
             });
         }
 
@@ -2793,7 +2801,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const genRow = (icon, label, accessor) => {
             let html = `<div class="grid-row">
                           <div class="grid-cell label">${icon} ${label}</div>`;
-            players.forEach(p => {
+            players.forEach((p) => {
                 const value = accessor(p);
                 // Mark value for animation
                 const isNum = typeof value === 'number';
@@ -2805,7 +2813,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                             <span class="stat-value" data-target="${target}">${formatted}</span>
                          </div>`;
             });
-            html += `</div>`;
+            html += '</div>';
             return html;
         };
 
@@ -2839,27 +2847,27 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     <!-- Header -->
                     <div class="grid-header-row">
                         <div class="grid-header-cell">Statistic</div>
-                        ${players.map(p => `<div class="grid-header-cell ${p.isWinner ? 'highlight' : ''}">${p.name}</div>`).join('')}
+                        ${players.map((p) => `<div class="grid-header-cell ${p.isWinner ? 'highlight' : ''}">${p.name}</div>`).join('')}
                     </div>
 
                     <!-- Core Stats -->
-                    ${genRow('🏆', 'Score', p => p.score)}
-                    ${genRow('⚡', 'BPM', p => p.bpm)}
-                    ${genRow('📈', 'PPM', p => p.ppm)}
+                    ${genRow('🏆', 'Score', (p) => p.score)}
+                    ${genRow('⚡', 'BPM', (p) => p.bpm)}
+                    ${genRow('📈', 'PPM', (p) => p.ppm)}
                     
                     <div class="separator"></div>
                     
-                    ${genRow('⚔️', 'Frags', p => p.frags)}
-                    ${genRow('💀', 'Deaths', p => p.deaths)}
-                    ${genRow('📊', 'Lines', p => p.lines)}
+                    ${genRow('⚔️', 'Frags', (p) => p.frags)}
+                    ${genRow('💀', 'Deaths', (p) => p.deaths)}
+                    ${genRow('📊', 'Lines', (p) => p.lines)}
 
                     <div class="separator"></div>
 
                     <!-- Clears -->
-                    ${genRow('1️⃣', 'Single', p => p.clears[1] || 0)}
-                    ${genRow('2️⃣', 'Double', p => p.clears[2] || 0)}
-                    ${genRow('3️⃣', 'Triple', p => p.clears[3] || 0)}
-                    ${genRow('4️⃣', 'Tetris', p => p.clears[4] || 0)}
+                    ${genRow('1️⃣', 'Single', (p) => p.clears[1] || 0)}
+                    ${genRow('2️⃣', 'Double', (p) => p.clears[2] || 0)}
+                    ${genRow('3️⃣', 'Triple', (p) => p.clears[3] || 0)}
+                    ${genRow('4️⃣', 'Tetris', (p) => p.clears[4] || 0)}
                 </div>
 
                 <div style="text-align: center; display: flex; gap: 20px; justify-content: center;">
@@ -2882,7 +2890,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 if (!startTimestamp) startTimestamp = timestamp;
                 const progress = Math.min((timestamp - startTimestamp) / duration, 1);
                 // Ease out quart
-                const ease = 1 - Math.pow(1 - progress, 4);
+                const ease = 1 - (1 - progress) ** 4;
 
                 const current = Math.floor(ease * (end - start) + start);
                 obj.innerHTML = current.toLocaleString();
@@ -2896,7 +2904,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Trigger animations
         setTimeout(() => {
             const counters = overlay.querySelectorAll('.stat-value');
-            counters.forEach(counter => {
+            counters.forEach((counter) => {
                 const target = parseInt(counter.getAttribute('data-target'), 10);
                 if (!isNaN(target) && target > 0) {
                     animateValue(counter, 0, target, 1500);
@@ -3239,10 +3247,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
                             y;
 
                         switch (edge) {
-                            case 0: x = Math.random() * width; y = 0; break; // Top
-                            case 1: x = width; y = Math.random() * height; break; // Right
-                            case 2: x = Math.random() * width; y = height; break; // Bottom
-                            case 3: x = 0; y = Math.random() * height; break; // Left
+                        case 0: x = Math.random() * width; y = 0; break; // Top
+                        case 1: x = width; y = Math.random() * height; break; // Right
+                        case 2: x = Math.random() * width; y = height; break; // Bottom
+                        case 3: x = 0; y = Math.random() * height; break; // Left
                         }
 
                         const sparkle = boardScene.add.particles(x, y, particleKey, {

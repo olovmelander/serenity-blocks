@@ -27,6 +27,10 @@ export class FFAAttackRouter {
     /**
    * Route garbage attack from one player to ALL opponents
    * (HOST ONLY - only host can route attacks)
+   *
+   * PHASE 3.5: Implements garbage cancellation (Quadra/TETR.IO style)
+   * Outgoing lines first cancel any pending incoming garbage,
+   * then only the remainder is sent to opponents.
    */
     routeAttack(attackerSteamId, cascadeSummary) {
         if (!this.isHost) {
@@ -47,11 +51,22 @@ export class FFAAttackRouter {
             return; // No attack (too small)
         }
 
-        this._logGarbage(`💥 ${attacker.name} cleared lines → sending ${totalLines} garbage lines`);
+        this._logGarbage(`💥 ${attacker.name} cleared lines → ${totalLines} garbage lines`);
 
-        // PHASE 3.2: Apply garbage counter (defensive mechanic)
-        // Sending garbage reduces your incoming garbage
-        this.gameState.applyGarbageCounter(attackerSteamId, totalLines);
+        // PHASE 3.5: Apply garbage cancellation (Quadra/TETR.IO style)
+        // Outgoing lines first cancel incoming garbage, then remainder goes to opponents
+        const cancelledLines = this.gameState.applyGarbageCounter(attackerSteamId, totalLines);
+        const effectiveLines = totalLines - cancelledLines;
+
+        if (cancelledLines > 0) {
+            this._logGarbage(`  🛡️ Cancelled ${cancelledLines} incoming lines, sending ${effectiveLines} to opponents`);
+        }
+
+        // If all lines were used for cancellation, no attack goes out
+        if (effectiveLines <= 0) {
+            this._logGarbage('  ⚔️ All lines used for cancellation - no attack sent');
+            return;
+        }
 
         // Get all living opponents (everyone except attacker)
         const opponents = Array.from(this.gameState.players.values())
@@ -64,7 +79,7 @@ export class FFAAttackRouter {
 
         // Apply attack scaling based on opponent count (Quadra style)
         const scaledLines = this.applyAttackScaling(
-            totalLines,
+            effectiveLines,
             opponents.length,
             this.gameState.matchConfig.boringRules,
         );
@@ -143,8 +158,36 @@ export class FFAAttackRouter {
      * We return the base lines unmodified here.
      */
     applyAttackScaling(baseLines, opponentCount, boringRules) {
-        // Quadra legacy behavior: No artificial scaling, rely on stamps
-        return baseLines;
+        // If boring rules (classic) enabled, no scaling
+        if (boringRules) {
+            return baseLines;
+        }
+
+        // Standard FFA scaling: Reduce garbage power as player count increases
+        // 1 opponent: 100%
+        // 2 opponents: 90%
+        // 3 opponents: 80%
+        // ...
+        // 7 opponents: 40% (floor at 25%)
+
+        if (opponentCount <= 1) return baseLines;
+
+        const reductionPerOpponent = 0.10; // 10% reduction per extra opponent
+        let multiplier = 1.0 - ((opponentCount - 1) * reductionPerOpponent);
+
+        // Cap minimum multiplier at 0.25 (25% power)
+        multiplier = Math.max(0.25, multiplier);
+
+        // return Math.ceil(baseLines * multiplier);
+        // Better to round normally or use stochastic rounding?
+        // Using ceil ensures at least some garbage is sent for small attacks
+        // But for < 1 it becomes 1?
+        // Base lines is integer.
+        // If lines=4, opp=7 (scale=0.4) -> 1.6 -> 2 lines.
+        const scaled = Math.round(baseLines * multiplier);
+
+        // Ensure at least 1 line if original was > 0
+        return baseLines > 0 ? Math.max(1, scaled) : 0;
     }
 
     /**

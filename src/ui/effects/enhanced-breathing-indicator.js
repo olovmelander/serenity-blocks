@@ -662,13 +662,12 @@ export class EnhancedBreathingIndicator {
     _calculateIntensity(progress, restingIntensity = 0.3) {
         if (this.currentPhase === 'inhale') {
             return restingIntensity + (1 - restingIntensity) * this._easeInOutQuart(progress);
-        } else if (this.currentPhase === 'hold1') {
+        } if (this.currentPhase === 'hold1') {
             return 1;
-        } else if (this.currentPhase === 'exhale') {
+        } if (this.currentPhase === 'exhale') {
             return 1 - (1 - restingIntensity) * this._easeInOutQuart(progress);
-        } else { // hold2
-            return restingIntensity;
-        }
+        } // hold2
+        return restingIntensity;
     }
 
     /**
@@ -699,30 +698,6 @@ export class EnhancedBreathingIndicator {
     _animateTechniqueSpecific(progress) {
         // Technique-specific animations are handled by ThreeJSBreathingRenderer
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     /**
      * Update colors based on phase
@@ -957,7 +932,7 @@ export class EnhancedBreathingIndicator {
         this._progressState = {
             visible: false,
             totalBreaths: 0,
-            currentBreath: 0
+            currentBreath: 0,
         };
     }
 

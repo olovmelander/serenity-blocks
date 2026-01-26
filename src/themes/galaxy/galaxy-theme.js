@@ -14,12 +14,12 @@ import {
     starsVertexShader,
     starsFragmentShader,
     sparkVertexShader,
-    sparkFragmentShader
+    sparkFragmentShader,
 } from './galaxy-shaders.js';
 
 /**
  * Galaxy Theme - An immersive 3D cosmic experience using Three.js
- * 
+ *
  * Features:
  * - Central spiral galaxy with glowing core
  * - Thousands of stars in spiral arm formation
@@ -62,9 +62,9 @@ export default class GalaxyTheme extends BaseTheme {
         this.uniforms = {
             time: { value: 0 },
             coreIntensity: { value: 1.0 },
-            coreColorPrimary: { value: new THREE.Color(0xFF33CC) },   // Magenta/Pink
+            coreColorPrimary: { value: new THREE.Color(0xFF33CC) }, // Magenta/Pink
             coreColorSecondary: { value: new THREE.Color(0x3399FF) }, // Bright Blue
-            coreColorTertiary: { value: new THREE.Color(0x9933FF) },  // Purple
+            coreColorTertiary: { value: new THREE.Color(0x9933FF) }, // Purple
         };
 
         // Theme palette for effects
@@ -74,7 +74,7 @@ export default class GalaxyTheme extends BaseTheme {
             new THREE.Color(0x9933FF), // Purple
             new THREE.Color(0xFF66AA), // Pink
             new THREE.Color(0x66CCFF), // Cyan
-            new THREE.Color(0xFFFFFF)  // White
+            new THREE.Color(0xFFFFFF), // White
         ];
     }
 
@@ -103,7 +103,7 @@ export default class GalaxyTheme extends BaseTheme {
             75,
             window.innerWidth / window.innerHeight,
             0.1,
-            1000
+            1000,
         );
         this.camera.position.z = 25;
         this.camera.position.y = 5;
@@ -113,7 +113,7 @@ export default class GalaxyTheme extends BaseTheme {
         this.renderer = new THREE.WebGLRenderer({
             alpha: true,
             antialias: this.getAntialiasEnabled(),
-            powerPreference: 'high-performance'
+            powerPreference: 'high-performance',
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
@@ -158,7 +158,7 @@ export default class GalaxyTheme extends BaseTheme {
             transparent: true,
             opacity: 0.95,
             blending: THREE.AdditiveBlending,
-            depthWrite: false
+            depthWrite: false,
         }));
         innerGlow.scale.set(5, 5, 1);
         this.mainGroup.add(innerGlow);
@@ -171,7 +171,7 @@ export default class GalaxyTheme extends BaseTheme {
             transparent: true,
             opacity: 0.8,
             blending: THREE.AdditiveBlending,
-            depthWrite: false
+            depthWrite: false,
         }));
         midGlow.scale.set(10, 10, 1);
         this.mainGroup.add(midGlow);
@@ -184,7 +184,7 @@ export default class GalaxyTheme extends BaseTheme {
             transparent: true,
             opacity: 0.5,
             blending: THREE.AdditiveBlending,
-            depthWrite: false
+            depthWrite: false,
         }));
         outerGlow.scale.set(18, 18, 1);
         this.mainGroup.add(outerGlow);
@@ -197,7 +197,7 @@ export default class GalaxyTheme extends BaseTheme {
             transparent: true,
             opacity: 0.3,
             blending: THREE.AdditiveBlending,
-            depthWrite: false
+            depthWrite: false,
         }));
         haloGlow.scale.set(25, 25, 1);
         this.mainGroup.add(haloGlow);
@@ -252,7 +252,7 @@ export default class GalaxyTheme extends BaseTheme {
 
             // Radius distribution - exponential falloff from center
             const t = Math.random();
-            const radius = 0.5 + Math.pow(t, 0.4) * 16; // Start closer to center
+            const radius = 0.5 + t ** 0.4 * 16; // Start closer to center
 
             // Spiral tightness increases with radius
             const spiralOffset = radius * 0.35;
@@ -272,21 +272,21 @@ export default class GalaxyTheme extends BaseTheme {
                 color = new THREE.Color().lerpColors(
                     new THREE.Color(0xFFFFFF),
                     new THREE.Color(0xFFAADD),
-                    colorT / 0.2
+                    colorT / 0.2,
                 );
             } else if (colorT < 0.5) {
                 // Mid: pink to magenta
                 color = new THREE.Color().lerpColors(
                     new THREE.Color(0xFFAADD),
                     new THREE.Color(0xCC44FF),
-                    (colorT - 0.2) / 0.3
+                    (colorT - 0.2) / 0.3,
                 );
             } else {
                 // Outer: magenta to purple/blue
                 color = new THREE.Color().lerpColors(
                     new THREE.Color(0xCC44FF),
                     new THREE.Color(0x6633CC),
-                    (colorT - 0.5) / 0.5
+                    (colorT - 0.5) / 0.5,
                 );
             }
 
@@ -317,13 +317,13 @@ export default class GalaxyTheme extends BaseTheme {
                 spiralTightness: { value: 0.5 },
                 coreIntensity: this.uniforms.coreIntensity,
                 uPulseTimers: { value: pulseTimers },
-                uPulseCount: { value: this.MAX_PULSES }
+                uPulseCount: { value: this.MAX_PULSES },
             },
             vertexShader: spiralVertexShader,
             fragmentShader: spiralFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.spiralStars = new THREE.Points(geometry, material);
@@ -349,7 +349,7 @@ export default class GalaxyTheme extends BaseTheme {
 
             // Random radius logic
             const t = Math.random();
-            const radius = 0.5 + Math.pow(t, 0.4) * 16;
+            const radius = 0.5 + t ** 0.4 * 16;
 
             const spiralOffset = radius * 0.35;
             const spreadAngle = (Math.random() - 0.5) * (0.3 + radius * 0.02);
@@ -397,13 +397,13 @@ export default class GalaxyTheme extends BaseTheme {
                 time: this.uniforms.time,
                 spiralTightness: { value: 0.5 },
                 uPulseTimers: { value: pulseTimers },
-                uPulseCount: { value: this.MAX_PULSES }
+                uPulseCount: { value: this.MAX_PULSES },
             },
             vertexShader: sparkVertexShader,
             fragmentShader: sparkFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.spiralSparks = new THREE.Points(geometry, material);
@@ -450,13 +450,13 @@ export default class GalaxyTheme extends BaseTheme {
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
-                time: this.uniforms.time
+                time: this.uniforms.time,
             },
             vertexShader: starsVertexShader,
             fragmentShader: starsFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.backgroundStars = new THREE.Points(geometry, material);
@@ -465,10 +465,18 @@ export default class GalaxyTheme extends BaseTheme {
 
     createNebulaClouds() {
         const nebulaConfigs = [
-            { position: [-8, 3, -15], scale: 15, colorA: 0xFF33CC, colorB: 0x9933FF, opacity: 0.3 },
-            { position: [10, -2, -18], scale: 18, colorA: 0x3399FF, colorB: 0x66CCFF, opacity: 0.25 },
-            { position: [0, 5, -25], scale: 22, colorA: 0x9933FF, colorB: 0x3399FF, opacity: 0.2 },
-            { position: [-12, -4, -20], scale: 14, colorA: 0xFF66AA, colorB: 0xFF33CC, opacity: 0.25 },
+            {
+                position: [-8, 3, -15], scale: 15, colorA: 0xFF33CC, colorB: 0x9933FF, opacity: 0.3,
+            },
+            {
+                position: [10, -2, -18], scale: 18, colorA: 0x3399FF, colorB: 0x66CCFF, opacity: 0.25,
+            },
+            {
+                position: [0, 5, -25], scale: 22, colorA: 0x9933FF, colorB: 0x3399FF, opacity: 0.2,
+            },
+            {
+                position: [-12, -4, -20], scale: 14, colorA: 0xFF66AA, colorB: 0xFF33CC, opacity: 0.25,
+            },
         ];
 
         nebulaConfigs.forEach((config, index) => {
@@ -478,14 +486,14 @@ export default class GalaxyTheme extends BaseTheme {
                     time: this.uniforms.time,
                     opacity: { value: config.opacity },
                     colorA: { value: new THREE.Color(config.colorA) },
-                    colorB: { value: new THREE.Color(config.colorB) }
+                    colorB: { value: new THREE.Color(config.colorB) },
                 },
                 vertexShader: nebulaVertexShader,
                 fragmentShader: nebulaFragmentShader,
                 transparent: true,
                 side: THREE.DoubleSide,
                 depthWrite: false,
-                blending: THREE.AdditiveBlending
+                blending: THREE.AdditiveBlending,
             });
 
             const cloud = new THREE.Mesh(geometry, material);
@@ -524,13 +532,13 @@ export default class GalaxyTheme extends BaseTheme {
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 time: this.uniforms.time,
-                color: { value: new THREE.Color(0x66CCFF) }
+                color: { value: new THREE.Color(0x66CCFF) },
             },
             vertexShader: dustVertexShader,
             fragmentShader: dustFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.cosmicDust = new THREE.Points(geometry, material);
@@ -605,7 +613,7 @@ export default class GalaxyTheme extends BaseTheme {
             this.uniforms.coreIntensity.value = THREE.MathUtils.lerp(
                 this.uniforms.coreIntensity.value,
                 1.0,
-                delta * 2.0
+                delta * 2.0,
             );
         }
 
@@ -672,13 +680,13 @@ export default class GalaxyTheme extends BaseTheme {
             uniforms: {
                 time: this.uniforms.time,
                 opacity: { value: 1.0 },
-                color: { value: this.getRandomThemeColor() }
+                color: { value: this.getRandomThemeColor() },
             },
             vertexShader: shockwaveVertexShader,
             fragmentShader: shockwaveFragmentShader,
             transparent: true,
             blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         const wave = new THREE.Mesh(geometry, material);
@@ -688,7 +696,7 @@ export default class GalaxyTheme extends BaseTheme {
         wave.userData = {
             speed: 4.0 + intensity * 2.0,
             life: 1.2,
-            maxLife: 1.2
+            maxLife: 1.2,
         };
 
         this.mainGroup.add(wave);
@@ -716,7 +724,7 @@ export default class GalaxyTheme extends BaseTheme {
             velocities.push({
                 x: dirX * speed + (Math.random() - 0.5) * 2,
                 y: dirY * speed + (Math.random() - 0.5) * 2,
-                z: (Math.random() - 0.5) * 2
+                z: (Math.random() - 0.5) * 2,
             });
         }
 
@@ -727,14 +735,14 @@ export default class GalaxyTheme extends BaseTheme {
             size: 0.3,
             transparent: true,
             opacity: 1.0,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         const flare = new THREE.Points(geometry, material);
         flare.userData = {
-            velocities: velocities,
+            velocities,
             life: 0.8,
-            maxLife: 0.8
+            maxLife: 0.8,
         };
 
         this.mainGroup.add(flare);
@@ -745,7 +753,7 @@ export default class GalaxyTheme extends BaseTheme {
         for (let i = this.flares.length - 1; i >= 0; i--) {
             const flare = this.flares[i];
             const positions = flare.geometry.attributes.position.array;
-            const velocities = flare.userData.velocities;
+            const { velocities } = flare.userData;
 
             flare.userData.life -= delta;
 
@@ -850,7 +858,7 @@ export default class GalaxyTheme extends BaseTheme {
             cancelAnimationFrame(this.animationFrame);
         }
 
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Cleanup Three.js
@@ -868,7 +876,7 @@ export default class GalaxyTheme extends BaseTheme {
                 if (object.geometry) object.geometry.dispose();
                 if (object.material) {
                     if (Array.isArray(object.material)) {
-                        object.material.forEach(m => m.dispose());
+                        object.material.forEach((m) => m.dispose());
                     } else {
                         object.material.dispose();
                     }
