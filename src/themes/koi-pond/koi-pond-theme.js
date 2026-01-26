@@ -4,14 +4,14 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 
 /**
  * Koi Pond Theme - A serene aquatic sanctuary (Top-Down View)
- * 
+ *
  * Features:
  * - Gracefully swimming koi fish viewed from above
  * - Floating lily pads with gentle bobbing
  * - Dynamic water ripples following the fish
  * - Shimmering water surface with light reflections
  * - Cherry blossom petals floating on surface
- * 
+ *
  * Theme-integrated combo effects (all top-down perspective):
  * - Ripple impacts spreading outward
  * - Koi fish darting/swirling excitedly
@@ -20,7 +20,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
  * - Water droplet ring impacts
  * - Light glints dancing on water surface
  * - Swirling water currents
- * 
+ *
  * Quality Presets: Minimal, Low, Medium, High, Ultra, Extreme
  */
 export default class KoiPondTheme extends BaseTheme {
@@ -31,7 +31,7 @@ export default class KoiPondTheme extends BaseTheme {
         this.lastRippleTime = 0;
         this.eventUnsubscribers = [];
         this.animationFrameId = null;
-        
+
         // Graphics quality presets
         this.qualityChangeHandler = null;
         this.currentQuality = 'High';
@@ -40,21 +40,21 @@ export default class KoiPondTheme extends BaseTheme {
                 // Lily pads
                 lilyPadCount: 3,
                 lilyPadAnimationEnabled: false,
-                
+
                 // Koi fish
                 koiCount: 3,
                 koiAnimationEnabled: true,
-                
+
                 // Ripples
                 rippleEnabled: false,
                 rippleInterval: 2000,
-                
+
                 // Water surface
                 waterShimmerEnabled: false,
-                
+
                 // Floating petals (ambient)
                 floatingPetalCount: 0,
-                
+
                 // Effects
                 enableComboEffects: false,
                 rippleImpactCount: 0,
@@ -64,7 +64,7 @@ export default class KoiPondTheme extends BaseTheme {
                 dropletRingCount: 0,
                 lightGlintCount: 0,
                 waterSwirlCount: 0,
-                
+
                 // Performance
                 animationFrameSkip: 3,
             },
@@ -72,21 +72,21 @@ export default class KoiPondTheme extends BaseTheme {
                 // Lily pads
                 lilyPadCount: 4,
                 lilyPadAnimationEnabled: true,
-                
+
                 // Koi fish
                 koiCount: 4,
                 koiAnimationEnabled: true,
-                
+
                 // Ripples
                 rippleEnabled: true,
                 rippleInterval: 1500,
-                
+
                 // Water surface
                 waterShimmerEnabled: true,
-                
+
                 // Floating petals (ambient)
                 floatingPetalCount: 5,
-                
+
                 // Effects
                 enableComboEffects: true,
                 rippleImpactCount: 2,
@@ -96,7 +96,7 @@ export default class KoiPondTheme extends BaseTheme {
                 dropletRingCount: 2,
                 lightGlintCount: 4,
                 waterSwirlCount: 1,
-                
+
                 // Performance
                 animationFrameSkip: 2,
             },
@@ -104,21 +104,21 @@ export default class KoiPondTheme extends BaseTheme {
                 // Lily pads
                 lilyPadCount: 5,
                 lilyPadAnimationEnabled: true,
-                
+
                 // Koi fish
                 koiCount: 5,
                 koiAnimationEnabled: true,
-                
+
                 // Ripples
                 rippleEnabled: true,
                 rippleInterval: 1000,
-                
+
                 // Water surface
                 waterShimmerEnabled: true,
-                
+
                 // Floating petals (ambient)
                 floatingPetalCount: 10,
-                
+
                 // Effects
                 enableComboEffects: true,
                 rippleImpactCount: 3,
@@ -128,7 +128,7 @@ export default class KoiPondTheme extends BaseTheme {
                 dropletRingCount: 4,
                 lightGlintCount: 8,
                 waterSwirlCount: 2,
-                
+
                 // Performance
                 animationFrameSkip: 1,
             },
@@ -136,21 +136,21 @@ export default class KoiPondTheme extends BaseTheme {
                 // Lily pads
                 lilyPadCount: 6,
                 lilyPadAnimationEnabled: true,
-                
+
                 // Koi fish
                 koiCount: 7,
                 koiAnimationEnabled: true,
-                
+
                 // Ripples
                 rippleEnabled: true,
                 rippleInterval: 700,
-                
+
                 // Water surface
                 waterShimmerEnabled: true,
-                
+
                 // Floating petals (ambient)
                 floatingPetalCount: 15,
-                
+
                 // Effects
                 enableComboEffects: true,
                 rippleImpactCount: 4,
@@ -160,7 +160,7 @@ export default class KoiPondTheme extends BaseTheme {
                 dropletRingCount: 6,
                 lightGlintCount: 12,
                 waterSwirlCount: 3,
-                
+
                 // Performance
                 animationFrameSkip: 0,
             },
@@ -168,21 +168,21 @@ export default class KoiPondTheme extends BaseTheme {
                 // Lily pads
                 lilyPadCount: 8,
                 lilyPadAnimationEnabled: true,
-                
+
                 // Koi fish
                 koiCount: 9,
                 koiAnimationEnabled: true,
-                
+
                 // Ripples
                 rippleEnabled: true,
                 rippleInterval: 500,
-                
+
                 // Water surface
                 waterShimmerEnabled: true,
-                
+
                 // Floating petals (ambient)
                 floatingPetalCount: 20,
-                
+
                 // Effects
                 enableComboEffects: true,
                 rippleImpactCount: 5,
@@ -192,7 +192,7 @@ export default class KoiPondTheme extends BaseTheme {
                 dropletRingCount: 8,
                 lightGlintCount: 16,
                 waterSwirlCount: 4,
-                
+
                 // Performance
                 animationFrameSkip: 0,
             },
@@ -200,21 +200,21 @@ export default class KoiPondTheme extends BaseTheme {
                 // Lily pads
                 lilyPadCount: 10,
                 lilyPadAnimationEnabled: true,
-                
+
                 // Koi fish
                 koiCount: 12,
                 koiAnimationEnabled: true,
-                
+
                 // Ripples
                 rippleEnabled: true,
                 rippleInterval: 400,
-                
+
                 // Water surface
                 waterShimmerEnabled: true,
-                
+
                 // Floating petals (ambient)
                 floatingPetalCount: 30,
-                
+
                 // Effects
                 enableComboEffects: true,
                 rippleImpactCount: 6,
@@ -224,12 +224,12 @@ export default class KoiPondTheme extends BaseTheme {
                 dropletRingCount: 10,
                 lightGlintCount: 24,
                 waterSwirlCount: 5,
-                
+
                 // Performance
                 animationFrameSkip: 0,
             },
         };
-        
+
         // Active preset reference
         this.activePreset = this.qualityPresets.High;
     }
@@ -332,22 +332,22 @@ export default class KoiPondTheme extends BaseTheme {
         for (let i = 0; i < preset.lilyPadCount; i++) {
             const pad = document.createElement('div');
             pad.className = 'lily-pad';
-            
+
             if (!preset.lilyPadAnimationEnabled) {
                 pad.style.animation = 'none';
             }
-            
+
             const size = Math.random() * 50 + 70;
             pad.style.width = `${size}px`;
             pad.style.height = `${size}px`;
             pad.style.setProperty('--x-pos', `${10 + Math.random() * 80}vw`);
             pad.style.setProperty('--y-pos', `${10 + Math.random() * 80}vh`);
             pad.style.animationDelay = `-${Math.random() * 20}s`;
-            
+
             container.appendChild(pad);
             this.lilyPadInstances.push(pad);
         }
-        
+
         this.registerContainer(container);
     }
 
@@ -386,7 +386,7 @@ export default class KoiPondTheme extends BaseTheme {
                 koi.style.setProperty(`--y${j}`, `${Math.random() * 90}vh`);
                 koi.style.setProperty(`--r${j}`, `${Math.random() * 360}deg`);
             }
-            
+
             const duration = Math.random() * 10 + 20;
             koi.style.animationDuration = `${duration}s`;
             koi.style.animationDelay = `-${Math.random() * duration}s`;
@@ -398,7 +398,7 @@ export default class KoiPondTheme extends BaseTheme {
             container.appendChild(koi);
             this.koiInstances.push(koi);
         }
-        
+
         this.registerContainer(container);
     }
 
@@ -414,7 +414,7 @@ export default class KoiPondTheme extends BaseTheme {
         for (let i = 0; i < preset.floatingPetalCount; i++) {
             const petal = document.createElement('div');
             petal.className = 'floating-petal';
-            
+
             petal.style.left = `${Math.random() * 100}%`;
             petal.style.top = `${Math.random() * 100}%`;
             petal.style.animationDelay = `${Math.random() * 20}s`;
@@ -422,10 +422,10 @@ export default class KoiPondTheme extends BaseTheme {
             petal.style.setProperty('--drift-x', `${(Math.random() - 0.5) * 40}vw`);
             petal.style.setProperty('--drift-y', `${(Math.random() - 0.5) * 40}vh`);
             petal.style.setProperty('--rotation', `${Math.random() * 720 - 360}deg`);
-            
+
             container.appendChild(petal);
         }
-        
+
         this.registerContainer(container);
     }
 
@@ -448,7 +448,7 @@ export default class KoiPondTheme extends BaseTheme {
 
             if (preset.rippleEnabled && timestamp - this.lastRippleTime > preset.rippleInterval) {
                 this.lastRippleTime = timestamp;
-                
+
                 if (this.koiInstances.length > 0) {
                     const koi = this.koiInstances[Math.floor(Math.random() * this.koiInstances.length)];
                     const rect = koi.getBoundingClientRect();
@@ -465,11 +465,11 @@ export default class KoiPondTheme extends BaseTheme {
                     }
                 }
             }
-            
+
             this.animationFrameId = requestAnimationFrame(rippleLoop);
             this.registerAnimation(this.animationFrameId);
         };
-        
+
         this.animationFrameId = requestAnimationFrame(rippleLoop);
         this.registerAnimation(this.animationFrameId);
         this.registerContainer(rippleContainer);
@@ -505,21 +505,37 @@ export default class KoiPondTheme extends BaseTheme {
      */
     getEdgePosition(zone = 'any') {
         const regions = {
-            topLeft: { xMin: 0, xMax: 25, yMin: 0, yMax: 30 },
-            topRight: { xMin: 75, xMax: 100, yMin: 0, yMax: 30 },
-            bottomLeft: { xMin: 0, xMax: 25, yMin: 70, yMax: 100 },
-            bottomRight: { xMin: 75, xMax: 100, yMin: 70, yMax: 100 },
-            leftSide: { xMin: 0, xMax: 20, yMin: 20, yMax: 80 },
-            rightSide: { xMin: 80, xMax: 100, yMin: 20, yMax: 80 },
-            topEdge: { xMin: 20, xMax: 80, yMin: 0, yMax: 15 },
-            bottomEdge: { xMin: 20, xMax: 80, yMin: 85, yMax: 100 },
+            topLeft: {
+                xMin: 0, xMax: 25, yMin: 0, yMax: 30,
+            },
+            topRight: {
+                xMin: 75, xMax: 100, yMin: 0, yMax: 30,
+            },
+            bottomLeft: {
+                xMin: 0, xMax: 25, yMin: 70, yMax: 100,
+            },
+            bottomRight: {
+                xMin: 75, xMax: 100, yMin: 70, yMax: 100,
+            },
+            leftSide: {
+                xMin: 0, xMax: 20, yMin: 20, yMax: 80,
+            },
+            rightSide: {
+                xMin: 80, xMax: 100, yMin: 20, yMax: 80,
+            },
+            topEdge: {
+                xMin: 20, xMax: 80, yMin: 0, yMax: 15,
+            },
+            bottomEdge: {
+                xMin: 20, xMax: 80, yMin: 85, yMax: 100,
+            },
         };
 
         let availableRegions;
         switch (zone) {
-            case 'corner': availableRegions = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight']; break;
-            case 'side': availableRegions = ['leftSide', 'rightSide']; break;
-            default: availableRegions = Object.keys(regions);
+        case 'corner': availableRegions = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight']; break;
+        case 'side': availableRegions = ['leftSide', 'rightSide']; break;
+        default: availableRegions = Object.keys(regions);
         }
 
         const regionName = availableRegions[Math.floor(Math.random() * availableRegions.length)];
@@ -591,10 +607,10 @@ export default class KoiPondTheme extends BaseTheme {
 
     onPieceLock() {
         if (!this.activePreset.enableComboEffects) return;
-        
+
         // Very subtle lily pad wobble
         this.wobbleLilyPads(1.02);
-        
+
         // Small chance for extra visual feedback
         const roll = Math.random();
         if (roll < 0.35) {
@@ -618,11 +634,11 @@ export default class KoiPondTheme extends BaseTheme {
 
         const ripple = document.createElement('div');
         ripple.className = 'piece-lock-ripple';
-        
+
         const pos = this.getEdgePosition('any');
         ripple.style.left = `${pos.x}%`;
         ripple.style.top = `${pos.y}%`;
-        
+
         container.appendChild(ripple);
         setTimeout(() => ripple.remove(), 800);
     }
@@ -636,11 +652,11 @@ export default class KoiPondTheme extends BaseTheme {
 
         const glint = document.createElement('div');
         glint.className = 'piece-lock-glint';
-        
+
         const pos = this.getEdgePosition('any');
         glint.style.left = `${pos.x}%`;
         glint.style.top = `${pos.y}%`;
-        
+
         container.appendChild(glint);
         setTimeout(() => glint.remove(), 400);
     }
@@ -654,13 +670,13 @@ export default class KoiPondTheme extends BaseTheme {
 
         const petal = document.createElement('div');
         petal.className = 'piece-lock-petal';
-        
+
         const pos = this.getEdgePosition('any');
         petal.style.left = `${pos.x}%`;
         petal.style.top = `${pos.y}%`;
         petal.style.setProperty('--drift-x', `${(Math.random() - 0.5) * 40}px`);
         petal.style.setProperty('--drift-y', `${(Math.random() - 0.5) * 40}px`);
-        
+
         container.appendChild(petal);
         setTimeout(() => petal.remove(), 1200);
     }
@@ -679,7 +695,7 @@ export default class KoiPondTheme extends BaseTheme {
         for (let i = 0; i < actualCount; i++) {
             setTimeout(() => {
                 const pos = this.getEdgePosition('any');
-                
+
                 // Create multiple concentric ripples
                 for (let r = 0; r < 3; r++) {
                     setTimeout(() => {
@@ -709,19 +725,19 @@ export default class KoiPondTheme extends BaseTheme {
             setTimeout(() => {
                 const dartKoi = document.createElement('div');
                 dartKoi.className = 'darting-koi';
-                
+
                 const pos = this.getEdgePosition('any');
                 dartKoi.style.left = `${pos.x}%`;
                 dartKoi.style.top = `${pos.y}%`;
-                
+
                 const color = koiColors[Math.floor(Math.random() * koiColors.length)];
                 dartKoi.style.setProperty('--koi-color', color);
-                
+
                 // Random dart direction
                 const angle = Math.random() * 360;
                 dartKoi.style.setProperty('--dart-angle', `${angle}deg`);
                 dartKoi.style.setProperty('--dart-distance', `${100 + Math.random() * 150}px`);
-                
+
                 container.appendChild(dartKoi);
 
                 // Add ripple trail
@@ -741,7 +757,7 @@ export default class KoiPondTheme extends BaseTheme {
 
         const koiColors = ['#f08c28', '#fff', '#333', '#f2c94c', '#ff6b6b', '#c9b037'];
         const frenzyCount = 6;
-        
+
         // Choose a frenzy center point
         const centerPos = this.getEdgePosition('corner');
 
@@ -749,16 +765,16 @@ export default class KoiPondTheme extends BaseTheme {
             setTimeout(() => {
                 const koi = document.createElement('div');
                 koi.className = 'frenzy-koi';
-                
+
                 koi.style.left = `${centerPos.x}%`;
                 koi.style.top = `${centerPos.y}%`;
-                
+
                 const color = koiColors[Math.floor(Math.random() * koiColors.length)];
                 koi.style.setProperty('--koi-color', color);
                 koi.style.setProperty('--orbit-radius', `${40 + Math.random() * 60}px`);
                 koi.style.setProperty('--start-angle', `${(i / frenzyCount) * 360}deg`);
                 koi.style.setProperty('--orbit-direction', Math.random() > 0.5 ? '1' : '-1');
-                
+
                 container.appendChild(koi);
                 setTimeout(() => koi.remove(), 2000);
             }, i * 100);
@@ -776,7 +792,7 @@ export default class KoiPondTheme extends BaseTheme {
             setTimeout(() => {
                 pad.classList.add('lily-pad-wobble');
                 pad.style.setProperty('--wobble-intensity', intensity);
-                
+
                 setTimeout(() => {
                     pad.classList.remove('lily-pad-wobble');
                 }, 800);
@@ -797,16 +813,16 @@ export default class KoiPondTheme extends BaseTheme {
             setTimeout(() => {
                 const petal = document.createElement('div');
                 petal.className = 'scatter-petal';
-                
+
                 const pos = this.getEdgePosition('any');
                 petal.style.left = `${pos.x}%`;
                 petal.style.top = `${pos.y}%`;
-                
+
                 // Random drift direction
                 petal.style.setProperty('--drift-x', `${(Math.random() - 0.5) * 100}px`);
                 petal.style.setProperty('--drift-y', `${(Math.random() - 0.5) * 100}px`);
                 petal.style.setProperty('--rotation', `${Math.random() * 360}deg`);
-                
+
                 container.appendChild(petal);
                 setTimeout(() => petal.remove(), 2500);
             }, i * 50);
@@ -826,11 +842,11 @@ export default class KoiPondTheme extends BaseTheme {
             setTimeout(() => {
                 const droplet = document.createElement('div');
                 droplet.className = 'droplet-ring';
-                
+
                 const pos = this.getEdgePosition('any');
                 droplet.style.left = `${pos.x}%`;
                 droplet.style.top = `${pos.y}%`;
-                
+
                 container.appendChild(droplet);
                 setTimeout(() => droplet.remove(), 1000);
             }, i * 100);
@@ -850,11 +866,11 @@ export default class KoiPondTheme extends BaseTheme {
             setTimeout(() => {
                 const glint = document.createElement('div');
                 glint.className = 'water-glint';
-                
+
                 const pos = this.getEdgePosition('any');
                 glint.style.left = `${pos.x}%`;
                 glint.style.top = `${pos.y}%`;
-                
+
                 container.appendChild(glint);
                 setTimeout(() => glint.remove(), 600);
             }, i * 40);
@@ -874,12 +890,12 @@ export default class KoiPondTheme extends BaseTheme {
             setTimeout(() => {
                 const swirl = document.createElement('div');
                 swirl.className = 'water-swirl';
-                
+
                 const pos = this.getEdgePosition('corner');
                 swirl.style.left = `${pos.x}%`;
                 swirl.style.top = `${pos.y}%`;
                 swirl.style.setProperty('--swirl-direction', Math.random() > 0.5 ? '1' : '-1');
-                
+
                 container.appendChild(swirl);
                 setTimeout(() => swirl.remove(), 2000);
             }, i * 300);

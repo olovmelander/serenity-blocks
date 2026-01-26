@@ -445,7 +445,7 @@ export class SteamNetworking {
             }
 
             // Phase 4: Decode binary payload if present (FULL or DELTA)
-            let payload = envelope.payload;
+            let { payload } = envelope;
             if (payload && payload._binary === true && payload._data) {
                 try {
                     if (!this.binaryDecoder) {
@@ -474,7 +474,6 @@ export class SteamNetworking {
 
                     // Store decoded snapshot as new baseline for this peer
                     this.snapshotQueues.set(fromSteamId, payload);
-
                 } catch (err) {
                     console.warn('Binary decoding failed, payload may be corrupted:', err);
                     return; // Drop corrupted packet
@@ -702,7 +701,7 @@ export class SteamNetworking {
         }
 
         // Phase 4: Decode binary payload if present
-        let payload = envelope.payload;
+        let { payload } = envelope;
         if (payload && payload._binary === true && payload._data) {
             try {
                 if (!this.binaryDecoder) {
@@ -854,13 +853,13 @@ export class SteamNetworking {
     _resolveDelivery(delivery) {
         if (!greenworks) return null;
         switch (delivery) {
-            case 'unreliable':
-                return greenworks.P2PSend.Unreliable;
-            case 'unreliable_no_delay':
-                return greenworks.P2PSend.UnreliableNoDelay;
-            case 'reliable':
-            default:
-                return greenworks.P2PSend.Reliable;
+        case 'unreliable':
+            return greenworks.P2PSend.Unreliable;
+        case 'unreliable_no_delay':
+            return greenworks.P2PSend.UnreliableNoDelay;
+        case 'reliable':
+        default:
+            return greenworks.P2PSend.Reliable;
         }
     }
 
@@ -983,7 +982,7 @@ export class SteamNetworking {
                 totalSent: state.totalSent || 0,
                 totalDropped: state.totalDropped || 0,
                 dropRate: state.totalSent > 0
-                    ? ((state.totalDropped / state.totalSent) * 100).toFixed(1) + '%'
+                    ? `${((state.totalDropped / state.totalSent) * 100).toFixed(1)}%`
                     : '0%',
             };
         }

@@ -6,23 +6,23 @@
  */
 
 export class LocalMatchConfigModal {
-  constructor(onStartMatch, onCancel = null) {
-    this.onStartMatch = onStartMatch;
-    this.onCancel = onCancel;
-    this.container = null;
+    constructor(onStartMatch, onCancel = null) {
+        this.onStartMatch = onStartMatch;
+        this.onCancel = onCancel;
+        this.container = null;
 
-    this.createUI();
-  }
+        this.createUI();
+    }
 
-  /**
+    /**
  * Create the match config UI
  */
-  createUI() {
-    this.container = document.createElement('div');
-    this.container.id = 'local-match-config-modal';
-    this.container.className = 'match-config-modal hidden';
+    createUI() {
+        this.container = document.createElement('div');
+        this.container.id = 'local-match-config-modal';
+        this.container.className = 'match-config-modal hidden';
 
-    this.container.innerHTML = `
+        this.container.innerHTML = `
       <div class="match-config-overlay"></div>
       <div class="match-config-content">
         <div class="match-config-header">
@@ -171,360 +171,360 @@ export class LocalMatchConfigModal {
       </div>
     `;
 
-    document.body.appendChild(this.container);
-    this.setupEventListeners();
-  }
+        document.body.appendChild(this.container);
+        this.setupEventListeners();
+    }
 
-  /**
+    /**
  * Setup event listeners
  */
-  setupEventListeners() {
+    setupEventListeners() {
     // Close button
-    const closeBtn = this.container.querySelector('#close-local-match-config');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', () => this.cancel());
-    }
-
-    // Cancel button
-    const cancelBtn = this.container.querySelector('#cancel-local-match');
-    if (cancelBtn) {
-      cancelBtn.addEventListener('click', () => this.cancel());
-    }
-
-    // Overlay click to close
-    const overlay = this.container.querySelector('.match-config-overlay');
-    if (overlay) {
-      overlay.addEventListener('click', () => this.cancel());
-    }
-
-    // End condition change handler
-    const endCondition = this.container.querySelector('#end-condition');
-    if (endCondition) {
-      endCondition.addEventListener('change', (e) => {
-        this.updateEndConditionUI(e.target.value);
-      });
-    }
-
-    // Match mode change handler
-    const matchMode = this.container.querySelector('#match-mode');
-    if (matchMode) {
-      matchMode.addEventListener('change', () => {
-        this.refreshFormState();
-      });
-    }
-
-    // Form submit
-    const form = this.container.querySelector('#local-match-config-form');
-    if (form) {
-      form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        this.handleSubmit();
-      });
-    }
-
-    // Team mode toggle
-    const teamModeToggle = this.container.querySelector('#team-mode');
-    if (teamModeToggle) {
-      teamModeToggle.addEventListener('change', (e) => {
-        this.updateTeamUI(e.target.checked);
-      });
-    }
-
-    // Num players change should re-render team UI if open
-    const numPlayers = this.container.querySelector('#num-players');
-    if (numPlayers) {
-      numPlayers.addEventListener('change', () => {
-        if (teamModeToggle && teamModeToggle.checked) {
-          this.updateTeamUI(true);
+        const closeBtn = this.container.querySelector('#close-local-match-config');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.cancel());
         }
-      });
-    }
-  }
 
-  /**
+        // Cancel button
+        const cancelBtn = this.container.querySelector('#cancel-local-match');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => this.cancel());
+        }
+
+        // Overlay click to close
+        const overlay = this.container.querySelector('.match-config-overlay');
+        if (overlay) {
+            overlay.addEventListener('click', () => this.cancel());
+        }
+
+        // End condition change handler
+        const endCondition = this.container.querySelector('#end-condition');
+        if (endCondition) {
+            endCondition.addEventListener('change', (e) => {
+                this.updateEndConditionUI(e.target.value);
+            });
+        }
+
+        // Match mode change handler
+        const matchMode = this.container.querySelector('#match-mode');
+        if (matchMode) {
+            matchMode.addEventListener('change', () => {
+                this.refreshFormState();
+            });
+        }
+
+        // Form submit
+        const form = this.container.querySelector('#local-match-config-form');
+        if (form) {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleSubmit();
+            });
+        }
+
+        // Team mode toggle
+        const teamModeToggle = this.container.querySelector('#team-mode');
+        if (teamModeToggle) {
+            teamModeToggle.addEventListener('change', (e) => {
+                this.updateTeamUI(e.target.checked);
+            });
+        }
+
+        // Num players change should re-render team UI if open
+        const numPlayers = this.container.querySelector('#num-players');
+        if (numPlayers) {
+            numPlayers.addEventListener('change', () => {
+                if (teamModeToggle && teamModeToggle.checked) {
+                    this.updateTeamUI(true);
+                }
+            });
+        }
+    }
+
+    /**
    * Update team assignment UI based on player count and toggle
    */
-  updateTeamUI(isActive) {
-    const teamArea = this.container.querySelector('#team-selection-area');
-    const assignmentsArea = this.container.querySelector('#player-team-assignments');
-    if (!teamArea || !assignmentsArea) return;
+    updateTeamUI(isActive) {
+        const teamArea = this.container.querySelector('#team-selection-area');
+        const assignmentsArea = this.container.querySelector('#player-team-assignments');
+        if (!teamArea || !assignmentsArea) return;
 
-    if (!isActive) {
-      teamArea.classList.add('hidden');
-      return;
-    }
+        if (!isActive) {
+            teamArea.classList.add('hidden');
+            return;
+        }
 
-    teamArea.classList.remove('hidden');
-    assignmentsArea.innerHTML = '';
+        teamArea.classList.remove('hidden');
+        assignmentsArea.innerHTML = '';
 
-    const numPlayers = parseInt(this.container.querySelector('#num-players').value);
-    for (let i = 1; i <= numPlayers; i++) {
-      const div = document.createElement('div');
-      div.className = 'form-group';
+        const numPlayers = parseInt(this.container.querySelector('#num-players').value);
+        for (let i = 1; i <= numPlayers; i++) {
+            const div = document.createElement('div');
+            div.className = 'form-group';
 
-      const label = document.createElement('label');
-      label.textContent = `Player ${i} Team`;
+            const label = document.createElement('label');
+            label.textContent = `Player ${i} Team`;
 
-      const select = document.createElement('select');
-      select.name = `player${i}Team`;
-      select.innerHTML = `
+            const select = document.createElement('select');
+            select.name = `player${i}Team`;
+            select.innerHTML = `
                 <option value="0" ${i <= numPlayers / 2 ? 'selected' : ''}>Team A</option>
                 <option value="1" ${i > numPlayers / 2 ? 'selected' : ''}>Team B</option>
             `;
 
-      div.appendChild(label);
-      div.appendChild(select);
-      assignmentsArea.appendChild(div);
+            div.appendChild(label);
+            div.appendChild(select);
+            assignmentsArea.appendChild(div);
+        }
     }
-  }
 
-  /**
+    /**
  * Update end condition UI based on selection
  */
-  updateEndConditionUI(condition) {
-    const valueGroup = this.container.querySelector('#end-value-group');
-    const valueLabel = this.container.querySelector('#end-value-label');
-    const valueInput = this.container.querySelector('#end-condition-value');
-    const valueHelp = this.container.querySelector('#end-value-help');
+    updateEndConditionUI(condition) {
+        const valueGroup = this.container.querySelector('#end-value-group');
+        const valueLabel = this.container.querySelector('#end-value-label');
+        const valueInput = this.container.querySelector('#end-condition-value');
+        const valueHelp = this.container.querySelector('#end-value-help');
 
-    if (!valueGroup || !valueLabel || !valueInput || !valueHelp) {
-      return;
+        if (!valueGroup || !valueLabel || !valueInput || !valueHelp) {
+            return;
+        }
+
+        const configs = {
+            frags: {
+                label: 'Frags to Win',
+                defaultValue: 7,
+                help: 'First player to reach this many frags wins',
+                min: 1,
+                max: 100,
+                placeholder: '7',
+            },
+            time: {
+                label: 'Time Limit (minutes)',
+                defaultValue: 3,
+                help: 'Player with highest score after this time wins',
+                min: 1,
+                max: 60,
+                placeholder: '3',
+            },
+            points: {
+                label: 'Score Target (thousands)',
+                defaultValue: 10,
+                help: 'First player to reach this score wins (e.g., 10 = 10,000 points)',
+                min: 1,
+                max: 999,
+                placeholder: '10',
+            },
+            lines: {
+                label: 'Lines to Clear',
+                defaultValue: 100,
+                help: 'First player to clear this many lines wins',
+                min: 10,
+                max: 999,
+                placeholder: '100',
+            },
+            never: {
+                label: 'No Win Condition',
+                defaultValue: 0,
+                help: 'Match continues until manually ended',
+                min: 0,
+                max: 0,
+                placeholder: '0',
+            },
+        };
+
+        const config = configs[condition];
+
+        if (!config) {
+            console.warn(`Unknown end condition: ${condition}`);
+            return;
+        }
+
+        if (condition === 'never') {
+            valueGroup.style.display = 'none';
+            return;
+        }
+
+        valueGroup.style.display = 'block';
+        valueLabel.textContent = config.label;
+        valueInput.value = config.defaultValue;
+        valueInput.min = config.min;
+        valueInput.max = config.max;
+        valueInput.placeholder = config.placeholder;
+        valueHelp.textContent = config.help;
     }
 
-    const configs = {
-      frags: {
-        label: 'Frags to Win',
-        defaultValue: 7,
-        help: 'First player to reach this many frags wins',
-        min: 1,
-        max: 100,
-        placeholder: '7',
-      },
-      time: {
-        label: 'Time Limit (minutes)',
-        defaultValue: 3,
-        help: 'Player with highest score after this time wins',
-        min: 1,
-        max: 60,
-        placeholder: '3',
-      },
-      points: {
-        label: 'Score Target (thousands)',
-        defaultValue: 10,
-        help: 'First player to reach this score wins (e.g., 10 = 10,000 points)',
-        min: 1,
-        max: 999,
-        placeholder: '10',
-      },
-      lines: {
-        label: 'Lines to Clear',
-        defaultValue: 100,
-        help: 'First player to clear this many lines wins',
-        min: 10,
-        max: 999,
-        placeholder: '100',
-      },
-      never: {
-        label: 'No Win Condition',
-        defaultValue: 0,
-        help: 'Match continues until manually ended',
-        min: 0,
-        max: 0,
-        placeholder: '0',
-      },
-    };
-
-    const config = configs[condition];
-
-    if (!config) {
-      console.warn(`Unknown end condition: ${condition}`);
-      return;
-    }
-
-    if (condition === 'never') {
-      valueGroup.style.display = 'none';
-      return;
-    }
-
-    valueGroup.style.display = 'block';
-    valueLabel.textContent = config.label;
-    valueInput.value = config.defaultValue;
-    valueInput.min = config.min;
-    valueInput.max = config.max;
-    valueInput.placeholder = config.placeholder;
-    valueHelp.textContent = config.help;
-  }
-
-  /**
+    /**
  * Sync form UI state based on selected match mode
  */
-  refreshFormState() {
-    const matchMode = this.container.querySelector('#match-mode');
-    const modeHelp = this.container.querySelector('#match-mode-help');
-    const endConditionGroup = this.container.querySelector('#end-condition-group');
-    const endCondition = this.container.querySelector('#end-condition');
-    const valueGroup = this.container.querySelector('#end-value-group');
-    const infinityRowsGroup = this.container.querySelector('#infinity-rows-group');
-    const startLevelGroup = this.container.querySelector('#start-level')?.parentElement;
-    const levelProgressionGroup = this.container.querySelector('#level-progression')?.parentElement;
+    refreshFormState() {
+        const matchMode = this.container.querySelector('#match-mode');
+        const modeHelp = this.container.querySelector('#match-mode-help');
+        const endConditionGroup = this.container.querySelector('#end-condition-group');
+        const endCondition = this.container.querySelector('#end-condition');
+        const valueGroup = this.container.querySelector('#end-value-group');
+        const infinityRowsGroup = this.container.querySelector('#infinity-rows-group');
+        const startLevelGroup = this.container.querySelector('#start-level')?.parentElement;
+        const levelProgressionGroup = this.container.querySelector('#level-progression')?.parentElement;
 
-    if (!matchMode) {
-      return;
+        if (!matchMode) {
+            return;
+        }
+
+        const isInfinity = matchMode.value === 'infinity-lms';
+
+        if (modeHelp) {
+            modeHelp.textContent = isInfinity
+                ? 'Last player standing wins. Set the row cap below (100-1000)'
+                : 'Classic FFA with customizable win conditions';
+        }
+
+        if (endConditionGroup) {
+            endConditionGroup.style.display = isInfinity ? 'none' : '';
+        }
+
+        if (valueGroup) {
+            valueGroup.style.display = isInfinity ? 'none' : '';
+        }
+
+        if (infinityRowsGroup) {
+            infinityRowsGroup.style.display = isInfinity ? 'flex' : 'none';
+        }
+
+        if (startLevelGroup) startLevelGroup.style.display = isInfinity ? 'none' : '';
+        if (levelProgressionGroup) levelProgressionGroup.style.display = isInfinity ? 'none' : '';
+
+        if (!isInfinity && endCondition) {
+            this.updateEndConditionUI(endCondition.value);
+        }
     }
 
-    const isInfinity = matchMode.value === 'infinity-lms';
-
-    if (modeHelp) {
-      modeHelp.textContent = isInfinity
-        ? 'Last player standing wins. Set the row cap below (100-1000)'
-        : 'Classic FFA with customizable win conditions';
-    }
-
-    if (endConditionGroup) {
-      endConditionGroup.style.display = isInfinity ? 'none' : '';
-    }
-
-    if (valueGroup) {
-      valueGroup.style.display = isInfinity ? 'none' : '';
-    }
-
-    if (infinityRowsGroup) {
-      infinityRowsGroup.style.display = isInfinity ? 'flex' : 'none';
-    }
-
-    if (startLevelGroup) startLevelGroup.style.display = isInfinity ? 'none' : '';
-    if (levelProgressionGroup) levelProgressionGroup.style.display = isInfinity ? 'none' : '';
-
-    if (!isInfinity && endCondition) {
-      this.updateEndConditionUI(endCondition.value);
-    }
-  }
-
-  /**
+    /**
  * Handle form submission
  */
-  handleSubmit() {
-    const form = this.container.querySelector('#local-match-config-form');
-    if (!form) {
-      console.error('[LocalMatchConfig] Form not found');
-      return;
+    handleSubmit() {
+        const form = this.container.querySelector('#local-match-config-form');
+        if (!form) {
+            console.error('[LocalMatchConfig] Form not found');
+            return;
+        }
+
+        const formData = new FormData(form);
+        const matchMode = formData.get('matchMode');
+        const endCondition = formData.get('endCondition');
+        const isInfinityLMS = matchMode === 'infinity-lms';
+        const rawInfinityRows = parseInt(formData.get('infinityMaxRows'), 10);
+        const infinityMaxRows = Number.isFinite(rawInfinityRows)
+            ? Math.min(1000, Math.max(100, rawInfinityRows))
+            : 100;
+
+        const config = {
+            numPlayers: parseInt(formData.get('numPlayers')),
+            endCondition: isInfinityLMS ? 'infinity-lms' : endCondition,
+            isInfinityLMS,
+            infinityMaxRows,
+            isTeamMode: formData.get('teamMode') === 'on',
+            playerTeams: [],
+            boringRules: formData.get('boringRules') === 'on',
+        };
+
+        // Only include these fields if NOT in infinity mode
+        if (!isInfinityLMS) {
+            config.endConditionValue = parseInt(formData.get('endConditionValue')) || 0;
+            config.startLevel = parseInt(formData.get('startLevel')) || 1;
+            config.levelProgression = formData.get('levelProgression') === 'on';
+        }
+
+        if (config.isTeamMode) {
+            for (let i = 1; i <= config.numPlayers; i++) {
+                config.playerTeams.push(parseInt(formData.get(`player${i}Team`)) || 0);
+            }
+        }
+
+        // Validate
+        if (config.numPlayers < 2 || config.numPlayers > 4) {
+            alert('Number of players must be between 2 and 4');
+            return;
+        }
+
+        if (!isInfinityLMS) {
+            if (config.startLevel < 1 || config.startLevel > 9) {
+                alert('Starting level must be between 1 and 9');
+                return;
+            }
+
+            if (config.endCondition !== 'never' && config.endConditionValue <= 0) {
+                alert('Win condition value must be greater than 0');
+                return;
+            }
+        }
+
+        console.log('[LocalMatchConfig] Starting match with config:', config);
+
+        this.hide();
+
+        if (this.onStartMatch) {
+            this.onStartMatch(config);
+        }
     }
 
-    const formData = new FormData(form);
-    const matchMode = formData.get('matchMode');
-    const endCondition = formData.get('endCondition');
-    const isInfinityLMS = matchMode === 'infinity-lms';
-    const rawInfinityRows = parseInt(formData.get('infinityMaxRows'), 10);
-    const infinityMaxRows = Number.isFinite(rawInfinityRows)
-      ? Math.min(1000, Math.max(100, rawInfinityRows))
-      : 100;
-
-    const config = {
-      numPlayers: parseInt(formData.get('numPlayers')),
-      endCondition: isInfinityLMS ? 'infinity-lms' : endCondition,
-      isInfinityLMS: isInfinityLMS,
-      infinityMaxRows,
-      isTeamMode: formData.get('teamMode') === 'on',
-      playerTeams: [],
-      boringRules: formData.get('boringRules') === 'on',
-    };
-
-    // Only include these fields if NOT in infinity mode
-    if (!isInfinityLMS) {
-      config.endConditionValue = parseInt(formData.get('endConditionValue')) || 0;
-      config.startLevel = parseInt(formData.get('startLevel')) || 1;
-      config.levelProgression = formData.get('levelProgression') === 'on';
-    }
-
-    if (config.isTeamMode) {
-      for (let i = 1; i <= config.numPlayers; i++) {
-        config.playerTeams.push(parseInt(formData.get(`player${i}Team`)) || 0);
-      }
-    }
-
-    // Validate
-    if (config.numPlayers < 2 || config.numPlayers > 4) {
-      alert('Number of players must be between 2 and 4');
-      return;
-    }
-
-    if (!isInfinityLMS) {
-      if (config.startLevel < 1 || config.startLevel > 9) {
-        alert('Starting level must be between 1 and 9');
-        return;
-      }
-
-      if (config.endCondition !== 'never' && config.endConditionValue <= 0) {
-        alert('Win condition value must be greater than 0');
-        return;
-      }
-    }
-
-    console.log('[LocalMatchConfig] Starting match with config:', config);
-
-    this.hide();
-
-    if (this.onStartMatch) {
-      this.onStartMatch(config);
-    }
-  }
-
-  /**
+    /**
  * Show the modal
  */
-  show() {
-    if (!this.container) {
-      console.error('[LocalMatchConfig] Container not found');
-      return;
+    show() {
+        if (!this.container) {
+            console.error('[LocalMatchConfig] Container not found');
+            return;
+        }
+
+        this.container.classList.remove('hidden');
+        this.container.classList.add('show');
+
+        // Initialize UI state
+        const endCondition = this.container.querySelector('#end-condition');
+        if (endCondition) {
+            this.updateEndConditionUI(endCondition.value);
+        }
+        this.refreshFormState();
+
+        console.log('[LocalMatchConfig] Modal shown');
     }
 
-    this.container.classList.remove('hidden');
-    this.container.classList.add('show');
-
-    // Initialize UI state
-    const endCondition = this.container.querySelector('#end-condition');
-    if (endCondition) {
-      this.updateEndConditionUI(endCondition.value);
-    }
-    this.refreshFormState();
-
-    console.log('[LocalMatchConfig] Modal shown');
-  }
-
-  /**
+    /**
  * Hide the modal
  */
-  hide() {
-    if (!this.container) {
-      return;
+    hide() {
+        if (!this.container) {
+            return;
+        }
+
+        this.container.classList.remove('show');
+        this.container.classList.add('hidden');
+
+        console.log('[LocalMatchConfig] Modal hidden');
     }
 
-    this.container.classList.remove('show');
-    this.container.classList.add('hidden');
-
-    console.log('[LocalMatchConfig] Modal hidden');
-  }
-
-  /**
+    /**
  * Cancel the configuration (hide and trigger cancel callback)
  */
-  async cancel() {
-    this.hide();
+    async cancel() {
+        this.hide();
 
-    if (this.onCancel) {
-      console.log('[LocalMatchConfig] Triggering cancel callback');
-      await this.onCancel();
-      console.log('[LocalMatchConfig] Cancel callback completed');
+        if (this.onCancel) {
+            console.log('[LocalMatchConfig] Triggering cancel callback');
+            await this.onCancel();
+            console.log('[LocalMatchConfig] Cancel callback completed');
+        }
     }
-  }
 
-  /**
+    /**
  * Destroy the modal and remove from DOM
  */
-  destroy() {
-    if (this.container && this.container.parentNode) {
-      this.container.parentNode.removeChild(this.container);
-      this.container = null;
+    destroy() {
+        if (this.container && this.container.parentNode) {
+            this.container.parentNode.removeChild(this.container);
+            this.container = null;
+        }
     }
-  }
 }

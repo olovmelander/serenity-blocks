@@ -27,12 +27,24 @@ import { SINGING_BOWL_TETROMINOS } from './singing-bowl-tetrominos.js';
 // Quality Presets
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
-    Extreme: { maxCubes: 6000, treeDepth: 8, bloomStrength: 0.35, bloomRadius: 0.4, enablePost: true, reflectorRes: 512, skyParticles: 1000 },
-    Ultra: { maxCubes: 5000, treeDepth: 7, bloomStrength: 0.3, bloomRadius: 0.35, enablePost: true, reflectorRes: 512, skyParticles: 900 },
-    High: { maxCubes: 4000, treeDepth: 7, bloomStrength: 0.25, bloomRadius: 0.3, enablePost: true, reflectorRes: 256, skyParticles: 800 },
-    Medium: { maxCubes: 2500, treeDepth: 6, bloomStrength: 0.2, bloomRadius: 0.2, enablePost: false, reflectorRes: 256, skyParticles: 500 },
-    Low: { maxCubes: 1500, treeDepth: 5, bloomStrength: 0.15, bloomRadius: 0.15, enablePost: false, reflectorRes: 128, skyParticles: 300 },
-    Minimal: { maxCubes: 800, treeDepth: 4, bloomStrength: 0.1, bloomRadius: 0.1, enablePost: false, reflectorRes: 128, skyParticles: 150 },
+    Extreme: {
+        maxCubes: 6000, treeDepth: 8, bloomStrength: 0.35, bloomRadius: 0.4, enablePost: true, reflectorRes: 512, skyParticles: 1000,
+    },
+    Ultra: {
+        maxCubes: 5000, treeDepth: 7, bloomStrength: 0.3, bloomRadius: 0.35, enablePost: true, reflectorRes: 512, skyParticles: 900,
+    },
+    High: {
+        maxCubes: 4000, treeDepth: 7, bloomStrength: 0.25, bloomRadius: 0.3, enablePost: true, reflectorRes: 256, skyParticles: 800,
+    },
+    Medium: {
+        maxCubes: 2500, treeDepth: 6, bloomStrength: 0.2, bloomRadius: 0.2, enablePost: false, reflectorRes: 256, skyParticles: 500,
+    },
+    Low: {
+        maxCubes: 1500, treeDepth: 5, bloomStrength: 0.15, bloomRadius: 0.15, enablePost: false, reflectorRes: 128, skyParticles: 300,
+    },
+    Minimal: {
+        maxCubes: 800, treeDepth: 4, bloomStrength: 0.1, bloomRadius: 0.1, enablePost: false, reflectorRes: 128, skyParticles: 150,
+    },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,7 +114,7 @@ const CubeShader = {
             
             gl_FragColor = vec4(finalColor, 1.0);
         }
-    `
+    `,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -202,7 +214,7 @@ export default class SingingBowlTheme extends BaseTheme {
                 new THREE.Vector2(window.innerWidth, window.innerHeight),
                 this.activePreset.bloomStrength,
                 this.activePreset.bloomRadius,
-                0.85
+                0.85,
             );
             this.composer.addPass(bloomPass);
             this.bloomPass = bloomPass;
@@ -288,7 +300,7 @@ export default class SingingBowlTheme extends BaseTheme {
                     
                     gl_FragColor = vec4(color, 0.4 * edgeFade);
                 }
-            `
+            `,
         };
 
         this.floorUniforms = { uTime: { value: 0 } };
@@ -450,14 +462,14 @@ export default class SingingBowlTheme extends BaseTheme {
             -0.5, -0.5, 0,
             0.5, -0.5, 0,
             0.5, 0.5, 0,
-            -0.5, 0.5, 0
+            -0.5, 0.5, 0,
         ]);
 
         const uvs = new Float32Array([
             0, 0,
             1, 0,
             1, 1,
-            0, 1
+            0, 1,
         ]);
 
         const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
@@ -670,14 +682,16 @@ export default class SingingBowlTheme extends BaseTheme {
     triggerExplosion(comboCount) {
         if (!this.explosionData) return;
 
-        const { positions, velocities, colors, sizes, lifetimes, maxParticles } = this.explosionData;
+        const {
+            positions, velocities, colors, sizes, lifetimes, maxParticles,
+        } = this.explosionData;
         const particlesToSpawn = Math.min(50 + comboCount * 30, 150);
 
         // Tree canopy centers for explosion origins
         const origins = [
-            new THREE.Vector3(0, 8, 0),      // Main tree top
-            new THREE.Vector3(-12, 6, -8),   // Left tree
-            new THREE.Vector3(12, 6, -8),    // Right tree
+            new THREE.Vector3(0, 8, 0), // Main tree top
+            new THREE.Vector3(-12, 6, -8), // Left tree
+            new THREE.Vector3(12, 6, -8), // Right tree
         ];
 
         for (let i = 0; i < particlesToSpawn; i++) {
@@ -720,19 +734,20 @@ export default class SingingBowlTheme extends BaseTheme {
     }
 
     hsvToRgb(h, s, v) {
-        let r, g, b;
+        let r; let g; let
+            b;
         const i = Math.floor(h * 6);
         const f = h * 6 - i;
         const p = v * (1 - s);
         const q = v * (1 - f * s);
         const t = v * (1 - (1 - f) * s);
         switch (i % 6) {
-            case 0: r = v; g = t; b = p; break;
-            case 1: r = q; g = v; b = p; break;
-            case 2: r = p; g = v; b = t; break;
-            case 3: r = p; g = q; b = v; break;
-            case 4: r = t; g = p; b = v; break;
-            case 5: r = v; g = p; b = q; break;
+        case 0: r = v; g = t; b = p; break;
+        case 1: r = q; g = v; b = p; break;
+        case 2: r = p; g = v; b = t; break;
+        case 3: r = p; g = q; b = v; break;
+        case 4: r = t; g = p; b = v; break;
+        case 5: r = v; g = p; b = q; break;
         }
         return { r, g, b };
     }
@@ -740,7 +755,9 @@ export default class SingingBowlTheme extends BaseTheme {
     updateExplosionParticles(deltaTime) {
         if (!this.explosionData) return;
 
-        const { positions, velocities, lifetimes, maxParticles } = this.explosionData;
+        const {
+            positions, velocities, lifetimes, maxParticles,
+        } = this.explosionData;
         const gravity = -25;
 
         for (let i = 0; i < maxParticles; i++) {
@@ -773,7 +790,9 @@ export default class SingingBowlTheme extends BaseTheme {
         this.generateTreeData(
             new THREE.Vector3(0, 0, 0),
             new THREE.Quaternion(),
-            3.0, 0, this.activePreset.treeDepth
+            3.0,
+            0,
+            this.activePreset.treeDepth,
         );
 
         // 2. Left Tree (Smaller, rotated)
@@ -781,7 +800,9 @@ export default class SingingBowlTheme extends BaseTheme {
         this.generateTreeData(
             new THREE.Vector3(-12, -1, -8),
             leftRot,
-            2.5, 0, this.activePreset.treeDepth - 1
+            2.5,
+            0,
+            this.activePreset.treeDepth - 1,
         );
 
         // 3. Right Tree (Smaller, rotated opposite)
@@ -789,7 +810,9 @@ export default class SingingBowlTheme extends BaseTheme {
         this.generateTreeData(
             new THREE.Vector3(12, -1, -8),
             rightRot,
-            2.5, 0, this.activePreset.treeDepth - 1
+            2.5,
+            0,
+            this.activePreset.treeDepth - 1,
         );
 
         this.instanceCount = Math.min(this.cubeData.length, this.activePreset.maxCubes * 2); // Allow more cubes
@@ -837,8 +860,8 @@ export default class SingingBowlTheme extends BaseTheme {
         this.cubeData.push({
             basePosition: position.clone(),
             baseRotation: rotation.clone(), // Store quaternion
-            size: size,
-            depth: depth,
+            size,
+            depth,
             animPhase: Math.random() * Math.PI * 2,
         });
 
@@ -862,7 +885,7 @@ export default class SingingBowlTheme extends BaseTheme {
             const rotSpread = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), spreadAngle);
             const rotSpin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angleAround);
 
-            // Combine: Spin then Spread relative to local frame? 
+            // Combine: Spin then Spread relative to local frame?
             // Actually: We want to rotate the current frame geometry.
 
             // Child orientation: ParentRot * Spin * Spread
@@ -885,14 +908,14 @@ export default class SingingBowlTheme extends BaseTheme {
             // 1. Position: Base position (static in fractal structure)
             // But we can add "breathing" or "sway" to the whole tree data structure or here.
 
-            // Note: Since basePosition is absolute world coord from generation, 
+            // Note: Since basePosition is absolute world coord from generation,
             // simple shader animation is safest to avoid breaking the tree connectivity.
             // But for "Recursive Tree Cubes" effect, the cubes usually rotate in place AND carry children.
-            // Since we pre-calculated positions, we can't easily rotate parents and have children follow 
+            // Since we pre-calculated positions, we can't easily rotate parents and have children follow
             // unless we re-calculate positions every frame (expensive for JS).
 
-            // For this technique (InstancedMesh), we usually just animate individual cubes 
-            // in place, like pulsing, or minor local rotations. 
+            // For this technique (InstancedMesh), we usually just animate individual cubes
+            // in place, like pulsing, or minor local rotations.
             // The Oosmoxiecode demo DOES re-calculate hierarchy or uses a shader to propagate transforms.
             // Given JS performance limits, let's Stick to the static structure we just built
             // and animate local "spin" and "pulse" and "sway".
@@ -1037,9 +1060,9 @@ export default class SingingBowlTheme extends BaseTheme {
         this.updateExplosionParticles(deltaTime);
 
         // ORBITAL camera movement - circles around the tree
-        const cameraRadius = 25;  // Further back to see all trees
+        const cameraRadius = 25; // Further back to see all trees
         const cameraHeight = 10 + Math.sin(elapsed * 0.2) * 3;
-        const cameraAngle = elapsed * 0.12;  // Slow orbit
+        const cameraAngle = elapsed * 0.12; // Slow orbit
 
         this.camera.position.x = Math.sin(cameraAngle) * cameraRadius;
         this.camera.position.z = Math.cos(cameraAngle) * cameraRadius;

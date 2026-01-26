@@ -748,7 +748,6 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     }
 
-
     // Theme-Linked SFX toggle
     const themeLinkedSfxSelect = document.getElementById('theme-linked-sfx');
     if (themeLinkedSfxSelect) {
@@ -828,7 +827,6 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     }
 
-
     // Sound effects selector
     const sfxSetSelect = document.getElementById('sfx-set');
     if (sfxSetSelect) {
@@ -896,7 +894,6 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             settingsManager.save();
         });
     }
-
 
     // Display Settings (Phase 1)
     // Resolution is always auto - use Render Quality for performance tuning
@@ -1162,7 +1159,6 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     updateControlsDisplay(settings);
     updateGamepadControlsDisplay(settings);
 }
-
 
 /**
  * Sets random interval visibility based on background mode

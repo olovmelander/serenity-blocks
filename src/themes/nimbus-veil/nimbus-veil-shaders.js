@@ -2,14 +2,14 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * NIMBUS VEIL SHADERS - Three.js GLSL Shaders
  * ═══════════════════════════════════════════════════════════════════════════════
- * 
+ *
  * Ethereal cloud-based visual atmosphere with:
  * - Volumetric cloud plane shaders with soft fbm noise
  * - Floating dust particle shaders with twinkle
  * - Glow sprite shaders for cloud cores
  * - Pulse wave shaders for combo/lock effects
  * - Background star shaders
- * 
+ *
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 

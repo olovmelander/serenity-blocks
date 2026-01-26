@@ -50,9 +50,9 @@ export class InfinityMinimap {
         this.isHovering = false;
 
         // Exploration mode state (drag-to-explore)
-        this.isExploring = false;       // True when actively exploring (drag threshold met)
-        this.dragStartY = null;         // Y position where drag started
-        this.dragThreshold = 8;         // Minimum pixels before entering exploration mode
+        this.isExploring = false; // True when actively exploring (drag threshold met)
+        this.dragStartY = null; // Y position where drag started
+        this.dragThreshold = 8; // Minimum pixels before entering exploration mode
 
         // Mouse position for cursor glow effect
         this.mouseX = 50; // Center by default (percentage)

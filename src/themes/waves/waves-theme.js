@@ -521,12 +521,12 @@ export default class WavesTheme extends BaseTheme {
 
         // Full 360 degree cylinder - completely surrounds camera
         const geometry = new THREE.CylinderGeometry(
-            10,     // radius top
-            10,     // radius bottom
-            80,     // length
+            10, // radius top
+            10, // radius bottom
+            80, // length
             segments,
             segments / 2,
-            true    // open ended (so we see exit light)
+            true, // open ended (so we see exit light)
         );
 
         // Rotate so it extends along Z axis (forward)
@@ -546,7 +546,6 @@ export default class WavesTheme extends BaseTheme {
 
         console.log('[Waves] Barrel created - full 360 degree cylinder');
     }
-
 
     // ─────────────────────────────────────────────────────────────────────────
     // Exit Glow - Bright light at barrel opening
@@ -687,7 +686,7 @@ export default class WavesTheme extends BaseTheme {
             new THREE.Vector2(width, height),
             this.qualityPreset.bloomStrength,
             this.qualityPreset.bloomRadius,
-            0.75
+            0.75,
         );
         this.composer.addPass(this.bloomPass);
 
@@ -801,7 +800,6 @@ export default class WavesTheme extends BaseTheme {
                 this.barrelMaterial.uniforms.uGlowIntensity.value = this.glowIntensity;
             }
 
-
             if (this.sprayMaterial) {
                 this.sprayMaterial.uniforms.uTime.value = this.time;
             }
@@ -840,7 +838,6 @@ export default class WavesTheme extends BaseTheme {
             this.barrelMaterial?.dispose();
             this.scene.remove(this.barrel);
         }
-
 
         if (this.exitGlow) {
             this.exitGlow.geometry.dispose();

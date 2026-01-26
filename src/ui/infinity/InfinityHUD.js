@@ -129,7 +129,6 @@ export class InfinityHUD {
         `;
         this.container.appendChild(title);
 
-
         // Create height section
         this._createHeightSection();
 

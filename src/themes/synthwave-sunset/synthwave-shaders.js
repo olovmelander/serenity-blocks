@@ -1,6 +1,6 @@
 /**
  * Synthwave Sunset Theme - GLSL Shaders for Three.js
- * 
+ *
  * Contains all vertex and fragment shaders for:
  * - Infinite perspective grid with glow
  * - Volumetric sun with stripes

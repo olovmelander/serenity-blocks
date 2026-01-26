@@ -2,7 +2,8 @@ import { optimizedEventBus } from '../utils/event-optimizer.js';
 
 export const MULTIPLAYER_EVENTS = {
     PLAYER_LIST_CHANGED: 'ffa:player-list-changed',
-    MATCH_STARTED: 'ffa:match-started',
+    MATCH_PREPARING: 'ffa:match-preparing', // UI setup before countdown
+    MATCH_STARTED: 'ffa:match-started', // Game actually starts (after countdown)
     ROUND_RESTART: 'ffa:round-restart',
     CHAT_MESSAGE: 'ffa:chat-message',
     LINE_CLEAR: 'ffa:line-clear',

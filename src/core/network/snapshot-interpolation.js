@@ -1,9 +1,9 @@
 /**
  * Snapshot Interpolator
- * 
+ *
  * Provides linear interpolation between game state snapshots to ensure
  * smooth rendering (60Hz+) from lower-rate network updates (30Hz).
- * 
+ *
  * Logic:
  * - Buffers valid snapshots.
  * - Interpolates "active" pieces (x, y) based on render timestamp.
@@ -25,6 +25,15 @@ export class SnapshotInterpolator {
 
         // Debug mode
         this.debug = false;
+
+        // === PERFORMANCE OPTIMIZATIONS ===
+        // Cache last interpolation results to avoid recalculating same frame
+        this._lastRenderTime = 0;
+        this._resultCache = new Map(); // steamId -> { time, result }
+        // Pre-allocated interpolated piece object (reused to avoid allocations)
+        this._interpolatedPiece = {
+            type: null, shape: null, x: 0, y: 0, rotation: 0, color: null,
+        };
     }
 
     /**
@@ -36,8 +45,8 @@ export class SnapshotInterpolator {
 
         const timestamp = fullState.timestamp || Date.now();
 
-        fullState.players.forEach(playerData => {
-            const steamId = playerData.steamId;
+        fullState.players.forEach((playerData) => {
+            const { steamId } = playerData;
             if (!this.playerBuffers.has(steamId)) {
                 this.playerBuffers.set(steamId, []);
             }
@@ -60,7 +69,7 @@ export class SnapshotInterpolator {
             // We only need interpolate-able data (piece position) + full state reference
             buffer.push({
                 timestamp,
-                data: playerData
+                data: playerData,
             });
 
             // Prune buffer
@@ -77,6 +86,12 @@ export class SnapshotInterpolator {
      * @returns {Object|null} Interpolated player state
      */
     getInterpolatedState(steamId, renderTime) {
+        // PERF: Check cache first - same frame returns cached result
+        const cached = this._resultCache.get(steamId);
+        if (cached && cached.time === renderTime) {
+            return cached.result;
+        }
+
         // Apply interpolation delay (render in the past)
         const delayedTime = renderTime - this.interpolationDelay;
 
@@ -115,7 +130,12 @@ export class SnapshotInterpolator {
         }
 
         // 4. Interpolate
-        return this._interpolate(fromNode, toNode, delayedTime);
+        const result = this._interpolate(fromNode, toNode, delayedTime);
+
+        // PERF: Cache result for this frame
+        this._resultCache.set(steamId, { time: renderTime, result });
+
+        return result;
     }
 
     /**
@@ -149,27 +169,30 @@ export class SnapshotInterpolator {
 
             // Should interpolate?
             const canInterpolate = (
-                fromState.currentPiece.type === toState.currentPiece.type && // Same piece type
-                dx < 5 && dy < 5 // Not a teleport/spawn (heuristic)
+                fromState.currentPiece.type === toState.currentPiece.type // Same piece type
+                && dx < 5 && dy < 5 // Not a teleport/spawn (heuristic)
             );
 
             if (canInterpolate) {
-                // Apply Lerp
-                interpolatedPiece = {
-                    ...toState.currentPiece,
-                    x: this._lerp(fromState.currentPiece.x, toState.currentPiece.x, t),
-                    y: this._lerp(fromState.currentPiece.y, toState.currentPiece.y, t),
-                    rotation: toState.currentPiece.rotation // Snap rotation (or lerp angle if desired)
-                };
+                // PERF: Reuse pre-allocated piece object instead of creating new one
+                const piece = this._interpolatedPiece;
+                const toPiece = toState.currentPiece;
+                piece.type = toPiece.type;
+                piece.shape = toPiece.shape;
+                piece.x = this._lerp(fromState.currentPiece.x, toPiece.x, t);
+                piece.y = this._lerp(fromState.currentPiece.y, toPiece.y, t);
+                piece.rotation = toPiece.rotation;
+                piece.color = toPiece.color;
+                interpolatedPiece = piece;
             }
         }
 
         // 2. Default to "toState" for discrete data (grid, score, etc.)
         // This ensures events like line clears appear "eventually" at the right time
-        return {
-            ...toState,
-            currentPiece: interpolatedPiece
-        };
+        // PERF: Return toState directly with modified currentPiece reference
+        // (avoids object spread which creates new object)
+        toState.currentPiece = interpolatedPiece;
+        return toState;
     }
 
     _lerp(start, end, t) {

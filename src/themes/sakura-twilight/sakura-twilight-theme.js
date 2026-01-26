@@ -13,12 +13,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { BaseTheme } from '../base-theme.js';
-import modelUrl from '/src/themes/sakura-twilight/assets/landscape-glb.glb?url';
-import foxModelUrl from '/src/themes/sakura-twilight/assets/Fox.glb?url';
+import modelUrl from '../../../../../../src/themes/sakura-twilight/assets/landscape-glb.glb?url';
+import foxModelUrl from '../../../../../../src/themes/sakura-twilight/assets/Fox.glb?url';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SAKURA_TWILIGHT_TETROMINOS } from './sakura-twilight-tetrominos.js';
-
-
 
 export default class SakuraTwilightTheme extends BaseTheme {
     constructor() {
@@ -60,9 +58,9 @@ export default class SakuraTwilightTheme extends BaseTheme {
             fogColor: new THREE.Color('#2d1b4e'),
 
             // Grass Parameters
-            grassBaseColor: new THREE.Color('#1a4d1a'),  // Darker base
-            grassTipColor: new THREE.Color('#4cff4c'),   // Brighter tips
-            grassWindStrength: 0.12,  // Increased for visible sway
+            grassBaseColor: new THREE.Color('#1a4d1a'), // Darker base
+            grassTipColor: new THREE.Color('#4cff4c'), // Brighter tips
+            grassWindStrength: 0.12, // Increased for visible sway
             grassWindSpeed: 1.2,
         };
 
@@ -143,7 +141,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         const dirLight = new THREE.DirectionalLight(0xeeddff, 0.6);
         dirLight.position.set(50, 80, 50);
         dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 1024;  // Reduced for performance
+        dirLight.shadow.mapSize.width = 1024; // Reduced for performance
         dirLight.shadow.mapSize.height = 1024;
         dirLight.shadow.camera.near = 0.5;
         dirLight.shadow.camera.far = 200;
@@ -157,11 +155,11 @@ export default class SakuraTwilightTheme extends BaseTheme {
         await this.loadModelAndCreateForest();
         this.createPetals();
         this.createGrass(); // Add animated grass
-        this.createMoon();  // Add moon with glow
-        this.createFujiMountain();  // Add 3D Fuji mountain in horizon
-        this.createStarfield();  // Add twinkling stars
-        this.createLanterns();  // Add glowing lanterns
-        await this.loadFoxes();  // Add wandering foxes
+        this.createMoon(); // Add moon with glow
+        this.createFujiMountain(); // Add 3D Fuji mountain in horizon
+        this.createStarfield(); // Add twinkling stars
+        this.createLanterns(); // Add glowing lanterns
+        await this.loadFoxes(); // Add wandering foxes
 
         this.setupEventListeners();
         this.isActive = true;
@@ -183,11 +181,11 @@ export default class SakuraTwilightTheme extends BaseTheme {
         // (This handles the case where theme loads after settings are applied)
         // Accessing global settings would be better, but we rely on event for dynamic updates
         // For initial load, we might need to check if a custom resolution is set.
-        // For now, let's trust the defaults or wait for an event, 
+        // For now, let's trust the defaults or wait for an event,
         // BUT ideally we should check if `window.serenitySettings` or similar exists.
         // A safer way is checking the `display-manager` resolution if it was globally stored.
-        // For this patch, I'll rely on the event or next resize/setting apply. 
-        // BETTER: Check if main.js exposed a way, or just default to auto. 
+        // For this patch, I'll rely on the event or next resize/setting apply.
+        // BETTER: Check if main.js exposed a way, or just default to auto.
         // The user usually sets resolution in settings, which triggers the event.
 
         // Tricky: if the user ALREADY set a resolution before loading the theme, we might be in 'auto'.
@@ -204,15 +202,17 @@ export default class SakuraTwilightTheme extends BaseTheme {
             const gltf = await loader.loadAsync(modelUrl);
 
             // --- Extract Geometries and Materials ---
-            let trunkGeo = null, trunkMat = null;
-            let groundGeo = null, groundMat = null;
+            let trunkGeo = null; let
+                trunkMat = null;
+            let groundGeo = null; let
+                groundMat = null;
             let canopyMat = null;
 
             // Collect ALL canopy geometries to merge later
             const canopyGeometries = [];
-            let canopyOffset = new THREE.Vector3();
-            let groundOffset = new THREE.Vector3();
-            let trunkOffset = new THREE.Vector3();
+            const canopyOffset = new THREE.Vector3();
+            const groundOffset = new THREE.Vector3();
+            const trunkOffset = new THREE.Vector3();
 
             // First pass: update world matrices
             gltf.scene.updateMatrixWorld(true);
@@ -257,7 +257,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
                             trunkMat = new THREE.MeshStandardMaterial({
                                 color: 0x3d2b1f,
-                                roughness: 0.9
+                                roughness: 0.9,
                             });
                         }
                     }
@@ -307,7 +307,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
             // 1. Trunk Instances (Standard Material) - geometry has world transform baked in
             const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, count);
-            trunkMesh.castShadow = false;  // Disabled - shadows from canopy are enough
+            trunkMesh.castShadow = false; // Disabled - shadows from canopy are enough
             trunkMesh.receiveShadow = true;
 
             // 2. Ground/Landscape Instances (DISABLED - using procedural terrain)
@@ -319,12 +319,12 @@ export default class SakuraTwilightTheme extends BaseTheme {
             // 3. Canopy Instances (With Custom Material) - using MERGED geometry
             this.setupSharedCanopyMaterial(canopyMat);
             const canopyMesh = new THREE.InstancedMesh(mergedCanopyGeo, this.sharedCanopyMaterial, count);
-            canopyMesh.castShadow = false;  // Disabled - will enable per-instance via frustum later
+            canopyMesh.castShadow = false; // Disabled - will enable per-instance via frustum later
             canopyMesh.receiveShadow = true;
             canopyMesh.customDepthMaterial = new THREE.MeshDepthMaterial({
                 depthPacking: THREE.RGBADepthPacking,
                 map: canopyMat.map,
-                alphaTest: 0.5
+                alphaTest: 0.5,
             });
 
             // 4. Shadow/Dirt Decals (Grounding the trees)
@@ -337,7 +337,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 polygonOffset: true,
                 polygonOffsetFactor: -1, // Pull forward slightly
                 color: 0x000000,
-                opacity: 0.6
+                opacity: 0.6,
             });
             const shadowMesh = new THREE.InstancedMesh(shadowGeo, shadowMat, count);
 
@@ -437,16 +437,16 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 { x: 38, z: 18, scale: 0.85 },
 
                 // === FILL GAPS (identified empty spots) ===
-                { x: -12, z: 22, scale: 0.95 },  // Left-center gap
-                { x: 0, z: 16, scale: 0.9 },     // Center gap
-                { x: 20, z: 12, scale: 0.85 },    // Right-center gap
-                { x: -5, z: 30, scale: 1.0 },    // Far left foreground
-                { x: 28, z: 28, scale: 0.9 },    // Right mid
-                { x: 12, z: 0, scale: 1.0 },     // Center-back
+                { x: -12, z: 22, scale: 0.95 }, // Left-center gap
+                { x: 0, z: 16, scale: 0.9 }, // Center gap
+                { x: 20, z: 12, scale: 0.85 }, // Right-center gap
+                { x: -5, z: 30, scale: 1.0 }, // Far left foreground
+                { x: 28, z: 28, scale: 0.9 }, // Right mid
+                { x: 12, z: 0, scale: 1.0 }, // Center-back
             ];
 
             let placedCount = 0;
-            strategicTrees.forEach(tree => {
+            strategicTrees.forEach((tree) => {
                 // Add slight random jitter for natural look (±1.5 units)
                 const jitterX = (Math.random() - 0.5) * 3;
                 const jitterZ = (Math.random() - 0.5) * 3;
@@ -480,7 +480,6 @@ export default class SakuraTwilightTheme extends BaseTheme {
             this.shadowMesh = shadowMesh;
 
             console.log(`[SakuraTheme] Forest generated (Optimized). Instances: ${placedCount}`);
-
         } catch (error) {
             console.error('[SakuraTheme] Error loading model:', error);
         }
@@ -489,10 +488,10 @@ export default class SakuraTwilightTheme extends BaseTheme {
     // Verdant-hills style terrain height function
     getTerrainHeight(x, z) {
         // Gentler rolling hills for sakura forest (Flattened to fit camera)
-        return (Math.sin(x * 0.025) * 12 +
-            Math.sin(z * 0.02) * 10 +
-            Math.sin(x * 0.06 + z * 0.04) * 5 +
-            Math.cos(x * 0.04 - z * 0.03) * 7) * 0.15 - 2.0;
+        return (Math.sin(x * 0.025) * 12
+            + Math.sin(z * 0.02) * 10
+            + Math.sin(x * 0.06 + z * 0.04) * 5
+            + Math.cos(x * 0.04 - z * 0.03) * 7) * 0.15 - 2.0;
     }
 
     createGroundLayer() {
@@ -516,8 +515,8 @@ export default class SakuraTwilightTheme extends BaseTheme {
         // Terrain shader with natural grass coloring and fog
         const material = new THREE.ShaderMaterial({
             uniforms: {
-                uGrassColor1: { value: new THREE.Color(0x0a2a15) },  // Dark blue-green (moonlit)
-                uGrassColor2: { value: new THREE.Color(0x1a4a2a) },  // Muted teal
+                uGrassColor1: { value: new THREE.Color(0x0a2a15) }, // Dark blue-green (moonlit)
+                uGrassColor2: { value: new THREE.Color(0x1a4a2a) }, // Muted teal
                 uFogColor: { value: this.config.fogColor },
             },
             vertexShader: `
@@ -623,15 +622,15 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 uTime: { value: 0 },
                 uWindStrength: { value: 0.12 },
                 uGrassTexture: { value: grassTexture },
-                uBaseColor: { value: new THREE.Color(0x0a2a1a) },  // Dark blue-green base (moonlit)
-                uTipColor: { value: new THREE.Color(0x2a5a3a) },   // Muted teal-green tips
+                uBaseColor: { value: new THREE.Color(0x0a2a1a) }, // Dark blue-green base (moonlit)
+                uTipColor: { value: new THREE.Color(0x2a5a3a) }, // Muted teal-green tips
                 uFogColor: { value: this.config.fogColor },
                 uFogNear: { value: 20.0 },
                 uFogFar: { value: 80.0 },
-                uMoonlightTint: { value: new THREE.Color(0xaabbdd) },  // Cool moonlight
+                uMoonlightTint: { value: new THREE.Color(0xaabbdd) }, // Cool moonlight
                 // Lantern glow - just pass a few key positions
-                uLanternColor: { value: new THREE.Color(0xffaa55) },  // Warm orange
-                uLanternRadius: { value: 15.0 },  // How far the glow reaches
+                uLanternColor: { value: new THREE.Color(0xffaa55) }, // Warm orange
+                uLanternRadius: { value: 15.0 }, // How far the glow reaches
                 uPulseIntensity: { value: 0.0 }, // Dynamic pulse on piece lock
             },
             vertexShader: `
@@ -731,7 +730,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             `,
             side: THREE.DoubleSide,
             depthWrite: true,
-            alphaTest: 0.5,  // Hard cutoff like tree leaves
+            alphaTest: 0.5, // Hard cutoff like tree leaves
         });
 
         this.grassMaterial = grassMat;
@@ -742,7 +741,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         let treeGrassCount = 0;
         const clumpsPerTree = 3; // PERF: Reduced from 5
 
-        let treePositions = [];
+        const treePositions = [];
         if (this.trunkMesh) {
             treeGrassCount = this.trunkMesh.count * clumpsPerTree;
             // Extract positions
@@ -763,7 +762,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         let idx = 0;
 
         // 2. Place Grass AROUND TREES first (to hide roots)
-        treePositions.forEach(treePos => {
+        treePositions.forEach((treePos) => {
             for (let k = 0; k < clumpsPerTree; k++) {
                 const angle = (k / clumpsPerTree) * Math.PI * 2 + Math.random();
                 const dist = 0.3 + Math.random() * 0.4; // VERY close to trunk (0.3-0.7 units)
@@ -794,12 +793,12 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         for (let i = 0; i < baseGrassCount; i++) {
             // HEAVY front bias - pow 0.3 means most values cluster near 0 (front)
-            const t = Math.pow(Math.random(), 0.3);
+            const t = Math.random() ** 0.3;
 
             // Front zone: large area around and in front of camera
             // Spread more widely on X axis for framing, closer on Z for depth
-            const frontX = cameraX + (Math.random() - 0.5) * 50;  // Wider X spread
-            const frontZ = cameraZ + 5 + (Math.random() - 0.5) * 15;  // In front of camera
+            const frontX = cameraX + (Math.random() - 0.5) * 50; // Wider X spread
+            const frontZ = cameraZ + 5 + (Math.random() - 0.5) * 15; // In front of camera
 
             // Middle zone: between camera and look target
             const midX = 10 + (Math.random() - 0.5) * 40;
@@ -869,14 +868,20 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
             // Natural curved blade shape using bezier
             ctx.bezierCurveTo(
-                x - baseWidth / 4, size - height * 0.35,
-                x + curve - tipWidth, size - height * 0.7,
-                x + lean, size - height
+                x - baseWidth / 4,
+                size - height * 0.35,
+                x + curve - tipWidth,
+                size - height * 0.7,
+                x + lean,
+                size - height,
             );
             ctx.bezierCurveTo(
-                x + curve + tipWidth, size - height * 0.7,
-                x + baseWidth / 4, size - height * 0.35,
-                x + baseWidth / 2, size
+                x + curve + tipWidth,
+                size - height * 0.7,
+                x + baseWidth / 4,
+                size - height * 0.35,
+                x + baseWidth / 2,
+                size,
             );
             ctx.closePath();
             ctx.fillStyle = gradient;
@@ -889,27 +894,27 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // Color palettes
         const darkPalette = {
-            base: '#0a1a0a', mid1: '#152515', mid2: '#1f3f1f', mid3: '#2a5a2a', tip: '#3a7a3a'
+            base: '#0a1a0a', mid1: '#152515', mid2: '#1f3f1f', mid3: '#2a5a2a', tip: '#3a7a3a',
         };
         const midPalette = {
-            base: '#101f10', mid1: '#1a3a1a', mid2: '#2d5d2d', mid3: '#4a8a4a', tip: '#6aba6a'
+            base: '#101f10', mid1: '#1a3a1a', mid2: '#2d5d2d', mid3: '#4a8a4a', tip: '#6aba6a',
         };
         const brightPalette = {
-            base: '#152a15', mid1: '#2a4a2a', mid2: '#4a7a4a', mid3: '#6aaa6a', tip: '#8ada8a'
+            base: '#152a15', mid1: '#2a4a2a', mid2: '#4a7a4a', mid3: '#6aaa6a', tip: '#8ada8a',
         };
         const accentPalette = {
-            base: '#1a3a1a', mid1: '#3a6a3a', mid2: '#5a9a5a', mid3: '#7aca7a', tip: '#9afa9a'
+            base: '#1a3a1a', mid1: '#3a6a3a', mid2: '#5a9a5a', mid3: '#7aca7a', tip: '#9afa9a',
         };
 
         // Layer 1: Dark background blades - WIDER + SOLID for alphaTest
         for (let i = 0; i < 12; i++) {
             const x = Math.random() * size;
             const height = 400 + Math.random() * 500;
-            const baseWidth = 40 + Math.random() * 40;  // Much wider
-            const tipWidth = 8 + Math.random() * 10;    // Wider tips
+            const baseWidth = 40 + Math.random() * 40; // Much wider
+            const tipWidth = 8 + Math.random() * 10; // Wider tips
             const lean = (Math.random() - 0.5) * 140;
             const curve = (Math.random() - 0.5) * 80;
-            drawBlade(x, height, baseWidth, tipWidth, lean, curve, darkPalette, 1.0);  // Full opacity
+            drawBlade(x, height, baseWidth, tipWidth, lean, curve, darkPalette, 1.0); // Full opacity
         }
 
         // Layer 2: Main blades (evenly distributed) - WIDER + SOLID
@@ -917,35 +922,35 @@ export default class SakuraTwilightTheme extends BaseTheme {
         for (let i = 0; i < mainCount; i++) {
             const x = (i / mainCount) * size + (Math.random() - 0.5) * 40;
             const height = 550 + Math.random() * 450;
-            const baseWidth = 45 + Math.random() * 45;  // Much wider
-            const tipWidth = 10 + Math.random() * 10;   // Wider tips
+            const baseWidth = 45 + Math.random() * 45; // Much wider
+            const tipWidth = 10 + Math.random() * 10; // Wider tips
             const lean = (Math.random() - 0.5) * 160;
             const curve = (Math.random() - 0.5) * 100;
             const palette = Math.random() > 0.4 ? midPalette : brightPalette;
-            drawBlade(x, height, baseWidth, tipWidth, lean, curve, palette, 1.0);  // Full opacity
+            drawBlade(x, height, baseWidth, tipWidth, lean, curve, palette, 1.0); // Full opacity
         }
 
         // Layer 3: Bright accent blades - WIDER + SOLID
         for (let i = 0; i < 10; i++) {
             const x = Math.random() * size;
             const height = 650 + Math.random() * 350;
-            const baseWidth = 35 + Math.random() * 35;  // Much wider
-            const tipWidth = 8 + Math.random() * 8;     // Wider tips
+            const baseWidth = 35 + Math.random() * 35; // Much wider
+            const tipWidth = 8 + Math.random() * 8; // Wider tips
             const lean = (Math.random() - 0.5) * 180;
             const curve = (Math.random() - 0.5) * 90;
-            drawBlade(x, height, baseWidth, tipWidth, lean, curve, accentPalette, 1.0);  // Full opacity
+            drawBlade(x, height, baseWidth, tipWidth, lean, curve, accentPalette, 1.0); // Full opacity
         }
 
         // Layer 4: Medium detail blades - WIDER (no thin wispy ones)
         for (let i = 0; i < 10; i++) {
             const x = Math.random() * size;
             const height = 400 + Math.random() * 500;
-            const baseWidth = 25 + Math.random() * 25;  // Wider than before
-            const tipWidth = 6 + Math.random() * 6;     // Thicker tips
+            const baseWidth = 25 + Math.random() * 25; // Wider than before
+            const tipWidth = 6 + Math.random() * 6; // Thicker tips
             const lean = (Math.random() - 0.5) * 120;
             const curve = (Math.random() - 0.5) * 60;
             const palette = Math.random() > 0.5 ? brightPalette : accentPalette;
-            drawBlade(x, height, baseWidth, tipWidth, lean, curve, palette, 1.0);  // Full opacity
+            drawBlade(x, height, baseWidth, tipWidth, lean, curve, palette, 1.0); // Full opacity
         }
 
         // Layer 5: Thick accent strands (formerly hair-like, now solid for alphaTest)
@@ -958,14 +963,14 @@ export default class SakuraTwilightTheme extends BaseTheme {
             const ctrlY = size - height * 0.5;
 
             const gradient = ctx.createLinearGradient(x, size, x + lean, size - height);
-            gradient.addColorStop(0, 'rgb(40, 100, 40)');      // Fully opaque
+            gradient.addColorStop(0, 'rgb(40, 100, 40)'); // Fully opaque
             gradient.addColorStop(0.5, 'rgb(80, 160, 80)');
             gradient.addColorStop(1, 'rgb(130, 210, 130)');
 
             ctx.beginPath();
             ctx.moveTo(x, size);
             ctx.quadraticCurveTo(ctrlX, ctrlY, x + lean, size - height);
-            ctx.lineWidth = 8 + Math.random() * 10;  // Much thicker strands
+            ctx.lineWidth = 8 + Math.random() * 10; // Much thicker strands
             ctx.strokeStyle = gradient;
             ctx.stroke();
         }
@@ -987,9 +992,9 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // Radial Gradient (Black center -> Transparent edge)
         const gradient = ctx.createRadialGradient(64, 64, 10, 64, 64, 60);
-        gradient.addColorStop(0, 'rgba(0, 0, 0, 0.8)');   // Dark center
+        gradient.addColorStop(0, 'rgba(0, 0, 0, 0.8)'); // Dark center
         gradient.addColorStop(0.5, 'rgba(10, 10, 0, 0.4)'); // Dirt-like middle
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');     // Transparent edge
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)'); // Transparent edge
 
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, 128, 128);
@@ -1112,7 +1117,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
                 varying vec3 vSakuraWorldPos;
                 varying vec3 vInstanceCenterWorld;
-            `
+            `,
             );
 
             // 2. Vertex: Wind and Lighting Calculation
@@ -1167,7 +1172,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
             transformed.x += windOffset;
             transformed.z += windOffset;
-            `
+            `,
             );
 
             // 3. Project Vertex: Compute Varyings
@@ -1187,7 +1192,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             #else
             vInstanceCenterWorld = (modelMatrix * vec4(uLocalCanopyCenter, 1.0)).xyz;
             #endif
-                `
+                `,
             );
 
             // 4. Fragment Shader
@@ -1211,7 +1216,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 varying vec3 vSakuraWorldPos;
                 varying vec3 vInstanceCenterWorld;
                 varying vec3 vLanternLight;
-            `
+            `,
             );
 
             // 4. Fragment: Custom Gradient Color + Lantern Light
@@ -1245,7 +1250,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             // Add global pulse effect (subtle warm orange flash during piece lock/combo)
             vec3 pulseColor = vec3(1.0, 0.6, 0.2); // Warm lantern color
             diffuseColor.rgb += pulseColor * uPulseIntensity * 0.25;
-            `
+            `,
             );
         };
     }
@@ -1321,7 +1326,8 @@ export default class SakuraTwilightTheme extends BaseTheme {
         const alphas = new Float32Array(count);
 
         // Camera at (20, 4, 30)
-        const camX = 20, camZ = 30;
+        const camX = 20; const
+            camZ = 30;
 
         for (let i = 0; i < count; i++) {
             const i3 = i * 3;
@@ -1342,10 +1348,10 @@ export default class SakuraTwilightTheme extends BaseTheme {
             }
 
             // Random seeds for unique animation
-            seeds[i4] = Math.random() * 100;           // Phase offset
+            seeds[i4] = Math.random() * 100; // Phase offset
             seeds[i4 + 1] = 0.3 + Math.random() * 0.7; // Fall speed (0.3-1.0)
             seeds[i4 + 2] = Math.random() * Math.PI * 2; // Spiral phase
-            seeds[i4 + 3] = 0.5 + Math.random() * 1.0;   // Spiral radius
+            seeds[i4 + 3] = 0.5 + Math.random() * 1.0; // Spiral radius
 
             sizes[i] = 3 + Math.random() * 5; // Small petals (3-8)
             alphas[i] = 0.7 + Math.random() * 0.3;
@@ -1457,11 +1463,11 @@ export default class SakuraTwilightTheme extends BaseTheme {
     }
 
     createMoon() {
-        const moonSize = 50;  // Much smaller for proper scale
+        const moonSize = 50; // Much smaller for proper scale
 
         // Create moon group for positioning - further away for better scale
         this.moonGroup = new THREE.Group();
-        this.moonGroup.position.set(-300, 250, -800);  // Upper left, far back
+        this.moonGroup.position.set(-300, 250, -800); // Upper left, far back
         this.scene.add(this.moonGroup);
 
         // Moon sphere with texture-based shader (matching sunset theme)
@@ -1583,11 +1589,21 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // Enhanced glow layers (brighter, more layers)
         const glowConfigs = [
-            { size: moonSize * 1.4, color: 0xffffff, opacity: 0.5, z: -3 },
-            { size: moonSize * 1.8, color: 0xeeeeff, opacity: 0.35, z: -6 },
-            { size: moonSize * 2.3, color: 0xddddff, opacity: 0.25, z: -10 },
-            { size: moonSize * 3.0, color: 0xccccff, opacity: 0.15, z: -15 },
-            { size: moonSize * 4.0, color: 0xbbbbee, opacity: 0.08, z: -20 },
+            {
+                size: moonSize * 1.4, color: 0xffffff, opacity: 0.5, z: -3,
+            },
+            {
+                size: moonSize * 1.8, color: 0xeeeeff, opacity: 0.35, z: -6,
+            },
+            {
+                size: moonSize * 2.3, color: 0xddddff, opacity: 0.25, z: -10,
+            },
+            {
+                size: moonSize * 3.0, color: 0xccccff, opacity: 0.15, z: -15,
+            },
+            {
+                size: moonSize * 4.0, color: 0xbbbbee, opacity: 0.08, z: -20,
+            },
         ];
 
         for (const config of glowConfigs) {
@@ -1654,11 +1670,11 @@ export default class SakuraTwilightTheme extends BaseTheme {
     createFujiMountain() {
         // Mountain configuration
         const config = {
-            size: 800,           // Size of the terrain plane
-            segments: 128,       // Resolution (128x128 = 16,384 vertices)
-            peakHeight: 300,     // Maximum height at the peak
-            position: new THREE.Vector3(-150, -80, -1100),  // Far left, distant horizon
-            snowLine: 0.45,      // Snow starts at 45% height
+            size: 800, // Size of the terrain plane
+            segments: 128, // Resolution (128x128 = 16,384 vertices)
+            peakHeight: 300, // Maximum height at the peak
+            position: new THREE.Vector3(-150, -80, -1100), // Far left, distant horizon
+            snowLine: 0.45, // Snow starts at 45% height
         };
 
         // Create high-resolution plane geometry
@@ -1666,7 +1682,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             config.size,
             config.size,
             config.segments,
-            config.segments
+            config.segments,
         );
 
         // Rotate to horizontal and position
@@ -1739,7 +1755,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             let coneHeight = 0;
             if (normalizedDistance < 1.0) {
                 // Fuji profile: steep at top, gentler at base
-                const profile = 1 - Math.pow(normalizedDistance, 1.3);
+                const profile = 1 - normalizedDistance ** 1.3;
                 // Add slight concavity near peak (Fuji's crater rim effect)
                 const craterDip = normalizedDistance < 0.08 ? (0.08 - normalizedDistance) * 0.3 : 0;
                 coneHeight = Math.max(0, profile - craterDip) * config.peakHeight;
@@ -1751,7 +1767,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             const detailNoise = fbm(vertex.x * noiseScale * 3, vertex.z * noiseScale * 3, 4);
 
             // Noise strength decreases toward peak (smoother snow cap)
-            const noiseStrength = Math.pow(normalizedDistance, 0.7) * 0.15;
+            const noiseStrength = normalizedDistance ** 0.7 * 0.15;
             const terrainDetail = (ridgeNoise * 0.7 + detailNoise * 0.3) * config.peakHeight * noiseStrength;
 
             // Add radial ridges (lava flow patterns)
@@ -1951,11 +1967,11 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // Star colors for twilight sky (whites, blues, pale yellows)
         const starColors = [
-            new THREE.Color(0xffffff),  // White
-            new THREE.Color(0xffeedd),  // Warm white
-            new THREE.Color(0xddddff),  // Pale blue
-            new THREE.Color(0xaabbff),  // Light blue
-            new THREE.Color(0xffffff),  // White
+            new THREE.Color(0xffffff), // White
+            new THREE.Color(0xffeedd), // Warm white
+            new THREE.Color(0xddddff), // Pale blue
+            new THREE.Color(0xaabbff), // Light blue
+            new THREE.Color(0xffffff), // White
         ];
 
         // 1. Create Static Background Stars
@@ -1963,7 +1979,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             const i3 = i * 3;
             // Spread stars across upper hemisphere
             const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(Math.random() * 0.7);  // Bias toward top
+            const phi = Math.acos(Math.random() * 0.7); // Bias toward top
             const radius = 800 + Math.random() * 1500;
 
             positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
@@ -1994,7 +2010,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             const pos = new THREE.Vector3(
                 (Math.random() - 0.5) * 2800,
                 100 + Math.random() * 800,
-                -500 - Math.random() * 1500
+                -500 - Math.random() * 1500,
             );
 
             positions[i3] = pos.x;
@@ -2016,9 +2032,9 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 velocity: new THREE.Vector3(
                     (Math.random() - 0.5) * 0.3,
                     (Math.random() - 0.5) * 0.15,
-                    (Math.random() - 0.5) * 0.3
+                    (Math.random() - 0.5) * 0.3,
                 ),
-                connections: 0
+                connections: 0,
             });
         }
 
@@ -2112,7 +2128,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.constellationMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 uColor: { value: new THREE.Color(0xfff5e6) }, // Warm White/Gold (Peaceful)
-                uGlobalOpacity: { value: 0.0 } // Controlled by combo
+                uGlobalOpacity: { value: 0.0 }, // Controlled by combo
             },
             vertexShader: `
                 attribute float alpha;
@@ -2135,7 +2151,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             transparent: true,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
-            depthTest: true // Ensure correct Z-sorting
+            depthTest: true, // Ensure correct Z-sorting
         });
 
         this.constellationLines = new THREE.LineSegments(geometry, this.constellationMaterial);
@@ -2164,7 +2180,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         // Boundaries: Keep strictly in BACKGROUND to prevent near-plane clipping/performance issues
         const boundX = 1400;
         const boundZ_Min = -2000;
-        const boundZ_Max = -500;  // Stay away from camera (Z=30)
+        const boundZ_Max = -500; // Stay away from camera (Z=30)
         const boundY_Min = 100;
         const boundY_Max = 900;
 
@@ -2202,7 +2218,6 @@ export default class SakuraTwilightTheme extends BaseTheme {
         }
 
         this.starfield.geometry.attributes.position.needsUpdate = true;
-
 
         // 2. Rebuild Lines
         const isCombo = this.constellationTargetOpacity > 0.05;
@@ -2283,7 +2298,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // Clean up old lanterns if any
         if (this.lanternMeshes) {
-            this.lanternMeshes.forEach(mesh => {
+            this.lanternMeshes.forEach((mesh) => {
                 this.scene.remove(mesh);
                 if (mesh.geometry) mesh.geometry.dispose();
                 // Material might be shared, be careful
@@ -2294,7 +2309,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // --- Configuration ---
         const lanternsPerTreeMin = 3;
-        const lanternsPerTreeMax = 7;  // Increased for 300+ total lanterns
+        const lanternsPerTreeMax = 7; // Increased for 300+ total lanterns
         const lanternProbability = 0.98; // 98% of trees have lanterns
 
         // --- Geometries (Simplified for performance) ---
@@ -2319,7 +2334,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // String Material
         const stringMat = new THREE.MeshBasicMaterial({
-            color: 0x110a05
+            color: 0x110a05,
         });
 
         // --- Calculate Positions ---
@@ -2392,7 +2407,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         const matString = new THREE.Matrix4();
 
         // Relative offsets for parts
-        const topOffset = new THREE.Vector3(0, 0.15, 0);   // Top of body (0.25 height / 2 + cap half height)
+        const topOffset = new THREE.Vector3(0, 0.15, 0); // Top of body (0.25 height / 2 + cap half height)
         const bottomOffset = new THREE.Vector3(0, -0.15, 0); // Bottom of body
         const stringOffset = new THREE.Vector3(0, 0.425, 0); // Center of string (above body)
 
@@ -2435,7 +2450,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // --- Pass Lantern Positions to Shader ---
         if (this.sharedCanopyMaterial && this.sharedCanopyMaterial.userData.shader) {
-            const shader = this.sharedCanopyMaterial.userData.shader;
+            const { shader } = this.sharedCanopyMaterial.userData;
             const positions = shader.uniforms.uLanternPositions.value;
             let count = 0;
 
@@ -2474,7 +2489,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         const rot = new THREE.Quaternion();
         const scl = new THREE.Vector3();
 
-        matrices.forEach(mat => {
+        matrices.forEach((mat) => {
             mat.decompose(pos, rot, scl);
             positions.push(pos.x, pos.y, pos.z);
             sizes.push(1.0 + Math.random() * 0.5); // Varied size
@@ -2504,7 +2519,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             transparent: true,
             opacity: 0.8,
             blending: THREE.AdditiveBlending,
-            depthWrite: false
+            depthWrite: false,
         });
 
         this.lanternGlowPoints = new THREE.Points(geometry, this.lanternGlowMaterial);
@@ -2562,7 +2577,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
             // Extract animations from the loaded model
             const animations = {};
-            gltf.animations.forEach(clip => {
+            gltf.animations.forEach((clip) => {
                 animations[clip.name] = clip;
             });
 
@@ -2573,19 +2588,19 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 {
                     name: 'fox-1',
                     startPos: new THREE.Vector3(5, 0, 10),
-                    wanderRadius: 80,  // Entire visible scene
-                    wanderCenter: new THREE.Vector3(10, 0, 15),  // Center of scene
-                    speed: { walk: 2.5, run: 4.0 },  // Reduced run speed
-                    scale: 0.008
+                    wanderRadius: 80, // Entire visible scene
+                    wanderCenter: new THREE.Vector3(10, 0, 15), // Center of scene
+                    speed: { walk: 2.5, run: 4.0 }, // Reduced run speed
+                    scale: 0.008,
                 },
                 {
                     name: 'fox-2',
                     startPos: new THREE.Vector3(-10, 0, 25),
-                    wanderRadius: 80,  // Entire visible scene
-                    wanderCenter: new THREE.Vector3(10, 0, 15),  // Same center
-                    speed: { walk: 2.8, run: 4.5 },  // Slightly different speeds
-                    scale: 0.009  // Slightly different size
-                }
+                    wanderRadius: 80, // Entire visible scene
+                    wanderCenter: new THREE.Vector3(10, 0, 15), // Same center
+                    speed: { walk: 2.8, run: 4.5 }, // Slightly different speeds
+                    scale: 0.009, // Slightly different size
+                },
             ];
 
             for (const config of foxConfigs) {
@@ -2640,16 +2655,16 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 }
 
                 // Start with Survey (idle) animation
-                if (foxAnimations['Survey']) {
-                    foxAnimations['Survey'].play();
+                if (foxAnimations.Survey) {
+                    foxAnimations.Survey.play();
                 }
 
                 // Create fox state object for wandering AI
                 const foxState = {
                     model: foxModel,
-                    mixer: mixer,
+                    mixer,
                     animations: foxAnimations,
-                    config: config,
+                    config,
                     position: foxModel.position.clone(),
                     targetPosition: foxModel.position.clone(),
                     direction: new THREE.Vector3(0, 0, 1),
@@ -2658,17 +2673,17 @@ export default class SakuraTwilightTheme extends BaseTheme {
                     waitTimer: 1 + Math.random() * 3, // Initial wait 1-4 seconds
                     stateTimer: 0,
                     // Procedural animation state
-                    bones: bones,
+                    bones,
                     proceduralTime: Math.random() * 100, // Offset so foxes aren't synchronized
                     tailPhase: Math.random() * Math.PI * 2,
                     headLookTarget: new THREE.Vector3(),
                     breathPhase: Math.random() * Math.PI * 2,
                     // Greeting interaction state
-                    greetingPartner: null,  // Reference to other fox during greeting
-                    greetingPhase: 0,       // 0-1 progress through greeting animation
-                    greetingType: 0,        // Random greeting type (bow, circle, hop)
-                    originalY: 0,           // For hop animation
-                    greetingCooldown: 0     // Cooldown timer to prevent repeat greetings
+                    greetingPartner: null, // Reference to other fox during greeting
+                    greetingPhase: 0, // 0-1 progress through greeting animation
+                    greetingType: 0, // Random greeting type (bow, circle, hop)
+                    originalY: 0, // For hop animation
+                    greetingCooldown: 0, // Cooldown timer to prevent repeat greetings
                 };
 
                 this.foxes.push(foxState);
@@ -2679,7 +2694,6 @@ export default class SakuraTwilightTheme extends BaseTheme {
             }
 
             console.log(`[SakuraTheme] Loaded ${this.foxes.length} foxes`);
-
         } catch (error) {
             console.error('[SakuraTheme] Error loading fox model:', error);
         }
@@ -2689,7 +2703,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
      * Pick a new random target for a fox within its wander zone
      */
     pickNewFoxTarget(fox) {
-        const config = fox.config;
+        const { config } = fox;
         const angle = Math.random() * Math.PI * 2;
         const distance = Math.random() * config.wanderRadius;
 
@@ -2705,9 +2719,9 @@ export default class SakuraTwilightTheme extends BaseTheme {
      */
     transitionFoxState(fox, newState) {
         const animationMap = {
-            'idle': 'Survey',
-            'walking': 'Walk',
-            'running': 'Run'
+            idle: 'Survey',
+            walking: 'Walk',
+            running: 'Run',
         };
 
         const newActionName = animationMap[newState];
@@ -2732,8 +2746,8 @@ export default class SakuraTwilightTheme extends BaseTheme {
      * Update all foxes - called each frame from animate()
      */
     updateFoxes(deltaTime) {
-        const GREETING_DISTANCE = 3.0;  // Distance to trigger greeting
-        const GREETING_DURATION = 3.0;  // Seconds for greeting animation
+        const GREETING_DISTANCE = 3.0; // Distance to trigger greeting
+        const GREETING_DURATION = 3.0; // Seconds for greeting animation
 
         // First pass: check for collisions and trigger greetings
         for (let i = 0; i < this.foxes.length; i++) {
@@ -2763,78 +2777,77 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // Second pass: update each fox's state
         for (const fox of this.foxes) {
-            const config = fox.config;
+            const { config } = fox;
 
             switch (fox.state) {
-                case 'idle':
-                    fox.waitTimer -= deltaTime;
-                    if (fox.waitTimer <= 0) {
-                        // Pick new target and start moving
-                        this.pickNewFoxTarget(fox);
+            case 'idle':
+                fox.waitTimer -= deltaTime;
+                if (fox.waitTimer <= 0) {
+                    // Pick new target and start moving
+                    this.pickNewFoxTarget(fox);
 
-                        // Decide walk or run based on distance
-                        const distance = fox.position.distanceTo(fox.targetPosition);
-                        if (distance > 15 && Math.random() > 0.5) {
-                            this.transitionFoxState(fox, 'running');
-                        } else {
-                            this.transitionFoxState(fox, 'walking');
-                        }
-                    }
-                    break;
-
-                case 'walking':
-                case 'running':
-                    const distanceToTarget = fox.position.distanceTo(fox.targetPosition);
-
-                    if (distanceToTarget < 1.0) {
-                        // Reached target, go idle
-                        this.transitionFoxState(fox, 'idle');
-                        fox.waitTimer = 2 + Math.random() * 5; // Wait 2-7 seconds
-
+                    // Decide walk or run based on distance
+                    const distance = fox.position.distanceTo(fox.targetPosition);
+                    if (distance > 15 && Math.random() > 0.5) {
+                        this.transitionFoxState(fox, 'running');
                     } else {
-                        // Move toward target
-                        const speed = fox.state === 'running'
-                            ? config.speed.run
-                            : config.speed.walk;
-
-                        // Calculate direction (XZ only)
-                        fox.direction.subVectors(fox.targetPosition, fox.position);
-                        fox.direction.y = 0;
-                        fox.direction.normalize();
-
-                        // Move position
-                        const movement = fox.direction.clone().multiplyScalar(speed * deltaTime);
-                        fox.position.add(movement);
-
-                        // Update Y to follow terrain
-                        fox.position.y = this.getTerrainHeight(fox.position.x, fox.position.z);
-
-                        // Update model position
-                        fox.model.position.copy(fox.position);
-
-                        // Rotate fox to face movement direction
-                        if (fox.direction.lengthSq() > 0.001) {
-                            const targetAngle = Math.atan2(fox.direction.x, fox.direction.z);
-                            // Smooth rotation
-                            const currentRotY = fox.model.rotation.y;
-                            let angleDiff = targetAngle - currentRotY;
-                            // Normalize angle difference
-                            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                            fox.model.rotation.y += angleDiff * Math.min(1, deltaTime * 5);
-                        }
-
-                        // Transition from running to walking when close to target
-                        if (fox.state === 'running' && distanceToTarget < 5) {
-                            this.transitionFoxState(fox, 'walking');
-                        }
+                        this.transitionFoxState(fox, 'walking');
                     }
-                    break;
+                }
+                break;
 
-                case 'greeting':
-                    // Cute greeting interaction!
-                    this.updateFoxGreeting(fox, deltaTime, GREETING_DURATION);
-                    break;
+            case 'walking':
+            case 'running':
+                const distanceToTarget = fox.position.distanceTo(fox.targetPosition);
+
+                if (distanceToTarget < 1.0) {
+                    // Reached target, go idle
+                    this.transitionFoxState(fox, 'idle');
+                    fox.waitTimer = 2 + Math.random() * 5; // Wait 2-7 seconds
+                } else {
+                    // Move toward target
+                    const speed = fox.state === 'running'
+                        ? config.speed.run
+                        : config.speed.walk;
+
+                    // Calculate direction (XZ only)
+                    fox.direction.subVectors(fox.targetPosition, fox.position);
+                    fox.direction.y = 0;
+                    fox.direction.normalize();
+
+                    // Move position
+                    const movement = fox.direction.clone().multiplyScalar(speed * deltaTime);
+                    fox.position.add(movement);
+
+                    // Update Y to follow terrain
+                    fox.position.y = this.getTerrainHeight(fox.position.x, fox.position.z);
+
+                    // Update model position
+                    fox.model.position.copy(fox.position);
+
+                    // Rotate fox to face movement direction
+                    if (fox.direction.lengthSq() > 0.001) {
+                        const targetAngle = Math.atan2(fox.direction.x, fox.direction.z);
+                        // Smooth rotation
+                        const currentRotY = fox.model.rotation.y;
+                        let angleDiff = targetAngle - currentRotY;
+                        // Normalize angle difference
+                        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                        fox.model.rotation.y += angleDiff * Math.min(1, deltaTime * 5);
+                    }
+
+                    // Transition from running to walking when close to target
+                    if (fox.state === 'running' && distanceToTarget < 5) {
+                        this.transitionFoxState(fox, 'walking');
+                    }
+                }
+                break;
+
+            case 'greeting':
+                // Cute greeting interaction!
+                this.updateFoxGreeting(fox, deltaTime, GREETING_DURATION);
+                break;
             }
 
             // Update procedural animations for this fox
@@ -2859,9 +2872,9 @@ export default class SakuraTwilightTheme extends BaseTheme {
             fox.originalY = fox.position.y;
 
             // Switch to Survey animation (looks like they're paying attention)
-            if (fox.animations['Survey']) {
+            if (fox.animations.Survey) {
                 const oldAction = fox.animations[fox.currentAction];
-                const newAction = fox.animations['Survey'];
+                const newAction = fox.animations.Survey;
                 if (oldAction && newAction) {
                     newAction.reset();
                     newAction.crossFadeFrom(oldAction, 0.2, true);
@@ -2898,7 +2911,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
                 fox.targetPosition.set(
                     fox.position.x + awayDir.x * awayDist,
                     0,
-                    fox.position.z + awayDir.z * awayDist
+                    fox.position.z + awayDir.z * awayDist,
                 );
                 fox.targetPosition.y = this.getTerrainHeight(fox.targetPosition.x, fox.targetPosition.z);
             }
@@ -2906,7 +2919,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             // Start walking away
             this.transitionFoxState(fox, 'walking');
             fox.greetingPartner = null;
-            fox.model.position.y = fox.position.y;  // Reset Y
+            fox.model.position.y = fox.position.y; // Reset Y
 
             console.log('[SakuraTheme] Fox finished greeting, wandering off happily!');
             return;
@@ -2916,7 +2929,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         if (!partner) return;
 
         const phase = fox.greetingPhase;
-        const t = Math.sin(phase * Math.PI);  // Smooth in-out curve
+        const t = Math.sin(phase * Math.PI); // Smooth in-out curve
 
         // Make foxes face each other
         const toPartner = new THREE.Vector3().subVectors(partner.position, fox.position);
@@ -2928,30 +2941,30 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // Perform greeting animation based on type
         switch (fox.greetingType) {
-            case 0:  // Bow - dip head forward
-                // Handled by enhanced procedural animation during greeting
-                break;
+        case 0: // Bow - dip head forward
+            // Handled by enhanced procedural animation during greeting
+            break;
 
-            case 1:  // Playful hop
-                // Jump up and down!
-                const hopHeight = Math.sin(phase * Math.PI * 4) * 0.3 * (1 - phase);
-                fox.model.position.y = fox.position.y + Math.max(0, hopHeight);
-                break;
+        case 1: // Playful hop
+            // Jump up and down!
+            const hopHeight = Math.sin(phase * Math.PI * 4) * 0.3 * (1 - phase);
+            fox.model.position.y = fox.position.y + Math.max(0, hopHeight);
+            break;
 
-            case 2:  // Circle around each other
-                const circleRadius = 1.5;
-                const circleSpeed = 2 * Math.PI;  // Full circle
-                const angle = phase * circleSpeed;
-                const midpoint = new THREE.Vector3().addVectors(fox.position, partner.position).multiplyScalar(0.5);
+        case 2: // Circle around each other
+            const circleRadius = 1.5;
+            const circleSpeed = 2 * Math.PI; // Full circle
+            const angle = phase * circleSpeed;
+            const midpoint = new THREE.Vector3().addVectors(fox.position, partner.position).multiplyScalar(0.5);
 
-                // Offset from midpoint
-                const circleX = Math.cos(angle + (fox === this.foxes[0] ? 0 : Math.PI)) * circleRadius;
-                const circleZ = Math.sin(angle + (fox === this.foxes[0] ? 0 : Math.PI)) * circleRadius;
+            // Offset from midpoint
+            const circleX = Math.cos(angle + (fox === this.foxes[0] ? 0 : Math.PI)) * circleRadius;
+            const circleZ = Math.sin(angle + (fox === this.foxes[0] ? 0 : Math.PI)) * circleRadius;
 
-                fox.model.position.x = midpoint.x + circleX * t;
-                fox.model.position.z = midpoint.z + circleZ * t;
-                fox.model.position.y = this.getTerrainHeight(fox.model.position.x, fox.model.position.z);
-                break;
+            fox.model.position.x = midpoint.x + circleX * t;
+            fox.model.position.z = midpoint.z + circleZ * t;
+            fox.model.position.y = this.getTerrainHeight(fox.model.position.x, fox.model.position.z);
+            break;
         }
     }
 
@@ -2961,17 +2974,17 @@ export default class SakuraTwilightTheme extends BaseTheme {
      */
     updateFoxProceduralAnimations(fox, deltaTime) {
         const time = fox.proceduralTime;
-        const bones = fox.bones;
+        const { bones } = fox;
         const isGreeting = fox.state === 'greeting';
 
         // Tail wagging - much faster during greeting (excited!), otherwise based on movement
         if (bones.tail && bones.tail.length > 0) {
-            const wagSpeed = isGreeting ? 18 :  // Super excited during greeting!
-                fox.state === 'running' ? 12 :
-                    fox.state === 'walking' ? 8 : 4;
-            const wagAmount = isGreeting ? 0.6 :  // Extra wagging during greeting!
-                fox.state === 'running' ? 0.4 :
-                    fox.state === 'walking' ? 0.25 : 0.15;
+            const wagSpeed = isGreeting ? 18 // Super excited during greeting!
+                : fox.state === 'running' ? 12
+                    : fox.state === 'walking' ? 8 : 4;
+            const wagAmount = isGreeting ? 0.6 // Extra wagging during greeting!
+                : fox.state === 'running' ? 0.4
+                    : fox.state === 'walking' ? 0.25 : 0.15;
 
             bones.tail.forEach((tailBone, i) => {
                 // Each tail segment wags with increasing amplitude and delay
@@ -2988,7 +3001,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             if (isGreeting) {
                 // Playful bowing during greeting!
                 const bowPhase = fox.greetingPhase;
-                const bowAmount = Math.sin(bowPhase * Math.PI * 3) * 0.3;  // Multiple bows
+                const bowAmount = Math.sin(bowPhase * Math.PI * 3) * 0.3; // Multiple bows
                 bones.head.rotation.x += bowAmount;
                 // Also do excited side-to-side
                 bones.head.rotation.y += Math.sin(time * 6) * 0.1;
@@ -3008,13 +3021,12 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // Breathing - subtle spine/body expansion (more visible when idle)
         if (bones.spine) {
-            const breathSpeed = isGreeting ? 5 : (fox.state === 'idle' ? 2 : 3);  // Faster breathing when excited
+            const breathSpeed = isGreeting ? 5 : (fox.state === 'idle' ? 2 : 3); // Faster breathing when excited
             const breathAmount = isGreeting ? 0.04 : (fox.state === 'idle' ? 0.03 : 0.015);
             const breathValue = Math.sin(time * breathSpeed + fox.breathPhase) * breathAmount;
             bones.spine.rotation.x += breathValue;
         }
     }
-
 
     animate() {
         if (!this.isActive || !this.renderer) return;
@@ -3110,7 +3122,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             const moonCycleTime = 300.0;
             // Offset by 90 seconds so moon starts in visible center area
             const offsetTime = time + 90.0;
-            const t = (offsetTime % moonCycleTime) / moonCycleTime;  // 0 to 1
+            const t = (offsetTime % moonCycleTime) / moonCycleTime; // 0 to 1
 
             // Move from right (+300) to left (-400)
             const startX = 300;
@@ -3187,7 +3199,6 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.onWindowResize(); // Apply changes
     }
 
-
     stop() {
         console.log('[SakuraTheme] Stopping...');
         this.isActive = false;
@@ -3197,7 +3208,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         window.removeEventListener('displaySettingsChanged', this.handleDisplaySettingsChange);
 
         // Remove event subscriptions
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Cleanup fox resources
@@ -3250,7 +3261,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         // Subscribe to game events
         this.eventUnsubscribers.push(
             eventBus.on(EVENTS.PIECE_LOCK, () => this.onPieceLock()),
-            eventBus.on(EVENTS.COMBO, () => this.onCombo())
+            eventBus.on(EVENTS.COMBO, () => this.onCombo()),
         );
     }
 

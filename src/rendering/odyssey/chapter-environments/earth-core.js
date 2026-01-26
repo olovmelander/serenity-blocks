@@ -1,13 +1,13 @@
 /**
  * @fileoverview Earth Core Environment - Chapter 1 Visual Theme
- * 
+ *
  * ENHANCED VERSION: Stunning volcanic Earth Core with:
  * - Animated molten lava floor with FBM noise shaders
  * - Volcanic crater rim with jagged rock formations
  * - Rising smoke/ash particles
  * - Enhanced magma balls with corona effects
  * - Improved lighting and atmosphere
- * 
+ *
  * Design: Immersive volcanic core experience with realistic lava,
  * dramatic lighting, and cinematic visual effects.
  */
@@ -43,8 +43,8 @@ const VOLCANIC_PALETTES = [
 
 const EMBER_COLORS = [
     '#ff4400', '#ff6600', '#ff8800', '#ffaa00', '#ffcc00', // Oranges/yellows
-    '#ff2200', '#ff3300', '#cc2200', '#aa1100',            // Reds
-    '#ffdd44', '#ffee66',                                   // Bright yellows
+    '#ff2200', '#ff3300', '#cc2200', '#aa1100', // Reds
+    '#ffdd44', '#ffee66', // Bright yellows
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -635,20 +635,20 @@ function createLavaFloor(uniforms) {
         uniforms: {
             uTime: uniforms.uTime,
             uPulseIntensity: uniforms.uPulseIntensity,
-            uColorHot: { value: new THREE.Color(0xffffaa) },    // Yellow-white
-            uColorMid: { value: new THREE.Color(0xff6600) },    // Orange
-            uColorCool: { value: new THREE.Color(0x330000) },   // Dark red/black
+            uColorHot: { value: new THREE.Color(0xffffaa) }, // Yellow-white
+            uColorMid: { value: new THREE.Color(0xff6600) }, // Orange
+            uColorCool: { value: new THREE.Color(0x330000) }, // Dark red/black
         },
         vertexShader: lavaFloorVertexShader,
         fragmentShader: lavaFloorFragmentShader,
         transparent: true,
         side: THREE.DoubleSide,
-        depthWrite: true,  // Enable depth writing to hide objects behind lava
+        depthWrite: true, // Enable depth writing to hide objects behind lava
         blending: THREE.AdditiveBlending,
     });
 
     const lavaSurface = new THREE.Mesh(geometry, material);
-    lavaSurface.position.y = -5;  // Positioned closer to camera to be visible at bottom of screen
+    lavaSurface.position.y = -5; // Positioned closer to camera to be visible at bottom of screen
     group.add(lavaSurface);
 
     // Add glow layers beneath for atmospheric effect
@@ -664,7 +664,7 @@ function createLavaFloor(uniforms) {
         depthWrite: false,
     }));
     ambientGlow.scale.set(180, 180, 1);
-    ambientGlow.position.y = -7;  // Adjusted to match lava floor at y=-5
+    ambientGlow.position.y = -7; // Adjusted to match lava floor at y=-5
     ambientGlow.rotation.x = -Math.PI / 2;
     group.add(ambientGlow);
 
@@ -678,7 +678,7 @@ function createLavaFloor(uniforms) {
         depthWrite: false,
     }));
     innerGlow.scale.set(100, 100, 1);
-    innerGlow.position.y = -6;  // Adjusted to match lava floor at y=-5
+    innerGlow.position.y = -6; // Adjusted to match lava floor at y=-5
     innerGlow.rotation.x = -Math.PI / 2;
     group.add(innerGlow);
 
@@ -737,7 +737,7 @@ function createParticleCraterRim(uniforms) {
         // Lower particles = closer to lava = more orange/glow
         // Higher particles = cooler/darker
         const heightFactor = (y + 6) / 12; // 0 to 1 mapping approx
-        const mixFactor = Math.pow(1.0 - heightFactor, 2.0) * 0.6; // Bias towards bottom
+        const mixFactor = (1.0 - heightFactor) ** 2.0 * 0.6; // Bias towards bottom
 
         const pColor = baseColor.clone().lerp(glowColor, mixFactor);
         colors.push(pColor.r, pColor.g, pColor.b);
@@ -769,8 +769,8 @@ function createParticleCraterRim(uniforms) {
     const particles = new THREE.Points(geometry, material);
     group.add(particles);
 
-    // 3. Add a few "Spire" shadows? 
-    // The previously used "spires" were mesh cones. 
+    // 3. Add a few "Spire" shadows?
+    // The previously used "spires" were mesh cones.
     // If the user wants "better edges", maybe we keep the spires but make them dark silhouettes?
     // Let's keep the scene clean first. The particles are the rim.
 
@@ -814,11 +814,11 @@ function createFogRingTexture() {
     // Middle: Solid (to block horizon)
     // Top: Transparent (to fade into sky)
     const gradient = ctx.createLinearGradient(0, 0, 0, 128);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 0)');      // Top - fully transparent
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0)'); // Top - fully transparent
     gradient.addColorStop(0.15, 'rgba(255, 255, 255, 0.5)'); // Upper fade starts quickly
     gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.95)'); // Middle - nearly solid
-    gradient.addColorStop(0.8, 'rgba(255, 255, 255, 1.0)');  // Lower - solid
-    gradient.addColorStop(1, 'rgba(255, 255, 255, 1.0)');    // Bottom - solid
+    gradient.addColorStop(0.8, 'rgba(255, 255, 255, 1.0)'); // Lower - solid
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 1.0)'); // Bottom - solid
 
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 64, 128);
@@ -846,7 +846,7 @@ function createVolcanicSmoke(uniforms, count) {
         const radius = 10 + Math.random() * 35;
 
         positions[i * 3] = Math.cos(angle) * radius;
-        positions[i * 3 + 1] = -5;  // Start at lava level
+        positions[i * 3 + 1] = -5; // Start at lava level
         positions[i * 3 + 2] = Math.sin(angle) * radius;
 
         randoms[i] = Math.random();
@@ -925,7 +925,7 @@ function createVolcanicRockClusters(group, uniforms, elements, count) {
             const position = new THREE.Vector3(
                 r * Math.sin(phi) * Math.cos(theta),
                 yPos,
-                r * Math.sin(phi) * Math.sin(theta)
+                r * Math.sin(phi) * Math.sin(theta),
             );
 
             const cluster = createRockCluster(uniforms, position);
@@ -1031,7 +1031,7 @@ function createEmberStars(uniforms, count) {
         positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
 
         // Size - smaller embers more common
-        const sizeBias = Math.pow(Math.random(), 2);
+        const sizeBias = Math.random() ** 2;
         sizes[i] = 0.4 + sizeBias * 2.5;
 
         // Twinkle
@@ -1043,7 +1043,7 @@ function createEmberStars(uniforms, count) {
 
         // Color from palette
         const color = new THREE.Color(
-            EMBER_COLORS[Math.floor(Math.random() * EMBER_COLORS.length)]
+            EMBER_COLORS[Math.floor(Math.random() * EMBER_COLORS.length)],
         );
         colors[i * 3] = color.r;
         colors[i * 3 + 1] = color.g;
@@ -1089,10 +1089,10 @@ function createRisingEmbers(uniforms, count) {
 
         // Spread embers in a cylinder around the lava pool
         const theta = Math.random() * Math.PI * 2;
-        const radius = 5 + Math.random() * 45;  // Wider spread from lava
+        const radius = 5 + Math.random() * 45; // Wider spread from lava
 
         positions[i3] = Math.cos(theta) * radius;
-        positions[i3 + 1] = -5 + (Math.random() - 0.5) * 10;  // Start near lava
+        positions[i3 + 1] = -5 + (Math.random() - 0.5) * 10; // Start near lava
         positions[i3 + 2] = Math.sin(theta) * radius;
 
         randoms[i] = Math.random();
@@ -1166,18 +1166,18 @@ function createLavaGlowTexture() {
  */
 function setupVolcanicLighting(group) {
     // Warm ambient - slightly brighter for visibility
-    const ambient = new THREE.AmbientLight(0x200800, 0.25);  // Reduced ambient
+    const ambient = new THREE.AmbientLight(0x200800, 0.25); // Reduced ambient
     group.add(ambient);
 
     // Central lava floor point light (main light source)
     const lavaLight = new THREE.PointLight(0xff4400, 2.5, 200);
-    lavaLight.position.set(0, 0, 0);  // Positioned above lava at y=-5
+    lavaLight.position.set(0, 0, 0); // Positioned above lava at y=-5
     group.add(lavaLight);
     group.userData.lavaLight = lavaLight;
 
     // Secondary lava glow (softer, larger radius)
     const lavaGlow = new THREE.PointLight(0xff6600, 1.2, 300);
-    lavaGlow.position.set(0, -2, 0);  // Positioned above lava at y=-5
+    lavaGlow.position.set(0, -2, 0); // Positioned above lava at y=-5
     group.add(lavaGlow);
     group.userData.lavaGlow = lavaGlow;
 
@@ -1190,8 +1190,8 @@ function setupVolcanicLighting(group) {
         const angle = (i / 4) * Math.PI * 2;
         light.position.set(
             Math.cos(angle) * 55,
-            0,  // Positioned at rim level (rim at y=-3)
-            Math.sin(angle) * 55
+            0, // Positioned at rim level (rim at y=-3)
+            Math.sin(angle) * 55,
         );
         group.add(light);
         group.userData.accentLights.push(light);
@@ -1202,7 +1202,7 @@ function setupVolcanicLighting(group) {
  * Update Earth Core environment animations
  */
 export function updateEarthCoreEnvironment(group, delta, time) {
-    const uniforms = group.userData.uniforms;
+    const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
     }
@@ -1213,7 +1213,7 @@ export function updateEarthCoreEnvironment(group, delta, time) {
     }
 
     // Animate lava floor glow sprites
-    const lavaFloor = group.userData.lavaFloor;
+    const { lavaFloor } = group.userData;
     if (lavaFloor?.userData.glows) {
         const pulse = 1 + Math.sin(time * 1.2) * 0.15;
         const baseScales = [180, 100];
@@ -1223,28 +1223,28 @@ export function updateEarthCoreEnvironment(group, delta, time) {
     }
 
     // Animate lava lights
-    const lavaLight = group.userData.lavaLight;
+    const { lavaLight } = group.userData;
     if (lavaLight) {
         lavaLight.intensity = 4 + Math.sin(time * 2.5) * 1 + Math.sin(time * 4.3) * 0.5;
     }
 
-    const lavaGlow = group.userData.lavaGlow;
+    const { lavaGlow } = group.userData;
     if (lavaGlow) {
         lavaGlow.intensity = 2 + Math.sin(time * 1.8) * 0.5;
     }
 
     // Animate accent lights with flickering
-    const accentLights = group.userData.accentLights;
+    const { accentLights } = group.userData;
     if (accentLights) {
         accentLights.forEach((light, i) => {
-            const flicker = Math.sin(time * 3 + i * 1.5) * 0.3 +
-                Math.sin(time * 7 + i * 2.5) * 0.15;
+            const flicker = Math.sin(time * 3 + i * 1.5) * 0.3
+                + Math.sin(time * 7 + i * 2.5) * 0.15;
             light.intensity = 1.2 + flicker;
         });
     }
 
     // Slow rotation of magma balls
-    const elements = group.userData.elements;
+    const { elements } = group.userData;
     if (elements?.rockClusters) {
         elements.rockClusters.forEach((cluster, i) => {
             cluster.rotation.y += delta * 0.03 * ((i % 2) * 2 - 1);

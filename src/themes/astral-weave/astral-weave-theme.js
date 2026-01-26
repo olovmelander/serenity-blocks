@@ -14,12 +14,12 @@ import {
     pulseVertexShader,
     pulseFragmentShader,
     dustVertexShader,
-    dustFragmentShader
+    dustFragmentShader,
 } from './astral-weave-shaders.js';
 
 /**
  * Astral Weave Theme - An immersive 3D cosmic weave experience
- * 
+ *
  * Features:
  * - Central glowing nexus where energy converges
  * - Multiple flowing energy ribbons weaving through space
@@ -54,7 +54,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         // Uniforms for shader animation
         this.uniforms = {
             time: { value: 0 },
-            intensity: { value: 1.0 }
+            intensity: { value: 1.0 },
         };
 
         // Cosmic color palette - Ethereal cyans, magentas, purples, golds
@@ -66,7 +66,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             green: new THREE.Color(0x00FF88),
             pink: new THREE.Color(0xFF66AA),
             blue: new THREE.Color(0x3399FF),
-            white: new THREE.Color(0xFFFFFF)
+            white: new THREE.Color(0xFFFFFF),
         };
 
         this.tetrominoConfig = ASTRAL_WEAVE_TETROMINOS;
@@ -115,7 +115,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             75,
             window.innerWidth / window.innerHeight,
             0.1,
-            1000
+            1000,
         );
         this.camera.position.z = 30;
         this.camera.position.y = 5;
@@ -125,7 +125,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.renderer = new THREE.WebGLRenderer({
             alpha: true,
             antialias: this.getAntialiasEnabled(),
-            powerPreference: 'high-performance'
+            powerPreference: 'high-performance',
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
@@ -167,7 +167,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             transparent: true,
             opacity: 0.95,
             blending: THREE.AdditiveBlending,
-            depthWrite: false
+            depthWrite: false,
         }));
         innerGlow.scale.set(4, 4, 1);
         this.mainGroup.add(innerGlow);
@@ -180,7 +180,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             transparent: true,
             opacity: 0.8,
             blending: THREE.AdditiveBlending,
-            depthWrite: false
+            depthWrite: false,
         }));
         midGlow.scale.set(8, 8, 1);
         this.mainGroup.add(midGlow);
@@ -193,7 +193,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             transparent: true,
             opacity: 0.5,
             blending: THREE.AdditiveBlending,
-            depthWrite: false
+            depthWrite: false,
         }));
         outerGlow.scale.set(14, 14, 1);
         this.mainGroup.add(outerGlow);
@@ -206,7 +206,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             transparent: true,
             opacity: 0.3,
             blending: THREE.AdditiveBlending,
-            depthWrite: false
+            depthWrite: false,
         }));
         haloGlow.scale.set(22, 22, 1);
         this.mainGroup.add(haloGlow);
@@ -253,17 +253,17 @@ export default class AstralWeaveTheme extends BaseTheme {
                 new THREE.Vector3(
                     Math.cos(config.angle) * 5 + Math.sin(config.angle + index) * 2,
                     Math.sin(index * 0.5) * 3,
-                    Math.sin(config.angle) * 5
+                    Math.sin(config.angle) * 5,
                 ),
                 new THREE.Vector3(
                     Math.cos(config.angle) * 12 + Math.cos(config.angle + index * 0.7) * 4,
                     Math.sin(index * 0.8 + 1) * 5,
-                    Math.sin(config.angle) * 12 + Math.sin(config.angle + index * 0.5) * 3
+                    Math.sin(config.angle) * 12 + Math.sin(config.angle + index * 0.5) * 3,
                 ),
                 new THREE.Vector3(
                     Math.cos(config.angle) * 22 + Math.sin(config.angle + index * 0.3) * 6,
                     Math.cos(index * 0.6) * 4,
-                    Math.sin(config.angle) * 22 + Math.cos(config.angle + index * 0.4) * 5
+                    Math.sin(config.angle) * 22 + Math.cos(config.angle + index * 0.4) * 5,
                 ),
             ]);
 
@@ -278,14 +278,14 @@ export default class AstralWeaveTheme extends BaseTheme {
                     waveIntensity: { value: 0.3 + index * 0.05 },
                     colorA: { value: config.color[0] },
                     colorB: { value: config.color[1] },
-                    colorC: { value: config.color[2] }
+                    colorC: { value: config.color[2] },
                 },
                 vertexShader: ribbonVertexShader,
                 fragmentShader: ribbonFragmentShader,
                 transparent: true,
                 depthWrite: false,
                 side: THREE.DoubleSide,
-                blending: THREE.AdditiveBlending
+                blending: THREE.AdditiveBlending,
             });
 
             const ribbon = new THREE.Mesh(tubeGeometry, material);
@@ -314,12 +314,12 @@ export default class AstralWeaveTheme extends BaseTheme {
             this.palette.magenta,
             this.palette.purple,
             this.palette.gold,
-            this.palette.white
+            this.palette.white,
         ];
 
         for (let i = 0; i < particleCount; i++) {
             angles[i] = Math.random() * Math.PI * 2;
-            radii[i] = 2 + Math.pow(Math.random(), 0.6) * 20;
+            radii[i] = 2 + Math.random() ** 0.6 * 20;
             speeds[i] = 0.5 + Math.random() * 1.0;
             randoms[i] = Math.random();
 
@@ -343,13 +343,13 @@ export default class AstralWeaveTheme extends BaseTheme {
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
-                time: this.uniforms.time
+                time: this.uniforms.time,
             },
             vertexShader: weaveParticleVertexShader,
             fragmentShader: weaveParticleFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.weaveParticles = new THREE.Points(geometry, material);
@@ -395,13 +395,13 @@ export default class AstralWeaveTheme extends BaseTheme {
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
-                time: this.uniforms.time
+                time: this.uniforms.time,
             },
             vertexShader: starsVertexShader,
             fragmentShader: starsFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.backgroundStars = new THREE.Points(geometry, material);
@@ -410,10 +410,18 @@ export default class AstralWeaveTheme extends BaseTheme {
 
     createNebulaClouds() {
         const nebulaConfigs = [
-            { position: [-10, 3, -20], scale: 18, colorA: 0x00FFFF, colorB: 0xFF00FF, opacity: 0.25 },
-            { position: [12, -2, -22], scale: 20, colorA: 0x9933FF, colorB: 0x00FFFF, opacity: 0.2 },
-            { position: [0, 6, -28], scale: 25, colorA: 0xFF00FF, colorB: 0x6633FF, opacity: 0.18 },
-            { position: [-15, -5, -25], scale: 16, colorA: 0xFFD700, colorB: 0xFF00FF, opacity: 0.22 },
+            {
+                position: [-10, 3, -20], scale: 18, colorA: 0x00FFFF, colorB: 0xFF00FF, opacity: 0.25,
+            },
+            {
+                position: [12, -2, -22], scale: 20, colorA: 0x9933FF, colorB: 0x00FFFF, opacity: 0.2,
+            },
+            {
+                position: [0, 6, -28], scale: 25, colorA: 0xFF00FF, colorB: 0x6633FF, opacity: 0.18,
+            },
+            {
+                position: [-15, -5, -25], scale: 16, colorA: 0xFFD700, colorB: 0xFF00FF, opacity: 0.22,
+            },
         ];
 
         nebulaConfigs.forEach((config, index) => {
@@ -423,14 +431,14 @@ export default class AstralWeaveTheme extends BaseTheme {
                     time: this.uniforms.time,
                     opacity: { value: config.opacity },
                     colorA: { value: new THREE.Color(config.colorA) },
-                    colorB: { value: new THREE.Color(config.colorB) }
+                    colorB: { value: new THREE.Color(config.colorB) },
                 },
                 vertexShader: nebulaVertexShader,
                 fragmentShader: nebulaFragmentShader,
                 transparent: true,
                 side: THREE.DoubleSide,
                 depthWrite: false,
-                blending: THREE.AdditiveBlending
+                blending: THREE.AdditiveBlending,
             });
 
             const cloud = new THREE.Mesh(geometry, material);
@@ -469,13 +477,13 @@ export default class AstralWeaveTheme extends BaseTheme {
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 time: this.uniforms.time,
-                color: { value: this.palette.cyan }
+                color: { value: this.palette.cyan },
             },
             vertexShader: dustVertexShader,
             fragmentShader: dustFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.cosmicDust = new THREE.Points(geometry, material);
@@ -559,7 +567,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             this.uniforms.intensity.value = THREE.MathUtils.lerp(
                 this.uniforms.intensity.value,
                 1.0,
-                delta * 2.0
+                delta * 2.0,
             );
         }
 
@@ -594,13 +602,13 @@ export default class AstralWeaveTheme extends BaseTheme {
             uniforms: {
                 time: this.uniforms.time,
                 opacity: { value: 1.0 },
-                color: { value: this.getRandomColor() }
+                color: { value: this.getRandomColor() },
             },
             vertexShader: pulseVertexShader,
             fragmentShader: pulseFragmentShader,
             transparent: true,
             blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         const wave = new THREE.Mesh(geometry, material);
@@ -610,7 +618,7 @@ export default class AstralWeaveTheme extends BaseTheme {
         wave.userData = {
             speed: 4.0 + intensity * 2.0,
             life: 1.2,
-            maxLife: 1.2
+            maxLife: 1.2,
         };
 
         this.mainGroup.add(wave);
@@ -680,11 +688,11 @@ export default class AstralWeaveTheme extends BaseTheme {
             cancelAnimationFrame(this.animationFrame);
         }
 
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Cleanup pulse waves
-        this.pulseWaves.forEach(wave => {
+        this.pulseWaves.forEach((wave) => {
             this.mainGroup.remove(wave);
             if (wave.geometry) wave.geometry.dispose();
             if (wave.material) wave.material.dispose();
@@ -706,7 +714,7 @@ export default class AstralWeaveTheme extends BaseTheme {
                 if (object.geometry) object.geometry.dispose();
                 if (object.material) {
                     if (Array.isArray(object.material)) {
-                        object.material.forEach(m => m.dispose());
+                        object.material.forEach((m) => m.dispose());
                     } else {
                         object.material.dispose();
                     }

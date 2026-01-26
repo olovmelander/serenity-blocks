@@ -448,7 +448,7 @@ class SunsetOceanWater extends Mesh {
             side,
             fog,
             transparent: true,
-            depthWrite: true,  // Ensure ocean writes to depth buffer to occlude objects behind it
+            depthWrite: true, // Ensure ocean writes to depth buffer to occlude objects behind it
             depthTest: true,
         });
 

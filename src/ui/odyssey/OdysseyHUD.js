@@ -432,7 +432,7 @@ export class OdysseyHUD {
         }
 
         // Get chapter config
-        this.chapterConfig = CHAPTER_CONFIGS.find(c => c.id === this.levelConfig.chapter);
+        this.chapterConfig = CHAPTER_CONFIGS.find((c) => c.id === this.levelConfig.chapter);
 
         // Update header
         this.chapterDisplay.textContent = `CHAPTER ${this.levelConfig.chapter}`;
@@ -497,56 +497,56 @@ export class OdysseyHUD {
 
         for (const [key, value] of Object.entries(condition)) {
             switch (key) {
-                case 'lines':
-                    // First star typically just requires completing the objective
-                    if (starIndex === 0) {
-                        parts.push('Complete level');
-                    }
-                    // Don't repeat lines requirement for higher stars
-                    break;
-                case 'score':
-                    if (starIndex === 0) {
-                        parts.push('Complete level');
+            case 'lines':
+                // First star typically just requires completing the objective
+                if (starIndex === 0) {
+                    parts.push('Complete level');
+                }
+                // Don't repeat lines requirement for higher stars
+                break;
+            case 'score':
+                if (starIndex === 0) {
+                    parts.push('Complete level');
+                } else {
+                    parts.push(`${value.toLocaleString()}+ pts`);
+                }
+                break;
+            case 'cascades':
+                if (starIndex === 0) {
+                    parts.push('Complete level');
+                } else {
+                    parts.push(`${value}+ cascades`);
+                }
+                break;
+            case 'time':
+                if (value >= 60) {
+                    const mins = Math.floor(value / 60);
+                    const secs = value % 60;
+                    if (secs === 0) {
+                        parts.push(`Under ${mins} min`);
                     } else {
-                        parts.push(`${value.toLocaleString()}+ pts`);
+                        parts.push(`Under ${mins}:${secs.toString().padStart(2, '0')}`);
                     }
-                    break;
-                case 'cascades':
-                    if (starIndex === 0) {
-                        parts.push('Complete level');
-                    } else {
-                        parts.push(`${value}+ cascades`);
-                    }
-                    break;
-                case 'time':
-                    if (value >= 60) {
-                        const mins = Math.floor(value / 60);
-                        const secs = value % 60;
-                        if (secs === 0) {
-                            parts.push(`Under ${mins} min`);
-                        } else {
-                            parts.push(`Under ${mins}:${secs.toString().padStart(2, '0')}`);
-                        }
-                    } else {
-                        parts.push(`Under ${value}s`);
-                    }
-                    break;
-                case 'tetrises':
-                    parts.push(`${value}+ tetrises`);
-                    break;
-                case 'maxCascadeDepth':
-                    parts.push(`${value}+ chain`);
-                    break;
-                case 'combo':
-                    parts.push(`${value}x combo`);
-                    break;
-                case 'bonuses':
-                    if (value === 1) {
-                        parts.push('Get bonus');
-                    } else {
-                        parts.push(`${value} bonuses`);
-                    }
-                    break;
+                } else {
+                    parts.push(`Under ${value}s`);
+                }
+                break;
+            case 'tetrises':
+                parts.push(`${value}+ tetrises`);
+                break;
+            case 'maxCascadeDepth':
+                parts.push(`${value}+ chain`);
+                break;
+            case 'combo':
+                parts.push(`${value}x combo`);
+                break;
+            case 'bonuses':
+                if (value === 1) {
+                    parts.push('Get bonus');
+                } else {
+                    parts.push(`${value} bonuses`);
+                }
+                break;
             }
         }
 
@@ -570,20 +570,20 @@ export class OdysseyHUD {
 
         let objectiveText = '';
         switch (type) {
-            case 'lines':
-                objectiveText = `Clear ${target} Lines`;
-                break;
-            case 'score':
-                objectiveText = `Score ${target.toLocaleString()} Points`;
-                break;
-            case 'cascade':
-                objectiveText = `Trigger ${target} Cascades`;
-                break;
-            case 'time':
-                objectiveText = `Survive ${target} Seconds`;
-                break;
-            default:
-                objectiveText = `Complete Objective`;
+        case 'lines':
+            objectiveText = `Clear ${target} Lines`;
+            break;
+        case 'score':
+            objectiveText = `Score ${target.toLocaleString()} Points`;
+            break;
+        case 'cascade':
+            objectiveText = `Trigger ${target} Cascades`;
+            break;
+        case 'time':
+            objectiveText = `Survive ${target} Seconds`;
+            break;
+        default:
+            objectiveText = 'Complete Objective';
         }
 
         this.objectiveDisplay.textContent = objectiveText;
@@ -667,18 +667,18 @@ export class OdysseyHUD {
         let current = 0;
 
         switch (type) {
-            case 'lines':
-                current = this.metrics.lines;
-                break;
-            case 'score':
-                current = this.metrics.score;
-                break;
-            case 'cascade':
-                current = this.metrics.cascades;
-                break;
-            case 'time':
-                current = Math.floor(this.elapsedTime / 1000);
-                break;
+        case 'lines':
+            current = this.metrics.lines;
+            break;
+        case 'score':
+            current = this.metrics.score;
+            break;
+        case 'cascade':
+            current = this.metrics.cascades;
+            break;
+        case 'time':
+            current = Math.floor(this.elapsedTime / 1000);
+            break;
         }
 
         // Update progress text
@@ -726,30 +726,30 @@ export class OdysseyHUD {
     _meetsCondition(condition) {
         for (const [key, value] of Object.entries(condition)) {
             switch (key) {
-                case 'lines':
-                    if (this.metrics.lines < value) return false;
-                    break;
-                case 'score':
-                    if (this.metrics.score < value) return false;
-                    break;
-                case 'cascades':
-                    if (this.metrics.cascades < value) return false;
-                    break;
-                case 'maxCascadeDepth':
-                    if (this.metrics.maxCascadeDepth < value) return false;
-                    break;
-                case 'tetrises':
-                    if (this.metrics.tetrises < value) return false;
-                    break;
-                case 'combo':
-                    if (this.metrics.combo < value) return false;
-                    break;
-                case 'time':
-                    if (Math.floor(this.elapsedTime / 1000) > value) return false;
-                    break;
-                case 'bonuses':
-                    // TODO: Check bonus completion count
-                    break;
+            case 'lines':
+                if (this.metrics.lines < value) return false;
+                break;
+            case 'score':
+                if (this.metrics.score < value) return false;
+                break;
+            case 'cascades':
+                if (this.metrics.cascades < value) return false;
+                break;
+            case 'maxCascadeDepth':
+                if (this.metrics.maxCascadeDepth < value) return false;
+                break;
+            case 'tetrises':
+                if (this.metrics.tetrises < value) return false;
+                break;
+            case 'combo':
+                if (this.metrics.combo < value) return false;
+                break;
+            case 'time':
+                if (Math.floor(this.elapsedTime / 1000) > value) return false;
+                break;
+            case 'bonuses':
+                // TODO: Check bonus completion count
+                break;
             }
         }
         return true;

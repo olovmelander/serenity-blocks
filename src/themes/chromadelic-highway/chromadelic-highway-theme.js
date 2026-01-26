@@ -156,8 +156,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.journeyTime = 0;
         this.journeyDuration = 180; // 3 minutes
         this.planetStartPos = new THREE.Vector3(1500, 450, -2000); // Far right, distant
-        this.planetClosePos = new THREE.Vector3(700, 150, 250);    // Close flyby on right
-        this.planetEndPos = new THREE.Vector3(1000, 350, 600);     // Past player, then reset
+        this.planetClosePos = new THREE.Vector3(700, 150, 250); // Close flyby on right
+        this.planetEndPos = new THREE.Vector3(1000, 350, 600); // Past player, then reset
 
         // Effect intensities
         this.pulseIntensity = 0;
@@ -263,7 +263,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             roadWidth,
             roadLength,
             1,
-            segments
+            segments,
         );
         this.roadGeometry.rotateX(-Math.PI / 2);
 
@@ -381,7 +381,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createTunnelRings() {
-        const ringCount = this.qualityPreset.ringCount;
+        const { ringCount } = this.qualityPreset;
 
         // Neon glow shader for rings
         const neonRingShader = {
@@ -433,7 +433,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
                     gl_FragColor = vec4(finalColor, alpha);
                 }
-            `
+            `,
         };
 
         for (let i = 0; i < ringCount; i++) {
@@ -506,7 +506,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 const color = new THREE.Color().setHSL(hue, 0.9, 0.6);
 
                 const material = new THREE.LineBasicMaterial({
-                    color: color,
+                    color,
                     transparent: true,
                     opacity: 0.6 - i * 0.15,
                     blending: THREE.AdditiveBlending,
@@ -528,7 +528,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createStarfield() {
-        const starCount = this.qualityPreset.starCount;
+        const { starCount } = this.qualityPreset;
         const geometry = new THREE.BufferGeometry();
 
         const positions = new Float32Array(starCount * 3);
@@ -609,7 +609,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             plane.position.set(
                 (Math.random() - 0.5) * 2000,
                 200 + Math.random() * 400,
-                -1500 - i * 500
+                -1500 - i * 500,
             );
             plane.lookAt(this.camera.position);
             this.scene.add(plane);
@@ -715,9 +715,15 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         // Create neon glow layers behind the planet
         const glowConfigs = [
-            { size: planetSize * 2.4, opacity: 0.4, z: -30, hueOffset: 0 },
-            { size: planetSize * 3.2, opacity: 0.25, z: -60, hueOffset: 0.33 },
-            { size: planetSize * 4.2, opacity: 0.12, z: -100, hueOffset: 0.66 },
+            {
+                size: planetSize * 2.4, opacity: 0.4, z: -30, hueOffset: 0,
+            },
+            {
+                size: planetSize * 3.2, opacity: 0.25, z: -60, hueOffset: 0.33,
+            },
+            {
+                size: planetSize * 4.2, opacity: 0.12, z: -100, hueOffset: 0.66,
+            },
         ];
 
         glowConfigs.forEach((config, index) => {
@@ -1020,8 +1026,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     spawnShootingStar() {
         // Random spawn position - ALL OVER THE SCREEN
         const startX = (Math.random() - 0.5) * 2500; // Full width spread
-        const startY = 100 + Math.random() * 600;    // Low to high on screen
-        const startZ = -800 - Math.random() * 1500;  // Various depths
+        const startY = 100 + Math.random() * 600; // Low to high on screen
+        const startZ = -800 - Math.random() * 1500; // Various depths
 
         // Direction: random diagonal arc
         const angle = Math.random() * Math.PI * 2;
@@ -1040,18 +1046,18 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         // Vibrant fire rainbow gradient (hot core -> colorful fire tail)
         const fireColors = [
-            { r: 1.0, g: 1.0, b: 1.0 },   // Brilliant white (head)
-            { r: 1.0, g: 1.0, b: 0.8 },   // Hot white
-            { r: 1.0, g: 0.9, b: 0.4 },   // Bright yellow
-            { r: 1.0, g: 0.7, b: 0.1 },   // Intense orange-yellow
-            { r: 1.0, g: 0.4, b: 0.1 },   // Fiery orange
-            { r: 1.0, g: 0.2, b: 0.1 },   // Hot red-orange
-            { r: 0.9, g: 0.1, b: 0.2 },   // Vibrant red
-            { r: 0.8, g: 0.1, b: 0.4 },   // Red-magenta
-            { r: 0.6, g: 0.1, b: 0.7 },   // Magenta-purple
-            { r: 0.4, g: 0.2, b: 0.9 },   // Vibrant purple
-            { r: 0.3, g: 0.3, b: 1.0 },   // Electric blue
-            { r: 0.2, g: 0.5, b: 0.9 },   // Cyan-blue
+            { r: 1.0, g: 1.0, b: 1.0 }, // Brilliant white (head)
+            { r: 1.0, g: 1.0, b: 0.8 }, // Hot white
+            { r: 1.0, g: 0.9, b: 0.4 }, // Bright yellow
+            { r: 1.0, g: 0.7, b: 0.1 }, // Intense orange-yellow
+            { r: 1.0, g: 0.4, b: 0.1 }, // Fiery orange
+            { r: 1.0, g: 0.2, b: 0.1 }, // Hot red-orange
+            { r: 0.9, g: 0.1, b: 0.2 }, // Vibrant red
+            { r: 0.8, g: 0.1, b: 0.4 }, // Red-magenta
+            { r: 0.6, g: 0.1, b: 0.7 }, // Magenta-purple
+            { r: 0.4, g: 0.2, b: 0.9 }, // Vibrant purple
+            { r: 0.3, g: 0.3, b: 1.0 }, // Electric blue
+            { r: 0.2, g: 0.5, b: 0.9 }, // Cyan-blue
         ];
 
         for (let i = 0; i < particleCount; i++) {
@@ -1221,7 +1227,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 new THREE.Vector2(width, height),
                 this.qualityPreset.bloomStrength,
                 this.qualityPreset.bloomRadius,
-                this.qualityPreset.bloomThreshold
+                this.qualityPreset.bloomThreshold,
             );
             this.composer.addPass(this.bloomPass);
         }
@@ -1391,7 +1397,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             // Animate edge glow lines - subtle color cycling and pulse response
             if (this.edgeStrips) {
-                this.edgeStrips.forEach(line => {
+                this.edgeStrips.forEach((line) => {
                     line.userData.hue = (line.userData.hue + 0.0002) % 1.0;
                     line.material.color.setHSL(line.userData.hue, 0.9, 0.55);
                     const baseOpacity = 0.5 - line.userData.offset * 0.12;
@@ -1420,7 +1426,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 const approachEnd = 120;
                 const flybyEnd = 160;
 
-                let targetPos = new THREE.Vector3();
+                const targetPos = new THREE.Vector3();
                 let glowBoost = 0;
 
                 if (this.journeyTime < approachEnd) {

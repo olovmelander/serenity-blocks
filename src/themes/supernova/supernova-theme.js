@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SUPERNOVA_TETROMINOS } from './supernova-tetrominos.js';
-import { coreVertexShader, coreFragmentShader, shockwaveVertexShader, shockwaveFragmentShader, particleFragmentShader } from './supernova-shaders.js';
+import {
+    coreVertexShader, coreFragmentShader, shockwaveVertexShader, shockwaveFragmentShader, particleFragmentShader,
+} from './supernova-shaders.js';
 
 export default class SupernovaTheme extends BaseTheme {
     constructor() {
@@ -40,7 +42,7 @@ export default class SupernovaTheme extends BaseTheme {
             new THREE.Color(0xFFAA00), // Gold
             new THREE.Color(0x00FF88), // Mint
             new THREE.Color(0xFF00FF), // Magenta
-            new THREE.Color(0x00FFFF)  // Cyan
+            new THREE.Color(0x00FFFF), // Cyan
         ];
     }
 
@@ -73,7 +75,7 @@ export default class SupernovaTheme extends BaseTheme {
         this.renderer = new THREE.WebGLRenderer({
             alpha: true,
             antialias: this.getAntialiasEnabled(),
-            powerPreference: "high-performance"
+            powerPreference: 'high-performance',
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
@@ -113,7 +115,7 @@ export default class SupernovaTheme extends BaseTheme {
             fragmentShader: coreFragmentShader,
             transparent: true,
             side: THREE.FrontSide,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.coreMesh = new THREE.Mesh(geometry, material);
@@ -126,7 +128,7 @@ export default class SupernovaTheme extends BaseTheme {
             transparent: true,
             opacity: 0.7,
             blending: THREE.AdditiveBlending,
-            depthWrite: false // Prevent writing to depth buffer to avoid sorting issues
+            depthWrite: false, // Prevent writing to depth buffer to avoid sorting issues
         });
         const sprite = new THREE.Sprite(spriteMaterial);
         sprite.scale.set(16, 16, 1); // Slightly larger
@@ -160,12 +162,12 @@ export default class SupernovaTheme extends BaseTheme {
             new THREE.Color(0xFF3333), // Red
             new THREE.Color(0x0088FF), // Blue
             new THREE.Color(0xFFAA00), // Gold
-            new THREE.Color(0x00FF88)  // Mint/Green hint from image
+            new THREE.Color(0x00FF88), // Mint/Green hint from image
         ];
 
         for (let i = 0; i < starsCount * 3; i += 3) {
             // Spread stars in a wide volume
-            posArray[i] = (Math.random() - 0.5) * 100;   // x
+            posArray[i] = (Math.random() - 0.5) * 100; // x
             posArray[i + 1] = (Math.random() - 0.5) * 100; // y
             posArray[i + 2] = (Math.random() - 0.5) * 80 - 10; // z (mostly behind)
 
@@ -183,7 +185,7 @@ export default class SupernovaTheme extends BaseTheme {
             vertexColors: true,
             transparent: true,
             opacity: 0.8,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.starSystem = new THREE.Points(starsGeometry, material);
@@ -217,7 +219,7 @@ export default class SupernovaTheme extends BaseTheme {
             uniforms: {
                 time: this.uniforms.time,
                 color: { value: new THREE.Color(0x00FFFF) }, // Cyan particles (shockwave debris)
-                opacity: { value: 0.6 }
+                opacity: { value: 0.6 },
             },
             vertexShader: `
                 uniform float time;
@@ -246,7 +248,7 @@ export default class SupernovaTheme extends BaseTheme {
             fragmentShader: particleFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.particles = new THREE.Points(geometry, material);
@@ -328,13 +330,13 @@ export default class SupernovaTheme extends BaseTheme {
             uniforms: {
                 time: this.uniforms.time,
                 opacity: { value: 1.0 },
-                color: { value: this.getRandomThemeColor() } // Random palette color
+                color: { value: this.getRandomThemeColor() }, // Random palette color
             },
             vertexShader: shockwaveVertexShader,
             fragmentShader: shockwaveFragmentShader,
             transparent: true,
             blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
         });
 
         const wave = new THREE.Mesh(geometry, material);
@@ -344,7 +346,7 @@ export default class SupernovaTheme extends BaseTheme {
         wave.userData = {
             speed: 5.0 + intensity * 2.0,
             life: 1.0,
-            maxLife: 1.0
+            maxLife: 1.0,
         };
 
         this.mainGroup.add(wave);
@@ -376,7 +378,7 @@ export default class SupernovaTheme extends BaseTheme {
             velocities.push({
                 x: dirX * speed + (Math.random() - 0.5) * spread,
                 y: dirY * speed + (Math.random() - 0.5) * spread,
-                z: (Math.random() - 0.5) * spread * 2.0
+                z: (Math.random() - 0.5) * spread * 2.0,
             });
         }
 
@@ -387,14 +389,14 @@ export default class SupernovaTheme extends BaseTheme {
             size: 0.4,
             transparent: true,
             opacity: 1.0,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         const flare = new THREE.Points(geometry, material);
         flare.userData = {
-            velocities: velocities,
+            velocities,
             life: 0.6, // Short life
-            maxLife: 0.6
+            maxLife: 0.6,
         };
 
         this.mainGroup.add(flare);
@@ -405,7 +407,7 @@ export default class SupernovaTheme extends BaseTheme {
         for (let i = this.flares.length - 1; i >= 0; i--) {
             const flare = this.flares[i];
             const positions = flare.geometry.attributes.position.array;
-            const velocities = flare.userData.velocities;
+            const { velocities } = flare.userData;
 
             flare.userData.life -= delta;
 
@@ -487,7 +489,7 @@ export default class SupernovaTheme extends BaseTheme {
             cancelAnimationFrame(this.animationFrame);
         }
 
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Cleanup Three.js
@@ -505,7 +507,7 @@ export default class SupernovaTheme extends BaseTheme {
                 if (object.geometry) object.geometry.dispose();
                 if (object.material) {
                     if (Array.isArray(object.material)) {
-                        object.material.forEach(m => m.dispose());
+                        object.material.forEach((m) => m.dispose());
                     } else {
                         object.material.dispose();
                     }

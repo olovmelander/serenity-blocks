@@ -1,13 +1,13 @@
 /**
  * @fileoverview Cosmic Expanse Environment - Chapter 6 Visual Theme
- * 
+ *
  * Creates a deep space environment dominated by a massive black hole.
  * Features:
  * - Event Horizon with gravitational distortion (simulated)
  * - Accretion Disk with swirling plasma
  * - Void-like atmosphere with dense starfields
  * - Particles being sucked into the void
- * 
+ *
  * Theme: "Journey through stars" -> "The event horizon awaits"
  */
 
@@ -22,10 +22,10 @@ export const COSMIC_EXPANSE_CONFIG = {
     yStart: 297.5,
     yEnd: 430.0,
     colors: {
-        primary: 0x0a0a0a,    // Void black
-        secondary: 0x1a1a2e,  // Deep blue-black
-        tertiary: 0xff3300,   // Accretion orange
-        accent: 0x4400cc,     // Event horizon purple
+        primary: 0x0a0a0a, // Void black
+        secondary: 0x1a1a2e, // Deep blue-black
+        tertiary: 0xff3300, // Accretion orange
+        accent: 0x4400cc, // Event horizon purple
         background: 0x000000, // Pure black
     },
 };
@@ -344,13 +344,13 @@ function setupCosmicLighting(group) {
 }
 
 export function updateCosmicExpanseEnvironment(group, delta, time) {
-    const uniforms = group.userData.uniforms;
+    const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
     }
 
     // Rotate the black hole mesh slightly to enhance the swirling effect
-    const blackHole = group.userData.blackHole;
+    const { blackHole } = group.userData;
     if (blackHole) {
         blackHole.rotation.z -= delta * 0.1;
     }

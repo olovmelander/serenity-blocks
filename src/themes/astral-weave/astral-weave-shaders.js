@@ -1,6 +1,6 @@
 /**
  * Astral Weave Theme Shaders
- * 
+ *
  * GLSL shaders for creating immersive 3D cosmic weave effects
  * Central nexus with energy ribbons weaving through space
  */

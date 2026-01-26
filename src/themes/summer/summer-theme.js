@@ -21,10 +21,18 @@ import { SUMMER_TETROMINOS } from './summer-tetrominos.js';
 // Quality Presets
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
-    Ultra: { grassInstances: 350000, butterflyCount: 12, bumblebeeCount: 8, pollenCount: 80, bloomStrength: 0.12 },
-    High: { grassInstances: 250000, butterflyCount: 10, bumblebeeCount: 6, pollenCount: 60, bloomStrength: 0.1 },
-    Medium: { grassInstances: 150000, butterflyCount: 6, bumblebeeCount: 4, pollenCount: 40, bloomStrength: 0.08 },
-    Low: { grassInstances: 80000, butterflyCount: 4, bumblebeeCount: 2, pollenCount: 20, bloomStrength: 0.05 },
+    Ultra: {
+        grassInstances: 350000, butterflyCount: 12, bumblebeeCount: 8, pollenCount: 80, bloomStrength: 0.12,
+    },
+    High: {
+        grassInstances: 250000, butterflyCount: 10, bumblebeeCount: 6, pollenCount: 60, bloomStrength: 0.1,
+    },
+    Medium: {
+        grassInstances: 150000, butterflyCount: 6, bumblebeeCount: 4, pollenCount: 40, bloomStrength: 0.08,
+    },
+    Low: {
+        grassInstances: 80000, butterflyCount: 4, bumblebeeCount: 2, pollenCount: 20, bloomStrength: 0.05,
+    },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,7 +77,7 @@ const SkyShader = {
             
             gl_FragColor = vec4(col, 1.0);
         }
-    `
+    `,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -202,7 +210,7 @@ const GrassShader = {
             
             gl_FragColor = vec4(col, 1.0);
         }
-    `
+    `,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -243,7 +251,7 @@ const SunShader = {
             
             gl_FragColor = vec4(sunColor * brightness, 1.0);
         }
-    `
+    `,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -380,9 +388,9 @@ export default class SummerTheme extends BaseTheme {
         canvas.height = 128;
         const ctx = canvas.getContext('2d');
         const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-        gradient.addColorStop(0, 'rgba(255, 250, 220, 0.8)');    // Center (reduced opacity)
-        gradient.addColorStop(0.2, 'rgba(255, 200, 50, 0.3)');   // Halo (significantly reduced opacity)
-        gradient.addColorStop(0.5, 'rgba(255, 140, 20, 0.08)');  // Edge (subtle)
+        gradient.addColorStop(0, 'rgba(255, 250, 220, 0.8)'); // Center (reduced opacity)
+        gradient.addColorStop(0.2, 'rgba(255, 200, 50, 0.3)'); // Halo (significantly reduced opacity)
+        gradient.addColorStop(0.5, 'rgba(255, 140, 20, 0.08)'); // Edge (subtle)
         gradient.addColorStop(1, 'rgba(255, 120, 0, 0)');
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, 128, 128);
@@ -393,7 +401,7 @@ export default class SummerTheme extends BaseTheme {
             color: 0xffffff,
             transparent: true,
             blending: THREE.AdditiveBlending,
-            depthWrite: false
+            depthWrite: false,
         });
 
         const sprite = new THREE.Sprite(spriteMaterial);
@@ -554,10 +562,10 @@ export default class SummerTheme extends BaseTheme {
 
     createGrass() {
         const instances = this.qualityPreset.grassInstances;
-        const fieldWidth = 120;   // Compact width for density
-        const fieldDepth = 100;   // Compact depth
-        const bladeSegments = 24;  // Ultra high resolution curvature
-        const bladeWidth = 0.08;   // Thicker blades for better visibility
+        const fieldWidth = 120; // Compact width for density
+        const fieldDepth = 100; // Compact depth
+        const bladeSegments = 24; // Ultra high resolution curvature
+        const bladeWidth = 0.08; // Thicker blades for better visibility
         const bladeHeightBase = 1.0;
 
         // Create single blade geometry
@@ -633,19 +641,19 @@ export default class SummerTheme extends BaseTheme {
 
             // Spread across the entire visible field above the grass
             butterfly.position.set(
-                (Math.random() - 0.5) * 100,  // Wide X spread
-                3 + Math.random() * 20,        // Y: 3 to 23 units above ground
-                (Math.random() - 0.5) * 80 - 10  // Z: across the grass field
+                (Math.random() - 0.5) * 100, // Wide X spread
+                3 + Math.random() * 20, // Y: 3 to 23 units above ground
+                (Math.random() - 0.5) * 80 - 10, // Z: across the grass field
             );
 
             butterfly.userData = {
                 startPos: butterfly.position.clone(),
                 phase: Math.random() * Math.PI * 2,
                 speed: 0.2 + Math.random() * 0.4,
-                amplitude: 25 + Math.random() * 30,  // Larger flight paths
-                verticalAmp: 3 + Math.random() * 5,  // Vertical bobbing
+                amplitude: 25 + Math.random() * 30, // Larger flight paths
+                verticalAmp: 3 + Math.random() * 5, // Vertical bobbing
                 wingPhase: Math.random() * Math.PI * 2,
-                orbitRadius: 20 + Math.random() * 40,  // Orbit size
+                orbitRadius: 20 + Math.random() * 40, // Orbit size
                 orbitSpeed: 0.1 + Math.random() * 0.2, // Orbit speed
             };
             this.butterflies.push(butterfly);
@@ -903,8 +911,8 @@ export default class SummerTheme extends BaseTheme {
             // Spawn close to grass level
             bumblebee.position.set(
                 (Math.random() - 0.5) * 80,
-                1 + Math.random() * 4,  // Low, near grass
-                (Math.random() - 0.5) * 60
+                1 + Math.random() * 4, // Low, near grass
+                (Math.random() - 0.5) * 60,
             );
 
             bumblebee.userData = {
@@ -912,7 +920,7 @@ export default class SummerTheme extends BaseTheme {
                 phase: Math.random() * Math.PI * 2,
                 speed: 0.4 + Math.random() * 0.3,
                 wingPhase: Math.random() * Math.PI * 2,
-                state: 'flying',  // 'flying' or 'sitting'
+                state: 'flying', // 'flying' or 'sitting'
                 stateTimer: 0,
                 flyDuration: 3 + Math.random() * 5,
                 sitDuration: 1 + Math.random() * 3,
@@ -943,7 +951,7 @@ export default class SummerTheme extends BaseTheme {
             } else {
                 // Super bright vibrant yellow
                 const gradient = stripeCtx.createLinearGradient(0, i * stripeHeight, 128, (i + 1) * stripeHeight);
-                gradient.addColorStop(0, '#FFFF40');   // Bright lemon yellow
+                gradient.addColorStop(0, '#FFFF40'); // Bright lemon yellow
                 gradient.addColorStop(0.5, '#FFFF00'); // Pure yellow (max saturation)
                 gradient.addColorStop(1, '#FFFF40');
                 stripeCtx.fillStyle = gradient;
@@ -957,9 +965,9 @@ export default class SummerTheme extends BaseTheme {
             const y = Math.random() * 128;
             const inYellow = Math.floor(y / stripeHeight) % 2 === 1;
             if (inYellow) {
-                stripeCtx.fillStyle = `rgba(255, 240, 100, 0.4)`;
+                stripeCtx.fillStyle = 'rgba(255, 240, 100, 0.4)';
             } else {
-                stripeCtx.fillStyle = `rgba(40, 40, 40, 0.3)`;
+                stripeCtx.fillStyle = 'rgba(40, 40, 40, 0.3)';
             }
             stripeCtx.fillRect(x, y, 1.5, 1.5);
         }
@@ -999,7 +1007,7 @@ export default class SummerTheme extends BaseTheme {
         const eyeMat = new THREE.MeshStandardMaterial({
             color: 0x2a2a2a,
             roughness: 0.2,
-            metalness: 0.3
+            metalness: 0.3,
         });
         const eyeGeo = new THREE.SphereGeometry(0.04, 8, 8);
         const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
@@ -1086,7 +1094,7 @@ export default class SummerTheme extends BaseTheme {
         stinger.rotation.x = Math.PI / 2;
         group.add(stinger);
 
-        group.scale.set(0.9, 0.9, 0.9);  // Smaller, cuter size
+        group.scale.set(0.9, 0.9, 0.9); // Smaller, cuter size
         return group;
     }
 
@@ -1103,7 +1111,7 @@ export default class SummerTheme extends BaseTheme {
             minFilter: THREE.LinearFilter,
             magFilter: THREE.LinearFilter,
             stencilBuffer: false,
-            depthBuffer: true
+            depthBuffer: true,
         });
 
         this.composer = new EffectComposer(this.renderer, renderTarget);
@@ -1117,10 +1125,11 @@ export default class SummerTheme extends BaseTheme {
             new THREE.Vector2(w * pixelRatio, h * pixelRatio),
             this.qualityPreset.bloomStrength,
             0.4,
-            0.85
+            0.85,
         );
         this.composer.addPass(this.bloomPass);
     }
+
     setupEventListeners() {
         this.eventUnsubscribers.push(
             eventBus.on(EVENTS.PIECE_LOCKED, () => {
@@ -1133,7 +1142,7 @@ export default class SummerTheme extends BaseTheme {
             eventBus.on(EVENTS.LINE_CLEAR, ({ lineCount }) => {
                 this.targetPulse = Math.min(lineCount * 0.2, 1.0);
                 this.targetWind = 1.0 + lineCount * 0.3;
-            })
+            }),
         );
 
         window.addEventListener('resize', this.handleResize.bind(this));
@@ -1185,7 +1194,7 @@ export default class SummerTheme extends BaseTheme {
         }
 
         // Update butterflies - free-roaming flight paths
-        this.butterflies.forEach(butterfly => {
+        this.butterflies.forEach((butterfly) => {
             const data = butterfly.userData;
             if (!data) return;
 
@@ -1210,7 +1219,7 @@ export default class SummerTheme extends BaseTheme {
             const upperAngle = Math.sin(data.wingPhase) * 0.7;
             const lowerAngle = Math.sin(data.wingPhase + 0.3) * 0.5; // Slightly offset
 
-            butterfly.traverse(child => {
+            butterfly.traverse((child) => {
                 if (child.name === 'leftUpper') child.rotation.y = -0.2 - upperAngle;
                 if (child.name === 'rightUpper') child.rotation.y = 0.2 + upperAngle;
                 if (child.name === 'leftLower') child.rotation.y = -0.15 - lowerAngle;
@@ -1223,12 +1232,12 @@ export default class SummerTheme extends BaseTheme {
             butterfly.lookAt(
                 butterfly.position.x + velX,
                 butterfly.position.y,
-                butterfly.position.z + velZ
+                butterfly.position.z + velZ,
             );
         });
 
         // Update bumblebees - low flying with landing behavior
-        this.bumblebees.forEach(bee => {
+        this.bumblebees.forEach((bee) => {
             const data = bee.userData;
             if (!data) return;
 
@@ -1252,7 +1261,7 @@ export default class SummerTheme extends BaseTheme {
                 // Rapid wing buzzing
                 data.wingPhase += delta * 80;
                 const wingBuzz = Math.sin(data.wingPhase) * 0.4;
-                bee.traverse(child => {
+                bee.traverse((child) => {
                     if (child.name === 'leftWing') child.rotation.z = 0.5 + wingBuzz;
                     if (child.name === 'rightWing') child.rotation.z = -0.5 - wingBuzz;
                 });
@@ -1261,7 +1270,7 @@ export default class SummerTheme extends BaseTheme {
                 bee.lookAt(
                     bee.position.x + Math.cos(t * 3) * 2,
                     bee.position.y,
-                    bee.position.z - Math.sin(t * 2.5) * 2
+                    bee.position.z - Math.sin(t * 2.5) * 2,
                 );
 
                 // Transition to sitting
@@ -1277,7 +1286,7 @@ export default class SummerTheme extends BaseTheme {
                 // Slow wing movement during descent
                 data.wingPhase += delta * 40;
                 const wingBuzz = Math.sin(data.wingPhase) * 0.3;
-                bee.traverse(child => {
+                bee.traverse((child) => {
                     if (child.name === 'leftWing') child.rotation.z = 0.3 + wingBuzz;
                     if (child.name === 'rightWing') child.rotation.z = -0.3 - wingBuzz;
                 });
@@ -1288,7 +1297,7 @@ export default class SummerTheme extends BaseTheme {
                 }
             } else if (data.state === 'sitting') {
                 // Sitting on grass - wings folded
-                bee.traverse(child => {
+                bee.traverse((child) => {
                     if (child.name === 'leftWing') child.rotation.z = 0.1;
                     if (child.name === 'rightWing') child.rotation.z = -0.1;
                 });
@@ -1315,7 +1324,7 @@ export default class SummerTheme extends BaseTheme {
                 // Wings speed up
                 data.wingPhase += delta * 60;
                 const wingBuzz = Math.sin(data.wingPhase) * 0.35;
-                bee.traverse(child => {
+                bee.traverse((child) => {
                     if (child.name === 'leftWing') child.rotation.z = 0.4 + wingBuzz;
                     if (child.name === 'rightWing') child.rotation.z = -0.4 - wingBuzz;
                 });
@@ -1388,7 +1397,7 @@ export default class SummerTheme extends BaseTheme {
             this.animationFrameId = null;
         }
 
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         if (this.renderer) {

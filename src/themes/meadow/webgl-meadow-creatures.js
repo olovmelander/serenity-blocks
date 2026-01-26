@@ -1,4 +1,3 @@
-
 /**
  * WebGL Meadow Creatures - Instanced rendering for butterflies, bees, and fireflies
  */
@@ -15,7 +14,7 @@ export default class WebGLMeadowCreatures {
     init() {
         // Try WebGL 2 first
         let gl = this.canvas.getContext('webgl2', { alpha: true });
-        let isWebGL2 = !!gl;
+        const isWebGL2 = !!gl;
 
         if (!gl) {
             gl = this.canvas.getContext('webgl', { alpha: true });
@@ -398,7 +397,7 @@ export default class WebGLMeadowCreatures {
             -size, -size,
             size, -size,
             -size, size,
-            size, size
+            size, size,
         ]);
 
         this.buffers = {};
@@ -439,7 +438,9 @@ export default class WebGLMeadowCreatures {
         this.width = width;
         this.height = height;
 
-        const { butterflyCount, beeCount, fireflyCount, ladybugCount = 0 } = counts;
+        const {
+            butterflyCount, beeCount, fireflyCount, ladybugCount = 0,
+        } = counts;
 
         // Butterflies
         for (let i = 0; i < butterflyCount; i++) {
@@ -451,7 +452,7 @@ export default class WebGLMeadowCreatures {
                 scale: 1.0 + Math.random() * 0.5,
                 phase: Math.random() * Math.PI * 2,
                 color: [Math.random(), Math.random(), Math.random()],
-                type: 0
+                type: 0,
             });
         }
 
@@ -465,7 +466,7 @@ export default class WebGLMeadowCreatures {
                 scale: 0.5 + Math.random() * 0.3,
                 phase: Math.random() * Math.PI * 2,
                 color: [1.0, 0.8, 0.0], // Yellow
-                type: 1
+                type: 1,
             });
         }
 
@@ -479,7 +480,7 @@ export default class WebGLMeadowCreatures {
                 scale: 0.3 + Math.random() * 0.3,
                 phase: Math.random() * Math.PI * 2,
                 color: [0.8, 1.0, 0.5],
-                type: 2
+                type: 2,
             });
         }
 
@@ -497,7 +498,7 @@ export default class WebGLMeadowCreatures {
                 scale: 0.6 + Math.random() * 0.2,
                 phase: Math.random() * Math.PI * 2,
                 color: [1.0, 0.0, 0.0],
-                type: 3
+                type: 3,
             });
         }
 
@@ -583,7 +584,7 @@ export default class WebGLMeadowCreatures {
 
         this.update(dt);
 
-        const gl = this.gl;
+        const { gl } = this;
 
         gl.useProgram(this.program);
 

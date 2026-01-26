@@ -58,9 +58,9 @@ export class InputJitterBuffer {
         this.stats = {
             inputsBuffered: 0,
             inputsProcessed: 0,
-            inputsDropped: 0,      // Too old (stale)
+            inputsDropped: 0, // Too old (stale)
             inputsInterpolated: 0, // Missing, used empty input
-            inputsTooFuture: 0,    // Too far ahead (possible cheat)
+            inputsTooFuture: 0, // Too far ahead (possible cheat)
             avgJitterMs: 0,
         };
 
@@ -297,6 +297,7 @@ export class InputJitterBuffer {
             playerStats,
         };
     }
+
     /**
      * Track incoming packet jitter offset
      */
@@ -331,12 +332,12 @@ export class InputJitterBuffer {
             if (stats.offsets.length < 5) continue;
 
             const avg = stats.sum / stats.offsets.length;
-            const variance = stats.offsets.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / stats.offsets.length;
+            const variance = stats.offsets.reduce((sum, val) => sum + (val - avg) ** 2, 0) / stats.offsets.length;
             const stdDev = Math.sqrt(variance);
             totalStdDev += stdDev;
 
             // Target: Average delay + 2 * Jitter (95% confidence)
-            // But offset is (Server - Client). 
+            // But offset is (Server - Client).
             // We want to ensure ServerTick - Depth <= ClientTick
             // i.e. Depth >= ServerTick - ClientTick = Offset
             // So we need BufferDepth to cover the Average Offset + Jitter.
@@ -409,7 +410,6 @@ export class InputJitterBuffer {
     /**
      * Internal logging
      */
-
 }
 
 /**

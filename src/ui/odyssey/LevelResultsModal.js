@@ -107,24 +107,24 @@ export class LevelResultsModal {
             if (!this.isVisible) return;
 
             switch (e.key) {
-                case 'Enter':
-                case ' ':
-                    e.preventDefault();
-                    if (this.isVictory && getNextLevel(this.currentLevelId)) {
-                        this._handleNextLevel();
-                    } else {
-                        this._handleRetry();
-                    }
-                    break;
-                case 'Escape':
-                    e.preventDefault();
-                    this._handleBackToMenu();
-                    break;
-                case 'r':
-                case 'R':
-                    e.preventDefault();
+            case 'Enter':
+            case ' ':
+                e.preventDefault();
+                if (this.isVictory && getNextLevel(this.currentLevelId)) {
+                    this._handleNextLevel();
+                } else {
                     this._handleRetry();
-                    break;
+                }
+                break;
+            case 'Escape':
+                e.preventDefault();
+                this._handleBackToMenu();
+                break;
+            case 'r':
+            case 'R':
+                e.preventDefault();
+                this._handleRetry();
+                break;
             }
         };
 
@@ -175,7 +175,7 @@ export class LevelResultsModal {
     _buildContent() {
         const level = getLevelById(this.currentLevelId);
         const nextLevel = getNextLevel(this.currentLevelId);
-        const results = this.results;
+        const { results } = this;
 
         // Check for new records
         const isNewHighScore = results.previousBest && results.score > results.previousBest.score;
@@ -188,8 +188,8 @@ export class LevelResultsModal {
                 margin: -40px -40px 30px -40px;
                 padding: 24px;
                 background: ${this.isVictory
-                    ? 'linear-gradient(135deg, rgba(100, 255, 150, 0.2), rgba(100, 200, 255, 0.2))'
-                    : 'linear-gradient(135deg, rgba(255, 100, 100, 0.2), rgba(255, 150, 100, 0.2))'};
+        ? 'linear-gradient(135deg, rgba(100, 255, 150, 0.2), rgba(100, 200, 255, 0.2))'
+        : 'linear-gradient(135deg, rgba(255, 100, 100, 0.2), rgba(255, 150, 100, 0.2))'};
                 border-bottom: 2px solid ${this.isVictory ? 'rgba(100, 255, 150, 0.4)' : 'rgba(255, 100, 100, 0.4)'};
                 border-radius: 22px 22px 0 0;
             ">
@@ -223,7 +223,7 @@ export class LevelResultsModal {
                 justify-content: center;
                 gap: 16px;
             ">
-                ${[1, 2, 3].map(i => `
+                ${[1, 2, 3].map((i) => `
                     <div class="result-star" data-star="${i}" style="
                         font-size: 48px;
                         color: rgba(255, 200, 100, 0.2);
@@ -306,8 +306,8 @@ export class LevelResultsModal {
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 8px;">
                     ${level.victory.bonuses.map((bonus, i) => {
-                        const completed = results.bonusesCompleted?.[i];
-                        return `
+        const completed = results.bonusesCompleted?.[i];
+        return `
                             <div style="
                                 display: flex;
                                 align-items: center;
@@ -335,7 +335,7 @@ export class LevelResultsModal {
                                 </span>
                             </div>
                         `;
-                    }).join('')}
+    }).join('')}
                 </div>
             </div>
             ` : ''}

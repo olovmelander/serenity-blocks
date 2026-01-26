@@ -247,14 +247,14 @@ export class SinglePlayerMode extends BaseGameMode {
                     },
                     updateStats: statsCallback, // For DemoPlayer direct calls
                     updateStatsCallback: statsCallback, // For updateGame() in game.js
-                    drawCallback: drawCallback,
+                    drawCallback,
                     onStart: () => { },
                     playDropCallback: () => this.deps.soundManager.sfxPlayer.playDrop(),
                     playSoundCallback: () => { },
                     addTrailCallback: () => { },
-                    physicsCallbacks: this._getPhysicsCallbacks()
+                    physicsCallbacks: this._getPhysicsCallbacks(),
                 },
-                this.gameState
+                this.gameState,
             );
 
             // We need to hook into the game loop for rendering
@@ -382,7 +382,7 @@ export class SinglePlayerMode extends BaseGameMode {
             const demo = this.demoRecorder.stopRecording({
                 score: this.gameState?.score,
                 lines: this.gameState?.lines,
-                level: this.gameState?.level
+                level: this.gameState?.level,
             });
             this.lastRecordedDemo = demo;
             this.isRecording = false;
@@ -485,7 +485,7 @@ export class SinglePlayerMode extends BaseGameMode {
             rotate: window.rotate,
             hardDrop: window.hardDrop,
             softDrop: window.softDrop,
-            hold: window.hold
+            hold: window.hold,
         };
 
         // Replace with mode-specific functions that use THIS mode's physics callbacks
@@ -496,7 +496,7 @@ export class SinglePlayerMode extends BaseGameMode {
                 this.gameState,
                 dir,
                 () => this.deps.soundManager.sfxPlayer.playMove(),
-                () => { } // addPieceTrail - no trail for now
+                () => { }, // addPieceTrail - no trail for now
             );
 
             // Record input
@@ -512,7 +512,7 @@ export class SinglePlayerMode extends BaseGameMode {
                 this.gameState,
                 dir,
                 () => this.deps.soundManager.sfxPlayer.playRotate(),
-                () => { } // addPieceTrail
+                () => { }, // addPieceTrail
             );
 
             // Record input
@@ -529,7 +529,7 @@ export class SinglePlayerMode extends BaseGameMode {
             coreHardDrop(
                 this.gameState,
                 () => this.deps.soundManager.sfxPlayer.playDrop(),
-                this._getPhysicsCallbacks()  // ← USE MODE'S PHYSICS CALLBACKS!
+                this._getPhysicsCallbacks(), // ← USE MODE'S PHYSICS CALLBACKS!
             );
 
             // Record input
@@ -544,7 +544,7 @@ export class SinglePlayerMode extends BaseGameMode {
             coreSoftDrop(
                 this.gameState,
                 () => this.deps.soundManager.sfxPlayer.playDrop(),
-                this._getPhysicsCallbacks()  // ← USE MODE'S PHYSICS CALLBACKS!
+                this._getPhysicsCallbacks(), // ← USE MODE'S PHYSICS CALLBACKS!
             );
 
             // Record input
@@ -575,7 +575,7 @@ export class SinglePlayerMode extends BaseGameMode {
      * @private
      */
     _restoreInputs() {
-        Object.keys(this.originalInputs).forEach(fnName => {
+        Object.keys(this.originalInputs).forEach((fnName) => {
             window[fnName] = this.originalInputs[fnName];
         });
         this.originalInputs = {};
@@ -599,7 +599,7 @@ export class SinglePlayerMode extends BaseGameMode {
         }
 
         // Stop any existing hybrid loop
-        const frameRateController = this.deps.frameRateController;
+        const { frameRateController } = this.deps;
         if (frameRateController?.isRunning) {
             frameRateController.stopHybridLoop();
         }
@@ -682,7 +682,7 @@ export class SinglePlayerMode extends BaseGameMode {
      */
     _stopGameLoop() {
         // Stop hybrid loop if active
-        const frameRateController = this.deps.frameRateController;
+        const { frameRateController } = this.deps;
         if (frameRateController?.isRunning) {
             frameRateController.stopHybridLoop();
         }
@@ -828,7 +828,7 @@ export class SinglePlayerMode extends BaseGameMode {
                     onWatchAgain: () => {
                         console.log('[SinglePlayer] Watch Again - replaying demo');
                         // No need to hideAll here as showDemoCompleteModal hides itself
-                        // and we want to stay in "demo context" potentially? 
+                        // and we want to stay in "demo context" potentially?
                         // Actually better to restart clean.
                         if (this.onRestart) this.onRestart();
                     },
@@ -843,8 +843,8 @@ export class SinglePlayerMode extends BaseGameMode {
                     onMainMenu: () => {
                         console.log('[SinglePlayer] Main Menu - exiting to main menu');
                         eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
-                    }
-                }
+                    },
+                },
             );
 
             this.isProcessingGameOver = false;
@@ -875,8 +875,8 @@ export class SinglePlayerMode extends BaseGameMode {
                 onMainMenu: () => {
                     console.log('[SinglePlayer] Main Menu - exiting to main menu');
                     eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
-                }
-            }
+                },
+            },
         );
 
         // Trigger game over event

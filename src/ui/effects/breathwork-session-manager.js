@@ -1,7 +1,7 @@
 /**
  * BreathworkSessionManager - Manages multi-phase breathwork journeys
  * Inspired by Hale Center's "Base" and "Elixir" classes.
- * 
+ *
  * Enhanced with:
  * - Rich progress tracking (round, breath count, timers)
  * - Atmospheric guidance prompts with sub-prompts
@@ -34,7 +34,7 @@ export class BreathworkSessionManager {
             active: ['energizing', 'electric-storm', 'wim-hof'],
             retention: ['box-breathing', 'triangle', 'coherence', 'cosmic-breath'],
             recovery: ['coherence', 'deep-relaxation'],
-            integration: ['deep-relaxation', 'calm-sleep', 'ocean-breath', 'zen-garden']
+            integration: ['deep-relaxation', 'calm-sleep', 'ocean-breath', 'zen-garden'],
         };
 
         this.lastTheme = null;
@@ -63,8 +63,8 @@ export class BreathworkSessionManager {
                             sessionIntro: 'session_intros/base_intro.wav',
                             voice: 'base/grounding_intro.wav',
                             cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' },
-                            intentions: ['intentions/base_calm.wav', 'intentions/base_focus.wav', 'intentions/base_ground.wav', 'intentions/base_breathe.wav', 'intentions/universal_gratitude.wav', 'intentions/flow_presence.wav', 'intentions/universal_strength.wav']
-                        }
+                            intentions: ['intentions/base_calm.wav', 'intentions/base_focus.wav', 'intentions/base_ground.wav', 'intentions/base_breathe.wav', 'intentions/universal_gratitude.wav', 'intentions/flow_presence.wav', 'intentions/universal_strength.wav'],
+                        },
                     },
                     // Round 1
                     {
@@ -77,8 +77,8 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'base/r1_active.wav',
                             transition: 'transitions/round1_start.wav',
-                            cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' }
-                        }
+                            cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' },
+                        },
                     },
                     {
                         type: 'retention',
@@ -88,8 +88,8 @@ export class BreathworkSessionManager {
                         subPrompt: 'Exhale fully. Relax into the stillness. You are safe here.',
                         audio: {
                             voice: 'base/r1_hold.wav',
-                            transition: 'transitions/hold_start.wav'
-                        }
+                            transition: 'transitions/hold_start.wav',
+                        },
                     },
                     {
                         type: 'recovery',
@@ -98,8 +98,8 @@ export class BreathworkSessionManager {
                         prompt: 'Recovery Breath',
                         subPrompt: 'Deep inhale. Hold at the top. Squeeze gently to the crown.',
                         audio: {
-                            voice: 'base/r1_recovery.wav'
-                        }
+                            voice: 'base/r1_recovery.wav',
+                        },
                     },
                     // Round 2
                     {
@@ -109,7 +109,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Round 2 • Go Deeper',
                         subPrompt: 'Increase the rhythm. Belly rises, chest expands, then release.',
-                        audio: { voice: 'base/r2_active.wav', transition: 'transitions/round2_start.wav', cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' } }
+                        audio: { voice: 'base/r2_active.wav', transition: 'transitions/round2_start.wav', cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' } },
                     },
                     {
                         type: 'retention',
@@ -117,7 +117,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Extended Hold • Empty',
                         subPrompt: 'Relax completely. Be the observer of this moment.',
-                        audio: { voice: 'base/r2_hold.wav', transition: 'transitions/hold_start.wav' }
+                        audio: { voice: 'base/r2_hold.wav', transition: 'transitions/hold_start.wav' },
                     },
                     {
                         type: 'recovery',
@@ -125,7 +125,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Recovery Breath',
                         subPrompt: 'Big inhale. Hold. Squeeze energy upward.',
-                        audio: { voice: 'base/r2_recovery.wav' }
+                        audio: { voice: 'base/r2_recovery.wav' },
                     },
                     // Round 3
                     {
@@ -135,7 +135,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Round 3 • Peak Intensity',
                         subPrompt: 'Full commitment. In... Out... You are limitless.',
-                        audio: { voice: 'base/r3_active.wav', transition: 'transitions/round3_start.wav', cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' } }
+                        audio: { voice: 'base/r3_active.wav', transition: 'transitions/round3_start.wav', cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' } },
                     },
                     {
                         type: 'retention',
@@ -143,7 +143,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Deep Hold • Find Stillness',
                         subPrompt: 'Empty. Silent. Observe the space between thoughts.',
-                        audio: { voice: 'base/r3_hold.wav', transition: 'transitions/hold_start.wav' }
+                        audio: { voice: 'base/r3_hold.wav', transition: 'transitions/hold_start.wav' },
                     },
                     {
                         type: 'recovery',
@@ -151,7 +151,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Final Recovery',
                         subPrompt: 'One full breath. Hold. Gentle squeeze. Release.',
-                        audio: { voice: 'base/r3_recovery.wav' }
+                        audio: { voice: 'base/r3_recovery.wav' },
                     },
                     // Integration
                     {
@@ -163,10 +163,10 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'base/integration.wav',
                             transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/floating_vibrating.wav', 'fillers/observer_deep.wav', 'fillers/stay_here.wav', 'fillers/body_scan.wav', 'fillers/complete_whole.wav', 'encouragement/proud.wav']
-                        }
-                    }
-                ]
+                            fillers: ['fillers/floating_vibrating.wav', 'fillers/observer_deep.wav', 'fillers/stay_here.wav', 'fillers/body_scan.wav', 'fillers/complete_whole.wav', 'encouragement/proud.wav'],
+                        },
+                    },
+                ],
             },
             ELIXIR: {
                 id: 'hale-elixir',
@@ -190,8 +190,8 @@ export class BreathworkSessionManager {
                             sessionIntro: 'session_intros/elixir_intro.wav',
                             voice: 'elixir/grounding_intro.wav',
                             cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' },
-                            intentions: ['intentions/elixir_energy.wav', 'intentions/elixir_release.wav', 'intentions/elixir_transform.wav', 'intentions/elixir_power.wav', 'intentions/universal_strength.wav', 'intentions/universal_clarity.wav']
-                        }
+                            intentions: ['intentions/elixir_energy.wav', 'intentions/elixir_release.wav', 'intentions/elixir_transform.wav', 'intentions/elixir_power.wav', 'intentions/universal_strength.wav', 'intentions/universal_clarity.wav'],
+                        },
                     },
                     // Round 1
                     {
@@ -204,8 +204,8 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'elixir/r1_active.wav',
                             transition: 'transitions/round1_start.wav',
-                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' }
-                        }
+                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' },
+                        },
                     },
                     {
                         type: 'retention',
@@ -213,7 +213,7 @@ export class BreathworkSessionManager {
                         round: 1,
                         prompt: 'Hold • Empty',
                         subPrompt: 'Let go completely. Surrender to the silence.',
-                        audio: { voice: 'elixir/r1_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold.wav' }
+                        audio: { voice: 'elixir/r1_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold.wav' },
                     },
                     {
                         type: 'recovery',
@@ -221,7 +221,7 @@ export class BreathworkSessionManager {
                         round: 1,
                         prompt: 'Power Breath',
                         subPrompt: 'Big inhale. Squeeze energy to the crown.',
-                        audio: { voice: 'elixir/r1_recovery.wav', cue: 'voices/cues/release.wav' }
+                        audio: { voice: 'elixir/r1_recovery.wav', cue: 'voices/cues/release.wav' },
                     },
                     // Round 2
                     {
@@ -234,8 +234,8 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'elixir/r2_active.wav',
                             transition: 'transitions/round2_start.wav',
-                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' }
-                        }
+                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' },
+                        },
                     },
                     {
                         type: 'retention',
@@ -243,7 +243,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Extended Hold',
                         subPrompt: 'Deep silence. Observe sensations without judgment.',
-                        audio: { voice: 'elixir/r2_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold.wav' }
+                        audio: { voice: 'elixir/r2_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold.wav' },
                     },
                     {
                         type: 'recovery',
@@ -251,7 +251,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Power Breath',
                         subPrompt: 'Inhale fully. Compress. Release.',
-                        audio: { voice: 'elixir/r2_recovery.wav', cue: 'voices/cues/release.wav' }
+                        audio: { voice: 'elixir/r2_recovery.wav', cue: 'voices/cues/release.wav' },
                     },
                     // Round 3
                     {
@@ -264,8 +264,8 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'elixir/r3_active.wav',
                             transition: 'transitions/round3_start.wav',
-                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' }
-                        }
+                            cues: { in: 'voices/cues/in_quick.wav', out: 'voices/cues/out_quick.wav' },
+                        },
                     },
                     {
                         type: 'retention',
@@ -273,7 +273,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Deep Surrender',
                         subPrompt: 'Complete release. Trust the process. You are held.',
-                        audio: { voice: 'elixir/r3_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold.wav' }
+                        audio: { voice: 'elixir/r3_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold.wav' },
                     },
                     {
                         type: 'recovery',
@@ -281,7 +281,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Final Power Breath',
                         subPrompt: 'One massive inhale. Squeeze. Let everything go.',
-                        audio: { voice: 'elixir/r3_recovery.wav', cue: 'voices/cues/release.wav' }
+                        audio: { voice: 'elixir/r3_recovery.wav', cue: 'voices/cues/release.wav' },
                     },
                     // Integration
                     {
@@ -293,10 +293,10 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'elixir/integration.wav',
                             transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/floating_vibrating.wav', 'fillers/observer_deep.wav', 'fillers/you_are_safe.wav', 'fillers/nothing_to_do.wav', 'fillers/trust_process.wav', 'fillers/inner_light.wav', 'encouragement/proud.wav']
-                        }
-                    }
-                ]
+                            fillers: ['fillers/floating_vibrating.wav', 'fillers/observer_deep.wav', 'fillers/you_are_safe.wav', 'fillers/nothing_to_do.wav', 'fillers/trust_process.wav', 'fillers/inner_light.wav', 'encouragement/proud.wav'],
+                        },
+                    },
+                ],
             },
             REST: {
                 id: 'hale-rest',
@@ -318,8 +318,8 @@ export class BreathworkSessionManager {
                             sessionIntro: 'session_intros/rest_intro.wav',
                             voice: 'rest/grounding_intro.wav',
                             cues: { in: 'voices/cues/deep_inhale.wav', out: 'voices/cues/slow_exhale.wav' },
-                            intentions: ['intentions/rest_sleep.wav', 'intentions/rest_peace.wav', 'intentions/rest_unwind.wav', 'intentions/rest_restore.wav', 'intentions/universal_heal.wav']
-                        }
+                            intentions: ['intentions/rest_sleep.wav', 'intentions/rest_peace.wav', 'intentions/rest_unwind.wav', 'intentions/rest_restore.wav', 'intentions/universal_heal.wav'],
+                        },
                     },
                     // Round 1
                     {
@@ -329,7 +329,7 @@ export class BreathworkSessionManager {
                         round: 1,
                         prompt: 'Round 1 • Extended Exhale',
                         subPrompt: 'Gentle inhale through the nose. Slow, long exhale. Let go with each breath.',
-                        audio: { voice: 'rest/r1_active.wav', transition: 'transitions/round1_start.wav', cues: { in: 'voices/cues/breathe_in_soft.wav', out: 'voices/cues/breathe_out_soft.wav' } }
+                        audio: { voice: 'rest/r1_active.wav', transition: 'transitions/round1_start.wav', cues: { in: 'voices/cues/breathe_in_soft.wav', out: 'voices/cues/breathe_out_soft.wav' } },
                     },
                     {
                         type: 'retention',
@@ -337,7 +337,7 @@ export class BreathworkSessionManager {
                         round: 1,
                         prompt: 'Gentle Pause',
                         subPrompt: 'Rest in the stillness. No effort required.',
-                        audio: { voice: 'rest/r1_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold_soft.wav' }
+                        audio: { voice: 'rest/r1_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold_soft.wav' },
                     },
                     {
                         type: 'recovery',
@@ -345,7 +345,7 @@ export class BreathworkSessionManager {
                         round: 1,
                         prompt: 'Gentle Recovery',
                         subPrompt: 'A gentle breath in. Hold softly. And release.',
-                        audio: { voice: 'rest/r1_recovery.wav', cue: 'voices/cues/release_soft.wav' }
+                        audio: { voice: 'rest/r1_recovery.wav', cue: 'voices/cues/release_soft.wav' },
                     },
                     // Round 2
                     {
@@ -355,7 +355,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Round 2 • Deeper Relaxation',
                         subPrompt: 'Each exhale softens your muscles. Each pause deepens your calm.',
-                        audio: { voice: 'rest/r2_active.wav', transition: 'transitions/round2_start.wav', cues: { in: 'voices/cues/breathe_in_soft.wav', out: 'voices/cues/breathe_out_soft.wav' } }
+                        audio: { voice: 'rest/r2_active.wav', transition: 'transitions/round2_start.wav', cues: { in: 'voices/cues/breathe_in_soft.wav', out: 'voices/cues/breathe_out_soft.wav' } },
                     },
                     {
                         type: 'retention',
@@ -363,7 +363,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Restful Pause',
                         subPrompt: 'Float in the quiet space. You are safe here.',
-                        audio: { voice: 'rest/r2_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold_soft.wav' }
+                        audio: { voice: 'rest/r2_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold_soft.wav' },
                     },
                     {
                         type: 'recovery',
@@ -371,7 +371,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Calming Recovery',
                         subPrompt: 'One calming breath. Embrace the stillness.',
-                        audio: { voice: 'rest/r2_recovery.wav', cue: 'voices/cues/release_soft.wav' }
+                        audio: { voice: 'rest/r2_recovery.wav', cue: 'voices/cues/release_soft.wav' },
                     },
                     // Round 3
                     {
@@ -381,7 +381,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Round 3 • Surrender',
                         subPrompt: 'Breath becomes effortless. Body becomes light. Mind becomes still.',
-                        audio: { voice: 'rest/r3_active.wav', transition: 'transitions/round3_start.wav', cues: { in: 'voices/cues/breathe_in_soft.wav', out: 'voices/cues/breathe_out_soft.wav' } }
+                        audio: { voice: 'rest/r3_active.wav', transition: 'transitions/round3_start.wav', cues: { in: 'voices/cues/breathe_in_soft.wav', out: 'voices/cues/breathe_out_soft.wav' } },
                     },
                     {
                         type: 'retention',
@@ -389,7 +389,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Deep Rest',
                         subPrompt: 'Drift into stillness. There is nowhere to go, nothing to do.',
-                        audio: { voice: 'rest/r3_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold_soft.wav' }
+                        audio: { voice: 'rest/r3_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold_soft.wav' },
                     },
                     {
                         type: 'recovery',
@@ -397,7 +397,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Final Peace',
                         subPrompt: 'Final breath. Complete peace. You are ready.',
-                        audio: { voice: 'rest/r3_recovery.wav', cue: 'voices/cues/release_soft.wav' }
+                        audio: { voice: 'rest/r3_recovery.wav', cue: 'voices/cues/release_soft.wav' },
                     },
                     // Integration
                     {
@@ -409,10 +409,10 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'rest/integration.wav',
                             transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/nothing_to_do.wav', 'fillers/you_are_safe.wav', 'fillers/waves_ocean.wav', 'fillers/let_go.wav', 'encouragement/thank_yourself.wav']
-                        }
-                    }
-                ]
+                            fillers: ['fillers/nothing_to_do.wav', 'fillers/you_are_safe.wav', 'fillers/waves_ocean.wav', 'fillers/let_go.wav', 'encouragement/thank_yourself.wav'],
+                        },
+                    },
+                ],
             },
             FLOW: {
                 id: 'hale-flow',
@@ -434,8 +434,8 @@ export class BreathworkSessionManager {
                             sessionIntro: 'session_intros/flow_intro.wav',
                             voice: 'flow/grounding_intro.wav',
                             cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/let_it_flow.wav' },
-                            intentions: ['intentions/flow_balance.wav', 'intentions/flow_presence.wav', 'intentions/flow_clarity.wav', 'intentions/flow_rhythm.wav', 'intentions/universal_clarity.wav']
-                        }
+                            intentions: ['intentions/flow_balance.wav', 'intentions/flow_presence.wav', 'intentions/flow_clarity.wav', 'intentions/flow_rhythm.wav', 'intentions/universal_clarity.wav'],
+                        },
                     },
                     // Round 1
                     {
@@ -445,7 +445,7 @@ export class BreathworkSessionManager {
                         round: 1,
                         prompt: 'Round 1 • Box Breathing',
                         subPrompt: 'Inhale 4. Hold 4. Exhale 4. Hold 4. Find your rhythm.',
-                        audio: { voice: 'flow/r1_active.wav', transition: 'transitions/round1_start.wav', cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' } }
+                        audio: { voice: 'flow/r1_active.wav', transition: 'transitions/round1_start.wav', cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' } },
                     },
                     {
                         type: 'retention',
@@ -453,7 +453,7 @@ export class BreathworkSessionManager {
                         round: 1,
                         prompt: 'Flow State',
                         subPrompt: 'Let the rhythm continue in your body. Natural, effortless.',
-                        audio: { voice: 'flow/r1_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold.wav' }
+                        audio: { voice: 'flow/r1_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold.wav' },
                     },
                     {
                         type: 'recovery',
@@ -461,7 +461,7 @@ export class BreathworkSessionManager {
                         round: 1,
                         prompt: 'Reset',
                         subPrompt: 'One deep breath. Feel the balance.',
-                        audio: { voice: 'flow/r1_recovery.wav', cue: 'voices/cues/release.wav' }
+                        audio: { voice: 'flow/r1_recovery.wav', cue: 'voices/cues/release.wav' },
                     },
                     // Round 2
                     {
@@ -471,7 +471,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Round 2 • Expand the Box',
                         subPrompt: 'Longer counts now. Inhale 5. Hold 5. Exhale 5. Hold 5.',
-                        audio: { voice: 'flow/r2_active.wav', transition: 'transitions/round2_start.wav', cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' } }
+                        audio: { voice: 'flow/r2_active.wav', transition: 'transitions/round2_start.wav', cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' } },
                     },
                     {
                         type: 'retention',
@@ -479,7 +479,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Deeper Flow',
                         subPrompt: 'You are the breath. The breath is you. Unity.',
-                        audio: { voice: 'flow/r2_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold.wav' }
+                        audio: { voice: 'flow/r2_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold.wav' },
                     },
                     {
                         type: 'recovery',
@@ -487,7 +487,7 @@ export class BreathworkSessionManager {
                         round: 2,
                         prompt: 'Recenter',
                         subPrompt: 'One cleansing breath. Fully present.',
-                        audio: { voice: 'flow/r2_recovery.wav', cue: 'voices/cues/release.wav' }
+                        audio: { voice: 'flow/r2_recovery.wav', cue: 'voices/cues/release.wav' },
                     },
                     // Round 3
                     {
@@ -497,7 +497,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Round 3 • Master Box',
                         subPrompt: 'Full expansion. Inhale 6. Hold 6. Exhale 6. Hold 6. Perfect balance.',
-                        audio: { voice: 'flow/r3_active.wav', transition: 'transitions/round3_start.wav', cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' } }
+                        audio: { voice: 'flow/r3_active.wav', transition: 'transitions/round3_start.wav', cues: { in: 'voices/cues/breathe_in.wav', out: 'voices/cues/breathe_out.wav' } },
                     },
                     {
                         type: 'retention',
@@ -505,7 +505,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Peak Flow',
                         subPrompt: 'Complete equilibrium. Mind clear as still water.',
-                        audio: { voice: 'flow/r3_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold.wav' }
+                        audio: { voice: 'flow/r3_hold.wav', transition: 'transitions/hold_start.wav', cue: 'voices/cues/hold.wav' },
                     },
                     {
                         type: 'recovery',
@@ -513,7 +513,7 @@ export class BreathworkSessionManager {
                         round: 3,
                         prompt: 'Final Balance',
                         subPrompt: 'One conscious breath. Carry this balance with you.',
-                        audio: { voice: 'flow/r3_recovery.wav', cue: 'voices/cues/release.wav' }
+                        audio: { voice: 'flow/r3_recovery.wav', cue: 'voices/cues/release.wav' },
                     },
                     // Integration
                     {
@@ -525,11 +525,11 @@ export class BreathworkSessionManager {
                         audio: {
                             voice: 'flow/integration.wav',
                             transition: 'transitions/integration_start.wav',
-                            fillers: ['fillers/floating_vibrating.wav', 'fillers/stay_here.wav', 'fillers/inner_light.wav', 'fillers/complete_whole.wav', 'encouragement/proud.wav']
-                        }
-                    }
-                ]
-            }
+                            fillers: ['fillers/floating_vibrating.wav', 'fillers/stay_here.wav', 'fillers/inner_light.wav', 'fillers/complete_whole.wav', 'encouragement/proud.wav'],
+                        },
+                    },
+                ],
+            },
         };
     }
 
@@ -620,7 +620,6 @@ export class BreathworkSessionManager {
         clearInterval(this.audioTimer);
         this.activeSession = null;
 
-
         // Release indicator control
         if (this.indicator) {
             this.indicator.setExternalControl(false);
@@ -648,7 +647,7 @@ export class BreathworkSessionManager {
             active: 'Breathe',
             retention: 'Hold',
             recovery: 'Recovery',
-            integration: 'Integration'
+            integration: 'Integration',
         };
         return labels[type] || type;
     }
@@ -694,12 +693,12 @@ export class BreathworkSessionManager {
             }
 
             // Select random theme from appropriate pool
-            const pool = this.THEME_POOLS[phase.type] || this.THEME_POOLS['grounding'];
+            const pool = this.THEME_POOLS[phase.type] || this.THEME_POOLS.grounding;
             let theme = pool[Math.floor(Math.random() * pool.length)];
 
             // Try to avoid repeating the same theme consecutively if possible
             if (this.lastTheme === theme && pool.length > 1) {
-                const filteredPool = pool.filter(t => t !== theme);
+                const filteredPool = pool.filter((t) => t !== theme);
                 theme = filteredPool[Math.floor(Math.random() * filteredPool.length)];
             }
 
@@ -727,7 +726,7 @@ export class BreathworkSessionManager {
                 round: phase.round,
                 totalRounds: this.activeSession.totalRounds,
                 prompt: phase.prompt,
-                subPrompt: phase.subPrompt
+                subPrompt: phase.subPrompt,
             });
         }
 
@@ -748,7 +747,6 @@ export class BreathworkSessionManager {
             // For fixed duration phases
             this.timer = setTimeout(() => this._nextPhase(), phase.duration * 1000);
         }
-
 
         // TRIGGER AUDIO - Use event-based chaining to prevent overlaps
         if (this.audioManager && phase.audio) {
@@ -822,7 +820,7 @@ export class BreathworkSessionManager {
                 // All voices played, schedule fillers if applicable
                 console.log('[SessionManager] Voice chain complete');
 
-                // SYNC FIX: If this was a grounding phase, reset the breathing cycle 
+                // SYNC FIX: If this was a grounding phase, reset the breathing cycle
                 // so the user gets an immediate "Breathe In" cue + visual sync.
                 if (phase.type === 'grounding' && this.indicator && this.indicator.resetCycle) {
                     this.indicator.resetCycle();
@@ -882,15 +880,15 @@ export class BreathworkSessionManager {
         setTimeout(() => {
             // Only play intention if still in same grounding phase (not during active breathing)
             const currentPhase = this.activeSession?.phases[this.currentPhaseIndex];
-            if (this.activeSession &&
-                this.currentPhaseIndex === this.activeSession.phases.indexOf(phase) &&
-                currentPhase?.type === 'grounding') {
+            if (this.activeSession
+                && this.currentPhaseIndex === this.activeSession.phases.indexOf(phase)
+                && currentPhase?.type === 'grounding') {
                 // Pick random intention
                 const intention = intentions[Math.floor(Math.random() * intentions.length)];
                 console.log(`[SessionManager] Playing intention: ${intention}`);
                 this.audioManager.playVoice(intention);
             } else {
-                console.log(`[SessionManager] Skipping intention (no longer in grounding phase)`);
+                console.log('[SessionManager] Skipping intention (no longer in grounding phase)');
             }
         }, delay);
     }
@@ -921,7 +919,7 @@ export class BreathworkSessionManager {
         // --- 2. Detect Voice Finish (Rising Edge of Silence) ---
         // If voice WAS playing but stopped, we now arm the "Wait for Next Inhale" trigger
         if (this.wasVoicePlaying) {
-            console.log(`[SessionManager] Voice finished. Waiting for next inhale to start guidance.`);
+            console.log('[SessionManager] Voice finished. Waiting for next inhale to start guidance.');
             this.wasVoicePlaying = false;
             this.waitForNextInhale = true;
         }
@@ -934,7 +932,7 @@ export class BreathworkSessionManager {
 
             // Condition A: Voice just finished, trigger 3 cycles of forced guidance
             if (this.waitForNextInhale) {
-                console.log(`[SessionManager] Starting FORCED guidance (3 cycles) after voice`);
+                console.log('[SessionManager] Starting FORCED guidance (3 cycles) after voice');
                 this.waitForNextInhale = false; // Consumed trigger
                 this.forcedGuidanceRemaining = 3; // Set counter for 3 cycles
             }
@@ -958,7 +956,7 @@ export class BreathworkSessionManager {
         // --- 4. Play Cues if in Guidance Mode ---
         if (this.currentCycleIsGuidance) {
             if (newPhase === 'inhale' && phase.audio.cues.in) {
-                console.log(`[SessionManager] Playing inhale cue`);
+                console.log('[SessionManager] Playing inhale cue');
                 this.audioManager.playCue(phase.audio.cues.in);
             } else if (newPhase === 'exhale' && phase.audio.cues.out) {
                 console.log(`[SessionManager] Playing exhale cue, pendingFlag=${this.audioManager.isVoicePending}, playingFlag=${this.audioManager.isVoicePlaying}`);
@@ -968,7 +966,7 @@ export class BreathworkSessionManager {
                 // Only trigger once per phase when we have pending intentions
                 if (this.pendingIntentions && !this.hasPlayedFirstBreathCycle) {
                     this.hasPlayedFirstBreathCycle = true;
-                    console.log(`[SessionManager] First breath cycle complete, scheduling intention in 10s`);
+                    console.log('[SessionManager] First breath cycle complete, scheduling intention in 10s');
 
                     // Schedule intention 10 seconds after this exhale
                     const intentions = this.pendingIntentions;
@@ -980,13 +978,13 @@ export class BreathworkSessionManager {
                             console.log(`[SessionManager] Playing intention: ${intention}`);
                             this.audioManager.playVoice(intention);
                         } else {
-                            console.log(`[SessionManager] Skipping intention (no longer in grounding phase)`);
+                            console.log('[SessionManager] Skipping intention (no longer in grounding phase)');
                         }
                     }, 10000);
                 }
             }
         } else if (newPhase === 'exhale') {
-            console.log(`[SessionManager] Exhale but NOT in guidance mode`);
+            console.log('[SessionManager] Exhale but NOT in guidance mode');
         }
     }
 
@@ -1103,11 +1101,11 @@ export class BreathworkSessionManager {
 
                 // Time tracking
                 remainingTime: Math.ceil(remaining),
-                phaseDuration: phaseDuration,
-                phaseProgress: phaseProgress,
+                phaseDuration,
+                phaseProgress,
 
                 // Session progress
-                sessionProgress: sessionProgress,
+                sessionProgress,
 
                 // Content
                 prompt: phase.prompt,
@@ -1116,7 +1114,7 @@ export class BreathworkSessionManager {
                 sessionId: this.sessionId,
 
                 // Hold phase indicator
-                isHoldPhase: phase.type === 'retention'
+                isHoldPhase: phase.type === 'retention',
             };
 
             if (this.onProgressCallback) {
@@ -1132,7 +1130,7 @@ export class BreathworkSessionManager {
                     breathCount: progressData.breathCount,
                     totalBreaths: progressData.totalBreaths,
                     sessionProgress: progressData.sessionProgress,
-                    sessionColor: this.activeSession.color
+                    sessionColor: this.activeSession.color,
                 });
             }
         };
@@ -1176,7 +1174,7 @@ export class BreathworkSessionManager {
             sessionName: this.activeSession.name,
             totalDuration: Math.round((Date.now() - this.sessionStartTime) / 1000),
             rounds: this.activeSession.totalRounds,
-            completed: true
+            completed: true,
         };
 
         if (this.onCompleteCallback) {
@@ -1235,7 +1233,7 @@ export class BreathworkSessionManager {
             totalPhases: this.activeSession.phases.length,
             currentRound: this.currentRound,
             totalRounds: this.activeSession.totalRounds,
-            isPaused: this.isPaused
+            isPaused: this.isPaused,
         };
     }
 }

@@ -219,7 +219,6 @@ export const skyFragmentShader = `
     }
 `;
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // SUN SHADER - Glowing procedural sun
 // ─────────────────────────────────────────────────────────────────────────────
@@ -739,4 +738,3 @@ export const moonFragmentShader = `
         gl_FragColor = vec4(litColor, uOpacity);
     }
 `;
-

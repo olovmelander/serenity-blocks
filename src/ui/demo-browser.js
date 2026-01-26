@@ -76,7 +76,7 @@ export class DemoBrowser {
 
             this.listContainer.innerHTML = '';
 
-            demos.forEach(demo => {
+            demos.forEach((demo) => {
                 const card = this.createDemoCard(demo);
                 this.listContainer.appendChild(card);
             });
@@ -91,7 +91,7 @@ export class DemoBrowser {
         card.className = 'demo-card';
 
         const date = new Date(demo.timestamp);
-        const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+        const dateStr = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
         const duration = demo.metadata?.duration ? formatTime(demo.metadata.duration) : '??:??';
         const score = demo.metadata?.score?.toLocaleString() || '0';
 
@@ -147,7 +147,7 @@ export class DemoBrowser {
             // Switch to single player mode and start playback
             // We assume SinglePlayerMode handles 'demo' option in onStart
             await this.gameModeManager.activateMode('single');
-            await this.gameModeManager.startCurrentMode({ demo: demo });
+            await this.gameModeManager.startCurrentMode({ demo });
         } catch (err) {
             console.error('Failed to play demo:', err);
             alert('Failed to play replay.');

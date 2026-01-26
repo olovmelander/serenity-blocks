@@ -72,7 +72,7 @@ export function createMultiplayerBoardScene(
             this.isFocused = true; // Active player board
             this.lastUpdateTime = 0;
             this.updateInterval = 16; // 60fps by default
-            this.throttledUpdateInterval = 33; // 30fps for background boards
+            this.throttledUpdateInterval = 16; // 60fps for background boards (was 30fps)
         }
 
         /**

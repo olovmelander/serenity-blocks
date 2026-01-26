@@ -588,7 +588,7 @@ export default class SunsetTheme extends BaseTheme {
             sunDirection: new THREE.Vector3(0, 0.5, -1).normalize(),
             sunColor: 0xffd700,
             waterColor: 0x1a3a5c,
-            distortionScale: 2.0,  // Reduced for smoother appearance
+            distortionScale: 2.0, // Reduced for smoother appearance
             fog: false,
         });
 
@@ -1024,13 +1024,13 @@ export default class SunsetTheme extends BaseTheme {
         // Density and color change based on time of day
         // ═══════════════════════════════════════════════════════════════════════
 
-        const dayProgress = this.dayProgress;
+        const { dayProgress } = this;
 
         // Calculate fog density based on time of day
         // Thicker at dawn (~0.22) and dusk (~0.82), lighter at noon and night
-        const dawnWeight = Math.exp(-Math.pow((dayProgress - 0.22) * 8, 2));
-        const duskWeight = Math.exp(-Math.pow((dayProgress - 0.82) * 8, 2));
-        const noonWeight = Math.exp(-Math.pow((dayProgress - 0.5) * 5, 2));
+        const dawnWeight = Math.exp(-(((dayProgress - 0.22) * 8) ** 2));
+        const duskWeight = Math.exp(-(((dayProgress - 0.82) * 8) ** 2));
+        const noonWeight = Math.exp(-(((dayProgress - 0.5) * 5) ** 2));
         const nightWeight = dayProgress < 0.15 || dayProgress > 0.9 ? 1.0 : 0.0;
 
         // Fog density: thick at dawn/dusk, light at noon, very light at night
@@ -1077,22 +1077,22 @@ export default class SunsetTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
         // X Axis: Gentle horizontal sway
         // ─────────────────────────────────────────────────────────────────────
-        const floatX = Math.sin(t * driftSpeed) * 4.0           // Primary sway
-            + Math.sin(t * driftSpeed * 0.7 + 1.0) * 2.0        // Secondary offset
-            + Math.cos(t * driftSpeed * 1.3) * 1.0;             // Subtle variation
+        const floatX = Math.sin(t * driftSpeed) * 4.0 // Primary sway
+            + Math.sin(t * driftSpeed * 0.7 + 1.0) * 2.0 // Secondary offset
+            + Math.cos(t * driftSpeed * 1.3) * 1.0; // Subtle variation
 
         // ─────────────────────────────────────────────────────────────────────
         // Y Axis: Deep vertical breathing movement
         // ─────────────────────────────────────────────────────────────────────
-        const floatY = Math.sin(t * breatheSpeed) * 3.0         // Primary breathe (up/down)
-            + Math.cos(t * breatheSpeed * 0.6 + 0.5) * 1.5      // Secondary drift
-            + Math.sin(t * breatheSpeed * 1.8) * 0.5;           // Subtle bob
+        const floatY = Math.sin(t * breatheSpeed) * 3.0 // Primary breathe (up/down)
+            + Math.cos(t * breatheSpeed * 0.6 + 0.5) * 1.5 // Secondary drift
+            + Math.sin(t * breatheSpeed * 1.8) * 0.5; // Subtle bob
 
         // ─────────────────────────────────────────────────────────────────────
         // Z Axis: Forward/back depth breathing
         // ─────────────────────────────────────────────────────────────────────
-        const floatZ = Math.sin(t * breatheSpeed * 0.8) * 4.0   // Primary push/pull
-            + Math.cos(t * driftSpeed * 0.5) * 2.0;             // Secondary variation
+        const floatZ = Math.sin(t * breatheSpeed * 0.8) * 4.0 // Primary push/pull
+            + Math.cos(t * driftSpeed * 0.5) * 2.0; // Secondary variation
 
         this.camera.position.x = this.baseCameraPos.x + floatX;
         this.camera.position.y = this.baseCameraPos.y + floatY;
@@ -1511,6 +1511,7 @@ export default class SunsetTheme extends BaseTheme {
 
         console.log('[Sunset3D] Theme stopped and cleaned up');
     }
+
     createStars() {
         // Use High Quality settings from Blood Moon as baseline (35k stars) or respect preset
         const count = this.activePreset.starCount >= 20000 ? this.activePreset.starCount : 35000;
@@ -1556,8 +1557,8 @@ export default class SunsetTheme extends BaseTheme {
             sizes[i] = 30 + Math.random() * 60;
 
             // Twinkle: phase offset, varied speed (0.8 to 2.5 Hz)
-            twinkleData[i2] = Math.random() * Math.PI * 2;      // phase
-            twinkleData[i2 + 1] = 0.8 + Math.random() * 1.7;    // speed
+            twinkleData[i2] = Math.random() * Math.PI * 2; // phase
+            twinkleData[i2 + 1] = 0.8 + Math.random() * 1.7; // speed
 
             brightness[i] = 0.3 + Math.random() * 0.7;
         }

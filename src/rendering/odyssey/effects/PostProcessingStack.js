@@ -1,12 +1,12 @@
 /**
  * @fileoverview PostProcessingStack - Modular cinematic post-processing
- * 
+ *
  * Enhanced post-processing pipeline with:
  * - Chromatic Aberration (speed/intensity moments)
  * - Dynamic Vignette (atmosphere/focus)
  * - Film Grain (cinematic texture)
  * - Integration with existing UnrealBloomPass
- * 
+ *
  * All effects are toggleable per quality preset.
  */
 
@@ -340,7 +340,7 @@ export class PostProcessingStack {
      */
     triggerTransitionEffect() {
         this.dynamicState.chromaticBoost = 0.01; // Extra chromatic split
-        this.dynamicState.vignetteBoost = 0.2;   // Extra vignette darkness
+        this.dynamicState.vignetteBoost = 0.2; // Extra vignette darkness
     }
 
     /**

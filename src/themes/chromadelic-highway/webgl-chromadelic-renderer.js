@@ -1,6 +1,6 @@
 /**
  * WebGL Chromadelic Renderer - GPU-accelerated rendering for Chromadelic Highway Theme
- * 
+ *
  * Features:
  * - Multi-layered rainbow wave system with dynamic glow
  * - High performance particle system for sparkles and stars
@@ -69,7 +69,7 @@ export default class WebGLChromadelicRenderer {
     }
 
     createProgram(vsSource, fsSource) {
-        const gl = this.gl;
+        const { gl } = this;
         const vs = gl.createShader(gl.VERTEX_SHADER);
         gl.shaderSource(vs, vsSource);
         gl.compileShader(vs);
@@ -98,8 +98,8 @@ export default class WebGLChromadelicRenderer {
     }
 
     initWaveShaders() {
-        const gl = this.gl;
-        const isWebGL2 = this.isWebGL2;
+        const { gl } = this;
+        const { isWebGL2 } = this;
 
         // Full screen quad vertex shader
         const vsSource = isWebGL2 ? `#version 300 es
@@ -342,8 +342,8 @@ export default class WebGLChromadelicRenderer {
     }
 
     initParticleShaders() {
-        const gl = this.gl;
-        const isWebGL2 = this.isWebGL2;
+        const { gl } = this;
+        const { isWebGL2 } = this;
 
         // Particle Vertex Shader
         const vsSource = isWebGL2 ? `#version 300 es
@@ -516,7 +516,7 @@ export default class WebGLChromadelicRenderer {
     }
 
     initBuffers() {
-        const gl = this.gl;
+        const { gl } = this;
 
         // Wave Quad (Full screen)
         this.waveBuffers.position = gl.createBuffer();
@@ -551,7 +551,7 @@ export default class WebGLChromadelicRenderer {
     }
 
     render(time, params) {
-        const gl = this.gl;
+        const { gl } = this;
         if (!gl) return;
 
         // Clear
@@ -568,7 +568,7 @@ export default class WebGLChromadelicRenderer {
     }
 
     renderWaves(time, params) {
-        const gl = this.gl;
+        const { gl } = this;
         gl.useProgram(this.waveProgram);
 
         gl.uniform1f(this.waveUniforms.time, time);
@@ -586,7 +586,7 @@ export default class WebGLChromadelicRenderer {
     }
 
     renderParticles(particles) {
-        const gl = this.gl;
+        const { gl } = this;
         const ext = gl.getExtension('ANGLE_instanced_arrays');
 
         if (!this.isWebGL2 && !ext) return;
@@ -671,8 +671,9 @@ export default class WebGLChromadelicRenderer {
             ext.drawArraysInstancedANGLE(gl.TRIANGLE_STRIP, 0, 4, count);
         }
     }
+
     dispose() {
-        const gl = this.gl;
+        const { gl } = this;
         if (!gl) return;
 
         // Delete programs
@@ -680,8 +681,8 @@ export default class WebGLChromadelicRenderer {
         if (this.particleProgram) gl.deleteProgram(this.particleProgram);
 
         // Delete buffers
-        Object.values(this.waveBuffers).forEach(buffer => gl.deleteBuffer(buffer));
-        Object.values(this.particleBuffers).forEach(buffer => gl.deleteBuffer(buffer));
+        Object.values(this.waveBuffers).forEach((buffer) => gl.deleteBuffer(buffer));
+        Object.values(this.particleBuffers).forEach((buffer) => gl.deleteBuffer(buffer));
 
         // Force lose context to prevent hitting browser limits
         const ext = gl.getExtension('WEBGL_lose_context');

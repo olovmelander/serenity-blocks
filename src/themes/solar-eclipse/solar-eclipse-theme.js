@@ -277,8 +277,8 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.createFlareParticles();
         this.createEclipseSparks(); // NEW: Dramatic spark bursts
         this.createSolarTendrils(); // NEW: Flowing tendrils
-        this.createDiamondRing();   // NEW: Diamond ring effect
-        this.createLensFlares();    // NEW: Procedural lens flares
+        this.createDiamondRing(); // NEW: Diamond ring effect
+        this.createLensFlares(); // NEW: Procedural lens flares
         // Meteor field removed
         this.createAmbientParticles();
         this.setupPostProcessing();
@@ -343,7 +343,7 @@ export default class SolarEclipseTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────────
 
     createStarfield() {
-        const starCount = this.qualityPreset.starCount;
+        const { starCount } = this.qualityPreset;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(starCount * 3);
         const colors = new Float32Array(starCount * 3);
@@ -440,7 +440,8 @@ export default class SolarEclipseTheme extends BaseTheme {
 
             // Eclipse color palette - deep purples, oranges, reds, dark blues
             const colorType = Math.random();
-            let hue, sat, light;
+            let hue; let sat; let
+                light;
             if (colorType < 0.35) {
                 hue = 270 + Math.random() * 30;
                 sat = 70;
@@ -620,10 +621,18 @@ export default class SolarEclipseTheme extends BaseTheme {
 
     createSunGlowLayers(sunSize) {
         const glowConfigs = [
-            { size: sunSize * 2.2, color: 0xffcc66, opacity: 0.4, z: -105 },
-            { size: sunSize * 2.8, color: 0xff9933, opacity: 0.25, z: -110 },
-            { size: sunSize * 3.5, color: 0xff6622, opacity: 0.15, z: -115 },
-            { size: sunSize * 4.2, color: 0xff4411, opacity: 0.08, z: -120 },
+            {
+                size: sunSize * 2.2, color: 0xffcc66, opacity: 0.4, z: -105,
+            },
+            {
+                size: sunSize * 2.8, color: 0xff9933, opacity: 0.25, z: -110,
+            },
+            {
+                size: sunSize * 3.5, color: 0xff6622, opacity: 0.15, z: -115,
+            },
+            {
+                size: sunSize * 4.2, color: 0xff4411, opacity: 0.08, z: -120,
+            },
         ];
 
         for (const config of glowConfigs) {
@@ -1131,7 +1140,7 @@ export default class SolarEclipseTheme extends BaseTheme {
         rift.position.set(
             (Math.random() - 0.5) * 1500,
             (Math.random() - 0.5) * 800,
-            -200 - Math.random() * 400
+            -200 - Math.random() * 400,
         );
         rift.rotation.z = (Math.random() - 0.5) * 0.3;
 
@@ -1658,7 +1667,7 @@ export default class SolarEclipseTheme extends BaseTheme {
                 // At progress 0.5 (center/eclipse), speed is only 0.05x base. At edges, speed is 1x base.
                 const distFromCenter = Math.abs(this.moonDriftProgress - 0.5) * 2; // 0 at center, 1 at edges
                 // Use exponential curve for more dramatic slowdown near sun
-                const easedDist = Math.pow(distFromCenter, 0.6); // Lower exponent = slower zone extends longer
+                const easedDist = distFromCenter ** 0.6; // Lower exponent = slower zone extends longer
                 const speedMultiplier = 0.05 + easedDist * 0.95; // 0.05 to 1.0 (5% to 100%)
                 const currentSpeed = this.moonDriftBaseSpeed * speedMultiplier;
 
@@ -1696,10 +1705,10 @@ export default class SolarEclipseTheme extends BaseTheme {
                 const orbitRadiusZ = 200; // Deeper breathing
 
                 // Orbital sway with multiple frequencies for organic feel
-                this.camera.position.x = Math.sin(cameraTime + this.cameraPhaseX) * orbitRadiusX +
-                    Math.cos(cameraTime * 0.7 + this.cameraPhaseX2) * orbitRadiusX * 0.4;
-                this.camera.position.y = Math.cos(cameraTime * 0.8 + this.cameraPhaseY) * orbitRadiusY +
-                    Math.sin(cameraTime * 0.5 + this.cameraPhaseY2) * orbitRadiusY * 0.3;
+                this.camera.position.x = Math.sin(cameraTime + this.cameraPhaseX) * orbitRadiusX
+                    + Math.cos(cameraTime * 0.7 + this.cameraPhaseX2) * orbitRadiusX * 0.4;
+                this.camera.position.y = Math.cos(cameraTime * 0.8 + this.cameraPhaseY) * orbitRadiusY
+                    + Math.sin(cameraTime * 0.5 + this.cameraPhaseY2) * orbitRadiusY * 0.3;
                 this.camera.position.z = 1400 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
 
                 // Dynamic look-at for extra parallax
@@ -1736,7 +1745,7 @@ export default class SolarEclipseTheme extends BaseTheme {
 
             // Store base opacity on first run
             if (this.time < 0.02) {
-                this.sunGlowLayers.forEach(glow => {
+                this.sunGlowLayers.forEach((glow) => {
                     glow.userData.baseOpacity = glow.material.opacity;
                 });
             }
@@ -1764,7 +1773,6 @@ export default class SolarEclipseTheme extends BaseTheme {
                     this.coronaParticles.material.uniforms.opacity.value = 0.7 + this.coronaPulseIntensity * 0.2 + Math.sin(this.time * 3) * 0.08;
                     if (this.moon) this.coronaParticles.material.uniforms.uMoonPosition.value.copy(this.moon.position);
                 }
-
             }
 
             // Animate flare particles - erupting from sun
@@ -1795,11 +1803,9 @@ export default class SolarEclipseTheme extends BaseTheme {
                     this.flareParticles.material.uniforms.opacity.value = 0.6 + this.coronaPulseIntensity * 0.3;
                     if (this.moon) this.flareParticles.material.uniforms.uMoonPosition.value.copy(this.moon.position);
                 }
-
             }
 
             // Meteors removed
-
 
             // Animate ambient particles - gentle 3D drift
             if (this.ambientParticles) {
@@ -1875,7 +1881,7 @@ export default class SolarEclipseTheme extends BaseTheme {
                     rift.material.uniforms.uTime.value = this.time;
                     // Fade in quickly, fade out gradually
                     const fadeIn = Math.min(age * 2, 1.0);
-                    const fadeOut = 1.0 - Math.pow(progress, 2);
+                    const fadeOut = 1.0 - progress ** 2;
                     rift.material.uniforms.uOpacity.value = fadeIn * fadeOut;
                 }
 
@@ -2090,21 +2096,21 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.shootingStars = [];
 
         // Cleanup pool systems
-        this.eclipseSparks.forEach(sys => {
+        this.eclipseSparks.forEach((sys) => {
             this.scene?.remove(sys);
             sys.geometry?.dispose();
             sys.material?.dispose();
         });
         this.eclipseSparks = [];
 
-        this.cosmicRifts.forEach(rift => {
+        this.cosmicRifts.forEach((rift) => {
             this.scene?.remove(rift);
             rift.geometry?.dispose();
             rift.material?.dispose();
         });
         this.cosmicRifts = [];
 
-        this.meteorCrashes.forEach(crash => {
+        this.meteorCrashes.forEach((crash) => {
             if (crash.shockwave) {
                 this.scene?.remove(crash.shockwave);
                 crash.shockwave.geometry?.dispose();

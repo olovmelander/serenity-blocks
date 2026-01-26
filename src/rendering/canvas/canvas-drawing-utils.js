@@ -122,16 +122,16 @@ export function drawBlockStyled(ctx, x, y, blockSize, styleConfig, isGhost = fal
 
     // Route to appropriate rendering function based on mode
     switch (renderMode) {
-        case 'glow':
-            drawBlockGlow(ctx, x, y, blockSize, color, effects, alpha);
-            break;
-        case 'gradient':
-            drawBlockGradient(ctx, x, y, blockSize, color, effects, alpha);
-            break;
-        case 'solid':
-        default:
-            drawBlockSolid(ctx, x, y, blockSize, color, effects, alpha);
-            break;
+    case 'glow':
+        drawBlockGlow(ctx, x, y, blockSize, color, effects, alpha);
+        break;
+    case 'gradient':
+        drawBlockGradient(ctx, x, y, blockSize, color, effects, alpha);
+        break;
+    case 'solid':
+    default:
+        drawBlockSolid(ctx, x, y, blockSize, color, effects, alpha);
+        break;
     }
 }
 
@@ -626,7 +626,7 @@ export function drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleCon
         if (effects.pulse) {
             const time = Date.now() / 1000;
             const pulse = Math.sin(time * (effects.pulseSpeed || 2)) * (effects.pulseAmplitude || 0.3);
-            intensity = intensity * (1 + pulse);
+            intensity *= (1 + pulse);
         }
         const glowColor = effects.glowColor === 'auto' ? color : effects.glowColor;
         ctx.shadowColor = glowColor;
@@ -637,7 +637,8 @@ export function drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleCon
     // Apply gradient if renderMode is 'gradient'
     if (renderMode === 'gradient' && effects.gradientStops) {
         // Calculate bounding box for gradient
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let
+            maxY = -Infinity;
         shape.forEach((row, y) => {
             row.forEach((cell, x) => {
                 if (cell) {
@@ -722,4 +723,3 @@ export function drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleCon
 
     ctx.restore();
 }
-
