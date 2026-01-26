@@ -26,6 +26,7 @@ import { FragTracker } from './frag-tracker.js';
 import { HostMigration } from './host-migration.js';
 import { unifiedLoop } from './unified-game-loop.js';
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
+import { InputJitterBuffer } from '../network/input-jitter-buffer.js';
 
 const RESYNC_CHUNK_SIZE = 16 * 1024;
 const RESYNC_WINDOW = 4;
@@ -117,6 +118,7 @@ export class FFAGameStateP2P {
             levelProgression: false,
             allowHandicap: true,
             boringRules: false,
+            garbageCancellation: 'full', // 'full' (modern Quadra/TETR.IO) | 'disabled' (classic)
         };
         this.winner = null;
         this.matchStartTime = 0;
@@ -138,6 +140,14 @@ export class FFAGameStateP2P {
         this.attackRouter = new FFAAttackRouter(this);
         this.fragTracker = new FragTracker(this);
         this.hostMigration = new HostMigration(this);
+
+        // Phase 4: Input jitter buffer (host only)
+        // Smooths input timing for fair gameplay across varying latencies
+        this.inputJitterBuffer = this.isHost ? new InputJitterBuffer({
+            bufferDepth: 2,  // 2 ticks (~66ms at 30Hz)
+            tickRate: 30,
+        }) : null;
+        this.useJitterBuffer = this.matchConfig?.useJitterBuffer !== false; // Enable by default
 
         // Game loop (unified RAF-driven loop)
         this.unifiedLoop = unifiedLoop;
@@ -174,6 +184,22 @@ export class FFAGameStateP2P {
    */
     addPlayer(steamId, name, isLocal = false) {
         if (this.players.has(steamId)) {
+            const existing = this.players.get(steamId);
+            // RECONNECTION LOGIC: Revive player if they are in grace period
+            if (existing.isDisconnected) {
+                console.log(`♻️ Player reconnected during grace period: ${name}`);
+                clearTimeout(existing.disconnectTimeout);
+                existing.isDisconnected = false;
+                existing.disconnectTimeout = null;
+
+                // Broadcast update so everyone knows they are back
+                if (this.isHost) {
+                    this.broadcastPlayerList();
+                    this.queueResync(steamId); // Force immediate state sync
+                }
+                return;
+            }
+
             console.warn(`⚠️ Player ${steamId} already exists`);
             return;
         }
@@ -204,6 +230,7 @@ export class FFAGameStateP2P {
             frags: 0,
             joinedAt: Date.now(),
             lastAttackerId: null, // Track who last sent garbage to this player (for kill attribution)
+            isDisconnected: false, // Reconnection tracking
         };
 
         this.players.set(steamId, playerState);
@@ -232,7 +259,38 @@ export class FFAGameStateP2P {
         const player = this.players.get(steamId);
         if (!player) return;
 
-        console.log(`👋 Player left: ${player.name}`);
+        // Grace Period Logic:
+        // If match is in progress, don't remove immediately. Mark as disconnected.
+        if (this.gamePhase === 'playing' && player.isAlive && !player.isDisconnected) {
+            console.log(`⚠️ Player disconnected during match: ${player.name} - Entering Grace Period (10s)`);
+            player.isDisconnected = true;
+            player.disconnectTime = Date.now();
+
+            // Auto-remove after 10s if not reconnected
+            player.disconnectTimeout = setTimeout(() => {
+                console.log(`🛑 Grace period expired for ${player.name} - Removing player`);
+                this._finalizeRemovePlayer(steamId);
+            }, 10000);
+
+            // Notify others of disconnect status
+            if (this.isHost) {
+                this.broadcastPlayerList();
+            }
+            return;
+        }
+
+        this._finalizeRemovePlayer(steamId);
+    }
+
+    _finalizeRemovePlayer(steamId) {
+        const player = this.players.get(steamId);
+        if (!player) return;
+
+        if (player.disconnectTimeout) {
+            clearTimeout(player.disconnectTimeout);
+        }
+
+        console.log(`👋 Player permanently removed: ${player.name}`);
         this.players.delete(steamId);
 
         // Clean up validator data (host only)
@@ -280,6 +338,17 @@ export class FFAGameStateP2P {
             if (!this.isHost) return;
             const requested = msg.data?.protocolVersion;
             const accepted = requested === this.network.protocolVersion;
+
+            // Check for rejoin
+            const existing = this.players.get(msg.from);
+            if (existing && existing.isDisconnected) {
+                clearTimeout(existing.disconnectTimeout);
+                existing.isDisconnected = false;
+                existing.disconnectTimeout = null;
+                console.log(`♻️ Player rejoined via NET_HELLO: ${existing.name}`);
+                this.queueResync(msg.from);
+            }
+
             this.network.sendP2PMessage(msg.from, MessageTypes.NET_WELCOME, {
                 protocolVersion: this.network.protocolVersion,
                 featureFlags: [],
@@ -482,7 +551,15 @@ export class FFAGameStateP2P {
         this.network.on(MessageTypes.GAME_ROUND_RESTART, (msg) => {
             if (this.isHost) return; // Host already handled this locally
 
-            const isFullReset = msg.data.fullReset === true;
+            const data = msg.data || {};
+            const isFullReset = data.fullReset === true;
+            const prefixText = typeof data.prefixText === 'string'
+                ? data.prefixText
+                : (isFullReset ? 'NEW MATCH' : 'ROUND OVER');
+            const countFrom = Number.isFinite(data.countFrom) ? Math.floor(data.countFrom) : 3;
+            const includeZero = data.includeZero === true;
+            const fallbackSeed = Math.floor(Math.random() * 1000000);
+            const newSeed = Number.isFinite(data.newSeed) ? data.newSeed : fallbackSeed;
             console.log(`🔄 ${isFullReset ? 'Full game' : 'Round'} restarting...`);
 
             // Stop current game
@@ -530,29 +607,30 @@ export class FFAGameStateP2P {
                 players: Array.from(this.players.keys()),
             });
 
-            // Dispatch event to clear death visuals
-            emitMultiplayerEvent(MULTIPLAYER_EVENTS.ROUND_RESTART, {
-                players: Array.from(this.players.keys()),
-            });
+            const startRound = () => {
+                this.gamePhase = 'playing';
 
-            // IMMEDIATE START (No countdown between rounds)
-            this.gamePhase = 'playing';
+                // Re-initialize players with the same seed from host (for deterministic pieces)
+                // CRITICAL: All players must use the EXACT same seed for fair play
+                this.players.forEach((player) => {
+                    player.gameState.randomGenerator = this.createSeededRNG(newSeed);
 
-            // Re-initialize players with the same seed from host (for deterministic pieces)
-            // CRITICAL: All players must use the EXACT same seed for fair play
-            const { newSeed } = msg.data;
-            this.players.forEach((player, steamId) => {
-                player.gameState.randomGenerator = this.createSeededRNG(newSeed);
+                    // Fill bag and spawn first piece
+                    fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
+                    spawnPiece(player.gameState, null, null);
+                });
 
-                // Fill bag and spawn first piece
-                fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
-                spawnPiece(player.gameState, null, null);
-            });
+                // Start game loop (needed for rendering on peer side)
+                this.startGameLoop();
 
-            // Start game loop (needed for rendering on peer side)
-            this.startGameLoop();
+                console.log(`🎮 ${isFullReset ? 'Game' : 'Round'} started on peer!`);
+            };
 
-            console.log(`🎮 ${isFullReset ? 'Game' : 'Round'} started on peer! (Immediate)`);
+            if (!Number.isFinite(data.newSeed)) {
+                console.warn('⚠️ Round restart missing seed from host. Using fallback seed.');
+            }
+
+            this.showCountdown(startRound, prefixText, countFrom, includeZero);
         });
 
         // PHASE 4.4: Chat messages
@@ -658,6 +736,21 @@ export class FFAGameStateP2P {
             return;
         }
 
+        // JITTER BUFFER INTEGRATION
+        // If enabled, buffer the input and process it later in the game loop
+        if (this.useJitterBuffer && this.inputJitterBuffer) {
+            // Use the tick provided by client, or fallback to current host tick
+            // We ensure tick is at least currentTick - bufferDepth
+            const inputTick = data.tick || this.hostTick;
+
+            this.inputJitterBuffer.addInput(steamId, inputTick, {
+                type: inputType,
+                data,
+                timestamp
+            });
+            return; // Buffered!
+        }
+
         // CRITICAL: Force immediate visual update after input
         // Don't wait for next state sync (30Hz) - render immediately (60Hz)
         this.renderAllPlayers();
@@ -684,6 +777,7 @@ export class FFAGameStateP2P {
 
             this.network.sendP2PMessage(this.network.hostSteamId, messageType, {
                 ...data,
+                tick: this.hostTick, // Include current tick for jitter buffer
                 timestamp,
             });
 
@@ -835,27 +929,35 @@ export class FFAGameStateP2P {
     }
 
     /**
-   * PHASE 3.2: Cancel garbage with outgoing attacks (garbage counter)
-   * This is a competitive mechanic where sending garbage reduces incoming garbage
+   * PHASE 3.5: Cancel garbage with outgoing attacks (garbage counter)
+   * Modern competitive mechanic where outgoing lines cancel incoming garbage first.
+   * Only the remainder is sent to opponents (Quadra/TETR.IO style).
+   * @param {string} attackerSteamId - The player clearing lines
+   * @param {number} outgoingLines - Lines the player would send
+   * @returns {number} Lines cancelled (to be subtracted from outgoing attack)
    */
     applyGarbageCounter(attackerSteamId, outgoingLines) {
-        if (!this.isHost) return;
+        if (!this.isHost) return 0;
+
+        // Check if garbage cancellation is enabled (default: full/enabled)
+        if (this.matchConfig.garbageCancellation === 'disabled') {
+            return 0; // Classic mode - no cancellation
+        }
 
         const attacker = this.players.get(attackerSteamId);
-        if (!attacker || !attacker.isAlive) return;
+        if (!attacker || !attacker.isAlive) return 0;
 
         const incomingLines = attacker.garbageQueue.getTotalLines();
 
         if (incomingLines === 0) {
-            return; // No incoming garbage to counter
+            return 0; // No incoming garbage to counter
         }
 
-        // Calculate how many lines can be countered
+        // Calculate how many lines can be countered (1:1 ratio - Quadra/TETR.IO style)
         const canceledLines = Math.min(incomingLines, outgoingLines);
 
         if (canceledLines > 0) {
             // Remove canceled lines from queue
-            const originalQueue = attacker.garbageQueue.entries.length;
             let removed = 0;
 
             while (removed < canceledLines && attacker.garbageQueue.entries.length > 0) {
@@ -878,7 +980,11 @@ export class FFAGameStateP2P {
                 remainingGarbage: attacker.garbageQueue.getTotalLines(),
                 isLocal: attackerSteamId === this.localPlayerId,
             });
+
+            return removed;
         }
+
+        return 0;
     }
 
     /**
@@ -1076,40 +1182,45 @@ export class FFAGameStateP2P {
     }
 
     buildStateSnapshot() {
-        return {
-            players: Array.from(this.players.entries()).map(([steamId, player]) => ({
-                steamId,
-                name: player.name,
-                color: player.color,
-                score: player.gameState.score,
-                lines: player.gameState.lines,
-                level: player.gameState.level,
-                frags: player.frags,
-                isAlive: player.isAlive,
-                garbagePending: player.garbageQueue.getTotalLines(),
+        const players = Array.from(this.players.entries()).map(([steamId, player]) => ({
+            steamId,
+            name: player.name,
+            color: player.color,
+            score: player.gameState.score,
+            lines: player.gameState.lines,
+            level: player.gameState.level,
+            frags: player.frags,
+            isAlive: player.isAlive,
+            garbagePending: player.garbageQueue.getTotalLines(),
 
-                grid: player.gameState.boardGrid,
-                currentPiece: player.gameState.currentPiece,
-                nextPieces: player.gameState.nextPieces,
-                dropCounter: player.gameState.dropCounter,
-                dropInterval: player.gameState.dropInterval,
+            grid: player.gameState.boardGrid,
+            currentPiece: player.gameState.currentPiece,
+            nextPieces: player.gameState.nextPieces,
+            dropCounter: player.gameState.dropCounter,
+            dropInterval: player.gameState.dropInterval,
 
-                garbageEntries: player.garbageQueue.entries.map((entry) => ({
-                    type: entry.type,
-                    attackerId: entry.attackerId,
-                    color: entry.color,
-                    holeMask: entry.holeMask,
-                    variant: entry.variant,
-                })),
-
-                lockedPieces: player.gameState.lockedPieces.map((piece) => ({
-                    x: piece.x,
-                    y: piece.y,
-                    shape: piece.shape,
-                    color: piece.color,
-                    shapeKey: piece.shapeKey,
-                })),
+            garbageEntries: player.garbageQueue.entries.map((entry) => ({
+                type: entry.type,
+                attackerId: entry.attackerId,
+                color: entry.color,
+                holeMask: entry.holeMask,
+                variant: entry.variant,
             })),
+
+            lockedPieces: player.gameState.lockedPieces.map((piece) => ({
+                x: piece.x,
+                y: piece.y,
+                shape: piece.shape,
+                color: piece.color,
+                shapeKey: piece.shapeKey,
+            })),
+        }));
+
+        // Phase 4: Calculate state digest for desync detection
+        const stateDigest = this._calculateStateDigest(players);
+
+        return {
+            players,
             gamePhase: this.gamePhase,
             winner: this.winner ? {
                 steamId: this.winner.steamId,
@@ -1117,7 +1228,29 @@ export class FFAGameStateP2P {
             } : null,
             timestamp: Date.now(),
             tick: this.hostTick,
+            // Phase 4: State digest for desync detection
+            digest: stateDigest,
         };
+    }
+
+    /**
+     * Phase 4: Calculate a digest of the critical game state for desync detection
+     * Uses a simple hash of scores, frags, and alive status - fast to compute
+     */
+    _calculateStateDigest(players) {
+        // Build a string of critical state values
+        const stateString = players
+            .sort((a, b) => a.steamId.localeCompare(b.steamId)) // Deterministic order
+            .map((p) => `${p.steamId}:${p.score}:${p.lines}:${p.frags}:${p.isAlive ? 1 : 0}:${p.garbagePending}`)
+            .join('|');
+
+        // Simple hash (DJB2 algorithm)
+        let hash = 5381;
+        for (let i = 0; i < stateString.length; i++) {
+            hash = ((hash << 5) + hash) + stateString.charCodeAt(i);
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return (hash >>> 0).toString(16); // Unsigned hex string
     }
 
     getFullState() {
@@ -1189,11 +1322,66 @@ export class FFAGameStateP2P {
     /**
    * Sync state from host (peer only)
    * CRITICAL: Must trigger visual updates
+   * Phase 4: Includes desync detection
    */
     syncFromHost(state) {
         if (this.isHost) return;
 
+        // Phase 4: Desync detection
+        if (state.digest && this._lastHostDigest) {
+            // Compare current local digest to what we expect
+            const expectedDigest = this._lastHostDigest;
+            const localDigest = this._calculateStateDigest(
+                Array.from(this.players.entries()).map(([steamId, player]) => ({
+                    steamId,
+                    score: player.gameState.score,
+                    lines: player.gameState.lines,
+                    frags: player.frags,
+                    isAlive: player.isAlive,
+                    garbagePending: player.garbageQueue?.getTotalLines() || 0,
+                })),
+            );
+
+            // Check for desync - if local state diverged significantly
+            if (localDigest !== expectedDigest && this._desyncCheckEnabled) {
+                this._desyncCount = (this._desyncCount || 0) + 1;
+
+                // Only trigger resync after multiple consecutive desyncs (avoid false positives)
+                if (this._desyncCount >= 5) {
+                    console.warn(`⚠️ Desync detected: local=${localDigest}, expected=${expectedDigest}`);
+                    this._requestResync();
+                    this._desyncCount = 0;
+                }
+            } else {
+                this._desyncCount = 0; // Reset on successful sync
+            }
+        }
+
+        // Store host digest for next comparison
+        this._lastHostDigest = state.digest;
+
         this._applySnapshotState(state, { forceLocal: false });
+    }
+
+    /**
+     * Phase 4: Request resync from host when desync detected
+     */
+    _requestResync() {
+        if (this.isHost) return;
+
+        console.log('🔄 Requesting resync due to detected desync...');
+        this.network.sendP2PMessage(this.network.hostSteamId, MessageTypes.GAME_STATE_RESYNC_ACK, {
+            requestResync: true,
+            reason: 'desync_detected',
+        });
+    }
+
+    /**
+     * Phase 4: Enable/disable desync detection
+     */
+    setDesyncDetection(enabled) {
+        this._desyncCheckEnabled = enabled;
+        this._desyncCount = 0;
     }
 
     _applySnapshotState(state, { forceLocal }) {
@@ -1476,7 +1664,9 @@ export class FFAGameStateP2P {
             name: p.name,
             color: p.color, // NEW: Include player color
             isReady: p.isReady,
+            isReady: p.isReady,
             isAlive: p.isAlive,
+            isDisconnected: p.isDisconnected || false, // Broadcast disconnect status
         }));
 
         this.network.broadcastToAll(MessageTypes.LOBBY_PLAYER_JOINED, {
@@ -1643,11 +1833,58 @@ export class FFAGameStateP2P {
             }
 
             if (this.isHost) {
+                this.processBufferedInputs(); // Process inputs from jitter buffer
                 this.updateAllPlayers(delta);
             }
         };
 
         this.loopCallbacksConfigured = true;
+    }
+
+    /**
+     * Process inputs from the jitter buffer (HOST ONLY)
+     * Called every game tick to apply buffered inputs
+     */
+    processBufferedInputs() {
+        if (!this.useJitterBuffer || !this.inputJitterBuffer) return;
+
+        // Get inputs ready for this tick
+        const inputsMap = this.inputJitterBuffer.getInputsForTick();
+
+        for (const [steamId, inputs] of inputsMap) {
+            if (inputs.length === 0) continue;
+
+            const player = this.players.get(steamId);
+            if (!player || !player.isAlive) continue;
+
+            // Build callbacks once per player
+            // Use local/remote callbacks as appropriate
+            const isRemotePlayer = steamId !== this.localPlayerId;
+            const callbacks = isRemotePlayer
+                ? this.buildRemotePlayerCallbacks(steamId)
+                : this.buildPhysicsCallbacks(steamId);
+
+            // Apply all inputs for this tick
+            for (const input of inputs) {
+                // Re-validate just in case (though we trust the buffer logic)
+                // Note: We skip timestamp validation here as it was already buffered
+
+                // Track input for heuristics
+                if (this.inputValidator) {
+                    this.inputValidator.trackInput(steamId, input.type, input.data);
+                }
+
+                const applied = this._applyInputToPlayer(
+                    steamId,
+                    input.type,
+                    input.data, // This is the inner data object
+                    callbacks,
+                );
+            }
+        }
+
+        // Advance buffer tick
+        this.inputJitterBuffer.advanceTick();
     }
 
     /**
@@ -2027,9 +2264,14 @@ export class FFAGameStateP2P {
 
         // Broadcast round restart to all peers BEFORE showing countdown
         const newSeed = Math.floor(Math.random() * 1000000);
+        const prefixText = 'ROUND OVER';
+        const countFrom = 3;
+        const includeZero = false;
         this.network.broadcastToAll(MessageTypes.GAME_ROUND_RESTART, {
             newSeed,
-            prefixText: 'ROUND OVER',
+            prefixText,
+            countFrom,
+            includeZero,
         });
 
         // Dispatch event to clear death visuals for all players
@@ -2037,34 +2279,32 @@ export class FFAGameStateP2P {
             players: Array.from(this.players.keys()),
         });
 
-        // Dispatch event to clear death visuals for all players
-        emitMultiplayerEvent(MULTIPLAYER_EVENTS.ROUND_RESTART, {
-            players: Array.from(this.players.keys()),
-        });
+        const startRound = () => {
+            this.gamePhase = 'playing';
 
-        // IMMEDIATE START (No countdown between rounds)
-        this.gamePhase = 'playing';
+            // Re-initialize players for next round (use the same seed we broadcast)
+            // CRITICAL: All players must use the EXACT same seed for fair play
+            this.players.forEach((player) => {
+                // Set new deterministic RNG for this round - same seed for all players
+                player.gameState.randomGenerator = this.createSeededRNG(newSeed);
 
-        // Re-initialize players for next round (use the same seed we broadcast)
-        // CRITICAL: All players must use the EXACT same seed for fair play
-        this.players.forEach((player, steamId) => {
-            // Set new deterministic RNG for this round - same seed for all players
-            player.gameState.randomGenerator = this.createSeededRNG(newSeed);
+                // Fill bag and spawn first piece
+                fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
+                spawnPiece(player.gameState, null, null);
+            });
 
-            // Fill bag and spawn first piece
-            fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
-            spawnPiece(player.gameState, null, null);
-        });
+            // Start game loop
+            this.startGameLoop();
 
-        // Start game loop
-        this.startGameLoop();
+            // Host: Start state sync loop (30Hz broadcasts to peers)
+            if (this.isHost) {
+                this.startStateSyncLoop();
+            }
 
-        // Host: Start state sync loop (30Hz broadcasts to peers)
-        if (this.isHost) {
-            this.startStateSyncLoop();
-        }
+            console.log('🎮 Round started!');
+        };
 
-        console.log('🎮 Round started! (Immediate)');
+        this.showCountdown(startRound, prefixText, countFrom, includeZero);
     }
 
     /**
@@ -2122,8 +2362,10 @@ export class FFAGameStateP2P {
    * Show countdown overlay with optional text: [TEXT] → 3, 2, 1, GO!
    * @param {Function} callback - Called after countdown finishes
    * @param {string} prefixText - Optional text to show before countdown (e.g., "ROUND OVER", "GAME START")
+   * @param {number} countFrom - Number to start counting down from
+   * @param {boolean} includeZero - Whether to include 0 in the countdown
    */
-    showCountdown(callback, prefixText = null) {
+    showCountdown(callback, prefixText = null, countFrom = 5, includeZero = true) {
         const countdownElement = document.getElementById('multiplayer-countdown');
 
         if (!countdownElement) {
@@ -2134,7 +2376,11 @@ export class FFAGameStateP2P {
 
         console.log('🎬 Starting countdown animation...', { prefixText });
 
-        let count = 5;
+        const minCount = includeZero ? 0 : 1;
+        let count = Number.isFinite(countFrom) ? Math.floor(countFrom) : 5;
+        if (count < minCount) {
+            count = minCount;
+        }
 
         // Enhanced full-screen overlay with animation support
         const forceFullScreen = () => {
@@ -2186,7 +2432,43 @@ export class FFAGameStateP2P {
         }
 
         function startCountdown() {
+            const showGo = () => {
+                requestAnimationFrame(() => {
+                    countdownElement.textContent = 'GO!';
+                    countdownElement.style.fontSize = '160px';
+                    countdownElement.style.color = '#10b981'; // Bright Green
+                    countdownElement.style.animation = 'none';
+
+                    // Force reflow
+                    void countdownElement.offsetHeight;
+
+                    countdownElement.style.animation = 'countdownGo 0.6s ease-out forwards';
+
+                    emitMultiplayerEvent(MULTIPLAYER_EVENTS.COUNTDOWN, { count: 'GO' });
+                });
+
+                // Fade out entire overlay and start game
+                setTimeout(() => {
+                    requestAnimationFrame(() => {
+                        countdownElement.style.transition = 'opacity 0.3s ease-out';
+                        countdownElement.style.opacity = '0';
+                    });
+
+                    setTimeout(() => {
+                        countdownElement.style.display = 'none';
+                        countdownElement.style.transition = '';
+                        countdownElement.style.opacity = ''; // Reset opacity
+                        if (callback) callback();
+                    }, 300);
+                }, 600);
+            };
+
             const showNumber = () => {
+                if (count < minCount) {
+                    showGo();
+                    return;
+                }
+
                 // Use requestAnimationFrame for smooth UI updates
                 requestAnimationFrame(() => {
                     countdownElement.textContent = count;
@@ -2207,38 +2489,11 @@ export class FFAGameStateP2P {
 
                 count--;
 
-                if (count >= 0) {
+                if (count >= minCount) {
                     setTimeout(showNumber, 750); // Smooth timing between numbers
                 } else {
-                    // Show "GO!" immediately after countdown
-                    requestAnimationFrame(() => {
-                        countdownElement.textContent = 'GO!';
-                        countdownElement.style.fontSize = '160px';
-                        countdownElement.style.color = '#10b981'; // Bright Green
-                        countdownElement.style.animation = 'none';
-
-                        // Force reflow
-                        void countdownElement.offsetHeight;
-
-                        countdownElement.style.animation = 'countdownGo 0.6s ease-out forwards';
-
-                        emitMultiplayerEvent(MULTIPLAYER_EVENTS.COUNTDOWN, { count: 'GO' });
-                    });
-
-                    // Fade out entire overlay and start game
-                    setTimeout(() => {
-                        requestAnimationFrame(() => {
-                            countdownElement.style.transition = 'opacity 0.3s ease-out';
-                            countdownElement.style.opacity = '0';
-                        });
-
-                        setTimeout(() => {
-                            countdownElement.style.display = 'none';
-                            countdownElement.style.transition = '';
-                            countdownElement.style.opacity = ''; // Reset opacity
-                            if (callback) callback();
-                        }, 300);
-                    }, 600);
+                    const goDelay = includeZero ? 0 : 750;
+                    setTimeout(showGo, goDelay);
                 }
             };
 

@@ -1,0 +1,923 @@
+/**
+ * Binary Snapshot Encoding - Phase 4
+ *
+ * Reduces snapshot size by ~90% compared to JSON encoding.
+ * Critical for 8-player multiplayer bandwidth efficiency.
+ *
+ * Target: ≤4KB per 8-player snapshot @ 30Hz
+ * Compared to JSON: ~12KB → ~1.2KB
+ */
+
+// Magic bytes for format identification
+const BINARY_MAGIC = 0x5342_4E45; // "SBNE" - Serenity Blocks Network Encoding
+const DELTA_MAGIC = 0x5342_4E44; // "SBND" - Serenity Blocks Network Delta
+const FORMAT_VERSION = 1;
+
+// Delta Change Flags (Bitmask)
+const DELTA_FLAGS = {
+    STATS: 1 << 0,   // Score, lines, level, frags, alive
+    GRID: 1 << 1,    // Board grid
+    PIECE: 1 << 2,   // Current piece
+    NEXT: 1 << 3,    // Next pieces
+    GARBAGE: 1 << 4, // Garbage queue
+    DROPS: 1 << 5,   // Drop counters
+};
+
+// Cell types mapping (4 bits = 16 values)
+const CELL_TYPES = ['empty', 'I', 'O', 'T', 'S', 'Z', 'J', 'L', 'garbage', 'ghost'];
+const CELL_TYPE_MAP = new Map(CELL_TYPES.map((type, i) => [type, i]));
+
+// Piece types mapping (3 bits = 8 values)
+const PIECE_TYPES = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
+const PIECE_TYPE_MAP = new Map(PIECE_TYPES.map((type, i) => [type, i + 1])); // 0 = no piece
+
+// Game phase mapping
+const GAME_PHASES = ['waiting', 'countdown', 'playing', 'finished'];
+const GAME_PHASE_MAP = new Map(GAME_PHASES.map((phase, i) => [phase, i]));
+
+// Grid dimensions
+const GRID_COLS = 10;
+const GRID_ROWS = 24; // Including hidden rows
+
+/**
+ * Binary Encoder for game state snapshots
+ */
+export class BinaryEncoder {
+    constructor() {
+        this.debugMode = typeof window !== 'undefined'
+            && window.__DEBUG_JSON_SNAPSHOTS__ === true;
+
+        // Reusable buffers for encoding
+        this._gridBuffer = new ArrayBuffer(GRID_COLS * GRID_ROWS / 2); // 120 bytes
+        this._gridView = new Uint8Array(this._gridBuffer);
+    }
+
+    /**
+     * Encode a full game state snapshot to binary
+     * @param {Object} snapshot - The snapshot from buildStateSnapshot()
+     * @returns {ArrayBuffer} Binary encoded snapshot
+     */
+    encodeSnapshot(snapshot) {
+        if (this.debugMode) {
+            // Debug mode: return JSON for readable output
+            return this._encodeAsJson(snapshot);
+        }
+
+        const players = snapshot.players || [];
+        const playerCount = players.length;
+
+        // Calculate required buffer size
+        // Header: 12 bytes (magic + version + playerCount + gamePhase + tick + timestamp)
+        // Per player: ~2KB (max garbage 255 * 6 = 1530 bytes + grid 120 + stats/names)
+        const estimatedSize = 32 + (playerCount * 2048);
+        const buffer = new ArrayBuffer(estimatedSize);
+        const view = new DataView(buffer);
+        let offset = 0;
+
+        // === HEADER (12 bytes) ===
+        view.setUint32(offset, BINARY_MAGIC, false); offset += 4; // Big-endian magic
+        view.setUint8(offset++, FORMAT_VERSION);
+        view.setUint8(offset++, playerCount);
+        view.setUint8(offset++, GAME_PHASE_MAP.get(snapshot.gamePhase) || 0);
+        view.setUint8(offset++, 0); // Reserved byte for alignment
+        view.setUint32(offset, snapshot.tick || 0, true); offset += 4; // Little-endian tick
+
+        // === PLAYER DATA ===
+        for (const player of players) {
+            offset = this._encodePlayer(buffer, view, offset, player);
+        }
+
+        // === WINNER (if any) ===
+        if (snapshot.winner) {
+            view.setUint8(offset++, 1); // Has winner
+            offset = this._writeString(buffer, view, offset, snapshot.winner.steamId || '');
+            offset = this._writeString(buffer, view, offset, snapshot.winner.name || '');
+        } else {
+            view.setUint8(offset++, 0); // No winner
+        }
+
+        // Return trimmed buffer
+        return buffer.slice(0, offset);
+    }
+
+    /**
+     * Encode a delta snapshot relative to a baseline
+     * Returns NULL if delta is not possible (e.g. player list changed)
+     */
+    encodeDeltaSnapshot(current, baseline) {
+        if (!baseline || !current) return null;
+
+        // 1. Validation: Player list must be identical for index-based delta
+        if (current.players.length !== baseline.players.length) return null;
+
+        // Sort both to ensure order matches (deterministic)
+        // Note: Assuming input arrays are already sorted or consistently ordered by steamId
+        // We do a quick check of SteamIDs to verify match
+        for (let i = 0; i < current.players.length; i++) {
+            if (current.players[i].steamId !== baseline.players[i].steamId) {
+                return null; // Player mismatch, force full snapshot
+            }
+        }
+
+        const playerCount = current.players.length;
+        const estimatedSize = 32 + (playerCount * 2048); // Same buffer safety
+        const buffer = new ArrayBuffer(estimatedSize);
+        const view = new DataView(buffer);
+        let offset = 0;
+
+        // === HEADER (16 bytes) ===
+        view.setUint32(offset, DELTA_MAGIC, false); offset += 4;
+        view.setUint8(offset++, FORMAT_VERSION);
+        view.setUint8(offset++, playerCount);
+        view.setUint8(offset++, GAME_PHASE_MAP.get(current.gamePhase) || 0);
+        view.setUint8(offset++, 0); // Reserved
+        view.setUint32(offset, current.tick || 0, true); offset += 4;
+        view.setUint32(offset, baseline.tick || 0, true); offset += 4; // Baseline tick ref
+
+        // === PLAYER DELTAS ===
+        for (let i = 0; i < playerCount; i++) {
+            offset = this._encodePlayerDelta(buffer, view, offset, current.players[i], baseline.players[i]);
+        }
+
+        // === WINNER (if changed) ===
+        // Simple strategy: Always write winner if present, as it's rare/final
+        if (current.winner) {
+            view.setUint8(offset++, 1);
+            offset = this._writeString(buffer, view, offset, current.winner.steamId || '');
+            offset = this._writeString(buffer, view, offset, current.winner.name || '');
+        } else {
+            view.setUint8(offset++, 0);
+        }
+
+        return buffer.slice(0, offset);
+    }
+
+    /**
+     * Encode a single player's delta
+     */
+    _encodePlayerDelta(buffer, view, offset, current, baseline) {
+        // Calculate Change Mask
+        let mask = 0;
+
+        // Stats check
+        if (current.score !== baseline.score ||
+            current.lines !== baseline.lines ||
+            current.level !== baseline.level ||
+            current.frags !== baseline.frags ||
+            current.isAlive !== baseline.isAlive ||
+            current.garbagePending !== baseline.garbagePending) {
+            mask |= DELTA_FLAGS.STATS;
+        }
+
+        // Drop state check
+        if (current.dropCounter !== baseline.dropCounter ||
+            current.dropInterval !== baseline.dropInterval) {
+            mask |= DELTA_FLAGS.DROPS;
+        }
+
+        // Piece check (simple prop check)
+        // We use JSON stringify for deep object check if needed, or prop-by-prop
+        // Prop-by-prop is faster
+        if (this._pieceChanged(current.currentPiece, baseline.currentPiece)) {
+            mask |= DELTA_FLAGS.PIECE;
+        }
+
+        // Next pieces check
+        // Check lengths first, then types
+        if (this._nextPiecesChanged(current.nextPieces, baseline.nextPieces)) {
+            mask |= DELTA_FLAGS.NEXT;
+        }
+
+        // Garbage check
+        // Check counts primarily, usually sufficient for sync
+        if (current.garbageEntries?.length !== baseline.garbageEntries?.length) {
+            mask |= DELTA_FLAGS.GARBAGE;
+        } else if (current.garbageEntries?.length > 0) {
+            // Deep check needed if lengths same
+            if (JSON.stringify(current.garbageEntries) !== JSON.stringify(baseline.garbageEntries)) {
+                mask |= DELTA_FLAGS.GARBAGE;
+            }
+        }
+
+        // Grid check
+        // This is the expensive one. We only check if grid ref changed? 
+        // No, in JS refs are constant often. Need content check.
+        // Optimization: host usually knows if grid is dirty.
+        // But here we are purely data-driven.
+        // Let's assume if Stats.lines changed, grid changed.
+        // What about moving pieces locking?
+        // We simply compare the 120 bytes?
+        // Actually, we can just *always* send grid if Piece Changed? No.
+        // Let's do a fast cell comparison.
+        if (this._gridChanged(current.grid, baseline.grid)) {
+            mask |= DELTA_FLAGS.GRID;
+        }
+
+        // Write Mask
+        view.setUint8(offset++, mask);
+
+        // Write Changed Fields
+        if (mask & DELTA_FLAGS.STATS) {
+            view.setUint32(offset, current.score || 0, true); offset += 4;
+            view.setUint16(offset, current.lines || 0, true); offset += 2;
+            view.setUint8(offset++, current.level || 1);
+            view.setUint16(offset, current.frags || 0, true); offset += 2;
+            view.setUint8(offset++, current.isAlive ? 1 : 0);
+            view.setUint8(offset++, Math.min(current.garbagePending || 0, 255));
+        }
+
+        if (mask & DELTA_FLAGS.DROPS) {
+            view.setUint16(offset, Math.min(current.dropCounter || 0, 65535), true); offset += 2;
+            view.setUint16(offset, Math.min(current.dropInterval || 1000, 65535), true); offset += 2;
+        }
+
+        if (mask & DELTA_FLAGS.GRID) {
+            offset = this._encodeGrid(buffer, view, offset, current.grid);
+        }
+
+        if (mask & DELTA_FLAGS.PIECE) {
+            offset = this._encodePiece(buffer, view, offset, current.currentPiece);
+        }
+
+        if (mask & DELTA_FLAGS.NEXT) {
+            const nextPieces = current.nextPieces || [];
+            view.setUint8(offset++, nextPieces.length);
+            for (const piece of nextPieces) {
+                const typeIndex = PIECE_TYPE_MAP.get(piece?.type || piece) || 0;
+                view.setUint8(offset++, typeIndex);
+            }
+        }
+
+        if (mask & DELTA_FLAGS.GARBAGE) {
+            const garbageEntries = current.garbageEntries || [];
+            view.setUint8(offset++, Math.min(garbageEntries.length, 255));
+            for (let i = 0; i < Math.min(garbageEntries.length, 255); i++) {
+                offset = this._encodeGarbageEntry(buffer, view, offset, garbageEntries[i]);
+            }
+        }
+
+        return offset;
+    }
+
+    _pieceChanged(p1, p2) {
+        if (p1 === p2) return false;
+        if (!p1 || !p2) return true; // One is null
+        return p1.x !== p2.x || p1.y !== p2.y || p1.rotation !== p2.rotation || p1.type !== p2.type;
+    }
+
+    _nextPiecesChanged(n1, n2) {
+        if (n1 === n2) return false;
+        if (!n1 || !n2) return true;
+        if (n1.length !== n2.length) return true;
+        for (let i = 0; i < n1.length; i++) {
+            const t1 = n1[i]?.type || n1[i];
+            const t2 = n2[i]?.type || n2[i];
+            if (t1 !== t2) return true;
+        }
+        return false;
+    }
+
+    _gridChanged(g1, g2) {
+        if (g1 === g2) return false;
+        if (!g1 || !g2) return true;
+        // Sample a few rows? No, safety first.
+        // Grid is 10x24. Iterate cells.
+        for (let y = 0; y < GRID_ROWS; y++) {
+            const r1 = g1[y];
+            const r2 = g2[y];
+            if (!r1 || !r2) return true;
+            for (let x = 0; x < GRID_COLS; x++) {
+                const c1 = r1[x]?.type || 'empty';
+                const c2 = r2[x]?.type || 'empty';
+                if (c1 !== c2) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Encode a single player's state
+     */
+    _encodePlayer(buffer, view, offset, player) {
+        // Ensure buffer is large enough
+        if (offset + 300 > buffer.byteLength) {
+            throw new Error('Buffer overflow in player encoding');
+        }
+
+        // === PLAYER IDENTITY (variable length) ===
+        offset = this._writeString(buffer, view, offset, player.steamId || '');
+        offset = this._writeString(buffer, view, offset, player.name || '');
+        offset = this._writeString(buffer, view, offset, player.color || '#ffffff');
+
+        // === STATS (16 bytes) ===
+        view.setUint32(offset, player.score || 0, true); offset += 4;
+        view.setUint16(offset, player.lines || 0, true); offset += 2;
+        view.setUint8(offset++, player.level || 1);
+        view.setUint16(offset, player.frags || 0, true); offset += 2;
+        view.setUint8(offset++, player.isAlive ? 1 : 0);
+        view.setUint8(offset++, Math.min(player.garbagePending || 0, 255));
+
+        // === DROP STATE (4 bytes) ===
+        view.setUint16(offset, Math.min(player.dropCounter || 0, 65535), true); offset += 2;
+        view.setUint16(offset, Math.min(player.dropInterval || 1000, 65535), true); offset += 2;
+
+        // === GRID (120 bytes - 2 cells per byte) ===
+        offset = this._encodeGrid(buffer, view, offset, player.grid);
+
+        // === CURRENT PIECE (5 bytes) ===
+        offset = this._encodePiece(buffer, view, offset, player.currentPiece);
+
+        // === NEXT PIECES (variable, typically 5-7 pieces) ===
+        const nextPieces = player.nextPieces || [];
+        view.setUint8(offset++, nextPieces.length);
+        for (const piece of nextPieces) {
+            const typeIndex = PIECE_TYPE_MAP.get(piece?.type || piece) || 0;
+            view.setUint8(offset++, typeIndex);
+        }
+
+        // === GARBAGE ENTRIES (variable length) ===
+        const garbageEntries = player.garbageEntries || [];
+        view.setUint8(offset++, Math.min(garbageEntries.length, 255));
+        for (let i = 0; i < Math.min(garbageEntries.length, 255); i++) {
+            offset = this._encodeGarbageEntry(buffer, view, offset, garbageEntries[i]);
+        }
+
+        // === LOCKED PIECES (variable length) - Skip for bandwidth optimization ===
+        // Locked pieces can be reconstructed from grid, so we skip them
+        // to save ~200+ bytes per player
+        view.setUint8(offset++, 0); // lockedPieces count = 0
+
+        return offset;
+    }
+
+    /**
+     * Encode the game grid (10x24 = 240 cells → 120 bytes)
+     * Uses 4 bits per cell (2 cells per byte)
+     */
+    _encodeGrid(buffer, view, offset, grid) {
+        if (!grid || !Array.isArray(grid)) {
+            // Empty grid - fill with zeros
+            for (let i = 0; i < 120; i++) {
+                view.setUint8(offset + i, 0);
+            }
+            return offset + 120;
+        }
+
+        let byteIndex = 0;
+        for (let y = 0; y < GRID_ROWS; y++) {
+            const row = grid[y] || [];
+            for (let x = 0; x < GRID_COLS; x += 2) {
+                const cell1 = this._getCellType(row[x]);
+                const cell2 = this._getCellType(row[x + 1]);
+                view.setUint8(offset + byteIndex, (cell1 << 4) | cell2);
+                byteIndex++;
+            }
+        }
+
+        return offset + 120;
+    }
+
+    /**
+     * Get cell type index (0-15)
+     */
+    _getCellType(cell) {
+        if (!cell) return 0; // empty
+        const type = cell.type || cell.color || 'empty';
+        return CELL_TYPE_MAP.get(type) || 0;
+    }
+
+    /**
+     * Encode a piece (5 bytes)
+     */
+    _encodePiece(buffer, view, offset, piece) {
+        if (!piece) {
+            // No current piece
+            view.setUint8(offset++, 0); // type = 0 (no piece)
+            view.setUint8(offset++, 0); // x
+            view.setUint8(offset++, 0); // y
+            view.setUint8(offset++, 0); // rotation
+            view.setUint8(offset++, 0); // reserved
+            return offset;
+        }
+
+        const typeIndex = PIECE_TYPE_MAP.get(piece.type) || 0;
+        view.setUint8(offset++, typeIndex);
+        view.setUint8(offset++, piece.x !== undefined ? piece.x + 128 : 128); // Offset for negative values
+        view.setUint8(offset++, piece.y !== undefined ? piece.y + 128 : 128);
+        view.setUint8(offset++, piece.rotation || 0);
+        view.setUint8(offset++, 0); // Reserved
+
+        return offset;
+    }
+
+    /**
+     * Encode a garbage entry (6 bytes)
+     */
+    _encodeGarbageEntry(buffer, view, offset, entry) {
+        if (!entry) {
+            for (let i = 0; i < 6; i++) view.setUint8(offset + i, 0);
+            return offset + 6;
+        }
+
+        // Type: 0 = line, 1 = other
+        view.setUint8(offset++, entry.type === 'line' ? 0 : 1);
+
+        // Attacker ID hash (4 bytes) - Use simple hash for compact encoding
+        const attackerHash = this._hashString(entry.attackerId || '');
+        view.setUint32(offset, attackerHash, true); offset += 4;
+
+        // Hole mask (1 byte) - 10 bits packed, use lower 8 bits
+        view.setUint8(offset++, (entry.holeMask || 0) & 0xFF);
+
+        return offset;
+    }
+
+    /**
+     * Write a length-prefixed string
+     */
+    _writeString(buffer, view, offset, str) {
+        const bytes = new TextEncoder().encode(str || '');
+        const len = Math.min(bytes.length, 255);
+        view.setUint8(offset++, len);
+
+        const target = new Uint8Array(buffer, offset, len);
+        target.set(bytes.slice(0, len));
+
+        return offset + len;
+    }
+
+    /**
+     * Simple string hash for compact attacker ID encoding
+     */
+    _hashString(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return hash >>> 0; // Ensure unsigned
+    }
+
+    /**
+     * Debug mode: encode as JSON (for development)
+     */
+    _encodeAsJson(snapshot) {
+        const json = JSON.stringify(snapshot);
+        return new TextEncoder().encode(json).buffer;
+    }
+}
+
+/**
+ * Binary Decoder for game state snapshots
+ */
+export class BinaryDecoder {
+    constructor() {
+        this.debugMode = typeof window !== 'undefined'
+            && window.__DEBUG_JSON_SNAPSHOTS__ === true;
+
+        // Cache for attacker ID reverse lookup
+        this._attackerIdCache = new Map();
+    }
+
+    /**
+     * Register known attacker IDs for reverse lookup
+     */
+    registerAttackerIds(playerMap) {
+        this._attackerIdCache.clear();
+        for (const [steamId] of playerMap) {
+            const hash = this._hashString(steamId);
+            this._attackerIdCache.set(hash, steamId);
+        }
+    }
+
+    /**
+     * Decode a binary snapshot back to object form
+     * @param {ArrayBuffer} buffer - Binary encoded snapshot
+     * @returns {Object} Decoded snapshot
+     */
+    decodeSnapshot(buffer) {
+        if (this.debugMode) {
+            // Debug mode: decode JSON
+            return this._decodeFromJson(buffer);
+        }
+
+        const view = new DataView(buffer);
+        let offset = 0;
+
+        // === HEADER ===
+        const magic = view.getUint32(offset, false); offset += 4;
+        if (magic !== BINARY_MAGIC) {
+            // Not binary format, try JSON fallback
+            return this._decodeFromJson(buffer);
+        }
+
+        const version = view.getUint8(offset++);
+        if (version !== FORMAT_VERSION) {
+            console.warn(`Binary format version mismatch: expected ${FORMAT_VERSION}, got ${version}`);
+        }
+
+        const playerCount = view.getUint8(offset++);
+        const gamePhaseIndex = view.getUint8(offset++);
+        offset++; // Reserved byte
+        const tick = view.getUint32(offset, true); offset += 4;
+
+        const gamePhase = GAME_PHASES[gamePhaseIndex] || 'waiting';
+
+        // === DELTA CHECK ===
+        // If magic matches DELTA_MAGIC, we need a baseline to decode against.
+        // But this decodeSnapshot method signature only takes buffer.
+        // We need a separate decodeDeltaSnapshot method for clarity.
+        if (magic === DELTA_MAGIC) {
+            throw new Error('Use decodeDeltaSnapshot for delta packets');
+        }
+
+        // === PLAYER DATA ===
+        const players = [];
+        for (let i = 0; i < playerCount; i++) {
+            const result = this._decodePlayer(buffer, view, offset);
+            players.push(result.player);
+            offset = result.offset;
+        }
+
+        // === WINNER ===
+        const hasWinner = view.getUint8(offset++);
+        let winner = null;
+        if (hasWinner) {
+            const winnerSteamId = this._readString(buffer, view, offset);
+            offset = winnerSteamId.offset;
+            const winnerName = this._readString(buffer, view, offset);
+            offset = winnerName.offset;
+            winner = { steamId: winnerSteamId.value, name: winnerName.value };
+        }
+
+
+        return {
+            players,
+            gamePhase,
+            winner,
+            timestamp: Date.now(),
+            tick,
+        };
+    }
+
+    /**
+     * Decode a delta snapshot using a baseline state
+     */
+    decodeDeltaSnapshot(buffer, baseline) {
+        if (!baseline) throw new Error('Baseline required for delta decode');
+
+        const view = new DataView(buffer);
+        let offset = 0;
+
+        // === HEADER ===
+        const magic = view.getUint32(offset, false); offset += 4;
+        if (magic !== DELTA_MAGIC) {
+            // Fallback if full snapshot passed by mistake
+            if (magic === BINARY_MAGIC) return this.decodeSnapshot(buffer);
+            return this._decodeFromJson(buffer);
+        }
+
+        const version = view.getUint8(offset++);
+        const playerCount = view.getUint8(offset++);
+        const gamePhaseIndex = view.getUint8(offset++);
+        offset++; // Reserved
+        const tick = view.getUint32(offset, true); offset += 4;
+        const baselineTick = view.getUint32(offset, true); offset += 4;
+
+        // Logic check: does baseline match what delta expects?
+        // We can warn if baseline.tick !== baselineTick, but we should try to apply anyway
+        // as long as we are robust.
+        if (baseline.tick && baseline.tick !== baselineTick) {
+            // console.warn(`Delta baseline mismatch: Delta wants ${baselineTick}, have ${baseline.tick}`);
+        }
+
+        const gamePhase = GAME_PHASES[gamePhaseIndex] || 'waiting';
+        const players = [];
+
+        // === PLAYER DELTAS ===
+        // NOTE: Delta assumes player count/order matches baseline.
+        // If baseline has different player count, we might crash or desync.
+        // But encodeDelta guarantees structure match.
+        // We must reuse baseline players for Identity fields (Name, SteamID, Color).
+
+        for (let i = 0; i < playerCount; i++) {
+            // Get baseline player
+            const basePlayer = baseline.players[i];
+            if (!basePlayer) {
+                throw new Error(`Baseline missing player at index ${i}`);
+            }
+
+            const result = this._decodePlayerDelta(buffer, view, offset, basePlayer);
+            players.push(result.player);
+            offset = result.offset;
+        }
+
+        // === WINNER ===
+        const hasWinner = view.getUint8(offset++);
+        let winner = null;
+        if (hasWinner) {
+            const winnerSteamId = this._readString(buffer, view, offset);
+            offset = winnerSteamId.offset;
+            const winnerName = this._readString(buffer, view, offset);
+            offset = winnerName.offset;
+            winner = { steamId: winnerSteamId.value, name: winnerName.value };
+        } else {
+            // Provide baseline winner if not explicitly cleared?
+            // No, encoder writes winner explicitly if present.
+            // If encoder writes 0, it means no winner.
+            // So we default to null.
+            winner = null;
+        }
+
+        return {
+            players,
+            gamePhase,
+            winner,
+            timestamp: Date.now(),
+            tick,
+        };
+    }
+
+    _decodePlayerDelta(buffer, view, offset, basePlayer) {
+        const mask = view.getUint8(offset++);
+        const p = { ...basePlayer }; // Start with clone of baseline
+
+        // Stats
+        if (mask & DELTA_FLAGS.STATS) {
+            p.score = view.getUint32(offset, true); offset += 4;
+            p.lines = view.getUint16(offset, true); offset += 2;
+            p.level = view.getUint8(offset++);
+            p.frags = view.getUint16(offset, true); offset += 2;
+            p.isAlive = view.getUint8(offset++) === 1;
+            p.garbagePending = view.getUint8(offset++);
+        }
+
+        // Drops
+        if (mask & DELTA_FLAGS.DROPS) {
+            p.dropCounter = view.getUint16(offset, true); offset += 2;
+            p.dropInterval = view.getUint16(offset, true); offset += 2;
+        }
+
+        // Grid
+        if (mask & DELTA_FLAGS.GRID) {
+            p.grid = this._decodeGrid(buffer, view, offset);
+            offset += 120;
+        }
+
+        // Piece
+        if (mask & DELTA_FLAGS.PIECE) {
+            p.currentPiece = this._decodePiece(buffer, view, offset);
+            offset += 5;
+        }
+
+        // Next Pieces
+        if (mask & DELTA_FLAGS.NEXT) {
+            const nextPieceCount = view.getUint8(offset++);
+            const nextPieces = [];
+            for (let i = 0; i < nextPieceCount; i++) {
+                const typeIndex = view.getUint8(offset++);
+                if (typeIndex > 0 && typeIndex <= PIECE_TYPES.length) {
+                    nextPieces.push({ type: PIECE_TYPES[typeIndex - 1] });
+                }
+            }
+            p.nextPieces = nextPieces;
+        }
+
+        // Garbage
+        if (mask & DELTA_FLAGS.GARBAGE) {
+            const garbageCount = view.getUint8(offset++);
+            const garbageEntries = [];
+            for (let i = 0; i < garbageCount; i++) {
+                const result = this._decodeGarbageEntry(buffer, view, offset);
+                garbageEntries.push(result.entry);
+                offset = result.offset;
+            }
+            p.garbageEntries = garbageEntries;
+        }
+
+        return { player: p, offset };
+    }
+
+    /**
+     * Decode a single player's state
+     */
+    _decodePlayer(buffer, view, offset) {
+        // === IDENTITY ===
+        const steamId = this._readString(buffer, view, offset);
+        offset = steamId.offset;
+        const name = this._readString(buffer, view, offset);
+        offset = name.offset;
+        const color = this._readString(buffer, view, offset);
+        offset = color.offset;
+
+        // === STATS ===
+        const score = view.getUint32(offset, true); offset += 4;
+        const lines = view.getUint16(offset, true); offset += 2;
+        const level = view.getUint8(offset++);
+        const frags = view.getUint16(offset, true); offset += 2;
+        const isAlive = view.getUint8(offset++) === 1;
+        const garbagePending = view.getUint8(offset++);
+
+        // === DROP STATE ===
+        const dropCounter = view.getUint16(offset, true); offset += 2;
+        const dropInterval = view.getUint16(offset, true); offset += 2;
+
+        // === GRID ===
+        const grid = this._decodeGrid(buffer, view, offset);
+        offset += 120;
+
+        // === CURRENT PIECE ===
+        const currentPiece = this._decodePiece(buffer, view, offset);
+        offset += 5;
+
+        // === NEXT PIECES ===
+        const nextPieceCount = view.getUint8(offset++);
+        const nextPieces = [];
+        for (let i = 0; i < nextPieceCount; i++) {
+            const typeIndex = view.getUint8(offset++);
+            if (typeIndex > 0 && typeIndex <= PIECE_TYPES.length) {
+                nextPieces.push({ type: PIECE_TYPES[typeIndex - 1] });
+            }
+        }
+
+        // === GARBAGE ENTRIES ===
+        const garbageCount = view.getUint8(offset++);
+        const garbageEntries = [];
+        for (let i = 0; i < garbageCount; i++) {
+            const result = this._decodeGarbageEntry(buffer, view, offset);
+            garbageEntries.push(result.entry);
+            offset = result.offset;
+        }
+
+        // === LOCKED PIECES (skipped in encoding) ===
+        const lockedPieceCount = view.getUint8(offset++);
+        const lockedPieces = [];
+        // Skip if any were encoded (shouldn't happen)
+        offset += lockedPieceCount * 10; // Approximate bytes per locked piece
+
+        return {
+            player: {
+                steamId: steamId.value,
+                name: name.value,
+                color: color.value,
+                score,
+                lines,
+                level,
+                frags,
+                isAlive,
+                garbagePending,
+                dropCounter,
+                dropInterval,
+                grid,
+                currentPiece,
+                nextPieces,
+                garbageEntries,
+                lockedPieces,
+            },
+            offset,
+        };
+    }
+
+    /**
+     * Decode the game grid
+     */
+    _decodeGrid(buffer, view, offset) {
+        const grid = [];
+
+        let byteIndex = 0;
+        for (let y = 0; y < GRID_ROWS; y++) {
+            grid[y] = [];
+            for (let x = 0; x < GRID_COLS; x += 2) {
+                const byte = view.getUint8(offset + byteIndex);
+                const cell1Type = (byte >> 4) & 0x0F;
+                const cell2Type = byte & 0x0F;
+
+                grid[y][x] = cell1Type > 0 ? { type: CELL_TYPES[cell1Type] } : null;
+                grid[y][x + 1] = cell2Type > 0 ? { type: CELL_TYPES[cell2Type] } : null;
+
+                byteIndex++;
+            }
+        }
+
+        return grid;
+    }
+
+    /**
+     * Decode a piece
+     */
+    _decodePiece(buffer, view, offset) {
+        const typeIndex = view.getUint8(offset);
+        if (typeIndex === 0) {
+            return null; // No piece
+        }
+
+        return {
+            type: PIECE_TYPES[typeIndex - 1],
+            x: view.getUint8(offset + 1) - 128,
+            y: view.getUint8(offset + 2) - 128,
+            rotation: view.getUint8(offset + 3),
+        };
+    }
+
+    /**
+     * Decode a garbage entry
+     */
+    _decodeGarbageEntry(buffer, view, offset) {
+        const type = view.getUint8(offset++) === 0 ? 'line' : 'other';
+        const attackerHash = view.getUint32(offset, true); offset += 4;
+        const holeMask = view.getUint8(offset++);
+
+        // Try to resolve attacker ID from cache
+        const attackerId = this._attackerIdCache.get(attackerHash) || `unknown_${attackerHash}`;
+
+        return {
+            entry: {
+                type,
+                attackerId,
+                holeMask,
+            },
+            offset,
+        };
+    }
+
+    /**
+     * Read a length-prefixed string
+     */
+    _readString(buffer, view, offset) {
+        const len = view.getUint8(offset++);
+        const bytes = new Uint8Array(buffer, offset, len);
+        const value = new TextDecoder().decode(bytes);
+        return { value, offset: offset + len };
+    }
+
+    /**
+     * Simple string hash (must match encoder)
+     */
+    _hashString(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+        }
+        return hash >>> 0;
+    }
+
+    /**
+     * Fallback: decode JSON
+     */
+    _decodeFromJson(buffer) {
+        try {
+            const text = new TextDecoder().decode(buffer);
+            return JSON.parse(text);
+        } catch (e) {
+            console.error('Failed to decode snapshot:', e);
+            return null;
+        }
+    }
+}
+
+/**
+ * Singleton instances for convenience
+ */
+let _encoder = null;
+let _decoder = null;
+
+export function getBinaryEncoder() {
+    if (!_encoder) {
+        _encoder = new BinaryEncoder();
+    }
+    return _encoder;
+}
+
+export function getBinaryDecoder() {
+    if (!_decoder) {
+        _decoder = new BinaryDecoder();
+    }
+    return _decoder;
+}
+
+/**
+ * Utility: Calculate snapshot size in bytes
+ */
+export function calculateSnapshotSize(snapshot) {
+    const encoder = getBinaryEncoder();
+    const buffer = encoder.encodeSnapshot(snapshot);
+    return buffer.byteLength;
+}
+
+/**
+ * Utility: Compare JSON vs Binary size
+ */
+export function compareEncodingSizes(snapshot) {
+    const jsonSize = new TextEncoder().encode(JSON.stringify(snapshot)).length;
+    const encoder = getBinaryEncoder();
+    const binarySize = encoder.encodeSnapshot(snapshot).byteLength;
+
+    return {
+        jsonSize,
+        binarySize,
+        reduction: Math.round((1 - binarySize / jsonSize) * 100),
+    };
+}

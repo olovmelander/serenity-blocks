@@ -553,6 +553,13 @@ export class OpponentWatchManager {
                     board.element.classList.remove('dead');
                 }
 
+                // Update disconnect status
+                if (state.isDisconnected) {
+                    this._showDisconnectOverlay(board);
+                } else {
+                    this._hideDisconnectOverlay(board);
+                }
+
                 // Update frags display
                 const fragsEl = board.element.querySelector('.opponent-frags');
                 if (fragsEl) {
@@ -798,9 +805,58 @@ export class OpponentWatchManager {
         if (!board || board.deathAnimationActive) return;
         const container = board.frame || board.element;
         if (!container) return;
-        if (container.querySelector('.death-overlay')) return;
         this._createOpponentDeathOverlay(container);
     }
+
+    _showDisconnectOverlay(board) {
+        const container = board.frame || board.element;
+        if (!container) return;
+
+        let overlay = container.querySelector('.disconnect-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'disconnect-overlay';
+            overlay.innerHTML = `
+                <div class="disconnect-icon">🔌</div>
+                <div class="disconnect-text">DISCONNECTED</div>
+            `;
+            overlay.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.6);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                z-index: 90;
+                border-radius: inherit;
+                backdrop-filter: grayscale(100%);
+            `;
+            const icon = overlay.querySelector('.disconnect-icon');
+            icon.style.cssText = 'font-size: 32px; margin-bottom: 4px;';
+
+            const text = overlay.querySelector('.disconnect-text');
+            text.style.cssText = 'font-size: 10px; font-weight: bold; color: #fbbf24; letter-spacing: 1px;';
+
+            if (getComputedStyle(container).position === 'static') {
+                container.style.position = 'relative';
+            }
+            container.appendChild(overlay);
+        }
+    }
+
+    _hideDisconnectOverlay(board) {
+        const container = board.frame || board.element;
+        if (!container) return;
+        const overlay = container.querySelector('.disconnect-overlay');
+        if (overlay) {
+            overlay.remove();
+        }
+    }
+
 
     _clearOpponentDeathState(board) {
         const container = board?.frame || board?.element;

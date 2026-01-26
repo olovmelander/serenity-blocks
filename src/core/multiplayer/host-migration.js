@@ -66,7 +66,7 @@ export class HostMigration {
    * Become the new host (take over authority)
    */
     becomeHost() {
-    // Update local state
+        // Update local state
         this.gameState.isHost = true;
         this.gameState.network.isHost = true;
         this.gameState.network.hostSteamId = this.gameState.localPlayerId;
@@ -83,6 +83,12 @@ export class HostMigration {
 
         // Start broadcasting game state at 30Hz
         this.gameState.startStateSyncLoop();
+
+        // HOST MIGRATION STATE TRANSFER:
+        // Force immediate broadcast of current state to all peers
+        // This acts as the authoritative "resync" for the new host session
+        // using our local state (which is now authoritative)
+        this.gameState.broadcastGameState();
 
         console.log('📡 You are now the authoritative host');
         console.log('   - Validating all inputs');
@@ -117,8 +123,8 @@ export class HostMigration {
         // Check if we've received any messages from host recently
         // This could be enhanced with a heartbeat system
 
-    // For now, Steam P2P will notify us of disconnection
-    // via the peer:disconnect event
+        // For now, Steam P2P will notify us of disconnection
+        // via the peer:disconnect event
     }
 
     /**

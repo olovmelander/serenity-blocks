@@ -27,6 +27,10 @@ export class FFAAttackRouter {
     /**
    * Route garbage attack from one player to ALL opponents
    * (HOST ONLY - only host can route attacks)
+   *
+   * PHASE 3.5: Implements garbage cancellation (Quadra/TETR.IO style)
+   * Outgoing lines first cancel any pending incoming garbage,
+   * then only the remainder is sent to opponents.
    */
     routeAttack(attackerSteamId, cascadeSummary) {
         if (!this.isHost) {
@@ -47,11 +51,22 @@ export class FFAAttackRouter {
             return; // No attack (too small)
         }
 
-        this._logGarbage(`💥 ${attacker.name} cleared lines → sending ${totalLines} garbage lines`);
+        this._logGarbage(`💥 ${attacker.name} cleared lines → ${totalLines} garbage lines`);
 
-        // PHASE 3.2: Apply garbage counter (defensive mechanic)
-        // Sending garbage reduces your incoming garbage
-        this.gameState.applyGarbageCounter(attackerSteamId, totalLines);
+        // PHASE 3.5: Apply garbage cancellation (Quadra/TETR.IO style)
+        // Outgoing lines first cancel incoming garbage, then remainder goes to opponents
+        const cancelledLines = this.gameState.applyGarbageCounter(attackerSteamId, totalLines);
+        const effectiveLines = totalLines - cancelledLines;
+
+        if (cancelledLines > 0) {
+            this._logGarbage(`  🛡️ Cancelled ${cancelledLines} incoming lines, sending ${effectiveLines} to opponents`);
+        }
+
+        // If all lines were used for cancellation, no attack goes out
+        if (effectiveLines <= 0) {
+            this._logGarbage('  ⚔️ All lines used for cancellation - no attack sent');
+            return;
+        }
 
         // Get all living opponents (everyone except attacker)
         const opponents = Array.from(this.gameState.players.values())
@@ -64,7 +79,7 @@ export class FFAAttackRouter {
 
         // Apply attack scaling based on opponent count (Quadra style)
         const scaledLines = this.applyAttackScaling(
-            totalLines,
+            effectiveLines,
             opponents.length,
             this.gameState.matchConfig.boringRules,
         );
