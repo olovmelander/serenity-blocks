@@ -56,9 +56,9 @@ export default class CinderDriftTheme extends BaseTheme {
             time: { value: 0 },
             coreIntensity: { value: 1.0 }, // Reactive intensity
             // Palette
-            colorPrimary: { value: new THREE.Color(0x1a0500) },   // Dark crust
+            colorPrimary: { value: new THREE.Color(0x1a0500) }, // Dark crust
             colorSecondary: { value: new THREE.Color(0xff4400) }, // Magma
-            colorTertiary: { value: new THREE.Color(0xffcc00) },  // Bright heat
+            colorTertiary: { value: new THREE.Color(0xffcc00) }, // Bright heat
         };
     }
 
@@ -211,7 +211,7 @@ export default class CinderDriftTheme extends BaseTheme {
         system.mesh.rotation.set(
             Math.random() * Math.PI,
             Math.random() * Math.PI,
-            Math.random() * Math.PI
+            Math.random() * Math.PI,
         );
 
         // 3. Set Intensity (Scale size and velocity in shader)
@@ -283,7 +283,7 @@ export default class CinderDriftTheme extends BaseTheme {
         // Detailed geometry for displacement
         const baseGeometry = new THREE.IcosahedronGeometry(1, 40); // High subdivision
 
-        rockConfigs.forEach(config => {
+        rockConfigs.forEach((config) => {
             const geometry = baseGeometry.clone();
             geometry.scale(config.size, config.size, config.size);
 
@@ -325,7 +325,7 @@ export default class CinderDriftTheme extends BaseTheme {
             positions.push(
                 (Math.random() - 0.5) * 100, // x
                 (Math.random() - 0.5) * 60 - 20, // y (start lower)
-                (Math.random() - 0.5) * 20 + 10 // z (closer to camera)
+                (Math.random() - 0.5) * 20 + 10, // z (closer to camera)
             );
             sizes.push(10 + Math.random() * 20); // Large soft sprites
             offsets.push(Math.random() * 100);
@@ -368,13 +368,13 @@ export default class CinderDriftTheme extends BaseTheme {
             positions.push(
                 (Math.random() - 0.5) * 100, // x
                 (Math.random() - 0.5) * 100, // y (full screen)
-                (Math.random() - 0.5) * 40 - 10 // z
+                (Math.random() - 0.5) * 40 - 10, // z
             );
 
             velocities.push(
                 (Math.random() - 0.5) * 0.5, // vx
-                2.0 + Math.random() * 3.0,   // vy (fast up)
-                (Math.random() - 0.5) * 0.5  // vz
+                2.0 + Math.random() * 3.0, // vy (fast up)
+                (Math.random() - 0.5) * 0.5, // vz
             );
 
             lives.push(1.0);
@@ -761,7 +761,7 @@ export default class CinderDriftTheme extends BaseTheme {
             this.uniforms.colorTertiary.value.setHSL(
                 0.12,
                 1.0,
-                0.5 + this.flashIntensity * 0.5
+                0.5 + this.flashIntensity * 0.5,
             );
         } else {
             this.uniforms.colorTertiary.value.setHex(0xffcc00); // Reset
@@ -820,7 +820,7 @@ export default class CinderDriftTheme extends BaseTheme {
                 const puffPos = new THREE.Vector3(worldX, worldY, -49);
 
                 this.triggerBurst(100, 0.5, new THREE.Color(0xff8800), puffPos);
-            })
+            }),
         );
     }
 
@@ -853,7 +853,7 @@ export default class CinderDriftTheme extends BaseTheme {
     stop() {
         if (!this.isActive) return;
         super.stop();
-        this.eventUnsubscribers.forEach(u => u());
+        this.eventUnsubscribers.forEach((u) => u());
         this.eventUnsubscribers = [];
     }
 
@@ -871,7 +871,7 @@ export default class CinderDriftTheme extends BaseTheme {
 
         // Clean scene
         if (this.scene) {
-            this.scene.traverse(obj => {
+            this.scene.traverse((obj) => {
                 if (obj.geometry) obj.geometry.dispose();
                 if (obj.material) obj.material.dispose();
             });

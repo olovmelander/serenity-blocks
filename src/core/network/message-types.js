@@ -24,6 +24,7 @@ export const MessageTypes = {
     GAME_INPUT_ROTATE: 'game:input:rotate', // Peer → Host
     GAME_INPUT_DROP: 'game:input:drop', // Peer → Host
     GAME_INPUT_BATCH: 'game:input:batch', // Peer → Host (batched inputs)
+    GAME_INPUT_ACK: 'game:input:ack', // Host → Peer (input acknowledgement)
 
     // Game state (broadcast from host to all peers)
     GAME_STATE_FULL: 'game:state:full', // Host → All (full sync)
@@ -38,6 +39,13 @@ export const MessageTypes = {
     GAME_PLAYER_FRAG: 'game:player:frag', // Host → All
     GAME_MATCH_END: 'game:match:end', // Host → All
     GAME_ROUND_RESTART: 'game:round:restart', // Host → All (restart round with countdown)
+    GAME_ROUND_RESTART: 'game:round:restart', // Host → All (restart round with countdown)
+
+    // Host Migration
+    GAME_HOST_MIGRATION_ELECT: 'game:host:elect', // Peer → All
+    GAME_HOST_MIGRATION_CLAIM: 'game:host:claim', // Peer → All
+    GAME_HOST_MIGRATION_SYNC: 'game:host:sync', // New Host → All
+    NET_HEARTBEAT: 'net:heartbeat', // Host → All (keepalive)
 };
 
 /**

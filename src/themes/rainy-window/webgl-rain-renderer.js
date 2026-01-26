@@ -1,6 +1,6 @@
 /**
  * WebGL Rain Renderer - GPU-accelerated rain rendering
- * 
+ *
  * Renders rain streaks using dynamic geometry (quads) for high performance.
  */
 
@@ -63,7 +63,7 @@ export default class WebGLRainRenderer {
     }
 
     initShaders() {
-        const gl = this.gl;
+        const { gl } = this;
 
         // Vertex shader
         const vertexShaderSource = `
@@ -170,7 +170,7 @@ export default class WebGLRainRenderer {
     }
 
     initBuffers() {
-        const gl = this.gl;
+        const { gl } = this;
         this.buffers.vertex = gl.createBuffer();
     }
 
@@ -190,7 +190,7 @@ export default class WebGLRainRenderer {
      * @param {number} gustIntensity - Current gust intensity
      */
     updateParticles(drops, windForce, gustIntensity) {
-        const gl = this.gl;
+        const { gl } = this;
         if (!gl) return;
 
         let vIndex = 0;
@@ -227,7 +227,7 @@ export default class WebGLRainRenderer {
             const px = (-dy / len) * width;
             const py = (dx / len) * width;
 
-            const opacity = drop.opacity;
+            const { opacity } = drop;
 
             // Quad vertices:
             // 0: Head Left
@@ -297,7 +297,7 @@ export default class WebGLRainRenderer {
      * Render all particles
      */
     render() {
-        const gl = this.gl;
+        const { gl } = this;
         if (!gl || this.vertexCount === 0) return;
 
         gl.useProgram(this.program);
@@ -344,7 +344,7 @@ export default class WebGLRainRenderer {
      * Clean up WebGL resources
      */
     destroy() {
-        const gl = this.gl;
+        const { gl } = this;
         if (!gl) return;
 
         if (this.buffers.vertex) gl.deleteBuffer(this.buffers.vertex);

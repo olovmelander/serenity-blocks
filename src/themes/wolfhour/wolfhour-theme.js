@@ -52,7 +52,7 @@ import {
     crashMeteorHeadVertexShader,
     crashMeteorHeadFragmentShader,
     crashMeteorTrailVertexShader,
-    crashMeteorTrailFragmentShader
+    crashMeteorTrailFragmentShader,
 } from './wolfhour-shaders.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -258,8 +258,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.renderer.setSize(width, height);
         this.renderer.sortObjects = true;
 
-        this.renderer.domElement.style.cssText =
-            'position:absolute;top:0;left:0;width:100%;height:100%';
+        this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
         container.appendChild(this.renderer.domElement);
         this.registerContainer(container);
 
@@ -274,7 +273,7 @@ export default class WolfhourTheme extends BaseTheme {
             frustumSize / 2,
             frustumSize / -2,
             0.1,
-            10000
+            10000,
         );
         this.camera.position.set(0, 0, 1000);
         this.camera.lookAt(0, 0, 0);
@@ -397,9 +396,9 @@ export default class WolfhourTheme extends BaseTheme {
         const texturePath = './textures/wolfhour/';
 
         const textures = [
-            textureLoader.load(texturePath + 'nebula-silver-1.png'),
-            textureLoader.load(texturePath + 'nebula-silver-2.png'),
-            textureLoader.load(texturePath + 'nebula-silver-3.png'),
+            textureLoader.load(`${texturePath}nebula-silver-1.png`),
+            textureLoader.load(`${texturePath}nebula-silver-2.png`),
+            textureLoader.load(`${texturePath}nebula-silver-3.png`),
         ];
 
         textures.forEach((t) => {
@@ -412,20 +411,32 @@ export default class WolfhourTheme extends BaseTheme {
             // Near layer (Z -2000)
             {
                 texture: textures[0],
-                x: 0, y: 150, z: -2000,
-                size: 4000, speed: 8, opacity: 0.25,
+                x: 0,
+                y: 150,
+                z: -2000,
+                size: 4000,
+                speed: 8,
+                opacity: 0.25,
             },
             // Mid layer (Z -3000)
             {
                 texture: textures[1],
-                x: 0, y: 100, z: -3000,
-                size: 5000, speed: 5, opacity: 0.2,
+                x: 0,
+                y: 100,
+                z: -3000,
+                size: 5000,
+                speed: 5,
+                opacity: 0.2,
             },
             // Far layer (Z -4000)
             {
                 texture: textures[2],
-                x: 0, y: 200, z: -4000,
-                size: 6000, speed: 3, opacity: 0.15,
+                x: 0,
+                y: 200,
+                z: -4000,
+                size: 6000,
+                speed: 3,
+                opacity: 0.15,
             },
         ];
 
@@ -471,47 +482,79 @@ export default class WolfhourTheme extends BaseTheme {
             // === FOREGROUND LAYER (Z -400 to -700) - Darkest ===
             // Main dramatic center peak
             {
-                x: 0, z: -500, size: 4000, height: 520,
-                layer: 0.0, seed: 11111,
+                x: 0,
+                z: -500,
+                size: 4000,
+                height: 520,
+                layer: 0.0,
+                seed: 11111,
             },
             // Right side mid peak
             {
-                x: 650, z: -550, size: 3200, height: 380,
-                layer: 0.1, seed: 44444,
+                x: 650,
+                z: -550,
+                size: 3200,
+                height: 380,
+                layer: 0.1,
+                seed: 44444,
             },
-            // Left side mid peak  
+            // Left side mid peak
             {
-                x: -750, z: -650, size: 3200, height: 380,
-                layer: 0.15, seed: 55555,
+                x: -750,
+                z: -650,
+                size: 3200,
+                height: 380,
+                layer: 0.15,
+                seed: 55555,
             },
 
             // === MID LAYER (Z -800 to -1200) - Medium gray ===
             // Far left peak
             {
-                x: -1100, z: -950, size: 3600, height: 450,
-                layer: 0.4, seed: 66666,
+                x: -1100,
+                z: -950,
+                size: 3600,
+                height: 450,
+                layer: 0.4,
+                seed: 66666,
             },
             // Far right peak
             {
-                x: 1000, z: -1000, size: 3600, height: 420,
-                layer: 0.45, seed: 77777,
+                x: 1000,
+                z: -1000,
+                size: 3600,
+                height: 420,
+                layer: 0.45,
+                seed: 77777,
             },
 
             // === BACKGROUND LAYER (Z -1200 to -1600) - Lightest/haziest ===
             // Distant left cluster
             {
-                x: -500, z: -1300, size: 3400, height: 400,
-                layer: 0.7, seed: 22222,
+                x: -500,
+                z: -1300,
+                size: 3400,
+                height: 400,
+                layer: 0.7,
+                seed: 22222,
             },
             // Distant right
             {
-                x: 700, z: -1350, size: 3200, height: 380,
-                layer: 0.75, seed: 88888,
+                x: 700,
+                z: -1350,
+                size: 3200,
+                height: 380,
+                layer: 0.75,
+                seed: 88888,
             },
             // Far background center-right
             {
-                x: 150, z: -1550, size: 4200, height: 520,
-                layer: 0.95, seed: 33333,
+                x: 150,
+                z: -1550,
+                size: 4200,
+                height: 520,
+                layer: 0.95,
+                seed: 33333,
             },
         ];
 
@@ -530,7 +573,7 @@ export default class WolfhourTheme extends BaseTheme {
         // CPU-side FBM displacement
         const posAttribute = geometry.attributes.position;
         const heights = [];
-        const seed = config.seed;
+        const { seed } = config;
 
         const fract = (n) => n - Math.floor(n);
         const mix = (a, b, t) => a * (1 - t) + b * t;
@@ -546,7 +589,7 @@ export default class WolfhourTheme extends BaseTheme {
             return mix(
                 mix(fract(rand(i, j)), fract(rand(i + 1, j)), u),
                 mix(fract(rand(i, j + 1)), fract(rand(i + 1, j + 1)), u),
-                v
+                v,
             );
         };
 
@@ -577,7 +620,7 @@ export default class WolfhourTheme extends BaseTheme {
             }
 
             const normDist = dist / maxDist;
-            const cone = Math.pow(1.0 - normDist, 1.5) * config.height;
+            const cone = (1.0 - normDist) ** 1.5 * config.height;
 
             const n = fbm(x * 0.01, z * 0.01);
             const n2 = fbm(x * 0.04, z * 0.04);
@@ -682,7 +725,7 @@ export default class WolfhourTheme extends BaseTheme {
             new THREE.Vector2(window.innerWidth, window.innerHeight),
             this.qualityPreset.bloomStrength,
             0.5,
-            0.4
+            0.4,
         );
         this.composer.addPass(this.bloomPass);
 
@@ -703,28 +746,28 @@ export default class WolfhourTheme extends BaseTheme {
 
     setupEventListeners() {
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            const settings = window.settings;
+            const { settings } = window;
             if (this.isActive && settings?.backgroundComboEffects === true) {
                 this.onLineClear(data);
             }
         });
 
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            const settings = window.settings;
+            const { settings } = window;
             if (this.isActive && settings?.backgroundComboEffects === true) {
                 this.onCombo(data);
             }
         });
 
         const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
-            const settings = window.settings;
+            const { settings } = window;
             if (this.isActive && settings?.backgroundComboEffects === true) {
                 this.onPieceLock();
             }
         });
 
         const levelUpUnsub = eventBus.on(EVENTS.LEVEL_UP, (data) => {
-            const settings = window.settings;
+            const { settings } = window;
             if (this.isActive && settings?.backgroundComboEffects === true) {
                 this.onLevelUp(data);
             }
@@ -923,7 +966,7 @@ export default class WolfhourTheme extends BaseTheme {
         rift.position.set(
             (Math.random() - 0.5) * 1200,
             Math.random() * 300 + 100,
-            -200
+            -200,
         );
         rift.rotation.z = (Math.random() - 0.5) * 0.4;
 
@@ -974,7 +1017,7 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     updateEffects(deltaTime) {
-        const decay = Math.pow(0.95, deltaTime * 60);
+        const decay = 0.95 ** (deltaTime * 60);
 
         this.effectState.starBurstIntensity *= decay;
         this.effectState.mountainPulse *= decay;
@@ -1156,7 +1199,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         meteor.userData = {
             startTime: this.time,
-            duration: duration,
+            duration,
             startX,
             startY,
             startZ,
@@ -1313,8 +1356,12 @@ export default class WolfhourTheme extends BaseTheme {
             phase: 'descent', // 'descent', 'impact', 'explosion', 'cleanup'
             startTime: this.time,
             duration,
-            startX, startY, startZ,
-            targetX, targetY, targetZ,
+            startX,
+            startY,
+            startZ,
+            targetX,
+            targetY,
+            targetZ,
             trailLength,
             trailSegments,
             trail,
@@ -1508,7 +1555,6 @@ export default class WolfhourTheme extends BaseTheme {
                 headPos[1] = currentY;
                 headPos[2] = currentZ;
                 data.head.geometry.attributes.position.needsUpdate = true;
-
             } else if (data.phase === 'explosion') {
                 const explosionElapsed = this.time - data.explosionStartTime;
                 const explosionDuration = 4.5; // Longer duration (was 2.5)
@@ -1600,12 +1646,12 @@ export default class WolfhourTheme extends BaseTheme {
         const slowDrift = 0.025;
 
         // Horizontal drift with layered motion for organic feel
-        const xDrift = Math.sin(this.time * driftSpeed) * 60 +
-            Math.sin(this.time * slowDrift * 0.6) * 25; // Combined ±85 units max
+        const xDrift = Math.sin(this.time * driftSpeed) * 60
+            + Math.sin(this.time * slowDrift * 0.6) * 25; // Combined ±85 units max
 
         // Vertical breathing movement - larger range to shift mountain up/down
-        const yDrift = Math.sin(this.time * driftSpeed * 0.8 + 1.0) * 45 +
-            Math.cos(this.time * slowDrift * 0.5) * 20; // Combined ±65 units max
+        const yDrift = Math.sin(this.time * driftSpeed * 0.8 + 1.0) * 45
+            + Math.cos(this.time * slowDrift * 0.5) * 20; // Combined ±65 units max
 
         // Breathing zoom effect - subtle but noticeable
         // Period: ~15 seconds

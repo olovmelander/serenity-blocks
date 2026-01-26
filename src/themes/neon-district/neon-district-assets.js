@@ -78,8 +78,8 @@ export class NeonDistrictAssets {
         // Configuration - balanced brightness
         // Use maximum anisotropy for sharp textures at oblique angles
         this.textureAnisotropy = 16;
-        this.windowsEmissiveIntensity = 3.0;  // Higher to punch through fog on distant buildings
-        this.adsEmissiveIntensity = 0.35;      // Reduced for less glare
+        this.windowsEmissiveIntensity = 3.0; // Higher to punch through fog on distant buildings
+        this.adsEmissiveIntensity = 0.35; // Reduced for less glare
         this.storefrontEmissiveIntensity = 0.4; // Further reduced for less glare
 
         // Track used storefronts to ensure uniqueness
@@ -122,7 +122,8 @@ export class NeonDistrictAssets {
      */
     loadStandardTexture(name, wrap, aniso) {
         return new Promise((resolve) => {
-            this.textureLoader.load(TEXTURE_PATH + name,
+            this.textureLoader.load(
+                TEXTURE_PATH + name,
                 (tex) => {
                     this.setupTexture(tex, wrap, aniso, name.replace('.jpg', '').replace('.png', ''));
                     resolve(tex);
@@ -131,7 +132,7 @@ export class NeonDistrictAssets {
                 () => {
                     // Silently resolve null for missing textures
                     resolve(null);
-                }
+                },
             );
         });
     }
@@ -149,7 +150,7 @@ export class NeonDistrictAssets {
         console.log('[NeonDistrictAssets] Loading textures...');
 
         const loader = this.textureLoader;
-        const ktx2Loader = this.ktx2Loader;
+        const { ktx2Loader } = this;
         const texPath = TEXTURE_PATH;
 
         // Helper to load texture with high-quality settings and KTX2 fallback
@@ -163,7 +164,7 @@ export class NeonDistrictAssets {
                 // we will stick to standard loading but provide the mechanism to easy switch.
 
                 // NOTE: To enable KTX2, ensure .ktx2 files exist and uncomment logic below
-                // or ensure server serves .ktx2. 
+                // or ensure server serves .ktx2.
                 // For this implementation, we default to standard loader to avoid 404 console spam
                 // until user generates the assets.
 
@@ -201,14 +202,14 @@ export class NeonDistrictAssets {
 
         // Environment - load with others, configure after
         texturePromises.push(
-            loadTex('environment_night.jpg').then(tex => {
+            loadTex('environment_night.jpg').then((tex) => {
                 if (tex) {
                     tex.mapping = THREE.EquirectangularReflectionMapping;
                     tex.magFilter = THREE.LinearFilter;
-                    this.textures['env_night'] = tex;
+                    this.textures.env_night = tex;
                 }
                 return tex;
-            })
+            }),
         );
 
         // Building textures (10 sets) - with wrap and anisotropy
@@ -268,12 +269,12 @@ export class NeonDistrictAssets {
         // ═══════════════════════════════════════════════════════════════════════════
         // GROUND MATERIAL - with emissive color reflections
         // ═══════════════════════════════════════════════════════════════════════════
-        this.materials['ground'] = new THREE.MeshPhongMaterial({
+        this.materials.ground = new THREE.MeshPhongMaterial({
             map: this.getTexture('ground'),
-            emissive: 0x0090ff,  // Blue tint like SynthCity
+            emissive: 0x0090ff, // Blue tint like SynthCity
             emissiveMap: this.getTexture('ground_em'),
             emissiveIntensity: 0.2,
-            shininess: 0
+            shininess: 0,
         });
 
         // ═══════════════════════════════════════════════════════════════════════════
@@ -284,9 +285,9 @@ export class NeonDistrictAssets {
             this.materials[`storefront_${id}`] = new THREE.MeshPhongMaterial({
                 map: this.getTexture(`storefront_${id}`),
                 emissive: 0xffffff,
-                emissiveMap: this.getTexture(`storefront_${id}`),  // Use diffuse as emissive
+                emissiveMap: this.getTexture(`storefront_${id}`), // Use diffuse as emissive
                 emissiveIntensity: this.storefrontEmissiveIntensity,
-                shininess: 0
+                shininess: 0,
             });
         }
 
@@ -305,19 +306,19 @@ export class NeonDistrictAssets {
                 map: this.getTexture(`building_${id}`),
                 specular: 0xffffff,
                 specularMap: this.getTexture(`building_${id}_spec`),
-                envMap: envMap,
+                envMap,
                 emissive: emissiveColor,
                 emissiveMap: this.getTexture(`building_${id}_em`),
                 emissiveIntensity: this.windowsEmissiveIntensity,
                 bumpMap: this.getTexture(`building_${id}`),
-                bumpScale: 5
+                bumpScale: 5,
             });
         }
 
         // ═══════════════════════════════════════════════════════════════════════════
         // MEGA BUILDING MATERIAL - Special large building texture
         // ═══════════════════════════════════════════════════════════════════════════
-        this.materials['mega_building_01'] = new THREE.MeshPhongMaterial({
+        this.materials.mega_building_01 = new THREE.MeshPhongMaterial({
             map: this.getTexture('mega_building_01'),
             specular: 0x777777,
             shininess: 1,
@@ -325,7 +326,7 @@ export class NeonDistrictAssets {
             emissiveMap: this.getTexture('mega_building_01_em'),
             emissiveIntensity: this.windowsEmissiveIntensity,
             bumpMap: this.getTexture('mega_building_01'),
-            bumpScale: 10
+            bumpScale: 10,
         });
 
         // ═══════════════════════════════════════════════════════════════════════════
@@ -342,7 +343,7 @@ export class NeonDistrictAssets {
                 emissiveIntensity: this.adsEmissiveIntensity,
                 shininess: 30, // Some gloss
                 specular: 0x111111,
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
             });
         }
 
@@ -356,7 +357,7 @@ export class NeonDistrictAssets {
                 emissiveIntensity: this.adsEmissiveIntensity,
                 shininess: 30, // Some gloss
                 specular: 0x111111,
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
             });
         }
 
@@ -372,7 +373,7 @@ export class NeonDistrictAssets {
                 specular: 0x000000,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
-                transparent: false
+                transparent: false,
             });
         }
 
@@ -388,7 +389,7 @@ export class NeonDistrictAssets {
                 specular: 0x000000,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
-                transparent: false
+                transparent: false,
             });
         }
 
@@ -413,7 +414,7 @@ export class NeonDistrictAssets {
             'building_03',
             'building_04',
             'building_05',
-            'building_07'
+            'building_07',
         ];
         const index = Math.floor(noise * mats.length);
         return this.getMaterial(mats[index]) || this.getMaterial('building_01');
@@ -428,11 +429,10 @@ export class NeonDistrictAssets {
             const matsRare = ['building_06', 'building_08', 'building_09', 'building_10'];
             const index = Math.floor(noise * matsRare.length);
             return this.getMaterial(matsRare[index]) || this.getMaterial('building_06');
-        } else {
-            const mats = ['building_01', 'building_02', 'building_03', 'building_04', 'building_05'];
-            const index = Math.floor(noise * mats.length);
-            return this.getMaterial(mats[index]) || this.getMaterial('building_01');
         }
+        const mats = ['building_01', 'building_02', 'building_03', 'building_04', 'building_05'];
+        const index = Math.floor(noise * mats.length);
+        return this.getMaterial(mats[index]) || this.getMaterial('building_01');
     }
 
     /**
@@ -473,8 +473,7 @@ export class NeonDistrictAssets {
             // Shuffle using Fisher-Yates
             for (let i = this.availableStorefronts.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
-                [this.availableStorefronts[i], this.availableStorefronts[j]] =
-                    [this.availableStorefronts[j], this.availableStorefronts[i]];
+                [this.availableStorefronts[i], this.availableStorefronts[j]] = [this.availableStorefronts[j], this.availableStorefronts[i]];
             }
         }
 
@@ -511,13 +510,13 @@ export class NeonDistrictAssets {
      */
     dispose() {
         // Dispose textures
-        Object.values(this.textures).forEach(texture => {
+        Object.values(this.textures).forEach((texture) => {
             if (texture && texture.dispose) texture.dispose();
         });
         this.textures = {};
 
         // Dispose materials
-        Object.values(this.materials).forEach(material => {
+        Object.values(this.materials).forEach((material) => {
             if (material && material.dispose) material.dispose();
         });
         this.materials = {};

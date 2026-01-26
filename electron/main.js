@@ -5,20 +5,17 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Enable GPU acceleration for WSL2/Linux
+// Standard GPU acceleration flags
+// Unix/Linux GPU optimization flags
+// WSL2/Linux GPU optimization flags
+app.commandLine.appendSwitch('disable-gpu-sandbox'); // CRITICAL for WSL2
+app.commandLine.appendSwitch('no-sandbox');
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
-app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('use-gl', 'angle'); // Matches 'egl-angle' allowed impl
+app.commandLine.appendSwitch('use-angle', 'default'); // Let ANGLE pick the best backend (D3D12/OpenGL)
 app.commandLine.appendSwitch('enable-webgl');
-app.commandLine.appendSwitch('enable-accelerated-2d-canvas');
-
-// Force high-performance GPU on multi-GPU systems (e.g., NVIDIA over integrated graphics)
-app.commandLine.appendSwitch('force_high_performance_gpu');
-app.commandLine.appendSwitch('use-angle', 'gl'); // Use native OpenGL/Direct3D
-app.commandLine.appendSwitch('use-gl', 'desktop'); // Use desktop GL instead of ANGLE
-app.commandLine.appendSwitch('enable-native-gpu-memory-buffers');
-app.commandLine.appendSwitch('enable-accelerated-video-decode');
-app.commandLine.appendSwitch('disable-gpu-driver-bug-workarounds');
 
 let mainWindow;
 let currentVSyncEnabled = null;
@@ -195,7 +192,7 @@ function createWindow() {
   // Load Vite dev server (development mode)
   if (process.env.NODE_ENV !== 'production') {
     mainWindow.loadURL('http://localhost:5173');
-    
+
     // Open DevTools for debugging
     mainWindow.webContents.openDevTools();
   } else {

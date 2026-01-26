@@ -183,8 +183,6 @@ function setPieceLockRippleCss(colorHex) {
     );
 }
 
-
-
 /**
  * Main application class that orchestrates all systems
  */
@@ -407,16 +405,16 @@ class SerenityBlocks {
         } else {
             // Tab became hidden - apply throttling based on behavior
             switch (this.backgroundTabBehavior) {
-                case 'pause':
-                    this.pauseAllRendering();
-                    break;
-                case 'reduce':
-                    this.reduceRenderingFrameRate();
-                    break;
-                case 'continue':
-                default:
-                    // Do nothing - continue as normal
-                    break;
+            case 'pause':
+                this.pauseAllRendering();
+                break;
+            case 'reduce':
+                this.reduceRenderingFrameRate();
+                break;
+            case 'continue':
+            default:
+                // Do nothing - continue as normal
+                break;
             }
         }
 
@@ -796,8 +794,8 @@ class SerenityBlocks {
             // Always use native display resolution (auto mode)
             const displays = await this.displayManager.getAvailableDisplays();
             const primary = displays[0];
-            let width = primary?.workArea?.width ?? 1920;
-            let height = primary?.workArea?.height ?? 1080;
+            const width = primary?.workArea?.width ?? 1920;
+            const height = primary?.workArea?.height ?? 1080;
 
             // Apply internal render resolution based on renderScale
             // This allows performance tuning without changing actual display size
@@ -929,7 +927,6 @@ class SerenityBlocks {
 
             this.fpsCounter.element.textContent = `${displayFPS} FPS${gpuText}`;
         }
-
     }
 
     startFPSMonitor() {
@@ -1206,7 +1203,6 @@ class SerenityBlocks {
         const currentSettings = this.settingsManager.get();
         setPieceLockRippleCss(currentSettings.pieceLockRippleColor);
 
-
         // Display manager (Phase 1)
         this.displayManager = new DisplayManager();
         console.log('[DisplayManager] Initialized', {
@@ -1452,16 +1448,16 @@ class SerenityBlocks {
         let initialTheme = 'forest'; // default
 
         switch (settings.backgroundMode) {
-            case 'Specific':
-                initialTheme = settings.backgroundTheme || 'forest';
-                break;
-            case 'Level':
-                initialTheme = this.themeManager.getThemeForLevel(1);
-                break;
-            case 'Random':
-                initialTheme = this.themeManager.getRandomTheme();
-                this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
-                break;
+        case 'Specific':
+            initialTheme = settings.backgroundTheme || 'forest';
+            break;
+        case 'Level':
+            initialTheme = this.themeManager.getThemeForLevel(1);
+            break;
+        case 'Random':
+            initialTheme = this.themeManager.getRandomTheme();
+            this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
+            break;
         }
 
         await this.themeManager.switchTheme(initialTheme);
@@ -2548,8 +2544,6 @@ class SerenityBlocks {
             setPieceLockRippleCss(settings.pieceLockRippleColor);
         }
 
-
-
         // Handle gamepad binding changes
         if (
             changes.gamepadBindings
@@ -2899,7 +2893,7 @@ class SerenityBlocks {
 
             // Switch to single player mode and start playback
             await this.gameModeManager.activateMode('single');
-            await this.gameModeManager.startCurrentMode({ demo: demo });
+            await this.gameModeManager.startCurrentMode({ demo });
         } catch (err) {
             console.error('[Main] Failed to play demo:', err);
         }
@@ -2943,7 +2937,7 @@ class SerenityBlocks {
 
             // Show intro animation background
             // Use the top-level import 'introAnimation' instead of dynamic import if possible,
-            // or stick to dynamic if main.js structure requires it. 
+            // or stick to dynamic if main.js structure requires it.
             // Step 448 shows 'import { introAnimation } from ./ui/intro-animation.js' at line 80.
             // So we can use it directly.
             if (introAnimation) {

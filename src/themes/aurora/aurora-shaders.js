@@ -1,6 +1,6 @@
 /**
  * Aurora Theme Shaders
- * 
+ *
  * Shaders for creating immersive 3D aurora borealis effects
  */
 

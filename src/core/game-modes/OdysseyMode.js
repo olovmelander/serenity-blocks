@@ -374,7 +374,7 @@ export class OdysseyMode extends BaseGameMode {
             || new Promise((resolve) => setTimeout(resolve, warpDuration));
 
         // Wait 3.5s for warp to fade in and cover the screen before hiding board
-        // Warp starts at 2.5s. Fully opaque at ~5.7s. 
+        // Warp starts at 2.5s. Fully opaque at ~5.7s.
         // We hide board at T = 2.5 + 3.5 = 6.0s.
         await new Promise((resolve) => setTimeout(resolve, 3500));
 
@@ -412,7 +412,7 @@ export class OdysseyMode extends BaseGameMode {
         await new Promise((resolve) => setTimeout(resolve, 1000));
 
         // Ensure warp promise is settled nicely
-        warpPromise.catch(e => console.error(e));
+        warpPromise.catch((e) => console.error(e));
 
         // Clean up the Odyssey Board now that transition is fully complete
         // Doing this at the end prevents stutters during the animation
@@ -493,7 +493,7 @@ export class OdysseyMode extends BaseGameMode {
                 } else {
                     // Fallback if not pre-loaded (e.g. debug start)
                     // Yield to main thread before heavy theme switch to allow warp frame to render
-                    await new Promise(resolve => setTimeout(resolve, 0));
+                    await new Promise((resolve) => setTimeout(resolve, 0));
                     await this.deps.themeManager.switchTheme(theme.primary, true);
                 }
 
@@ -718,7 +718,7 @@ export class OdysseyMode extends BaseGameMode {
                 x: 0,
                 y: boardRow,
                 color: '#666666',
-                type: 'garbage',  // Explicit type for consistent rendering
+                type: 'garbage', // Explicit type for consistent rendering
                 pieceId: `starting_garbage_${boardRow}`,
                 isGarbage: true,
                 garbageMeta: {
@@ -1664,7 +1664,7 @@ export class OdysseyMode extends BaseGameMode {
                     this.currentThemeSwitchPromise = this.deps.themeManager.switchTheme(levelConfig.theme.primary, true);
                 }
 
-                await new Promise(resolve => setTimeout(resolve, 3500));
+                await new Promise((resolve) => setTimeout(resolve, 3500));
 
                 // Close the panel explicitly
                 const panel = document.getElementById('odyssey-level-panel');
@@ -1739,10 +1739,8 @@ export class OdysseyMode extends BaseGameMode {
         // Update panel content
         document.getElementById('level-panel-number').textContent = `LEVEL ${levelId}`;
         document.getElementById('level-panel-name').textContent = level.name;
-        document.getElementById('level-panel-chapter').textContent =
-            `Chapter ${level.chapter}: ${this._getChapterName(level.chapter)}`;
-        document.getElementById('level-panel-description').textContent =
-            level.metadata?.description || 'Complete the objectives to progress.';
+        document.getElementById('level-panel-chapter').textContent = `Chapter ${level.chapter}: ${this._getChapterName(level.chapter)}`;
+        document.getElementById('level-panel-description').textContent = level.metadata?.description || 'Complete the objectives to progress.';
 
         // Stars display
         const starsEl = document.getElementById('level-panel-stars');
@@ -1773,12 +1771,12 @@ export class OdysseyMode extends BaseGameMode {
     _formatObjective(primary) {
         if (!primary) return 'Complete the level';
         switch (primary.type) {
-            case 'lines': return `Clear ${primary.target} lines`;
-            case 'score': return `Score ${primary.target.toLocaleString()} points`;
-            case 'cascade': return `Trigger ${primary.target} cascades`;
-            case 'time': return `Clear in ${primary.target} seconds`;
-            case 'combo': return `Achieve ${primary.target}x combo`;
-            default: return `Complete: ${primary.type} (${primary.target})`;
+        case 'lines': return `Clear ${primary.target} lines`;
+        case 'score': return `Score ${primary.target.toLocaleString()} points`;
+        case 'cascade': return `Trigger ${primary.target} cascades`;
+        case 'time': return `Clear in ${primary.target} seconds`;
+        case 'combo': return `Achieve ${primary.target}x combo`;
+        default: return `Complete: ${primary.type} (${primary.target})`;
         }
     }
 
@@ -1820,7 +1818,6 @@ export class OdysseyMode extends BaseGameMode {
 
         // Note: We do NOT dispose the Odyssey Board here anymore.
         // It is disposed at the end of enterLevel() to prevent frame drops during the reveal.
-
 
         // Get elements for animation
         // Fix: Use correct ID for the game container
@@ -2317,7 +2314,7 @@ export class OdysseyMode extends BaseGameMode {
             margin-bottom: 30px;
         `;
 
-        stats.forEach(stat => {
+        stats.forEach((stat) => {
             const statDiv = document.createElement('div');
             statDiv.innerHTML = `
                 <div style="font-size: 11px; color: rgba(180, 200, 220, 0.6); letter-spacing: 1px; margin-bottom: 5px;">${stat.label.toUpperCase()}</div>
@@ -2884,37 +2881,37 @@ export class OdysseyMode extends BaseGameMode {
         let deltaRows = 0;
 
         switch (event.key) {
-            case 'ArrowUp':
-                deltaRows = -3;
-                event.preventDefault();
-                event.stopPropagation();
-                break;
-            case 'ArrowDown':
-                deltaRows = 3;
-                event.preventDefault();
-                event.stopPropagation();
-                break;
-            case 'ArrowLeft':
-            case 'ArrowRight':
-                event.preventDefault();
-                event.stopPropagation();
-                return;
-            case 'PageUp':
-                deltaRows = -10;
-                event.preventDefault();
-                event.stopPropagation();
-                break;
-            case 'PageDown':
-                deltaRows = 10;
-                event.preventDefault();
-                event.stopPropagation();
-                break;
-            case 'p':
-            case 'P':
-            case 'Escape':
-                return; // Let pause/settings propagate
-            default:
-                return;
+        case 'ArrowUp':
+            deltaRows = -3;
+            event.preventDefault();
+            event.stopPropagation();
+            break;
+        case 'ArrowDown':
+            deltaRows = 3;
+            event.preventDefault();
+            event.stopPropagation();
+            break;
+        case 'ArrowLeft':
+        case 'ArrowRight':
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        case 'PageUp':
+            deltaRows = -10;
+            event.preventDefault();
+            event.stopPropagation();
+            break;
+        case 'PageDown':
+            deltaRows = 10;
+            event.preventDefault();
+            event.stopPropagation();
+            break;
+        case 'p':
+        case 'P':
+        case 'Escape':
+            return; // Let pause/settings propagate
+        default:
+            return;
         }
 
         if (deltaRows !== 0 && this.boardScene.cameraSettings) {

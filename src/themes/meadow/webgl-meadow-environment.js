@@ -1,4 +1,3 @@
-
 /**
  * WebGL Meadow Environment - Renders the sky, sun, and clouds
  */
@@ -11,8 +10,8 @@ export default class WebGLMeadowEnvironment {
     }
 
     init() {
-        const gl = this.canvas.getContext('webgl2', { alpha: false }) ||
-            this.canvas.getContext('webgl', { alpha: false });
+        const gl = this.canvas.getContext('webgl2', { alpha: false })
+            || this.canvas.getContext('webgl', { alpha: false });
 
         if (!gl) return false;
         this.gl = gl;
@@ -173,7 +172,7 @@ export default class WebGLMeadowEnvironment {
 
     render(time) {
         if (!this.gl || !this.program) return;
-        const gl = this.gl;
+        const { gl } = this;
 
         gl.useProgram(this.program);
         gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());

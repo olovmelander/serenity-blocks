@@ -2,7 +2,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * ELECTRIC DREAMS THEME - Three.js 3D Lava Lamp Implementation
  * ═══════════════════════════════════════════════════════════════════════════════
- * 
+ *
  * A premium lava lamp experience with floating, morphing blobs across the screen.
  * Features:
  * - 3D blob meshes with custom glow shaders
@@ -11,7 +11,7 @@
  * - Bloom post-processing for premium glow
  * - Full-screen blob movement
  * - Performance-optimized Three.js rendering
- * 
+ *
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
@@ -28,12 +28,24 @@ import { ELECTRIC_DREAMS_TETROMINOS } from './electric-dreams-tetrominos.js';
 // Quality Presets
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
-    Extreme: { blobCount: 18, particleCount: 200, bloomStrength: 0.8, enablePost: true },
-    Ultra: { blobCount: 14, particleCount: 150, bloomStrength: 0.7, enablePost: true },
-    High: { blobCount: 12, particleCount: 100, bloomStrength: 0.6, enablePost: true },
-    Medium: { blobCount: 8, particleCount: 60, bloomStrength: 0.5, enablePost: true },
-    Low: { blobCount: 6, particleCount: 40, bloomStrength: 0.4, enablePost: false },
-    Minimal: { blobCount: 4, particleCount: 20, bloomStrength: 0.3, enablePost: false },
+    Extreme: {
+        blobCount: 18, particleCount: 200, bloomStrength: 0.8, enablePost: true,
+    },
+    Ultra: {
+        blobCount: 14, particleCount: 150, bloomStrength: 0.7, enablePost: true,
+    },
+    High: {
+        blobCount: 12, particleCount: 100, bloomStrength: 0.6, enablePost: true,
+    },
+    Medium: {
+        blobCount: 8, particleCount: 60, bloomStrength: 0.5, enablePost: true,
+    },
+    Low: {
+        blobCount: 6, particleCount: 40, bloomStrength: 0.4, enablePost: false,
+    },
+    Minimal: {
+        blobCount: 4, particleCount: 20, bloomStrength: 0.3, enablePost: false,
+    },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -175,7 +187,7 @@ const BlobShader = {
             
             gl_FragColor = vec4(finalColor, 0.97);
         }
-    `
+    `,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -260,7 +272,7 @@ const SparkShader = {
             
             gl_FragColor = vec4(finalColor * glow * brightness, vAlpha * glow);
         }
-    `
+    `,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -448,13 +460,13 @@ export default class ElectricDreamsTheme extends BaseTheme {
         blob.position.set(
             (Math.random() - 0.5) * bounds.width * 2,
             (Math.random() - 0.5) * bounds.height * 2,
-            (Math.random() - 0.5) * 30 - 5
+            (Math.random() - 0.5) * 30 - 5,
         );
 
         // Weightless drift physics - each blob has unique movement pattern
         const blobData = {
             mesh: blob,
-            scale: scale,
+            scale,
             // Unique phase offsets for each axis (creates unique paths)
             phaseX: Math.random() * Math.PI * 2,
             phaseY: Math.random() * Math.PI * 2,
@@ -564,7 +576,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
             new THREE.Vector2(window.innerWidth, window.innerHeight),
             this.qualityPreset.bloomStrength,
             0.5,
-            0.15
+            0.15,
         );
         this.composer.addPass(bloomPass);
         this.bloomPass = bloomPass;
@@ -748,7 +760,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
                 if (dist < combinedRadii * 2.5) {
                     // Proximity factor: 1 when touching, 0 when far
                     const proximity = Math.max(0, 1 - dist / (combinedRadii * 2.5));
-                    const proximityPow = Math.pow(proximity, 1.5); // Smoother falloff
+                    const proximityPow = proximity ** 1.5; // Smoother falloff
 
                     // Add morph boost to both blobs (capped to prevent overexposure)
                     const boost = Math.min(proximityPow * 1.0, 0.8);
@@ -773,19 +785,19 @@ export default class ElectricDreamsTheme extends BaseTheme {
         // Second pass: update blob positions and shaders
         for (let i = 0; i < this.blobs.length; i++) {
             const blob = this.blobs[i];
-            const mesh = blob.mesh;
+            const { mesh } = blob;
 
             // === WEIGHTLESS 3D DRIFT ===
             // Using layered sine waves for organic, non-repeating paths
             // Each axis has its own frequency and phase for unique trajectories
 
             // Primary drift motion
-            const driftX = Math.sin(t * blob.freqX + blob.phaseX) * blob.ampX +
-                Math.sin(t * blob.freq2X + blob.phaseX * 1.7) * blob.ampX * 0.5;
-            const driftY = Math.sin(t * blob.freqY + blob.phaseY) * blob.ampY +
-                Math.cos(t * blob.freq2Y + blob.phaseY * 1.3) * blob.ampY * 0.4;
-            const driftZ = Math.sin(t * blob.freqZ + blob.phaseZ) * blob.ampZ +
-                Math.cos(t * blob.freqZ * 0.7 + blob.phaseZ * 2.1) * blob.ampZ * 0.3;
+            const driftX = Math.sin(t * blob.freqX + blob.phaseX) * blob.ampX
+                + Math.sin(t * blob.freq2X + blob.phaseX * 1.7) * blob.ampX * 0.5;
+            const driftY = Math.sin(t * blob.freqY + blob.phaseY) * blob.ampY
+                + Math.cos(t * blob.freq2Y + blob.phaseY * 1.3) * blob.ampY * 0.4;
+            const driftZ = Math.sin(t * blob.freqZ + blob.phaseZ) * blob.ampZ
+                + Math.cos(t * blob.freqZ * 0.7 + blob.phaseZ * 2.1) * blob.ampZ * 0.3;
 
             // Apply drift incrementally - SPEED BOOST during combo!
             const baseSmoothing = 0.008;
@@ -823,8 +835,8 @@ export default class ElectricDreamsTheme extends BaseTheme {
             // Scale up when near other blobs + DRAMATIC COMBO EXPANSION
             const proximityScale = 1.0 + blob.proximityBoost * 0.25;
             const comboScale = 1.0 + this.comboScaleBoost * 0.5; // Up to 50% larger during combo
-            const scalePulse = (1.0 + Math.sin(t * 0.3 + blob.scalePhase) * 0.08 +
-                Math.sin(t * 0.17 + blob.scalePhase * 1.5) * 0.05) * proximityScale * comboScale;
+            const scalePulse = (1.0 + Math.sin(t * 0.3 + blob.scalePhase) * 0.08
+                + Math.sin(t * 0.17 + blob.scalePhase * 1.5) * 0.05) * proximityScale * comboScale;
             mesh.scale.setScalar(scalePulse);
 
             // === SLOW TUMBLING ROTATION ===
@@ -847,12 +859,12 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
             // Total glow = pulse + proximity + flash + COMBO COLOR FLASH
             const totalGlow = Math.min(
-                this.pulseIntensity +
-                blob.proximityBoost * 0.3 +
-                this.glowFlash * 0.8 +
-                this.comboColorFlash * 1.5 + // Strong color flash during combo
-                this.comboIntensity * 0.5,
-                2.5 // Higher cap for dramatic effect
+                this.pulseIntensity
+                + blob.proximityBoost * 0.3
+                + this.glowFlash * 0.8
+                + this.comboColorFlash * 1.5 // Strong color flash during combo
+                + this.comboIntensity * 0.5,
+                2.5, // Higher cap for dramatic effect
             );
             mesh.material.uniforms.uPulseIntensity.value = totalGlow;
             mesh.material.uniforms.uMorphFactor.value = morphIntensity + this.pulseIntensity * 0.2 + this.glowFlash * 0.3;
@@ -876,7 +888,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
     stop() {
         super.stop();
 
-        this.eventUnsubscribers.forEach(unsub => {
+        this.eventUnsubscribers.forEach((unsub) => {
             if (typeof unsub === 'function') unsub();
         });
         this.eventUnsubscribers = [];

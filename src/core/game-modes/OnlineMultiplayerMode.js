@@ -60,9 +60,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.qosHud = null;
         this.gameLoopId = null;
         this.lastSyncTime = 0;
+        this.matchPreparingUnsub = null;
         this.matchStartedUnsub = null;
         this.matchResultsUnsub = null;
         this.renderFrameUnsub = null;
+        this._uiSetupComplete = false;
         this.networkHandlersRegistered = false;
         this.lastPlayerSignature = '';
         this.originalInputs = {};
@@ -80,6 +82,26 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.snapshotInterpolator = new SnapshotInterpolator({
             interpolationDelay: 50, // 50ms buffer for smooth 30Hz -> 60Hz
         });
+
+        // === PERFORMANCE OPTIMIZATIONS ===
+        // Cache local player reference (changes rarely, avoids find() every frame)
+        this._cachedLocalId = null;
+        this._cachedLocalPlayerIndex = -1;
+        // Pre-allocated opponent slots (reused every frame, saves ~300 allocations/sec)
+        this._opponentSlots = new Array(7).fill(null).map(() => ({
+            id: null,
+            steamId: null,
+            name: null,
+            color: null,
+            isAlive: true,
+            frags: 0,
+            garbageQueue: null,
+            garbagePending: 0,
+            grid: null,
+            currentPiece: null,
+            nextPieces: null,
+        }));
+        this._activeOpponentCount = 0;
     }
 
     getModeId() {
@@ -358,11 +380,20 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Show waiting room
         this.lobbyWaitingRoom.show();
 
-        // Listen for match start event (for peers)
+        // Listen for MATCH_PREPARING - set up UI before countdown starts
+        if (!this.matchPreparingUnsub) {
+            this.matchPreparingUnsub = onMultiplayerEvent(
+                MULTIPLAYER_EVENTS.MATCH_PREPARING,
+                () => this._setupMatchUI(),
+            );
+            this.cleanupHandlers.push(this.matchPreparingUnsub);
+        }
+
+        // Listen for MATCH_STARTED - game actually starts after countdown
         if (!this.matchStartedUnsub) {
             this.matchStartedUnsub = onMultiplayerEvent(
                 MULTIPLAYER_EVENTS.MATCH_STARTED,
-                () => this.handleMatchStart(),
+                () => this._activateMatch(),
             );
             this.cleanupHandlers.push(this.matchStartedUnsub);
         }
@@ -400,15 +431,19 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     /**
      * Handle match start - Initialize game rendering
      */
-    async handleMatchStart() {
-        console.log('[OnlineMultiplayer] Match starting...');
+    /**
+     * Set up match UI - called BEFORE countdown starts
+     * Shows boards, chat, scoreboard behind the countdown overlay
+     */
+    async _setupMatchUI() {
+        console.log('[OnlineMultiplayer] Setting up match UI...');
         this.lastNextPieceIds = '';
         if (this.matchResultsModal) {
             this.matchResultsModal.hide();
         }
 
-        if (this.isInMatch) {
-            console.log('[OnlineMultiplayer] Match already running, skipping duplicate start');
+        if (this._uiSetupComplete) {
+            console.log('[OnlineMultiplayer] UI already set up, skipping');
             return;
         }
 
@@ -441,16 +476,44 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Register network handlers for state sync
         this._registerNetworkHandlers();
 
-        // Set up input handlers
+        // Set up input handlers (but game won't respond until isInMatch = true)
         this._setupInputHandlers();
         this._setupScoreboardOverlayHotkey();
 
-        // Start game loop
+        this._uiSetupComplete = true;
+        console.log('[OnlineMultiplayer] ✅ Match UI ready (waiting for countdown)');
+    }
+
+    /**
+     * Activate match - called AFTER countdown completes
+     * Enables gameplay inputs and marks match as active
+     */
+    _activateMatch() {
+        console.log('[OnlineMultiplayer] Activating match (countdown complete)...');
+
+        if (this.isInMatch) {
+            console.log('[OnlineMultiplayer] Match already active, skipping');
+            return;
+        }
+
+        // Mark match as active - enables input handling
         this.isInMatch = true;
         this._registerNetworkHandlers();
         this._hookInputs();
 
-        console.log('[OnlineMultiplayer] ✅ Match started, rendering initialized');
+        // Reset UI setup flag for next match
+        this._uiSetupComplete = false;
+
+        console.log('[OnlineMultiplayer] ✅ Match started! Game is now active.');
+    }
+
+    /**
+     * Legacy method - kept for compatibility
+     * @deprecated Use _setupMatchUI() and _activateMatch() instead
+     */
+    async handleMatchStart() {
+        await this._setupMatchUI();
+        this._activateMatch();
     }
 
     /**
@@ -472,6 +535,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.matchResultsModal.show(detail, {
                 isHost: this.steamNetworking?.isHost,
                 localPlayerId: this.steamNetworking?.steamId,
+                gameState: this.ffaGameState, // Pass gameState for chat history access
             });
         }
     }
@@ -568,7 +632,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Use fixed internal resolution for consistent rendering
         // This matches how LocalMultiplayerMode handles it
         const FIXED_BLOCK_SIZE = 40;
-        const internalWidth = COLS * FIXED_BLOCK_SIZE;  // 10 * 40 = 400
+        const internalWidth = COLS * FIXED_BLOCK_SIZE; // 10 * 40 = 400
         const internalHeight = ROWS * FIXED_BLOCK_SIZE; // 20 * 40 = 800
 
         // Create Phaser game for local player
@@ -681,6 +745,18 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 this._sendChatMessage(text);
             });
             this.chat.addSystemMessage('Match started! Good luck!');
+
+            // Restore chat history from game state
+            if (this.ffaGameState && this.ffaGameState.chatHistory) {
+                this.ffaGameState.chatHistory.forEach(msg => {
+                    const isSystem = !msg.playerName;
+                    this.chat.addMessage({
+                        author: isSystem ? 'System' : msg.playerName,
+                        text: isSystem ? (msg.text || msg.message) : msg.message,
+                        isSystem: isSystem
+                    });
+                });
+            }
         }
 
         if (!this.qosHud) {
@@ -932,7 +1008,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 if (detail.steamId !== localSteamId) return;
                 if (!this.mainBoardScene) return;
 
-                const piece = detail.piece;
+                const { piece } = detail;
 
                 // Emit event for theme integration
                 eventBus.emit(EVENTS.PIECE_LOCK, { piece });
@@ -1033,7 +1109,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // This is the fallback update for low-rate updates (30Hz)
             // Real smoothness comes from _handleRenderFrame using interpolation
 
-            // We can skip this update if we are running the render loop, 
+            // We can skip this update if we are running the render loop,
             // but keeping it ensures we don't miss updates if render loop pauses.
             // However, to prevent jitter/fighting, we might relying purely on _handleRenderFrame?
             // Actually, let's let _handleRenderFrame handle visual updates.
@@ -1069,7 +1145,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (!this.ffaGameState) return;
 
         // Build a state object similar to what we'd receive from network
-        const players = Array.from(this.ffaGameState.players.values()).map(p => ({
+        const players = Array.from(this.ffaGameState.players.values()).map((p) => ({
             steamId: p.steamId,
             name: p.name,
             frags: p.frags || 0,
@@ -1079,9 +1155,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 lines: p.lines || 0,
                 boardGrid: p.grid, // Access grid directly from player object in FFA state
                 nextPieces: p.nextPieces,
-                currentPiece: p.currentPiece
+                currentPiece: p.currentPiece,
             },
-            garbageQueue: p.garbageQueue
+            garbageQueue: p.garbageQueue,
         }));
 
         this._handleRenderFrame({ players });
@@ -1094,9 +1170,27 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (!detail || !detail.players) return;
 
         const localId = this.steamNetworking?.steamId;
-        const players = detail.players;
-        const localPlayer = players.find((p) => p.steamId === localId);
-        this._syncPlayerColors(players);
+        const { players } = detail;
+        // PERF: Use playerCount from pre-allocated payload if available
+        const playerCount = detail.playerCount ?? players.length;
+
+        // PERF: Cache local player lookup - only search when localId changes
+        let localPlayer = null;
+        if (this._cachedLocalId !== localId) {
+            this._cachedLocalId = localId;
+            this._cachedLocalPlayerIndex = -1;
+            for (let i = 0; i < playerCount; i++) {
+                if (players[i]?.steamId === localId) {
+                    this._cachedLocalPlayerIndex = i;
+                    break;
+                }
+            }
+        }
+        if (this._cachedLocalPlayerIndex >= 0 && this._cachedLocalPlayerIndex < playerCount) {
+            localPlayer = players[this._cachedLocalPlayerIndex];
+        }
+
+        this._syncPlayerColors(players, playerCount);
 
         if (localPlayer && this.mainBoardScene) {
             if (this.mainBoardScene.syncFromGameState) {
@@ -1105,52 +1199,63 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 this.mainBoardScene.gameState = localPlayer.gameState;
             }
 
-            // Update Next Queue
+            // Update Next Queue (only if changed)
             const nextPieces = localPlayer.gameState?.nextPieces || [];
-            const nextIds = nextPieces.join(',');
+            const nextIds = nextPieces.slice(0, 5).join(','); // PERF: Only check first 5
             if (nextIds !== this.lastNextPieceIds) {
                 updateNextQueue(nextPieces, 'online-next-queue-container');
                 this.lastNextPieceIds = nextIds;
             }
 
             // Update local stats + garbage
-            const localState = {
+            this._updateLocalStats({
                 frags: localPlayer.frags || 0,
                 deaths: 0,
                 score: localPlayer.gameState?.score || 0,
                 lines: localPlayer.gameState?.lines || 0,
-            };
-            this._updateLocalStats(localState);
+            });
             this._updateGarbageMeter(localPlayer.garbageQueue);
         }
 
         // Update Opponent Boards with INTERPOLATION
+        // PERF: Reuse pre-allocated opponent slots instead of filter().map()
         if (this.opponentWatchManager && players) {
             const renderTime = Date.now();
+            let opponentIdx = 0;
 
-            const opponents = players
-                .filter(p => p.steamId !== localId)
-                .map(p => {
-                    // Try to get interpolated state
-                    const interpolated = this.snapshotInterpolator.getInterpolatedState(p.steamId, renderTime);
+            for (let i = 0; i < playerCount && opponentIdx < 7; i++) {
+                const p = players[i];
+                if (!p || p.steamId === localId) continue;
 
-                    if (interpolated) {
-                        return {
-                            ...p,
-                            // Override position-sensitive data with interpolated values
-                            gameState: {
-                                ...p.gameState,
-                                ...interpolated.gameState,
-                                currentPiece: interpolated.currentPiece || p.gameState?.currentPiece,
-                                boardGrid: interpolated.grid || interpolated.gameState?.boardGrid || p.gameState?.boardGrid,
-                            }
-                        };
-                    }
-                    return p;
-                });
+                const slot = this._opponentSlots[opponentIdx];
+                const gs = p.gameState || {};
 
-            if (opponents.length > 0) {
-                this.opponentWatchManager.updateFromState(opponents);
+                // Assign to pre-allocated slot (no new object creation)
+                slot.id = slot.steamId = p.steamId;
+                slot.name = p.name;
+                slot.color = p.color;
+                slot.isAlive = p.isAlive;
+                slot.frags = p.frags;
+                slot.garbageQueue = p.garbageQueue;
+                slot.garbagePending = p.garbageQueue?.getTotalLines?.() || 0;
+                slot.grid = gs.boardGrid || gs.grid;
+                slot.currentPiece = gs.currentPiece;
+                slot.nextPieces = gs.nextPieces;
+
+                // Apply interpolation if available
+                const interpolated = this.snapshotInterpolator.getInterpolatedState(p.steamId, renderTime);
+                if (interpolated) {
+                    slot.currentPiece = interpolated.currentPiece || slot.currentPiece;
+                    slot.grid = interpolated.grid || interpolated.gameState?.boardGrid || slot.grid;
+                }
+
+                opponentIdx++;
+            }
+
+            // PERF: Pass slice of pre-allocated array with only active opponents
+            this._activeOpponentCount = opponentIdx;
+            if (opponentIdx > 0) {
+                this.opponentWatchManager.updateFromState(this._opponentSlots.slice(0, opponentIdx));
             }
         }
 
@@ -1163,41 +1268,63 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             }
         }
 
-        const signature = players.map((p) => p.steamId).join('|'); // Use original players for signature
+        // PERF: Build signature without creating new array
+        let signature = '';
+        for (let i = 0; i < playerCount; i++) {
+            if (players[i]?.steamId) {
+                signature += (i > 0 ? '|' : '') + players[i].steamId;
+            }
+        }
+
         if (signature && signature !== this.lastPlayerSignature) {
             // Set players on opponentWatchManager, ensuring it gets all players (including local for metadata)
-            this.opponentWatchManager.setPlayers(players.map(p => ({
-                id: p.steamId,
-                name: p.name,
-                frags: p.frags || 0,
-                isAlive: p.isAlive !== false,
-                isDisconnected: p.isDisconnected, // Pass disconnect status to watcher
-                grid: p.gameState?.boardGrid || p.gameState?.grid,
-                currentPiece: p.gameState?.currentPiece,
-                nextPieces: p.nextPieces || p.gameState?.nextPieces,
-                garbageQueue: p.garbageQueue,
-                garbagePending: p.garbageQueue?.getTotalLines?.() || 0,
-                color: p.color || this._getPlayerColor(p.steamId),
-            })));
-
+            // Note: setPlayers is only called when players join/leave, so map() here is acceptable
+            const watchPlayers = [];
+            for (let i = 0; i < playerCount; i++) {
+                const p = players[i];
+                if (!p) continue;
+                watchPlayers.push({
+                    id: p.steamId,
+                    name: p.name,
+                    frags: p.frags || 0,
+                    isAlive: p.isAlive !== false,
+                    isDisconnected: p.isDisconnected,
+                    grid: p.gameState?.boardGrid || p.gameState?.grid,
+                    currentPiece: p.gameState?.currentPiece,
+                    nextPieces: p.nextPieces || p.gameState?.nextPieces,
+                    garbageQueue: p.garbageQueue,
+                    garbagePending: p.garbageQueue?.getTotalLines?.() || 0,
+                    color: p.color || this._getPlayerColor(p.steamId),
+                });
+            }
+            this.opponentWatchManager.setPlayers(watchPlayers);
             this.lastPlayerSignature = signature;
         }
 
-        // Update scoreboard
-        const scoreboardPlayers = players.map((p) => ({
-            id: p.steamId,
-            name: p.name,
-            frags: p.frags || 0,
-            score: p.gameState?.score || 0,
-            lines: p.gameState?.lines || 0,
-            isAlive: p.isAlive !== false,
-            color: p.color || this._getPlayerColor(p.steamId),
-        }));
-        if (this.scoreboard) {
-            this.scoreboard.updatePlayers(scoreboardPlayers);
-        }
-        if (this.scoreboardOverlay) {
-            this.scoreboardOverlay.updatePlayers(scoreboardPlayers);
+        // PERF: Throttle scoreboard updates (4 times/sec is plenty)
+        const now = Date.now();
+        if (!this._lastScoreboardUpdate || now - this._lastScoreboardUpdate > 250) {
+            this._lastScoreboardUpdate = now;
+            const scoreboardPlayers = [];
+            for (let i = 0; i < playerCount; i++) {
+                const p = players[i];
+                if (!p) continue;
+                scoreboardPlayers.push({
+                    id: p.steamId,
+                    name: p.name,
+                    frags: p.frags || 0,
+                    score: p.gameState?.score || 0,
+                    lines: p.gameState?.lines || 0,
+                    isAlive: p.isAlive !== false,
+                    color: p.color || this._getPlayerColor(p.steamId),
+                });
+            }
+            if (this.scoreboard) {
+                this.scoreboard.updatePlayers(scoreboardPlayers);
+            }
+            if (this.scoreboardOverlay) {
+                this.scoreboardOverlay.updatePlayers(scoreboardPlayers);
+            }
         }
     }
 
@@ -1471,13 +1598,16 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         });
     }
 
-    _syncPlayerColors(players) {
+    _syncPlayerColors(players, playerCount = null) {
         if (!players) return;
-        players.forEach((player) => {
+        // PERF: Use playerCount if provided (for pre-allocated payloads)
+        const count = playerCount ?? players.length;
+        for (let i = 0; i < count; i++) {
+            const player = players[i];
             if (player?.steamId && player.color) {
                 this.playerColors.set(player.steamId, player.color);
             }
-        });
+        }
     }
 
     _getPlayerColor(steamId) {
@@ -1627,6 +1757,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 author: 'You',
                 text,
             });
+        }
+
+        // Add to persistent history
+        if (this.ffaGameState.chatHistory) {
+            this.ffaGameState.chatHistory.push(payload);
         }
 
         // Broadcast to others (handled by ffa game state listeners)

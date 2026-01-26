@@ -2,7 +2,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * BIOLUMINESCENCE THEME - Three.js 3D Implementation
  * ═══════════════════════════════════════════════════════════════════════════════
- * 
+ *
  * A mystical underground cave illuminated by glowing mushrooms, crystal clusters,
  * and floating spores. Features:
  * - Detailed mushroom geometry with stems, caps, and spiral patterns
@@ -10,7 +10,7 @@
  * - Rocky cave terrain with wet reflective surfaces
  * - Cave ceiling/walls for depth
  * - Volumetric atmosphere and bloom
- * 
+ *
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
@@ -28,12 +28,24 @@ import { BIOLUMINESCENCE_TETROMINOS } from './bioluminescence-tetrominos.js';
 // Quality Presets
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
-    Extreme: { mushroomCount: 20, crystalClusterCount: 6, sporeCount: 300, bloomStrength: 0.4, enablePost: true },
-    Ultra: { mushroomCount: 16, crystalClusterCount: 5, sporeCount: 200, bloomStrength: 0.35, enablePost: true },
-    High: { mushroomCount: 12, crystalClusterCount: 4, sporeCount: 150, bloomStrength: 0.3, enablePost: true },
-    Medium: { mushroomCount: 8, crystalClusterCount: 3, sporeCount: 100, bloomStrength: 0.25, enablePost: false },
-    Low: { mushroomCount: 5, crystalClusterCount: 2, sporeCount: 60, bloomStrength: 0.2, enablePost: false },
-    Minimal: { mushroomCount: 3, crystalClusterCount: 1, sporeCount: 30, bloomStrength: 0.15, enablePost: false },
+    Extreme: {
+        mushroomCount: 20, crystalClusterCount: 6, sporeCount: 300, bloomStrength: 0.4, enablePost: true,
+    },
+    Ultra: {
+        mushroomCount: 16, crystalClusterCount: 5, sporeCount: 200, bloomStrength: 0.35, enablePost: true,
+    },
+    High: {
+        mushroomCount: 12, crystalClusterCount: 4, sporeCount: 150, bloomStrength: 0.3, enablePost: true,
+    },
+    Medium: {
+        mushroomCount: 8, crystalClusterCount: 3, sporeCount: 100, bloomStrength: 0.25, enablePost: false,
+    },
+    Low: {
+        mushroomCount: 5, crystalClusterCount: 2, sporeCount: 60, bloomStrength: 0.2, enablePost: false,
+    },
+    Minimal: {
+        mushroomCount: 3, crystalClusterCount: 1, sporeCount: 30, bloomStrength: 0.15, enablePost: false,
+    },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -55,7 +67,7 @@ function createCaveRockPBRTextures() {
     const aoCanvas = document.createElement('canvas');
     const emissiveCanvas = document.createElement('canvas');
 
-    [heightCanvas, normalCanvas, colorCanvas, roughnessCanvas, aoCanvas, emissiveCanvas].forEach(c => {
+    [heightCanvas, normalCanvas, colorCanvas, roughnessCanvas, aoCanvas, emissiveCanvas].forEach((c) => {
         c.width = SIZE;
         c.height = SIZE;
     });
@@ -133,14 +145,18 @@ function createCaveRockPBRTextures() {
     const strength = 3.0;
     for (let y = 0; y < SIZE; y++) {
         for (let x = 0; x < SIZE; x++) {
-            const tl = getHeight(x - 1, y - 1), t = getHeight(x, y - 1), tr = getHeight(x + 1, y - 1);
-            const l = getHeight(x - 1, y), r = getHeight(x + 1, y);
-            const bl = getHeight(x - 1, y + 1), b = getHeight(x, y + 1), br = getHeight(x + 1, y + 1);
+            const tl = getHeight(x - 1, y - 1); const t = getHeight(x, y - 1); const
+                tr = getHeight(x + 1, y - 1);
+            const l = getHeight(x - 1, y); const
+                r = getHeight(x + 1, y);
+            const bl = getHeight(x - 1, y + 1); const b = getHeight(x, y + 1); const
+                br = getHeight(x + 1, y + 1);
 
             const dx = (tr + 2 * r + br) - (tl + 2 * l + bl);
             const dy = (bl + 2 * b + br) - (tl + 2 * t + tr);
 
-            let nx = -dx * strength, ny = -dy * strength, nz = 1.0;
+            let nx = -dx * strength; let ny = -dy * strength; let
+                nz = 1.0;
             const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
             nx /= len; ny /= len; nz /= len;
 
@@ -255,7 +271,7 @@ function createVinePBRTextures() {
     const emissiveCanvas = document.createElement('canvas');
     const heightCanvas = document.createElement('canvas');
 
-    [colorCanvas, normalCanvas, roughnessCanvas, emissiveCanvas, heightCanvas].forEach(c => {
+    [colorCanvas, normalCanvas, roughnessCanvas, emissiveCanvas, heightCanvas].forEach((c) => {
         c.width = SIZE;
         c.height = SIZE;
     });
@@ -294,7 +310,7 @@ function createVinePBRTextures() {
     for (let i = 0; i < 5; i++) { // Reduced from 8
         const y = Math.random() * SIZE;
         const lineY = y + (Math.random() - 0.5) * 10;
-        heightCtx.strokeStyle = `rgb(60, 60, 60)`;
+        heightCtx.strokeStyle = 'rgb(60, 60, 60)';
         heightCtx.lineWidth = 1 + Math.random() * 2;
         heightCtx.beginPath();
         heightCtx.moveTo(0, lineY);
@@ -329,14 +345,18 @@ function createVinePBRTextures() {
     const strength = 2.5;
     for (let y = 0; y < SIZE; y++) {
         for (let x = 0; x < SIZE; x++) {
-            const tl = getHeight(x - 1, y - 1), t = getHeight(x, y - 1), tr = getHeight(x + 1, y - 1);
-            const l = getHeight(x - 1, y), r = getHeight(x + 1, y);
-            const bl = getHeight(x - 1, y + 1), b = getHeight(x, y + 1), br = getHeight(x + 1, y + 1);
+            const tl = getHeight(x - 1, y - 1); const t = getHeight(x, y - 1); const
+                tr = getHeight(x + 1, y - 1);
+            const l = getHeight(x - 1, y); const
+                r = getHeight(x + 1, y);
+            const bl = getHeight(x - 1, y + 1); const b = getHeight(x, y + 1); const
+                br = getHeight(x + 1, y + 1);
 
             const dx = (tr + 2 * r + br) - (tl + 2 * l + bl);
             const dy = (bl + 2 * b + br) - (tl + 2 * t + tr);
 
-            let nx = -dx * strength, ny = -dy * strength, nz = 1.0;
+            let nx = -dx * strength; let ny = -dy * strength; let
+                nz = 1.0;
             const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
             nx /= len; ny /= len; nz /= len;
 
@@ -440,7 +460,7 @@ function createMushroomCapPBRTextures() {
     const emissiveCanvas = document.createElement('canvas');
     const heightCanvas = document.createElement('canvas');
 
-    [colorCanvas, normalCanvas, roughnessCanvas, emissiveCanvas, heightCanvas].forEach(c => {
+    [colorCanvas, normalCanvas, roughnessCanvas, emissiveCanvas, heightCanvas].forEach((c) => {
         c.width = SIZE;
         c.height = SIZE;
     });
@@ -451,7 +471,8 @@ function createMushroomCapPBRTextures() {
     const emissiveCtx = emissiveCanvas.getContext('2d');
     const heightCtx = heightCanvas.getContext('2d');
 
-    const centerX = SIZE / 2, centerY = SIZE / 2;
+    const centerX = SIZE / 2; const
+        centerY = SIZE / 2;
 
     // ─────────────────────────────────────────────────────────────────────────
     // 1. HEIGHT MAP - Radial pattern with gill ridges
@@ -498,14 +519,18 @@ function createMushroomCapPBRTextures() {
     const strength = 2.0;
     for (let y = 0; y < SIZE; y++) {
         for (let x = 0; x < SIZE; x++) {
-            const tl = getHeight(x - 1, y - 1), t = getHeight(x, y - 1), tr = getHeight(x + 1, y - 1);
-            const l = getHeight(x - 1, y), r = getHeight(x + 1, y);
-            const bl = getHeight(x - 1, y + 1), b = getHeight(x, y + 1), br = getHeight(x + 1, y + 1);
+            const tl = getHeight(x - 1, y - 1); const t = getHeight(x, y - 1); const
+                tr = getHeight(x + 1, y - 1);
+            const l = getHeight(x - 1, y); const
+                r = getHeight(x + 1, y);
+            const bl = getHeight(x - 1, y + 1); const b = getHeight(x, y + 1); const
+                br = getHeight(x + 1, y + 1);
 
             const dx = (tr + 2 * r + br) - (tl + 2 * l + bl);
             const dy = (bl + 2 * b + br) - (tl + 2 * t + tr);
 
-            let nx = -dx * strength, ny = -dy * strength, nz = 1.0;
+            let nx = -dx * strength; let ny = -dy * strength; let
+                nz = 1.0;
             const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
             nx /= len; ny /= len; nz /= len;
 
@@ -522,10 +547,10 @@ function createMushroomCapPBRTextures() {
     // 3. COLOR MAP - Mushroom surface with teal-cyan tones
     // ─────────────────────────────────────────────────────────────────────────
     const colorGrad = colorCtx.createRadialGradient(centerX, centerY, 0, centerX, centerY, SIZE / 2);
-    colorGrad.addColorStop(0, '#aaffee');   // Bright center
+    colorGrad.addColorStop(0, '#aaffee'); // Bright center
     colorGrad.addColorStop(0.3, '#66ddcc');
     colorGrad.addColorStop(0.7, '#339999');
-    colorGrad.addColorStop(1, '#226666');   // Darker edges
+    colorGrad.addColorStop(1, '#226666'); // Darker edges
     colorCtx.fillStyle = colorGrad;
     colorCtx.fillRect(0, 0, SIZE, SIZE);
 
@@ -552,7 +577,7 @@ function createMushroomCapPBRTextures() {
     // 5. EMISSIVE MAP - Glowing from within
     // ─────────────────────────────────────────────────────────────────────────
     const emissiveGrad = emissiveCtx.createRadialGradient(centerX, centerY, 0, centerX, centerY, SIZE / 2);
-    emissiveGrad.addColorStop(0, '#00ffdd');   // Bright glow center
+    emissiveGrad.addColorStop(0, '#00ffdd'); // Bright glow center
     emissiveGrad.addColorStop(0.4, '#00bbaa');
     emissiveGrad.addColorStop(0.8, '#006655');
     emissiveGrad.addColorStop(1, '#002222');
@@ -566,7 +591,6 @@ function createMushroomCapPBRTextures() {
         emissiveMap: new THREE.CanvasTexture(emissiveCanvas),
     };
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHADERS
@@ -629,7 +653,7 @@ const MushroomCapShader = {
             // Emissive output for bloom - extra boost during combo
             gl_FragColor = vec4(color * brightness * (1.5 + uPulseIntensity * 0.8), 1.0);
         }
-    `
+    `,
 };
 
 // Crystal Shader - Bright internal glow with sharp edges
@@ -687,7 +711,7 @@ const CrystalShader = {
             
             gl_FragColor = vec4(color * brightness, 0.85);
         }
-    `
+    `,
 };
 
 // Terrain Shader - Rocky with wet reflective surface
@@ -741,7 +765,7 @@ const TerrainShader = {
             
             gl_FragColor = vec4(color, 1.0);
         }
-    `
+    `,
 };
 
 // Spore Particle Shader
@@ -790,9 +814,8 @@ const SporeShader = {
             
             gl_FragColor = vec4(color * glow * 0.8, vAlpha * glow * 0.7); // Reduced brightness
         }
-    `
+    `,
 };
-
 
 // Contact Ripple Shader - For objects standing in water
 const ContactRippleShader = {
@@ -833,7 +856,7 @@ const ContactRippleShader = {
             
             gl_FragColor = vec4(color, alpha * 0.7);
         }
-    `
+    `,
 };
 
 // Shore/Edge Shader - Animated foam and reaction at water edge
@@ -896,7 +919,7 @@ const ShoreShader = {
             
             gl_FragColor = vec4(color, alpha);
         }
-    `
+    `,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1001,7 +1024,7 @@ export default class BioluminescenceTheme extends BaseTheme {
         // Atmospheric fog - very dark for cave feel
         const fogColor = new THREE.Color(0x020505); // Near black fog
         this.scene.fog = new THREE.FogExp2(fogColor, 0.0003);
-        this.scene.background = null;  // Let background sphere shader render!
+        this.scene.background = null; // Let background sphere shader render!
 
         // Camera - immersive view into the cave
         this.camera = new THREE.PerspectiveCamera(65, w / h, 0.1, 3000);
@@ -1124,8 +1147,8 @@ export default class BioluminescenceTheme extends BaseTheme {
         for (let i = 0; i < wallPos.count; i++) {
             const x = wallPos.getX(i);
             const y = wallPos.getY(i);
-            const noise = Math.sin(x * 0.02) * Math.cos(y * 0.03) * 40 +
-                Math.sin(x * 0.05 + y * 0.02) * 20;
+            const noise = Math.sin(x * 0.02) * Math.cos(y * 0.03) * 40
+                + Math.sin(x * 0.05 + y * 0.02) * 20;
             wallPos.setZ(i, noise);
         }
         wallGeo.computeVertexNormals();
@@ -1203,16 +1226,16 @@ export default class BioluminescenceTheme extends BaseTheme {
 
         // Displacement for rocky terrain matches getTerrainHeight logic
         const pos = geo.attributes.position;
-        const uv = geo.attributes.uv;
+        const { uv } = geo.attributes;
 
         for (let i = 0; i < pos.count; i++) {
             const x = pos.getX(i);
-            const z = pos.getY(i); // Plane is initially XY, so Z is Y here before rotation? 
+            const z = pos.getY(i); // Plane is initially XY, so Z is Y here before rotation?
             // Wait, PlaneGeometry is XY. We rotate X by -PI/2 later.
             // So local Y becomes World -Z. Local X becomes World X.
             // Let's use standard X, Y (which map to X, -Z in world)
 
-            // Actually, let's keep it simple. Vertex shader handles position usually, 
+            // Actually, let's keep it simple. Vertex shader handles position usually,
             // but we need CPU access for placement.
             // Let's assume standard UV mapping.
 
@@ -1277,9 +1300,9 @@ export default class BioluminescenceTheme extends BaseTheme {
         const waterRadius = 190;
         const waterGeo = new THREE.CircleGeometry(waterRadius, 64);
 
-        // Load water normals - using a procedural approach if texture not available, 
+        // Load water normals - using a procedural approach if texture not available,
         // but Water shader needs a texture usually. We'll use the rock normal map as a placeholder distorter
-        // or a procedural noise texture if available. 
+        // or a procedural noise texture if available.
         // Let's try to generate a normal map on the fly or use 'caveRockTextures.normalMap'.
         // Actually, Water.js requires a specific texture format optionally but works best with one.
         // We'll use the existing normal map we generated for fallback.
@@ -1292,7 +1315,7 @@ export default class BioluminescenceTheme extends BaseTheme {
             sunColor: 0xffffff,
             waterColor: 0x001e0f,
             distortionScale: 3.7,
-            fog: this.scene.fog !== undefined
+            fog: this.scene.fog !== undefined,
         });
 
         this.water.rotation.x = -Math.PI / 2;
@@ -1358,7 +1381,7 @@ export default class BioluminescenceTheme extends BaseTheme {
         for (let i = 0; i < count; i++) {
             this.createMushroom(
                 (Math.random() - 0.5) * 800,
-                (Math.random() - 0.5) * 600 - 100
+                (Math.random() - 0.5) * 600 - 100,
             );
         }
     }
@@ -1376,10 +1399,10 @@ export default class BioluminescenceTheme extends BaseTheme {
 
         // Stem - tapered cylinder
         const stemGeo = new THREE.CylinderGeometry(
-            capRadius * 0.15 * scale,  // top
-            capRadius * 0.25 * scale,  // bottom
+            capRadius * 0.15 * scale, // top
+            capRadius * 0.25 * scale, // bottom
             height * scale,
-            12
+            12,
         );
         const stemMat = new THREE.MeshStandardMaterial({
             color: 0x3a6565,
@@ -1395,9 +1418,12 @@ export default class BioluminescenceTheme extends BaseTheme {
         // Cap with PBR textures
         const capGeo = new THREE.SphereGeometry(
             capRadius * scale,
-            24, 16,
-            0, Math.PI * 2,
-            0, Math.PI * 0.5  // Top hemisphere only
+            24,
+            16,
+            0,
+            Math.PI * 2,
+            0,
+            Math.PI * 0.5, // Top hemisphere only
         );
         // Scale to make it flatter like a mushroom cap
         capGeo.scale(1.3, 0.5, 1.3);
@@ -1416,7 +1442,7 @@ export default class BioluminescenceTheme extends BaseTheme {
         });
 
         const cap = new THREE.Mesh(capGeo, capMat);
-        cap.position.y = height * scale;  // On top of stem
+        cap.position.y = height * scale; // On top of stem
         group.add(cap);
 
         // Gill underside (darker disc under cap)
@@ -1484,10 +1510,10 @@ export default class BioluminescenceTheme extends BaseTheme {
 
             // Elongated hexagonal prism
             const geo = new THREE.CylinderGeometry(
-                radius * 0.3,  // top - pointed
-                radius,        // bottom
+                radius * 0.3, // top - pointed
+                radius, // bottom
                 height,
-                6              // hexagonal
+                6, // hexagonal
             );
 
             const crystal = new THREE.Mesh(geo, crystalMat.clone());
@@ -1498,7 +1524,7 @@ export default class BioluminescenceTheme extends BaseTheme {
             crystal.position.set(
                 Math.cos(offsetAngle) * offsetDist,
                 height / 2,
-                Math.sin(offsetAngle) * offsetDist
+                Math.sin(offsetAngle) * offsetDist,
             );
 
             // Random tilt for natural look
@@ -1574,21 +1600,23 @@ export default class BioluminescenceTheme extends BaseTheme {
             for (let j = 0; j <= segments; j++) {
                 const t = j / segments;
                 // Natural curve with gravity sag
-                const sagFactor = Math.pow(t, 1.5);
+                const sagFactor = t ** 1.5;
                 const x = startX + Math.sin(t * Math.PI * 1.5 + i * 0.5) * 30 * t;
                 const y = 450 - sagFactor * length; // Start from 450 (above camera view)
                 const z = startZ + Math.cos(t * Math.PI + i * 0.3) * 20 * t;
-                basePoints.push({ x, y, z, t });
+                basePoints.push({
+                    x, y, z, t,
+                });
             }
 
             // Store vine data for animation
             const vineInfo = {
-                basePoints: basePoints,
-                startX: startX,
-                startZ: startZ,
-                length: length,
-                segments: segments,
-                thickness: thickness,
+                basePoints,
+                startX,
+                startZ,
+                length,
+                segments,
+                thickness,
                 phase: Math.random() * Math.PI * 2,
                 speed: 0.3 + Math.random() * 0.4,
                 mesh: null,
@@ -1597,7 +1625,7 @@ export default class BioluminescenceTheme extends BaseTheme {
             };
 
             // Create initial curve and geometry
-            const points = basePoints.map(p => new THREE.Vector3(p.x, p.y, p.z));
+            const points = basePoints.map((p) => new THREE.Vector3(p.x, p.y, p.z));
             const curve = new THREE.CatmullRomCurve3(points);
             const tubeGeo = new THREE.TubeGeometry(curve, segments * 4, thickness, 8, false);
 
@@ -1668,7 +1696,7 @@ export default class BioluminescenceTheme extends BaseTheme {
                 orb.mesh.position.set(
                     basePos.x + swayOffsetX,
                     basePos.y,
-                    basePos.z + swayOffsetZ
+                    basePos.z + swayOffsetZ,
                 );
                 // No light to update - removed for performance
             }
@@ -1704,12 +1732,12 @@ export default class BioluminescenceTheme extends BaseTheme {
             const light = new THREE.PointLight(
                 glowColors[i % glowColors.length],
                 0.3, // Reduced from 0.7
-                400
+                400,
             );
             light.position.set(
                 (Math.random() - 0.5) * 700,
                 Math.random() * 80 + 20,
-                (Math.random() - 0.5) * 500 - 100
+                (Math.random() - 0.5) * 500 - 100,
             );
             this.scene.add(light);
         }
@@ -1725,8 +1753,8 @@ export default class BioluminescenceTheme extends BaseTheme {
         const bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
             this.qualityPreset.bloomStrength,
-            0.2,   // radius (reduced)
-            0.9    // threshold (increased - only very bright things bloom)
+            0.2, // radius (reduced)
+            0.9, // threshold (increased - only very bright things bloom)
         );
         this.composer.addPass(bloomPass);
     }
@@ -1841,7 +1869,7 @@ export default class BioluminescenceTheme extends BaseTheme {
 
             // Update water
             if (this.water) {
-                this.water.material.uniforms['time'].value += 1.0 / 60.0;
+                this.water.material.uniforms.time.value += 1.0 / 60.0;
             }
 
             // Animate vines - gentle swaying
@@ -1884,7 +1912,7 @@ export default class BioluminescenceTheme extends BaseTheme {
     stop() {
         super.stop();
 
-        this.eventUnsubscribers.forEach(unsub => {
+        this.eventUnsubscribers.forEach((unsub) => {
             if (typeof unsub === 'function') unsub();
         });
         this.eventUnsubscribers = [];

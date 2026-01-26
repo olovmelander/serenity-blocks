@@ -2,10 +2,10 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * NIMBUS VEIL THEME - Three.js 3D Implementation
  * ═══════════════════════════════════════════════════════════════════════════════
- * 
+ *
  * A serene, atmospheric 3D theme featuring ethereal clouds drifting through
  * a mysterious void with spiritual, heavenly feeling.
- * 
+ *
  * Visual elements:
  * - Volumetric 3D clouds with soft fbm noise textures
  * - Floating dust particles in 3D space
@@ -14,7 +14,7 @@
  * - Bloom post-processing for ethereal glow
  * - Lock effect: Heavenly light burst
  * - Combo effect: Ethereal pulse waves
- * 
+ *
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
@@ -39,7 +39,7 @@ import {
     lightBurstVertexShader,
     lightBurstFragmentShader,
     sparkleVertexShader,
-    sparkleFragmentShader
+    sparkleFragmentShader,
 } from './nimbus-veil-shaders.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ const QUALITY_PRESETS = {
         enableBloom: false,
         bloomStrength: 0.4,
         maxPulseWaves: 2,
-        maxSparkles: 20
+        maxSparkles: 20,
     },
     Low: {
         cloudCount: 6,
@@ -65,7 +65,7 @@ const QUALITY_PRESETS = {
         enableBloom: true,
         bloomStrength: 0.5,
         maxPulseWaves: 3,
-        maxSparkles: 35
+        maxSparkles: 35,
     },
     Medium: {
         cloudCount: 8,
@@ -75,7 +75,7 @@ const QUALITY_PRESETS = {
         enableBloom: true,
         bloomStrength: 0.6,
         maxPulseWaves: 4,
-        maxSparkles: 50
+        maxSparkles: 50,
     },
     High: {
         cloudCount: 10,
@@ -85,7 +85,7 @@ const QUALITY_PRESETS = {
         enableBloom: true,
         bloomStrength: 0.7,
         maxPulseWaves: 5,
-        maxSparkles: 70
+        maxSparkles: 70,
     },
     Ultra: {
         cloudCount: 12,
@@ -95,7 +95,7 @@ const QUALITY_PRESETS = {
         enableBloom: true,
         bloomStrength: 0.8,
         maxPulseWaves: 6,
-        maxSparkles: 100
+        maxSparkles: 100,
     },
     Extreme: {
         cloudCount: 15,
@@ -105,8 +105,8 @@ const QUALITY_PRESETS = {
         enableBloom: true,
         bloomStrength: 0.9,
         maxPulseWaves: 8,
-        maxSparkles: 150
-    }
+        maxSparkles: 150,
+    },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -190,7 +190,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                 height: '100%',
                 zIndex: '-1',
                 pointerEvents: 'none',
-                opacity: '0'
+                opacity: '0',
             });
             document.body.insertBefore(container, document.body.firstChild);
         }
@@ -237,7 +237,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.renderer = new THREE.WebGLRenderer({
             antialias: this.getAntialiasEnabled(),
             alpha: true,
-            powerPreference: 'high-performance'
+            powerPreference: 'high-performance',
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
@@ -256,7 +256,7 @@ export default class NimbusVeilTheme extends BaseTheme {
             60,
             window.innerWidth / window.innerHeight,
             0.1,
-            500
+            500,
         );
         this.camera.position.set(0, 0, 30);
         this.camera.lookAt(0, 0, 0);
@@ -293,13 +293,13 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.starsMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: 0 },
-                uSize: { value: 3.0 }
+                uSize: { value: 3.0 },
             },
             vertexShader: starsVertexShader,
             fragmentShader: starsFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.stars = new THREE.Points(geometry, this.starsMaterial);
@@ -320,14 +320,14 @@ export default class NimbusVeilTheme extends BaseTheme {
                     uOpacity: { value: 0.4 + Math.random() * 0.3 },
                     uColor: { value: new THREE.Color(0.95, 0.97, 1.0) },
                     uNoiseScale: { value: 2.0 + Math.random() * 1.5 },
-                    uSoftness: { value: 0.3 + Math.random() * 0.4 }
+                    uSoftness: { value: 0.3 + Math.random() * 0.4 },
                 },
                 vertexShader: cloudVertexShader,
                 fragmentShader: cloudFragmentShader,
                 transparent: true,
                 depthWrite: false,
                 side: THREE.DoubleSide,
-                blending: THREE.NormalBlending
+                blending: THREE.NormalBlending,
             });
 
             const cloud = new THREE.Mesh(geometry, material);
@@ -336,7 +336,7 @@ export default class NimbusVeilTheme extends BaseTheme {
             cloud.position.set(
                 (Math.random() - 0.5) * 80,
                 (Math.random() - 0.5) * 40,
-                -10 - Math.random() * 40
+                -10 - Math.random() * 40,
             );
 
             // Random rotation
@@ -350,7 +350,7 @@ export default class NimbusVeilTheme extends BaseTheme {
                 speedY: (Math.random() - 0.5) * 0.1,
                 swaySpeed: 0.1 + Math.random() * 0.2,
                 swayAmplitude: 2 + Math.random() * 3,
-                baseOpacity: material.uniforms.uOpacity.value
+                baseOpacity: material.uniforms.uOpacity.value,
             };
 
             this.clouds.push(cloud);
@@ -385,13 +385,13 @@ export default class NimbusVeilTheme extends BaseTheme {
             uniforms: {
                 uTime: { value: 0 },
                 uSize: { value: 4.0 },
-                uIntensity: { value: 1.0 }
+                uIntensity: { value: 1.0 },
             },
             vertexShader: dustVertexShader,
             fragmentShader: dustFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.dustParticles = new THREE.Points(geometry, this.dustMaterial);
@@ -408,14 +408,14 @@ export default class NimbusVeilTheme extends BaseTheme {
             const material = new THREE.ShaderMaterial({
                 uniforms: {
                     uTime: { value: 0 },
-                    uOpacity: { value: 0.08 + Math.random() * 0.08 }
+                    uOpacity: { value: 0.08 + Math.random() * 0.08 },
                 },
                 vertexShader: mistVertexShader,
                 fragmentShader: mistFragmentShader,
                 transparent: true,
                 depthWrite: false,
                 side: THREE.DoubleSide,
-                blending: THREE.AdditiveBlending
+                blending: THREE.AdditiveBlending,
             });
 
             const mist = new THREE.Mesh(geometry, material);
@@ -423,12 +423,12 @@ export default class NimbusVeilTheme extends BaseTheme {
             mist.position.set(
                 (Math.random() - 0.5) * 60,
                 (Math.random() - 0.5) * 30,
-                -5 - Math.random() * 25
+                -5 - Math.random() * 25,
             );
 
             mist.userData = {
                 baseX: mist.position.x,
-                speedX: 0.1 + Math.random() * 0.2
+                speedX: 0.1 + Math.random() * 0.2,
             };
 
             this.mistSprites.push(mist);
@@ -443,13 +443,13 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.lightBurstMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 uProgress: { value: 0 },
-                uIntensity: { value: 1.0 }
+                uIntensity: { value: 1.0 },
             },
             vertexShader: lightBurstVertexShader,
             fragmentShader: lightBurstFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.lightBurst = new THREE.Mesh(geometry, this.lightBurstMaterial);
@@ -482,7 +482,7 @@ export default class NimbusVeilTheme extends BaseTheme {
             new THREE.Vector2(window.innerWidth, window.innerHeight),
             this.qualityPreset.bloomStrength,
             0.4,
-            0.85
+            0.85,
         );
         this.bloomPass = bloomPass;
         this.composer.addPass(bloomPass);
@@ -547,7 +547,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         });
 
         // Mist
-        this.mistMaterials.forEach(mat => {
+        this.mistMaterials.forEach((mat) => {
             mat.uniforms.uTime.value = this.time;
         });
     }
@@ -660,7 +660,7 @@ export default class NimbusVeilTheme extends BaseTheme {
     }
 
     animateMist(delta) {
-        this.mistSprites.forEach(mist => {
+        this.mistSprites.forEach((mist) => {
             const data = mist.userData;
 
             mist.position.x += data.speedX * delta;
@@ -691,7 +691,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.cloudGlowIntensity = THREE.MathUtils.lerp(
             this.cloudGlowIntensity,
             this.targetCloudGlow,
-            delta * 3
+            delta * 3,
         );
         this.targetCloudGlow *= 0.95;
 
@@ -752,14 +752,14 @@ export default class NimbusVeilTheme extends BaseTheme {
                 uTime: { value: 0 },
                 uProgress: { value: 0 },
                 uOpacity: { value: 0.6 * intensity },
-                uColor: { value: new THREE.Color(0.9, 0.95, 1.0) }
+                uColor: { value: new THREE.Color(0.9, 0.95, 1.0) },
             },
             vertexShader: pulseVertexShader,
             fragmentShader: pulseFragmentShader,
             transparent: true,
             depthWrite: false,
             side: THREE.DoubleSide,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         const wave = new THREE.Mesh(geometry, material);
@@ -900,11 +900,11 @@ export default class NimbusVeilTheme extends BaseTheme {
         }
 
         // Unsubscribe events
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Dispose pulse waves
-        this.pulseWaves.forEach(wave => {
+        this.pulseWaves.forEach((wave) => {
             this.scene.remove(wave);
             wave.geometry.dispose();
             wave.material.dispose();
@@ -926,11 +926,11 @@ export default class NimbusVeilTheme extends BaseTheme {
         }
 
         if (this.scene) {
-            this.scene.traverse(object => {
+            this.scene.traverse((object) => {
                 if (object.geometry) object.geometry.dispose();
                 if (object.material) {
                     if (Array.isArray(object.material)) {
-                        object.material.forEach(m => m.dispose());
+                        object.material.forEach((m) => m.dispose());
                     } else {
                         object.material.dispose();
                     }

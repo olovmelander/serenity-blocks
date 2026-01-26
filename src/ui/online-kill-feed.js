@@ -47,7 +47,7 @@ export class OnlineKillFeed {
 
         this.items.unshift(item);
 
-        // Limit to max items
+        // Verifiedt to max items
         if (this.items.length > this.maxItems) {
             this.items.pop();
         }
@@ -107,6 +107,43 @@ export class OnlineKillFeed {
     }
 
     /**
+     * Add a combo event
+     */
+    addCombo(event) {
+        this._addItem({
+            type: 'combo',
+            player: event.player,
+            count: event.count,
+            playerColor: event.playerColor,
+        });
+    }
+
+    /**
+     * Add a system event (join/leave/disconnect)
+     */
+    addSystemEvent(type, event) {
+        this._addItem({
+            type: type, // 'join', 'leave', 'disconnect'
+            player: event.player,
+            playerColor: event.playerColor,
+        });
+    }
+
+    _addItem(itemData) {
+        const item = {
+            ...itemData,
+            timestamp: Date.now(),
+            expiresAt: Date.now() + this.itemTTL,
+        };
+
+        this.items.unshift(item);
+        if (this.items.length > this.maxItems) this.items.pop();
+
+        this.render();
+        this._scheduleExpire();
+    }
+
+    /**
      * Render the kill feed
      */
     render() {
@@ -152,6 +189,39 @@ export class OnlineKillFeed {
                         <span class="cancel-icon">🛡️</span>
                         <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
                         <span class="cancel-note">cancelled ${item.linesCancelled} line${item.linesCancelled !== 1 ? 's' : ''}</span>
+                    </div>
+                `;
+            }
+
+            if (item.type === 'combo') {
+                const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
+                return `
+                    <div class="${classes.join(' ')} combo-event">
+                        <span class="combo-icon">🔥</span>
+                        <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
+                        <span class="combo-note">${item.count}x COMBO!</span>
+                    </div>
+                `;
+            }
+
+            if (item.type === 'join' || item.type === 'leave' || item.type === 'disconnect') {
+                const playerStyle = item.playerColor ? ` style="color: ${item.playerColor};"` : '';
+                let icon = '👋';
+                let action = 'joined';
+
+                if (item.type === 'leave') {
+                    icon = '🚪';
+                    action = 'left';
+                } else if (item.type === 'disconnect') {
+                    icon = '🔌';
+                    action = 'disconnected';
+                }
+
+                return `
+                    <div class="${classes.join(' ')} system-event">
+                        <span class="system-icon">${icon}</span>
+                        <span class="player"${playerStyle}>${this._escapeHtml(item.player)}</span>
+                        <span class="system-note">${action} the match</span>
                     </div>
                 `;
             }

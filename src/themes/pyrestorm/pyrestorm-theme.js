@@ -244,10 +244,10 @@ export default class PyrestormTheme extends BaseTheme {
 
         // Epic Background Effects
         this.stormClouds = null;
-        this.infernalAuroras = [];  // Multiple aurora ribbons
-        this.distantVolcanos = [];  // Array of distant volcano meshes
-        this.eruptionPhases = [];   // Track eruption animation per volcano
-        this.horizonRing = null;    // Horizon ring with fading edge
+        this.infernalAuroras = []; // Multiple aurora ribbons
+        this.distantVolcanos = []; // Array of distant volcano meshes
+        this.eruptionPhases = []; // Track eruption animation per volcano
+        this.horizonRing = null; // Horizon ring with fading edge
 
         // Lighting
         this.ambientLight = null;
@@ -263,12 +263,12 @@ export default class PyrestormTheme extends BaseTheme {
         this.qualityPreset = QUALITY_PRESETS.High;
 
         // Effects state
-        this.intensity = 0;           // 0-1, rises with gameplay activity
-        this.shake = 0;               // Screen shake intensity
-        this.lightningFlash = 0;      // Lightning flash intensity
+        this.intensity = 0; // 0-1, rises with gameplay activity
+        this.shake = 0; // Screen shake intensity
+        this.lightningFlash = 0; // Lightning flash intensity
         this.comboCount = 0;
-        this.surgeIntensity = 0;      // Lava surge effect
-        this.lavaPulse = 0;           // Brief lava glow on piece lock
+        this.surgeIntensity = 0; // Lava surge effect
+        this.lavaPulse = 0; // Brief lava glow on piece lock
 
         // Camera - positioned to see volcano from elevated side angle
         this.cameraBasePosition = new THREE.Vector3(0, 350, 1000);
@@ -322,7 +322,7 @@ export default class PyrestormTheme extends BaseTheme {
 
         // Phase 2: Environment
         this.createLavaOcean();
-        this.createVolcanoTerrain();  // Outer volcano slopes
+        this.createVolcanoTerrain(); // Outer volcano slopes
         this.createMountains();
         this.createSurroundings(); // New alien environment
 
@@ -370,7 +370,7 @@ export default class PyrestormTheme extends BaseTheme {
         this.renderer.setPixelRatio(this.getEffectivePixelRatio(2));
         this.renderer.setSize(width, height);
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 0.7;  // Reduced to prevent overexposure
+        this.renderer.toneMappingExposure = 0.7; // Reduced to prevent overexposure
 
         this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
         container.appendChild(this.renderer.domElement);
@@ -475,7 +475,7 @@ export default class PyrestormTheme extends BaseTheme {
         });
 
         this.lavaPlane = new THREE.Mesh(geometry, material);
-        this.lavaPlane.position.y = 155;  // Inside crater (volcano at y=-150 + crater floor at 300 = 150)
+        this.lavaPlane.position.y = 155; // Inside crater (volcano at y=-150 + crater floor at 300 = 150)
         this.lavaPlane.frustumCulled = false;
         this.scene.add(this.lavaPlane);
     }
@@ -578,9 +578,9 @@ export default class PyrestormTheme extends BaseTheme {
     // Crater Rim Mountains
     // ─────────────────────────────────────────────────────────────────────────
     createMountains() {
-        const peakCount = 16;  // Peaks around the rim
+        const peakCount = 16; // Peaks around the rim
         const detail = this.qualityPreset.mountainDetail;
-        const craterRadius = 600;  // Distance from center
+        const craterRadius = 600; // Distance from center
 
         for (let i = 0; i < peakCount; i++) {
             const angle = (i / peakCount) * Math.PI * 2;
@@ -609,7 +609,7 @@ export default class PyrestormTheme extends BaseTheme {
             });
 
             const mountain = new THREE.Mesh(geometry, material);
-            mountain.position.set(x, -50, z);  // Base at crater floor level
+            mountain.position.set(x, -50, z); // Base at crater floor level
             // Face slightly inward toward crater center
             mountain.rotation.y = angle + Math.PI + (Math.random() - 0.5) * 0.3;
 
@@ -647,7 +647,7 @@ export default class PyrestormTheme extends BaseTheme {
 
         for (let i = 0; i < spireCount; i++) {
             const angle = Math.random() * Math.PI * 2;
-            const dist = 1100 + Math.pow(Math.random(), 2) * 8000; // Biased towards center (1100-9100)
+            const dist = 1100 + Math.random() ** 2 * 8000; // Biased towards center (1100-9100)
 
             const x = Math.cos(angle) * dist;
             const z = Math.sin(angle) * dist;
@@ -673,7 +673,6 @@ export default class PyrestormTheme extends BaseTheme {
         styles.frustumCulled = false;
         this.mountains.push(styles); // Add to update list for uniforms
         this.scene.add(styles);
-
 
         // 2. Horizon Ring (Silhouette)
         // Pushed far back to R=12000 to avoid "Wall" effect
@@ -919,7 +918,9 @@ export default class PyrestormTheme extends BaseTheme {
         this.scene.add(this.emberSystem);
 
         // Store for updates
-        this.emberData = { positions, lifes, randoms, speeds, count };
+        this.emberData = {
+            positions, lifes, randoms, speeds, count,
+        };
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -945,7 +946,7 @@ export default class PyrestormTheme extends BaseTheme {
         // Shader for glowing rocks
         const material = new THREE.ShaderMaterial({
             uniforms: {
-                pointTexture: { value: new THREE.TextureLoader().load(this.assetBase + '/textures/sprites/spark1.png') }
+                pointTexture: { value: new THREE.TextureLoader().load(`${this.assetBase}/textures/sprites/spark1.png`) },
             },
             vertexShader: `
                 attribute float size;
@@ -977,20 +978,24 @@ export default class PyrestormTheme extends BaseTheme {
             blending: THREE.AdditiveBlending,
             depthWrite: false,
             transparent: true,
-            vertexColors: true
+            vertexColors: true,
         });
 
         this.explosionSystem = new THREE.Points(geometry, material);
         this.explosionSystem.frustumCulled = false;
         this.scene.add(this.explosionSystem);
 
-        this.explosionData = { positions, velocities, colors, lifes, sizes, count };
+        this.explosionData = {
+            positions, velocities, colors, lifes, sizes, count,
+        };
     }
 
     triggerVolcanicExplosion(intensity = 1) {
         if (!this.explosionData) return;
 
-        const { positions, velocities, colors, lifes, sizes, count } = this.explosionData;
+        const {
+            positions, velocities, colors, lifes, sizes, count,
+        } = this.explosionData;
         let spawned = 0;
         const spawnCount = Math.min(count, 1000 + intensity * 600); // 1000 to ~4000 particles
 
@@ -1040,7 +1045,6 @@ export default class PyrestormTheme extends BaseTheme {
 
                 // Removed overwrite
 
-
                 spawned++;
                 if (spawned >= spawnCount) break;
             }
@@ -1053,7 +1057,9 @@ export default class PyrestormTheme extends BaseTheme {
     updateExplosions(dt) {
         if (!this.explosionData) return;
 
-        const { positions, velocities, colors, lifes, sizes, count } = this.explosionData;
+        const {
+            positions, velocities, colors, lifes, sizes, count,
+        } = this.explosionData;
         const posAttr = this.explosionSystem.geometry.attributes.position;
         const colorAttr = this.explosionSystem.geometry.attributes.color;
 
@@ -1109,7 +1115,7 @@ export default class PyrestormTheme extends BaseTheme {
         const angle = Math.random() * Math.PI * 2;
         const radius = Math.random() * 250;
         positions[i3] = Math.cos(angle) * radius;
-        positions[i3 + 1] = 40 + Math.random() * 10;  // Crater lava level
+        positions[i3 + 1] = 40 + Math.random() * 10; // Crater lava level
         positions[i3 + 2] = Math.sin(angle) * radius;
 
         lifes[index] = Math.random();
@@ -1120,7 +1126,9 @@ export default class PyrestormTheme extends BaseTheme {
     updateEmbers(dt) {
         if (!this.emberSystem || !this.emberData) return;
 
-        const { positions, lifes, randoms, speeds, count } = this.emberData;
+        const {
+            positions, lifes, randoms, speeds, count,
+        } = this.emberData;
         const posAttr = this.emberSystem.geometry.getAttribute('position');
         const lifeAttr = this.emberSystem.geometry.getAttribute('aLife');
 
@@ -1220,12 +1228,12 @@ export default class PyrestormTheme extends BaseTheme {
 
         // Create a cylinder for the smoke plume
         const geometry = new THREE.CylinderGeometry(
-            baseRadius * 3,  // top radius (wider)
-            baseRadius,      // bottom radius
+            baseRadius * 3, // top radius (wider)
+            baseRadius, // bottom radius
             plumeHeight,
             segments,
             segments,
-            true  // open ended
+            true, // open ended
         );
 
         const material = new THREE.ShaderMaterial({
@@ -1244,7 +1252,7 @@ export default class PyrestormTheme extends BaseTheme {
         });
 
         this.smokePlume = new THREE.Mesh(geometry, material);
-        this.smokePlume.position.set(0, 155 + plumeHeight / 2, 0);  // Position above crater
+        this.smokePlume.position.set(0, 155 + plumeHeight / 2, 0); // Position above crater
         this.smokePlume.frustumCulled = false;
         this.scene.add(this.smokePlume);
 
@@ -1276,7 +1284,7 @@ export default class PyrestormTheme extends BaseTheme {
         });
 
         this.lavaBubbles = new THREE.Mesh(geometry, material);
-        this.lavaBubbles.position.y = 156;  // Just above lava surface
+        this.lavaBubbles.position.y = 156; // Just above lava surface
         this.lavaBubbles.frustumCulled = false;
         this.scene.add(this.lavaBubbles);
 
@@ -1295,11 +1303,11 @@ export default class PyrestormTheme extends BaseTheme {
 
         // Create an inverted cone for the rays (wider at top)
         const geometry = new THREE.ConeGeometry(
-            baseRadius * 2,  // base radius
+            baseRadius * 2, // base radius
             rayHeight,
             segments,
             1,
-            true  // open ended
+            true, // open ended
         );
 
         // Flip it so the wide part is at the top
@@ -1310,7 +1318,7 @@ export default class PyrestormTheme extends BaseTheme {
                 uTime: { value: 0 },
                 uIntensity: { value: 0 },
                 uRayColor: { value: new THREE.Color(1.0, 0.5, 0.2) },
-                uRayDensity: { value: 12.0 },  // Number of ray segments
+                uRayDensity: { value: 12.0 }, // Number of ray segments
             },
             vertexShader: GOD_RAYS_VERTEX_SHADER,
             fragmentShader: GOD_RAYS_FRAGMENT_SHADER,
@@ -1321,7 +1329,7 @@ export default class PyrestormTheme extends BaseTheme {
         });
 
         this.godRays = new THREE.Mesh(geometry, material);
-        this.godRays.position.set(0, 155 + rayHeight / 2, 0);  // Position above crater
+        this.godRays.position.set(0, 155 + rayHeight / 2, 0); // Position above crater
         this.godRays.frustumCulled = false;
         this.scene.add(this.godRays);
 
@@ -1343,8 +1351,8 @@ export default class PyrestormTheme extends BaseTheme {
                 uTime: { value: 0 },
                 uIntensity: { value: 0 },
                 uLightningFlash: { value: 0 },
-                uGlowColor: { value: new THREE.Color(1.0, 0.3, 0.05) },  // Lava glow
-                uCloudColor: { value: new THREE.Color(0.15, 0.05, 0.03) },  // Dark smoke
+                uGlowColor: { value: new THREE.Color(1.0, 0.3, 0.05) }, // Lava glow
+                uCloudColor: { value: new THREE.Color(0.15, 0.05, 0.03) }, // Dark smoke
             },
             vertexShader: STORM_CLOUDS_VERTEX_SHADER,
             fragmentShader: STORM_CLOUDS_FRAGMENT_SHADER,
@@ -1355,7 +1363,7 @@ export default class PyrestormTheme extends BaseTheme {
         });
 
         this.stormClouds = new THREE.Mesh(geometry, material);
-        this.stormClouds.position.y = 500;  // Elevated above the scene
+        this.stormClouds.position.y = 500; // Elevated above the scene
         this.stormClouds.frustumCulled = false;
         this.scene.add(this.stormClouds);
 
@@ -1384,11 +1392,11 @@ export default class PyrestormTheme extends BaseTheme {
 
             const material = new THREE.ShaderMaterial({
                 uniforms: {
-                    uTime: { value: i * 1.5 },  // Phase offset for variety
+                    uTime: { value: i * 1.5 }, // Phase offset for variety
                     uIntensity: { value: 0 },
-                    uColor1: { value: new THREE.Color(0.6, 0.05, 0.02) },   // Deep red
-                    uColor2: { value: new THREE.Color(1.0, 0.3, 0.0) },    // Orange
-                    uColor3: { value: new THREE.Color(1.0, 0.7, 0.2) },    // Gold
+                    uColor1: { value: new THREE.Color(0.6, 0.05, 0.02) }, // Deep red
+                    uColor2: { value: new THREE.Color(1.0, 0.3, 0.0) }, // Orange
+                    uColor3: { value: new THREE.Color(1.0, 0.7, 0.2) }, // Gold
                 },
                 vertexShader: INFERNAL_AURORA_VERTEX_SHADER,
                 fragmentShader: INFERNAL_AURORA_FRAGMENT_SHADER,
@@ -1403,7 +1411,7 @@ export default class PyrestormTheme extends BaseTheme {
             // Position high in the sky with varying heights
             const baseHeight = 2500 + i * 300 + Math.random() * 200;
             aurora.position.set(0, baseHeight, -3000 - i * 500);
-            aurora.rotation.x = -0.3 - Math.random() * 0.2;  // Tilt slightly
+            aurora.rotation.x = -0.3 - Math.random() * 0.2; // Tilt slightly
             aurora.rotation.y = angle;
             aurora.frustumCulled = false;
 
@@ -1426,7 +1434,7 @@ export default class PyrestormTheme extends BaseTheme {
 
         for (let i = 0; i < volcanoCount; i++) {
             // Distribute around the horizon
-            const angle = (i / volcanoCount) * Math.PI * 1.5 - Math.PI * 0.75;  // 270 degrees arc
+            const angle = (i / volcanoCount) * Math.PI * 1.5 - Math.PI * 0.75; // 270 degrees arc
             const distance = horizonDistance + Math.random() * 2000;
 
             const x = Math.sin(angle) * distance;
@@ -1441,14 +1449,14 @@ export default class PyrestormTheme extends BaseTheme {
                 peakHeight,
                 16,
                 8,
-                true  // open ended
+                true, // open ended
             );
 
             // Add some irregularity to the volcano shape
             const positions = geometry.attributes.position.array;
             for (let j = 0; j < positions.length; j += 3) {
                 const py = positions[j + 1];
-                if (py > -peakHeight * 0.4) {  // Not at the very bottom
+                if (py > -peakHeight * 0.4) { // Not at the very bottom
                     const noise = (Math.random() - 0.5) * baseWidth * 0.15;
                     positions[j] += noise;
                     positions[j + 2] += noise * 0.5;
@@ -1458,12 +1466,12 @@ export default class PyrestormTheme extends BaseTheme {
 
             const material = new THREE.ShaderMaterial({
                 uniforms: {
-                    uTime: { value: i * 2.0 },  // Offset for variety
+                    uTime: { value: i * 2.0 }, // Offset for variety
                     uIntensity: { value: 0 },
-                    uEruptionPhase: { value: 0.3 + Math.random() * 0.7 },  // Initial eruption state
-                    uSilhouetteColor: { value: new THREE.Color(0.03, 0.01, 0.01) },  // Dark silhouette
-                    uLavaColor: { value: new THREE.Color(1.0, 0.3, 0.0) },  // Flowing lava
-                    uGlowColor: { value: new THREE.Color(1.0, 0.5, 0.1) },  // Crater glow
+                    uEruptionPhase: { value: 0.3 + Math.random() * 0.7 }, // Initial eruption state
+                    uSilhouetteColor: { value: new THREE.Color(0.03, 0.01, 0.01) }, // Dark silhouette
+                    uLavaColor: { value: new THREE.Color(1.0, 0.3, 0.0) }, // Flowing lava
+                    uGlowColor: { value: new THREE.Color(1.0, 0.5, 0.1) }, // Crater glow
                 },
                 vertexShader: DISTANT_VOLCANO_VERTEX_SHADER,
                 fragmentShader: DISTANT_VOLCANO_FRAGMENT_SHADER,
@@ -1472,7 +1480,7 @@ export default class PyrestormTheme extends BaseTheme {
             });
 
             const volcano = new THREE.Mesh(geometry, material);
-            volcano.position.set(x, -100, z);  // Positioned at horizon
+            volcano.position.set(x, -100, z); // Positioned at horizon
             volcano.frustumCulled = false;
 
             this.scene.add(volcano);
@@ -1482,7 +1490,7 @@ export default class PyrestormTheme extends BaseTheme {
             this.eruptionPhases.push({
                 phase: Math.random(),
                 speed: 0.2 + Math.random() * 0.3,
-                active: Math.random() > 0.3,  // 70% chance of active eruption
+                active: Math.random() > 0.3, // 70% chance of active eruption
             });
         }
 
@@ -1508,7 +1516,7 @@ export default class PyrestormTheme extends BaseTheme {
                 new THREE.Vector2(width, height),
                 this.qualityPreset.bloomStrength,
                 this.qualityPreset.bloomRadius,
-                this.qualityPreset.bloomThreshold
+                this.qualityPreset.bloomThreshold,
             );
             this.composer.addPass(this.bloomPass);
         }
@@ -1634,13 +1642,13 @@ export default class PyrestormTheme extends BaseTheme {
         this.shake = Math.max(0, this.shake - dt * 15);
         this.lightningFlash = Math.max(0, this.lightningFlash - dt * 8);
         this.surgeIntensity = Math.max(0, this.surgeIntensity - dt * 0.5);
-        this.lavaPulse = Math.max(0, this.lavaPulse - dt * 2.5);  // Fast decay for snappy pulse
+        this.lavaPulse = Math.max(0, this.lavaPulse - dt * 2.5); // Fast decay for snappy pulse
 
         // Cinematic Camera Hover (Randomized Orbit)
         // Oscillate with wider sweeps to see around the game board
         const angleParam = this.time * 0.12;
-        const orbitAngle = Math.sin(angleParam) * 0.6          // Wide sweep (+/- 34 deg)
-            + Math.cos(angleParam * 0.5) * 0.2;   // Natural secondary drift
+        const orbitAngle = Math.sin(angleParam) * 0.6 // Wide sweep (+/- 34 deg)
+            + Math.cos(angleParam * 0.5) * 0.2; // Natural secondary drift
 
         const currentRadius = 1100
             + Math.sin(this.time * 0.15) * 80
@@ -1662,7 +1670,7 @@ export default class PyrestormTheme extends BaseTheme {
         }
 
         // DYNAMIC OFF-CENTER FRAMING
-        // Slowly drift the look-at point horizontally so the volcano 
+        // Slowly drift the look-at point horizontally so the volcano
         // spends more time peeking from the left/right of the game board.
         const focusDrift = Math.sin(this.time * 0.15) * 200;
         const targetFocus = this.cameraLookAt.clone();
@@ -1684,7 +1692,7 @@ export default class PyrestormTheme extends BaseTheme {
             this.skybox.material.uniforms.uIntensity.value = this.intensity;
         }
 
-        this.mountains.forEach(m => {
+        this.mountains.forEach((m) => {
             if (m.material.uniforms) {
                 m.material.uniforms.uTime.value = this.time;
                 m.material.uniforms.uIntensity.value = this.intensity;
@@ -1755,7 +1763,7 @@ export default class PyrestormTheme extends BaseTheme {
                 eruption.phase += dt * eruption.speed;
                 if (eruption.phase > 1) {
                     eruption.phase = 0;
-                    eruption.active = Math.random() > 0.2;  // 80% chance to stay active
+                    eruption.active = Math.random() > 0.2; // 80% chance to stay active
                     eruption.speed = 0.15 + Math.random() * 0.35;
                 }
 
@@ -1807,7 +1815,7 @@ export default class PyrestormTheme extends BaseTheme {
         this.isActive = false;
 
         // Unsubscribe events
-        this.eventUnsubscribers.forEach(unsub => {
+        this.eventUnsubscribers.forEach((unsub) => {
             if (typeof unsub === 'function') unsub();
         });
         this.eventUnsubscribers = [];
@@ -1817,11 +1825,11 @@ export default class PyrestormTheme extends BaseTheme {
 
         // Dispose Three.js resources
         if (this.scene) {
-            this.scene.traverse(obj => {
+            this.scene.traverse((obj) => {
                 if (obj.geometry) obj.geometry.dispose();
                 if (obj.material) {
                     if (Array.isArray(obj.material)) {
-                        obj.material.forEach(m => m.dispose());
+                        obj.material.forEach((m) => m.dispose());
                     } else {
                         obj.material.dispose();
                     }

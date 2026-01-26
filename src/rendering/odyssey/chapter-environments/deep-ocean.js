@@ -1,6 +1,6 @@
 /**
  * @fileoverview Deep Ocean Environment - Chapter 2 Visual Theme
- * 
+ *
  * Enhanced Version:
  * - Realistic Water Surface (Gerstner Waves + Caustics) from Below
  * - Volumetric Light Rays (God Rays)
@@ -21,9 +21,9 @@ export const DEEP_OCEAN_CONFIG = {
     yEnd: 52.5,
     transitionZone: 0.005, // Extended fade out for maximum overlap
     colors: {
-        primary: 0x0066ff,    // Ocean blue
-        secondary: 0x00ccff,  // Bioluminescent cyan
-        accent: 0xff66ff,     // Jellyfish glow
+        primary: 0x0066ff, // Ocean blue
+        secondary: 0x00ccff, // Bioluminescent cyan
+        accent: 0xff66ff, // Jellyfish glow
         background: 0x001030, // Deep ocean dark
     },
 };
@@ -279,7 +279,7 @@ export function createDeepOceanEnvironment(options = {}) {
     group.add(rays);
 
     // 4. Bioluminescent Jellyfish (reduced count for cleaner look)
-    const jellyfishCount = Math.floor((options.particleCount || 500) / 25);  // Fewer jellyfish
+    const jellyfishCount = Math.floor((options.particleCount || 500) / 25); // Fewer jellyfish
     const jellyfish = createBioluminescentJellyfish(uniforms, jellyfishCount);
     group.add(jellyfish);
 
@@ -306,7 +306,7 @@ function createOceanGradient(uniforms) {
             uColorTop: { value: new THREE.Color(0x004466) },
             uColorMid: { value: new THREE.Color(0x001530) },
             uColorBottom: { value: new THREE.Color(0x000510) },
-            uOpacity: { value: 1.0 }
+            uOpacity: { value: 1.0 },
         },
         vertexShader: `
             varying vec3 vPosition;
@@ -339,7 +339,7 @@ function createOceanGradient(uniforms) {
         `,
         side: THREE.BackSide,
         depthWrite: false,
-        transparent: true
+        transparent: true,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = -100;
@@ -355,14 +355,14 @@ function createWaterSurface(uniforms, surfaceOffsetY = 20) {
         uniforms: {
             uTime: uniforms.uTime,
             uSurfaceColor: { value: new THREE.Color(0x007799) },
-            uDeepColor: { value: new THREE.Color(0x003355) }
+            uDeepColor: { value: new THREE.Color(0x003355) },
         },
         vertexShader: waterVertexShader,
         fragmentShader: waterFragmentShader,
         transparent: true,
         side: THREE.DoubleSide,
         depthWrite: false, // Don't occlude particles behind it if viewed from weird angle
-        blending: THREE.AdditiveBlending // Glowy look from below
+        blending: THREE.AdditiveBlending, // Glowy look from below
     });
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -387,7 +387,7 @@ function createGodRays(uniforms) {
         transparent: true,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
-        side: THREE.DoubleSide
+        side: THREE.DoubleSide,
     });
 
     // Fewer, cleaner rays
@@ -396,7 +396,7 @@ function createGodRays(uniforms) {
         const ray = new THREE.Mesh(geometry, material);
 
         // Spread evenly across the scene
-        const angle = (i / rayCount) * Math.PI * 0.8 - Math.PI * 0.4;  // Spread in front
+        const angle = (i / rayCount) * Math.PI * 0.8 - Math.PI * 0.4; // Spread in front
         const radius = 30 + i * 20;
         ray.position.x = Math.sin(angle) * radius;
         ray.position.z = -40 - i * 15;
@@ -424,11 +424,11 @@ function createBioluminescentJellyfish(uniforms, count) {
 
     // Jellyfish colors - soft bioluminescent palette
     const jellyColors = [
-        0x00ffff,  // Cyan
-        0x00aaff,  // Light blue
-        0xff88ff,  // Pink
-        0x88ffaa,  // Soft green
-        0xaaddff,  // Pale blue
+        0x00ffff, // Cyan
+        0x00aaff, // Light blue
+        0xff88ff, // Pink
+        0x88ffaa, // Soft green
+        0xaaddff, // Pale blue
     ];
 
     for (let i = 0; i < count; i++) {
@@ -441,7 +441,7 @@ function createBioluminescentJellyfish(uniforms, count) {
         // Jellyfish body - semi-transparent dome
         const bodyGeo = new THREE.SphereGeometry(size, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.6);
         const bodyMat = new THREE.MeshBasicMaterial({
-            color: color,
+            color,
             transparent: true,
             opacity: 0.4,
             side: THREE.DoubleSide,
@@ -455,20 +455,20 @@ function createBioluminescentJellyfish(uniforms, count) {
         // Inner glow core
         const coreGeo = new THREE.SphereGeometry(size * 0.5, 16, 12);
         const coreMat = new THREE.MeshBasicMaterial({
-            color: color,
+            color,
             transparent: true,
             opacity: 0.6,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
         });
         const core = new THREE.Mesh(coreGeo, coreMat);
-        core.position.y = -size * 0.1;  // Core slightly inside dome
+        core.position.y = -size * 0.1; // Core slightly inside dome
         jellyGroup.add(core);
 
         // Glow sprite for ambient light
         const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
             map: glowTexture,
-            color: color,
+            color,
             transparent: true,
             opacity: 0.5,
             blending: THREE.AdditiveBlending,
@@ -481,7 +481,7 @@ function createBioluminescentJellyfish(uniforms, count) {
         jellyGroup.position.set(
             (Math.random() - 0.5) * 120,
             (Math.random() - 0.5) * 35,
-            -15 - Math.random() * 70
+            -15 - Math.random() * 70,
         );
 
         jellyGroup.userData = {
@@ -565,7 +565,7 @@ function createCircularTexture(innerOpacity = 1.0, outerOpacity = 0) {
     gradient.addColorStop(0, `rgba(255, 255, 255, ${innerOpacity})`);
     gradient.addColorStop(0.4, `rgba(200, 230, 255, ${innerOpacity * 0.7})`);
     gradient.addColorStop(0.7, `rgba(150, 200, 255, ${outerOpacity * 2})`);
-    gradient.addColorStop(1, `rgba(100, 150, 200, 0)`);
+    gradient.addColorStop(1, 'rgba(100, 150, 200, 0)');
 
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 64, 64);
@@ -581,10 +581,10 @@ function createPlanktonParticles(uniforms, count) {
 
     // Bioluminescent plankton colors
     const planktonColors = [
-        new THREE.Color(0x00ffaa),  // Cyan-green
-        new THREE.Color(0x00ddff),  // Light blue
-        new THREE.Color(0x88ffcc),  // Soft green
-        new THREE.Color(0xaaffff),  // Pale cyan
+        new THREE.Color(0x00ffaa), // Cyan-green
+        new THREE.Color(0x00ddff), // Light blue
+        new THREE.Color(0x88ffcc), // Soft green
+        new THREE.Color(0xaaffff), // Pale cyan
     ];
 
     for (let i = 0; i < count; i++) {
@@ -626,7 +626,7 @@ function createPlanktonParticles(uniforms, count) {
 }
 
 export function updateDeepOceanEnvironment(group, delta, time) {
-    const uniforms = group.userData.uniforms;
+    const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
     }
@@ -634,8 +634,8 @@ export function updateDeepOceanEnvironment(group, delta, time) {
     // Update jellies with pulsing animation
     const jellies = group.getObjectByName('jellyfish-group');
     if (jellies) {
-        jellies.children.forEach(j => {
-            const userData = j.userData;
+        jellies.children.forEach((j) => {
+            const { userData } = j;
 
             // Gentle floating motion
             j.position.y += Math.sin(time * userData.speed + userData.t) * delta * 0.5;

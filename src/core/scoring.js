@@ -12,7 +12,7 @@ import { SCORE_VALUES, LEVEL_SPEEDS, QUADRA_SCORING } from './constants.js';
  * - Cascade bonus: 200 * (complexity-1)²
  * - Perfect clear bonus: depth*1250 (or depth²*500 for >4)
  * - Level multiplier: +10% per level (additive)
- * 
+ *
  * @param {number} linesCleared - Number of lines cleared (depth)
  * @param {number} level - Current game level
  * @param {number} complexity - Cascade count (1 = first clear, 2+ = cascades)
@@ -34,7 +34,7 @@ export function calculateQuadraLineScore(linesCleared, level, complexity = 1, is
     // Cascade/complexity bonus: 200 * (complexity-1)²
     // complexity=1 means first clear (no cascade bonus)
     // complexity=2+ means cascades occurred
-    const cascadeBonus = QUADRA_SCORING.CASCADE_BASE * Math.pow(Math.max(0, complexity - 1), 2);
+    const cascadeBonus = QUADRA_SCORING.CASCADE_BASE * Math.max(0, complexity - 1) ** 2;
 
     // Perfect clear bonus (board is now empty)
     let perfectBonus = 0;

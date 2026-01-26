@@ -1,4 +1,3 @@
-
 /**
  * WebGL Meadow Grass - Instanced rendering for swaying grass blades
  */
@@ -14,7 +13,7 @@ export default class WebGLMeadowGrass {
     init() {
         // Try WebGL 2 first
         let gl = this.canvas.getContext('webgl2', { alpha: true });
-        let isWebGL2 = !!gl;
+        const isWebGL2 = !!gl;
 
         if (!gl) {
             gl = this.canvas.getContext('webgl', { alpha: true });
@@ -217,11 +216,11 @@ export default class WebGLMeadowGrass {
 
         // Triangle Strip
         const vertices = new Float32Array([
-            -w / 2, 0.0,      // 0
-            w / 2, 0.0,       // 1
-            -w / 3, h * 0.5,    // 2
-            w / 3, h * 0.5,     // 3
-            0.0, h          // 4
+            -w / 2, 0.0, // 0
+            w / 2, 0.0, // 1
+            -w / 3, h * 0.5, // 2
+            w / 3, h * 0.5, // 3
+            0.0, h, // 4
         ]);
 
         this.buffers = {};
@@ -251,7 +250,7 @@ export default class WebGLMeadowGrass {
     }
 
     generateGrass(count, width, height) {
-        const gl = this.gl;
+        const { gl } = this;
         this.bladeCount = count;
 
         const offsets = new Float32Array(count * 3);
@@ -310,7 +309,7 @@ export default class WebGLMeadowGrass {
 
     render(time, windStrength = 0.0) {
         if (!this.gl || !this.program || this.bladeCount === 0) return;
-        const gl = this.gl;
+        const { gl } = this;
 
         gl.useProgram(this.program);
 

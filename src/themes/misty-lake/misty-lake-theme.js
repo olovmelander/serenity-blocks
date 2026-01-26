@@ -2,7 +2,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * MISTY LAKE THEME - Enhanced Three.js 3D Implementation
  * ═══════════════════════════════════════════════════════════════════════════════
- * 
+ *
  * An immersive, calming 3D lake scene with:
  * - Animated water surface with caustics, waves, and moon reflections
  * - Volumetric ground-hugging mist with god rays
@@ -17,9 +17,9 @@
  * - Silhouette trees framing the scene
  * - Deep camera breathing and subtle vignette
  * - Enhanced game event effects
- * 
+ *
  * Color Palette: Moonlit blues, misty purples, lantern golds
- * 
+ *
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
@@ -65,17 +65,17 @@ import {
 
 const COLORS = {
     // Sky - richer gradients, improved depth
-    skyTop: new THREE.Color(0x020510),       // Almost black blue
-    skyMiddle: new THREE.Color(0x0a1530),    // Deep twilight
-    skyHorizon: new THREE.Color(0x2a3860),   // Misty purple-blue
+    skyTop: new THREE.Color(0x020510), // Almost black blue
+    skyMiddle: new THREE.Color(0x0a1530), // Deep twilight
+    skyHorizon: new THREE.Color(0x2a3860), // Misty purple-blue
 
     // Water - more mysterious
-    waterDeep: new THREE.Color(0x000510),    // Very deep, almost black
+    waterDeep: new THREE.Color(0x000510), // Very deep, almost black
     waterShallow: new THREE.Color(0x102540), // Dark moonlit surface
     moonReflection: new THREE.Color(0xd0eeff), // Bright silvery cyan
 
     // Mist - subtle contrast
-    mistColor: new THREE.Color(0x405070),    // Cool slate blue
+    mistColor: new THREE.Color(0x405070), // Cool slate blue
 
     // Mountains
     mountainFar: new THREE.Color(0x203050),
@@ -83,15 +83,15 @@ const COLORS = {
     mountainNear: new THREE.Color(0x051020),
 
     // Moon
-    moonColor: new THREE.Color(0xfff5e0),    // Creamy warm white
-    moonHalo: new THREE.Color(0xc0b0ff),     // Soft lavender
+    moonColor: new THREE.Color(0xfff5e0), // Creamy warm white
+    moonHalo: new THREE.Color(0xc0b0ff), // Soft lavender
 
     // Aurora - more vibrant
-    auroraGreen: new THREE.Color(0x20ffaa),  // Turqouise green
+    auroraGreen: new THREE.Color(0x20ffaa), // Turqouise green
     auroraPurple: new THREE.Color(0x9040ff), // Deep violet
 
     // Trees
-    treeColor: new THREE.Color(0x020508),    // Sharp silhouettes
+    treeColor: new THREE.Color(0x020508), // Sharp silhouettes
 
     // Fireflies
     fireflyColor: new THREE.Color(0xffaa40), // Golden orange
@@ -375,7 +375,7 @@ export default class MistyLakeTheme extends BaseTheme {
             50,
             window.innerWidth / window.innerHeight,
             0.1,
-            600
+            600,
         );
         this.camera.position.copy(this.baseCameraPos);
         this.camera.lookAt(0, 2, -25);
@@ -408,9 +408,15 @@ export default class MistyLakeTheme extends BaseTheme {
 
     createMountains() {
         const layerConfigs = [
-            { z: -80, scale: 1.0, fogAmount: 0.75, color: COLORS.mountainFar },
-            { z: -55, scale: 1.15, fogAmount: 0.5, color: COLORS.mountainMid },
-            { z: -35, scale: 1.3, fogAmount: 0.25, color: COLORS.mountainNear },
+            {
+                z: -80, scale: 1.0, fogAmount: 0.75, color: COLORS.mountainFar,
+            },
+            {
+                z: -55, scale: 1.15, fogAmount: 0.5, color: COLORS.mountainMid,
+            },
+            {
+                z: -35, scale: 1.3, fogAmount: 0.25, color: COLORS.mountainNear,
+            },
         ];
 
         layerConfigs.forEach((config, index) => {
@@ -575,7 +581,6 @@ export default class MistyLakeTheme extends BaseTheme {
         this.mainGroup.add(this.water);
     }
 
-
     createMistLayers() {
         const layerCount = this.qualityPreset.mistLayers;
 
@@ -608,7 +613,6 @@ export default class MistyLakeTheme extends BaseTheme {
             this.mainGroup.add(mist);
         }
     }
-
 
     createFireflies() {
         const count = this.qualityPreset.fireflyCount;
@@ -696,13 +700,25 @@ export default class MistyLakeTheme extends BaseTheme {
     createTrees() {
         const treeConfigs = [
             // Left side
-            { x: -58, y: 18, z: -12, width: 18, height: 42 },
-            { x: -45, y: 14, z: -6, width: 14, height: 32 },
-            { x: -65, y: 22, z: -28, width: 22, height: 50 },
+            {
+                x: -58, y: 18, z: -12, width: 18, height: 42,
+            },
+            {
+                x: -45, y: 14, z: -6, width: 14, height: 32,
+            },
+            {
+                x: -65, y: 22, z: -28, width: 22, height: 50,
+            },
             // Right side
-            { x: 55, y: 16, z: -10, width: 16, height: 38 },
-            { x: 65, y: 20, z: -24, width: 20, height: 45 },
-            { x: 48, y: 12, z: -4, width: 12, height: 28 },
+            {
+                x: 55, y: 16, z: -10, width: 16, height: 38,
+            },
+            {
+                x: 65, y: 20, z: -24, width: 20, height: 45,
+            },
+            {
+                x: 48, y: 12, z: -4, width: 12, height: 28,
+            },
         ];
 
         treeConfigs.forEach((config) => {
@@ -775,7 +791,7 @@ export default class MistyLakeTheme extends BaseTheme {
             new THREE.Vector2(window.innerWidth, window.innerHeight),
             this.qualityPreset.bloomStrength,
             0.35,
-            0.85
+            0.85,
         );
         this.composer.addPass(this.bloomPass);
     }
@@ -839,8 +855,6 @@ export default class MistyLakeTheme extends BaseTheme {
             this.fireflyMaterial.uniforms.uTime.value = this.time;
         }
 
-
-
         // Mist layers
         this.mistMaterials.forEach((mat, i) => {
             mat.uniforms.uTime.value = this.time + i * 10;
@@ -896,7 +910,7 @@ export default class MistyLakeTheme extends BaseTheme {
         this.glowIntensity = THREE.MathUtils.lerp(
             this.glowIntensity,
             this.targetGlowIntensity,
-            delta * 2.5
+            delta * 2.5,
         );
         this.targetGlowIntensity *= 0.94;
 
@@ -1140,7 +1154,7 @@ export default class MistyLakeTheme extends BaseTheme {
         const intersects = this.raycaster.intersectObject(this.water);
 
         if (intersects.length > 0) {
-            const point = intersects[0].point;
+            const { point } = intersects[0];
             // Only create ripples if within reasonable bounds
             if (Math.abs(point.x) < 70 && Math.abs(point.z) > -80 && Math.abs(point.z) < 20) {
                 this.createRipple(0.2, point.x, point.z);
@@ -1203,7 +1217,6 @@ export default class MistyLakeTheme extends BaseTheme {
         this.mountainMaterials = [];
         this.trees = [];
         this.treeMaterials = [];
-
 
         super.stop();
         console.log('[MistyLake] Theme stopped');

@@ -1,6 +1,6 @@
 /**
  * Solar Eclipse Theme Shaders
- * 
+ *
  * Premium shader effects for the most impressive theme experience.
  */
 

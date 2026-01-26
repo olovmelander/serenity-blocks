@@ -471,63 +471,63 @@ export class MultiPlayerState {
         }
 
         switch (config.endCondition) {
-            case 'frags': {
-                const maxFrags = Math.max(...this.frags);
-                const topPlayerIndex = this.frags.indexOf(maxFrags);
-                if (maxFrags >= config.endConditionValue) {
+        case 'frags': {
+            const maxFrags = Math.max(...this.frags);
+            const topPlayerIndex = this.frags.indexOf(maxFrags);
+            if (maxFrags >= config.endConditionValue) {
+                this.endMatch(topPlayerIndex);
+                return true;
+            }
+            break;
+        }
+
+        case 'time': {
+            const elapsed = (Date.now() - this.matchStartTime) / 1000 / 60; // minutes
+            if (elapsed >= config.endConditionValue) {
+                if (config.isTeamMode) {
+                    // Winner is team with highest aggregate score
+                    const teamScores = {};
+                    for (let i = 0; i < this.numPlayers; i++) {
+                        const teamId = config.playerTeams[i];
+                        teamScores[teamId] = (teamScores[teamId] || 0) + this.players[i].score;
+                    }
+                    const winnerTeamId = Object.keys(teamScores).reduce((a, b) => (teamScores[a] > teamScores[b] ? a : b));
+                    this.endMatchByTeam(parseInt(winnerTeamId));
+                } else {
+                    // Winner is player with highest score
+                    const scores = this.players.map((p) => p.score);
+                    const topPlayerIndex = scores.indexOf(Math.max(...scores));
                     this.endMatch(topPlayerIndex);
+                }
+                return true;
+            }
+            break;
+        }
+
+        case 'points': {
+            const targetScore = config.endConditionValue * 1000;
+            for (let i = 0; i < this.numPlayers; i++) {
+                if (this.players[i].score >= targetScore) {
+                    this.endMatch(i);
                     return true;
                 }
-                break;
             }
+            break;
+        }
 
-            case 'time': {
-                const elapsed = (Date.now() - this.matchStartTime) / 1000 / 60; // minutes
-                if (elapsed >= config.endConditionValue) {
-                    if (config.isTeamMode) {
-                        // Winner is team with highest aggregate score
-                        const teamScores = {};
-                        for (let i = 0; i < this.numPlayers; i++) {
-                            const teamId = config.playerTeams[i];
-                            teamScores[teamId] = (teamScores[teamId] || 0) + this.players[i].score;
-                        }
-                        const winnerTeamId = Object.keys(teamScores).reduce((a, b) => (teamScores[a] > teamScores[b] ? a : b));
-                        this.endMatchByTeam(parseInt(winnerTeamId));
-                    } else {
-                        // Winner is player with highest score
-                        const scores = this.players.map((p) => p.score);
-                        const topPlayerIndex = scores.indexOf(Math.max(...scores));
-                        this.endMatch(topPlayerIndex);
-                    }
+        case 'lines': {
+            for (let i = 0; i < this.numPlayers; i++) {
+                if (this.players[i].totalLinesCleared >= config.endConditionValue) {
+                    this.endMatch(i);
                     return true;
                 }
-                break;
             }
+            break;
+        }
 
-            case 'points': {
-                const targetScore = config.endConditionValue * 1000;
-                for (let i = 0; i < this.numPlayers; i++) {
-                    if (this.players[i].score >= targetScore) {
-                        this.endMatch(i);
-                        return true;
-                    }
-                }
-                break;
-            }
-
-            case 'lines': {
-                for (let i = 0; i < this.numPlayers; i++) {
-                    if (this.players[i].totalLinesCleared >= config.endConditionValue) {
-                        this.endMatch(i);
-                        return true;
-                    }
-                }
-                break;
-            }
-
-            case 'never':
-                // Never end automatically
-                break;
+        case 'never':
+            // Never end automatically
+            break;
         }
 
         return false;

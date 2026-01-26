@@ -2,7 +2,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * MISTY LAKE SHADERS - Enhanced Three.js GLSL Shaders
  * ═══════════════════════════════════════════════════════════════════════════════
- * 
+ *
  * Immersive, calming lake atmosphere with:
  * - Animated water with caustics, reflections, and lily pads
  * - Volumetric ground-hugging mist with god rays
@@ -14,7 +14,7 @@
  * - Occasional birds flying across
  * - Falling petals/leaves
  * - Enhanced ripple and light burst effects
- * 
+ *
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 

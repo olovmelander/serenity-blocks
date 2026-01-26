@@ -393,31 +393,31 @@ export class LevelSelectUI {
             if (!this.isVisible) return;
 
             switch (e.key) {
-                case 'Escape':
-                    e.preventDefault();
-                    this.hide();
-                    break;
-                case 'ArrowLeft':
-                    e.preventDefault();
-                    this._navigateLevel(-1);
-                    break;
-                case 'ArrowRight':
-                    e.preventDefault();
-                    this._navigateLevel(1);
-                    break;
-                case 'ArrowUp':
-                    e.preventDefault();
-                    this._navigateChapter(-1);
-                    break;
-                case 'ArrowDown':
-                    e.preventDefault();
-                    this._navigateChapter(1);
-                    break;
-                case 'Enter':
-                case ' ':
-                    e.preventDefault();
-                    this._selectCurrentLevel();
-                    break;
+            case 'Escape':
+                e.preventDefault();
+                this.hide();
+                break;
+            case 'ArrowLeft':
+                e.preventDefault();
+                this._navigateLevel(-1);
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                this._navigateLevel(1);
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                this._navigateChapter(-1);
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                this._navigateChapter(1);
+                break;
+            case 'Enter':
+            case ' ':
+                e.preventDefault();
+                this._selectCurrentLevel();
+                break;
             }
         };
 
@@ -523,7 +523,7 @@ export class LevelSelectUI {
      * @private
      */
     _updateChapterInfo() {
-        const chapter = CHAPTER_CONFIGS.find(c => c.id === this.selectedChapter);
+        const chapter = CHAPTER_CONFIGS.find((c) => c.id === this.selectedChapter);
         if (!chapter) return;
 
         this.chapterTitle.textContent = `Chapter ${chapter.id}: ${chapter.name}`;
@@ -531,7 +531,7 @@ export class LevelSelectUI {
 
         // Calculate chapter progress
         const levels = getLevelsByChapter(this.selectedChapter);
-        const completedCount = levels.filter(l => this.completedLevels.has(l.id)).length;
+        const completedCount = levels.filter((l) => this.completedLevels.has(l.id)).length;
         const totalStars = levels.reduce((sum, l) => {
             const completion = this.completedLevels.get(l.id);
             return sum + (completion?.stars || 0);

@@ -63,7 +63,7 @@ export default class ThreeJSIntroRenderer {
             S: [[0, 0], [1, 0], [-1, 1], [0, 1]],
             Z: [[-1, 0], [0, 0], [0, 1], [1, 1]],
             J: [[-1, 1], [-1, 0], [0, 0], [1, 0]],
-            L: [[1, 1], [1, 0], [0, 0], [-1, 0]]
+            L: [[1, 1], [1, 0], [0, 0], [-1, 0]],
         };
 
         // Vibrant Chromadelic Palette
@@ -91,7 +91,7 @@ export default class ThreeJSIntroRenderer {
                 canvas: this.canvas,
                 alpha: true,
                 antialias: true,
-                powerPreference: "high-performance"
+                powerPreference: 'high-performance',
             });
             this.renderer.setSize(window.innerWidth, window.innerHeight);
             // PERFORMANCE: Cap pixel ratio at 1.5 for intro (temporary screen, reduces fill rate)
@@ -166,7 +166,7 @@ export default class ThreeJSIntroRenderer {
         const sizes = new Float32Array(starCount);
         const colors = new Float32Array(starCount * 3);
 
-        const colorPalette = this.GALAXY_COLORS.map(c => new THREE.Color(c));
+        const colorPalette = this.GALAXY_COLORS.map((c) => new THREE.Color(c));
 
         for (let i = 0; i < starCount; i++) {
             const i3 = i * 3;
@@ -194,7 +194,7 @@ export default class ThreeJSIntroRenderer {
             transparent: true,
             opacity: 0.8,
             blending: THREE.AdditiveBlending,
-            sizeAttenuation: true
+            sizeAttenuation: true,
         });
 
         this.starSystem = new THREE.Points(geometry, material);
@@ -210,7 +210,7 @@ export default class ThreeJSIntroRenderer {
         const sizes = new Float32Array(particleCount);
         const randoms = new Float32Array(particleCount); // For phase offset
 
-        const colorPalette = this.GALAXY_COLORS.map(c => new THREE.Color(c));
+        const colorPalette = this.GALAXY_COLORS.map((c) => new THREE.Color(c));
 
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
@@ -285,7 +285,7 @@ export default class ThreeJSIntroRenderer {
             `,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.particles = new THREE.Points(geometry, material);
@@ -342,7 +342,7 @@ export default class ThreeJSIntroRenderer {
             `,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.sparkleLayer = new THREE.Points(geometry, material);
@@ -362,7 +362,7 @@ export default class ThreeJSIntroRenderer {
                 uniforms: {
                     uTime: { value: 0 },
                     uColor: { value: new THREE.Color(cloudColors[i % cloudColors.length]) },
-                    uSeed: { value: Math.random() * 100 }
+                    uSeed: { value: Math.random() * 100 },
                 },
                 vertexShader: `
                     varying vec2 vUv;
@@ -395,15 +395,15 @@ export default class ThreeJSIntroRenderer {
                 transparent: true,
                 depthWrite: false,
                 blending: THREE.AdditiveBlending,
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
             });
 
             const cloud = new THREE.Mesh(geometry, material);
             // Position clouds firmly in upper left corner
             cloud.position.set(
-                -45 - Math.random() * 20,  // Far left (-45 to -65)
-                25 + Math.random() * 15,   // High up (25 to 40)
-                -40 - Math.random() * 30
+                -45 - Math.random() * 20, // Far left (-45 to -65)
+                25 + Math.random() * 15, // High up (25 to 40)
+                -40 - Math.random() * 30,
             );
             cloud.rotation.z = Math.random() * Math.PI;
             cloud.userData = { driftSpeed: 0.02 + Math.random() * 0.03 };
@@ -420,7 +420,7 @@ export default class ThreeJSIntroRenderer {
         const geometry = new THREE.PlaneGeometry(80, 80);
         const material = new THREE.ShaderMaterial({
             uniforms: {
-                uTime: { value: 0 }
+                uTime: { value: 0 },
             },
             vertexShader: `
                 varying vec2 vUv;
@@ -453,7 +453,7 @@ export default class ThreeJSIntroRenderer {
             `,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.lensFlare = new THREE.Mesh(geometry, material);
@@ -467,7 +467,7 @@ export default class ThreeJSIntroRenderer {
      */
     spawnShootingStar() {
         // Find an inactive pooled shooting star
-        const pooled = this.shootingStarPool.find(s => !s.userData.active);
+        const pooled = this.shootingStarPool.find((s) => !s.userData.active);
         if (!pooled) return; // All pool items busy, skip
 
         const startX = (Math.random() - 0.5) * 100 + 30;
@@ -478,11 +478,11 @@ export default class ThreeJSIntroRenderer {
         pooled.userData.velocity.set(
             -0.8 - Math.random() * 0.5,
             -0.5 - Math.random() * 0.3,
-            0
+            0,
         );
 
         // Reset trail positions
-        const trailLength = pooled.userData.trailLength;
+        const { trailLength } = pooled.userData;
         const positions = pooled.geometry.attributes.position.array;
 
         for (let i = 0; i < trailLength; i++) {
@@ -513,7 +513,7 @@ export default class ThreeJSIntroRenderer {
         // Chromadelic color palette for glowing spots
         const spotColors = [
             '#FF3366', '#00FFFF', '#FFFF00', '#FF6600',
-            '#9933FF', '#00FF66', '#FF0099', '#3399FF'
+            '#9933FF', '#00FF66', '#FF0099', '#3399FF',
         ];
 
         for (let i = 0; i < 6; i++) {
@@ -524,8 +524,12 @@ export default class ThreeJSIntroRenderer {
 
             // Base gradient - deep purple cosmic void
             const gradient = ctx.createRadialGradient(
-                size / 2, size / 2, 0,
-                size / 2, size / 2, size * 0.7
+                size / 2,
+                size / 2,
+                0,
+                size / 2,
+                size / 2,
+                size * 0.7,
             );
             gradient.addColorStop(0, '#1a0033');
             gradient.addColorStop(0.3, '#0d001a');
@@ -544,7 +548,7 @@ export default class ThreeJSIntroRenderer {
 
                 const spotGrad = ctx.createRadialGradient(x, y, 0, x, y, r);
                 spotGrad.addColorStop(0, color);
-                spotGrad.addColorStop(0.5, color + '80');
+                spotGrad.addColorStop(0.5, `${color}80`);
                 spotGrad.addColorStop(1, 'transparent');
                 ctx.fillStyle = spotGrad;
                 ctx.fillRect(x - r, y - r, r * 2, r * 2);
@@ -567,9 +571,9 @@ export default class ThreeJSIntroRenderer {
         // PERFORMANCE: Half-resolution bloom (imperceptible difference, major perf gain)
         const bloomPass = new UnrealBloomPass(
             new THREE.Vector2(Math.floor(window.innerWidth / 2), Math.floor(window.innerHeight / 2)),
-            0.6,   // strength - toned down to prevent over-shine
-            0.4,   // radius - moderate glow spread
-            0.85   // threshold - higher threshold = fewer bright spots bloom
+            0.6, // strength - toned down to prevent over-shine
+            0.4, // radius - moderate glow spread
+            0.85, // threshold - higher threshold = fewer bright spots bloom
         );
         this.composer.addPass(bloomPass);
         this.bloomPass = bloomPass;
@@ -590,10 +594,10 @@ export default class ThreeJSIntroRenderer {
             bevelEnabled: true,
             bevelThickness: 0.15,
             bevelSize: 0.15,
-            bevelSegments: 3
+            bevelSegments: 3,
         };
 
-        shapeKeys.forEach(type => {
+        shapeKeys.forEach((type) => {
             const color = this.COLORS[type];
             const threeColor = new THREE.Color(color);
             const threeShape = this.createTetrominoShape(type);
@@ -617,7 +621,7 @@ export default class ThreeJSIntroRenderer {
                 envMapIntensity: 0.5, // Environment reflections
                 transparent: true,
                 opacity: 0.9,
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
             });
 
             // 3. Edges (Glow Outline) - Brighter for crystal effect
@@ -626,14 +630,14 @@ export default class ThreeJSIntroRenderer {
                 color: new THREE.Color(color).multiplyScalar(1.5), // Brighter edges
                 transparent: true,
                 opacity: 0.9,
-                linewidth: 3
+                linewidth: 3,
             });
 
             this.cachedResources[type] = {
                 geometry,
                 material,
                 edgesGeometry,
-                edgeMaterial
+                edgeMaterial,
             };
         });
 
@@ -662,7 +666,7 @@ export default class ThreeJSIntroRenderer {
                 size: 0.5,
                 transparent: true,
                 opacity: 0,
-                blending: THREE.AdditiveBlending
+                blending: THREE.AdditiveBlending,
             });
 
             const points = new THREE.Points(geometry, material);
@@ -670,7 +674,7 @@ export default class ThreeJSIntroRenderer {
             points.userData = {
                 velocities: Array(count).fill(null).map(() => ({ x: 0, y: 0, z: 0 })),
                 life: 0,
-                active: false
+                active: false,
             };
 
             this.scene.add(points);
@@ -714,7 +718,7 @@ export default class ThreeJSIntroRenderer {
                 `,
                 transparent: true,
                 depthWrite: false,
-                blending: THREE.AdditiveBlending
+                blending: THREE.AdditiveBlending,
             });
 
             const trail = new THREE.Points(geometry, material);
@@ -723,7 +727,7 @@ export default class ThreeJSIntroRenderer {
                 velocity: new THREE.Vector3(),
                 life: 0,
                 trailLength,
-                active: false
+                active: false,
             };
 
             this.scene.add(trail);
@@ -770,17 +774,17 @@ export default class ThreeJSIntroRenderer {
         // Radius rough estimation: 4 (original max extent) * scale
         mesh.userData = {
             velocity: new THREE.Vector3(
-                (Math.random() - 0.5) * 0.05,  // Slower drift
+                (Math.random() - 0.5) * 0.05, // Slower drift
                 (Math.random() - 0.5) * 0.05,
-                (Math.random() - 0.5) * 0.025
+                (Math.random() - 0.5) * 0.025,
             ),
             rotationSpeed: new THREE.Vector3(
-                (Math.random() - 0.5) * 0.01,  // Slower rotation too
+                (Math.random() - 0.5) * 0.01, // Slower rotation too
                 (Math.random() - 0.5) * 0.01,
-                (Math.random() - 0.5) * 0.01
+                (Math.random() - 0.5) * 0.01,
             ),
             radius: 4 * scale,
-            type: type
+            type,
         };
 
         // Determine Spawn Position (Outside Frustum)
@@ -794,28 +798,27 @@ export default class ThreeJSIntroRenderer {
 
         const side = Math.floor(Math.random() * 4);
         switch (side) {
-            case 0: // Top
-                mesh.position.set((Math.random() - 0.5) * bounds.width, halfH + margin, z);
-                mesh.userData.velocity.y = -Math.abs(mesh.userData.velocity.y) - 0.025; // Force Down (slower)
-                break;
-            case 1: // Bottom
-                mesh.position.set((Math.random() - 0.5) * bounds.width, -halfH - margin, z);
-                mesh.userData.velocity.y = Math.abs(mesh.userData.velocity.y) + 0.025; // Force Up (slower)
-                break;
-            case 2: // Left
-                mesh.position.set(-halfW - margin, (Math.random() - 0.5) * bounds.height, z);
-                mesh.userData.velocity.x = Math.abs(mesh.userData.velocity.x) + 0.025; // Force Right (slower)
-                break;
-            case 3: // Right
-                mesh.position.set(halfW + margin, (Math.random() - 0.5) * bounds.height, z);
-                mesh.userData.velocity.x = -Math.abs(mesh.userData.velocity.x) - 0.025; // Force Left (slower)
-                break;
+        case 0: // Top
+            mesh.position.set((Math.random() - 0.5) * bounds.width, halfH + margin, z);
+            mesh.userData.velocity.y = -Math.abs(mesh.userData.velocity.y) - 0.025; // Force Down (slower)
+            break;
+        case 1: // Bottom
+            mesh.position.set((Math.random() - 0.5) * bounds.width, -halfH - margin, z);
+            mesh.userData.velocity.y = Math.abs(mesh.userData.velocity.y) + 0.025; // Force Up (slower)
+            break;
+        case 2: // Left
+            mesh.position.set(-halfW - margin, (Math.random() - 0.5) * bounds.height, z);
+            mesh.userData.velocity.x = Math.abs(mesh.userData.velocity.x) + 0.025; // Force Right (slower)
+            break;
+        case 3: // Right
+            mesh.position.set(halfW + margin, (Math.random() - 0.5) * bounds.height, z);
+            mesh.userData.velocity.x = -Math.abs(mesh.userData.velocity.x) - 0.025; // Force Left (slower)
+            break;
         }
 
         this.scene.add(mesh);
         this.activeTetrominos.push(mesh);
     }
-
 
     /**
      * Creates a THREE.Shape representing the 2D contour of the tetromino.
@@ -830,112 +833,112 @@ export default class ThreeJSIntroRenderer {
         const shape = new THREE.Shape();
 
         switch (type) {
-            case 'I':
-                // [- - 0 +] (4 blocks long)
-                // Width 8 (-4 to 4), Height 2 (-1 to 1)
-                shape.moveTo(-4, -1);
-                shape.lineTo(4, -1);
-                shape.lineTo(4, 1);
-                shape.lineTo(-4, 1);
-                shape.lineTo(-4, -1);
-                break;
+        case 'I':
+            // [- - 0 +] (4 blocks long)
+            // Width 8 (-4 to 4), Height 2 (-1 to 1)
+            shape.moveTo(-4, -1);
+            shape.lineTo(4, -1);
+            shape.lineTo(4, 1);
+            shape.lineTo(-4, 1);
+            shape.lineTo(-4, -1);
+            break;
 
-            case 'O':
-                // 2x2 Square
-                // Width 4 (-2 to 2), Height 4 (-2 to 2)
-                shape.moveTo(-2, -2);
-                shape.lineTo(2, -2);
-                shape.lineTo(2, 2);
-                shape.lineTo(-2, 2);
-                shape.lineTo(-2, -2);
-                break;
+        case 'O':
+            // 2x2 Square
+            // Width 4 (-2 to 2), Height 4 (-2 to 2)
+            shape.moveTo(-2, -2);
+            shape.lineTo(2, -2);
+            shape.lineTo(2, 2);
+            shape.lineTo(-2, 2);
+            shape.lineTo(-2, -2);
+            break;
 
-            case 'T':
-                //      []
-                //    [][][]
-                // Bottom: -3 to 3, y=-1 to 1.
-                // Top: -1 to 1, y=1 to 3.
-                shape.moveTo(-3, -1);
-                shape.lineTo(3, -1);
-                shape.lineTo(3, 1);
-                shape.lineTo(1, 1);
-                shape.lineTo(1, 3);
-                shape.lineTo(-1, 3);
-                shape.lineTo(-1, 1);
-                shape.lineTo(-3, 1);
-                shape.lineTo(-3, -1);
-                break;
+        case 'T':
+            //      []
+            //    [][][]
+            // Bottom: -3 to 3, y=-1 to 1.
+            // Top: -1 to 1, y=1 to 3.
+            shape.moveTo(-3, -1);
+            shape.lineTo(3, -1);
+            shape.lineTo(3, 1);
+            shape.lineTo(1, 1);
+            shape.lineTo(1, 3);
+            shape.lineTo(-1, 3);
+            shape.lineTo(-1, 1);
+            shape.lineTo(-3, 1);
+            shape.lineTo(-3, -1);
+            break;
 
-            case 'S':
-                //      [][]  (Top Right)
-                //    [][]    (Bottom Left)
-                // Top: x=-1 to 3, y=0 to 2
-                // Bottom: x=-3 to 1, y=-2 to 0
-                shape.moveTo(-3, -2);
-                shape.lineTo(1, -2);
-                shape.lineTo(1, 0); // Inner corner
-                shape.lineTo(3, 0);
-                shape.lineTo(3, 2);
-                shape.lineTo(-1, 2);
-                shape.lineTo(-1, 0); // Inner corner
-                shape.lineTo(-3, 0);
-                shape.lineTo(-3, -2);
-                break;
+        case 'S':
+            //      [][]  (Top Right)
+            //    [][]    (Bottom Left)
+            // Top: x=-1 to 3, y=0 to 2
+            // Bottom: x=-3 to 1, y=-2 to 0
+            shape.moveTo(-3, -2);
+            shape.lineTo(1, -2);
+            shape.lineTo(1, 0); // Inner corner
+            shape.lineTo(3, 0);
+            shape.lineTo(3, 2);
+            shape.lineTo(-1, 2);
+            shape.lineTo(-1, 0); // Inner corner
+            shape.lineTo(-3, 0);
+            shape.lineTo(-3, -2);
+            break;
 
-            case 'Z':
-                //    [][]  (Top Left)
-                //      [][]  (Bottom Right)
-                // Top: x=-3 to 1, y=0 to 2
-                // Bottom: x=-1 to 3, y=-2 to 0
-                shape.moveTo(-1, -2);
-                shape.lineTo(3, -2);
-                shape.lineTo(3, 0);
-                shape.lineTo(1, 0); // Inner corner
-                shape.lineTo(1, 2);
-                shape.lineTo(-3, 2);
-                shape.lineTo(-3, 0);
-                shape.lineTo(-1, 0); // Inner corner
-                shape.lineTo(-1, -2);
-                break;
+        case 'Z':
+            //    [][]  (Top Left)
+            //      [][]  (Bottom Right)
+            // Top: x=-3 to 1, y=0 to 2
+            // Bottom: x=-1 to 3, y=-2 to 0
+            shape.moveTo(-1, -2);
+            shape.lineTo(3, -2);
+            shape.lineTo(3, 0);
+            shape.lineTo(1, 0); // Inner corner
+            shape.lineTo(1, 2);
+            shape.lineTo(-3, 2);
+            shape.lineTo(-3, 0);
+            shape.lineTo(-1, 0); // Inner corner
+            shape.lineTo(-1, -2);
+            break;
 
-            case 'J':
-                //    []      (Top Left relative to stick?) No, J has tail left
-                //    []
-                //  [][]
-                // Stick: x=0 to 2, y=-3 to 3
-                // Tail: x=-2 to 0, y=-3 to -1
-                shape.moveTo(-2, -3);
-                shape.lineTo(2, -3);
-                shape.lineTo(2, 3);
-                shape.lineTo(0, 3);
-                shape.lineTo(0, -1); // Inner corner
-                shape.lineTo(-2, -1);
-                shape.lineTo(-2, -3);
-                break;
+        case 'J':
+            //    []      (Top Left relative to stick?) No, J has tail left
+            //    []
+            //  [][]
+            // Stick: x=0 to 2, y=-3 to 3
+            // Tail: x=-2 to 0, y=-3 to -1
+            shape.moveTo(-2, -3);
+            shape.lineTo(2, -3);
+            shape.lineTo(2, 3);
+            shape.lineTo(0, 3);
+            shape.lineTo(0, -1); // Inner corner
+            shape.lineTo(-2, -1);
+            shape.lineTo(-2, -3);
+            break;
 
-            case 'L':
-                //      []
-                //      []
-                //  [][]
-                // Stick: x=-2 to 0, y=-3 to 3
-                // Tail: x=0 to 2, y=-3 to -1
-                shape.moveTo(-2, -3);
-                shape.lineTo(2, -3);
-                shape.lineTo(2, -1);
-                shape.lineTo(0, -1); // Inner corner
-                shape.lineTo(0, 3);
-                shape.lineTo(-2, 3);
-                shape.lineTo(-2, -3);
-                break;
+        case 'L':
+            //      []
+            //      []
+            //  [][]
+            // Stick: x=-2 to 0, y=-3 to 3
+            // Tail: x=0 to 2, y=-3 to -1
+            shape.moveTo(-2, -3);
+            shape.lineTo(2, -3);
+            shape.lineTo(2, -1);
+            shape.lineTo(0, -1); // Inner corner
+            shape.lineTo(0, 3);
+            shape.lineTo(-2, 3);
+            shape.lineTo(-2, -3);
+            break;
 
-            default:
-                // Default box
-                shape.moveTo(-2, -2);
-                shape.lineTo(2, -2);
-                shape.lineTo(2, 2);
-                shape.lineTo(-2, 2);
-                shape.lineTo(-2, -2);
-                break;
+        default:
+            // Default box
+            shape.moveTo(-2, -2);
+            shape.lineTo(2, -2);
+            shape.lineTo(2, 2);
+            shape.lineTo(-2, 2);
+            shape.lineTo(-2, -2);
+            break;
         }
 
         return shape;
@@ -1130,7 +1133,7 @@ export default class ThreeJSIntroRenderer {
                     this.createCollisionEffect(
                         (t1.position.x + t2.position.x) * 0.5,
                         (t1.position.y + t2.position.y) * 0.5,
-                        (t1.position.z + t2.position.z) * 0.5
+                        (t1.position.z + t2.position.z) * 0.5,
                     );
                 }
             }
@@ -1158,12 +1161,12 @@ export default class ThreeJSIntroRenderer {
 
     createCollisionEffect(x, y, z) {
         // PERFORMANCE: Use pooled particle system instead of creating new geometry
-        const pooled = this.collisionEffectPool.find(p => !p.userData.active);
+        const pooled = this.collisionEffectPool.find((p) => !p.userData.active);
         if (!pooled) return; // All pool items busy, skip effect
 
         const count = 8;
         const positions = pooled.geometry.attributes.position.array;
-        const velocities = pooled.userData.velocities;
+        const { velocities } = pooled.userData;
 
         for (let i = 0; i < count; i++) {
             positions[i * 3] = x;
@@ -1231,7 +1234,7 @@ export default class ThreeJSIntroRenderer {
             // Update trail positions (shift each point, add new head position)
             const positions = star.geometry.attributes.position.array;
             const vel = star.userData.velocity;
-            const trailLength = star.userData.trailLength;
+            const { trailLength } = star.userData;
 
             // Shift trail points backward
             for (let j = trailLength - 1; j > 0; j--) {
@@ -1261,7 +1264,7 @@ export default class ThreeJSIntroRenderer {
                         tetromino.position.x,
                         tetromino.position.y,
                         tetromino.position.z,
-                        tetromino.userData.type
+                        tetromino.userData.type,
                     );
                 }
             }
@@ -1292,10 +1295,10 @@ export default class ThreeJSIntroRenderer {
         const color = this.COLORS[type] || 0x00ffff;
         const geometry = new THREE.SphereGeometry(0.3, 8, 8);
         const material = new THREE.MeshBasicMaterial({
-            color: color,
+            color,
             transparent: true,
             opacity: 0.6,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         const particle = new THREE.Mesh(geometry, material);

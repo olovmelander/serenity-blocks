@@ -102,7 +102,7 @@ export class DemoManager {
                     // Apply filters here if needed
                     demos.push({
                         id: cursor.key,
-                        ...demo
+                        ...demo,
                     });
                     cursor.continue();
                 } else {
@@ -176,11 +176,10 @@ export class DemoManager {
                 // Convert to base64
                 const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
                 return `${window.location.origin}${window.location.pathname}?demo=${base64}`;
-            } else {
-                // Fallback or just return error
-                console.warn('CompressionStream not supported');
-                return null;
             }
+            // Fallback or just return error
+            console.warn('CompressionStream not supported');
+            return null;
         } catch (e) {
             console.error('Failed to export to URL:', e);
             return null;

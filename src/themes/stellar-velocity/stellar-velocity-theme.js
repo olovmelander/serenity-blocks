@@ -199,11 +199,21 @@ export default class StellarVelocityTheme extends BaseTheme {
         // Color scheme cycling
         this.currentColorScheme = 0;
         this.colorSchemes = [
-            { name: 'classic', primary: new THREE.Color(0xffffff), secondary: new THREE.Color(0x88ccff), bg: 0x000000 },
-            { name: 'nebula', primary: new THREE.Color(0x00ffff), secondary: new THREE.Color(0x0088ff), bg: 0x000510 },
-            { name: 'solar', primary: new THREE.Color(0xffd700), secondary: new THREE.Color(0xff8800), bg: 0x001020 },
-            { name: 'aurora', primary: new THREE.Color(0x00ff88), secondary: new THREE.Color(0x00ffcc), bg: 0x000815 },
-            { name: 'crimson', primary: new THREE.Color(0xff4466), secondary: new THREE.Color(0xff0044), bg: 0x100005 },
+            {
+                name: 'classic', primary: new THREE.Color(0xffffff), secondary: new THREE.Color(0x88ccff), bg: 0x000000,
+            },
+            {
+                name: 'nebula', primary: new THREE.Color(0x00ffff), secondary: new THREE.Color(0x0088ff), bg: 0x000510,
+            },
+            {
+                name: 'solar', primary: new THREE.Color(0xffd700), secondary: new THREE.Color(0xff8800), bg: 0x001020,
+            },
+            {
+                name: 'aurora', primary: new THREE.Color(0x00ff88), secondary: new THREE.Color(0x00ffcc), bg: 0x000815,
+            },
+            {
+                name: 'crimson', primary: new THREE.Color(0xff4466), secondary: new THREE.Color(0xff0044), bg: 0x100005,
+            },
         ];
         this.colorCycleInterval = null;
 
@@ -304,7 +314,7 @@ export default class StellarVelocityTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createStarfield() {
-        const starCount = this.qualityPreset.starCount;
+        const { starCount } = this.qualityPreset;
         const geometry = new THREE.BufferGeometry();
 
         const positions = new Float32Array(starCount * 3);
@@ -472,7 +482,7 @@ export default class StellarVelocityTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createNebulaBackdrop() {
-        const nebulaCount = this.qualityPreset.nebulaCount;
+        const { nebulaCount } = this.qualityPreset;
         const nebulaColors = [
             new THREE.Color(0x00ffff), // Cyan
             new THREE.Color(0x0066ff), // Blue
@@ -704,9 +714,9 @@ export default class StellarVelocityTheme extends BaseTheme {
         const geometry = new THREE.PlaneGeometry(size, size);
         const material = new THREE.MeshBasicMaterial({
             map: texture,
-            color: color,
+            color,
             transparent: true,
-            opacity: opacity,
+            opacity,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
         });
@@ -771,7 +781,7 @@ export default class StellarVelocityTheme extends BaseTheme {
             mesh.rotation.set(
                 Math.random() * Math.PI,
                 Math.random() * Math.PI,
-                Math.random() * Math.PI
+                Math.random() * Math.PI,
             );
 
             this.asteroids.push({
@@ -782,8 +792,8 @@ export default class StellarVelocityTheme extends BaseTheme {
                     z: (Math.random() - 0.5) * 0.01,
                 },
                 orbitSpeed: (Math.random() - 0.5) * 0.0005,
-                angle: angle,
-                radius: radius,
+                angle,
+                radius,
             });
 
             this.scene.add(mesh);
@@ -812,7 +822,7 @@ export default class StellarVelocityTheme extends BaseTheme {
             new THREE.Vector2(width, height),
             this.qualityPreset.bloomStrength,
             this.qualityPreset.bloomRadius,
-            0.85
+            0.85,
         );
         this.composer.addPass(this.bloomPass);
 
@@ -933,7 +943,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         }
 
         // Pulse nebulas
-        this.nebulaMeshes.forEach(mesh => {
+        this.nebulaMeshes.forEach((mesh) => {
             if (mesh.material?.uniforms?.uPulse) {
                 mesh.material.uniforms.uPulse.value = Math.min(comboCount * 0.15, 0.8);
             }
@@ -996,7 +1006,7 @@ export default class StellarVelocityTheme extends BaseTheme {
 
         const burst = new THREE.Points(geometry, material);
         burst.userData = {
-            velocities: velocities,
+            velocities,
             life: 3.0,
             maxLife: 3.0,
         };
@@ -1051,7 +1061,7 @@ export default class StellarVelocityTheme extends BaseTheme {
             }
 
             // Update ring colors
-            this.warpCoreRings.forEach(ring => {
+            this.warpCoreRings.forEach((ring) => {
                 ring.material.color = scheme.primary;
             });
 
@@ -1123,7 +1133,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         this.warpCoreGlowIntensity += (0.5 - this.warpCoreGlowIntensity) * 0.02;
 
         // Decay nebula pulse
-        this.nebulaMeshes.forEach(mesh => {
+        this.nebulaMeshes.forEach((mesh) => {
             if (mesh.material?.uniforms?.uPulse) {
                 mesh.material.uniforms.uPulse.value *= 0.95;
             }
@@ -1133,7 +1143,7 @@ export default class StellarVelocityTheme extends BaseTheme {
     updateStarfield() {
         if (!this.starfield?.material?.uniforms) return;
 
-        const uniforms = this.starfield.material.uniforms;
+        const { uniforms } = this.starfield.material;
         uniforms.uTime.value = this.time;
         uniforms.uWarpSpeed.value = Math.min((this.currentSpeed / this.baseSpeed - 1) * 0.1, 1.0);
         uniforms.uTwinkleBoost.value = this.starTwinkleBoost;
@@ -1162,7 +1172,7 @@ export default class StellarVelocityTheme extends BaseTheme {
     }
 
     updateNebulas() {
-        this.nebulaMeshes.forEach(mesh => {
+        this.nebulaMeshes.forEach((mesh) => {
             if (mesh.material?.uniforms?.uTime) {
                 mesh.material.uniforms.uTime.value = this.time;
             }
@@ -1180,7 +1190,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         }
 
         // Rotate rings
-        this.warpCoreRings.forEach(ring => {
+        this.warpCoreRings.forEach((ring) => {
             if (ring.userData.rotationAxis === 'x') {
                 ring.rotation.x += ring.userData.rotationSpeed * 0.01;
             } else {
@@ -1195,7 +1205,7 @@ export default class StellarVelocityTheme extends BaseTheme {
     }
 
     updateAsteroids(delta) {
-        this.asteroids.forEach(asteroid => {
+        this.asteroids.forEach((asteroid) => {
             // Tumble
             asteroid.mesh.rotation.x += asteroid.rotationSpeed.x;
             asteroid.mesh.rotation.y += asteroid.rotationSpeed.y;
@@ -1274,7 +1284,7 @@ export default class StellarVelocityTheme extends BaseTheme {
             this.cameraShake.set(
                 (Math.random() - 0.5) * shakeIntensity,
                 (Math.random() - 0.5) * shakeIntensity,
-                0
+                0,
             );
         } else {
             this.cameraShake.multiplyScalar(0.9);
@@ -1329,7 +1339,7 @@ export default class StellarVelocityTheme extends BaseTheme {
             this.colorCycleInterval = null;
         }
 
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         if (this.resizeHandler) {
@@ -1352,7 +1362,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         }
 
         // Dispose nebulas
-        this.nebulaMeshes.forEach(mesh => {
+        this.nebulaMeshes.forEach((mesh) => {
             mesh.geometry.dispose();
             mesh.material.dispose();
         });
@@ -1364,28 +1374,28 @@ export default class StellarVelocityTheme extends BaseTheme {
             this.warpCore.material.dispose();
         }
 
-        this.warpCoreRings.forEach(ring => {
+        this.warpCoreRings.forEach((ring) => {
             ring.geometry.dispose();
             ring.material.dispose();
         });
         this.warpCoreRings = [];
 
         // Dispose asteroids
-        this.asteroids.forEach(asteroid => {
+        this.asteroids.forEach((asteroid) => {
             asteroid.mesh.geometry.dispose();
             asteroid.mesh.material.dispose();
         });
         this.asteroids = [];
 
         // Dispose burst particles
-        this.burstParticles.forEach(burst => {
+        this.burstParticles.forEach((burst) => {
             burst.geometry.dispose();
             burst.material.dispose();
         });
         this.burstParticles = [];
 
         // Dispose shockwave rings
-        this.shockwaveRings.forEach(ring => {
+        this.shockwaveRings.forEach((ring) => {
             ring.geometry.dispose();
             ring.material.dispose();
         });

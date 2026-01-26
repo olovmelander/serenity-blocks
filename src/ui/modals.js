@@ -352,7 +352,9 @@ export async function showDemoCompleteModal(modalManager, gameState, highScoreMa
 
     // Fetch stats
     let rank = 0;
-    let stats = { highestScore: 0, highestLevel: 0, totalGames: 0, totalLines: 0, totalScore: 0 };
+    let stats = {
+        highestScore: 0, highestLevel: 0, totalGames: 0, totalLines: 0, totalScore: 0,
+    };
 
     if (highScoreManager) {
         try {
@@ -531,7 +533,7 @@ export async function showHighScoresModal(modalManager, highScoreManager, onPlay
         const stats = await highScoreManager.getStatistics();
 
         // Check if any scores have linked demos
-        const hasAnyDemos = topScores.some(score => score.demoId);
+        const hasAnyDemos = topScores.some((score) => score.demoId);
 
         // Build high scores table
         let scoresHTML = '<h2 style="margin-bottom: 15px; color: #fbbf24;">Top 10 Scores</h2>';
@@ -598,7 +600,7 @@ export async function showHighScoresModal(modalManager, highScoreManager, onPlay
 
         // Attach event listeners to play buttons
         if (onPlayDemo) {
-            document.querySelectorAll('.play-demo-btn').forEach(btn => {
+            document.querySelectorAll('.play-demo-btn').forEach((btn) => {
                 btn.addEventListener('click', (e) => {
                     const demoId = parseInt(e.target.dataset.demoId, 10);
                     modalManager.hide('highScores');

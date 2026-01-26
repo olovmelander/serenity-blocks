@@ -14,7 +14,7 @@ import {
     pulseWaveVertexShader,
     pulseWaveFragmentShader,
     auroraSparkVertexShader,
-    auroraSparkFragmentShader
+    auroraSparkFragmentShader,
 } from './aurora-shaders.js';
 
 /**
@@ -42,8 +42,8 @@ export default class AuroraTheme extends BaseTheme {
         this.nebulaParticles = null;
         this.shootingStars = [];
         this.pulseWaves = [];
-        this.auroraSparks = [];  // Pool of spark particle systems
-        this.auroraSparkIndex = 0;  // Cycle through pool
+        this.auroraSparks = []; // Pool of spark particle systems
+        this.auroraSparkIndex = 0; // Cycle through pool
 
         // Animation
         this.animationFrame = null;
@@ -53,24 +53,36 @@ export default class AuroraTheme extends BaseTheme {
         this.uniforms = {
             time: { value: 0 },
             intensity: { value: 1.0 },
-            comboWave: { value: 0.0 }
+            comboWave: { value: 0.0 },
         };
 
         // Aurora color palette - Deep greens with cyan/violet accents
         this.auroraColors = {
-            primary: new THREE.Color(0x00ff6a),   // Vibrant emerald green
+            primary: new THREE.Color(0x00ff6a), // Vibrant emerald green
             secondary: new THREE.Color(0x00e5ff), // Electric cyan
-            tertiary: new THREE.Color(0xaa66ff)   // Soft violet
+            tertiary: new THREE.Color(0xaa66ff), // Soft violet
         };
 
         // Quality settings
         this.qualityPresets = {
-            Minimum: { starCount: 500, curtainLayers: 2, nebulaCount: 50, auroraSparks: 800 },
-            Low: { starCount: 800, curtainLayers: 3, nebulaCount: 80, auroraSparks: 1200 },
-            Medium: { starCount: 1200, curtainLayers: 4, nebulaCount: 120, auroraSparks: 1800 },
-            High: { starCount: 2000, curtainLayers: 5, nebulaCount: 180, auroraSparks: 2500 },
-            Ultra: { starCount: 3000, curtainLayers: 6, nebulaCount: 250, auroraSparks: 3500 },
-            Extreme: { starCount: 4000, curtainLayers: 7, nebulaCount: 350, auroraSparks: 5000 }
+            Minimum: {
+                starCount: 500, curtainLayers: 2, nebulaCount: 50, auroraSparks: 800,
+            },
+            Low: {
+                starCount: 800, curtainLayers: 3, nebulaCount: 80, auroraSparks: 1200,
+            },
+            Medium: {
+                starCount: 1200, curtainLayers: 4, nebulaCount: 120, auroraSparks: 1800,
+            },
+            High: {
+                starCount: 2000, curtainLayers: 5, nebulaCount: 180, auroraSparks: 2500,
+            },
+            Ultra: {
+                starCount: 3000, curtainLayers: 6, nebulaCount: 250, auroraSparks: 3500,
+            },
+            Extreme: {
+                starCount: 4000, curtainLayers: 7, nebulaCount: 350, auroraSparks: 5000,
+            },
         };
         this.currentQuality = 'High';
     }
@@ -104,7 +116,7 @@ export default class AuroraTheme extends BaseTheme {
             75,
             window.innerWidth / window.innerHeight,
             0.1,
-            1000
+            1000,
         );
         this.camera.position.set(0, -5, 15);
         this.camera.lookAt(0, 5, 0);
@@ -113,7 +125,7 @@ export default class AuroraTheme extends BaseTheme {
         this.renderer = new THREE.WebGLRenderer({
             alpha: true,
             antialias: this.getAntialiasEnabled(),
-            powerPreference: 'high-performance'
+            powerPreference: 'high-performance',
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
@@ -153,7 +165,7 @@ export default class AuroraTheme extends BaseTheme {
             new THREE.Color(0xaaddff), // Pale blue
             new THREE.Color(0xddffdd), // Pale green
             new THREE.Color(0xffffee), // Warm white
-            new THREE.Color(0xbbffee)  // Cyan tint
+            new THREE.Color(0xbbffee), // Cyan tint
         ];
 
         for (let i = 0; i < count; i++) {
@@ -184,13 +196,13 @@ export default class AuroraTheme extends BaseTheme {
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
-                time: this.uniforms.time
+                time: this.uniforms.time,
             },
             vertexShader: starVertexShader,
             fragmentShader: starFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.starSystem = new THREE.Points(geometry, material);
@@ -199,7 +211,7 @@ export default class AuroraTheme extends BaseTheme {
 
     createAuroraCurtains(layerCount) {
         // Clear existing curtains
-        this.auroraCurtains.forEach(c => {
+        this.auroraCurtains.forEach((c) => {
             this.mainGroup.remove(c);
             c.geometry.dispose();
             c.material.dispose();
@@ -230,14 +242,14 @@ export default class AuroraTheme extends BaseTheme {
                     layerOffset: { value: i * 3.0 },
                     colorPrimary: { value: primary },
                     colorSecondary: { value: secondary },
-                    colorTertiary: { value: tertiary }
+                    colorTertiary: { value: tertiary },
                 },
                 vertexShader: auroraCurtainVertexShader,
                 fragmentShader: auroraCurtainFragmentShader,
                 transparent: true,
                 depthWrite: false,
                 side: THREE.DoubleSide,
-                blending: THREE.AdditiveBlending
+                blending: THREE.AdditiveBlending,
             });
 
             const curtain = new THREE.Mesh(geometry, material);
@@ -277,13 +289,13 @@ export default class AuroraTheme extends BaseTheme {
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 time: this.uniforms.time,
-                color: { value: new THREE.Color(0x88ffaa) } // Soft green glow
+                color: { value: new THREE.Color(0x88ffaa) }, // Soft green glow
             },
             vertexShader: nebulaVertexShader,
             fragmentShader: nebulaFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         this.nebulaParticles = new THREE.Points(geometry, material);
@@ -313,11 +325,11 @@ export default class AuroraTheme extends BaseTheme {
 
         // Green/cyan aurora color palette
         const colorOptions = [
-            new THREE.Color(0x00ff66),  // Vibrant emerald
-            new THREE.Color(0x44ffaa),  // Mint green
-            new THREE.Color(0x00ffcc),  // Cyan-green
-            new THREE.Color(0x88ff88),  // Light green
-            new THREE.Color(0x00dd88),  // Deep green
+            new THREE.Color(0x00ff66), // Vibrant emerald
+            new THREE.Color(0x44ffaa), // Mint green
+            new THREE.Color(0x00ffcc), // Cyan-green
+            new THREE.Color(0x88ff88), // Light green
+            new THREE.Color(0x00dd88), // Deep green
         ];
 
         for (let p = 0; p < poolSize; p++) {
@@ -338,7 +350,7 @@ export default class AuroraTheme extends BaseTheme {
 
                 thetas[i] = theta;
                 phis[i] = phi;
-                radii[i] = 1.0;  // Not used for spherical origin
+                radii[i] = 1.0; // Not used for spherical origin
                 randoms[i] = Math.random();
 
                 // Origin points spread across aurora viewing area
@@ -372,13 +384,13 @@ export default class AuroraTheme extends BaseTheme {
             const material = new THREE.ShaderMaterial({
                 uniforms: {
                     time: this.uniforms.time,
-                    uPulseTimer: { value: -100.0 }
+                    uPulseTimer: { value: -100.0 },
                 },
                 vertexShader: auroraSparkVertexShader,
                 fragmentShader: auroraSparkFragmentShader,
                 transparent: true,
                 depthWrite: false,
-                blending: THREE.AdditiveBlending
+                blending: THREE.AdditiveBlending,
             });
 
             const sparks = new THREE.Points(geometry, material);
@@ -429,14 +441,14 @@ export default class AuroraTheme extends BaseTheme {
         if (this.camera) {
             const cameraTime = elapsedTime * 0.06; // Slow but noticeable orbit
             const orbitRadiusX = 8; // Wide horizontal sway
-            const orbitRadiusY = 6;  // Vertical sway range
-            const orbitRadiusZ = 5;  // Depth breathing
+            const orbitRadiusY = 6; // Vertical sway range
+            const orbitRadiusZ = 5; // Depth breathing
 
             // Orbital sway - creates parallax with starfield/aurora
-            this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX +
-                Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4;
-            this.camera.position.y = -5 + Math.cos(cameraTime * 0.8) * orbitRadiusY +
-                Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3;
+            this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX
+                + Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4;
+            this.camera.position.y = -5 + Math.cos(cameraTime * 0.8) * orbitRadiusY
+                + Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3;
             this.camera.position.z = 15 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
 
             // LookAt drift for dynamic framing
@@ -451,7 +463,7 @@ export default class AuroraTheme extends BaseTheme {
             this.uniforms.intensity.value = THREE.MathUtils.lerp(
                 this.uniforms.intensity.value,
                 1.0,
-                delta * 1.5
+                delta * 1.5,
             );
         }
 
@@ -460,7 +472,7 @@ export default class AuroraTheme extends BaseTheme {
             this.uniforms.comboWave.value = THREE.MathUtils.lerp(
                 this.uniforms.comboWave.value,
                 0.0,
-                delta * 2.0
+                delta * 2.0,
             );
             if (this.uniforms.comboWave.value < 0.01) {
                 this.uniforms.comboWave.value = 0.0;
@@ -520,13 +532,13 @@ export default class AuroraTheme extends BaseTheme {
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 color: { value: new THREE.Color(0xaaffdd) }, // Pale green-white
-                opacity: { value: 1.0 }
+                opacity: { value: 1.0 },
             },
             vertexShader: shootingStarVertexShader,
             fragmentShader: shootingStarFragmentShader,
             transparent: true,
             depthWrite: false,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
         });
 
         const star = new THREE.Points(geometry, material);
@@ -535,7 +547,7 @@ export default class AuroraTheme extends BaseTheme {
             speed: 30 + Math.random() * 20,
             life: 1.5,
             maxLife: 1.5,
-            headPosition: new THREE.Vector3(startX, startY, startZ)
+            headPosition: new THREE.Vector3(startX, startY, startZ),
         };
 
         this.scene.add(star);
@@ -589,14 +601,14 @@ export default class AuroraTheme extends BaseTheme {
             uniforms: {
                 time: this.uniforms.time,
                 opacity: { value: 0.8 },
-                color: { value: new THREE.Color(0x00ffaa) }
+                color: { value: new THREE.Color(0x00ffaa) },
             },
             vertexShader: pulseWaveVertexShader,
             fragmentShader: pulseWaveFragmentShader,
             transparent: true,
             blending: THREE.AdditiveBlending,
             side: THREE.DoubleSide,
-            depthWrite: false
+            depthWrite: false,
         });
 
         const wave = new THREE.Mesh(geometry, material);
@@ -606,7 +618,7 @@ export default class AuroraTheme extends BaseTheme {
         wave.userData = {
             speed: 4 + intensity * 1.5,
             life: 2.0,
-            maxLife: 2.0
+            maxLife: 2.0,
         };
 
         this.mainGroup.add(wave);
@@ -693,11 +705,11 @@ export default class AuroraTheme extends BaseTheme {
             cancelAnimationFrame(this.animationFrame);
         }
 
-        this.eventUnsubscribers.forEach(unsub => unsub());
+        this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
         // Cleanup shooting stars
-        this.shootingStars.forEach(star => {
+        this.shootingStars.forEach((star) => {
             this.scene.remove(star);
             star.geometry.dispose();
             star.material.dispose();
@@ -705,7 +717,7 @@ export default class AuroraTheme extends BaseTheme {
         this.shootingStars = [];
 
         // Cleanup pulse waves
-        this.pulseWaves.forEach(wave => {
+        this.pulseWaves.forEach((wave) => {
             this.mainGroup.remove(wave);
             wave.geometry.dispose();
             wave.material.dispose();
@@ -713,7 +725,7 @@ export default class AuroraTheme extends BaseTheme {
         this.pulseWaves = [];
 
         // Cleanup aurora sparks pool
-        this.auroraSparks.forEach(sparks => {
+        this.auroraSparks.forEach((sparks) => {
             this.mainGroup.remove(sparks);
             sparks.geometry.dispose();
             sparks.material.dispose();
@@ -735,7 +747,7 @@ export default class AuroraTheme extends BaseTheme {
                 if (object.geometry) object.geometry.dispose();
                 if (object.material) {
                     if (Array.isArray(object.material)) {
-                        object.material.forEach(m => m.dispose());
+                        object.material.forEach((m) => m.dispose());
                     } else {
                         object.material.dispose();
                     }

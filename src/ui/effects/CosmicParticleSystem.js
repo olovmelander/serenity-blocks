@@ -1,6 +1,6 @@
 /**
  * Cosmic Particle System
- * 
+ *
  * Optimized pooled particle system for cosmic dust effects during exploration.
  * Particles drift based on camera velocity and brightness varies with block density.
  */
@@ -115,7 +115,7 @@ export class CosmicParticleSystem {
     update(time) {
         if (!this.material) return;
 
-        const uniforms = this.material.uniforms;
+        const { uniforms } = this.material;
         uniforms.uTime.value = time;
         uniforms.uDriftX.value = this.driftX * 100; // Scale for visual effect
         uniforms.uDriftY.value = this.driftY * 100;

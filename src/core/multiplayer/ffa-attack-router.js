@@ -158,8 +158,36 @@ export class FFAAttackRouter {
      * We return the base lines unmodified here.
      */
     applyAttackScaling(baseLines, opponentCount, boringRules) {
-        // Quadra legacy behavior: No artificial scaling, rely on stamps
-        return baseLines;
+        // If boring rules (classic) enabled, no scaling
+        if (boringRules) {
+            return baseLines;
+        }
+
+        // Standard FFA scaling: Reduce garbage power as player count increases
+        // 1 opponent: 100%
+        // 2 opponents: 90%
+        // 3 opponents: 80%
+        // ...
+        // 7 opponents: 40% (floor at 25%)
+
+        if (opponentCount <= 1) return baseLines;
+
+        const reductionPerOpponent = 0.10; // 10% reduction per extra opponent
+        let multiplier = 1.0 - ((opponentCount - 1) * reductionPerOpponent);
+
+        // Cap minimum multiplier at 0.25 (25% power)
+        multiplier = Math.max(0.25, multiplier);
+
+        // return Math.ceil(baseLines * multiplier);
+        // Better to round normally or use stochastic rounding?
+        // Using ceil ensures at least some garbage is sent for small attacks
+        // But for < 1 it becomes 1?
+        // Base lines is integer.
+        // If lines=4, opp=7 (scale=0.4) -> 1.6 -> 2 lines.
+        const scaled = Math.round(baseLines * multiplier);
+
+        // Ensure at least 1 line if original was > 0
+        return baseLines > 0 ? Math.max(1, scaled) : 0;
     }
 
     /**

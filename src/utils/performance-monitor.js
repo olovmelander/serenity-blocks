@@ -732,9 +732,9 @@ export class PerformanceMonitor {
             </div>
             ${typeof window !== 'undefined' && window.activeGPURenderer ? `
             <div style="color: #888; font-size: 11px; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px;" title="${window.activeGPURenderer}">
-                GPU: <span style="color: #0f0;">${window.activeGPURenderer.replace(/ANGLE \((.+)\)/, '$1').split(',')[1]?.trim() ||
-                window.activeGPURenderer.replace(/ANGLE \((.+)\)/, '$1').split(',')[0]
-                }</span>
+                GPU: <span style="color: #0f0;">${window.activeGPURenderer.replace(/ANGLE \((.+)\)/, '$1').split(',')[1]?.trim()
+                || window.activeGPURenderer.replace(/ANGLE \((.+)\)/, '$1').split(',')[0]
+}</span>
             </div>` : ''}
 
             <div style="color: ${displayMetrics.fpsColor}; font-weight: bold; font-size: 24px; margin: 8px 0;">
@@ -773,13 +773,13 @@ export class PerformanceMonitor {
                 <div style="margin-top: 10px; color: #888; font-size: 10px; padding-top: 8px; border-top: 1px solid rgba(0,255,0,0.1);">
                     Hot Sections:
                     ${hotSections.map((section) => {
-                    const color = section.avg >= 10 ? '#f00' : section.avg >= 6 ? '#ff0' : '#0f0';
-                    return `
+        const color = section.avg >= 10 ? '#f00' : section.avg >= 6 ? '#ff0' : '#0f0';
+        return `
                             <div style="color: ${color}; margin-top: 2px;">
                                 ${section.name}: ${section.avg.toFixed(1)}ms avg (${section.last.toFixed(1)}ms last)
                             </div>
                         `;
-                }).join('')}
+    }).join('')}
                 </div>
             ` : ''}
         `;

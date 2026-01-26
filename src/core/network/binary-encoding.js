@@ -15,12 +15,12 @@ const FORMAT_VERSION = 1;
 
 // Delta Change Flags (Bitmask)
 const DELTA_FLAGS = {
-    STATS: 1 << 0,   // Score, lines, level, frags, alive
-    GRID: 1 << 1,    // Board grid
-    PIECE: 1 << 2,   // Current piece
-    NEXT: 1 << 3,    // Next pieces
+    STATS: 1 << 0, // Score, lines, level, frags, alive
+    GRID: 1 << 1, // Board grid
+    PIECE: 1 << 2, // Current piece
+    NEXT: 1 << 3, // Next pieces
     GARBAGE: 1 << 4, // Garbage queue
-    DROPS: 1 << 5,   // Drop counters
+    DROPS: 1 << 5, // Drop counters
 };
 
 // Cell types mapping (4 bits = 16 values)
@@ -160,18 +160,18 @@ export class BinaryEncoder {
         let mask = 0;
 
         // Stats check
-        if (current.score !== baseline.score ||
-            current.lines !== baseline.lines ||
-            current.level !== baseline.level ||
-            current.frags !== baseline.frags ||
-            current.isAlive !== baseline.isAlive ||
-            current.garbagePending !== baseline.garbagePending) {
+        if (current.score !== baseline.score
+            || current.lines !== baseline.lines
+            || current.level !== baseline.level
+            || current.frags !== baseline.frags
+            || current.isAlive !== baseline.isAlive
+            || current.garbagePending !== baseline.garbagePending) {
             mask |= DELTA_FLAGS.STATS;
         }
 
         // Drop state check
-        if (current.dropCounter !== baseline.dropCounter ||
-            current.dropInterval !== baseline.dropInterval) {
+        if (current.dropCounter !== baseline.dropCounter
+            || current.dropInterval !== baseline.dropInterval) {
             mask |= DELTA_FLAGS.DROPS;
         }
 
@@ -200,7 +200,7 @@ export class BinaryEncoder {
         }
 
         // Grid check
-        // This is the expensive one. We only check if grid ref changed? 
+        // This is the expensive one. We only check if grid ref changed?
         // No, in JS refs are constant often. Need content check.
         // Optimization: host usually knows if grid is dirty.
         // But here we are purely data-driven.
@@ -454,7 +454,7 @@ export class BinaryEncoder {
         for (let i = 0; i < str.length; i++) {
             const char = str.charCodeAt(i);
             hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32-bit integer
+            hash &= hash; // Convert to 32-bit integer
         }
         return hash >>> 0; // Ensure unsigned
     }
@@ -550,7 +550,6 @@ export class BinaryDecoder {
             offset = winnerName.offset;
             winner = { steamId: winnerSteamId.value, name: winnerName.value };
         }
-
 
         return {
             players,
@@ -859,7 +858,7 @@ export class BinaryDecoder {
         for (let i = 0; i < str.length; i++) {
             const char = str.charCodeAt(i);
             hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
+            hash &= hash;
         }
         return hash >>> 0;
     }

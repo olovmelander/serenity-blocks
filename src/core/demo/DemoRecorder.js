@@ -19,16 +19,16 @@ export class DemoRecorder {
      */
     startRecording(gameState, settings, seed, gameMode = 'single-player') {
         this.demo = {
-            version: "1.0",
-            gameMode: gameMode,
+            version: '1.0',
+            gameMode,
             timestamp: Date.now(),
             initialState: {
-                seed: seed,
+                seed,
                 level: gameState.level,
-                settings: this._captureSettings(settings)
+                settings: this._captureSettings(settings),
             },
             inputs: [],
-            metadata: {}
+            metadata: {},
         };
 
         this.isRecording = true;
@@ -70,7 +70,7 @@ export class DemoRecorder {
             finalScore: finalStats.score || 0,
             linesCleared: finalStats.lines || 0,
             level: finalStats.level || 1,
-            ...finalStats
+            ...finalStats,
         };
 
         console.log(`[DemoRecorder] Stopped recording. Captured ${this.demo.inputs.length} inputs.`);
@@ -94,7 +94,7 @@ export class DemoRecorder {
         return {
             // Add relevant settings here, e.g., DAS, ARR if they are configurable and affect mechanics
             // For now, we assume standard settings or that they are part of the game mode defaults
-            themeBasedTetrominos: settings.themeBasedTetrominos
+            themeBasedTetrominos: settings.themeBasedTetrominos,
         };
     }
 }
