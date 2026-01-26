@@ -13,8 +13,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { BaseTheme } from '../base-theme.js';
-import modelUrl from '../../../../../../src/themes/sakura-twilight/assets/landscape-glb.glb?url';
-import foxModelUrl from '../../../../../../src/themes/sakura-twilight/assets/Fox.glb?url';
+import modelUrl from './assets/landscape-glb.glb?url';
+import foxModelUrl from './assets/Fox.glb?url';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SAKURA_TWILIGHT_TETROMINOS } from './sakura-twilight-tetrominos.js';
 
@@ -2780,74 +2780,74 @@ export default class SakuraTwilightTheme extends BaseTheme {
             const { config } = fox;
 
             switch (fox.state) {
-            case 'idle':
-                fox.waitTimer -= deltaTime;
-                if (fox.waitTimer <= 0) {
-                    // Pick new target and start moving
-                    this.pickNewFoxTarget(fox);
+                case 'idle':
+                    fox.waitTimer -= deltaTime;
+                    if (fox.waitTimer <= 0) {
+                        // Pick new target and start moving
+                        this.pickNewFoxTarget(fox);
 
-                    // Decide walk or run based on distance
-                    const distance = fox.position.distanceTo(fox.targetPosition);
-                    if (distance > 15 && Math.random() > 0.5) {
-                        this.transitionFoxState(fox, 'running');
+                        // Decide walk or run based on distance
+                        const distance = fox.position.distanceTo(fox.targetPosition);
+                        if (distance > 15 && Math.random() > 0.5) {
+                            this.transitionFoxState(fox, 'running');
+                        } else {
+                            this.transitionFoxState(fox, 'walking');
+                        }
+                    }
+                    break;
+
+                case 'walking':
+                case 'running':
+                    const distanceToTarget = fox.position.distanceTo(fox.targetPosition);
+
+                    if (distanceToTarget < 1.0) {
+                        // Reached target, go idle
+                        this.transitionFoxState(fox, 'idle');
+                        fox.waitTimer = 2 + Math.random() * 5; // Wait 2-7 seconds
                     } else {
-                        this.transitionFoxState(fox, 'walking');
+                        // Move toward target
+                        const speed = fox.state === 'running'
+                            ? config.speed.run
+                            : config.speed.walk;
+
+                        // Calculate direction (XZ only)
+                        fox.direction.subVectors(fox.targetPosition, fox.position);
+                        fox.direction.y = 0;
+                        fox.direction.normalize();
+
+                        // Move position
+                        const movement = fox.direction.clone().multiplyScalar(speed * deltaTime);
+                        fox.position.add(movement);
+
+                        // Update Y to follow terrain
+                        fox.position.y = this.getTerrainHeight(fox.position.x, fox.position.z);
+
+                        // Update model position
+                        fox.model.position.copy(fox.position);
+
+                        // Rotate fox to face movement direction
+                        if (fox.direction.lengthSq() > 0.001) {
+                            const targetAngle = Math.atan2(fox.direction.x, fox.direction.z);
+                            // Smooth rotation
+                            const currentRotY = fox.model.rotation.y;
+                            let angleDiff = targetAngle - currentRotY;
+                            // Normalize angle difference
+                            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                            fox.model.rotation.y += angleDiff * Math.min(1, deltaTime * 5);
+                        }
+
+                        // Transition from running to walking when close to target
+                        if (fox.state === 'running' && distanceToTarget < 5) {
+                            this.transitionFoxState(fox, 'walking');
+                        }
                     }
-                }
-                break;
+                    break;
 
-            case 'walking':
-            case 'running':
-                const distanceToTarget = fox.position.distanceTo(fox.targetPosition);
-
-                if (distanceToTarget < 1.0) {
-                    // Reached target, go idle
-                    this.transitionFoxState(fox, 'idle');
-                    fox.waitTimer = 2 + Math.random() * 5; // Wait 2-7 seconds
-                } else {
-                    // Move toward target
-                    const speed = fox.state === 'running'
-                        ? config.speed.run
-                        : config.speed.walk;
-
-                    // Calculate direction (XZ only)
-                    fox.direction.subVectors(fox.targetPosition, fox.position);
-                    fox.direction.y = 0;
-                    fox.direction.normalize();
-
-                    // Move position
-                    const movement = fox.direction.clone().multiplyScalar(speed * deltaTime);
-                    fox.position.add(movement);
-
-                    // Update Y to follow terrain
-                    fox.position.y = this.getTerrainHeight(fox.position.x, fox.position.z);
-
-                    // Update model position
-                    fox.model.position.copy(fox.position);
-
-                    // Rotate fox to face movement direction
-                    if (fox.direction.lengthSq() > 0.001) {
-                        const targetAngle = Math.atan2(fox.direction.x, fox.direction.z);
-                        // Smooth rotation
-                        const currentRotY = fox.model.rotation.y;
-                        let angleDiff = targetAngle - currentRotY;
-                        // Normalize angle difference
-                        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                        fox.model.rotation.y += angleDiff * Math.min(1, deltaTime * 5);
-                    }
-
-                    // Transition from running to walking when close to target
-                    if (fox.state === 'running' && distanceToTarget < 5) {
-                        this.transitionFoxState(fox, 'walking');
-                    }
-                }
-                break;
-
-            case 'greeting':
-                // Cute greeting interaction!
-                this.updateFoxGreeting(fox, deltaTime, GREETING_DURATION);
-                break;
+                case 'greeting':
+                    // Cute greeting interaction!
+                    this.updateFoxGreeting(fox, deltaTime, GREETING_DURATION);
+                    break;
             }
 
             // Update procedural animations for this fox
@@ -2941,30 +2941,30 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // Perform greeting animation based on type
         switch (fox.greetingType) {
-        case 0: // Bow - dip head forward
-            // Handled by enhanced procedural animation during greeting
-            break;
+            case 0: // Bow - dip head forward
+                // Handled by enhanced procedural animation during greeting
+                break;
 
-        case 1: // Playful hop
-            // Jump up and down!
-            const hopHeight = Math.sin(phase * Math.PI * 4) * 0.3 * (1 - phase);
-            fox.model.position.y = fox.position.y + Math.max(0, hopHeight);
-            break;
+            case 1: // Playful hop
+                // Jump up and down!
+                const hopHeight = Math.sin(phase * Math.PI * 4) * 0.3 * (1 - phase);
+                fox.model.position.y = fox.position.y + Math.max(0, hopHeight);
+                break;
 
-        case 2: // Circle around each other
-            const circleRadius = 1.5;
-            const circleSpeed = 2 * Math.PI; // Full circle
-            const angle = phase * circleSpeed;
-            const midpoint = new THREE.Vector3().addVectors(fox.position, partner.position).multiplyScalar(0.5);
+            case 2: // Circle around each other
+                const circleRadius = 1.5;
+                const circleSpeed = 2 * Math.PI; // Full circle
+                const angle = phase * circleSpeed;
+                const midpoint = new THREE.Vector3().addVectors(fox.position, partner.position).multiplyScalar(0.5);
 
-            // Offset from midpoint
-            const circleX = Math.cos(angle + (fox === this.foxes[0] ? 0 : Math.PI)) * circleRadius;
-            const circleZ = Math.sin(angle + (fox === this.foxes[0] ? 0 : Math.PI)) * circleRadius;
+                // Offset from midpoint
+                const circleX = Math.cos(angle + (fox === this.foxes[0] ? 0 : Math.PI)) * circleRadius;
+                const circleZ = Math.sin(angle + (fox === this.foxes[0] ? 0 : Math.PI)) * circleRadius;
 
-            fox.model.position.x = midpoint.x + circleX * t;
-            fox.model.position.z = midpoint.z + circleZ * t;
-            fox.model.position.y = this.getTerrainHeight(fox.model.position.x, fox.model.position.z);
-            break;
+                fox.model.position.x = midpoint.x + circleX * t;
+                fox.model.position.z = midpoint.z + circleZ * t;
+                fox.model.position.y = this.getTerrainHeight(fox.model.position.x, fox.model.position.z);
+                break;
         }
     }
 
