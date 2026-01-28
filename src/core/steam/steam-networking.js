@@ -3,6 +3,7 @@
  * Handles Steam lobbies, P2P messaging, and matchmaking
  *
  * Phase 4: Added binary encoding support for 90% bandwidth reduction
+ * Phase 5: Migrated from greenworks to steamworks.js (via Electron IPC)
  */
 
 import { SteamConfig } from './config.js';
@@ -13,21 +14,26 @@ const isElectron = typeof window !== 'undefined'
     && typeof window.process !== 'undefined'
     && window.process.type === 'renderer';
 
-// Try to import greenworks (only works in Electron)
-let greenworks;
+// Get ipcRenderer for communicating with main process (steamworks.js runs there)
+let ipcRenderer = null;
+let hasSteamworks = false;
+
 if (isElectron) {
     try {
-        // Use dynamic require in Electron context
-        greenworks = window.require('greenworks');
+        // With nodeIntegration: true, we can require electron directly
+        const electron = window.require('electron');
+        ipcRenderer = electron.ipcRenderer;
+        hasSteamworks = true;
+        console.log('✅ Electron IPC available for Steam communication');
     } catch (err) {
-        console.warn('⚠️ Greenworks not available in Electron, using mock mode');
-        greenworks = null;
+        console.warn('⚠️ Failed to load Electron IPC:', err.message);
+        hasSteamworks = false;
     }
 } else {
-    // Running in browser - use mock mode
     console.log('🌐 Running in browser mode - Steam features will use mock mode');
-    greenworks = null;
 }
+
+
 
 export class SteamNetworking {
     constructor() {
@@ -58,8 +64,8 @@ export class SteamNetworking {
         this.lastHeartbeatReceived = new Map(); // Map<steamId, timestamp>
         this.disconnectCallbacks = []; // Array of callbacks for disconnect events
 
-        // Mock mode for local testing
-        this.mockMode = SteamConfig.mockMode || !greenworks;
+        // Mock mode for local testing - use mock if Steam API is not available via preload
+        this.mockMode = SteamConfig.mockMode || !hasSteamworks;
 
         // Mock P2P communication channel (for cross-window messaging)
         this.broadcastChannel = null;
@@ -79,28 +85,30 @@ export class SteamNetworking {
             return true;
         }
 
-        // Real Steam mode
-        if (!greenworks || !greenworks.isSteamRunning()) {
-            console.error('❌ Steam is not running! Please launch Steam first.');
-            throw new Error('Steam is not running! Please launch Steam first.');
-        }
-
+        // Real Steam mode via steamworks.js preload API
         try {
-            this.initialized = greenworks.initAPI();
-
-            if (this.initialized) {
-                this.steamId = greenworks.getSteamId().getRawSteamID();
-                this.playerName = greenworks.getSteamId().getPersonaName();
-
-                console.log(`✅ Steam initialized: ${this.playerName} (${this.steamId})`);
-
-                // Start P2P packet polling
-                this.startP2PPolling();
-
-                return true;
+            const isRunning = await ipcRenderer.invoke('steam:isSteamRunning');
+            if (!isRunning) {
+                console.error('❌ Steam is not running! Please launch Steam first.');
+                throw new Error('Steam is not running! Please launch Steam first.');
             }
 
-            throw new Error('Failed to initialize Steam API');
+            const steamInitialized = await ipcRenderer.invoke('steam:isInitialized');
+            if (!steamInitialized) {
+                console.error('❌ Steam API not initialized in main process');
+                throw new Error('Steam API not initialized');
+            }
+
+            this.steamId = await ipcRenderer.invoke('steam:getSteamId');
+            this.playerName = await ipcRenderer.invoke('steam:getPlayerName');
+            this.initialized = true;
+
+            console.log(`✅ Steam initialized: ${this.playerName} (${this.steamId})`);
+
+            // Start P2P packet polling
+            this.startP2PPolling();
+
+            return true;
         } catch (err) {
             console.error('❌ Steam initialization failed:', err);
             throw err;
@@ -152,33 +160,29 @@ export class SteamNetworking {
             return this.currentLobbyId;
         }
 
-        return new Promise((resolve, reject) => {
-            const type = lobbyType === 'public'
-                ? greenworks.LobbyType.Public
-                : greenworks.LobbyType.FriendsOnly;
+        // Real Steam mode via steamworks.js preload API
+        try {
+            const lobbyId = await ipcRenderer.invoke('steam:createLobby', { maxPlayers, lobbyType });
+            console.log(`✅ Lobby created: ${lobbyId}`);
 
-            greenworks.createLobby(type, maxPlayers, (lobbyId) => {
-                console.log(`✅ Lobby created: ${lobbyId}`);
+            this.isHost = true;
+            this.hostSteamId = this.steamId;
+            this.currentLobbyId = lobbyId;
+            this.matchId = lobbyId;
+            this.matchNonce = this._generateMatchNonce();
 
-                this.isHost = true;
-                this.hostSteamId = this.steamId;
-                this.currentLobbyId = lobbyId;
-                this.matchId = lobbyId;
-                this.matchNonce = this._generateMatchNonce();
+            // Set lobby metadata
+            await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'game_mode', 'ffa');
+            await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'game_name', gameName);
+            await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'end_condition', endCondition);
+            await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'end_condition_value', endConditionValue.toString());
+            await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'version', '1.0.0');
 
-                // Set lobby metadata
-                greenworks.setLobbyData(lobbyId, 'game_mode', 'ffa');
-                greenworks.setLobbyData(lobbyId, 'game_name', gameName);
-                greenworks.setLobbyData(lobbyId, 'end_condition', endCondition);
-                greenworks.setLobbyData(lobbyId, 'end_condition_value', endConditionValue.toString());
-                greenworks.setLobbyData(lobbyId, 'version', '1.0.0');
-
-                resolve(lobbyId);
-            }, (err) => {
-                console.error('❌ Failed to create lobby:', err);
-                reject(err);
-            });
-        });
+            return lobbyId;
+        } catch (err) {
+            console.error('❌ Failed to create lobby:', err);
+            throw err;
+        }
     }
 
     /**
@@ -210,21 +214,45 @@ export class SteamNetworking {
             return;
         }
 
-        return new Promise((resolve, reject) => {
-            greenworks.joinLobby(lobbyId, () => {
-                console.log(`✅ Joined lobby: ${lobbyId}`);
+        // Real Steam mode via steamworks.js preload API
+        try {
+            await ipcRenderer.invoke('steam:joinLobby', lobbyId);
+            console.log(`✅ Joined lobby: ${lobbyId}`);
 
-                this.isHost = false;
-                this.currentLobbyId = lobbyId;
-                this.matchId = lobbyId;
-                this.hostSteamId = greenworks.getLobbyOwner(lobbyId);
+            this.isHost = false;
+            this.currentLobbyId = lobbyId;
+            this.matchId = lobbyId;
+            this.hostSteamId = await ipcRenderer.invoke('steam:getLobbyOwner', lobbyId);
 
-                resolve();
-            }, (err) => {
-                console.error('❌ Failed to join lobby:', err);
-                reject(err);
-            });
-        });
+            return;
+        } catch (err) {
+            console.error('❌ Failed to join lobby:', err);
+            throw err;
+        }
+    }
+
+    /**
+     * Get data from a lobby
+     */
+    async getLobbyData(lobbyId, key) {
+        if (this.mockMode) {
+            // Mock data
+            const lobbies = this.loadMockLobbies();
+            const lobby = lobbies.find(l => l.id === lobbyId);
+            if (lobby) {
+                if (key === 'game_name') return lobby.gameName;
+                if (key === 'end_condition') return lobby.endCondition;
+                if (key === 'end_condition_value') return lobby.endConditionValue;
+            }
+            return null;
+        }
+
+        try {
+            return await ipcRenderer.invoke('steam:getLobbyData', lobbyId, key);
+        } catch (err) {
+            console.warn(`⚠️ Failed to get lobby data (${key}):`, err.message);
+            return null;
+        }
     }
 
     /**
@@ -278,9 +306,10 @@ export class SteamNetworking {
         const buffer = Buffer.from(JSON.stringify(envelope));
         const sendType = this._resolveDelivery(options.delivery);
 
-        greenworks.sendP2PPacket(
+        // Send via steamworks.js preload API
+        ipcRenderer.invoke('steam:sendP2PPacket',
             targetSteamId,
-            buffer,
+            envelope,
             sendType,
             options.channel ?? 0,
         );
@@ -410,16 +439,20 @@ export class SteamNetworking {
     startP2PPolling() {
         if (this.mockMode) return;
 
-        // Poll for P2P packets at 60Hz
-        this.pollInterval = setInterval(() => {
-            [0, 1, 2].forEach((channel) => {
-                while (greenworks.isP2PPacketAvailable(channel)) {
-                    const packet = greenworks.readP2PPacket(channel);
-                    if (packet) {
-                        this.handleP2PPacket(packet, channel);
+        // Poll for P2P packets at 60Hz via steamworks.js preload API
+        this.pollInterval = setInterval(async () => {
+            for (const channel of [0, 1, 2]) {
+                try {
+                    while (await ipcRenderer.invoke('steam:isP2PPacketAvailable', channel)) {
+                        const packet = await ipcRenderer.invoke('steam:readP2PPacket', channel);
+                        if (packet) {
+                            this.handleP2PPacket(packet, channel);
+                        }
                     }
+                } catch (err) {
+                    // Ignore polling errors
                 }
-            });
+            }
         }, 16); // ~60Hz
     }
 
@@ -533,12 +566,12 @@ export class SteamNetworking {
             return;
         }
 
-        // Close all P2P connections
+        // Close all P2P connections via steamworks.js preload API
         this.connectedPeers.forEach((peerInfo, steamId) => {
-            greenworks.closeP2PSessionWithUser(steamId);
+            ipcRenderer.invoke('steam:closeP2PSession', steamId);
         });
 
-        greenworks.leaveLobby(this.currentLobbyId);
+        ipcRenderer.invoke('steam:leaveLobby');
         this.connectedPeers.clear();
         this.currentLobbyId = null;
         this.isHost = false;
@@ -565,19 +598,14 @@ export class SteamNetworking {
             }));
         }
 
-        return new Promise((resolve, reject) => {
-            greenworks.requestLobbyList((lobbies) => {
-                const lobbyList = lobbies.map((lobbyId) => ({
-                    id: lobbyId,
-                    name: greenworks.getLobbyData(lobbyId, 'game_name') || '[No name]',
-                    mode: greenworks.getLobbyData(lobbyId, 'game_mode') || 'ffa',
-                    players: greenworks.getNumLobbyMembers(lobbyId),
-                    maxPlayers: greenworks.getLobbyMemberLimit(lobbyId),
-                }));
-
-                resolve(lobbyList);
-            }, reject);
-        });
+        // Real Steam mode via steamworks.js preload API
+        try {
+            const lobbies = await ipcRenderer.invoke('steam:getLobbies');
+            return lobbies;
+        } catch (err) {
+            console.error('❌ Failed to get lobbies:', err);
+            return [];
+        }
     }
 
     /**
@@ -851,15 +879,16 @@ export class SteamNetworking {
     }
 
     _resolveDelivery(delivery) {
-        if (!greenworks) return null;
+        // Steam P2P send types (matches steamworks.js constants)
+        // 0 = Unreliable, 1 = UnreliableNoDelay, 2 = Reliable, 3 = ReliableWithBuffering
         switch (delivery) {
-        case 'unreliable':
-            return greenworks.P2PSend.Unreliable;
-        case 'unreliable_no_delay':
-            return greenworks.P2PSend.UnreliableNoDelay;
-        case 'reliable':
-        default:
-            return greenworks.P2PSend.Reliable;
+            case 'unreliable':
+                return 0;
+            case 'unreliable_no_delay':
+                return 1;
+            case 'reliable':
+            default:
+                return 2;
         }
     }
 

@@ -6,6 +6,8 @@
 */
 
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../events/multiplayer-events.js';
+import { createPlayerCard } from './components/player-card.js';
+import steamService from '../core/steam/steam-service.js';
 
 export class LobbyWaitingRoom {
   constructor(ffaGameState, onMatchStart, onLeaveLobby = null) {
@@ -72,6 +74,9 @@ export class LobbyWaitingRoom {
                 <div style="font-size: 10px; color: #a0aec0; text-transform: uppercase;">Lobby ID</div>
                 <div style="font-size: 14px; color: #fff; font-family: monospace; letter-spacing: 1px;" id="lobby-id-display">Connecting...</div>
              </div>
+             <button class="btn btn-secondary" id="invite-friends-btn" style="width: 100%; margin-top: 10px;">
+               INVITE FRIENDS
+             </button>
         </div>
       </div>
 
@@ -160,10 +165,41 @@ export class LobbyWaitingRoom {
       this.startMatch();
     });
 
+    // Invite friends button
+    const inviteBtn = this.container.querySelector('#invite-friends-btn');
+    if (inviteBtn) {
+      inviteBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+
+        // Check if Steam is available
+        if (!steamService.isOnline) {
+          this.addChatMessage('[System] Steam is not available. Invites require Steam.', true);
+          return;
+        }
+
+        const lobbyId = this.gameState?.network?.currentLobbyId || null;
+        if (!lobbyId) {
+          this.addChatMessage('[System] No lobby active. Cannot send invites.', true);
+          return;
+        }
+
+        const opened = await steamService.openLobbyInviteDialog(lobbyId);
+        if (!opened) {
+          console.warn('[LobbyWaitingRoom] Unable to open Steam invite dialog');
+          this.addChatMessage('[System] Could not open Steam invite dialog. Try Shift+Tab to open Steam overlay.', true);
+        }
+      });
+    }
+
     // Chat integration
     // Listen for incoming messages
     this.chatHandler = (detail) => {
-      this.addChatMessage(`${detail.playerName}: ${detail.message}`, false);
+      this.addChatMessage({
+        playerName: detail.playerName,
+        message: detail.message,
+        steamId: detail.steamId,
+        color: detail.color
+      });
     };
     onMultiplayerEvent(MULTIPLAYER_EVENTS.CHAT_MESSAGE, this.chatHandler);
 
@@ -174,10 +210,14 @@ export class LobbyWaitingRoom {
     const sendChat = () => {
       const text = chatInput.value.trim();
       if (text && this.gameState) {
+        const localPlayer = this.gameState.getLocalPlayer?.() || this.gameState.players?.get(this.gameState.localPlayerId);
+        const playerColor = localPlayer?.color || '#a78bfa';
+
         this.gameState.network.sendP2PMessage(this.gameState.network.hostSteamId, 'game:chat', {
           message: text,
           playerName: this.gameState.network.playerName,
           steamId: this.gameState.localPlayerId,
+          color: playerColor,
           timestamp: Date.now()
         });
 
@@ -186,10 +226,11 @@ export class LobbyWaitingRoom {
           message: text,
           playerName: this.gameState.network.playerName,
           steamId: this.gameState.localPlayerId,
+          color: playerColor,
           timestamp: Date.now()
         };
         if (this.gameState.chatHistory) this.gameState.chatHistory.push(msgData);
-        this.addChatMessage(`You: ${text}`, false);
+        this.addChatMessage({ ...msgData, playerName: 'You' });
         chatInput.value = '';
       }
     };
@@ -234,10 +275,13 @@ export class LobbyWaitingRoom {
           `;
 
         this.gameState.chatHistory.forEach(msg => {
-          // Convert history format to text
-          const isSystem = !msg.playerName; // If we store system messages without name
-          const text = isSystem ? msg.text : `${msg.playerName}: ${msg.message}`;
-          this.addChatMessage(text, isSystem);
+          if (!msg.playerName) {
+            // System message
+            this.addChatMessage(msg.text || msg.message, true);
+          } else {
+            // Player message - pass full object for color support
+            this.addChatMessage(msg);
+          }
         });
       }
     }, 50);
@@ -377,72 +421,90 @@ export class LobbyWaitingRoom {
     // Update count
     document.getElementById('player-count').textContent = players.length;
 
-    // Render players as grid cards
-    listEl.innerHTML = players.map((player) => {
+    // Batch preload all avatars in parallel for faster rendering
+    const steamIds = players.map(p => p.steamId).filter(Boolean);
+    steamService.getAvatarsBatch(steamIds, 'medium').catch(err => {
+      console.warn('[LobbyWaitingRoom] Failed to preload avatars:', err.message);
+    });
+
+    // Clear and rebuild player cards with real avatars
+    listEl.innerHTML = '';
+
+    players.forEach((player) => {
       const isHost = player.steamId === this.gameState.network.hostSteamId;
       const isLocal = player.steamId === this.gameState.localPlayerId;
-      const isReady = player.isReady || isHost; // Host is always "ready"
+      const isReady = player.isReady || isHost;
       const playerColor = player.color || '#808080';
 
-      // Card style
-      return `
-        <div class="lobby-player-card ${isReady ? 'ready' : ''} ${isLocal ? 'local' : ''}" style="
-            background: rgba(30,35,50,0.6); 
-            border: 2px solid ${isReady ? '#48bb78' : 'rgba(139,92,246,0.2)'}; 
-            border-radius: 12px; 
-            padding: 20px; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            padding: 20px;
-            gap: 10px;
-            position: relative;
-            overflow: hidden;
-        ">
-          <!-- Color strip -->
-          <div style="
-            position: absolute; 
-            top: 0; left: 0; right: 0; height: 4px; 
-            background: ${playerColor};
-            box-shadow: 0 0 10px ${playerColor};
-          "></div>
-          
-          <div class="player-avatar" style="
-            width: 64px; height: 64px; 
-            border-radius: 50%; 
-            background: ${playerColor};
-            border: 3px solid rgba(255,255,255,0.2);
-            box-shadow: 0 0 20px ${playerColor};
-            display: flex; align-items: center; justify-content: center;
-            font-size: 24px; font-weight: bold; color: white;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-          ">
-            ${player.name.substring(0, 1).toUpperCase()}
-          </div>
-          
-          <div class="player-name" style="font-size: 16px; font-weight: 700; color: white; margin-top: 5px;">
-            ${this.escapeHtml(player.name)}
-          </div>
-          
-          <div class="player-status" style="font-size: 12px; color: #a0aec0;">
-             ${isHost ? '👑 HOST' : isLocal ? 'YOU' : 'PLAYER'}
-          </div>
-          
-          <div class="player-ready-badge" style="
-            margin-top: 10px;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 700;
-            background: ${isReady ? 'rgba(72,187,120,0.2)' : 'rgba(251,191,36,0.2)'};
-            color: ${isReady ? '#48bb78' : '#fbbf24'};
-            border: 1px solid ${isReady ? 'rgba(72,187,120,0.4)' : 'rgba(251,191,36,0.4)'};
-          ">
-             ${isReady ? 'READY' : 'WAITING'}
-          </div>
-        </div>
+      // Create card container
+      const cardEl = document.createElement('div');
+      cardEl.className = `lobby-player-card ${isReady ? 'ready' : ''} ${isLocal ? 'local' : ''}`;
+      cardEl.style.cssText = `
+        background: rgba(30,35,50,0.6);
+        border: 2px solid ${isReady ? '#48bb78' : 'rgba(139,92,246,0.2)'};
+        border-radius: 12px;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        position: relative;
+        overflow: hidden;
       `;
-    }).join('');
+
+      // Color strip
+      const colorStrip = document.createElement('div');
+      colorStrip.style.cssText = `
+        position: absolute;
+        top: 0; left: 0; right: 0; height: 4px;
+        background: ${playerColor};
+        box-shadow: 0 0 10px ${playerColor};
+      `;
+      cardEl.appendChild(colorStrip);
+
+      // Player avatar using PlayerCard component
+      const playerCard = createPlayerCard({
+        steamId: player.steamId,
+        name: player.name,
+        color: playerColor,
+        size: 'medium',
+        showName: false,
+        vertical: true,
+      });
+      cardEl.appendChild(playerCard);
+
+      // Player name
+      const nameEl = document.createElement('div');
+      nameEl.className = 'player-name';
+      nameEl.style.cssText = 'font-size: 16px; font-weight: 700; color: white; margin-top: 5px;';
+      nameEl.textContent = player.name;
+      cardEl.appendChild(nameEl);
+
+      // Player status
+      const statusEl = document.createElement('div');
+      statusEl.className = 'player-status';
+      statusEl.style.cssText = 'font-size: 12px; color: #a0aec0;';
+      statusEl.textContent = isHost ? '👑 HOST' : isLocal ? 'YOU' : 'PLAYER';
+      cardEl.appendChild(statusEl);
+
+      // Ready badge
+      const badgeEl = document.createElement('div');
+      badgeEl.className = 'player-ready-badge';
+      badgeEl.style.cssText = `
+        margin-top: 10px;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        background: ${isReady ? 'rgba(72,187,120,0.2)' : 'rgba(251,191,36,0.2)'};
+        color: ${isReady ? '#48bb78' : '#fbbf24'};
+        border: 1px solid ${isReady ? 'rgba(72,187,120,0.4)' : 'rgba(251,191,36,0.4)'};
+      `;
+      badgeEl.textContent = isReady ? 'READY' : 'WAITING';
+      cardEl.appendChild(badgeEl);
+
+      listEl.appendChild(cardEl);
+    });
   }
 
   /**
@@ -571,18 +633,44 @@ export class LobbyWaitingRoom {
   }
 
   /**
- * Add chat message
- */
+   * Get a player's color from the game state
+   * @param {string} steamId - The player's Steam ID
+   * @returns {string|null} The player's color hex code or null
+   */
+  getPlayerColor(steamId) {
+    if (!steamId || !this.gameState?.players) return null;
+    const player = this.gameState.players.get(steamId);
+    return player?.color || null;
+  }
+
+  /**
+   * Add chat message
+   * @param {Object|string} message - Message object with playerName/message/steamId/color, or string for system messages
+   * @param {boolean} isSystem - Whether this is a system message (only used for string messages)
+   */
   addChatMessage(message, isSystem = true) {
     if (!this.container) return;
     const chatEl = this.container.querySelector('#chat-messages');
     if (!chatEl) return;
 
-    const msgClass = isSystem ? 'system-message' : 'player-message';
-
     const msgDiv = document.createElement('div');
-    msgDiv.className = msgClass;
-    msgDiv.textContent = message;
+
+    // Handle both object format and string format
+    if (typeof message === 'string') {
+      // Legacy string format or system message
+      const msgClass = isSystem ? 'system-message' : 'player-message';
+      msgDiv.className = msgClass;
+      msgDiv.textContent = message;
+    } else {
+      // Object format with player info
+      const playerColor = message.color || this.getPlayerColor(message.steamId) || '#a78bfa';
+      msgDiv.className = 'player-message';
+      msgDiv.innerHTML = `
+        <span class="color-indicator" style="background: ${playerColor};"></span>
+        <span class="author" style="color: ${playerColor};">${this.escapeHtml(message.playerName)}:</span>
+        <span class="text">${this.escapeHtml(message.message)}</span>
+      `;
+    }
 
     chatEl.appendChild(msgDiv);
     chatEl.scrollTop = chatEl.scrollHeight;

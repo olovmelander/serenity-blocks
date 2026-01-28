@@ -4,6 +4,8 @@
  */
 
 import { GAME_MODES } from '../core/constants.js';
+import steamService from '../core/steam/steam-service.js';
+import { STEAM_EVENTS } from '../core/steam/steam-config.js';
 
 /**
  * Game mode UI manager
@@ -13,6 +15,7 @@ export class GameModeUI {
         this.currentMode = GAME_MODES.SINGLE_PLAYER;
         this.singlePlayerContainer = document.getElementById('single-player-container');
         this.multiplayerContainer = document.getElementById('multiplayer-container');
+        this.steamUnsubscribers = [];
 
         // Support both old button IDs and new card IDs
         this.singlePlayerBtn = document.getElementById('single-player-btn') || document.getElementById('single-player-card-btn');
@@ -31,6 +34,8 @@ export class GameModeUI {
         this.odysseyDesc = document.getElementById('odyssey-desc');
 
         this.setupModeButtons();
+        this.setupSteamListeners();
+        this.updateOnlineMultiplayerAvailability();
     }
 
     /**
@@ -51,6 +56,9 @@ export class GameModeUI {
 
         if (this.onlineMultiplayerBtn) {
             this.onlineMultiplayerBtn.addEventListener('click', async () => {
+                if (this.isOnlineMultiplayerDisabled()) {
+                    return;
+                }
                 await this.selectModeAndStart(GAME_MODES.ONLINE_MULTIPLAYER);
             });
         }
@@ -79,6 +87,9 @@ export class GameModeUI {
      * @param {string} mode - Game mode to select and start
      */
     async selectModeAndStart(mode) {
+        if (mode === GAME_MODES.ONLINE_MULTIPLAYER && this.isOnlineMultiplayerDisabled()) {
+            return;
+        }
         // Select the mode
         this.selectMode(mode);
 
@@ -153,6 +164,36 @@ export class GameModeUI {
         if (this.odysseyDesc) {
             this.odysseyDesc.classList.toggle('active', this.currentMode === GAME_MODES.ODYSSEY);
         }
+    }
+
+    setupSteamListeners() {
+        if (!steamService?.on) return;
+        this.steamUnsubscribers.push(
+            steamService.on(STEAM_EVENTS.CONNECTED, () => this.updateOnlineMultiplayerAvailability()),
+            steamService.on(STEAM_EVENTS.DISCONNECTED, () => this.updateOnlineMultiplayerAvailability()),
+            steamService.on(STEAM_EVENTS.STATE_CHANGED, () => this.updateOnlineMultiplayerAvailability()),
+        );
+    }
+
+    updateOnlineMultiplayerAvailability() {
+        if (!this.onlineMultiplayerBtn) return;
+        const isOnline = !!steamService?.isOnline;
+        this.setOnlineMultiplayerEnabled(isOnline);
+    }
+
+    setOnlineMultiplayerEnabled(isEnabled) {
+        if (!this.onlineMultiplayerBtn) return;
+        this.onlineMultiplayerBtn.classList.toggle('steam-disabled', !isEnabled);
+        this.onlineMultiplayerBtn.dataset.disabled = isEnabled ? 'false' : 'true';
+        this.onlineMultiplayerBtn.dataset.disabledLabel = isEnabled ? '' : 'Steam required';
+        this.onlineMultiplayerBtn.setAttribute('aria-disabled', String(!isEnabled));
+        this.onlineMultiplayerBtn.setAttribute('tabindex', isEnabled ? '0' : '-1');
+        this.onlineMultiplayerBtn.title = isEnabled ? '' : 'Requires Steam connection';
+    }
+
+    isOnlineMultiplayerDisabled() {
+        if (!this.onlineMultiplayerBtn) return false;
+        return this.onlineMultiplayerBtn.dataset.disabled === 'true';
     }
 
     /**

@@ -38,6 +38,11 @@ import { rebuildBoardGridFromPieces } from './core/board.js';
 import { initPieceSystem } from './core/pieces.js';
 import { MultiplayerGameState } from './core/multiplayer.js';
 import { GameModeManager } from './core/game-modes/GameModeManager.js';
+import steamService from './core/steam/steam-service.js';
+import { richPresenceManager } from './core/steam/rich-presence-manager.js';
+import { SteamInviteManager } from './core/steam/steam-invite-manager.js';
+import SteamCloudSyncManager from './core/steam/steam-cloud-sync.js';
+import { initializeMainMenuPlayerCard } from './ui/components/main-menu-player-card.js';
 
 // Rendering imports
 import { generateGridCache, drawBlock, drawGhostPiece } from './rendering/canvas-utils.js';
@@ -212,6 +217,7 @@ class SerenityBlocks {
         this.demoManager = null;
         this.demoBrowser = null;
         this.displayManager = null; // Phase 1: Display management
+        this.cloudSyncManager = null;
         this.frameRateController = new FrameRateController(); // Phase 2: FPS & VSync control
         this.cleanupHandlers = [];
         this.currentEffectQuality = normalizeQuality(DEFAULT_SETTINGS.effectQuality);
@@ -405,16 +411,16 @@ class SerenityBlocks {
         } else {
             // Tab became hidden - apply throttling based on behavior
             switch (this.backgroundTabBehavior) {
-            case 'pause':
-                this.pauseAllRendering();
-                break;
-            case 'reduce':
-                this.reduceRenderingFrameRate();
-                break;
-            case 'continue':
-            default:
-                // Do nothing - continue as normal
-                break;
+                case 'pause':
+                    this.pauseAllRendering();
+                    break;
+                case 'reduce':
+                    this.reduceRenderingFrameRate();
+                    break;
+                case 'continue':
+                default:
+                    // Do nothing - continue as normal
+                    break;
             }
         }
 
@@ -1309,6 +1315,16 @@ class SerenityBlocks {
 
         console.log('✅ All managers initialized');
 
+        // Steam Cloud Sync (Phase 5) - non-blocking
+        this.cloudSyncManager = new SteamCloudSyncManager({
+            settingsManager: this.settingsManager,
+            highScoreManager: this.highScoreManager,
+        });
+        this.cloudSyncManager.initialize();
+        if (typeof window !== 'undefined') {
+            window.cloudSyncManager = this.cloudSyncManager;
+        }
+
         // Initialize global Serenity Hub (accessible from all game modes)
         this.initializeGlobalSerenityHub();
 
@@ -1397,6 +1413,9 @@ class SerenityBlocks {
             getMultiplayerPhysicsCallbacks: (playerNum) => this.getMultiplayerPhysicsCallbacks(playerNum),
         });
 
+        // Initialize RichPresenceManager with GameModeManager for automatic updates
+        richPresenceManager.initialize(this.gameModeManager);
+
         // Subscribe to mode events
         this.gameModeManager.on('modeActivated', ({ modeId }) => {
             console.log(`[Main] Mode activated: ${modeId}`);
@@ -1448,16 +1467,16 @@ class SerenityBlocks {
         let initialTheme = 'forest'; // default
 
         switch (settings.backgroundMode) {
-        case 'Specific':
-            initialTheme = settings.backgroundTheme || 'forest';
-            break;
-        case 'Level':
-            initialTheme = this.themeManager.getThemeForLevel(1);
-            break;
-        case 'Random':
-            initialTheme = this.themeManager.getRandomTheme();
-            this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
-            break;
+            case 'Specific':
+                initialTheme = settings.backgroundTheme || 'forest';
+                break;
+            case 'Level':
+                initialTheme = this.themeManager.getThemeForLevel(1);
+                break;
+            case 'Random':
+                initialTheme = this.themeManager.getRandomTheme();
+                this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
+                break;
         }
 
         await this.themeManager.switchTheme(initialTheme);
@@ -3593,6 +3612,26 @@ async function bootstrap() {
     try {
         console.log('🚀 Bootstrapping Serenity Blocks...');
 
+        // Initialize Steam service (non-blocking)
+        steamService.initialize().then(() => {
+            const status = steamService.getStatus();
+            if (status.isOnline) {
+                console.log(`🎮 SteamService ready: ${status.playerName} (${status.steamId})`);
+            } else {
+                console.log('🎮 SteamService: Running in offline mode');
+            }
+        }).catch(err => {
+            console.warn('🎮 SteamService init error:', err.message);
+        });
+
+        // Listen for Steam connection events
+        steamService.on('steam:disconnected', () => {
+            console.log('⚠️ Steam disconnected - playing offline');
+        });
+        steamService.on('steam:reconnected', () => {
+            console.log('✅ Steam reconnected');
+        });
+
         await ensureIntroMusicIsPlaying();
 
         // Show epic intro animation
@@ -3606,8 +3645,16 @@ async function bootstrap() {
             startModal.classList.add('visible');
         }
 
+        // Initialize main menu player card (shows Steam avatar/name in top-right)
+        initializeMainMenuPlayerCard().catch(err => {
+            console.warn('Failed to initialize main menu player card:', err.message);
+        });
+
         app = new SerenityBlocks(sharedSoundManager);
         await app.init();
+
+        // Initialize Steam invite handling (Phase 3: Friends & Social)
+        const steamInviteManager = new SteamInviteManager(app.gameModeManager);
 
         // Enable gamepad navigation for game mode selection
         if (app.gamepadController) {
@@ -3618,67 +3665,103 @@ async function bootstrap() {
         if (typeof window !== 'undefined') {
             window.serenityBlocks = app;
             window.performanceMonitor = performanceMonitor;
+            window.steamService = steamService;
+            window.steamInviteManager = steamInviteManager;
+
+            console.log('💡 Steam service available: window.steamService.getStatus()');
 
             // Add test/debug functions
+            const prepareForMatchStart = async () => {
+                const startModal = document.getElementById('start-modal');
+                if (startModal) {
+                    startModal.classList.remove('visible');
+                }
+                document.body.classList.remove('start-modal-open');
+
+                if (app.modalManager) {
+                    app.modalManager.hideAll();
+                }
+                if (app.gamepadController?.disableMenuNavigation) {
+                    app.gamepadController.disableMenuNavigation();
+                }
+                if (app.gamepadController?.disableGameModeSelection) {
+                    app.gamepadController.disableGameModeSelection();
+                }
+
+                if (introAnimation?.dismiss) {
+                    introAnimation.dismiss();
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, 100));
+            };
+
+            const ensureOnlineMultiplayerMode = async () => {
+                const currentMode = app.gameModeManager.getCurrentModeId();
+                if (currentMode !== GAME_MODES.ONLINE_MULTIPLAYER) {
+                    console.log('🧪 [TEST] Switching to online multiplayer mode...');
+                    await app.gameModeManager.stopCurrentMode();
+                    await app.gameModeManager.deactivateCurrentMode();
+                    await prepareForMatchStart();
+                    await app.gameModeManager.activateMode(GAME_MODES.ONLINE_MULTIPLAYER);
+                    await new Promise((resolve) => setTimeout(resolve, 500));
+                } else {
+                    await prepareForMatchStart();
+                }
+
+                const activeMode = app.gameModeManager.getCurrentMode();
+                if (activeMode && !activeMode.isRunning) {
+                    await app.gameModeManager.startCurrentMode();
+                }
+
+                const onlineMode = app.gameModeManager.getMode(GAME_MODES.ONLINE_MULTIPLAYER);
+                if (!onlineMode) {
+                    throw new Error('Online multiplayer mode not available');
+                }
+
+                return onlineMode;
+            };
+
+            const populateTestPlayers = (ffaGameState, numPlayers) => {
+                const dummyNames = [
+                    'TestBot_Alpha',
+                    'TestBot_Beta',
+                    'TestBot_Gamma',
+                    'TestBot_Delta',
+                    'TestBot_Epsilon',
+                    'TestBot_Zeta',
+                    'TestBot_Eta',
+                    'TestBot_Theta',
+                    'TestBot_Iota',
+                ];
+
+                for (let i = 1; i < numPlayers; i++) {
+                    const dummyId = `dummy_${i}_${Date.now()}`;
+                    const dummyName = dummyNames[i - 1] || `DummyPlayer_${i}`;
+
+                    ffaGameState.addPlayer(dummyId, dummyName, false);
+
+                    const player = ffaGameState.players.get(dummyId);
+                    if (player) {
+                        player.isReady = true;
+                    }
+                }
+
+                const localPlayer = ffaGameState.getLocalPlayer?.();
+                if (localPlayer) {
+                    localPlayer.isReady = true;
+                }
+            };
+
             window.testMultiplayer = async (numPlayers = 4) => {
                 try {
                     console.log(`🧪 [TEST] Creating test lobby with ${numPlayers} players...`);
+                    const onlineMode = await ensureOnlineMultiplayerMode();
+                    const playerCount = Math.max(2, Math.min(8, numPlayers));
 
-                    const prepareForMatchStart = async () => {
-                        const startModal = document.getElementById('start-modal');
-                        if (startModal) {
-                            startModal.classList.remove('visible');
-                        }
-                        document.body.classList.remove('start-modal-open');
-
-                        if (app.modalManager) {
-                            app.modalManager.hideAll();
-                        }
-                        if (app.gamepadController?.disableMenuNavigation) {
-                            app.gamepadController.disableMenuNavigation();
-                        }
-                        if (app.gamepadController?.disableGameModeSelection) {
-                            app.gamepadController.disableGameModeSelection();
-                        }
-
-                        if (introAnimation?.dismiss) {
-                            introAnimation.dismiss();
-                        }
-
-                        await new Promise((resolve) => setTimeout(resolve, 100));
-                    };
-
-                    // Switch to online multiplayer mode if not already
-                    const currentMode = app.gameModeManager.getCurrentModeId();
-                    if (currentMode !== GAME_MODES.ONLINE_MULTIPLAYER) {
-                        console.log('🧪 [TEST] Switching to online multiplayer mode...');
-                        await app.gameModeManager.stopCurrentMode();
-                        await app.gameModeManager.deactivateCurrentMode();
-                        await prepareForMatchStart();
-                        await app.gameModeManager.activateMode(GAME_MODES.ONLINE_MULTIPLAYER);
-
-                        // Wait for mode to initialize
-                        await new Promise((resolve) => setTimeout(resolve, 500));
-                    } else {
-                        await prepareForMatchStart();
-                    }
-
-                    const activeMode = app.gameModeManager.getCurrentMode();
-                    if (activeMode && !activeMode.isRunning) {
-                        await app.gameModeManager.startCurrentMode();
-                    }
-
-                    // Get the online multiplayer mode
-                    const onlineMode = app.gameModeManager.getMode(GAME_MODES.ONLINE_MULTIPLAYER);
-                    if (!onlineMode) {
-                        throw new Error('Online multiplayer mode not available');
-                    }
-
-                    // Create a test lobby
                     console.log('🧪 [TEST] Creating test lobby...');
                     const config = {
                         gameName: 'TEST LOBBY',
-                        maxPlayers: Math.max(2, Math.min(8, numPlayers)),
+                        maxPlayers: playerCount,
                         lobbyType: 'public',
                         endCondition: 'frags',
                         endConditionValue: 10,
@@ -3686,8 +3769,8 @@ async function bootstrap() {
                     };
 
                     await onlineMode.handleCreateLobby(config);
-
                     await prepareForMatchStart();
+
                     if (onlineMode.lobbyBrowser?.hide) {
                         onlineMode.lobbyBrowser.hide();
                     }
@@ -3695,41 +3778,14 @@ async function bootstrap() {
                         onlineMode.matchConfigModal.hide();
                     }
 
-                    // Get the FFA game state
                     const { ffaGameState } = onlineMode;
                     if (!ffaGameState) {
                         throw new Error('Failed to create game state');
                     }
 
-                    // Add dummy players
                     console.log('🧪 [TEST] Adding dummy players...');
-                    const dummyNames = [
-                        'TestBot_Alpha',
-                        'TestBot_Beta',
-                        'TestBot_Gamma',
-                        'TestBot_Delta',
-                        'TestBot_Epsilon',
-                        'TestBot_Zeta',
-                        'TestBot_Eta',
-                    ];
+                    populateTestPlayers(ffaGameState, playerCount);
 
-                    for (let i = 1; i < numPlayers; i++) {
-                        const dummyId = `dummy_${i}_${Date.now()}`;
-                        const dummyName = dummyNames[i - 1] || `DummyPlayer_${i}`;
-
-                        ffaGameState.addPlayer(dummyId, dummyName, false);
-
-                        // Auto-ready the dummy player
-                        const player = ffaGameState.players.get(dummyId);
-                        if (player) {
-                            player.isReady = true;
-                        }
-                    }
-
-                    const localPlayer = ffaGameState.getLocalPlayer?.();
-                    if (localPlayer) {
-                        localPlayer.isReady = true;
-                    }
                     if (ffaGameState.isHost) {
                         ffaGameState.broadcastPlayerList();
                     }
@@ -3740,7 +3796,7 @@ async function bootstrap() {
                         ffaGameState.startMatch();
                     }
 
-                    console.log(`✅ [TEST] Test lobby created with ${numPlayers} players!`);
+                    console.log(`✅ [TEST] Test lobby created with ${playerCount} players!`);
                     console.log('📋 [TEST] All dummy players are auto-ready');
                     console.log('🎮 [TEST] Match starting automatically (lobby flow)');
 
@@ -3759,9 +3815,146 @@ async function bootstrap() {
                 }
             };
 
+            window.testLobby = async (numPlayers = 4) => {
+                try {
+                    const onlineMode = await ensureOnlineMultiplayerMode();
+                    const playerCount = Math.max(2, Math.min(8, numPlayers));
+                    console.log(`🧪 [TEST] Creating ready lobby with ${playerCount} players...`);
+
+                    const config = {
+                        gameName: 'READY LOBBY',
+                        maxPlayers: playerCount,
+                        lobbyType: 'public',
+                        endCondition: 'frags',
+                        endConditionValue: 10,
+                        boringRules: false,
+                    };
+
+                    await onlineMode.handleCreateLobby(config);
+                    await prepareForMatchStart();
+
+                    if (onlineMode.lobbyBrowser?.hide) {
+                        onlineMode.lobbyBrowser.hide();
+                    }
+                    if (onlineMode.matchConfigModal?.hide) {
+                        onlineMode.matchConfigModal.hide();
+                    }
+
+                    const { ffaGameState } = onlineMode;
+                    if (!ffaGameState) {
+                        throw new Error('Failed to create game state');
+                    }
+
+                    populateTestPlayers(ffaGameState, playerCount);
+
+                    if (ffaGameState.isHost) {
+                        ffaGameState.broadcastPlayerList();
+                    }
+
+                    console.log(`✅ [TEST] Ready lobby created with ${playerCount} players.`);
+                    console.log('📋 [TEST] All players are ready. Start the match from the lobby UI.');
+
+                    return {
+                        lobbyId: onlineMode.currentLobbyId,
+                        players: Array.from(ffaGameState.players.values()).map((p) => ({
+                            name: p.name,
+                            steamId: p.steamId,
+                            isReady: p.isReady,
+                            color: p.color,
+                        })),
+                    };
+                } catch (err) {
+                    console.error('❌ [TEST] Failed to create ready lobby:', err);
+                    throw err;
+                }
+            };
+
+            window.testPostMatch = async (numPlayers = 4) => {
+                try {
+                    const onlineMode = await ensureOnlineMultiplayerMode();
+                    if (onlineMode._ensureMatchResultsModal) {
+                        onlineMode._ensureMatchResultsModal();
+                    }
+
+                    const playerCount = Math.max(2, numPlayers);
+                    const now = Date.now();
+                    const dummyNames = [
+                        'Nova',
+                        'Pulse',
+                        'Vortex',
+                        'Blaze',
+                        'Echo',
+                        'Quanta',
+                        'Flux',
+                        'Zenith',
+                        'Comet',
+                        'Rift',
+                    ];
+
+                    const finalStats = Array.from({ length: playerCount }).map((_, index) => {
+                        const placement = index + 1;
+                        const frags = Math.max(0, (playerCount - index) * 2);
+                        return {
+                            steamId: `post_${index}_${now}`,
+                            name: dummyNames[index] || `Player_${index + 1}`,
+                            placement,
+                            frags,
+                            deaths: Math.max(0, index - 1),
+                            score: frags * 1000 + (playerCount - index) * 250,
+                            lines: 12 + index * 3,
+                            bpm: 90 + index * 6,
+                            ppm: 40 + index * 4,
+                            apm: 70 + index * 5,
+                            color: `hsl(${(index * 45) % 360}, 70%, 55%)`,
+                        };
+                    });
+
+                    const winner = finalStats[0];
+                    const killFeed = finalStats.slice(1, Math.min(finalStats.length, 6)).map((entry, idx) => ({
+                        killer: winner.name,
+                        victim: entry.name,
+                        timestamp: now - idx * 15000,
+                    }));
+
+                    const results = {
+                        isGameOver: true,
+                        winner: winner.steamId,
+                        winnerName: winner.name,
+                        endCondition: 'frags',
+                        endConditionValue: 10,
+                        duration: 6 * 60 * 1000 + 32000,
+                        finalStats,
+                        killFeed,
+                    };
+
+                    const localPlayerId = finalStats[0]?.steamId;
+                    onlineMode.matchResultsModal?.show(results, {
+                        isHost: true,
+                        localPlayerId,
+                        gameState: {
+                            chatHistory: [
+                                { playerName: winner.name, text: 'GGs!' },
+                                { playerName: finalStats[1]?.name, text: 'Nice match.' },
+                                { text: 'Match ended. Returning to lobby soon.' },
+                            ],
+                        },
+                    });
+
+                    console.log(`✅ [TEST] Match results shown for ${playerCount} players.`);
+                    return results;
+                } catch (err) {
+                    console.error('❌ [TEST] Failed to show post-match modal:', err);
+                    throw err;
+                }
+            };
+
             console.log('🧪 Test functions available:');
             console.log('  - window.testMultiplayer(numPlayers) - Create test lobby with dummy players');
             console.log('    Example: testMultiplayer(5)');
+            console.log('  - window.testLobby(numPlayers) - Create ready lobby without auto-start');
+            console.log('    Example: testLobby(8)');
+            console.log('  - window.testPostMatch(numPlayers) - Show match results modal');
+            console.log('    Example: testPostMatch(9)');
         }
     } catch (error) {
         console.error('❌ Failed to bootstrap application:', error);

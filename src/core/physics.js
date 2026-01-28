@@ -267,6 +267,10 @@ export async function applyGravity(
 
         // Visual feedback with consistent timing
         if (blocksStillFalling) {
+            // CRITICAL: Mark board dirty so the dual-canvas renderer redraws the static layer
+            // Without this, the performance optimization skips redrawing falling pieces
+            markBoardDirty(gameState);
+
             if (drawCallback) {
                 drawCallback();
             }

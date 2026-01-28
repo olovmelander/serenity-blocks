@@ -4,6 +4,8 @@ import {
     GAME_MODES, COLS, ROWS, BLOCK_SIZE,
 } from '../constants.js';
 import { SteamNetworking } from '../steam/steam-networking.js';
+import steamService from '../steam/steam-service.js';
+import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
 import { FFAGameStateP2P } from '../multiplayer/ffa-p2p-game-state.js';
 import { LobbyBrowser } from '../../ui/lobby-browser.js';
 import { LobbyWaitingRoom } from '../../ui/lobby-waiting-room.js';
@@ -64,6 +66,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.matchStartedUnsub = null;
         this.matchResultsUnsub = null;
         this.renderFrameUnsub = null;
+        this.playerListRichPresenceUnsub = null;
         this._uiSetupComplete = false;
         this.networkHandlersRegistered = false;
         this.lastPlayerSignature = '';
@@ -84,6 +87,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         });
 
         // === PERFORMANCE OPTIMIZATIONS ===
+        // RAF throttling for RENDER_FRAME events (batch multiple events per frame)
+        this._renderFrameScheduled = false;
+        this._pendingRenderDetail = null;
         // Cache local player reference (changes rarely, avoids find() every frame)
         this._cachedLocalId = null;
         this._cachedLocalPlayerIndex = -1;
@@ -279,6 +285,22 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         try {
             console.log(`[OnlineMultiplayer] Joining lobby: ${lobbyId}`);
 
+            // Leave any existing lobby state before joining a new one
+            if (this.currentLobbyId && this.currentLobbyId !== lobbyId && this.steamNetworking) {
+                this.steamNetworking.leaveLobby();
+                this.currentLobbyId = null;
+                this._clearLobbyRichPresence();
+            }
+
+            if (this.ffaGameState) {
+                this.ffaGameState.cleanup();
+                this.ffaGameState = null;
+            }
+
+            if (this.lobbyBrowser) {
+                this.lobbyBrowser.hide();
+            }
+
             // Join the lobby via Steam
             await this.steamNetworking.joinLobby(lobbyId);
 
@@ -293,14 +315,47 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             this.currentLobbyId = lobbyId;
 
+            // Fetch lobby name
+            let lobbyName = 'FFA Match';
+            try {
+                const name = await this.steamNetworking.getLobbyData(lobbyId, 'game_name');
+                if (name) lobbyName = name;
+            } catch (err) {
+                console.warn('[OnlineMultiplayer] Failed to fetch lobby name:', err);
+            }
+
+            // Update game state with lobby info
+            if (this.ffaGameState) {
+                this.ffaGameState.lobbyId = lobbyId;
+                this.ffaGameState.lobbyName = lobbyName;
+            }
+
+            this._setLobbyRichPresence();
+
             // Show waiting room
             this.showWaitingRoom();
 
             console.log('[OnlineMultiplayer] ✅ Joined lobby successfully');
         } catch (error) {
             console.error('[OnlineMultiplayer] Failed to join lobby:', error);
+            this._clearLobbyRichPresence();
+            try {
+                if (this.lobbyBrowser) {
+                    await this.showLobbyBrowser();
+                }
+            } catch (showErr) {
+                console.warn('[OnlineMultiplayer] Failed to restore lobby browser:', showErr.message);
+            }
             alert(`Failed to join lobby: ${error.message}`);
         }
+    }
+
+    /**
+     * Join a lobby via Steam invite (bypasses lobby browser flow)
+     */
+    async joinLobbyFromInvite(lobbyId) {
+        if (!lobbyId) return;
+        await this.handleJoinLobby(lobbyId);
     }
 
     /**
@@ -345,6 +400,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             this.currentLobbyId = lobbyId;
 
+            // Update game state with lobby info
+            if (this.ffaGameState) {
+                this.ffaGameState.lobbyId = lobbyId;
+                this.ffaGameState.lobbyName = config.gameName || 'FFA Match';
+            }
+
+            this._setLobbyRichPresence();
+
             // Show waiting room
             this.showWaitingRoom();
 
@@ -379,6 +442,27 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         // Show waiting room
         this.lobbyWaitingRoom.show();
+
+        // Dispatch Rich Presence update for lobby status
+        const playerCount = this.ffaGameState?.players?.size || 1;
+        const maxPlayers = this.ffaGameState?.maxPlayers || 8;
+        window.dispatchEvent(new CustomEvent('game:lobbyStatus', {
+            detail: {
+                playerCount,
+                maxPlayers,
+                lobbyId: this.ffaGameState.lobbyId,
+                lobbyName: this.ffaGameState.lobbyName
+            }
+        }));
+
+        // Update Steam Rich Presence group size when lobby members change
+        if (!this.playerListRichPresenceUnsub) {
+            this.playerListRichPresenceUnsub = onMultiplayerEvent(
+                MULTIPLAYER_EVENTS.PLAYER_LIST_CHANGED,
+                () => this._setLobbyRichPresence(),
+            );
+            this.cleanupHandlers.push(this.playerListRichPresenceUnsub);
+        }
 
         // Listen for MATCH_PREPARING - set up UI before countdown starts
         if (!this.matchPreparingUnsub) {
@@ -416,6 +500,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.steamNetworking.leaveLobby();
             this.currentLobbyId = null;
         }
+
+        this._clearLobbyRichPresence();
 
         // Cleanup game state
         if (this.ffaGameState) {
@@ -504,6 +590,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Reset UI setup flag for next match
         this._uiSetupComplete = false;
 
+        // Dispatch Rich Presence update for match start
+        const playerCount = this.ffaGameState?.players?.size || 1;
+        window.dispatchEvent(new CustomEvent('game:matchPosition', {
+            detail: { position: 1, playerCount }
+        }));
+
         console.log('[OnlineMultiplayer] ✅ Match started! Game is now active.');
     }
 
@@ -538,6 +630,72 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 gameState: this.ffaGameState, // Pass gameState for chat history access
             });
         }
+
+        this._syncFfaSteamStats(detail).catch((err) => {
+            console.warn('[OnlineMultiplayer] Steam stats sync failed:', err.message);
+        });
+    }
+
+    /**
+     * Sync FFA Steam stats and leaderboards (best-effort, non-blocking)
+     * @private
+     */
+    async _syncFfaSteamStats(detail) {
+        if (!detail?.finalStats || !this.steamNetworking?.steamId) {
+            return;
+        }
+
+        const localSteamId = this.steamNetworking.steamId;
+        const localStats = detail.finalStats.find((entry) => `${entry.steamId}` === `${localSteamId}`);
+        if (!localStats) {
+            return;
+        }
+
+        const kills = localStats.frags || 0;
+        const isWinner = localStats.placement === 1;
+        const durationSeconds = Math.max(1, Math.round((detail.duration || 0) / 1000));
+        const durationMinutes = Math.max(1, Math.round(durationSeconds / 60));
+
+        const matchesBefore = steamService.getCachedStat('ffa_matches', 0);
+        const winsBefore = steamService.getCachedStat('ffa_wins', 0);
+        const killsBefore = steamService.getCachedStat('ffa_kills', 0);
+
+        await Promise.all([
+            steamService.incrementStat('ffa_matches', 1),
+            steamService.incrementStat('ffa_kills', kills),
+            steamService.incrementStat('total_lines_cleared', localStats.lines || 0),
+            steamService.incrementStat('playtime_minutes', durationMinutes),
+            isWinner ? steamService.incrementStat('ffa_wins', 1) : Promise.resolve(true),
+        ]);
+
+        const matches = steamService.getCachedStat('ffa_matches', matchesBefore + 1);
+        const wins = steamService.getCachedStat('ffa_wins', winsBefore + (isWinner ? 1 : 0));
+        const totalKills = steamService.getCachedStat('ffa_kills', killsBefore + kills);
+        const winRateScore = matches > 0 ? Math.round((wins / matches) * 10000) : 0;
+
+        const scoreDetails = {
+            score: localStats.score || 0,
+            duration: durationSeconds,
+            linesCleared: localStats.lines || 0,
+            highestLevel: localStats.level || 0,
+            kills,
+            wins,
+            matches,
+            placement: localStats.placement,
+            mode: 'ffa',
+            version: '1.0.0',
+        };
+
+        await Promise.all([
+            steamService.uploadScore(STEAM_LEADERBOARDS.FFA_TOTAL_KILLS, totalKills, {
+                ...scoreDetails,
+                extraValue: totalKills,
+            }),
+            steamService.uploadScore(STEAM_LEADERBOARDS.FFA_WIN_RATE, winRateScore, {
+                ...scoreDetails,
+                extraValue: totalKills,
+            }),
+        ]);
     }
 
     /**
@@ -753,7 +911,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                     this.chat.addMessage({
                         author: isSystem ? 'System' : msg.playerName,
                         text: isSystem ? (msg.text || msg.message) : msg.message,
-                        isSystem: isSystem
+                        isSystem: isSystem,
+                        color: msg.color || this._getPlayerColor(msg.steamId),
                     });
                 });
             }
@@ -809,9 +968,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         const chatHandler = (msg) => {
             if (!this.chat) return;
+            const color = msg.data.color || this._getPlayerColor(msg.data.steamId);
             this.chat.addMessage({
                 author: msg.data.playerName || msg.data.author,
                 text: msg.data.message || msg.data.text,
+                color,
             });
         };
 
@@ -1165,8 +1326,31 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
     /**
      * Handle render frames from the authoritative game state
+     * PERF: Uses RAF throttling to batch multiple RENDER_FRAME events per frame
      */
     _handleRenderFrame(detail) {
+        if (!detail || !detail.players) return;
+
+        // PERF: RAF throttling - batch multiple RENDER_FRAME events per frame
+        // Store latest data and schedule processing for next animation frame
+        this._pendingRenderDetail = detail;
+
+        if (!this._renderFrameScheduled) {
+            this._renderFrameScheduled = true;
+            requestAnimationFrame(() => {
+                this._renderFrameScheduled = false;
+                if (this._pendingRenderDetail) {
+                    this._processRenderFrame(this._pendingRenderDetail);
+                    this._pendingRenderDetail = null;
+                }
+            });
+        }
+    }
+
+    /**
+     * Process render frame (actual work, called once per RAF)
+     */
+    _processRenderFrame(detail) {
         if (!detail || !detail.players) return;
 
         const localId = this.steamNetworking?.steamId;
@@ -1529,15 +1713,39 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
     /**
      * Update the garbage meter display
+     * PERF: Caches DOM elements and only updates when values change
      */
     _updateGarbageMeter(queueOrAmount) {
-        const bar = document.getElementById('online-garbage-bar');
-        const fill = bar?.querySelector('.garbage-fill');
-        const segments = bar?.querySelector('.garbage-segments');
-        const valueEl = document.getElementById('online-garbage-value');
+        // PERF: Initialize garbage meter element cache on first call
+        if (!this._garbageElements) {
+            const bar = document.getElementById('online-garbage-bar');
+            this._garbageElements = {
+                bar,
+                fill: bar?.querySelector('.garbage-fill'),
+                segments: bar?.querySelector('.garbage-segments'),
+                value: document.getElementById('online-garbage-value'),
+            };
+            this._lastGarbageAmount = -1;
+            this._lastGarbageQueueSignature = '';
+        }
 
         const isQueue = queueOrAmount && typeof queueOrAmount.getTotalLines === 'function';
         const amount = isQueue ? queueOrAmount.getTotalLines() : Number(queueOrAmount || 0);
+
+        // PERF: Skip DOM updates if amount hasn't changed
+        if (amount === this._lastGarbageAmount) {
+            // Still need to check queue signature for segment rendering
+            if (isQueue) {
+                const signature = queueOrAmount.entries?.map((e) => `${e.type}:${e.lines}`).join('|') || '';
+                if (signature === this._lastGarbageQueueSignature) return;
+                this._lastGarbageQueueSignature = signature;
+            } else {
+                return;
+            }
+        }
+        this._lastGarbageAmount = amount;
+
+        const { bar, fill, segments, value: valueEl } = this._garbageElements;
 
         if (fill) {
             const percentage = Math.min(100, (amount / 20) * 100);
@@ -1649,19 +1857,42 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
     /**
      * Update local player stats display
+     * PERF: Caches DOM elements and only updates when values change
      */
     _updateLocalStats(state) {
-        const updates = [
-            ['online-frags', state.frags || 0],
-            ['online-deaths', state.deaths || 0],
-            ['online-score', state.score || 0],
-            ['online-lines', state.lines || 0],
-        ];
+        // PERF: Initialize stat element cache on first call
+        if (!this._statElements) {
+            this._statElements = {
+                frags: document.getElementById('online-frags'),
+                deaths: document.getElementById('online-deaths'),
+                score: document.getElementById('online-score'),
+                lines: document.getElementById('online-lines'),
+            };
+            this._lastStats = { frags: -1, deaths: -1, score: -1, lines: -1 };
+        }
 
-        updates.forEach(([id, value]) => {
-            const el = document.getElementById(id);
-            if (el) el.textContent = value;
-        });
+        // PERF: Only update DOM when values actually change
+        const frags = state.frags || 0;
+        const deaths = state.deaths || 0;
+        const score = state.score || 0;
+        const lines = state.lines || 0;
+
+        if (frags !== this._lastStats.frags && this._statElements.frags) {
+            this._statElements.frags.textContent = frags;
+            this._lastStats.frags = frags;
+        }
+        if (deaths !== this._lastStats.deaths && this._statElements.deaths) {
+            this._statElements.deaths.textContent = deaths;
+            this._lastStats.deaths = deaths;
+        }
+        if (score !== this._lastStats.score && this._statElements.score) {
+            this._statElements.score.textContent = score;
+            this._lastStats.score = score;
+        }
+        if (lines !== this._lastStats.lines && this._statElements.lines) {
+            this._statElements.lines.textContent = lines;
+            this._lastStats.lines = lines;
+        }
     }
 
     /**
@@ -1744,11 +1975,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     _sendChatMessage(text) {
         if (!this.ffaGameState || !this.ffaGameState.network || !text) return;
 
+        const localColor = this._getPlayerColor(this.ffaGameState.localPlayerId);
         const payload = {
             playerName: this.ffaGameState.network.playerName,
             message: text,
             steamId: this.ffaGameState.localPlayerId,
             timestamp: Date.now(),
+            color: localColor,
         };
 
         // Also add to local chat immediately
@@ -1756,6 +1989,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.chat.addMessage({
                 author: 'You',
                 text,
+                color: localColor,
             });
         }
 
@@ -1901,7 +2135,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     /**
      * Called when user clicks "Start Game" (or joins lobby)
      */
-    async onStart() {
+    async onStart(options = {}) {
         console.log('[OnlineMultiplayer] Starting online game...');
 
         // For online multiplayer, the game starts through the lobby flow
@@ -1913,6 +2147,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         // Now actually start if we have a lobby
         await super.onStart();
+
+        if (options?.lobbyId) {
+            await this.handleJoinLobby(options.lobbyId);
+            return;
+        }
 
         console.log('[OnlineMultiplayer] Use lobby browser to create/join matches');
     }
@@ -1982,6 +2221,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.currentLobbyId = null;
         }
 
+        this._clearLobbyRichPresence();
+
         // Hide and cleanup lobby UI
         if (this.lobbyBrowser) {
             this.lobbyBrowser.hide();
@@ -2005,6 +2246,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.matchStartedUnsub = null;
         this.matchResultsUnsub = null;
         this.renderFrameUnsub = null;
+        this.playerListRichPresenceUnsub = null;
         this.networkHandlersRegistered = false;
         this.lastPlayerSignature = '';
 
@@ -2014,6 +2256,32 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }
 
         console.log('[OnlineMultiplayer] ✅ Deactivated');
+    }
+
+    /**
+     * Update Steam Rich Presence for lobby joins (enables "Join Game")
+     */
+    async _setLobbyRichPresence() {
+        if (!this.currentLobbyId) {
+            return;
+        }
+
+        const playerCount = this.ffaGameState?.players?.size || 1;
+
+        await Promise.all([
+            steamService.setRichPresenceKey('connect', `+connect_lobby ${this.currentLobbyId}`),
+            steamService.setRichPresenceKey('steam_player_group', String(this.currentLobbyId)),
+            steamService.setRichPresenceKey('steam_player_group_size', String(playerCount)),
+        ]);
+    }
+
+    /**
+     * Clear lobby-specific Rich Presence keys
+     */
+    _clearLobbyRichPresence() {
+        steamService.clearRichPresenceKey('connect');
+        steamService.clearRichPresenceKey('steam_player_group');
+        steamService.clearRichPresenceKey('steam_player_group_size');
     }
 
     /**
