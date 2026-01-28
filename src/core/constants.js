@@ -267,11 +267,6 @@ export const DEFAULT_SETTINGS = {
         flip: 'a',
         softDrop: 'ArrowDown',
         hardDrop: 'Space',
-        nextTrack: 'm',
-        randomTheme: 'b',
-        togglePause: 'p',
-        toggleFullscreen: 'f',
-        showHighScores: 'h',
     },
     // Player 2 controls (for multiplayer)
     player2KeyBindings: {

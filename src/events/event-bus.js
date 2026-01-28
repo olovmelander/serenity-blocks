@@ -47,6 +47,8 @@ export const EVENTS = {
     COMBO: 'combo',
     PIECE_LOCK: 'pieceLock',
     SETTINGS_CHANGED: 'settingsChanged',
+    ODYSSEY_SAVED: 'odysseySaved',
+    HIGH_SCORE_SAVED: 'highScoreSaved',
     // Odyssey Mode Victory Lap
     ODYSSEY_GOAL_COMPLETE: 'odysseyGoalComplete',
     ODYSSEY_VICTORY_LAP_END: 'odysseyVictoryLapEnd',

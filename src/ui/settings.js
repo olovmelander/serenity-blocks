@@ -4,6 +4,7 @@
  */
 
 import { DEFAULT_SETTINGS } from '../core/constants.js';
+import { eventBus, EVENTS } from '../events/event-bus.js';
 
 const DEFAULT_CONFIG = {
     gameMode: 'single',
@@ -64,11 +65,6 @@ const DEFAULT_CONFIG = {
         flip: 'a',
         softDrop: 'ArrowDown',
         hardDrop: 'Space',
-        nextTrack: 'm',
-        randomTheme: 'b',
-        togglePause: 'p',
-        toggleFullscreen: 'f',
-        showHighScores: 'h',
     },
     player2KeyBindings: {
         moveLeft: 'a',
@@ -237,9 +233,15 @@ export class SettingsManager {
     /**
      * Saves settings to localStorage
      */
-    save() {
+    save({ emitEvent = true } = {}) {
         try {
             localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.settings));
+            if (emitEvent) {
+                eventBus.emit(EVENTS.SETTINGS_CHANGED, {
+                    settings: { ...this.settings },
+                    source: 'local',
+                });
+            }
         } catch (error) {
             console.error('Failed to save settings:', error);
         }
@@ -269,6 +271,9 @@ export class SettingsManager {
                         ...loadedP2KeyBindings,
                     },
                 };
+                if (this.settings.keyBindings?.togglePause) {
+                    delete this.settings.keyBindings.togglePause;
+                }
             }
         } catch (error) {
             console.error('Failed to load settings:', error);
@@ -321,10 +326,6 @@ export function updateControlsDisplay(settings) {
         'flip',
         'softDrop',
         'hardDrop',
-        'nextTrack',
-        'randomTheme',
-        'toggleFullscreen',
-        'showHighScores',
     ];
 
     if (settings.controlScheme === 'Keyboard') {

@@ -4,6 +4,9 @@
  * Displays final standings, stats, and actions after a match ends.
  */
 
+import steamService from '../core/steam/steam-service.js';
+import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../events/multiplayer-events.js';
+
 export class MatchResultsModal {
   constructor(options = {}) {
     this.onPlayAgain = options.onPlayAgain || (() => { });
@@ -18,6 +21,8 @@ export class MatchResultsModal {
     this.isHost = false;
     this.localPlayerId = null;
     this.isVisible = false;
+    this.chatUnsub = null;
+    this.chatHandler = null;
 
     this.createUI();
   }
@@ -46,8 +51,12 @@ export class MatchResultsModal {
           
           <!-- Winner Display -->
           <div class="match-results-winner" style="text-align: center; padding: 30px 20px; background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px solid rgba(251, 191, 36, 0.2);">
-             <div class="winner-label" style="color: #fbbf24; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px;">Champion</div>
-             <div class="winner-name" id="match-results-winner-name" style="font-size: 36px; font-weight: 900; color: #fff; text-shadow: 0 0 30px rgba(251, 191, 36, 0.4); margin-bottom: 5px;">-</div>
+             <div class="winner-label" style="color: #fbbf24; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 15px;">Champion</div>
+             <!-- Winner Avatar -->
+             <div class="winner-avatar-container" id="winner-avatar-container" style="width: 120px; height: 120px; margin: 0 auto 15px; border-radius: 50%; overflow: hidden; border: 4px solid #fbbf24; box-shadow: 0 0 30px rgba(251, 191, 36, 0.4);">
+               <div class="winner-avatar-placeholder" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #fbbf24, #f59e0b); font-size: 48px; font-weight: bold; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">?</div>
+             </div>
+             <div class="winner-name" id="match-results-winner-name" style="font-size: 28px; font-weight: 900; color: #fff; text-shadow: 0 0 30px rgba(251, 191, 36, 0.4); margin-bottom: 5px;">-</div>
              <div class="winner-meta" id="match-results-winner-meta" style="color: #cbd5e0; font-family: 'Space Mono', monospace;"></div>
           </div>
           
@@ -130,60 +139,97 @@ export class MatchResultsModal {
 
     const sendChat = () => {
       const text = chatInput.value.trim();
-      if (text && this.gameState && this.gameState.network) {
-        this.gameState.network.sendP2PMessage(this.gameState.network.hostSteamId, 'game:chat', {
-          message: text,
-          playerName: this.gameState.network.playerName,
-          steamId: this.gameState.localPlayerId,
-          timestamp: Date.now()
-        });
+      if (!text) return;
 
-        // Add to local history/UI immediately for responsiveness
-        // Note: GameState event handler will also catch it if we broadcast back, 
-        // but usually we want instant feedback.
-        // However, FFAGameStateP2P logic for 'game:chat' says:
-        // "If host, rebroadcast... Dispatch to UI... Log..."
-        // It does NOT auto-add to local history if it's from self UNLESS we rely on the loopback or manually add.
-        // Let's manually add here to be safe and efficient.
-        const msgData = {
-          message: text,
-          playerName: this.gameState.network.playerName,
-          steamId: this.gameState.localPlayerId,
-          timestamp: Date.now()
-        };
+      const localPlayer = this.gameState?.getLocalPlayer?.()
+        || this.gameState?.players?.get(this.gameState?.localPlayerId);
+      const playerColor = localPlayer?.color || '#a78bfa';
+      const playerName = this.gameState?.network?.playerName || 'You';
+      const steamId = this.gameState?.localPlayerId || 'local';
 
-        // Check if already handled by gamestate listener (to avoid dupes)
-        // The listener pushes to chatHistory. 
-        // If we push here, we might dupe.
-        // Let's rely on the listener if it handles local echo. 
-        // FFAGameStateP2P:375 "this.network.on('game:chat', (msg) => { ... this.chatHistory.push ... })"
-        // Does SteamNetworking trigger .on for messages sent by self? Usually NO.
-        // So we MUST add manually.
+      const payload = {
+        message: text,
+        playerName,
+        steamId,
+        color: playerColor,
+        timestamp: Date.now()
+      };
 
-        if (this.gameState.chatHistory) {
-          this.gameState.chatHistory.push(msgData);
+      if (this.gameState?.network) {
+        if (this.gameState.network.broadcastToAll) {
+          this.gameState.network.broadcastToAll('game:chat', payload);
+        } else if (this.gameState.network.sendP2PMessage && this.gameState.network.hostSteamId) {
+          this.gameState.network.sendP2PMessage(this.gameState.network.hostSteamId, 'game:chat', payload);
         }
-        this.addChatMessage(`You: ${text}`, false);
-        chatInput.value = '';
       }
+
+      // Add to local history/UI immediately for responsiveness (even if network missing)
+      if (this.gameState?.chatHistory) {
+        this.gameState.chatHistory.push(payload);
+      }
+      this.addChatMessage({ ...payload, playerName: 'You' });
+      chatInput.value = '';
     };
 
     if (chatSend) chatSend.addEventListener('click', sendChat);
     if (chatInput) chatInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') sendChat();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendChat();
+      }
       e.stopPropagation();
     });
   }
 
+  /**
+   * Get a player's color from the game state
+   * @param {string} steamId - The player's Steam ID
+   * @returns {string|null} The player's color hex code or null
+   */
+  getPlayerColor(steamId) {
+    if (!steamId || !this.gameState?.players) return null;
+    const player = this.gameState.players.get(steamId);
+    return player?.color || null;
+  }
+
+  /**
+   * Escape HTML to prevent XSS
+   */
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  /**
+   * Add chat message
+   * @param {Object|string} message - Message object with playerName/message/steamId/color, or string for system messages
+   * @param {boolean} isSystem - Whether this is a system message (only used for string messages)
+   */
   addChatMessage(message, isSystem = true) {
     if (!this.container) return;
     const chatEl = this.container.querySelector('#results-chat-messages');
     if (!chatEl) return;
 
-    const msgClass = isSystem ? 'system-message' : 'player-message';
     const msgDiv = document.createElement('div');
-    msgDiv.className = msgClass;
-    msgDiv.textContent = message;
+
+    // Handle both object format and string format
+    if (typeof message === 'string') {
+      // Legacy string format or system message
+      const msgClass = isSystem ? 'system-message' : 'player-message';
+      msgDiv.className = msgClass;
+      msgDiv.textContent = message;
+    } else {
+      // Object format with player info
+      const playerColor = message.color || this.getPlayerColor(message.steamId) || '#a78bfa';
+      msgDiv.className = 'player-message';
+      msgDiv.innerHTML = `
+        <span class="color-indicator" style="background: ${playerColor};"></span>
+        <span class="author" style="color: ${playerColor};">${this.escapeHtml(message.playerName)}:</span>
+        <span class="text">${this.escapeHtml(message.message)}</span>
+      `;
+    }
+
     chatEl.appendChild(msgDiv);
     chatEl.scrollTop = chatEl.scrollHeight;
   }
@@ -201,15 +247,33 @@ export class MatchResultsModal {
     this.updateContent(results);
     this.updateHostState();
 
+    if (!this.chatUnsub) {
+      this.chatHandler = (detail) => {
+        if (!this.isVisible) return;
+        this.addChatMessage({
+          playerName: detail.playerName,
+          message: detail.message,
+          steamId: detail.steamId,
+          color: detail.color || this.getPlayerColor(detail.steamId),
+          timestamp: detail.timestamp,
+        });
+      };
+      this.chatUnsub = onMultiplayerEvent(MULTIPLAYER_EVENTS.CHAT_MESSAGE, this.chatHandler);
+    }
+
     // Restore chat history
     const chatEl = this.container.querySelector('#results-chat-messages');
     if (chatEl) {
       chatEl.innerHTML = '';
       if (this.gameState && this.gameState.chatHistory) {
         this.gameState.chatHistory.forEach(msg => {
-          const isSystem = !msg.playerName;
-          const text = isSystem ? msg.text : `${msg.playerName}: ${msg.message}`;
-          this.addChatMessage(text, isSystem);
+          if (!msg.playerName) {
+            // System message
+            this.addChatMessage(msg.text || msg.message, true);
+          } else {
+            // Player message - pass full object for color support
+            this.addChatMessage(msg);
+          }
         });
       }
     }
@@ -267,6 +331,10 @@ export class MatchResultsModal {
         winnerMetaEl.textContent = '';
       }
     }
+
+    // Load winner avatar
+    const winnerColor = standings[0]?.color || '#fbbf24';
+    this._loadWinnerAvatar(winnerId, winnerName, winnerColor);
 
     const standingsEl = this.container.querySelector('#match-results-standings');
     if (standingsEl) {
@@ -394,6 +462,58 @@ export class MatchResultsModal {
     }
   }
 
+  /**
+   * Load winner's large avatar
+   * @private
+   */
+  async _loadWinnerAvatar(steamId, name, color) {
+    const container = this.container?.querySelector('#winner-avatar-container');
+    if (!container) return;
+
+    // Reset to placeholder
+    const letter = (name || 'W').charAt(0).toUpperCase();
+    container.innerHTML = `
+      <div class="winner-avatar-placeholder" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, ${color}, ${this._darkenColor(color)}); font-size: 48px; font-weight: bold; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">${letter}</div>
+    `;
+
+    // Update border color to match winner
+    container.style.borderColor = color;
+    container.style.boxShadow = `0 0 30px ${color}66`;
+
+    if (!steamId) return;
+
+    try {
+      const avatarUrl = await steamService.getAvatar(steamId, 'large');
+      if (avatarUrl) {
+        const img = document.createElement('img');
+        img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+        img.src = avatarUrl;
+        img.alt = name || 'Winner';
+        img.onerror = () => {
+          // Keep placeholder on error
+          img.remove();
+        };
+        container.innerHTML = '';
+        container.appendChild(img);
+      }
+    } catch (err) {
+      console.warn('[MatchResultsModal] Failed to load winner avatar:', err.message);
+    }
+  }
+
+  /**
+   * Darken a hex color for gradient
+   * @private
+   */
+  _darkenColor(hex) {
+    if (!hex || !hex.startsWith('#')) return '#888888';
+    const num = parseInt(hex.slice(1), 16);
+    const r = Math.max(0, (num >> 16) - 40);
+    const g = Math.max(0, ((num >> 8) & 0x00FF) - 40);
+    const b = Math.max(0, (num & 0x0000FF) - 40);
+    return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
+  }
+
   formatPlacement(place) {
     switch (place) {
       case 1: return '🥇';
@@ -438,6 +558,11 @@ export class MatchResultsModal {
  * Destroy modal
  */
   destroy() {
+    if (this.chatUnsub) {
+      this.chatUnsub();
+      this.chatUnsub = null;
+      this.chatHandler = null;
+    }
     if (this.container) {
       this.container.remove();
     }

@@ -109,6 +109,10 @@ export class FFAGameStateP2P {
         // Initialize local player
         this.addPlayer(localPlayerId, steamNetworking.playerName, true);
 
+        // Lobby Info
+        this.lobbyId = null;
+        this.lobbyName = null;
+
         // Match state
         this.gamePhase = 'waiting'; // waiting, countdown, playing, finished
         this.sharedSeed = 0; // Deterministic RNG seed (same pieces for all)
@@ -623,28 +627,53 @@ export class FFAGameStateP2P {
         this.network.on('game:chat', (msg) => {
             console.log(`💬 Chat from ${msg.data.playerName}: ${msg.data.message}`);
 
+            const resolved = { ...msg.data };
+            if (!resolved.color && this.players) {
+                let player = this.players.get(resolved.steamId);
+                if (!player) {
+                    for (const [id, p] of this.players) {
+                        if (String(id) === String(resolved.steamId)) {
+                            player = p;
+                            break;
+                        }
+                    }
+                }
+                if (!player && resolved.playerName) {
+                    for (const p of this.players.values()) {
+                        if (p.name === resolved.playerName) {
+                            player = p;
+                            break;
+                        }
+                    }
+                }
+                if (player?.color) {
+                    resolved.color = player.color;
+                }
+            }
+
             // Add to centralized history
-            this.chatHistory.push(msg.data);
+            this.chatHistory.push(resolved);
             if (this.chatHistory.length > 100) this.chatHistory.shift();
 
             // Show in In-Game UI
             if (this.chat) {
-                this.chat.addMessage(msg.data);
+                this.chat.addMessage(resolved);
             }
 
             // Dispatch to UI (Lobby sees this too)
-            if (msg.data.steamId !== this.localPlayerId) {
+            if (resolved.steamId !== this.localPlayerId) {
                 emitMultiplayerEvent(MULTIPLAYER_EVENTS.CHAT_MESSAGE, {
-                    playerName: msg.data.playerName,
-                    message: msg.data.message,
-                    steamId: msg.data.steamId,
-                    timestamp: msg.data.timestamp,
+                    playerName: resolved.playerName,
+                    message: resolved.message,
+                    steamId: resolved.steamId,
+                    timestamp: resolved.timestamp,
+                    color: resolved.color,
                 });
             }
 
             // If host, rebroadcast to others
             if (this.isHost) {
-                this.broadcastToPeers('game:chat', msg.data);
+                this.broadcastToPeers('game:chat', resolved);
             }
         });
 

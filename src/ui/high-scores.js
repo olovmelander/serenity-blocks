@@ -3,6 +3,8 @@
  * Uses IndexedDB to store high scores, game history, and statistics
  */
 
+import { eventBus, EVENTS } from '../events/event-bus.js';
+
 /**
  * Manages high scores, game history, and statistics using IndexedDB
  */
@@ -127,6 +129,11 @@ export class HighScoreManager {
 
         // Update statistics
         await this._updateStatistics(gameRecord);
+
+        eventBus.emit(EVENTS.HIGH_SCORE_SAVED, {
+            record: gameRecord,
+            source: 'local',
+        });
 
         return gameRecord;
     }
@@ -333,6 +340,112 @@ export class HighScoreManager {
             const request = store.put(stats);
 
             request.onsuccess = () => resolve(stats);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    // ============================================================
+    // Cloud Sync Helpers
+    // ============================================================
+
+    async exportHighScores(limit = 100) {
+        const scores = await this.getTopScores(limit);
+        return scores.map((entry) => {
+            const clone = { ...entry };
+            delete clone.id;
+            return clone;
+        });
+    }
+
+    async exportStatistics() {
+        return this.getStatistics();
+    }
+
+    async importHighScores(entries = [], { merge = true } = {}) {
+        if (!this.db) await this.init();
+        const incoming = Array.isArray(entries) ? entries : [];
+        const existing = merge ? await this.getTopScores(200) : [];
+
+        const combined = [...existing, ...incoming].map((entry) => {
+            const clone = { ...entry };
+            delete clone.id;
+            return clone;
+        });
+
+        const deduped = [];
+        const seen = new Set();
+        for (const entry of combined) {
+            const key = [
+                entry.score ?? 0,
+                entry.lines ?? 0,
+                entry.level ?? 0,
+                entry.timestamp ?? 0,
+            ].join('|');
+            if (seen.has(key)) continue;
+            seen.add(key);
+            deduped.push(entry);
+        }
+
+        deduped.sort((a, b) => {
+            if ((b.score ?? 0) !== (a.score ?? 0)) {
+                return (b.score ?? 0) - (a.score ?? 0);
+            }
+            return (b.timestamp ?? 0) - (a.timestamp ?? 0);
+        });
+
+        const trimmed = deduped.slice(0, 100);
+        await this._clearStore(this.STORES.HIGH_SCORES);
+        for (const entry of trimmed) {
+            await this._addToStore(this.STORES.HIGH_SCORES, entry);
+        }
+        return trimmed.length;
+    }
+
+    async importStatistics(statistics = {}, { merge = true } = {}) {
+        if (!this.db) await this.init();
+        const localStats = merge ? await this.getStatistics() : null;
+        const incoming = statistics || {};
+
+        const merged = {
+            id: 'stats',
+            totalGames: merge
+                ? (localStats?.totalGames || 0) + (incoming.totalGames || 0)
+                : (incoming.totalGames || 0),
+            totalScore: merge
+                ? (localStats?.totalScore || 0) + (incoming.totalScore || 0)
+                : (incoming.totalScore || 0),
+            totalLines: merge
+                ? (localStats?.totalLines || 0) + (incoming.totalLines || 0)
+                : (incoming.totalLines || 0),
+            highestScore: Math.max(localStats?.highestScore || 0, incoming.highestScore || 0),
+            highestLevel: Math.max(localStats?.highestLevel || 0, incoming.highestLevel || 0),
+            bestScorePerLevel: {
+                ...(localStats?.bestScorePerLevel || {}),
+            },
+        };
+
+        const incomingPerLevel = incoming.bestScorePerLevel || {};
+        Object.keys(incomingPerLevel).forEach((level) => {
+            const current = merged.bestScorePerLevel[level] || 0;
+            merged.bestScorePerLevel[level] = Math.max(current, incomingPerLevel[level] || 0);
+        });
+
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.STORES.STATISTICS], 'readwrite');
+            const store = transaction.objectStore(this.STORES.STATISTICS);
+            const request = store.put(merged);
+
+            request.onsuccess = () => resolve(merged);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async _clearStore(storeName) {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([storeName], 'readwrite');
+            const store = transaction.objectStore(storeName);
+            const request = store.clear();
+            request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
     }
