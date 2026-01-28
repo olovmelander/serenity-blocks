@@ -152,7 +152,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
     console.log('[Keyboard] Setting up keyboard controls');
 
     const {
-        move, rotate, softDrop, hardDrop, togglePause, startGame, initSound,
+        move, rotate, softDrop, hardDrop, startGame, initSound,
     } = gameActions;
 
     // Helper function to get current settings (reads from window.settings for live updates)
@@ -211,17 +211,12 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                 actionP2 = Object.keys(currentSettings.player2KeyBindings).find((k) => currentSettings.player2KeyBindings[k] === key);
             }
 
-            // Allow global actions (fullscreen, high scores) to work even on start modal
-            const globalActions = ['toggleFullscreen', 'showHighScores'];
-            const isGlobalAction = globalActions.includes(action);
-
-            // Start game if on start/game-over modal (but only for non-global actions)
+            // Start game if on start/game-over modal
             const startModal = document.getElementById('start-modal');
             const gameOverModal = document.getElementById('game-over-modal');
             if (
-                !isGlobalAction
-                && ((startModal && startModal.classList.contains('visible'))
-                    || (gameOverModal && gameOverModal.classList.contains('visible')))
+                (startModal && startModal.classList.contains('visible'))
+                || (gameOverModal && gameOverModal.classList.contains('visible'))
             ) {
                 // Only start game on Space or Enter
                 if (e.key === ' ' || e.key === 'Enter') {
@@ -333,36 +328,6 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                 if (hardDrop) {
                     hardDrop();
                     performanceMonitor.recordInputAction();
-                }
-                break;
-
-            case 'nextTrack':
-                if (gameActions.nextTrack) {
-                    gameActions.nextTrack();
-                }
-                break;
-
-            case 'randomTheme':
-                if (gameActions.randomTheme) {
-                    gameActions.randomTheme();
-                }
-                break;
-
-            case 'togglePause':
-                if (togglePause) {
-                    togglePause();
-                }
-                break;
-
-            case 'toggleFullscreen':
-                if (gameActions.toggleFullscreen) {
-                    gameActions.toggleFullscreen();
-                }
-                break;
-
-            case 'showHighScores':
-                if (gameActions.showHighScores) {
-                    gameActions.showHighScores();
                 }
                 break;
 

@@ -2,6 +2,7 @@
   "name": "serenity-blocks",
   "version": "1.0.0",
   "description": "A modern Tetris-inspired puzzle game built with Phaser 4",
+  "main": "electron/main.js",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +14,7 @@
     "lint:fix": "eslint src --ext .js --fix",
     "format": "prettier --write \"src/**/*.js\"",
     "format:check": "prettier --check \"src/**/*.js\"",
+    "build:gpu-launcher": "bash scripts/build-gpu-launcher.sh",
     "build:win": "vite build && electron-builder --win --x64",
     "build:linux": "vite build && electron-builder --linux"
   },
@@ -26,8 +28,18 @@
       "dist/**/*",
       "electron/**/*",
       "package.json",
-      "node_modules/greenworks/**/*"
+      "node_modules/steamworks.js/**/*"
     ],
+    "asarUnpack": [
+      "node_modules/steamworks.js/**/*"
+    ],
+    "extraFiles": [
+      {
+        "from": "steam_appid.txt",
+        "to": "."
+      }
+    ],
+    "afterPack": "./scripts/afterPack.cjs",
     "win": {
       "target": "nsis"
     },
@@ -47,10 +59,11 @@
   "license": "MIT",
   "dependencies": {
     "@google-cloud/text-to-speech": "^6.4.0",
+    "ez-steam-api": "^0.57.1",
     "google-auth-library": "^10.5.0",
-    "greenworks": "^0.1.0",
     "node-fetch": "^3.3.2",
     "phaser": "4.0.0-rc.5",
+    "steamworks.js": "^0.4.0",
     "three": "^0.181.2"
   },
   "devDependencies": {

@@ -966,6 +966,26 @@
     word-break: break-word;
 }
 
+.player-message .color-indicator {
+    display: inline-block;
+    width: 4px;
+    height: 14px;
+    border-radius: 2px;
+    margin-right: 8px;
+    vertical-align: middle;
+    box-shadow: 0 0 6px currentColor;
+    flex-shrink: 0;
+}
+
+.player-message .author {
+    font-weight: 600;
+    margin-right: 6px;
+}
+
+.player-message .text {
+    color: #e0e7ff;
+}
+
 @keyframes messageSlideIn {
     from {
         opacity: 0;

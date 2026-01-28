@@ -127,6 +127,9 @@ function isValidPositionCached(gameState, piece, checkX, checkY) {
 export function markBoardDirty(gameState) {
     if (gameState) {
         gameState.boardCacheDirty = true;
+        // Increment board version for rendering change detection
+        // This allows the renderer to know when the board content has changed
+        gameState.boardVersion = (gameState.boardVersion || 0) + 1;
         invalidateGhostCache(gameState);
     }
 }

@@ -24,6 +24,7 @@ import { MultiplayerEffectsManager } from '../rendering/phaser/multiplayer-effec
 import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../events/multiplayer-events.js';
 import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
+import steamService from '../core/steam/steam-service.js';
 
 export class MultiPlayerCanvasLayout {
     constructor(ffaGameState) {
@@ -186,7 +187,35 @@ export class MultiPlayerCanvasLayout {
 
         // PHASE 4.4: Listen for incoming chat messages
         onMultiplayerEvent(MULTIPLAYER_EVENTS.CHAT_MESSAGE, (detail) => {
-            this.addChatMessage(detail.playerName, detail.message, false);
+            let color = detail?.color || null;
+            if (this.gameState && this.gameState.players && detail.steamId) {
+                let player = this.gameState.players.get(detail.steamId);
+
+                // Fallback 1: fuzzy match ID (string vs int)
+                if (!player) {
+                    for (const [id, p] of this.gameState.players) {
+                        if (String(id) === String(detail.steamId)) {
+                            player = p;
+                            break;
+                        }
+                    }
+                }
+
+                // Fallback 2: Try to find by name if ID lookup fails
+                if (!player && detail.playerName) {
+                    for (const p of this.gameState.players.values()) {
+                        if (p.name === detail.playerName) {
+                            player = p;
+                            break;
+                        }
+                    }
+                }
+
+                if (player) {
+                    color = player.color;
+                }
+            }
+            this.addChatMessage(detail.playerName, detail.message, false, color);
         });
 
         // Listen for kill notifications (unified activity feed)
@@ -206,8 +235,31 @@ export class MultiPlayerCanvasLayout {
 
         const playerName = this.gameState.network.playerName || 'Unknown';
 
-        // Show message locally (echo)
-        this.addChatMessage('You', message, false);
+        // Get local player color - Robust lookup
+        let playerColor = null;
+        if (this.gameState.players) {
+            // First try direct lookup
+            let localPlayer = this.gameState.players.get(this.gameState.localPlayerId);
+
+            // If not found, try finding by isLocal flag (more reliable than ID sometimes)
+            if (!localPlayer) {
+                for (const p of this.gameState.players.values()) {
+                    if (p.isLocal) {
+                        localPlayer = p;
+                        break;
+                    }
+                }
+            }
+
+            if (localPlayer) {
+                playerColor = localPlayer.color;
+            } else {
+                console.warn('⚠️ Local player not found in players map for chat color');
+            }
+        }
+
+        // Show message locally (echo) with color
+        this.addChatMessage('You', message, false, playerColor);
 
         // Broadcast to all players
         this.gameState.network.broadcastToAll('game:chat', {
@@ -215,28 +267,29 @@ export class MultiPlayerCanvasLayout {
             message,
             steamId: this.gameState.localPlayerId,
             timestamp: Date.now(),
+            color: playerColor,
         });
     }
 
     /**
    * Add a chat message
    */
-    addChatMessage(playerName, message, isSystem = false) {
+    addChatMessage(playerName, message, isSystem = false, color = null) {
         const messagesContainer = document.getElementById('match-chat-messages');
         if (!messagesContainer) return;
 
         const messageEl = document.createElement('div');
-        messageEl.className = isSystem ? 'system-message' : 'chat-message';
+        messageEl.className = isSystem ? 'system-message' : 'player-message';
 
         if (!isSystem) {
-            const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const nameColor = color || '#a78bfa';
             messageEl.innerHTML = `
-        <span class="chat-time">${timestamp}</span>
-        <span class="chat-name">${playerName}:</span>
-        <span class="chat-text">${message}</span>
+        <span class="color-indicator" style="background:${nameColor};"></span>
+        <span class="author" style="color:${nameColor}">${this.escapeHtml(playerName)}:</span>
+        <span class="text">${this.escapeHtml(message)}</span>
       `;
         } else {
-            messageEl.textContent = message;
+            messageEl.innerHTML = this.escapeHtml(message);
         }
 
         messagesContainer.appendChild(messageEl);
@@ -1004,7 +1057,7 @@ export class MultiPlayerCanvasLayout {
    * Reuses the single-player Phaser scene so visuals match exactly.
    */
     initializeEffectsForMainPlayer() {
-    // Get main player canvas data
+        // Get main player canvas data
         const mainCanvasData = this.canvases.get(this.gameState.localPlayerId);
 
         if (!mainCanvasData) {
@@ -1290,12 +1343,15 @@ export class MultiPlayerCanvasLayout {
 
         const ctx = canvas.getContext('2d');
 
-        // Create player info overlay
+        // Create player info overlay with mini-avatar
         const infoOverlay = document.createElement('div');
         infoOverlay.className = 'opponent-info';
+        const playerColor = opponent.color || '#808080';
         infoOverlay.innerHTML = `
       <div class="opponent-name">
-        <span class="player-color-badge" style="background-color: ${opponent.color || '#808080'};"></span>
+        <div class="opponent-mini-avatar" data-steamid="${opponent.steamId}" style="border-color: ${playerColor};">
+          <span class="mini-avatar-placeholder" style="background: ${playerColor};">${(opponent.name || 'P').charAt(0).toUpperCase()}</span>
+        </div>
         ${opponent.name}
       </div>
       <div class="opponent-stats">
@@ -1303,6 +1359,9 @@ export class MultiPlayerCanvasLayout {
         <span class="stat-small">Frags: <strong class="frags">0</strong></span>
       </div>
     `;
+
+        // Load Steam avatar asynchronously
+        this._loadMiniAvatar(infoOverlay.querySelector('.opponent-mini-avatar'), opponent.steamId, opponent.name, playerColor);
 
         // Assemble
         wrapper.appendChild(canvas);
@@ -1325,6 +1384,37 @@ export class MultiPlayerCanvasLayout {
 
         // Update opponent count
         this.updateOpponentCount();
+    }
+
+    /**
+     * Load mini avatar for opponent board
+     * @private
+     */
+    async _loadMiniAvatar(container, steamId, name, color) {
+        if (!container || !steamId) return;
+
+        try {
+            const avatarUrl = await steamService.getAvatar(steamId, 'small');
+            if (avatarUrl) {
+                const img = document.createElement('img');
+                img.className = 'mini-avatar-img';
+                img.src = avatarUrl;
+                img.alt = name || 'Player';
+                img.onerror = () => {
+                    // Keep placeholder on error
+                    img.remove();
+                };
+                // Replace placeholder with actual avatar
+                const placeholder = container.querySelector('.mini-avatar-placeholder');
+                if (placeholder) {
+                    placeholder.style.display = 'none';
+                }
+                container.appendChild(img);
+            }
+        } catch (err) {
+            // Keep placeholder on error
+            console.warn(`[MultiPlayerCanvasLayout] Failed to load avatar for ${steamId}:`, err.message);
+        }
     }
 
     /**
@@ -2148,7 +2238,7 @@ export class MultiPlayerCanvasLayout {
    * Cleanup resources
    */
     cleanup() {
-    // Clear render interval
+        // Clear render interval
         if (this.renderInterval) {
             clearInterval(this.renderInterval);
             this.renderInterval = null;

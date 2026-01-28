@@ -45,6 +45,13 @@ import { OdysseyBoardController } from '../../rendering/odyssey/OdysseyBoardCont
 import { getLevelPathPosition } from '../../rendering/odyssey/path-data.js';
 import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
+import steamService from '../steam/steam-service.js';
+import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
+import {
+    SteamLeaderboardPanel,
+    formatMilliseconds,
+    formatNumber,
+} from '../../ui/components/steam-leaderboard-panel.js';
 
 /**
  * OdysseyMode - Narrative-driven progression through themed levels
@@ -567,6 +574,11 @@ export class OdysseyMode extends BaseGameMode {
 
         // Save completion to odyssey state
         this.odysseyState.completeLevel(this.currentLevelId, finalResults);
+
+        // Sync Steam stats/leaderboards in the background (best-effort)
+        this._syncSteamStats(finalResults).catch((err) => {
+            console.warn('[Odyssey] Steam stats sync failed:', err.message);
+        });
 
         // Show results
         await this._showLevelResults(finalResults);
@@ -2211,6 +2223,58 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     /**
+     * Sync Steam stats and leaderboards (best-effort, non-blocking)
+     * @private
+     */
+    async _syncSteamStats(results) {
+        if (!results || !this.currentLevelId) {
+            return;
+        }
+
+        const totalStars = this.odysseyState.getTotalStars();
+        const durationSeconds = Math.max(1, Math.round(results.time || 0));
+        const durationMinutes = Math.max(1, Math.round(durationSeconds / 60));
+        const levelTimeMs = Math.max(1, Math.round((results.time || 0) * 1000));
+        const levelBoard = `${STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX}${this.currentLevelId}`;
+
+        const baseDetails = {
+            score: results.score,
+            duration: durationSeconds,
+            linesCleared: results.lines,
+            highestLevel: this.currentLevelId,
+            stars: results.stars,
+            totalStars,
+            mode: 'odyssey',
+            version: '1.0.0',
+        };
+
+        await Promise.all([
+            steamService.uploadScore(
+                STEAM_LEADERBOARDS.ODYSSEY_TOTAL_STARS,
+                totalStars,
+                {
+                    ...baseDetails,
+                    extraValue: totalStars,
+                    leaderboard: 'odyssey_total_stars',
+                },
+            ),
+            steamService.uploadScore(
+                levelBoard,
+                levelTimeMs,
+                {
+                    ...baseDetails,
+                    timeMs: levelTimeMs,
+                    extraValue: levelTimeMs,
+                    leaderboard: 'odyssey_level_time',
+                },
+            ),
+            steamService.setStat('odyssey_stars', totalStars),
+            steamService.incrementStat('total_lines_cleared', results.lines),
+            steamService.incrementStat('playtime_minutes', durationMinutes),
+        ]);
+    }
+
+    /**
      * Create a styled results modal
      * @private
      */
@@ -2244,7 +2308,7 @@ export class OdysseyMode extends BaseGameMode {
             border-radius: 24px;
             padding: 40px 50px;
             text-align: center;
-            max-width: 400px;
+            max-width: 520px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 80px rgba(140, 80, 255, 0.2);
             animation: slideUp 0.4s ease-out;
             font-family: 'Orbitron', 'Segoe UI', sans-serif;
@@ -2323,6 +2387,40 @@ export class OdysseyMode extends BaseGameMode {
             statsContainer.appendChild(statDiv);
         });
         content.appendChild(statsContainer);
+
+        // Steam leaderboard panel (level time + total stars)
+        const leaderboardHost = document.createElement('div');
+        leaderboardHost.className = 'steam-leaderboard-panel';
+        leaderboardHost.style.marginBottom = '24px';
+        content.appendChild(leaderboardHost);
+
+        const levelBoard = `${STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX}${this.currentLevelId}`;
+        const totalStars = this.odysseyState.getTotalStars();
+        const levelTimeMs = Math.max(1, Math.round((results.time || 0) * 1000));
+
+        const leaderboardPanel = new SteamLeaderboardPanel({
+            title: 'Odyssey Leaderboards',
+            boards: [
+                {
+                    id: 'level-time',
+                    label: 'Level Time',
+                    name: levelBoard,
+                    currentScore: levelTimeMs,
+                    formatScore: formatMilliseconds,
+                },
+                {
+                    id: 'total-stars',
+                    label: 'Total Stars',
+                    name: STEAM_LEADERBOARDS.ODYSSEY_TOTAL_STARS,
+                    currentScore: totalStars,
+                    formatScore: formatNumber,
+                },
+            ],
+            defaultBoardId: 'level-time',
+            pageSize: 8,
+        });
+
+        leaderboardPanel.mount(leaderboardHost);
 
         // Continue button
         const button = document.createElement('button');

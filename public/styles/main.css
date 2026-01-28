@@ -23562,6 +23562,46 @@ body.serenity-mode.cursor-hidden * {
     animation: cardFloat 6s ease-in-out infinite;
 }
 
+.game-mode-card.steam-disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: grayscale(0.4);
+    box-shadow:
+        0 6px 20px rgba(0, 0, 0, 0.35),
+        inset 0 1px 1px rgba(255, 255, 255, 0.05);
+}
+
+.game-mode-card.steam-disabled::after {
+    content: attr(data-disabled-label);
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.75);
+    background: rgba(10, 10, 20, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.game-mode-card.steam-disabled .mode-card-glow {
+    opacity: 0.15;
+}
+
+.game-mode-card.steam-disabled:hover,
+.game-mode-card.steam-disabled:active,
+.game-mode-card.steam-disabled.gamepad-focused,
+.game-mode-card.steam-disabled:focus-visible {
+    transform: none !important;
+    border-color: rgba(100, 200, 255, 0.3);
+    background: rgba(15, 15, 30, 0.7);
+    box-shadow:
+        0 6px 20px rgba(0, 0, 0, 0.35),
+        inset 0 1px 1px rgba(255, 255, 255, 0.05);
+}
+
 .game-mode-card:nth-child(1) {
     animation-delay: 0s;
 }
@@ -24921,4 +24961,126 @@ body.cursor-hidden * {
 
 #game-over-main-menu {
     min-width: 180px;
+}
+/* Steam Leaderboards Panel */
+.steam-leaderboard-panel {
+    margin-top: 16px;
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    background: rgba(10, 12, 22, 0.45);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.steam-leaderboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: rgba(196, 181, 253, 0.9);
+}
+
+.steam-leaderboard-title {
+    font-weight: 700;
+}
+
+.steam-leaderboard-updated {
+    font-size: 11px;
+    color: rgba(148, 163, 184, 0.8);
+}
+
+.steam-leaderboard-board-tabs,
+.steam-leaderboard-view-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.steam-leaderboard-tab {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    color: rgba(226, 232, 240, 0.9);
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.steam-leaderboard-tab.active {
+    background: rgba(139, 92, 246, 0.35);
+    border-color: rgba(139, 92, 246, 0.6);
+    color: #ffffff;
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.3);
+}
+
+.steam-leaderboard-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.steam-leaderboard-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.steam-leaderboard-row {
+    display: grid;
+    grid-template-columns: 48px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    font-size: 12px;
+    color: rgba(226, 232, 240, 0.85);
+}
+
+.steam-leaderboard-row.self {
+    border-color: rgba(34, 197, 94, 0.5);
+    background: rgba(16, 185, 129, 0.15);
+    color: #ecfdf5;
+}
+
+.steam-leaderboard-row.pending {
+    border-style: dashed;
+    opacity: 0.8;
+}
+
+.steam-leaderboard-rank {
+    font-weight: 700;
+    color: rgba(148, 163, 184, 0.9);
+}
+
+.steam-leaderboard-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.steam-leaderboard-score {
+    font-weight: 700;
+    color: #fbbf24;
+}
+
+.steam-leaderboard-status,
+.steam-leaderboard-empty,
+.steam-leaderboard-notice {
+    font-size: 11px;
+    color: rgba(148, 163, 184, 0.8);
+}
+
+.steam-leaderboard-notice {
+    padding-top: 6px;
+    border-top: 1px dashed rgba(148, 163, 184, 0.2);
 }

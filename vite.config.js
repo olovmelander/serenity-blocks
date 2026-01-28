@@ -77,7 +77,7 @@ export default defineConfig({
   optimizeDeps: {
     include: ['phaser'],
     // Exclude Electron/Node.js modules from browser bundling
-    exclude: ['greenworks', 'electron'],
+    exclude: ['steamworks.js', 'electron'],
   },
 
   // Resolve configuration

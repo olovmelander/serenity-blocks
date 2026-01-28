@@ -429,7 +429,8 @@ export class GamepadController {
 
         // Make cards focusable
         this.gameModeCards.forEach((card) => {
-            card.setAttribute('tabindex', '0');
+            const isDisabled = this.isGameModeCardDisabled(card);
+            card.setAttribute('tabindex', isDisabled ? '-1' : '0');
         });
 
         // Clear all previous button states
@@ -487,6 +488,27 @@ export class GamepadController {
         });
     }
 
+    isGameModeCardDisabled(card) {
+        return !card
+            || card.dataset?.disabled === 'true'
+            || card.classList.contains('steam-disabled');
+    }
+
+    findNextEnabledCard(current, direction, container) {
+        if (!current) return null;
+        let candidate = SpatialNavigation.findNextElement(current, direction, container);
+        const maxTries = this.gameModeCards.length;
+        let tries = 0;
+        while (candidate && candidate.classList.contains('game-mode-card') && this.isGameModeCardDisabled(candidate)) {
+            tries += 1;
+            if (tries >= maxTries) {
+                return null;
+            }
+            candidate = SpatialNavigation.findNextElement(candidate, direction, container);
+        }
+        return candidate && candidate.classList.contains('game-mode-card') ? candidate : null;
+    }
+
     /**
      * Check if any gamepad is currently connected
      */
@@ -524,9 +546,15 @@ export class GamepadController {
             // If any direction or Select is pressed, focus the selected/default card
             if ((leftPressed || rightPressed || upPressed || downPressed || aPressed) && this.gameModeCards.length > 0) {
                 const index = this.selectedGameModeIndex >= 0 ? this.selectedGameModeIndex : 0;
-                this.gameModeCards[index].focus();
-                this.selectedGameModeIndex = index;
-                current = this.gameModeCards[index];
+                let candidate = this.gameModeCards[index];
+                if (this.isGameModeCardDisabled(candidate)) {
+                    candidate = this.gameModeCards.find((card) => !this.isGameModeCardDisabled(card)) || null;
+                }
+                if (candidate) {
+                    candidate.focus();
+                    this.selectedGameModeIndex = this.gameModeCards.indexOf(candidate);
+                    current = candidate;
+                }
             }
         }
 
@@ -536,8 +564,8 @@ export class GamepadController {
                 // Only process navigation if we have a valid card focused
                 if (current && current.classList.contains('game-mode-card')) {
                     const container = document.querySelector('.game-mode-cards-container') || document.body;
-                    const next = SpatialNavigation.findNextElement(current, direction, container);
-                    if (next && next.classList.contains('game-mode-card')) {
+                    const next = this.findNextEnabledCard(current, direction, container);
+                    if (next) {
                         next.focus();
                         this.selectedGameModeIndex = this.gameModeCards.indexOf(next);
                     }
@@ -555,6 +583,10 @@ export class GamepadController {
         // A button - Select game mode
         if (aPressed && !prevState.gameModeSelect) {
             if (current && current.classList.contains('game-mode-card')) {
+                if (this.isGameModeCardDisabled(current)) {
+                    prevState.gameModeSelect = aPressed;
+                    return;
+                }
                 console.log('[Gamepad] Selecting game mode card:', current.id);
                 current.click();
             }

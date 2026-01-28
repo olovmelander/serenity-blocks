@@ -37,12 +37,39 @@
 }
 
 /* ===========================
+   Right Toolbar Container
+   Visual grouping for player card + icons
+   =========================== */
+.right-toolbar-backdrop {
+  position: fixed;
+  top: 80px;
+  right: 12px;
+  width: 76px;
+  padding: 8px;
+  border-radius: 16px;
+  background: rgba(10, 12, 20, 0.4);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  z-index: 999;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.right-toolbar-backdrop.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ===========================
    Hub Icon (Floating Button)
+   Positioned above settings button in bottom-right
    =========================== */
 .serenity-hub-icon {
   position: fixed;
-  top: 20px;
-  right: 20px;
+  bottom: 90px;
+  right: 9px;
   width: 60px;
   height: 60px;
   cursor: pointer;
@@ -461,8 +488,8 @@
 /* Mobile (≤600px) */
 @media (max-width: 600px) {
   .serenity-hub-icon {
-    top: 15px;
-    right: 15px;
+    bottom: 88px;
+    right: 10px;
     width: 50px;
     height: 50px;
   }
@@ -2303,13 +2330,13 @@
 }
 
 /* ===========================
-   Replays Icon (Floating Button below Serenity Hub)
+   Replays Icon (Floating Button above High Scores)
    =========================== */
 .replays-icon {
   position: fixed;
-  top: 90px;
-  right: 25px;
-  /* Adjusted to center with serenity hub (60px vs 50px width) */
+  bottom: 224px;
+  right: 14px;
+  /* Centered with serenity hub (60px vs 50px width) */
   width: 50px;
   height: 50px;
   cursor: pointer;
@@ -2374,21 +2401,21 @@
 /* Mobile adjustments */
 @media (max-width: 600px) {
   .replays-icon {
-    top: 75px;
-    right: 15px;
+    bottom: 200px;
+    right: 14px;
     width: 42px;
     height: 42px;
   }
 }
 
 /* ===========================
-   High Scores Icon (Floating Button below Replays Icon)
+   High Scores Icon (Floating Button above Serenity Hub)
    =========================== */
 .highscores-icon {
   position: fixed;
-  top: 150px;
-  right: 25px;
-  /* Aligned with replays icon */
+  bottom: 162px;
+  right: 14px;
+  /* Centered with serenity hub (60px vs 50px width) */
   width: 50px;
   height: 50px;
   cursor: pointer;
@@ -2455,8 +2482,8 @@
 /* Mobile adjustments */
 @media (max-width: 600px) {
   .highscores-icon {
-    top: 125px;
-    right: 15px;
+    bottom: 148px;
+    right: 14px;
     width: 42px;
     height: 42px;
   }

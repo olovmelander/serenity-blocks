@@ -63,7 +63,7 @@ export class OnlineChat {
 
     /**
      * Add a received message
-     * @param {Object} message - { author: string, text: string, isSystem?: boolean }
+     * @param {Object} message - { author: string, text: string, isSystem?: boolean, color?: string }
      */
     addMessage(message) {
         this.messages.push({
@@ -98,13 +98,20 @@ export class OnlineChat {
         if (!this.messagesContainer) return;
 
         const html = this.messages.map((msg) => {
-            const classes = ['chat-message'];
-            if (msg.isSystem) classes.push('system');
+            if (msg.isSystem) {
+                return `
+                    <div class="system-message">
+                        ${this._escapeHtml(msg.text)}
+                    </div>
+                `;
+            }
 
+            const nameColor = msg.color || '#a78bfa';
             return `
-                <div class="${classes.join(' ')}">
-                    ${!msg.isSystem ? `<span class="chat-author">${this._escapeHtml(msg.author)}:</span> ` : ''}
-                    <span class="chat-text">${this._escapeHtml(msg.text)}</span>
+                <div class="player-message">
+                    <span class="color-indicator" style="background:${nameColor};"></span>
+                    <span class="author" style="color:${nameColor}">${this._escapeHtml(msg.author)}:</span>
+                    <span class="text">${this._escapeHtml(msg.text)}</span>
                 </div>
             `;
         }).join('');
@@ -129,6 +136,8 @@ export class OnlineChat {
         div.textContent = text || '';
         return div.innerHTML;
     }
+
+    
 
     /**
      * Focus the input

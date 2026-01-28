@@ -29,6 +29,10 @@ import { DemoPlayer } from '../demo/DemoPlayer.js';
 import { DemoManager } from '../demo/DemoManager.js';
 import { PlaybackControls } from '../../ui/playback-controls.js';
 import { seededRandom } from '../../utils/helpers.js';
+import steamService from '../steam/steam-service.js';
+import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
+import { buildReplayProof } from '../anti-cheat/replay-proof.js';
+import { SCORE_DETAIL_FLAGS } from '../steam/leaderboard-score-details.js';
 
 /**
  * SinglePlayerMode - Classic single-player Tetris experience
@@ -862,6 +866,11 @@ export class SinglePlayerMode extends BaseGameMode {
             demoId: this.lastSavedDemoId,
         });
 
+        // Sync Steam stats/leaderboards in the background (best-effort)
+        this._syncSteamStats().catch((err) => {
+            console.warn('[SinglePlayer] Steam stats sync failed:', err.message);
+        });
+
         // Show game over modal with stats
         const { showGameOverModal } = await import('../../ui/modals.js');
 
@@ -883,6 +892,62 @@ export class SinglePlayerMode extends BaseGameMode {
         window.dispatchEvent(new CustomEvent('gameOver', {
             detail: { gameState: this.gameState },
         }));
+    }
+
+    /**
+     * Sync Steam stats and leaderboards (best-effort, non-blocking)
+     * @private
+     */
+    async _syncSteamStats() {
+        if (!this.gameState) {
+            return;
+        }
+
+        const durationMs = Date.now() - (this.gameState.startTime || Date.now());
+        const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
+        const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
+
+        const replayProof = await buildReplayProof({
+            demo: this.lastRecordedDemo,
+            expectedScore: this.gameState.score,
+            expectedLines: this.gameState.lines,
+            expectedLevel: this.gameState.level,
+            expectedDurationMs: durationMs,
+        });
+
+        let flags = SCORE_DETAIL_FLAGS.NONE;
+        if (this.lastRecordedDemo?.inputs?.length) {
+            flags |= SCORE_DETAIL_FLAGS.REPLAY_PRESENT;
+        }
+        if (replayProof.verified) {
+            flags |= SCORE_DETAIL_FLAGS.REPLAY_VERIFIED;
+        } else if (replayProof.issues?.length) {
+            flags |= SCORE_DETAIL_FLAGS.REPLAY_MISMATCH;
+        }
+
+        const scoreDetails = {
+            score: this.gameState.score,
+            duration: durationSeconds,
+            linesCleared: this.gameState.lines,
+            highestLevel: this.gameState.level,
+            checksum32: replayProof.checksum32,
+            replayHash: replayProof.hash,
+            replayVerified: replayProof.verified,
+            replayIssues: replayProof.issues,
+            replayInputCount: replayProof.inputCount,
+            replayDurationMs: replayProof.durationMs,
+            replayId: this.lastSavedDemoId,
+            flags,
+            version: '1.0.0',
+        };
+
+        await Promise.all([
+            steamService.uploadScore(STEAM_LEADERBOARDS.SINGLE_PLAYER_HIGH_SCORE, this.gameState.score, scoreDetails),
+            steamService.uploadScore(STEAM_LEADERBOARDS.SINGLE_PLAYER_LINES, this.gameState.lines, scoreDetails),
+            steamService.incrementStat('total_games_played', 1),
+            steamService.incrementStat('total_lines_cleared', this.gameState.lines),
+            steamService.incrementStat('playtime_minutes', durationMinutes),
+        ]);
     }
 
     /**

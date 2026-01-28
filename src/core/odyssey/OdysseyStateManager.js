@@ -8,6 +8,8 @@
  * - Save/load to localStorage
  */
 
+import { eventBus, EVENTS } from '../../events/event-bus.js';
+
 const STORAGE_KEY = 'serenityBlocks_odysseyProgress';
 const SAVE_VERSION = 1;
 
@@ -68,7 +70,7 @@ export class OdysseyStateManager {
     /**
      * Save progress to localStorage
      */
-    save() {
+    save({ emitEvent = true } = {}) {
         const saveData = {
             version: SAVE_VERSION,
             currentChapter: this.currentChapter,
@@ -82,6 +84,12 @@ export class OdysseyStateManager {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(saveData));
             console.log('[OdysseyState] Progress saved successfully');
+            if (emitEvent) {
+                eventBus.emit(EVENTS.ODYSSEY_SAVED, {
+                    data: saveData,
+                    source: 'local',
+                });
+            }
             return true;
         } catch (error) {
             console.error('[OdysseyState] Failed to save progress:', error);

@@ -17,6 +17,8 @@ import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { InfinityHUD } from '../../ui/infinity/InfinityHUD.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import steamService from '../steam/steam-service.js';
+import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
 
 /**
  * InfinityMode - Endurance mode with 1000-row vertical playfield
@@ -1063,8 +1065,24 @@ export class InfinityMode extends BaseGameMode {
             mode: 'infinity', // Tag as infinity mode
         });
 
-        // Show game over modal
-        this.deps.modalManager.show('gameOver');
+        // Sync Steam stats/leaderboards in the background (best-effort)
+        this._syncSteamStats().catch((err) => {
+            console.warn('[Infinity] Steam stats sync failed:', err.message);
+        });
+
+        // Show game over modal with stats/leaderboards
+        const { showGameOverModal } = await import('../../ui/modals.js');
+        await showGameOverModal(
+            this.deps.modalManager,
+            this.gameState,
+            this.deps.highScoreManager,
+            {
+                onMainMenu: () => {
+                    console.log('[Infinity] Main Menu - exiting to main menu');
+                    eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
+                },
+            },
+        );
 
         // Trigger game over event
         window.dispatchEvent(new CustomEvent('gameOver', {
@@ -1074,6 +1092,43 @@ export class InfinityMode extends BaseGameMode {
                 infinityStats: this.gameState.infinityStats,
             },
         }));
+    }
+
+    /**
+     * Sync Steam stats and leaderboards (best-effort, non-blocking)
+     * @private
+     */
+    async _syncSteamStats() {
+        if (!this.gameState) {
+            return;
+        }
+
+        const startTime = this.gameState.infinityStats?.sessionStartTime || this.gameState.startTime || Date.now();
+        const durationMs = Date.now() - startTime;
+        const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
+        const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
+
+        const bestCascade = this.gameState.infinityStats?.maxComboDepth || 0;
+
+        const scoreDetails = {
+            score: this.gameState.score,
+            duration: durationSeconds,
+            linesCleared: this.gameState.lines,
+            highestLevel: this.gameState.level,
+            bestCascade,
+            version: '1.0.0',
+        };
+
+        await Promise.all([
+            steamService.uploadScore(STEAM_LEADERBOARDS.INFINITY_HIGH_SCORE, this.gameState.score, scoreDetails),
+            steamService.uploadScore(STEAM_LEADERBOARDS.INFINITY_SURVIVAL_TIME, durationSeconds, scoreDetails),
+            steamService.uploadScore(STEAM_LEADERBOARDS.INFINITY_BEST_CASCADE, bestCascade, scoreDetails),
+            steamService.incrementStat('total_games_played', 1),
+            steamService.incrementStat('total_lines_cleared', this.gameState.lines),
+            steamService.incrementStat('playtime_minutes', durationMinutes),
+            steamService.setStatMax('best_cascade', bestCascade),
+            steamService.setStatMax('infinity_best_time', durationSeconds),
+        ]);
     }
 
     /**
