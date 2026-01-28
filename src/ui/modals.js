@@ -3,6 +3,13 @@
  * Handles start modal, game-over modal, settings modal, and high scores modal
  */
 
+import { STEAM_LEADERBOARDS } from '../core/steam/steam-config.js';
+import {
+    SteamLeaderboardPanel,
+    formatNumber,
+    formatSeconds,
+} from './components/steam-leaderboard-panel.js';
+
 /**
  * Modal manager class
  */
@@ -266,7 +273,65 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
                     </div>
                 </div>
             </div>
+            <div class="steam-leaderboard-host" id="steam-leaderboard-host"></div>
         `;
+
+        const leaderboardHost = document.getElementById('steam-leaderboard-host');
+        if (leaderboardHost) {
+            const isInfinity = !!gameState?.isInfinityMode;
+            const startTime = gameState?.infinityStats?.sessionStartTime || gameState.startTime || Date.now();
+            const durationSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
+            const bestCascade = gameState?.infinityStats?.maxComboDepth || 0;
+
+            const boards = isInfinity
+                ? [
+                    {
+                        id: 'score',
+                        label: 'Score',
+                        name: STEAM_LEADERBOARDS.INFINITY_HIGH_SCORE,
+                        currentScore: score,
+                        formatScore: formatNumber,
+                    },
+                    {
+                        id: 'time',
+                        label: 'Survival',
+                        name: STEAM_LEADERBOARDS.INFINITY_SURVIVAL_TIME,
+                        currentScore: durationSeconds,
+                        formatScore: formatSeconds,
+                    },
+                    {
+                        id: 'cascade',
+                        label: 'Cascade',
+                        name: STEAM_LEADERBOARDS.INFINITY_BEST_CASCADE,
+                        currentScore: bestCascade,
+                        formatScore: formatNumber,
+                    },
+                ]
+                : [
+                    {
+                        id: 'score',
+                        label: 'Score',
+                        name: STEAM_LEADERBOARDS.SINGLE_PLAYER_HIGH_SCORE,
+                        currentScore: score,
+                        formatScore: formatNumber,
+                    },
+                    {
+                        id: 'lines',
+                        label: 'Lines',
+                        name: STEAM_LEADERBOARDS.SINGLE_PLAYER_LINES,
+                        currentScore: lines,
+                        formatScore: formatNumber,
+                    },
+                ];
+
+            const leaderboardPanel = new SteamLeaderboardPanel({
+                title: isInfinity ? 'Infinity Leaderboards' : 'Single Player Leaderboards',
+                boards,
+                defaultBoardId: boards[0]?.id,
+            });
+
+            leaderboardPanel.mount(leaderboardHost);
+        }
     } catch (error) {
         console.error('Error displaying game over stats:', error);
         // Fallback display

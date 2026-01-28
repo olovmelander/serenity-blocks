@@ -1966,7 +1966,7 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  padding: 20px 90px 20px 20px;
+  padding: 20px 15px 20px 20px;
   box-sizing: border-box;
   background: transparent;
   z-index: 200;
@@ -2251,6 +2251,42 @@
   overflow: hidden;
   text-overflow: ellipsis;
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* Mini avatar for opponent boards */
+.opponent-mini-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid #8b5cf6;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.opponent-mini-avatar .mini-avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.opponent-mini-avatar .mini-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
 .opponent-frags {
@@ -3021,26 +3057,113 @@
   margin-bottom: 8px;
   font-size: 12px;
   color: #cbd5e0;
+  padding: 8px;
 }
 
+/* Nice chat message styling - matches lobby */
 .chat-message {
-  padding: 4px 0;
-  border-bottom: 1px solid rgba(102, 126, 234, 0.1);
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  background: rgba(0, 255, 255, 0.05);
+  border-radius: 6px;
+  color: #e0e7ff;
+  font-size: 13px;
+  line-height: 1.4;
+  animation: chatMessageSlideIn 0.3s ease;
+  word-break: break-word;
 }
 
-.chat-message .chat-author {
+.chat-message .color-indicator {
+  display: inline-block;
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  margin-right: 8px;
+  vertical-align: middle;
+  box-shadow: 0 0 6px currentColor;
+  flex-shrink: 0;
+}
+
+.chat-message .author {
   font-weight: 600;
-  color: #667eea;
+  color: #a78bfa;
+  margin-right: 6px;
 }
 
-.chat-message.system {
-  color: #a0aec0;
+.chat-message .text {
+  color: #e0e7ff;
+}
+
+.chat-message.system-message {
+  padding: 10px;
+  margin-bottom: 8px;
+  background: rgba(139, 92, 246, 0.1);
+  border-left: 3px solid rgba(139, 92, 246, 0.5);
+  border-radius: 6px;
+  color: #c4b5fd;
+  font-size: 12px;
   font-style: italic;
+}
+
+@keyframes chatMessageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Lobby/Results compatible message styles */
+.system-message {
+  padding: 10px;
+  margin-bottom: 8px;
+  background: rgba(139, 92, 246, 0.1);
+  border-left: 3px solid rgba(139, 92, 246, 0.5);
+  border-radius: 6px;
+  color: #c4b5fd;
+  font-size: 12px;
+  animation: chatMessageSlideIn 0.3s ease;
+}
+
+.player-message {
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  background: rgba(0, 255, 255, 0.05);
+  border-radius: 6px;
+  color: #e0e7ff;
+  font-size: 13px;
+  line-height: 1.4;
+  animation: chatMessageSlideIn 0.3s ease;
+  word-break: break-word;
+}
+
+.player-message .color-indicator {
+  display: inline-block;
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  margin-right: 8px;
+  vertical-align: middle;
+  box-shadow: 0 0 6px currentColor;
+  flex-shrink: 0;
+}
+
+.player-message .author {
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.player-message .text {
+  color: #e0e7ff;
 }
 
 .chat-input-area {
   display: flex;
   gap: 8px;
+  padding-right: 75px; /* Clear space for bottom-right toolbar (settings, serenity hub) */
 }
 
 .chat-input-area input {

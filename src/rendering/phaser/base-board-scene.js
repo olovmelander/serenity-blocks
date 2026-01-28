@@ -70,9 +70,9 @@ export function createBaseBoardScene(
             this.blockSize = this.boardConfig.blockSize;
 
             this.graphicsLayers = {
-                board: null,
-                piece: null,
-                fx: null,
+                board: null,    // Static layer: locked pieces (only redraws when board changes)
+                piece: null,    // Dynamic layer: current piece, ghost, animations (redraws every frame)
+                fx: null,       // Effects layer: particles, line clears, etc.
             };
 
             this.commonParticleKey = DEFAULT_PARTICLE_KEY;
@@ -86,6 +86,11 @@ export function createBaseBoardScene(
             // PERFORMANCE: Periodic cleanup counters to prevent memory leaks
             this.frameCount = 0;
             this.cleanupInterval = 60; // Clean up every 1 second at 60fps (increased frequency)
+
+            // PERFORMANCE: Dual-layer caching - only redraw static content when board changes
+            this._boardDirty = true; // Start dirty to trigger initial render
+            this._lastBoardGridRef = null; // Track board grid reference for change detection
+            this._lastBoardVersion = -1; // Track board version for more reliable change detection
 
             // Initialize Tetromino Style Manager for theme-based tetromino colors
             this.styleManager = new TetrominoStyleManager(
@@ -147,23 +152,60 @@ export function createBaseBoardScene(
                 this._performPeriodicCleanup();
             }
 
-            // Clear ALL graphics layers at the START of each frame (like multiplayer does)
-            // This is the CRITICAL optimization that makes multiplayer so fast
+            // PERFORMANCE: Dual-layer caching optimization
+            // Only redraw static content (locked pieces) when board actually changes
             try {
-                this.boardGraphics?.clear();
+                // Check if board content has changed (piece locked, lines cleared, etc.)
+                this._checkBoardDirty();
+
+                // Static layer (boardGraphics): only clear and redraw when board changes
+                if (this._boardDirty) {
+                    this.boardGraphics?.clear();
+                }
+
+                // Dynamic layer (pieceGraphics): always clear for current piece/ghost updates
                 this.pieceGraphics?.clear();
                 this.effectsGraphics?.clear();
 
                 performanceMonitor.updateEnd();
                 performanceMonitor.renderStart();
 
-                // Render game state
+                // Render game state with dual-layer optimization
                 this.renderGameState();
+
+                // Mark board as clean after rendering
+                if (this._boardDirty) {
+                    this._boardDirty = false;
+                }
 
                 performanceMonitor.renderEnd();
             } catch (error) {
                 console.error('[BaseBoardScene] Error in update loop:', error);
             }
+        }
+
+        /**
+         * Check if the board content has changed and needs redrawing.
+         * Uses reference comparison and version tracking for efficiency.
+         */
+        _checkBoardDirty() {
+            const currentGrid = this.gameState?.boardGrid;
+            const currentVersion = this.gameState?.boardVersion ?? 0;
+
+            // Check if grid reference changed or version bumped
+            if (currentGrid !== this._lastBoardGridRef || currentVersion !== this._lastBoardVersion) {
+                this._boardDirty = true;
+                this._lastBoardGridRef = currentGrid;
+                this._lastBoardVersion = currentVersion;
+            }
+        }
+
+        /**
+         * Mark the board as dirty, forcing a redraw on the next frame.
+         * Call this when external events modify the board (e.g., garbage received).
+         */
+        markBoardDirty() {
+            this._boardDirty = true;
         }
 
         /**
@@ -630,13 +672,18 @@ export function createBaseBoardScene(
         renderGameState() {
             if (!this.gameState) return;
 
-            // REMOVED: rebuildBoardGridFromPieces() - this was being called 60 times per second!
-            // The board grid is already updated when pieces lock in the game logic.
-            // Rebuilding it every frame was causing massive performance degradation.
+            // PERFORMANCE: Dual-layer rendering optimization
+            // Static content (boardGrid) only redraws when board changes
+            // Dynamic content (current piece, ghost) redraws every frame
 
-            this.drawGrid();
-            this.drawBoardFromGrid();
-            this.drawLockedPieceOutlines();
+            // Static layer - only render when board is dirty
+            if (this._boardDirty) {
+                this.drawGrid();
+                this.drawBoardFromGrid();
+                this.drawLockedPieceOutlines();
+            }
+
+            // Dynamic layer - render every frame
             if (this.gameState.currentPiece) {
                 this.drawGhostPiece();
             }
@@ -665,6 +712,9 @@ export function createBaseBoardScene(
 
             const { startRow, endRow } = this.getVisibleRowRange();
 
+            // PERFORMANCE: Draw to static boardGraphics layer (only redraws when board changes)
+            const staticLayer = this.boardGraphics;
+
             for (let worldY = startRow; worldY < endRow; worldY++) {
                 const row = grid[worldY];
                 if (!row) continue;
@@ -690,7 +740,8 @@ export function createBaseBoardScene(
                         }
                     }
 
-                    this.drawBlock(worldX, worldY, colorValue, 1.0);
+                    // Draw to static layer instead of dynamic pieceGraphics
+                    this.drawBlock(worldX, worldY, colorValue, 1.0, false, null, 0, 0, staticLayer);
                 }
             }
         }
@@ -699,9 +750,13 @@ export function createBaseBoardScene(
             const grid = this.gameState?.boardGrid;
             if (!grid) return;
 
+            // PERFORMANCE: Draw to static boardGraphics layer (only redraws when board changes)
+            const staticLayer = this.boardGraphics;
+            if (!staticLayer) return;
+
             // Draw extremely subtle outlines around locked pieces by detecting edges
             // Very low opacity (0.08) makes it barely visible but helps distinguish pieces
-            this.pieceGraphics.lineStyle(0.5, 0x000000, 0.08);
+            staticLayer.lineStyle(0.5, 0x000000, 0.08);
 
             const { startRow, endRow } = this.getVisibleRowRange();
 
@@ -723,41 +778,41 @@ export function createBaseBoardScene(
                     // Top edge
                     const topCell = worldY > 0 ? grid[worldY - 1]?.[worldX] : null;
                     if (!topCell || topCell.id !== pieceId) {
-                        this.pieceGraphics.beginPath();
-                        this.pieceGraphics.moveTo(px, py);
-                        this.pieceGraphics.lineTo(px + size, py);
-                        this.pieceGraphics.strokePath();
-                        this.pieceGraphics.closePath();
+                        staticLayer.beginPath();
+                        staticLayer.moveTo(px, py);
+                        staticLayer.lineTo(px + size, py);
+                        staticLayer.strokePath();
+                        staticLayer.closePath();
                     }
 
                     // Bottom edge
                     const bottomCell = worldY < grid.length - 1 ? grid[worldY + 1]?.[worldX] : null;
                     if (!bottomCell || bottomCell.id !== pieceId) {
-                        this.pieceGraphics.beginPath();
-                        this.pieceGraphics.moveTo(px, py + size);
-                        this.pieceGraphics.lineTo(px + size, py + size);
-                        this.pieceGraphics.strokePath();
-                        this.pieceGraphics.closePath();
+                        staticLayer.beginPath();
+                        staticLayer.moveTo(px, py + size);
+                        staticLayer.lineTo(px + size, py + size);
+                        staticLayer.strokePath();
+                        staticLayer.closePath();
                     }
 
                     // Left edge
                     const leftCell = worldX > 0 ? grid[worldY]?.[worldX - 1] : null;
                     if (!leftCell || leftCell.id !== pieceId) {
-                        this.pieceGraphics.beginPath();
-                        this.pieceGraphics.moveTo(px, py);
-                        this.pieceGraphics.lineTo(px, py + size);
-                        this.pieceGraphics.strokePath();
-                        this.pieceGraphics.closePath();
+                        staticLayer.beginPath();
+                        staticLayer.moveTo(px, py);
+                        staticLayer.lineTo(px, py + size);
+                        staticLayer.strokePath();
+                        staticLayer.closePath();
                     }
 
                     // Right edge
                     const rightCell = worldX < this.cols - 1 ? grid[worldY]?.[worldX + 1] : null;
                     if (!rightCell || rightCell.id !== pieceId) {
-                        this.pieceGraphics.beginPath();
-                        this.pieceGraphics.moveTo(px + size, py);
-                        this.pieceGraphics.lineTo(px + size, py + size);
-                        this.pieceGraphics.strokePath();
-                        this.pieceGraphics.closePath();
+                        staticLayer.beginPath();
+                        staticLayer.moveTo(px + size, py);
+                        staticLayer.lineTo(px + size, py + size);
+                        staticLayer.strokePath();
+                        staticLayer.closePath();
                     }
                 }
             }
@@ -848,12 +903,27 @@ export function createBaseBoardScene(
             this.drawPieceOutline(tempPiece);
         }
 
-        drawBlock(x, y, color, alpha = 1.0, isGhost = false, shape = null, localX = 0, localY = 0) {
+        /**
+         * Draw a single block at the given grid position.
+         * @param {number} x - Grid X position
+         * @param {number} y - Grid Y position (world coordinates)
+         * @param {string} color - Hex color string
+         * @param {number} alpha - Opacity (0-1)
+         * @param {boolean} isGhost - Whether this is a ghost piece block
+         * @param {Object} shape - Piece shape (unused, kept for compatibility)
+         * @param {number} localX - Local X in piece shape (unused)
+         * @param {number} localY - Local Y in piece shape (unused)
+         * @param {Phaser.GameObjects.Graphics} graphics - Target graphics layer (defaults to pieceGraphics)
+         */
+        drawBlock(x, y, color, alpha = 1.0, isGhost = false, shape = null, localX = 0, localY = 0, graphics = null) {
             // y is already in world coordinates (0-23), draw directly
             // The camera is positioned to show only the visible portion
             const px = Math.round(x * this.blockSize);
             const py = Math.round(y * this.blockSize);
             const size = this.blockSize;
+
+            // Use specified graphics layer or default to pieceGraphics (dynamic layer)
+            const targetGraphics = graphics || this.pieceGraphics;
 
             let colorInt = 0x808080;
             if (color && typeof color === 'string') {
@@ -866,14 +936,14 @@ export function createBaseBoardScene(
             // --- Start of Ghost Piece Changes ---
             if (isGhost) {
                 // Change from an outline to a semi-transparent fill
-                this.pieceGraphics.fillStyle(colorInt, alpha);
-                this.pieceGraphics.fillRect(px, py, size, size);
+                targetGraphics.fillStyle(colorInt, alpha);
+                targetGraphics.fillRect(px, py, size, size);
                 return;
             }
 
             // Draw the solid color fill for the block (no individual borders)
-            this.pieceGraphics.fillStyle(colorInt, alpha);
-            this.pieceGraphics.fillRect(px, py, size, size);
+            targetGraphics.fillStyle(colorInt, alpha);
+            targetGraphics.fillRect(px, py, size, size);
         }
 
         /**
