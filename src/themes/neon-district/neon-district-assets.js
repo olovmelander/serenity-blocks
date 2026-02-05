@@ -6,7 +6,8 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import { float, uniformTexture, vec3 } from 'three/tsl';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 
 const TEXTURE_PATH = './textures/synthcity/';
@@ -64,23 +65,34 @@ void main() {
  * Properly replicates SynthCity's material creation approach
  */
 export class NeonDistrictAssets {
-    constructor() {
+    constructor(renderer = null) {
         this.textures = {};
         this.materials = {};
+        this.adAtlas = {
+            small: null,
+            large: null,
+        };
+        this.adAtlasInfo = {
+            small: null,
+            large: null,
+        };
         this.loadingManager = new THREE.LoadingManager();
         this.textureLoader = new THREE.TextureLoader(this.loadingManager);
+        this.renderer = null;
+        this.isWebGPU = false;
+        this.ktx2Ready = false;
 
         // KTX2 Loader setup
         this.ktx2Loader = new KTX2Loader(this.loadingManager);
         this.ktx2Loader.setTranscoderPath('./basics/basis/'); // Standard path for Basis transcoder
-        this.ktx2Loader.detectSupport(new THREE.WebGLRenderer()); // Temp renderer for detection
 
         // Configuration - balanced brightness
         // Use maximum anisotropy for sharp textures at oblique angles
         this.textureAnisotropy = 16;
-        this.windowsEmissiveIntensity = 3.0; // Higher to punch through fog on distant buildings
+        this.windowsEmissiveIntensity = 2.8; // Reduced to limit bloom flicker on windows
         this.adsEmissiveIntensity = 0.35; // Reduced for less glare
         this.storefrontEmissiveIntensity = 0.4; // Further reduced for less glare
+        this.buildingDiffuseBoost = 1.12; // Slight lift so main buildings aren't pitch black
 
         // Track used storefronts to ensure uniqueness
         this.availableStorefronts = [];
@@ -88,6 +100,30 @@ export class NeonDistrictAssets {
 
         // Track loaded state
         this.loaded = false;
+
+        if (renderer) {
+            this.setRenderer(renderer);
+        }
+    }
+
+    setRenderer(renderer) {
+        if (!renderer) return;
+        this.renderer = renderer;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        if (!this.ktx2Ready) {
+            this.ktx2Loader.detectSupport(renderer);
+            this.ktx2Ready = true;
+        }
+    }
+
+    ensureKTX2Support() {
+        if (this.ktx2Ready) return;
+        const tempRenderer = this.renderer || new THREE.WebGLRenderer({ antialias: false });
+        this.ktx2Loader.detectSupport(tempRenderer);
+        this.ktx2Ready = true;
+        if (!this.renderer && tempRenderer?.dispose) {
+            tempRenderer.dispose();
+        }
     }
 
     /**
@@ -100,7 +136,7 @@ export class NeonDistrictAssets {
     /**
      * Helper to setup texture parameters
      */
-    setupTexture(tex, wrap, aniso, name) {
+    setupTexture(tex, wrap, aniso, name, colorSpace = THREE.SRGBColorSpace) {
         if (wrap) {
             tex.wrapS = THREE.RepeatWrapping;
             tex.wrapT = THREE.RepeatWrapping;
@@ -112,6 +148,7 @@ export class NeonDistrictAssets {
         tex.minFilter = THREE.LinearMipmapLinearFilter;
         tex.magFilter = THREE.LinearFilter;
         tex.generateMipmaps = true;
+        tex.colorSpace = colorSpace;
 
         // Store in cache
         this.textures[name] = tex;
@@ -120,12 +157,12 @@ export class NeonDistrictAssets {
     /**
      * Fallback to standard texture loading
      */
-    loadStandardTexture(name, wrap, aniso) {
+    loadStandardTexture(name, wrap, aniso, colorSpace) {
         return new Promise((resolve) => {
             this.textureLoader.load(
                 TEXTURE_PATH + name,
                 (tex) => {
-                    this.setupTexture(tex, wrap, aniso, name.replace('.jpg', '').replace('.png', ''));
+                    this.setupTexture(tex, wrap, aniso, name.replace('.jpg', '').replace('.png', ''), colorSpace);
                     resolve(tex);
                 },
                 undefined,
@@ -147,6 +184,8 @@ export class NeonDistrictAssets {
             return;
         }
 
+        this.ensureKTX2Support();
+
         console.log('[NeonDistrictAssets] Loading textures...');
 
         const loader = this.textureLoader;
@@ -154,7 +193,7 @@ export class NeonDistrictAssets {
         const texPath = TEXTURE_PATH;
 
         // Helper to load texture with high-quality settings and KTX2 fallback
-        const loadTex = (name, wrap = false, aniso = true) => {
+        const loadTex = (name, wrap = false, aniso = true, colorSpace = THREE.SRGBColorSpace) => {
             const baseName = name.replace('.jpg', '').replace('.png', '');
 
             return new Promise((resolve) => {
@@ -172,19 +211,19 @@ export class NeonDistrictAssets {
                 ktx2Loader.load(
                     texPath + baseName + '.ktx2',
                     (tex) => {
-                        this.setupTexture(tex, wrap, aniso, baseName);
+                        this.setupTexture(tex, wrap, aniso, baseName, colorSpace);
                         resolve(tex);
                     },
                     undefined,
                     () => {
                         // Fallback to standard image
-                        this.loadStandardTexture(name, wrap, aniso).then(resolve);
+                        this.loadStandardTexture(name, wrap, aniso, colorSpace).then(resolve);
                     }
                 );
                 */
 
                 // Default path (Standard)
-                this.loadStandardTexture(name, wrap, aniso).then(resolve);
+                this.loadStandardTexture(name, wrap, aniso, colorSpace).then(resolve);
             });
         };
 
@@ -217,8 +256,8 @@ export class NeonDistrictAssets {
             const id = this.padNumber(i);
             texturePromises.push(loadTex(`building_${id}.jpg`, true, true));
             texturePromises.push(loadTex(`building_${id}_em.jpg`, true, true));
-            texturePromises.push(loadTex(`building_${id}_spec.jpg`, true, true));
-            texturePromises.push(loadTex(`building_${id}_rough.jpg`, true, true));
+            texturePromises.push(loadTex(`building_${id}_spec.jpg`, true, true, THREE.NoColorSpace));
+            texturePromises.push(loadTex(`building_${id}_rough.jpg`, true, true, THREE.NoColorSpace));
         }
 
         // Mega building
@@ -230,10 +269,12 @@ export class NeonDistrictAssets {
             texturePromises.push(loadTex(`ads_${this.padNumber(i)}.jpg`));
         }
 
-        // Large ads (14)
-        for (let i = 1; i <= 14; i++) {
+        // Large ads (18)
+        for (let i = 1; i <= 18; i++) {
             texturePromises.push(loadTex(`ads_large_${this.padNumber(i)}.jpg`));
         }
+
+
 
         // Smoke (3)
         for (let i = 1; i <= 3; i++) {
@@ -249,8 +290,88 @@ export class NeonDistrictAssets {
         await Promise.all(texturePromises);
 
         console.log('[NeonDistrictAssets] Textures loaded, creating materials...');
+        this.createAdAtlases();
         this.createAllMaterials();
         this.loaded = true;
+    }
+
+    createAdAtlases() {
+        this.adAtlas.small = this.buildAdAtlas('ads', 5, 3, 2);
+        this.adAtlas.large = this.buildAdAtlas('ads_large', 18, 6, 3);
+    }
+
+    buildAdAtlas(prefix, count, cols, rows) {
+        if (typeof document === 'undefined') return null;
+
+        const textures = [];
+        let tileW = 0;
+        let tileH = 0;
+        for (let i = 1; i <= count; i++) {
+            const id = this.padNumber(i);
+            const tex = this.getTexture(`${prefix}_${id}`);
+            if (!tex || !tex.image) continue;
+            textures.push({ tex, index: i - 1 });
+            tileW = Math.max(tileW, tex.image.width || 0);
+            tileH = Math.max(tileH, tex.image.height || 0);
+        }
+
+        if (!textures.length || tileW <= 0 || tileH <= 0) return null;
+
+        const maxTextureSize = this.renderer?.capabilities?.maxTextureSize || 8192;
+        const totalW = cols * tileW;
+        const totalH = rows * tileH;
+        let scale = 1.0;
+        if (totalW > maxTextureSize || totalH > maxTextureSize) {
+            scale = Math.min(
+                maxTextureSize / totalW,
+                maxTextureSize / totalH,
+                1.0,
+            );
+        }
+        const scaledW = Math.max(1, Math.floor(tileW * scale));
+        const scaledH = Math.max(1, Math.floor(tileH * scale));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = cols * scaledW;
+        canvas.height = rows * scaledH;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+
+        textures.forEach(({ tex, index }) => {
+            const col = index % cols;
+            const row = Math.floor(index / cols);
+            const x = col * scaledW;
+            const y = row * scaledH;
+            try {
+                ctx.drawImage(tex.image, x, y, scaledW, scaledH);
+            } catch (e) {
+                // Ignore draw failures (e.g., cross-origin) and continue
+            }
+        });
+
+        const atlas = new THREE.CanvasTexture(canvas);
+        atlas.colorSpace = THREE.SRGBColorSpace;
+        atlas.minFilter = THREE.LinearMipmapLinearFilter;
+        atlas.magFilter = THREE.LinearFilter;
+        atlas.generateMipmaps = true;
+        atlas.wrapS = THREE.ClampToEdgeWrapping;
+        atlas.wrapT = THREE.ClampToEdgeWrapping;
+
+        const info = { cols, rows, tileW: scaledW, tileH: scaledH };
+        if (prefix === 'ads') {
+            this.adAtlasInfo.small = info;
+        } else {
+            this.adAtlasInfo.large = info;
+        }
+
+        return atlas;
+    }
+
+    getAdAtlasInfo(type) {
+        const atlas = type === 'large' ? this.adAtlas.large : this.adAtlas.small;
+        const info = type === 'large' ? this.adAtlasInfo.large : this.adAtlasInfo.small;
+        if (!atlas || !info) return null;
+        return { texture: atlas, ...info };
     }
 
     /**
@@ -263,13 +384,47 @@ export class NeonDistrictAssets {
     /**
      * Create all materials - EXACTLY like SynthCity does
      */
+    applyEmissiveNode(material) {
+        if (!this.isWebGPU || !material) return;
+        if (Array.isArray(material)) {
+            material.forEach((mat) => this.applyEmissiveNode(mat));
+            return;
+        }
+        const isNodeMaterial = material.isNodeMaterial
+            || material.isMeshPhongNodeMaterial
+            || material.isMeshStandardNodeMaterial
+            || material.isMeshPhysicalNodeMaterial;
+        if (!isNodeMaterial) return;
+        if (material.emissiveNode) return;
+
+        const emissiveIntensity = Number.isFinite(material.emissiveIntensity)
+            ? material.emissiveIntensity
+            : 1.0;
+        const emissiveColor = material.emissive?.isColor
+            ? vec3(material.emissive.r, material.emissive.g, material.emissive.b)
+            : null;
+
+        if (material.emissiveMap) {
+            const emissiveTex = uniformTexture(material.emissiveMap);
+            const baseColor = emissiveColor ?? vec3(1.0, 1.0, 1.0);
+            material.emissiveNode = emissiveTex.mul(baseColor).mul(float(emissiveIntensity));
+        } else if (emissiveColor) {
+            material.emissiveNode = emissiveColor.mul(float(emissiveIntensity));
+        } else {
+            material.emissiveNode = vec3(0.0, 0.0, 0.0);
+        }
+
+        material.needsUpdate = true;
+    }
+
     createAllMaterials() {
         const envMap = this.getTexture('env_night');
+        const MaterialClass = this.isWebGPU ? THREE.MeshPhongNodeMaterial : THREE.MeshPhongMaterial;
 
         // ═══════════════════════════════════════════════════════════════════════════
         // GROUND MATERIAL - with emissive color reflections
         // ═══════════════════════════════════════════════════════════════════════════
-        this.materials.ground = new THREE.MeshPhongMaterial({
+        this.materials.ground = new MaterialClass({
             map: this.getTexture('ground'),
             emissive: 0x0090ff, // Blue tint like SynthCity
             emissiveMap: this.getTexture('ground_em'),
@@ -282,7 +437,7 @@ export class NeonDistrictAssets {
         // ═══════════════════════════════════════════════════════════════════════════
         for (let i = 2; i <= 18; i++) {
             const id = this.padNumber(i);
-            this.materials[`storefront_${id}`] = new THREE.MeshPhongMaterial({
+            this.materials[`storefront_${id}`] = new MaterialClass({
                 map: this.getTexture(`storefront_${id}`),
                 emissive: 0xffffff,
                 emissiveMap: this.getTexture(`storefront_${id}`), // Use diffuse as emissive
@@ -300,9 +455,9 @@ export class NeonDistrictAssets {
 
             // Random emissive hue per material for color variety
             const hue = Math.random() * 360;
-            const emissiveColor = new THREE.Color(`hsl(${hue}, 100%, 95%)`);
+            const emissiveColor = new THREE.Color(`hsl(${hue}, 100%, 92%)`);
 
-            this.materials[`building_${id}`] = new THREE.MeshPhongMaterial({
+            const buildingMaterial = new MaterialClass({
                 map: this.getTexture(`building_${id}`),
                 specular: 0xffffff,
                 specularMap: this.getTexture(`building_${id}_spec`),
@@ -313,12 +468,18 @@ export class NeonDistrictAssets {
                 bumpMap: this.getTexture(`building_${id}`),
                 bumpScale: 5,
             });
+
+            if (buildingMaterial.color?.isColor) {
+                buildingMaterial.color.multiplyScalar(this.buildingDiffuseBoost);
+            }
+
+            this.materials[`building_${id}`] = buildingMaterial;
         }
 
         // ═══════════════════════════════════════════════════════════════════════════
         // MEGA BUILDING MATERIAL - Special large building texture
         // ═══════════════════════════════════════════════════════════════════════════
-        this.materials.mega_building_01 = new THREE.MeshPhongMaterial({
+        const megaBuildingMaterial = new MaterialClass({
             map: this.getTexture('mega_building_01'),
             specular: 0x777777,
             shininess: 1,
@@ -328,6 +489,10 @@ export class NeonDistrictAssets {
             bumpMap: this.getTexture('mega_building_01'),
             bumpScale: 10,
         });
+        if (megaBuildingMaterial.color?.isColor) {
+            megaBuildingMaterial.color.multiplyScalar(this.buildingDiffuseBoost);
+        }
+        this.materials.mega_building_01 = megaBuildingMaterial;
 
         // ═══════════════════════════════════════════════════════════════════════════
         // ADS MATERIALS - Emissive billboards with additive blending
@@ -336,7 +501,7 @@ export class NeonDistrictAssets {
         // Small ads - visible billboard textures (use Phong for lighting control)
         for (let i = 1; i <= 5; i++) {
             const id = this.padNumber(i);
-            this.materials[`ads_${id}`] = new THREE.MeshPhongMaterial({
+            this.materials[`ads_${id}`] = new MaterialClass({
                 map: this.getTexture(`ads_${id}`),
                 emissive: 0xffffff,
                 emissiveMap: this.getTexture(`ads_${id}`),
@@ -348,9 +513,9 @@ export class NeonDistrictAssets {
         }
 
         // Large ads (for towers) - visible billboard textures (use Phong)
-        for (let i = 1; i <= 14; i++) {
+        for (let i = 1; i <= 18; i++) {
             const id = this.padNumber(i);
-            this.materials[`ads_large_${id}`] = new THREE.MeshPhongMaterial({
+            this.materials[`ads_large_${id}`] = new MaterialClass({
                 map: this.getTexture(`ads_large_${id}`),
                 emissive: 0xffffff,
                 emissiveMap: this.getTexture(`ads_large_${id}`),
@@ -361,12 +526,14 @@ export class NeonDistrictAssets {
             });
         }
 
+
+
         // ═══════════════════════════════════════════════════════════════════════════
         // SMOKE MATERIALS - Atmospheric steam effects
         // ═══════════════════════════════════════════════════════════════════════════
         for (let i = 1; i <= 3; i++) {
             const id = this.padNumber(i);
-            this.materials[`smoke_${id}`] = new THREE.MeshPhongMaterial({
+            this.materials[`smoke_${id}`] = new MaterialClass({
                 alphaMap: this.getTexture(`smoke_${id}`),
                 color: 0xffffff,
                 shininess: 0,
@@ -382,7 +549,7 @@ export class NeonDistrictAssets {
         // ═══════════════════════════════════════════════════════════════════════════
         for (let i = 1; i <= 4; i++) {
             const id = this.padNumber(i);
-            this.materials[`spotlight_${id}`] = new THREE.MeshPhongMaterial({
+            this.materials[`spotlight_${id}`] = new MaterialClass({
                 alphaMap: this.getTexture(`spotlight_${id}`),
                 color: 0xffffff,
                 shininess: 0,
@@ -391,6 +558,10 @@ export class NeonDistrictAssets {
                 depthWrite: false,
                 transparent: false,
             });
+        }
+
+        if (this.isWebGPU) {
+            Object.values(this.materials).forEach((mat) => this.applyEmissiveNode(mat));
         }
 
         console.log('[NeonDistrictAssets] All materials created');
@@ -447,9 +618,11 @@ export class NeonDistrictAssets {
      * Get random large ad material
      */
     getRandomLargeAdMaterial() {
-        const index = Math.floor(Math.random() * 14) + 1;
+        const index = Math.floor(Math.random() * 18) + 1;
         return this.getMaterial(`ads_large_${this.padNumber(index)}`);
     }
+
+
 
     /**
      * Get random smoke material
@@ -514,6 +687,12 @@ export class NeonDistrictAssets {
             if (texture && texture.dispose) texture.dispose();
         });
         this.textures = {};
+
+        Object.values(this.adAtlas).forEach((atlas) => {
+            if (atlas && atlas.dispose) atlas.dispose();
+        });
+        this.adAtlas = { small: null, large: null };
+        this.adAtlasInfo = { small: null, large: null };
 
         // Dispose materials
         Object.values(this.materials).forEach((material) => {
