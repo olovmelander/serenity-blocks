@@ -254,7 +254,11 @@ export class BaseTheme {
      * @param {number} id - RequestAnimationFrame ID
      */
     registerAnimation(id) {
-        this.animationIds.push(id);
+        if (this.animationIds.length === 0) {
+            this.animationIds.push(id);
+        } else {
+            this.animationIds[this.animationIds.length - 1] = id;
+        }
     }
 
     /**
