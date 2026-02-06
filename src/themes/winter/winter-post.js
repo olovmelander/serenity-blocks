@@ -47,20 +47,23 @@ export class WinterPost {
         this.uTime = uniform(0);
         this.uShaftStrength = uniform(params.shaftStrength ?? 0.0);
         this.uLightPos = uniform(params.lightPos ?? new THREE.Vector2(0.5, 0.5));
+        this.uGradeStrength = uniform(params.gradeStrength ?? 0.2);
+        this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.6);
+        this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.0);
+        this.uColdTint = uniform(params.coldTint ?? new THREE.Color(0.05, 0.08, 0.15));
 
         // Cold vignette + subtle blue grade
         const uv = viewportUV;
         const centered = uv.sub(0.5).mul(2.0);
         const dist = length(centered);
-        const vignetteOffset = float(params.vignetteOffset ?? 1.0);
-        const vignetteDarkness = float(params.vignetteDarkness ?? 0.6);
-        const vignette = smoothstep(vignetteOffset, vignetteOffset.sub(0.5), dist);
+        const vignette = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.5), dist);
         const baseSample = sceneColor.sample(uv);
-        const coldTint = vec3(0.05, 0.08, 0.15);
-        const gradeStrength = float(params.gradeStrength ?? 0.2);
-        const graded = vec4(mix(baseSample.rgb, baseSample.rgb.mul(coldTint), gradeStrength), baseSample.a);
+        const graded = vec4(
+            mix(baseSample.rgb, baseSample.rgb.mul(this.uColdTint), this.uGradeStrength),
+            baseSample.a,
+        );
         const vignetteColor = mix(
-            graded.mul(float(1.0).sub(vignetteDarkness)),
+            graded.mul(float(1.0).sub(this.uVignetteDarkness)),
             graded,
             vignette,
         );
@@ -111,6 +114,18 @@ export class WinterPost {
         }
         if (params.lightPos !== undefined && this.uLightPos?.value) {
             this.uLightPos.value.set(params.lightPos.x, params.lightPos.y);
+        }
+        if (params.gradeStrength !== undefined) {
+            this.uGradeStrength.value = params.gradeStrength;
+        }
+        if (params.vignetteDarkness !== undefined) {
+            this.uVignetteDarkness.value = params.vignetteDarkness;
+        }
+        if (params.vignetteOffset !== undefined) {
+            this.uVignetteOffset.value = params.vignetteOffset;
+        }
+        if (params.coldTint !== undefined && this.uColdTint?.value) {
+            this.uColdTint.value.setRGB(params.coldTint.r, params.coldTint.g, params.coldTint.b);
         }
     }
 

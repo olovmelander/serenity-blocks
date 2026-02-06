@@ -725,6 +725,8 @@ export default class BlackHoleTheme extends BaseTheme {
         this.burstSparksPool = []; // Pool of burst particle systems for overlapping effects
         this.burstPoolSize = 8; // Maximum simultaneous bursts
         this.nextBurstIndex = 0; // Round-robin index for pool allocation
+        this.nextBurstParticleIndex = 0; // Ring allocator for combo burst particles
+        this.nextJetParticleIndex = 0; // Ring allocator for jet particles
 
         // Effect state
         this.diskIntensity = 1.0;
@@ -761,6 +763,15 @@ export default class BlackHoleTheme extends BaseTheme {
         this.driftY = 0;
         this.driftPhaseX = this.random() * Math.PI * 2;
         this.driftPhaseY = this.random() * Math.PI * 2;
+
+        // Camera motion state
+        this.cameraBasePosition = new THREE.Vector3(0, 200, 800);
+        this.cameraTargetPosition = this.cameraBasePosition.clone();
+        this.cameraLookTarget = new THREE.Vector3(0, 0, 0);
+        this.cameraLookTargetSmoothed = new THREE.Vector3(0, 0, 0);
+        this.cameraPhaseX = this.random() * Math.PI * 2;
+        this.cameraPhaseY = this.random() * Math.PI * 2;
+        this.cameraPhaseZ = this.random() * Math.PI * 2;
 
         // State
         this.eventUnsubscribers = [];
@@ -1057,8 +1068,10 @@ export default class BlackHoleTheme extends BaseTheme {
 
         // Camera looking at center, slightly above for dramatic angle
         this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 100000);
-        this.camera.position.set(0, 200, 800);
-        this.camera.lookAt(0, 0, 0);
+        this.camera.position.copy(this.cameraBasePosition);
+        this.camera.lookAt(this.cameraLookTarget);
+        this.cameraTargetPosition.copy(this.cameraBasePosition);
+        this.cameraLookTargetSmoothed.copy(this.cameraLookTarget);
 
         // Ambient light (very dim)
         const ambientLight = new THREE.AmbientLight(0x202030, 0.3);
@@ -2497,101 +2510,89 @@ export default class BlackHoleTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     onPieceLock() {
-        // Quick flash on piece lock
-        this.coreTargetIntensity = 2.0;
-        this.starFlashIntensity = 0.5;
-        this.bloomPulseIntensity = 0.2;
-        this.chromaticPulse = 0.005;
-        this.hawkingTargetIntensity = 1.2;
-        this.photonSpherePulse = Math.max(this.photonSpherePulse, 0.2);
-
-        // Quick return to normal
-        setTimeout(() => {
-            this.coreTargetIntensity = 1.0;
-            this.hawkingTargetIntensity = 1.0;
-        }, 100);
+        // Layer subtle lock energy without resetting active combo momentum
+        this.coreTargetIntensity = Math.min(2.4, this.coreTargetIntensity + 0.35);
+        this.starFlashIntensity = Math.min(1.2, this.starFlashIntensity + 0.18);
+        this.bloomPulseIntensity = Math.min(0.7, this.bloomPulseIntensity + 0.08);
+        this.chromaticPulse = Math.min(0.012, this.chromaticPulse + 0.0015);
+        this.hawkingTargetIntensity = Math.min(1.8, this.hawkingTargetIntensity + 0.08);
+        this.photonSpherePulse = Math.min(1.2, this.photonSpherePulse + 0.08);
     }
 
     onLineClear(lineCount) {
-        // Intensity scales with lines
-        const intensity = 1 + lineCount * 0.3;
-
-        this.diskTargetIntensity = intensity;
-        this.coreTargetIntensity = intensity * 1.5;
-        this.diskTargetRotationSpeed = 1 + lineCount * 0.5;
-        this.starFlashIntensity = Math.min(1.0, lineCount * 0.3);
-        this.bloomPulseIntensity = lineCount * 0.15;
-        this.chromaticPulse = lineCount * 0.003;
-        this.hawkingTargetIntensity = Math.min(1.8, 1.0 + lineCount * 0.2);
-        this.photonSpherePulse = Math.max(this.photonSpherePulse, 0.15 + lineCount * 0.05);
-
-        // Gradual return to normal
-        setTimeout(() => {
-            this.diskTargetIntensity = 1.0;
-            this.coreTargetIntensity = 1.0;
-            this.diskTargetRotationSpeed = 1.0;
-            this.hawkingTargetIntensity = 1.0;
-        }, 500);
+        // Layer line-clear energy to avoid abrupt resets during combo chains
+        this.diskTargetIntensity = Math.min(2.6, this.diskTargetIntensity + lineCount * 0.2);
+        this.coreTargetIntensity = Math.min(3.2, this.coreTargetIntensity + lineCount * 0.35);
+        this.diskTargetRotationSpeed = Math.min(4.0, this.diskTargetRotationSpeed + lineCount * 0.35);
+        this.starFlashIntensity = Math.min(1.4, this.starFlashIntensity + lineCount * 0.22);
+        this.bloomPulseIntensity = Math.min(1.0, this.bloomPulseIntensity + lineCount * 0.14);
+        this.chromaticPulse = Math.min(0.02, this.chromaticPulse + lineCount * 0.0018);
+        this.hawkingTargetIntensity = Math.min(2.0, this.hawkingTargetIntensity + lineCount * 0.16);
+        this.photonSpherePulse = Math.min(1.4, this.photonSpherePulse + lineCount * 0.08);
     }
 
     onCombo(comboCount) {
         if (!this.isActive || comboCount < 2) return;
 
-        // Visual flare
-        this.starFlashIntensity = Math.min(1.0, 0.2 + comboCount * 0.1);
-        this.bloomPulseIntensity = Math.min(0.5, 0.1 + comboCount * 0.05);
-        this.hawkingTargetIntensity = Math.min(2.0, 1.0 + comboCount * 0.25);
-        this.photonSpherePulse = Math.max(this.photonSpherePulse, 0.3 + comboCount * 0.06);
+        const surgeGain = 2.0 + comboCount * 1.5;
+        const burstGain = 3.0 + comboCount * 2.0;
+        const burstInProgress = this.burstPhase || this.burstFactor > 0.2;
 
-        // Phase 1: Strong suction for higher combos
-        this.gravitySurgeFactor = 2.0 + comboCount * 1.5;
-        this.burstPhase = false;
+        // Stack visual flare instead of replacing current combo momentum
+        this.starFlashIntensity = Math.min(1.6, this.starFlashIntensity + 0.12 + comboCount * 0.08);
+        this.bloomPulseIntensity = Math.min(1.0, this.bloomPulseIntensity + 0.08 + comboCount * 0.05);
+        this.hawkingTargetIntensity = Math.min(2.2, this.hawkingTargetIntensity + 0.08 + comboCount * 0.06);
+        this.photonSpherePulse = Math.min(1.5, this.photonSpherePulse + 0.12 + comboCount * 0.05);
+
+        // Apply suction only when a burst is not already running.
+        // During chained combos, skipping suction avoids the "reset" feel.
+        if (!burstInProgress) {
+            this.gravitySurgeFactor = Math.min(28.0, this.gravitySurgeFactor + surgeGain);
+        }
 
         // Particle jets for big combos
         if (comboCount > 3) {
+            this.spawnJetParticles(comboCount);
             console.log('[BlackHole] Combo > 3, gravity surge:', this.gravitySurgeFactor);
         }
 
-        // Phase 2: Trigger burst after suction pulls particles in
-        const suctionDuration = 300 + comboCount * 50; // Longer suction for bigger combos
+        // Phase 2: for active burst chains, stack immediately; otherwise keep short suction lead-in.
+        if (burstInProgress) {
+            this.triggerComboBurst(comboCount, surgeGain, burstGain);
+            return;
+        }
+
+        const suctionDuration = 300 + comboCount * 50;
         setTimeout(() => {
-            if (!this.isActive) return;
-
-            // Stop suction and trigger burst
-            this.gravitySurgeFactor = 0;
-            this.burstPhase = true;
-            this.burstFactor = 3.0 + comboCount * 2.0; // Stronger burst for bigger combos
-
-            // Extra visual punch during burst
-            this.starFlashIntensity = Math.min(1.5, 0.5 + comboCount * 0.2);
-            this.bloomPulseIntensity = Math.min(0.8, 0.3 + comboCount * 0.1);
-            this.chromaticPulse = 0.008 + comboCount * 0.002;
-
-            // Trigger shader-based burst sparks explosion from the pool!
-            // Use round-robin allocation so multiple bursts can overlap
-            const allowBurstSparks = !this.flags.useUnifiedParticles;
-            if (allowBurstSparks && this.isWebGPU && this.flags.useCompute && this.burstCompute?.computeNode) {
-                this.burstCompute.trigger(this.random() * Math.PI * 2);
-            } else if (allowBurstSparks && this.burstSparksPool.length > 0) {
-                const burstSparks = this.burstSparksPool[this.nextBurstIndex];
-                this.setMaterialUniform(burstSparks?.material, 'uPulseTimer', 0.0);
-                this.nextBurstIndex = (this.nextBurstIndex + 1) % this.burstPoolSize;
-                console.log('[BlackHole] Triggered burst system', this.nextBurstIndex, 'of', this.burstPoolSize);
-            }
-
-            // Spawn burst particles from center for extra impact
-            this.spawnBurstParticles(comboCount);
-
-            console.log('[BlackHole] Burst triggered! Factor:', this.burstFactor);
+            this.triggerComboBurst(comboCount, surgeGain, burstGain);
         }, suctionDuration);
+    }
 
-        // Gradual return to normal
-        setTimeout(() => {
-            this.diskTargetIntensity = 1.0;
-            this.coreTargetIntensity = 1.0;
-            this.diskTargetRotationSpeed = 1.0;
-            this.hawkingTargetIntensity = 1.0;
-        }, 800 + comboCount * 100);
+    triggerComboBurst(comboCount, surgeGain, burstGain) {
+        if (!this.isActive) return;
+
+        this.gravitySurgeFactor = Math.max(0, this.gravitySurgeFactor - surgeGain * 0.45);
+        this.burstPhase = true;
+        this.burstFactor = Math.min(40.0, this.burstFactor + burstGain);
+
+        this.starFlashIntensity = Math.min(1.8, this.starFlashIntensity + 0.18 + comboCount * 0.12);
+        this.bloomPulseIntensity = Math.min(1.2, this.bloomPulseIntensity + 0.14 + comboCount * 0.08);
+        this.chromaticPulse = Math.min(0.03, this.chromaticPulse + 0.004 + comboCount * 0.0015);
+
+        // Trigger shader-based burst sparks explosion from the pool!
+        // Use round-robin allocation so multiple bursts can overlap
+        const allowBurstSparks = !this.flags.useUnifiedParticles;
+        if (allowBurstSparks && this.isWebGPU && this.flags.useCompute && this.burstCompute?.computeNode) {
+            this.burstCompute.trigger(this.random() * Math.PI * 2, Math.min(1.0, comboCount / 8));
+        } else if (allowBurstSparks && this.burstSparksPool.length > 0) {
+            const burstSparks = this.burstSparksPool[this.nextBurstIndex];
+            this.setMaterialUniform(burstSparks?.material, 'uPulseTimer', 0.0);
+            this.nextBurstIndex = (this.nextBurstIndex + 1) % this.burstPoolSize;
+            console.log('[BlackHole] Triggered burst system', this.nextBurstIndex, 'of', this.burstPoolSize);
+        }
+
+        this.spawnBurstParticles(comboCount);
+        console.log('[BlackHole] Burst triggered! Factor:', this.burstFactor);
     }
 
     /**
@@ -2607,9 +2608,13 @@ export default class BlackHoleTheme extends BaseTheme {
             const burstMultiplier = this.flags.useUnifiedParticles ? 26 : 15;
             const burstMax = this.flags.useUnifiedParticles ? 180 : 80;
             const burstCount = Math.min(comboCount * burstMultiplier, burstMax);
+            const total = this.particleCompute.count;
+            if (total <= 0) return;
+            let cursor = this.nextBurstParticleIndex % total;
 
             for (let i = 0; i < burstCount; i++) {
-                const index = Math.floor(this.random() * this.particleCompute.count);
+                const index = cursor;
+                cursor = (cursor + 1) % total;
                 const theta = this.random() * Math.PI * 2;
                 const phi = Math.acos(2 * this.random() - 1);
                 const speed = 8 + this.random() * 12 + comboCount * 2;
@@ -2644,6 +2649,7 @@ export default class BlackHoleTheme extends BaseTheme {
                     color,
                 });
             }
+            this.nextBurstParticleIndex = cursor;
             return;
         }
 
@@ -2661,10 +2667,13 @@ export default class BlackHoleTheme extends BaseTheme {
 
         // Number of particles to spawn from center
         const burstCount = Math.min(comboCount * 15, 80);
+        const total = positions.length / 3;
+        if (total <= 0) return;
+        let cursor = this.nextBurstParticleIndex % total;
 
         for (let i = 0; i < burstCount; i++) {
-            // Find a random particle to repurpose
-            const index = Math.floor(this.random() * (positions.length / 3));
+            const index = cursor;
+            cursor = (cursor + 1) % total;
             const i3 = index * 3;
 
             // Spawn at black hole center with small random offset
@@ -2705,6 +2714,8 @@ export default class BlackHoleTheme extends BaseTheme {
             lifetimes[index] = 1.0;
         }
 
+        this.nextBurstParticleIndex = cursor;
+
         this.particleAttributes.position.needsUpdate = true;
         this.particleAttributes.color.needsUpdate = true;
         this.particleAttributes.size.needsUpdate = true;
@@ -2716,9 +2727,13 @@ export default class BlackHoleTheme extends BaseTheme {
 
         if (this.isWebGPU && this.flags.useCompute && this.particleCompute?.computeNode) {
             const jetCount = Math.min(comboCount * 10, 50);
+            const total = this.particleCompute.count;
+            if (total <= 0) return;
+            let cursor = this.nextJetParticleIndex % total;
 
             for (let i = 0; i < jetCount; i++) {
-                const index = Math.floor(this.random() * this.particleCompute.count);
+                const index = cursor;
+                cursor = (cursor + 1) % total;
                 const direction = this.random() > 0.5 ? 1 : -1;
                 const speed = 5 + this.random() * 10;
 
@@ -2746,6 +2761,7 @@ export default class BlackHoleTheme extends BaseTheme {
                     color,
                 });
             }
+            this.nextJetParticleIndex = cursor;
             return;
         }
 
@@ -2758,10 +2774,13 @@ export default class BlackHoleTheme extends BaseTheme {
         const lifetimes = this.particleLifetimes;
 
         const jetCount = Math.min(comboCount * 10, 50);
+        const total = positions.length / 3;
+        if (total <= 0) return;
+        let cursor = this.nextJetParticleIndex % total;
 
         for (let i = 0; i < jetCount; i++) {
-            // Find a particle to repurpose
-            const index = Math.floor(this.random() * (positions.length / 3));
+            const index = cursor;
+            cursor = (cursor + 1) % total;
             const i3 = index * 3;
 
             // Spawn at center
@@ -2791,9 +2810,56 @@ export default class BlackHoleTheme extends BaseTheme {
             lifetimes[index] = 1.0;
         }
 
+        this.nextJetParticleIndex = cursor;
+
         this.particleAttributes.position.needsUpdate = true;
         this.particleAttributes.color.needsUpdate = true;
         this.particleAttributes.size.needsUpdate = true;
+    }
+
+    updateNaturalCamera(delta) {
+        if (!this.camera) return;
+
+        const t = this.time;
+        const comboEnergy = Math.min(
+            1.0,
+            this.starFlashIntensity * 0.65
+                + this.bloomPulseIntensity * 0.45
+                + this.gravitySurgeFactor * 0.03
+                + this.burstFactor * 0.03,
+        );
+
+        const swayScale = 0.7 + comboEnergy * 0.6;
+        const swayX = (
+            Math.sin(t * 0.22 + this.cameraPhaseX) * 16
+            + Math.cos(t * 0.09 + this.cameraPhaseY) * 10
+        ) * swayScale;
+        const swayY = (
+            Math.cos(t * 0.18 + this.cameraPhaseY) * 11
+            + Math.sin(t * 0.11 + this.cameraPhaseZ) * 7
+        ) * swayScale;
+        const breatheZ = Math.sin(t * 0.14 + this.cameraPhaseZ) * (14 + comboEnergy * 10);
+
+        const followX = this.driftX * 0.08;
+        const followY = this.driftY * 0.06;
+        const surgePushIn = comboEnergy * 24;
+
+        this.cameraTargetPosition.set(
+            this.cameraBasePosition.x + followX + swayX,
+            this.cameraBasePosition.y + followY + swayY,
+            this.cameraBasePosition.z + breatheZ - surgePushIn,
+        );
+
+        const moveLerp = Math.min(1.0, delta * (1.8 + comboEnergy * 0.9));
+        this.camera.position.lerp(this.cameraTargetPosition, moveLerp);
+
+        const lookX = this.driftX + Math.sin(t * 0.2 + this.cameraPhaseX) * (5 + comboEnergy * 4);
+        const lookY = this.driftY + Math.cos(t * 0.17 + this.cameraPhaseY) * (3 + comboEnergy * 3);
+
+        this.cameraLookTarget.set(lookX, lookY, 0);
+        const lookLerp = Math.min(1.0, delta * (2.4 + comboEnergy * 1.2));
+        this.cameraLookTargetSmoothed.lerp(this.cameraLookTarget, lookLerp);
+        this.camera.lookAt(this.cameraLookTargetSmoothed);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2841,6 +2907,22 @@ export default class BlackHoleTheme extends BaseTheme {
                     this.burstFactor = 0;
                     this.burstPhase = false;
                 }
+            }
+            if (this.diskTargetIntensity > 1.0) {
+                this.diskTargetIntensity += (1.0 - this.diskTargetIntensity) * 0.02;
+                if (this.diskTargetIntensity < 1.01) this.diskTargetIntensity = 1.0;
+            }
+            if (this.coreTargetIntensity > 1.0) {
+                this.coreTargetIntensity += (1.0 - this.coreTargetIntensity) * 0.03;
+                if (this.coreTargetIntensity < 1.01) this.coreTargetIntensity = 1.0;
+            }
+            if (this.diskTargetRotationSpeed > 1.0) {
+                this.diskTargetRotationSpeed += (1.0 - this.diskTargetRotationSpeed) * 0.025;
+                if (this.diskTargetRotationSpeed < 1.01) this.diskTargetRotationSpeed = 1.0;
+            }
+            if (this.hawkingTargetIntensity > 1.0) {
+                this.hawkingTargetIntensity += (1.0 - this.hawkingTargetIntensity) * 0.02;
+                if (this.hawkingTargetIntensity < 1.01) this.hawkingTargetIntensity = 1.0;
             }
 
             // Update shaders
@@ -2979,25 +3061,7 @@ export default class BlackHoleTheme extends BaseTheme {
                 cloud.rotation.z += 0.0001;
             });
 
-            // Very subtle camera orbit for gentle parallax (avoids disk distortion)
-            if (this.camera) {
-                const cameraTime = this.time * 0.04; // Slower orbit
-                const orbitRadiusX = 25; // Much smaller horizontal sway
-                const orbitRadiusY = 20; // Much smaller vertical sway
-                const orbitRadiusZ = 15; // Subtle depth breathing
-
-                // Gentle orbital sway - subtle parallax with starfield/nebula
-                this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX
-                    + Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.3;
-                this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY
-                    + Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.2;
-                this.camera.position.z = 600 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
-
-                // LookAt follows black hole with minimal offset (keeps disk perspective correct)
-                const lookOffsetX = Math.sin(cameraTime * 0.4) * 5;
-                const lookOffsetY = Math.cos(cameraTime * 0.5) * 3;
-                this.camera.lookAt(this.driftX + lookOffsetX, this.driftY + lookOffsetY, 0);
-            }
+            this.updateNaturalCamera(delta);
 
             // Post-processing updates
             if (this.bloomPass) {

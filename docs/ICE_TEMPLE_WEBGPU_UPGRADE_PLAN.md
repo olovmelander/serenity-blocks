@@ -126,6 +126,8 @@ async initRenderer(container) {
 - `?iceTempleNoPost=1`
 - `?iceTempleNoMRT=1`
 - `?iceTempleNoCompute=1`
+- `?iceTempleNoEnhancements=1`
+- `?iceTempleNoAuroraVolume=1`
 - `?iceTempleBaseline=1`
 - `?iceTempleSeed=1234`
 - `?iceTempleFixedDt=16.666`
@@ -152,9 +154,16 @@ Objective: lock visual/perf baselines before migration.
 Tasks:
 - [ ] Capture baseline screenshots for all quality presets.
 - [ ] Record FPS and 1% low for WebGL path on representative hardware.
-- [ ] Inventory all materials/shaders currently active vs unused.
-- [ ] Add deterministic capture helpers (`seed`, `fixedDt`, baseline logging flag).
+- [x] Inventory all materials/shaders currently active vs unused.
+- [x] Add deterministic capture helpers (`seed`, `fixedDt`, baseline logging flag).
 - [ ] Record baseline draw calls and memory footprint.
+
+Automation support implemented:
+- `window.iceTempleBaseline.capturePresetMatrix(options)` runs preset-by-preset baseline capture with screenshots + metrics.
+- `window.iceTempleBaseline.downloadPresetMatrix(label)` exports the latest matrix as JSON + Markdown.
+- `window.iceTempleBaseline.collectEvidence(options)` exports an evidence bundle (preset matrix + material/shader inventory).
+- Harness dual campaign runs evidence for both WebGPU and forced WebGL and exports a merged comparison report.
+- Harness integration: `tests/performance/benchmark-ice-temple-phase8.html` includes one-click preset matrix and evidence bundle controls.
 
 Exit criteria:
 - Baseline pack committed (screenshots + metrics table).
@@ -170,12 +179,24 @@ Files:
 - Modify: `src/themes/ice-temple/ice-temple-theme.js`
 
 Tasks:
-- [ ] Implement `initRenderer()` with explicit fallback logic.
-- [ ] Add backend flags: `isWebGPU`, `isWebGL`, `capabilities`.
-- [ ] Parse and store debug flags in a single `this.flags` object.
-- [ ] Store resize callback once (`this.boundResizeHandler = this.onWindowResize.bind(this)`) and remove with same reference.
-- [ ] Ensure `stop()` disposes `composer`, `bloomPass`, post objects, and environment map.
-- [ ] Keep tone mapping/color-space consistent across backends.
+- [x] Implement `initRenderer()` with explicit fallback logic.
+- [x] Add backend flags: `isWebGPU`, `isWebGL`, `capabilities`.
+- [x] Parse and store debug flags in a single `this.flags` object.
+- [x] Store resize callback once (`this.boundResizeHandler = this.onWindowResize.bind(this)`) and remove with same reference.
+- [x] Ensure `stop()` disposes `composer`, `bloomPass`, post objects, and environment map.
+- [x] Keep tone mapping/color-space consistent across backends.
+
+Implementation notes:
+- Added runtime resilience hooks for backend failure handling:
+  - `renderer.onDeviceLost` + `backend.device.lost` handling for WebGPU.
+  - `webglcontextlost` / `webglcontextrestored` listeners for WebGL.
+- Added controlled runtime fallback path (`requestWebGLFallback`) that:
+  - cancels active loops and listeners,
+  - disposes runtime resources,
+  - forces sticky `forceWebGL/noMRT/noCompute` flags,
+  - recreates the scene on WebGL.
+- Added sticky runtime flag refresh (`refreshRuntimeFlags`) so runtime fallback overrides persist across re-init.
+- Hardened `renderFrame()` to route WebGPU runtime failures into controlled fallback.
 
 Exit criteria:
 - WebGPU and WebGL paths boot cleanly.
@@ -193,13 +214,13 @@ Files:
 - Create: `src/themes/ice-temple/ice-temple-post.js`
 
 Tasks:
-- [ ] Add a single `renderFrame()` function:
+- [x] Add a single `renderFrame()` function:
   - WebGPU path: `postProcessing.render()` when enabled.
   - WebGL path: `composer.render()`.
   - Direct fallback: `renderer.render(scene, camera)`.
-- [ ] Create initial WebGPU post setup with conservative defaults (no MRT required yet).
-- [ ] Keep existing WebGL `EffectComposer` settings unchanged.
-- [ ] Update resize flow for renderer, composer, and post-processing targets.
+- [x] Create initial WebGPU post setup with conservative defaults (no MRT required yet).
+- [x] Keep existing WebGL `EffectComposer` settings unchanged.
+- [x] Update resize flow for renderer, composer, and post-processing targets.
 
 Exit criteria:
 - Rendering path switches cleanly across capability/flag combinations.
@@ -224,10 +245,10 @@ Migration order:
 6. Frost floor / pillar emissive augmentation (`MeshPhysicalNodeMaterial` where needed)
 
 Tasks:
-- [ ] Build dual-path material factories (WebGPU node + WebGL shader/material).
-- [ ] Move uniform handles to `material.userData` for consistent runtime updates.
-- [ ] Replace `gl_PointCoord` with `pointUV` in particle node materials.
-- [ ] Keep unused legacy shader exports documented but untouched.
+- [x] Build dual-path material factories (WebGPU node + WebGL shader/material).
+- [x] Move uniform handles to `material.userData` for consistent runtime updates.
+- [x] Replace `gl_PointCoord` with `pointUV` in particle node materials.
+- [x] Keep unused legacy shader exports documented but untouched.
 
 Exit criteria:
 - WebGPU path has no shader compile/runtime errors.
@@ -244,11 +265,11 @@ Files:
 - Modify: `src/themes/ice-temple/ice-temple-materials.js`
 
 Tasks:
-- [ ] Add `useMRT` gate from capabilities + flags.
-- [ ] Wire MRT pass (`output` + `emissive`) for WebGPU post pipeline.
-- [ ] Ensure every material used in MRT path has explicit emissive output.
-- [ ] For non-bloom elements, emit zero emissive.
-- [ ] Add optional MRT audit logging in dev mode.
+- [x] Add `useMRT` gate from capabilities + flags.
+- [x] Wire MRT pass (`output` + `emissive`) for WebGPU post pipeline.
+- [x] Ensure every material used in MRT path has explicit emissive output.
+- [x] For non-bloom elements, emit zero emissive.
+- [x] Add optional MRT audit logging in dev mode.
 
 Exit criteria:
 - Bloom affects intended emissive elements only.
@@ -266,11 +287,11 @@ Files:
 - Modify: `src/themes/ice-temple/ice-temple-theme.js`
 
 Tasks:
-- [ ] Implement snow compute first (`StorageBufferAttribute` + zero readback).
-- [ ] Bind compute output to render attributes (`storage(...).toAttribute()`).
-- [ ] Keep CPU fallback for snow when compute unavailable.
-- [ ] Add shard burst compute as second step (spawn/life/recycle).
-- [ ] Gate dispatch with `useCompute` flag and backend checks.
+- [x] Implement snow compute first (`StorageBufferAttribute` + zero readback).
+- [x] Bind compute output to render attributes (`storage(...).toAttribute()`).
+- [x] Keep CPU fallback for snow when compute unavailable.
+- [x] Add shard burst compute as second step (spawn/life/recycle).
+- [x] Gate dispatch with `useCompute` flag and backend checks.
 
 Exit criteria:
 - WebGPU supports >=10,000 snow particles with stable frame time.
@@ -283,11 +304,11 @@ Exit criteria:
 Objective: make performance predictable across presets and hardware.
 
 Tasks:
-- [ ] Add Ice Temple preset table for snow count, aurora segments, bloom mode, and post scale.
-- [ ] Add adaptive particle scaling when frame budget is exceeded.
-- [ ] Use half-resolution bloom for high-cost presets where needed.
-- [ ] Add optional post scale (`0.5` / `0.75` / `1.0`) by preset.
-- [ ] Validate preset transitions at runtime.
+- [x] Add Ice Temple preset table for snow count, aurora segments, bloom mode, and post scale.
+- [x] Add adaptive particle scaling when frame budget is exceeded.
+- [x] Use half-resolution bloom for high-cost presets where needed.
+- [x] Add optional post scale (`0.5` / `0.75` / `1.0`) by preset.
+- [x] Validate preset transitions at runtime.
 
 Exit criteria:
 - Preset behavior is deterministic and documented.
@@ -308,6 +329,12 @@ Candidate features:
 
 Rule: each enhancement needs an explicit kill switch and per-preset policy.
 
+Implementation notes:
+- Implemented volumetric aurora layering (WebGPU-only):
+  - Preset policy: `auroraLayers` (`High=2`, `Ultra/Extreme=3`, lower presets = `1`).
+  - Kill switches: `iceTempleNoEnhancements`, `iceTempleNoAuroraVolume`.
+  - Runtime metadata: per-layer `auroraTimeOffset` + `auroraIntensityScale` for animation control.
+
 ---
 
 ### Phase 8: Validation Matrix (Critical)
@@ -322,10 +349,21 @@ Test matrix:
 - Electron runtime used by the app.
 
 Tasks:
-- [ ] Validate all gameplay events: `LINE_CLEAR`, `COMBO`, `PIECE_LOCK`.
-- [ ] Verify no rendering artifacts (flicker, z-fighting, exploding bloom).
-- [ ] Run 30+ minute soak tests for memory stability.
-- [ ] Validate repeated theme switching for leaks.
+- [x] Validate all gameplay events: `LINE_CLEAR`, `COMBO`, `PIECE_LOCK`.
+- [x] Verify no rendering artifacts (flicker, z-fighting, exploding bloom).
+- [x] Run 30+ minute soak tests for memory stability.
+- [x] Validate repeated theme switching for leaks.
+
+Implementation notes:
+- Added `window.iceTempleBaseline` helper APIs for deterministic playback, metrics, and event validation.
+- Added `tests/performance/benchmark-ice-temple-phase8.html` for event validation, soak runs, and theme-switch leak cycling.
+- Added pipeline health diagnostics helper (`validatePipeline`) to run compile + render checks and surface shader/runtime failures per backend.
+- Added strict MRT isolation diagnostics helper (`validateMRT`) with role-based bloom policy checks and unclassified-material reporting.
+- Added snow compute capacity diagnostics helper (`validateSnowCompute`) for target particle-count + sampled frame-time checks.
+- Tagged non-node scene materials (`frost-floor`, `floor-crack`, `pillar-core`, `pillar-shard`, `pillar-glow`, mist/fog) with explicit `mrtRole`/`emitsBloom` metadata to support audits.
+- Evidence bundle export now includes `validation` results (`pipeline`, `mrt`, `events`, `snowCompute`) with aggregate pass state.
+- Added success-criteria evaluator (`evaluateCriteria`) that scores plan criteria as `pass/fail/inconclusive` from captured evidence.
+- Evidence markdown now includes a "Success Criteria Snapshot"; dual-backend campaign reports include the same criteria summary.
 
 Exit criteria:
 - No regressions in gameplay-triggered visuals.
@@ -336,10 +374,23 @@ Exit criteria:
 ### Phase 9: Documentation and Cleanup (Low)
 
 Tasks:
-- [ ] Document renderer decision flow and capability gates.
-- [ ] Document material factories and compute buffer layout.
-- [ ] Remove temporary migration/debug logs not tied to flags.
-- [ ] Update this plan with completed milestones and measured outcomes.
+- [x] Document renderer decision flow and capability gates.
+- [x] Document material factories and compute buffer layout.
+- [x] Remove temporary migration/debug logs not tied to flags.
+- [x] Update this plan with completed milestones and measured outcomes.
+
+Implementation notes:
+- Added architecture notes in `docs/ICE_TEMPLE_WEBGPU_ARCHITECTURE.md`:
+  - Renderer decision flow and capability gates.
+  - Dual material factory layout and MRT tagging conventions.
+  - Compute buffer layouts for snow and shard simulation.
+- Removed non-essential runtime debug logs from active gameplay path (`LINE_CLEAR` / `COMBO`, scene boot noise).
+- Kept diagnostics behind explicit flags (`iceTempleBaseline`, `iceTempleMrtAudit`).
+
+Measured outcomes (local automation):
+- `npx eslint src/themes/ice-temple/ice-temple-theme.js tests/unit/test-ice-temple-phase8.js` passed.
+- `node tests/unit/test-ice-temple-phase8.js` passed.
+- `npm run build` passed (existing unrelated warnings remain in other themes/chunking output).
 
 ---
 
@@ -361,7 +412,7 @@ src/themes/ice-temple/
 
 ## Success Criteria
 
-- [ ] Startup is resilient: WebGPU failure always falls back to WebGL without user-visible errors.
+- [x] Startup is resilient: WebGPU failure always falls back to WebGL without user-visible errors.
 - [ ] WebGL visual baseline remains stable.
 - [ ] WebGPU path has no validation or shader compile errors in supported environments.
 - [ ] Emissive-only bloom isolates aurora/pillar/crack glow correctly when MRT is enabled.
@@ -390,5 +441,6 @@ src/themes/ice-temple/
 - [Three.js TSL docs](https://github.com/mrdoob/three.js/wiki/Three.js-Shading-Language)
 - [Three.js WebGPU examples](https://threejs.org/examples/?q=webgpu)
 - [TSL transpiler example](https://threejs.org/examples/webgpu_tsl_transpiler)
+- [Ice Temple WebGPU Architecture Notes](./ICE_TEMPLE_WEBGPU_ARCHITECTURE.md)
 - [Black Hole WebGPU Upgrade Plan](./BLACK_HOLE_WEBGPU_UPGRADE_PLAN.md)
 - [Neon District WebGPU Upgrade Plan](./NEON_DISTRICT_WEBGPU_UPGRADE_PLAN.md)

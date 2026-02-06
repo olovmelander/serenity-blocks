@@ -312,7 +312,7 @@ export class BlackHoleBurstCompute {
         // position: xyz + spare
         // angles: theta, phi, random, active
         // life: life, color.r, color.g, color.b
-        // misc: baseSize, spare, spare, spare
+        // misc: baseSize, seedOffset, spare, spare
         this.positionData = new Float32Array(particleCount * 4);
         this.angleData = new Float32Array(particleCount * 4);
         this.lifeData = new Float32Array(particleCount * 4);
@@ -328,6 +328,7 @@ export class BlackHoleBurstCompute {
         this.uBlackHolePos = uniform(new THREE.Vector3(0, 0, 0));
         this.uBurstFactor = uniform(0);
         this.uBurstSeed = uniform(0);
+        this.nextTriggerIndex = 0;
 
         this.computeNode = null;
     }
@@ -377,7 +378,6 @@ export class BlackHoleBurstCompute {
         const delta = this.uDelta;
         const blackHolePos = this.uBlackHolePos;
         const burstFactor = this.uBurstFactor;
-        const burstSeed = this.uBurstSeed;
 
         const computeBursts = Fn(() => {
             const index = instanceIndex;
@@ -400,7 +400,8 @@ export class BlackHoleBurstCompute {
                 const radius = float(120.0).add(maxRadius.sub(120.0).mul(easeOut));
 
                 const sinPhi = sin(angle.y);
-                const spiralAngle = angle.x.add(burstSeed).add(lifeClamped.mul(3.0).mul(angle.z.sub(0.5)));
+                const localSeed = misc.y;
+                const spiralAngle = angle.x.add(localSeed).add(lifeClamped.mul(3.0).mul(angle.z.sub(0.5)));
 
                 pos.x.assign(radius.mul(sinPhi).mul(cos(spiralAngle)).add(blackHolePos.x));
                 pos.y.assign(radius.mul(sinPhi).mul(sin(spiralAngle)).add(blackHolePos.y));
@@ -442,16 +443,50 @@ export class BlackHoleBurstCompute {
         }
     }
 
-    trigger(seed = 0) {
-        const count = this.count;
-        for (let i = 0; i < count; i += 1) {
-            const i4 = i * 4;
+    trigger(seed = 0, intensity = 1.0) {
+        const clampedIntensity = Math.max(0.0, Math.min(1.0, intensity));
+        const minBatch = Math.max(256, Math.floor(this.count * 0.12));
+        const maxBatch = Math.max(minBatch, Math.floor(this.count * 0.45));
+        const targetBatch = Math.min(
+            this.count,
+            Math.floor(minBatch + (maxBatch - minBatch) * clampedIntensity),
+        );
+
+        let activated = 0;
+        let scanned = 0;
+        const startIndex = this.nextTriggerIndex;
+
+        // Prefer inactive particles so ongoing bursts are not reset.
+        while (activated < targetBatch && scanned < this.count) {
+            const index = (startIndex + scanned) % this.count;
+            const i4 = index * 4;
+
+            if (this.angleData[i4 + 3] < 0.5) {
+                this.angleData[i4 + 3] = 1.0;
+                this.lifeData[i4] = 0.0;
+                this.miscData[i4 + 1] = seed + (Math.random() - 0.5) * 0.9;
+                activated += 1;
+            }
+
+            scanned += 1;
+        }
+
+        // If every particle is active, recycle oldest range in ring order.
+        while (activated < targetBatch) {
+            const index = (startIndex + scanned) % this.count;
+            const i4 = index * 4;
             this.angleData[i4 + 3] = 1.0;
             this.lifeData[i4] = 0.0;
+            this.miscData[i4 + 1] = seed + (Math.random() - 0.5) * 0.9;
+            activated += 1;
+            scanned += 1;
         }
+
+        this.nextTriggerIndex = (startIndex + scanned) % this.count;
         this.uBurstSeed.value = seed;
         this.angleBuffer.needsUpdate = true;
         this.lifeBuffer.needsUpdate = true;
+        this.miscBuffer.needsUpdate = true;
     }
 
     getPositionBuffer() {
