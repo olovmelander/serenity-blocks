@@ -15,6 +15,7 @@
  */
 
 import * as THREE from 'three';
+import * as THREE_WEBGPU from 'three/webgpu';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -24,6 +25,86 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { STELLAR_DRIFT_TETROMINOS } from './stellar-drift-tetrominos.js';
+import { StellarDriftPost } from './stellar-drift-post.js';
+import {
+    createStellarStarfieldMaterial,
+    createStellarPlanetMaterial,
+    createStellarPlanetRingMaterial,
+    createStellarGlowPlaneMaterial,
+    createStellarNebulaMaterial,
+    createStellarDustRingMaterial,
+    createStellarAmbientParticlesMaterial,
+    createStellarNebulaBurstMaterial,
+    createStellarCelestialBodyMaterial,
+    createStellarShockwaveRingMaterial,
+    createStellarShootingStarMaterial,
+    createStellarMeteorMaterial,
+} from './stellar-drift-materials.js';
+import {
+    StellarAmbientParticleCompute,
+    StellarDustRingCompute,
+    StellarNebulaBurstCompute,
+} from './stellar-drift-compute.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Debug Flags + Deterministic Helpers (Phase 0)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function parseStellarFlags() {
+    if (typeof window === 'undefined') {
+        return {
+            forceWebGL: false,
+            noPost: false,
+            noMRT: false,
+            noCompute: false,
+            mrtAudit: false,
+            noDrs: false,
+            noVolume: false,
+            baseline: false,
+            seed: null,
+            fixedDeltaMs: null,
+            playback: null,
+            playbackLoops: 1,
+        };
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const hasFlag = (name) => params.has(name)
+        || params.get(name) === '1'
+        || params.get(name) === 'true';
+
+    const seedValue = Number(params.get('stellarSeed') || params.get('seed'));
+    const fixedDeltaValue = Number(params.get('stellarFixedDt') || params.get('fixedDt'));
+    const playbackValue = params.get('stellarPlayback');
+    const playbackLoopsValue = Number(params.get('stellarPlaybackLoops'));
+
+    return {
+        forceWebGL: hasFlag('forceWebGL'),
+        noPost: hasFlag('stellarNoPost'),
+        noMRT: hasFlag('stellarNoMRT'),
+        noCompute: hasFlag('stellarNoCompute'),
+        mrtAudit: hasFlag('stellarMrtAudit'),
+        noDrs: hasFlag('stellarNoDrs'),
+        noVolume: hasFlag('stellarNoVolume'),
+        baseline: hasFlag('stellarBaseline'),
+        seed: Number.isFinite(seedValue) ? seedValue : null,
+        fixedDeltaMs: Number.isFinite(fixedDeltaValue) && fixedDeltaValue > 0 ? fixedDeltaValue : null,
+        playback: playbackValue && playbackValue.trim() ? playbackValue.trim() : null,
+        playbackLoops: Number.isFinite(playbackLoopsValue) && playbackLoopsValue > 0
+            ? Math.floor(playbackLoopsValue)
+            : 1,
+    };
+}
+
+function createSeededRandom(seed) {
+    if (!Number.isFinite(seed)) return Math.random;
+    let state = Math.abs(Math.floor(seed)) % 2147483647;
+    if (state === 0) state = 1;
+    return () => {
+        state = (state * 16807) % 2147483647;
+        return (state - 1) / 2147483646;
+    };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Presets (matching Andromeda scale)
@@ -32,44 +113,161 @@ const QUALITY_PRESETS = {
     Extreme: {
         planetDetail: 64,
         meteorCount: 500,
-        bloomStrength: 0.25,
+        dustRingParticleCount: 4200,
+        ambientParticleCount: 780,
+        nebulaBurstCapacity: 32000,
+        maxBurstParticlesPerNebula: 1900,
+        bloomStrength: 0.3,
         bloomRadius: 0.5,
         enablePostProcessing: true,
     },
     Ultra: {
         planetDetail: 48,
         meteorCount: 400,
-        bloomStrength: 0.22,
+        dustRingParticleCount: 3600,
+        ambientParticleCount: 660,
+        nebulaBurstCapacity: 26000,
+        maxBurstParticlesPerNebula: 1600,
+        bloomStrength: 0.28,
         bloomRadius: 0.5,
         enablePostProcessing: true,
     },
     High: {
         planetDetail: 32,
         meteorCount: 300,
-        bloomStrength: 0.2,
+        dustRingParticleCount: 3000,
+        ambientParticleCount: 520,
+        nebulaBurstCapacity: 20000,
+        maxBurstParticlesPerNebula: 1250,
+        bloomStrength: 0.25,
         bloomRadius: 0.4,
         enablePostProcessing: true,
     },
     Medium: {
         planetDetail: 24,
         meteorCount: 200,
-        bloomStrength: 0.25,
+        dustRingParticleCount: 2400,
+        ambientParticleCount: 420,
+        nebulaBurstCapacity: 15000,
+        maxBurstParticlesPerNebula: 920,
+        bloomStrength: 0.28,
         bloomRadius: 0.4,
         enablePostProcessing: true,
     },
     Low: {
         planetDetail: 16,
         meteorCount: 100,
-        bloomStrength: 0.2,
+        dustRingParticleCount: 1500,
+        ambientParticleCount: 280,
+        nebulaBurstCapacity: 9800,
+        maxBurstParticlesPerNebula: 620,
+        bloomStrength: 0.22,
         bloomRadius: 0.3,
         enablePostProcessing: false,
     },
     Minimal: {
         planetDetail: 12,
         meteorCount: 50,
-        bloomStrength: 0.15,
+        dustRingParticleCount: 900,
+        ambientParticleCount: 180,
+        nebulaBurstCapacity: 6400,
+        maxBurstParticlesPerNebula: 420,
+        bloomStrength: 0.18,
         bloomRadius: 0.3,
         enablePostProcessing: false,
+    },
+};
+
+const QUALITY_BUDGETS = {
+    Extreme: {
+        maxDrawCalls: 620,
+        maxPostCostMs: 4.9,
+        targetFrameMs: 16.7,
+        adaptiveEnabled: true,
+        adaptiveMinScale: 0.76,
+        adaptiveMaxScale: 1.0,
+        adaptiveDownRate: 0.03,
+        adaptiveUpRate: 0.024,
+        minResolutionScale: 0.74,
+        maxResolutionScale: 1.0,
+        baseResolutionScale: 1.0,
+        minEffectScale: 0.56,
+        compileTimeoutMs: 4200,
+    },
+    Ultra: {
+        maxDrawCalls: 560,
+        maxPostCostMs: 4.5,
+        targetFrameMs: 16.7,
+        adaptiveEnabled: true,
+        adaptiveMinScale: 0.72,
+        adaptiveMaxScale: 1.0,
+        adaptiveDownRate: 0.032,
+        adaptiveUpRate: 0.022,
+        minResolutionScale: 0.7,
+        maxResolutionScale: 1.0,
+        baseResolutionScale: 0.98,
+        minEffectScale: 0.54,
+        compileTimeoutMs: 3900,
+    },
+    High: {
+        maxDrawCalls: 480,
+        maxPostCostMs: 4.0,
+        targetFrameMs: 16.7,
+        adaptiveEnabled: true,
+        adaptiveMinScale: 0.68,
+        adaptiveMaxScale: 1.0,
+        adaptiveDownRate: 0.035,
+        adaptiveUpRate: 0.02,
+        minResolutionScale: 0.66,
+        maxResolutionScale: 1.0,
+        baseResolutionScale: 0.95,
+        minEffectScale: 0.5,
+        compileTimeoutMs: 3600,
+    },
+    Medium: {
+        maxDrawCalls: 390,
+        maxPostCostMs: 3.3,
+        targetFrameMs: 17.4,
+        adaptiveEnabled: true,
+        adaptiveMinScale: 0.62,
+        adaptiveMaxScale: 1.0,
+        adaptiveDownRate: 0.04,
+        adaptiveUpRate: 0.018,
+        minResolutionScale: 0.6,
+        maxResolutionScale: 0.95,
+        baseResolutionScale: 0.9,
+        minEffectScale: 0.44,
+        compileTimeoutMs: 3200,
+    },
+    Low: {
+        maxDrawCalls: 280,
+        maxPostCostMs: 2.7,
+        targetFrameMs: 18.9,
+        adaptiveEnabled: true,
+        adaptiveMinScale: 0.57,
+        adaptiveMaxScale: 0.95,
+        adaptiveDownRate: 0.043,
+        adaptiveUpRate: 0.016,
+        minResolutionScale: 0.54,
+        maxResolutionScale: 0.86,
+        baseResolutionScale: 0.82,
+        minEffectScale: 0.36,
+        compileTimeoutMs: 2800,
+    },
+    Minimal: {
+        maxDrawCalls: 220,
+        maxPostCostMs: 2.3,
+        targetFrameMs: 20.0,
+        adaptiveEnabled: true,
+        adaptiveMinScale: 0.52,
+        adaptiveMaxScale: 0.9,
+        adaptiveDownRate: 0.046,
+        adaptiveUpRate: 0.014,
+        minResolutionScale: 0.5,
+        maxResolutionScale: 0.8,
+        baseResolutionScale: 0.74,
+        minEffectScale: 0.3,
+        compileTimeoutMs: 2400,
     },
 };
 
@@ -205,10 +403,42 @@ export default class StellarDriftTheme extends BaseTheme {
     constructor() {
         super('stellar-drift');
 
+        this.flags = parseStellarFlags();
+        this.random = createSeededRandom(this.flags.seed);
+        this.fixedDeltaSeconds = this.flags.fixedDeltaMs ? this.flags.fixedDeltaMs / 1000 : null;
+        this.fixedElapsed = 0;
+        this.simulationTimeScale = 0.12;
+
         this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.composer = null;
+        this.composer = null; // WebGL post stack
+        this.postProcessing = null; // WebGPU post stack
+        this.bloomPass = null;
+        this.vignettePass = null;
+        this.chromaticPass = null;
+        this.radialSpeedPass = null;
+        this.animationFrameId = null;
+        this.resizeHandler = null;
+        this.webglContextLostHandler = null;
+        this.webglContextRestoredHandler = null;
+        this.themeTimeouts = new Set();
+        this.isWebGPU = false;
+        this.isWebGL = false;
+        this.deviceLossRecoveryInProgress = false;
+        this.deviceLossRecoveries = 0;
+        this.renderFallbackInProgress = false;
+        this.capabilities = {
+            webgpu: false,
+            webgl: false,
+            maxColorAttachments: 1,
+            supportsPost: false,
+            supportsMRT: false,
+            supportsCompute: false,
+            post: false,
+            mrt: false,
+            compute: false,
+        };
 
         // Scene elements
         this.planet = null;
@@ -216,12 +446,32 @@ export default class StellarDriftTheme extends BaseTheme {
         this.bigGlow = null;
         this.backgroundPlanes = [];
         this.meteors = [];
+        this.meteorInstancedMesh = null;
+        this.meteorMatrixDummy = new THREE.Object3D();
         this.nebulaClouds = [];
+        this.nebulaMeshes = [];
+        this.secondaryBodies = [];
+        this.depthHazeLayers = [];
         this.ambientParticles = null;
+        this.dustRing = null;
+        this.ambientParticleCompute = null;
+        this.dustRingCompute = null;
+        this.nebulaBurstCompute = null;
+        this.nebulaBurstPool = null;
+        this.starfield = null;
+        this.heroRingSystem = null;
+        this.heroRingMaterialData = [];
+        this.starfieldMaterialData = null;
+        this.planetMaterialData = null;
+        this.dustRingMaterialData = null;
+        this.ambientParticlesMaterialData = null;
+        this.nebulaBurstMaterialData = null;
 
         // Effect arrays for 3D gameplay effects
         this.shockwaveRings = [];
         this.shootingStars = [];
+        this.cometEvents = [];
+        this.auroraEvents = [];
         this.starTwinkleIntensity = 0;
         this.dustRingPulse = 0; // Smooth dust ring expansion
         this.bloomPulseIntensity = 0; // Smooth bloom boost
@@ -229,7 +479,52 @@ export default class StellarDriftTheme extends BaseTheme {
         this.glowSurgeIntensity = 0; // Smooth planet glow surge
         this.meteorActivity = 0; // Dynamic meteor spin speed based on APM
         this.nebulaPulse = 0; // Pulse intensity for nebulas
+        this.heroRingGlitterIntensity = 0;
+        this.planetLightningIntensity = 0;
         this.cameraSway = new THREE.Vector3(0, 0, 0); // Gentle camera motion
+        this.focalCorridorHalfWidth = 1050;
+        this.lightningFlashCap = 0.88;
+        this.auroraPulse = 0;
+
+        this.reactiveState = {
+            twinkle: 0,
+            dust: 0,
+            bloom: 0,
+            nebula: 0,
+            pulse: 0,
+            glow: 0,
+            ringGlitter: 0,
+            lightning: 0,
+            aurora: 0,
+            comet: 0,
+            meteor: 0,
+        };
+        this.reactiveTarget = {
+            twinkle: 0,
+            dust: 0,
+            bloom: 0,
+            nebula: 0,
+            pulse: 0,
+            glow: 0,
+            ringGlitter: 0,
+            lightning: 0,
+            aurora: 0,
+            comet: 0,
+            meteor: 0,
+        };
+        this.reactiveCaps = {
+            twinkle: 1.4,
+            dust: 0.38,
+            bloom: 0.75,
+            nebula: 0.72,
+            pulse: 1.2,
+            glow: 0.62,
+            ringGlitter: 0.84,
+            lightning: this.lightningFlashCap,
+            aurora: 0.72,
+            comet: 0.72,
+            meteor: 5.0,
+        };
 
         // WARP SPEED EFFECTS - Tunnel Vision & Motion Trails
         this.baseFOV = 75;
@@ -259,18 +554,913 @@ export default class StellarDriftTheme extends BaseTheme {
         // Animation
         this.clock = new THREE.Clock();
         this.time = 0;
-        this.planetPhaseOffset = Math.random() * Math.PI * 2; // Random starting position for planet
+        this.planetPhaseOffset = this.rand() * Math.PI * 2; // Random starting position for planet
+
+        // Baseline instrumentation (Phase 0)
+        this.baselineMaxFrames = 2400;
+        this.baselineFrames = [];
+        this.baselineRenderStats = [];
+        this.baselineTimeouts = new Set();
+        this.baselineSequenceStats = {
+            sequence: null,
+            loops: 0,
+            startedAt: 0,
+        };
 
         // State
         this.glowIntensity = 0.5;
         this.eventUnsubscribers = [];
         this.qualityPreset = QUALITY_PRESETS.High;
+        this.activeQualityLevel = 'High';
+        this.performanceBudget = { ...QUALITY_BUDGETS.High };
+        this.adaptiveScalerState = {
+            frameTimeEmaMs: this.performanceBudget.targetFrameMs,
+            drawCallEma: 0,
+            postCostEmaMs: 0,
+            qualityScale: 1,
+            resolutionScale: this.performanceBudget.baseResolutionScale,
+            baseResolutionScale: this.performanceBudget.baseResolutionScale,
+            effectScale: 1,
+        };
+        this.lastRenderPath = 'none';
+        this.lastPostCostMs = 0;
+        this.qualitySyncAccumulator = 0;
 
         console.log('[StellarDrift] Theme constructed');
     }
 
     getTetrominoConfig() {
         return STELLAR_DRIFT_TETROMINOS;
+    }
+
+    rand() {
+        return this.random();
+    }
+
+    getBackendLabel() {
+        return this.isWebGPU ? 'WebGPU' : 'WebGL2';
+    }
+
+    getBackendSlug() {
+        return this.isWebGPU ? 'webgpu' : 'webgl2';
+    }
+
+    refreshRuntimeFlags() {
+        const parsedFlags = parseStellarFlags();
+        const previousFlags = this.flags || {};
+
+        // Keep runtime overrides sticky (used for device-loss fallback).
+        parsedFlags.forceWebGL = parsedFlags.forceWebGL || previousFlags.forceWebGL === true;
+        parsedFlags.noPost = parsedFlags.noPost || previousFlags.noPost === true;
+        parsedFlags.noMRT = parsedFlags.noMRT || previousFlags.noMRT === true;
+        parsedFlags.noCompute = parsedFlags.noCompute || previousFlags.noCompute === true;
+        parsedFlags.mrtAudit = parsedFlags.mrtAudit || previousFlags.mrtAudit === true;
+        parsedFlags.noDrs = parsedFlags.noDrs || previousFlags.noDrs === true;
+        parsedFlags.noVolume = parsedFlags.noVolume || previousFlags.noVolume === true;
+
+        this.flags = parsedFlags;
+        this.random = createSeededRandom(this.flags.seed);
+        this.fixedDeltaSeconds = this.flags.fixedDeltaMs ? this.flags.fixedDeltaMs / 1000 : null;
+        this.fixedElapsed = 0;
+        this.time = 0;
+    }
+
+    shouldForceWebGL() {
+        return this.flags.forceWebGL === true;
+    }
+
+    shouldUseCompute() {
+        return this.isWebGPU
+            && this.capabilities.compute === true
+            && this.flags.useCompute === true;
+    }
+
+    getNebulaBurstCapacity() {
+        return this.qualityPreset?.nebulaBurstCapacity ?? 16000;
+    }
+
+    getBurstParticlesPerNebulaBudget() {
+        const baseCap = this.qualityPreset?.maxBurstParticlesPerNebula ?? 900;
+        const fallbackScale = this.shouldUseCompute() ? 1.0 : 0.72;
+        return Math.max(120, Math.floor(baseCap * fallbackScale));
+    }
+
+    enforceFocalCorridor(xValue, focalX = 0, preferredSide = 1) {
+        const corridorMin = focalX - this.focalCorridorHalfWidth;
+        const corridorMax = focalX + this.focalCorridorHalfWidth;
+        if (xValue < corridorMin || xValue > corridorMax) {
+            return xValue;
+        }
+        const side = preferredSide >= 0 ? 1 : -1;
+        return side > 0 ? corridorMax : corridorMin;
+    }
+
+    resetReactiveEnvelope() {
+        Object.keys(this.reactiveState).forEach((channel) => {
+            this.reactiveState[channel] = 0;
+            this.reactiveTarget[channel] = 0;
+        });
+        this.starTwinkleIntensity = 0;
+        this.dustRingPulse = 0;
+        this.bloomPulseIntensity = 0;
+        this.nebulaBoostIntensity = 0;
+        this.nebulaPulse = 0;
+        this.glowSurgeIntensity = 0;
+        this.heroRingGlitterIntensity = 0;
+        this.planetLightningIntensity = 0;
+        this.auroraPulse = 0;
+        this.meteorActivity = 0;
+    }
+
+    pushReactiveEnvelope(boosts = {}) {
+        Object.keys(this.reactiveState).forEach((channel) => {
+            const amount = Number.isFinite(boosts[channel]) ? boosts[channel] : 0;
+            if (amount <= 0) return;
+            const cap = this.reactiveCaps[channel] ?? 1;
+            this.reactiveTarget[channel] = THREE.MathUtils.clamp(
+                this.reactiveTarget[channel] + amount,
+                0,
+                cap,
+            );
+        });
+    }
+
+    updateReactiveEnvelope(deltaSeconds) {
+        const attackRates = {
+            twinkle: 8.0,
+            dust: 7.5,
+            bloom: 6.2,
+            nebula: 4.8,
+            pulse: 5.3,
+            glow: 5.6,
+            ringGlitter: 6.0,
+            lightning: 11.5,
+            aurora: 4.2,
+            comet: 5.0,
+            meteor: 4.4,
+        };
+        const decayRates = {
+            twinkle: 1.6,
+            dust: 2.1,
+            bloom: 1.45,
+            nebula: 0.95,
+            pulse: 1.0,
+            glow: 0.95,
+            ringGlitter: 1.08,
+            lightning: 4.4,
+            aurora: 0.48,
+            comet: 0.92,
+            meteor: 0.58,
+        };
+
+        Object.keys(this.reactiveState).forEach((channel) => {
+            const attack = Math.min(1, (attackRates[channel] ?? 5) * deltaSeconds);
+            this.reactiveState[channel] += (this.reactiveTarget[channel] - this.reactiveState[channel]) * attack;
+            this.reactiveTarget[channel] = Math.max(
+                0,
+                this.reactiveTarget[channel] - (decayRates[channel] ?? 1) * deltaSeconds,
+            );
+        });
+
+        this.starTwinkleIntensity = this.reactiveState.twinkle;
+        this.dustRingPulse = this.reactiveState.dust;
+        this.bloomPulseIntensity = this.reactiveState.bloom;
+        this.nebulaBoostIntensity = this.reactiveState.nebula;
+        this.nebulaPulse = this.reactiveState.pulse;
+        this.glowSurgeIntensity = this.reactiveState.glow;
+        this.heroRingGlitterIntensity = this.reactiveState.ringGlitter;
+        this.planetLightningIntensity = THREE.MathUtils.clamp(
+            this.reactiveState.lightning,
+            0,
+            this.lightningFlashCap,
+        );
+        this.auroraPulse = this.reactiveState.aurora;
+        this.meteorActivity = this.reactiveState.meteor;
+    }
+
+    triggerPlanetLightning(intensity = 0.25) {
+        const clamped = THREE.MathUtils.clamp(intensity, 0, this.lightningFlashCap);
+        if (clamped <= 0) return;
+        this.pushReactiveEnvelope({ lightning: clamped });
+    }
+
+    getReactiveEventBudgets() {
+        const detail = this.qualityPreset?.planetDetail ?? 24;
+        if (detail >= 48) {
+            return { maxAuroras: 4, maxComets: 3 };
+        }
+        if (detail >= 32) {
+            return { maxAuroras: 3, maxComets: 2 };
+        }
+        if (detail >= 24) {
+            return { maxAuroras: 2, maxComets: 1 };
+        }
+        return { maxAuroras: 0, maxComets: 0 };
+    }
+
+    shouldAllowCinematicEvents() {
+        if (!this.isActive || !this.scene) return false;
+        if (typeof window !== 'undefined' && window.settings?.backgroundComboEffects === false) return false;
+        if (this.warpSpeed > 0.9 || this.radialBlurIntensity > 1.2) return false;
+
+        const budgets = this.getReactiveEventBudgets();
+        return budgets.maxAuroras > 0 || budgets.maxComets > 0;
+    }
+
+    trySpawnReactiveAurora(intensity = 0.45) {
+        if (!this.shouldAllowCinematicEvents()) return false;
+
+        const budgets = this.getReactiveEventBudgets();
+        if (budgets.maxAuroras <= 0 || this.auroraEvents.length >= budgets.maxAuroras) {
+            return false;
+        }
+
+        const width = 3600 + this.rand() * 2000;
+        const height = 780 + this.rand() * 420;
+        const baseOpacity = 0.05 + intensity * 0.08;
+        const hue = 168 + this.rand() * 130;
+        const texture = this.createDepthHazeTexture({
+            hue,
+            saturation: 84,
+            lightness: 50,
+            alpha: 0.2 + intensity * 0.16,
+        });
+        const geometry = new THREE.PlaneGeometry(width, height);
+        const materialData = createStellarNebulaMaterial({
+            isWebGPU: this.isWebGPU,
+            nebulaTexture: texture,
+            opacity: baseOpacity,
+        });
+
+        const aurora = new THREE.Mesh(geometry, materialData.material);
+        aurora.userData.materialData = materialData;
+        aurora.position.set(
+            (this.rand() - 0.5) * 2600,
+            850 + this.rand() * 500,
+            -6200 - this.rand() * 2200,
+        );
+        aurora.rotation.x = -0.26 - this.rand() * 0.24;
+        aurora.rotation.z = (this.rand() - 0.5) * 0.24;
+        aurora.renderOrder = -1700 - this.auroraEvents.length;
+        this.scene.add(aurora);
+
+        this.auroraEvents.push({
+            mesh: aurora,
+            life: 1,
+            decayRate: 0.085 + this.rand() * 0.03,
+            driftX: (this.rand() - 0.5) * 18,
+            bobPhase: this.rand() * Math.PI * 2,
+            bobSpeed: 0.25 + this.rand() * 0.2,
+            bobAmplitude: 20 + this.rand() * 24,
+            baseOpacity,
+            pulseGain: 0.4 + intensity * 0.65,
+        });
+
+        return true;
+    }
+
+    trySpawnReactiveComet(intensity = 0.45) {
+        if (!this.shouldAllowCinematicEvents()) return false;
+
+        const budgets = this.getReactiveEventBudgets();
+        if (budgets.maxComets <= 0 || this.cometEvents.length >= budgets.maxComets) {
+            return false;
+        }
+
+        const fromLeft = this.rand() < 0.5;
+        const geometry = new THREE.CylinderGeometry(0, 4 + intensity * 3, 170 + intensity * 120, 8);
+        const cometColor = new THREE.Color().setHSL(0.54 + this.rand() * 0.08, 0.82, 0.78);
+        const materialData = createStellarShootingStarMaterial({
+            isWebGPU: this.isWebGPU,
+            color: cometColor,
+            opacity: 0.95,
+        });
+
+        const comet = new THREE.Mesh(geometry, materialData.material);
+        comet.userData.materialData = materialData;
+        comet.position.set(
+            fromLeft ? -3200 : 3200,
+            -240 + (this.rand() - 0.5) * 940,
+            -2400 - this.rand() * 1500,
+        );
+        comet.rotation.z = fromLeft ? -Math.PI * 0.33 : Math.PI * 0.33;
+        comet.renderOrder = 1040;
+
+        comet.userData.velocity = new THREE.Vector3(
+            fromLeft ? (52 + intensity * 40 + this.rand() * 18) : -(52 + intensity * 40 + this.rand() * 18),
+            -6 + this.rand() * 12,
+            20 + intensity * 18,
+        );
+        comet.userData.life = 1;
+        comet.userData.decay = 0.52 + this.rand() * 0.16;
+
+        this.scene.add(comet);
+        this.cometEvents.push(comet);
+        return true;
+    }
+
+    disposeComputeSystems() {
+        if (this.ambientParticleCompute) {
+            this.ambientParticleCompute.dispose();
+            this.ambientParticleCompute = null;
+        }
+        if (this.dustRingCompute) {
+            this.dustRingCompute.dispose();
+            this.dustRingCompute = null;
+        }
+        if (this.nebulaBurstCompute) {
+            this.nebulaBurstCompute.dispose();
+            this.nebulaBurstCompute = null;
+        }
+        if (this.nebulaBurstPool) {
+            this.scene?.remove(this.nebulaBurstPool);
+            this.nebulaBurstPool.geometry?.dispose?.();
+            this.nebulaBurstPool.material?.dispose?.();
+            this.nebulaBurstPool = null;
+        }
+        this.nebulaBurstMaterialData = null;
+    }
+
+    setupNebulaBurstComputePool() {
+        if (!this.shouldUseCompute() || !this.scene) return false;
+        if (this.nebulaBurstCompute?.computeNode && this.nebulaBurstPool) return true;
+
+        try {
+            const capacity = this.getNebulaBurstCapacity();
+            const burstCompute = new StellarNebulaBurstCompute(capacity, () => this.rand());
+            burstCompute.createComputeNode();
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(capacity * 3), 3));
+
+            const materialData = createStellarNebulaBurstMaterial({
+                isWebGPU: this.isWebGPU,
+                burstCompute,
+            });
+
+            const pool = new THREE.Points(geometry, materialData.material);
+            pool.userData.materialData = materialData;
+            pool.renderOrder = 1200;
+
+            this.nebulaBurstCompute = burstCompute;
+            this.nebulaBurstMaterialData = materialData;
+            this.nebulaBurstPool = pool;
+            this.scene.add(pool);
+
+            console.log(`[StellarDrift] Nebula burst compute pool ready (capacity: ${capacity})`);
+            return true;
+        } catch (error) {
+            console.warn('[StellarDrift] Nebula burst compute init failed; using CPU bursts.', error);
+            this.nebulaBurstCompute?.dispose?.();
+            this.nebulaBurstCompute = null;
+            this.nebulaBurstMaterialData = null;
+            this.nebulaBurstPool = null;
+            return false;
+        }
+    }
+
+    updateComputeSystems(deltaSeconds) {
+        if (!this.shouldUseCompute() || !this.renderer?.compute) return;
+
+        try {
+            if (this.ambientParticleCompute?.computeNode) {
+                this.ambientParticleCompute.update(deltaSeconds, this.time, {
+                    driftScale: 1.0 + this.warpSpeed * 0.35,
+                });
+                this.renderer.compute(this.ambientParticleCompute.computeNode);
+            }
+
+            if (this.dustRingCompute?.computeNode) {
+                this.dustRingCompute.update(deltaSeconds, {
+                    speedScale: 1.0 + this.dustRingPulse * 3.0 + this.warpSpeed * 0.4,
+                });
+                this.renderer.compute(this.dustRingCompute.computeNode);
+            }
+
+            if (this.nebulaBurstCompute?.computeNode) {
+                const drag = Math.max(0.988, 0.995 - this.warpSpeed * 0.003);
+                this.nebulaBurstCompute.update(deltaSeconds, {
+                    drag,
+                    turbulence: 0.25 + this.nebulaPulse * 0.45,
+                });
+                this.renderer.compute(this.nebulaBurstCompute.computeNode);
+            }
+        } catch (error) {
+            console.warn('[StellarDrift] Compute update failed; disabling compute path.', error);
+            this.disposeComputeSystems();
+            this.capabilities.compute = false;
+            this.flags.useCompute = false;
+        }
+    }
+
+    probeCapabilities() {
+        const maxColorAttachments = this.renderer?.capabilities?.maxColorAttachments ?? 1;
+        const supportsPost = this.isWebGPU
+            ? typeof THREE_WEBGPU.PostProcessing === 'function'
+            : true;
+        const supportsMRT = this.isWebGPU && maxColorAttachments > 1;
+        const supportsCompute = this.isWebGPU && typeof this.renderer?.compute === 'function';
+
+        // Hardware class detection for budget tuning
+        const hardwareClass = this.detectHardwareClass();
+
+        this.capabilities = {
+            webgpu: this.isWebGPU,
+            webgl: this.isWebGL,
+            maxColorAttachments,
+            supportsPost,
+            supportsMRT,
+            supportsCompute,
+            post: !this.flags.noPost && this.qualityPreset.enablePostProcessing && supportsPost,
+            mrt: !this.flags.noMRT && supportsMRT,
+            compute: !this.flags.noCompute && supportsCompute,
+            hardwareClass,
+        };
+
+        this.flags.usePost = this.capabilities.post;
+        this.flags.useMRT = this.capabilities.mrt;
+        this.flags.useCompute = this.capabilities.compute;
+
+        console.log('[StellarDrift] Capabilities detected:', {
+            backend: this.getBackendLabel(),
+            hardwareClass: hardwareClass.tier,
+            gpu: hardwareClass.gpu,
+            post: this.capabilities.post,
+            mrt: this.capabilities.mrt,
+            compute: this.capabilities.compute,
+        });
+    }
+
+    detectHardwareClass() {
+        const info = this.renderer?.info || {};
+        const gl = this.renderer?.getContext?.();
+        let gpu = 'unknown';
+        let vendor = 'unknown';
+        let tier = 'medium'; // Default tier
+
+        // Try WebGL debug extension
+        if (gl) {
+            const debugInfo = gl.getExtension?.('WEBGL_debug_renderer_info');
+            if (debugInfo) {
+                gpu = gl.getParameter?.(debugInfo.UNMASKED_RENDERER_WEBGL) || 'unknown';
+                vendor = gl.getParameter?.(debugInfo.UNMASKED_VENDOR_WEBGL) || 'unknown';
+            }
+        }
+
+        // Try WebGPU adapter info
+        if (this.isWebGPU && this.renderer?.backend?.adapter) {
+            const adapter = this.renderer.backend.adapter;
+            if (adapter.info) {
+                gpu = adapter.info.device || adapter.info.description || gpu;
+                vendor = adapter.info.vendor || vendor;
+            }
+        }
+
+        const gpuLower = gpu.toLowerCase();
+        const vendorLower = vendor.toLowerCase();
+
+        // Tier classification based on known GPU patterns
+        const highEndPatterns = [
+            'rtx 30', 'rtx 40', 'rtx 50',
+            'rx 6', 'rx 7',
+            'm1 pro', 'm1 max', 'm1 ultra', 'm2', 'm3', 'm4',
+            'a770', 'arc a7',
+            'geforce 30', 'geforce 40',
+        ];
+        const midRangePatterns = [
+            'rtx 20', 'gtx 16', 'gtx 10',
+            'rx 5', 'rx 580', 'rx 590',
+            'm1',
+            'intel iris', 'iris xe',
+            'arc a5', 'arc a3',
+        ];
+        const lowEndPatterns = [
+            'intel hd', 'intel uhd',
+            'geforce mx', 'gt 7', 'gt 10',
+            'radeon vega', 'radeon graphics',
+            'mali', 'adreno', 'powervr',
+        ];
+
+        const matchesAny = (patterns) => patterns.some((p) => gpuLower.includes(p) || vendorLower.includes(p));
+
+        if (matchesAny(highEndPatterns)) {
+            tier = 'high';
+        } else if (matchesAny(lowEndPatterns)) {
+            tier = 'low';
+        } else if (matchesAny(midRangePatterns)) {
+            tier = 'medium';
+        }
+
+        return { gpu, vendor, tier };
+    }
+
+    configureRendererColorPipeline() {
+        if (!this.renderer) return;
+
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        if (this.isWebGPU && this.capabilities.post) {
+            this.renderer.toneMapping = THREE.NoToneMapping;
+            this.renderer.toneMappingExposure = 1.0;
+            return;
+        }
+
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.0;
+    }
+
+    isNodeMaterial(material) {
+        if (!material) return false;
+        if (material.isNodeMaterial) return true;
+
+        return Boolean(
+            material.isMeshBasicNodeMaterial
+            || material.isMeshStandardNodeMaterial
+            || material.isMeshPhysicalNodeMaterial
+            || material.isMeshPhongNodeMaterial
+            || material.isPointsNodeMaterial
+            || material.isSpriteNodeMaterial
+            || material.isLineBasicNodeMaterial
+            || material.type?.includes?.('NodeMaterial'),
+        );
+    }
+
+    auditMrtMaterials() {
+        if (!this.isWebGPU || !this.capabilities.mrt || !this.scene) return;
+
+        const nonNode = [];
+        let totalMaterials = 0;
+        let nodeMaterials = 0;
+        let missingEmissiveNode = 0;
+        let missingIntentTag = 0;
+        let nonBloomWithoutZeroEnforcement = 0;
+        let zeroEmissiveTagged = 0;
+        let bloomEmissiveTagged = 0;
+
+        this.scene.traverse((object) => {
+            if (!object.material) return;
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+
+            materials.forEach((material) => {
+                totalMaterials += 1;
+                if (!this.isNodeMaterial(material)) {
+                    nonNode.push({
+                        name: object.name || object.type || 'object',
+                        materialType: material?.type || 'unknown',
+                    });
+                    return;
+                }
+
+                nodeMaterials += 1;
+                if (material.emissiveNode === undefined || material.emissiveNode === null) {
+                    missingEmissiveNode += 1;
+                }
+                if (typeof material.userData?.emitsBloom !== 'boolean') {
+                    missingIntentTag += 1;
+                } else if (material.userData.emitsBloom) {
+                    bloomEmissiveTagged += 1;
+                } else {
+                    zeroEmissiveTagged += 1;
+                    if (material.userData?.zeroEmissiveEnforced !== true) {
+                        nonBloomWithoutZeroEnforcement += 1;
+                    }
+                }
+            });
+        });
+
+        if (this.flags.mrtAudit) {
+            console.log('[StellarDrift] MRT material audit', {
+                totalMaterials,
+                nodeMaterials,
+                nonNodeCount: nonNode.length,
+                missingEmissiveNode,
+                missingIntentTag,
+                nonBloomWithoutZeroEnforcement,
+                bloomEmissiveTagged,
+                zeroEmissiveTagged,
+            });
+        }
+
+        const hasMrtReadinessIssues = nonNode.length > 0
+            || missingEmissiveNode > 0
+            || missingIntentTag > 0
+            || nonBloomWithoutZeroEnforcement > 0;
+
+        if (hasMrtReadinessIssues) {
+            this.capabilities.mrt = false;
+            this.flags.useMRT = false;
+            console.warn('[StellarDrift] MRT disabled due to material readiness issues.', {
+                nonNode: nonNode.slice(0, 10),
+                missingEmissiveNode,
+                missingIntentTag,
+                nonBloomWithoutZeroEnforcement,
+            });
+        }
+    }
+
+    scheduleThemeTimeout(callback, delayMs) {
+        if (typeof window === 'undefined') return null;
+        const timeoutId = window.setTimeout(() => {
+            this.themeTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.themeTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearThemeTimeouts() {
+        this.themeTimeouts.forEach((id) => clearTimeout(id));
+        this.themeTimeouts.clear();
+        this.baselineTimeouts.clear();
+    }
+
+    cancelAnimationLoop() {
+        if (this.animationFrameId !== null) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+    }
+
+    clearEventSubscriptions() {
+        this.eventUnsubscribers.forEach((unsub) => unsub?.());
+        this.eventUnsubscribers = [];
+    }
+
+    removeResizeListener() {
+        if (this.resizeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('resize', this.resizeHandler);
+            this.resizeHandler = null;
+        }
+    }
+
+    removeRendererResilienceListeners() {
+        if (!this.renderer?.domElement) return;
+
+        if (this.webglContextLostHandler) {
+            this.renderer.domElement.removeEventListener('webglcontextlost', this.webglContextLostHandler, false);
+            this.webglContextLostHandler = null;
+        }
+        if (this.webglContextRestoredHandler) {
+            this.renderer.domElement.removeEventListener('webglcontextrestored', this.webglContextRestoredHandler, false);
+            this.webglContextRestoredHandler = null;
+        }
+    }
+
+    setupRendererResilience() {
+        if (!this.renderer?.domElement) return;
+
+        if (this.isWebGL) {
+            this.webglContextLostHandler = (event) => {
+                event.preventDefault();
+                console.warn('[StellarDrift] WebGL context lost');
+            };
+            this.webglContextRestoredHandler = () => {
+                console.warn('[StellarDrift] WebGL context restored');
+                this.resize(window.innerWidth, window.innerHeight);
+            };
+            this.renderer.domElement.addEventListener('webglcontextlost', this.webglContextLostHandler, false);
+            this.renderer.domElement.addEventListener('webglcontextrestored', this.webglContextRestoredHandler, false);
+            return;
+        }
+
+        this.renderer.onDeviceLost = (info) => {
+            this.handleDeviceLoss(info);
+        };
+        const deviceLostPromise = this.renderer?.backend?.device?.lost;
+        if (deviceLostPromise && typeof deviceLostPromise.then === 'function') {
+            deviceLostPromise.then((info) => {
+                this.handleDeviceLoss(info);
+            }).catch(() => {
+                // Device-loss promise may reject during teardown; ignore.
+            });
+        }
+    }
+
+    disposePostProcessingStack() {
+        if (this.postProcessing?.dispose) {
+            try {
+                this.postProcessing.dispose();
+            } catch (error) {
+                console.warn('[StellarDrift] postProcessing dispose failed:', error);
+            }
+        }
+        this.postProcessing = null;
+
+        if (this.composer?.dispose) {
+            try {
+                this.composer.dispose();
+            } catch (error) {
+                console.warn('[StellarDrift] composer dispose failed:', error);
+            }
+        }
+        this.composer = null;
+        this.bloomPass = null;
+        this.vignettePass = null;
+        this.chromaticPass = null;
+        this.radialSpeedPass = null;
+    }
+
+    disposeMaterialTextures(material, disposedTextures) {
+        if (!material) return;
+
+        const textureKeys = [
+            'map',
+            'alphaMap',
+            'aoMap',
+            'bumpMap',
+            'displacementMap',
+            'emissiveMap',
+            'envMap',
+            'lightMap',
+            'metalnessMap',
+            'normalMap',
+            'roughnessMap',
+            'specularMap',
+            'gradientMap',
+            'clearcoatMap',
+            'clearcoatNormalMap',
+            'clearcoatRoughnessMap',
+            'sheenColorMap',
+            'sheenRoughnessMap',
+            'transmissionMap',
+            'thicknessMap',
+            'iridescenceMap',
+            'iridescenceThicknessMap',
+            'anisotropyMap',
+            'matcap',
+        ];
+
+        textureKeys.forEach((key) => {
+            const texture = material[key];
+            if (texture?.isTexture && !disposedTextures.has(texture.uuid)) {
+                disposedTextures.add(texture.uuid);
+                texture.dispose();
+            }
+        });
+    }
+
+    disposeSceneResources() {
+        if (!this.scene) return;
+
+        const disposedTextures = new Set();
+        const backgroundTexture = this.scene.background;
+        if (backgroundTexture?.isTexture && !disposedTextures.has(backgroundTexture.uuid)) {
+            disposedTextures.add(backgroundTexture.uuid);
+            backgroundTexture.dispose();
+        }
+        const environmentTexture = this.scene.environment;
+        if (environmentTexture?.isTexture && !disposedTextures.has(environmentTexture.uuid)) {
+            disposedTextures.add(environmentTexture.uuid);
+            environmentTexture.dispose();
+        }
+
+        this.scene.traverse((object) => {
+            if (object.geometry?.dispose) {
+                object.geometry.dispose();
+            }
+            if (!object.material) return;
+
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            materials.forEach((material) => {
+                this.disposeMaterialTextures(material, disposedTextures);
+                material?.dispose?.();
+            });
+        });
+    }
+
+    disposeRendererResources(removeCanvas = true) {
+        if (!this.renderer) return;
+
+        this.renderer.onDeviceLost = null;
+        this.removeRendererResilienceListeners();
+        const domElement = this.renderer.domElement;
+        try {
+            this.renderer.dispose();
+        } catch (error) {
+            console.warn('[StellarDrift] renderer dispose failed:', error);
+        }
+
+        if (removeCanvas && domElement?.parentNode) {
+            domElement.parentNode.removeChild(domElement);
+        }
+        this.renderer = null;
+    }
+
+    resetRuntimeReferences() {
+        this.scene = null;
+        this.camera = null;
+        this.composer = null;
+        this.postProcessing = null;
+        this.bloomPass = null;
+        this.vignettePass = null;
+        this.chromaticPass = null;
+        this.radialSpeedPass = null;
+        this.planet = null;
+        this.smallGlow = null;
+        this.bigGlow = null;
+        this.backgroundPlanes = [];
+        this.meteors = [];
+        this.meteorInstancedMesh = null;
+        this.meteorMatrixDummy = null;
+        this.nebulaClouds = [];
+        this.nebulaMeshes = [];
+        this.secondaryBodies = [];
+        this.depthHazeLayers = [];
+        this.ambientParticles = null;
+        this.dustRing = null;
+        this.ambientParticleCompute = null;
+        this.dustRingCompute = null;
+        this.nebulaBurstCompute = null;
+        this.nebulaBurstPool = null;
+        this.starfield = null;
+        this.heroRingSystem = null;
+        this.heroRingMaterialData = [];
+        this.starfieldMaterialData = null;
+        this.planetMaterialData = null;
+        this.dustRingMaterialData = null;
+        this.ambientParticlesMaterialData = null;
+        this.nebulaBurstMaterialData = null;
+        this.nebulaBursts = [];
+        this.shockwaveRings = [];
+        this.shootingStars = [];
+        this.cometEvents = [];
+        this.auroraEvents = [];
+        this.heroRingGlitterIntensity = 0;
+        this.planetLightningIntensity = 0;
+        this.auroraPulse = 0;
+        this.animationFrameId = null;
+        this.time = 0;
+        this.fixedElapsed = 0;
+        this.isWebGPU = false;
+        this.isWebGL = false;
+        this.capabilities = {
+            webgpu: false,
+            webgl: false,
+            maxColorAttachments: 1,
+            supportsPost: false,
+            supportsMRT: false,
+            supportsCompute: false,
+            post: false,
+            mrt: false,
+            compute: false,
+        };
+        this._roundParticleTexture = null;
+        this._starTexture = null;
+        this._glowTexture = null;
+        this.performanceBudget = { ...QUALITY_BUDGETS.High };
+        this.activeQualityLevel = 'High';
+        this.resetAdaptiveScalerState();
+        this.resetReactiveEnvelope();
+    }
+
+    disposeRuntimeResources({ removeCanvas = true } = {}) {
+        this.disposeComputeSystems();
+        this.disposePostProcessingStack();
+        this.disposeSceneResources();
+        this.disposeRendererResources(removeCanvas);
+        this.resetRuntimeReferences();
+    }
+
+    async requestWebGLFallback(reason = 'runtime-fallback', error = null) {
+        if (this.renderFallbackInProgress || !this.isActive) return;
+        if (this.shouldForceWebGL()) return;
+
+        this.renderFallbackInProgress = true;
+        console.warn(`[StellarDrift] Switching to WebGL fallback (${reason})`, error || '');
+
+        try {
+            this.cancelAnimationLoop();
+            this.clearEventSubscriptions();
+            this.removeResizeListener();
+            this.clearThemeTimeouts();
+            this.clearBaselinePlaybackTimers();
+            this.removeBaselineHelpers();
+            this.disposeRuntimeResources({ removeCanvas: true });
+
+            this.flags.forceWebGL = true;
+            this.flags.noMRT = true;
+            this.flags.noCompute = true;
+            await this.createScene();
+            console.log('[StellarDrift] WebGL fallback active after runtime recovery.');
+        } catch (fallbackError) {
+            console.error('[StellarDrift] Runtime fallback failed:', fallbackError);
+            this.isActive = false;
+        } finally {
+            this.renderFallbackInProgress = false;
+        }
+    }
+
+    async handleDeviceLoss(info) {
+        if (this.deviceLossRecoveryInProgress || !this.isActive) return;
+
+        this.deviceLossRecoveryInProgress = true;
+        this.deviceLossRecoveries += 1;
+        console.error('[StellarDrift] WebGPU device lost:', info);
+
+        try {
+            await this.requestWebGLFallback('device-loss', info);
+        } finally {
+            this.deviceLossRecoveryInProgress = false;
+        }
     }
 
     getCurrentQualityLevel() {
@@ -280,12 +1470,417 @@ export default class StellarDriftTheme extends BaseTheme {
         return 'High';
     }
 
+    resolveQualityBudget(quality) {
+        const normalized = normalizeQuality(quality);
+        const budget = {
+            ...(QUALITY_BUDGETS[normalized] || QUALITY_BUDGETS.High),
+        };
+
+        const devicePixelRatio = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+        if (devicePixelRatio > 1.6) {
+            budget.baseResolutionScale = Math.min(budget.baseResolutionScale, 0.94);
+            budget.maxResolutionScale = Math.min(budget.maxResolutionScale, 0.98);
+        }
+
+        if (this.isWebGL) {
+            budget.maxPostCostMs *= 0.82;
+            budget.targetFrameMs += 0.9;
+            budget.baseResolutionScale = Math.min(budget.baseResolutionScale, 0.9);
+            budget.maxResolutionScale = Math.min(budget.maxResolutionScale, 0.94);
+            budget.minEffectScale = Math.min(budget.minEffectScale, 0.52);
+        }
+
+        if (!this.capabilities.compute || this.flags.noCompute) {
+            budget.minEffectScale = Math.min(budget.minEffectScale, 0.5);
+        }
+
+        if (this.flags.noDrs) {
+            budget.adaptiveEnabled = false;
+            budget.baseResolutionScale = Math.min(budget.baseResolutionScale, 1.0);
+        }
+
+        return budget;
+    }
+
+    resetAdaptiveScalerState() {
+        const targetFrameMs = this.performanceBudget?.targetFrameMs ?? 16.7;
+        const baseResolutionScale = this.performanceBudget?.baseResolutionScale ?? 1;
+        this.adaptiveScalerState = {
+            frameTimeEmaMs: targetFrameMs,
+            drawCallEma: 0,
+            postCostEmaMs: 0,
+            qualityScale: 1,
+            resolutionScale: baseResolutionScale,
+            baseResolutionScale,
+            effectScale: 1,
+        };
+        this.lastRenderPath = 'none';
+        this.lastPostCostMs = 0;
+        this.qualitySyncAccumulator = 0;
+    }
+
+    updateReactiveCapsByQuality() {
+        const detail = this.qualityPreset?.planetDetail ?? 24;
+        const detailScale = THREE.MathUtils.clamp(detail / 32, 0.55, 1.3);
+        this.reactiveCaps = {
+            twinkle: 1.2 * detailScale,
+            dust: 0.34 * detailScale,
+            bloom: 0.7 * detailScale,
+            nebula: 0.66 * detailScale,
+            pulse: 1.05 * detailScale,
+            glow: 0.56 * detailScale,
+            ringGlitter: 0.8 * detailScale,
+            lightning: this.lightningFlashCap,
+            aurora: 0.68 * detailScale,
+            comet: 0.68 * detailScale,
+            meteor: 5.0,
+        };
+    }
+
+    getRendererPixelRatio(maxRatio = 1.5) {
+        const baseRatio = this.getEffectivePixelRatio(maxRatio);
+        const resolutionScale = this.adaptiveScalerState?.resolutionScale ?? 1;
+        return THREE.MathUtils.clamp(baseRatio * resolutionScale, 0.35, maxRatio);
+    }
+
+    applyAdaptiveScalerState() {
+        if (!this.renderer || typeof window === 'undefined') return;
+
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const pixelRatio = this.getRendererPixelRatio(1.5);
+
+        this.renderer.setPixelRatio(pixelRatio);
+        this.renderer.setSize(width, height);
+
+        const starfieldUniforms = this.starfieldMaterialData?.uniforms || this.starfield?.material?.uniforms;
+        if (starfieldUniforms?.uPixelRatio) {
+            starfieldUniforms.uPixelRatio.value = pixelRatio;
+        }
+
+        const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
+        if (this.isWebGPU && this.postProcessing) {
+            this.postProcessing.update({
+                bloomDownsample: THREE.MathUtils.clamp(0.6 + effectScale * 0.22, 0.58, 0.86),
+            });
+            this.postProcessing.setSize(width, height);
+        } else if (this.isWebGL && this.composer) {
+            this.composer.setSize(width, height);
+            if (this.bloomPass?.resolution) {
+                this.bloomPass.resolution.set(width, height);
+            }
+        }
+    }
+
+    updateAdaptiveScaler(frameMs) {
+        if (!Number.isFinite(frameMs) || frameMs <= 0 || !this.renderer) return;
+
+        const state = this.adaptiveScalerState;
+        const budget = this.performanceBudget;
+        if (!state || !budget) return;
+
+        state.frameTimeEmaMs = state.frameTimeEmaMs * 0.92 + frameMs * 0.08;
+
+        const drawCalls = this.renderer?.info?.render?.calls;
+        if (Number.isFinite(drawCalls)) {
+            state.drawCallEma = state.drawCallEma * 0.9 + drawCalls * 0.1;
+        }
+        state.postCostEmaMs = state.postCostEmaMs * 0.88 + this.lastPostCostMs * 0.12;
+
+        if (!budget.adaptiveEnabled || this.flags.noDrs) return;
+
+        let pressure = 0;
+        const frameOverrun = (state.frameTimeEmaMs - budget.targetFrameMs) / Math.max(1, budget.targetFrameMs);
+        if (frameOverrun > 0) {
+            pressure += frameOverrun;
+        } else {
+            pressure += frameOverrun * 0.4;
+        }
+        if (budget.maxDrawCalls && state.drawCallEma > budget.maxDrawCalls) {
+            pressure += ((state.drawCallEma - budget.maxDrawCalls) / budget.maxDrawCalls) * 0.75;
+        }
+        if (budget.maxPostCostMs && state.postCostEmaMs > budget.maxPostCostMs) {
+            pressure += ((state.postCostEmaMs - budget.maxPostCostMs) / budget.maxPostCostMs) * 0.6;
+        }
+
+        if (pressure > 0) {
+            state.qualityScale = THREE.MathUtils.clamp(
+                state.qualityScale - budget.adaptiveDownRate * Math.min(1.8, pressure),
+                budget.adaptiveMinScale,
+                budget.adaptiveMaxScale,
+            );
+        } else {
+            state.qualityScale = THREE.MathUtils.clamp(
+                state.qualityScale + budget.adaptiveUpRate,
+                budget.adaptiveMinScale,
+                budget.adaptiveMaxScale,
+            );
+        }
+
+        const targetResolutionScale = THREE.MathUtils.clamp(
+            state.baseResolutionScale * state.qualityScale,
+            budget.minResolutionScale,
+            budget.maxResolutionScale,
+        );
+        const targetEffectScale = THREE.MathUtils.clamp(
+            0.56 + state.qualityScale * 0.52,
+            budget.minEffectScale,
+            1.0,
+        );
+
+        const previousResolutionScale = state.resolutionScale;
+        const previousEffectScale = state.effectScale;
+        state.resolutionScale = THREE.MathUtils.lerp(state.resolutionScale, targetResolutionScale, 0.16);
+        state.effectScale = THREE.MathUtils.lerp(state.effectScale, targetEffectScale, 0.14);
+
+        if (Math.abs(previousResolutionScale - state.resolutionScale) > 0.01
+            || Math.abs(previousEffectScale - state.effectScale) > 0.015) {
+            this.applyAdaptiveScalerState();
+        }
+    }
+
+    getRuntimeBudgetSnapshot() {
+        return {
+            quality: this.activeQualityLevel,
+            budget: {
+                targetFrameMs: this.performanceBudget?.targetFrameMs ?? null,
+                maxDrawCalls: this.performanceBudget?.maxDrawCalls ?? null,
+                maxPostCostMs: this.performanceBudget?.maxPostCostMs ?? null,
+            },
+            scaler: {
+                frameTimeEmaMs: Number((this.adaptiveScalerState?.frameTimeEmaMs ?? 0).toFixed(3)),
+                drawCallEma: Number((this.adaptiveScalerState?.drawCallEma ?? 0).toFixed(2)),
+                postCostEmaMs: Number((this.adaptiveScalerState?.postCostEmaMs ?? 0).toFixed(3)),
+                qualityScale: Number((this.adaptiveScalerState?.qualityScale ?? 1).toFixed(3)),
+                resolutionScale: Number((this.adaptiveScalerState?.resolutionScale ?? 1).toFixed(3)),
+                effectScale: Number((this.adaptiveScalerState?.effectScale ?? 1).toFixed(3)),
+            },
+            renderPath: this.lastRenderPath,
+            lastPostCostMs: Number((this.lastPostCostMs ?? 0).toFixed(3)),
+        };
+    }
+
     applyQualityPreset(quality) {
-        this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
+        const normalized = normalizeQuality(quality);
+        this.activeQualityLevel = normalized;
+        this.qualityPreset = QUALITY_PRESETS[normalized] || QUALITY_PRESETS.High;
+        this.performanceBudget = this.resolveQualityBudget(normalized);
+        this.resetAdaptiveScalerState();
+        this.updateReactiveCapsByQuality();
+        console.log('[StellarDrift] Applied quality profile', this.getRuntimeBudgetSnapshot());
+    }
+
+    applyRuntimeQualityProfile(quality) {
+        const normalized = normalizeQuality(quality);
+        if (normalized === this.activeQualityLevel) return false;
+
+        this.applyQualityPreset(normalized);
+        this.probeCapabilities();
+        this.configureRendererColorPipeline();
+        this.setupPostProcessing();
+
+        if (typeof window !== 'undefined') {
+            this.resize(window.innerWidth, window.innerHeight);
+        }
+
+        console.log('[StellarDrift] Runtime quality switched', this.getRuntimeBudgetSnapshot());
+        return true;
+    }
+
+    async precompileSceneWithTimeout() {
+        if (!this.renderer?.compileAsync || !this.scene || !this.camera) return false;
+
+        const timeoutMs = this.performanceBudget?.compileTimeoutMs ?? 3200;
+        let timeoutId = null;
+
+        try {
+            await Promise.race([
+                this.renderer.compileAsync(this.scene, this.camera),
+                new Promise((_, reject) => {
+                    timeoutId = setTimeout(() => {
+                        reject(new Error(`compileAsync timeout after ${timeoutMs}ms`));
+                    }, timeoutMs);
+                }),
+            ]);
+            console.log('[StellarDrift] compileAsync warmup complete', {
+                timeoutMs,
+                backend: this.getBackendLabel(),
+            });
+            return true;
+        } catch (error) {
+            console.warn('[StellarDrift] compileAsync warmup skipped/fallback:', error);
+            return false;
+        } finally {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+            }
+        }
+    }
+
+    async runQualitySwitchStress(options = {}) {
+        if (!this.isActive) return null;
+
+        const sequence = Array.isArray(options.sequence) && options.sequence.length
+            ? options.sequence
+            : ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme', 'High'];
+        const settleMs = Number.isFinite(options.settleMs) ? options.settleMs : 1300;
+        const snapshots = [];
+
+        for (const quality of sequence) {
+            this.applyRuntimeQualityProfile(quality);
+            await this.waitForBaseline(settleMs);
+            snapshots.push(this.getRuntimeBudgetSnapshot());
+        }
+
+        console.log('[StellarDrift] Runtime quality stress-switch complete', {
+            sequence,
+            settleMs,
+            finalQuality: this.activeQualityLevel,
+        });
+        return {
+            sequence,
+            settleMs,
+            finalQuality: this.activeQualityLevel,
+            snapshots,
+        };
+    }
+
+    /**
+     * Phase 8: Validation Matrix Runner
+     * Tests all capability/flag permutations to validate fallback paths.
+     * Run in console: stellarBaseline.runValidation()
+     */
+    async runValidationMatrix(options = {}) {
+        const settleMs = Number.isFinite(options.settleMs) ? options.settleMs : 2000;
+        const runFrames = Number.isFinite(options.frames) ? options.frames : 120;
+        const results = [];
+
+        // Define validation permutations
+        const permutations = [
+            { name: 'WebGPU Full', flags: {} },
+            { name: 'WebGPU No Compute', flags: { noCompute: true } },
+            { name: 'WebGPU No MRT', flags: { noMRT: true } },
+            { name: 'WebGPU No Post', flags: { noPost: true } },
+            { name: 'WebGPU No DRS', flags: { noDrs: true } },
+            { name: 'WebGPU Minimal (no MRT/compute/post)', flags: { noMRT: true, noCompute: true, noPost: true } },
+        ];
+
+        console.log('[StellarDrift] Starting validation matrix...', { permutations: permutations.length, settleMs, runFrames });
+
+        for (const perm of permutations) {
+            try {
+                // Apply flag overrides
+                Object.keys(perm.flags).forEach((key) => {
+                    this.flags[key] = perm.flags[key];
+                });
+
+                // Re-probe capabilities with new flags
+                this.probeCapabilities();
+
+                // Wait for frames to run
+                await this.waitForBaseline(settleMs);
+
+                // Collect metrics
+                const snapshot = this.getRuntimeBudgetSnapshot();
+                const memEstimate = this.renderer?.info?.memory?.geometries ?? 0;
+
+                results.push({
+                    name: perm.name,
+                    flags: perm.flags,
+                    success: true,
+                    renderPath: snapshot.renderPath,
+                    capabilities: { ...this.capabilities },
+                    metrics: {
+                        avgFrameMs: snapshot.scaler.frameTimeEmaMs,
+                        drawCalls: snapshot.scaler.drawCallEma,
+                        postCostMs: snapshot.scaler.postCostMs,
+                        memoryGeometries: memEstimate,
+                    },
+                });
+
+                console.log(`[StellarDrift] Validation "${perm.name}": PASS`, snapshot);
+            } catch (error) {
+                results.push({
+                    name: perm.name,
+                    flags: perm.flags,
+                    success: false,
+                    error: error.message || String(error),
+                });
+                console.error(`[StellarDrift] Validation "${perm.name}": FAIL`, error);
+            }
+        }
+
+        // Reset flags to defaults
+        this.refreshRuntimeFlags();
+        this.probeCapabilities();
+
+        const summary = {
+            total: results.length,
+            passed: results.filter((r) => r.success).length,
+            failed: results.filter((r) => !r.success).length,
+            results,
+        };
+
+        console.log('[StellarDrift] Validation matrix complete:', summary);
+        return summary;
+    }
+
+    /**
+     * Phase 8: Theme switch soak test
+     * Cycles between theme states to detect resource leaks.
+     */
+    async runThemeSwitchSoak(options = {}) {
+        const cycles = Number.isFinite(options.cycles) ? options.cycles : 10;
+        const delayMs = Number.isFinite(options.delayMs) ? options.delayMs : 500;
+        const results = [];
+
+        console.log(`[StellarDrift] Starting theme-switch soak test: ${cycles} cycles`);
+
+        for (let i = 0; i < cycles; i++) {
+            try {
+                // Simulate stop
+                this.stop();
+                await new Promise((r) => setTimeout(r, delayMs));
+
+                // Simulate restart (re-init)
+                await this.createScene();
+                await new Promise((r) => setTimeout(r, delayMs));
+
+                const memInfo = {
+                    geometries: this.renderer?.info?.memory?.geometries ?? 0,
+                    textures: this.renderer?.info?.memory?.textures ?? 0,
+                };
+
+                results.push({ cycle: i + 1, success: true, memory: memInfo });
+            } catch (error) {
+                results.push({ cycle: i + 1, success: false, error: error.message });
+            }
+        }
+
+        const summary = {
+            cycles,
+            passed: results.filter((r) => r.success).length,
+            failed: results.filter((r) => !r.success).length,
+            memoryTrend: results.filter((r) => r.memory).map((r) => r.memory),
+            results,
+        };
+
+        console.log('[StellarDrift] Theme-switch soak complete:', summary);
+        return summary;
     }
 
     async createScene() {
         console.log('[StellarDrift] Creating Andromeda-style scene...');
+
+        this.refreshRuntimeFlags();
+        this.cancelAnimationLoop();
+        this.clearEventSubscriptions();
+        this.removeResizeListener();
+        this.clearThemeTimeouts();
+        this.resetBaseline();
+        this.clearBaselinePlaybackTimers();
+        this.removeBaselineHelpers();
+        this.disposeRuntimeResources({ removeCanvas: true });
 
         const quality = this.getCurrentQualityLevel();
         this.applyQualityPreset(quality);
@@ -296,18 +1891,69 @@ export default class StellarDriftTheme extends BaseTheme {
             return;
         }
 
-        this.initRenderer(container);
+        const rendererReady = await this.initRenderer(container);
+        if (!rendererReady || !this.renderer || !this.scene || !this.camera) {
+            console.error('[StellarDrift] Renderer initialization failed.');
+            return;
+        }
+
+        this.probeCapabilities();
+        this.performanceBudget = this.resolveQualityBudget(this.activeQualityLevel);
+        this.resetAdaptiveScalerState();
+        this.configureRendererColorPipeline();
+        this.setupRendererResilience();
+
+        console.log('[StellarDrift] Runtime capabilities', {
+            backend: this.getBackendLabel(),
+            post: this.capabilities.post,
+            mrt: this.capabilities.mrt,
+            compute: this.capabilities.compute,
+            maxColorAttachments: this.capabilities.maxColorAttachments,
+            simulationBudget: {
+                dustRingParticleCount: this.qualityPreset.dustRingParticleCount,
+                ambientParticleCount: this.qualityPreset.ambientParticleCount,
+                nebulaBurstCapacity: this.getNebulaBurstCapacity(),
+                maxBurstParticlesPerNebula: this.getBurstParticlesPerNebulaBudget(),
+            },
+            runtimeBudget: this.getRuntimeBudgetSnapshot(),
+        });
+
+        this.resetReactiveEnvelope();
+
         this.createStarfield(); // 3D point stars
         // this.createNebulaClouds();   // REMOVED: Replaced by volumetric backdrop
         // this.createOrbitingParticles(); // REMOVED: User request
         this.createNebulaBackdrop(); // NEW: High-def majestic nebula
         this.createPlanet();
+        this.createSecondaryBodies();
+        this.createDepthHazeLayers();
         this.createDustRing(); // Dust ring around planet
         this.createAmbientParticles(); // Floating ambient sparkles
         this.createMeteorField();
+        this.setupNebulaBurstComputePool();
+        this.auditMrtMaterials();
         this.setupPostProcessing();
+        this.resize(window.innerWidth, window.innerHeight);
+        await this.precompileSceneWithTimeout();
         this.setupEventListeners();
+        this.clock.start();
         this.startAnimation();
+
+        if (this.flags.baseline) {
+            this.installBaselineHelpers();
+            console.log('[StellarBaseline] Baseline capture enabled', {
+                backend: this.getBackendLabel(),
+                seed: this.flags.seed,
+                fixedDeltaMs: this.flags.fixedDeltaMs,
+                capabilities: { ...this.capabilities },
+            });
+        }
+
+        if (this.flags.playback) {
+            this.playBaselineSequence(this.flags.playback, {
+                loops: this.flags.playbackLoops,
+            });
+        }
 
         console.log('[StellarDrift] Scene created');
     }
@@ -316,17 +1962,69 @@ export default class StellarDriftTheme extends BaseTheme {
     // Renderer & Camera (Matching Andromeda exactly)
     // ─────────────────────────────────────────────────────────────────────────
 
-    initRenderer(container) {
+    async initRenderer(container) {
+        if (!container || typeof window === 'undefined') return false;
+
         const width = window.innerWidth;
         const height = window.innerHeight;
+        const preserveDrawingBuffer = this.flags.baseline === true;
+        let renderer = null;
+        let webgpuRenderer = null;
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: this.getAntialiasEnabled(), alpha: false });
+        if (!this.shouldForceWebGL()) {
+            try {
+                webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
+                    antialias: this.getAntialiasEnabled(),
+                    powerPreference: 'high-performance',
+                    alpha: false,
+                    preserveDrawingBuffer,
+                    forceWebGL: false,
+                });
+                await webgpuRenderer.init();
+                if (webgpuRenderer.backend?.isWebGPUBackend === true) {
+                    renderer = webgpuRenderer;
+                } else {
+                    webgpuRenderer.dispose();
+                    webgpuRenderer = null;
+                }
+            } catch (error) {
+                console.warn('[StellarDrift] WebGPU init failed, falling back to WebGL2:', error);
+                webgpuRenderer?.dispose();
+                webgpuRenderer = null;
+            }
+        }
+
+        if (!renderer) {
+            try {
+                renderer = new THREE.WebGLRenderer({
+                    antialias: this.getAntialiasEnabled(),
+                    powerPreference: 'high-performance',
+                    alpha: false,
+                    preserveDrawingBuffer,
+                });
+            } catch (error) {
+                console.error('[StellarDrift] WebGL renderer initialization failed:', error);
+                return false;
+            }
+        }
+
+        this.renderer = renderer;
+        this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+        this.isWebGL = renderer.isWebGLRenderer === true
+            || renderer.backend?.isWebGLBackend === true
+            || !this.isWebGPU;
+
         this.renderer.setClearColor(0x000000, 1);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(width, height);
         this.renderer.sortObjects = true;
         this.renderer.autoClear = false;
 
+        const staleCanvas = container.querySelector('#stellar-drift-renderer');
+        if (staleCanvas && staleCanvas.parentNode === container) {
+            container.removeChild(staleCanvas);
+        }
+        this.renderer.domElement.id = 'stellar-drift-renderer';
         this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
         container.appendChild(this.renderer.domElement);
         this.registerContainer(container);
@@ -345,16 +2043,18 @@ export default class StellarDriftTheme extends BaseTheme {
         this.scene.add(meteorLight);
         this.scene.add(meteorLight.target);
 
-        // Ambient light (dimmer)
-        const ambientLight = new THREE.AmbientLight(0x404060, 0.35);
+        // Ambient light
+        const ambientLight = new THREE.AmbientLight(0x404060, 0.5);
         this.scene.add(ambientLight);
 
-        // Directional light (reduced for less glare)
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        // Directional light
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
         dirLight.position.set(0, 100, 500);
         this.scene.add(dirLight);
 
         console.log('[StellarDrift] Camera at z=1450, y=100 with improved lighting');
+        console.log(`[StellarDrift] Renderer initialized (${this.getBackendLabel()})`);
+        return true;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -381,24 +2081,24 @@ export default class StellarDriftTheme extends BaseTheme {
         for (let i = 0; i < starCount; i++) {
             const i3 = i * 3;
             const i2 = i * 2;
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
-            const radius = 3000 + Math.random() * 3000;
+            const theta = this.rand() * Math.PI * 2;
+            const phi = Math.acos(2 * this.rand() - 1);
+            const radius = 3000 + this.rand() * 3000;
 
             positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
             positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
             positions[i3 + 2] = (radius * Math.cos(phi)) - 6000;
 
-            const color = starColors[Math.floor(Math.random() * starColors.length)];
+            const color = starColors[Math.floor(this.rand() * starColors.length)];
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
             // Larger, more visible stars
-            sizes[i] = 35 + Math.random() * 50;
+            sizes[i] = 35 + this.rand() * 50;
             // Gentle twinkle - cycles every 8-20 seconds
-            twinkleData[i2] = Math.random() * Math.PI * 2;
-            twinkleData[i2 + 1] = 1.5 + Math.random() * 2.5; // Balanced speed
+            twinkleData[i2] = this.rand() * Math.PI * 2;
+            twinkleData[i2 + 1] = 1.5 + this.rand() * 2.5; // Balanced speed
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -406,117 +2106,16 @@ export default class StellarDriftTheme extends BaseTheme {
         geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
         geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
 
-        // GPU shader - with WARP SPEED trail effects
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uPixelRatio: { value: this.renderer.getPixelRatio() },
-                uEventBoost: { value: 0 },
-                uTexture: { value: this.getStarTexture() },
-                uWarpSpeed: { value: 0 }, // NEW: Warp speed for trail effect
-            },
-            vertexShader: `
-                attribute float aSize;
-                attribute vec2 aTwinkle;
-
-                uniform float uTime;
-                uniform float uPixelRatio;
-                uniform float uEventBoost;
-                uniform float uWarpSpeed;
-
-                varying vec3 vColor;
-                varying float vBrightness;
-                varying float vWarpSpeed;
-                varying vec2 vScreenDir;
-
-                void main() {
-                    vColor = color;
-                    vWarpSpeed = uWarpSpeed;
-
-                    // Gentle brightness twinkle (no size change)
-                    float twinkle = sin(uTime * aTwinkle.y + aTwinkle.x);
-                    vBrightness = 0.8 + twinkle * 0.2; // Subtle range: 0.6 to 1.0
-                    vBrightness *= (1.0 + uEventBoost * 0.3);
-                    
-                    // WARP: Brighter stars during warp
-                    vBrightness *= (1.0 + uWarpSpeed * 0.5);
-
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    vec4 projected = projectionMatrix * mvPosition;
-                    
-                    // Calculate screen direction for trail orientation
-                    vScreenDir = normalize(projected.xy / projected.w);
-
-                    // WARP: Size increases during warp for more dramatic trails
-                    float warpSizeBoost = 1.0 + uWarpSpeed * 1.5;
-                    gl_PointSize = aSize * uPixelRatio * warpSizeBoost * (400.0 / -mvPosition.z);
-                    gl_PointSize = clamp(gl_PointSize, 3.0, 120.0);
-
-                    gl_Position = projected;
-                }
-            `,
-            fragmentShader: `
-                uniform sampler2D uTexture;
-                uniform float uWarpSpeed;
-
-                varying vec3 vColor;
-                varying float vBrightness;
-                varying float vWarpSpeed;
-                varying vec2 vScreenDir;
-
-                void main() {
-                    vec2 center = gl_PointCoord - 0.5;
-                    float dist = length(center) * 2.0;
-                    
-                    // WARP: Elongate stars into trails pointing toward center
-                    float trailFactor = 1.0;
-                    if (vWarpSpeed > 0.01) {
-                        // Calculate angle to make trail point toward screen center
-                        vec2 trailDir = normalize(vScreenDir);
-                        float angle = atan(trailDir.y, trailDir.x);
-                        
-                        // Rotate UV coordinates
-                        float cosA = cos(-angle);
-                        float sinA = sin(-angle);
-                        vec2 rotatedCenter = vec2(
-                            center.x * cosA - center.y * sinA,
-                            center.x * sinA + center.y * cosA
-                        );
-                        
-                        // Stretch along the trail direction (x-axis after rotation)
-                        float stretch = 1.0 + vWarpSpeed * 4.0;
-                        rotatedCenter.x /= stretch;
-                        
-                        // Recalculate distance with stretched coords
-                        dist = length(rotatedCenter) * 2.0;
-                        trailFactor = stretch * 0.5 + 0.5;
-                    }
-                    
-                    // Smooth circular/elliptical falloff
-                    float softCircle = 1.0 - smoothstep(0.0, 1.0, dist);
-                    
-                    // WARP: Add motion trail glow
-                    vec3 coreColor = vColor * vBrightness * 1.8;
-                    vec3 trailColor = vColor * (1.0 + vWarpSpeed * 0.5);
-                    vec3 finalColor = mix(coreColor, trailColor, vWarpSpeed * 0.3);
-                    
-                    // Add white hot core during warp
-                    finalColor += vec3(1.0) * vWarpSpeed * softCircle * 0.4;
-                    
-                    float alpha = softCircle * (vBrightness + 0.3) * trailFactor;
-
-                    gl_FragColor = vec4(finalColor, alpha);
-                }
-            `,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            vertexColors: true,
+        const materialData = createStellarStarfieldMaterial({
+            isWebGPU: this.isWebGPU,
+            pixelRatio: this.renderer.getPixelRatio(),
+            starTexture: this.getStarTexture(),
         });
+        this.starfieldMaterialData = materialData;
 
-        this.starfield = new THREE.Points(geometry, material);
+        this.starfield = new THREE.Points(geometry, materialData.material);
         this.scene.add(this.starfield);
-        console.log('[StellarDrift] Starfield created with', starCount, 'smooth stars');
+        console.log('[StellarDrift] Starfield created with', starCount, this.isWebGPU ? 'TSL stars' : 'shader stars');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -527,7 +2126,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const cloudCount = 30; // More clouds for richer atmosphere
 
         for (let i = 0; i < cloudCount; i++) {
-            const size = 2000 + Math.random() * 2500; // Larger clouds
+            const size = 2000 + this.rand() * 2500; // Larger clouds
 
             // Create soft radial gradient texture
             const canvas = document.createElement('canvas');
@@ -536,23 +2135,23 @@ export default class StellarDriftTheme extends BaseTheme {
             const ctx = canvas.getContext('2d');
 
             // VIBRANT Galaxy colors
-            const colorType = Math.random();
+            const colorType = this.rand();
             let hue; let sat; let
                 light;
             if (colorType < 0.3) { // Electric Teal/Cyan
-                hue = 180 + Math.random() * 30;
+                hue = 180 + this.rand() * 30;
                 sat = 90;
                 light = 45;
             } else if (colorType < 0.6) { // Hot Pink/Magenta
-                hue = 320 + Math.random() * 40;
+                hue = 320 + this.rand() * 40;
                 sat = 95;
                 light = 50;
             } else if (colorType < 0.85) { // Deep Purple/Violet
-                hue = 270 + Math.random() * 30;
+                hue = 270 + this.rand() * 30;
                 sat = 85;
                 light = 40;
             } else { // Golden/Orange hints
-                hue = 30 + Math.random() * 20;
+                hue = 30 + this.rand() * 20;
                 sat = 80;
                 light = 45;
             }
@@ -578,11 +2177,11 @@ export default class StellarDriftTheme extends BaseTheme {
             const cloud = new THREE.Mesh(geometry, material);
 
             // Spread across the whole sky
-            cloud.position.x = (Math.random() - 0.5) * 5000;
-            cloud.position.y = (Math.random() - 0.5) * 2500;
-            cloud.position.z = -800 - Math.random() * 1500; // Layered depth
+            cloud.position.x = (this.rand() - 0.5) * 5000;
+            cloud.position.y = (this.rand() - 0.5) * 2500;
+            cloud.position.z = -800 - this.rand() * 1500; // Layered depth
 
-            cloud.rotation.z = Math.random() * Math.PI;
+            cloud.rotation.z = this.rand() * Math.PI;
 
             this.nebulaClouds.push(cloud); // Store for animation
             this.scene.add(cloud);
@@ -599,14 +2198,14 @@ export default class StellarDriftTheme extends BaseTheme {
         ];
 
         edgePositions.forEach((pos) => {
-            const size = 2500 + Math.random() * 1500;
+            const size = 2500 + this.rand() * 1500;
             const canvas = document.createElement('canvas');
             canvas.width = 256;
             canvas.height = 256;
             const ctx = canvas.getContext('2d');
 
             // Random vibrant color for edge nebulas
-            const hue = Math.random() > 0.5 ? 320 + Math.random() * 40 : 180 + Math.random() * 40;
+            const hue = this.rand() > 0.5 ? 320 + this.rand() * 40 : 180 + this.rand() * 40;
             const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
             gradient.addColorStop(0, `hsla(${hue}, 85%, 45%, 0.3)`); // Brighter for edges
             gradient.addColorStop(0.5, `hsla(${hue}, 80%, 40%, 0.15)`);
@@ -625,10 +2224,10 @@ export default class StellarDriftTheme extends BaseTheme {
             });
 
             const cloud = new THREE.Mesh(geometry, material);
-            cloud.position.x = pos.x + (Math.random() - 0.5) * 400;
-            cloud.position.y = pos.y + (Math.random() - 0.5) * 300;
-            cloud.position.z = -600 - Math.random() * 800;
-            cloud.rotation.z = Math.random() * Math.PI;
+            cloud.position.x = pos.x + (this.rand() - 0.5) * 400;
+            cloud.position.y = pos.y + (this.rand() - 0.5) * 300;
+            cloud.position.z = -600 - this.rand() * 800;
+            cloud.rotation.z = this.rand() * Math.PI;
             this.nebulaClouds.push(cloud);
             this.scene.add(cloud);
         });
@@ -691,7 +2290,7 @@ export default class StellarDriftTheme extends BaseTheme {
 
         // Randomize order so it's different every time
         for (let i = textures.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
+            const j = Math.floor(this.rand() * (i + 1));
             [textures[i], textures[j]] = [textures[j], textures[i]];
         }
 
@@ -739,67 +2338,22 @@ export default class StellarDriftTheme extends BaseTheme {
 
         nebulaConfigs.forEach((config, index) => {
             const geometry = new THREE.PlaneGeometry(config.size, config.size * 0.6);
-
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    tDiffuse: { value: config.texture },
-                    uTime: { value: 0 },
-                    uOpacity: { value: 0.4 },
-                    uPulse: { value: 0.0 }, // Pulse intensity (0.0 to 1.0)
-                },
-                vertexShader: `
-                    varying vec2 vUv;
-                    void main() {
-                        vUv = uv;
-                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                    }
-                `,
-                fragmentShader: `
-                    uniform sampler2D tDiffuse;
-                    uniform float uTime;
-                    uniform float uOpacity;
-                    uniform float uPulse;
-                    
-                    varying vec2 vUv;
-                    
-                    void main() {
-                        vec2 uv = vUv;
-                        
-                        // Sample the texture
-                        vec4 texColor = texture2D(tDiffuse, uv);
-                        
-                        // Heavy edge fade - 40% fade zone on all sides
-                        float fadeX = smoothstep(0.0, 0.4, uv.x) * smoothstep(1.0, 0.6, uv.x);
-                        float fadeY = smoothstep(0.0, 0.4, uv.y) * smoothstep(1.0, 0.6, uv.y);
-                        float fade = fadeX * fadeY;
-                        
-                        // Apply fade to alpha
-                        // Pulse boosts alpha slightly
-                        float pulseAlpha = uPulse * 0.2; 
-                        float alpha = texColor.a * (uOpacity + pulseAlpha) * fade;
-                        
-                        // Pulse boosts brightness significantly
-                        vec3 color = texColor.rgb;
-                        color += color * uPulse * 1.5; // Bright flash
-                        
-                        gl_FragColor = vec4(color, alpha);
-                    }
-                `,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                depthTest: true,
+            const materialData = createStellarNebulaMaterial({
+                isWebGPU: this.isWebGPU,
+                nebulaTexture: config.texture,
+                opacity: 0.4,
             });
 
-            const mesh = new THREE.Mesh(geometry, material);
+            const mesh = new THREE.Mesh(geometry, materialData.material);
             mesh.position.set(config.x, config.y, config.z);
             mesh.renderOrder = -2000 - index;
+            mesh.userData.materialData = materialData;
 
             mesh.userData.speed = config.speed;
             mesh.userData.startX = config.x;
             mesh.userData.startY = config.y; // Base Y position
             mesh.userData.verticalRange = config.vRange; // How much it bobs up/down
-            mesh.userData.driftPhase = Math.random() * Math.PI * 2; // Random starting phase
+            mesh.userData.driftPhase = this.rand() * Math.PI * 2; // Random starting phase
 
             // Store color from texture (for particle bursts)
             if (config.texture.userData && config.texture.userData.color) {
@@ -818,7 +2372,7 @@ export default class StellarDriftTheme extends BaseTheme {
             this.scene.add(mesh);
         });
 
-        console.log('[StellarDrift] 3 Drifting Nebula Clouds created');
+        console.log('[StellarDrift] Drifting nebula backdrop created with modular material factories');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -881,6 +2435,26 @@ export default class StellarDriftTheme extends BaseTheme {
         return this._starTexture;
     }
 
+    getGlowTexture() {
+        if (this._glowTexture) return this._glowTexture;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+
+        const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
+        gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.3)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 256, 256);
+
+        this._glowTexture = new THREE.CanvasTexture(canvas);
+        return this._glowTexture;
+    }
+
     createNebulaBurst(nebulaMesh, particleCount = 30) {
         // Get nebula's current world position and scale
         const pos = nebulaMesh.position.clone();
@@ -889,24 +2463,29 @@ export default class StellarDriftTheme extends BaseTheme {
         // Use color directly from mesh (synced to texture)
         const color = nebulaMesh.userData.color || new THREE.Color(0xFFFFFF);
 
+        if (this.nebulaBurstCompute?.computeNode && this.nebulaBurstPool) {
+            this.nebulaBurstCompute.spawnBurst(particleCount, pos, color, scale, 6.7);
+            return;
+        }
+
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         const velocities = [];
 
         for (let i = 0; i < particleCount; i++) {
             // Spawn across the FULL nebula area
-            const spreadX = (Math.random() - 0.5) * scale * 0.8;
-            const spreadY = (Math.random() - 0.5) * scale * 0.5;
+            const spreadX = (this.rand() - 0.5) * scale * 0.8;
+            const spreadY = (this.rand() - 0.5) * scale * 0.5;
 
             positions[i * 3] = pos.x + spreadX;
             positions[i * 3 + 1] = pos.y + spreadY;
-            positions[i * 3 + 2] = pos.z + 3000 + Math.random() * 2000; // In front of nebula
+            positions[i * 3 + 2] = pos.z + 3000 + this.rand() * 2000; // In front of nebula
 
             // Velocity: Shoot toward camera with dramatic spread
-            const speed = 80 + Math.random() * 80; // FAST shooting particles
+            const speed = 80 + this.rand() * 80; // FAST shooting particles
             velocities.push({
-                x: (Math.random() - 0.5) * 35, // More lateral spread
-                y: (Math.random() - 0.5) * 35,
+                x: (this.rand() - 0.5) * 35, // More lateral spread
+                y: (this.rand() - 0.5) * 35,
                 z: speed, // Toward camera
             });
         }
@@ -916,7 +2495,7 @@ export default class StellarDriftTheme extends BaseTheme {
         const material = new THREE.PointsMaterial({
             color,
             map: this.getRoundParticleTexture(), // USE ROUND TEXTURE
-            size: 200 + Math.random() * 150, // Balanced size for visibility
+            size: 200 + this.rand() * 150, // Balanced size for visibility
             transparent: true,
             opacity: 1.0,
             blending: THREE.AdditiveBlending,
@@ -946,135 +2525,91 @@ export default class StellarDriftTheme extends BaseTheme {
     createPlanet() {
         const planetSize = 500;
 
-        // Planet sphere with Jupiter texture
         const geometry = new THREE.SphereGeometry(planetSize, this.qualityPreset.planetDetail, this.qualityPreset.planetDetail);
 
-        // Load high-res Jupiter texture
         const textureLoader = new THREE.TextureLoader();
         const jupiterTexture = textureLoader.load('./textures/2k_jupiter.jpg');
         jupiterTexture.wrapS = THREE.ClampToEdgeWrapping;
         jupiterTexture.wrapT = THREE.ClampToEdgeWrapping;
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uMap: { value: jupiterTexture },
-            },
-            vertexShader: `
-                varying vec2 vUv;
-                varying vec3 vNormal;
-                varying vec3 vViewPosition;
-                varying vec3 vLocalPos;
-                
-                void main() {
-                    vUv = uv;
-                    vNormal = normalize(normalMatrix * normal);
-                    vLocalPos = position;
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    vViewPosition = -mvPosition.xyz;
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-            fragmentShader: `
-                uniform float uTime;
-                uniform sampler2D uMap;
-                
-                varying vec2 vUv;
-                varying vec3 vNormal;
-                varying vec3 vViewPosition;
-                varying vec3 vLocalPos;
-
-                void main() {
-                    vec3 viewDir = normalize(vViewPosition);
-                    
-                    // Sample the Jupiter texture
-                    vec4 texColor = texture2D(uMap, vUv);
-                    vec3 baseColor = texColor.rgb;
-                    
-                    // Slight color adjustment for the nebula setting
-                    baseColor = pow(baseColor, vec3(1.0)); // No gamma boost
-                    baseColor *= 0.9; // Dimmer for space atmosphere
-                    
-                    // REALISTIC LIGHTING tuned for Nebula environment
-                    // Light direction from upper-right
-                    vec3 lightDir = normalize(vec3(0.7, 0.3, 0.6));
-                    
-                    // Main directional shadow
-                    float NdotL = dot(vNormal, lightDir);
-                    float shadow = smoothstep(-0.1, 0.3, NdotL); // Soft terminator line
-                    
-                    // Apply deep shadow to unlit side
-                    vec3 shadowColor = baseColor * 0.15; // Dark shadow
-                    vec3 litColor = baseColor;
-                    vec3 finalColor = mix(shadowColor, litColor, shadow);
-                    
-                    // Add ambient light from nebula (purple glow)
-                    vec3 ambientColor = vec3(0.4, 0.2, 0.6); // Purple ambient
-                    finalColor += baseColor * ambientColor * (1.0 - shadow) * 0.4;
-                    
-                    // Rim light on the dark edge (Backlight from nebula)
-                    float rimLight = pow(1.0 - abs(dot(vNormal, viewDir)), 3.0);
-                    rimLight *= (1.0 - shadow) * 0.6; // Only on shadow side
-                    finalColor += vec3(0.5, 0.8, 0.6) * rimLight; // Emerald rim light
-                    
-                    // Specular highlight on lit side
-                    vec3 halfDir = normalize(lightDir + viewDir);
-                    float spec = pow(max(dot(vNormal, halfDir), 0.0), 20.0) * shadow;
-                    finalColor += vec3(1.0, 0.95, 0.8) * spec * 0.15;
-                    
-                    // Atmospheric haze at edges
-                    float fresnel = pow(1.0 - abs(dot(vNormal, viewDir)), 2.5);
-                    vec3 atmosphereColor = vec3(0.6, 0.4, 0.9); // Violet atmosphere
-                    finalColor += atmosphereColor * fresnel * shadow * 0.2;
-                    
-                    gl_FragColor = vec4(finalColor, 1.0);
-                }
-            `,
+        const materialData = createStellarPlanetMaterial({
+            isWebGPU: this.isWebGPU,
+            planetTexture: jupiterTexture,
         });
+        this.planetMaterialData = materialData;
 
-        this.planet = new THREE.Mesh(geometry, material);
+        this.planet = new THREE.Mesh(geometry, materialData.material);
         this.planet.position.set(0, 0, 0);
         this.planet.renderOrder = 500;
         this.scene.add(this.planet);
 
         // Inner pink glow (tight around planet)
-        this.createGlowPlane(planetSize * 2.3, 0xff88aa, 0.8, -10, 0, 'small');
+        this.createGlowPlane(planetSize * 2.3, 0xff88aa, 0.35, -10, 0, 'small');
 
         // Outer atmospheric glow (larger, softer)
-        this.createGlowPlane(planetSize * 3.5, 0xff6699, 0.6, -20, 0, 'big');
+        this.createGlowPlane(planetSize * 3.5, 0xff6699, 0.25, -20, 0, 'big');
+
+        this.createHeroRingSystem(planetSize);
 
         console.log('[StellarDrift] Pink gas giant planet created');
     }
 
-    createGlowPlane(size, color, opacity, zPos, yPos, name) {
-        // Soft radial gradient for glow
-        const canvas = document.createElement('canvas');
-        canvas.width = 256;
-        canvas.height = 256;
-        const ctx = canvas.getContext('2d');
+    createHeroRingSystem(planetSize = 500) {
+        const ringGroup = new THREE.Group();
+        ringGroup.position.set(0, 0, 0);
+        ringGroup.rotation.x = Math.PI * 0.5;
+        ringGroup.rotation.z = 0.24;
 
-        const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
-        gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.3)');
-        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, 256, 256);
-
-        const texture = new THREE.CanvasTexture(canvas);
-
-        const geometry = new THREE.PlaneGeometry(size, size);
-        const material = new THREE.MeshBasicMaterial({
-            map: texture,
-            color,
-            transparent: true,
-            opacity,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
+        const primaryInner = planetSize * 1.28;
+        const primaryOuter = planetSize * 2.52;
+        const primaryGeometry = new THREE.RingGeometry(primaryInner, primaryOuter, 164, 1);
+        const primaryMaterialData = createStellarPlanetRingMaterial({
+            isWebGPU: this.isWebGPU,
+            colorInner: 0xe9ddff,
+            colorOuter: 0xaf95dc,
+            opacity: 0.19,
+            innerRadius: primaryInner,
+            outerRadius: primaryOuter,
+            mrtRole: 'hero-planet-ring-primary',
         });
+        const primaryRing = new THREE.Mesh(primaryGeometry, primaryMaterialData.material);
+        primaryRing.userData.materialData = primaryMaterialData;
+        primaryRing.renderOrder = 362;
+        ringGroup.add(primaryRing);
 
-        const plane = new THREE.Mesh(geometry, material);
+        const outerInner = planetSize * 1.72;
+        const outerOuter = planetSize * 3.08;
+        const outerGeometry = new THREE.RingGeometry(outerInner, outerOuter, 160, 1);
+        const outerMaterialData = createStellarPlanetRingMaterial({
+            isWebGPU: this.isWebGPU,
+            colorInner: 0xbcc9ff,
+            colorOuter: 0x728fd0,
+            opacity: 0.12,
+            innerRadius: outerInner,
+            outerRadius: outerOuter,
+            mrtRole: 'hero-planet-ring-outer',
+        });
+        const outerRing = new THREE.Mesh(outerGeometry, outerMaterialData.material);
+        outerRing.userData.materialData = outerMaterialData;
+        outerRing.rotation.z = 0.08;
+        outerRing.renderOrder = 361;
+        ringGroup.add(outerRing);
+
+        this.heroRingSystem = ringGroup;
+        this.heroRingMaterialData = [primaryMaterialData, outerMaterialData];
+        this.scene.add(ringGroup);
+    }
+
+    createGlowPlane(size, color, opacity, zPos, yPos, name) {
+        const geometry = new THREE.PlaneGeometry(size, size);
+        const materialData = createStellarGlowPlaneMaterial({
+            isWebGPU: this.isWebGPU,
+            glowTexture: this.getGlowTexture(),
+            color,
+            opacity,
+        });
+        const plane = new THREE.Mesh(geometry, materialData.material);
         plane.position.set(0, yPos, zPos);
+        plane.userData.materialData = materialData;
         this.scene.add(plane);
 
         if (name === 'small') {
@@ -1084,16 +2619,225 @@ export default class StellarDriftTheme extends BaseTheme {
         }
     }
 
+    createDepthHazeTexture(config = {}) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        const hue = config.hue ?? (180 + this.rand() * 160);
+        const saturation = config.saturation ?? 78;
+        const lightness = config.lightness ?? 42;
+        const alpha = config.alpha ?? 0.2;
+        const cx = 220 + this.rand() * 72;
+        const cy = 220 + this.rand() * 72;
+
+        const gradient = ctx.createRadialGradient(cx, cy, 0, 256, 256, 256);
+        gradient.addColorStop(0, `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`);
+        gradient.addColorStop(0.45, `hsla(${hue}, ${Math.max(10, saturation - 10)}%, ${Math.max(10, lightness - 6)}%, ${alpha * 0.45})`);
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 512, 512);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.ClampToEdgeWrapping;
+        texture.wrapT = THREE.ClampToEdgeWrapping;
+        return texture;
+    }
+
+    createSecondaryBodies() {
+        this.secondaryBodies = [];
+
+        const createBody = (config) => {
+            const geometry = new THREE.SphereGeometry(
+                config.radius,
+                Math.max(16, this.qualityPreset.planetDetail / 1.6),
+                Math.max(12, this.qualityPreset.planetDetail / 1.6),
+            );
+            const materialData = createStellarCelestialBodyMaterial({
+                isWebGPU: this.isWebGPU,
+                color: config.color,
+                emissiveColor: config.emissiveColor,
+                emissiveStrength: config.emissiveStrength,
+                roughness: config.roughness,
+                metalness: config.metalness,
+                mrtRole: config.mrtRole,
+            });
+            const mesh = new THREE.Mesh(geometry, materialData.material);
+            mesh.userData.materialData = materialData;
+            mesh.renderOrder = config.renderOrder ?? 360;
+            this.scene.add(mesh);
+
+            const driftPhase = this.rand() * Math.PI * 2;
+            this.secondaryBodies.push({
+                mesh,
+                basePosition: config.position.clone(),
+                driftX: config.driftX ?? 50,
+                driftY: config.driftY ?? 30,
+                driftZ: config.driftZ ?? 25,
+                driftSpeed: config.driftSpeed ?? 0.08,
+                driftPhase,
+                rotationSpeed: config.rotationSpeed ?? 0.00035,
+                focalSide: Math.sign(config.position.x) || 1,
+            });
+        };
+
+        const ringedPlanetPosition = new THREE.Vector3(1780, 460, -2800);
+        const ringedGroup = new THREE.Group();
+        ringedGroup.position.copy(ringedPlanetPosition);
+
+        const ringedPlanetGeometry = new THREE.SphereGeometry(
+            250,
+            Math.max(18, this.qualityPreset.planetDetail / 1.4),
+            Math.max(14, this.qualityPreset.planetDetail / 1.4),
+        );
+        const ringedPlanetMaterialData = createStellarCelestialBodyMaterial({
+            isWebGPU: this.isWebGPU,
+            color: 0x8878cc,
+            emissiveColor: 0xb8a8ff,
+            emissiveStrength: 0.08,
+            roughness: 0.68,
+            metalness: 0.08,
+            mrtRole: 'secondary-ringed-planet',
+        });
+        const ringedPlanet = new THREE.Mesh(ringedPlanetGeometry, ringedPlanetMaterialData.material);
+        ringedPlanet.userData.materialData = ringedPlanetMaterialData;
+        ringedPlanet.renderOrder = 355;
+        ringedGroup.add(ringedPlanet);
+
+        const ringGeometry = new THREE.RingGeometry(320, 520, 96);
+        const ringMaterialData = createStellarPlanetRingMaterial({
+            isWebGPU: this.isWebGPU,
+            colorInner: 0xe0c7ff,
+            colorOuter: 0x8c74bd,
+            opacity: 0.18,
+            innerRadius: 320,
+            outerRadius: 520,
+            mrtRole: 'secondary-ringed-planet-ring',
+        });
+        const ringMesh = new THREE.Mesh(ringGeometry, ringMaterialData.material);
+        ringMesh.userData.materialData = ringMaterialData;
+        ringMesh.rotation.x = Math.PI * 0.42;
+        ringMesh.rotation.z = 0.22;
+        ringMesh.renderOrder = 356;
+        ringedGroup.add(ringMesh);
+
+        this.scene.add(ringedGroup);
+        this.secondaryBodies.push({
+            mesh: ringedGroup,
+            basePosition: ringedPlanetPosition.clone(),
+            driftX: 65,
+            driftY: 40,
+            driftZ: 30,
+            driftSpeed: 0.06,
+            driftPhase: this.rand() * Math.PI * 2,
+            rotationSpeed: 0.00024,
+            focalSide: 1,
+        });
+
+        createBody({
+            radius: 130,
+            color: 0xbad8ff,
+            emissiveColor: 0xddeeff,
+            emissiveStrength: 0.05,
+            roughness: 0.34,
+            metalness: 0.14,
+            position: new THREE.Vector3(-1700, -300, -2300),
+            driftX: 54,
+            driftY: 34,
+            driftZ: 20,
+            driftSpeed: 0.085,
+            rotationSpeed: 0.00042,
+            mrtRole: 'secondary-ice-moon',
+            renderOrder: 354,
+        });
+
+        createBody({
+            radius: 170,
+            color: 0x6f6459,
+            emissiveColor: 0x6f6459,
+            emissiveStrength: 0,
+            roughness: 0.9,
+            metalness: 0.04,
+            position: new THREE.Vector3(2140, -530, -4200),
+            driftX: 44,
+            driftY: 26,
+            driftZ: 32,
+            driftSpeed: 0.05,
+            rotationSpeed: 0.0003,
+            mrtRole: 'secondary-rocky-body',
+            renderOrder: 352,
+        });
+
+        console.log('[StellarDrift] Secondary celestial bodies created');
+    }
+
+    createDepthHazeLayers() {
+        this.depthHazeLayers = [];
+
+        const hazeConfigs = [
+            {
+                x: -2600, y: 820, z: -43000, size: 98000, opacity: 0.16, hue: 204, sat: 80, light: 46, drift: 2600,
+            },
+            {
+                x: 2550, y: -620, z: -39500, size: 92000, opacity: 0.15, hue: 306, sat: 76, light: 44, drift: 2200,
+            },
+            {
+                x: -1750, y: -880, z: -31000, size: 76000, opacity: 0.12, hue: 178, sat: 72, light: 42, drift: 1800,
+            },
+        ];
+
+        hazeConfigs.forEach((config, index) => {
+            const texture = this.createDepthHazeTexture({
+                hue: config.hue,
+                saturation: config.sat,
+                lightness: config.light,
+                alpha: config.opacity,
+            });
+            const geometry = new THREE.PlaneGeometry(config.size, config.size * 0.58);
+            const materialData = createStellarNebulaMaterial({
+                isWebGPU: this.isWebGPU,
+                nebulaTexture: texture,
+                opacity: config.opacity,
+            });
+
+            const mesh = new THREE.Mesh(geometry, materialData.material);
+            mesh.userData.materialData = materialData;
+            mesh.position.set(config.x, config.y, config.z);
+            mesh.renderOrder = -2600 - index;
+            this.scene.add(mesh);
+
+            this.depthHazeLayers.push({
+                mesh,
+                basePosition: new THREE.Vector3(config.x, config.y, config.z),
+                driftRange: config.drift,
+                driftPhase: this.rand() * Math.PI * 2,
+                driftSpeed: 0.022 + this.rand() * 0.018,
+                focalSide: Math.sign(config.x) || 1,
+            });
+        });
+
+        console.log('[StellarDrift] Depth haze layers created');
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Dust Ring - Subtle ring of particles around planet
     // ─────────────────────────────────────────────────────────────────────────
 
     createDustRing() {
         // Ring of millions of tiny particles (simulated with fewer for performance)
-        const particleCount = 3000;
+        const particleCount = this.qualityPreset.dustRingParticleCount || 3000;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         const colors = new Float32Array(particleCount * 3);
+        const radii = new Float32Array(particleCount);
+        const angles = new Float32Array(particleCount);
+        const yBases = new Float32Array(particleCount);
+        const angularSpeeds = new Float32Array(particleCount);
 
         const ringColor = new THREE.Color(0xffaaee); // Pinkish
         const ringColorOuter = new THREE.Color(0xaa88cc); // Purpleish
@@ -1102,18 +2846,22 @@ export default class StellarDriftTheme extends BaseTheme {
             const i3 = i * 3;
 
             // Ring distribution
-            const angle = Math.random() * Math.PI * 2;
+            const angle = this.rand() * Math.PI * 2;
             // Radius: Planet is 500. Ring from 600 to 1200
-            const radius = 600 + Math.random() ** 2 * 600;
+            const radius = 600 + this.rand() ** 2 * 600;
 
             // Flattened ring
             const x = Math.cos(angle) * radius;
             const z = (Math.sin(angle) * radius) * 0.2; // Tilt/flatten
-            const y = (Math.random() - 0.5) * 40; // Thin layer vertical variation
+            const y = (this.rand() - 0.5) * 40; // Thin layer vertical variation
 
             positions[i3] = x;
             positions[i3 + 1] = y + z * 0.5; // Tilt
             positions[i3 + 2] = z * 2.0;
+            radii[i] = radius;
+            angles[i] = angle;
+            yBases[i] = y;
+            angularSpeeds[i] = 0.16 + this.rand() * 0.24;
 
             // Color variation based on radius
             const color = radius < 800 ? ringColor : ringColorOuter;
@@ -1125,22 +2873,35 @@ export default class StellarDriftTheme extends BaseTheme {
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-        const material = new THREE.PointsMaterial({
-            size: 2,
-            vertexColors: true,
-            transparent: true,
-            opacity: 0.6,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
+        this.dustRingCompute = null;
+        if (this.shouldUseCompute()) {
+            try {
+                this.dustRingCompute = new StellarDustRingCompute(particleCount, () => this.rand());
+                this.dustRingCompute.setInitialState(positions, radii, angles, yBases, angularSpeeds);
+                this.dustRingCompute.createComputeNode();
+            } catch (error) {
+                console.warn('[StellarDrift] Dust ring compute init failed; using CPU fallback.', error);
+                this.dustRingCompute?.dispose?.();
+                this.dustRingCompute = null;
+            }
+        }
 
-        this.dustRing = new THREE.Points(geometry, material);
+        const materialData = createStellarDustRingMaterial({
+            isWebGPU: this.isWebGPU,
+            size: 2,
+            opacity: 0.6,
+            dustCompute: this.dustRingCompute,
+        });
+        this.dustRingMaterialData = materialData;
+
+        this.dustRing = new THREE.Points(geometry, materialData.material);
+        this.dustRing.userData.materialData = materialData;
         // Tilt the whole ring slightly
         this.dustRing.rotation.z = 0.2;
         this.dustRing.rotation.x = 0.3;
 
         this.scene.add(this.dustRing);
-        console.log('[StellarDrift] Dust ring created');
+        console.log(`[StellarDrift] Dust ring created (${particleCount} particles)`);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1148,11 +2909,12 @@ export default class StellarDriftTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createAmbientParticles() {
-        const particleCount = 500;
+        const particleCount = this.qualityPreset.ambientParticleCount || 500;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         const colors = new Float32Array(particleCount * 3);
         const sizes = new Float32Array(particleCount);
+        const randoms = new Float32Array(particleCount);
 
         const particleColors = [
             new THREE.Color(0xffffff), // White
@@ -1165,34 +2927,59 @@ export default class StellarDriftTheme extends BaseTheme {
             const i3 = i * 3;
 
             // Spread across entire visible area
-            positions[i3] = (Math.random() - 0.5) * 4000;
-            positions[i3 + 1] = (Math.random() - 0.5) * 2000;
-            positions[i3 + 2] = (Math.random() - 0.5) * 2000 - 500;
+            positions[i3] = (this.rand() - 0.5) * 4000;
+            positions[i3 + 1] = (this.rand() - 0.5) * 2000;
+            positions[i3 + 2] = (this.rand() - 0.5) * 2000 - 500;
 
-            const color = particleColors[Math.floor(Math.random() * particleColors.length)];
+            const color = particleColors[Math.floor(this.rand() * particleColors.length)];
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
-            sizes[i] = 1 + Math.random() * 2;
+            sizes[i] = 1 + this.rand() * 2;
+            randoms[i] = this.rand();
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
-        const material = new THREE.PointsMaterial({
-            size: 2,
-            vertexColors: true,
-            transparent: true,
-            opacity: 0.6,
-            blending: THREE.AdditiveBlending,
-            sizeAttenuation: true,
-        });
+        this.ambientParticleCompute = null;
+        if (this.shouldUseCompute()) {
+            try {
+                this.ambientParticleCompute = new StellarAmbientParticleCompute(
+                    particleCount,
+                    {
+                        xMin: -2000,
+                        xMax: 2000,
+                        yMin: -1000,
+                        yMax: 1000,
+                        zMin: -1500,
+                        zMax: 600,
+                    },
+                    () => this.rand(),
+                );
+                this.ambientParticleCompute.setInitialState(positions, randoms, sizes);
+                this.ambientParticleCompute.createComputeNode();
+            } catch (error) {
+                console.warn('[StellarDrift] Ambient compute init failed; using CPU fallback.', error);
+                this.ambientParticleCompute?.dispose?.();
+                this.ambientParticleCompute = null;
+            }
+        }
 
-        this.ambientParticles = new THREE.Points(geometry, material);
+        const materialData = createStellarAmbientParticlesMaterial({
+            isWebGPU: this.isWebGPU,
+            size: 2,
+            opacity: 0.6,
+            ambientCompute: this.ambientParticleCompute,
+        });
+        this.ambientParticlesMaterialData = materialData;
+
+        this.ambientParticles = new THREE.Points(geometry, materialData.material);
+        this.ambientParticles.userData.materialData = materialData;
         this.scene.add(this.ambientParticles);
-        console.log('[StellarDrift] Ambient particles created');
+        console.log(`[StellarDrift] Ambient particles created (${particleCount} particles)`);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1201,77 +2988,84 @@ export default class StellarDriftTheme extends BaseTheme {
 
     createMeteorField() {
         const count = this.qualityPreset.meteorCount;
-
-        // Dark material with solid appearance - BRIGHTENED FOR VISIBILITY
-        const material = new THREE.MeshStandardMaterial({
-            color: 0x776655, // Rocky Grey/Brown (was 0x0a0a0a)
-            emissive: 0x222233, // Subtle nebula glow (was none) -- Key for dark background
-            roughness: 0.7, // Slightly smoother to catch light
-            metalness: 0.2, // Slight metallic sheens
-            flatShading: true,
-            side: THREE.DoubleSide, // Render both sides for solid appearance
+        const materialData = createStellarMeteorMaterial({
+            isWebGPU: this.isWebGPU,
         });
+        const material = materialData.material;
 
-        // Pre-generate geometry variations - SOLID meteors
-        const geometries = [];
-        for (let i = 0; i < 50; i++) {
-            const size = 5 + Math.random() * 15;
-            // Use IcosahedronGeometry (20 faces) for solid appearance - no gaps
-            const geo = new THREE.IcosahedronGeometry(size, 0);
-
-            // Randomize vertices for rocky appearance
-            const positions = geo.attributes.position;
-            const randomize = size * 0.25; // Slightly less randomization for cleaner look
-            for (let j = 0; j < positions.count; j++) {
-                positions.setXYZ(
-                    j,
-                    positions.getX(j) + (Math.random() - 0.5) * randomize,
-                    positions.getY(j) + (Math.random() - 0.5) * randomize,
-                    positions.getZ(j) + (Math.random() - 0.5) * randomize,
-                );
-            }
-            geo.computeVertexNormals();
-            geometries.push(geo);
+        // Instanced mesh migration (Phase 5): one geometry/material, per-instance transforms.
+        const meteorGeometry = new THREE.IcosahedronGeometry(10, 0);
+        const vertexPositions = meteorGeometry.attributes.position;
+        const randomize = 2.5;
+        for (let i = 0; i < vertexPositions.count; i++) {
+            vertexPositions.setXYZ(
+                i,
+                vertexPositions.getX(i) + (this.rand() - 0.5) * randomize,
+                vertexPositions.getY(i) + (this.rand() - 0.5) * randomize,
+                vertexPositions.getZ(i) + (this.rand() - 0.5) * randomize,
+            );
         }
+        meteorGeometry.computeVertexNormals();
 
-        // Create meteor instances
+        const instancedMesh = new THREE.InstancedMesh(meteorGeometry, material, count);
+        instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        instancedMesh.frustumCulled = false;
+        instancedMesh.userData.materialData = materialData;
+
+        this.meteors = [];
+        if (!this.meteorMatrixDummy) {
+            this.meteorMatrixDummy = new THREE.Object3D();
+        }
+        const meteorDummy = this.meteorMatrixDummy;
+
         for (let i = 0; i < count; i++) {
-            const geo = geometries[Math.floor(Math.random() * geometries.length)];
-            const mesh = new THREE.Mesh(geo, material);
-
             // Ring/Belt Distribution (Natural curve matching reference)
-            const angle = (Math.random() - 0.5) * 3.5; // Wide arc (~200 degrees)
-            const radius = 600 + Math.random() * 600; // Reduced max radius (600-1200) to keep away from camera
+            const angle = (this.rand() - 0.5) * 3.5; // Wide arc (~200 degrees)
+            const radius = 600 + this.rand() * 600; // Reduced max radius (600-1200) to keep away from camera
 
-            // Convert polar to cartesian
-            mesh.position.x = Math.sin(angle) * radius;
-            mesh.position.z = Math.cos(angle) * radius;
+            const baseX = Math.sin(angle) * radius;
+            const baseZ = Math.cos(angle) * radius;
 
             // Vertical spread (lower down as requested)
-            const beltTilt = mesh.position.z * 0.15; // Increased tilt
-            mesh.position.y = (Math.random() - 0.5) * 150 - 200 + beltTilt; // Much lower (-200)
+            const beltTilt = baseZ * 0.15; // Increased tilt
+            const yBase = (this.rand() - 0.5) * 150 - 200 + beltTilt; // Much lower (-200)
 
             // Define animation properties
-            const speed = -(Math.random() * 0.2 + 0.1) * 0.002; // Reduced base speed (was 0.005)
+            const speed = -(this.rand() * 0.2 + 0.1) * 0.002; // Reduced base speed (was 0.005)
+            const scale = (5 + this.rand() * 15) / 10;
+            const rotation = {
+                x: this.rand() * Math.PI * 2,
+                y: this.rand() * Math.PI * 2,
+                z: this.rand() * Math.PI * 2,
+            };
 
             this.meteors.push({
-                mesh,
                 angle,
                 radius,
                 speed,
-                yBase: mesh.position.y,
+                yBase,
+                scale,
+                rotation,
                 // Rotation (tumbling)
                 rotationSpeed: {
-                    x: Math.random() * 0.002 + 0.002, // Reduced rotation speed
-                    y: Math.random() * 0.002 + 0.002,
-                    z: Math.random() * 0.002 + 0.002,
+                    x: this.rand() * 0.002 + 0.002, // Reduced rotation speed
+                    y: this.rand() * 0.002 + 0.002,
+                    z: this.rand() * 0.002 + 0.002,
                 },
             });
 
-            this.scene.add(mesh);
+            meteorDummy.position.set(baseX, yBase, baseZ);
+            meteorDummy.rotation.set(rotation.x, rotation.y, rotation.z);
+            meteorDummy.scale.setScalar(scale);
+            meteorDummy.updateMatrix();
+            instancedMesh.setMatrixAt(i, meteorDummy.matrix);
         }
 
-        console.log(`[StellarDrift] ${count} meteors created`);
+        instancedMesh.instanceMatrix.needsUpdate = true;
+        this.meteorInstancedMesh = instancedMesh;
+        this.scene.add(instancedMesh);
+
+        console.log(`[StellarDrift] ${count} meteors created (instanced)`);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1279,40 +3073,88 @@ export default class StellarDriftTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     setupPostProcessing() {
-        if (!this.qualityPreset.enablePostProcessing) return;
+        this.disposePostProcessingStack();
+
+        if (!this.qualityPreset.enablePostProcessing || !this.capabilities.post) {
+            return;
+        }
 
         const width = window.innerWidth;
         const height = window.innerHeight;
+        const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
 
-        this.composer = new EffectComposer(this.renderer);
+        if (this.isWebGPU) {
+            try {
+                const useMRT = this.capabilities.mrt;
+                this.postProcessing = new StellarDriftPost(
+                    this.renderer,
+                    this.scene,
+                    this.camera,
+                    {
+                        useMRT,
+                        bloomStrength: this.qualityPreset.bloomStrength,
+                        bloomRadius: this.qualityPreset.bloomRadius,
+                        bloomThreshold: 0.65,
+                        chromaticStrength: 0.0,
+                        vignetteOffset: 1.1,
+                        vignetteDarkness: 0.2,
+                        speedLineIntensity: 0.0,
+                        exposure: 1.05,
+                        contrast: 1.04,
+                        saturation: 1.08,
+                        bloomDownsample: THREE.MathUtils.clamp(0.6 + effectScale * 0.22, 0.58, 0.86),
+                    },
+                );
+                this.postProcessing.setSize(width, height);
+                console.log(`[StellarDrift] WebGPU post-processing ready (MRT: ${useMRT})`);
+            } catch (error) {
+                console.warn('[StellarDrift] WebGPU post setup failed. Falling back to direct rendering:', error);
+                this.capabilities.post = false;
+                this.flags.usePost = false;
+                this.disposePostProcessingStack();
+                this.configureRendererColorPipeline();
+            }
+            return;
+        }
 
-        const renderPass = new RenderPass(this.scene, this.camera);
-        this.composer.addPass(renderPass);
+        try {
+            this.composer = new EffectComposer(this.renderer);
 
-        this.bloomPass = new UnrealBloomPass(
-            new THREE.Vector2(width, height),
-            this.qualityPreset.bloomStrength,
-            this.qualityPreset.bloomRadius,
-            0.85,
-        );
-        this.composer.addPass(this.bloomPass);
+            const renderPass = new RenderPass(this.scene, this.camera);
+            this.composer.addPass(renderPass);
 
-        // Vignette Pass (dynamic darkness for tunnel vision)
-        this.vignettePass = new ShaderPass(VignetteShader);
-        this.vignettePass.uniforms.darkness.value = 0.4;
-        this.vignettePass.uniforms.offset.value = 1.1;
-        this.composer.addPass(this.vignettePass);
+            this.bloomPass = new UnrealBloomPass(
+                new THREE.Vector2(width, height),
+                this.qualityPreset.bloomStrength,
+                this.qualityPreset.bloomRadius,
+                0.65,
+            );
+            this.composer.addPass(this.bloomPass);
 
-        // WARP EFFECTS: Chromatic Aberration (color fringing at edges during warp)
-        this.chromaticPass = new ShaderPass(ChromaticAberrationShader);
-        this.chromaticPass.uniforms.intensity.value = 0;
-        this.composer.addPass(this.chromaticPass);
+            // Vignette Pass (dynamic darkness for tunnel vision)
+            this.vignettePass = new ShaderPass(VignetteShader);
+            this.vignettePass.uniforms.darkness.value = 0.2;
+            this.vignettePass.uniforms.offset.value = 1.1;
+            this.composer.addPass(this.vignettePass);
 
-        // WARP EFFECTS: Radial Speed Lines (motion blur/trails during warp)
-        this.radialSpeedPass = new ShaderPass(RadialSpeedLinesShader);
-        this.radialSpeedPass.uniforms.intensity.value = 0;
-        this.radialSpeedPass.uniforms.time.value = 0;
-        this.composer.addPass(this.radialSpeedPass);
+            // WARP EFFECTS: Chromatic Aberration (color fringing at edges during warp)
+            this.chromaticPass = new ShaderPass(ChromaticAberrationShader);
+            this.chromaticPass.uniforms.intensity.value = 0;
+            this.composer.addPass(this.chromaticPass);
+
+            // WARP EFFECTS: Radial Speed Lines (motion blur/trails during warp)
+            this.radialSpeedPass = new ShaderPass(RadialSpeedLinesShader);
+            this.radialSpeedPass.uniforms.intensity.value = 0;
+            this.radialSpeedPass.uniforms.time.value = 0;
+            this.composer.addPass(this.radialSpeedPass);
+        } catch (error) {
+            console.warn('[StellarDrift] Post-processing setup failed. Falling back to direct rendering:', error);
+            this.capabilities.post = false;
+            this.flags.usePost = false;
+            this.disposePostProcessingStack();
+            this.configureRendererColorPipeline();
+            return;
+        }
 
         console.log('[StellarDrift] Post-processing with warp effects initialized');
     }
@@ -1344,37 +3186,37 @@ export default class StellarDriftTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     triggerLockEffect() {
-        // All effects use intensity variables that smoothly decay in the animation loop
+        this.pushReactiveEnvelope({
+            twinkle: 0.82,
+            dust: 0.18,
+            bloom: 0.22,
+            pulse: 0.12,
+            glow: 0.1,
+            ringGlitter: 0.14,
+            lightning: 0.05,
+            aurora: 0.03,
+            comet: 0.02,
+            meteor: 0.72,
+        });
 
-        // 1. STAR TWINKLE FLASH - Stars briefly brighten
-        this.starTwinkleIntensity = 1.0;
-
-        // 2. DUST RING PULSE - Smooth expansion via intensity
-        this.dustRingPulse = 0.15; // Will decay smoothly
-
-        // 3. BLOOM PULSE - Smooth intensity boost
-        this.bloomPulseIntensity = 0.3; // Will decay smoothly
-
-        // 4. METEOR SPIN BOOST - Spin faster when playing fast
-        // Cap at 5.0 (significant speed boost)
-        this.meteorActivity = Math.min(this.meteorActivity + 0.8, 5.0);
+        if (this.rand() > 0.76) {
+            this.triggerPlanetLightning(0.18);
+        }
     }
 
     createShockwaveRing() {
         // Create a 3D ring geometry that expands outward from the planet
         const geometry = new THREE.RingGeometry(450, 480, 64);
-        const material = new THREE.MeshBasicMaterial({
-            color: 0xffaa66, // Mars-like orange
-            transparent: true,
+        const materialData = createStellarShockwaveRingMaterial({
+            isWebGPU: this.isWebGPU,
+            color: 0xffaa66,
             opacity: 0.6,
-            side: THREE.DoubleSide,
-            blending: THREE.AdditiveBlending,
         });
-
-        const ring = new THREE.Mesh(geometry, material);
+        const ring = new THREE.Mesh(geometry, materialData.material);
         ring.position.set(0, 0, 50); // Slightly in front of planet
         ring.scale.set(1, 1, 1);
         ring.userData.speed = 0.08; // Expansion speed
+        ring.userData.materialData = materialData;
 
         this.scene.add(ring);
         this.shockwaveRings.push(ring);
@@ -1385,32 +3227,36 @@ export default class StellarDriftTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     triggerComboEffect(comboCount) {
-        // All effects use intensity variables that smoothly decay in the animation loop
+        const safeCombo = Number.isFinite(comboCount) ? Math.max(0, comboCount) : 0;
+        const comboIntensity = THREE.MathUtils.clamp(safeCombo / 10, 0, 1.5);
 
         // 1. SHOOTING STARS - More with higher combos (staggered smoothly)
-        const starCount = Math.min(comboCount + 1, 5);
+        const starCount = Math.min(safeCombo + 1, 5);
         for (let i = 0; i < starCount; i++) {
-            setTimeout(() => this.createShootingStar(), i * 150); // Slightly more spread out
+            this.scheduleThemeTimeout(() => this.createShootingStar(), i * 150); // Slightly more spread out
         }
 
-        // 2. NEBULA BOOST - Set intensity based on combo (decays smoothly)
-        this.nebulaBoostIntensity = Math.min(comboCount * 0.15, 0.6);
-
-        // 2b. NEBULA PULSE (SHADER) - Spike the shader pulse uniform
-        const pulseIntensity = Math.min(0.4 + (comboCount * 0.15), 1.0);
-        this.nebulaPulse = Math.max(this.nebulaPulse, pulseIntensity);
-
-        // 3. PLANET GLOW SURGE - Set intensity based on combo (decays smoothly)
-        this.glowSurgeIntensity = Math.min(comboCount * 0.08, 0.5);
-
-        // 4. BLOOM BOOST - Add to existing pulse intensity
-        this.bloomPulseIntensity = Math.max(this.bloomPulseIntensity, comboCount * 0.1);
-
-        // 5. STAR TWINKLE on combos too
-        this.starTwinkleIntensity = Math.max(this.starTwinkleIntensity, 0.5 + comboCount * 0.1);
+        // 2. Unified reactive envelope channels (shared attack/decay curves with hard caps).
+        this.pushReactiveEnvelope({
+            twinkle: 0.34 + comboIntensity * 0.62,
+            dust: 0.08 + comboIntensity * 0.26,
+            bloom: 0.14 + comboIntensity * 0.46,
+            nebula: 0.22 + comboIntensity * 0.44,
+            pulse: 0.24 + comboIntensity * 0.72,
+            glow: 0.16 + comboIntensity * 0.36,
+            ringGlitter: 0.14 + comboIntensity * 0.52,
+            lightning: (safeCombo >= 4 ? 0.12 : 0.04) + comboIntensity * 0.35,
+            aurora: (safeCombo >= 5 ? 0.1 : 0.02) + comboIntensity * 0.28,
+            comet: (safeCombo >= 6 ? 0.08 : 0.01) + comboIntensity * 0.24,
+            meteor: 0.28 + comboIntensity * 1.05,
+        });
 
         // 6. NEBULA PARTICLE BURSTS - ALL nebulas burst simultaneously
-        const particlesPerNebula = (20 + comboCount * 8) * 10; // 10x PARTICLES for maximum visibility
+        const requestedParticlesPerNebula = (20 + safeCombo * 8) * 10;
+        const particlesPerNebula = Math.min(
+            requestedParticlesPerNebula,
+            this.getBurstParticlesPerNebulaBudget(),
+        );
         this.burstAllVisibleNebulas(particlesPerNebula);
 
         // ═══════════════════════════════════════════════════════════════════════
@@ -1418,7 +3264,7 @@ export default class StellarDriftTheme extends BaseTheme {
         // The intensity scales with combo count for an escalating rush
         // ═══════════════════════════════════════════════════════════════════════
 
-        if (comboCount >= 8) {
+        if (safeCombo >= 8) {
             // MAXIMUM WARP - Intense tunnel vision, heavy chromatic aberration
             this.targetWarpSpeed = 1.0;
             this.targetFOV = this.baseFOV - 25; // Dramatic narrow FOV
@@ -1426,14 +3272,14 @@ export default class StellarDriftTheme extends BaseTheme {
             this.radialBlurIntensity = 1.5; // Heavy motion blur
             this.starTrailIntensity = 1.0; // Full star trails
             this.createShockwaveRing(); // Big shockwave
-        } else if (comboCount >= 5) {
+        } else if (safeCombo >= 5) {
             // HIGH WARP - Strong effects
             this.targetWarpSpeed = 0.7;
             this.targetFOV = this.baseFOV - 15;
             this.chromaticIntensity = 1.2;
             this.radialBlurIntensity = 1.0;
             this.starTrailIntensity = 0.7;
-        } else if (comboCount >= 3) {
+        } else if (safeCombo >= 3) {
             // MEDIUM WARP - Noticeable effects
             this.targetWarpSpeed = 0.4;
             this.targetFOV = this.baseFOV - 8;
@@ -1449,11 +3295,22 @@ export default class StellarDriftTheme extends BaseTheme {
             this.starTrailIntensity = 0.2;
         }
 
+        if (safeCombo >= 4) {
+            this.triggerPlanetLightning(0.22 + comboIntensity * 0.58);
+        }
+
+        if (safeCombo >= 5) {
+            this.trySpawnReactiveAurora(0.36 + comboIntensity * 0.42);
+        }
+        if (safeCombo >= 6) {
+            this.trySpawnReactiveComet(0.3 + comboIntensity * 0.46);
+        }
+
         // Camera shake intensity scales with combo
-        const shakeStrength = Math.min(comboCount * 3, 25);
+        const shakeStrength = Math.min(safeCombo * 3, 25);
         this.cameraShake.set(
-            (Math.random() - 0.5) * shakeStrength,
-            (Math.random() - 0.5) * shakeStrength,
+            (this.rand() - 0.5) * shakeStrength,
+            (this.rand() - 0.5) * shakeStrength,
             0,
         );
     }
@@ -1461,25 +3318,24 @@ export default class StellarDriftTheme extends BaseTheme {
     createShootingStar() {
         // Create a 3D shooting star with a trail
         const geometry = new THREE.CylinderGeometry(0, 3, 80, 8);
-        const material = new THREE.MeshBasicMaterial({
+        const materialData = createStellarShootingStarMaterial({
+            isWebGPU: this.isWebGPU,
             color: 0xffffff,
-            transparent: true,
             opacity: 1.0,
-            blending: THREE.AdditiveBlending,
         });
-
-        const star = new THREE.Mesh(geometry, material);
+        const star = new THREE.Mesh(geometry, materialData.material);
+        star.userData.materialData = materialData;
 
         // Random start position at screen edge
-        const side = Math.random();
+        const side = this.rand();
         if (side < 0.5) {
             // Start from left
-            star.position.set(-2500, (Math.random() - 0.5) * 1500, -500 + Math.random() * 500);
-            star.userData.velocity = { x: 40 + Math.random() * 20, y: -10 + Math.random() * 20, z: 0 };
+            star.position.set(-2500, (this.rand() - 0.5) * 1500, -500 + this.rand() * 500);
+            star.userData.velocity = { x: 40 + this.rand() * 20, y: -10 + this.rand() * 20, z: 0 };
         } else {
             // Start from right
-            star.position.set(2500, (Math.random() - 0.5) * 1500, -500 + Math.random() * 500);
-            star.userData.velocity = { x: -(40 + Math.random() * 20), y: -10 + Math.random() * 20, z: 0 };
+            star.position.set(2500, (this.rand() - 0.5) * 1500, -500 + this.rand() * 500);
+            star.userData.velocity = { x: -(40 + this.rand() * 20), y: -10 + this.rand() * 20, z: 0 };
         }
 
         // Rotate to face direction of travel
@@ -1499,47 +3355,46 @@ export default class StellarDriftTheme extends BaseTheme {
 
         // Sound set activation handled by theme-linked settings
 
-        this.planetPhaseOffset = Math.random() * Math.PI * 2;
+        this.planetPhaseOffset = this.rand() * Math.PI * 2;
 
         const animate = () => {
             if (!this.isActive) return;
 
-            this.time += 0.002;
-
-            if (this.planet?.material?.uniforms) {
-                this.planet.material.uniforms.uTime.value = this.time;
+            const measuredDelta = this.clock.getDelta();
+            const rawDelta = this.fixedDeltaSeconds !== null ? this.fixedDeltaSeconds : measuredDelta;
+            if (this.fixedDeltaSeconds !== null) {
+                this.fixedElapsed += rawDelta;
+                this.time = this.fixedElapsed * this.simulationTimeScale;
+            } else {
+                this.time += 0.002;
             }
 
-            // Update Nebula Shader
-            // Update and drift nebula clouds (left to right)
-            if (this.nebulaMeshes && this.nebulaMeshes.length > 0) {
-                this.nebulaMeshes.forEach((mesh) => {
-                    // 1. Horizontal Drift (Left to Right)
-                    mesh.position.x += mesh.userData.speed;
-
-                    // 2. Vertical Bobbing (Natural "floating" motion)
-                    // Uses sin wave based on time + random phase offset
-                    const verticalOffset = Math.sin(this.time * 0.2 + mesh.userData.driftPhase) * mesh.userData.verticalRange;
-                    mesh.position.y = mesh.userData.startY + verticalOffset;
-
-                    // Wrap around when off-screen right
-                    if (mesh.position.x > mesh.userData.wrapDistance) {
-                        mesh.position.x = -mesh.userData.wrapDistance;
-
-                        // Randomize Y slightly on reset for variety
-                        // Variance of +/- 2000 units from base
-                        const variance = (Math.random() - 0.5) * 4000;
-                        mesh.userData.startY = mesh.userData.startY + variance;
-                        // Clamp to prevent drifting too far off screen over time
-                        // (Reset to original config logic could be better but this adds evolution)
-                    }
-
-                    // Update time uniform
-                    if (mesh.material?.uniforms?.uTime) {
-                        mesh.material.uniforms.uTime.value = this.time;
-                    }
-                });
+            this.updateReactiveEnvelope(rawDelta);
+            this.qualitySyncAccumulator += rawDelta;
+            if (this.qualitySyncAccumulator >= 1.0) {
+                this.qualitySyncAccumulator = 0;
+                const runtimeQuality = this.getCurrentQualityLevel();
+                if (runtimeQuality !== this.activeQualityLevel) {
+                    this.applyRuntimeQualityProfile(runtimeQuality);
+                }
             }
+
+            const planetUniforms = this.planetMaterialData?.uniforms || this.planet?.material?.uniforms;
+            if (planetUniforms?.uTime) {
+                planetUniforms.uTime.value = this.time;
+            }
+            if (planetUniforms?.uBandIntensity) {
+                planetUniforms.uBandIntensity.value = 0.38 + this.nebulaPulse * 0.24;
+            }
+            if (planetUniforms?.uScatterIntensity) {
+                planetUniforms.uScatterIntensity.value = 0.34 + this.auroraPulse * 0.36;
+            }
+            if (planetUniforms?.uLightningFlash) {
+                planetUniforms.uLightningFlash.value = this.planetLightningIntensity;
+            }
+
+            // Nebula drift/uniform updates are handled in the dedicated
+            // "Update Nebula Uniforms" block later in this frame.
 
             // Update Orbiting Particles Shader (REMOVED)
             // if (this.orbitingParticles?.material?.uniforms) {
@@ -1617,47 +3472,97 @@ export default class StellarDriftTheme extends BaseTheme {
                     this.bigGlow.position.x = planetX;
                     this.bigGlow.position.y = planetY;
                 }
+                if (this.heroRingSystem) {
+                    this.heroRingSystem.position.x = planetX;
+                    this.heroRingSystem.position.y = planetY;
+                    this.heroRingSystem.rotation.z += 0.00035;
+                }
             }
 
             // Nebula drift is handled above
 
+            // Keep secondary composition anchored away from the hero-planet corridor.
+            this.secondaryBodies.forEach((bodyData) => {
+                const phase = this.time * bodyData.driftSpeed + bodyData.driftPhase;
+                let nextX = bodyData.basePosition.x + Math.sin(phase) * bodyData.driftX;
+                nextX = this.enforceFocalCorridor(nextX, planetX, bodyData.focalSide);
+                const nextY = bodyData.basePosition.y + Math.cos(phase * 0.8) * bodyData.driftY;
+                const nextZ = bodyData.basePosition.z + Math.sin(phase * 0.6) * bodyData.driftZ;
+
+                bodyData.mesh.position.set(nextX, nextY, nextZ);
+                bodyData.mesh.rotation.y += bodyData.rotationSpeed;
+                bodyData.mesh.rotation.x += bodyData.rotationSpeed * 0.35;
+            });
+
+            this.depthHazeLayers.forEach((haze) => {
+                const phase = this.time * haze.driftSpeed + haze.driftPhase;
+                let nextX = haze.basePosition.x + Math.sin(phase) * haze.driftRange;
+                nextX = this.enforceFocalCorridor(nextX, planetX, haze.focalSide);
+                const nextY = haze.basePosition.y + Math.cos(phase * 0.8) * (haze.driftRange * 0.18);
+
+                haze.mesh.position.x = nextX;
+                haze.mesh.position.y = nextY;
+                haze.mesh.rotation.z += 0.00004;
+
+                const hazeUniforms = haze.mesh.userData?.materialData?.uniforms || haze.mesh.material?.uniforms;
+                if (hazeUniforms?.uTime) {
+                    hazeUniforms.uTime.value = this.time * 0.7;
+                }
+                if (hazeUniforms?.uPulse) {
+                    hazeUniforms.uPulse.value = this.nebulaPulse * 0.25;
+                }
+            });
+
             // ─────────────────────────────────────────────────────────────────
             // DYNAMIC METEOR ACTIVITY
-            // Decay meteor activity smoothly
-            if (this.meteorActivity > 0) {
-                this.meteorActivity *= 0.998; // Decays much slower (stays fast longer)
-                if (this.meteorActivity < 0.01) this.meteorActivity = 0;
-            }
-
             // Speed multiplier: 1.0 (base) up to ~5.0 (fastest, was ~8.5)
             const speedMultiplier = 1.0 + (this.meteorActivity * 0.8);
 
             // Move meteors (Rotate around PLANET position)
-            this.meteors.forEach((m) => {
-                // Orbital rotation
-                m.angle += m.speed * speedMultiplier;
+            if (this.meteorInstancedMesh && this.meteors.length > 0) {
+                const meteorDummy = this.meteorMatrixDummy || (this.meteorMatrixDummy = new THREE.Object3D());
+                for (let i = 0; i < this.meteors.length; i++) {
+                    const m = this.meteors[i];
 
-                // Update position relative to planet's current position
-                m.mesh.position.x = planetX + Math.sin(m.angle) * m.radius;
-                m.mesh.position.z = Math.cos(m.angle) * m.radius;
+                    // Orbital rotation
+                    m.angle += m.speed * speedMultiplier;
 
-                // Add slight vertical wave movement relative to planet
-                m.mesh.position.y = planetY + m.yBase + Math.sin(m.angle * 2.0 + this.time) * 10;
+                    // Update position relative to planet's current position
+                    const x = planetX + Math.sin(m.angle) * m.radius;
+                    const z = Math.cos(m.angle) * m.radius;
+                    const y = planetY + m.yBase + Math.sin(m.angle * 2.0 + this.time) * 10;
 
-                // Tumble rotation
-                m.mesh.rotation.x -= m.rotationSpeed.x * speedMultiplier;
-                m.mesh.rotation.y -= m.rotationSpeed.y * speedMultiplier;
-                m.mesh.rotation.z -= m.rotationSpeed.z * speedMultiplier;
-            });
+                    // Tumble rotation
+                    m.rotation.x -= m.rotationSpeed.x * speedMultiplier;
+                    m.rotation.y -= m.rotationSpeed.y * speedMultiplier;
+                    m.rotation.z -= m.rotationSpeed.z * speedMultiplier;
+
+                    meteorDummy.position.set(x, y, z);
+                    meteorDummy.rotation.set(m.rotation.x, m.rotation.y, m.rotation.z);
+                    meteorDummy.scale.setScalar(m.scale);
+                    meteorDummy.updateMatrix();
+                    this.meteorInstancedMesh.setMatrixAt(i, meteorDummy.matrix);
+                }
+                this.meteorInstancedMesh.instanceMatrix.needsUpdate = true;
+            }
 
             // Animate ambient particles (very gentle drift - reduced speed to prevent jitter)
             if (this.ambientParticles) {
-                const positions = this.ambientParticles.geometry.attributes.position.array;
-                for (let i = 0; i < positions.length; i += 3) {
-                    positions[i] += 0.01; // Much slower drift
-                    if (positions[i] > 2000) positions[i] = -2000; // Wrap around
+                if (!this.ambientParticleCompute?.computeNode) {
+                    const positions = this.ambientParticles.geometry.attributes.position.array;
+                    for (let i = 0; i < positions.length; i += 3) {
+                        positions[i] += 0.01; // Much slower drift
+                        if (positions[i] > 2000) positions[i] = -2000; // Wrap around
+                    }
+                    this.ambientParticles.geometry.attributes.position.needsUpdate = true;
                 }
-                this.ambientParticles.geometry.attributes.position.needsUpdate = true;
+
+                const ambientUniforms = this.ambientParticlesMaterialData?.uniforms
+                    || this.ambientParticles.userData?.materialData?.uniforms
+                    || this.ambientParticles.material?.uniforms;
+                if (ambientUniforms?.uTime) {
+                    ambientUniforms.uTime.value = this.time;
+                }
             }
 
             // Animate nebula clouds (very subtle drift and rotation)
@@ -1665,41 +3570,56 @@ export default class StellarDriftTheme extends BaseTheme {
                 cloud.rotation.z += 0.0001; // Very slow rotation
             });
 
-            // Starfield twinkling - GPU shader driven (smooth 60fps)
-            if (this.starfield?.material?.uniforms) {
-                // Decay the event-triggered boost
-                if (this.starTwinkleIntensity > 0) {
-                    this.starTwinkleIntensity *= 0.95;
-                    if (this.starTwinkleIntensity < 0.01) this.starTwinkleIntensity = 0;
+            // Starfield twinkling
+            const starfieldUniforms = this.starfieldMaterialData?.uniforms || this.starfield?.material?.uniforms;
+            if (this.starfield && starfieldUniforms) {
+                if (starfieldUniforms.uTime) {
+                    starfieldUniforms.uTime.value = this.time;
                 }
-
-                // Update shader uniforms (GPU does all the work)
-                this.starfield.material.uniforms.uTime.value = this.time;
-                this.starfield.material.uniforms.uEventBoost.value = this.starTwinkleIntensity;
-
-                // WARP: Update star trail effect
-                this.starfield.material.uniforms.uWarpSpeed.value = this.starTrailIntensity;
+                if (starfieldUniforms.uEventBoost) {
+                    starfieldUniforms.uEventBoost.value = this.starTwinkleIntensity;
+                }
+                if (starfieldUniforms.uWarpSpeed) {
+                    starfieldUniforms.uWarpSpeed.value = Math.min(
+                        1.25,
+                        (this.starTrailIntensity + this.reactiveState.comet * 0.25)
+                        * (this.adaptiveScalerState?.effectScale ?? 1),
+                    );
+                }
             }
 
             // SMOOTH DUST RING PULSE - Gradual scale decay
             if (this.dustRing) {
-                if (this.dustRingPulse > 0) {
-                    this.dustRingPulse *= 0.93; // Smooth decay
-                    if (this.dustRingPulse < 0.005) this.dustRingPulse = 0;
-                }
                 const scale = 1 + this.dustRingPulse;
                 this.dustRing.scale.set(scale, scale, scale);
+                const dustUniforms = this.dustRingMaterialData?.uniforms
+                    || this.dustRing.userData?.materialData?.uniforms
+                    || this.dustRing.material?.uniforms;
+                if (dustUniforms?.uPulse) {
+                    dustUniforms.uPulse.value = this.dustRingPulse;
+                }
             }
 
-            // SMOOTH BLOOM PULSE - Gradual bloom decay (boosted during warp)
-            if (this.bloomPass) {
-                if (this.bloomPulseIntensity > 0) {
-                    this.bloomPulseIntensity *= 0.94; // Smooth decay
-                    if (this.bloomPulseIntensity < 0.005) this.bloomPulseIntensity = 0;
+            this.heroRingMaterialData.forEach((materialData) => {
+                const uniforms = materialData?.uniforms;
+                if (!uniforms) return;
+                if (uniforms.uTime) {
+                    uniforms.uTime.value = this.time;
                 }
-                // Extra bloom during warp (subtle glow)
-                const warpBloomBoost = this.warpSpeed * 0.1;
-                this.bloomPass.strength = this.qualityPreset.bloomStrength * (1 + this.bloomPulseIntensity + warpBloomBoost);
+                if (uniforms.uGlitter) {
+                    uniforms.uGlitter.value = this.heroRingGlitterIntensity;
+                }
+            });
+
+            // SMOOTH BLOOM PULSE - Gradual bloom decay (boosted during warp)
+            const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
+            const warpBloomBoost = this.warpSpeed * 0.1 + this.reactiveState.comet * 0.06;
+            const dynamicBloomStrength = this.qualityPreset.bloomStrength
+                * (1 + this.bloomPulseIntensity + warpBloomBoost)
+                * effectScale;
+
+            if (this.bloomPass) {
+                this.bloomPass.strength = dynamicBloomStrength;
             }
 
             // ═══════════════════════════════════════════════════════════════════════
@@ -1729,16 +3649,23 @@ export default class StellarDriftTheme extends BaseTheme {
                 this.radialSpeedPass.uniforms.time.value = this.time * 50; // Fast animation
             }
 
-            // SMOOTH NEBULA BOOST - Gradual opacity decay
-            if (this.nebulaBoostIntensity > 0) {
-                this.nebulaBoostIntensity *= 0.97; // Slow decay for nebulas
-                if (this.nebulaBoostIntensity < 0.01) this.nebulaBoostIntensity = 0;
-            }
+            if (this.isWebGPU && this.postProcessing?.update) {
+                const baseDarkness = 0.4;
+                const warpDarkness = this.warpSpeed * 0.5;
+                const baseOffset = 1.1;
+                const warpOffset = this.warpSpeed * 0.3;
+                const chromaticStrength = Math.min(this.chromaticIntensity * 0.0035 * effectScale, 0.01);
+                const speedLineIntensity = Math.min(this.radialBlurIntensity * 0.35 * effectScale, 0.75);
 
-            // NEBULA PULSE DECAY - Slower decay for lingering effect
-            if (this.nebulaPulse > 0) {
-                this.nebulaPulse *= 0.97; // Was 0.92, now decays much slower
-                if (this.nebulaPulse < 0.01) this.nebulaPulse = 0;
+                this.postProcessing.update({
+                    bloomStrength: dynamicBloomStrength,
+                    bloomRadius: this.qualityPreset.bloomRadius,
+                    chromaticStrength,
+                    vignetteDarkness: baseDarkness + warpDarkness,
+                    vignetteOffset: baseOffset - warpOffset,
+                    speedLineIntensity,
+                    time: this.time * 50,
+                });
             }
 
             // Update Nebula Uniforms (Pulse + Time)
@@ -1753,26 +3680,20 @@ export default class StellarDriftTheme extends BaseTheme {
                 // 3. Smart Loop
                 if (mesh.position.x > mesh.userData.wrapBoundary) {
                     mesh.position.x -= mesh.userData.totalWidth;
-                    const variance = (Math.random() - 0.5) * 4000;
-                    mesh.userData.startY = mesh.userData.startY + variance;
+                    const variance = (this.rand() - 0.5) * 4000;
+                    mesh.userData.startY += variance;
                 }
 
-                // Update uniforms
-                if (mesh.material?.uniforms) {
-                    // Update Time
-                    if (mesh.material.uniforms.uTime) {
-                        mesh.material.uniforms.uTime.value = this.time;
+                const nebulaUniforms = mesh.userData?.materialData?.uniforms || mesh.material?.uniforms;
+                if (nebulaUniforms) {
+                    if (nebulaUniforms.uTime) {
+                        nebulaUniforms.uTime.value = this.time;
                     }
-                    // Update Pulse
-                    if (mesh.material.uniforms.uPulse) {
-                        mesh.material.uniforms.uPulse.value = this.nebulaPulse;
+                    if (nebulaUniforms.uPulse) {
+                        nebulaUniforms.uPulse.value = this.nebulaPulse;
                     }
                 }
             });
-            if (this.glowSurgeIntensity > 0) {
-                this.glowSurgeIntensity *= 0.96;
-                if (this.glowSurgeIntensity < 0.01) this.glowSurgeIntensity = 0;
-            }
 
             // DYNAMIC PLANET GLOW COLOR
             // Matches the shader's hue shift (speed 0.05)
@@ -1783,20 +3704,114 @@ export default class StellarDriftTheme extends BaseTheme {
             if (this.smallGlow) {
                 const glowScale = 1 + this.glowSurgeIntensity;
                 this.smallGlow.scale.set(glowScale, glowScale, 1);
-                this.smallGlow.material.color.setHSL(currentHue, 0.9, 0.6);
+                const glowMaterialData = this.smallGlow.userData?.materialData;
+                if (glowMaterialData?.uniforms?.uColor?.value?.setHSL) {
+                    glowMaterialData.uniforms.uColor.value.setHSL(currentHue, 0.9, 0.6);
+                } else if (this.smallGlow.material?.color?.setHSL) {
+                    this.smallGlow.material.color.setHSL(currentHue, 0.9, 0.6);
+                }
             }
             if (this.bigGlow) {
                 const bigScale = 1 + this.glowSurgeIntensity * 0.5;
                 this.bigGlow.scale.set(bigScale, bigScale, 1);
-                this.bigGlow.material.color.setHSL(currentHue, 0.8, 0.5);
+                const glowMaterialData = this.bigGlow.userData?.materialData;
+                if (glowMaterialData?.uniforms?.uColor?.value?.setHSL) {
+                    glowMaterialData.uniforms.uColor.value.setHSL(currentHue, 0.8, 0.5);
+                } else if (this.bigGlow.material?.color?.setHSL) {
+                    this.bigGlow.material.color.setHSL(currentHue, 0.8, 0.5);
+                }
             }
+
+            if (planetUniforms?.uPulse) {
+                planetUniforms.uPulse.value = this.glowSurgeIntensity;
+            }
+
+            // Aurora ribbons are budget-gated and fade with deterministic decay.
+            this.auroraEvents = this.auroraEvents.filter((aurora) => {
+                aurora.life -= rawDelta * aurora.decayRate;
+                if (aurora.life <= 0) {
+                    this.scene.remove(aurora.mesh);
+                    const auroraUniforms = aurora.mesh.userData?.materialData?.uniforms
+                        || aurora.mesh.material?.uniforms;
+                    const auroraTexture = auroraUniforms?.uMap?.value
+                        || auroraUniforms?.tDiffuse?.value
+                        || aurora.mesh.material?.map;
+                    auroraTexture?.dispose?.();
+                    aurora.mesh.geometry.dispose();
+                    aurora.mesh.material.dispose();
+                    return false;
+                }
+
+                aurora.mesh.position.x += aurora.driftX * rawDelta * 60;
+                aurora.mesh.position.y += Math.sin(this.time * aurora.bobSpeed + aurora.bobPhase)
+                    * aurora.bobAmplitude * rawDelta;
+
+                const auroraUniforms = aurora.mesh.userData?.materialData?.uniforms
+                    || aurora.mesh.material?.uniforms;
+                if (auroraUniforms?.uTime) {
+                    auroraUniforms.uTime.value = this.time * 0.6 + aurora.bobPhase;
+                }
+                const lifePulse = Math.sin(Math.max(0, aurora.life) * Math.PI);
+                if (auroraUniforms?.uPulse) {
+                    auroraUniforms.uPulse.value = lifePulse * aurora.pulseGain + this.auroraPulse * 0.35;
+                }
+                if (auroraUniforms?.uOpacity) {
+                    auroraUniforms.uOpacity.value = aurora.baseOpacity
+                        * (0.55 + lifePulse * 0.65 + this.auroraPulse * 0.2);
+                } else if (aurora.mesh.material && 'opacity' in aurora.mesh.material) {
+                    aurora.mesh.material.opacity = aurora.baseOpacity
+                        * (0.55 + lifePulse * 0.65 + this.auroraPulse * 0.2);
+                }
+
+                return true;
+            });
+
+            // Comets add punctuation at higher combos while staying capped by budgets.
+            this.cometEvents = this.cometEvents.filter((comet) => {
+                const velocity = comet.userData.velocity;
+                const deltaScale = rawDelta * 60;
+                comet.position.x += velocity.x * deltaScale;
+                comet.position.y += velocity.y * deltaScale;
+                comet.position.z += velocity.z * deltaScale;
+                comet.userData.life -= rawDelta * comet.userData.decay;
+
+                const cometMaterialData = comet.userData?.materialData;
+                const cometUniforms = cometMaterialData?.uniforms || comet.material?.uniforms;
+                const clampedLife = Math.max(0, comet.userData.life);
+                if (cometUniforms?.uOpacity) {
+                    cometUniforms.uOpacity.value = clampedLife;
+                } else if (comet.material && 'opacity' in comet.material) {
+                    comet.material.opacity = clampedLife;
+                }
+
+                const outOfBounds = Math.abs(comet.position.x) > 3800 || comet.position.z > 1600;
+                if (clampedLife <= 0 || outOfBounds) {
+                    this.scene.remove(comet);
+                    comet.geometry.dispose();
+                    comet.material.dispose();
+                    return false;
+                }
+                return true;
+            });
 
             // Animate shockwave rings (if any exist)
             this.shockwaveRings = this.shockwaveRings.filter((ring) => {
                 ring.scale.x += ring.userData.speed;
                 ring.scale.y += ring.userData.speed;
-                ring.material.opacity -= 0.015;
-                if (ring.material.opacity <= 0) {
+                const ringMaterialData = ring.userData?.materialData;
+                const ringUniforms = ringMaterialData?.uniforms || ring.material?.uniforms;
+                const currentOpacity = ringUniforms?.uOpacity
+                    ? ringUniforms.uOpacity.value
+                    : ring.material.opacity;
+                const nextOpacity = currentOpacity - 0.015;
+
+                if (ringUniforms?.uOpacity) {
+                    ringUniforms.uOpacity.value = nextOpacity;
+                } else {
+                    ring.material.opacity = nextOpacity;
+                }
+
+                if (nextOpacity <= 0) {
                     this.scene.remove(ring);
                     ring.geometry.dispose();
                     ring.material.dispose();
@@ -1811,7 +3826,13 @@ export default class StellarDriftTheme extends BaseTheme {
                 star.position.y += star.userData.velocity.y;
                 star.position.z += star.userData.velocity.z;
                 star.userData.life -= 0.015; // Slower fade for smoother effect
-                star.material.opacity = star.userData.life;
+                const starMaterialData = star.userData?.materialData;
+                const starUniforms = starMaterialData?.uniforms || star.material?.uniforms;
+                if (starUniforms?.uOpacity) {
+                    starUniforms.uOpacity.value = star.userData.life;
+                } else {
+                    star.material.opacity = star.userData.life;
+                }
                 if (star.userData.life <= 0) {
                     this.scene.remove(star);
                     star.geometry.dispose();
@@ -1848,13 +3869,12 @@ export default class StellarDriftTheme extends BaseTheme {
                 return true;
             });
 
-            // Render
-            if (this.composer && this.qualityPreset.enablePostProcessing) {
-                this.renderer.clear();
-                this.composer.render();
-            } else {
-                this.renderer.clear();
-                this.renderer.render(this.scene, this.camera);
+            this.updateAdaptiveScaler(rawDelta * 1000);
+            this.updateComputeSystems(rawDelta);
+            this.renderFrame();
+
+            if (this.flags.baseline) {
+                this.trackBaselineFrame(measuredDelta);
             }
 
             this.animationFrameId = requestAnimationFrame(animate);
@@ -1865,61 +3885,463 @@ export default class StellarDriftTheme extends BaseTheme {
         this.registerAnimation(this.animationFrameId);
     }
 
+    renderFrame() {
+        if (!this.renderer || !this.scene || !this.camera) return;
+        const nowMs = typeof performance !== 'undefined' ? () => performance.now() : () => Date.now();
+
+        if (this.isWebGPU) {
+            if (this.capabilities.post && this.postProcessing?.render) {
+                try {
+                    const postStart = nowMs();
+                    this.postProcessing.render();
+                    this.lastPostCostMs = nowMs() - postStart;
+                    this.lastRenderPath = 'webgpu-post';
+                    return;
+                } catch (error) {
+                    console.warn('[StellarDrift] WebGPU post render failed. Falling back:', error);
+                    this.capabilities.post = false;
+                    this.flags.usePost = false;
+                    this.disposePostProcessingStack();
+                    this.configureRendererColorPipeline();
+                }
+            }
+
+            try {
+                this.renderer.clear();
+                this.renderer.render(this.scene, this.camera);
+                this.lastPostCostMs = 0;
+                this.lastRenderPath = 'webgpu-direct';
+            } catch (error) {
+                void this.requestWebGLFallback('webgpu-render-failure', error);
+            }
+            return;
+        }
+
+        if (this.composer && this.qualityPreset.enablePostProcessing && this.capabilities.post) {
+            try {
+                const postStart = nowMs();
+                this.renderer.clear();
+                this.composer.render();
+                this.lastPostCostMs = nowMs() - postStart;
+                this.lastRenderPath = 'webgl-composer';
+                return;
+            } catch (error) {
+                console.warn('[StellarDrift] WebGL composer render failed. Falling back to direct render:', error);
+                this.capabilities.post = false;
+                this.flags.usePost = false;
+                this.disposePostProcessingStack();
+                this.configureRendererColorPipeline();
+            }
+        }
+
+        try {
+            this.renderer.clear();
+            this.renderer.render(this.scene, this.camera);
+            this.lastPostCostMs = 0;
+            this.lastRenderPath = 'webgl-direct';
+        } catch (error) {
+            console.error('[StellarDrift] Render failed:', error);
+        }
+    }
+
+    trackBaselineFrame(deltaSeconds) {
+        const frameMs = deltaSeconds * 1000;
+        this.baselineFrames.push(frameMs);
+        if (this.baselineFrames.length > this.baselineMaxFrames) {
+            this.baselineFrames.shift();
+        }
+
+        const renderInfo = this.renderer?.info?.render;
+        if (renderInfo) {
+            this.baselineRenderStats.push({
+                calls: renderInfo.calls || 0,
+                triangles: renderInfo.triangles || 0,
+                lines: renderInfo.lines || 0,
+                points: renderInfo.points || 0,
+            });
+            if (this.baselineRenderStats.length > this.baselineMaxFrames) {
+                this.baselineRenderStats.shift();
+            }
+        }
+    }
+
+    resetBaseline() {
+        this.baselineFrames = [];
+        this.baselineRenderStats = [];
+    }
+
+    reportBaseline() {
+        if (!this.baselineFrames.length) {
+            console.log('[StellarBaseline] No frames collected yet.');
+            return null;
+        }
+
+        const sortedFrames = [...this.baselineFrames].sort((a, b) => a - b);
+        const frameCount = this.baselineFrames.length;
+        const avgMs = this.baselineFrames.reduce((sum, v) => sum + v, 0) / frameCount;
+        const avgFps = 1000 / avgMs;
+        const varianceMs2 = this.baselineFrames.reduce((sum, frameMs) => {
+            const diff = frameMs - avgMs;
+            return sum + diff * diff;
+        }, 0) / frameCount;
+        const stdDevMs = Math.sqrt(varianceMs2);
+        const p99Index = Math.max(0, Math.floor(sortedFrames.length * 0.99) - 1);
+        const p99Ms = sortedFrames[p99Index];
+        const low1Fps = 1000 / p99Ms;
+        const renderSamples = this.baselineRenderStats.length || 1;
+        const totals = this.baselineRenderStats.reduce((acc, s) => {
+            acc.calls += s.calls;
+            acc.triangles += s.triangles;
+            acc.lines += s.lines;
+            acc.points += s.points;
+            return acc;
+        }, {
+            calls: 0,
+            triangles: 0,
+            lines: 0,
+            points: 0,
+        });
+
+        const memoryInfo = this.renderer?.info?.memory || {};
+        const heapMb = (typeof performance !== 'undefined' && performance.memory?.usedJSHeapSize)
+            ? performance.memory.usedJSHeapSize / (1024 * 1024)
+            : null;
+        const gpuEstimateMb = (memoryInfo.textures !== undefined || memoryInfo.geometries !== undefined)
+            ? Number((((memoryInfo.textures ?? 0) * 1.5) + ((memoryInfo.geometries ?? 0) * 0.25)).toFixed(1))
+            : null;
+
+        const report = {
+            backend: this.getBackendLabel(),
+            preset: this.getCurrentQualityLevel(),
+            frames: frameCount,
+            avgFps: Number(avgFps.toFixed(1)),
+            p99Ms: Number(p99Ms.toFixed(2)),
+            low1Fps: Number(low1Fps.toFixed(1)),
+            frameTimeStdDevMs: Number(stdDevMs.toFixed(3)),
+            frameTimeVarianceMs2: Number(varianceMs2.toFixed(4)),
+            avgDrawCalls: Number((totals.calls / renderSamples).toFixed(1)),
+            avgTriangles: Number((totals.triangles / renderSamples).toFixed(0)),
+            avgLines: Number((totals.lines / renderSamples).toFixed(0)),
+            avgPoints: Number((totals.points / renderSamples).toFixed(0)),
+            textures: memoryInfo.textures ?? null,
+            geometries: memoryInfo.geometries ?? null,
+            gpuMemoryEstimateMb: gpuEstimateMb,
+            heapUsedMb: heapMb !== null ? Number(heapMb.toFixed(1)) : null,
+            capabilities: { ...this.capabilities },
+            flags: { ...this.flags },
+            sequence: { ...this.baselineSequenceStats },
+        };
+
+        console.log('[StellarBaseline] Report:', report);
+        return report;
+    }
+
+    captureBaseline(label = 'stellar') {
+        if (!this.renderer?.domElement) {
+            console.warn('[StellarBaseline] No renderer canvas available.');
+            return;
+        }
+
+        const canvas = this.renderer.domElement;
+        const name = `${label}-${this.getBackendSlug()}-${Date.now()}.png`;
+        if (canvas.toBlob) {
+            canvas.toBlob((blob) => {
+                if (!blob) return;
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = name;
+                link.click();
+                URL.revokeObjectURL(url);
+            });
+        } else {
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL('image/png');
+            link.download = name;
+            link.click();
+        }
+    }
+
+    clearBaselinePlaybackTimers() {
+        this.baselineTimeouts.forEach((id) => {
+            clearTimeout(id);
+            this.themeTimeouts.delete(id);
+        });
+        this.baselineTimeouts.clear();
+        this.baselineSequenceStats = {
+            sequence: null,
+            loops: 0,
+            startedAt: 0,
+        };
+    }
+
+    scheduleBaselineTimeout(callback, delayMs) {
+        let timeoutId = null;
+        timeoutId = this.scheduleThemeTimeout(() => {
+            this.baselineTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        if (timeoutId !== null) {
+            this.baselineTimeouts.add(timeoutId);
+        }
+        return timeoutId;
+    }
+
+    waitForBaseline(delayMs) {
+        return new Promise((resolve) => {
+            this.scheduleBaselineTimeout(resolve, delayMs);
+        });
+    }
+
+    getBaselineSequence(name = 'default') {
+        const sequences = {
+            default: [
+                { event: EVENTS.PIECE_LOCK, payload: {} },
+                { event: EVENTS.COMBO, payload: { comboCount: 2 } },
+                { event: EVENTS.PIECE_LOCK, payload: {} },
+                { event: EVENTS.COMBO, payload: { comboCount: 4 } },
+                { event: EVENTS.PIECE_LOCK, payload: {} },
+                { event: EVENTS.COMBO, payload: { comboCount: 6 } },
+            ],
+            stress: [
+                { event: EVENTS.PIECE_LOCK, payload: {} },
+                { event: EVENTS.COMBO, payload: { comboCount: 5 } },
+                { event: EVENTS.PIECE_LOCK, payload: {} },
+                { event: EVENTS.COMBO, payload: { comboCount: 8 } },
+                { event: EVENTS.PIECE_LOCK, payload: {} },
+                { event: EVENTS.COMBO, payload: { comboCount: 10 } },
+                { event: EVENTS.PIECE_LOCK, payload: {} },
+                { event: EVENTS.COMBO, payload: { comboCount: 12 } },
+            ],
+        };
+        return sequences[name] || sequences.default;
+    }
+
+    getBaselineSequenceDurationMs(name = 'default', loops = 1, stepMs = 320) {
+        const sequence = this.getBaselineSequence(name);
+        return sequence.length * loops * stepMs + 50;
+    }
+
+    playBaselineSequence(name = 'default', options = {}) {
+        if (typeof window === 'undefined') return false;
+
+        const sequence = this.getBaselineSequence(name);
+        const loops = Number.isFinite(options.loops) && options.loops > 0
+            ? Math.floor(options.loops)
+            : this.flags.playbackLoops;
+        const stepMs = Number.isFinite(options.stepMs) && options.stepMs > 0
+            ? options.stepMs
+            : 320;
+
+        this.clearBaselinePlaybackTimers();
+        this.baselineSequenceStats = {
+            sequence: name,
+            loops,
+            startedAt: Date.now(),
+        };
+
+        for (let loop = 0; loop < loops; loop++) {
+            sequence.forEach((step, index) => {
+                const delayMs = (loop * sequence.length + index) * stepMs;
+                this.scheduleBaselineTimeout(() => {
+                    if (!this.isActive) return;
+                    const { event, payload: stepPayload } = step;
+                    let payload = stepPayload;
+                    if (payload && typeof payload === 'object') {
+                        payload = { ...payload };
+                    }
+                    if (event === EVENTS.PIECE_LOCK) {
+                        payload = { ...(payload || {}), timestamp: delayMs };
+                    }
+                    eventBus.emit(event, payload);
+                }, delayMs);
+            });
+        }
+
+        const endDelay = sequence.length * loops * stepMs + 50;
+        this.scheduleBaselineTimeout(() => { }, endDelay);
+
+        console.log('[StellarBaseline] Playing sequence', {
+            name,
+            loops,
+            stepMs,
+        });
+        return true;
+    }
+
+    downloadJson(filename, payload) {
+        if (typeof window === 'undefined') return;
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+    }
+
+    downloadBaselineReport(label = 'stellar-baseline') {
+        const report = this.reportBaseline();
+        if (!report) return null;
+        const filename = `${label}-${this.getBackendSlug()}-${Date.now()}.json`;
+        this.downloadJson(filename, report);
+        return report;
+    }
+
+    async captureBaselinePack(options = {}) {
+        const {
+            label = 'stellar-pack',
+            stepMs = 320,
+            warmupMs = 1200,
+            settleMs = 280,
+            defaultLoops = 2,
+            stressLoops = 2,
+            downloadReport = true,
+        } = options;
+
+        if (!this.isActive) {
+            console.warn('[StellarBaseline] capturePack skipped: theme is not active.');
+            return null;
+        }
+
+        this.clearBaselinePlaybackTimers();
+        this.resetBaseline();
+
+        await this.waitForBaseline(warmupMs);
+        this.captureBaseline(`${label}-idle`);
+
+        this.playBaselineSequence('default', { loops: defaultLoops, stepMs });
+        await this.waitForBaseline(this.getBaselineSequenceDurationMs('default', defaultLoops, stepMs) + settleMs);
+        this.captureBaseline(`${label}-default`);
+
+        this.playBaselineSequence('stress', { loops: stressLoops, stepMs });
+        await this.waitForBaseline(this.getBaselineSequenceDurationMs('stress', stressLoops, stepMs) + settleMs);
+        this.captureBaseline(`${label}-stress`);
+
+        const report = this.reportBaseline();
+        if (downloadReport && report) {
+            const filename = `${label}-${this.getBackendSlug()}-${Date.now()}.json`;
+            this.downloadJson(filename, report);
+        }
+
+        console.log('[StellarBaseline] capturePack complete', {
+            label,
+            defaultLoops,
+            stressLoops,
+            stepMs,
+        });
+        return report;
+    }
+
+    async captureReadabilityAnchors(options = {}) {
+        const {
+            label = 'stellar-readability',
+            settleMs = 300,
+            includeReport = true,
+        } = options;
+
+        if (!this.isActive) {
+            console.warn('[StellarBaseline] captureReadability skipped: theme is not active.');
+            return null;
+        }
+
+        this.clearBaselinePlaybackTimers();
+
+        const anchors = [
+            { id: 'piece-lock', event: EVENTS.PIECE_LOCK, payload: { timestamp: 1111 } },
+            { id: 'combo-3', event: EVENTS.COMBO, payload: { comboCount: 3 } },
+            { id: 'combo-6', event: EVENTS.COMBO, payload: { comboCount: 6 } },
+            { id: 'combo-8', event: EVENTS.COMBO, payload: { comboCount: 8 } },
+            { id: 'combo-10', event: EVENTS.COMBO, payload: { comboCount: 10 } },
+        ];
+
+        await anchors.reduce((promise, anchor) => promise.then(async () => {
+            eventBus.emit(anchor.event, { ...anchor.payload });
+            await this.waitForBaseline(settleMs);
+            this.captureBaseline(`${label}-${anchor.id}`);
+        }), Promise.resolve());
+
+        const report = includeReport ? this.reportBaseline() : null;
+        console.log('[StellarBaseline] captureReadability complete', {
+            label,
+            anchors: anchors.map((a) => a.id),
+        });
+        return report;
+    }
+
+    installBaselineHelpers() {
+        if (typeof window === 'undefined') return;
+        window.stellarBaseline = {
+            capture: (label) => this.captureBaseline(label),
+            report: () => this.reportBaseline(),
+            downloadReport: (label) => this.downloadBaselineReport(label),
+            reset: () => this.resetBaseline(),
+            play: (sequence = 'default', options = {}) => this.playBaselineSequence(sequence, options),
+            capturePack: (options = {}) => this.captureBaselinePack(options),
+            captureReadability: (options = {}) => this.captureReadabilityAnchors(options),
+            stressQualitySwitch: (options = {}) => this.runQualitySwitchStress(options),
+            // Phase 8: Validation helpers
+            runValidation: (options = {}) => this.runValidationMatrix(options),
+            soakTest: (options = {}) => this.runThemeSwitchSoak(options),
+            getCapabilities: () => ({ ...this.capabilities }),
+            stop: () => this.clearBaselinePlaybackTimers(),
+        };
+        console.log('[StellarBaseline] Helpers: capture(label), report(), downloadReport(label), reset(), play(sequence, options), capturePack(options), captureReadability(options), stressQualitySwitch(options), runValidation(options), soakTest(options), getCapabilities(), stop()');
+    }
+
+    removeBaselineHelpers() {
+        if (typeof window !== 'undefined' && window.stellarBaseline) {
+            delete window.stellarBaseline;
+        }
+    }
+
     resize(width, height) {
         if (this.camera) {
             this.camera.aspect = width / height;
             this.camera.updateProjectionMatrix();
         }
-        if (this.renderer) this.renderer.setSize(width, height);
+        if (this.renderer) {
+            const pixelRatio = this.getRendererPixelRatio(1.5);
+            this.renderer.setPixelRatio(pixelRatio);
+            this.renderer.setSize(width, height);
+            const starfieldUniforms = this.starfieldMaterialData?.uniforms || this.starfield?.material?.uniforms;
+            if (starfieldUniforms?.uPixelRatio) {
+                starfieldUniforms.uPixelRatio.value = pixelRatio;
+            }
+        }
+        if (this.postProcessing?.setSize) {
+            const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
+            this.postProcessing.update({
+                bloomDownsample: THREE.MathUtils.clamp(0.6 + effectScale * 0.22, 0.58, 0.86),
+            });
+            this.postProcessing.setSize(width, height);
+        }
         if (this.composer) this.composer.setSize(width, height);
+        if (this.bloomPass?.resolution) {
+            this.bloomPass.resolution.set(width, height);
+        }
     }
 
     stop() {
-        this.eventUnsubscribers.forEach((unsub) => unsub());
-        this.eventUnsubscribers = [];
-        if (this.resizeHandler) {
-            window.removeEventListener('resize', this.resizeHandler);
-        }
+        this.cancelAnimationLoop();
+        this.clock.stop();
+        this.clearEventSubscriptions();
+        this.removeResizeListener();
+        this.clearThemeTimeouts();
+        this.clearBaselinePlaybackTimers();
+        this.removeBaselineHelpers();
+        this.disposeRuntimeResources({ removeCanvas: true });
+        this.deviceLossRecoveryInProgress = false;
+        this.renderFallbackInProgress = false;
         super.stop();
     }
 
     cleanup() {
-        this.stop();
-
-        if (this.scene) {
-            this.scene.traverse((obj) => {
-                if (obj.geometry) obj.geometry.dispose();
-                if (obj.material) {
-                    if (Array.isArray(obj.material)) {
-                        obj.material.forEach((m) => m.dispose());
-                    } else {
-                        obj.material.dispose();
-                    }
-                }
-            });
-        }
-
-        if (this.renderer) {
-            this.renderer.dispose();
-            if (this.renderer.domElement?.parentNode) {
-                this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
-            }
-        }
-
-        this.renderer = null;
-        this.scene = null;
-        this.camera = null;
-        this.composer = null;
-        this.planet = null;
-        this.smallGlow = null;
-        this.bigGlow = null;
-        this.backgroundPlanes = [];
-        this.meteors = [];
-
-        // Cleanup warp effect passes
-        this.vignettePass = null;
-        this.chromaticPass = null;
-        this.radialSpeedPass = null;
+        this.baselineFrames = [];
+        this.baselineRenderStats = [];
+        this.clearThemeTimeouts();
+        this.clearBaselinePlaybackTimers();
+        this.removeBaselineHelpers();
 
         super.cleanup();
     }
