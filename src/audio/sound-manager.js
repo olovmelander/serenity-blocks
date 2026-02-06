@@ -28,6 +28,7 @@ export class SoundManager {
         this.sfxVolume = 1.0;
         this.currentTrackId = null;
         this.audioElement = null; // HTML5 Audio element for MP3 playback
+        this.playPromise = null; // Track pending play promise to avoid AbortError
         this.trackNames = [];
         this.songsData = [];
         this.themeLinkSuspended = false;
@@ -473,11 +474,18 @@ export class SoundManager {
         this.audioElement.loop = false; // Disable loop to enable automatic progression
 
         // Play the audio (handle autoplay restrictions)
-        const playPromise = this.audioElement.play();
-        if (playPromise !== undefined) {
-            playPromise.catch((error) => {
-                console.log('Audio playback prevented:', error);
-            });
+        this.playPromise = this.audioElement.play();
+        if (this.playPromise !== undefined) {
+            this.playPromise
+                .catch((error) => {
+                    // Only log non-abort errors (abort is expected when switching tracks)
+                    if (error.name !== 'AbortError') {
+                        console.log('Audio playback prevented:', error);
+                    }
+                })
+                .finally(() => {
+                    this.playPromise = null;
+                });
         }
     }
 
@@ -493,8 +501,18 @@ export class SoundManager {
         }
 
         if (this.audioElement) {
-            this.audioElement.pause();
-            this.audioElement.currentTime = 0;
+            // Wait for any pending play promise before pausing to avoid AbortError
+            const doPause = () => {
+                this.audioElement.pause();
+                this.audioElement.currentTime = 0;
+            };
+
+            if (this.playPromise) {
+                this.playPromise.then(doPause).catch(doPause);
+                this.playPromise = null;
+            } else {
+                doPause();
+            }
         }
     }
 

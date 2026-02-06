@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Theme Preview</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        #swedish-forest-theme { width: 100vw; height: 100vh; }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="shifting-sands-theme"></div>
+
+    <script type="module">
+        import ShiftingSandsTheme from './shifting-sands-theme.js';
+        
+        // Initialize the theme
+        const theme = new ShiftingSandsTheme();
+        theme.isActive = true; // Ensure the animation loop runs
+        theme.createScene();
+    </script>
+</body>
+</html>

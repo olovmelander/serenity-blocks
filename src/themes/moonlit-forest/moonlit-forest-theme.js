@@ -2,10 +2,19 @@
  * @fileoverview Moonlit Forest Theme - Mystical forest with procedural trees, glowing mushrooms, and moonbeams
  */
 
+import * as THREE from 'three';
+import * as WEBGPU from 'three/webgpu';
+
 import { BaseTheme } from '../base-theme.js';
 import { moonlitForestTreeCache } from '../../utils/cache.js';
 import { MOONLIT_FOREST_TETROMINOS } from './moonlit-forest-tetrominos.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import {
+    createMoonlitSkyNodeMaterial,
+    createMoonlitMoonNodeMaterial,
+    createMoonlitMoonHaloNodeMaterial,
+    createMoonlitStarfieldNodeMaterial,
+} from './moonlit-forest-materials.js';
 
 /**
  * Moonlit Forest Theme
@@ -19,6 +28,28 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 export default class MoonlitForestTheme extends BaseTheme {
     constructor() {
         super('moonlit-forest');
+
+        // Renderer state (hybrid WebGPU/WebGL2 path)
+        this.renderer = null;
+        this.scene = null;
+        this.camera = null;
+        this.isWebGPU = false;
+        this.isWebGL = false;
+        this.forceWebGL = false;
+        this.resizeHandler = null;
+        this.time = 0;
+        this.lastFrameTime = 0;
+
+        // Three.js scene elements
+        this.skyMesh = null;
+        this.starfield = null;
+        this.moonMesh = null;
+        this.moonHalo = null;
+        this.skyUniforms = null;
+        this.starUniforms = null;
+        this.moonUniforms = null;
+        this.moonHaloUniforms = null;
+
         this.eventUnsubscribers = [];
         this.currentComboLevel = 0;
         this.mushrooms = [];
@@ -144,12 +175,491 @@ export default class MoonlitForestTheme extends BaseTheme {
         return configs[quality] || configs.high;
     }
 
+    shouldForceWebGL() {
+        if (typeof window === 'undefined') return this.forceWebGL === true;
+        const params = new URLSearchParams(window.location.search);
+        return params.get('forceWebGL') === '1' || this.forceWebGL === true;
+    }
+
+    async initRenderer(container) {
+        if (!container || typeof window === 'undefined') return false;
+
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const forceWebGL = this.shouldForceWebGL();
+
+        if (this.renderer?.domElement && container.contains(this.renderer.domElement)) {
+            container.removeChild(this.renderer.domElement);
+        }
+        if (this.renderer) {
+            this.renderer.dispose();
+            this.renderer = null;
+        }
+
+        let renderer = null;
+        try {
+            renderer = new WEBGPU.WebGPURenderer({
+                antialias: this.getAntialiasEnabled(),
+                powerPreference: 'high-performance',
+                alpha: false,
+                forceWebGL,
+            });
+            await renderer.init();
+            this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
+            this.isWebGL = renderer.backend?.isWebGLBackend === true || !this.isWebGPU;
+        } catch (error) {
+            console.warn('[MoonlitForest] WebGPURenderer init failed, using WebGLRenderer fallback:', error);
+            renderer = null;
+        }
+
+        // Emergency fallback in case WebGPURenderer init fails unexpectedly.
+        if (!renderer) {
+            try {
+                renderer = new THREE.WebGLRenderer({
+                    antialias: this.getAntialiasEnabled(),
+                    alpha: false,
+                    powerPreference: 'high-performance',
+                });
+                this.isWebGPU = false;
+                this.isWebGL = true;
+            } catch (fallbackError) {
+                console.error('[MoonlitForest] Unable to initialize any renderer backend:', fallbackError);
+                return false;
+            }
+        }
+
+        this.renderer = renderer;
+        this.renderer.setClearColor(0x050a12, 1);
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        this.renderer.sortObjects = true;
+        this.renderer.autoClear = true;
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio(1.5));
+        this.renderer.setSize(width, height);
+        this.renderer.domElement.id = 'moonlit-forest-renderer';
+        this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;pointer-events:none;';
+        container.appendChild(this.renderer.domElement);
+
+        console.log(`[MoonlitForest] Renderer initialized (${this.isWebGPU ? 'WebGPU' : 'WebGL2'})`);
+        return true;
+    }
+
+    createRendererScene() {
+        if (!this.renderer || typeof window === 'undefined') return;
+
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x050a12);
+        this.scene.fog = new THREE.FogExp2(0x08111c, 0.00045);
+
+        this.camera = new THREE.PerspectiveCamera(58, width / height, 0.1, 5000);
+        this.camera.position.set(0, 34, 180);
+        this.camera.lookAt(0, 20, -700);
+
+        this.createSkyBackdrop();
+        this.createStarfield();
+        this.createMoon();
+    }
+
+    createSkyBackdrop() {
+        if (!this.scene) return;
+
+        const skyGeometry = new THREE.SphereGeometry(2600, 48, 32);
+        let skyMaterial = null;
+
+        if (this.isWebGPU) {
+            const { material, uniforms } = createMoonlitSkyNodeMaterial({
+                top: new THREE.Color(0x0a1628),
+                mid: new THREE.Color(0x1a3050),
+                bottom: new THREE.Color(0x0d1f35),
+            });
+            skyMaterial = material;
+            this.skyUniforms = uniforms;
+        } else {
+            skyMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTop: { value: new THREE.Color(0x0a1628) },
+                    uMid: { value: new THREE.Color(0x1a3050) },
+                    uBottom: { value: new THREE.Color(0x0d1f35) },
+                    uTime: { value: 0 },
+                },
+                vertexShader: `
+                    varying vec3 vWorldPosition;
+                    void main() {
+                        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                        vWorldPosition = worldPosition.xyz;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 uTop;
+                    uniform vec3 uMid;
+                    uniform vec3 uBottom;
+                    uniform float uTime;
+                    varying vec3 vWorldPosition;
+                    void main() {
+                        float h = normalize(vWorldPosition).y;
+                        float skyBlend = smoothstep(-0.45, 0.75, h);
+                        vec3 lowColor = mix(uBottom, uMid, smoothstep(-0.45, 0.25, h));
+                        vec3 highColor = mix(uMid, uTop, smoothstep(0.1, 0.9, h));
+                        float middleBand = smoothstep(-0.05, 0.35, h) * (1.0 - smoothstep(0.35, 0.85, h));
+                        float shimmer = 0.97 + sin(uTime * 0.08 + h * 9.0) * 0.03;
+                        vec3 color = mix(lowColor, highColor, skyBlend) + (uMid * middleBand * 0.08 * shimmer);
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `,
+                side: THREE.BackSide,
+                depthWrite: false,
+            });
+            this.skyUniforms = skyMaterial.uniforms;
+        }
+
+        this.skyMesh = new THREE.Mesh(skyGeometry, skyMaterial);
+        this.skyMesh.position.set(0, 0, -900);
+        this.scene.add(this.skyMesh);
+    }
+
+    createStarfield() {
+        if (!this.scene) return;
+
+        const starCount = Math.min(2400, 400 + ((this.qualityConfig?.moonbeams || 5) * 180));
+        const positions = new Float32Array(starCount * 3);
+        const colors = new Float32Array(starCount * 3);
+        const sizes = new Float32Array(starCount);
+        const phases = new Float32Array(starCount);
+        const twinkles = new Float32Array(starCount);
+        const color = new THREE.Color();
+
+        for (let i = 0; i < starCount; i++) {
+            const i3 = i * 3;
+            const radius = 1200 + (Math.random() * 1200);
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.random() * Math.PI * 0.55;
+            positions[i3] = Math.cos(theta) * Math.sin(phi) * radius;
+            positions[i3 + 1] = Math.cos(phi) * radius + 120;
+            positions[i3 + 2] = Math.sin(theta) * Math.sin(phi) * radius - 900;
+
+            const hue = 0.55 + (Math.random() * 0.08);
+            const saturation = 0.08 + (Math.random() * 0.25);
+            const lightness = 0.65 + (Math.random() * 0.25);
+            color.setHSL(hue, saturation, lightness);
+            colors[i3] = color.r;
+            colors[i3 + 1] = color.g;
+            colors[i3 + 2] = color.b;
+
+            sizes[i] = 1.4 + (Math.random() * 2.6);
+            phases[i] = Math.random() * Math.PI * 2;
+            twinkles[i] = 0.6 + (Math.random() * 1.8);
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkles, 1));
+
+        let starMaterial = null;
+        if (this.isWebGPU) {
+            const { material, uniforms } = createMoonlitStarfieldNodeMaterial();
+            starMaterial = material;
+            this.starUniforms = uniforms;
+        } else {
+            starMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                },
+                vertexShader: `
+                    attribute float aSize;
+                    attribute float aPhase;
+                    attribute float aTwinkle;
+                    uniform float uTime;
+                    varying float vAlpha;
+                    varying vec3 vColor;
+                    void main() {
+                        float twinkle = 0.5 + 0.5 * sin((uTime * aTwinkle) + aPhase);
+                        vAlpha = twinkle * 0.55 + 0.18;
+                        vColor = color * (0.75 + twinkle * 0.25);
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = clamp(aSize * (180.0 / -mvPosition.z), 0.6, 8.0);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    varying float vAlpha;
+                    varying vec3 vColor;
+                    void main() {
+                        vec2 centered = gl_PointCoord - vec2(0.5);
+                        float dist = length(centered) * 2.0;
+                        if (dist > 1.0) discard;
+                        float softness = 1.0 - smoothstep(0.0, 1.0, dist);
+                        gl_FragColor = vec4(vColor, vAlpha * softness);
+                    }
+                `,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                vertexColors: true,
+            });
+            this.starUniforms = starMaterial.uniforms;
+        }
+
+        this.starfield = new THREE.Points(geometry, starMaterial);
+        this.starfield.frustumCulled = false;
+        this.scene.add(this.starfield);
+    }
+
+    createMoon() {
+        if (!this.scene) return;
+
+        const moonGeometry = new THREE.CircleGeometry(90, 72);
+        const haloGeometry = new THREE.CircleGeometry(170, 72);
+        let moonMaterial = null;
+        let haloMaterial = null;
+
+        if (this.isWebGPU) {
+            const moonNode = createMoonlitMoonNodeMaterial({
+                color: new THREE.Color(0xf4e8a8),
+                glowIntensity: 0.7,
+            });
+            moonMaterial = moonNode.material;
+            this.moonUniforms = moonNode.uniforms;
+
+            const haloNode = createMoonlitMoonHaloNodeMaterial({
+                color: new THREE.Color(0xd9eeff),
+                opacity: 0.28,
+            });
+            haloMaterial = haloNode.material;
+            this.moonHaloUniforms = haloNode.uniforms;
+        } else {
+            moonMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uColor: { value: new THREE.Color(0xf4e8a8) },
+                    uTime: { value: 0 },
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 uColor;
+                    uniform float uTime;
+                    varying vec2 vUv;
+                    void main() {
+                        vec2 centeredUv = vUv - 0.5;
+                        float dist = length(centeredUv) * 2.0;
+                        float disc = smoothstep(1.0, 0.0, dist);
+                        float craterWave = (sin(centeredUv.x * 32.0 + uTime * 0.09) * sin(centeredUv.y * 26.0 - uTime * 0.07)) * 0.5 + 0.5;
+                        float craterMask = smoothstep(0.45, 0.95, craterWave);
+                        vec3 craterTint = mix(vec3(1.0), vec3(0.82, 0.86, 0.92), craterMask * 0.5);
+                        float edgeGlow = pow(1.0 - smoothstep(0.2, 1.0, dist), 2.0);
+                        vec3 color = uColor * craterTint * (edgeGlow * 0.7 + 0.3);
+                        gl_FragColor = vec4(color, disc);
+                    }
+                `,
+                transparent: true,
+                depthWrite: false,
+            });
+            this.moonUniforms = moonMaterial.uniforms;
+
+            haloMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uColor: { value: new THREE.Color(0xd9eeff) },
+                    uOpacity: { value: 0.28 },
+                    uTime: { value: 0 },
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 uColor;
+                    uniform float uOpacity;
+                    uniform float uTime;
+                    varying vec2 vUv;
+                    void main() {
+                        vec2 centeredUv = vUv - 0.5;
+                        float dist = length(centeredUv) * 2.0;
+                        float haloMask = pow(1.0 - smoothstep(0.0, 1.0, dist), 2.4);
+                        float pulse = 0.92 + sin(uTime * 1.25) * 0.08;
+                        float alpha = haloMask * uOpacity * pulse;
+                        vec3 color = mix(uColor, vec3(0.95, 0.98, 1.0), smoothstep(0.5, 1.0, haloMask));
+                        gl_FragColor = vec4(color, alpha);
+                    }
+                `,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide,
+            });
+            this.moonHaloUniforms = haloMaterial.uniforms;
+        }
+
+        this.moonMesh = new THREE.Mesh(moonGeometry, moonMaterial);
+        this.moonHalo = new THREE.Mesh(haloGeometry, haloMaterial);
+        this.moonHalo.position.z = -2;
+        this.scene.add(this.moonMesh);
+        this.scene.add(this.moonHalo);
+        this.updateMoonPosition();
+    }
+
+    updateMoonPosition() {
+        if (!this.camera || !this.moonMesh || !this.moonHalo) return;
+
+        const moonX = 300 * this.camera.aspect;
+        const moonY = 230;
+        const moonZ = -900;
+        this.moonMesh.position.set(moonX, moonY, moonZ);
+        this.moonHalo.position.set(moonX, moonY, moonZ - 2);
+    }
+
+    updateRendererScene(delta) {
+        this.time += delta;
+
+        if (this.skyUniforms?.uTime) this.skyUniforms.uTime.value = this.time;
+        if (this.starUniforms?.uTime) this.starUniforms.uTime.value = this.time;
+        if (this.moonUniforms?.uTime) this.moonUniforms.uTime.value = this.time;
+        if (this.moonHaloUniforms?.uTime) this.moonHaloUniforms.uTime.value = this.time;
+
+        if (this.starfield) {
+            this.starfield.rotation.y += delta * 0.004;
+            this.starfield.rotation.z = Math.sin(this.time * 0.05) * 0.02;
+        }
+
+        if (this.camera) {
+            this.camera.position.x = Math.sin(this.time * 0.06) * 2.5;
+            this.camera.position.y = 34 + (Math.cos(this.time * 0.045) * 1.8);
+            this.camera.lookAt(0, 20, -700);
+        }
+    }
+
+    startRendererLoop() {
+        if (!this.renderer || !this.scene || !this.camera) return;
+
+        this.lastFrameTime = performance.now();
+        const animate = () => {
+            if (!this.isActive || !this.renderer || !this.scene || !this.camera) return;
+
+            const now = performance.now();
+            const delta = Math.min((now - this.lastFrameTime) / 1000, 0.1);
+            this.lastFrameTime = now;
+            this.updateRendererScene(delta);
+
+            if (this.shouldRenderFrame()) {
+                this.renderer.clear();
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            const frameId = requestAnimationFrame(animate);
+            this.registerAnimation(frameId);
+        };
+
+        const frameId = requestAnimationFrame(animate);
+        this.registerAnimation(frameId);
+    }
+
+    onResize() {
+        if (!this.renderer || !this.camera || typeof window === 'undefined') return;
+
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        this.camera.aspect = width / height;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio(1.5));
+        this.renderer.setSize(width, height);
+        this.updateMoonPosition();
+    }
+
+    toggleLegacySkyElements(visible) {
+        const themeContainer = document.getElementById('moonlit-forest-theme');
+        if (!themeContainer) return;
+
+        const bg = themeContainer.querySelector('.moonlit-forest-bg');
+        const moon = themeContainer.querySelector('.moonlit-forest-moon');
+        if (bg) bg.style.opacity = visible ? '' : '0';
+        if (moon) moon.style.opacity = visible ? '' : '0';
+    }
+
+    disposeSceneGraphObject(root) {
+        if (!root) return;
+
+        root.traverse((object) => {
+            if (object.geometry) object.geometry.dispose();
+            if (object.material) {
+                if (Array.isArray(object.material)) {
+                    object.material.forEach((material) => material?.dispose?.());
+                } else {
+                    object.material.dispose?.();
+                }
+            }
+        });
+    }
+
+    cleanupRenderer() {
+        if (this.resizeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('resize', this.resizeHandler);
+            this.resizeHandler = null;
+        }
+
+        if (this.scene) {
+            this.disposeSceneGraphObject(this.scene);
+            this.scene.clear();
+            this.scene = null;
+        }
+
+        if (this.renderer) {
+            const { domElement } = this.renderer;
+            this.renderer.dispose();
+            if (domElement?.parentNode) {
+                domElement.parentNode.removeChild(domElement);
+            }
+            this.renderer = null;
+        }
+
+        this.camera = null;
+        this.skyMesh = null;
+        this.starfield = null;
+        this.moonMesh = null;
+        this.moonHalo = null;
+        this.skyUniforms = null;
+        this.starUniforms = null;
+        this.moonUniforms = null;
+        this.moonHaloUniforms = null;
+        this.time = 0;
+        this.lastFrameTime = 0;
+        this.isWebGPU = false;
+        this.isWebGL = false;
+    }
+
     async createScene() {
         // Get quality setting and configuration
         const qualitySetting = this.getQualitySetting();
         this.qualityConfig = this.getQualityConfig(qualitySetting);
 
         console.log('[MoonlitForest] Creating scene with quality:', qualitySetting, this.qualityConfig);
+
+        const mainThemeContainer = this.getContainer('moonlit-forest-theme');
+        let rendererReady = false;
+        if (mainThemeContainer) {
+            rendererReady = await this.initRenderer(mainThemeContainer);
+        }
+
+        if (rendererReady) {
+            this.createRendererScene();
+            this.startRendererLoop();
+            this.resizeHandler = () => this.onResize();
+            window.addEventListener('resize', this.resizeHandler);
+            this.toggleLegacySkyElements(false);
+        } else {
+            this.toggleLegacySkyElements(true);
+        }
 
         // Define tree colors for different layers (quality-based counts)
         const treeLayers = [
@@ -324,7 +834,12 @@ export default class MoonlitForestTheme extends BaseTheme {
                         mid: '#14201A', // Slightly darker
                         front: '#0D1512', // Darkest for front layer
                     };
-                    const groundColorKey = layerIndex === 0 ? 'back' : layerIndex === 1 ? 'mid' : 'front';
+                    let groundColorKey = 'front';
+                    if (layerIndex === 0) {
+                        groundColorKey = 'back';
+                    } else if (layerIndex === 1) {
+                        groundColorKey = 'mid';
+                    }
                     ctx.fillStyle = groundColors[groundColorKey];
                     ctx.beginPath();
                     ctx.moveTo(0, C_HEIGHT);
@@ -633,10 +1148,9 @@ export default class MoonlitForestTheme extends BaseTheme {
         }
 
         // 5. Falling Leaves with Depth Layers (quality-based, parallax effect)
-        const themeContainer = this.getContainer('moonlit-forest-theme');
-        if (themeContainer) {
+        if (mainThemeContainer) {
             // Clear old leaves before adding new ones
-            themeContainer.querySelectorAll('.moonlit-leaf').forEach((e) => e.remove());
+            mainThemeContainer.querySelectorAll('.moonlit-leaf').forEach((e) => e.remove());
             this.leaves = [];
 
             // Define depth layers for leaves to create parallax effect
@@ -712,14 +1226,14 @@ export default class MoonlitForestTheme extends BaseTheme {
                     leaf.style.animationDuration = `${duration}s`;
                     leaf.style.animationDelay = `-${Math.random() * duration}s`;
 
-                    themeContainer.appendChild(leaf);
+                    mainThemeContainer.appendChild(leaf);
                     this.leaves.push(leaf);
                 }
             });
         }
 
         // 6. Ambient Fireflies (quality-based, continuous)
-        if (themeContainer && this.qualityConfig.fireflies > 0) {
+        if (mainThemeContainer && this.qualityConfig.fireflies > 0) {
             for (let i = 0; i < this.qualityConfig.fireflies; i++) {
                 setTimeout(() => {
                     this.spawnAmbientFirefly();
@@ -872,7 +1386,7 @@ export default class MoonlitForestTheme extends BaseTheme {
     /**
      * React to piece locks with subtle mystical touches
      */
-    onPieceLock(piece) {
+    onPieceLock() {
         // Small firefly sparkle on piece lock (30% chance)
         if (Math.random() < 0.3) {
             this.createSmallSparkle();
@@ -1347,6 +1861,8 @@ export default class MoonlitForestTheme extends BaseTheme {
         this.leaves = [];
 
         super.stop();
+        this.cleanupRenderer();
+        this.toggleLegacySkyElements(true);
     }
 
     /**

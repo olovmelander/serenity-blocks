@@ -17,9 +17,23 @@ export const gridVertexShader = `
 varying vec2 vUv;
 varying vec3 vWorldPos;
 
+uniform float time;
+uniform float waveIntensity;
+uniform float waveFrequency;
+uniform float waveSpeed;
+uniform float waveFalloff;
+uniform vec2 waveOrigin;
+
 void main() {
     vUv = uv;
-    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+    vec3 displaced = position;
+    float waveDist = length(displaced.xz - waveOrigin);
+    float wave = sin(waveDist * waveFrequency - time * waveSpeed)
+        * waveIntensity
+        * exp(-waveDist * waveFalloff);
+    displaced.y += wave;
+
+    vec4 worldPosition = modelMatrix * vec4(displaced, 1.0);
     vWorldPos = worldPosition.xyz;
     gl_Position = projectionMatrix * viewMatrix * worldPosition;
 }
@@ -31,11 +45,17 @@ uniform float speed;
 uniform vec3 gridColor;
 uniform float glowIntensity;
 uniform float pulseIntensity;
+uniform vec2 resolution;
+uniform float sunX;
 
 varying vec2 vUv;
 varying vec3 vWorldPos;
 
 void main() {
+    // Screen-space clip: discard grid pixels above horizon
+    vec2 screenUv = gl_FragCoord.xy / resolution;
+    if (screenUv.y < 0.46) discard;
+
     // Grid line calculation with scrolling
     float gridSpacing = 1.5;  // Larger grid cells
     float lineWidth = 0.04;   // Slightly thicker lines to match
@@ -54,37 +74,69 @@ void main() {
     
     // Distance fade (horizon falloff)
     float dist = length(vWorldPos.xz);
-    float distanceFade = 1.0 - smoothstep(5.0, 60.0, dist);
+    float distanceFade = 1.0 - smoothstep(5.0, 45.0, dist);
     
     // Perspective fade (further = dimmer)
-    float perspectiveFade = 1.0 - smoothstep(0.0, 80.0, -vWorldPos.z);
+    float perspectiveFade = 1.0 - smoothstep(0.0, 40.0, -vWorldPos.z);
     
     // Combine
-    float intensity = gridLine * glowIntensity * distanceFade * perspectiveFade;
+    float horizonFade = smoothstep(-60.0, -40.0, vWorldPos.z);
+    float intensity = gridLine * glowIntensity * distanceFade * perspectiveFade * horizonFade;
     intensity += intensity * pulseIntensity * 0.5;
     
     // Add subtle glow around lines
-    float glow = max(lineX, lineZ) * 0.3;
+    float glow = max(lineX, lineZ) * 0.3 * horizonFade;
     
     vec3 color = gridColor * (intensity + glow * 0.5);
     
     // ------------------------------------------------------------------------
-    // NEW: Wet Reflection Effect
+    // Sun Reflection Effect (Enhanced)
     // ------------------------------------------------------------------------
-    // Calculate reflection of the sun on the "wet" grid
-    // Simple vertical streak reflection
-    float sunX = 0.0; // Sun is effectively at x=0
-    float reflectionWidth = 10.0;
-    float reflectionIntensity = 1.0 - smoothstep(0.0, reflectionWidth, abs(vWorldPos.x - sunX));
+    // Vertical pink streak reflecting the sun
+    float reflectionWidth = 15.0;  // Wider for more prominent reflection
+    float sunReflection = 1.0 - smoothstep(0.0, reflectionWidth, abs(vWorldPos.x - sunX));
     
-    // Fade reflection with distance (stronger near horizon)
-    reflectionIntensity *= smoothstep(0.0, -100.0, vWorldPos.z);
+    // Stronger at horizon, fades toward camera
+    sunReflection *= smoothstep(0.0, -100.0, vWorldPos.z) * horizonFade;
     
-    // Add varying noise to reflection for "wet street" look
+    // Add shimmering noise for "wet" look
     float noise = sin(vWorldPos.z * 0.5 + time) * sin(vWorldPos.x * 2.0) * 0.5 + 0.5;
-    vec3 reflectionColor = vec3(1.0, 0.4, 0.8) * reflectionIntensity * noise * 0.4;
     
-    color += reflectionColor;
+    // Pink/magenta color matching the sun glow
+    vec3 sunReflectionColor = vec3(1.0, 0.3, 0.9) * sunReflection * noise * 0.8;  // Boosted intensity
+    
+    color += sunReflectionColor;
+    
+    // ------------------------------------------------------------------------
+    // Building Reflections
+    // ------------------------------------------------------------------------
+    // Create dark reflections of building silhouettes
+    // Buildings are between z=-80 to -35, distributed across x
+    float buildingReflection = 0.0;
+    
+    // Sample multiple building positions for silhouette effect
+    for (int i = 0; i < 6; i++) {
+        float buildingX = -100.0 + float(i) * 40.0;  // Distributed across horizon
+        float buildingWidth = 8.0 + sin(float(i) * 1.5) * 4.0;  // Varying widths
+        float buildingZ = -65.0 + sin(float(i) * 2.0) * 15.0;  // Varying depths
+        
+        // Check if we're under a building's reflection
+        float xDist = abs(vWorldPos.x - buildingX);
+        float zDist = vWorldPos.z - buildingZ;
+        
+        if (xDist < buildingWidth && zDist > 0.0) {
+            // Dark reflection, fades with distance from building
+            float reflectStrength = (1.0 - smoothstep(0.0, buildingWidth, xDist)) * 
+                                   smoothstep(80.0, 0.0, zDist) *
+                                   smoothstep(0.0, -80.0, vWorldPos.z);
+            buildingReflection = max(buildingReflection, reflectStrength);
+        }
+    }
+    
+    // Darken the grid where buildings are reflected
+    color *= (1.0 - buildingReflection * 0.5);
+    // Add subtle purple tint to building reflections
+    color += vec3(0.1, 0.0, 0.15) * buildingReflection * 0.3;
     
     // ------------------------------------------------------------------------
     // NEW: Volumetric Horizon Fog
@@ -103,8 +155,9 @@ void main() {
     
     // Keep alpha but fade out at extreme distance
     float alpha = intensity * 0.9 + glow * 0.3;
-    alpha = max(alpha, reflectionIntensity * 0.5); // Reflection adds visibility
-    
+    alpha = max(alpha, sunReflection * 0.5); // Reflection adds visibility
+    alpha *= horizonFade;
+
     gl_FragColor = vec4(finalColor, alpha * distanceFade);
 }
 `;

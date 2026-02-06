@@ -188,6 +188,10 @@ export class DisplayManager {
      */
     async exitFullscreen() {
         try {
+            if (!this.isFullscreen()) {
+                return true;
+            }
+
             if (document.exitFullscreen) {
                 await document.exitFullscreen();
             } else if (document.webkitExitFullscreen) {

@@ -281,6 +281,8 @@ uniform vec3 uBaseColor;
 uniform vec3 uRimColor;
 uniform float uMountainLayer;
 uniform float uTime;
+uniform float uRimIntensity;
+uniform float uShockwave;
 
 varying vec3 vNormal;
 varying vec3 vWorldPosition;
@@ -337,7 +339,8 @@ void main() {
     
     // Rim light mostly on top
     float topLight = smoothstep(40.0, 150.0, vHeight); 
-    vec3 rim = uRimColor * fresnel * topLight * 2.5;
+    float shockwave = sin(vWorldPosition.z * 0.08 - uTime * 2.0) * uShockwave * 0.6 + 1.0;
+    vec3 rim = uRimColor * fresnel * topLight * 2.5 * uRimIntensity * shockwave;
 
     // 4. Ground Fog (Dark mist against the grid)
     // Creates a smooth dark transitions at the bottom without losing all detail
@@ -365,6 +368,10 @@ void main() {
 // ============================================================================
 
 export const gridVertexShader = `
+uniform float uWaveTime;
+uniform vec2 uWaveOrigin;
+uniform float uWaveIntensity;
+
 varying vec2 vUv;
 varying vec3 vWorldPos;
 varying vec3 vViewPos;
@@ -372,6 +379,10 @@ varying vec3 vViewPos;
 void main() {
     vUv = uv;
     vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+    float distToWave = length(worldPosition.xz - uWaveOrigin);
+    float waveFade = 1.0 - smoothstep(0.0, 140.0, distToWave);
+    float waveHeight = sin(distToWave * 0.35 - uWaveTime * 4.0) * waveFade * uWaveIntensity * 1.8;
+    worldPosition.y += waveHeight;
     vWorldPos = worldPosition.xyz;
     
     vec4 mvPosition = viewMatrix * worldPosition;
@@ -505,10 +516,24 @@ void main() {
 
 export const highlightVertexShader = `
 varying vec2 vUv;
+#ifdef USE_INSTANCING
+attribute mat4 instanceMatrix;
+attribute vec3 aColor;
+attribute float aIntensity;
+varying vec3 vColor;
+varying float vIntensity;
+#endif
 
 void main() {
     vUv = uv;
+#ifdef USE_INSTANCING
+    vColor = aColor;
+    vIntensity = aIntensity;
+    vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+#else
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+#endif
 }
 `;
 
@@ -519,6 +544,10 @@ uniform float uTime;
 uniform float uTwinkle;
 
 varying vec2 vUv;
+#ifdef USE_INSTANCING
+varying vec3 vColor;
+varying float vIntensity;
+#endif
 
 void main() {
     // Edge glow effect
@@ -530,7 +559,13 @@ void main() {
     float fill = 1.0 - smoothstep(0.0, 0.4, edge);
 
     // Chromatic edge enhancement
-    vec3 chromatic = uColor;
+    vec3 baseColor = uColor;
+    float baseIntensity = uIntensity;
+#ifdef USE_INSTANCING
+    baseColor = vColor;
+    baseIntensity = vIntensity;
+#endif
+    vec3 chromatic = baseColor;
     chromatic.r += edgeGlow * 0.3;
     chromatic.b += edgeGlow * 0.2;
 
@@ -540,8 +575,8 @@ void main() {
     // Twinkle effect during combos
     float twinkle = 1.0 + sin(uTime * 15.0 + uTwinkle) * uTwinkle * 0.3;
 
-    vec3 finalColor = chromatic * uIntensity * pulse * twinkle;
-    float alpha = (fill * 0.5 + edgeGlow * 0.9) * uIntensity;
+    vec3 finalColor = chromatic * baseIntensity * pulse * twinkle;
+    float alpha = (fill * 0.5 + edgeGlow * 0.9) * baseIntensity;
 
     gl_FragColor = vec4(finalColor, alpha);
 }
@@ -584,9 +619,12 @@ varying float vLife;
 varying float vType;
 varying vec3 vColor;
 uniform float uTwinkle;
+uniform float uColorShift;
 
 void main() {
     float alpha = 0.0;
+    float shift = clamp(uColorShift, 0.0, 1.0) * 0.35;
+    vec3 baseColor = mix(vColor, vec3(1.0, 0.25, 0.9), shift);
 
     if (vType < 0.5) {
         // Type 0: Soft circle
@@ -594,14 +632,14 @@ void main() {
         float dist = length(center);
         alpha = (1.0 - dist * 2.0) * vLife;
         alpha = pow(max(0.0, alpha), 1.5);
-        gl_FragColor = vec4(vColor * (1.0 + vLife * 0.5), alpha);
+        gl_FragColor = vec4(baseColor * (1.0 + vLife * 0.5), alpha);
     } else if (vType < 1.5) {
         // Type 1: Ring
         vec2 center = gl_PointCoord - 0.5;
         float dist = length(center);
         float ring = smoothstep(0.3, 0.35, dist) * smoothstep(0.5, 0.45, dist);
         alpha = ring * vLife;
-        gl_FragColor = vec4(vColor * (1.0 + vLife * 0.5), alpha);
+        gl_FragColor = vec4(baseColor * (1.0 + vLife * 0.5), alpha);
     } else {
         // Type 2: Square with VHS Glitch (Chromatic Aberration)
         vec2 center = gl_PointCoord - 0.5;
@@ -628,7 +666,7 @@ void main() {
         float aB = max(sqB * 0.8, pow(max(0.0, glB), 1.5) * 0.5) * vLife;
 
         // Combine channels with additive exposure
-        vec3 color = vec3(vColor.r * aR, vColor.g * aG, vColor.b * aB);
+        vec3 color = vec3(baseColor.r * aR, baseColor.g * aG, baseColor.b * aB);
         
         // Flash white intensity
         color = mix(color, vec3(aG), uTwinkle * 0.5); // Add some white core
@@ -645,10 +683,27 @@ void main() {
 
 export const ringVertexShader = `
 varying vec2 vUv;
+#ifdef USE_INSTANCING
+attribute mat4 instanceMatrix;
+attribute vec3 aColor;
+attribute float aLife;
+attribute float aRadius;
+varying vec3 vColor;
+varying float vLife;
+varying float vRadius;
+#endif
 
 void main() {
     vUv = uv;
+#ifdef USE_INSTANCING
+    vColor = aColor;
+    vLife = aLife;
+    vRadius = aRadius;
+    vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+#else
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+#endif
 }
 `;
 
@@ -659,13 +714,27 @@ uniform float uRadius;
 uniform float uMaxRadius;
 
 varying vec2 vUv;
+#ifdef USE_INSTANCING
+varying vec3 vColor;
+varying float vLife;
+varying float vRadius;
+#endif
 
 void main() {
     vec2 center = vUv - 0.5;
     float dist = length(center) * 2.0;
 
     // Current radius normalized
-    float currentRadius = uRadius / uMaxRadius;
+    vec3 ringColor = uColor;
+    float ringLife = uLife;
+    float ringRadius = uRadius;
+#ifdef USE_INSTANCING
+    ringColor = vColor;
+    ringLife = vLife;
+    ringRadius = vRadius;
+#endif
+
+    float currentRadius = ringRadius / uMaxRadius;
     float ringWidth = 0.08 * (1.0 - currentRadius * 0.5);
 
     // Ring shape with soft edges
@@ -673,9 +742,9 @@ void main() {
                * smoothstep(currentRadius + ringWidth * 0.5, currentRadius, dist);
 
     // Fade out as it expands
-    float fade = uLife;
+    float fade = ringLife;
 
-    gl_FragColor = vec4(uColor, ring * fade * 0.8);
+    gl_FragColor = vec4(ringColor, ring * fade * 0.8);
 }
 `;
 
