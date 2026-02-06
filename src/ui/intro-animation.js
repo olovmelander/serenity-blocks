@@ -366,7 +366,7 @@ export class IntroAnimation {
 
         // Touch
         this.boundHandlers.touchstart = (e) => this.handleInteraction(e);
-        this.container.addEventListener('touchstart', this.boundHandlers.touchstart);
+        this.container.addEventListener('touchstart', this.boundHandlers.touchstart, { passive: true });
 
         // Gamepad (check for button press)
         this.gamepadCheckInterval = setInterval(() => {

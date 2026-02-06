@@ -10,10 +10,23 @@
  * - Post-processing bloom and atmosphere
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { SYNTHWAVE_SUNSET_TETROMINOS } from './synthwave-sunset-tetrominos.js';
+import {
+    createGridNodeMaterial,
+    createSunNodeMaterial,
+    createSunGlowNodeMaterial,
+    createStarNodeMaterial,
+    createHighlightNodeMaterial,
+    createParticleNodeMaterial,
+    createBuildingNodeMaterial,
+    createBuildingEdgeNodeMaterial,
+} from './synthwave-sunset-materials.js';
+import { SynthwaveSunsetPost } from './synthwave-sunset-post.js';
+import { SynthwaveParticleCompute, SynthwaveHighlightCompute } from './synthwave-sunset-compute.js';
 import {
     gridVertexShader,
     gridFragmentShader,
@@ -38,6 +51,65 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.camera = null;
         this.renderer = null;
         this.clock = new THREE.Clock();
+        this.isWebGPU = false;
+        this.isWebGL = false;
+        this.forceWebGL = false;
+        this.enableWebGPU = false;
+        this.webgpuMaterialsReady = true;
+        this._sceneToken = 0;
+        this._resizeHandler = null;
+        this.baselineEnabled = false;
+        this.baselineFrames = [];
+        this.baselineMaxFrames = 600;
+        this.fixedDtSeconds = null;
+        this.fixedElapsed = 0;
+        this.dynamicResolution = {
+            enabled: true,
+            scale: 1.0,
+            minScale: 0.7,
+            maxScale: 1.0,
+            targetMs: 16.6,
+            emaMs: 16.6,
+            adjustInterval: 0.5,
+            elapsed: 0,
+        };
+        this.budgetMonitor = {
+            enabled: false,
+            samples: [],
+            maxSamples: 120,
+            lastLog: 0,
+            lastWarn: 0,
+            warnThreshold: 28,
+            frameStart: 0,
+            lastMark: 0,
+            marks: [],
+        };
+        this.lodState = {
+            starCount: 0,
+            showFarBuildings: true,
+        };
+        this.randomFn = Math.random;
+        this.randomSeed = null;
+        this.noPost = false;
+        this.mrtAuditEnabled = false;
+        this.smoothedTime = 0;
+        this.lastElapsed = 0;
+        this.gridUniforms = null;
+        this.sunUniforms = null;
+        this.sunGlowUniforms = [];
+        this.starUniforms = null;
+        this.highlightUniforms = [];
+        this.particleUniforms = null;
+        this.postProcessing = null;
+        this.particleCompute = null;
+        this.highlightCompute = null;
+        this.highlightInstanced = null;
+        this.highlightData = [];
+        this.buildingEdgeUniforms = null;
+        this.buildingEdgeMaterial = null;
+        this.buildingMaterials = [];
+        this.buildingUniforms = [];
+        this.shootingStarPool = [];
 
         // Scene elements
         this.grid = null;
@@ -55,11 +127,25 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         // Animation state
         this.sunPosition = { x: 0, y: 0 };
-        this.sunPhaseX = Math.random() * Math.PI * 2;
-        this.timeOffset = Math.random() * 10000;
+        this.sunPhaseX = 0;
+        this.timeOffset = 0;
+        this.sunScreenUv = new THREE.Vector2(0.5, 0.5);
+        this.sunNdc = new THREE.Vector3();
+        this.horizonUv = 0.46;
+        this._sunWorld = new THREE.Vector3();
+        this._horizonWorld = new THREE.Vector3(0, 10, -80);
+        this._horizonNdc = new THREE.Vector3();
+        this.horizonOffset = 0.05;
 
         // Event state
         this.gridPulseIntensity = 0;
+        this.gridWaveOrigin = new THREE.Vector2(0, 0);
+        this.gridWaveIntensity = 0;
+        this.gridWaveFrequency = 0.35;
+        this.gridWaveSpeed = 6.0;
+        this.gridWaveFalloff = 0.045;
+        this.gridWaveDecay = 0.92;
+        this.enableGridWaves = false;
         this.sunPulseIntensity = 0;
         this.cityGlowIntensity = 0;
         this.comboColorShift = 0;
@@ -132,6 +218,372 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         return settings?.effectQuality || 'High';
     }
 
+    getDebugFlags() {
+        if (typeof window === 'undefined') {
+            return {
+                forceWebGL: false,
+                baseline: false,
+                enableWebGPU: false,
+                fixedDt: null,
+                seed: null,
+                noPost: false,
+                noDrs: false,
+                budget: false,
+                mrtAudit: false,
+            };
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const hasFlag = (name) => params.has(name)
+            || params.get(name) === '1'
+            || params.get(name) === 'true';
+
+        const forceWebGL = hasFlag('forceWebGL');
+        const baseline = hasFlag('synthwaveBaseline') || hasFlag('baseline');
+        const enableWebGPU = !hasFlag('synthwaveNoWebGPU') && !hasFlag('noWebGPU');
+        const noPost = hasFlag('synthwaveNoPost') || hasFlag('noPost');
+        const noDrs = hasFlag('synthwaveNoDRS') || hasFlag('noDRS') || hasFlag('noDrs');
+        const budget = hasFlag('synthwaveBudget') || hasFlag('budget');
+        const mrtAudit = hasFlag('synthwaveMrtAudit') || hasFlag('mrtAudit');
+
+        const fixedDtValue = Number(params.get('synthwaveFixedDt') || params.get('fixedDt'));
+        const fixedDt = Number.isFinite(fixedDtValue) && fixedDtValue > 0 ? fixedDtValue : null;
+
+        const seedValue = Number(params.get('synthwaveSeed') || params.get('seed'));
+        const seed = Number.isFinite(seedValue) ? seedValue : null;
+
+        return {
+            forceWebGL,
+            baseline,
+            enableWebGPU,
+            fixedDt,
+            seed,
+            noPost,
+            noDrs,
+            budget,
+            mrtAudit,
+        };
+    }
+
+    isNodeMaterial(material) {
+        if (!material) return false;
+        if (material.isNodeMaterial) return true;
+        if (
+            material.isMeshBasicNodeMaterial
+            || material.isMeshStandardNodeMaterial
+            || material.isMeshPhysicalNodeMaterial
+            || material.isMeshPhongNodeMaterial
+            || material.isPointsNodeMaterial
+        ) {
+            return true;
+        }
+        const type = material.type || material.constructor?.name || '';
+        return type.includes('NodeMaterial');
+    }
+
+    auditMrtMaterials(label = 'MRT Audit') {
+        if (!this.isWebGPU || !this.scene) return;
+
+        const seen = new Set();
+        const nonNode = [];
+        const missingEmissive = [];
+
+        const recordMaterial = (material, object) => {
+            if (!material) return;
+            if (Array.isArray(material)) {
+                material.forEach((mat) => recordMaterial(mat, object));
+                return;
+            }
+            if (seen.has(material)) return;
+            seen.add(material);
+
+            const objectName = object?.name || object?.type || 'UnknownObject';
+            const materialName = material.name || material.type || material.constructor?.name || 'UnknownMaterial';
+
+            if (!this.isNodeMaterial(material)) {
+                nonNode.push({ objectName, materialName });
+                return;
+            }
+            if (!('emissiveNode' in material) || !material.emissiveNode) {
+                missingEmissive.push({ objectName, materialName });
+            }
+        };
+
+        if (this.scene.material) {
+            recordMaterial(this.scene.material, this.scene);
+        }
+        this.scene.traverse((child) => {
+            if (child.material) {
+                recordMaterial(child.material, child);
+            }
+        });
+
+        const formatSample = (entries) => entries
+            .slice(0, 12)
+            .map((entry) => `- ${entry.objectName}: ${entry.materialName}`)
+            .join('\n');
+
+        console.groupCollapsed(`[SynthwaveSunset][${label}] WebGPU MRT material audit`);
+        console.log(`Total unique materials: ${seen.size}`);
+        console.log(`Non-NodeMaterials: ${nonNode.length}`);
+        if (nonNode.length) console.warn(formatSample(nonNode));
+        console.log(`NodeMaterials missing emissiveNode: ${missingEmissive.length}`);
+        if (missingEmissive.length) console.warn(formatSample(missingEmissive));
+        console.groupEnd();
+    }
+
+    initRandom(seed) {
+        if (Number.isFinite(seed)) {
+            this.randomSeed = seed;
+            this.randomFn = this.seededRandom(seed);
+        } else {
+            this.randomSeed = null;
+            this.randomFn = Math.random;
+        }
+    }
+
+    rand() {
+        return this.randomFn ? this.randomFn() : Math.random();
+    }
+
+    trackBaseline(delta) {
+        const frameMs = delta * 1000;
+        this.baselineFrames.push(frameMs);
+        if (this.baselineFrames.length > this.baselineMaxFrames) {
+            this.baselineFrames.shift();
+        }
+    }
+
+    resetBaseline() {
+        this.baselineFrames = [];
+    }
+
+    reportBaseline() {
+        if (!this.baselineFrames.length) {
+            console.log('[SynthwaveBaseline] No frames collected yet.');
+            return null;
+        }
+        const frames = [...this.baselineFrames].sort((a, b) => a - b);
+        const avgMs = this.baselineFrames.reduce((a, b) => a + b, 0) / this.baselineFrames.length;
+        const avgFps = 1000 / avgMs;
+        const p99Index = Math.max(0, Math.floor(frames.length * 0.99) - 1);
+        const p99Ms = frames[p99Index];
+        const low1Fps = 1000 / p99Ms;
+        const report = {
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL',
+            preset: this.currentQuality,
+            avgFps: Number(avgFps.toFixed(1)),
+            p99Ms: Number(p99Ms.toFixed(2)),
+            low1Fps: Number(low1Fps.toFixed(1)),
+            frames: this.baselineFrames.length,
+        };
+        console.log('[SynthwaveBaseline] Report:', report);
+        return report;
+    }
+
+    beginBudgetFrame() {
+        if (!this.budgetMonitor?.enabled || typeof performance === 'undefined') return;
+        const now = performance.now();
+        this.budgetMonitor.frameStart = now;
+        this.budgetMonitor.lastMark = now;
+        this.budgetMonitor.marks = [];
+    }
+
+    markBudget(label) {
+        if (!this.budgetMonitor?.enabled || typeof performance === 'undefined') return;
+        const now = performance.now();
+        const ms = now - this.budgetMonitor.lastMark;
+        this.budgetMonitor.lastMark = now;
+        this.budgetMonitor.marks.push({ label, ms });
+    }
+
+    endBudgetFrame() {
+        if (!this.budgetMonitor?.enabled || typeof performance === 'undefined') return;
+        const now = performance.now();
+        const frameMs = now - this.budgetMonitor.frameStart;
+        const sample = {
+            frameMs,
+            marks: this.budgetMonitor.marks,
+            calls: this.renderer?.info?.render?.calls ?? 0,
+            triangles: this.renderer?.info?.render?.triangles ?? 0,
+        };
+        this.budgetMonitor.samples.push(sample);
+        if (this.budgetMonitor.samples.length > this.budgetMonitor.maxSamples) {
+            this.budgetMonitor.samples.shift();
+        }
+
+        if (frameMs > this.budgetMonitor.warnThreshold) {
+            if (!this.budgetMonitor.lastWarn || now - this.budgetMonitor.lastWarn > 1000) {
+                this.budgetMonitor.lastWarn = now;
+                const breakdown = sample.marks.map((m) => `${m.label}:${m.ms.toFixed(1)}ms`).join(' ');
+                console.warn(`[SynthwaveBudget][Slow] ${frameMs.toFixed(1)}ms | ${breakdown}`);
+            }
+        }
+
+        if (!this.budgetMonitor.lastLog || now - this.budgetMonitor.lastLog > 5000) {
+            this.budgetMonitor.lastLog = now;
+            const frames = this.budgetMonitor.samples.map((s) => s.frameMs);
+            const avg = frames.reduce((a, b) => a + b, 0) / frames.length;
+            const sorted = [...frames].sort((a, b) => a - b);
+            const p95Index = Math.max(0, Math.floor(sorted.length * 0.95) - 1);
+            const p95 = sorted[p95Index] ?? avg;
+            const avgCalls = this.budgetMonitor.samples
+                .reduce((sum, s) => sum + s.calls, 0) / this.budgetMonitor.samples.length;
+            console.log(`[SynthwaveBudget] avg=${avg.toFixed(1)}ms p95=${p95.toFixed(1)}ms calls=${avgCalls.toFixed(0)}`);
+        }
+    }
+
+    applyLod() {
+        if (!this.dynamicResolution?.enabled) return;
+
+        const scale = this.dynamicResolution.scale;
+        let starFactor = 1.0;
+        if (scale < 0.75) {
+            starFactor = 0.4;
+        } else if (scale < 0.85) {
+            starFactor = 0.6;
+        }
+
+        if (this.starField?.geometry) {
+            const baseCount = this.starField.userData.baseCount || this.activePreset.starCount;
+            const targetCount = Math.max(150, Math.floor(baseCount * starFactor));
+            const current = this.starField.geometry.drawRange?.count ?? baseCount;
+            if (current !== targetCount) {
+                this.starField.geometry.setDrawRange(0, targetCount);
+                this.lodState.starCount = targetCount;
+            }
+        }
+
+        const showFarBuildings = starFactor >= 0.6;
+        if (this.buildings.length >= 2 && this.buildingEdges.length >= 2) {
+            if (this.lodState.showFarBuildings !== showFarBuildings) {
+                this.buildings[0].visible = showFarBuildings;
+                this.buildingEdges[0].visible = showFarBuildings;
+                this.lodState.showFarBuildings = showFarBuildings;
+            }
+        }
+    }
+
+    getDynamicPixelRatio() {
+        const baseRatio = this.getEffectivePixelRatio();
+        const scale = this.dynamicResolution?.enabled ? this.dynamicResolution.scale : 1.0;
+        return Math.max(0.25, Math.round(baseRatio * scale * 100) / 100);
+    }
+
+    applyDynamicResolution() {
+        if (!this.renderer || typeof window === 'undefined') return;
+        const ratio = this.getDynamicPixelRatio();
+        this.renderer.setPixelRatio(ratio);
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        const pixelRatio = this.renderer.getPixelRatio();
+        if (this.starUniforms?.uPixelRatio) this.starUniforms.uPixelRatio.value = pixelRatio;
+        if (this.particleUniforms?.uPixelRatio) this.particleUniforms.uPixelRatio.value = pixelRatio;
+        if (this.postProcessing) {
+            this.postProcessing.setSize(window.innerWidth, window.innerHeight);
+        }
+    }
+
+    updateDynamicResolution(delta) {
+        const drs = this.dynamicResolution;
+        if (!drs?.enabled || !this.renderer) return;
+        const frameMs = delta * 1000;
+        drs.emaMs = drs.emaMs * 0.9 + frameMs * 0.1;
+        drs.elapsed += delta;
+        if (drs.elapsed < drs.adjustInterval) return;
+        drs.elapsed = 0;
+
+        let newScale = drs.scale;
+        if (drs.emaMs > drs.targetMs * 1.12) {
+            newScale = Math.max(drs.minScale, drs.scale - 0.05);
+        } else if (drs.emaMs < drs.targetMs * 0.85) {
+            newScale = Math.min(drs.maxScale, drs.scale + 0.05);
+        }
+
+        if (Math.abs(newScale - drs.scale) >= 0.01) {
+            drs.scale = newScale;
+            this.applyDynamicResolution();
+            this.applyLod();
+        }
+    }
+
+    captureBaseline(label = 'synthwave') {
+        if (!this.renderer?.domElement) {
+            console.warn('[SynthwaveBaseline] No renderer canvas available.');
+            return;
+        }
+        const canvas = this.renderer.domElement;
+        const name = `${label}-${this.isWebGPU ? 'webgpu' : 'webgl'}-${Date.now()}.png`;
+        if (canvas.toBlob) {
+            canvas.toBlob((blob) => {
+                if (!blob) return;
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = name;
+                link.click();
+                URL.revokeObjectURL(url);
+            });
+        } else {
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL('image/png');
+            link.download = name;
+            link.click();
+        }
+    }
+
+    async initRenderer(container) {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const antialias = this.getAntialiasEnabled();
+        const preserveDrawingBuffer = this.baselineEnabled === true;
+
+        this.renderer = null;
+        this.isWebGPU = false;
+        this.isWebGL = false;
+
+        if (this.enableWebGPU && !this.forceWebGL) {
+            const webgpuRenderer = new THREE.WebGPURenderer({
+                antialias,
+                powerPreference: 'high-performance',
+                alpha: false,
+                forceWebGL: false,
+                preserveDrawingBuffer,
+            });
+            try {
+                await webgpuRenderer.init();
+            } catch (error) {
+                console.warn('[Synthwave3D] WebGPU init failed, falling back to WebGL2:', error);
+            }
+
+            const isWebGPU = webgpuRenderer.backend?.isWebGPUBackend === true;
+            if (isWebGPU && this.webgpuMaterialsReady) {
+                this.renderer = webgpuRenderer;
+                this.isWebGPU = true;
+            } else {
+                webgpuRenderer.dispose();
+            }
+        }
+
+        if (!this.renderer) {
+            if (this.enableWebGPU && !this.webgpuMaterialsReady) {
+                console.warn('[Synthwave3D] WebGPU requested but TSL materials are not ready. Using WebGL2 fallback.');
+            }
+            this.renderer = new THREE.WebGLRenderer({
+                alpha: false,
+                antialias,
+                powerPreference: 'high-performance',
+                preserveDrawingBuffer,
+            });
+            this.isWebGL = true;
+        }
+
+        this.renderer.setSize(width, height);
+        this.renderer.setPixelRatio(this.getDynamicPixelRatio());
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        container.appendChild(this.renderer.domElement);
+        this.registerContainer(container);
+    }
+
     async createScene() {
         console.log('[Synthwave3D] Initializing Three.js scene...');
 
@@ -141,11 +593,91 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             return;
         }
 
+        const sceneToken = ++this._sceneToken;
         container.innerHTML = '';
+
+        const debugFlags = this.getDebugFlags();
+        this.forceWebGL = debugFlags.forceWebGL;
+        this.baselineEnabled = debugFlags.baseline;
+        this.enableWebGPU = debugFlags.enableWebGPU;
+        this.noPost = debugFlags.noPost;
+        if (this.dynamicResolution) {
+            this.dynamicResolution.enabled = !debugFlags.noDrs && !this.baselineEnabled;
+            this.dynamicResolution.scale = 1.0;
+            this.dynamicResolution.emaMs = 16.6;
+            this.dynamicResolution.elapsed = 0;
+        }
+        if (this.budgetMonitor) {
+            this.budgetMonitor.enabled = debugFlags.budget === true;
+            this.budgetMonitor.samples = [];
+            this.budgetMonitor.lastLog = 0;
+            this.budgetMonitor.lastWarn = 0;
+            this.budgetMonitor.frameStart = 0;
+            this.budgetMonitor.lastMark = 0;
+            this.budgetMonitor.marks = [];
+        }
+        this.mrtAuditEnabled = debugFlags.mrtAudit;
+        this.fixedDtSeconds = Number.isFinite(debugFlags.fixedDt) ? debugFlags.fixedDt / 1000 : null;
+        this.fixedElapsed = 0;
+        this.initRandom(debugFlags.seed);
+        this.sunPhaseX = this.rand() * Math.PI * 2;
+        this.timeOffset = this.rand() * 10000;
+        this.smoothedTime = 0;
+        this.lastElapsed = 0;
+        this.gridUniforms = null;
+        this.sunUniforms = null;
+        this.sunGlowUniforms = [];
+        this.starUniforms = null;
+        this.highlightUniforms = [];
+        this.particleUniforms = null;
+        this.highlightData = [];
+        this.buildingUniforms = [];
+        this.shootingStarPool = [];
+        this.sunScreenUv.set(0.5, 0.5);
+        this.horizonUv = 0.46;
+        this.gridWaveOrigin.set(0, 0);
+        this.gridWaveIntensity = 0;
+
+        if (this.forceWebGL) {
+            console.log('[Synthwave3D] Debug: forceWebGL enabled');
+        }
+        if (this.baselineEnabled) {
+            console.log('[SynthwaveBaseline] Baseline capture enabled');
+        }
 
         // Apply quality settings
         this.currentQuality = this.getGraphicsQuality();
         this.activePreset = this.qualityPresets[this.currentQuality] || this.qualityPresets.High;
+
+        await this.initRenderer(container);
+        if (!this.renderer || !this.isActive || this._sceneToken !== sceneToken) {
+            if (this.renderer) {
+                try {
+                    this.renderer.dispose();
+                } catch (error) {
+                    console.warn('[Synthwave3D] Renderer dispose failed during abort:', error);
+                }
+                if (container.contains(this.renderer.domElement)) {
+                    container.removeChild(this.renderer.domElement);
+                }
+            }
+            return;
+        }
+        if (this.dynamicResolution) {
+            this.dynamicResolution.enabled = this.dynamicResolution.enabled && this.isWebGPU;
+            this.dynamicResolution.scale = 1.0;
+            this.dynamicResolution.emaMs = 16.6;
+            this.dynamicResolution.elapsed = 0;
+            this.applyDynamicResolution();
+        }
+        if (this.baselineEnabled && typeof window !== 'undefined') {
+            window.synthwaveBaseline = {
+                capture: (label) => this.captureBaseline(label),
+                report: () => this.reportBaseline(),
+                reset: () => this.resetBaseline(),
+            };
+            console.log('[SynthwaveBaseline] Helpers: window.synthwaveBaseline.capture(label), report(), reset()');
+        }
 
         // Setup Three.js scene
         this.scene = new THREE.Scene();
@@ -161,29 +693,30 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         );
         this.camera.position.set(0, 8, 20);
         this.camera.lookAt(0, 2, -20);
-
-        // Setup renderer
-        this.renderer = new THREE.WebGLRenderer({
-            alpha: false,
-            antialias: this.getAntialiasEnabled(),
-            powerPreference: 'high-performance',
-        });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        container.appendChild(this.renderer.domElement);
+        this.clock.start();
 
         // Create scene elements
         this.createSkyGradient();
         this.createStarField();
+        this.createShootingStars();
         this.createSun();
         this.createBuildings();
         this.createGrid();
         this.createHighlightPool();
         this.createParticleSystem();
+        this.setupPostProcessing();
+        this.applyLod();
+        if (this.mrtAuditEnabled) {
+            this.auditMrtMaterials('PostSetup');
+        }
 
         // Setup events
         this.setupEventListeners();
-        window.addEventListener('resize', this.onResize.bind(this));
+        if (this._resizeHandler) {
+            window.removeEventListener('resize', this._resizeHandler);
+        }
+        this._resizeHandler = this.onResize.bind(this);
+        window.addEventListener('resize', this._resizeHandler);
 
         // Start animation
         this.animate();
@@ -254,9 +787,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         for (let i = 0; i < count; i++) {
             // Distribute in a full large sphere surrounding the scene
             // Radius much larger to cover all camera angles
-            const radius = 300 + Math.random() * 200;
-            const theta = Math.random() * Math.PI * 2; // Full horizontal rotation
-            const phi = Math.acos(2 * Math.random() - 1); // Uniform sphere distribution
+            const radius = 300 + this.rand() * 200;
+            const theta = this.rand() * Math.PI * 2; // Full horizontal rotation
+            const phi = Math.acos(2 * this.rand() - 1); // Uniform sphere distribution
 
             // Only keep stars above a certain horizon (y > -50) to avoid wasting stars deep underground
             // But keep enough low ones to fill gaps near horizon
@@ -270,10 +803,10 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             positions[i * 3 + 1] = radius * Math.cos(phi);
             positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
 
-            sizes[i] = Math.random() * 2.5 + 1.5; // Larger stars since they are far away
-            phases[i] = Math.random() * Math.PI * 2;
+            sizes[i] = this.rand() * 2.5 + 1.5; // Larger stars since they are far away
+            phases[i] = this.rand() * Math.PI * 2;
 
-            const color = starColors[Math.floor(Math.random() * starColors.length)];
+            const color = starColors[Math.floor(this.rand() * starColors.length)];
             colors[i * 3] = color.r;
             colors[i * 3 + 1] = color.g;
             colors[i * 3 + 2] = color.b;
@@ -284,38 +817,94 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
         geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: { value: 0 },
-            },
-            vertexShader: starVertexShader,
-            fragmentShader: starFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
+        let material = null;
+        if (this.isWebGPU) {
+            const { material: starMaterial, uniforms } = createStarNodeMaterial();
+            material = starMaterial;
+            this.starUniforms = uniforms;
+            if (this.starUniforms?.uPixelRatio) {
+                this.starUniforms.uPixelRatio.value = this.renderer.getPixelRatio();
+            }
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 },
+                },
+                vertexShader: starVertexShader,
+                fragmentShader: starFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+            this.starUniforms = null;
+        }
 
         this.starField = new THREE.Points(geometry, material);
+        this.starField.userData.baseCount = count;
+        this.starField.geometry.setDrawRange(0, count);
         this.scene.add(this.starField);
+    }
+
+    createShootingStars() {
+        this.shootingStarPool = [];
+        const maxStars = 6;
+
+        for (let i = 0; i < maxStars; i++) {
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(6);
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const material = new THREE.LineBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0,
+                blending: THREE.AdditiveBlending,
+            });
+
+            const star = new THREE.Line(geometry, material);
+            star.visible = false;
+            star.frustumCulled = false;
+            star.userData = {
+                active: false,
+                life: 0,
+                maxLife: 1,
+                tail: 12,
+                velocity: new THREE.Vector3(),
+                position: new THREE.Vector3(),
+                direction: new THREE.Vector3(1, -0.4, 0.6),
+                tailVec: new THREE.Vector3(),
+                tailPos: new THREE.Vector3(),
+            };
+            this.scene.add(star);
+            this.shootingStarPool.push(star);
+        }
     }
 
     createSun() {
         // Main sun sphere - Slightly smaller as requested
         const sunGeometry = new THREE.SphereGeometry(25, 64, 32);
-        const sunMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                time: { value: 0 },
-                colorTop: { value: this.colors.sunTop },
-                colorMid: { value: this.colors.sunMid },
-                colorBottom: { value: this.colors.sunBottom },
-                stripeCount: { value: 12.0 },
-                pulseIntensity: { value: 0 },
-            },
-            vertexShader: sunVertexShader,
-            fragmentShader: sunFragmentShader,
-            transparent: true,
-            side: THREE.FrontSide,
-        });
+        let sunMaterial = null;
+        if (this.isWebGPU) {
+            const { material, uniforms } = createSunNodeMaterial(this.colors);
+            sunMaterial = material;
+            this.sunUniforms = uniforms;
+        } else {
+            sunMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 },
+                    colorTop: { value: this.colors.sunTop },
+                    colorMid: { value: this.colors.sunMid },
+                    colorBottom: { value: this.colors.sunBottom },
+                    stripeCount: { value: 12.0 },
+                    pulseIntensity: { value: 0 },
+                },
+                vertexShader: sunVertexShader,
+                fragmentShader: sunFragmentShader,
+                transparent: true,
+                side: THREE.FrontSide,
+            });
+            this.sunUniforms = null;
+        }
 
         this.sun = new THREE.Mesh(sunGeometry, sunMaterial);
         this.sun.position.set(0, 35, -100);
@@ -336,23 +925,36 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             const scale = 1.5 + i * 0.8;
             // Larger glow planes to match bigger sun
             const glowGeometry = new THREE.PlaneGeometry(60 * scale, 60 * scale);
-            const glowMaterial = new THREE.ShaderMaterial({
-                uniforms: {
-                    glowColor: { value: glowColors[i % glowColors.length] },
-                    opacity: { value: 0.4 - i * 0.05 },
-                    pulseIntensity: { value: 0 },
-                },
-                vertexShader: sunGlowVertexShader,
-                fragmentShader: sunGlowFragmentShader,
-                transparent: true,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending,
-                side: THREE.DoubleSide,
-            });
+            let glowMaterial = null;
+            if (this.isWebGPU) {
+                const { material, uniforms } = createSunGlowNodeMaterial(
+                    glowColors[i % glowColors.length],
+                    0.4 - i * 0.05,
+                );
+                glowMaterial = material;
+                this.sunGlowUniforms[i] = uniforms;
+            } else {
+                glowMaterial = new THREE.ShaderMaterial({
+                    uniforms: {
+                        glowColor: { value: glowColors[i % glowColors.length] },
+                        opacity: { value: 0.4 - i * 0.05 },
+                        pulseIntensity: { value: 0 },
+                    },
+                    vertexShader: sunGlowVertexShader,
+                    fragmentShader: sunGlowFragmentShader,
+                    transparent: true,
+                    depthWrite: false,
+                    blending: THREE.AdditiveBlending,
+                    side: THREE.DoubleSide,
+                });
+            }
 
             const glow = new THREE.Mesh(glowGeometry, glowMaterial);
             glow.position.copy(this.sun.position);
             glow.position.z += 1 + i * 0.5;
+            if (this.isWebGPU && this.sunGlowUniforms[i]) {
+                glow.userData.uniforms = this.sunGlowUniforms[i];
+            }
             this.scene.add(glow);
             this.sunGlowLayers.push(glow);
         }
@@ -360,6 +962,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
     createBuildings() {
         const count = this.activePreset.buildingCount;
+        this.buildings = [];
+        this.buildingEdges = [];
+        this.buildingMaterials = [];
 
         // Two layers of buildings
         const layers = [
@@ -371,83 +976,170 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             },
         ];
 
-        layers.forEach((layer, layerIndex) => {
+        let edgeMaterial = null;
+        let edgeUniforms = null;
+        if (this.isWebGPU) {
+            const edgeMatData = createBuildingEdgeNodeMaterial(new THREE.Color(0xff0066));
+            edgeMaterial = edgeMatData.material;
+            edgeUniforms = edgeMatData.uniforms;
+            this.buildingEdgeUniforms = edgeUniforms;
+            this.buildingEdgeMaterial = edgeMaterial;
+        } else {
+            edgeMaterial = new THREE.LineBasicMaterial({
+                color: 0xff0066,
+                transparent: true,
+                opacity: 0,
+                blending: THREE.AdditiveBlending,
+            });
+            this.buildingEdgeUniforms = null;
+            this.buildingEdgeMaterial = edgeMaterial;
+        }
+
+        layers.forEach((layer) => {
             const buildingsPerLayer = Math.floor(count / 2);
-
-            for (let i = 0; i < buildingsPerLayer; i++) {
-                const width = 2 + Math.random() * 6;
-                const height = (5 + Math.random() * 25) * layer.scaleY;
-                const depth = 3 + Math.random() * 8;
-
-                const geometry = new THREE.BoxGeometry(width, height, depth);
-                const material = new THREE.MeshBasicMaterial({
+            let buildingMaterial = null;
+            if (this.isWebGPU) {
+                const { material, uniforms } = createBuildingNodeMaterial(new THREE.Color(layer.color));
+                buildingMaterial = material;
+                this.buildingMaterials.push(material);
+                this.buildingUniforms.push(uniforms);
+            } else {
+                buildingMaterial = new THREE.MeshBasicMaterial({
                     color: layer.color,
                 });
+            }
 
-                const building = new THREE.Mesh(geometry, material);
+            const geometries = [];
+            const spreadX = 250;
+
+            for (let i = 0; i < buildingsPerLayer; i++) {
+                const width = 2 + this.rand() * 6;
+                const height = (5 + this.rand() * 25) * layer.scaleY;
+                const depth = 3 + this.rand() * 8;
+
+                const geometry = new THREE.BoxGeometry(width, height, depth);
 
                 // Position across the horizon - full screen width
-                const spreadX = 250;
-                building.position.x = (i / buildingsPerLayer) * spreadX - spreadX / 2 + (Math.random() - 0.5) * 5;
-                building.position.y = height / 2 + layer.y;
-                building.position.z = layer.zStart + Math.random() * (layer.zEnd - layer.zStart);
+                const posX = (i / buildingsPerLayer) * spreadX - spreadX / 2 + (this.rand() - 0.5) * 5;
+                const posY = height / 2 + layer.y;
+                const posZ = layer.zStart + this.rand() * (layer.zEnd - layer.zStart);
+                geometry.translate(posX, posY, posZ);
 
-                this.scene.add(building);
-                this.buildings.push(building);
-
-                // Add edge glow (for combo effects)
-                const edges = new THREE.EdgesGeometry(geometry);
-                const edgeMaterial = new THREE.LineBasicMaterial({
-                    color: 0xff0066,
-                    transparent: true,
-                    opacity: 0,
-                    blending: THREE.AdditiveBlending, // Add blending for brighter glow interaction
-                });
-                const edgeLines = new THREE.LineSegments(edges, edgeMaterial);
-                edgeLines.position.copy(building.position);
-                this.scene.add(edgeLines);
-                this.buildingEdges.push(edgeLines);
+                geometries.push(geometry);
             }
+
+            if (!geometries.length) return;
+
+            const mergedGeometry = mergeGeometries(geometries, false);
+            geometries.forEach((geometry) => geometry.dispose());
+            if (!mergedGeometry) return;
+
+            const building = new THREE.Mesh(mergedGeometry, buildingMaterial);
+            this.scene.add(building);
+            this.buildings.push(building);
+
+            const edges = new THREE.EdgesGeometry(mergedGeometry);
+            const edgeLines = new THREE.LineSegments(edges, edgeMaterial);
+            this.scene.add(edgeLines);
+            this.buildingEdges.push(edgeLines);
         });
     }
 
     createGrid() {
-        // Much larger plane so edges are never visible on screen
-        const geometry = new THREE.PlaneGeometry(400, 300, 100, 75);
+        // Grid plane - reduced depth to prevent sky grid artifact
+        const geometry = new THREE.PlaneGeometry(400, 120, 100, 30);
         geometry.rotateX(-Math.PI / 2);
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: { value: 0 },
-                speed: { value: -5.0 }, // Negative speed moves grid TOWARDS camera (driving forward)
-                gridColor: { value: this.colors.gridPink },
-                glowIntensity: { value: 1.0 },
-                pulseIntensity: { value: 0 },
-            },
-            vertexShader: gridVertexShader,
-            fragmentShader: gridFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-        });
+        let material = null;
+        if (this.isWebGPU) {
+            const { material: gridMaterial, uniforms } = createGridNodeMaterial(this.colors);
+            material = gridMaterial;
+            this.gridUniforms = uniforms;
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 },
+                    speed: { value: -5.0 }, // Negative speed moves grid TOWARDS camera (driving forward)
+                    gridColor: { value: this.colors.gridPink.clone() },
+                    glowIntensity: { value: 1.0 },
+                    pulseIntensity: { value: 0 },
+                    sunX: { value: 0.0 },
+                    waveOrigin: { value: this.gridWaveOrigin.clone() },
+                    waveIntensity: { value: this.gridWaveIntensity },
+                    waveFrequency: { value: this.gridWaveFrequency },
+                    waveSpeed: { value: this.gridWaveSpeed },
+                    waveFalloff: { value: this.gridWaveFalloff },
+                    resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                },
+                vertexShader: gridVertexShader,
+                fragmentShader: gridFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                side: THREE.FrontSide,
+            });
+            this.gridUniforms = null;
+        }
 
         this.grid = new THREE.Mesh(geometry, material);
         this.grid.position.y = 0;
-        this.grid.position.z = -30;
+        this.grid.position.z = -20;
         this.scene.add(this.grid);
     }
 
     createHighlightPool() {
         const poolSize = this.activePreset.maxHighlights;
+        this.highlightPool = [];
+        this.gridHighlights = [];
+
+        // Match the grid cell size (gridSpacing = 1.5)
+        // Increased to 1.55 for better fit/overlap (retro solid look)
+        const geometry = new THREE.PlaneGeometry(1.55, 1.55);
+        geometry.rotateX(-Math.PI / 2);
+
+        if (this.isWebGPU) {
+            if (this.highlightCompute) {
+                this.highlightCompute.dispose();
+            }
+            this.highlightCompute = new SynthwaveHighlightCompute(poolSize);
+            this.highlightCompute.createComputeNode();
+            this.highlightData = [];
+            const { material: highlightMaterial, uniforms } = createHighlightNodeMaterial({
+                isWebGPU: true,
+                highlightCompute: this.highlightCompute,
+            });
+            this.highlightUniforms = uniforms;
+            this.highlightInstanced = new THREE.InstancedMesh(geometry, highlightMaterial, poolSize);
+            this.highlightInstanced.frustumCulled = false;
+            const identity = new THREE.Matrix4();
+            for (let i = 0; i < poolSize; i++) {
+                this.highlightInstanced.setMatrixAt(i, identity);
+                this.highlightData.push({
+                    active: false,
+                    x: 0,
+                    y: 0,
+                    z: 0,
+                    intensity: 0,
+                    phase: 0,
+                    color: new THREE.Color(0x00ffff),
+                });
+            }
+            this.highlightInstanced.instanceMatrix.needsUpdate = true;
+            this.scene.add(this.highlightInstanced);
+            return;
+        }
+
+        if (this.highlightCompute) {
+            this.highlightCompute.dispose();
+            this.highlightCompute = null;
+        }
+        this.highlightInstanced = null;
+        this.highlightData = [];
+        this.highlightData = [];
 
         for (let i = 0; i < poolSize; i++) {
-            // Match the grid cell size (gridSpacing = 1.5)
-            // Increased to 1.55 for better fit/overlap (retro solid look)
-            const geometry = new THREE.PlaneGeometry(1.55, 1.55);
-            geometry.rotateX(-Math.PI / 2);
-
-            const material = new THREE.ShaderMaterial({
+            let material = null;
+            material = new THREE.ShaderMaterial({
                 uniforms: {
                     color: { value: new THREE.Color(0x00ffff) },
                     intensity: { value: 0 },
@@ -478,6 +1170,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
     createParticleSystem() {
         const count = this.activePreset.particleBudget;
+        this.particleData = [];
         const geometry = new THREE.BufferGeometry();
 
         const positions = new Float32Array(count * 3);
@@ -490,14 +1183,39 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         geometry.setAttribute('aLife', new THREE.BufferAttribute(lives, 1));
         geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {},
-            vertexShader: particleVertexShader,
-            fragmentShader: particleFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
+        if (this.isWebGPU) {
+            if (this.particleCompute) {
+                this.particleCompute.dispose();
+            }
+            this.particleCompute = new SynthwaveParticleCompute(count);
+            this.particleCompute.createComputeNode();
+        } else if (this.particleCompute) {
+            this.particleCompute.dispose();
+            this.particleCompute = null;
+        }
+
+        let material = null;
+        if (this.isWebGPU) {
+            const { material: particleMaterial, uniforms } = createParticleNodeMaterial({
+                isWebGPU: true,
+                particleCompute: this.particleCompute,
+            });
+            material = particleMaterial;
+            this.particleUniforms = uniforms;
+            if (this.particleUniforms?.uPixelRatio) {
+                this.particleUniforms.uPixelRatio.value = this.renderer.getPixelRatio();
+            }
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {},
+                vertexShader: particleVertexShader,
+                fragmentShader: particleFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+            this.particleUniforms = null;
+        }
 
         this.particles = new THREE.Points(geometry, material);
         this.scene.add(this.particles);
@@ -505,6 +1223,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         // Initialize particle data
         for (let i = 0; i < count; i++) {
             this.particleData.push({
+                index: i,
                 active: false,
                 x: 0,
                 y: 0,
@@ -518,6 +1237,35 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 color: new THREE.Color(0xffffff),
             });
         }
+    }
+
+    setupPostProcessing() {
+        if (this.postProcessing) {
+            this.postProcessing.dispose();
+            this.postProcessing = null;
+        }
+
+        if (!this.isWebGPU || this.noPost) {
+            return;
+        }
+
+        this.postProcessing = new SynthwaveSunsetPost(this.renderer, this.scene, this.camera, {
+            bloomStrength: 1.1,
+            bloomRadius: 0.65,
+            bloomThreshold: 0.12,
+            bloomDownsample: 0.85,
+            vignetteOffset: 1.0,
+            vignetteDarkness: 0.35,
+            gradeStrength: 0.18,
+            scanlineIntensity: 0.1,
+            godRaysIntensity: 0.22,
+            reflectionIntensity: 0.0,
+            reflectionDistort: 0.0,
+            reflectionSpeed: 0.0,
+            horizon: this.horizonUv,
+            sunScreen: this.sunScreenUv,
+        });
+        this.postProcessing.setSize(window.innerWidth, window.innerHeight);
     }
 
     // =========================================================================
@@ -550,7 +1298,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     handlePieceLock(data) {
-        const currentTime = this.clock.getElapsedTime();
+        const currentTime = Number.isFinite(this.lastElapsed)
+            ? this.lastElapsed
+            : this.clock.getElapsedTime();
         // Grid shader speed is 5.0 world units/sec. Grid cell spacing is 1.5.
         // Highlight logic multiplies relative grid index by 1.5.
         // So internal scroll speed must be 5.0 / 1.5 to result in 5.0 world speed.
@@ -579,15 +1329,19 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             // Removed random scatter for perfect alignment
         } else {
             // Fallback to random if no position data
-            gridX = Math.floor(Math.random() * 80 - 40);
+            gridX = Math.floor(this.rand() * 80 - 40);
         }
 
-        const gridZ = Math.floor(scrollOffset + 3 + Math.random() * 12);
+        const gridZ = Math.floor(scrollOffset + 3 + this.rand() * 12);
 
         // Get the shape for this piece type
         const shape = this.getShapeForType(pieceType);
         // Use actual rotation from the piece if available, otherwise random
-        const rotation = piece.rotation !== undefined ? piece.rotation : Math.floor(Math.random() * 4);
+        const rotation = piece.rotation !== undefined ? piece.rotation : Math.floor(this.rand() * 4);
+
+        let sumX = 0;
+        let sumY = 0;
+        let blockCount = 0;
 
         // Spawn each cell of the actual tetromino shape
         for (const block of shape) {
@@ -602,6 +1356,21 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             }
 
             this.spawnHighlightCell(gridX + rx, gridZ + ry, color, scrollOffset);
+            sumX += rx;
+            sumY += ry;
+            blockCount += 1;
+        }
+
+        if (this.enableGridWaves && blockCount > 0 && this.grid) {
+            const centerX = gridX + sumX / blockCount;
+            const centerZ = gridZ + sumY / blockCount;
+            const worldX = centerX * 1.5 + 0.75;
+            const worldZ = -(centerZ - scrollOffset) * 1.5 + this.grid.position.z - 0.75;
+            this.gridWaveOrigin.set(
+                worldX - this.grid.position.x,
+                worldZ - this.grid.position.z,
+            );
+            this.gridWaveIntensity = Math.min(1.5, this.gridWaveIntensity + 0.9);
         }
 
         // Grid pulse
@@ -638,16 +1407,59 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         return shapes[pieceType] || shapes.T;
     }
 
+    getInactiveParticleIndex() {
+        for (let i = 0; i < this.particleData.length; i++) {
+            if (!this.particleData[i].active) return i;
+        }
+        return -1;
+    }
+
+    getInactiveHighlightIndex() {
+        for (let i = 0; i < this.highlightData.length; i++) {
+            if (!this.highlightData[i].active) return i;
+        }
+        return -1;
+    }
+
     spawnHighlightCell(gridX, gridZ, color, scrollOffset) {
+        if (this.isWebGPU && this.highlightCompute) {
+            const index = this.getInactiveHighlightIndex();
+            if (index === -1) return;
+
+            const highlight = this.highlightData[index];
+            highlight.active = true;
+            highlight.intensity = 2.5 + this.rand() * 0.5;
+            highlight.color = color.clone();
+            highlight.phase = gridZ * 0.5 + highlight.intensity * 2.0;
+
+            const worldX = gridX * 1.5 + 0.75;
+            const worldY = 0.05;
+            const worldZ = -(gridZ - scrollOffset) * 1.5 + this.grid.position.z - 0.75;
+            highlight.x = worldX;
+            highlight.y = worldY;
+            highlight.z = worldZ;
+
+            this.highlightCompute.spawn(index, {
+                x: worldX,
+                y: worldY,
+                z: worldZ,
+                intensity: highlight.intensity,
+                color: highlight.color,
+                phase: highlight.phase,
+            });
+
+            return;
+        }
+
         // Find inactive highlight from pool
         const highlight = this.highlightPool.find((h) => !h.userData.active);
         if (!highlight) return;
 
         highlight.userData.active = true;
         highlight.userData.life = 1.0;
-        highlight.userData.maxLife = 15.0 + Math.random() * 10.0; // Stay very long (15-25 seconds)
-        highlight.userData.intensity = 2.5 + Math.random() * 0.5;
-        highlight.userData.decay = 0.001 + Math.random() * 0.001; // Very slow decay
+        highlight.userData.maxLife = 15.0 + this.rand() * 10.0; // Stay very long (15-25 seconds)
+        highlight.userData.intensity = 2.5 + this.rand() * 0.5;
+        highlight.userData.decay = 0.001 + this.rand() * 0.001; // Very slow decay
         highlight.userData.gridZ = gridZ;
         highlight.userData.scrollOffset = scrollOffset;
 
@@ -658,8 +1470,17 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         highlight.position.z = -(gridZ - scrollOffset) * 1.5 + this.grid.position.z - 0.75;
 
         // Set color
-        highlight.material.uniforms.color.value.copy(color);
-        highlight.material.uniforms.intensity.value = highlight.userData.intensity;
+        const highlightUniforms = highlight.userData.uniforms || highlight.material.uniforms;
+        if (highlightUniforms?.uColor) {
+            highlightUniforms.uColor.value.copy(color);
+        } else if (highlightUniforms?.color) {
+            highlightUniforms.color.value.copy(color);
+        }
+        if (highlightUniforms?.uIntensity) {
+            highlightUniforms.uIntensity.value = highlight.userData.intensity;
+        } else if (highlightUniforms?.intensity) {
+            highlightUniforms.intensity.value = highlight.userData.intensity;
+        }
 
         highlight.visible = true;
         this.gridHighlights.push(highlight);
@@ -689,6 +1510,42 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         if (comboCount >= 2) {
             this.createSunBurst(comboCount);
         }
+
+        if (comboCount >= 3 && this.shootingStarPool.length) {
+            const chance = Math.min(0.7, 0.25 + comboCount * 0.1);
+            if (this.rand() < chance) {
+                this.spawnShootingStar();
+            }
+        }
+    }
+
+    spawnShootingStar() {
+        const star = this.shootingStarPool.find((entry) => !entry.userData.active);
+        if (!star) return;
+
+        const startX = (this.rand() - 0.5) * 320;
+        const startY = 60 + this.rand() * 60;
+        const startZ = -180 - this.rand() * 120;
+
+        const dir = new THREE.Vector3(
+            -0.4 - this.rand() * 0.4,
+            -0.2 - this.rand() * 0.3,
+            0.6 + this.rand() * 0.4,
+        ).normalize();
+
+        const speed = 60 + this.rand() * 40;
+        star.userData.velocity.copy(dir).multiplyScalar(speed);
+        star.userData.direction.copy(dir);
+        star.userData.position.set(startX, startY, startZ);
+        star.userData.tail = 12 + this.rand() * 18;
+        star.userData.life = 1;
+        star.userData.maxLife = 0.8 + this.rand() * 0.6;
+        star.userData.active = true;
+
+        const hue = 0.55 + this.rand() * 0.15;
+        star.material.color.setHSL(hue, 0.8, 0.7);
+        star.material.opacity = 1;
+        star.visible = true;
     }
 
     createHorizonBurst(lineCount) {
@@ -701,20 +1558,25 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         ];
 
         for (let i = 0; i < baseCount; i++) {
-            const particle = this.particleData.find((p) => !p.active);
-            if (!particle) break;
+            const index = this.getInactiveParticleIndex();
+            if (index === -1) break;
+            const particle = this.particleData[index];
 
             particle.active = true;
-            particle.x = (Math.random() - 0.5) * 60;
-            particle.y = 5 + Math.random() * 3;
-            particle.z = -45 + Math.random() * 5;
-            particle.vx = (Math.random() - 0.5) * 3;
-            particle.vy = 3 + Math.random() * 4;
-            particle.vz = (Math.random() - 0.5) * 2;
+            particle.x = (this.rand() - 0.5) * 60;
+            particle.y = 5 + this.rand() * 3;
+            particle.z = -45 + this.rand() * 5;
+            particle.vx = (this.rand() - 0.5) * 3;
+            particle.vy = 3 + this.rand() * 4;
+            particle.vz = (this.rand() - 0.5) * 2;
             particle.life = 1.0;
-            particle.maxLife = 1.5 + Math.random() * 0.5;
-            particle.size = 2 + Math.random() * 3;
-            particle.color = colors[Math.floor(Math.random() * colors.length)];
+            particle.maxLife = 1.5 + this.rand() * 0.5;
+            particle.size = 2 + this.rand() * 3;
+            particle.color = colors[Math.floor(this.rand() * colors.length)];
+
+            if (this.isWebGPU && this.particleCompute) {
+                this.particleCompute.spawn(index, particle);
+            }
         }
     }
 
@@ -728,11 +1590,12 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         ];
 
         for (let i = 0; i < count; i++) {
-            const particle = this.particleData.find((p) => !p.active);
-            if (!particle) break;
+            const index = this.getInactiveParticleIndex();
+            if (index === -1) break;
+            const particle = this.particleData[index];
 
-            const angle = Math.random() * Math.PI;
-            const speed = 2 + Math.random() * 3;
+            const angle = this.rand() * Math.PI;
+            const speed = 2 + this.rand() * 3;
 
             particle.active = true;
             particle.x = this.sun.position.x + Math.cos(angle) * 12;
@@ -740,11 +1603,15 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             particle.z = this.sun.position.z + 5;
             particle.vx = Math.cos(angle) * speed;
             particle.vy = Math.sin(angle) * speed;
-            particle.vz = (Math.random() - 0.5) * 2;
+            particle.vz = (this.rand() - 0.5) * 2;
             particle.life = 1.0;
-            particle.maxLife = 1.0 + Math.random() * 0.8;
-            particle.size = 3 + Math.random() * 4;
-            particle.color = colors[Math.floor(Math.random() * colors.length)];
+            particle.maxLife = 1.0 + this.rand() * 0.8;
+            particle.size = 3 + this.rand() * 4;
+            particle.color = colors[Math.floor(this.rand() * colors.length)];
+
+            if (this.isWebGPU && this.particleCompute) {
+                this.particleCompute.spawn(index, particle);
+            }
         }
     }
 
@@ -758,18 +1625,58 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         const animId = requestAnimationFrame(() => this.animate());
         this.registerAnimation(animId);
 
-        const delta = this.clock.getDelta();
-        const elapsed = this.clock.getElapsedTime();
+        this.beginBudgetFrame();
+
+        const rawDelta = this.fixedDtSeconds !== null ? this.fixedDtSeconds : this.clock.getDelta();
+        const delta = this.fixedDtSeconds !== null ? rawDelta : Math.min(rawDelta, 0.05);
+        if (this.fixedDtSeconds !== null) {
+            this.fixedElapsed += this.fixedDtSeconds;
+        }
+        this.smoothedTime += delta;
+        const elapsed = this.fixedDtSeconds !== null ? this.fixedElapsed : this.smoothedTime;
+        this.lastElapsed = elapsed;
+        if (this.baselineEnabled) {
+            this.trackBaseline(rawDelta);
+        }
+        this.updateDynamicResolution(rawDelta);
+
+        if (this.isWebGPU && this.particleCompute?.computeNode) {
+            this.particleCompute.update(delta);
+            this.renderer.compute(this.particleCompute.computeNode);
+        }
+        if (this.isWebGPU && this.highlightCompute?.computeNode) {
+            this.highlightCompute.update(delta);
+            this.renderer.compute(this.highlightCompute.computeNode);
+        }
+        this.markBudget('compute');
 
         this.updateCamera(elapsed);
         this.updateSun(elapsed, delta);
+        this.updateScreenSpaceTargets();
         this.updateGrid(elapsed, delta);
         this.updateHighlights(elapsed, delta);
         this.updateParticles(delta);
-        this.updateBuildings(delta);
+        this.updateBuildings(elapsed, delta);
         this.updateStars(elapsed);
+        this.updateShootingStars(delta);
+        this.markBudget('update');
 
-        this.renderer.render(this.scene, this.camera);
+        if (this.postProcessing) {
+            const godRaysIntensity = 0.22 + this.sunPulseIntensity * 0.35;
+            this.postProcessing.update(elapsed, {
+                godRaysIntensity,
+                sunScreen: this.sunScreenUv,
+                reflectionIntensity: 0.0,
+                reflectionDistort: 0.0,
+                reflectionSpeed: 0.0,
+                horizon: this.horizonUv,
+            });
+            this.postProcessing.render();
+        } else {
+            this.renderer.render(this.scene, this.camera);
+        }
+        this.markBudget('render');
+        this.endBudgetFrame();
     }
 
     updateCamera(time) {
@@ -786,6 +1693,21 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         );
     }
 
+    updateScreenSpaceTargets() {
+        if (!this.camera || !this.sun) return;
+
+        this.sun.getWorldPosition(this._sunWorld);
+        this.sunNdc.copy(this._sunWorld).project(this.camera);
+        this.sunScreenUv.set(
+            this.sunNdc.x * 0.5 + 0.5,
+            this.sunNdc.y * 0.5 + 0.5,
+        );
+
+        this._horizonNdc.copy(this._horizonWorld).project(this.camera);
+        const horizon = this._horizonNdc.y * 0.5 + 0.5;
+        this.horizonUv = THREE.MathUtils.clamp(horizon + this.horizonOffset, 0.35, 0.85);
+    }
+
     updateSun(time, delta) {
         // Sun drift (left to right)
         // Much wider range so it starts OFF SCREEN left and ends OFF SCREEN right
@@ -799,7 +1721,12 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         // Update glow layers
         this.sunGlowLayers.forEach((glow, i) => {
             glow.position.x = sunX;
-            glow.material.uniforms.pulseIntensity.value = this.sunPulseIntensity;
+            const glowUniforms = glow.userData.uniforms || glow.material.uniforms;
+            if (glowUniforms?.uPulseIntensity) {
+                glowUniforms.uPulseIntensity.value = this.sunPulseIntensity;
+            } else if (glowUniforms?.pulseIntensity) {
+                glowUniforms.pulseIntensity.value = this.sunPulseIntensity;
+            }
 
             // Subtle scale pulse
             const scale = 1 + Math.sin(time * 0.5 + i * 0.5) * 0.05;
@@ -807,8 +1734,17 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         });
 
         // Update sun shader
-        this.sun.material.uniforms.time.value = time;
-        this.sun.material.uniforms.pulseIntensity.value = this.sunPulseIntensity;
+        const sunUniforms = this.sunUniforms || this.sun.material.uniforms;
+        if (sunUniforms?.uTime) {
+            sunUniforms.uTime.value = time;
+        } else if (sunUniforms?.time) {
+            sunUniforms.time.value = time;
+        }
+        if (sunUniforms?.uPulseIntensity) {
+            sunUniforms.uPulseIntensity.value = this.sunPulseIntensity;
+        } else if (sunUniforms?.pulseIntensity) {
+            sunUniforms.pulseIntensity.value = this.sunPulseIntensity;
+        }
 
         // Decay pulse
         if (this.sunPulseIntensity > 0) {
@@ -819,15 +1755,61 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
     updateGrid(time, delta) {
         // Update shader uniforms
-        this.grid.material.uniforms.time.value = time;
-        this.grid.material.uniforms.pulseIntensity.value = this.gridPulseIntensity;
+        const gridUniforms = this.gridUniforms || this.grid.material.uniforms;
+        if (gridUniforms?.uTime) {
+            gridUniforms.uTime.value = time;
+        } else if (gridUniforms?.time) {
+            gridUniforms.time.value = time;
+        }
+        if (gridUniforms?.uPulseIntensity) {
+            gridUniforms.uPulseIntensity.value = this.gridPulseIntensity;
+        } else if (gridUniforms?.pulseIntensity) {
+            gridUniforms.pulseIntensity.value = this.gridPulseIntensity;
+        }
 
         // Color shift on combos
         const baseColor = this.colors.gridPink.clone();
         if (this.comboColorShift > 0) {
             baseColor.lerp(this.colors.gridCyan, this.comboColorShift);
         }
-        this.grid.material.uniforms.gridColor.value = baseColor;
+        if (gridUniforms?.uGridColor) {
+            gridUniforms.uGridColor.value.copy(baseColor);
+        } else if (gridUniforms?.gridColor) {
+            gridUniforms.gridColor.value.copy(baseColor);
+        }
+        if (gridUniforms?.sunX) {
+            gridUniforms.sunX.value = this.sun?.position?.x ?? 0;
+        }
+        if (gridUniforms?.uBloomScale) {
+            gridUniforms.uBloomScale.value = 0.55 + this.gridPulseIntensity * 0.15;
+        }
+
+        const waveEnabled = this.enableGridWaves === true;
+        if (gridUniforms?.uWaveOrigin) {
+            gridUniforms.uWaveOrigin.value.copy(this.gridWaveOrigin);
+        } else if (gridUniforms?.waveOrigin) {
+            gridUniforms.waveOrigin.value.copy(this.gridWaveOrigin);
+        }
+        if (gridUniforms?.uWaveIntensity) {
+            gridUniforms.uWaveIntensity.value = waveEnabled ? this.gridWaveIntensity : 0;
+        } else if (gridUniforms?.waveIntensity) {
+            gridUniforms.waveIntensity.value = waveEnabled ? this.gridWaveIntensity : 0;
+        }
+        if (gridUniforms?.uWaveFrequency) {
+            gridUniforms.uWaveFrequency.value = this.gridWaveFrequency;
+        } else if (gridUniforms?.waveFrequency) {
+            gridUniforms.waveFrequency.value = this.gridWaveFrequency;
+        }
+        if (gridUniforms?.uWaveSpeed) {
+            gridUniforms.uWaveSpeed.value = this.gridWaveSpeed;
+        } else if (gridUniforms?.waveSpeed) {
+            gridUniforms.waveSpeed.value = this.gridWaveSpeed;
+        }
+        if (gridUniforms?.uWaveFalloff) {
+            gridUniforms.uWaveFalloff.value = this.gridWaveFalloff;
+        } else if (gridUniforms?.waveFalloff) {
+            gridUniforms.waveFalloff.value = this.gridWaveFalloff;
+        }
 
         // Decay effects
         if (this.gridPulseIntensity > 0) {
@@ -836,12 +1818,59 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         }
 
         if (this.comboColorShift > 0) {
-            this.comboColorShift *= 0.98;
+            const comboDecay = Math.exp(-delta / 0.4);
+            this.comboColorShift *= comboDecay;
             if (this.comboColorShift < 0.01) this.comboColorShift = 0;
+        }
+
+        if (waveEnabled && this.gridWaveIntensity > 0) {
+            this.gridWaveIntensity *= this.gridWaveDecay;
+            if (this.gridWaveIntensity < 0.001) this.gridWaveIntensity = 0;
         }
     }
 
     updateHighlights(time, delta) {
+        if (this.isWebGPU && this.highlightCompute?.computeNode) {
+            if (this.highlightUniforms?.uTime) {
+                this.highlightUniforms.uTime.value = time;
+            }
+            if (this.highlightUniforms?.uTwinkleIntensity) {
+                this.highlightUniforms.uTwinkleIntensity.value = this.highlightTwinkleIntensity;
+            }
+
+            const scrollSpeed = 5.0;
+            const maxZ = 90.0;
+            const stateData = this.highlightCompute?.stateData;
+            for (let i = 0; i < this.highlightData.length; i++) {
+                const data = this.highlightData[i];
+                if (!data.active) continue;
+                data.z += scrollSpeed * delta;
+                if (stateData) {
+                    const base = i * 4;
+                    stateData[base] = data.x;
+                    stateData[base + 1] = data.y;
+                    stateData[base + 2] = data.z;
+                    stateData[base + 3] = data.intensity;
+                }
+                if (data.z > maxZ) {
+                    data.active = false;
+                    data.intensity = 0;
+                    if (stateData) {
+                        stateData[i * 4 + 3] = 0;
+                    }
+                    if (this.highlightCompute) {
+                        this.highlightCompute.deactivate(i);
+                    }
+                }
+            }
+
+            if (this.highlightTwinkleIntensity > 0) {
+                this.highlightTwinkleIntensity *= 0.96;
+                if (this.highlightTwinkleIntensity < 0.01) this.highlightTwinkleIntensity = 0;
+            }
+            return;
+        }
+
         // Grid shader speed is 5.0 world units/sec. Grid cell spacing is 1.5.
         const scrollSpeed = 5.0 / 1.5;
         const currentScroll = time * scrollSpeed;
@@ -868,8 +1897,18 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 twinkle = 1.0 + glitch * this.highlightTwinkleIntensity * 0.5;
             }
 
-            highlight.material.uniforms.intensity.value = data.intensity * distanceFade * twinkle;
-            highlight.material.uniforms.time.value = time;
+            const highlightUniforms = highlight.userData.uniforms || highlight.material.uniforms;
+            const intensityValue = data.intensity * distanceFade * twinkle;
+            if (highlightUniforms?.uIntensity) {
+                highlightUniforms.uIntensity.value = intensityValue;
+            } else if (highlightUniforms?.intensity) {
+                highlightUniforms.intensity.value = intensityValue;
+            }
+            if (highlightUniforms?.uTime) {
+                highlightUniforms.uTime.value = time;
+            } else if (highlightUniforms?.time) {
+                highlightUniforms.time.value = time;
+            }
 
             // Remove ONLY when scrolled past visible horizon (far away)
             if (relativeZ < -80) {
@@ -887,6 +1926,25 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     updateParticles(delta) {
+        if (this.isWebGPU && this.particleCompute?.computeNode) {
+            // CPU shadow update for lifecycle only (no geometry updates)
+            for (let i = 0; i < this.particleData.length; i++) {
+                const p = this.particleData[i];
+                if (p.active) {
+                    p.x += p.vx * delta;
+                    p.y += p.vy * delta;
+                    p.z += p.vz * delta;
+                    p.vy -= 5 * delta;
+                    p.life -= delta / p.maxLife;
+                    if (p.life <= 0) {
+                        p.active = false;
+                        p.life = 0;
+                    }
+                }
+            }
+            return;
+        }
+
         const positions = this.particles.geometry.attributes.position.array;
         const sizes = this.particles.geometry.attributes.aSize.array;
         const lives = this.particles.geometry.attributes.aLife.array;
@@ -931,26 +1989,75 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.particles.geometry.attributes.aColor.needsUpdate = true;
     }
 
-    updateBuildings(delta) {
+    updateBuildings(time, delta) {
+        if (this.isWebGPU && this.buildingUniforms.length) {
+            const glow = Math.min(0.35, 0.06 + this.cityGlowIntensity * 0.25);
+            this.buildingUniforms.forEach((uniforms) => {
+                if (uniforms?.uGlowIntensity) uniforms.uGlowIntensity.value = glow;
+            });
+        }
+
         // Update building edge glow for combo effects
         if (this.cityGlowIntensity > 0) {
-            this.buildingEdges.forEach((edge) => {
-                // Increase multiplier for much brighter edge glow (cap at 1.0 implicitly by material)
-                edge.material.opacity = Math.min(1.0, this.cityGlowIntensity * 1.5);
-                // Also scale line width if supported by browser (often strictly 1, but worth trying)
-                edge.material.linewidth = 2;
-            });
+            if (this.isWebGPU && this.buildingEdgeUniforms?.uGlowIntensity) {
+                this.buildingEdgeUniforms.uGlowIntensity.value = Math.min(1.0, this.cityGlowIntensity * 1.5);
+            } else {
+                this.buildingEdges.forEach((edge) => {
+                    // Increase multiplier for much brighter edge glow (cap at 1.0 implicitly by material)
+                    edge.material.opacity = Math.min(1.0, this.cityGlowIntensity * 1.5);
+                    // Also scale line width if supported by browser (often strictly 1, but worth trying)
+                    edge.material.linewidth = 2;
+                });
+            }
 
             // Slower decay for longer lasting glow effect
             this.cityGlowIntensity *= 0.985;
             if (this.cityGlowIntensity < 0.01) this.cityGlowIntensity = 0;
+        } else if (this.isWebGPU && this.buildingEdgeUniforms?.uGlowIntensity) {
+            this.buildingEdgeUniforms.uGlowIntensity.value = 0;
         }
     }
 
     updateStars(time) {
         if (this.starField) {
-            this.starField.material.uniforms.time.value = time;
+            if (this.starUniforms?.uTime) {
+                this.starUniforms.uTime.value = time;
+            } else if (this.starField.material.uniforms?.time) {
+                this.starField.material.uniforms.time.value = time;
+            }
             this.starField.rotation.y = time * 0.002;
+        }
+    }
+
+    updateShootingStars(delta) {
+        if (!this.shootingStarPool.length) return;
+
+        for (let i = 0; i < this.shootingStarPool.length; i++) {
+            const star = this.shootingStarPool[i];
+            const data = star.userData;
+            if (!data.active) continue;
+
+            data.position.addScaledVector(data.velocity, delta);
+            data.life -= delta / data.maxLife;
+
+            data.tailVec.copy(data.direction).multiplyScalar(data.tail);
+            data.tailPos.copy(data.position).sub(data.tailVec);
+
+            const positions = star.geometry.attributes.position.array;
+            positions[0] = data.position.x;
+            positions[1] = data.position.y;
+            positions[2] = data.position.z;
+            positions[3] = data.tailPos.x;
+            positions[4] = data.tailPos.y;
+            positions[5] = data.tailPos.z;
+            star.geometry.attributes.position.needsUpdate = true;
+
+            star.material.opacity = Math.max(0, data.life);
+            if (data.life <= 0) {
+                data.active = false;
+                star.visible = false;
+                star.material.opacity = 0;
+            }
         }
     }
 
@@ -963,27 +2070,44 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.applyDynamicResolution();
     }
 
     stop() {
+        // Stop base theme state immediately
+        super.stop();
+
+        // Invalidate any in-flight async scene creation
+        this._sceneToken += 1;
+
         // Unsubscribe events
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
+
+        if (this._resizeHandler) {
+            window.removeEventListener('resize', this._resizeHandler);
+            this._resizeHandler = null;
+        }
 
         // Clear effects
         this.gridHighlights = [];
         this.particleData.forEach((p) => p.active = false);
 
-        // Dispose Three.js resources
-        if (this.renderer) {
-            this.renderer.dispose();
-            const container = document.getElementById('synthwave-sunset-theme');
-            if (container && container.contains(this.renderer.domElement)) {
-                container.removeChild(this.renderer.domElement);
-            }
+        if (this.postProcessing) {
+            this.postProcessing.dispose();
+            this.postProcessing = null;
         }
+        if (this.particleCompute) {
+            this.particleCompute.dispose();
+            this.particleCompute = null;
+        }
+        if (this.highlightCompute) {
+            this.highlightCompute.dispose();
+            this.highlightCompute = null;
+        }
+        this.highlightInstanced = null;
 
+        // Dispose Three.js resources (dispose scene objects before renderer)
         if (this.scene) {
             this.scene.traverse((obj) => {
                 if (obj.geometry) obj.geometry.dispose();
@@ -997,11 +2121,37 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             });
         }
 
+        if (this.renderer) {
+            this.renderer.dispose();
+            const container = document.getElementById('synthwave-sunset-theme');
+            if (container && container.contains(this.renderer.domElement)) {
+                container.removeChild(this.renderer.domElement);
+            }
+        }
+
         this.scene = null;
         this.camera = null;
         this.renderer = null;
+        this.gridUniforms = null;
+        this.sunUniforms = null;
+        this.sunGlowUniforms = [];
+        this.starUniforms = null;
+        this.highlightUniforms = [];
+        this.particleUniforms = null;
+        this.buildingEdgeUniforms = null;
+        this.buildingEdgeMaterial = null;
+        this.buildingMaterials = [];
+        this.buildingUniforms = [];
+        this.shootingStarPool = [];
+        if (this.budgetMonitor) {
+            this.budgetMonitor.samples = [];
+            this.budgetMonitor.enabled = false;
+        }
+        if (typeof window !== 'undefined' && window.synthwaveBaseline) {
+            delete window.synthwaveBaseline;
+        }
 
-        super.stop();
+        return;
     }
 
     getTetrominoConfig() {

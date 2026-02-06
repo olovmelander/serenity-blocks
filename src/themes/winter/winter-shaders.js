@@ -12,6 +12,7 @@ export const iceWispVertexShader = `
     attribute float aSpeed;
     attribute float aSize;
     attribute float aBrightness;
+    attribute float aTrail;
 
     uniform float uTime;
     uniform float uPixelRatio;
@@ -23,7 +24,8 @@ export const iceWispVertexShader = `
     void main() {
         // Floating sine wave animation - ethereal movement
         vec3 pos = position;
-        float t = uTime * aSpeed + aPhase;
+        float trailFade = pow(1.0 - aTrail, 1.4);
+        float t = (uTime - aTrail * 1.2) * aSpeed + aPhase;
         
         // Gentle upward drift with horizontal sway
         pos.y += sin(t * 0.8) * 15.0 + uTime * 3.0; // Slow rise
@@ -36,11 +38,12 @@ export const iceWispVertexShader = `
         // Fade based on height and time pulse
         float heightFade = smoothstep(-100.0, 100.0, pos.y) * smoothstep(400.0, 200.0, pos.y);
         float pulseFade = 0.4 + sin(t * 2.0) * 0.3;
-        vAlpha = heightFade * pulseFade * (1.0 + uSurgeIntensity * 0.8);
-        vBrightness = aBrightness * (1.0 + uSurgeIntensity * 0.5);
+        vAlpha = heightFade * pulseFade * (1.0 + uSurgeIntensity * 0.8) * trailFade;
+        vBrightness = aBrightness * (1.0 + uSurgeIntensity * 0.5) * mix(0.35, 1.0, trailFade);
 
         vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-        gl_PointSize = aSize * uPixelRatio * (1.0 + uSurgeIntensity * 0.4) * (500.0 / -mvPosition.z);
+        float trailScale = mix(0.5, 1.0, trailFade);
+        gl_PointSize = aSize * uPixelRatio * (1.0 + uSurgeIntensity * 0.4) * trailScale * (500.0 / -mvPosition.z);
         gl_Position = projectionMatrix * mvPosition;
     }
 `;
@@ -461,10 +464,12 @@ export const volumetricFogFragmentShader = `
         float vertFade = smoothstep(0.0, 0.3, vUv.y) * smoothstep(1.0, 0.7, vUv.y);
         float horizFade = smoothstep(0.0, 0.2, vUv.x) * smoothstep(1.0, 0.8, vUv.x);
         
-        // Icy blue-gray fog
-        vec3 color = vec3(0.5, 0.55, 0.6);
+        float groundBoost = (1.0 - smoothstep(0.2, 0.8, vUv.y)) * 0.4 + 0.45;
         
-        gl_FragColor = vec4(color, fog * vertFade * horizFade * uOpacity);
+        // Deep midnight fog
+        vec3 color = vec3(0.12, 0.16, 0.22);
+        
+        gl_FragColor = vec4(color, fog * vertFade * horizFade * groundBoost * uOpacity);
     }
 `;
 
