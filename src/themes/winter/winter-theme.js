@@ -71,33 +71,130 @@ import {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function createSnowflakeTexture() {
-    if (typeof document === 'undefined') return null;
-    const canvas = document.createElement('canvas');
-    canvas.width = 32;
-    canvas.height = 32;
-    const ctx = canvas.getContext('2d');
-
-    const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-    grad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
-    grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
-    grad.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
-    ctx.fillStyle = grad;
+function drawSnowflakeAtlasCell(ctx, cx, cy, radius, variant) {
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 1.15);
+    halo.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+    halo.addColorStop(0.35, variant === 'bokeh' ? 'rgba(235, 245, 255, 0.8)' : 'rgba(240, 248, 255, 0.74)');
+    halo.addColorStop(0.75, 'rgba(205, 225, 255, 0.28)');
+    halo.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+    ctx.fillStyle = halo;
     ctx.beginPath();
-    ctx.arc(16, 16, 10, 0, Math.PI * 2);
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.lineWidth = 1.5;
-    ctx.translate(16, 16);
+    if (variant === 'bokeh') {
+        const innerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius * 0.85);
+        innerGlow.addColorStop(0, 'rgba(255, 255, 255, 0.72)');
+        innerGlow.addColorStop(0.6, 'rgba(220, 236, 255, 0.22)');
+        innerGlow.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+        ctx.fillStyle = innerGlow;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius * 0.85, 0, Math.PI * 2);
+        ctx.fill();
+        return;
+    }
+
+    let armLengthFactor = 0.84;
+    if (variant === 'needle') armLengthFactor = 0.95;
+    else if (variant === 'dense') armLengthFactor = 0.72;
+    const armLength = radius * armLengthFactor;
+    const branchMain = variant === 'dense' ? 0.3 : 0.36;
+    const branchUpper = variant === 'needle' ? 0.7 : 0.6;
+    const branchLenA = variant === 'dense' ? 0.3 : 0.24;
+    const branchLenB = variant === 'needle' ? 0.2 : 0.18;
+    const coreRadius = variant === 'dense' ? radius * 0.15 : radius * 0.12;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.strokeStyle = 'rgba(246, 251, 255, 0.96)';
+    ctx.lineWidth = variant === 'needle' ? 2.1 : 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
     for (let i = 0; i < 6; i++) {
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 14); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(4, 9); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(-4, 9); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, armLength);
+        ctx.stroke();
+
+        const branchA = armLength * branchMain;
+        const branchB = armLength * branchUpper;
+        const lenA = armLength * branchLenA;
+        const lenB = armLength * branchLenB;
+
+        ctx.beginPath();
+        ctx.moveTo(0, branchA);
+        ctx.lineTo(lenA, branchA + lenA * 0.75);
+        ctx.moveTo(0, branchA);
+        ctx.lineTo(-lenA, branchA + lenA * 0.75);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, branchB);
+        ctx.lineTo(lenB, branchB + lenB * 0.72);
+        ctx.moveTo(0, branchB);
+        ctx.lineTo(-lenB, branchB + lenB * 0.72);
+        ctx.stroke();
+
+        if (variant === 'dense') {
+            const branchC = armLength * 0.48;
+            const lenC = armLength * 0.14;
+            ctx.beginPath();
+            ctx.moveTo(0, branchC);
+            ctx.lineTo(lenC, branchC + lenC * 0.72);
+            ctx.moveTo(0, branchC);
+            ctx.lineTo(-lenC, branchC + lenC * 0.72);
+            ctx.stroke();
+        }
+
         ctx.rotate(Math.PI / 3);
+    }
+    ctx.restore();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.84)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, coreRadius, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function createSnowflakeTexture() {
+    if (typeof document === 'undefined') return null;
+    const atlasColumns = 2;
+    const atlasRows = 2;
+    const cellSize = 128;
+    const atlasSize = cellSize * atlasColumns;
+    const variants = ['classic', 'needle', 'dense', 'bokeh'];
+    const bokehIndex = variants.length - 1;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = atlasSize;
+    canvas.height = atlasSize;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    for (let i = 0; i < variants.length; i++) {
+        const col = i % atlasColumns;
+        const row = Math.floor(i / atlasColumns);
+        const cx = col * cellSize + cellSize * 0.5;
+        const cy = row * cellSize + cellSize * 0.5;
+        drawSnowflakeAtlasCell(ctx, cx, cy, cellSize * 0.34, variants[i]);
     }
 
     const texture = new THREE.CanvasTexture(canvas);
+    texture.generateMipmaps = true;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.premultiplyAlpha = true;
+    texture.userData = {
+        atlas: {
+            columns: atlasColumns,
+            rows: atlasRows,
+            variantCount: variants.length,
+            bokehIndex,
+        },
+    };
     texture.needsUpdate = true;
     return texture;
 }
@@ -126,6 +223,7 @@ const QUALITY_PRESETS = {
         iceWispCount: 40,
         iceWispTrailSegments: 5,
         closeSnowflakeCount: 180,
+        lensSnowflakeCount: 20,
         maxShootingStars: 3,
         maxIceCrystalCrashes: 3,
         maxBlizzardWaves: 2,
@@ -152,6 +250,7 @@ const QUALITY_PRESETS = {
         iceWispCount: 30,
         iceWispTrailSegments: 4,
         closeSnowflakeCount: 140,
+        lensSnowflakeCount: 15,
         maxShootingStars: 2,
         maxIceCrystalCrashes: 2,
         maxBlizzardWaves: 2,
@@ -178,6 +277,7 @@ const QUALITY_PRESETS = {
         iceWispCount: 25,
         iceWispTrailSegments: 4,
         closeSnowflakeCount: 110,
+        lensSnowflakeCount: 12,
         maxShootingStars: 2,
         maxIceCrystalCrashes: 2,
         maxBlizzardWaves: 1,
@@ -204,6 +304,7 @@ const QUALITY_PRESETS = {
         iceWispCount: 15,
         iceWispTrailSegments: 3,
         closeSnowflakeCount: 70,
+        lensSnowflakeCount: 7,
         maxShootingStars: 1,
         maxIceCrystalCrashes: 1,
         maxBlizzardWaves: 1,
@@ -230,6 +331,7 @@ const QUALITY_PRESETS = {
         iceWispCount: 8,
         iceWispTrailSegments: 2,
         closeSnowflakeCount: 35,
+        lensSnowflakeCount: 3,
         maxShootingStars: 1,
         maxIceCrystalCrashes: 1,
         maxBlizzardWaves: 0,
@@ -251,6 +353,7 @@ const WEBGPU_QUALITY_PRESETS = {
         iceWispCount: 50,
         iceWispTrailSegments: 6,
         closeSnowflakeCount: 260,
+        lensSnowflakeCount: 26,
         maxShootingStars: 4,
         maxIceCrystalCrashes: 4,
         maxBlizzardWaves: 3,
@@ -271,6 +374,7 @@ const WEBGPU_QUALITY_PRESETS = {
         iceWispCount: 42,
         iceWispTrailSegments: 5,
         closeSnowflakeCount: 220,
+        lensSnowflakeCount: 22,
         maxShootingStars: 3,
         maxIceCrystalCrashes: 3,
         maxBlizzardWaves: 2,
@@ -291,6 +395,7 @@ const WEBGPU_QUALITY_PRESETS = {
         iceWispCount: 34,
         iceWispTrailSegments: 5,
         closeSnowflakeCount: 180,
+        lensSnowflakeCount: 18,
         maxShootingStars: 3,
         maxIceCrystalCrashes: 3,
         maxBlizzardWaves: 2,
@@ -311,6 +416,7 @@ const WEBGPU_QUALITY_PRESETS = {
         iceWispCount: 26,
         iceWispTrailSegments: 4,
         closeSnowflakeCount: 140,
+        lensSnowflakeCount: 13,
         maxShootingStars: 2,
         maxIceCrystalCrashes: 2,
         maxBlizzardWaves: 1,
@@ -331,6 +437,7 @@ const WEBGPU_QUALITY_PRESETS = {
         iceWispCount: 16,
         iceWispTrailSegments: 3,
         closeSnowflakeCount: 80,
+        lensSnowflakeCount: 8,
         maxShootingStars: 1,
         maxIceCrystalCrashes: 1,
         maxBlizzardWaves: 1,
@@ -351,6 +458,7 @@ const WEBGPU_QUALITY_PRESETS = {
         iceWispCount: 10,
         iceWispTrailSegments: 2,
         closeSnowflakeCount: 40,
+        lensSnowflakeCount: 4,
         maxShootingStars: 1,
         maxIceCrystalCrashes: 1,
         maxBlizzardWaves: 0,
@@ -360,6 +468,14 @@ const WEBGPU_QUALITY_PRESETS = {
         shaftSamples: 2,
     },
 };
+
+const COMBO_TIER_COOLDOWNS = Object.freeze({
+    2: 0.35,
+    4: 0.85,
+    6: 1.6,
+    8: 2.4,
+    10: 3.2,
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHADERS
@@ -496,10 +612,15 @@ const MoonShader = {
 
 // Atmosphere/Vignette
 const VignetteShader = {
-    uniforms: { tDiffuse: { value: null }, darkness: { value: 0.75 }, offset: { value: 1.1 } },
+    uniforms: {
+        tDiffuse: { value: null },
+        darkness: { value: 0.75 },
+        offset: { value: 1.1 },
+        coldStrength: { value: 0.24 },
+    },
     vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: `
-        uniform sampler2D tDiffuse; uniform float darkness; uniform float offset; varying vec2 vUv;
+        uniform sampler2D tDiffuse; uniform float darkness; uniform float offset; uniform float coldStrength; varying vec2 vUv;
         void main() {
             vec4 texel = texture2D(tDiffuse, vUv);
             vec2 uv = (vUv - 0.5) * 2.0;
@@ -508,8 +629,8 @@ const VignetteShader = {
             
             // Cold blue grading
             vec3 col = texel.rgb;
-            col.b *= 1.1; // Cold boost
-            col.r *= 0.95; 
+            vec3 frostTint = vec3(0.86, 0.94, 1.18);
+            col = mix(col, col * frostTint, clamp(coldStrength, 0.0, 1.0));
             
             col = mix(col * (1.0 - darkness), col, vig);
             gl_FragColor = vec4(col, texel.a);
@@ -526,13 +647,15 @@ const SnowShader = {
         uFlashIntensity: { value: 0 },
         uTexture: { value: null },
         uUseTexture: { value: 0.0 },
+        uAtlasColumns: { value: 1.0 },
+        uAtlasRows: { value: 1.0 },
     },
     vertexShader: `
-        attribute float size; attribute float depth; attribute float phase; attribute float wobbleSpeed; attribute float rotationSpeed;
+        attribute float size; attribute float depth; attribute float phase; attribute float wobbleSpeed; attribute float rotationSpeed; attribute float atlasIndex;
         uniform float uTime; uniform float uWindForce; uniform float uGustIntensity;
-        varying float vDepth; varying float vPhase; varying float vRotation; varying float vDof;
+        varying float vDepth; varying float vPhase; varying float vRotation; varying float vDof; varying float vAtlasIndex;
         void main() {
-            vDepth = depth; vPhase = phase;
+            vDepth = depth; vPhase = phase; vAtlasIndex = atlasIndex;
             vec3 pos = position;
             float windX = uWindForce * (1.0 + depth); 
             float turbulenceWave = sin(pos.y * 0.05 + uTime * 4.0);
@@ -554,14 +677,20 @@ const SnowShader = {
         }
     `,
     fragmentShader: `
-        uniform float uTime; uniform float uFlashIntensity; uniform sampler2D uTexture; uniform float uUseTexture;
-        varying float vDepth; varying float vPhase; varying float vRotation; varying float vDof;
+        uniform float uTime; uniform float uFlashIntensity; uniform sampler2D uTexture; uniform float uUseTexture; uniform float uAtlasColumns; uniform float uAtlasRows;
+        varying float vDepth; varying float vPhase; varying float vRotation; varying float vDof; varying float vAtlasIndex;
         void main() {
             vec2 coord = gl_PointCoord - 0.5;
             float s = sin(vRotation); float c = cos(vRotation);
             vec2 rotatedCoord = vec2(coord.x * c - coord.y * s, coord.x * s + coord.y * c) + 0.5;
             vec4 texColor = vec4(1.0);
-            if (uUseTexture > 0.5) texColor = texture2D(uTexture, rotatedCoord);
+            if (uUseTexture > 0.5) {
+                float idx = floor(vAtlasIndex + 0.5);
+                float col = mod(idx, uAtlasColumns);
+                float row = floor(idx / uAtlasColumns);
+                vec2 atlasUv = (rotatedCoord + vec2(col, row)) / vec2(uAtlasColumns, uAtlasRows);
+                texColor = texture2D(uTexture, atlasUv);
+            }
             else { float dist = length(coord); float alpha = 1.0 - smoothstep(0.3, 0.5, dist); texColor = vec4(1.0, 1.0, 1.0, alpha); }
             float depthAlpha = (0.2 + vDepth * 0.6) * 0.8; 
             float twinkle = 0.85 + 0.15 * sin(uTime * 3.0 + vPhase * 10.0);
@@ -573,17 +702,27 @@ const SnowShader = {
 };
 
 const StreakShader = {
-    uniforms: { uTime: { value: 0 }, uWindForce: { value: 0 }, uOpacity: { value: 0 } },
+    uniforms: {
+        uTime: { value: 0 },
+        uWindForce: { value: 0 },
+        uGustIntensity: { value: 0 },
+        uOpacity: { value: 0 },
+    },
     vertexShader: `
         attribute float length; attribute float speed; attribute float offset;
-        uniform float uTime; uniform float uWindForce;
+        uniform float uTime; uniform float uWindForce; uniform float uGustIntensity;
         void main() {
             vec3 pos = position;
             float dist = (uTime * speed * (1.0 + abs(uWindForce) * 0.1));
             pos.x += dist * sign(uWindForce); 
             if (pos.x > 500.0) pos.x -= 1000.0; if (pos.x < -500.0) pos.x += 1000.0;
+            float gust = 1.0 + uGustIntensity * 1.1;
+            float yWave = sin(uTime * (1.2 + speed * 0.003) + offset) * (8.0 + abs(uWindForce) * 0.05) * gust;
+            float zWave = cos(uTime * (0.9 + speed * 0.002) + offset * 1.7) * (5.0 + uGustIntensity * 11.0);
+            pos.y += yWave;
+            pos.z += zWave;
             vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-            float stretch = 1.0 + abs(uWindForce) * 0.5;
+            float stretch = 1.0 + abs(uWindForce) * 0.5 + uGustIntensity * 0.5;
             gl_PointSize = length * stretch * (300.0 / -mvPosition.z);
             gl_Position = projectionMatrix * mvPosition;
         }
@@ -678,9 +817,12 @@ export default class WinterTheme extends BaseTheme {
         this.closeSnowflakeData = null;
         this.closeSnowflakeUniforms = null;
         this.auroraLayers = [];
+        this.skyDome = null;
+        this.skyUniforms = null;
         this.mountains = [];
         this.moon = null;
         this.moonHalo = null;
+        this.moonLight = null;
         this.iceBurstParticles = null;
         this.frozenLightning = [];
         this.windStreaks = null;
@@ -693,6 +835,7 @@ export default class WinterTheme extends BaseTheme {
         this.moonHaloUniforms = null;
         this.windStreakUniforms = null;
         this.iceWispUniforms = null;
+        this.vignettePass = null;
         this.mrtAuditEnabled = false;
         this.starMaxCount = 0;
 
@@ -714,6 +857,18 @@ export default class WinterTheme extends BaseTheme {
             bloomBoost: 0,
             auroraBoost: 0,
         };
+        this.stormEnergy = 0.22;
+        this.stormDirection = Math.random() > 0.5 ? 1 : -1;
+        this.comboShockForce = 0;
+        this.nextStormShiftTime = 8 + Math.random() * 10;
+        this.whiteoutPulse = 0;
+        this.comboTierCooldowns = {
+            2: 0,
+            4: 0,
+            6: 0,
+            8: 0,
+            10: 0,
+        };
 
         this.windForce = 0; this.targetWindForce = 0;
         this.gustIntensity = 0; this.gustDuration = 0;
@@ -728,6 +883,16 @@ export default class WinterTheme extends BaseTheme {
 
         this._moonScreen = new THREE.Vector3();
         this._moonUv = new THREE.Vector2();
+        this._tempVec3 = new THREE.Vector3();
+        this._tempVec3B = new THREE.Vector3();
+        this._tempColorA = new THREE.Color();
+        this._tempColorB = new THREE.Color();
+        this._tempColorC = new THREE.Color();
+        this.auroraBasePalette = {
+            color1: new THREE.Color(0x00ff99),
+            color2: new THREE.Color(0x3366ff),
+            color3: new THREE.Color(0x8800ff),
+        };
 
         this.eventUnsubscribers = [];
         this.qualityPreset = QUALITY_PRESETS.High;
@@ -887,6 +1052,11 @@ export default class WinterTheme extends BaseTheme {
 
         await this.initRenderer(container);
         if (!this.renderer) return;
+        if (this.snowflakeTexture && this.renderer.capabilities?.getMaxAnisotropy) {
+            const maxAnisotropy = this.renderer.capabilities.getMaxAnisotropy();
+            this.snowflakeTexture.anisotropy = Math.min(maxAnisotropy, 8);
+            this.snowflakeTexture.needsUpdate = true;
+        }
         this.applyQualityPreset(this.currentQuality);
         if (this.baselineEnabled && typeof window !== 'undefined') {
             window.winterBaseline = {
@@ -959,9 +1129,9 @@ export default class WinterTheme extends BaseTheme {
         this.camera.lookAt(0, 0, -500);
 
         this.scene.add(new THREE.AmbientLight(0x243248, 0.2));
-        const moonLight = new THREE.DirectionalLight(0x9bb8e6, 0.6);
-        moonLight.position.set(500, 1000, -800); // Aligned with Moon
-        this.scene.add(moonLight);
+        this.moonLight = new THREE.DirectionalLight(0x9bb8e6, 0.6);
+        this.moonLight.position.set(500, 1000, -800); // Aligned with Moon
+        this.scene.add(this.moonLight);
     }
 
     createSkyBackground() {
@@ -1051,19 +1221,20 @@ export default class WinterTheme extends BaseTheme {
         const skyGeo = new THREE.SphereGeometry(4500, 32, 32);
         let skyMat = null;
         if (this.isWebGPU) {
-                const { material: skyMaterial } = createWinterSkyNodeMaterial({
-                    top: new THREE.Color(0x00030a),
-                    mid: new THREE.Color(0x020613),
-                    bottom: new THREE.Color(0x091222),
-                });
-                skyMat = skyMaterial;
-            } else {
-                skyMat = new THREE.ShaderMaterial({
-                    uniforms: {
-                        uTop: { value: new THREE.Color(0x00030a) },
-                        uMid: { value: new THREE.Color(0x020613) },
-                        uBot: { value: new THREE.Color(0x091222) },
-                    },
+            const { material: skyMaterial, uniforms } = createWinterSkyNodeMaterial({
+                top: new THREE.Color(0x00030a),
+                mid: new THREE.Color(0x020613),
+                bottom: new THREE.Color(0x091222),
+            });
+            skyMat = skyMaterial;
+            this.skyUniforms = uniforms;
+        } else {
+            skyMat = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTop: { value: new THREE.Color(0x00030a) },
+                    uMid: { value: new THREE.Color(0x020613) },
+                    uBot: { value: new THREE.Color(0x091222) },
+                },
                 vertexShader: 'varying vec3 vPos; void main(){ vPos=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
                 fragmentShader: `
                     uniform vec3 uTop; uniform vec3 uMid; uniform vec3 uBot; varying vec3 vPos;
@@ -1076,8 +1247,10 @@ export default class WinterTheme extends BaseTheme {
                 `,
                 side: THREE.BackSide,
             });
+            this.skyUniforms = skyMat.uniforms;
         }
-        this.scene.add(new THREE.Mesh(skyGeo, skyMat));
+        this.skyDome = new THREE.Mesh(skyGeo, skyMat);
+        this.scene.add(this.skyDome);
     }
 
     createMoon() {
@@ -1097,6 +1270,11 @@ export default class WinterTheme extends BaseTheme {
         }
         this.moon = new THREE.Mesh(geometry, material);
         this.moon.position.set(500, 1000, -800);
+        this.moon.userData = {
+            baseX: 500,
+            baseY: 1000,
+            baseZ: -800,
+        };
         this.scene.add(this.moon);
 
         if (this.isWebGPU) {
@@ -1118,7 +1296,8 @@ export default class WinterTheme extends BaseTheme {
         });
         const glow = new THREE.Sprite(spriteMat);
         glow.scale.set(600, 600, 1);
-        this.moon.userData = { glow, glowBase: 600 };
+        this.moon.userData.glow = glow;
+        this.moon.userData.glowBase = 600;
         this.moon.add(glow);
 
         // === NEW: Moon God-Rays ===
@@ -1143,6 +1322,7 @@ export default class WinterTheme extends BaseTheme {
             ray.position.y = -600;
             ray.position.z = 50 + i * 20;
             ray.rotation.z = 0.1 - i * 0.1;
+            ray.userData.baseRotation = ray.rotation.z;
             this.moonRays.push(ray);
             this.moon.add(ray);
         }
@@ -1150,20 +1330,69 @@ export default class WinterTheme extends BaseTheme {
 
     updateMoonEffects(delta) {
         if (!this.moon) return;
+        const storm = this.stormEnergy || 0;
+        const gust = this.gustIntensity || 0;
+        const whiteout = this.whiteoutPulse || 0;
+        const windNorm = THREE.MathUtils.clamp(this.windForce / 140, -1.2, 1.2);
+        const baseX = this.moon.userData.baseX ?? 500;
+        const baseY = this.moon.userData.baseY ?? 1000;
+        const baseZ = this.moon.userData.baseZ ?? -800;
+        const driftX = Math.sin(this.time * 0.08) * 16
+            + windNorm * 20
+            + Math.sin(this.time * 0.37) * 4 * (0.4 + storm * 0.6);
+        const driftY = Math.cos(this.time * 0.05) * 9
+            + gust * 8
+            + Math.sin(this.time * 0.21) * 3;
+        const driftZ = Math.sin(this.time * 0.045) * 10;
+        const moonLerp = Math.min(1, delta * 3.5);
+        this._tempVec3.set(baseX + driftX, baseY + driftY, baseZ + driftZ);
+        this.moon.position.lerp(this._tempVec3, moonLerp);
 
         if (this.moonUniforms?.uTime) {
             this.moonUniforms.uTime.value = this.time;
         }
+        if (this.moonUniforms?.uColor?.value) {
+            this._tempColorA.setRGB(0.75, 0.84, 1.0);
+            this._tempColorB.setRGB(0.88, 0.95, 1.0);
+            this.moonUniforms.uColor.value.copy(
+                this._tempColorA.lerp(this._tempColorB, Math.min(1, storm * 0.32 + whiteout * 0.45)),
+            );
+        }
         if (this.moonHaloUniforms?.uTime) {
             this.moonHaloUniforms.uTime.value = this.time;
             if (this.moonHaloUniforms.uIntensity) {
-                this.moonHaloUniforms.uIntensity.value = 0.35 + this.flashIntensity * 0.15;
+                this.moonHaloUniforms.uIntensity.value = 0.3
+                    + this.flashIntensity * 0.15
+                    + storm * 0.16
+                    + whiteout * 0.22;
             }
+            if (this.moonHaloUniforms.uColor?.value) {
+                this._tempColorA.setRGB(0.66, 0.82, 1.0);
+                this._tempColorB.setRGB(0.78, 0.96, 1.0);
+                this.moonHaloUniforms.uColor.value.copy(
+                    this._tempColorA.lerp(this._tempColorB, Math.min(1, storm * 0.4 + whiteout * 0.5)),
+                );
+            }
+        }
+        if (this.moonLight) {
+            this._tempVec3.set(-120, -80, 220);
+            this._tempVec3B.copy(this.moon.position).add(this._tempVec3);
+            this.moonLight.position.lerp(this._tempVec3B, moonLerp);
+            this.moonLight.intensity = 0.55 + storm * 0.3 + whiteout * 0.25 + this.flashIntensity * 0.2;
+            this._tempColorA.setRGB(0.67, 0.77, 0.91);
+            this._tempColorB.setRGB(0.8, 0.9, 1.0);
+            this.moonLight.color.copy(
+                this._tempColorA.lerp(this._tempColorB, Math.min(1, storm * 0.35 + whiteout * 0.45)),
+            );
         }
 
         // Pulse glow
         if (this.moon.userData.glow) {
-            const pulse = 1.0 + Math.sin(this.time * 2.0) * 0.05 + this.flashIntensity * 0.2;
+            const pulse = 1.0
+                + Math.sin(this.time * 2.0) * 0.05
+                + this.flashIntensity * 0.22
+                + storm * 0.08
+                + whiteout * 0.12;
             const size = this.moon.userData.glowBase * pulse;
             this.moon.userData.glow.scale.set(size, size, 1);
         }
@@ -1171,8 +1400,16 @@ export default class WinterTheme extends BaseTheme {
         // Update rays
         this.moonRays.forEach((ray, i) => {
             ray.material.uniforms.uTime.value = this.time + i * 10.0;
-            // Boost intensity with combos
-            ray.material.uniforms.uIntensity.value = 1.0 + this.flashIntensity * 3.0;
+            ray.material.uniforms.uOpacity.value = Math.min(
+                0.5,
+                0.12 + storm * 0.1 + this.flashIntensity * 0.07 + whiteout * 0.16,
+            );
+            ray.material.uniforms.uIntensity.value = 1.0
+                + this.flashIntensity * 3.0
+                + storm * 0.8
+                + whiteout * 1.0;
+            const baseRot = ray.userData.baseRotation ?? ray.rotation.z;
+            ray.rotation.z = baseRot + Math.sin(this.time * 0.28 + i * 1.1) * (0.04 + storm * 0.03);
         });
     }
 
@@ -1318,6 +1555,9 @@ export default class WinterTheme extends BaseTheme {
             if (this.isWebGPU && material.userData?.uniforms) {
                 mesh.userData.uniforms = material.userData.uniforms;
             }
+            mesh.userData.baseOpacity = 0.3 / layerCount;
+            mesh.userData.baseSpeed = 1.0 - i * 0.2;
+            mesh.userData.colorPhase = i * 1.37 + Math.random() * 0.8;
             mesh.position.set(0, 400 - i * 50, -1200 - i * 200);
             mesh.rotation.x = -0.3;
 
@@ -1336,8 +1576,17 @@ export default class WinterTheme extends BaseTheme {
         const phases = new Float32Array(count);
         const wobbleSpeeds = new Float32Array(count);
         const rotationSpeeds = new Float32Array(count);
+        const atlasIndices = new Float32Array(count);
         const velocities = new Float32Array(count * 3);
         const bounds = { width: 900, height: 700, depth: 700 };
+        const atlas = this.snowflakeTexture?.userData?.atlas;
+        const atlasColumns = Math.max(1, atlas?.columns || 1);
+        const atlasRows = Math.max(1, atlas?.rows || 1);
+        const atlasVariantCount = Math.max(1, atlas?.variantCount || 1);
+        const bokehVariant = atlas?.bokehIndex ?? -1;
+        const standardVariantCount = bokehVariant >= 0
+            ? Math.max(1, atlasVariantCount - 1)
+            : atlasVariantCount;
 
         for (let i = 0; i < count; i++) {
             const i3 = i * 3;
@@ -1349,6 +1598,7 @@ export default class WinterTheme extends BaseTheme {
             phases[i] = Math.random() * Math.PI * 2;
             wobbleSpeeds[i] = 1.0 + Math.random();
             rotationSpeeds[i] = (Math.random() - 0.5) * 2.0;
+            atlasIndices[i] = Math.floor(Math.random() * standardVariantCount);
             velocities[i3 + 1] = -(15 + Math.random() * 25);
         }
 
@@ -1368,6 +1618,7 @@ export default class WinterTheme extends BaseTheme {
         geometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
         geometry.setAttribute('wobbleSpeed', new THREE.BufferAttribute(wobbleSpeeds, 1));
         geometry.setAttribute('rotationSpeed', new THREE.BufferAttribute(rotationSpeeds, 1));
+        geometry.setAttribute('atlasIndex', new THREE.BufferAttribute(atlasIndices, 1));
 
         let material = null;
         if (this.isWebGPU) {
@@ -1383,6 +1634,8 @@ export default class WinterTheme extends BaseTheme {
                     ...SnowShader.uniforms,
                     uTexture: { value: this.snowflakeTexture },
                     uUseTexture: { value: this.snowflakeTexture ? 1.0 : 0.0 },
+                    uAtlasColumns: { value: atlasColumns },
+                    uAtlasRows: { value: atlasRows },
                 },
                 vertexShader: SnowShader.vertexShader,
                 fragmentShader: SnowShader.fragmentShader,
@@ -1407,9 +1660,22 @@ export default class WinterTheme extends BaseTheme {
         if (count === 0 || !this.snowflakeTexture) return;
 
         const geometry = new THREE.PlaneGeometry(1, 1);
+        const atlasConfig = this.snowflakeTexture.userData?.atlas || {};
+        const atlasColumns = Math.max(1, atlasConfig.columns || 1);
+        const atlasRows = Math.max(1, atlasConfig.rows || 1);
+        const atlasVariantCount = Math.max(1, atlasConfig.variantCount || 1);
+        const bokehVariant = atlasConfig.bokehIndex ?? -1;
+        const lensTarget = Math.min(
+            count,
+            Math.max(0, this.qualityPreset.lensSnowflakeCount ?? Math.round(count * 0.15)),
+        );
+        const lensRatio = count > 0 ? lensTarget / count : 0;
+        const atlasScaleX = 1 / atlasColumns;
+        const atlasScaleY = 1 / atlasRows;
         const { material, uniforms } = createWinterSnowflakeBillboardMaterial({
             map: this.snowflakeTexture,
-            opacity: 0.7,
+            opacity: 0.68,
+            useAtlas: true,
         });
         this.closeSnowflakeUniforms = uniforms;
 
@@ -1424,25 +1690,66 @@ export default class WinterTheme extends BaseTheme {
         const depths = new Float32Array(count);
         const phases = new Float32Array(count);
         const wobbleSpeeds = new Float32Array(count);
+        const driftAmplitudes = new Float32Array(count);
+        const driftFrequencies = new Float32Array(count);
+        const driftOffsets = new Float32Array(count);
+        const lensFactors = new Float32Array(count);
+        const atlasOffsets = new Float32Array(count * 2);
+        const atlasScales = new Float32Array(count * 2);
         const rotations = new Float32Array(count);
         const rotationSpeeds = new Float32Array(count);
         const bounds = { width: 600, height: 500, depth: 700 };
         const dummy = new THREE.Object3D();
+        let lensRemaining = lensTarget;
+
+        const assignAtlasVariant = (index, useLens) => {
+            const standardVariantCount = bokehVariant >= 0
+                ? Math.max(1, atlasVariantCount - 1)
+                : atlasVariantCount;
+            const variant = useLens && bokehVariant >= 0
+                ? bokehVariant
+                : Math.floor(Math.random() * standardVariantCount);
+            const i2 = index * 2;
+            atlasOffsets[i2] = (variant % atlasColumns) * atlasScaleX;
+            atlasOffsets[i2 + 1] = Math.floor(variant / atlasColumns) * atlasScaleY;
+            atlasScales[i2] = atlasScaleX;
+            atlasScales[i2 + 1] = atlasScaleY;
+            lensFactors[index] = useLens ? 1 : 0;
+        };
 
         for (let i = 0; i < count; i++) {
             const i3 = i * 3;
-            positions[i3] = (Math.random() - 0.5) * bounds.width;
-            positions[i3 + 1] = -150 + Math.random() * bounds.height;
-            positions[i3 + 2] = -50 - Math.random() * bounds.depth;
+            const slotsLeft = count - i;
+            const useLens = bokehVariant >= 0
+                && lensRemaining > 0
+                && Math.random() < (lensRemaining / slotsLeft);
+            if (useLens) lensRemaining -= 1;
+            assignAtlasVariant(i, useLens);
 
-            velocities[i3] = 0;
-            velocities[i3 + 1] = -(15 + Math.random() * 25);
-            velocities[i3 + 2] = 0;
+            if (useLens) {
+                positions[i3] = (Math.random() - 0.5) * bounds.width * 0.75;
+                positions[i3 + 1] = -120 + Math.random() * bounds.height * 0.9;
+                positions[i3 + 2] = -40 - Math.random() * 260;
+                velocities[i3] = (Math.random() - 0.5) * 9;
+                velocities[i3 + 1] = -(8 + Math.random() * 12);
+                velocities[i3 + 2] = (Math.random() - 0.5) * 5;
+                sizes[i] = 4.8 + Math.random() * 5.2;
+            } else {
+                positions[i3] = (Math.random() - 0.5) * bounds.width;
+                positions[i3 + 1] = -150 + Math.random() * bounds.height;
+                positions[i3 + 2] = -50 - Math.random() * bounds.depth;
+                velocities[i3] = (Math.random() - 0.5) * 4;
+                velocities[i3 + 1] = -(15 + Math.random() * 25);
+                velocities[i3 + 2] = (Math.random() - 0.5) * 2;
+                sizes[i] = 2 + Math.random() * 5;
+            }
 
-            sizes[i] = 2 + Math.random() * 5;
             depths[i] = Math.random();
             phases[i] = Math.random() * Math.PI * 2;
             wobbleSpeeds[i] = 1.0 + Math.random();
+            driftAmplitudes[i] = useLens ? 1.2 + Math.random() * 2.8 : 2.0 + Math.random() * 6.0;
+            driftFrequencies[i] = 0.6 + Math.random() * 1.6;
+            driftOffsets[i] = Math.random() * Math.PI * 2;
             rotations[i] = Math.random() * Math.PI * 2;
             rotationSpeeds[i] = (Math.random() - 0.5) * 1.2;
 
@@ -1454,6 +1761,12 @@ export default class WinterTheme extends BaseTheme {
             mesh.setMatrixAt(i, dummy.matrix);
         }
         mesh.instanceMatrix.needsUpdate = true;
+        const atlasOffsetAttr = new THREE.InstancedBufferAttribute(atlasOffsets, 2);
+        const atlasScaleAttr = new THREE.InstancedBufferAttribute(atlasScales, 2);
+        atlasOffsetAttr.setUsage(THREE.DynamicDrawUsage);
+        atlasScaleAttr.setUsage(THREE.DynamicDrawUsage);
+        geometry.setAttribute('aAtlasOffset', atlasOffsetAttr);
+        geometry.setAttribute('aAtlasScale', atlasScaleAttr);
 
         this.closeSnowflakes = mesh;
         this.closeSnowflakeData = {
@@ -1463,6 +1776,17 @@ export default class WinterTheme extends BaseTheme {
             depths,
             phases,
             wobbleSpeeds,
+            driftAmplitudes,
+            driftFrequencies,
+            driftOffsets,
+            lensFactors,
+            atlasOffsets,
+            atlasScales,
+            atlasColumns,
+            atlasRows,
+            atlasVariantCount,
+            bokehVariant,
+            lensRatio,
             rotations,
             rotationSpeeds,
             bounds,
@@ -1533,10 +1857,14 @@ export default class WinterTheme extends BaseTheme {
         const spd = new Float32Array(count);
         const off = new Float32Array(count);
         for (let i = 0; i < count; i++) {
+            const depthT = Math.random();
+            const nearWeight = 1.0 - depthT;
             pos[i * 3] = (Math.random() - 0.5) * 1200;
-            pos[i * 3 + 1] = (Math.random() - 0.5) * 700 + 100;
-            pos[i * 3 + 2] = (Math.random() - 0.5) * 500 - 100;
-            len[i] = 15 + Math.random() * 25; spd[i] = 120 + Math.random() * 150;
+            pos[i * 3 + 1] = -120 + Math.random() * 920;
+            pos[i * 3 + 2] = -80 - depthT * 650;
+            len[i] = 8 + nearWeight * 30 + Math.random() * 10;
+            spd[i] = 85 + nearWeight * 230 + Math.random() * 70;
+            off[i] = Math.random() * Math.PI * 2;
         }
         geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
         geo.setAttribute('length', new THREE.BufferAttribute(len, 1));
@@ -1656,13 +1984,52 @@ export default class WinterTheme extends BaseTheme {
 
         const configs = [
             {
-                y: -150, z: -400, width: 2500, height: 350, speed: 0.008, opacity: 0.1,
+                y: -165,
+                z: -360,
+                width: 2400,
+                height: 360,
+                speed: 0.01,
+                opacity: 0.13,
+                windScale: 0.55,
+                waveAmp: 24,
+                verticalAmp: 7,
+                swirlSpeed: 0.34,
             },
             {
-                y: -100, z: -700, width: 3000, height: 400, speed: 0.005, opacity: 0.07,
+                y: -95,
+                z: -680,
+                width: 3000,
+                height: 410,
+                speed: 0.006,
+                opacity: 0.085,
+                windScale: 0.36,
+                waveAmp: 20,
+                verticalAmp: 5,
+                swirlSpeed: 0.26,
             },
             {
-                y: -50, z: -1000, width: 3500, height: 450, speed: 0.003, opacity: 0.05,
+                y: -35,
+                z: -980,
+                width: 3500,
+                height: 460,
+                speed: 0.004,
+                opacity: 0.06,
+                windScale: 0.24,
+                waveAmp: 16,
+                verticalAmp: 3,
+                swirlSpeed: 0.2,
+            },
+            {
+                y: 35,
+                z: -260,
+                width: 2200,
+                height: 280,
+                speed: 0.013,
+                opacity: 0.1,
+                windScale: 0.72,
+                waveAmp: 30,
+                verticalAmp: 10,
+                swirlSpeed: 0.42,
             },
         ];
 
@@ -1698,6 +2065,16 @@ export default class WinterTheme extends BaseTheme {
             const mesh = new THREE.Mesh(geometry, material);
             mesh.position.set(0, config.y, config.z);
             mesh.renderOrder = -100 - i;
+            mesh.userData.baseX = 0;
+            mesh.userData.baseY = config.y;
+            mesh.userData.baseRot = 0;
+            mesh.userData.windScale = config.windScale;
+            mesh.userData.waveAmp = config.waveAmp;
+            mesh.userData.verticalAmp = config.verticalAmp;
+            mesh.userData.swirlSpeed = config.swirlSpeed;
+            mesh.userData.phase = Math.random() * Math.PI * 2;
+            mesh.userData.baseSpeed = config.speed;
+            mesh.userData.baseOpacity = config.opacity;
             if (this.isWebGPU && material.userData?.uniforms) {
                 mesh.userData.uniforms = material.userData.uniforms;
             }
@@ -1807,7 +2184,8 @@ export default class WinterTheme extends BaseTheme {
         if (this.time - this.lastShootingStarTime > this.nextShootingStarDelay) {
             this.createShootingStar();
             this.lastShootingStarTime = this.time;
-            this.nextShootingStarDelay = 20 + Math.random() * 25;
+            const stormFactor = Math.max(0.45, 1.0 - this.stormEnergy * 0.45);
+            this.nextShootingStarDelay = (16 + Math.random() * 24) * stormFactor;
         }
 
         // Update existing shooting stars
@@ -1884,16 +2262,24 @@ export default class WinterTheme extends BaseTheme {
         // Depth breathing - gentle forward/back motion
         // Range: ±8 units, period ~20 seconds
         const zDrift = Math.sin(this.time * 0.05) * 8;
+        const windSway = THREE.MathUtils.clamp(this.windForce * 0.08, -18, 18);
+        const gustBump = Math.sin(this.time * 0.9) * this.gustIntensity * 3.5;
 
         // Apply position drift on top of camera shake
-        this.camera.position.x = this.baseCameraPosition.x + xDrift + this.cameraShake.x;
+        this.camera.position.x = this.baseCameraPosition.x + xDrift + windSway + gustBump + this.cameraShake.x;
         this.camera.position.y = this.baseCameraPosition.y + yDrift + this.cameraShake.y;
         this.camera.position.z = this.baseCameraPosition.z + zDrift;
+        this.camera.lookAt(
+            windSway * 0.35 + Math.sin(this.time * 0.03) * 12,
+            -15 + Math.sin(this.time * 0.04 + 1.2) * 8 + this.gustIntensity * 4,
+            -500,
+        );
+        this.camera.rotation.z = windSway * 0.0009 + Math.sin(this.time * 0.15) * 0.003;
 
         // FOV breathing - subtle zoom in/out for immersive effect
         // Period: ~18 seconds, range: ±1.5 degrees
         const baseFov = 60; // Match the initial perspective camera FOV
-        const fovBreath = Math.sin(this.time * 0.08) * 1.5;
+        const fovBreath = Math.sin(this.time * 0.08) * 1.5 + this.gustIntensity * 0.8;
         this.camera.fov = baseFov + fovBreath;
         this.camera.updateProjectionMatrix();
     }
@@ -2313,6 +2699,7 @@ export default class WinterTheme extends BaseTheme {
                 this.composer = null;
             }
             this.bloomPass = null;
+            this.vignettePass = null;
             return;
         }
 
@@ -2322,6 +2709,7 @@ export default class WinterTheme extends BaseTheme {
                 this.composer = null;
             }
             this.bloomPass = null;
+            this.vignettePass = null;
             if (this.post) this.post.dispose();
 
             this.post = new WinterPost(this.renderer, this.scene, this.camera, {
@@ -2330,7 +2718,8 @@ export default class WinterTheme extends BaseTheme {
                 bloomThreshold: 0.85,
                 vignetteDarkness: VignetteShader.uniforms.darkness.value,
                 vignetteOffset: VignetteShader.uniforms.offset.value,
-                gradeStrength: 0.3,
+                gradeStrength: 0.34,
+                coldTint: new THREE.Color(0.06, 0.1, 0.18),
                 useMRT: true,
                 shaftStrength: 0.25,
                 shaftSamples: this.qualityPreset.shaftSamples ?? 4,
@@ -2357,7 +2746,8 @@ export default class WinterTheme extends BaseTheme {
             0.85,
         );
         this.composer.addPass(this.bloomPass);
-        this.composer.addPass(new ShaderPass(VignetteShader));
+        this.vignettePass = new ShaderPass(VignetteShader);
+        this.composer.addPass(this.vignettePass);
     }
 
     setupEventListeners() {
@@ -2386,6 +2776,101 @@ export default class WinterTheme extends BaseTheme {
         if (combo > 0) this.pendingComboCount = combo;
         this.comboMultiplier = Math.min(1 + combo * 0.5, 4.0);
         this.comboDecay = 200;
+        this.stormEnergy = Math.min(1.65, this.stormEnergy + combo * 0.032);
+        this.comboShockForce = Math.min(270, this.comboShockForce + combo * 3.6);
+    }
+
+    resolveComboTier(lines, combo) {
+        if (combo >= 10) return 10;
+        if (combo >= 8) return 8;
+        if (combo >= 6 || lines >= 4) return 6;
+        if (combo >= 4 || lines >= 3) return 4;
+        if (combo >= 2 || lines >= 2) return 2;
+        return 0;
+    }
+
+    canTriggerComboTier(tier) {
+        if (!tier) return false;
+        const nextAllowed = this.comboTierCooldowns?.[tier] ?? 0;
+        return this.time >= nextAllowed;
+    }
+
+    setComboTierCooldown(tier) {
+        if (!tier) return;
+        const cooldown = COMBO_TIER_COOLDOWNS[tier] ?? 0.8;
+        this.comboTierCooldowns[tier] = this.time + cooldown;
+    }
+
+    applyAuroraPulse(intensity = 1.6) {
+        if (!this.effectState) return;
+        this.effectState.auroraBoost = Math.max(this.effectState.auroraBoost, Math.max(0, intensity - 1.0));
+        this.auroraLayers.forEach((layer) => {
+            const u = layer.userData?.uniforms || layer.material.uniforms;
+            if (u?.uIntensity) {
+                u.uIntensity.value = Math.max(u.uIntensity.value ?? 1.0, intensity);
+            }
+        });
+    }
+
+    triggerComboTierEffects(tier, lines, combo, direction) {
+        if (tier >= 2 && this.canTriggerComboTier(2)) {
+            this.createBlizzardWave(direction);
+            if (this.effectState) {
+                this.effectState.iceWispSurge = Math.max(
+                    this.effectState.iceWispSurge,
+                    0.4 + Math.min(0.7, combo * 0.06),
+                );
+            }
+            this.setComboTierCooldown(2);
+        }
+
+        if (tier >= 4 && this.canTriggerComboTier(4)) {
+            this.createFrozenLightningEffect((Math.random() - 0.5) * 300, 100, -400);
+            this.applyAuroraPulse(1.65 + Math.min(0.9, combo * 0.12));
+            if (this.effectState) {
+                this.effectState.bloomBoost = Math.max(
+                    this.effectState.bloomBoost,
+                    0.7 + Math.min(0.8, combo * 0.08),
+                );
+            }
+            this.setComboTierCooldown(4);
+        }
+
+        if (tier >= 6 && this.canTriggerComboTier(6)) {
+            this.createVortexSystem(0, 0, -220);
+            this.createIceCrystalCrash();
+            this.spawnIceBurst(0, -40, -170, Math.min(280, 120 + combo * 22 + lines * 20));
+            this.setComboTierCooldown(6);
+        }
+
+        if (tier >= 8 && this.canTriggerComboTier(8)) {
+            this.whiteoutPulse = Math.max(this.whiteoutPulse, 1.0);
+            this.createBlizzardWave(direction);
+            this.createBlizzardWave(-direction);
+            this.createShootingStar();
+            this.targetWindForce += direction * (42 + combo * 6);
+            this.gustDuration = Math.max(this.gustDuration, 180 + combo * 55);
+            this.gustIntensity = Math.max(this.gustIntensity, 1.05 + combo * 0.05);
+            if (this.effectState) {
+                this.effectState.bloomBoost = Math.max(this.effectState.bloomBoost, 2.0);
+            }
+            this.setComboTierCooldown(8);
+        }
+
+        if (tier >= 10 && this.canTriggerComboTier(10)) {
+            this.createIceCrystalCrash();
+            this.createFrozenLightningEffect((Math.random() - 0.5) * 340, 180, -420);
+            this.createBlizzardWave(direction);
+            this.createBlizzardWave(-direction);
+            this.targetWindForce += direction * (70 + combo * 8);
+            this.nextStormShiftTime = Math.min(this.nextStormShiftTime, this.time + 1.5);
+            if (this.effectState) {
+                this.effectState.bloomBoost = Math.max(this.effectState.bloomBoost, 2.4);
+                this.effectState.iceWispSurge = Math.max(this.effectState.iceWispSurge, 1.0);
+            }
+            this.whiteoutPulse = Math.max(this.whiteoutPulse, 1.45);
+            this.setComboTierCooldown(10);
+        }
     }
 
     handlePieceLock(data) {
@@ -2428,52 +2913,28 @@ export default class WinterTheme extends BaseTheme {
     }
 
     onLineClear(lines, combo) {
-        const burst = Math.min(lines * 30 + combo * 20, 200);
+        const tier = this.resolveComboTier(lines, combo);
+        const burst = Math.min(lines * 35 + combo * 22 + tier * 12, 280);
         this.spawnIceBurst(0, -50, -200, burst);
 
-        this.targetWindForce = (Math.random() > 0.5 ? 1 : -1) * (45 + combo * 15);
-        this.gustIntensity = 1.0;
-        this.gustDuration = 100 + combo * 50;
+        const direction = Math.random() > 0.5 ? 1 : -1;
+        this.stormDirection = direction;
+        this.stormEnergy = Math.min(1.65, this.stormEnergy + 0.12 + lines * 0.09 + combo * 0.065);
+        this.targetWindForce += direction * (38 + lines * 18 + combo * 14);
+        this.comboShockForce = Math.min(270, this.comboShockForce + 22 + combo * 11 + lines * 8);
+        this.gustDuration = Math.max(this.gustDuration, 130 + lines * 52 + combo * 82);
+        this.gustIntensity = Math.min(1.6, 0.58 + combo * 0.13 + lines * 0.1);
 
-        if (lines >= 4 || combo >= 3) {
-            this.createFrozenLightningEffect((Math.random() - 0.5) * 300, 100, -400);
+        this.triggerComboTierEffects(tier, lines, combo, direction);
+
+        if (tier > 0 && this.effectState) {
+            this.effectState.auroraBoost = Math.max(this.effectState.auroraBoost, 0.4 + tier * 0.08);
         }
-
-        // === NEW: Blizzard Wave on big clear ===
-        if (lines >= 2 || combo >= 2) {
-            this.createBlizzardWave(Math.random() > 0.5 ? 1 : -1);
-        }
-
-        // === NEW: Aurora Pulse Wave ===
-        // (Will implement aurora pulse logic in update loop if needed,
-        //  but simpler to just boost intensity here for now)
-        if (this.effectState) {
-            this.effectState.auroraBoost = 1.0; // Decay handled in update
-        }
-
-        if (combo >= 4) {
-            this.createVortexSystem(0, 0, -200);
-
-            // === NEW: Ice Crystal Crash on High Combo ===
-            if (combo >= 6) {
-                this.createIceCrystalCrash();
-            }
-            // === NEW: Shooting Star on Medium Combo ===
-            else if (combo >= 3) {
-                this.createShootingStar();
-            }
-        }
-
-        this.flashIntensity = 0.5 + Math.min(combo * 0.1, 1.0);
-        this.cameraShake.intensity = Math.min(3 + lines + combo * 1.5, 12);
-
-        // AURORA REACTS TO COMBO
-        if (this.auroraLayers.length > 0) {
-            this.auroraLayers.forEach((l) => {
-                const u = l.userData?.uniforms || l.material.uniforms;
-                if (u?.uIntensity) u.uIntensity.value = 1.5 + Math.min(combo, 2.0);
-            });
-        }
+        this.flashIntensity = Math.max(this.flashIntensity, 0.45 + tier * 0.08 + combo * 0.06);
+        this.cameraShake.intensity = Math.min(
+            Math.max(this.cameraShake.intensity, 2 + lines * 1.1 + combo * 1.2 + tier * 0.45),
+            14,
+        );
     }
 
     startAnimation() {
@@ -2514,15 +2975,77 @@ export default class WinterTheme extends BaseTheme {
                 const u = this.windStreakUniforms || this.windStreaks.material.uniforms;
                 if (u?.uTime) u.uTime.value = this.time;
                 if (u?.uWindForce) u.uWindForce.value = this.windForce;
+                if (u?.uGustIntensity) u.uGustIntensity.value = this.gustIntensity;
                 const spd = Math.abs(this.windForce);
                 if (u?.uOpacity) {
-                    u.uOpacity.value = Math.min(Math.max((spd - 10.0) / 20.0, 0.0), 0.8) * this.gustIntensity;
+                    const streakBase = Math.min(Math.max((spd - 4.0) / 18.0, 0.0), 1.0);
+                    const stormOpacity = Math.min(0.7, this.stormEnergy * 0.52);
+                    const gustOpacity = streakBase * (0.65 + this.gustIntensity * 1.1);
+                    u.uOpacity.value = Math.min(1.0, stormOpacity + gustOpacity);
                 }
             }
-            this.auroraLayers.forEach((layer) => {
+            const auroraBoost = this.effectState?.auroraBoost || 0;
+            const skyStorm = Math.min(1.0, this.stormEnergy * 0.56 + auroraBoost * 0.45);
+            const skyWhiteout = Math.min(1.0, this.whiteoutPulse * 0.55);
+            if (this.skyUniforms?.uTop?.value && this.skyUniforms?.uMid?.value && this.skyUniforms?.uBot?.value) {
+                this._tempColorA.set(0x00030a).lerp(this._tempColorB.set(0x102747), skyStorm)
+                    .lerp(this._tempColorC.set(0x2d4f76), skyWhiteout);
+                this.skyUniforms.uTop.value.copy(this._tempColorA);
+                this._tempColorA.set(0x020613).lerp(this._tempColorB.set(0x12233d), skyStorm)
+                    .lerp(this._tempColorC.set(0x2f4f74), skyWhiteout);
+                this.skyUniforms.uMid.value.copy(this._tempColorA);
+                this._tempColorA.set(0x091222).lerp(this._tempColorB.set(0x1b3556), skyStorm)
+                    .lerp(this._tempColorC.set(0x4a6b92), skyWhiteout);
+                this.skyUniforms.uBot.value.copy(this._tempColorA);
+            }
+            this.auroraLayers.forEach((layer, layerIndex) => {
                 const u = layer.userData?.uniforms || layer.material.uniforms;
                 if (u?.uTime) u.uTime.value = this.time;
-                if (u?.uIntensity && u.uIntensity.value > 1.0) u.uIntensity.value -= delta * 0.5;
+                if (u?.uIntensity) {
+                    const targetIntensity = 1.0 + auroraBoost + this.stormEnergy * 0.2;
+                    u.uIntensity.value += (targetIntensity - u.uIntensity.value) * Math.min(1, delta * 3.5);
+                }
+                if (u?.uOpacity && layer.userData?.baseOpacity !== undefined) {
+                    u.uOpacity.value = layer.userData.baseOpacity
+                        * (0.9 + auroraBoost * 0.45 + this.stormEnergy * 0.2 + this.whiteoutPulse * 0.28);
+                }
+                if (u?.uSpeed && layer.userData?.baseSpeed !== undefined) {
+                    u.uSpeed.value = layer.userData.baseSpeed
+                        * (1.0 + this.stormEnergy * 0.25 + this.gustIntensity * 0.2);
+                }
+                const palettePhase = this.time * 0.22 + (layer.userData?.colorPhase || 0);
+                const paletteMix = 0.22
+                    + this.stormEnergy * 0.25
+                    + this.whiteoutPulse * 0.24
+                    + (Math.sin(palettePhase) * 0.5 + 0.5) * 0.16;
+                if (u?.uColor1?.value) {
+                    u.uColor1.value.copy(
+                        this._tempColorA.copy(this.auroraBasePalette.color1).lerp(
+                            this._tempColorB.setRGB(0.42, 0.98, 1.0),
+                            Math.min(1.0, paletteMix),
+                        ),
+                    );
+                }
+                if (u?.uColor2?.value) {
+                    u.uColor2.value.copy(
+                        this._tempColorA.copy(this.auroraBasePalette.color2).lerp(
+                            this._tempColorB.setRGB(0.56, 0.9, 1.0),
+                            Math.min(1.0, paletteMix * 0.95),
+                        ),
+                    );
+                }
+                if (u?.uColor3?.value) {
+                    u.uColor3.value.copy(
+                        this._tempColorA.copy(this.auroraBasePalette.color3).lerp(
+                            this._tempColorB.setRGB(0.7, 0.78, 1.0),
+                            Math.min(1.0, paletteMix * 0.9),
+                        ),
+                    );
+                }
+                const phase = layer.userData?.colorPhase || 0;
+                layer.position.x = this.windForce * (0.16 + layerIndex * 0.05)
+                    + Math.sin(this.time * 0.045 + phase) * (20 + this.stormEnergy * 28);
+                layer.rotation.z = Math.sin(this.time * 0.07 + phase) * (0.01 + this.stormEnergy * 0.02);
             });
             if (this.starUniforms?.uTime) {
                 this.starUniforms.uTime.value = this.time;
@@ -2533,7 +3056,10 @@ export default class WinterTheme extends BaseTheme {
                 this.closeSnowflakeUniforms.uTime.value = this.time;
             }
             if (this.closeSnowflakeUniforms?.uOpacity) {
-                this.closeSnowflakeUniforms.uOpacity.value = Math.min(1.0, 0.55 + this.flashIntensity * 0.5);
+                this.closeSnowflakeUniforms.uOpacity.value = Math.min(
+                    1.0,
+                    0.52 + this.flashIntensity * 0.4 + this.stormEnergy * 0.22 + this.whiteoutPulse * 0.2,
+                );
             }
 
             // === NEW: Ice Wisps uniforms ===
@@ -2547,19 +3073,72 @@ export default class WinterTheme extends BaseTheme {
             this.fogLayers.forEach((layer) => {
                 const u = layer.userData?.uniforms || layer.material.uniforms;
                 if (u?.uTime) u.uTime.value = this.time;
+                if (u?.uSpeed && layer.userData?.baseSpeed !== undefined) {
+                    u.uSpeed.value = layer.userData.baseSpeed * (1.0 + this.stormEnergy * 0.72 + this.gustIntensity * 0.2);
+                }
+                if (u?.uOpacity && layer.userData?.baseOpacity !== undefined) {
+                    u.uOpacity.value = layer.userData.baseOpacity
+                        * (0.85 + this.stormEnergy * 0.62 + this.gustIntensity * 0.24 + this.whiteoutPulse * 0.35);
+                }
+                const phase = layer.userData?.phase || 0;
+                const windScale = layer.userData?.windScale || 0.25;
+                const waveAmp = layer.userData?.waveAmp || 14;
+                const verticalAmp = layer.userData?.verticalAmp || 3;
+                const swirlSpeed = layer.userData?.swirlSpeed || 0.2;
+                layer.position.x = (layer.userData?.baseX || 0)
+                    + this.windForce * windScale
+                    + Math.sin(this.time * swirlSpeed + phase) * waveAmp * (0.4 + this.stormEnergy * 0.9);
+                layer.position.y = (layer.userData?.baseY || layer.position.y)
+                    + Math.cos(this.time * swirlSpeed * 0.7 + phase) * verticalAmp * (0.2 + this.gustIntensity * 0.9);
+                layer.rotation.z = (layer.userData?.baseRot || 0)
+                    + Math.sin(this.time * 0.11 + phase) * (0.012 + this.stormEnergy * 0.016);
             });
 
             if (this.post?.updateParams) {
                 const params = {
+                    gradeStrength: 0.28
+                        + this.stormEnergy * 0.14
+                        + this.gustIntensity * 0.08
+                        + this.whiteoutPulse * 0.2,
+                    vignetteDarkness: Math.min(
+                        0.9,
+                        0.62 + this.stormEnergy * 0.12 + this.whiteoutPulse * 0.16,
+                    ),
+                    vignetteOffset: Math.max(
+                        0.85,
+                        1.16 - this.stormEnergy * 0.1 - this.whiteoutPulse * 0.12,
+                    ),
                 };
+                this._tempColorA.setRGB(0.06, 0.1, 0.17);
+                this._tempColorB.setRGB(0.11, 0.2, 0.32);
+                params.coldTint = this._tempColorA.lerp(
+                    this._tempColorB,
+                    Math.min(1.0, this.stormEnergy * 0.42 + this.whiteoutPulse * 0.38),
+                );
                 if (this.moon && this.camera) {
                     this.moon.getWorldPosition(this._moonScreen);
                     this._moonScreen.project(this.camera);
                     this._moonUv.set(this._moonScreen.x * 0.5 + 0.5, this._moonScreen.y * 0.5 + 0.5);
                     params.lightPos = this._moonUv;
-                    params.shaftStrength = (0.25 + this.flashIntensity * 0.4) * (this.postPerfScale ?? 1.0);
+                    params.shaftStrength = (
+                        0.25
+                        + this.flashIntensity * 0.4
+                        + this.whiteoutPulse * 0.45
+                    ) * (this.postPerfScale ?? 1.0);
                 }
                 this.post.updateParams(params);
+            }
+            if (this.vignettePass?.uniforms) {
+                const u = this.vignettePass.uniforms;
+                if (u.darkness) {
+                    u.darkness.value = Math.min(0.92, 0.64 + this.stormEnergy * 0.14 + this.whiteoutPulse * 0.15);
+                }
+                if (u.offset) {
+                    u.offset.value = Math.max(0.86, 1.14 - this.stormEnergy * 0.08 - this.whiteoutPulse * 0.1);
+                }
+                if (u.coldStrength) {
+                    u.coldStrength.value = Math.min(0.9, 0.28 + this.stormEnergy * 0.22 + this.whiteoutPulse * 0.22);
+                }
             }
 
             if (this.post && this.qualityPreset.enablePostProcessing) {
@@ -2581,43 +3160,68 @@ export default class WinterTheme extends BaseTheme {
 
     updateEffectState(delta) {
         if (this.effectState) {
-            // Decay Bloom Boost
-            if (this.effectState.bloomBoost > 0) {
-                this.effectState.bloomBoost -= delta * 3.0; // Fast decay
-                if (this.effectState.bloomBoost < 0) this.effectState.bloomBoost = 0;
+            this.effectState.bloomBoost = Math.max(0, this.effectState.bloomBoost - delta * 3.0);
+            this.effectState.iceWispSurge = Math.max(0, this.effectState.iceWispSurge - delta * 1.0);
+            this.effectState.auroraBoost = Math.max(0, this.effectState.auroraBoost - delta * 0.65);
+            this.whiteoutPulse = Math.max(0, this.whiteoutPulse - delta * 1.6);
 
-                // Apply to pass
-                const base = this.qualityPreset.bloomStrength;
-                if (this.bloomPass) {
-                    this.bloomPass.strength = base + (this.effectState.bloomBoost * base * 2.0);
-                } else if (this.post?.updateParams) {
-                    this.post.updateParams({
-                        bloomStrength: base + (this.effectState.bloomBoost * base * 2.0),
-                    });
-                }
+            const baseBloom = this.qualityPreset.bloomStrength;
+            const bloomBoost = this.effectState.bloomBoost + this.whiteoutPulse * 1.2;
+            const bloomStrength = baseBloom + (bloomBoost * baseBloom * 2.0);
+            const bloomThreshold = Math.max(0.6, 0.85 - this.whiteoutPulse * 0.2);
+            if (this.bloomPass) {
+                this.bloomPass.strength = bloomStrength;
+                this.bloomPass.threshold = bloomThreshold;
+            } else if (this.post?.updateParams) {
+                this.post.updateParams({
+                    bloomStrength,
+                    bloomThreshold,
+                });
             }
-
-            // Decay Ice Wisp Surge
-            if (this.effectState.iceWispSurge > 0) {
-                this.effectState.iceWispSurge -= delta * 1.0;
-                if (this.effectState.iceWispSurge < 0) this.effectState.iceWispSurge = 0;
-            }
-
         }
 
         if (this.comboDecay > 0) {
             this.comboDecay -= delta * 60;
             if (this.comboDecay <= 0) this.comboMultiplier = 1.0;
         }
-        this.windForce += (this.targetWindForce - this.windForce) * 0.1;
-        this.targetWindForce *= 0.95;
+
+        if (this.time > this.nextStormShiftTime) {
+            this.nextStormShiftTime = this.time + 2.5 + Math.random() * 5.5;
+            if (Math.random() > 0.35) this.stormDirection *= -1;
+        }
+        const stormTargetEnergy = 0.28
+            + this.gustIntensity * 0.78
+            + this.whiteoutPulse * 0.45
+            + Math.min(0.28, Math.abs(this.comboShockForce) / 420);
+        this.stormEnergy += (stormTargetEnergy - this.stormEnergy) * Math.min(1, delta * 0.42);
+        this.stormEnergy = Math.min(1.65, Math.max(0.08, this.stormEnergy));
+
+        const layeredWind = Math.sin(this.time * 0.23) * 18
+            + Math.sin(this.time * 0.081 + 1.6) * 13
+            + Math.cos(this.time * 0.39 + 0.7) * 8;
+        const stormBaseWind = this.stormDirection * (12 + this.stormEnergy * 52) + layeredWind;
+        const targetWind = stormBaseWind + this.targetWindForce + this.comboShockForce * this.stormDirection;
+        this.windForce += (targetWind - this.windForce) * Math.min(1, delta * 5.2);
+        this.targetWindForce *= 0.974;
+        this.comboShockForce *= 0.955;
+
         if (this.gustDuration > 0) {
             this.gustDuration -= delta * 60;
-            this.gustIntensity = Math.max(0, this.gustDuration / 120);
+            this.gustIntensity = Math.min(1.65, Math.max(this.gustIntensity * 0.985, (this.gustDuration / 120) * 1.2));
         } else {
             this.gustIntensity = 0;
         }
-        this.flashIntensity *= 0.9;
+        if (this.scene?.fog?.isFogExp2) {
+            const baseFog = (this.qualityPreset.fogDensity || 0.001) * 1.1;
+            const targetFog = baseFog * (
+                1.0
+                + this.stormEnergy * 0.3
+                + this.gustIntensity * 0.15
+                + this.whiteoutPulse * 0.5
+            );
+            this.scene.fog.density += (targetFog - this.scene.fog.density) * Math.min(1, delta * 1.8);
+        }
+        this.flashIntensity = Math.max(this.flashIntensity * 0.9, this.whiteoutPulse * 0.7);
         this.cameraShake.intensity *= 0.9;
         this.cameraShake.x = (Math.random() - 0.5) * this.cameraShake.intensity;
         this.cameraShake.y = (Math.random() - 0.5) * this.cameraShake.intensity;
@@ -2732,19 +3336,9 @@ export default class WinterTheme extends BaseTheme {
             }
         }
 
-        if (lod < 0.4) {
-            this.snowUpdateStride = 4;
-            this.closeSnowflakeFrameStride = 4;
-        } else if (lod < 0.55) {
-            this.snowUpdateStride = 3;
-            this.closeSnowflakeFrameStride = 3;
-        } else if (lod < 0.75) {
-            this.snowUpdateStride = 2;
-            this.closeSnowflakeFrameStride = 2;
-        } else {
-            this.snowUpdateStride = 1;
-            this.closeSnowflakeFrameStride = 1;
-        }
+        this.snowUpdateStride = lod < 0.55 ? 2 : 1;
+        // Keep near flakes at full-rate updates to prevent visible stepping.
+        this.closeSnowflakeFrameStride = 1;
     }
 
     updatePerformance(delta) {
@@ -2853,6 +3447,17 @@ export default class WinterTheme extends BaseTheme {
             depths,
             phases,
             wobbleSpeeds,
+            driftAmplitudes,
+            driftFrequencies,
+            driftOffsets,
+            lensFactors,
+            atlasOffsets,
+            atlasScales,
+            atlasColumns,
+            atlasRows,
+            atlasVariantCount,
+            bokehVariant,
+            lensRatio,
             rotations,
             rotationSpeeds,
             bounds,
@@ -2860,56 +3465,135 @@ export default class WinterTheme extends BaseTheme {
         } = this.closeSnowflakeData;
         const camQuat = this.camera.quaternion;
         const count = this.closeSnowflakes.count ?? sizes.length;
+        const dt = Math.min(delta, 1 / 24);
+        const atlasScaleX = 1 / Math.max(1, atlasColumns || 1);
+        const atlasScaleY = 1 / Math.max(1, atlasRows || 1);
+        let atlasDirty = false;
 
         for (let i = 0; i < count; i++) {
             const i3 = i * 3;
-            positions[i3] += velocities[i3] * delta;
-            positions[i3 + 1] += velocities[i3 + 1] * delta;
-            positions[i3 + 2] += velocities[i3 + 2] * delta;
-            rotations[i] += rotationSpeeds[i] * delta;
+            const i2 = i * 2;
+            let depth = depths[i];
+            let phase = phases[i];
+            let wobbleSpeed = wobbleSpeeds[i];
+            let lensFactor = lensFactors[i];
+            const windResponse = (0.38 + depth * 1.05) * (1.0 + lensFactor * 0.72);
+            const targetVelX = this.windForce * windResponse * 0.98;
+            velocities[i3] += (targetVelX - velocities[i3]) * Math.min(1, dt * (4.1 + this.stormEnergy * 2.4));
+            velocities[i3 + 2] += ((-this.windForce * 0.12) - velocities[i3 + 2]) * Math.min(1, dt * (2.7 + this.stormEnergy * 1.9));
 
+            positions[i3] += velocities[i3] * dt;
+            positions[i3 + 1] += velocities[i3 + 1] * dt * (1.0 - lensFactor * 0.35);
+            positions[i3 + 2] += velocities[i3 + 2] * dt;
+            rotations[i] += rotationSpeeds[i] * dt * (1.0 + this.gustIntensity * 0.15);
+
+            const xLimit = bounds.width * (1.0 + lensFactor * 0.2);
+            const zFrontLimit = 50 + lensFactor * 70;
+            const zBackLimit = -bounds.depth + lensFactor * (bounds.depth - 220);
             if (
                 positions[i3 + 1] < -bounds.height * 0.6
-                || Math.abs(positions[i3]) > bounds.width
-                || positions[i3 + 2] > 50
-                || positions[i3 + 2] < -bounds.depth
+                || Math.abs(positions[i3]) > xLimit
+                || positions[i3 + 2] > zFrontLimit
+                || positions[i3 + 2] < zBackLimit
             ) {
-                positions[i3] = (Math.random() - 0.5) * bounds.width;
-                positions[i3 + 1] = bounds.height * 0.5 + Math.random() * 120;
-                positions[i3 + 2] = -50 - Math.random() * bounds.depth;
-                velocities[i3] = 0;
-                velocities[i3 + 1] = -(15 + Math.random() * 25);
-                velocities[i3 + 2] = 0;
-                sizes[i] = 2 + Math.random() * 5;
+                const respawnLens = bokehVariant >= 0 && Math.random() < (lensRatio || 0);
+                lensFactor = respawnLens ? 1 : 0;
+                lensFactors[i] = lensFactor;
+
+                if (respawnLens) {
+                    positions[i3] = (Math.random() - 0.5) * bounds.width * 0.75;
+                    positions[i3 + 1] = bounds.height * 0.35 + Math.random() * 120;
+                    positions[i3 + 2] = -40 - Math.random() * 260;
+                    velocities[i3] = (Math.random() - 0.5) * 9;
+                    velocities[i3 + 1] = -(8 + Math.random() * 12);
+                    velocities[i3 + 2] = (Math.random() - 0.5) * 5;
+                    sizes[i] = 4.8 + Math.random() * 5.2;
+                } else {
+                    positions[i3] = (Math.random() - 0.5) * bounds.width;
+                    positions[i3 + 1] = bounds.height * 0.5 + Math.random() * 120;
+                    positions[i3 + 2] = -50 - Math.random() * bounds.depth;
+                    velocities[i3] = (Math.random() - 0.5) * 4;
+                    velocities[i3 + 1] = -(15 + Math.random() * 25);
+                    velocities[i3 + 2] = (Math.random() - 0.5) * 2;
+                    sizes[i] = 2 + Math.random() * 5;
+                }
+
                 depths[i] = Math.random();
                 phases[i] = Math.random() * Math.PI * 2;
                 wobbleSpeeds[i] = 1.0 + Math.random();
+                driftAmplitudes[i] = respawnLens ? 1.2 + Math.random() * 2.8 : 2.0 + Math.random() * 6.0;
+                driftFrequencies[i] = 0.6 + Math.random() * 1.6;
+                driftOffsets[i] = Math.random() * Math.PI * 2;
                 rotations[i] = Math.random() * Math.PI * 2;
+
+                const standardVariantCount = bokehVariant >= 0
+                    ? Math.max(1, atlasVariantCount - 1)
+                    : Math.max(1, atlasVariantCount);
+                const variant = respawnLens && bokehVariant >= 0
+                    ? bokehVariant
+                    : Math.floor(Math.random() * standardVariantCount);
+                atlasOffsets[i2] = (variant % atlasColumns) * atlasScaleX;
+                atlasOffsets[i2 + 1] = Math.floor(variant / atlasColumns) * atlasScaleY;
+                atlasScales[i2] = atlasScaleX;
+                atlasScales[i2 + 1] = atlasScaleY;
+                atlasDirty = true;
+
+                depth = depths[i];
+                phase = phases[i];
+                wobbleSpeed = wobbleSpeeds[i];
             }
 
-            const depth = depths[i];
-            const phase = phases[i];
-            const wobbleSpeed = wobbleSpeeds[i];
-            const windX = this.windForce * (1.0 + depth);
-            const turbulenceWave = Math.sin(positions[i3 + 1] * 0.05 + this.time * 4.0);
-            const hardTurbulence = Math.sign(turbulenceWave) * Math.pow(Math.abs(turbulenceWave), 0.5);
-            const turbulence = hardTurbulence * this.gustIntensity * 25.0;
-            const spiral = Math.sin(this.time * wobbleSpeed + phase) * (2.0 + this.gustIntensity * 5.0);
-            const zOffset = Math.cos(this.time * wobbleSpeed * 0.5) * 2.0 - this.windForce * 0.1;
+            const driftPhase = this.time * driftFrequencies[i] + driftOffsets[i];
+            const chaosScale = 1.0 + this.stormEnergy * 1.55;
+            const turbulenceA = Math.sin(
+                this.time * (2.0 + depth * 1.6) + positions[i3 + 1] * 0.03 + phase,
+            ) * (10.0 + depth * 12.0);
+            const turbulenceB = Math.cos(
+                this.time * (3.6 + depth * 2.3) + positions[i3] * 0.028 + phase * 0.7,
+            ) * (5.2 + depth * 7.5);
+            const smoothTurbulence = (turbulenceA + turbulenceB)
+                * this.gustIntensity
+                * chaosScale
+                * (1.0 + lensFactor * 0.95);
+            const spiral = Math.sin(this.time * wobbleSpeed + phase)
+                * driftAmplitudes[i]
+                * (1.0 - lensFactor * 0.22);
+            const sideBob = Math.cos(driftPhase * 0.6)
+                * (1.2 + depth * 1.8 + lensFactor * 2.0 + this.stormEnergy * 1.35);
+            const lensPulse = lensFactor * Math.sin(this.time * 0.7 + phase) * 6.0;
+            const zOffset = Math.sin(driftPhase * 0.45 + phase) * (0.8 + depth * 2.2) - this.windForce * 0.08 + lensPulse;
             dummy.position.set(
-                positions[i3] + windX + turbulence + spiral,
+                positions[i3] + smoothTurbulence + spiral + sideBob,
                 positions[i3 + 1],
                 positions[i3 + 2] + zOffset,
             );
             dummy.quaternion.copy(camQuat);
             dummy.rotateZ(rotations[i]);
             const boost = 1 + this.flashIntensity * 0.4;
-            dummy.scale.set(sizes[i] * boost, sizes[i] * boost, 1);
+            const stormScale = 1 + this.stormEnergy * 0.05;
+            const stretch = 1 + Math.min(
+                0.42,
+                Math.abs(velocities[i3]) * 0.016
+                    + this.gustIntensity * 0.18
+                    + lensFactor * 0.08
+                    + this.stormEnergy * 0.14,
+            );
+            const maxSize = lensFactor > 0.5 ? 10.6 : 7.6;
+            const baseSize = Math.min(maxSize, sizes[i] * boost * stormScale);
+            dummy.scale.set(baseSize * stretch, baseSize, 1);
             dummy.updateMatrix();
             this.closeSnowflakes.setMatrixAt(i, dummy.matrix);
         }
 
         this.closeSnowflakes.instanceMatrix.needsUpdate = true;
+        if (atlasDirty) {
+            if (this.closeSnowflakes.geometry.attributes.aAtlasOffset) {
+                this.closeSnowflakes.geometry.attributes.aAtlasOffset.needsUpdate = true;
+            }
+            if (this.closeSnowflakes.geometry.attributes.aAtlasScale) {
+                this.closeSnowflakes.geometry.attributes.aAtlasScale.needsUpdate = true;
+            }
+        }
     }
 
     updateIceBurst(delta) {
@@ -2991,6 +3675,17 @@ export default class WinterTheme extends BaseTheme {
             this.closeSnowflakeData = null;
             this.closeSnowflakeUniforms = null;
         }
+        if (this.skyDome) {
+            this.scene.remove(this.skyDome);
+            if (this.skyDome.geometry) this.skyDome.geometry.dispose();
+            if (this.skyDome.material) this.skyDome.material.dispose();
+            this.skyDome = null;
+            this.skyUniforms = null;
+        }
+        if (this.moonLight) {
+            this.scene.remove(this.moonLight);
+            this.moonLight = null;
+        }
         if (this.snowCompute) {
             this.snowCompute.dispose();
             this.snowCompute = null;
@@ -2999,6 +3694,7 @@ export default class WinterTheme extends BaseTheme {
             this.post.dispose();
             this.post = null;
         }
+        this.vignettePass = null;
         if (this.composer) {
             this.composer.dispose();
             this.composer = null;

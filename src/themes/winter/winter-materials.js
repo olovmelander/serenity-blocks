@@ -276,20 +276,30 @@ export function createWinterSnowflakeBillboardMaterial(params = {}) {
     const uOpacity = uniform(params.opacity ?? 0.7);
     const uTint = uniform(params.tint ?? new THREE.Color(0xdce6ff));
 
+    const uvCoord = uv();
+    const atlasOffset = params.useAtlas ? attribute('aAtlasOffset') : vec2(0.0, 0.0);
+    const atlasScale = params.useAtlas ? attribute('aAtlasScale') : vec2(1.0, 1.0);
+    const sampleUv = uvCoord.mul(atlasScale).add(atlasOffset);
     const texNode = params.map ? texture(params.map) : null;
-    const sample = texNode ? texNode.sample(uv()) : vec4(1.0, 1.0, 1.0, 1.0);
-    const shimmer = sin(uTime.mul(3.0).add(sample.r.mul(6.0))).mul(0.05).add(0.95);
+    const sample = texNode ? texNode.sample(sampleUv) : vec4(1.0, 1.0, 1.0, 1.0);
+    const centeredUv = uvCoord.sub(0.5).mul(2.0);
+    const radialMask = float(1.0).sub(smoothstep(0.4, 1.0, length(centeredUv)));
+    const shimmer = sin(uTime.mul(2.5).add(sample.r.mul(8.0))).mul(0.04).add(0.96);
+    const sparkle = mx_noise_float(vec3(uvCoord.mul(18.0), uTime.mul(0.2).add(sample.g)))
+        .mul(0.12)
+        .add(0.94);
 
-    const color = sample.rgb.mul(uTint);
-    const alpha = sample.a.mul(uOpacity).mul(shimmer);
+    const color = sample.rgb.mul(uTint).mul(shimmer).add(vec3(0.08).mul(sample.a));
+    const alpha = sample.a.mul(radialMask).mul(uOpacity).mul(sparkle);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
     material.opacityNode = alpha;
-    material.emissiveNode = color.mul(alpha.mul(0.6));
+    material.emissiveNode = color.mul(alpha.mul(0.35));
     material.transparent = true;
     material.depthWrite = false;
-    material.blending = THREE.AdditiveBlending;
+    material.blending = THREE.NormalBlending;
+    material.premultipliedAlpha = true;
 
     return { material, uniforms: { uTime, uOpacity, uTint } };
 }
@@ -302,10 +312,12 @@ export function createWinterWindStreakNodeMaterial() {
 
     const uTime = uniform(0);
     const uWindForce = uniform(0);
+    const uGustIntensity = uniform(0);
     const uOpacity = uniform(0);
 
     const aLength = attribute('length');
     const aSpeed = attribute('speed');
+    const aOffset = attribute('offset');
 
     const positionNode = Fn(() => {
         const pos = positionLocal.toVar();
@@ -315,10 +327,18 @@ export function createWinterWindStreakNodeMaterial() {
         const range = float(1000.0);
         const halfRange = float(500.0);
         pos.x.assign(pos.x.add(dist.mul(windSign)).add(halfRange).mod(range).sub(halfRange));
+        const gust = float(1.0).add(uGustIntensity.mul(1.1));
+        const yWave = sin(uTime.mul(float(1.2).add(aSpeed.mul(0.003))).add(aOffset))
+            .mul(float(8.0).add(windAbs.mul(0.05)))
+            .mul(gust);
+        const zWave = cos(uTime.mul(float(0.9).add(aSpeed.mul(0.002))).add(aOffset.mul(1.7)))
+            .mul(float(5.0).add(uGustIntensity.mul(11.0)));
+        pos.y.addAssign(yWave);
+        pos.z.addAssign(zWave);
         return pos;
     })();
 
-    const stretch = float(1.0).add(abs(uWindForce).mul(0.5));
+    const stretch = float(1.0).add(abs(uWindForce).mul(0.5)).add(uGustIntensity.mul(0.5));
     const sizeNode = aLength.mul(stretch).mul(float(300.0).div(positionView.z.negate()));
 
     const alpha = uOpacity;
@@ -329,7 +349,15 @@ export function createWinterWindStreakNodeMaterial() {
     material.opacityNode = alpha;
     material.emissiveNode = vec3(0.3, 0.4, 0.5).mul(uOpacity);
 
-    return { material, uniforms: { uTime, uWindForce, uOpacity } };
+    return {
+        material,
+        uniforms: {
+            uTime,
+            uWindForce,
+            uGustIntensity,
+            uOpacity,
+        },
+    };
 }
 
 export function createWinterIceWispNodeMaterial() {

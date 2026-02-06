@@ -10,14 +10,18 @@ import {
     length,
     mix,
     normalize,
+    pointUV,
+    positionLocal,
     positionView,
     positionWorld,
     pow,
     sin,
+    storage,
     smoothstep,
     uniform,
     uv,
     vec3,
+    vertexIndex,
 } from 'three/tsl';
 
 export function createMoonlitSkyNodeMaterial(params = {}) {
@@ -145,6 +149,104 @@ export function createMoonlitStarfieldNodeMaterial() {
         material,
         uniforms: {
             uTime,
+        },
+    };
+}
+
+export function createMoonlitAmbientFireflyNodeMaterial(params = {}) {
+    const uTime = uniform(params.time ?? 0);
+    const uSize = uniform(params.size ?? 7.2);
+    const uColor = uniform(params.color ?? new THREE.Color(0xffeb7a));
+    const uPulse = uniform(params.pulse ?? 0);
+
+    const fireflyCompute = params.fireflyCompute ?? null;
+    const useCompute = Boolean(
+        fireflyCompute?.getPositionBuffer
+        && fireflyCompute?.getMiscBuffer,
+    );
+
+    const aRandom = useCompute ? null : attribute('aRandom');
+    const aTwinkle = useCompute ? null : attribute('aTwinkle');
+    const aSizeSeed = useCompute ? null : attribute('aSizeSeed');
+
+    const positionStorage = useCompute
+        ? storage(fireflyCompute.getPositionBuffer(), 'vec4', fireflyCompute.count)
+        : null;
+    const miscStorage = useCompute
+        ? storage(fireflyCompute.getMiscBuffer(), 'vec4', fireflyCompute.count)
+        : null;
+    const positionStorageAttr = useCompute && typeof positionStorage.toAttribute === 'function'
+        ? positionStorage.toAttribute()
+        : null;
+    const miscStorageAttr = useCompute && typeof miscStorage.toAttribute === 'function'
+        ? miscStorage.toAttribute()
+        : null;
+
+    let basePosition = positionLocal;
+    let randomValue = float(0.5);
+    let twinkleValue = float(0.5);
+    let sizeSeedValue = float(0.5);
+
+    if (useCompute) {
+        if (miscStorageAttr) {
+            randomValue = miscStorageAttr.x;
+            twinkleValue = miscStorageAttr.y;
+            sizeSeedValue = miscStorageAttr.z;
+        } else {
+            randomValue = miscStorage.element(vertexIndex).x;
+            twinkleValue = miscStorage.element(vertexIndex).y;
+            sizeSeedValue = miscStorage.element(vertexIndex).z;
+        }
+        basePosition = positionStorageAttr
+            ? positionStorageAttr.xyz
+            : positionStorage.element(vertexIndex).xyz;
+    } else {
+        randomValue = aRandom;
+        twinkleValue = aTwinkle;
+        sizeSeedValue = aSizeSeed;
+        basePosition = vec3(
+            positionLocal.x.add(sin(uTime.mul(0.55).add(randomValue.mul(6.283185))).mul(6.0)),
+            positionLocal.y.add(sin(uTime.mul(0.85).add(twinkleValue.mul(6.283185))).mul(2.2)),
+            positionLocal.z,
+        );
+    }
+
+    const twinkle = sin(
+        uTime.mul(float(0.8).add(twinkleValue.mul(1.8)))
+            .add(randomValue.mul(6.283185)),
+    ).mul(0.5).add(0.5);
+    const centered = pointUV.sub(0.5);
+    const softDisc = smoothstep(float(0.52), float(0.08), length(centered));
+    const alpha = softDisc
+        .mul(float(0.22).add(twinkle.mul(0.62)))
+        .mul(float(0.85).add(uPulse.mul(0.35)));
+
+    const sizeNode = uSize
+        .mul(float(0.65).add(sizeSeedValue.mul(0.9)))
+        .mul(float(20.0).div(positionView.z.negate()))
+        .mul(float(0.8).add(twinkle.mul(0.35)))
+        .mul(float(1.0).add(uPulse.mul(0.22)));
+
+    const colorNode = mix(uColor.mul(0.75), uColor.mul(1.35), twinkle)
+        .mul(float(0.9).add(uPulse.mul(0.1)));
+
+    const material = new THREE.PointsNodeMaterial();
+    material.transparent = true;
+    material.depthWrite = false;
+    material.blending = THREE.AdditiveBlending;
+    material.positionNode = basePosition;
+    material.sizeNode = clamp(sizeNode, float(0.8), float(18.0));
+    material.colorNode = colorNode;
+    material.opacityNode = alpha;
+    material.emissiveNode = colorNode.mul(alpha.mul(0.65));
+
+    return {
+        material,
+        uniforms: {
+            uTime,
+            uSize,
+            uColor,
+            uPulse,
         },
     };
 }
