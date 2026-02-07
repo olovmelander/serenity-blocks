@@ -18,6 +18,7 @@ import {
     spawnPiece,
     fillBag,
     gameLoop,
+    updateGame,
     move as coreMove,
     rotate as coreRotate,
     hardDrop as coreHardDrop,
@@ -108,6 +109,7 @@ export class OdysseyMode extends BaseGameMode {
 
         // Prevent multiple level completions
         this.levelCompleting = false;
+        this.usingHybridLoop = false;
     }
 
     /**
@@ -198,6 +200,10 @@ export class OdysseyMode extends BaseGameMode {
             this.gameState.isPaused = true;
         }
 
+        if (this.usingHybridLoop) {
+            this.deps.frameRateController?.pauseHybridLoop();
+        }
+
         // Pause level timer
         if (this.levelTimerInterval) {
             clearInterval(this.levelTimerInterval);
@@ -233,6 +239,10 @@ export class OdysseyMode extends BaseGameMode {
             this.gameState.lastTime = performance.now();
         }
 
+        if (this.usingHybridLoop) {
+            this.deps.frameRateController?.resumeHybridLoop();
+        }
+
         // Resume level timer
         if (this.currentLevelConfig && !this.isInBoardView) {
             this._startLevelTimer();
@@ -263,11 +273,17 @@ export class OdysseyMode extends BaseGameMode {
 
         console.log('[Odyssey] Stopping...');
 
-        // Stop game loop
+        // Stop standard RAF loop
         if (this.gameState?.animationId) {
             cancelAnimationFrame(this.gameState.animationId);
             this.gameState.animationId = null;
         }
+
+        // Stop hybrid loop if active
+        if (this.deps.frameRateController?.isRunning) {
+            this.deps.frameRateController.stopHybridLoop();
+        }
+        this.usingHybridLoop = false;
 
         // Stop level timer
         if (this.levelTimerInterval) {
@@ -899,6 +915,11 @@ export class OdysseyMode extends BaseGameMode {
             cancelAnimationFrame(this.gameState.animationId);
         }
 
+        const { frameRateController } = this.deps;
+        if (frameRateController?.isRunning) {
+            frameRateController.stopHybridLoop();
+        }
+
         this.lastStatsUpdateTime = performance.now();
 
         const drawCallback = () => {
@@ -939,14 +960,43 @@ export class OdysseyMode extends BaseGameMode {
             }
         };
 
-        gameLoop(
-            performance.now(),
-            this.gameState,
-            drawCallback,
-            statsCallback,
-            () => this.deps.soundManager?.sfxPlayer?.playDrop(),
-            this._getPhysicsCallbacks(),
-        );
+        const playDropCallback = () => this.deps.soundManager?.sfxPlayer?.playDrop();
+        const physicsCallbacks = this._getPhysicsCallbacks();
+
+        if (frameRateController?.needsHybridMode()) {
+            this.usingHybridLoop = true;
+            console.log('[Odyssey] Using hybrid loop for high FPS target');
+
+            const logicUpdate = (time, _delta) => {
+                if (this.gameState.isGameOver || this.gameState.isPaused) return;
+
+                updateGame(time, this.gameState, {
+                    drawCallback: null,
+                    updateStatsCallback: null,
+                    playDropCallback,
+                    physicsCallbacks,
+                });
+            };
+
+            const renderUpdate = () => {
+                drawCallback();
+                statsCallback();
+            };
+
+            frameRateController.startHybridLoop(logicUpdate, renderUpdate);
+        } else {
+            this.usingHybridLoop = false;
+            console.log('[Odyssey] Using standard RAF loop');
+
+            gameLoop(
+                performance.now(),
+                this.gameState,
+                drawCallback,
+                statsCallback,
+                playDropCallback,
+                physicsCallbacks,
+            );
+        }
     }
 
     /**

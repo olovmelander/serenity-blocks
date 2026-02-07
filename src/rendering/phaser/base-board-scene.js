@@ -91,6 +91,7 @@ export function createBaseBoardScene(
             this._boardDirty = true; // Start dirty to trigger initial render
             this._lastBoardGridRef = null; // Track board grid reference for change detection
             this._lastBoardVersion = -1; // Track board version for more reliable change detection
+            this._lastVisibleRowRange = null; // Track visible row band so camera scrolling redraws static layer
 
             // Initialize Tetromino Style Manager for theme-based tetromino colors
             this.styleManager = new TetrominoStyleManager(
@@ -157,6 +158,7 @@ export function createBaseBoardScene(
             try {
                 // Check if board content has changed (piece locked, lines cleared, etc.)
                 this._checkBoardDirty();
+                this._checkVisibleRowRangeDirty();
 
                 // Static layer (boardGraphics): only clear and redraw when board changes
                 if (this._boardDirty) {
@@ -197,6 +199,23 @@ export function createBaseBoardScene(
                 this._boardDirty = true;
                 this._lastBoardGridRef = currentGrid;
                 this._lastBoardVersion = currentVersion;
+            }
+        }
+
+        /**
+         * Mark static layer dirty when the visible row band changes.
+         * Without this, camera scrolling in Infinity mode can show blank rows
+         * because the cached static layer still contains the old viewport slice.
+         */
+        _checkVisibleRowRangeDirty() {
+            if (!this.gameState?.boardGrid) return;
+
+            const { startRow, endRow } = this.getVisibleRowRange();
+            const prevRange = this._lastVisibleRowRange;
+
+            if (!prevRange || prevRange.startRow !== startRow || prevRange.endRow !== endRow) {
+                this._boardDirty = true;
+                this._lastVisibleRowRange = { startRow, endRow };
             }
         }
 

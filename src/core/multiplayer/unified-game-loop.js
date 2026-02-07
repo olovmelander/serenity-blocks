@@ -4,7 +4,7 @@
  * Phase 3 Architecture Improvement
  */
 
-import { softDrop as coreSoftDrop } from '../game.js';
+import { processAutoDrop } from '../game.js';
 
 /**
  * Unified game loop manager for multiplayer
@@ -164,27 +164,13 @@ export class UnifiedMultiplayerLoop {
                 continue;
             }
 
-            // Auto-drop logic
-            state.dropCounter += delta;
-            if (state.dropCounter > state.dropInterval) {
-                this.performDrop(player);
-            }
-        }
-    }
-
-    /**
-     * Perform drop for a specific player
-     * @param {Object} player - Player object with state and callbacks
-     */
-    performDrop(player) {
-        try {
-            coreSoftDrop(
-                player.state,
+            // Auto-drop logic (fixed-step accumulator for FPS-independent timing)
+            processAutoDrop(
+                state,
+                delta,
                 player.sound || (() => {}),
                 player.physics,
             );
-        } catch (error) {
-            console.error(`[UnifiedLoop] Drop error for player ${player.id}:`, error);
         }
     }
 
