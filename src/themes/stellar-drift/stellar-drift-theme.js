@@ -470,6 +470,19 @@ export default class StellarDriftTheme extends BaseTheme {
         this.meteorLightTarget = null;
         this.ambientLight = null;
         this.keyLight = null;
+        this.crashMeteorGeometryCache = null;
+        this.crashMeteorApproachSeeds = [
+            new THREE.Vector3(1, 0.15, -0.2),
+            new THREE.Vector3(-1, -0.12, 0.24),
+            new THREE.Vector3(0.26, 1, -0.28),
+            new THREE.Vector3(-0.24, -1, 0.22),
+            new THREE.Vector3(0.68, 0.62, 0.34),
+            new THREE.Vector3(-0.7, 0.56, -0.28),
+            new THREE.Vector3(0.54, -0.64, 0.34),
+            new THREE.Vector3(-0.56, -0.58, -0.4),
+            new THREE.Vector3(0.08, 0.2, -1),
+            new THREE.Vector3(-0.1, -0.18, 0.9),
+        ];
 
         // Effect arrays for 3D gameplay effects
         this.shockwaveRings = [];
@@ -771,6 +784,79 @@ export default class StellarDriftTheme extends BaseTheme {
             return { maxAuroras: 0, maxComets: 0, maxCrashMeteors: 1 };
         }
         return { maxAuroras: 0, maxComets: 0, maxCrashMeteors: 1 };
+    }
+
+    getCrashMeteorComplexityScale() {
+        const detail = this.qualityPreset?.planetDetail ?? 24;
+        const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
+
+        let detailScale = 1;
+        if (detail < 48) detailScale = 0.92;
+        if (detail < 32) detailScale = 0.8;
+        if (detail < 24) detailScale = 0.66;
+        if (detail < 16) detailScale = 0.5;
+
+        const targetFrameMs = this.performanceBudget?.targetFrameMs ?? 16.7;
+        const frameTimeEmaMs = this.adaptiveScalerState?.frameTimeEmaMs ?? targetFrameMs;
+        const framePressure = Math.max(0, (frameTimeEmaMs - targetFrameMs) / Math.max(1, targetFrameMs));
+        const pressureScale = framePressure > 0
+            ? THREE.MathUtils.clamp(1 - framePressure * 0.52, 0.42, 1)
+            : 1;
+
+        return THREE.MathUtils.clamp(effectScale * detailScale * pressureScale, 0.35, 1);
+    }
+
+    getCrashMeteorSpawnProfile(intensity = 0.5) {
+        const complexityScale = this.getCrashMeteorComplexityScale();
+        const clampedIntensity = THREE.MathUtils.clamp(intensity, 0.1, 1.8);
+
+        return {
+            complexityScale,
+            radiusScale: THREE.MathUtils.lerp(0.82, 1, complexityScale),
+            trailSegments: Math.max(12, Math.floor((22 + clampedIntensity * 12) * complexityScale)),
+            fragmentCount: complexityScale >= 0.5
+                ? Math.max(1, Math.floor((3 + this.rand() * 4) * complexityScale))
+                : 0,
+            fireSpriteCount: complexityScale >= 0.58
+                ? Math.max(4, Math.floor((9 + clampedIntensity * 8) * complexityScale))
+                : 0,
+            smokeSpriteCount: complexityScale >= 0.54
+                ? Math.max(5, Math.floor((10 + clampedIntensity * 10) * complexityScale))
+                : 0,
+        };
+    }
+
+    getCrashMeteorGeometryCache() {
+        if (this.crashMeteorGeometryCache) return this.crashMeteorGeometryCache;
+
+        const coreTemplates = [];
+        const fragmentTemplates = [];
+        const coreIntensities = [0.42, 0.66, 0.92, 1.15, 1.4];
+        const fragmentIntensities = [0.5, 0.82, 1.1];
+
+        coreIntensities.forEach((templateIntensity) => {
+            const geometry = this.createCrashMeteorCoreGeometry(1, templateIntensity);
+            geometry.computeBoundingSphere();
+            coreTemplates.push(geometry);
+        });
+        fragmentIntensities.forEach((templateIntensity) => {
+            const geometry = this.createCrashMeteorCoreGeometry(1, templateIntensity);
+            geometry.computeBoundingSphere();
+            fragmentTemplates.push(geometry);
+        });
+
+        this.crashMeteorGeometryCache = {
+            coreTemplates,
+            fragmentTemplates,
+        };
+        return this.crashMeteorGeometryCache;
+    }
+
+    disposeCrashMeteorGeometryCache() {
+        if (!this.crashMeteorGeometryCache) return;
+        this.crashMeteorGeometryCache.coreTemplates?.forEach((geometry) => geometry?.dispose?.());
+        this.crashMeteorGeometryCache.fragmentTemplates?.forEach((geometry) => geometry?.dispose?.());
+        this.crashMeteorGeometryCache = null;
     }
 
     shouldAllowCinematicEvents() {
@@ -1398,6 +1484,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.meteorLightTarget = null;
         this.ambientLight = null;
         this.keyLight = null;
+        this.crashMeteorGeometryCache = null;
         this.nebulaBursts = [];
         this.shockwaveRings = [];
         this.shootingStars = [];
@@ -1442,6 +1529,7 @@ export default class StellarDriftTheme extends BaseTheme {
 
     disposeRuntimeResources({ removeCanvas = true } = {}) {
         this.disposeComputeSystems();
+        this.disposeCrashMeteorGeometryCache();
         this.disposePostProcessingStack();
         this.disposeSceneResources();
         this.disposeRendererResources(removeCanvas);
@@ -1958,6 +2046,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.createDustRing(); // Dust ring around planet
         this.createAmbientParticles(); // Floating ambient sparkles
         this.createMeteorField();
+        this.getCrashMeteorGeometryCache(); // Prebuild crash-meteor geometry templates to avoid spawn hitching.
         this.setupNebulaBurstComputePool();
         this.auditMrtMaterials();
         this.setupPostProcessing();
@@ -3438,11 +3527,60 @@ export default class StellarDriftTheme extends BaseTheme {
         this.shockwaveRings.push(ring);
     }
 
+    createCrashMeteorCoreGeometry(radius, intensity = 0.5) {
+        const clampedIntensity = THREE.MathUtils.clamp(intensity, 0.1, 1.8);
+        const detail = clampedIntensity > 1.05 ? 2 : 1;
+        const geometry = new THREE.IcosahedronGeometry(radius, detail);
+        const positions = geometry.attributes.position;
+        const vertex = new THREE.Vector3();
+        const normal = new THREE.Vector3();
+
+        for (let i = 0; i < positions.count; i++) {
+            vertex.fromBufferAttribute(positions, i);
+            normal.copy(vertex).normalize();
+
+            const ridgedNoise = Math.sin(
+                normal.x * 12.73
+                + normal.y * 21.17
+                + normal.z * 17.41
+                + clampedIntensity * 3.2,
+            );
+            const cellularNoise = Math.sin(
+                normal.x * 31.9
+                + Math.cos(normal.y * 28.7)
+                + normal.z * 26.5,
+            );
+            const roughness = (ridgedNoise * 0.65 + cellularNoise * 0.35) * (0.11 + clampedIntensity * 0.07);
+            const headBias = THREE.MathUtils.smoothstep(normal.y, -0.25, 1.0);
+            const rearBias = THREE.MathUtils.smoothstep(-normal.y, -0.1, 1.0);
+            const craterMask = Math.max(
+                0,
+                Math.sin(normal.x * 53.2 + normal.z * 47.6 + normal.y * 19.7 + 0.7),
+            ) * 0.05;
+
+            const axialStretch = 1 + headBias * (0.22 + clampedIntensity * 0.14) - rearBias * 0.14;
+            const scale = Math.max(0.5, axialStretch * (1 + roughness - craterMask));
+
+            vertex.multiplyScalar(scale);
+            vertex.x *= 0.92 + headBias * 0.18;
+            vertex.z *= 0.88 + headBias * 0.14;
+
+            positions.setXYZ(i, vertex.x, vertex.y, vertex.z);
+        }
+
+        geometry.computeVertexNormals();
+        return geometry;
+    }
+
     createMeteorImpactBurst(position, intensity = 0.5, options = {}) {
         if (!position?.isVector3) return;
 
         const clampedIntensity = THREE.MathUtils.clamp(intensity, 0.1, 1.8);
-        const particleCount = Math.floor(42 + clampedIntensity * 52);
+        const complexityScale = this.getCrashMeteorComplexityScale();
+        const particleCount = Math.max(
+            42,
+            Math.floor((96 + clampedIntensity * 120) * complexityScale),
+        );
         const burstColor = new THREE.Color().setHSL(0.08, 0.9, 0.68);
 
         const surfaceNormal = options.surfaceNormal?.isVector3
@@ -3454,13 +3592,13 @@ export default class StellarDriftTheme extends BaseTheme {
         const reboundDirection = incomingDirection.clone().negate();
 
         if (this.nebulaBurstCompute?.computeNode && this.nebulaBurstPool) {
-            const spread = 580 + clampedIntensity * 280;
+            const spread = (880 + clampedIntensity * 420) * (0.86 + complexityScale * 0.22);
             this.nebulaBurstCompute.spawnBurst(
                 particleCount,
                 position,
                 burstColor,
                 spread,
-                5.8 + clampedIntensity * 1.25,
+                (6.8 + clampedIntensity * 2.0) * (0.88 + complexityScale * 0.2),
             );
             return;
         }
@@ -3484,8 +3622,8 @@ export default class StellarDriftTheme extends BaseTheme {
             const i3 = i * 3;
             const i2 = i * 2;
             const theta = this.rand() * Math.PI * 2;
-            const lateralSpread = 0.38 + this.rand() * 0.62;
-            const lift = 16 + this.rand() * (58 + clampedIntensity * 24);
+            const lateralSpread = 0.44 + this.rand() * 0.7;
+            const lift = 18 + this.rand() * (72 + clampedIntensity * 34);
 
             lateralVector
                 .copy(tangentA)
@@ -3495,11 +3633,11 @@ export default class StellarDriftTheme extends BaseTheme {
             reboundVector.copy(reboundDirection).multiplyScalar(0.24 + this.rand() * 0.26);
             direction.copy(normalVector).add(lateralVector).add(reboundVector).normalize();
 
-            const speed = 26 + this.rand() * (34 + clampedIntensity * 22);
+            const speed = 28 + this.rand() * (44 + clampedIntensity * 28);
 
-            positions[i3] = position.x + surfaceNormal.x * lift + lateralVector.x * 32;
-            positions[i3 + 1] = position.y + surfaceNormal.y * lift + lateralVector.y * 32;
-            positions[i3 + 2] = position.z + surfaceNormal.z * lift + lateralVector.z * 32;
+            positions[i3] = position.x + surfaceNormal.x * lift + lateralVector.x * 42;
+            positions[i3 + 1] = position.y + surfaceNormal.y * lift + lateralVector.y * 42;
+            positions[i3 + 2] = position.z + surfaceNormal.z * lift + lateralVector.z * 42;
             uvs[i2] = 0.5;
             uvs[i2 + 1] = 0.5;
 
@@ -3513,10 +3651,11 @@ export default class StellarDriftTheme extends BaseTheme {
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
 
+        const baseSize = (160 + clampedIntensity * 110) * (0.82 + complexityScale * 0.28);
         const material = new THREE.PointsMaterial({
             color: burstColor,
-            map: this.getRoundParticleTexture(),
-            size: 100 + clampedIntensity * 56,
+            map: this.getGlowTexture(),
+            size: baseSize,
             transparent: true,
             opacity: 1.0,
             blending: THREE.AdditiveBlending,
@@ -3527,14 +3666,16 @@ export default class StellarDriftTheme extends BaseTheme {
         const burst = new THREE.Points(geometry, material);
         burst.userData = {
             velocities,
-            life: 1.25 + clampedIntensity * 0.58,
-            maxLife: 1.25 + clampedIntensity * 0.58,
-            decay: 0.026,
-            drag: 0.984,
+            life: 1.72 + clampedIntensity * 0.9,
+            maxLife: 1.72 + clampedIntensity * 0.9,
+            decay: 0.017,
+            drag: 0.986,
+            baseSize,
+            growRate: 1.32 + clampedIntensity * 1.0,
             gravity: {
-                x: -surfaceNormal.x * 0.34,
-                y: -surfaceNormal.y * 0.34 - 0.18,
-                z: -surfaceNormal.z * 0.34,
+                x: -surfaceNormal.x * 0.28,
+                y: -surfaceNormal.y * 0.28 - 0.16,
+                z: -surfaceNormal.z * 0.28,
             },
         };
         this.scene.add(burst);
@@ -3545,12 +3686,16 @@ export default class StellarDriftTheme extends BaseTheme {
         if (!position?.isVector3) return;
 
         const clampedIntensity = THREE.MathUtils.clamp(intensity, 0.1, 1.8);
+        const complexityScale = this.getCrashMeteorComplexityScale();
         const normal = surfaceNormal?.isVector3 ? surfaceNormal.clone().normalize() : new THREE.Vector3(0, 0, 1);
         const incoming = incomingDirection?.isVector3
             ? incomingDirection.clone().normalize()
             : normal.clone().negate();
 
-        const shardCount = Math.floor(18 + clampedIntensity * 30);
+        const shardCount = Math.max(
+            12,
+            Math.floor((26 + clampedIntensity * 40) * complexityScale),
+        );
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(shardCount * 3);
         const uvs = new Float32Array(shardCount * 2);
@@ -3567,7 +3712,7 @@ export default class StellarDriftTheme extends BaseTheme {
             const i2 = i * 2;
             const theta = this.rand() * Math.PI * 2;
             const lateral = 0.25 + this.rand() * 0.5;
-            const speed = 44 + this.rand() * (38 + clampedIntensity * 26);
+            const speed = 52 + this.rand() * (42 + clampedIntensity * 30);
 
             direction
                 .copy(normal)
@@ -3577,9 +3722,9 @@ export default class StellarDriftTheme extends BaseTheme {
                 .addScaledVector(rebound, 0.18 + this.rand() * 0.2)
                 .normalize();
 
-            positions[i3] = position.x + normal.x * (20 + this.rand() * 30);
-            positions[i3 + 1] = position.y + normal.y * (20 + this.rand() * 30);
-            positions[i3 + 2] = position.z + normal.z * (20 + this.rand() * 30);
+            positions[i3] = position.x + normal.x * (22 + this.rand() * 40);
+            positions[i3 + 1] = position.y + normal.y * (22 + this.rand() * 40);
+            positions[i3 + 2] = position.z + normal.z * (22 + this.rand() * 40);
             uvs[i2] = 0.5;
             uvs[i2 + 1] = 0.5;
 
@@ -3592,10 +3737,11 @@ export default class StellarDriftTheme extends BaseTheme {
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+        const baseSize = (84 + clampedIntensity * 44) * (0.8 + complexityScale * 0.24);
         const material = new THREE.PointsMaterial({
             color: new THREE.Color().setHSL(0.11, 0.95, 0.66),
             map: this.getRoundParticleTexture(),
-            size: 68 + clampedIntensity * 34,
+            size: baseSize,
             transparent: true,
             opacity: 0.96,
             blending: THREE.AdditiveBlending,
@@ -3606,10 +3752,12 @@ export default class StellarDriftTheme extends BaseTheme {
         const shards = new THREE.Points(geometry, material);
         shards.userData = {
             velocities,
-            life: 0.9 + clampedIntensity * 0.42,
-            maxLife: 0.9 + clampedIntensity * 0.42,
-            decay: 0.038,
-            drag: 0.976,
+            life: 1.02 + clampedIntensity * 0.5,
+            maxLife: 1.02 + clampedIntensity * 0.5,
+            decay: 0.032,
+            drag: 0.978,
+            baseSize,
+            growRate: 0.48 + clampedIntensity * 0.28,
             gravity: {
                 x: -normal.x * 0.5,
                 y: -normal.y * 0.5 - 0.3,
@@ -3618,6 +3766,89 @@ export default class StellarDriftTheme extends BaseTheme {
         };
         this.scene.add(shards);
         this.nebulaBursts.push(shards);
+    }
+
+    createMeteorImpactSmokeCloud(position, surfaceNormal, intensity = 0.5) {
+        if (!position?.isVector3) return;
+
+        const clampedIntensity = THREE.MathUtils.clamp(intensity, 0.1, 1.8);
+        const complexityScale = this.getCrashMeteorComplexityScale();
+        const normal = surfaceNormal?.isVector3 ? surfaceNormal.clone().normalize() : new THREE.Vector3(0, 0, 1);
+        const plumeCount = Math.max(
+            18,
+            Math.floor((52 + clampedIntensity * 86) * complexityScale),
+        );
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(plumeCount * 3);
+        const uvs = new Float32Array(plumeCount * 2);
+        const velocities = [];
+
+        const tangentSeed = Math.abs(normal.y) > 0.82 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+        const tangentA = new THREE.Vector3().crossVectors(normal, tangentSeed).normalize();
+        const tangentB = new THREE.Vector3().crossVectors(normal, tangentA).normalize();
+        const direction = new THREE.Vector3();
+
+        for (let i = 0; i < plumeCount; i++) {
+            const i3 = i * 3;
+            const i2 = i * 2;
+            const theta = this.rand() * Math.PI * 2;
+            const lateral = 0.3 + this.rand() * 0.88;
+            const lift = 18 + this.rand() * (90 + clampedIntensity * 55);
+
+            direction
+                .copy(normal)
+                .multiplyScalar(0.62 + this.rand() * 0.5)
+                .addScaledVector(tangentA, Math.cos(theta) * lateral)
+                .addScaledVector(tangentB, Math.sin(theta) * lateral)
+                .normalize();
+
+            const speed = 8 + this.rand() * (16 + clampedIntensity * 18);
+            positions[i3] = position.x + direction.x * (12 + this.rand() * 28);
+            positions[i3 + 1] = position.y + normal.y * lift * 0.24 + direction.y * (12 + this.rand() * 28);
+            positions[i3 + 2] = position.z + direction.z * (12 + this.rand() * 28);
+            uvs[i2] = 0.5;
+            uvs[i2 + 1] = 0.5;
+
+            velocities.push({
+                x: direction.x * speed,
+                y: direction.y * speed + 2 + clampedIntensity * 2.8,
+                z: direction.z * speed,
+            });
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+
+        const baseSize = (260 + clampedIntensity * 188) * (0.84 + complexityScale * 0.24);
+        const material = new THREE.PointsMaterial({
+            color: new THREE.Color(0x6a564d),
+            map: this.getRoundParticleTexture(),
+            size: baseSize,
+            transparent: true,
+            opacity: 0.5 + clampedIntensity * 0.2,
+            blending: THREE.NormalBlending,
+            depthWrite: false,
+            sizeAttenuation: true,
+        });
+
+        const smoke = new THREE.Points(geometry, material);
+        smoke.userData = {
+            velocities,
+            life: 2.6 + clampedIntensity * 1.2,
+            maxLife: 2.6 + clampedIntensity * 1.2,
+            decay: 0.0088,
+            drag: 0.994,
+            baseSize,
+            growRate: 3.0 + clampedIntensity * 1.9,
+            gravity: {
+                x: normal.x * 0.08,
+                y: 0.32 + normal.y * 0.24,
+                z: normal.z * 0.08,
+            },
+        };
+
+        this.scene.add(smoke);
+        this.nebulaBursts.push(smoke);
     }
 
     playCrashImpactBang(intensity = 0.5) {
@@ -3650,15 +3881,15 @@ export default class StellarDriftTheme extends BaseTheme {
         sprite.position.copy(position);
         sprite.renderOrder = 1315;
 
-        const startScale = 150 + clampedIntensity * 140;
-        const maxScale = startScale * (2.1 + clampedIntensity * 0.7);
+        const startScale = 286 + clampedIntensity * 258;
+        const maxScale = startScale * (3.1 + clampedIntensity * 1.12);
         sprite.scale.set(startScale, startScale, 1);
 
         this.scene.add(sprite);
         this.impactFlashes.push({
             sprite,
             life: 0,
-            duration: 0.32 + clampedIntensity * 0.2,
+            duration: 0.52 + clampedIntensity * 0.36,
             startScale,
             maxScale,
         });
@@ -3681,11 +3912,12 @@ export default class StellarDriftTheme extends BaseTheme {
             const burstCurve = progress < 0.16
                 ? THREE.MathUtils.clamp(progress / 0.16, 0, 1)
                 : Math.max(0, 1 - ((progress - 0.16) / 0.84));
-            const alpha = Math.pow(burstCurve, progress < 0.16 ? 0.45 : 1.7) * 1.15;
+            const alphaExponent = progress < 0.16 ? 0.45 : 1.7;
+            const alpha = (burstCurve ** alphaExponent) * 1.15;
             const scale = THREE.MathUtils.lerp(
                 flashData.startScale,
                 flashData.maxScale,
-                Math.pow(progress, 0.58),
+                progress ** 0.58,
             );
 
             flashData.sprite.material.opacity = alpha;
@@ -3699,19 +3931,49 @@ export default class StellarDriftTheme extends BaseTheme {
 
         if (meteorData.trail) {
             this.scene?.remove(meteorData.trail);
-            meteorData.trail.geometry?.dispose?.();
-            meteorData.trail.material?.dispose?.();
         }
+        if (meteorData.smokeTrail) {
+            this.scene?.remove(meteorData.smokeTrail);
+        }
+        meteorData.trailGeometry?.dispose?.();
+        meteorData.trailMaterial?.dispose?.();
+        meteorData.smokeTrailMaterial?.dispose?.();
 
         if (!meteorData.mesh) return;
         this.scene?.remove(meteorData.mesh);
 
-        meteorData.coreMesh?.geometry?.dispose?.();
+        if (!meteorData.coreMesh?.userData?.sharedCrashGeom) {
+            meteorData.coreMesh?.geometry?.dispose?.();
+        }
         meteorData.coreMesh?.material?.dispose?.();
-        meteorData.glowMesh?.geometry?.dispose?.();
+        if (!meteorData.glowMesh?.userData?.sharedCrashGeom) {
+            meteorData.glowMesh?.geometry?.dispose?.();
+        }
         meteorData.glowMesh?.material?.dispose?.();
         meteorData.tailMesh?.geometry?.dispose?.();
         meteorData.tailMesh?.material?.dispose?.();
+        meteorData.plasmaTailMesh?.geometry?.dispose?.();
+        meteorData.plasmaTailMesh?.material?.dispose?.();
+        meteorData.smokeTailMesh?.geometry?.dispose?.();
+        meteorData.smokeTailMesh?.material?.dispose?.();
+        if (Array.isArray(meteorData.crustFragments)) {
+            meteorData.crustFragments.forEach((fragmentData) => {
+                if (!fragmentData.mesh?.userData?.sharedCrashGeom) {
+                    fragmentData.mesh?.geometry?.dispose?.();
+                }
+            });
+        }
+        meteorData.fragmentMaterialData?.material?.dispose?.();
+        if (Array.isArray(meteorData.fireTrailSprites)) {
+            meteorData.fireTrailSprites.forEach((spriteData) => {
+                spriteData.sprite?.material?.dispose?.();
+            });
+        }
+        if (Array.isArray(meteorData.smokeTrailSprites)) {
+            meteorData.smokeTrailSprites.forEach((spriteData) => {
+                spriteData.sprite?.material?.dispose?.();
+            });
+        }
         // Sprite geometries are shared internally; only dispose sprite material.
         meteorData.headFlash?.material?.dispose?.();
     }
@@ -3720,47 +3982,77 @@ export default class StellarDriftTheme extends BaseTheme {
         if (!impactPosition?.isVector3) return;
 
         const clampedIntensity = THREE.MathUtils.clamp(intensity, 0.1, 1.6);
+        const explosionScale = 1.4 + clampedIntensity * 0.36;
         const impactPoint = impactPosition.clone();
         impactPoint.z += 20;
-        const surfaceNormal = meteorData?.impactNormal?.isVector3
-            ? meteorData.impactNormal.clone().normalize()
-            : (meteorData?.targetOffset?.isVector3
-                ? meteorData.targetOffset.clone().normalize()
-                : new THREE.Vector3(0, 0, 1));
+        let surfaceNormal = new THREE.Vector3(0, 0, 1);
+        if (meteorData?.impactNormal?.isVector3) {
+            surfaceNormal = meteorData.impactNormal.clone().normalize();
+        } else if (meteorData?.targetOffset?.isVector3) {
+            surfaceNormal = meteorData.targetOffset.clone().normalize();
+        }
         const incomingDirection = meteorData?.velocity?.isVector3
             ? meteorData.velocity.clone().normalize()
             : surfaceNormal.clone().negate();
 
         this.createShockwaveRing({
             position: impactPoint,
-            scale: 0.62 + clampedIntensity * 0.6,
-            speed: 0.1 + clampedIntensity * 0.05,
-            opacity: 0.6 + clampedIntensity * 0.12,
+            scale: (0.86 + clampedIntensity * 1.06) * explosionScale,
+            speed: 0.15 + clampedIntensity * 0.1,
+            opacity: 0.82 + clampedIntensity * 0.2,
             color: 0xffb173,
         });
-        this.createMeteorImpactBurst(impactPoint, clampedIntensity, {
+        this.createMeteorImpactBurst(impactPoint, clampedIntensity * 1.75, {
             surfaceNormal,
             incomingDirection,
         });
-        this.createMeteorImpactShards(impactPoint, surfaceNormal, incomingDirection, clampedIntensity);
-        this.createImpactFlash(impactPoint, clampedIntensity * 1.08);
+        this.createMeteorImpactShards(impactPoint, surfaceNormal, incomingDirection, clampedIntensity * 1.35);
+        this.createMeteorImpactSmokeCloud(impactPoint, surfaceNormal, clampedIntensity * 1.52);
+        this.createImpactFlash(impactPoint, clampedIntensity * 2.0);
         if (clampedIntensity > 0.9) {
             this.createShockwaveRing({
                 position: impactPoint,
-                scale: 0.38 + clampedIntensity * 0.34,
-                speed: 0.13 + clampedIntensity * 0.06,
-                opacity: 0.48 + clampedIntensity * 0.18,
+                scale: (0.74 + clampedIntensity * 0.68) * explosionScale,
+                speed: 0.19 + clampedIntensity * 0.1,
+                opacity: 0.66 + clampedIntensity * 0.25,
                 color: 0xffd1a2,
             });
         }
         if (clampedIntensity > 0.55) {
             this.createShockwaveRing({
                 position: impactPoint.clone().addScaledVector(surfaceNormal, 8),
-                scale: 0.28 + clampedIntensity * 0.26,
-                speed: 0.17 + clampedIntensity * 0.07,
-                opacity: 0.4 + clampedIntensity * 0.16,
+                scale: (0.58 + clampedIntensity * 0.52) * explosionScale,
+                speed: 0.23 + clampedIntensity * 0.1,
+                opacity: 0.56 + clampedIntensity * 0.24,
                 color: 0xffe3bf,
             });
+        }
+        if (clampedIntensity > 0.4) {
+            const tangentSeed = Math.abs(surfaceNormal.y) > 0.82 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+            const tangentA = new THREE.Vector3().crossVectors(surfaceNormal, tangentSeed).normalize();
+            const tangentB = new THREE.Vector3().crossVectors(surfaceNormal, tangentA).normalize();
+            const followupBursts = clampedIntensity > 1.05 ? 3 : 2;
+
+            for (let i = 0; i < followupBursts; i++) {
+                this.scheduleThemeTimeout(() => {
+                    if (!this.isActive || !this.scene) return;
+                    const ringAngle = this.rand() * Math.PI * 2;
+                    const lateralRange = 28 + clampedIntensity * 38;
+                    const secondaryPoint = impactPoint
+                        .clone()
+                        .addScaledVector(surfaceNormal, 8 + clampedIntensity * 11 + i * 3)
+                        .addScaledVector(tangentA, Math.cos(ringAngle) * lateralRange)
+                        .addScaledVector(tangentB, Math.sin(ringAngle) * lateralRange);
+                    const burstStrength = clampedIntensity * (0.95 - i * 0.16);
+
+                    this.createMeteorImpactBurst(secondaryPoint, burstStrength, {
+                        surfaceNormal,
+                        incomingDirection,
+                    });
+                    this.createMeteorImpactSmokeCloud(secondaryPoint, surfaceNormal, burstStrength * 0.86);
+                    this.createImpactFlash(secondaryPoint, burstStrength * 0.86);
+                }, 68 + i * 58);
+            }
         }
         this.playCrashImpactBang(clampedIntensity);
 
@@ -3779,10 +4071,10 @@ export default class StellarDriftTheme extends BaseTheme {
 
         const lateral = meteorData?.velocity?.x ?? (this.rand() - 0.5) * 24;
         const vertical = meteorData?.velocity?.y ?? (this.rand() - 0.5) * 18;
-        this.triggerCameraPulse(0.44 + clampedIntensity * 0.74, {
-            lateralBias: lateral * 0.08,
-            verticalBias: vertical * 0.07,
-            depthBias: -15 - clampedIntensity * 20,
+        this.triggerCameraPulse(0.54 + clampedIntensity * 0.92, {
+            lateralBias: lateral * 0.11,
+            verticalBias: vertical * 0.1,
+            depthBias: -20 - clampedIntensity * 26,
             rollBias: THREE.MathUtils.clamp(lateral * 0.00035, -0.06, 0.06),
         });
     }
@@ -3794,48 +4086,146 @@ export default class StellarDriftTheme extends BaseTheme {
         const budgets = this.getReactiveEventBudgets();
         if (this.crashMeteors.length >= (budgets.maxCrashMeteors ?? 3)) return false;
 
+        const targetFrameMs = this.performanceBudget?.targetFrameMs ?? 16.7;
+        const frameTimeEmaMs = this.adaptiveScalerState?.frameTimeEmaMs ?? targetFrameMs;
+        if (frameTimeEmaMs > targetFrameMs * 1.28 && this.crashMeteors.length > 0) return false;
+
         const clampedIntensity = THREE.MathUtils.clamp(intensity, 0.15, 1.7);
-        const meteorRadius = 18 + clampedIntensity * 13 + this.rand() * 8;
+        const spawnProfile = this.getCrashMeteorSpawnProfile(clampedIntensity);
+        const meteorRadius = (6 + clampedIntensity * 4.5 + this.rand() * 2.5) * spawnProfile.radiusScale;
+        const geometryCache = this.getCrashMeteorGeometryCache();
 
         const mesh = new THREE.Group();
         mesh.renderOrder = 1035;
 
-        const coreGeometry = new THREE.IcosahedronGeometry(meteorRadius, 1);
+        const coreGeometry = geometryCache.coreTemplates[
+            Math.floor(this.rand() * geometryCache.coreTemplates.length)
+        ] || geometryCache.coreTemplates[0];
         const coreMaterialData = createStellarMeteorMaterial({ isWebGPU: this.isWebGPU });
         const coreMesh = new THREE.Mesh(coreGeometry, coreMaterialData.material);
         coreMesh.userData.materialData = coreMaterialData;
+        coreMesh.userData.sharedCrashGeom = true;
+        coreMesh.scale.setScalar(meteorRadius);
         coreMesh.renderOrder = 1037;
         mesh.add(coreMesh);
 
-        const glowGeometry = new THREE.SphereGeometry(meteorRadius * 1.48, 12, 10);
+        const crustFragments = [];
+        let fragmentMaterialData = null;
+        const fragmentCount = spawnProfile.fragmentCount;
+        if (fragmentCount > 0) {
+            fragmentMaterialData = createStellarMeteorMaterial({ isWebGPU: this.isWebGPU });
+        }
+        for (let i = 0; i < fragmentCount; i++) {
+            const fragmentRadius = meteorRadius * (0.18 + this.rand() * 0.32);
+            const fragmentGeometry = geometryCache.fragmentTemplates[
+                Math.floor(this.rand() * geometryCache.fragmentTemplates.length)
+            ] || geometryCache.fragmentTemplates[0];
+            const fragmentMesh = new THREE.Mesh(fragmentGeometry, fragmentMaterialData.material);
+            fragmentMesh.userData.sharedCrashGeom = true;
+            fragmentMesh.scale.setScalar(fragmentRadius);
+            fragmentMesh.renderOrder = 1037;
+
+            const fragmentDirection = new THREE.Vector3(
+                (this.rand() - 0.5) * 1.6,
+                (this.rand() - 0.5) * 1.8 + 0.35,
+                (this.rand() - 0.5) * 1.6,
+            ).normalize();
+            fragmentMesh.position.copy(
+                fragmentDirection.multiplyScalar(meteorRadius * (0.28 + this.rand() * 0.42)),
+            );
+            fragmentMesh.rotation.set(
+                this.rand() * Math.PI * 2,
+                this.rand() * Math.PI * 2,
+                this.rand() * Math.PI * 2,
+            );
+            mesh.add(fragmentMesh);
+
+            crustFragments.push({
+                mesh: fragmentMesh,
+                materialData: fragmentMaterialData,
+                spin: new THREE.Vector3(
+                    (this.rand() - 0.5) * 0.2,
+                    (this.rand() - 0.5) * 0.22,
+                    (this.rand() - 0.5) * 0.18,
+                ),
+            });
+        }
+
+        const glowGeometry = coreGeometry;
         const glowMaterialData = createStellarShootingStarMaterial({
             isWebGPU: this.isWebGPU,
-            color: new THREE.Color(0xffb878),
-            opacity: 0.42 + clampedIntensity * 0.22,
+            color: new THREE.Color(0xffbb76),
+            opacity: 0.22 + clampedIntensity * 0.16,
         });
         const glowMesh = new THREE.Mesh(glowGeometry, glowMaterialData.material);
         glowMesh.userData.materialData = glowMaterialData;
+        glowMesh.userData.sharedCrashGeom = true;
+        glowMesh.scale.set(
+            meteorRadius * (1.14 + clampedIntensity * 0.08),
+            meteorRadius * (1.1 + clampedIntensity * 0.06),
+            meteorRadius * (1.14 + clampedIntensity * 0.08),
+        );
         glowMesh.renderOrder = 1038;
         mesh.add(glowMesh);
 
-        const tailLength = meteorRadius * (7.4 + clampedIntensity * 3.8);
-        const tailGeometry = new THREE.ConeGeometry(
-            meteorRadius * (0.72 + clampedIntensity * 0.08),
+        const tailLength = meteorRadius * (8.8 + clampedIntensity * 4.4);
+        const tailGeometry = new THREE.CylinderGeometry(
+            meteorRadius * (0.18 + clampedIntensity * 0.06),
+            meteorRadius * (0.9 + clampedIntensity * 0.16),
             tailLength,
-            11,
+            16,
             1,
             true,
         );
         const tailMaterialData = createStellarShootingStarMaterial({
             isWebGPU: this.isWebGPU,
-            color: new THREE.Color(0xff9850),
-            opacity: 0.28 + clampedIntensity * 0.24,
+            color: new THREE.Color(0xff9a4a),
+            opacity: 0.14 + clampedIntensity * 0.06,
         });
         const tailMesh = new THREE.Mesh(tailGeometry, tailMaterialData.material);
         tailMesh.userData.materialData = tailMaterialData;
-        tailMesh.position.y = -tailLength * 0.5;
+        tailMesh.position.y = -tailLength * 0.46;
         tailMesh.renderOrder = 1033;
         mesh.add(tailMesh);
+
+        const plasmaTailGeometry = new THREE.ConeGeometry(
+            meteorRadius * (0.58 + clampedIntensity * 0.1),
+            tailLength * 0.86,
+            14,
+            1,
+            true,
+        );
+        const plasmaTailMaterialData = createStellarShootingStarMaterial({
+            isWebGPU: this.isWebGPU,
+            color: new THREE.Color(0xffc98a),
+            opacity: 0.1 + clampedIntensity * 0.05,
+        });
+        const plasmaTailMesh = new THREE.Mesh(plasmaTailGeometry, plasmaTailMaterialData.material);
+        plasmaTailMesh.userData.materialData = plasmaTailMaterialData;
+        plasmaTailMesh.position.y = -tailLength * 0.42;
+        plasmaTailMesh.renderOrder = 1034;
+        mesh.add(plasmaTailMesh);
+
+        const smokeTailGeometry = new THREE.CylinderGeometry(
+            meteorRadius * (0.72 + clampedIntensity * 0.16),
+            meteorRadius * (1.56 + clampedIntensity * 0.32),
+            tailLength * 1.08,
+            14,
+            1,
+            true,
+        );
+        const smokeTailMaterial = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(0x8a6553),
+            transparent: true,
+            opacity: 0.1 + clampedIntensity * 0.08,
+            blending: THREE.NormalBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        });
+        const smokeTailMesh = new THREE.Mesh(smokeTailGeometry, smokeTailMaterial);
+        smokeTailMesh.position.y = -tailLength * 0.6;
+        smokeTailMesh.renderOrder = 1032;
+        mesh.add(smokeTailMesh);
 
         const headFlashMaterial = new THREE.SpriteMaterial({
             map: this.getGlowTexture(),
@@ -3851,41 +4241,105 @@ export default class StellarDriftTheme extends BaseTheme {
         headFlash.renderOrder = 1040;
         mesh.add(headFlash);
 
+        const fireTrailSprites = [];
+        const fireSpriteCount = spawnProfile.fireSpriteCount;
+        for (let i = 0; i < fireSpriteCount; i++) {
+            const fireMaterial = new THREE.SpriteMaterial({
+                map: this.getGlowTexture(),
+                color: new THREE.Color().setHSL(0.07 + this.rand() * 0.06, 0.92, 0.62 + this.rand() * 0.1),
+                transparent: true,
+                opacity: 0.35 + this.rand() * 0.34,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+            const fireSprite = new THREE.Sprite(fireMaterial);
+            fireSprite.renderOrder = 1036;
+            mesh.add(fireSprite);
+            fireTrailSprites.push({
+                sprite: fireSprite,
+                lane: i / Math.max(1, fireSpriteCount - 1),
+                baseScale: meteorRadius * (0.95 + this.rand() * 1.35),
+                swirlRadius: meteorRadius * (0.18 + this.rand() * 0.42),
+                phase: this.rand() * Math.PI * 2,
+                speed: 1.2 + this.rand() * 2.6,
+                opacity: fireMaterial.opacity,
+            });
+        }
+
+        const smokeTrailSprites = [];
+        const smokeSpriteCount = spawnProfile.smokeSpriteCount;
+        for (let i = 0; i < smokeSpriteCount; i++) {
+            const smokeMaterial = new THREE.SpriteMaterial({
+                map: this.getRoundParticleTexture(),
+                color: new THREE.Color(0x6b5a50),
+                transparent: true,
+                opacity: 0.16 + this.rand() * 0.24,
+                blending: THREE.NormalBlending,
+                depthWrite: false,
+            });
+            const smokeSprite = new THREE.Sprite(smokeMaterial);
+            smokeSprite.renderOrder = 1032;
+            mesh.add(smokeSprite);
+            smokeTrailSprites.push({
+                sprite: smokeSprite,
+                lane: i / Math.max(1, smokeSpriteCount - 1),
+                baseScale: meteorRadius * (1.8 + this.rand() * 2.4),
+                swirlRadius: meteorRadius * (0.34 + this.rand() * 0.6),
+                phase: this.rand() * Math.PI * 2,
+                speed: 0.5 + this.rand() * 1.6,
+                opacity: smokeMaterial.opacity,
+            });
+        }
+
         const planetPosition = this.planet.position.clone();
-        const sideSign = this.rand() < 0.5 ? -1 : 1;
         const impactNormal = new THREE.Vector3(
-            sideSign * (0.66 + this.rand() * 0.25),
-            (this.rand() - 0.5) * 0.5,
-            (this.rand() - 0.5) * 0.3,
+            (this.rand() - 0.5) * 1.6,
+            (this.rand() - 0.5) * 1.4,
+            0.22 + (this.rand() - 0.5) * 1.3,
         ).normalize();
-        const targetOffset = impactNormal.clone().multiplyScalar(455 + this.rand() * 90);
+        const targetOffset = impactNormal.clone().multiplyScalar(430 + this.rand() * 120);
         const targetPosition = planetPosition.clone().add(targetOffset);
 
-        const spawnDistance = 920 + this.rand() * 520;
-        const spawnPosition = targetPosition.clone().add(new THREE.Vector3(
-            sideSign * spawnDistance,
-            (this.rand() - 0.5) * 260,
-            (this.rand() - 0.5) * 260,
-        ));
-        const sidePad = 1180 + this.rand() * 760;
-        spawnPosition.x = planetPosition.x + sideSign * sidePad;
-        spawnPosition.z = THREE.MathUtils.clamp(
-            targetPosition.z + (this.rand() - 0.5) * 360,
-            -900,
-            700,
-        );
+        const approachSeeds = this.crashMeteorApproachSeeds || [];
+        const approachSeed = approachSeeds.length > 0
+            ? approachSeeds[Math.floor(this.rand() * approachSeeds.length)]
+            : new THREE.Vector3(1, 0.15, -0.2);
+        const approachDirection = approachSeed
+            .clone()
+            .add(new THREE.Vector3(
+                (this.rand() - 0.5) * 0.9,
+                (this.rand() - 0.5) * 0.9,
+                (this.rand() - 0.5) * 0.9,
+            ))
+            .normalize();
+
+        if (Math.abs(approachDirection.z) < 0.15) {
+            approachDirection.z += this.rand() < 0.5 ? -0.24 : 0.24;
+            approachDirection.normalize();
+        }
+
+        const spawnDistance = 980 + this.rand() * 860;
+        const spawnPosition = targetPosition
+            .clone()
+            .addScaledVector(approachDirection, spawnDistance)
+            .add(new THREE.Vector3(
+                (this.rand() - 0.5) * 280,
+                (this.rand() - 0.5) * 340,
+                (this.rand() - 0.5) * 520,
+            ));
+        spawnPosition.z = THREE.MathUtils.clamp(spawnPosition.z, -1750, 1250);
         mesh.position.copy(spawnPosition);
 
-        const speed = 520 + clampedIntensity * 400 + this.rand() * 150;
+        const speed = 560 + clampedIntensity * 430 + this.rand() * 210;
         const initialAim = targetPosition.clone().add(new THREE.Vector3(
-            -sideSign * (120 + this.rand() * 150),
-            110 + this.rand() * 170,
-            (this.rand() - 0.5) * 140,
+            (this.rand() - 0.5) * 240,
+            (this.rand() - 0.5) * 240,
+            (this.rand() - 0.5) * 170,
         ));
         const velocity = initialAim.sub(spawnPosition).normalize().multiplyScalar(speed);
         mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), velocity.clone().normalize());
 
-        const trailSegments = Math.floor(16 + clampedIntensity * 8);
+        const trailSegments = spawnProfile.trailSegments;
         const trailPositions = new Float32Array(trailSegments * 3);
         const trailColors = new Float32Array(trailSegments * 3);
         for (let i = 0; i < trailSegments; i++) {
@@ -3894,10 +4348,10 @@ export default class StellarDriftTheme extends BaseTheme {
             trailPositions[i3 + 1] = spawnPosition.y;
             trailPositions[i3 + 2] = spawnPosition.z;
             const t = i / Math.max(1, trailSegments - 1);
-            const fade = Math.pow(1 - t, 1.4);
+            const fade = (1 - t) ** 1.62;
             trailColors[i3] = fade;
-            trailColors[i3 + 1] = 0.72 * fade;
-            trailColors[i3 + 2] = 0.38 * fade;
+            trailColors[i3 + 1] = 0.58 * fade;
+            trailColors[i3 + 2] = 0.16 * fade;
         }
 
         const trailGeometry = new THREE.BufferGeometry();
@@ -3910,12 +4364,12 @@ export default class StellarDriftTheme extends BaseTheme {
             trailUvs[i2 + 1] = 0.5;
         }
         trailGeometry.setAttribute('uv', new THREE.BufferAttribute(trailUvs, 2));
-        const trailBaseSize = meteorRadius * (3.2 + clampedIntensity * 1.1);
+        const trailBaseSize = meteorRadius * (3.0 + clampedIntensity * 1.35);
         const trailMaterial = new THREE.PointsMaterial({
             map: this.getGlowTexture(),
             size: trailBaseSize,
             transparent: true,
-            opacity: 0.74 + clampedIntensity * 0.16,
+            opacity: 0.82 + clampedIntensity * 0.12,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
             sizeAttenuation: true,
@@ -3925,38 +4379,68 @@ export default class StellarDriftTheme extends BaseTheme {
         trail.renderOrder = 1031;
         this.scene.add(trail);
 
+        const smokeTrailBaseSize = trailBaseSize * (2.2 + clampedIntensity * 0.5);
+        const smokeTrailMaterial = new THREE.PointsMaterial({
+            map: this.getRoundParticleTexture(),
+            color: new THREE.Color(0x766255),
+            size: smokeTrailBaseSize,
+            transparent: true,
+            opacity: 0.26 + clampedIntensity * 0.12,
+            blending: THREE.NormalBlending,
+            depthWrite: false,
+            sizeAttenuation: true,
+        });
+        const smokeTrail = new THREE.Points(trailGeometry, smokeTrailMaterial);
+        smokeTrail.renderOrder = 1030;
+        this.scene.add(smokeTrail);
+
         const rotationSpeed = new THREE.Vector3(
-            (this.rand() - 0.5) * 0.09,
+            (this.rand() - 0.5) * 0.12,
+            (this.rand() - 0.5) * 0.14,
             (this.rand() - 0.5) * 0.1,
-            (this.rand() - 0.5) * 0.08,
         );
+        const maxLife = 2.55 + this.rand() * 1.05;
 
         this.scene.add(mesh);
         this.crashMeteors.push({
             mesh,
             coreMesh,
             coreMaterialData,
+            crustFragments,
+            fragmentMaterialData,
             glowMesh,
             glowMaterialData,
             tailMesh,
             tailMaterialData,
+            plasmaTailMesh,
+            plasmaTailMaterialData,
+            smokeTailMesh,
+            smokeTailBaseOpacity: smokeTailMaterial.opacity,
             trail,
+            smokeTrail,
             trailGeometry,
             trailMaterial,
+            smokeTrailMaterial,
             trailPositions,
             trailSegments,
             trailBaseSize,
+            trailBaseOpacity: trailMaterial.opacity,
+            smokeTrailBaseSize,
             headFlash,
             headScale,
+            fireTrailSprites,
+            smokeTrailSprites,
             velocity,
             speed,
-            life: 2.3 + this.rand() * 0.9,
-            homing: 0.06 + clampedIntensity * 0.08,
+            life: maxLife,
+            maxLife,
+            homing: 0.08 + clampedIntensity * 0.1,
+            complexityScale: spawnProfile.complexityScale,
+            spriteUpdateStride: spawnProfile.complexityScale < 0.62 ? 2 : 1,
             rotationSpeed,
             targetOffset,
             impactNormal,
-            sideSign,
-            impactRadius: 42 + meteorRadius * 0.45,
+            impactRadius: 46 + meteorRadius * 0.74,
             intensity: clampedIntensity,
             pulsePhase: this.rand() * Math.PI * 2,
             meteorRadius,
@@ -4003,38 +4487,123 @@ export default class StellarDriftTheme extends BaseTheme {
             meteorData.coreMesh.rotation.x += meteorData.rotationSpeed.x * dt60;
             meteorData.coreMesh.rotation.y += meteorData.rotationSpeed.y * dt60;
             meteorData.coreMesh.rotation.z += meteorData.rotationSpeed.z * dt60;
+            if (Array.isArray(meteorData.crustFragments)) {
+                meteorData.crustFragments.forEach((fragmentData) => {
+                    fragmentData.mesh.rotation.x += fragmentData.spin.x * dt60;
+                    fragmentData.mesh.rotation.y += fragmentData.spin.y * dt60;
+                    fragmentData.mesh.rotation.z += fragmentData.spin.z * dt60;
+                });
+            }
 
             const glowUniforms = meteorData.glowMaterialData?.uniforms
                 || meteorData.glowMesh?.userData?.materialData?.uniforms
                 || meteorData.glowMesh?.material?.uniforms;
-            const lifeNorm = THREE.MathUtils.clamp(meteorData.life / 3.2, 0, 1);
+            const lifeNorm = THREE.MathUtils.clamp(
+                meteorData.life / Math.max(0.001, meteorData.maxLife || 3.2),
+                0,
+                1,
+            );
             const pulse = 0.74 + Math.sin(this.time * 34 + meteorData.pulsePhase) * 0.26;
             if (glowUniforms?.uOpacity) {
-                glowUniforms.uOpacity.value = THREE.MathUtils.clamp(lifeNorm * pulse, 0, 1);
+                glowUniforms.uOpacity.value = THREE.MathUtils.clamp((0.42 + pulse * 0.46) * lifeNorm, 0, 1);
             } else if (meteorData.glowMesh?.material && 'opacity' in meteorData.glowMesh.material) {
-                meteorData.glowMesh.material.opacity = THREE.MathUtils.clamp(lifeNorm * pulse, 0, 1);
+                meteorData.glowMesh.material.opacity = THREE.MathUtils.clamp((0.42 + pulse * 0.46) * lifeNorm, 0, 1);
             }
+            const shellScale = 1.08 + pulse * 0.22 + (1 - lifeNorm) * 0.16;
+            meteorData.glowMesh.scale.set(shellScale, shellScale, shellScale);
 
             const tailUniforms = meteorData.tailMaterialData?.uniforms
                 || meteorData.tailMesh?.userData?.materialData?.uniforms
                 || meteorData.tailMesh?.material?.uniforms;
             const tailOpacity = THREE.MathUtils.clamp(
-                (0.48 + pulse * 0.4) * (0.62 + lifeNorm * 0.46),
+                (0.06 + pulse * 0.12) * (0.45 + lifeNorm * 0.42),
                 0,
-                1,
+                0.26,
             );
             if (tailUniforms?.uOpacity) {
                 tailUniforms.uOpacity.value = tailOpacity;
             } else if (meteorData.tailMesh?.material && 'opacity' in meteorData.tailMesh.material) {
                 meteorData.tailMesh.material.opacity = tailOpacity;
             }
-            const tailScale = 0.9 + pulse * 0.44 + (1 - lifeNorm) * 0.12;
-            meteorData.tailMesh.scale.set(tailScale, 1 + (1 - lifeNorm) * 0.16, tailScale);
+            const tailScale = 0.96 + pulse * 0.5 + (1 - lifeNorm) * 0.22;
+            meteorData.tailMesh.scale.set(tailScale, 1.04 + (1 - lifeNorm) * 0.3, tailScale);
+
+            const plasmaUniforms = meteorData.plasmaTailMaterialData?.uniforms
+                || meteorData.plasmaTailMesh?.userData?.materialData?.uniforms
+                || meteorData.plasmaTailMesh?.material?.uniforms;
+            const plasmaOpacity = THREE.MathUtils.clamp(
+                (0.04 + pulse * 0.09) * (0.4 + lifeNorm * 0.36),
+                0,
+                0.2,
+            );
+            if (plasmaUniforms?.uOpacity) {
+                plasmaUniforms.uOpacity.value = plasmaOpacity;
+            } else if (meteorData.plasmaTailMesh?.material && 'opacity' in meteorData.plasmaTailMesh.material) {
+                meteorData.plasmaTailMesh.material.opacity = plasmaOpacity;
+            }
+            const plasmaScale = 0.9 + pulse * 0.34 + (1 - lifeNorm) * 0.2;
+            meteorData.plasmaTailMesh.scale.set(plasmaScale, 1.02 + (1 - lifeNorm) * 0.24, plasmaScale);
+
+            if (meteorData.smokeTailMesh?.material && 'opacity' in meteorData.smokeTailMesh.material) {
+                meteorData.smokeTailMesh.material.opacity = THREE.MathUtils.clamp(
+                    meteorData.smokeTailBaseOpacity * (0.62 + lifeNorm * 0.72),
+                    0,
+                    0.7,
+                );
+                const smokeScale = 1.02 + (1 - lifeNorm) * 0.56 + Math.sin(this.time * 3.1 + meteorData.pulsePhase) * 0.06;
+                meteorData.smokeTailMesh.scale.set(smokeScale, 1.08 + (1 - lifeNorm) * 0.62, smokeScale);
+            }
 
             if (meteorData.headFlash?.material) {
                 meteorData.headFlash.material.opacity = THREE.MathUtils.clamp(0.55 + pulse * 0.45, 0, 1);
                 const flashScale = meteorData.headScale * (0.86 + pulse * 0.42);
                 meteorData.headFlash.scale.set(flashScale, flashScale, 1);
+            }
+
+            if (Array.isArray(meteorData.fireTrailSprites) && meteorData.fireTrailSprites.length > 0) {
+                meteorData.fireTrailSprites.forEach((fireData, idx) => {
+                    if (meteorData.spriteUpdateStride > 1 && idx % meteorData.spriteUpdateStride !== 0) return;
+                    const lane = fireData.lane;
+                    const swirl = this.time * (9.2 + fireData.speed * 2.8) + fireData.phase + idx * 0.2;
+                    const radius = fireData.swirlRadius * (0.65 + lane * 0.9 + (1 - lifeNorm) * 0.34);
+                    const rear = meteorData.meteorRadius * (0.95 + lane * 5.7 + (1 - lifeNorm) * 1.8);
+                    const localX = Math.cos(swirl) * radius;
+                    const localZ = Math.sin(swirl) * radius * (0.9 + 0.2 * Math.sin(swirl * 0.6));
+                    const localY = -rear - Math.sin(swirl * 0.45) * meteorData.meteorRadius * 0.22;
+
+                    fireData.sprite.position.set(localX, localY, localZ);
+                    fireData.sprite.material.opacity = THREE.MathUtils.clamp(
+                        fireData.opacity * (0.52 + pulse * 0.52) * (0.45 + lifeNorm * 0.72),
+                        0,
+                        1,
+                    );
+                    const fireScale = fireData.baseScale
+                        * (1.0 + lane * 1.2 + (1 - lifeNorm) * 0.42 + pulse * 0.25);
+                    fireData.sprite.scale.set(fireScale, fireScale, 1);
+                });
+            }
+
+            if (Array.isArray(meteorData.smokeTrailSprites) && meteorData.smokeTrailSprites.length > 0) {
+                meteorData.smokeTrailSprites.forEach((smokeData, idx) => {
+                    if (meteorData.spriteUpdateStride > 1 && idx % meteorData.spriteUpdateStride !== 0) return;
+                    const lane = smokeData.lane;
+                    const swirl = this.time * (3.8 + smokeData.speed * 1.9) + smokeData.phase + idx * 0.14;
+                    const radius = smokeData.swirlRadius * (0.84 + lane * 1.35 + (1 - lifeNorm) * 0.92);
+                    const rear = meteorData.meteorRadius * (2.6 + lane * 9.0 + (1 - lifeNorm) * 4.2);
+                    const localX = Math.cos(swirl) * radius;
+                    const localZ = Math.sin(swirl) * radius * (0.84 + 0.34 * Math.sin(swirl * 0.4));
+                    const localY = -rear - Math.sin(swirl * 0.26) * meteorData.meteorRadius * 0.34;
+
+                    smokeData.sprite.position.set(localX, localY, localZ);
+                    smokeData.sprite.material.opacity = THREE.MathUtils.clamp(
+                        smokeData.opacity * (0.54 + (1 - lifeNorm) * 0.66) * (0.5 + pulse * 0.28),
+                        0,
+                        0.7,
+                    );
+                    const smokeScale = smokeData.baseScale
+                        * (1.0 + lane * 2.05 + (1 - lifeNorm) * 1.28 + pulse * 0.14);
+                    smokeData.sprite.scale.set(smokeScale, smokeScale, 1);
+                });
             }
 
             if (meteorData.trailPositions && meteorData.trailGeometry?.attributes?.position) {
@@ -4046,7 +4615,7 @@ export default class StellarDriftTheme extends BaseTheme {
                     trailPositions[i3 + 1] = trailPositions[prev3 + 1];
                     trailPositions[i3 + 2] = trailPositions[prev3 + 2];
                 }
-                const headOffset = meteorData.meteorRadius * 0.34;
+                const headOffset = meteorData.meteorRadius * 0.42;
                 trailPositions[0] = meteorData.mesh.position.x - velocityDirection.x * headOffset;
                 trailPositions[1] = meteorData.mesh.position.y - velocityDirection.y * headOffset;
                 trailPositions[2] = meteorData.mesh.position.z - velocityDirection.z * headOffset;
@@ -4054,11 +4623,21 @@ export default class StellarDriftTheme extends BaseTheme {
 
                 if (meteorData.trailMaterial) {
                     meteorData.trailMaterial.opacity = THREE.MathUtils.clamp(
-                        (0.45 + pulse * 0.3) * (0.65 + lifeNorm * 0.48),
+                        meteorData.trailBaseOpacity * (0.54 + pulse * 0.46) * (0.5 + lifeNorm * 0.62),
                         0,
                         1,
                     );
-                    meteorData.trailMaterial.size = meteorData.trailBaseSize * (0.86 + pulse * 0.2);
+                    meteorData.trailMaterial.size = meteorData.trailBaseSize * (0.88 + pulse * 0.28);
+                }
+                if (meteorData.smokeTrailMaterial) {
+                    meteorData.smokeTrailMaterial.opacity = THREE.MathUtils.clamp(
+                        (0.18 + (1 - lifeNorm) * 0.24) * (0.72 + pulse * 0.2),
+                        0,
+                        0.76,
+                    );
+                    meteorData.smokeTrailMaterial.size = meteorData.smokeTrailBaseSize * (
+                        0.92 + (1 - lifeNorm) * 0.9 + pulse * 0.14
+                    );
                 }
             }
 
@@ -4736,7 +5315,7 @@ export default class StellarDriftTheme extends BaseTheme {
                         velocities[j].z += gravity.z * deltaScale;
                     }
                     if (drag) {
-                        const dragScale = Math.pow(drag, deltaScale);
+                        const dragScale = drag ** deltaScale;
                         velocities[j].x *= dragScale;
                         velocities[j].y *= dragScale;
                         velocities[j].z *= dragScale;
@@ -4751,7 +5330,18 @@ export default class StellarDriftTheme extends BaseTheme {
                 // Fade out
                 const decay = Number.isFinite(burst.userData.decay) ? burst.userData.decay : 0.02;
                 burst.userData.life -= decay * deltaScale;
-                burst.material.opacity = Math.max(0, burst.userData.life / burst.userData.maxLife);
+                const lifeNorm = Math.max(0, burst.userData.life / Math.max(0.0001, burst.userData.maxLife || 1));
+
+                if (
+                    burst.material
+                    && 'size' in burst.material
+                    && Number.isFinite(burst.userData.baseSize)
+                ) {
+                    const growRate = Number.isFinite(burst.userData.growRate) ? burst.userData.growRate : 0;
+                    burst.material.size = burst.userData.baseSize * (1 + (1 - lifeNorm) * growRate);
+                }
+
+                burst.material.opacity = lifeNorm;
 
                 // Cleanup
                 if (burst.userData.life <= 0) {

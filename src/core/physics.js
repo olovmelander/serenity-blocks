@@ -827,7 +827,9 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        await new Promise((resolve) => setTimeout(resolve, 50 * speedMultiplier));
+        if (!gameState.isSeeking) {
+            await waitForAnimationFrame(50 * speedMultiplier);
+        }
 
         // Stage 2: Keep original colors, slightly dimmed - smooth transition
         fullLines.forEach((y) => {
@@ -839,7 +841,9 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        await new Promise((resolve) => setTimeout(resolve, 40 * speedMultiplier));
+        if (!gameState.isSeeking) {
+            await waitForAnimationFrame(40 * speedMultiplier);
+        }
 
         // Stage 3: Keep original colors, fade to transparent - smooth final fade
         fullLines.forEach((y) => {
@@ -851,7 +855,9 @@ export async function processPhysics(gameState, callbacks) {
         });
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
-        await new Promise((resolve) => setTimeout(resolve, 30 * speedMultiplier));
+        if (!gameState.isSeeking) {
+            await waitForAnimationFrame(30 * speedMultiplier);
+        }
 
         // --- Remove cleared lines from pieces ---
         gameState.lockedPieces = removeClearedLines(gameState.lockedPieces, fullLines);

@@ -394,6 +394,7 @@ export function createParticleNodeMaterial(params = {}) {
     const aSize = attribute('instanceSize');
     const aColor = attribute('instanceColor');
     const aPosition = attribute('instancePosition');
+    const uBlackHolePos = uniform(new Vector2(0, 0));
 
     const useGPU = Boolean(
         isWebGPU
@@ -445,14 +446,33 @@ export function createParticleNodeMaterial(params = {}) {
     const center = uv().sub(0.5);
     const dist = length(center);
     const life = min(float(1.0), lifeValue);
-    const alpha = max(float(0.0), float(1.0).sub(dist.mul(2.0))).mul(life);
+    const radial = max(float(0.0), float(1.0).sub(dist.mul(2.0)));
+    const alpha = radial.mul(life);
+    const glow = pow(radial, float(1.35));
 
-    const colorBoost = float(1.0).add(float(1.0).sub(life).mul(0.5));
+    // Keep ambient particles concentrated around the tilted accretion torus while
+    // allowing larger combo bursts to remain bright and readable.
+    const rel = basePos.sub(vec3(uBlackHolePos.x, uBlackHolePos.y, 0.0));
+    const cosTilt = float(0.2486898871648548); // cos(-Math.PI * 0.42)
+    const sinTilt = float(-0.9685831611286311); // sin(-Math.PI * 0.42)
+    const localY = rel.y.mul(cosTilt).add(rel.z.mul(sinTilt));
+    const localZ = rel.z.mul(cosTilt).sub(rel.y.mul(sinTilt));
+    const torusRadius = length(vec2(rel.x, localZ));
+    const planeOffset = max(localY, localY.negate());
+    const radialMask = smoothstep(float(130.0), float(230.0), torusRadius)
+        .mul(float(1.0).sub(smoothstep(float(780.0), float(1040.0), torusRadius)));
+    const planeMask = float(1.0).sub(smoothstep(float(45.0), float(150.0), planeOffset));
+    const torusMask = radialMask.mul(planeMask);
+    const comboBypass = smoothstep(float(7.8), float(10.5), sizeValue);
+    const visibility = mix(max(float(0.28), torusMask), float(1.0), comboBypass);
+
+    const colorBoost = float(0.82).add(life.mul(0.18));
+    const emissiveScale = float(0.28).add(life.mul(0.52));
     material.colorNode = colorValue.mul(colorBoost);
-    material.opacityNode = alpha.mul(0.8);
-    material.emissiveNode = colorValue.mul(colorBoost);
+    material.opacityNode = alpha.mul(0.58).mul(visibility);
+    material.emissiveNode = colorValue.mul(glow).mul(emissiveScale).mul(visibility);
 
-    material.userData = {};
+    material.userData = { uBlackHolePos };
 
     return material;
 }

@@ -3,7 +3,7 @@ import {
     GAME_MODES, COLS, ROWS, BLOCK_SIZE,
 } from '../constants.js';
 import {
-    GameState, spawnPiece, fillBag, gameLoop,
+    GameState, spawnPiece, fillBag, gameLoop, updateGame,
 } from '../game.js';
 import {
     expandGridIfNeeded, calculateTopRow, getGridStats, checkInfinityGameOver,
@@ -88,6 +88,7 @@ export class InfinityMode extends BaseGameMode {
 
         // Cache physics callbacks so input handlers can reuse them
         this.physicsCallbacks = null;
+        this.usingHybridLoop = false;
     }
 
     /**
@@ -359,6 +360,10 @@ export class InfinityMode extends BaseGameMode {
             this.gameState.isPaused = true;
         }
 
+        if (this.usingHybridLoop) {
+            this.deps.frameRateController?.pauseHybridLoop();
+        }
+
         // Trigger minimap pause highlight effect (only if not in exploration mode)
         if (this.minimap && !this.isInExplorationMode) {
             this.minimap.onPause();
@@ -375,6 +380,11 @@ export class InfinityMode extends BaseGameMode {
         // Sync pause state to gameState
         if (this.gameState) {
             this.gameState.isPaused = false;
+            this.gameState.lastTime = performance.now();
+        }
+
+        if (this.usingHybridLoop) {
+            this.deps.frameRateController?.resumeHybridLoop();
         }
 
         // Reset exploration mode flag if somehow still set
@@ -396,12 +406,19 @@ export class InfinityMode extends BaseGameMode {
 
         // Reset exploration mode
         this.isInExplorationMode = false;
+        this._disableGamepadExploration();
 
-        // Cancel game loop
+        // Cancel standard RAF loop
         if (this.gameState?.animationId) {
             cancelAnimationFrame(this.gameState.animationId);
             this.gameState.animationId = null;
         }
+
+        // Stop hybrid loop if active
+        if (this.deps.frameRateController?.isRunning) {
+            this.deps.frameRateController.stopHybridLoop();
+        }
+        this.usingHybridLoop = false;
 
         // Hide minimap
         if (this.minimap) {
@@ -594,6 +611,12 @@ export class InfinityMode extends BaseGameMode {
             this.gameState.animationId = null;
         }
 
+        // Stop any existing hybrid loop from prior runs
+        const { frameRateController } = this.deps;
+        if (frameRateController?.isRunning) {
+            frameRateController.stopHybridLoop();
+        }
+
         const drawCallback = () => {
             if (!this.isRunning) {
                 return;
@@ -625,14 +648,43 @@ export class InfinityMode extends BaseGameMode {
             }
         };
 
-        gameLoop(
-            performance.now(),
-            this.gameState,
-            drawCallback,
-            statsCallback,
-            () => this.deps.soundManager.sfxPlayer.playDrop(),
-            this.getPhysicsCallbacks(),
-        );
+        const playDropCallback = () => this.deps.soundManager.sfxPlayer.playDrop();
+        const physicsCallbacks = this.getPhysicsCallbacks();
+
+        if (frameRateController?.needsHybridMode()) {
+            this.usingHybridLoop = true;
+            console.log('[Infinity] Using hybrid loop for high FPS target');
+
+            const logicUpdate = (time, _delta) => {
+                if (this.gameState.isGameOver || this.gameState.isPaused) return;
+
+                updateGame(time, this.gameState, {
+                    drawCallback: null,
+                    updateStatsCallback: null,
+                    playDropCallback,
+                    physicsCallbacks,
+                });
+            };
+
+            const renderUpdate = () => {
+                drawCallback();
+                statsCallback();
+            };
+
+            frameRateController.startHybridLoop(logicUpdate, renderUpdate);
+        } else {
+            this.usingHybridLoop = false;
+            console.log('[Infinity] Using standard RAF loop');
+
+            gameLoop(
+                performance.now(),
+                this.gameState,
+                drawCallback,
+                statsCallback,
+                playDropCallback,
+                physicsCallbacks,
+            );
+        }
 
         console.log('[Infinity] Game loop started');
     }
@@ -1507,11 +1559,6 @@ export class InfinityMode extends BaseGameMode {
             hasGameState: !!this.gameState,
             hasMinimap: !!this.minimap,
         };
-    }
-
-    async onStop() {
-        this._disableGamepadExploration();
-        await super.onStop();
     }
 
     /**
