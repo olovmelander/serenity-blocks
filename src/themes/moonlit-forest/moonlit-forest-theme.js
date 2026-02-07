@@ -207,6 +207,7 @@ export default class MoonlitForestTheme extends BaseTheme {
         this.moonHalo = null;
         this.moonLight = null;
         this.ambientLight = null;
+        this.warmFillLight = null;
         this.forestGround = null;
         this.forestLayerRuntime = [];
         this.forestFogLayers = [];
@@ -1573,12 +1574,12 @@ export default class MoonlitForestTheme extends BaseTheme {
                 },
             },
             ultra: {
-                trees: { back: 26, mid: 20, front: 14 }, // Very dense forest
-                leaves: 60,
-                mushrooms: 30,
-                moonbeams: 9,
-                eyes: 7,
-                fireflies: 30,
+                trees: { back: 24, mid: 18, front: 12 }, // Dense forest
+                leaves: 48,
+                mushrooms: 26,
+                moonbeams: 8,
+                eyes: 6,
+                fireflies: 26,
                 comboEffects: {
                     fireflyMultiplier: 1.1,
                     sporesMultiplier: 1.1,
@@ -1588,12 +1589,12 @@ export default class MoonlitForestTheme extends BaseTheme {
                 },
             },
             extreme: {
-                trees: { back: 35, mid: 28, front: 18 }, // Maximum density forest
-                leaves: 85,
-                mushrooms: 45,
-                moonbeams: 12,
-                eyes: 10,
-                fireflies: 45,
+                trees: { back: 28, mid: 22, front: 15 }, // Dense forest (optimized)
+                leaves: 55,
+                mushrooms: 30,
+                moonbeams: 10,
+                eyes: 8,
+                fireflies: 30,
                 comboEffects: {
                     fireflyMultiplier: 1.5, // Maximum effects
                     sporesMultiplier: 1.5,
@@ -1609,15 +1610,15 @@ export default class MoonlitForestTheme extends BaseTheme {
                 enabled: false,
                 useMRT: false,
                 resolutionScale: 0.62,
-                bloomStrength: 0.22,
-                bloomRadius: 0.35,
-                bloomThreshold: 0.28,
+                bloomStrength: 0.3,
+                bloomRadius: 0.4,
+                bloomThreshold: 0.22,
                 bloomDownsample: 0.95,
-                vignetteOffset: 1.18,
-                vignetteDarkness: 0.18,
-                exposure: 1.0,
-                contrast: 1.01,
-                saturation: 1.0,
+                vignetteOffset: 1.22,
+                vignetteDarkness: 0.1,
+                exposure: 1.08,
+                contrast: 1.04,
+                saturation: 1.04,
                 tintStrength: 0.04,
                 grainStrength: 0.0018,
             },
@@ -1625,15 +1626,15 @@ export default class MoonlitForestTheme extends BaseTheme {
                 enabled: false,
                 useMRT: false,
                 resolutionScale: 0.7,
-                bloomStrength: 0.24,
-                bloomRadius: 0.4,
-                bloomThreshold: 0.26,
+                bloomStrength: 0.38,
+                bloomRadius: 0.46,
+                bloomThreshold: 0.2,
                 bloomDownsample: 0.9,
-                vignetteOffset: 1.16,
-                vignetteDarkness: 0.2,
-                exposure: 1.0,
-                contrast: 1.02,
-                saturation: 1.01,
+                vignetteOffset: 1.2,
+                vignetteDarkness: 0.12,
+                exposure: 1.1,
+                contrast: 1.05,
+                saturation: 1.06,
                 tintStrength: 0.06,
                 grainStrength: 0.002,
             },
@@ -1641,64 +1642,64 @@ export default class MoonlitForestTheme extends BaseTheme {
                 enabled: true,
                 useMRT: false,
                 resolutionScale: 0.82,
-                bloomStrength: 0.3,
-                bloomRadius: 0.48,
-                bloomThreshold: 0.23,
+                bloomStrength: 0.45,
+                bloomRadius: 0.52,
+                bloomThreshold: 0.18,
                 bloomDownsample: 0.85,
-                vignetteOffset: 1.13,
-                vignetteDarkness: 0.24,
-                exposure: 1.01,
-                contrast: 1.03,
-                saturation: 1.03,
-                tintStrength: 0.09,
+                vignetteOffset: 1.18,
+                vignetteDarkness: 0.14,
+                exposure: 1.12,
+                contrast: 1.06,
+                saturation: 1.08,
+                tintStrength: 0.08,
                 grainStrength: 0.0022,
             },
             high: {
                 enabled: true,
                 useMRT: true,
                 resolutionScale: 0.9,
-                bloomStrength: 0.35,
-                bloomRadius: 0.55,
-                bloomThreshold: 0.2,
+                bloomStrength: 0.55,
+                bloomRadius: 0.58,
+                bloomThreshold: 0.15,
                 bloomDownsample: 0.8,
-                vignetteOffset: 1.08,
-                vignetteDarkness: 0.3,
-                exposure: 1.03,
-                contrast: 1.045,
-                saturation: 1.05,
-                tintStrength: 0.11,
+                vignetteOffset: 1.16,
+                vignetteDarkness: 0.15,
+                exposure: 1.15,
+                contrast: 1.07,
+                saturation: 1.1,
+                tintStrength: 0.09,
                 grainStrength: 0.0024,
             },
             ultra: {
                 enabled: true,
                 useMRT: true,
-                resolutionScale: 0.96,
-                bloomStrength: 0.4,
-                bloomRadius: 0.6,
-                bloomThreshold: 0.19,
+                resolutionScale: 0.92,
+                bloomStrength: 0.6,
+                bloomRadius: 0.62,
+                bloomThreshold: 0.14,
                 bloomDownsample: 0.76,
-                vignetteOffset: 1.04,
-                vignetteDarkness: 0.33,
-                exposure: 1.04,
-                contrast: 1.055,
-                saturation: 1.06,
-                tintStrength: 0.13,
+                vignetteOffset: 1.14,
+                vignetteDarkness: 0.15,
+                exposure: 1.18,
+                contrast: 1.08,
+                saturation: 1.12,
+                tintStrength: 0.1,
                 grainStrength: 0.0026,
             },
             extreme: {
                 enabled: true,
                 useMRT: true,
-                resolutionScale: 1.0,
-                bloomStrength: 0.46,
-                bloomRadius: 0.66,
-                bloomThreshold: 0.17,
-                bloomDownsample: 0.72,
-                vignetteOffset: 1.0,
-                vignetteDarkness: 0.36,
-                exposure: 1.06,
-                contrast: 1.065,
-                saturation: 1.07,
-                tintStrength: 0.15,
+                resolutionScale: 0.88,
+                bloomStrength: 0.65,
+                bloomRadius: 0.65,
+                bloomThreshold: 0.13,
+                bloomDownsample: 0.5,
+                vignetteOffset: 1.12,
+                vignetteDarkness: 0.14,
+                exposure: 1.2,
+                contrast: 1.08,
+                saturation: 1.14,
+                tintStrength: 0.1,
                 grainStrength: 0.0028,
             },
         };
@@ -1971,7 +1972,7 @@ export default class MoonlitForestTheme extends BaseTheme {
         this.isWebGL = renderer.isWebGLRenderer === true
             || renderer.backend?.isWebGLBackend === true
             || !this.isWebGPU;
-        this.renderer.setClearColor(0x050a12, 1);
+        this.renderer.setClearColor(0x0c1826, 1);
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
         this.renderer.toneMappingExposure = 1.0;
@@ -2179,8 +2180,8 @@ export default class MoonlitForestTheme extends BaseTheme {
         const height = window.innerHeight;
 
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x050a12);
-        this.scene.fog = new THREE.FogExp2(0x08111c, 0.00045);
+        this.scene.background = new THREE.Color(0x0c1826);
+        this.scene.fog = new THREE.FogExp2(0x10202e, 0.00038);
 
         this.camera = new THREE.PerspectiveCamera(58, width / height, 0.1, 5000);
         this.camera.position.set(0, 34, 180);
@@ -2445,14 +2446,20 @@ export default class MoonlitForestTheme extends BaseTheme {
     createForestLights() {
         if (!this.scene) return;
 
-        this.ambientLight = new THREE.AmbientLight(0x304861, 0.5);
-        this.moonLight = new THREE.DirectionalLight(0xb8dcff, 0.92);
+        this.ambientLight = new THREE.AmbientLight(0x4a6880, 0.72);
+        this.moonLight = new THREE.DirectionalLight(0xc8e4ff, 1.05);
         this.moonLight.position.set(220, 340, 120);
         this.moonLight.target.position.set(0, -20, -900);
+
+        this.warmFillLight = new THREE.DirectionalLight(0xd4a574, 0.18);
+        this.warmFillLight.position.set(-160, -40, 200);
+        this.warmFillLight.target.position.set(0, -60, -700);
 
         this.scene.add(this.ambientLight);
         this.scene.add(this.moonLight);
         this.scene.add(this.moonLight.target);
+        this.scene.add(this.warmFillLight);
+        this.scene.add(this.warmFillLight.target);
     }
 
     createForestLayer(config) {
@@ -2558,13 +2565,13 @@ export default class MoonlitForestTheme extends BaseTheme {
         const fogGeometry = new THREE.PlaneGeometry(2000, 360, 1, 1);
         const fogPresets = [
             {
-                y: -20, z: -540, opacity: 0.08, speed: 0.12, amplitude: 32, tint: 0x8cc6d8,
+                y: -20, z: -540, opacity: 0.14, speed: 0.12, amplitude: 32, tint: 0x8cc6d8,
             },
             {
-                y: -8, z: -760, opacity: 0.07, speed: 0.1, amplitude: 48, tint: 0x89c0d4,
+                y: -8, z: -760, opacity: 0.12, speed: 0.1, amplitude: 48, tint: 0x89c0d4,
             },
             {
-                y: 12, z: -1010, opacity: 0.06, speed: 0.08, amplitude: 62, tint: 0x7ab3cc,
+                y: 12, z: -1010, opacity: 0.10, speed: 0.08, amplitude: 62, tint: 0x7ab3cc,
             },
         ];
 
@@ -2757,7 +2764,7 @@ export default class MoonlitForestTheme extends BaseTheme {
                 scaleY: 520,
                 y: -70,
                 z: -860,
-                opacity: 0.15,
+                opacity: 0.22,
                 color: 0x9bd0dc,
                 speed: 0.11,
                 drift: 10,
@@ -2767,7 +2774,7 @@ export default class MoonlitForestTheme extends BaseTheme {
                 scaleY: 360,
                 y: -64,
                 z: -780,
-                opacity: 0.11,
+                opacity: 0.17,
                 color: 0xb7dde8,
                 speed: 0.16,
                 drift: 7,
@@ -2777,7 +2784,7 @@ export default class MoonlitForestTheme extends BaseTheme {
                 scaleY: 250,
                 y: -60,
                 z: -720,
-                opacity: 0.08,
+                opacity: 0.13,
                 color: 0xd2edf6,
                 speed: 0.2,
                 drift: 5,
@@ -2824,7 +2831,7 @@ export default class MoonlitForestTheme extends BaseTheme {
 
         const groundGeometry = new THREE.CircleGeometry(2600, 64);
         const groundMaterial = new THREE.MeshStandardMaterial({
-            color: 0x0d1714,
+            color: 0x152420,
             roughness: 0.95,
             metalness: 0.03,
             fog: true,
@@ -2851,8 +2858,8 @@ export default class MoonlitForestTheme extends BaseTheme {
                 swaySpeed: [0.18, 0.28],
                 swayAmplitude: [5.5, 9],
                 swayLeanFactor: 0.015,
-                trunkColor: 0x17241e,
-                canopyColor: 0x1f3b31,
+                trunkColor: 0x121e18,
+                canopyColor: 0x182e25,
             },
             {
                 id: 'mid',
@@ -2869,8 +2876,8 @@ export default class MoonlitForestTheme extends BaseTheme {
                 swaySpeed: [0.22, 0.34],
                 swayAmplitude: [6.5, 10.5],
                 swayLeanFactor: 0.018,
-                trunkColor: 0x18271f,
-                canopyColor: 0x27483b,
+                trunkColor: 0x1c2e24,
+                canopyColor: 0x2d5240,
             },
             {
                 id: 'front',
@@ -2887,8 +2894,8 @@ export default class MoonlitForestTheme extends BaseTheme {
                 swaySpeed: [0.26, 0.38],
                 swayAmplitude: [8, 12.5],
                 swayLeanFactor: 0.021,
-                trunkColor: 0x1a2820,
-                canopyColor: 0x2c5544,
+                trunkColor: 0x223428,
+                canopyColor: 0x3a7060,
             },
         ];
 
@@ -2926,7 +2933,7 @@ export default class MoonlitForestTheme extends BaseTheme {
             const capMaterial = new THREE.MeshStandardMaterial({
                 color: capColor.clone().multiplyScalar(0.45),
                 emissive: capColor,
-                emissiveIntensity: 0.42,
+                emissiveIntensity: 0.65,
                 roughness: 0.34,
                 metalness: 0.08,
                 fog: true,
@@ -2934,7 +2941,7 @@ export default class MoonlitForestTheme extends BaseTheme {
             const glowMaterial = new THREE.MeshBasicMaterial({
                 color: capColor,
                 transparent: true,
-                opacity: 0.085,
+                opacity: 0.14,
                 depthWrite: false,
                 blending: THREE.AdditiveBlending,
                 fog: true,
@@ -2984,9 +2991,9 @@ export default class MoonlitForestTheme extends BaseTheme {
         const count = this.qualityConfig.moonbeams || 0;
         for (let i = 0; i < count; i++) {
             const material = new THREE.MeshBasicMaterial({
-                color: 0x9fd9ff,
+                color: 0xb8e4ff,
                 transparent: true,
-                opacity: this.random(0.08, 0.17),
+                opacity: this.random(0.18, 0.35),
                 depthWrite: false,
                 blending: THREE.AdditiveBlending,
                 fog: true,
@@ -3069,8 +3076,8 @@ export default class MoonlitForestTheme extends BaseTheme {
         this.gpuLeaves = [];
         const leafGeometry = new THREE.PlaneGeometry(7.5, 12, 1, 1);
         const leafCount = this.qualityConfig.leaves || 0;
-        const baseColor = new THREE.Color(0x2f4b3a);
-        const accentColor = new THREE.Color(0x476d56);
+        const baseColor = new THREE.Color(0x3a6048);
+        const accentColor = new THREE.Color(0x8b6b3a);
 
         for (let i = 0; i < leafCount; i++) {
             const colorBlend = this.random(0, 1);
@@ -3169,8 +3176,8 @@ export default class MoonlitForestTheme extends BaseTheme {
 
             mushroom.group.position.y = mushroom.baseY + (bob * 0.55);
             mushroom.group.scale.setScalar(mushroom.baseScale * pulseScale);
-            mushroom.capMaterial.emissiveIntensity = 0.42 + (mushroom.pulse * 0.8);
-            mushroom.glowMaterial.opacity = 0.085 + (mushroom.pulse * 0.2);
+            mushroom.capMaterial.emissiveIntensity = 0.65 + (mushroom.pulse * 0.8);
+            mushroom.glowMaterial.opacity = 0.14 + (mushroom.pulse * 0.22);
         });
 
         this.gpuMoonbeams.forEach((beam) => {
@@ -3178,7 +3185,7 @@ export default class MoonlitForestTheme extends BaseTheme {
             beam.pulse = Math.max(0, beam.pulse - (delta * 1.6));
             const wave = Math.sin((this.time * beam.driftSpeed) + beam.phase);
             beam.mesh.position.x = beam.baseX + (wave * beam.driftAmplitude);
-            beam.material.opacity = Math.min(0.62, beam.baseOpacity + (wave * 0.028) + (beam.pulse * 0.28));
+            beam.material.opacity = Math.min(0.72, beam.baseOpacity + (wave * 0.035) + (beam.pulse * 0.28));
         });
 
         this.gpuWildlifeEyes.forEach((eyes) => {
@@ -3225,17 +3232,17 @@ export default class MoonlitForestTheme extends BaseTheme {
         );
 
         if (this.moonLight) {
-            this.moonLight.intensity = 0.92 + (pulse * 0.46);
+            this.moonLight.intensity = 1.05 + (pulse * 0.46);
         }
         if (this.ambientLight) {
-            this.ambientLight.intensity = 0.5 + (pulse * 0.2);
+            this.ambientLight.intensity = 0.72 + (pulse * 0.2);
         }
         if (this.scene?.fog) {
-            this.scene.fog.density = 0.00045 + (pulse * 0.0002);
+            this.scene.fog.density = 0.00038 + (pulse * 0.0002);
         }
         const postConfig = this.qualityConfig?.post ?? {};
-        const bloomStrength = (postConfig.bloomStrength ?? 0.35) + (pulse * 0.18);
-        const exposure = (postConfig.exposure ?? 1.03) + (pulse * 0.03);
+        const bloomStrength = (postConfig.bloomStrength ?? 0.55) + (pulse * 0.18);
+        const exposure = (postConfig.exposure ?? 1.15) + (pulse * 0.03);
         const saturation = (postConfig.saturation ?? 1.05) + (pulse * 0.04);
         if (this.postProcessing?.update) {
             this.postProcessing.update({
@@ -3538,6 +3545,7 @@ export default class MoonlitForestTheme extends BaseTheme {
         this.moonHalo = null;
         this.moonLight = null;
         this.ambientLight = null;
+        this.warmFillLight = null;
         this.forestGround = null;
         this.forestLayerRuntime = [];
         this.forestFogLayers = [];

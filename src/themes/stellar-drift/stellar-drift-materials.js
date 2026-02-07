@@ -25,7 +25,6 @@ import {
     mix,
     normalWorld,
     normalize,
-    pointUV,
     positionLocal,
     positionWorld,
     pow,
@@ -105,7 +104,7 @@ function createStellarStarfieldNodeMaterial() {
         .mul(float(1.0).add(uEventBoost.mul(0.3)))
         .mul(float(1.0).add(uWarpSpeed.mul(0.5)));
 
-    const center = pointUV.sub(vec2(0.5, 0.5));
+    const center = uv().sub(vec2(0.5, 0.5));
     const dist = length(center);
     const softCircle = smoothstep(float(0.55), float(0.0), dist);
 
@@ -791,7 +790,7 @@ function createStellarDustRingNodeMaterial({ size, opacity, dustCompute }) {
         ? (positionStorageAttr ? positionStorageAttr.xyz : positionStorage.element(vertexIndex).xyz)
         : null;
 
-    const center = pointUV.sub(vec2(0.5, 0.5));
+    const center = uv().sub(vec2(0.5, 0.5));
     const dist = length(center);
     const softCircle = smoothstep(float(0.65), float(0.0), dist);
     const pulseMul = float(1.0).add(uPulse.mul(0.35));
@@ -896,7 +895,7 @@ function createStellarAmbientParticlesNodeMaterial({ size, opacity, ambientCompu
         .mul(0.15)
         .add(0.85);
 
-    const center = pointUV.sub(vec2(0.5, 0.5));
+    const center = uv().sub(vec2(0.5, 0.5));
     const dist = length(center);
     const softCircle = smoothstep(float(0.65), float(0.0), dist);
 
@@ -994,7 +993,7 @@ function createStellarNebulaBurstNodeMaterial({ burstCompute }) {
         ? miscStorageAttr.y
         : miscStorage.element(vertexIndex).y;
 
-    const center = pointUV.sub(vec2(0.5, 0.5));
+    const center = uv().sub(vec2(0.5, 0.5));
     const dist = length(center);
     const softCircle = smoothstep(float(0.65), float(0.0), dist);
     const hidden = vec3(0.0, 0.0, -9999.0);
@@ -1154,6 +1153,7 @@ function createStellarCelestialBodyNodeMaterial(params = {}) {
     const opacity = Number(params.opacity ?? 1);
     const roughness = Number(params.roughness ?? 0.75);
     const metalness = Number(params.metalness ?? 0.1);
+    const surfaceTexture = params.surfaceTexture || null;
 
     const material = new MeshStandardNodeMaterial({
         roughness,
@@ -1166,9 +1166,13 @@ function createStellarCelestialBodyNodeMaterial(params = {}) {
     const uEmissiveColor = uniform(emissiveColorValue);
     const uEmissiveStrength = uniform(emissiveStrength);
     const uOpacity = uniform(opacity);
+    const uvCoord = uv();
+    const sampledSurface = surfaceTexture ? texture(surfaceTexture, uvCoord).rgb : null;
 
-    material.colorNode = uColor;
-    material.emissiveNode = uEmissiveColor.mul(uEmissiveStrength);
+    material.colorNode = sampledSurface ? sampledSurface.mul(uColor) : uColor;
+    material.emissiveNode = sampledSurface
+        ? sampledSurface.mul(uEmissiveColor).mul(uEmissiveStrength)
+        : uEmissiveColor.mul(uEmissiveStrength);
     if (opacity < 1) {
         material.opacityNode = uOpacity;
     }
@@ -1180,6 +1184,7 @@ function createStellarCelestialBodyNodeMaterial(params = {}) {
             uEmissiveColor,
             uEmissiveStrength,
             uOpacity,
+            uSurfaceMap: surfaceTexture,
         },
         {
             emitsBloom: emissiveStrength > 0.001,
@@ -1193,9 +1198,11 @@ function createStellarCelestialBodyFallbackMaterial(params = {}) {
     const opacity = Number(params.opacity ?? 1);
     const roughness = Number(params.roughness ?? 0.75);
     const metalness = Number(params.metalness ?? 0.1);
+    const surfaceTexture = params.surfaceTexture || null;
 
     const material = new THREE.MeshStandardMaterial({
         color: params.color ?? 0x7c6e66,
+        map: surfaceTexture,
         emissive: params.emissiveColor ?? params.color ?? 0x7c6e66,
         emissiveIntensity: emissiveStrength,
         roughness,

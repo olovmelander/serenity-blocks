@@ -167,7 +167,6 @@ const QUALITY_PRESETS = {
 const BASELINE_PRESET_ORDER = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
 
 let WEBGPU_MODULE = null;
-const WEBGPU_MODULE_PATH = 'three/webgpu';
 
 function parseIceTempleFlags() {
     if (typeof window === 'undefined') {
@@ -2426,11 +2425,11 @@ export default class IceTempleTheme extends BaseTheme {
         if (!this.flags.forceWebGL) {
             try {
                 if (!WEBGPU_MODULE) {
-                    WEBGPU_MODULE = await import(WEBGPU_MODULE_PATH);
+                    // eslint-disable-next-line import/no-unresolved
+                    WEBGPU_MODULE = await import('three/webgpu');
                 }
                 webgpuRenderer = new WEBGPU_MODULE.WebGPURenderer({
                     antialias: this.getAntialiasEnabled(),
-                    powerPreference: 'high-performance',
                     alpha: true,
                     forceWebGL: false,
                 });
@@ -3368,47 +3367,35 @@ export default class IceTempleTheme extends BaseTheme {
             this.environmentMap = null;
         }
 
-        // Create a procedural environment map for reflections
         let pmremGenerator = null;
         let skyTexture = null;
-        let skyMaterial = null;
-        let skyGeometry = null;
 
         try {
-            pmremGenerator = new THREE.PMREMGenerator(this.renderer);
-            pmremGenerator.compileEquirectangularShader();
-
-            // Create a simple gradient environment
-            const envScene = new THREE.Scene();
-
-            // Create gradient sky dome
-            skyGeometry = new THREE.SphereGeometry(50, 32, 32);
             const skyCanvas = document.createElement('canvas');
             skyCanvas.width = 512;
             skyCanvas.height = 256;
             const skyCtx = skyCanvas.getContext('2d');
+            if (!skyCtx) return;
 
-            // Gradient from dark blue (bottom) to aurora colors (top)
             const gradient = skyCtx.createLinearGradient(0, 256, 0, 0);
-            gradient.addColorStop(0, '#051525'); // Dark ice floor
-            gradient.addColorStop(0.3, '#0a2a4a'); // Deep blue
-            gradient.addColorStop(0.5, '#1a4466'); // Mid blue
-            gradient.addColorStop(0.7, '#2a6688'); // Light blue
-            gradient.addColorStop(0.85, '#55efc4'); // Aurora green
-            gradient.addColorStop(1.0, '#74b9ff'); // Aurora cyan
+            gradient.addColorStop(0, '#051525');
+            gradient.addColorStop(0.3, '#0a2a4a');
+            gradient.addColorStop(0.5, '#1a4466');
+            gradient.addColorStop(0.7, '#2a6688');
+            gradient.addColorStop(0.85, '#55efc4');
+            gradient.addColorStop(1.0, '#74b9ff');
 
             skyCtx.fillStyle = gradient;
             skyCtx.fillRect(0, 0, 512, 256);
 
-            // Add chromatic glowing spots for crystal reflections (like geode theme)
             const spotColors = [
-                '#74b9ff', '#55efc4', '#a29bfe', '#81ecec', // Aurora palette
-                '#00cec9', '#6c5ce7', '#dfe6e9', '#b2bec3', // Ice/crystal palette
+                '#74b9ff', '#55efc4', '#a29bfe', '#81ecec',
+                '#00cec9', '#6c5ce7', '#dfe6e9', '#b2bec3',
             ];
 
             for (let i = 0; i < 60; i++) {
                 const x = this.random() * 512;
-                const y = this.random() * 200; // Upper 3/4 only
+                const y = this.random() * 200;
                 const r = 2 + this.random() * 12;
                 const color = spotColors[Math.floor(this.random() * spotColors.length)];
 
@@ -3420,11 +3407,10 @@ export default class IceTempleTheme extends BaseTheme {
                 skyCtx.fillRect(x - r, y - r, r * 2, r * 2);
             }
 
-            // Add bright stars/sparkles
             skyCtx.fillStyle = 'rgba(255, 255, 255, 0.9)';
             for (let i = 0; i < 100; i++) {
                 const x = this.random() * 512;
-                const y = this.random() * 128; // Upper half only
+                const y = this.random() * 128;
                 const size = this.random() * 2 + 0.5;
                 skyCtx.beginPath();
                 skyCtx.arc(x, y, size, 0, Math.PI * 2);
@@ -3432,20 +3418,22 @@ export default class IceTempleTheme extends BaseTheme {
             }
 
             skyTexture = new THREE.CanvasTexture(skyCanvas);
-            skyMaterial = new THREE.MeshBasicMaterial({
-                map: skyTexture,
-                side: THREE.BackSide,
-            });
+            skyTexture.colorSpace = THREE.SRGBColorSpace;
+            skyTexture.mapping = THREE.EquirectangularReflectionMapping;
+            skyTexture.needsUpdate = true;
 
-            const skyMesh = new THREE.Mesh(skyGeometry, skyMaterial);
-            envScene.add(skyMesh);
+            let envMap = skyTexture;
+            if (this.isWebGL) {
+                pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+                pmremGenerator.compileEquirectangularShader();
+                envMap = pmremGenerator.fromEquirectangular(skyTexture).texture;
+                skyTexture.dispose();
+                skyTexture = null;
+            }
 
-            // Generate environment map
-            const envMap = pmremGenerator.fromScene(envScene, 0.04).texture;
             this.scene.environment = envMap;
             this.environmentMap = envMap;
 
-            // Apply to ice materials
             for (const pillar of this.icePillars) {
                 if (pillar.material) {
                     pillar.material.envMap = envMap;
@@ -3453,18 +3441,17 @@ export default class IceTempleTheme extends BaseTheme {
                 }
             }
 
-            // Apply to floor
             if (this.frostFloor && this.frostFloor.material) {
                 this.frostFloor.material.envMap = envMap;
                 this.frostFloor.material.needsUpdate = true;
             }
         } catch (error) {
             console.warn('[IceTemple] Failed to create environment map:', error);
+            if (skyTexture && this.environmentMap !== skyTexture) {
+                skyTexture.dispose();
+            }
         } finally {
             pmremGenerator?.dispose();
-            skyMaterial?.dispose();
-            skyTexture?.dispose();
-            skyGeometry?.dispose();
         }
     }
 

@@ -43,7 +43,6 @@ import {
     vec2,
     vec3,
     vec4,
-    pointUV,
 } from 'three/tsl';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -339,17 +338,13 @@ export function createSpeedParticleNodeMaterial(opts = {}) {
     material.positionNode = positionAttr;
 
     const particleColor = Fn(() => {
-        const center = pointUV.sub(vec2(0.5, 0.5));
-        const dist = length(center);
-        const core = smoothstep(float(0.3), float(0.0), dist).mul(0.6);
-        return colorAttr.add(core);
+        const pulseLift = uPulse.mul(0.2);
+        return colorAttr.add(vec3(pulseLift, pulseLift, pulseLift));
     })();
     material.colorNode = particleColor;
 
     material.opacityNode = Fn(() => {
-        const center = pointUV.sub(vec2(0.5, 0.5));
-        const dist = length(center);
-        return smoothstep(float(0.5), float(0.1), dist).mul(0.7);
+        return float(0.62).add(uPulse.mul(0.12));
     })();
 
     material.sizeNode = sizeAttr;
@@ -426,17 +421,13 @@ export function createAmbientParticleNodeMaterial(opts = {}) {
     ).add(uPulse.mul(0.3));
 
     const ambientColor = Fn(() => {
-        const center = pointUV.sub(vec2(0.5, 0.5));
-        const dist = length(center);
-        const core = smoothstep(float(0.3), float(0.0), dist).mul(0.5);
-        return colorAttr.add(core);
+        const glowLift = vAlpha.mul(0.15);
+        return colorAttr.add(vec3(glowLift, glowLift, glowLift));
     })();
     material.colorNode = ambientColor;
 
     material.opacityNode = Fn(() => {
-        const center = pointUV.sub(vec2(0.5, 0.5));
-        const dist = length(center);
-        return smoothstep(float(0.5), float(0.1), dist).mul(vAlpha);
+        return clamp(vAlpha.mul(0.72), float(0.06), float(1.0));
     })();
 
     material.sizeNode = sizeAttr.mul(float(1.0).add(uPulse.mul(0.5)));
@@ -479,17 +470,13 @@ export function createShootingStarNodeMaterial(opts = {}) {
     material.positionNode = positionAttr;
 
     const starColor = Fn(() => {
-        const center = pointUV.sub(vec2(0.5, 0.5));
-        const dist = length(center);
-        const core = smoothstep(float(0.25), float(0.0), dist).mul(0.6);
-        return colorAttr.add(core);
+        const coreLift = uOpacity.mul(0.2);
+        return colorAttr.add(vec3(coreLift, coreLift, coreLift));
     })();
     material.colorNode = starColor;
 
     material.opacityNode = Fn(() => {
-        const center = pointUV.sub(vec2(0.5, 0.5));
-        const dist = length(center);
-        return smoothstep(float(0.5), float(0.0), dist).mul(uOpacity);
+        return clamp(uOpacity, float(0.0), float(1.0));
     })();
 
     material.sizeNode = sizeAttr;
@@ -565,10 +552,10 @@ export function createEdgeGlowNodeMaterial(colorVec3, opacity) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Neon Gas Giant Material (New Planet - Procedural)
+// Gas Giant Material (Jupiter Texture + Psychedelic Overlay)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function createNeonGasGiantNodeMaterial() {
+export function createGasGiantNodeMaterial(jupiterTexture) {
     const material = new MeshBasicNodeMaterial();
 
     const uTime = uniform(0);
@@ -578,17 +565,22 @@ export function createNeonGasGiantNodeMaterial() {
     const viewDir = normalize(cameraPosition.sub(positionWorld));
     const nrm = normalWorld;
 
-    // Procedural swirling neon bands
-    const bandFreq = float(8.0);
-    const bandOffset = sin(uvCoord.x.mul(3.0).add(uTime.mul(0.05))).mul(0.15);
-    const bandY = uvCoord.y.add(bandOffset);
-    const bandHue = fract(bandY.mul(bandFreq).add(uTime.mul(0.02)));
-    const bandColor = tslHsv2rgb(bandHue, float(0.85), float(0.6));
+    // Sample Jupiter texture for realistic band structure
+    const texColor = texture(jupiterTexture, uvCoord);
+    const baseColor = texColor.rgb;
+
+    // Psychedelic hue shift overlay - preserves band detail from texture
+    const luminance = dot(baseColor, vec3(0.299, 0.587, 0.114));
+    const shiftedHue = fract(luminance.mul(2.0).add(uTime.mul(0.04)));
+    const psychedelicColor = tslHsv2rgb(shiftedHue, float(0.85), luminance.mul(0.6).add(0.4));
+
+    // Blend texture detail with psychedelic overlay
+    const blendedColor = mix(baseColor, psychedelicColor, float(0.6));
 
     // Atmospheric depth - darker at edges
     const viewDot = abs(dot(nrm, viewDir));
     const atmosphere = pow(viewDot, float(0.6));
-    const atmosphereColor = bandColor.mul(atmosphere);
+    const atmosphereColor = blendedColor.mul(atmosphere);
 
     // Neon rim glow
     const fresnel = pow(float(1.0).sub(viewDot), float(2.5));
@@ -608,10 +600,10 @@ export function createNeonGasGiantNodeMaterial() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Crystal Moon Material (New Planet - Procedural Facets)
+// Ice Moon Material (Neptune Texture + Prismatic Fresnel)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function createCrystalMoonNodeMaterial() {
+export function createIceMoonNodeMaterial(neptuneTexture) {
     const material = new MeshBasicNodeMaterial({
         transparent: true,
     });
@@ -619,14 +611,17 @@ export function createCrystalMoonNodeMaterial() {
     const uTime = uniform(0);
     const uPulse = uniform(0);
 
+    const uvCoord = uv();
     const nrm = normalWorld;
     const viewDir = normalize(cameraPosition.sub(positionWorld));
 
-    // Faceted crystal look using normal-based coloring
-    const facetHue = fract(
-        dot(nrm, vec3(1.0, 0.5, 0.3)).mul(2.0).add(uTime.mul(0.03)),
-    );
-    const crystalColor = tslHsv2rgb(facetHue, float(0.7), float(0.8));
+    // Sample Neptune texture for icy surface detail
+    const texColor = texture(neptuneTexture, uvCoord);
+    const baseColor = texColor.rgb;
+
+    // Apply icy/crystalline tint
+    const iceTint = vec3(0.7, 0.85, 1.0);
+    const icyColor = mix(baseColor, baseColor.mul(iceTint), float(0.35));
 
     // Prismatic glow at edges
     const viewDot = abs(dot(nrm, viewDir));
@@ -637,7 +632,7 @@ export function createCrystalMoonNodeMaterial() {
         float(1.0),
     );
 
-    const finalColor = mix(crystalColor, prismColor, fresnel.mul(0.7));
+    const finalColor = mix(icyColor, prismColor, fresnel.mul(0.7));
     const moonColor = finalColor.mul(float(1.0).add(uPulse.mul(0.2)));
     material.colorNode = moonColor;
     material.opacityNode = float(0.85).add(fresnel.mul(0.15));
@@ -647,6 +642,53 @@ export function createCrystalMoonNodeMaterial() {
         material,
         { uTime, uPulse },
         { emitsBloom: true, mrtRole: 'crystal-moon' },
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Atmospheric Orb Material (Venus Texture + Warm Haze)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function createAtmosphericOrbNodeMaterial(venusTexture) {
+    const material = new MeshBasicNodeMaterial({
+        transparent: true,
+    });
+
+    const uTime = uniform(0);
+    const uPulse = uniform(0);
+
+    const uvCoord = uv();
+    const nrm = normalWorld;
+    const viewDir = normalize(cameraPosition.sub(positionWorld));
+
+    // Slow UV scroll to simulate cloud drift
+    const scrolledUV = vec2(uvCoord.x.add(uTime.mul(0.005)), uvCoord.y);
+    const texColor = texture(venusTexture, scrolledUV);
+    const baseColor = texColor.rgb;
+
+    // Warm amber hue enhancement overlay
+    const luminance = dot(baseColor, vec3(0.299, 0.587, 0.114));
+    const warmHue = fract(luminance.mul(0.8).add(float(0.08)).add(uTime.mul(0.015)));
+    const warmColor = tslHsv2rgb(warmHue, float(0.65), luminance.mul(0.5).add(0.5));
+    const blendedColor = mix(baseColor, warmColor, float(0.45));
+
+    // Strong atmospheric fresnel glow
+    const viewDot = abs(dot(nrm, viewDir));
+    const atmosphere = pow(viewDot, float(0.5));
+    const atmosphereColor = blendedColor.mul(atmosphere);
+
+    const fresnel = pow(float(1.0).sub(viewDot), float(1.8));
+    const glowColor = tslHsv2rgb(float(0.08), float(0.7), float(1.0)).mul(fresnel).mul(0.7);
+
+    const finalColor = atmosphereColor.add(glowColor).mul(float(1.0).add(uPulse.mul(0.12)));
+    material.colorNode = finalColor;
+    material.opacityNode = float(0.9).add(fresnel.mul(0.1));
+    material.emissiveNode = glowColor.add(atmosphereColor.mul(0.15));
+
+    return finalizeNodeMaterial(
+        material,
+        { uTime, uPulse },
+        { emitsBloom: true, mrtRole: 'atmospheric-orb' },
     );
 }
 

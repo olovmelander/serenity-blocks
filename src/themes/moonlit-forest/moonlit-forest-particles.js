@@ -53,7 +53,7 @@ export class MoonlitForestParticles {
         this.leafColors = [
             new THREE.Color(0x6ee7b7),
             new THREE.Color(0x4fd1a4),
-            new THREE.Color(0x3fa581),
+            new THREE.Color(0xc49a4e),
         ];
 
         this.createPools();
@@ -70,14 +70,14 @@ export class MoonlitForestParticles {
         const eyes = Math.max(1, this.qualityConfig.eyes || 3);
 
         return {
-            fireflies: Math.min(180, fireflies * 10),
-            spores: Math.min(120, fireflies * 7),
-            sparkles: Math.min(100, fireflies * 6),
-            wisps: Math.min(64, moonbeams * 8),
-            mist: Math.min(48, moonbeams * 6),
-            enchantedLeaves: Math.min(140, Math.floor(leaves * 1.1)),
-            runes: Math.min(42, eyes * 6),
-            shootingStars: Math.min(20, Math.max(6, moonbeams * 2)),
+            fireflies: Math.min(80, fireflies * 6),
+            spores: Math.min(60, fireflies * 4),
+            sparkles: Math.min(50, fireflies * 3),
+            wisps: Math.min(30, moonbeams * 5),
+            mist: Math.min(24, moonbeams * 4),
+            enchantedLeaves: Math.min(60, Math.floor(leaves * 0.7)),
+            runes: Math.min(24, eyes * 4),
+            shootingStars: Math.min(14, Math.max(4, moonbeams * 2)),
         };
     }
 

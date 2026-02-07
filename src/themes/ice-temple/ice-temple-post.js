@@ -3,16 +3,15 @@
  * Hybrid WebGPU post: standard bloom fallback + optional emissive MRT bloom.
  */
 
-const WEBGPU_MODULE_PATH = 'three/webgpu';
-const TSL_MODULE_PATH = 'three/tsl';
-const BLOOM_MODULE_PATH = 'three/addons/tsl/display/BloomNode.js';
-
 export class IceTemplePost {
     static async create(renderer, scene, camera, params = {}) {
         const [WEBGPU, TSL, BLOOM] = await Promise.all([
-            import(WEBGPU_MODULE_PATH),
-            import(TSL_MODULE_PATH),
-            import(BLOOM_MODULE_PATH),
+            // eslint-disable-next-line import/no-unresolved
+            import('three/webgpu'),
+            // eslint-disable-next-line import/no-unresolved
+            import('three/tsl'),
+            // eslint-disable-next-line import/no-unresolved
+            import('three/addons/tsl/display/BloomNode.js'),
         ]);
         return new IceTemplePost(renderer, scene, camera, params, WEBGPU, TSL, BLOOM);
     }
