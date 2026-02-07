@@ -39,8 +39,9 @@ import {
     createShootingStarNodeMaterial,
     createStarfieldNodeMaterial,
     createEdgeGlowNodeMaterial,
-    createNeonGasGiantNodeMaterial,
-    createCrystalMoonNodeMaterial,
+    createGasGiantNodeMaterial,
+    createIceMoonNodeMaterial,
+    createAtmosphericOrbNodeMaterial,
     createBinaryStarNodeMaterial,
 } from './chromadelic-highway-materials.js';
 
@@ -409,6 +410,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.neonGasGiantGlows = [];
         this.crystalMoon = null;
         this.binaryStars = [];
+        this.venusOrb = null;
+        this.venusOrbGlows = [];
 
         // Shooting stars
         this.shootingStars = [];
@@ -939,6 +942,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.neonGasGiantGlows = [];
         this.crystalMoon = null;
         this.binaryStars = [];
+        this.venusOrb = null;
+        this.venusOrbGlows = [];
         this.shootingStars = [];
         this.pieceLockTimes = [];
         this.roadProgress = 0;
@@ -2590,20 +2595,26 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const planetCount = this.qualityPreset.planetCount;
         if (planetCount < 2) return;
 
-        // Neon Gas Giant - far left background
+        const textureLoader = new THREE.TextureLoader();
+
+        // Neon Gas Giant - far left background (Jupiter texture)
         if (planetCount >= 2) {
             const gasGiantSize = 350;
             const gasGiantGeo = new THREE.SphereGeometry(gasGiantSize, 40, 40);
+
+            const jupiterTexture = textureLoader.load('./textures/2k_jupiter.jpg');
+            jupiterTexture.wrapS = THREE.ClampToEdgeWrapping;
+            jupiterTexture.wrapT = THREE.ClampToEdgeWrapping;
 
             let gasGiantMat;
             let gasGiantMatData = null;
 
             if (this.isWebGPU) {
-                gasGiantMatData = createNeonGasGiantNodeMaterial();
+                gasGiantMatData = createGasGiantNodeMaterial(jupiterTexture);
                 gasGiantMat = gasGiantMatData.material;
             } else {
                 gasGiantMat = new THREE.MeshBasicMaterial({
-                    color: 0x6633CC,
+                    map: jupiterTexture,
                     transparent: true,
                     opacity: 0.8,
                 });
@@ -2625,20 +2636,24 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.createPlanetGlowLayers(this.neonGasGiant, gasGiantSize, this.neonGasGiantGlows, 'rgba(120, 80, 200,');
         }
 
-        // Crystal Moon - orbits the main rainbow planet
+        // Ice Moon - orbits the main rainbow planet (Neptune texture)
         if (planetCount >= 3) {
             const moonSize = 80;
-            const moonGeo = new THREE.IcosahedronGeometry(moonSize, 2);
+            const moonGeo = new THREE.SphereGeometry(moonSize, 32, 32);
+
+            const neptuneTexture = textureLoader.load('./textures/2k_neptune.jpg');
+            neptuneTexture.wrapS = THREE.ClampToEdgeWrapping;
+            neptuneTexture.wrapT = THREE.ClampToEdgeWrapping;
 
             let moonMat;
             let moonMatData = null;
 
             if (this.isWebGPU) {
-                moonMatData = createCrystalMoonNodeMaterial();
+                moonMatData = createIceMoonNodeMaterial(neptuneTexture);
                 moonMat = moonMatData.material;
             } else {
                 moonMat = new THREE.MeshBasicMaterial({
-                    color: 0xAADDFF,
+                    map: neptuneTexture,
                     transparent: true,
                     opacity: 0.85,
                 });
@@ -2695,6 +2710,44 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 this.binaryStars.push(star);
                 this.scene.add(star);
             });
+        }
+
+        // Venus Atmospheric Orb - far right background (Extreme quality only)
+        if (planetCount >= 5) {
+            const venusSize = 180;
+            const venusGeo = new THREE.SphereGeometry(venusSize, 36, 36);
+
+            const venusTexture = textureLoader.load('./textures/2k_venus_atmosphere.jpg');
+            venusTexture.wrapS = THREE.RepeatWrapping;
+            venusTexture.wrapT = THREE.ClampToEdgeWrapping;
+
+            let venusMat;
+            let venusMatData = null;
+
+            if (this.isWebGPU) {
+                venusMatData = createAtmosphericOrbNodeMaterial(venusTexture);
+                venusMat = venusMatData.material;
+            } else {
+                venusMat = new THREE.MeshBasicMaterial({
+                    map: venusTexture,
+                    transparent: true,
+                    opacity: 0.9,
+                });
+            }
+
+            this.venusOrb = new THREE.Mesh(venusGeo, venusMat);
+            this.venusOrb.position.set(1400, -200, -2800);
+            this.venusOrb.renderOrder = -66;
+            this.venusOrb.userData.materialData = venusMatData;
+            this.venusOrb.userData.basePosition = this.venusOrb.position.clone();
+            this.venusOrb.userData.driftPhase = this.rand() * Math.PI * 2;
+            this.venusOrb.userData.driftSpeed = 0.02;
+            this.venusOrb.userData.driftAmplitudeX = 60;
+            this.venusOrb.userData.driftAmplitudeY = 30;
+            this.scene.add(this.venusOrb);
+
+            // Glow for venus orb
+            this.createPlanetGlowLayers(this.venusOrb, venusSize, this.venusOrbGlows, 'rgba(255, 170, 80,');
         }
 
         console.log(`[ChromadelicHighway] ${planetCount - 1} additional celestial bodies created`);
@@ -3685,6 +3738,35 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
                 if (star.material?.opacity !== undefined) {
                     star.material.opacity = 0.7 * readabilityScale * effectScale;
+                }
+            });
+        }
+
+        // Venus Atmospheric Orb - slow drift
+        if (this.venusOrb) {
+            this.venusOrb.rotation.y += 0.00015;
+            const base = this.venusOrb.userData.basePosition;
+            if (base) {
+                const phase = this.venusOrb.userData.driftPhase || 0;
+                const speed = this.venusOrb.userData.driftSpeed || 0.02;
+                const ampX = this.venusOrb.userData.driftAmplitudeX || 60;
+                const ampY = this.venusOrb.userData.driftAmplitudeY || 30;
+                this.venusOrb.position.x = base.x + Math.sin(this.time * speed + phase) * ampX;
+                this.venusOrb.position.y = base.y + Math.cos(this.time * speed * 0.7 + phase) * ampY;
+            }
+            const md = this.venusOrb.userData.materialData;
+            if (md) {
+                md.uniforms.uTime.value = this.time;
+                md.uniforms.uPulse.value = this.pulseIntensity * 0.18 * readabilityScale;
+            }
+
+            // Sync venus glow layers
+            this.venusOrbGlows.forEach((glow) => {
+                glow.position.x = this.venusOrb.position.x;
+                glow.position.y = this.venusOrb.position.y;
+                glow.position.z = this.venusOrb.position.z + glow.userData.zOffset;
+                if (glow.material?.opacity !== undefined) {
+                    glow.material.opacity = glow.userData.baseOpacity * readabilityScale * effectScale;
                 }
             });
         }

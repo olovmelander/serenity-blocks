@@ -31,6 +31,7 @@ import {
     rotate as coreRotate,
     hardDrop as coreHardDrop,
     softDrop as coreSoftDrop,
+    processAutoDrop as coreProcessAutoDrop,
     markBoardDirty,
 } from './core/game.js';
 import { insertGarbageEntries } from './core/garbage.js';
@@ -3158,16 +3159,12 @@ class SerenityBlocks {
         [1, 2].forEach((playerNum) => {
             const playerState = playerNum === 1 ? this.multiplayerState.player1 : this.multiplayerState.player2;
 
-            if (!playerState.isProcessingPhysics && playerState.currentPiece) {
-                playerState.dropCounter += delta;
-                if (playerState.dropCounter > playerState.dropInterval) {
-                    coreSoftDrop(
-                        playerState,
-                        () => this.soundManager.sfxPlayer.playDrop(),
-                        this.getMultiplayerPhysicsCallbacks(playerNum),
-                    );
-                }
-            }
+            coreProcessAutoDrop(
+                playerState,
+                delta,
+                () => this.soundManager.sfxPlayer.playDrop(),
+                this.getMultiplayerPhysicsCallbacks(playerNum),
+            );
         });
 
         this.syncMultiplayerBoardScenes();

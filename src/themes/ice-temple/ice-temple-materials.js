@@ -15,9 +15,6 @@ import {
     shockwaveFragmentShader,
 } from './ice-temple-shaders.js';
 
-const WEBGPU_MODULE_PATH = 'three/webgpu';
-const TSL_MODULE_PATH = 'three/tsl';
-
 let materialRuntime = null;
 let materialRuntimePromise = null;
 
@@ -34,8 +31,10 @@ export async function initIceTempleMaterialRuntime() {
     if (materialRuntime) return materialRuntime;
     if (!materialRuntimePromise) {
         materialRuntimePromise = Promise.all([
-            import(WEBGPU_MODULE_PATH),
-            import(TSL_MODULE_PATH),
+            // eslint-disable-next-line import/no-unresolved
+            import('three/webgpu'),
+            // eslint-disable-next-line import/no-unresolved
+            import('three/tsl'),
         ]).then(([WEBGPU, TSL]) => {
             materialRuntime = { WEBGPU, TSL };
             return materialRuntime;
@@ -219,14 +218,11 @@ export function createSnowMaterialWebGPU(params = {}) {
         vertexIndex,
         positionLocal,
         positionView,
-        pointUV,
         vec3,
         float,
         sin,
         cos,
         fract,
-        length,
-        smoothstep,
     } = TSL;
 
     const material = new WEBGPU.PointsNodeMaterial();
@@ -286,9 +282,8 @@ export function createSnowMaterialWebGPU(params = {}) {
         basePosition.z.add(cos(uTime.mul(0.3).add(randomValue.mul(6.28))).mul(0.2)),
     );
 
-    const center = pointUV.sub(0.5);
-    const dist = length(center);
-    const alpha = smoothstep(0.5, 0.2, dist).mul(float(0.6).add(randomValue.mul(0.4)));
+    // Avoid point-UV builtins here; older WebGPU backends can emit invalid WGSL (gl_PointCoord).
+    const alpha = float(0.6).add(randomValue.mul(0.4));
     const sparkle = float(1.0).add(sin(randomValue.mul(100.0)).mul(0.2));
 
     material.positionNode = pos;
@@ -334,14 +329,10 @@ export function createIceShardMaterialWebGPU(params = {}) {
         vertexIndex,
         positionLocal,
         positionView,
-        pointUV,
         vec3,
         float,
         sin,
         cos,
-        atan,
-        length,
-        smoothstep,
         mix,
     } = TSL;
 
@@ -415,12 +406,9 @@ export function createIceShardMaterialWebGPU(params = {}) {
         useCompute ? basePosition.z : basePosition.z.add(aVelocity.z.mul(uTime)),
     );
 
-    const center = pointUV.sub(0.5);
-    const dist = length(center);
-    const angle = atan(center.y, center.x);
-    const hex = cos(angle.mul(6.0)).mul(0.1);
-    const shape = smoothstep(0.5, float(0.3).add(hex), dist);
-    const alpha = shape.mul(lifeValue).mul(activeValue);
+    const alpha = lifeValue
+        .mul(activeValue)
+        .mul(float(0.85).add(randomValue.mul(0.15)));
     const sparkle = float(1.0).add(sin(randomValue.mul(50.0).add(lifeValue.mul(10.0))).mul(0.3));
     const color = uColor.mul(sparkle);
     const hidden = vec3(0.0, 0.0, -9999.0);
@@ -462,12 +450,9 @@ export function createStarfieldMaterialWebGPU(params = {}) {
         attribute,
         positionLocal,
         positionView,
-        pointUV,
         vec3,
         float,
         sin,
-        length,
-        smoothstep,
     } = TSL;
 
     const material = new WEBGPU.PointsNodeMaterial();
@@ -486,10 +471,7 @@ export function createStarfieldMaterialWebGPU(params = {}) {
             .add(positionLocal.z.mul(0.03)),
     ).mul(0.5).add(0.5);
 
-    const center = pointUV.sub(0.5);
-    const dist = length(center);
-    const disc = smoothstep(0.5, 0.2, dist);
-    const alpha = disc.mul(float(0.35).add(twinkle.mul(0.45)));
+    const alpha = float(0.35).add(twinkle.mul(0.45));
 
     material.sizeNode = aSize.mul(float(20.0).div(positionView.z.negate()));
     material.colorNode = aColor;

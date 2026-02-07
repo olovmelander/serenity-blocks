@@ -70,9 +70,9 @@ export class FrameRateController {
                     this.monitorRefreshRate = 240;
                 } else if (measuredRate >= 55 && measuredRate <= 65) {
                     this.monitorRefreshRate = 60;
-                } else if (measuredRate < 30) {
-                    console.warn(`[FrameRate] Measured refresh rate (${measuredRate}Hz) is suspiciously low. Defaulting to 60Hz.`);
+                } else if (measuredRate < 50) {
                     this.monitorRefreshRate = 60;
+                    console.log(`[FrameRate] Refresh-rate sample (${measuredRate}Hz) looked throttled. Using 60Hz fallback.`);
                 } else {
                     this.monitorRefreshRate = measuredRate;
                 }

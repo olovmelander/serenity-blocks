@@ -6,7 +6,7 @@ import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import {
     GAME_MODES, COLS, ROWS, BLOCK_SIZE,
 } from '../constants.js';
-import { spawnPiece, fillBag, softDrop } from '../game.js';
+import { spawnPiece, fillBag, processAutoDrop } from '../game.js';
 
 import { expandGridIfNeeded, checkInfinityGameOver, calculateBuildHeight } from '../infinity-grid.js';
 import { seededRandom } from '../../utils/helpers.js';
@@ -671,24 +671,19 @@ export class LocalMultiplayerMode extends BaseGameMode {
                         console.log(`[LocalMultiplayer] P${playerNum} BEFORE: dropCounter=${playerState.dropCounter}, delta=${delta}`);
                     }
 
-                    playerState.dropCounter += delta;
+                    // Use proper multiplayer callbacks (from main.js) to handle garbage and spawning
+                    const callbacks = this.deps.getMultiplayerPhysicsCallbacks?.(playerNum)
+                        || this._getPhysicsCallbacks();
+
+                    processAutoDrop(
+                        playerState,
+                        delta,
+                        () => this.deps.soundManager.sfxPlayer.playDrop(),
+                        callbacks,
+                    );
 
                     if (frameCount <= 3) {
                         console.log(`[LocalMultiplayer] P${playerNum} AFTER: dropCounter=${playerState.dropCounter}`);
-                    }
-
-                    if (playerState.dropCounter > playerState.dropInterval) {
-                        // Use proper multiplayer callbacks (from main.js) to handle garbage and spawning
-                        const callbacks = this.deps.getMultiplayerPhysicsCallbacks?.(playerNum)
-                            || this._getPhysicsCallbacks();
-
-                        console.log(`[LocalMultiplayer] Dropping piece for P${playerNum}, counter was ${playerState.dropCounter}`);
-
-                        softDrop(
-                            playerState,
-                            () => this.deps.soundManager.sfxPlayer.playDrop(),
-                            callbacks,
-                        );
                     }
                 }
 

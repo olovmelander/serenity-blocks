@@ -520,10 +520,13 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
  * @param {GameState} gameState - Current game state
  * @param {Function} playDropCallback - Callback to play drop sound
  * @param {Object} physicsCallbacks - Callbacks for physics processing
+ * @param {Object} options - Drop behavior options
+ * @param {boolean} options.preserveDropCounter - Keep accumulator remainder for fixed-step auto-drop
  * @returns {boolean} True if piece moved down, false if it locked
  */
-export function softDrop(gameState, playDropCallback, physicsCallbacks) {
+export function softDrop(gameState, playDropCallback, physicsCallbacks, options = {}) {
     if (!gameState.currentPiece || gameState.isProcessingPhysics) return false;
+    const { preserveDropCounter = false } = options;
 
     if (canPlacePiece(
         gameState,
@@ -533,12 +536,59 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks) {
     )) {
         gameState.currentPiece.y++;
         // Quadra: No points for soft drop - only line clears and time-based lock bonus
-        gameState.dropCounter = 0;
+        if (!preserveDropCounter) {
+            gameState.dropCounter = 0;
+        }
         invalidateGhostCache(gameState);
         return true;
     }
     lockPiece(gameState, playDropCallback, physicsCallbacks);
     return false;
+}
+
+/**
+ * Process automatic gravity using a fixed-step accumulator.
+ * Preserves elapsed-time remainder so gameplay timing stays stable across FPS.
+ *
+ * @param {GameState} gameState - Current game state
+ * @param {number} delta - Elapsed milliseconds since last update
+ * @param {Function} playDropCallback - Callback to play drop sound
+ * @param {Object} physicsCallbacks - Callbacks for physics processing
+ */
+export function processAutoDrop(gameState, delta, playDropCallback, physicsCallbacks) {
+    if (!gameState || !gameState.currentPiece || gameState.isProcessingPhysics) return;
+    if (!Number.isFinite(delta) || delta <= 0) return;
+
+    const dropInterval = Math.max(1, Number(gameState.dropInterval) || LEVEL_SPEEDS[0]);
+    const MAX_DROP_STEPS_PER_UPDATE = 32;
+
+    gameState.dropCounter += delta;
+
+    let steps = 0;
+    while (
+        gameState.dropCounter >= dropInterval
+        && gameState.currentPiece
+        && !gameState.isProcessingPhysics
+        && steps < MAX_DROP_STEPS_PER_UPDATE
+    ) {
+        const moved = softDrop(gameState, playDropCallback, physicsCallbacks, {
+            preserveDropCounter: true,
+        });
+
+        if (!moved) {
+            // Piece locked and physics started. Reset counter for the next spawned piece.
+            gameState.dropCounter = 0;
+            return;
+        }
+
+        gameState.dropCounter -= dropInterval;
+        steps++;
+    }
+
+    // Prevent huge backlog after long stalls without throwing away normal-frame remainder.
+    if (steps >= MAX_DROP_STEPS_PER_UPDATE && gameState.dropCounter > dropInterval * 2) {
+        gameState.dropCounter = dropInterval * 2;
+    }
 }
 
 /**
@@ -700,13 +750,8 @@ export function updateGame(time, gameState, callbacks) {
         const delta = time - gameState.lastTime;
         gameState.lastTime = time;
 
-        // Auto drop
-        if (!gameState.isProcessingPhysics && gameState.currentPiece) {
-            gameState.dropCounter += delta;
-            if (gameState.dropCounter > gameState.dropInterval) {
-                softDrop(gameState, playDropCallback, physicsCallbacks);
-            }
-        }
+        // Auto drop (fixed-step accumulator for frame-rate independent gravity timing)
+        processAutoDrop(gameState, delta, playDropCallback, physicsCallbacks);
 
         if (monitoring) {
             performanceMonitor.updateEnd();
