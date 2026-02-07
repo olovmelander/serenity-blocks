@@ -23,7 +23,6 @@ import {
     positionLocal,
     normalWorld,
     cameraPosition,
-    pointUV,
     positionView,
     vertexColor,
     normalize,
@@ -274,7 +273,7 @@ export function createStarNodeMaterial(params = {}) {
                 smoothstep(
                     float(0.0),
                     float(1.0),
-                    length(pointUV.sub(0.5)).mul(2.0),
+                    length(uv().sub(0.5)).mul(2.0),
                 ),
             ),
             float(2.0),
@@ -487,7 +486,7 @@ export function createParticleNodeMaterial(params = {}) {
 
     let alpha;
     if (usePointSprite) {
-        const center = pointUV.sub(0.5);
+        const center = uv().sub(0.5);
         const dist = length(center);
         const circleAlpha = pow(max(float(0.0), float(1.0).sub(dist.mul(2.0))), float(1.5)).mul(
             lifeNode,

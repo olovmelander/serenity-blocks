@@ -36,7 +36,7 @@ export class BlackHoleParticleCompute {
         // position: xyz + spare
         // velocity: xyz + spare
         // life: lifetime + color.rgb
-        // misc: size + active + random + spare
+        // misc: size + active + random + lockUntilTime
         this.positionData = new Float32Array(particleCount * 4);
         this.velocityData = new Float32Array(particleCount * 4);
         this.lifeData = new Float32Array(particleCount * 4);
@@ -118,8 +118,9 @@ export class BlackHoleParticleCompute {
                 const dist = length(toCenter);
                 const dir = normalize(toCenter);
 
-                const isBurst = step(float(0.5), burstPhase);
-                const maxDist = mix(float(1500.0), float(2500.0), isBurst);
+                const burstBlend = smoothstep(float(0.0), float(8.0), burstFactor);
+                const isBurst = max(step(float(0.5), burstPhase), step(float(0.06), burstBlend));
+                const maxDist = mix(float(1500.0), float(2500.0), burstBlend);
 
                 If(dist.greaterThan(50.0), () => {
                     If(isBurst.greaterThan(0.5), () => {
@@ -172,8 +173,10 @@ export class BlackHoleParticleCompute {
                 pos.y.addAssign(vel.y);
                 pos.z.addAssign(vel.z);
 
-                const outOfBounds = dist.lessThan(80.0).or(dist.greaterThan(maxDist));
-                If(outOfBounds, () => {
+                const distAfter = length(blackHolePos.sub(pos.xyz));
+                const outOfBounds = distAfter.lessThan(80.0).or(distAfter.greaterThan(maxDist));
+                const lockExpired = step(misc.w, time).greaterThan(0.5);
+                If(outOfBounds.and(lockExpired), () => {
                     const seed = float(index).add(time.mul(0.13));
                     const r1 = fract(sin(seed.mul(12.9898)).mul(43758.5453));
                     const r2 = fract(sin(seed.mul(78.233)).mul(43758.5453));
@@ -212,6 +215,7 @@ export class BlackHoleParticleCompute {
 
                     life.x.assign(float(0.5).add(r1.mul(0.5)));
                     misc.y.assign(1.0);
+                    misc.w.assign(0.0);
                 });
 
                 If(life.x.lessThan(1.0), () => {
@@ -249,7 +253,7 @@ export class BlackHoleParticleCompute {
         }
     }
 
-    spawn(index, particle) {
+    spawn(index, particle, lockUntil = 0) {
         if (index < 0 || index >= this.count) return;
         const i4 = index * 4;
         this.positionData[i4] = particle.x;
@@ -269,6 +273,7 @@ export class BlackHoleParticleCompute {
 
         this.miscData[i4] = particle.size;
         this.miscData[i4 + 1] = 1.0;
+        this.miscData[i4 + 3] = lockUntil;
 
         this.positionBuffer.needsUpdate = true;
         this.velocityBuffer.needsUpdate = true;
@@ -471,16 +476,8 @@ export class BlackHoleBurstCompute {
             scanned += 1;
         }
 
-        // If every particle is active, recycle oldest range in ring order.
-        while (activated < targetBatch) {
-            const index = (startIndex + scanned) % this.count;
-            const i4 = index * 4;
-            this.angleData[i4 + 3] = 1.0;
-            this.lifeData[i4] = 0.0;
-            this.miscData[i4 + 1] = seed + (Math.random() - 0.5) * 0.9;
-            activated += 1;
-            scanned += 1;
-        }
+        // Keep additive behavior stable: do not recycle active burst particles.
+        // If saturated, we simply spawn fewer this trigger and preserve existing waves.
 
         this.nextTriggerIndex = (startIndex + scanned) % this.count;
         this.uBurstSeed.value = seed;
