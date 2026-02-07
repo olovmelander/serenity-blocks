@@ -286,6 +286,11 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.cameraSwayAmplitude = { x: 5.0, y: 7.0, z: 2.0 };
         this.cameraSwaySpeed = { x: 0.1, y: 0.05, z: 0.08 };
         this.cameraLookAtSway = { x: 6.0, y: 4.0 };
+        this.cameraSway = new THREE.Vector3(0, 0, 0);
+        this.cameraLookTarget = this.cameraBaseLookAt.clone();
+        this.cameraCurrentLookTarget = this.cameraBaseLookAt.clone();
+        this.cameraRollOffset = 0;
+        this.cameraDriftSeed = Math.random() * Math.PI * 2;
 
         // VHS billboards with shader effects
         this.vhsBillboards = [];
@@ -743,7 +748,9 @@ export default class NeonDistrictTheme extends BaseTheme {
             if (!debugFlags.noPrewarm && this.isWebGPU) {
                 this.prewarmEnabled = true;
             }
-            if (this.isWebGPU && !debugFlags.noSyncLoad && !debugFlags.syncLoad) {
+            // Desktop/laptop default: start rendering early and load progressively.
+            // Keep sync-load available as an explicit debug/QA opt-in.
+            if (this.isWebGPU && !debugFlags.noSyncLoad && debugFlags.syncLoad) {
                 this.syncLoadEnabled = true;
             }
             if (debugFlags.noSyncLoad) {
@@ -816,32 +823,11 @@ export default class NeonDistrictTheme extends BaseTheme {
                 });
             }
 
-            // Start animation
-            this.startAnimation();
-
-            // Music Playback
-            if (this.audioManager) {
-                console.log('[NeonDistrict] Attempting to play music...');
-                const musicPath = './assets/music/neon-district.mp3';
-                this.audioManager.loadBuffer(musicPath).then((buffer) => {
-                    if (this.isActive) { // Only play if still active
-                        this.musicSource = this.audioManager.playBuffer(buffer, {
-                            loop: true,
-                            volume: 0.6,
-                            startTime: 0
-                        });
-                    }
-                }).catch(err => console.warn('[NeonDistrict] Music failed to load:', err));
-            }
-
             console.log(`[Synthwave3D] Scene initialized with ${this.currentQuality} quality`);
             this.sceneInitialized = true;
         } finally {
             this.isCreatingScene = false;
         }
-
-        // Start animation loop
-        this.startAnimation();
 
         // Music Playback - check for audioManager from BaseTheme
         if (this.audioManager) {
@@ -1531,8 +1517,13 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Street-level camera IN THE ALLEY - more horizontal view
         // Far clip increased to 10000 to see the horizon tower
         this.camera = new THREE.PerspectiveCamera(70, width / height, 1, 10000);
-        this.camera.position.set(0, 4, 40); // Start at street level
-        this.camera.lookAt(0, 80, -400); // Looking more horizontal, at buildings
+        this.camera.position.copy(this.cameraBasePosition);
+        this.camera.lookAt(this.cameraBaseLookAt);
+        this.cameraSway.set(0, 0, 0);
+        this.cameraLookTarget.copy(this.cameraBaseLookAt);
+        this.cameraCurrentLookTarget.copy(this.cameraBaseLookAt);
+        this.cameraRollOffset = 0;
+        this.cameraDriftSeed = Math.random() * Math.PI * 2;
 
         console.log('[NeonDistrict] Camera positioned in alley');
     }
@@ -3714,7 +3705,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
     profileStart() {
         if (typeof performance === 'undefined') return 0;
-        // Always capture timing for slow frame debugging
+        if (!this.profileEnabled && !this.debugEnabled) return 0;
         this.profileFrameStart = performance.now();
         this.profileMarks.length = 0;
         return this.profileFrameStart;
@@ -3722,7 +3713,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
     profileStep(label, startTime) {
         if (typeof performance === 'undefined') return startTime;
-        // Always capture timing marks for slow frame debugging
+        if (!this.profileEnabled && !this.debugEnabled) return startTime;
         const now = performance.now();
         this.profileMarks.push({ label, ms: now - startTime });
         return now;
@@ -3822,8 +3813,8 @@ export default class NeonDistrictTheme extends BaseTheme {
                 // PERF: Aggressive warmup renders to force ALL shader compilation
                 // WebGPU defers pipeline creation until first actual use
                 if (this.isWebGPU) {
-                    console.log('[NeonDistrict] Performing warmup renders (20 frames)...');
-                    const warmupFrames = 20;
+                    const warmupFrames = this.debugEnabled ? 20 : 10;
+                    console.log(`[NeonDistrict] Performing warmup renders (${warmupFrames} frames)...`);
                     const originalTime = this.time;
 
                     for (let i = 0; i < warmupFrames; i++) {
@@ -3857,9 +3848,9 @@ export default class NeonDistrictTheme extends BaseTheme {
 
                         // Longer delay every 5 frames to let GPU catch up
                         if (i % 5 === 4) {
-                            await new Promise((r) => setTimeout(r, 100));
+                            await new Promise((r) => setTimeout(r, this.debugEnabled ? 100 : 40));
                         } else {
-                            await new Promise((r) => setTimeout(r, 20));
+                            await new Promise((r) => setTimeout(r, this.debugEnabled ? 20 : 8));
                         }
                     }
 
@@ -8049,6 +8040,11 @@ export default class NeonDistrictTheme extends BaseTheme {
         if (this.isAnimating) return;
         this.isAnimating = true;
         if (this.clock?.start) this.clock.start();
+        this.cameraDriftSeed = Math.random() * Math.PI * 2;
+        this.cameraSway.set(0, 0, 0);
+        this.cameraLookTarget.copy(this.cameraBaseLookAt);
+        this.cameraCurrentLookTarget.copy(this.cameraBaseLookAt);
+        this.cameraRollOffset = 0;
 
         // PERF: Track frame timing for adaptive quality
         let lastFrameTime = 0;
@@ -8097,7 +8093,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             mark = this.profileStep('frame:init', mark);
 
             // Camera sway - gentle floating drift
-            this.updateCameraSway();
+            this.updateCameraSway(delta);
             mark = this.profileStep('camera', mark);
 
             if (this.vehicleNodeUniforms?.uTime) {
@@ -8291,39 +8287,42 @@ export default class NeonDistrictTheme extends BaseTheme {
             // Track frame time for next iteration
             lastFrameTime = performance.now() - frameStart;
 
-            // Frame time tracking for diagnostics
-            if (!this._frameTimeHistory) {
-                this._frameTimeHistory = [];
-                this._frameCount = 0;
-                this._lastFpsLog = performance.now();
-            }
-            this._frameCount++;
-            this._frameTimeHistory.push(lastFrameTime);
-            if (this._frameTimeHistory.length > 60) this._frameTimeHistory.shift();
+            const runtimePerfLog = this.debugEnabled || this.profileEnabled;
+            if (runtimePerfLog) {
+                // Frame time tracking for diagnostics
+                if (!this._frameTimeHistory) {
+                    this._frameTimeHistory = [];
+                    this._frameCount = 0;
+                    this._lastFpsLog = performance.now();
+                }
+                this._frameCount++;
+                this._frameTimeHistory.push(lastFrameTime);
+                if (this._frameTimeHistory.length > 60) this._frameTimeHistory.shift();
 
-            // Log first 10 frames individually to see warmup pattern
-            if (this._frameCount <= 10) {
-                console.log(`[NeonDistrict][Frame ${this._frameCount}] ${lastFrameTime.toFixed(0)}ms (render: ${renderTime.toFixed(0)}ms)`);
-            }
+                // Log first 10 frames individually to see warmup pattern
+                if (this._frameCount <= 10) {
+                    console.log(`[NeonDistrict][Frame ${this._frameCount}] ${lastFrameTime.toFixed(0)}ms (render: ${renderTime.toFixed(0)}ms)`);
+                }
 
-            // Log average FPS every 5 seconds
-            const now = performance.now();
-            if (now - this._lastFpsLog > 5000 && this._frameTimeHistory.length > 0) {
-                this._lastFpsLog = now;
-                const avgMs = this._frameTimeHistory.reduce((a, b) => a + b, 0) / this._frameTimeHistory.length;
-                const avgFps = 1000 / avgMs;
-                const minMs = Math.min(...this._frameTimeHistory);
-                const maxMs = Math.max(...this._frameTimeHistory);
-                console.log(`[NeonDistrict][FPS] avg=${avgFps.toFixed(1)} (${avgMs.toFixed(0)}ms) min=${minMs.toFixed(0)}ms max=${maxMs.toFixed(0)}ms`);
-            }
+                // Log average FPS every 5 seconds
+                const now = performance.now();
+                if (now - this._lastFpsLog > 5000 && this._frameTimeHistory.length > 0) {
+                    this._lastFpsLog = now;
+                    const avgMs = this._frameTimeHistory.reduce((a, b) => a + b, 0) / this._frameTimeHistory.length;
+                    const avgFps = 1000 / avgMs;
+                    const minMs = Math.min(...this._frameTimeHistory);
+                    const maxMs = Math.max(...this._frameTimeHistory);
+                    console.log(`[NeonDistrict][FPS] avg=${avgFps.toFixed(1)} (${avgMs.toFixed(0)}ms) min=${minMs.toFixed(0)}ms max=${maxMs.toFixed(0)}ms`);
+                }
 
-            // DEBUG: Log slow frames with detailed breakdown (throttled to 1/sec)
-            if (lastFrameTime > 40) {
-                if (!this._lastSlowLog || now - this._lastSlowLog > 1000) {
-                    this._lastSlowLog = now;
-                    const marks = this.profileMarks || [];
-                    const breakdown = marks.map((m) => `${m.label}:${m.ms.toFixed(0)}`).join(' ');
-                    console.warn(`[NeonDistrict][SLOW FRAME] total=${lastFrameTime.toFixed(0)}ms render=${renderTime.toFixed(0)}ms | ${breakdown}`);
+                // DEBUG: Log slow frames with detailed breakdown (throttled to 1/sec)
+                if (lastFrameTime > 40) {
+                    if (!this._lastSlowLog || now - this._lastSlowLog > 1000) {
+                        this._lastSlowLog = now;
+                        const marks = this.profileMarks || [];
+                        const breakdown = marks.map((m) => `${m.label}:${m.ms.toFixed(0)}`).join(' ');
+                        console.warn(`[NeonDistrict][SLOW FRAME] total=${lastFrameTime.toFixed(0)}ms render=${renderTime.toFixed(0)}ms | ${breakdown}`);
+                    }
                 }
             }
 
@@ -8337,52 +8336,85 @@ export default class NeonDistrictTheme extends BaseTheme {
      * Updates camera with gentle floating drift motion.
      * Uses multiple sine waves at different frequencies for organic, non-repetitive movement.
      */
-    updateCameraSway() {
+    updateCameraSway(deltaSeconds = 1 / 60) {
         if (!this.camera) return;
 
+        const dt = Number.isFinite(deltaSeconds) ? Math.max(0.001, deltaSeconds) : (1 / 60);
         const t = this.time;
+        const cinematicTime = t + this.cameraDriftSeed;
         const amp = this.cameraSwayAmplitude;
         const spd = this.cameraSwaySpeed;
 
-        // Position sway - multiple frequencies for organic feel
-        const swayX = Math.sin(t * spd.x) * amp.x + Math.sin(t * spd.x * 0.7 + 1.3) * amp.x * 0.4;
-
         // Vertical sway: Strictly positive (up from base)
         // Map sine from [-1, 1] to [0, 1] then scale
-        // Phase shifted to -1.57 (-PI/2) so at t=0, sin is -1, making swayY = 0 (Start at bottom)
-        const rawY = Math.sin(t * spd.y - 1.57);
-        const swayY = (rawY * 0.5 + 0.5) * (amp.y * 180.0); // 0 to ~540 units up
+        // Phase shifted to -PI/2 so at t=0, sin is -1, making swayY = 0 (start at street)
+        const rawY = Math.sin(t * spd.y - Math.PI / 2);
+        const normalizedY = rawY * 0.5 + 0.5;
+        const topHoldFactor = THREE.MathUtils.smoothstep(normalizedY, 0.88, 1.0);
+        const heldNormalizedY = THREE.MathUtils.lerp(normalizedY, 1.0, topHoldFactor * 0.7);
+        const swayY = heldNormalizedY * (amp.y * 180.0);
 
-        const swayZ = Math.sin(t * spd.z + 1.0) * amp.z;
-
-        this.camera.position.set(
-            this.cameraBasePosition.x + swayX,
-            this.cameraBasePosition.y + swayY,
-            this.cameraBasePosition.z + swayZ,
+        this.cameraSway.set(
+            Math.sin(cinematicTime * spd.x) * amp.x * 0.55
+            + Math.sin(cinematicTime * spd.x * 0.55 + 1.3) * amp.x * 0.22,
+            0,
+            Math.sin(cinematicTime * spd.z + 1.0) * amp.z * 0.5
+            + Math.cos(cinematicTime * spd.z * 0.5 + 0.2) * amp.z * 0.25,
         );
 
-        // LookAt sway - subtle rotation of view target
-        const lookSwayX = Math.sin(t * 0.1 + 0.8) * this.cameraLookAtSway.x;
-        const lookSwayY = Math.sin(t * 0.14 + 1.5) * this.cameraLookAtSway.y;
+        const subtleOrbitX = Math.sin(cinematicTime * spd.x * 0.4 + 0.5) * amp.x * 0.2;
+        const subtleDollyZ = Math.sin(cinematicTime * spd.z * 0.35 + 0.7) * amp.z * 0.35;
 
-        // Dynamic pitch adjustment with "nod" at the peak
-        // normalizedY: 0 at bottom, 1 at peak
-        const normalizedY = rawY * 0.5 + 0.5;
+        const targetX = this.cameraBasePosition.x + this.cameraSway.x + subtleOrbitX;
+        const targetY = Math.max(this.cameraBasePosition.y, this.cameraBasePosition.y + swayY);
+        const targetZ = this.cameraBasePosition.z + this.cameraSway.z + subtleDollyZ;
 
-        // Peak nod: when near the top (normalizedY > 0.6), tilt UP towards the moon
-        // Uses smoothstep-like curve for smooth transition
+        const lateralLerp = THREE.MathUtils.clamp(dt * 1.35, 0.03, 0.16);
+        const movingUp = targetY >= this.camera.position.y;
+        const verticalLerp = THREE.MathUtils.clamp(dt * (movingUp ? 1.45 : 0.78), 0.02, movingUp ? 0.18 : 0.1);
+        this.camera.position.x = THREE.MathUtils.lerp(this.camera.position.x, targetX, lateralLerp);
+        this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, targetY, verticalLerp);
+        this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, targetZ, lateralLerp);
+
+        // LookAt sway - subtle view-target drift and smoothed tracking
+        const topStraightFactor = THREE.MathUtils.smoothstep(heldNormalizedY, 0.9, 0.995);
+        const lookDriftDamp = 1.0 - topStraightFactor * 0.65;
+        const lookSwayX = Math.sin(cinematicTime * 0.1 + 0.8) * this.cameraLookAtSway.x * 0.45 * lookDriftDamp;
+        const lookSwayY = Math.sin(cinematicTime * 0.14 + 1.5) * this.cameraLookAtSway.y * 0.4 * lookDriftDamp;
+
+        // Peak nod: when near the top, tilt up towards the moon.
         const peakThreshold = 0.6;
-        const peakFactor = Math.max(0, (normalizedY - peakThreshold) / (1.0 - peakThreshold));
-        const peakNod = peakFactor * peakFactor * 400; // Quadratic ease-in, look up strongly at the moon
+        const peakFactor = Math.max(0, (heldNormalizedY - peakThreshold) / (1.0 - peakThreshold));
+        const peakNod = peakFactor * peakFactor * 180;
 
-        // Base behavior: look down as we go up (multiplier 0.5)
-        // At peak: add peakNod to look UP towards the moon
-        const dynamicLookY = this.cameraBaseLookAt.y + lookSwayY + (swayY * 0.5) + peakNod;
+        const lookTargetX = this.cameraBaseLookAt.x + lookSwayX + Math.sin(cinematicTime * 0.19 + 0.3) * 6;
+        const baseLookTargetY = this.cameraBaseLookAt.y
+            + lookSwayY
+            + (swayY * 0.48)
+            + peakNod
+            + Math.sin(cinematicTime * 0.23 + 0.9) * 3;
+        const straightLookY = targetY + 26;
+        const lookTargetY = THREE.MathUtils.lerp(baseLookTargetY, straightLookY, topStraightFactor);
+        const lookTargetZ = this.cameraBaseLookAt.z + Math.sin(cinematicTime * 0.16 + 0.7) * 8;
 
-        this.camera.lookAt(
-            this.cameraBaseLookAt.x + lookSwayX,
-            dynamicLookY,
-            this.cameraBaseLookAt.z,
+        this.cameraLookTarget.set(lookTargetX, lookTargetY, lookTargetZ);
+        const lookLerp = THREE.MathUtils.clamp(dt * 1.8, 0.04, 0.2);
+        this.cameraCurrentLookTarget.lerp(this.cameraLookTarget, lookLerp);
+        this.camera.lookAt(this.cameraCurrentLookTarget);
+
+        const baseRoll = Math.sin(cinematicTime * 0.11 + 0.5) * 0.003
+            + Math.sin(cinematicTime * 0.27) * 0.002;
+        const driftRoll = THREE.MathUtils.clamp(this.cameraSway.x / Math.max(1, amp.x * 8), -1, 1) * 0.003;
+        const targetRoll = THREE.MathUtils.clamp(baseRoll + driftRoll, -0.012, 0.012);
+        this.cameraRollOffset = THREE.MathUtils.lerp(
+            this.cameraRollOffset,
+            targetRoll,
+            THREE.MathUtils.clamp(dt * 1.6, 0.03, 0.18),
+        );
+        this.camera.rotation.z = THREE.MathUtils.lerp(
+            this.camera.rotation.z,
+            this.cameraRollOffset,
+            THREE.MathUtils.clamp(dt * 1.8, 0.04, 0.2),
         );
 
         // PERF: FOV breathing removed - updateProjectionMatrix() is expensive

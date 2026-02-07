@@ -10,7 +10,6 @@ import {
     length,
     mix,
     normalize,
-    pointUV,
     positionLocal,
     positionView,
     positionWorld,
@@ -25,9 +24,9 @@ import {
 } from 'three/tsl';
 
 export function createMoonlitSkyNodeMaterial(params = {}) {
-    const uTop = uniform(params.top ?? new THREE.Color(0x0a1628));
-    const uMid = uniform(params.mid ?? new THREE.Color(0x1a3050));
-    const uBottom = uniform(params.bottom ?? new THREE.Color(0x0d1f35));
+    const uTop = uniform(params.top ?? new THREE.Color(0x0f1e34));
+    const uMid = uniform(params.mid ?? new THREE.Color(0x243e62));
+    const uBottom = uniform(params.bottom ?? new THREE.Color(0x1a3858));
     const uTime = uniform(0);
 
     const h = normalize(positionWorld).y;
@@ -44,7 +43,7 @@ export function createMoonlitSkyNodeMaterial(params = {}) {
     material.side = THREE.BackSide;
     material.depthWrite = false;
     material.colorNode = finalColor;
-    material.emissiveNode = finalColor.mul(0.08);
+    material.emissiveNode = finalColor.mul(0.14);
 
     return {
         material,
@@ -59,7 +58,7 @@ export function createMoonlitSkyNodeMaterial(params = {}) {
 
 export function createMoonlitMoonNodeMaterial(params = {}) {
     const uColor = uniform(params.color ?? new THREE.Color(0xf4e8a8));
-    const uGlowIntensity = uniform(params.glowIntensity ?? 0.55);
+    const uGlowIntensity = uniform(params.glowIntensity ?? 0.72);
     const uTime = uniform(0);
 
     const centeredUv = uv().sub(0.5);
@@ -93,7 +92,7 @@ export function createMoonlitMoonNodeMaterial(params = {}) {
 
 export function createMoonlitMoonHaloNodeMaterial(params = {}) {
     const uColor = uniform(params.color ?? new THREE.Color(0xe1f1ff));
-    const uOpacity = uniform(params.opacity ?? 0.32);
+    const uOpacity = uniform(params.opacity ?? 0.42);
     const uTime = uniform(0);
 
     const centeredUv = uv().sub(0.5);
@@ -110,7 +109,7 @@ export function createMoonlitMoonHaloNodeMaterial(params = {}) {
     material.blending = THREE.AdditiveBlending;
     material.colorNode = color;
     material.opacityNode = alpha;
-    material.emissiveNode = color.mul(alpha.mul(1.35));
+    material.emissiveNode = color.mul(alpha.mul(1.6));
 
     return {
         material,
@@ -132,7 +131,7 @@ export function createMoonlitStarfieldNodeMaterial() {
 
     const twinkle = sin(uTime.mul(aTwinkle).add(aPhase)).mul(0.5).add(0.5);
     const sizeNode = aSize.mul(float(180.0).div(positionView.z.negate()));
-    const alpha = twinkle.mul(0.55).add(0.18);
+    const alpha = twinkle.mul(0.55).add(0.28);
     const color = aColor.mul(twinkle.mul(0.25).add(0.75));
 
     const material = new THREE.PointsNodeMaterial();
@@ -215,7 +214,7 @@ export function createMoonlitAmbientFireflyNodeMaterial(params = {}) {
         uTime.mul(float(0.8).add(twinkleValue.mul(1.8)))
             .add(randomValue.mul(6.283185)),
     ).mul(0.5).add(0.5);
-    const centered = pointUV.sub(0.5);
+    const centered = uv().sub(0.5);
     const softDisc = smoothstep(float(0.52), float(0.08), length(centered));
     const alpha = softDisc
         .mul(float(0.22).add(twinkle.mul(0.62)))

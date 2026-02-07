@@ -36,7 +36,7 @@ export class BlackHoleParticleCompute {
         // position: xyz + spare
         // velocity: xyz + spare
         // life: lifetime + color.rgb
-        // misc: size + active + random + spare
+        // misc: size + active + random + lockUntilTime
         this.positionData = new Float32Array(particleCount * 4);
         this.velocityData = new Float32Array(particleCount * 4);
         this.lifeData = new Float32Array(particleCount * 4);
@@ -118,8 +118,9 @@ export class BlackHoleParticleCompute {
                 const dist = length(toCenter);
                 const dir = normalize(toCenter);
 
-                const isBurst = step(float(0.5), burstPhase);
-                const maxDist = mix(float(1500.0), float(2500.0), isBurst);
+                const burstBlend = smoothstep(float(0.0), float(8.0), burstFactor);
+                const isBurst = max(step(float(0.5), burstPhase), step(float(0.06), burstBlend));
+                const maxDist = mix(float(950.0), float(1700.0), burstBlend);
 
                 If(dist.greaterThan(50.0), () => {
                     If(isBurst.greaterThan(0.5), () => {
@@ -168,20 +169,56 @@ export class BlackHoleParticleCompute {
                     });
                 });
 
+                const tilt = float(-1.319468914);
+                const cosT = cos(tilt);
+                const sinT = sin(tilt);
+                const normal = vec3(float(0.0), cosT, sinT);
+
+                const rel = pos.xyz.sub(blackHolePos);
+                const planeOffset = rel.x.mul(normal.x).add(rel.y.mul(normal.y)).add(rel.z.mul(normal.z));
+                const radialVec = rel.sub(normal.mul(planeOffset));
+                const radialDist = max(length(radialVec), float(1.0));
+
+                const tangentRaw = vec3(
+                    normal.y.mul(radialVec.z).sub(normal.z.mul(radialVec.y)),
+                    normal.z.mul(radialVec.x).sub(normal.x.mul(radialVec.z)),
+                    normal.x.mul(radialVec.y).sub(normal.y.mul(radialVec.x)),
+                );
+                const tangent = normalize(tangentRaw.add(vec3(0.0001, 0.0001, 0.0001)));
+
+                const innerBias = float(1.0).sub(smoothstep(float(220.0), float(750.0), radialDist));
+                const orbitalAssist = float(0.0009).add(innerBias.mul(0.0015));
+                vel.x.addAssign(tangent.x.mul(orbitalAssist));
+                vel.y.addAssign(tangent.y.mul(orbitalAssist));
+                vel.z.addAssign(tangent.z.mul(orbitalAssist));
+
+                const planePull = clamp(planeOffset.mul(0.0035), float(-0.32), float(0.32)).mul(delta.mul(60.0));
+                vel.x.subAssign(normal.x.mul(planePull));
+                vel.y.subAssign(normal.y.mul(planePull));
+                vel.z.subAssign(normal.z.mul(planePull));
+
+                const normalVelocity = vel.x.mul(normal.x).add(vel.y.mul(normal.y)).add(vel.z.mul(normal.z));
+                const planeDamp = min(float(0.35), delta.mul(5.0));
+                vel.x.subAssign(normal.x.mul(normalVelocity).mul(planeDamp));
+                vel.y.subAssign(normal.y.mul(normalVelocity).mul(planeDamp));
+                vel.z.subAssign(normal.z.mul(normalVelocity).mul(planeDamp));
+
                 pos.x.addAssign(vel.x);
                 pos.y.addAssign(vel.y);
                 pos.z.addAssign(vel.z);
 
-                const outOfBounds = dist.lessThan(80.0).or(dist.greaterThan(maxDist));
-                If(outOfBounds, () => {
+                const distAfter = length(blackHolePos.sub(pos.xyz));
+                const outOfBounds = distAfter.lessThan(80.0).or(distAfter.greaterThan(maxDist));
+                const lockExpired = step(misc.w, time).greaterThan(0.5);
+                If(outOfBounds.and(lockExpired), () => {
                     const seed = float(index).add(time.mul(0.13));
                     const r1 = fract(sin(seed.mul(12.9898)).mul(43758.5453));
                     const r2 = fract(sin(seed.mul(78.233)).mul(43758.5453));
                     const r3 = fract(sin(seed.mul(39.425)).mul(43758.5453));
 
                     const angle = r1.mul(6.28318530718);
-                    const radius = float(400.0).add(r2.mul(600.0));
-                    const height = r3.sub(0.5).mul(120.0);
+                    const radius = float(260.0).add(r2.mul(360.0));
+                    const height = r3.sub(0.5).mul(70.0);
 
                     const tilt = float(-1.319468914);
                     const cosT = cos(tilt);
@@ -194,14 +231,14 @@ export class BlackHoleParticleCompute {
                     const pY = py.mul(cosT).sub(pz.mul(sinT));
                     const pZ = py.mul(sinT).add(pz.mul(cosT));
 
-                    pos.x.assign(px);
-                    pos.y.assign(pY);
-                    pos.z.assign(pZ);
+                    pos.x.assign(blackHolePos.x.add(px));
+                    pos.y.assign(blackHolePos.y.add(pY));
+                    pos.z.assign(blackHolePos.z.add(pZ));
 
-                    const orbitalSpeed = float(0.3).add(r2.mul(0.3));
+                    const orbitalSpeed = float(0.28).add(r2.mul(0.22));
                     const vx = sin(angle).negate().mul(orbitalSpeed);
                     const vz = cos(angle).mul(orbitalSpeed);
-                    const vy = r3.sub(0.5).mul(0.05);
+                    const vy = r3.sub(0.5).mul(0.03);
 
                     const vY = vy.mul(cosT).sub(vz.mul(sinT));
                     const vZ = vy.mul(sinT).add(vz.mul(cosT));
@@ -210,8 +247,9 @@ export class BlackHoleParticleCompute {
                     vel.y.assign(vY);
                     vel.z.assign(vZ);
 
-                    life.x.assign(float(0.5).add(r1.mul(0.5)));
+                    life.x.assign(float(0.64).add(r1.mul(0.26)));
                     misc.y.assign(1.0);
+                    misc.w.assign(0.0);
                 });
 
                 If(life.x.lessThan(1.0), () => {
@@ -249,7 +287,7 @@ export class BlackHoleParticleCompute {
         }
     }
 
-    spawn(index, particle) {
+    spawn(index, particle, lockUntil = 0) {
         if (index < 0 || index >= this.count) return;
         const i4 = index * 4;
         this.positionData[i4] = particle.x;
@@ -269,6 +307,7 @@ export class BlackHoleParticleCompute {
 
         this.miscData[i4] = particle.size;
         this.miscData[i4 + 1] = 1.0;
+        this.miscData[i4 + 3] = lockUntil;
 
         this.positionBuffer.needsUpdate = true;
         this.velocityBuffer.needsUpdate = true;
@@ -471,16 +510,8 @@ export class BlackHoleBurstCompute {
             scanned += 1;
         }
 
-        // If every particle is active, recycle oldest range in ring order.
-        while (activated < targetBatch) {
-            const index = (startIndex + scanned) % this.count;
-            const i4 = index * 4;
-            this.angleData[i4 + 3] = 1.0;
-            this.lifeData[i4] = 0.0;
-            this.miscData[i4 + 1] = seed + (Math.random() - 0.5) * 0.9;
-            activated += 1;
-            scanned += 1;
-        }
+        // Keep additive behavior stable: do not recycle active burst particles.
+        // If saturated, we simply spawn fewer this trigger and preserve existing waves.
 
         this.nextTriggerIndex = (startIndex + scanned) % this.count;
         this.uBurstSeed.value = seed;
