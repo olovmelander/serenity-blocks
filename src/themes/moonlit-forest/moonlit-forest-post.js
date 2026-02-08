@@ -257,9 +257,12 @@ export class MoonlitForestPost {
         }
 
         if (params.resolutionScale !== undefined) {
-            this.resolutionScale = params.resolutionScale;
-            if (this.size.width > 0 && this.size.height > 0) {
-                this.setSize(this.size.width, this.size.height);
+            const nextScale = params.resolutionScale;
+            if (Math.abs(nextScale - this.resolutionScale) >= 0.001) {
+                this.resolutionScale = nextScale;
+                if (this.size.width > 0 && this.size.height > 0) {
+                    this.setSize(this.size.width, this.size.height);
+                }
             }
         }
     }

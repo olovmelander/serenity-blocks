@@ -453,7 +453,7 @@ export class SandSmokeCompute {
             this.stateData[i8 + 4] = Math.random();                 // rand
             this.stateData[i8 + 5] = 0;                             // wormIntensity
             this.stateData[i8 + 6] = 0;                             // depth
-            this.stateData[i8 + 7] = 220 + Math.random() * 180;     // size (smaller, tighter)
+            this.stateData[i8 + 7] = 170 + Math.random() * 130;     // size (tighter, less blobby)
         }
 
         this.stateBuffer.needsUpdate = true;
@@ -490,8 +490,8 @@ export class SandSmokeCompute {
             const wormPathSlope = wormHead.w;
 
             // Distribute particles along the trail, centered around the head
-            const along = rand2.sub(0.5).mul(600.0); // trail length (tighter to head)
-            const lateral = rand3.sub(0.5).mul(80.0);
+            const along = rand2.sub(0.6).mul(1600.0); // trail length (tighter to head)
+            const lateral = rand3.sub(0.5).mul(120.0);
 
             const trailZ = wormHeadZ.add(along);
             const trailX = wormPathBaseX.add(trailZ.mul(wormPathSlope));
@@ -508,15 +508,15 @@ export class SandSmokeCompute {
 
             // Worm visibility (trail proximity + head proximity)
             const distFromPath = abs(pos.x.sub(trailX));
-            const trailWidth = float(70.0);
+            const trailWidth = float(120.0);
             const pathMask = exp(distFromPath.mul(distFromPath).mul(-1.0).div(trailWidth.mul(trailWidth)));
 
             // Favor trailing smoke (behind head)
-            const behindMask = smoothstep(200.0, 0.0, wormHeadZ.sub(pos.z));
+            const behindMask = smoothstep(500.0, -100.0, wormHeadZ.sub(pos.z));
             const distFromHead = abs(pos.z.sub(wormHeadZ));
-            const headMask = smoothstep(280.0, 0.0, distFromHead);
+            const headMask = smoothstep(450.0, 0.0, distFromHead);
 
-            const wormVisibility = clamp(pathMask.mul(headMask).mul(behindMask).mul(1.2), 0.0, 1.0);
+            const wormVisibility = clamp(pathMask.mul(headMask).mul(behindMask).mul(0.9), 0.0, 1.0);
 
             // Store for fragment shader: wormIntensity + trail fade
             props.y.assign(wormVisibility);
@@ -559,8 +559,8 @@ export class SandSmokeCompute {
             const rand2 = this.fract(Math.sin(rand * 19.17 + 3.1) * 43758.5453);
             const rand3 = this.fract(Math.sin(rand * 77.31 + 1.7) * 43758.5453);
 
-            const along = (rand2 - 0.5) * 600.0;
-            const lateral = (rand3 - 0.5) * 80.0;
+            const along = (rand2 - 0.6) * 1600.0;
+            const lateral = (rand3 - 0.5) * 120.0;
 
             const trailZ = wormHeadZ + along;
             const trailX = wormPathBaseX + trailZ * wormPathSlope;
@@ -573,13 +573,13 @@ export class SandSmokeCompute {
             const y = Math.sin(time * 0.5 + rand * 9.1) * 18.0 + 6.0 + wind * 4.0;
 
             const distFromPath = Math.abs(x - trailX);
-            const trailWidth = 70.0;
+            const trailWidth = 120.0;
             const pathMask = Math.exp(-(distFromPath * distFromPath) / (trailWidth * trailWidth));
 
-            const behindMask = this.smoothstep(200.0, 0.0, wormHeadZ - z);
+            const behindMask = this.smoothstep(500.0, -100.0, wormHeadZ - z);
             const distFromHead = Math.abs(z - wormHeadZ);
-            const headMask = this.smoothstep(280.0, 0.0, distFromHead);
-            const wormVisibility = Math.min(1.0, pathMask * headMask * behindMask * 1.2);
+            const headMask = this.smoothstep(450.0, 0.0, distFromHead);
+            const wormVisibility = Math.min(1.0, pathMask * headMask * behindMask * 0.9);
 
             this.stateData[i8] = x;
             this.stateData[i8 + 1] = y;
