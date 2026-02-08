@@ -241,6 +241,21 @@ export default class MoonlitForestTheme extends BaseTheme {
             baseResolutionScale: 1,
             emissionScale: 1,
         };
+        this.lastRendererWidth = 0;
+        this.lastRendererHeight = 0;
+        this.lastRendererPixelRatio = 0;
+        this.lastAppliedResolutionScale = 1;
+        this.lastAdaptiveApplyTime = 0;
+        this.adaptiveApplyMinIntervalMs = 180;
+        this.postSuppressedByBudget = false;
+        this.lastPostToggleTime = 0;
+        this.postToggleCooldownMs = 600;
+        this.sceneMotionAccumulator = 0;
+        this.particleUpdateAccumulator = 0;
+        this.postUpdateAccumulator = 0;
+        this.lastPostBloomStrength = null;
+        this.lastPostExposure = null;
+        this.lastPostSaturation = null;
         this.forestAtmospherePulse = 0;
         this.fxController = new MoonlitForestFXController();
     }
@@ -1610,15 +1625,15 @@ export default class MoonlitForestTheme extends BaseTheme {
                 enabled: false,
                 useMRT: false,
                 resolutionScale: 0.62,
-                bloomStrength: 0.3,
+                bloomStrength: 0.22,
                 bloomRadius: 0.4,
                 bloomThreshold: 0.22,
                 bloomDownsample: 0.95,
                 vignetteOffset: 1.22,
                 vignetteDarkness: 0.1,
-                exposure: 1.08,
+                exposure: 1.02,
                 contrast: 1.04,
-                saturation: 1.04,
+                saturation: 1.02,
                 tintStrength: 0.04,
                 grainStrength: 0.0018,
             },
@@ -1626,15 +1641,15 @@ export default class MoonlitForestTheme extends BaseTheme {
                 enabled: false,
                 useMRT: false,
                 resolutionScale: 0.7,
-                bloomStrength: 0.38,
+                bloomStrength: 0.28,
                 bloomRadius: 0.46,
                 bloomThreshold: 0.2,
                 bloomDownsample: 0.9,
                 vignetteOffset: 1.2,
                 vignetteDarkness: 0.12,
-                exposure: 1.1,
+                exposure: 1.04,
                 contrast: 1.05,
-                saturation: 1.06,
+                saturation: 1.04,
                 tintStrength: 0.06,
                 grainStrength: 0.002,
             },
@@ -1642,15 +1657,15 @@ export default class MoonlitForestTheme extends BaseTheme {
                 enabled: true,
                 useMRT: false,
                 resolutionScale: 0.82,
-                bloomStrength: 0.45,
+                bloomStrength: 0.34,
                 bloomRadius: 0.52,
                 bloomThreshold: 0.18,
                 bloomDownsample: 0.85,
                 vignetteOffset: 1.18,
                 vignetteDarkness: 0.14,
-                exposure: 1.12,
+                exposure: 1.07,
                 contrast: 1.06,
-                saturation: 1.08,
+                saturation: 1.06,
                 tintStrength: 0.08,
                 grainStrength: 0.0022,
             },
@@ -1658,15 +1673,15 @@ export default class MoonlitForestTheme extends BaseTheme {
                 enabled: true,
                 useMRT: true,
                 resolutionScale: 0.9,
-                bloomStrength: 0.55,
+                bloomStrength: 0.42,
                 bloomRadius: 0.58,
                 bloomThreshold: 0.15,
                 bloomDownsample: 0.8,
                 vignetteOffset: 1.16,
                 vignetteDarkness: 0.15,
-                exposure: 1.15,
+                exposure: 1.09,
                 contrast: 1.07,
-                saturation: 1.1,
+                saturation: 1.08,
                 tintStrength: 0.09,
                 grainStrength: 0.0024,
             },
@@ -1674,15 +1689,15 @@ export default class MoonlitForestTheme extends BaseTheme {
                 enabled: true,
                 useMRT: true,
                 resolutionScale: 0.92,
-                bloomStrength: 0.6,
+                bloomStrength: 0.46,
                 bloomRadius: 0.62,
                 bloomThreshold: 0.14,
                 bloomDownsample: 0.76,
                 vignetteOffset: 1.14,
                 vignetteDarkness: 0.15,
-                exposure: 1.18,
+                exposure: 1.12,
                 contrast: 1.08,
-                saturation: 1.12,
+                saturation: 1.1,
                 tintStrength: 0.1,
                 grainStrength: 0.0026,
             },
@@ -1690,15 +1705,15 @@ export default class MoonlitForestTheme extends BaseTheme {
                 enabled: true,
                 useMRT: true,
                 resolutionScale: 0.88,
-                bloomStrength: 0.65,
+                bloomStrength: 0.5,
                 bloomRadius: 0.65,
                 bloomThreshold: 0.13,
                 bloomDownsample: 0.5,
                 vignetteOffset: 1.12,
                 vignetteDarkness: 0.14,
-                exposure: 1.2,
+                exposure: 1.14,
                 contrast: 1.08,
-                saturation: 1.14,
+                saturation: 1.11,
                 tintStrength: 0.1,
                 grainStrength: 0.0028,
             },
@@ -1815,6 +1830,19 @@ export default class MoonlitForestTheme extends BaseTheme {
             baseResolutionScale,
             emissionScale: 1,
         };
+        this.lastRendererWidth = 0;
+        this.lastRendererHeight = 0;
+        this.lastRendererPixelRatio = 0;
+        this.lastAppliedResolutionScale = baseResolutionScale;
+        this.lastAdaptiveApplyTime = 0;
+        this.postSuppressedByBudget = false;
+        this.lastPostToggleTime = 0;
+        this.sceneMotionAccumulator = 0;
+        this.particleUpdateAccumulator = 0;
+        this.postUpdateAccumulator = 0;
+        this.lastPostBloomStrength = null;
+        this.lastPostExposure = null;
+        this.lastPostSaturation = null;
     }
 
     getRendererPixelRatio(maxRatio = 1.5) {
@@ -1836,19 +1864,91 @@ export default class MoonlitForestTheme extends BaseTheme {
         return Math.max(0, strength * scale);
     }
 
-    applyAdaptiveBudgetState() {
-        if (!this.renderer || typeof window === 'undefined') return;
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        this.renderer.setPixelRatio(this.getRendererPixelRatio(1.5));
-        this.renderer.setSize(width, height);
-        this.postProcessing?.setSize?.(width, height);
-        this.postProcessing?.update?.({
-            resolutionScale: this.adaptiveBudgetState?.resolutionScale ?? 1,
-        });
+    getSceneMotionStep() {
+        const qualityScale = this.adaptiveBudgetState?.qualityScale ?? 1;
+        if (qualityScale >= 0.92) return 1 / 60;
+        if (qualityScale >= 0.84) return 1 / 48;
+        if (qualityScale >= 0.76) return 1 / 40;
+        return 1 / 32;
     }
 
-    updateAdaptiveBudgets(frameMs) {
+    getParticleUpdateStep() {
+        const qualityScale = this.adaptiveBudgetState?.qualityScale ?? 1;
+        if (qualityScale >= 0.9) return 1 / 60;
+        if (qualityScale >= 0.8) return 1 / 45;
+        if (qualityScale >= 0.72) return 1 / 36;
+        return 1 / 30;
+    }
+
+    maybeUpdateAdaptivePostState(
+        nowMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()),
+    ) {
+        if (!this.postProcessing || !this.capabilities.post || this.flags.noPost) return;
+
+        const budget = this.gpuBudget;
+        const state = this.adaptiveBudgetState;
+        if (!budget?.adaptiveEnabled || !state) return;
+
+        if ((nowMs - this.lastPostToggleTime) < this.postToggleCooldownMs) return;
+
+        const disableThreshold = THREE.MathUtils.clamp(budget.postDisableScale ?? 0.6, 0.35, 0.98);
+        const enableThreshold = Math.min(1, disableThreshold + 0.08);
+
+        if (!this.postSuppressedByBudget && this.flags.usePost && state.qualityScale <= disableThreshold) {
+            this.flags.usePost = false;
+            this.postSuppressedByBudget = true;
+            this.lastPostToggleTime = nowMs;
+            this.debugLog(
+                `[MoonlitForest] Adaptive budget disabled post stack (qualityScale=${state.qualityScale.toFixed(2)})`,
+            );
+            return;
+        }
+
+        if (this.postSuppressedByBudget && this.capabilities.post && state.qualityScale >= enableThreshold) {
+            this.flags.usePost = true;
+            this.postSuppressedByBudget = false;
+            this.lastPostToggleTime = nowMs;
+            this.debugLog(
+                `[MoonlitForest] Adaptive budget restored post stack (qualityScale=${state.qualityScale.toFixed(2)})`,
+            );
+        }
+    }
+
+    applyAdaptiveBudgetState(force = false) {
+        if (!this.renderer || typeof window === 'undefined') return;
+
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        const pixelRatio = this.getRendererPixelRatio(1.5);
+        const resolutionScale = this.adaptiveBudgetState?.resolutionScale ?? 1;
+
+        const sizeChanged = force || width !== this.lastRendererWidth || height !== this.lastRendererHeight;
+        const pixelRatioChanged = force || Math.abs(pixelRatio - this.lastRendererPixelRatio) >= 0.02;
+        const resolutionChanged = force || Math.abs(resolutionScale - this.lastAppliedResolutionScale) >= 0.01;
+
+        if (pixelRatioChanged) {
+            this.renderer.setPixelRatio(pixelRatio);
+            this.lastRendererPixelRatio = pixelRatio;
+        }
+
+        if (sizeChanged || pixelRatioChanged) {
+            this.renderer.setSize(width, height, false);
+            this.postProcessing?.setSize?.(width, height);
+            this.lastRendererWidth = width;
+            this.lastRendererHeight = height;
+        }
+
+        if (resolutionChanged) {
+            this.postProcessing?.update?.({ resolutionScale });
+            this.lastAppliedResolutionScale = resolutionScale;
+        }
+    }
+
+    updateAdaptiveBudgets(
+        frameMs,
+        nowMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()),
+    ) {
         if (!Number.isFinite(frameMs) || frameMs <= 0) return;
 
         const budget = this.gpuBudget;
@@ -1856,7 +1956,10 @@ export default class MoonlitForestTheme extends BaseTheme {
         if (!budget || !state) return;
 
         state.frameTimeEMA = (state.frameTimeEMA * 0.92) + (frameMs * 0.08);
-        if (!budget.adaptiveEnabled) return;
+        if (!budget.adaptiveEnabled) {
+            this.maybeUpdateAdaptivePostState(nowMs);
+            return;
+        }
 
         const target = budget.targetFrameMs;
         let nextScale = state.qualityScale;
@@ -1867,7 +1970,10 @@ export default class MoonlitForestTheme extends BaseTheme {
         }
 
         nextScale = THREE.MathUtils.clamp(nextScale, budget.adaptiveMinScale, budget.adaptiveMaxScale);
-        if (Math.abs(nextScale - state.qualityScale) < 0.01) return;
+        if (Math.abs(nextScale - state.qualityScale) < 0.01) {
+            this.maybeUpdateAdaptivePostState(nowMs);
+            return;
+        }
 
         state.qualityScale = nextScale;
         state.resolutionScale = THREE.MathUtils.clamp(
@@ -1881,7 +1987,15 @@ export default class MoonlitForestTheme extends BaseTheme {
             1.0,
         );
 
-        this.applyAdaptiveBudgetState();
+        const resolutionDelta = Math.abs(state.resolutionScale - this.lastAppliedResolutionScale);
+        if (
+            resolutionDelta >= 0.02
+            && (nowMs - this.lastAdaptiveApplyTime) >= this.adaptiveApplyMinIntervalMs
+        ) {
+            this.applyAdaptiveBudgetState();
+            this.lastAdaptiveApplyTime = nowMs;
+        }
+        this.maybeUpdateAdaptivePostState(nowMs);
     }
 
     requestQualityTransition(nextQuality) {
@@ -1979,7 +2093,7 @@ export default class MoonlitForestTheme extends BaseTheme {
         this.renderer.sortObjects = true;
         this.renderer.autoClear = true;
         this.renderer.setPixelRatio(this.getRendererPixelRatio(1.5));
-        this.renderer.setSize(width, height);
+        this.renderer.setSize(width, height, false);
         this.renderer.domElement.id = 'moonlit-forest-renderer';
         this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;pointer-events:none;';
         container.appendChild(this.renderer.domElement);
@@ -2098,6 +2212,12 @@ export default class MoonlitForestTheme extends BaseTheme {
     setupPostProcessing() {
         this.postProcessing?.dispose?.();
         this.postProcessing = null;
+        this.postSuppressedByBudget = false;
+        this.lastPostToggleTime = 0;
+        this.postUpdateAccumulator = 0;
+        this.lastPostBloomStrength = null;
+        this.lastPostExposure = null;
+        this.lastPostSaturation = null;
 
         if (!this.renderer || !this.scene || !this.camera) {
             return;
@@ -2354,14 +2474,14 @@ export default class MoonlitForestTheme extends BaseTheme {
         if (this.isWebGPU) {
             const moonNode = createMoonlitMoonNodeMaterial({
                 color: new THREE.Color(0xf4e8a8),
-                glowIntensity: 0.7,
+                glowIntensity: 0.58,
             });
             moonMaterial = moonNode.material;
             this.moonUniforms = moonNode.uniforms;
 
             const haloNode = createMoonlitMoonHaloNodeMaterial({
                 color: new THREE.Color(0xd9eeff),
-                opacity: 0.28,
+                opacity: 0.2,
             });
             haloMaterial = haloNode.material;
             this.moonHaloUniforms = haloNode.uniforms;
@@ -2402,7 +2522,7 @@ export default class MoonlitForestTheme extends BaseTheme {
             haloMaterial = new THREE.ShaderMaterial({
                 uniforms: {
                     uColor: { value: new THREE.Color(0xd9eeff) },
-                    uOpacity: { value: 0.28 },
+                    uOpacity: { value: 0.2 },
                     uTime: { value: 0 },
                 },
                 vertexShader: `
@@ -2446,12 +2566,12 @@ export default class MoonlitForestTheme extends BaseTheme {
     createForestLights() {
         if (!this.scene) return;
 
-        this.ambientLight = new THREE.AmbientLight(0x4a6880, 0.72);
-        this.moonLight = new THREE.DirectionalLight(0xc8e4ff, 1.05);
+        this.ambientLight = new THREE.AmbientLight(0x4a6880, 0.56);
+        this.moonLight = new THREE.DirectionalLight(0xc8e4ff, 0.84);
         this.moonLight.position.set(220, 340, 120);
         this.moonLight.target.position.set(0, -20, -900);
 
-        this.warmFillLight = new THREE.DirectionalLight(0xd4a574, 0.18);
+        this.warmFillLight = new THREE.DirectionalLight(0xd4a574, 0.12);
         this.warmFillLight.position.set(-160, -40, 200);
         this.warmFillLight.target.position.set(0, -60, -700);
 
@@ -3232,31 +3352,56 @@ export default class MoonlitForestTheme extends BaseTheme {
         );
 
         if (this.moonLight) {
-            this.moonLight.intensity = 1.05 + (pulse * 0.46);
+            this.moonLight.intensity = 0.84 + (pulse * 0.26);
         }
         if (this.ambientLight) {
-            this.ambientLight.intensity = 0.72 + (pulse * 0.2);
+            this.ambientLight.intensity = 0.56 + (pulse * 0.1);
         }
         if (this.scene?.fog) {
             this.scene.fog.density = 0.00038 + (pulse * 0.0002);
         }
         const postConfig = this.qualityConfig?.post ?? {};
-        const bloomStrength = (postConfig.bloomStrength ?? 0.55) + (pulse * 0.18);
-        const exposure = (postConfig.exposure ?? 1.15) + (pulse * 0.03);
-        const saturation = (postConfig.saturation ?? 1.05) + (pulse * 0.04);
-        if (this.postProcessing?.update) {
-            this.postProcessing.update({
-                bloomStrength,
-                exposure,
-                saturation,
-                resolutionScale: this.adaptiveBudgetState?.resolutionScale ?? 1,
-            });
-        }
-        if (this.postProcessing?.bloomPass) {
-            this.postProcessing.bloomPass.strength = bloomStrength;
+        const bloomStrength = (postConfig.bloomStrength ?? 0.42) + (pulse * 0.1);
+        const exposure = (postConfig.exposure ?? 1.09) + (pulse * 0.015);
+        const saturation = (postConfig.saturation ?? 1.08) + (pulse * 0.02);
+        const bloomChanged = this.lastPostBloomStrength === null
+            || Math.abs(this.lastPostBloomStrength - bloomStrength) >= 0.01;
+        const exposureChanged = this.lastPostExposure === null
+            || Math.abs(this.lastPostExposure - exposure) >= 0.01;
+        const saturationChanged = this.lastPostSaturation === null
+            || Math.abs(this.lastPostSaturation - saturation) >= 0.01;
+
+        if (this.postProcessing?.update && this.flags.usePost) {
+            this.postUpdateAccumulator += delta;
+            if (this.postUpdateAccumulator >= (1 / 20) && (bloomChanged || exposureChanged || saturationChanged)) {
+                this.postProcessing.update({
+                    bloomStrength,
+                    exposure,
+                    saturation,
+                });
+                this.lastPostBloomStrength = bloomStrength;
+                this.lastPostExposure = exposure;
+                this.lastPostSaturation = saturation;
+                this.postUpdateAccumulator = 0;
+            }
+        } else {
+            this.postUpdateAccumulator = 0;
         }
 
-        this.particleSystem?.update(delta, this.time);
+        if (this.flags.usePost && this.postProcessing?.bloomPass && bloomChanged) {
+            this.postProcessing.bloomPass.strength = bloomStrength;
+            this.lastPostBloomStrength = bloomStrength;
+        }
+
+        if (this.particleSystem) {
+            this.particleUpdateAccumulator += delta;
+            if (this.particleUpdateAccumulator >= this.getParticleUpdateStep()) {
+                this.particleSystem.update(this.particleUpdateAccumulator, this.time);
+                this.particleUpdateAccumulator = 0;
+            }
+        } else {
+            this.particleUpdateAccumulator = 0;
+        }
     }
 
     updateForestGeometry() {
@@ -3363,8 +3508,13 @@ export default class MoonlitForestTheme extends BaseTheme {
             this.camera.lookAt(0, 20, -700);
         }
 
-        this.updateForestGeometry();
-        this.updateGPUForestProps(delta);
+        this.sceneMotionAccumulator += delta;
+        if (this.sceneMotionAccumulator >= this.getSceneMotionStep()) {
+            const motionDelta = this.sceneMotionAccumulator;
+            this.sceneMotionAccumulator = 0;
+            this.updateForestGeometry();
+            this.updateGPUForestProps(motionDelta);
+        }
         this.updateReactiveFX(delta);
     }
 
@@ -3372,18 +3522,18 @@ export default class MoonlitForestTheme extends BaseTheme {
         const signals = this.fxController.getSignals();
 
         if (this.moonHaloUniforms?.uOpacity) {
-            const baseOpacity = 0.28;
+            const baseOpacity = 0.2;
             const boostedOpacity = baseOpacity
-                + (signals.comboEnergy * 0.035)
-                + (signals.linePulse * 0.03)
-                + (signals.pieceLockPulse * 0.02);
-            this.moonHaloUniforms.uOpacity.value = Math.min(0.7, boostedOpacity);
+                + (signals.comboEnergy * 0.024)
+                + (signals.linePulse * 0.018)
+                + (signals.pieceLockPulse * 0.012);
+            this.moonHaloUniforms.uOpacity.value = Math.min(0.5, boostedOpacity);
         }
 
         if (this.moonUniforms?.uGlowIntensity) {
-            const baseGlow = 0.7;
-            const boostedGlow = baseGlow + (signals.comboEnergy * 0.08) + (signals.linePulse * 0.06);
-            this.moonUniforms.uGlowIntensity.value = Math.min(1.4, boostedGlow);
+            const baseGlow = 0.58;
+            const boostedGlow = baseGlow + (signals.comboEnergy * 0.05) + (signals.linePulse * 0.04);
+            this.moonUniforms.uGlowIntensity.value = Math.min(1.0, boostedGlow);
         }
     }
 
@@ -3429,7 +3579,6 @@ export default class MoonlitForestTheme extends BaseTheme {
         }
 
         try {
-            this.renderer.clear();
             this.renderer.render(this.scene, this.camera);
         } catch (error) {
             if (this.isWebGPU) {
@@ -3461,15 +3610,18 @@ export default class MoonlitForestTheme extends BaseTheme {
             if (this.maybeHandleQualityTransition(delta)) {
                 return;
             }
-            this.updateAdaptiveBudgets(frameMs);
+            if (!this.shouldRenderFrame()) {
+                const frameId = requestAnimationFrame(animate);
+                this.registerAnimation(frameId);
+                return;
+            }
+
+            this.updateAdaptiveBudgets(frameMs, now);
             this.fxController.step(delta);
             this.emitQueuedGpuEffects();
             this.updateRendererScene(delta);
             this.applyFXSignals();
-
-            if (this.shouldRenderFrame()) {
-                this.renderFrame();
-            }
+            this.renderFrame();
 
             const frameId = requestAnimationFrame(animate);
             this.registerAnimation(frameId);
@@ -3486,9 +3638,8 @@ export default class MoonlitForestTheme extends BaseTheme {
         const height = window.innerHeight;
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
-        this.renderer.setPixelRatio(this.getRendererPixelRatio(1.5));
-        this.renderer.setSize(width, height);
-        this.postProcessing?.setSize?.(width, height);
+        this.applyAdaptiveBudgetState(true);
+        this.lastAdaptiveApplyTime = performance.now();
         this.updateMoonPosition();
     }
 
@@ -3565,6 +3716,19 @@ export default class MoonlitForestTheme extends BaseTheme {
             baseResolutionScale: 1,
             emissionScale: 1,
         };
+        this.lastRendererWidth = 0;
+        this.lastRendererHeight = 0;
+        this.lastRendererPixelRatio = 0;
+        this.lastAppliedResolutionScale = 1;
+        this.lastAdaptiveApplyTime = 0;
+        this.postSuppressedByBudget = false;
+        this.lastPostToggleTime = 0;
+        this.sceneMotionAccumulator = 0;
+        this.particleUpdateAccumulator = 0;
+        this.postUpdateAccumulator = 0;
+        this.lastPostBloomStrength = null;
+        this.lastPostExposure = null;
+        this.lastPostSaturation = null;
         this.forestAtmospherePulse = 0;
         this.skyUniforms = null;
         this.starUniforms = null;
@@ -3626,8 +3790,9 @@ export default class MoonlitForestTheme extends BaseTheme {
 
         this.createRendererScene();
         this.setupPostProcessing();
-        this.applyAdaptiveBudgetState();
-        this.onResize();
+        this.applyAdaptiveBudgetState(true);
+        this.lastAdaptiveApplyTime = performance.now();
+        this.updateMoonPosition();
         this.startRendererLoop();
         window.addEventListener('resize', this.boundResizeHandler);
 

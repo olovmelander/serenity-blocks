@@ -471,18 +471,6 @@ export default class StellarDriftTheme extends BaseTheme {
         this.ambientLight = null;
         this.keyLight = null;
         this.crashMeteorGeometryCache = null;
-        this.crashMeteorApproachSeeds = [
-            new THREE.Vector3(1, 0.15, -0.2),
-            new THREE.Vector3(-1, -0.12, 0.24),
-            new THREE.Vector3(0.26, 1, -0.28),
-            new THREE.Vector3(-0.24, -1, 0.22),
-            new THREE.Vector3(0.68, 0.62, 0.34),
-            new THREE.Vector3(-0.7, 0.56, -0.28),
-            new THREE.Vector3(0.54, -0.64, 0.34),
-            new THREE.Vector3(-0.56, -0.58, -0.4),
-            new THREE.Vector3(0.08, 0.2, -1),
-            new THREE.Vector3(-0.1, -0.18, 0.9),
-        ];
 
         // Effect arrays for 3D gameplay effects
         this.shockwaveRings = [];
@@ -824,6 +812,38 @@ export default class StellarDriftTheme extends BaseTheme {
                 ? Math.max(5, Math.floor((10 + clampedIntensity * 10) * complexityScale))
                 : 0,
         };
+    }
+
+    getRandomUnitVector() {
+        const z = this.rand() * 2 - 1;
+        const theta = this.rand() * Math.PI * 2;
+        const radial = Math.sqrt(Math.max(0, 1 - z * z));
+        return new THREE.Vector3(
+            Math.cos(theta) * radial,
+            Math.sin(theta) * radial,
+            z,
+        );
+    }
+
+    getCrashMeteorApproachDirection(impactNormal) {
+        const randomDirection = this.getRandomUnitVector();
+        const outwardBias = impactNormal?.isVector3
+            ? impactNormal.clone().normalize()
+            : this.getRandomUnitVector();
+        const approachDirection = randomDirection
+            .multiplyScalar(0.76 + this.rand() * 0.5)
+            .addScaledVector(outwardBias, 0.52 + this.rand() * 0.58);
+
+        if (approachDirection.lengthSq() < 0.0001) {
+            approachDirection.copy(outwardBias);
+        }
+
+        if (Math.abs(approachDirection.z) < 0.18) {
+            const zBias = 0.22 + this.rand() * 0.34;
+            approachDirection.z += this.rand() < 0.5 ? -zBias : zBias;
+        }
+
+        return approachDirection.normalize();
     }
 
     getCrashMeteorGeometryCache() {
@@ -4300,33 +4320,28 @@ export default class StellarDriftTheme extends BaseTheme {
         const targetOffset = impactNormal.clone().multiplyScalar(430 + this.rand() * 120);
         const targetPosition = planetPosition.clone().add(targetOffset);
 
-        const approachSeeds = this.crashMeteorApproachSeeds || [];
-        const approachSeed = approachSeeds.length > 0
-            ? approachSeeds[Math.floor(this.rand() * approachSeeds.length)]
-            : new THREE.Vector3(1, 0.15, -0.2);
-        const approachDirection = approachSeed
-            .clone()
-            .add(new THREE.Vector3(
-                (this.rand() - 0.5) * 0.9,
-                (this.rand() - 0.5) * 0.9,
-                (this.rand() - 0.5) * 0.9,
-            ))
-            .normalize();
-
-        if (Math.abs(approachDirection.z) < 0.15) {
-            approachDirection.z += this.rand() < 0.5 ? -0.24 : 0.24;
-            approachDirection.normalize();
-        }
+        const approachDirection = this.getCrashMeteorApproachDirection(impactNormal);
 
         const spawnDistance = 980 + this.rand() * 860;
-        const spawnPosition = targetPosition
-            .clone()
-            .addScaledVector(approachDirection, spawnDistance)
+        const spawnPosition = targetPosition.clone().addScaledVector(approachDirection, spawnDistance);
+        const basisUp = Math.abs(approachDirection.y) > 0.82
+            ? new THREE.Vector3(1, 0, 0)
+            : new THREE.Vector3(0, 1, 0);
+        const tangentA = new THREE.Vector3().crossVectors(approachDirection, basisUp);
+        if (tangentA.lengthSq() < 0.0001) tangentA.set(1, 0, 0);
+        tangentA.normalize();
+        const tangentB = new THREE.Vector3().crossVectors(approachDirection, tangentA).normalize();
+        const lateralSpread = spawnDistance * (0.2 + this.rand() * 0.3);
+        const verticalSpread = spawnDistance * (0.12 + this.rand() * 0.24);
+        spawnPosition
+            .addScaledVector(tangentA, (this.rand() - 0.5) * lateralSpread)
+            .addScaledVector(tangentB, (this.rand() - 0.5) * verticalSpread)
             .add(new THREE.Vector3(
-                (this.rand() - 0.5) * 280,
-                (this.rand() - 0.5) * 340,
-                (this.rand() - 0.5) * 520,
+                (this.rand() - 0.5) * 170,
+                (this.rand() - 0.5) * 220,
+                (this.rand() - 0.5) * 420,
             ));
+
         spawnPosition.z = THREE.MathUtils.clamp(spawnPosition.z, -1750, 1250);
         mesh.position.copy(spawnPosition);
 

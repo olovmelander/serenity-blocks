@@ -69,6 +69,14 @@ export function getSongPath(trackName, songsData) {
  * @returns {string|null} Track key or null if no match
  */
 export function getSongForTheme(themeName, songsData) {
+    const explicitThemeSongMap = {
+        'chromadelic-highway': 'ElectricDreams',
+    };
+    const explicitTrack = explicitThemeSongMap[themeName];
+    if (explicitTrack && songsData.some((s) => nameToKey(s.name) === explicitTrack)) {
+        return explicitTrack;
+    }
+
     // Normalize theme name: remove hyphens and convert to camelCase for matching
     const normalizedTheme = themeName
         .split('-')

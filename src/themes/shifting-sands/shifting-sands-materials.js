@@ -184,7 +184,7 @@ export function createDuneMaterial(params) {
         const distFromPath = abs(pos.x.sub(wormPathX));
 
         // Trail width - narrow like a real worm trail
-        const trailWidth = float(14.0);
+        const trailWidth = float(28.0);
         const pathMask = exp(distFromPath.mul(distFromPath).mul(-1.0).div(trailWidth.mul(trailWidth)));
 
         // Distance from worm head
@@ -192,8 +192,8 @@ export function createDuneMaterial(params) {
         const headMask = smoothstep(260.0, 0.0, abs(distFromHead));
 
         // Ridge parameters
-        const ridgeLength = float(80.0);
-        const wakeLength = float(150.0);
+        const ridgeLength = float(150.0);
+        const wakeLength = float(300.0);
 
         // Calculate ridge displacement
         const ridgeDisplacement = float(0).toVar();
@@ -202,14 +202,14 @@ export function createDuneMaterial(params) {
         const inRidge = distFromHead.greaterThan(0.0).and(distFromHead.lessThan(ridgeLength));
         If(inRidge, () => {
             const ridgeProgress = distFromHead.div(ridgeLength);
-            ridgeDisplacement.assign(sin(ridgeProgress.mul(3.14159)).mul(14.0));
+            ridgeDisplacement.assign(sin(ridgeProgress.mul(3.14159)).mul(24.0));
         });
 
         // Wake behind head
         const inWake = distFromHead.greaterThanEqual(wakeLength.negate()).and(distFromHead.lessThanEqual(0.0));
         If(inWake, () => {
             const wakeProgress = distFromHead.negate().div(wakeLength);
-            const wakeDisp = float(1.0).sub(wakeProgress).mul(sin(wakeProgress.mul(4.0).add(uTime.mul(1.5)))).mul(5.0);
+            const wakeDisp = float(1.0).sub(wakeProgress).mul(sin(wakeProgress.mul(4.0).add(uTime.mul(1.5)))).mul(8.0);
             ridgeDisplacement.assign(wakeDisp);
         });
 
@@ -322,10 +322,15 @@ export function createDuneMaterial(params) {
         finalColor.assign(mix(finalColor, uFogColor, fogFactor));
 
         // --- 7. WORM TRAIL DUST EFFECT ---
-        const dustColor = vec3(0.85, 0.75, 0.55);
+        // Derive trail tint from active dune palette so theme shifts stay cohesive.
+        const dustColor = mix(uColorA.mul(0.9), uColorB.mul(0.95), 0.62);
         const dustNoise = noise3D(worldPos.mul(0.1).add(vec3(uTime.mul(0.5), 0.0, uTime.mul(0.3))));
-        const dustIntensity = vWormTrail.mul(float(0.4).add(dustNoise.mul(0.3)));
-        finalColor.assign(mix(finalColor, dustColor, dustIntensity.mul(step(0.1, vWormTrail))));
+        const dustIntensity = clamp(
+            vWormTrail.mul(float(0.22).add(dustNoise.mul(0.12))),
+            0.0,
+            0.35
+        );
+        finalColor.assign(mix(finalColor, dustColor, dustIntensity.mul(step(0.12, vWormTrail))));
 
         return vec4(finalColor, 1.0);
     })();
@@ -584,17 +589,18 @@ export function createSandSmokeMaterial(params = {}) {
         const props = smokeState.element(instanceIndex.mul(2).add(1));
 
         const rand = props.x;
-        const wormIntensity = clamp(props.y.mul(1.9), 0.0, 1.0);
+        const wormIntensity = clamp(props.y.mul(1.4), 0.0, 1.0);
         const trailFade = props.z;
         const sizeNode = props.w;
 
-        const baseAlpha = rand.mul(0.05).add(0.035).mul(uOpacity);
-        const wormBoost = wormIntensity.mul(0.45).mul(trailFade);
-        const alpha = clamp(baseAlpha.add(wormBoost), 0.0, 0.45);
+        const baseAlpha = rand.mul(0.045).add(0.03).mul(uOpacity);
+        const wormBoost = wormIntensity.mul(0.6).mul(trailFade);
+        const alpha = clamp(baseAlpha.add(wormBoost), 0.0, 0.7);
 
-        const smokeColor = mix(uColor.mul(0.6), uColor.mul(1.2), wormIntensity);
-        const sizeScale = float(0.07);
-        const spriteScale = vec2(sizeNode.mul(sizeScale).mul(wormIntensity.mul(0.8).add(0.5)));
+        const smokeBase = mix(uColor.mul(0.45), uColor.mul(0.82), rand);
+        const smokeColor = mix(smokeBase, uColor.mul(0.92), wormIntensity.mul(0.35));
+        const sizeScale = float(0.06);
+        const spriteScale = vec2(sizeNode.mul(sizeScale).mul(wormIntensity.mul(0.55).add(0.4)));
 
         // Soft radial mask to avoid square sprites
         const localUV = vec2(positionLocal.x, positionLocal.y).add(0.5);
@@ -630,19 +636,21 @@ export function createSandSmokeMaterial(params = {}) {
     const positionNode = Fn(() => positionLocal)();
 
     const rand = aRandom;
-    const wormIntensity = clamp(aWorm.mul(1.4), 0.0, 1.0);
+    const wormIntensity = clamp(aWorm.mul(1.1), 0.0, 1.0);
     const sizeNode = aSize;
 
-    const baseAlpha = rand.mul(0.15).add(0.25).mul(uOpacity);
-    const wormBoost = wormIntensity.mul(0.35);
-    const alpha = clamp(baseAlpha.add(wormBoost), 0.0, 0.6);
+    // Revert to original logic with boosted visibility
+    const baseAlpha = rand.mul(0.12).add(0.15).mul(uOpacity);
+    const wormBoost = wormIntensity.mul(0.55);
+    const alpha = clamp(baseAlpha.add(wormBoost), 0.0, 0.75);
 
-    const smokeColor = mix(uColor.mul(0.8), uColor, rand);
+    const smokeBase = mix(uColor.mul(0.55), uColor.mul(0.85), rand);
+    const smokeColor = mix(smokeBase, uColor.mul(0.95), wormIntensity.mul(0.3));
 
     const material = new THREE.PointsNodeMaterial();
     material.positionNode = positionNode;
     material.colorNode = vec4(smokeColor, alpha);
-    material.sizeNode = sizeNode;
+    material.sizeNode = sizeNode.mul(wormIntensity.mul(0.45).add(0.55));
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.NormalBlending;

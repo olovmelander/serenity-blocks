@@ -164,6 +164,15 @@ const QUALITY_PRESETS = {
     },
 };
 
+const RESONANCE_QUALITY_SCALE = {
+    Extreme: 1.0,
+    Ultra: 0.9,
+    High: 0.78,
+    Medium: 0.62,
+    Low: 0.45,
+    Minimal: 0.3,
+};
+
 const BASELINE_PRESET_ORDER = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
 
 let WEBGPU_MODULE = null;
@@ -313,8 +322,15 @@ export default class IceTempleTheme extends BaseTheme {
         this.snowSystem = null;
         this.shardBursts = [];
         this.shockwaves = [];
+        this.resonanceCracks = [];
+        this.resonanceCrackPool = [];
+        this.pendingPillarResonanceBursts = [];
         this.starField = null;
         this.frostFloor = null;
+        this.floorMaterial = null;
+        this.crackOverlay = null;
+        this.mistLayers = null;
+        this.fogRing = null;
         this.environmentMap = null;
         this.auroraReflections = null;
 
@@ -345,6 +361,10 @@ export default class IceTempleTheme extends BaseTheme {
         this.targetPulseIntensity = 0;
         this.targetCrackGlow = 0;
         this.targetAuroraIntensity = 0.8;
+        this.resonanceEnergy = 0;
+        this.targetResonanceEnergy = 0;
+        this.auroraShear = 0;
+        this.targetAuroraShear = 0;
     }
 
     getTetrominoConfig() {
@@ -375,6 +395,16 @@ export default class IceTempleTheme extends BaseTheme {
     getSnowBaseCount() {
         if (this.shouldUseCompute()) return this.qualityPreset.snowComputeCount;
         return this.qualityPreset.snowCount;
+    }
+
+    getResonanceQualityScale() {
+        return RESONANCE_QUALITY_SCALE[this.activeQualityLevel] ?? 0.75;
+    }
+
+    getResonancePerformanceScale() {
+        const frameBudget = this.qualityPreset?.frameBudgetMs ?? 16.7;
+        const frameMs = Math.max(8.0, this.frameTimeEmaMs || frameBudget);
+        return THREE.MathUtils.clamp(frameBudget / frameMs, 0.55, 1.0);
     }
 
     shouldUseVolumetricAurora() {
@@ -780,6 +810,14 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     disposeSceneResources() {
+        if (this.resonanceCrackPool?.length) {
+            this.resonanceCrackPool.forEach((crackLine) => {
+                crackLine.geometry?.dispose?.();
+                crackLine.material?.dispose?.();
+            });
+            this.resonanceCrackPool = [];
+        }
+
         if (this.environmentMap) {
             if (this.scene?.environment === this.environmentMap) {
                 this.scene.environment = null;
@@ -820,6 +858,9 @@ export default class IceTempleTheme extends BaseTheme {
         this.auroraReflections = null;
         this.shardBursts = [];
         this.shockwaves = [];
+        this.resonanceCracks = [];
+        this.resonanceCrackPool = [];
+        this.pendingPillarResonanceBursts = [];
         this.scene = null;
         this.camera = null;
         this.renderer = null;
@@ -831,6 +872,10 @@ export default class IceTempleTheme extends BaseTheme {
         this.starField = null;
         this.snowSystem = null;
         this.frostFloor = null;
+        this.floorMaterial = null;
+        this.crackOverlay = null;
+        this.mistLayers = null;
+        this.fogRing = null;
         this.snowMaxCount = 0;
         this.snowDrawCount = 0;
         this.snowScale = 1.0;
@@ -838,6 +883,13 @@ export default class IceTempleTheme extends BaseTheme {
         this.qualityCheckTimer = 0;
         this.qualityTransitionInProgress = false;
         this.fixedElapsedTime = 0;
+        this.targetPulseIntensity = 0;
+        this.targetCrackGlow = 0;
+        this.targetAuroraIntensity = 0.8;
+        this.resonanceEnergy = 0;
+        this.targetResonanceEnergy = 0;
+        this.auroraShear = 0;
+        this.targetAuroraShear = 0;
     }
 
     disposeRuntimeResources({ removeCanvas = true } = {}) {
@@ -2509,11 +2561,16 @@ export default class IceTempleTheme extends BaseTheme {
         if (!this.shouldUseCompute() || !this.renderer?.compute) return;
 
         if (this.snowCompute?.computeNode) {
-            this.snowCompute.update(delta, elapsed, 1.0 + this.uniforms.pulseIntensity.value * 0.2);
+            this.snowCompute.update(
+                delta,
+                elapsed,
+                1.0 + this.uniforms.pulseIntensity.value * 0.2 + this.resonanceEnergy * 0.15,
+            );
             this.renderer.compute(this.snowCompute.computeNode);
         }
 
         if (this.shardCompute?.computeNode) {
+            this.shardCompute.commitSpawns?.();
             this.shardCompute.update(delta);
             this.renderer.compute(this.shardCompute.computeNode);
         }
@@ -2733,6 +2790,7 @@ export default class IceTempleTheme extends BaseTheme {
             aurora.position.set(0, y, z);
             aurora.userData.auroraIntensityScale = intensityScale;
             aurora.userData.auroraTimeOffset = timeOffset;
+            aurora.userData.basePosition = aurora.position.clone();
             this.auroraPlanes.push(aurora);
             this.scene.add(aurora);
 
@@ -2759,6 +2817,7 @@ export default class IceTempleTheme extends BaseTheme {
             reflectionAurora.scale.y = -1;
             reflectionAurora.userData.auroraIntensityScale = reflectionIntensityScale;
             reflectionAurora.userData.auroraTimeOffset = timeOffset;
+            reflectionAurora.userData.basePosition = reflectionAurora.position.clone();
             reflectionMeshes.push(reflectionAurora);
             this.scene.add(reflectionAurora);
         }
@@ -2847,6 +2906,14 @@ export default class IceTempleTheme extends BaseTheme {
 
         this.mainGroup.add(this.frostFloor);
         this.floorMaterial = material;
+        this.floorMaterial.userData = {
+            ...(this.floorMaterial.userData || {}),
+            baseEmissiveIntensity: material.emissiveIntensity,
+            baseNormalScale: material.normalScale?.clone?.() || new THREE.Vector2(0.5, 0.5),
+        };
+
+        // Static + reactive crack veil above the floor.
+        this.createIceCracksOverlay();
 
         // Add mist layers
         this.createMistLayers();
@@ -2915,12 +2982,19 @@ export default class IceTempleTheme extends BaseTheme {
             transparent: true,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
+            opacity: 0.2,
         });
         this.tagMaterialForMrt(crackMaterial, 'floor-crack', true);
 
         const crackMesh = new THREE.Mesh(crackGeometry, crackMaterial);
         crackMesh.rotation.x = -Math.PI / 2;
         crackMesh.position.y = 0.03;
+        crackMesh.renderOrder = 1;
+        crackMesh.userData = {
+            baseOpacity: crackMaterial.opacity,
+            baseScale: crackMesh.scale.clone(),
+            phase: this.random() * Math.PI * 2,
+        };
 
         this.mainGroup.add(crackMesh);
         this.crackOverlay = crackMesh;
@@ -3192,6 +3266,10 @@ export default class IceTempleTheme extends BaseTheme {
             opacity: 0.9,
         });
         this.tagMaterialForMrt(material, 'pillar-core', true);
+        material.userData = {
+            ...(material.userData || {}),
+            baseEmissiveIntensity: material.emissiveIntensity,
+        };
 
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.y = 0; // Sits perfectly on ground now
@@ -3209,7 +3287,15 @@ export default class IceTempleTheme extends BaseTheme {
         group.add(glowSprite);
 
         return {
-            group, mesh, light, config, material,
+            group,
+            mesh,
+            light,
+            config,
+            material,
+            glowSprite,
+            baseLightIntensity: light.intensity,
+            resonancePulse: 0,
+            targetResonancePulse: 0,
         };
     }
 
@@ -3519,6 +3605,9 @@ export default class IceTempleTheme extends BaseTheme {
         if (comboCount >= 4) {
             this.createShockwave(comboCount);
         }
+
+        // Signature combo effect: crack-front propagation + chained pillar resonance.
+        this.triggerGlacialResonance(comboCount);
     }
 
     onPieceLock() {
@@ -3536,43 +3625,461 @@ export default class IceTempleTheme extends BaseTheme {
 
         // Slight aurora disturbance
         this.targetAuroraIntensity = 1.0;
+
+        // Piece locks subtly feed residual resonance.
+        this.targetResonanceEnergy = Math.max(this.targetResonanceEnergy, 0.28);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // EFFECT CREATION
     // ═══════════════════════════════════════════════════════════════════════════
 
-    createShockwave(intensity) {
-        const geometry = new THREE.TorusGeometry(2, 0.15, 8, 50);
+    buildResonancePathPoints(start, end, segmentCount, jitterAmplitude, branchBias = 0) {
+        const startX = Number.isFinite(start?.x) ? start.x : 0;
+        const startZ = Number.isFinite(start?.z) ? start.z : (Number.isFinite(start?.y) ? start.y : 0);
+        const endX = Number.isFinite(end?.x) ? end.x : startX;
+        const endZ = Number.isFinite(end?.z) ? end.z : (Number.isFinite(end?.y) ? end.y : startZ);
+
+        const points = [];
+        const segments = Math.max(6, Math.floor(segmentCount));
+        const tangent = new THREE.Vector2(endX - startX, endZ - startZ);
+        if (tangent.lengthSq() < 1e-5) {
+            points.push(new THREE.Vector3(startX, 0, startZ));
+            points.push(new THREE.Vector3(endX, 0, endZ));
+            return points;
+        }
+
+        tangent.normalize();
+        const normal = new THREE.Vector2(-tangent.y, tangent.x);
+        const phase = this.random() * Math.PI * 2;
+        const wobbleFrequency = 6 + branchBias * 0.85 + this.random() * 2.5;
+
+        for (let i = 0; i <= segments; i++) {
+            const t = i / segments;
+            const baseX = THREE.MathUtils.lerp(startX, endX, t);
+            const baseZ = THREE.MathUtils.lerp(startZ, endZ, t);
+            const envelope = Math.sin(t * Math.PI);
+            const wobble = Math.sin((t * wobbleFrequency * Math.PI * 2) + phase);
+            const randomOffset = (this.random() - 0.5) * 0.55;
+            const lateralOffset = (wobble + randomOffset) * jitterAmplitude * envelope;
+            const pointX = baseX + normal.x * lateralOffset;
+            const pointZ = baseZ + normal.y * lateralOffset;
+            if (!Number.isFinite(pointX) || !Number.isFinite(pointZ)) continue;
+            points.push(new THREE.Vector3(
+                pointX,
+                0,
+                pointZ,
+            ));
+        }
+
+        if (points.length < 2) {
+            points.push(new THREE.Vector3(startX, 0, startZ));
+            points.push(new THREE.Vector3(endX, 0, endZ));
+        }
+        return points;
+    }
+
+    acquireResonanceCrackLine() {
+        if (this.resonanceCrackPool?.length) {
+            return this.resonanceCrackPool.pop();
+        }
+
+        const maxPoints = 96;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(maxPoints * 3);
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setDrawRange(0, 2);
+        geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 160);
+
+        const material = new THREE.LineBasicMaterial({
+            color: COLORS.floorCracks.clone(),
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+        this.tagMaterialForMrt(material, 'combo-resonance-crack', true);
+
+        const crackLine = new THREE.Line(geometry, material);
+        crackLine.frustumCulled = false;
+        crackLine.visible = false;
+        crackLine.userData = {
+            maxPoints,
+            active: false,
+            points: [],
+            pointCount: 0,
+            age: 0,
+            growDuration: 0.4,
+            fadeDuration: 1.2,
+            lastFrontIndex: 0,
+            comboCount: 0,
+            baseOpacity: 0.5,
+            phase: 0,
+        };
+        return crackLine;
+    }
+
+    releaseResonanceCrackLine(crackLine) {
+        if (!crackLine) return;
+        if (crackLine.parent) crackLine.parent.remove(crackLine);
+        crackLine.visible = false;
+        crackLine.userData.active = false;
+        crackLine.userData.points = [];
+        crackLine.userData.pointCount = 0;
+        crackLine.userData.age = 0;
+        crackLine.userData.lastFrontIndex = 0;
+
+        if (!this.resonanceCrackPool) this.resonanceCrackPool = [];
+        if (this.resonanceCrackPool.length < 42) {
+            this.resonanceCrackPool.push(crackLine);
+            return;
+        }
+
+        crackLine.geometry?.dispose?.();
+        crackLine.material?.dispose?.();
+    }
+
+    createResonanceCrackLine(start, end, comboCount, branchIndex = 0, perfScale = 1.0) {
+        const qualityScale = this.getResonanceQualityScale();
+        const segmentCount = Math.max(10, Math.floor((14 + comboCount * 1.5) * qualityScale * perfScale));
+        const jitterAmplitude = 0.16 + comboCount * 0.045 + this.random() * 0.18;
+        const points = this.buildResonancePathPoints(start, end, segmentCount, jitterAmplitude, branchIndex);
+        if (points.length < 2) return null;
+
+        const crackLine = this.acquireResonanceCrackLine();
+        const maxPoints = crackLine.userData?.maxPoints ?? 96;
+        const pointCount = Math.max(2, Math.min(maxPoints, points.length));
+        const sampleStep = pointCount > 1 ? (points.length - 1) / (pointCount - 1) : 1;
+        const sampledPoints = new Array(pointCount);
+
+        const positionAttr = crackLine.geometry.attributes.position;
+        const array = positionAttr.array;
+        for (let i = 0; i < pointCount; i++) {
+            const srcIndex = Math.min(points.length - 1, Math.round(i * sampleStep));
+            const src = points[srcIndex];
+            sampledPoints[i] = src;
+            const i3 = i * 3;
+            array[i3] = src.x;
+            array[i3 + 1] = src.y;
+            array[i3 + 2] = src.z;
+        }
+        positionAttr.needsUpdate = true;
+        crackLine.geometry.setDrawRange(0, 2);
+
+        const crackColor = COLORS.floorCracks.clone().lerp(COLORS.iceHighlight, Math.min(0.62, comboCount * 0.07));
+        crackLine.material.color.copy(crackColor);
+        crackLine.material.opacity = 0;
+        crackLine.position.y = 0.05 + branchIndex * 0.0008;
+        crackLine.visible = true;
+
+        crackLine.userData = {
+            ...(crackLine.userData || {}),
+            active: true,
+            points: sampledPoints,
+            pointCount,
+            age: 0,
+            growDuration: 0.3 + comboCount * 0.045,
+            fadeDuration: 0.95 + comboCount * 0.065,
+            lastFrontIndex: 0,
+            comboCount,
+            baseOpacity: Math.min(0.9, 0.4 + comboCount * 0.075),
+            phase: this.random() * Math.PI * 2,
+        };
+
+        this.resonanceCracks.push(crackLine);
+        this.mainGroup.add(crackLine);
+        return crackLine;
+    }
+
+    triggerGlacialResonance(comboCount) {
+        if (comboCount < 2 || !this.mainGroup) return;
+
+        const qualityScale = this.getResonanceQualityScale();
+        const perfScale = this.getResonancePerformanceScale();
+        const clampedCombo = Math.min(12, Math.max(2, comboCount));
+        const branchCount = Math.max(
+            3,
+            Math.floor((3 + clampedCombo * 1.35) * qualityScale * perfScale),
+        );
+        const minRadius = 8 + clampedCombo * 1.2;
+        const maxRadius = 20 + clampedCombo * 2.2;
+        const center = new THREE.Vector2(0, 0);
+
+        this.targetResonanceEnergy = Math.min(2.8, this.targetResonanceEnergy + 0.48 + clampedCombo * 0.16);
+        this.targetCrackGlow = Math.max(this.targetCrackGlow, Math.min(1.25, 0.5 + clampedCombo * 0.1));
+        if (clampedCombo >= 5) {
+            this.targetAuroraShear = Math.max(this.targetAuroraShear, Math.min(1.65, 0.3 + clampedCombo * 0.14));
+        }
+
+        // Keep long sessions stable by pruning oldest cracks before creating new branches.
+        const maxActiveCracks = Math.max(10, Math.floor((18 + clampedCombo * 0.9) * qualityScale * perfScale));
+        while (this.resonanceCracks.length > maxActiveCracks) {
+            const oldCrack = this.resonanceCracks.shift();
+            this.releaseResonanceCrackLine(oldCrack);
+        }
+
+        for (let i = 0; i < branchCount; i++) {
+            let angle = (i / branchCount) * Math.PI * 2 + (this.random() - 0.5) * (0.4 + clampedCombo * 0.02);
+            let radius = minRadius + this.random() * (maxRadius - minRadius);
+
+            if (this.icePillars.length && i % 3 === 0) {
+                const pillar = this.icePillars[i % this.icePillars.length];
+                if (pillar?.group?.position) {
+                    const position = pillar.group.position;
+                    angle = Math.atan2(position.z, position.x) + (this.random() - 0.5) * 0.24;
+                    radius = Math.min(maxRadius + 7, Math.hypot(position.x, position.z) + 4 + this.random() * 8);
+                }
+            }
+
+            const end = new THREE.Vector2(
+                center.x + Math.cos(angle) * radius,
+                center.y + Math.sin(angle) * radius,
+            );
+            this.createResonanceCrackLine(center, end, clampedCombo, i, perfScale);
+        }
+
+        const pillarsByDistance = [...this.icePillars].sort((a, b) => {
+            const aDist = Math.hypot(a.group.position.x, a.group.position.z);
+            const bDist = Math.hypot(b.group.position.x, b.group.position.z);
+            return aDist - bDist;
+        });
+        const pillarTriggerCount = Math.min(
+            pillarsByDistance.length,
+            Math.max(2, Math.floor((1 + clampedCombo * 0.75) * perfScale)),
+        );
+
+        for (let i = 0; i < pillarTriggerCount; i++) {
+            const pillar = pillarsByDistance[i];
+            const position = pillar.group.position;
+            const distance = Math.hypot(position.x, position.z);
+            const strength = Math.max(0.45, Math.min(1.65, 0.6 + clampedCombo * 0.12 - i * 0.08));
+            this.pendingPillarResonanceBursts.push({
+                pillar,
+                delay: 0.08 + distance * 0.012 + i * 0.075,
+                strength,
+            });
+        }
+
+        this.createShockwave(1.2 + clampedCombo * 0.35, {
+            x: 0,
+            z: 0,
+            y: 0.36,
+            radius: 1.4 + clampedCombo * 0.22,
+            thickness: 0.08 + clampedCombo * 0.012,
+            life: 1.0 + clampedCombo * 0.06,
+            speed: 6.5 + clampedCombo * 1.3,
+            color: COLORS.floorCracks.clone(),
+        });
+    }
+
+    updateGlacialResonance(delta, elapsed) {
+        if (!this.mainGroup) return;
+
+        // Dynamic crack veil + floor optical response.
+        if (this.crackOverlay?.material) {
+            const baseOpacity = this.crackOverlay.userData?.baseOpacity ?? 0.2;
+            const crackPhase = this.crackOverlay.userData?.phase ?? 0;
+            const crackPulse = Math.sin(elapsed * (3.2 + this.resonanceEnergy) + crackPhase) * 0.09;
+            const opacity = baseOpacity
+                + this.uniforms.crackGlow.value * 0.65
+                + this.resonanceEnergy * 0.3
+                + crackPulse;
+            this.crackOverlay.material.opacity = THREE.MathUtils.clamp(opacity, 0.06, 1.0);
+
+            const baseScale = this.crackOverlay.userData?.baseScale;
+            if (baseScale) {
+                const scalePulse = 1 + this.resonanceEnergy * 0.025 + Math.sin(elapsed * 2.4 + crackPhase) * 0.004;
+                this.crackOverlay.scale.set(
+                    baseScale.x * scalePulse,
+                    baseScale.y * scalePulse,
+                    baseScale.z,
+                );
+            }
+
+            this.crackOverlay.rotation.z += delta * (0.01 + this.resonanceEnergy * 0.045);
+        }
+
+        if (this.floorMaterial) {
+            const baseEmissive = this.floorMaterial.userData?.baseEmissiveIntensity ?? 0.3;
+            const baseNormalScale = this.floorMaterial.userData?.baseNormalScale;
+            const baseNormalX = baseNormalScale?.x ?? 0.5;
+            const baseNormalY = baseNormalScale?.y ?? 0.5;
+            this.floorMaterial.emissiveIntensity = THREE.MathUtils.clamp(
+                baseEmissive + this.uniforms.crackGlow.value * 0.65 + this.resonanceEnergy * 0.2,
+                baseEmissive,
+                1.35,
+            );
+            if (this.floorMaterial.normalScale) {
+                const normalScaleBoost = 1 + this.resonanceEnergy * 0.18;
+                this.floorMaterial.normalScale.set(
+                    baseNormalX * normalScaleBoost,
+                    baseNormalY * normalScaleBoost,
+                );
+            }
+        }
+
+        // Crack-front propagation with directional particle emission.
+        const qualityScale = this.getResonanceQualityScale();
+        const perfScale = this.getResonancePerformanceScale();
+        for (let i = this.resonanceCracks.length - 1; i >= 0; i--) {
+            const crackLine = this.resonanceCracks[i];
+            const data = crackLine.userData || {};
+            data.age += delta;
+            const growDuration = data.growDuration || 0.5;
+            const fadeDuration = data.fadeDuration || 1.4;
+            const totalDuration = growDuration + fadeDuration;
+            const progress = THREE.MathUtils.clamp(data.age / growDuration, 0, 1);
+            const drawCount = Math.max(2, Math.floor((data.pointCount || 2) * progress));
+            crackLine.geometry?.setDrawRange(0, drawCount);
+
+            const fade = data.age < growDuration
+                ? 1.0
+                : THREE.MathUtils.clamp(1.0 - (data.age - growDuration) / fadeDuration, 0, 1);
+            const shimmer = 0.84 + Math.sin(elapsed * 15 + (data.phase || 0)) * 0.16;
+            crackLine.material.opacity = THREE.MathUtils.clamp(
+                (data.baseOpacity || 0.5) * fade * shimmer,
+                0,
+                1,
+            );
+
+            const frontIndex = Math.min((data.pointCount || 2) - 1, drawCount - 1);
+            const lastFrontIndex = data.lastFrontIndex || 0;
+            const frontAdvance = frontIndex - lastFrontIndex;
+            if (frontAdvance > 0) {
+                const point = data.points?.[frontIndex];
+                const prev = data.points?.[Math.max(0, frontIndex - 1)];
+                if (point && prev) {
+                    const directionX = point.x - prev.x;
+                    const directionZ = point.z - prev.z;
+                    const spawnWeight = Math.min(4, frontAdvance);
+                    const spawnCount = Math.max(
+                        2,
+                        Math.floor((2 + data.comboCount * 0.22) * qualityScale * perfScale * spawnWeight),
+                    );
+
+                    if (this.shouldUseCompute() && this.shardCompute) {
+                        this.shardCompute.spawnBurst(spawnCount, point.x, point.z, {
+                            style: 'crack-front',
+                            directionX,
+                            directionZ,
+                            spread: 0.58,
+                            radialSpeedMin: 1.7,
+                            radialSpeedMax: 3.7 + data.comboCount * 0.22,
+                            upwardMin: 0.3,
+                            upwardMax: 1.65 + data.comboCount * 0.1,
+                            sizeMin: 0.66,
+                            sizeMax: 1.04,
+                            lifeDecayMin: 0.65,
+                            lifeDecayMax: 0.99,
+                            deferUpload: true,
+                        });
+                    } else {
+                        this.createIceShardBurst(Math.max(3, Math.floor(3.5 * qualityScale * perfScale)), point.x, point.z, {
+                            style: 'crack-front',
+                            directionX,
+                            directionZ,
+                            spread: 0.7,
+                            upwardMin: 0.3,
+                            upwardMax: 1.65,
+                            duration: 1.1,
+                        });
+                    }
+                }
+                data.lastFrontIndex = frontIndex;
+            }
+
+            if (data.age >= totalDuration) {
+                this.resonanceCracks.splice(i, 1);
+                this.releaseResonanceCrackLine(crackLine);
+            }
+        }
+
+        // Delayed pillar chain reaction.
+        for (let i = this.pendingPillarResonanceBursts.length - 1; i >= 0; i--) {
+            const event = this.pendingPillarResonanceBursts[i];
+            event.delay -= delta;
+            if (event.delay > 0) continue;
+
+            const pillar = event.pillar;
+            if (pillar?.group?.position) {
+                const pos = pillar.group.position;
+                pillar.targetResonancePulse = Math.max(pillar.targetResonancePulse || 0, event.strength);
+
+                this.createShockwave(1 + event.strength, {
+                    x: pos.x,
+                    z: pos.z,
+                    y: 0.32,
+                    radius: 1.1 + event.strength * 0.6,
+                    thickness: 0.07 + event.strength * 0.03,
+                    life: 0.75,
+                    speed: 6 + event.strength * 2.2,
+                    color: COLORS.iceHighlight.clone(),
+                });
+
+                this.createIceShardBurst(
+                    Math.max(6, Math.floor((8 + event.strength * 6.5) * qualityScale * perfScale)),
+                    pos.x,
+                    pos.z,
+                    {
+                        style: 'pillar-jet',
+                        spread: 1.1,
+                        radialSpeedMin: 1.2,
+                        radialSpeedMax: 3.8,
+                        upwardMin: 4.2,
+                        upwardMax: 7.8 + event.strength,
+                        sizeMin: 0.92,
+                        sizeMax: 1.5,
+                        lifeDecayMin: 0.4,
+                        lifeDecayMax: 0.72,
+                        duration: 1.45,
+                    },
+                );
+            }
+
+            this.pendingPillarResonanceBursts.splice(i, 1);
+        }
+    }
+
+    createShockwave(intensity, options = {}) {
+        const radius = Number.isFinite(options.radius) ? Math.max(0.5, options.radius) : 2;
+        const thickness = Number.isFinite(options.thickness) ? Math.max(0.03, options.thickness) : 0.15;
+        const geometry = new THREE.TorusGeometry(radius, thickness, 8, 50);
+        const color = options.color instanceof THREE.Color
+            ? options.color.clone()
+            : new THREE.Color(options.color ?? COLORS.iceGlow);
 
         const { material } = this.useWebGPUMaterials
             ? createShockwaveMaterialWebGPU({
                 time: this.uniforms.time.value,
                 opacity: 1.0,
-                color: COLORS.iceGlow.clone(),
+                color,
             })
             : createShockwaveMaterialWebGL({
                 uTime: this.uniforms.time,
                 uOpacity: { value: 1.0 },
-                color: COLORS.iceGlow.clone(),
+                color,
             });
 
         const wave = new THREE.Mesh(geometry, material);
         wave.rotation.x = Math.PI / 2;
-        wave.position.y = 0.5;
+        wave.position.set(options.x ?? 0, options.y ?? 0.5, options.z ?? 0);
 
         wave.userData = {
-            life: 1.0,
-            speed: 8 + intensity * 2,
+            life: Number.isFinite(options.life) ? options.life : 1.0,
+            speed: Number.isFinite(options.speed) ? options.speed : 8 + intensity * 2,
         };
 
         this.shockwaves.push(wave);
         this.mainGroup.add(wave);
     }
 
-    createIceShardBurst(count, originX = 0, originZ = 0) {
+    createIceShardBurst(count, originX = 0, originZ = 0, options = {}) {
         if (this.shardCompute && this.shouldUseCompute()) {
-            this.shardCompute.spawnBurst(count, originX, originZ);
+            const computeOptions = {
+                ...options,
+                deferUpload: options.deferUpload ?? true,
+            };
+            this.shardCompute.spawnBurst(count, originX, originZ, computeOptions);
             return;
         }
 
@@ -3582,20 +4089,56 @@ export default class IceTempleTheme extends BaseTheme {
         const lifes = new Float32Array(count);
         const randoms = new Float32Array(count);
 
+        const style = options.style || 'default';
+        const spread = Number.isFinite(options.spread) ? Math.max(0.08, options.spread) : 1.5;
+        const directionX = Number.isFinite(options.directionX) ? options.directionX : 0;
+        const directionZ = Number.isFinite(options.directionZ) ? options.directionZ : 0;
+        const directionLength = Math.hypot(directionX, directionZ);
+        const dirX = directionLength > 1e-5 ? directionX / directionLength : 0;
+        const dirZ = directionLength > 1e-5 ? directionZ / directionLength : 0;
+        const radialSpeedMin = Number.isFinite(options.radialSpeedMin)
+            ? Math.max(0.1, options.radialSpeedMin)
+            : (style === 'pillar-jet' ? 1.8 : (style === 'crack-front' ? 2.0 : 3.0));
+        const radialSpeedMax = Number.isFinite(options.radialSpeedMax)
+            ? Math.max(radialSpeedMin, options.radialSpeedMax)
+            : (style === 'pillar-jet' ? 4.2 : (style === 'crack-front' ? 4.8 : 8.0));
+        const upwardMin = Number.isFinite(options.upwardMin)
+            ? options.upwardMin
+            : (style === 'pillar-jet' ? 4.1 : (style === 'crack-front' ? 0.35 : 2.0));
+        const upwardMax = Number.isFinite(options.upwardMax)
+            ? Math.max(upwardMin, options.upwardMax)
+            : (style === 'pillar-jet' ? 8.0 : (style === 'crack-front' ? 2.2 : 6.0));
+
         for (let i = 0; i < count; i++) {
             const i3 = i * 3;
 
             // Start at the specified origin (pillar base)
-            positions[i3] = originX + (this.random() - 0.5) * 1.5;
+            positions[i3] = originX + (this.random() - 0.5) * spread;
             positions[i3 + 1] = 0.5 + this.random() * 2; // Start near ground
-            positions[i3 + 2] = originZ + (this.random() - 0.5) * 1.5;
+            positions[i3 + 2] = originZ + (this.random() - 0.5) * spread;
 
             // Explosion velocity
             const angle = this.random() * Math.PI * 2;
-            const speed = 3 + this.random() * 5;
-            velocities[i3] = Math.cos(angle) * speed;
-            velocities[i3 + 1] = 2 + this.random() * 4;
-            velocities[i3 + 2] = Math.sin(angle) * speed;
+            const speed = radialSpeedMin + this.random() * (radialSpeedMax - radialSpeedMin);
+            let velocityX = Math.cos(angle) * speed;
+            let velocityY = upwardMin + this.random() * (upwardMax - upwardMin);
+            let velocityZ = Math.sin(angle) * speed;
+
+            if (style === 'pillar-jet') {
+                velocityX *= 0.65;
+                velocityZ *= 0.65;
+            } else if (style === 'crack-front' && directionLength > 1e-5) {
+                const tangentX = -dirZ;
+                const tangentZ = dirX;
+                const directionalSpeed = speed * (0.72 + this.random() * 0.6);
+                const tangentJitter = (this.random() - 0.5) * 1.0;
+                velocityX = dirX * directionalSpeed + tangentX * tangentJitter;
+                velocityZ = dirZ * directionalSpeed + tangentZ * tangentJitter;
+            }
+
+            velocities[i3] = velocityX;
+            velocities[i3 + 1] = velocityY;
+            velocities[i3 + 2] = velocityZ;
 
             lifes[i] = 1.0;
             randoms[i] = this.random();
@@ -3609,19 +4152,19 @@ export default class IceTempleTheme extends BaseTheme {
         const { material } = this.useWebGPUMaterials
             ? createIceShardMaterialWebGPU({
                 time: 0,
-                size: 8.0,
+                size: options.size ?? (style === 'crack-front' ? 6.8 : 8.0),
                 color: COLORS.iceShards,
             })
             : createIceShardMaterialWebGL({
                 uTime: { value: 0 },
-                uSize: { value: 8.0 },
+                uSize: { value: options.size ?? (style === 'crack-front' ? 6.8 : 8.0) },
                 color: COLORS.iceShards,
             });
 
         const burst = new THREE.Points(geometry, material);
         burst.userData = {
             startTime: this.uniforms.time.value,
-            duration: 1.5,
+            duration: Number.isFinite(options.duration) ? options.duration : 1.5,
         };
 
         this.shardBursts.push(burst);
@@ -3666,6 +4209,10 @@ export default class IceTempleTheme extends BaseTheme {
         this.targetPulseIntensity *= 0.95;
 
         // Decay crack glow
+        this.targetCrackGlow = Math.max(
+            this.targetCrackGlow,
+            Math.min(1.4, this.targetResonanceEnergy * 0.5),
+        );
         this.uniforms.crackGlow.value = THREE.MathUtils.lerp(
             this.uniforms.crackGlow.value,
             this.targetCrackGlow,
@@ -3682,6 +4229,20 @@ export default class IceTempleTheme extends BaseTheme {
         if (this.targetAuroraIntensity > 0.85) {
             this.targetAuroraIntensity -= delta * 0.2;
         }
+
+        this.resonanceEnergy = THREE.MathUtils.lerp(
+            this.resonanceEnergy,
+            this.targetResonanceEnergy,
+            delta * 2.3,
+        );
+        this.targetResonanceEnergy *= 0.94;
+
+        this.auroraShear = THREE.MathUtils.lerp(
+            this.auroraShear,
+            this.targetAuroraShear,
+            delta * 2.6,
+        );
+        this.targetAuroraShear *= 0.9;
 
         // ─────────────────────────────────────────────────────────────────────
         // CAMERA MOVEMENT (Continuous gentle orbit/sway)
@@ -3723,6 +4284,12 @@ export default class IceTempleTheme extends BaseTheme {
             for (const aurora of this.auroraPlanes) {
                 const timeOffset = aurora.userData?.auroraTimeOffset ?? 0;
                 const intensityScale = aurora.userData?.auroraIntensityScale ?? 1.0;
+                const basePosition = aurora.userData?.basePosition;
+                if (basePosition) {
+                    const shear = this.auroraShear * (0.65 + intensityScale * 0.3);
+                    aurora.position.x = basePosition.x + Math.sin(elapsed * 2.1 + timeOffset * 2.4) * shear * 1.8;
+                    aurora.position.z = basePosition.z + Math.cos(elapsed * 1.8 + timeOffset * 1.6) * shear * 1.2;
+                }
                 this.setMaterialUniform(aurora.material, 'uTime', elapsed + timeOffset);
                 this.setMaterialUniform(
                     aurora.material,
@@ -3737,6 +4304,14 @@ export default class IceTempleTheme extends BaseTheme {
             for (const reflection of this.auroraReflections) {
                 const timeOffset = reflection.userData?.auroraTimeOffset ?? 0;
                 const intensityScale = reflection.userData?.auroraIntensityScale ?? 0.6;
+                const basePosition = reflection.userData?.basePosition;
+                if (basePosition) {
+                    const shear = this.auroraShear * (0.45 + intensityScale * 0.25);
+                    reflection.position.x = basePosition.x
+                        + Math.sin(elapsed * 2.0 + timeOffset * 2.2) * shear * 1.3;
+                    reflection.position.z = basePosition.z
+                        + Math.cos(elapsed * 1.6 + timeOffset * 1.4) * shear * 0.9;
+                }
                 this.setMaterialUniform(reflection.material, 'uTime', elapsed + timeOffset);
                 this.setMaterialUniform(
                     reflection.material,
@@ -3746,6 +4321,7 @@ export default class IceTempleTheme extends BaseTheme {
             }
         }
 
+        this.updateGlacialResonance(delta, elapsed);
         this.updateComputeSystems(delta, elapsed);
         this.updateAdaptiveSnowScaling(delta, rawDelta * 1000);
 
@@ -3755,9 +4331,37 @@ export default class IceTempleTheme extends BaseTheme {
 
         for (let i = 0; i < this.icePillars.length; i++) {
             const pillar = this.icePillars[i];
-            const baseIntensity = 0.5;
+            pillar.resonancePulse = THREE.MathUtils.lerp(
+                pillar.resonancePulse || 0,
+                pillar.targetResonancePulse || 0,
+                delta * 7.5,
+            );
+            pillar.targetResonancePulse = (pillar.targetResonancePulse || 0) * 0.9;
+
+            const baseIntensity = pillar.baseLightIntensity ?? 0.5;
             const pulse = Math.sin(elapsed * 1.5 + i * 0.8) * 0.2;
-            pillar.light.intensity = baseIntensity + pulse + this.uniforms.pulseIntensity.value * 1.5;
+            const resonanceContribution = (pillar.resonancePulse || 0) * 2.1;
+            pillar.light.intensity = baseIntensity + pulse + this.uniforms.pulseIntensity.value * 1.5
+                + resonanceContribution;
+
+            if (pillar.material) {
+                const baseEmissive = pillar.material.userData?.baseEmissiveIntensity ?? 0.6;
+                pillar.material.emissiveIntensity = THREE.MathUtils.clamp(
+                    baseEmissive
+                    + this.uniforms.pulseIntensity.value * 0.15
+                    + (pillar.resonancePulse || 0) * 0.55,
+                    baseEmissive,
+                    2.0,
+                );
+            }
+
+            if (pillar.glowSprite?.material) {
+                pillar.glowSprite.material.opacity = THREE.MathUtils.clamp(
+                    0.35 + (pillar.resonancePulse || 0) * 0.55 + this.resonanceEnergy * 0.18,
+                    0.2,
+                    1.0,
+                );
+            }
         }
 
         // ─────────────────────────────────────────────────────────────────────
