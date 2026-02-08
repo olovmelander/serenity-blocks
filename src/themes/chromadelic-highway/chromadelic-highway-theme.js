@@ -43,6 +43,7 @@ import {
     createIceMoonNodeMaterial,
     createAtmosphericOrbNodeMaterial,
     createBinaryStarNodeMaterial,
+    createNebulaNodeMaterial,
 } from './chromadelic-highway-materials.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,7 +108,7 @@ function createSeededRandom(seed) {
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
     Extreme: {
-        starCount: 5000,
+        starCount: 7600,
         ringCount: 12,
         speedParticleCount: 3000,
         ambientParticleCount: 2000,
@@ -120,7 +121,7 @@ const QUALITY_PRESETS = {
         enableCompute: true,
     },
     Ultra: {
-        starCount: 3500,
+        starCount: 5600,
         ringCount: 10,
         speedParticleCount: 2000,
         ambientParticleCount: 1500,
@@ -133,7 +134,7 @@ const QUALITY_PRESETS = {
         enableCompute: true,
     },
     High: {
-        starCount: 2000,
+        starCount: 3800,
         ringCount: 8,
         speedParticleCount: 800,
         ambientParticleCount: 800,
@@ -146,7 +147,7 @@ const QUALITY_PRESETS = {
         enableCompute: true,
     },
     Medium: {
-        starCount: 1200,
+        starCount: 2400,
         ringCount: 6,
         speedParticleCount: 300,
         ambientParticleCount: 400,
@@ -159,7 +160,7 @@ const QUALITY_PRESETS = {
         enableCompute: false,
     },
     Low: {
-        starCount: 600,
+        starCount: 1300,
         ringCount: 4,
         speedParticleCount: 100,
         ambientParticleCount: 150,
@@ -172,7 +173,7 @@ const QUALITY_PRESETS = {
         enableCompute: false,
     },
     Minimal: {
-        starCount: 300,
+        starCount: 700,
         ringCount: 3,
         speedParticleCount: 50,
         ambientParticleCount: 80,
@@ -184,6 +185,20 @@ const QUALITY_PRESETS = {
         enableBloom: false,
         enableCompute: false,
     },
+};
+
+const BLOOM_TUNING = {
+    baseScale: 0.8,
+    reactiveScale: 0.62,
+    thresholdLift: 0.08,
+};
+
+const RING_GLOW_TUNING = {
+    pulseGlowScale: 0.8,
+    uniformGlowScale: 0.66,
+    saturation: 0.88,
+    baseLightness: 0.51,
+    lightnessGlowScale: 0.14,
 };
 
 const BASELINE_PRESET_ORDER = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
@@ -409,6 +424,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.neonGasGiant = null;
         this.neonGasGiantGlows = [];
         this.crystalMoon = null;
+        this.crystalMoonGlows = [];
         this.binaryStars = [];
         this.venusOrb = null;
         this.venusOrbGlows = [];
@@ -457,8 +473,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         };
         this.reactiveCaps = {
             pulse: 1.25,
-            bloom: 0.55,
-            ring: 1.1,
+            bloom: 0.2,  // Reduced from 0.3
+            ring: 0.5,   // Reduced from 0.6
             particle: 1.8,
             ambient: 1.9,
         };
@@ -713,11 +729,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
     updateReactiveEnvelope(delta) {
         const attackRates = {
-            pulse: 8.5,
-            bloom: 6.0,
-            ring: 7.0,
-            particle: 5.5,
-            ambient: 4.5,
+            pulse: 4.0, // Smoother (was 8.5)
+            bloom: 3.0, // Smoother (was 6.0)
+            ring: 3.5,  // Smoother (was 7.0)
+            particle: 3.0, // Smoother (was 5.5)
+            ambient: 2.5, // Smoother (was 4.5)
         };
         const decayRates = {
             pulse: 1.25,
@@ -738,6 +754,21 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.ringGlow = this.reactiveState.ring;
         this.particleGlow = this.reactiveState.particle;
         this.ambientSpeedTarget = this.reactiveState.ambient;
+    }
+
+    getBloomStrength(effectScale = 1) {
+        return this.qualityPreset.bloomStrength
+            * BLOOM_TUNING.baseScale
+            * effectScale
+            * (1 + this.bloomBoost * BLOOM_TUNING.reactiveScale * effectScale);
+    }
+
+    getBloomThreshold() {
+        return THREE.MathUtils.clamp(
+            this.qualityPreset.bloomThreshold + BLOOM_TUNING.thresholdLift,
+            0.55,
+            0.96,
+        );
     }
 
     probeCapabilities() {
@@ -941,6 +972,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.neonGasGiant = null;
         this.neonGasGiantGlows = [];
         this.crystalMoon = null;
+        this.crystalMoonGlows = [];
         this.binaryStars = [];
         this.venusOrb = null;
         this.venusOrbGlows = [];
@@ -1254,7 +1286,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         }
 
         const endDelay = sequence.length * loops * stepMs + 50;
-        this.scheduleBaselineTimeout(() => {}, endDelay);
+        this.scheduleBaselineTimeout(() => { }, endDelay);
 
         console.log('[ChromadelicBaseline] Playing sequence', {
             name,
@@ -1848,7 +1880,6 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             try {
                 webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
                     antialias: this.getAntialiasEnabled(),
-                    powerPreference: 'high-performance',
                     alpha: false,
                     preserveDrawingBuffer,
                 });
@@ -1900,7 +1931,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.scene.fog = new THREE.FogExp2(0x020008, 0.0004);
 
         // Camera: Lower, closer to road - immersive racing view
-        this.camera = new THREE.PerspectiveCamera(80, width / height, 1, 5000);
+        this.camera = new THREE.PerspectiveCamera(80, width / height, 1, 12000);
         this.camera.position.set(0, 55, 280);
         this.camera.lookAt(0, 20, -600);
     }
@@ -1973,8 +2004,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                         rainbow += (1.0 - edge) * 0.1;
                         float depthFade = smoothstep(2000.0, 200.0, vDepth);
                         rainbow *= 0.3 + depthFade * 0.7;
-                        rainbow *= 1.0 + uPulse * 0.3;
+                        rainbow *= 0.85 + uPulse * 0.25;
                         rainbow *= 1.0 + (uPace - 1.0) * 0.12;
+                        rainbow = min(rainbow, vec3(0.95));
                         gl_FragColor = vec4(rainbow, 1.0);
                     }
                 `,
@@ -2147,10 +2179,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                     float fresnel = 1.0 - abs(dot(viewDir, vNormal));
                     fresnel = pow(fresnel, 2.0);
                     float pulse = 1.0 + sin(uTime * 3.0) * 0.15 * uPulse;
-                    vec3 coreColor = uColor * (1.5 + uGlow * 0.5) * pulse;
-                    vec3 glowColor = uColor * (0.6 + fresnel * 0.8);
+                    vec3 coreColor = uColor * (1.1 + uGlow * 0.4) * pulse;
+                    vec3 glowColor = uColor * (0.5 + fresnel * 0.7);
                     vec3 finalColor = mix(coreColor, glowColor, fresnel * 0.5);
-                    finalColor += uColor * fresnel * 0.4 * (1.0 + uGlow);
+                    finalColor += uColor * fresnel * 0.25 * (1.0 + uGlow);
+                    finalColor = clamp(finalColor, 0.0, 1.0);
                     float alpha = (0.7 + fresnel * 0.3) * (0.8 + uPulse * 0.2);
                     gl_FragColor = vec4(finalColor, alpha);
                 }
@@ -2166,7 +2199,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 profile.radialSegments,
             );
             const hue = i / ringCount;
-            const color = new THREE.Color().setHSL(hue, 0.9, 0.6);
+            const color = new THREE.Color().setHSL(hue, RING_GLOW_TUNING.saturation, 0.55);
 
             let material;
             let materialData = null;
@@ -2266,56 +2299,113 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(starCount * 3);
         const colors = new Float32Array(starCount * 3);
+        const sizes = new Float32Array(starCount);
+        const twinkles = new Float32Array(starCount * 2);
+
+        // Full sky dome (360 degrees) centered on the scene
+        const skyCenter = new THREE.Vector3(0, 0, 0);
+        const minRadius = 6000;
+        const maxRadius = 11500;
+        const azimuthSpan = Math.PI * 2.0;
+        const elevationMin = -Math.PI * 0.5;
+        const elevationMax = Math.PI * 0.5;
+        const starPalette = [
+            new THREE.Color(0xffffff), // white
+            new THREE.Color(0xe8f1ff), // cool white
+            new THREE.Color(0xfff2d4), // warm white
+            new THREE.Color(0xc8deff), // blue
+            new THREE.Color(0xd6f9ff), // cyan
+            new THREE.Color(0xe7ddff), // violet
+            new THREE.Color(0xd5ffe8), // mint
+            new THREE.Color(0xfff7b3), // pale yellow
+            new THREE.Color(0xffddb8), // peach
+        ];
 
         for (let i = 0; i < starCount; i++) {
             const i3 = i * 3;
-            const theta = this.rand() * Math.PI * 2;
-            const phi = this.rand() * Math.PI * 0.6 + 0.2;
-            const radius = 800 + this.rand() * 2000;
+            const i2 = i * 2;
+            const azimuth = (this.rand() - 0.5) * azimuthSpan;
+            const elevation = elevationMin + this.rand() * (elevationMax - elevationMin);
+            const radius = minRadius + this.rand() * (maxRadius - minRadius);
 
-            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
-            positions[i3 + 1] = radius * Math.cos(phi) + 100;
-            positions[i3 + 2] = -radius * Math.sin(phi) * Math.sin(theta) - 500;
+            const cosElevation = Math.cos(elevation);
+            const dirX = Math.sin(azimuth) * cosElevation;
+            const dirY = Math.sin(elevation);
+            const dirZ = -Math.cos(azimuth) * cosElevation;
 
-            // Star color temperature variation
-            const temp = this.rand();
-            if (temp < 0.1) {
-                // Blue giants
-                colors[i3] = 0.7;
-                colors[i3 + 1] = 0.8;
-                colors[i3 + 2] = 1.0;
-            } else if (temp < 0.2) {
-                // Red dwarfs
-                colors[i3] = 1.0;
-                colors[i3 + 1] = 0.6;
-                colors[i3 + 2] = 0.5;
+            positions[i3] = skyCenter.x + dirX * radius;
+            positions[i3 + 1] = skyCenter.y + dirY * radius;
+            positions[i3 + 2] = skyCenter.z + dirZ * radius;
+
+            const brightnessClass = this.rand();
+            let brightness;
+            if (brightnessClass < 0.05) {
+                brightness = 0.95 + this.rand() * 0.22;
+                sizes[i] = 30 + this.rand() * 34;
+            } else if (brightnessClass < 0.32) {
+                brightness = 0.58 + this.rand() * 0.34;
+                sizes[i] = 16 + this.rand() * 24;
             } else {
-                // White/yellow
-                const brightness = 0.6 + this.rand() * 0.4;
-                colors[i3] = brightness;
-                colors[i3 + 1] = brightness;
-                colors[i3 + 2] = brightness * (0.9 + this.rand() * 0.1);
+                brightness = 0.34 + this.rand() * 0.34;
+                sizes[i] = 9 + this.rand() * 16;
             }
+
+            const colorIndex = this.rand() < 0.5
+                ? Math.floor(this.rand() * 3)
+                : 3 + Math.floor(this.rand() * (starPalette.length - 3));
+            const starColor = starPalette[colorIndex];
+            const tint = 0.9 + this.rand() * 0.18;
+            colors[i3] = Math.min(1.0, starColor.r * brightness * tint);
+            colors[i3 + 1] = Math.min(1.0, starColor.g * brightness * tint);
+            colors[i3 + 2] = Math.min(1.0, starColor.b * brightness * tint);
+
+            twinkles[i2] = this.rand() * Math.PI * 2;
+            twinkles[i2 + 1] = 0.75 + this.rand() * 1.9;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('twinkle', new THREE.BufferAttribute(twinkles, 2));
+        geometry.computeBoundingSphere();
 
         let material;
+        let starMaterialData = null;
         if (this.isWebGPU) {
-            const starMat = createStarfieldNodeMaterial();
-            material = starMat.material;
+            starMaterialData = createStarfieldNodeMaterial();
+            material = starMaterialData.material;
         } else {
+            const starSpriteCanvas = document.createElement('canvas');
+            starSpriteCanvas.width = 64;
+            starSpriteCanvas.height = 64;
+            const ctx = starSpriteCanvas.getContext('2d');
+            const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            gradient.addColorStop(0, 'rgba(255,255,255,1)');
+            gradient.addColorStop(0.25, 'rgba(255,255,255,0.9)');
+            gradient.addColorStop(0.65, 'rgba(255,255,255,0.18)');
+            gradient.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 64, 64);
+            const starSprite = new THREE.CanvasTexture(starSpriteCanvas);
+
             material = new THREE.PointsMaterial({
-                size: 2,
+                size: 24,
                 vertexColors: true,
                 transparent: true,
-                opacity: 0.8,
+                opacity: 0.88,
+                map: starSprite,
+                alphaMap: starSprite,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
                 sizeAttenuation: true,
+                fog: false,
             });
         }
 
         this.starfield = new THREE.Points(geometry, material);
+        this.starfield.userData.materialData = starMaterialData;
+        this.starfield.renderOrder = -140;
+        this.starfield.frustumCulled = false;
         this.scene.add(this.starfield);
         this.createNebulaBackdrop();
         console.log(`[ChromadelicHighway] Starfield: ${starCount} stars`);
@@ -2323,53 +2413,62 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
     createNebulaBackdrop() {
         this.nebulaPlanes = [];
-        const nebulaColors = [
-            { h: 0.8, s: 0.6, l: 0.3 },
-            { h: 0.6, s: 0.5, l: 0.25 },
-            { h: 0.0, s: 0.5, l: 0.3 },
-            { h: 0.15, s: 0.6, l: 0.25 },
-            { h: 0.45, s: 0.5, l: 0.2 },
-        ];
 
-        nebulaColors.forEach((col, i) => {
-            const size = 1500 + this.rand() * 1000;
-            const canvas = document.createElement('canvas');
-            canvas.width = 128;
-            canvas.height = 128;
-            const ctx = canvas.getContext('2d');
+        // Use fewer, larger planes for the rainbow nebula effect
+        // The texture handles color diversity, so we don't need the color palette loop
+        const planeCount = 3;
 
-            const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-            const color = new THREE.Color().setHSL(col.h, col.s, col.l);
-            gradient.addColorStop(0, `rgba(${Math.floor(color.r * 255)},${Math.floor(color.g * 255)},${Math.floor(color.b * 255)},0.1)`);
-            gradient.addColorStop(0.5, `rgba(${Math.floor(color.r * 255)},${Math.floor(color.g * 255)},${Math.floor(color.b * 255)},0.04)`);
-            gradient.addColorStop(1, 'rgba(0,0,0,0)');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, 128, 128);
+        // Load the rainbow nebula texture
+        const textureLoader = new THREE.TextureLoader();
+        const rainbowTexture = textureLoader.load('./textures/rainbow-nebula.png');
+        rainbowTexture.wrapS = THREE.RepeatWrapping;
+        rainbowTexture.wrapT = THREE.RepeatWrapping;
 
-            const texture = new THREE.CanvasTexture(canvas);
+        for (let i = 0; i < planeCount; i++) {
+            const size = 4500 + this.rand() * 2000; // Moderate size
+
+            // Fallback texture generation for WebGL or if texture fails (optional, keeping it simple for now)
+            // For WebGL fallback we might need a simple color or the same texture if compatible.
+            // Let's assume texture works for both, but shader differs.
+
             const geo = new THREE.PlaneGeometry(size, size);
-            const mat = new THREE.MeshBasicMaterial({
-                map: texture,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-            });
+
+            let mat;
+            let matData = null;
+
+            if (this.isWebGPU) {
+                matData = createNebulaNodeMaterial(rainbowTexture);
+                mat = matData.material;
+            } else {
+                mat = new THREE.MeshBasicMaterial({
+                    map: rainbowTexture,
+                    transparent: true,
+                    opacity: 0.45,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    side: THREE.DoubleSide,
+                });
+            }
 
             const plane = new THREE.Mesh(geo, mat);
             plane.position.set(
-                (this.rand() - 0.5) * 2500,
-                200 + this.rand() * 500,
-                -1500 - i * 400,
+                -2500 + (this.rand() - 0.5) * 2000, // Left but visible
+                500 + this.rand() * 700,
+                -3300 - i * 900, // Consistent visible depth
             );
+            // Random rotation for variety
+            plane.rotation.z = this.rand() * Math.PI * 2;
+
             plane.userData.basePosition = plane.position.clone();
-            plane.userData.driftAmplitude = 30 + this.rand() * 40;
-            plane.userData.driftSpeed = 0.04 + this.rand() * 0.05;
+            plane.userData.driftAmplitude = 40 + this.rand() * 40;
+            plane.userData.driftSpeed = 0.03 + this.rand() * 0.02;
             plane.userData.phase = this.rand() * Math.PI * 2;
             plane.userData.baseOpacity = mat.opacity ?? 1;
+            plane.userData.materialData = matData; // Store material data for uniform updates
             plane.lookAt(this.camera.position);
             this.nebulaPlanes.push(plane);
             this.scene.add(plane);
-        });
+        }
 
         this.createDepthHazeLayers();
     }
@@ -2436,6 +2535,13 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             plane.position.x = base.x + Math.sin(this.time * speed + phase) * amp;
             plane.position.y = base.y + Math.cos(this.time * speed * 0.8 + phase) * amp * 0.2;
             plane.lookAt(this.camera.position);
+
+            // Update nebula shader uniforms
+            if (plane.userData.materialData && plane.userData.materialData.uniforms) {
+                const { uTime, uPulse } = plane.userData.materialData.uniforms;
+                if (uTime) uTime.value = this.time;
+                if (uPulse) uPulse.value = this.pulseIntensity;
+            }
         });
 
         this.depthHazeLayers.forEach((haze) => {
@@ -2538,9 +2644,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         // Glow layers
         const glowConfigs = [
-            { size: planetSize * 2.4, opacity: 0.4, z: -30 },
-            { size: planetSize * 3.2, opacity: 0.25, z: -60 },
-            { size: planetSize * 4.2, opacity: 0.12, z: -100 },
+            { size: planetSize * 2.1, opacity: 0.32, z: -28 },
+            { size: planetSize * 2.85, opacity: 0.19, z: -56 },
+            { size: planetSize * 3.7, opacity: 0.095, z: -92 },
         ];
 
         glowConfigs.forEach((config, index) => {
@@ -2615,20 +2721,43 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             } else {
                 gasGiantMat = new THREE.MeshBasicMaterial({
                     map: jupiterTexture,
-                    transparent: true,
-                    opacity: 0.8,
                 });
             }
 
             this.neonGasGiant = new THREE.Mesh(gasGiantGeo, gasGiantMat);
-            this.neonGasGiant.position.set(-1760, 560, -3340);
+            this.neonGasGiant.position.set(-2520, 560, -3340);
             this.neonGasGiant.renderOrder = -68;
             this.neonGasGiant.scale.setScalar(0.88);
             this.neonGasGiant.userData.materialData = gasGiantMatData;
             this.neonGasGiant.userData.basePosition = this.neonGasGiant.position.clone();
+            this.neonGasGiant.userData.baseScale = 0.88;
+            this.neonGasGiant.userData.approachProfile = {
+                start: new THREE.Vector3(-2520, 560, -3340),
+                close: new THREE.Vector3(-1140, 250, -840),
+                end: new THREE.Vector3(-1860, 430, 520),
+                phaseOffset: 36,
+                approachEnd: 114,
+                flybyEnd: 154,
+                arcAmplitudeX: 74,
+                arcAmplitudeY: 34,
+                arcFrequencyX: 0.5,
+                arcFrequencyY: 0.82,
+                arcPhaseY: 1.4,
+                corridorCenterX: -1200,
+                corridorHalfWidth: 980,
+            };
+            this.neonGasGiant.userData.scaleProfile = {
+                minScale: 0.62,
+                maxScale: 1.26,
+                nearDistance: 780,
+                farDistance: 5200,
+                glowScale: 0.22,
+                pulseScale: 0.04,
+                paceScale: 0.06,
+            };
             this.neonGasGiant.userData.driftPhase = this.rand() * Math.PI * 2;
             this.neonGasGiant.userData.driftSpeed = 0.03;
-            this.neonGasGiant.userData.driftAmplitudeX = 90;
+            this.neonGasGiant.userData.driftAmplitudeX = 52;
             this.neonGasGiant.userData.driftAmplitudeY = 22;
             this.scene.add(this.neonGasGiant);
 
@@ -2654,8 +2783,6 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             } else {
                 moonMat = new THREE.MeshBasicMaterial({
                     map: neptuneTexture,
-                    transparent: true,
-                    opacity: 0.85,
                 });
             }
 
@@ -2663,11 +2790,34 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.crystalMoon.position.copy(this.planetStartPos);
             this.crystalMoon.renderOrder = -45;
             this.crystalMoon.userData.materialData = moonMatData;
-            this.crystalMoon.userData.orbitRadius = 420;
+            this.crystalMoon.userData.baseScale = 1.0;
+            this.crystalMoon.userData.orbitRadius = 850;
             this.crystalMoon.userData.orbitSpeed = 0.052;
             this.crystalMoon.userData.verticalScale = 0.18;
             this.crystalMoon.userData.depthScale = 0.62;
+            this.crystalMoon.userData.scaleProfile = {
+                minScale: 0.64,
+                maxScale: 1.34,
+                nearDistance: 520,
+                farDistance: 4200,
+                glowScale: 0.16,
+                pulseScale: 0.05,
+                paceScale: 0.06,
+            };
             this.scene.add(this.crystalMoon);
+            this.createPlanetGlowLayers(
+                this.crystalMoon,
+                moonSize,
+                this.crystalMoonGlows,
+                'rgba(120, 190, 255,',
+                {
+                    renderOrderBase: -58,
+                    glowConfigs: [
+                        { size: moonSize * 2.25, opacity: 0.19, z: -16 },
+                        { size: moonSize * 3.2, opacity: 0.095, z: -30 },
+                    ],
+                },
+            );
         }
 
         // Binary Dwarf Stars - far background
@@ -2707,6 +2857,16 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 star.userData.baseCenter = new THREE.Vector3(-1274, 760, -4200);
                 star.userData.orbitRadius = 46;
                 star.userData.orbitSpeed = 0.085;
+                star.userData.baseScale = 1.0;
+                star.userData.scaleProfile = {
+                    minScale: 0.7,
+                    maxScale: 1.08,
+                    nearDistance: 1200,
+                    farDistance: 6800,
+                    glowScale: 0.1,
+                    pulseScale: 0.02,
+                    paceScale: 0.02,
+                };
                 this.binaryStars.push(star);
                 this.scene.add(star);
             });
@@ -2730,19 +2890,43 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             } else {
                 venusMat = new THREE.MeshBasicMaterial({
                     map: venusTexture,
-                    transparent: true,
-                    opacity: 0.9,
                 });
             }
 
             this.venusOrb = new THREE.Mesh(venusGeo, venusMat);
-            this.venusOrb.position.set(1400, -200, -2800);
+            this.venusOrb = new THREE.Mesh(venusGeo, venusMat);
+            this.venusOrb.position.set(-1500, 800, -4200);
             this.venusOrb.renderOrder = -66;
             this.venusOrb.userData.materialData = venusMatData;
             this.venusOrb.userData.basePosition = this.venusOrb.position.clone();
+            this.venusOrb.userData.baseScale = 1.2;
+            this.venusOrb.userData.approachProfile = {
+                start: new THREE.Vector3(-1500, 800, -4200),
+                close: new THREE.Vector3(-1800, 900, -3800),
+                end: new THREE.Vector3(-1200, 700, -4000),
+                phaseOffset: 86,
+                approachEnd: 118,
+                flybyEnd: 160,
+                arcAmplitudeX: 70,
+                arcAmplitudeY: 42,
+                arcFrequencyX: 0.58,
+                arcFrequencyY: 0.9,
+                arcPhaseY: 0.9,
+                corridorCenterX: -1260,
+                corridorHalfWidth: 980,
+            };
+            this.venusOrb.userData.scaleProfile = {
+                minScale: 0.58,
+                maxScale: 1.24,
+                nearDistance: 760,
+                farDistance: 5000,
+                glowScale: 0.2,
+                pulseScale: 0.04,
+                paceScale: 0.05,
+            };
             this.venusOrb.userData.driftPhase = this.rand() * Math.PI * 2;
             this.venusOrb.userData.driftSpeed = 0.02;
-            this.venusOrb.userData.driftAmplitudeX = 60;
+            this.venusOrb.userData.driftAmplitudeX = 40;
             this.venusOrb.userData.driftAmplitudeY = 30;
             this.scene.add(this.venusOrb);
 
@@ -2753,11 +2937,12 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         console.log(`[ChromadelicHighway] ${planetCount - 1} additional celestial bodies created`);
     }
 
-    createPlanetGlowLayers(planet, planetSize, glowArray, colorPrefix) {
-        const glowConfigs = [
-            { size: planetSize * 2.2, opacity: 0.3, z: -25 },
-            { size: planetSize * 3.0, opacity: 0.15, z: -50 },
+    createPlanetGlowLayers(planet, planetSize, glowArray, colorPrefix, options = {}) {
+        const glowConfigs = options.glowConfigs || [
+            { size: planetSize * 1.95, opacity: 0.23, z: -22 },
+            { size: planetSize * 2.65, opacity: 0.11, z: -44 },
         ];
+        const renderOrderBase = options.renderOrderBase ?? -65;
 
         glowConfigs.forEach((config, index) => {
             const canvas = document.createElement('canvas');
@@ -2784,7 +2969,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             const glow = new THREE.Mesh(glowGeo, glowMat);
             glow.position.copy(planet.position);
             glow.position.z += config.z;
-            glow.renderOrder = -65 - index;
+            glow.renderOrder = renderOrderBase - index;
             glow.userData.baseOpacity = config.opacity;
             glow.userData.zOffset = config.z;
             glowArray.push(glow);
@@ -3041,45 +3226,30 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     }
 
     spawnShootingStar() {
-        const starBudget = this.performanceBudget?.maxActiveShootingStars ?? 4;
+        const starBudget = this.performanceBudget?.maxActiveShootingStars ?? 8; // Increased budget
         if (this.shootingStars.length >= starBudget) return;
 
-        const startX = (this.rand() - 0.5) * 2500;
-        const startY = 100 + this.rand() * 600;
-        const startZ = -800 - this.rand() * 1500;
+        const startX = (this.rand() - 0.5) * 3000;
+        const startY = 200 + this.rand() * 600;
+        const startZ = -1200 - this.rand() * 1500;
 
         const angle = this.rand() * Math.PI * 2;
         const dirX = Math.cos(angle) * (0.5 + this.rand() * 0.5);
         const dirY = -0.2 - this.rand() * 0.4;
         const dirZ = 0.2 + this.rand() * 0.3;
 
-        const trailLength = 350 + this.rand() * 200;
+        const trailLength = 400 + this.rand() * 250;
         const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
-        const particleCount = Math.max(32, Math.floor(80 * effectScale));
+        const particleCount = Math.max(48, Math.floor(100 * effectScale));
 
         const positions = new Float32Array(particleCount * 3);
         const colors = new Float32Array(particleCount * 3);
         const sizes = new Float32Array(particleCount);
 
-        const fireColors = [
-            { r: 1.0, g: 1.0, b: 1.0 },
-            { r: 1.0, g: 1.0, b: 0.8 },
-            { r: 1.0, g: 0.9, b: 0.4 },
-            { r: 1.0, g: 0.7, b: 0.1 },
-            { r: 1.0, g: 0.4, b: 0.1 },
-            { r: 1.0, g: 0.2, b: 0.1 },
-            { r: 0.9, g: 0.1, b: 0.2 },
-            { r: 0.8, g: 0.1, b: 0.4 },
-            { r: 0.6, g: 0.1, b: 0.7 },
-            { r: 0.4, g: 0.2, b: 0.9 },
-            { r: 0.3, g: 0.3, b: 1.0 },
-            { r: 0.2, g: 0.5, b: 0.9 },
-        ];
-
         for (let i = 0; i < particleCount; i++) {
             const t = i / (particleCount - 1);
             const trailOffset = -t * trailLength;
-            const spread = t * 12;
+            const spread = t * 14;
             const offsetX = (this.rand() - 0.5) * spread;
             const offsetY = (this.rand() - 0.5) * spread;
 
@@ -3087,17 +3257,24 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             positions[i * 3 + 1] = startY + dirY * trailOffset + offsetY;
             positions[i * 3 + 2] = startZ + dirZ * trailOffset;
 
-            const colorIdx = Math.min(Math.floor(t * (fireColors.length - 1)), fireColors.length - 2);
-            const colorT = (t * (fireColors.length - 1)) - colorIdx;
-            const c1 = fireColors[colorIdx];
-            const c2 = fireColors[colorIdx + 1];
+            // Vivid Rainbow Gradient (Full Spectrum along the tail)
+            // t goes from 0 (head) to 1 (tail)
+            // We want the head to be bright/almost white, and the tail to be a full rainbow.
 
-            colors[i * 3] = c1.r + (c2.r - c1.r) * colorT;
-            colors[i * 3 + 1] = c1.g + (c2.g - c1.g) * colorT;
-            colors[i * 3 + 2] = c1.b + (c2.b - c1.b) * colorT;
+            const hue = (t * 2.5 + this.rand() * 0.2) % 1.0; // Cycle hue along the tail
+            const saturation = 1.0; // Max saturation for vividness
+            // Reduced lightness: Head (0.6) is bright but colorful, Tail (0.5) is pure vivid color.
+            // Previously went up to 0.9 which caused the "white" look.
+            const lightness = 0.5 + 0.1 * Math.pow(1.0 - t, 4.0);
 
-            const baseSize = 30 + this.rand() * 20;
-            sizes[i] = baseSize * (1 - t * 0.6);
+            const color = new THREE.Color().setHSL(hue, saturation, lightness);
+
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+
+            const baseSize = 35 + this.rand() * 25;
+            sizes[i] = baseSize * (1 - t * 0.5);
         }
 
         const geometry = new THREE.BufferGeometry();
@@ -3185,13 +3362,14 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     updateShootingStars(delta) {
         this.shootingStarTimer += delta;
         if (this.shootingStarTimer >= this.nextShootingStarDelay) {
-            if (this.shootingStars.length < (this.performanceBudget?.maxActiveShootingStars ?? 4)) {
+            if (this.shootingStars.length < (this.performanceBudget?.maxActiveShootingStars ?? 8)) {
                 this.spawnShootingStar();
             }
             this.shootingStarTimer = 0;
             const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
             const delayScale = THREE.MathUtils.clamp(1.42 - effectScale * 0.4, 1.0, 1.4);
-            this.nextShootingStarDelay = (4 + this.rand() * 8) * delayScale;
+            // Much more frequent shooting stars! (0.5s - 2.5s base delay)
+            this.nextShootingStarDelay = (0.5 + this.rand() * 2.0) * delayScale;
         }
 
         for (let i = this.shootingStars.length - 1; i >= 0; i--) {
@@ -3307,9 +3485,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                     this.renderer, this.scene, this.camera,
                     {
                         useMRT,
-                        bloomStrength: this.qualityPreset.bloomStrength,
+                        bloomStrength: this.getBloomStrength(1),
                         bloomRadius: this.qualityPreset.bloomRadius,
-                        bloomThreshold: this.qualityPreset.bloomThreshold,
+                        bloomThreshold: this.getBloomThreshold(),
                         chromaticStrength: 0.0015,
                         vignetteOffset: 1.0,
                         vignetteDarkness: 0.5,
@@ -3335,9 +3513,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 if (this.qualityPreset.enableBloom) {
                     this.bloomPass = new UnrealBloomPass(
                         new THREE.Vector2(width, height),
-                        this.qualityPreset.bloomStrength,
+                        this.getBloomStrength(1),
                         this.qualityPreset.bloomRadius,
-                        this.qualityPreset.bloomThreshold,
+                        this.getBloomThreshold(),
                     );
                     this.composer.addPass(this.bloomPass);
                 }
@@ -3509,19 +3687,26 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
                 // Update uniforms (both WebGPU TSL and WebGL ShaderMaterial)
                 const md = ring.userData.materialData;
+                const ringPulse = this.pulseIntensity + this.ringGlow * RING_GLOW_TUNING.pulseGlowScale;
+                const ringGlowStrength = this.ringGlow * RING_GLOW_TUNING.uniformGlowScale;
+                const ringLightness = RING_GLOW_TUNING.baseLightness
+                    + this.ringGlow * RING_GLOW_TUNING.lightnessGlowScale;
+                const color = new THREE.Color().setHSL(
+                    ring.userData.hue,
+                    RING_GLOW_TUNING.saturation,
+                    ringLightness,
+                );
                 if (md) {
                     // WebGPU path
                     md.uniforms.uTime.value = this.time;
-                    md.uniforms.uPulse.value = this.pulseIntensity + this.ringGlow;
-                    md.uniforms.uGlow.value = this.ringGlow;
-                    const color = new THREE.Color().setHSL(ring.userData.hue, 0.95, 0.55 + this.ringGlow * 0.2);
+                    md.uniforms.uPulse.value = ringPulse;
+                    md.uniforms.uGlow.value = ringGlowStrength;
                     md.uniforms.uColor.value = color;
                 } else if (ring.material.uniforms) {
                     // WebGL path
                     ring.material.uniforms.uTime.value = this.time;
-                    ring.material.uniforms.uPulse.value = this.pulseIntensity + this.ringGlow;
-                    ring.material.uniforms.uGlow.value = this.ringGlow;
-                    const color = new THREE.Color().setHSL(ring.userData.hue, 0.95, 0.55 + this.ringGlow * 0.2);
+                    ring.material.uniforms.uPulse.value = ringPulse;
+                    ring.material.uniforms.uGlow.value = ringGlowStrength;
                     ring.material.uniforms.uColor.value = color;
                 }
             });
@@ -3556,15 +3741,25 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             // Animate ambient particles
             this.animateAmbientParticles(delta);
 
+            // Subtle starfield drift + twinkle uniform (WebGPU) for desktop readability.
+            if (this.starfield) {
+                this.starfield.rotation.y += delta * 0.00035;
+                this.starfield.rotation.x = Math.sin(this.time * 0.012) * 0.01;
+                this.starfield.position.x = 0;
+                this.starfield.position.y = 0;
+                const starMd = this.starfield.userData?.materialData;
+                if (starMd?.uniforms?.uTime) {
+                    starMd.uniforms.uTime.value = this.time;
+                }
+            }
+
             // Camera sway
             this.camera.position.x = Math.sin(this.time * 0.25) * 4;
             this.camera.position.y = 55 + Math.sin(this.time * 0.2) * 3;
 
             // Update bloom
             const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
-            const bloomStrength = this.qualityPreset.bloomStrength
-                * effectScale
-                * (1 + this.bloomBoost * effectScale);
+            const bloomStrength = this.getBloomStrength(effectScale);
             if (this.isWebGPU && this.postProcessing) {
                 this.postProcessing.update({
                     bloomStrength,
@@ -3588,6 +3783,99 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         this.animationFrameId = requestAnimationFrame(animate);
         this.registerAnimation(this.animationFrameId);
+    }
+
+    sampleCelestialJourney(profile) {
+        if (!profile?.start || !profile?.close || !profile?.end) return null;
+
+        const smoothstepFn = (t) => t * t * (3 - 2 * t);
+        const duration = Math.max(1, profile.duration ?? this.journeyDuration);
+        const phaseOffset = profile.phaseOffset ?? 0;
+        const localTime = ((this.journeyTime + phaseOffset) % duration + duration) % duration;
+        const approachEnd = THREE.MathUtils.clamp(profile.approachEnd ?? 120, 1, duration - 1);
+        const flybyEnd = THREE.MathUtils.clamp(profile.flybyEnd ?? 160, approachEnd + 1, duration - 0.001);
+
+        const targetPos = new THREE.Vector3();
+        let glowBoost = 0;
+
+        if (localTime < approachEnd) {
+            const t = smoothstepFn(localTime / approachEnd);
+            targetPos.lerpVectors(profile.start, profile.close, t);
+            glowBoost = t * 0.5;
+        } else if (localTime < flybyEnd) {
+            const phaseTime = (localTime - approachEnd) / (flybyEnd - approachEnd);
+            const t = smoothstepFn(phaseTime);
+            targetPos.lerpVectors(profile.close, profile.end, t);
+            glowBoost = 0.5 - t * 0.3;
+        } else {
+            const phaseTime = (localTime - flybyEnd) / (duration - flybyEnd);
+            const t = smoothstepFn(phaseTime);
+            targetPos.lerpVectors(profile.end, profile.start, t);
+            glowBoost = 0.2 * (1 - t);
+        }
+
+        const arcPhase = (localTime / duration) * Math.PI * 2;
+        targetPos.x += Math.sin(
+            arcPhase * (profile.arcFrequencyX ?? 0.55) + (profile.arcPhaseX ?? 0),
+        ) * (profile.arcAmplitudeX ?? 0);
+        targetPos.y += Math.sin(
+            arcPhase * (profile.arcFrequencyY ?? 1.0) + (profile.arcPhaseY ?? 1.1),
+        ) * (profile.arcAmplitudeY ?? 0);
+
+        if (profile.corridorHalfWidth !== undefined) {
+            const centerX = profile.corridorCenterX ?? this.celestialCorridor.centerX;
+            targetPos.x = THREE.MathUtils.clamp(
+                targetPos.x,
+                centerX - profile.corridorHalfWidth,
+                centerX + profile.corridorHalfWidth,
+            );
+        }
+
+        return { targetPos, glowBoost };
+    }
+
+    computeCelestialScale(position, scaleProfile = {}, glowBoost = 0) {
+        const nearDistance = scaleProfile.nearDistance ?? 700;
+        const farDistance = Math.max(nearDistance + 1, scaleProfile.farDistance ?? 5200);
+        const minScale = scaleProfile.minScale ?? 0.62;
+        const maxScale = scaleProfile.maxScale ?? 1.24;
+        const distance = this.camera
+            ? this.camera.position.distanceTo(position)
+            : farDistance;
+        const distanceMix = THREE.MathUtils.clamp(
+            (farDistance - distance) / (farDistance - nearDistance),
+            0,
+            1,
+        );
+        const distanceScale = THREE.MathUtils.lerp(minScale, maxScale, distanceMix);
+        const pulseScale = 1 + this.pulseIntensity * (scaleProfile.pulseScale ?? 0.05);
+        const glowScale = 1 + glowBoost * (scaleProfile.glowScale ?? 0.2);
+        const paceScale = 1 + THREE.MathUtils.clamp(
+            (this.playPaceMultiplier - 1.0) * (scaleProfile.paceScale ?? 0.06),
+            -0.05,
+            0.1,
+        );
+
+        return distanceScale * pulseScale * glowScale * paceScale;
+    }
+
+    syncCelestialGlowLayers(glowLayers, sourceObject, { readabilityScale = 1, glowBoost = 0 } = {}) {
+        if (!sourceObject || !Array.isArray(glowLayers) || glowLayers.length === 0) return;
+        const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
+        const sourceScale = sourceObject.scale?.x ?? 1;
+
+        glowLayers.forEach((glow) => {
+            glow.position.x = sourceObject.position.x;
+            glow.position.y = sourceObject.position.y;
+            glow.position.z = sourceObject.position.z + (glow.userData.zOffset ?? 0);
+            glow.scale.setScalar(sourceScale);
+            if (glow.material?.opacity !== undefined) {
+                glow.material.opacity = glow.userData.baseOpacity
+                    * readabilityScale
+                    * effectScale
+                    * (1 + this.pulseIntensity * 0.22 + glowBoost * 0.35);
+            }
+        });
     }
 
     animatePrimaryPlanet(delta) {
@@ -3666,37 +3954,46 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             1.0,
         );
 
-        // Neon Gas Giant - slow rotation and parallax
+        // Neon Gas Giant - hero-style approach path with distance scaling.
         if (this.neonGasGiant) {
             this.neonGasGiant.rotation.y += 0.0002;
-            const base = this.neonGasGiant.userData.basePosition;
-            if (base) {
-                const phase = this.neonGasGiant.userData.driftPhase || 0;
-                const speed = this.neonGasGiant.userData.driftSpeed || 0.03;
-                const ampX = this.neonGasGiant.userData.driftAmplitudeX || 90;
-                const ampY = this.neonGasGiant.userData.driftAmplitudeY || 22;
-                this.neonGasGiant.position.x = base.x + Math.sin(this.time * speed + phase) * ampX;
-                this.neonGasGiant.position.y = base.y + Math.cos(this.time * speed * 0.7 + phase) * ampY;
-                this.neonGasGiant.position.z = base.z + Math.sin(this.time * speed * 0.5 + phase) * 80;
+            let glowBoost = 0;
+            const pathSample = this.sampleCelestialJourney(this.neonGasGiant.userData.approachProfile);
+            if (pathSample) {
+                this.neonGasGiant.position.copy(pathSample.targetPos);
+                glowBoost = pathSample.glowBoost * 0.72;
+            } else if (this.neonGasGiant.userData.basePosition) {
+                this.neonGasGiant.position.copy(this.neonGasGiant.userData.basePosition);
             }
+
+            const phase = this.neonGasGiant.userData.driftPhase || 0;
+            const speed = this.neonGasGiant.userData.driftSpeed || 0.03;
+            const ampX = this.neonGasGiant.userData.driftAmplitudeX || 90;
+            const ampY = this.neonGasGiant.userData.driftAmplitudeY || 22;
+            this.neonGasGiant.position.x += Math.sin(this.time * speed + phase) * ampX * 0.28;
+            this.neonGasGiant.position.y += Math.cos(this.time * speed * 0.7 + phase) * ampY * 0.34;
+            this.neonGasGiant.position.z += Math.sin(this.time * speed * 0.5 + phase) * 24;
+
+            const baseScale = this.neonGasGiant.userData.baseScale ?? 1;
+            const dynamicScale = this.computeCelestialScale(
+                this.neonGasGiant.position,
+                this.neonGasGiant.userData.scaleProfile,
+                glowBoost,
+            );
+            this.neonGasGiant.scale.setScalar(baseScale * dynamicScale);
+
             const md = this.neonGasGiant.userData.materialData;
             if (md) {
                 md.uniforms.uTime.value = this.time;
-                md.uniforms.uPulse.value = this.pulseIntensity * 0.24 * readabilityScale;
+                md.uniforms.uPulse.value = this.pulseIntensity * 0.24 * readabilityScale + glowBoost * 0.45;
             }
-
-            // Sync gas giant glows
-            this.neonGasGiantGlows.forEach((glow) => {
-                glow.position.x = this.neonGasGiant.position.x;
-                glow.position.y = this.neonGasGiant.position.y;
-                glow.position.z = this.neonGasGiant.position.z + glow.userData.zOffset;
-                if (glow.material?.opacity !== undefined) {
-                    glow.material.opacity = glow.userData.baseOpacity * readabilityScale * effectScale;
-                }
+            this.syncCelestialGlowLayers(this.neonGasGiantGlows, this.neonGasGiant, {
+                readabilityScale,
+                glowBoost,
             });
         }
 
-        // Crystal Moon - orbits primary planet
+        // Crystal Moon - stays in orbit but inherits dynamic distance scaling and glow sync.
         if (this.crystalMoon && this.planet) {
             const orbitRadius = this.crystalMoon.userData.orbitRadius;
             const orbitSpeed = this.crystalMoon.userData.orbitSpeed;
@@ -3718,9 +4015,26 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 md.uniforms.uTime.value = this.time;
                 md.uniforms.uPulse.value = this.pulseIntensity * 0.35 * readabilityScale;
             }
+
+            const moonGlowBoost = THREE.MathUtils.clamp(
+                this.pulseIntensity * 0.24 + this.ringGlow * 0.08,
+                0,
+                0.45,
+            );
+            const baseScale = this.crystalMoon.userData.baseScale ?? 1;
+            const dynamicScale = this.computeCelestialScale(
+                this.crystalMoon.position,
+                this.crystalMoon.userData.scaleProfile,
+                moonGlowBoost,
+            );
+            this.crystalMoon.scale.setScalar(baseScale * dynamicScale);
+            this.syncCelestialGlowLayers(this.crystalMoonGlows, this.crystalMoon, {
+                readabilityScale,
+                glowBoost: moonGlowBoost,
+            });
         }
 
-        // Binary Stars - orbit each other
+        // Binary stars - keep orbit but add subtle distance-aware scaling.
         if (this.binaryStars.length === 2) {
             this.binaryStars.forEach((star) => {
                 const baseCenter = star.userData.baseCenter || new THREE.Vector3(-1274, 760, -4200);
@@ -3736,38 +4050,54 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                     md.uniforms.uTime.value = this.time;
                 }
 
+                const starScale = this.computeCelestialScale(
+                    star.position,
+                    star.userData.scaleProfile,
+                    0.05,
+                );
+                star.scale.setScalar((star.userData.baseScale ?? 1) * starScale);
+
                 if (star.material?.opacity !== undefined) {
                     star.material.opacity = 0.7 * readabilityScale * effectScale;
                 }
             });
         }
 
-        // Venus Atmospheric Orb - slow drift
+        // Venus Atmospheric Orb - hero-style approach path with distance scaling.
         if (this.venusOrb) {
             this.venusOrb.rotation.y += 0.00015;
-            const base = this.venusOrb.userData.basePosition;
-            if (base) {
-                const phase = this.venusOrb.userData.driftPhase || 0;
-                const speed = this.venusOrb.userData.driftSpeed || 0.02;
-                const ampX = this.venusOrb.userData.driftAmplitudeX || 60;
-                const ampY = this.venusOrb.userData.driftAmplitudeY || 30;
-                this.venusOrb.position.x = base.x + Math.sin(this.time * speed + phase) * ampX;
-                this.venusOrb.position.y = base.y + Math.cos(this.time * speed * 0.7 + phase) * ampY;
+            let glowBoost = 0;
+            const pathSample = this.sampleCelestialJourney(this.venusOrb.userData.approachProfile);
+            if (pathSample) {
+                this.venusOrb.position.copy(pathSample.targetPos);
+                glowBoost = pathSample.glowBoost * 0.58;
+            } else if (this.venusOrb.userData.basePosition) {
+                this.venusOrb.position.copy(this.venusOrb.userData.basePosition);
             }
+
+            const phase = this.venusOrb.userData.driftPhase || 0;
+            const speed = this.venusOrb.userData.driftSpeed || 0.02;
+            const ampX = this.venusOrb.userData.driftAmplitudeX || 60;
+            const ampY = this.venusOrb.userData.driftAmplitudeY || 30;
+            this.venusOrb.position.x += Math.sin(this.time * speed + phase) * ampX * 0.34;
+            this.venusOrb.position.y += Math.cos(this.time * speed * 0.7 + phase) * ampY * 0.34;
+
+            const baseScale = this.venusOrb.userData.baseScale ?? 1;
+            const dynamicScale = this.computeCelestialScale(
+                this.venusOrb.position,
+                this.venusOrb.userData.scaleProfile,
+                glowBoost,
+            );
+            this.venusOrb.scale.setScalar(baseScale * dynamicScale);
+
             const md = this.venusOrb.userData.materialData;
             if (md) {
                 md.uniforms.uTime.value = this.time;
-                md.uniforms.uPulse.value = this.pulseIntensity * 0.18 * readabilityScale;
+                md.uniforms.uPulse.value = this.pulseIntensity * 0.18 * readabilityScale + glowBoost * 0.4;
             }
-
-            // Sync venus glow layers
-            this.venusOrbGlows.forEach((glow) => {
-                glow.position.x = this.venusOrb.position.x;
-                glow.position.y = this.venusOrb.position.y;
-                glow.position.z = this.venusOrb.position.z + glow.userData.zOffset;
-                if (glow.material?.opacity !== undefined) {
-                    glow.material.opacity = glow.userData.baseOpacity * readabilityScale * effectScale;
-                }
+            this.syncCelestialGlowLayers(this.venusOrbGlows, this.venusOrb, {
+                readabilityScale,
+                glowBoost,
             });
         }
     }

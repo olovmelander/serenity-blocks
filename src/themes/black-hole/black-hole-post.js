@@ -50,14 +50,14 @@ export class BlackHolePost {
             originalBloomSetSize(width * this.bloomDownsample, height * this.bloomDownsample);
         };
 
-        this.uChromaticStrength = uniform(params.chromaticStrength ?? 0.002);
+        this.uChromaticStrength = uniform(params.chromaticStrength ?? 0.0006);
         this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.2);
         this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.5);
         this.uExposure = uniform(params.exposure ?? 1.05);
         this.uContrast = uniform(params.contrast ?? 1.04);
         this.uSaturation = uniform(params.saturation ?? 1.08);
         this.uTintStrength = uniform(params.tintStrength ?? 0.22);
-        this.uDitherStrength = uniform(params.ditherStrength ?? 0.0025);
+        this.uDitherStrength = uniform(params.ditherStrength ?? 0.0);
         this.uTint = uniform(new THREE.Color(1.04, 0.98, 1.08));
 
         const uv = viewportUV;

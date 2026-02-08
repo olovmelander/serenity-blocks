@@ -173,7 +173,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
         this.targetWindStrength = 0.5;
 
-        // ARRAKIS COLOR PALETTE - Harsh Desert Tones
+        // ARRAKIS COLOR PALETTE - Dusk desert tones
         this.palette = {
             // Sky - harsh orange/amber sunset tones
             skyTop: new THREE.Color(0x1c0504), // Deep red-brown (richer)
@@ -181,13 +181,13 @@ export default class ShiftingSandsTheme extends BaseTheme {
             skyBottom: new THREE.Color(0x6b1b0e), // Warmer terracotta
             skyHorizon: new THREE.Color(0xa13a1f), // Red-orange haze
 
-            // Sand - golden Arrakis tones
-            sandA: new THREE.Color(0x342014), // Deep shadow (slightly lighter)
-            sandB: new THREE.Color(0xbc7f36), // Warm dune midtone (slightly lighter)
-            sandC: new THREE.Color(0xe1ae63), // Sunlit highlights (slightly lighter)
+            // Sand - evening Arrakis tones with stronger shadow separation
+            sandA: new THREE.Color(0x22140b), // Deep umber shadow
+            sandB: new THREE.Color(0x8d582b), // Burnt dune midtone
+            sandC: new THREE.Color(0xbe8348), // Sunset-lit crest highlight
 
             // Sand Smoke
-            sandSmoke: new THREE.Color(0xc08a45),
+            sandSmoke: new THREE.Color(0x9f6f3b),
 
             // Twin Moons
             moonPrimary: new THREE.Color(0xffeedd), // Warm white (primary moon)
@@ -205,9 +205,9 @@ export default class ShiftingSandsTheme extends BaseTheme {
             rockMid: new THREE.Color(0x5a4020),
 
             // Atmosphere
-            fog: new THREE.Color(0x4a1d12), // Warmer red-brown fog
-            haze: new THREE.Color(0x9a5b2a), // Redder haze
-            dustStorm: new THREE.Color(0xc4a35a), // Storm color
+            fog: new THREE.Color(0x34160f), // Deeper red-brown fog
+            haze: new THREE.Color(0x734220), // Dimmer evening haze
+            dustStorm: new THREE.Color(0x9e7644), // Dusk storm color
         };
 
         // Quality presets - Arrakis elements (OPTIMIZED particle counts)
@@ -218,7 +218,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 64,
                 spiceParticleCount: 400,
                 dustParticleCount: 150,
-                sandSmokeCount: 20,
+                sandSmokeCount: 50,
                 enableHeatShimmer: false,
                 enableComboEffects: false,
             },
@@ -227,7 +227,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 96,
                 spiceParticleCount: 800,
                 dustParticleCount: 300,
-                sandSmokeCount: 35,
+                sandSmokeCount: 100,
                 enableHeatShimmer: false,
                 enableComboEffects: true,
             },
@@ -236,7 +236,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 128,
                 spiceParticleCount: 1500,
                 dustParticleCount: 450,
-                sandSmokeCount: 60,
+                sandSmokeCount: 200,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -245,7 +245,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 196,
                 spiceParticleCount: 2000,
                 dustParticleCount: 600,
-                sandSmokeCount: 100,
+                sandSmokeCount: 400,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -254,7 +254,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 256,
                 spiceParticleCount: 3000,
                 dustParticleCount: 800,
-                sandSmokeCount: 150,
+                sandSmokeCount: 600,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -263,7 +263,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 350,
                 spiceParticleCount: 5000,
                 dustParticleCount: 1000,
-                sandSmokeCount: 250,
+                sandSmokeCount: 1000,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -399,6 +399,8 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setClearColor(this.palette.skyTop);
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 0.86;
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         container.appendChild(this.renderer.domElement);
 
@@ -629,7 +631,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
             fogColor: this.palette.fog,
             fogNear: 200,
             fogFar: 600,
-            moonDirection: new THREE.Vector3(0.5, 0.6, -0.3).normalize(),
+            moonDirection: new THREE.Vector3(0.8, 0.26, -0.52).normalize(),
             wormTrailCompute: this.wormTrailCompute,
             isWebGPU: this.isWebGPU,
         });
@@ -750,7 +752,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 color: this.palette.sandSmoke,
                 isWebGPU: true,
                 sandSmokeCompute: this.sandSmokeCompute,
-                opacity: 0.22,
+                opacity: 0.45,
             });
 
             this.sandSmoke = new THREE.InstancedMesh(geometry, this.sandSmokeMaterial.material, count);
@@ -787,7 +789,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 color: this.palette.sandSmoke,
                 isWebGPU: false,
                 sandSmokeCompute: null,
-                opacity: 0.22,
+                opacity: 0.45,
             });
 
             this.sandSmoke = new THREE.Points(geometry, this.sandSmokeMaterial.material);
@@ -847,9 +849,9 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
         this.postProcessing = new ShiftingSandsPost(this.renderer, this.scene, this.camera, {
             heatShimmerStrength: this.uniforms.heatShimmerStrength.value,
-            bloomStrength: 0.4,
-            bloomRadius: 0.3,
-            bloomThreshold: 0.2,
+            bloomStrength: 0.26,
+            bloomRadius: 0.24,
+            bloomThreshold: 0.34,
             godRaysIntensity: this.isWebGPU ? 0.35 : 0.0, // Phase 9: WebGPU-only enhancement
             moon1: new THREE.Vector2(0.3, 0.8),
             moon2: new THREE.Vector2(0.7, 0.7),
@@ -1053,7 +1055,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
             }
 
             if (this.sandSmokeMaterial) {
-                const smokeOpacity = 0.16 + this.uniforms.dustDensity.value * 0.2;
+                const smokeOpacity = 0.1 + this.uniforms.dustDensity.value * 0.14;
                 this.sandSmokeMaterial.update(elapsed, smokeOpacity);
             }
 

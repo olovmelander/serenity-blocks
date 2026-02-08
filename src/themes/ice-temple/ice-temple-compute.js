@@ -198,6 +198,7 @@ export class IceTempleShardBurstCompute {
         this.count = capacity;
         this.random = typeof randomFn === 'function' ? randomFn : Math.random;
         this.spawnCursor = 0;
+        this.pendingUpload = false;
 
         this.positionData = new Float32Array(capacity * 4);
         this.velocityData = new Float32Array(capacity * 4);
@@ -245,6 +246,7 @@ export class IceTempleShardBurstCompute {
         this.velocityBuffer.needsUpdate = true;
         this.lifeBuffer.needsUpdate = true;
         this.miscBuffer.needsUpdate = true;
+        this.pendingUpload = false;
     }
 
     createComputeNode() {
@@ -295,23 +297,83 @@ export class IceTempleShardBurstCompute {
         return this.computeNode;
     }
 
-    spawnBurst(count, originX = 0, originZ = 0) {
+    spawnBurst(count, originX = 0, originZ = 0, options = {}) {
         const spawnCount = Math.max(1, Math.min(this.count, Math.floor(count)));
+        const style = options.style || 'default';
+        const spread = Number.isFinite(options.spread) ? Math.max(0.05, options.spread) : 1.5;
+        const directionX = Number.isFinite(options.directionX) ? options.directionX : 0;
+        const directionZ = Number.isFinite(options.directionZ) ? options.directionZ : 0;
+        const directionLength = Math.hypot(directionX, directionZ);
+        const dirX = directionLength > 1e-5 ? directionX / directionLength : 0;
+        const dirZ = directionLength > 1e-5 ? directionZ / directionLength : 0;
+
+        const styleDefaults = {
+            radialSpeedMin: style === 'pillar-jet' ? 1.8 : (style === 'crack-front' ? 2.2 : 2.5),
+            radialSpeedMax: style === 'pillar-jet' ? 4.0 : (style === 'crack-front' ? 4.5 : 7.0),
+            upwardMin: style === 'pillar-jet' ? 4.0 : (style === 'crack-front' ? 0.5 : 2.0),
+            upwardMax: style === 'pillar-jet' ? 7.5 : (style === 'crack-front' ? 2.2 : 6.0),
+            sizeMin: style === 'pillar-jet' ? 0.95 : 0.72,
+            sizeMax: style === 'pillar-jet' ? 1.45 : 1.18,
+            lifeDecayMin: style === 'crack-front' ? 0.58 : 0.42,
+            lifeDecayMax: style === 'crack-front' ? 0.95 : 0.76,
+        };
+
+        const radialSpeedMin = Number.isFinite(options.radialSpeedMin)
+            ? Math.max(0.1, options.radialSpeedMin)
+            : styleDefaults.radialSpeedMin;
+        const radialSpeedMax = Number.isFinite(options.radialSpeedMax)
+            ? Math.max(radialSpeedMin, options.radialSpeedMax)
+            : styleDefaults.radialSpeedMax;
+        const upwardMin = Number.isFinite(options.upwardMin)
+            ? options.upwardMin
+            : styleDefaults.upwardMin;
+        const upwardMax = Number.isFinite(options.upwardMax)
+            ? Math.max(upwardMin, options.upwardMax)
+            : styleDefaults.upwardMax;
+        const sizeMin = Number.isFinite(options.sizeMin)
+            ? Math.max(0.1, options.sizeMin)
+            : styleDefaults.sizeMin;
+        const sizeMax = Number.isFinite(options.sizeMax)
+            ? Math.max(sizeMin, options.sizeMax)
+            : styleDefaults.sizeMax;
+        const lifeDecayMin = Number.isFinite(options.lifeDecayMin)
+            ? Math.max(0.1, options.lifeDecayMin)
+            : styleDefaults.lifeDecayMin;
+        const lifeDecayMax = Number.isFinite(options.lifeDecayMax)
+            ? Math.max(lifeDecayMin, options.lifeDecayMax)
+            : styleDefaults.lifeDecayMax;
+
         for (let i = 0; i < spawnCount; i++) {
             const index = this.spawnCursor;
             const i4 = index * 4;
             const rand = this.random();
             const angle = this.random() * Math.PI * 2;
-            const speed = 2.5 + this.random() * 4.5;
+            const speed = radialSpeedMin + this.random() * (radialSpeedMax - radialSpeedMin);
 
-            this.positionData[i4] = originX + (this.random() - 0.5) * 1.5;
+            this.positionData[i4] = originX + (this.random() - 0.5) * spread;
             this.positionData[i4 + 1] = 0.4 + this.random() * 1.6;
-            this.positionData[i4 + 2] = originZ + (this.random() - 0.5) * 1.5;
+            this.positionData[i4 + 2] = originZ + (this.random() - 0.5) * spread;
             this.positionData[i4 + 3] = 1.0;
 
-            this.velocityData[i4] = Math.cos(angle) * speed;
-            this.velocityData[i4 + 1] = 2.0 + this.random() * 4.0;
-            this.velocityData[i4 + 2] = Math.sin(angle) * speed;
+            let velocityX = Math.cos(angle) * speed;
+            let velocityY = upwardMin + this.random() * (upwardMax - upwardMin);
+            let velocityZ = Math.sin(angle) * speed;
+
+            if (style === 'pillar-jet') {
+                velocityX *= 0.65;
+                velocityZ *= 0.65;
+            } else if (style === 'crack-front' && directionLength > 1e-5) {
+                const directionalSpeed = speed * (0.75 + this.random() * 0.55);
+                const tangentX = -dirZ;
+                const tangentZ = dirX;
+                const tangentJitter = (this.random() - 0.5) * (0.95 + spread * 0.55);
+                velocityX = dirX * directionalSpeed + tangentX * tangentJitter;
+                velocityZ = dirZ * directionalSpeed + tangentZ * tangentJitter;
+            }
+
+            this.velocityData[i4] = velocityX;
+            this.velocityData[i4 + 1] = velocityY;
+            this.velocityData[i4 + 2] = velocityZ;
             this.velocityData[i4 + 3] = 0.0;
 
             this.lifeData[i4] = 1.0;
@@ -319,18 +381,32 @@ export class IceTempleShardBurstCompute {
             this.lifeData[i4 + 2] = 0.0;
             this.lifeData[i4 + 3] = 0.0;
 
-            this.miscData[i4] = 0.8 + this.random() * 0.4; // size multiplier
+            this.miscData[i4] = sizeMin + this.random() * (sizeMax - sizeMin); // size multiplier
             this.miscData[i4 + 1] = 1.0; // active
             this.miscData[i4 + 2] = rand; // random seed
-            this.miscData[i4 + 3] = 0.45 + this.random() * 0.35; // life decay
+            this.miscData[i4 + 3] = lifeDecayMin + this.random() * (lifeDecayMax - lifeDecayMin); // life decay
 
             this.spawnCursor = (this.spawnCursor + 1) % this.count;
         }
 
+        this.pendingUpload = true;
+        if (options.deferUpload !== true) {
+            this.commitSpawns();
+        }
+    }
+
+    commitSpawns() {
+        if (!this.pendingUpload) return false;
+        if (!this.positionBuffer || !this.velocityBuffer || !this.lifeBuffer || !this.miscBuffer) {
+            this.pendingUpload = false;
+            return false;
+        }
         this.positionBuffer.needsUpdate = true;
         this.velocityBuffer.needsUpdate = true;
         this.lifeBuffer.needsUpdate = true;
         this.miscBuffer.needsUpdate = true;
+        this.pendingUpload = false;
+        return true;
     }
 
     update(delta) {
