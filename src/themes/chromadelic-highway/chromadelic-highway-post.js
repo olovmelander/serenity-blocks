@@ -60,7 +60,7 @@ export class ChromadelicHighwayPost {
         this.uContrast = uniform(params.contrast ?? 1.06);
         this.uSaturation = uniform(params.saturation ?? 1.15);
         this.uTintStrength = uniform(params.tintStrength ?? 0.15);
-        this.uDitherStrength = uniform(params.ditherStrength ?? 0.002);
+        this.uDitherStrength = uniform(params.ditherStrength ?? 0.00055);
         // Slight purple/magenta tint for psychedelic feel
         this.uTint = uniform(new THREE.Color(1.06, 0.96, 1.1));
 

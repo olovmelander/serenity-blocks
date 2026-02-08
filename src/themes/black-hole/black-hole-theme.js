@@ -7,7 +7,7 @@
  * Features:
  * - Raymarched black hole with gravitational lensing
  * - Volumetric accretion disk with Doppler effects
- * - 3D starfield with twinkling
+ * - 3D starfield with cinematic static glow
  * - Nebula clouds with procedural textures
  * - GPU particle system for stardust
  * - Post-processing: Bloom, Vignette, Chromatic Aberration
@@ -572,7 +572,7 @@ const ColorGradeShader = {
         saturation: { value: 1.08 },
         tint: { value: new THREE.Vector3(1.04, 0.98, 1.08) },
         tintStrength: { value: 0.22 },
-        ditherStrength: { value: 0.0025 },
+        ditherStrength: { value: 0.0 },
     },
     vertexShader: `
         varying vec2 vUv;
@@ -697,6 +697,7 @@ export default class BlackHoleTheme extends BaseTheme {
             burstComputeActiveUntil: 0,
             bloomDownsample: 0.8,
         };
+        this.hiddenLegacyGlobals = [];
         this.lodState = {
             starCount: 0,
             particleCount: 0,
@@ -781,6 +782,10 @@ export default class BlackHoleTheme extends BaseTheme {
         this.cameraTargetPosition = this.cameraBasePosition.clone();
         this.cameraLookTarget = new THREE.Vector3(0, 0, 0);
         this.cameraLookTargetSmoothed = new THREE.Vector3(0, 0, 0);
+        this.cameraBaseFov = 60;
+        this.cameraRoll = 0;
+        this.cameraRollQuat = new THREE.Quaternion();
+        this.cameraRollAxis = new THREE.Vector3(0, 0, 1);
         this.cameraPhaseX = this.random() * Math.PI * 2;
         this.cameraPhaseY = this.random() * Math.PI * 2;
         this.cameraPhaseZ = this.random() * Math.PI * 2;
@@ -850,7 +855,8 @@ export default class BlackHoleTheme extends BaseTheme {
         const supportsMRT = this.capabilities?.maxColorAttachments > 1;
         const useMRT = usePost && !this.flags.noMRT && supportsMRT;
         const useCompute = this.isWebGPU && !this.flags.noCompute;
-        const useLensing = useCompute && !this.flags.noLensing;
+        // Keep starfield temporally stable: lensing updates can introduce micro shimmer on tiny points.
+        const useLensing = false;
         const useUnifiedParticles = useCompute && !this.flags.noUnified;
 
         this.flags.usePost = usePost;
@@ -965,6 +971,9 @@ export default class BlackHoleTheme extends BaseTheme {
 
         await this.initRenderer(container);
         this.updateCapabilityFlags();
+        const initialDrift = this.computeDriftPosition(0);
+        this.driftX = initialDrift.x;
+        this.driftY = initialDrift.y;
 
         if (this.flags.baseline) {
             console.log('[BlackHole] Baseline capture enabled', {
@@ -979,9 +988,11 @@ export default class BlackHoleTheme extends BaseTheme {
         this.createBlackHoleCore();
         this.createPhotonSphere();
         this.createAccretionDisk();
+        this.applyBlackHoleDriftState();
         this.createParticleSystem();
         this.createHawkingRadiation();
         this.createBurstSparks();
+        this.applyBlackHoleDriftState();
         this.ensureMrtMaterials();
         this.setupPostProcessing();
         this.cacheUniforms();
@@ -1024,7 +1035,80 @@ export default class BlackHoleTheme extends BaseTheme {
             });
         });
 
+        // Some legacy builds also mounted a global star layer outside this container.
+        // Keep it hidden while this Three.js theme is active to avoid double starfields.
+        const hideGlobal = (el) => {
+            if (!el) return;
+            if (!this.hiddenLegacyGlobals.some((entry) => entry.el === el)) {
+                this.hiddenLegacyGlobals.push({
+                    el,
+                    style: el.getAttribute('style'),
+                });
+            }
+            el.style.setProperty('display', 'none', 'important');
+            el.style.setProperty('opacity', '0', 'important');
+            el.style.setProperty('animation', 'none', 'important');
+        };
+        document.querySelectorAll('#stars').forEach(hideGlobal);
+        document.querySelectorAll('.background-container .star').forEach(hideGlobal);
+
         console.log('[BlackHole] Hidden old DOM elements');
+    }
+
+    computeDriftPosition(timeSeconds = this.time) {
+        const widthRange = window.innerWidth * 0.35;
+        const heightRange = window.innerHeight * 0.35;
+        const t = timeSeconds * 0.003; // Slowed down from 0.01 to reduce shimmering
+
+        const x = (Math.sin(t + this.driftPhaseX) + Math.cos(t * 1.34 + this.driftPhaseX)) * 0.5 * widthRange;
+        const y = (Math.cos(t * 0.89 + this.driftPhaseY) + Math.sin(t * 1.67 + this.driftPhaseY)) * 0.5 * heightRange;
+        return { x, y };
+    }
+
+    applyBlackHoleDriftState() {
+        const x = this.driftX || 0;
+        const y = this.driftY || 0;
+
+        if (this.blackHoleCore) {
+            this.blackHoleCore.position.x = x;
+            this.blackHoleCore.position.y = y;
+        }
+        if (this.eventHorizonSphere) {
+            this.eventHorizonSphere.position.x = x;
+            this.eventHorizonSphere.position.y = y;
+        }
+        if (this.accretionDisk) {
+            this.accretionDisk.position.x = x;
+            this.accretionDisk.position.y = y;
+        }
+        if (this.innerDisk) {
+            this.innerDisk.position.x = x;
+            this.innerDisk.position.y = y;
+        }
+        if (this.accretionVolumeLayers.length) {
+            this.accretionVolumeLayers.forEach((layer) => {
+                layer.position.x = x;
+                layer.position.y = y;
+                this.setMaterialUniformVec3(layer?.material, 'uCenter', x, y, 0);
+            });
+        }
+        if (this.hawkingParticles) {
+            this.hawkingParticles.position.x = x;
+            this.hawkingParticles.position.y = y;
+        }
+        if (this.photonSphere) {
+            this.photonSphere.position.x = x;
+            this.photonSphere.position.y = y;
+        }
+
+        this.setMaterialUniformVec2(this.starfield?.material, 'uBlackHolePos', x, y);
+        this.setMaterialUniformVec2(this.particles?.material, 'uBlackHolePos', x, y);
+
+        if (!this.burstCompute?.computeNode) {
+            this.burstSparksPool.forEach((burstSparks) => {
+                this.setMaterialUniformVec2(burstSparks?.material, 'uBlackHolePos', x, y);
+            });
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1087,6 +1171,7 @@ export default class BlackHoleTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 100000);
         this.camera.position.copy(this.cameraBasePosition);
         this.camera.lookAt(this.cameraLookTarget);
+        this.cameraBaseFov = this.camera.fov;
         this.cameraTargetPosition.copy(this.cameraBasePosition);
         this.cameraLookTargetSmoothed.copy(this.cameraLookTarget);
 
@@ -1100,7 +1185,7 @@ export default class BlackHoleTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Starfield - 3D Points with twinkling
+    // Starfield - 3D Points with static glow
     // ─────────────────────────────────────────────────────────────────────────
 
     createStarfield() {
@@ -1108,35 +1193,80 @@ export default class BlackHoleTheme extends BaseTheme {
         const positions = new Float32Array(starCount * 3);
         const colors = new Float32Array(starCount * 3);
         const sizes = new Float32Array(starCount);
-        const phases = new Float32Array(starCount);
+        const twinkles = new Float32Array(starCount);
 
         const starColors = [
-            new THREE.Color(0xffffff), // White
-            new THREE.Color(0xffeedd), // Warm white
-            new THREE.Color(0xddddff), // Cool white
-            new THREE.Color(0xffdddd), // Pink tint
-            new THREE.Color(0xaaddff), // Blue tint
+            new THREE.Color(0xf0d6b3), // Warm champagne
+            new THREE.Color(0xd5a36d), // Amber
+            new THREE.Color(0xc48b5d), // Copper
+            new THREE.Color(0xb8a6d4), // Dusty lavender
+            new THREE.Color(0x9fb8d6), // Muted blue
         ];
+        const tau = Math.PI * 2;
+        const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+        const fullSkyCount = starCount; // Use all stars for the sky dome
 
         for (let i = 0; i < starCount; i++) {
             const i3 = i * 3;
 
-            // Distribute stars in a large sphere, pushed behind the black hole
-            const theta = this.random() * Math.PI * 2;
-            const phi = Math.acos(2 * this.random() - 1);
-            const radius = 2000 + this.random() * 3000;
+            // Uniform spherical distribution
+            // x, y, z uniform on sphere surface
+            const u = this.random();
+            const v = this.random();
+            const theta = 2 * Math.PI * u;
+            const phi = Math.acos(2 * v - 1);
 
-            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
-            positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
-            positions[i3 + 2] = radius * Math.cos(phi) - 2000; // Push back
+            let dirX = Math.sin(phi) * Math.cos(theta);
+            let dirY = Math.sin(phi) * Math.sin(theta);
+            let dirZ = Math.cos(phi);
 
-            const color = starColors[Math.floor(this.random() * starColors.length)];
-            colors[i3] = color.r;
-            colors[i3 + 1] = color.g;
-            colors[i3 + 2] = color.b;
+            // Tiny jitter keeps the sky organic
+            const jitter = 0.022;
+            dirX += (this.random() - 0.5) * jitter;
+            dirY += (this.random() - 0.5) * jitter;
+            dirZ += (this.random() - 0.5) * jitter;
 
-            sizes[i] = 1 + this.random() * 3;
-            phases[i] = this.random() * Math.PI * 2;
+            // Normalize
+            const invLen = 1 / Math.max(1e-4, Math.hypot(dirX, dirY, dirZ));
+            dirX *= invLen;
+            dirY *= invLen;
+            dirZ *= invLen;
+
+            // Place stars far away
+            const radius = 2500 + (this.random() ** 0.9) * 3000;
+
+            positions[i3] = dirX * radius;
+            positions[i3 + 1] = dirY * radius;
+            positions[i3 + 2] = dirZ * radius;
+
+            // Color selection
+            const colorRoll = this.random();
+            let color = starColors[0];
+            if (colorRoll > 0.62 && colorRoll <= 0.86) color = starColors[1];
+            else if (colorRoll > 0.86 && colorRoll <= 0.95) color = starColors[2];
+            else if (colorRoll > 0.95 && colorRoll <= 0.985) color = starColors[3];
+            else if (colorRoll > 0.985) color = starColors[4];
+
+            const colorGain = 0.62 + this.random() * 0.4;
+            colors[i3] = Math.min(1.0, color.r * colorGain);
+            colors[i3 + 1] = Math.min(1.0, color.g * colorGain);
+            colors[i3 + 2] = Math.min(1.0, color.b * colorGain);
+
+            // Size and twinkle
+            const magnitude = this.random();
+            if (magnitude < 0.005) {
+                sizes[i] = 5.8 + this.random() * 2.5; // Rare bright stars
+            } else if (magnitude < 0.05) {
+                sizes[i] = 3.8 + this.random() * 1.8;
+            } else if (magnitude < 0.25) {
+                sizes[i] = 2.8 + this.random() * 1.2;
+            } else {
+                sizes[i] = 2.0 + this.random() * 1.0;
+            }
+
+            twinkles[i] = magnitude < 0.05
+                ? 0.52 + this.random() * 0.2
+                : 0.35 + this.random() * 0.15;
         }
 
         if (this.starLensingCompute) {
@@ -1172,7 +1302,7 @@ export default class BlackHoleTheme extends BaseTheme {
             sprite.geometry.setAttribute('instancePosition', new THREE.InstancedBufferAttribute(positions, 3));
             sprite.geometry.setAttribute('instanceColor', new THREE.InstancedBufferAttribute(colors, 3));
             sprite.geometry.setAttribute('instanceSize', new THREE.InstancedBufferAttribute(sizes, 1));
-            sprite.geometry.setAttribute('instancePhase', new THREE.InstancedBufferAttribute(phases, 1));
+            sprite.geometry.setAttribute('instanceTwinkle', new THREE.InstancedBufferAttribute(twinkles, 1));
             sprite.frustumCulled = false;
             this.starfield = sprite;
         } else {
@@ -1180,48 +1310,45 @@ export default class BlackHoleTheme extends BaseTheme {
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
             geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
             geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-            geometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
+            geometry.setAttribute('twinkle', new THREE.BufferAttribute(twinkles, 1));
             geometry.setDrawRange(0, starCount);
 
-            // Custom shader material for twinkling
+            // Custom shader material for static-luma stars
             const material = new THREE.ShaderMaterial({
                 uniforms: {
-                    uTime: { value: 0 },
-                    uFlashIntensity: { value: 0 },
                     uBlackHolePos: { value: new THREE.Vector2(0, 0) },
                 },
                 vertexShader: `
                     uniform vec2 uBlackHolePos;
                     attribute float size;
-                    attribute float phase;
+                    attribute float twinkle;
                     varying vec3 vColor;
-                    varying float vPhase;
+                    varying float vLuma;
                     varying vec2 vPos;
                     varying float vStretchZone;
                     
                     void main() {
                         vColor = color;
-                        vPhase = phase;
+                        vLuma = twinkle;
                         vPos = position.xy;
                         float distToCenter = length(vPos - uBlackHolePos);
-                        vStretchZone = smoothstep(600.0, 180.0, distToCenter);
+                        vStretchZone = smoothstep(760.0, 260.0, distToCenter);
                         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                        gl_PointSize = size * (300.0 / -mvPosition.z) * (1.0 + vStretchZone * 0.6);
+                        float targetSize = size * (1200.0 / -mvPosition.z) * (1.0 + vStretchZone * 0.12);
+                        gl_PointSize = clamp(targetSize, 2.6, 15.0);
                         gl_Position = projectionMatrix * mvPosition;
                     }
                 `,
                 fragmentShader: `
-                    uniform float uTime;
-                    uniform float uFlashIntensity;
                     uniform vec2 uBlackHolePos;
                     varying vec3 vColor;
-                    varying float vPhase;
+                    varying float vLuma;
                     varying vec2 vPos;
                     varying float vStretchZone;
                     
                     void main() {
                         vec2 toCenter = vPos - uBlackHolePos;
-                        float stretch = 1.0 + vStretchZone * 1.2;
+                        float stretch = 1.0 + vStretchZone * 0.55;
 
                         vec2 dir = normalize(toCenter + vec2(0.0001));
                         vec2 perp = vec2(-dir.y, dir.x);
@@ -1233,17 +1360,20 @@ export default class BlackHoleTheme extends BaseTheme {
                         float dist = length(stretched);
                         if (dist > 0.5) discard;
                         
-                        float twinkle = 0.7 + 0.3 * sin(uTime * 2.0 + vPhase);
-                        float flash = 1.0 + uFlashIntensity;
-                        float alpha = (1.0 - dist * 2.0) * twinkle * flash;
-                        
-                        gl_FragColor = vec4(vColor * flash, alpha);
+                        float starLuma = clamp(vLuma, 0.4, 0.9);
+                        float radial = max(0.0, 1.0 - dist * 2.0);
+                        float halo = pow(radial, 1.9);
+                        float core = smoothstep(0.2, 0.0, dist);
+                        float alpha = (halo * 0.26 + core * 0.42) * starLuma;
+                        vec3 color = mix(vColor, vec3(1.0), core * 0.08) * (0.68 + starLuma * 0.22);
+
+                        gl_FragColor = vec4(color, alpha);
                     }
                 `,
                 transparent: true,
                 vertexColors: true,
                 depthWrite: false,
-                blending: THREE.AdditiveBlending,
+                blending: THREE.NormalBlending,
             });
 
             this.starfield = new THREE.Points(geometry, material);
@@ -1592,7 +1722,18 @@ export default class BlackHoleTheme extends BaseTheme {
         ];
 
         for (let i = 0; i < particleCount; i++) {
-            this.initParticle(i, positions, velocities, colors, sizes, lifetimes, particleColors);
+            this.initParticle(
+                i,
+                positions,
+                velocities,
+                colors,
+                sizes,
+                lifetimes,
+                particleColors,
+                this.driftX || 0,
+                this.driftY || 0,
+                0,
+            );
             if (randoms) {
                 const seed = (this.flags.seed ?? 0) + i * 12.9898;
                 const value = Math.sin(seed) * 43758.5453;
@@ -1894,8 +2035,11 @@ export default class BlackHoleTheme extends BaseTheme {
         const sizes = this.hawkingAttributes.size.array;
         const baseSizes = this.hawkingBaseSizes;
 
-        const count = lifetimes.length;
-        for (let i = 0; i < count; i += 1) {
+        const activeCount = Math.min(
+            lifetimes.length,
+            this.hawkingParticles?.geometry?.drawRange?.count ?? lifetimes.length,
+        );
+        for (let i = 0; i < activeCount; i += 1) {
             const i3 = i * 3;
 
             positions[i3] += velocities[i3] * delta;
@@ -1994,15 +2138,15 @@ export default class BlackHoleTheme extends BaseTheme {
         let hawkingFactor = 1.0;
 
         if (scale < 0.72) {
-            starFactor = 0.45;
+            starFactor = 1.0;
             particleFactor = 0.52;
             hawkingFactor = 0.55;
         } else if (scale < 0.82) {
-            starFactor = 0.68;
+            starFactor = 1.0;
             particleFactor = 0.72;
             hawkingFactor = 0.75;
         } else if (scale < 0.9) {
-            starFactor = 0.82;
+            starFactor = 1.0;
             particleFactor = 0.86;
             hawkingFactor = 0.88;
         }
@@ -2061,10 +2205,10 @@ export default class BlackHoleTheme extends BaseTheme {
 
     getLensingUpdateInterval() {
         const scale = this.dynamicResolution?.enabled ? this.dynamicResolution.scale : 1.0;
-        if (scale >= 0.95) return 1 / 60;
-        if (scale >= 0.85) return 1 / 48;
-        if (scale >= 0.75) return 1 / 38;
-        return 1 / 30;
+        if (scale >= 0.9) return 0;
+        if (scale >= 0.82) return 1 / 90;
+        if (scale >= 0.74) return 1 / 72;
+        return 1 / 60;
     }
 
     getAdaptiveBloomDownsample() {
@@ -2432,8 +2576,6 @@ export default class BlackHoleTheme extends BaseTheme {
             innerDiskTime: this.resolveUniformRef(this.innerDisk?.material, 'uTime'),
             innerDiskIntensity: this.resolveUniformRef(this.innerDisk?.material, 'uIntensity'),
             innerDiskRotation: this.resolveUniformRef(this.innerDisk?.material, 'uRotationSpeed'),
-            starTime: this.resolveUniformRef(this.starfield?.material, 'uTime'),
-            starFlash: this.resolveUniformRef(this.starfield?.material, 'uFlashIntensity'),
             hawkingTime: this.resolveUniformRef(this.hawkingParticles?.material, 'uTime'),
             hawkingIntensity: this.resolveUniformRef(this.hawkingParticles?.material, 'uIntensity'),
             photonTime: this.resolveUniformRef(this.photonSphere?.material, 'uTime'),
@@ -2475,14 +2617,14 @@ export default class BlackHoleTheme extends BaseTheme {
                 bloomRadius: this.qualityPreset.bloomRadius,
                 bloomThreshold: 0.3,
                 bloomDownsample: this.performanceState.bloomDownsample,
-                chromaticStrength: 0.002,
+                chromaticStrength: 0.0006,
                 vignetteOffset: 1.2,
                 vignetteDarkness: 0.5,
                 exposure: 1.05,
                 contrast: 1.04,
                 saturation: 1.08,
                 tintStrength: 0.22,
-                ditherStrength: 0.0025,
+                ditherStrength: 0.0,
             });
             this.postProcessing.setSize(window.innerWidth, window.innerHeight);
             return;
@@ -2508,7 +2650,7 @@ export default class BlackHoleTheme extends BaseTheme {
 
         // Chromatic aberration
         this.chromaticPass = new ShaderPass(ChromaticAberrationShader);
-        this.chromaticPass.uniforms.amount.value = 0.002;
+        this.chromaticPass.uniforms.amount.value = 0.0006;
         this.composer.addPass(this.chromaticPass);
 
         // Vignette
@@ -2524,7 +2666,7 @@ export default class BlackHoleTheme extends BaseTheme {
         colorGradePass.uniforms.saturation.value = 1.08;
         colorGradePass.uniforms.tint.value.set(1.04, 0.98, 1.08);
         colorGradePass.uniforms.tintStrength.value = 0.22;
-        colorGradePass.uniforms.ditherStrength.value = 0.0025;
+        colorGradePass.uniforms.ditherStrength.value = 0.0;
         this.composer.addPass(colorGradePass);
 
         console.log('[BlackHole] Post-processing setup complete');
@@ -2746,7 +2888,7 @@ export default class BlackHoleTheme extends BaseTheme {
             const bhX = this.driftX || 0;
             const bhY = this.driftY || 0;
             const bhZ = 0;
-            const total = this.particleCompute.count;
+            const total = this.particles?.count ?? this.particleCompute.count;
             if (total <= 0) return;
             const burstCount = this.getBurstSpawnCount(comboCount, total);
             const indices = this.allocateComboParticleIndices(burstCount, 'nextBurstParticleIndex', 0.45);
@@ -2804,7 +2946,7 @@ export default class BlackHoleTheme extends BaseTheme {
         const bhY = this.driftY || 0;
         const bhZ = 0;
 
-        const total = positions.length / 3;
+        const total = this.particles?.geometry?.drawRange?.count ?? (positions.length / 3);
         if (total <= 0) return;
         const burstCount = this.getBurstSpawnCount(comboCount, total);
         const indices = this.allocateComboParticleIndices(burstCount, 'nextBurstParticleIndex', 0.45);
@@ -2865,7 +3007,7 @@ export default class BlackHoleTheme extends BaseTheme {
         const bhZ = 0;
 
         if (this.isWebGPU && this.flags.useCompute && this.particleCompute?.computeNode) {
-            const total = this.particleCompute.count;
+            const total = this.particles?.count ?? this.particleCompute.count;
             if (total <= 0) return;
             const jetCount = this.getJetSpawnCount(comboCount, total);
             const indices = this.allocateComboParticleIndices(jetCount, 'nextJetParticleIndex', 0.32);
@@ -2913,7 +3055,7 @@ export default class BlackHoleTheme extends BaseTheme {
         const sizes = this.particleAttributes.size.array;
         const lifetimes = this.particleLifetimes;
 
-        const total = positions.length / 3;
+        const total = this.particles?.geometry?.drawRange?.count ?? (positions.length / 3);
         if (total <= 0) return;
         const jetCount = this.getJetSpawnCount(comboCount, total);
         const indices = this.allocateComboParticleIndices(jetCount, 'nextJetParticleIndex', 0.32);
@@ -2962,21 +3104,21 @@ export default class BlackHoleTheme extends BaseTheme {
         const comboEnergy = Math.min(
             1.0,
             this.starFlashIntensity * 0.65
-                + this.bloomPulseIntensity * 0.45
-                + this.gravitySurgeFactor * 0.03
-                + this.burstFactor * 0.03,
+            + this.bloomPulseIntensity * 0.45
+            + this.gravitySurgeFactor * 0.03
+            + this.burstFactor * 0.03,
         );
 
-        const swayScale = 0.7 + comboEnergy * 0.6;
+        const swayScale = 0.38 + comboEnergy * 0.32;
         const swayX = (
-            Math.sin(t * 0.22 + this.cameraPhaseX) * 16
-            + Math.cos(t * 0.09 + this.cameraPhaseY) * 10
+            Math.sin(t * 0.22 + this.cameraPhaseX) * 8.5
+            + Math.cos(t * 0.09 + this.cameraPhaseY) * 5.2
         ) * swayScale;
         const swayY = (
-            Math.cos(t * 0.18 + this.cameraPhaseY) * 11
-            + Math.sin(t * 0.11 + this.cameraPhaseZ) * 7
+            Math.cos(t * 0.18 + this.cameraPhaseY) * 5.8
+            + Math.sin(t * 0.11 + this.cameraPhaseZ) * 3.8
         ) * swayScale;
-        const breatheZ = Math.sin(t * 0.14 + this.cameraPhaseZ) * (14 + comboEnergy * 10);
+        const breatheZ = Math.sin(t * 0.14 + this.cameraPhaseZ) * (7 + comboEnergy * 5.5);
 
         const followX = this.driftX * 0.08;
         const followY = this.driftY * 0.06;
@@ -2991,13 +3133,31 @@ export default class BlackHoleTheme extends BaseTheme {
         const moveLerp = Math.min(1.0, delta * (1.8 + comboEnergy * 0.9));
         this.camera.position.lerp(this.cameraTargetPosition, moveLerp);
 
-        const lookX = this.driftX + Math.sin(t * 0.2 + this.cameraPhaseX) * (5 + comboEnergy * 4);
-        const lookY = this.driftY + Math.cos(t * 0.17 + this.cameraPhaseY) * (3 + comboEnergy * 3);
+        const lookX = this.driftX + Math.sin(t * 0.2 + this.cameraPhaseX) * (2.6 + comboEnergy * 1.8);
+        const lookY = this.driftY + Math.cos(t * 0.17 + this.cameraPhaseY) * (1.9 + comboEnergy * 1.5);
 
         this.cameraLookTarget.set(lookX, lookY, 0);
         const lookLerp = Math.min(1.0, delta * (2.4 + comboEnergy * 1.2));
         this.cameraLookTargetSmoothed.lerp(this.cameraLookTarget, lookLerp);
         this.camera.lookAt(this.cameraLookTargetSmoothed);
+
+        // Subtle cinematic roll + focal breathing so the scene feels alive at idle.
+        const rollTarget = (
+            Math.sin(t * 0.08 + this.cameraPhaseY) * 0.0022
+            + Math.cos(t * 0.13 + this.cameraPhaseZ) * 0.0016
+        ) * (1.0 + comboEnergy * 0.3);
+        const rollLerp = Math.min(1.0, delta * 2.0);
+        this.cameraRoll += (rollTarget - this.cameraRoll) * rollLerp;
+        this.cameraRollQuat.setFromAxisAngle(this.cameraRollAxis, this.cameraRoll);
+        this.camera.quaternion.multiply(this.cameraRollQuat);
+
+        const fovPulse = Math.sin(t * 0.11 + this.cameraPhaseX) * (0.14 + comboEnergy * 0.08);
+        const targetFov = this.cameraBaseFov + fovPulse;
+        const fovLerp = Math.min(1.0, delta * 1.8);
+        this.camera.fov += (targetFov - this.camera.fov) * fovLerp;
+        if (Math.abs(targetFov - this.camera.fov) > 0.001) {
+            this.camera.updateProjectionMatrix();
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -3082,8 +3242,6 @@ export default class BlackHoleTheme extends BaseTheme {
                 this.setMaterialUniform(layer?.material, 'uRotationSpeed', this.diskRotationSpeed * 0.6);
             });
 
-            this.setCachedUniform('starTime', this.time);
-            this.setCachedUniform('starFlash', this.starFlashIntensity);
             this.setCachedUniform('hawkingTime', this.time);
             this.setCachedUniform('hawkingIntensity', this.hawkingIntensity);
             this.setCachedUniform('photonTime', this.time);
@@ -3109,54 +3267,16 @@ export default class BlackHoleTheme extends BaseTheme {
                 });
             }
 
-            // Black hole floating/drifting motion - Full Screen Wander
-            // Use superposition of sine waves for smooth non-repeating random-looking motion
-            const widthRange = window.innerWidth * 0.35; // Cover ~70% of width
-            const heightRange = window.innerHeight * 0.35; // Cover ~70% of height
-
-            // Slow time factor for "slow pace" - reduced from 0.05 to 0.01
-            const t = this.time * 0.01;
-
-            this.driftX = (Math.sin(t + this.driftPhaseX) + Math.cos(t * 1.34 + this.driftPhaseX)) * 0.5 * widthRange;
-            this.driftY = (Math.cos(t * 0.89 + this.driftPhaseY) + Math.sin(t * 1.67 + this.driftPhaseY)) * 0.5 * heightRange;
-
-            if (this.blackHoleCore) {
-                this.blackHoleCore.position.x = this.driftX;
-                this.blackHoleCore.position.y = this.driftY;
-            }
-            if (this.eventHorizonSphere) {
-                this.eventHorizonSphere.position.x = this.driftX;
-                this.eventHorizonSphere.position.y = this.driftY;
-            }
-            if (this.accretionDisk) {
-                this.accretionDisk.position.x = this.driftX;
-                this.accretionDisk.position.y = this.driftY;
-            }
-            if (this.innerDisk) {
-                this.innerDisk.position.x = this.driftX;
-                this.innerDisk.position.y = this.driftY;
-            }
-            if (this.accretionVolumeLayers.length) {
-                this.accretionVolumeLayers.forEach((layer) => {
-                    layer.position.x = this.driftX;
-                    layer.position.y = this.driftY;
-                    this.setMaterialUniformVec3(layer?.material, 'uCenter', this.driftX, this.driftY, 0);
-                });
-            }
-            if (this.hawkingParticles) {
-                this.hawkingParticles.position.x = this.driftX;
-                this.hawkingParticles.position.y = this.driftY;
-            }
-            if (this.photonSphere) {
-                this.photonSphere.position.x = this.driftX;
-                this.photonSphere.position.y = this.driftY;
-            }
-
-            this.setMaterialUniformVec2(this.starfield?.material, 'uBlackHolePos', this.driftX, this.driftY);
-            this.setMaterialUniformVec2(this.particles?.material, 'uBlackHolePos', this.driftX, this.driftY);
+            // Black hole floating/drifting motion
+            const drift = this.computeDriftPosition(this.time);
+            this.driftX = drift.x;
+            this.driftY = drift.y;
+            this.applyBlackHoleDriftState();
 
             if (this.starLensingCompute?.computeNode && this.renderer?.compute) {
+                const lensingInterval = this.getLensingUpdateInterval();
                 const runLensing = this.time >= this.performanceState.nextLensingComputeAt
+                    || lensingInterval <= 0
                     || this.starFlashIntensity > 0.3
                     || this.burstFactor > 0.08;
 
@@ -3164,10 +3284,10 @@ export default class BlackHoleTheme extends BaseTheme {
                     const strengthBoost = Math.min(
                         0.45,
                         this.starFlashIntensity * 0.25
-                            + this.gravitySurgeFactor * 0.03
-                            + this.burstFactor * 0.02,
+                        + this.gravitySurgeFactor * 0.03
+                        + this.burstFactor * 0.02,
                     );
-                    const lensingStrength = 0.55 + strengthBoost;
+                    const lensingStrength = 0.38 + strengthBoost * 0.6;
                     this.starLensingCompute.update({
                         time: this.time,
                         blackHolePos: this.computeBlackHolePos.set(this.driftX || 0, this.driftY || 0, 0),
@@ -3175,7 +3295,7 @@ export default class BlackHoleTheme extends BaseTheme {
                         activeCount: this.starfield?.count ?? this.starLensingCompute.count,
                     });
                     this.renderer.compute(this.starLensingCompute.computeNode);
-                    this.performanceState.nextLensingComputeAt = this.time + this.getLensingUpdateInterval();
+                    this.performanceState.nextLensingComputeAt = this.time + lensingInterval;
                 }
             }
 
@@ -3214,14 +3334,15 @@ export default class BlackHoleTheme extends BaseTheme {
                 this.bloomPass.strength = this.qualityPreset.bloomStrength * (1 + this.bloomPulseIntensity);
             }
             if (this.chromaticPass) {
-                this.chromaticPass.uniforms.amount.value = Math.max(0.002, this.chromaticPulse);
+                this.chromaticPass.uniforms.amount.value = Math.max(0.0006, this.chromaticPulse);
             }
             if (this.postProcessing) {
                 this.postProcessing.update({
                     bloomStrength: this.qualityPreset.bloomStrength * (1 + this.bloomPulseIntensity),
                     bloomRadius: this.qualityPreset.bloomRadius,
-                    chromaticStrength: Math.max(0.002, this.chromaticPulse),
+                    chromaticStrength: Math.max(0.0006, this.chromaticPulse),
                     bloomDownsample: this.getAdaptiveBloomDownsample(),
+                    ditherStrength: 0.0,
                 });
             }
 
@@ -3287,7 +3408,12 @@ export default class BlackHoleTheme extends BaseTheme {
         const planePullScale = delta * 60.0;
         const planeDamp = Math.min(0.35, delta * 5.0);
 
-        for (let i = 0; i < positions.length / 3; i++) {
+        const activeCount = Math.min(
+            lifetimes.length,
+            this.particles?.geometry?.drawRange?.count ?? lifetimes.length,
+        );
+
+        for (let i = 0; i < activeCount; i += 1) {
             const i3 = i * 3;
 
             // Calculate direction to black hole
@@ -3297,13 +3423,6 @@ export default class BlackHoleTheme extends BaseTheme {
             const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
             if (dist > 50) {
-                // Spiral motion calculation
-                const speed = Math.sqrt(
-                    velocities[i3] * velocities[i3]
-                    + velocities[i3 + 1] * velocities[i3 + 1]
-                    + velocities[i3 + 2] * velocities[i3 + 2],
-                );
-
                 // BURST PHASE: Push particles outward
                 if (this.burstPhase && this.burstFactor > 0) {
                     // Normalize direction from black hole center
@@ -3325,8 +3444,12 @@ export default class BlackHoleTheme extends BaseTheme {
 
                     // Higher max speed during burst
                     const maxSpeed = 15.0 + this.burstFactor * 3.0;
-                    if (speed > maxSpeed) {
-                        const scale = maxSpeed / speed;
+                    const maxSpeedSq = maxSpeed * maxSpeed;
+                    const speedSq = velocities[i3] * velocities[i3]
+                        + velocities[i3 + 1] * velocities[i3 + 1]
+                        + velocities[i3 + 2] * velocities[i3 + 2];
+                    if (speedSq > maxSpeedSq) {
+                        const scale = maxSpeed / Math.sqrt(speedSq);
                         velocities[i3] *= scale;
                         velocities[i3 + 1] *= scale;
                         velocities[i3 + 2] *= scale;
@@ -3361,8 +3484,12 @@ export default class BlackHoleTheme extends BaseTheme {
 
                     // Limit max speed so they don't teleport
                     const maxSpeed = 8.0 + this.gravitySurgeFactor * 5.0; // Allow faster speed during surge
-                    if (speed > maxSpeed) {
-                        const scale = maxSpeed / speed;
+                    const maxSpeedSq = maxSpeed * maxSpeed;
+                    const speedSq = velocities[i3] * velocities[i3]
+                        + velocities[i3 + 1] * velocities[i3 + 1]
+                        + velocities[i3 + 2] * velocities[i3 + 2];
+                    if (speedSq > maxSpeedSq) {
+                        const scale = maxSpeed / Math.sqrt(speedSq);
                         velocities[i3] *= scale;
                         velocities[i3 + 1] *= scale;
                         velocities[i3 + 2] *= scale;
@@ -3469,6 +3596,17 @@ export default class BlackHoleTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         if (this.resizeHandler) {
             window.removeEventListener('resize', this.resizeHandler);
+        }
+        if (this.hiddenLegacyGlobals.length) {
+            this.hiddenLegacyGlobals.forEach(({ el, style }) => {
+                if (!el) return;
+                if (style === null || style === undefined || style === '') {
+                    el.removeAttribute('style');
+                } else {
+                    el.setAttribute('style', style);
+                }
+            });
+            this.hiddenLegacyGlobals = [];
         }
         super.stop();
     }

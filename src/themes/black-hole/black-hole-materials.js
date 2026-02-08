@@ -23,6 +23,7 @@ import {
     max,
     min,
     mix,
+    modelViewMatrix,
     normalize,
     normalWorld,
     pow,
@@ -255,15 +256,14 @@ export function createStarfieldNodeMaterial(params = {}) {
     const material = new PointsNodeMaterial({
         transparent: true,
         depthWrite: false,
-        blending: AdditiveBlending,
+        blending: NormalBlending,
     });
+    material.sizeAttenuation = false;
 
-    const uTime = uniform(0);
-    const uFlashIntensity = uniform(0);
     const uBlackHolePos = uniform(new Vector2(0, 0));
 
     const aSize = attribute('instanceSize');
-    const aPhase = attribute('instancePhase');
+    const aTwinkle = attribute('instanceTwinkle');
     const aColor = attribute('instanceColor');
     const aPosition = attribute('instancePosition');
 
@@ -283,15 +283,23 @@ export function createStarfieldNodeMaterial(params = {}) {
         return aPosition;
     })();
 
-    const twinkle = sin(uTime.mul(2.0).add(aPhase)).mul(0.3).add(0.7);
-    const flash = float(1.0).add(uFlashIntensity);
+    const starLuma = clamp(aTwinkle, float(0.4), float(0.9));
 
     material.positionNode = basePosition;
+    const viewPos = modelViewMatrix.mul(vec4(basePosition, float(1.0)));
+    const depth = max(float(1.0), viewPos.z.negate());
+
     const toCenter = vec2(basePosition.x, basePosition.y).sub(uBlackHolePos);
     const distToCenter = length(toCenter);
-    const stretchZone = smoothstep(float(600.0), float(180.0), distToCenter);
-    const stretchFactor = float(1.0).add(stretchZone.mul(1.2));
-    material.sizeNode = aSize.mul(float(1.0).add(stretchZone.mul(0.6)));
+    const stretchZone = smoothstep(float(760.0), float(260.0), distToCenter);
+    const stretchFactor = float(1.0).add(stretchZone.mul(0.55));
+    material.sizeNode = min(
+        float(15.0),
+        max(
+            float(2.6),
+            aSize.mul(float(1200.0)).div(depth).mul(float(1.0).add(stretchZone.mul(0.12))),
+        ),
+    );
 
     const center = uv().sub(0.5);
     const dir2d = normalize(toCenter.add(vec2(0.0001, 0.0001)));
@@ -300,13 +308,17 @@ export function createStarfieldNodeMaterial(params = {}) {
     const across = dot(center, perp);
     const stretched = vec2(along, across.div(stretchFactor));
     const dist = length(stretched);
-    const alpha = max(float(0.0), float(1.0).sub(dist.mul(2.0))).mul(twinkle).mul(flash);
+    const radial = max(float(0.0), float(1.0).sub(dist.mul(2.0)));
+    const halo = pow(radial, float(1.9));
+    const core = smoothstep(float(0.2), float(0.0), dist);
+    const alpha = halo.mul(0.26).add(core.mul(0.42)).mul(starLuma);
+    const color = mix(aColor, vec3(1.0, 1.0, 1.0), core.mul(0.08));
 
-    material.colorNode = aColor.mul(flash);
+    material.colorNode = color.mul(float(0.68).add(starLuma.mul(0.22)));
     material.opacityNode = alpha;
-    material.emissiveNode = aColor.mul(flash);
+    material.emissiveNode = color.mul(alpha.mul(0.28));
 
-    material.userData = { uTime, uFlashIntensity, uBlackHolePos };
+    material.userData = { uBlackHolePos };
 
     return material;
 }

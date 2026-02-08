@@ -40,10 +40,26 @@ import {
     texture,
     uniform,
     uv,
+    pointUV,
     vec2,
     vec3,
     vec4,
 } from 'three/tsl';
+
+const BLOOM_CLASS_WEIGHTS = {
+    road: 0.1,  // Reduced from 0.2
+    tunnelRing: 0.15, // Reduced from 0.25
+    planet: 0.64,
+    planetGlow: 0.42,
+    speedParticle: 0.74,
+    ambientParticle: 0.62,
+    shootingStar: 0.5, // Reduced from 0.78 to prevent bloom washout
+    edgeGlow: 0.5,
+    gasGiant: 0.6,
+    iceMoon: 0.58,
+    atmosphericOrb: 0.52,
+    binaryStar: 0.7,
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TSL Helpers
@@ -152,9 +168,10 @@ export function createRoadNodeMaterial() {
     const paceMul = float(1.0).add(uPace.sub(1.0).mul(0.12));
 
     const finalColor = rainbow.add(laneGlow).mul(edgeMix).mul(depthMix).mul(pulseMul).mul(paceMul);
+    const finalRoadColor = clamp(finalColor, vec3(0.0), vec3(1.06));
 
-    material.colorNode = finalColor;
-    material.emissiveNode = finalColor.mul(0.7);
+    material.colorNode = finalRoadColor;
+    material.emissiveNode = finalRoadColor.mul(BLOOM_CLASS_WEIGHTS.road);
 
     return finalizeNodeMaterial(
         material,
@@ -180,13 +197,13 @@ export function createTunnelRingNodeMaterial(colorVec3) {
     const uPulse = uniform(0);
     const uGlow = uniform(0);
 
-    // Fresnel effect for edge glow
+    // Fresnel effect for edge glow (Softer power to reduce shimmering)
     const viewDir = normalize(cameraPosition.sub(positionWorld));
     const nrm = normalWorld;
-    const fresnel = pow(float(1.0).sub(abs(dot(viewDir, nrm))), float(2.0));
+    const fresnel = pow(float(1.0).sub(abs(dot(viewDir, nrm))), float(1.2)); // Reduced power from 2.0
 
-    // Pulsing core brightness
-    const pulse = float(1.0).add(sin(uTime.mul(3.0)).mul(0.15).mul(uPulse));
+    // Pulsing core brightness (Smoother, less "strobe")
+    const pulse = float(1.0).add(sin(uTime.mul(2.0)).mul(0.1).mul(uPulse)); // Slower freq (3->2), lower amp (0.15->0.1)
 
     // Neon core (bright center)
     const coreColor = uColor.mul(float(1.5).add(uGlow.mul(0.5))).mul(pulse);
@@ -204,9 +221,10 @@ export function createTunnelRingNodeMaterial(colorVec3) {
     const alpha = float(0.7).add(fresnel.mul(0.3)).mul(float(0.8).add(uPulse.mul(0.2)));
 
     const ringColor = finalColor.add(edgeBloom);
-    material.colorNode = ringColor;
+    const finalRingColor = clamp(ringColor, vec3(0.0), vec3(1.12));
+    material.colorNode = finalRingColor;
     material.opacityNode = alpha;
-    material.emissiveNode = ringColor.mul(1.1);
+    material.emissiveNode = finalRingColor.mul(BLOOM_CLASS_WEIGHTS.tunnelRing);
 
     return finalizeNodeMaterial(
         material,
@@ -261,8 +279,9 @@ export function createPlanetNodeMaterial(planetTexture) {
     const pulseMul = float(1.0).add(uPulse.mul(0.2));
 
     const finalColor = litColor.add(rimGlow).add(innerGlow).mul(pulseMul);
-    material.colorNode = finalColor;
-    material.emissiveNode = rimGlow.add(innerGlow).mul(0.9);
+    const finalPlanetColor = clamp(finalColor, vec3(0.0), vec3(1.08));
+    material.colorNode = finalPlanetColor;
+    material.emissiveNode = rimGlow.add(innerGlow).mul(BLOOM_CLASS_WEIGHTS.planet);
 
     return finalizeNodeMaterial(
         material,
@@ -287,7 +306,7 @@ export function createPlanetGlowNodeMaterial(glowTexture, baseOpacity) {
     const glowColor = texture(glowTexture, uv()).rgb;
     material.colorNode = glowColor;
     material.opacityNode = uOpacity;
-    material.emissiveNode = glowColor.mul(uOpacity);
+    material.emissiveNode = glowColor.mul(uOpacity).mul(BLOOM_CLASS_WEIGHTS.planetGlow);
 
     return finalizeNodeMaterial(
         material,
@@ -348,7 +367,7 @@ export function createSpeedParticleNodeMaterial(opts = {}) {
     })();
 
     material.sizeNode = sizeAttr;
-    material.emissiveNode = particleColor.mul(0.8);
+    material.emissiveNode = particleColor.mul(BLOOM_CLASS_WEIGHTS.speedParticle);
 
     return finalizeNodeMaterial(
         material,
@@ -431,7 +450,7 @@ export function createAmbientParticleNodeMaterial(opts = {}) {
     })();
 
     material.sizeNode = sizeAttr.mul(float(1.0).add(uPulse.mul(0.5)));
-    material.emissiveNode = ambientColor.mul(vAlpha).mul(0.7);
+    material.emissiveNode = ambientColor.mul(vAlpha).mul(BLOOM_CLASS_WEIGHTS.ambientParticle);
 
     return finalizeNodeMaterial(
         material,
@@ -459,6 +478,7 @@ export function createShootingStarNodeMaterial(opts = {}) {
     let positionAttr;
     const colorAttr = attribute('color', 'vec3');
     const sizeAttr = attribute('size', 'float');
+    const randomAttr = attribute('aRandom', 'float'); // Needed for wobble
 
     if (particleCompute) {
         const posData = storage(particleCompute.positionBuffer, 'vec4', particleCompute.count);
@@ -467,11 +487,31 @@ export function createShootingStarNodeMaterial(opts = {}) {
         positionAttr = attribute('position', 'vec3');
     }
 
-    material.positionNode = positionAttr;
+    // Burning Tail Effect (Ported from WebGL shader)
+    // Wobble the tail particles based on size (smaller = tail) and time
+    const burningPosition = Fn(() => {
+        const pos = positionAttr.toVar();
+
+        // Calculate tail factor: 1.0 for small particles (tail), 0.0 for large (head)
+        // Adjust 50.0 to match the avg max size
+        const tailFactor = float(1.0).sub(sizeAttr.div(60.0));
+        const activeTail = max(float(0.0), tailFactor);
+
+        // Apply wobble
+        const wobbleSpeed = float(12.0);
+        const wobbleScale = float(15.0); // Amplitude
+        const t = uTime.mul(wobbleSpeed).add(randomAttr.mul(20.0));
+
+        const offsetX = sin(t).mul(activeTail).mul(wobbleScale);
+        const offsetY = cos(t.mul(0.8)).mul(activeTail).mul(wobbleScale);
+
+        return pos.add(vec3(offsetX, offsetY, 0.0));
+    })();
+
+    material.positionNode = burningPosition;
 
     const starColor = Fn(() => {
-        const coreLift = uOpacity.mul(0.2);
-        return colorAttr.add(vec3(coreLift, coreLift, coreLift));
+        return colorAttr; // Use pure color from attribute without adding white
     })();
     material.colorNode = starColor;
 
@@ -480,7 +520,7 @@ export function createShootingStarNodeMaterial(opts = {}) {
     })();
 
     material.sizeNode = sizeAttr;
-    material.emissiveNode = starColor.mul(uOpacity);
+    material.emissiveNode = starColor.mul(uOpacity).mul(BLOOM_CLASS_WEIGHTS.shootingStar);
 
     return finalizeNodeMaterial(
         material,
@@ -496,17 +536,34 @@ export function createShootingStarNodeMaterial(opts = {}) {
 export function createStarfieldNodeMaterial() {
     const material = new PointsNodeMaterial({
         transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
         sizeAttenuation: true,
     });
+    material.fog = false;
 
+    const uTime = uniform(0);
     const colorAttr = attribute('color', 'vec3');
+    const sizeAttr = attribute('size', 'float');
+    const twinkleAttr = attribute('twinkle', 'vec2');
+    const twinkle = sin(uTime.mul(twinkleAttr.y).add(twinkleAttr.x)).mul(0.24).add(0.86);
 
-    material.colorNode = colorAttr;
-    material.opacityNode = float(0.8);
-    material.sizeNode = float(2.0);
-    material.emissiveNode = vec3(0.0);
+    // WebGPU path: avoid point UV builtins (gl_PointCoord) because they can fail WGSL compilation.
+    const sizeFactor = clamp(sizeAttr.div(32.0), float(0.35), float(1.0));
+    const finalColor = colorAttr.mul(twinkle.mul(1.08)).add(vec3(0.02));
+    const alpha = clamp(
+        twinkle.mul(0.62).mul(sizeFactor).add(0.08),
+        float(0.08),
+        float(1.0),
+    );
+    const sizePulse = twinkle.mul(0.18).add(0.92);
 
-    return finalizeNodeMaterial(material, {}, { emitsBloom: false, mrtRole: 'starfield' });
+    material.colorNode = finalColor;
+    material.opacityNode = alpha;
+    material.sizeNode = min(float(14.0), max(float(2.0), sizeAttr.mul(sizePulse).mul(0.22)));
+    material.emissiveNode = finalColor.mul(alpha.mul(0.8));
+
+    return finalizeNodeMaterial(material, { uTime }, { emitsBloom: false, mrtRole: 'starfield' });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -518,13 +575,47 @@ export function createNebulaNodeMaterial(nebulaTexture) {
         transparent: true,
         depthWrite: false,
         blending: AdditiveBlending,
+        side: DoubleSide,
     });
 
-    material.colorNode = texture(nebulaTexture, uv()).rgb;
-    material.opacityNode = float(1.0);
-    material.emissiveNode = vec3(0.0);
+    const uTime = uniform(0);
+    const uPulse = uniform(0);
 
-    return finalizeNodeMaterial(material, {}, { emitsBloom: false, mrtRole: 'nebula' });
+    const uvCoord = uv();
+
+    // Sample the seamless rainbow nebula texture
+    // Add subtle UV drift for internal movement
+    const drift = vec2(
+        sin(uTime.mul(0.05).add(uvCoord.y.mul(4.0))).mul(0.02),
+        cos(uTime.mul(0.04).add(uvCoord.x.mul(4.0))).mul(0.02)
+    );
+    const texColor = texture(nebulaTexture, uvCoord.add(drift));
+
+    // Pulse effect - brightness and slight color shift
+    const pulseMul = float(1.0).add(uPulse.mul(float(0.4)));
+
+    // Use texture alpha if present, or luminance for transparency
+    const luminance = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
+
+    // Radial mask to hide hard edges (vignette)
+    const centerDist = length(uvCoord.sub(vec2(0.5)));
+    const edgeMask = float(1.0).sub(smoothstep(float(0.35), float(0.5), centerDist));
+
+    const alpha = max(texColor.a, luminance).mul(float(0.5)).mul(edgeMask); // Base opacity adjustment with mask
+
+    // Final color composition
+    const finalColor = texColor.rgb.mul(pulseMul).mul(float(1.2)); // Slight boost
+
+    material.colorNode = finalColor;
+    material.opacityNode = alpha;
+    // Emissive for bloom
+    material.emissiveNode = finalColor.mul(float(0.8));
+
+    return finalizeNodeMaterial(
+        material,
+        { uTime, uPulse },
+        { emitsBloom: true, mrtRole: 'nebula' }
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -542,7 +633,7 @@ export function createEdgeGlowNodeMaterial(colorVec3, opacity) {
 
     material.colorNode = uColor;
     material.opacityNode = uOpacity;
-    material.emissiveNode = uColor.mul(uOpacity);
+    material.emissiveNode = uColor.mul(uOpacity).mul(BLOOM_CLASS_WEIGHTS.edgeGlow);
 
     return finalizeNodeMaterial(
         material,
@@ -563,34 +654,31 @@ export function createGasGiantNodeMaterial(jupiterTexture) {
 
     const uvCoord = uv();
     const viewDir = normalize(cameraPosition.sub(positionWorld));
-    const nrm = normalWorld;
+    const nrm = normalize(normalWorld);
 
-    // Sample Jupiter texture for realistic band structure
-    const texColor = texture(jupiterTexture, uvCoord);
-    const baseColor = texColor.rgb;
+    const texColor = texture(jupiterTexture, uvCoord).rgb;
+    const bandContrast = smoothstep(float(0.25), float(0.85), texColor.g);
+    const baseColor = mix(
+        texColor.mul(0.78),
+        texColor.mul(vec3(1.02, 0.98, 0.92)),
+        bandContrast.mul(0.24),
+    );
 
-    // Psychedelic hue shift overlay - preserves band detail from texture
-    const luminance = dot(baseColor, vec3(0.299, 0.587, 0.114));
-    const shiftedHue = fract(luminance.mul(2.0).add(uTime.mul(0.04)));
-    const psychedelicColor = tslHsv2rgb(shiftedHue, float(0.85), luminance.mul(0.6).add(0.4));
+    const lightDir = normalize(vec3(0.58, 0.42, 0.38));
+    const NdotL = max(dot(nrm, lightDir), float(0.0));
+    const diffuse = NdotL.mul(0.72).add(0.28);
+    const shadedColor = baseColor.mul(diffuse);
 
-    // Blend texture detail with psychedelic overlay
-    const blendedColor = mix(baseColor, psychedelicColor, float(0.6));
+    const viewDot = clamp(dot(nrm, viewDir), float(0.0), float(1.0));
+    const fresnel = pow(float(1.0).sub(viewDot), float(2.3));
+    const atmosphere = vec3(0.36, 0.62, 0.94).mul(fresnel).mul(0.32);
 
-    // Atmospheric depth - darker at edges
-    const viewDot = abs(dot(nrm, viewDir));
-    const atmosphere = pow(viewDot, float(0.6));
-    const atmosphereColor = blendedColor.mul(atmosphere);
-
-    // Neon rim glow
-    const fresnel = pow(float(1.0).sub(viewDot), float(2.5));
-    const rimHue = fract(uTime.mul(0.08));
-    const rimColor = tslHsv2rgb(rimHue, float(0.9), float(1.0)).mul(fresnel).mul(0.6);
-
-    // Pulse
-    const finalColor = atmosphereColor.add(rimColor).mul(float(1.0).add(uPulse.mul(0.15)));
-    material.colorNode = finalColor;
-    material.emissiveNode = rimColor.add(atmosphereColor.mul(0.2));
+    const finalColor = shadedColor
+        .add(atmosphere)
+        .mul(float(1.0).add(uPulse.mul(0.07)));
+    material.colorNode = clamp(finalColor, vec3(0.0), vec3(1.0));
+    material.opacityNode = float(1.0);
+    material.emissiveNode = atmosphere.add(shadedColor.mul(0.04)).mul(BLOOM_CLASS_WEIGHTS.gasGiant);
 
     return finalizeNodeMaterial(
         material,
@@ -604,39 +692,35 @@ export function createGasGiantNodeMaterial(jupiterTexture) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function createIceMoonNodeMaterial(neptuneTexture) {
-    const material = new MeshBasicNodeMaterial({
-        transparent: true,
-    });
+    const material = new MeshBasicNodeMaterial();
 
     const uTime = uniform(0);
     const uPulse = uniform(0);
 
     const uvCoord = uv();
-    const nrm = normalWorld;
+    const nrm = normalize(normalWorld);
     const viewDir = normalize(cameraPosition.sub(positionWorld));
 
-    // Sample Neptune texture for icy surface detail
-    const texColor = texture(neptuneTexture, uvCoord);
-    const baseColor = texColor.rgb;
+    const texColor = texture(neptuneTexture, uvCoord).rgb;
+    const crackBands = sin(uvCoord.y.mul(92.0).add(uTime.mul(0.02))).mul(0.015).add(0.985);
+    const icyColor = mix(
+        texColor.mul(0.62),
+        texColor.mul(vec3(0.78, 0.9, 1.0)),
+        float(0.46),
+    ).mul(crackBands);
 
-    // Apply icy/crystalline tint
-    const iceTint = vec3(0.7, 0.85, 1.0);
-    const icyColor = mix(baseColor, baseColor.mul(iceTint), float(0.35));
+    const lightDir = normalize(vec3(0.5, 0.45, 0.55));
+    const NdotL = max(dot(nrm, lightDir), float(0.0));
+    const shadedColor = icyColor.mul(NdotL.mul(0.68).add(0.3));
 
-    // Prismatic glow at edges
-    const viewDot = abs(dot(nrm, viewDir));
-    const fresnel = pow(float(1.0).sub(viewDot), float(2.0));
-    const prismColor = tslHsv2rgb(
-        fract(fresnel.mul(3.0).add(uTime.mul(0.05))),
-        float(0.9),
-        float(1.0),
-    );
+    const viewDot = clamp(dot(nrm, viewDir), float(0.0), float(1.0));
+    const fresnel = pow(float(1.0).sub(viewDot), float(2.4));
+    const rimColor = vec3(0.58, 0.76, 1.0).mul(fresnel).mul(0.33);
 
-    const finalColor = mix(icyColor, prismColor, fresnel.mul(0.7));
-    const moonColor = finalColor.mul(float(1.0).add(uPulse.mul(0.2)));
-    material.colorNode = moonColor;
-    material.opacityNode = float(0.85).add(fresnel.mul(0.15));
-    material.emissiveNode = moonColor.mul(0.75);
+    const moonColor = shadedColor.add(rimColor).mul(float(1.0).add(uPulse.mul(0.08)));
+    material.colorNode = clamp(moonColor, vec3(0.0), vec3(1.0));
+    material.opacityNode = float(1.0);
+    material.emissiveNode = rimColor.add(shadedColor.mul(0.03)).mul(BLOOM_CLASS_WEIGHTS.iceMoon);
 
     return finalizeNodeMaterial(
         material,
@@ -650,40 +734,33 @@ export function createIceMoonNodeMaterial(neptuneTexture) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function createAtmosphericOrbNodeMaterial(venusTexture) {
-    const material = new MeshBasicNodeMaterial({
-        transparent: true,
-    });
+    const material = new MeshBasicNodeMaterial();
 
     const uTime = uniform(0);
     const uPulse = uniform(0);
 
     const uvCoord = uv();
-    const nrm = normalWorld;
+    const nrm = normalize(normalWorld);
     const viewDir = normalize(cameraPosition.sub(positionWorld));
 
-    // Slow UV scroll to simulate cloud drift
-    const scrolledUV = vec2(uvCoord.x.add(uTime.mul(0.005)), uvCoord.y);
-    const texColor = texture(venusTexture, scrolledUV);
-    const baseColor = texColor.rgb;
+    const scrolledUV = vec2(uvCoord.x.add(uTime.mul(0.003)), uvCoord.y);
+    const texColor = texture(venusTexture, scrolledUV).rgb;
+    const luminance = dot(texColor, vec3(0.299, 0.587, 0.114));
+    const cloudColor = mix(vec3(luminance), texColor, float(0.62));
+    const blendedColor = mix(cloudColor, cloudColor.mul(vec3(1.0, 0.88, 0.65)), float(0.28));
 
-    // Warm amber hue enhancement overlay
-    const luminance = dot(baseColor, vec3(0.299, 0.587, 0.114));
-    const warmHue = fract(luminance.mul(0.8).add(float(0.08)).add(uTime.mul(0.015)));
-    const warmColor = tslHsv2rgb(warmHue, float(0.65), luminance.mul(0.5).add(0.5));
-    const blendedColor = mix(baseColor, warmColor, float(0.45));
+    const lightDir = normalize(vec3(-0.45, 0.3, 0.5));
+    const NdotL = max(dot(nrm, lightDir), float(0.0));
+    const shadedColor = blendedColor.mul(NdotL.mul(0.65).add(0.3));
 
-    // Strong atmospheric fresnel glow
-    const viewDot = abs(dot(nrm, viewDir));
-    const atmosphere = pow(viewDot, float(0.5));
-    const atmosphereColor = blendedColor.mul(atmosphere);
+    const viewDot = clamp(dot(nrm, viewDir), float(0.0), float(1.0));
+    const fresnel = pow(float(1.0).sub(viewDot), float(2.0));
+    const hazeColor = vec3(1.0, 0.78, 0.52).mul(fresnel).mul(0.29);
 
-    const fresnel = pow(float(1.0).sub(viewDot), float(1.8));
-    const glowColor = tslHsv2rgb(float(0.08), float(0.7), float(1.0)).mul(fresnel).mul(0.7);
-
-    const finalColor = atmosphereColor.add(glowColor).mul(float(1.0).add(uPulse.mul(0.12)));
-    material.colorNode = finalColor;
-    material.opacityNode = float(0.9).add(fresnel.mul(0.1));
-    material.emissiveNode = glowColor.add(atmosphereColor.mul(0.15));
+    const finalColor = shadedColor.add(hazeColor).mul(float(1.0).add(uPulse.mul(0.06)));
+    material.colorNode = clamp(finalColor, vec3(0.0), vec3(1.0));
+    material.opacityNode = float(1.0);
+    material.emissiveNode = hazeColor.add(shadedColor.mul(0.03)).mul(BLOOM_CLASS_WEIGHTS.atmosphericOrb);
 
     return finalizeNodeMaterial(
         material,
@@ -721,7 +798,7 @@ export function createBinaryStarNodeMaterial(starHue) {
     const finalColor = coreColor.mul(glow).add(edgeColor.mul(edgeGlow).mul(0.5));
     material.colorNode = finalColor;
     material.opacityNode = float(0.9).add(edgeGlow.mul(0.1));
-    material.emissiveNode = finalColor;
+    material.emissiveNode = finalColor.mul(BLOOM_CLASS_WEIGHTS.binaryStar);
 
     return finalizeNodeMaterial(
         material,
