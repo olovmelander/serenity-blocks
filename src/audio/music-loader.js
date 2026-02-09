@@ -116,6 +116,13 @@ export function getSongForTheme(themeName, songsData) {
  * @returns {string|null} Theme name or null if no match
  */
 export function getThemeForSong(trackName, themes) {
+    // Explicit reverse map: when a song is shared by multiple themes,
+    // do NOT auto-switch (return null) to avoid overriding user's choice
+    const sharedSongs = ['ElectricDreams'];
+    if (sharedSongs.includes(trackName)) {
+        return null;
+    }
+
     // Normalize the track name
     const normalizedTrack = trackName
         .replace(/([A-Z])/g, '-$1')

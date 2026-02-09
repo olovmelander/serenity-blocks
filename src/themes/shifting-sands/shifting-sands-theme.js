@@ -112,8 +112,8 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.spiceCompute = null;
         this.spicePositionBuffer = null;
         this.sandSmokeCompute = null;
-        this.sandSmokePositionBuffer = null;
-        this.sandSmokeWormBuffer = null;
+        this.sandSmokePositionBuffer = null; // Reused for positions
+        this.sandSmokeLifeBuffer = null; // New: Life (opacity)
 
         // Scene elements
         this.sky = null;
@@ -331,7 +331,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
         }
         this.sandSmokeMaterial = null;
         this.sandSmokePositionBuffer = null;
-        this.sandSmokeWormBuffer = null;
+        this.sandSmokeLifeBuffer = null;
         this.createSandSmoke();
 
         // Rebuild dunes if resolution changed significantly
@@ -745,45 +745,50 @@ export default class ShiftingSandsTheme extends BaseTheme {
             this.sandSmokeCompute.createComputeNode();
         }
 
-        // WebGPU: instanced sprites so size is honored
-        if (this.isWebGPU) {
-            const geometry = new THREE.PlaneGeometry(1, 1);
-            this.sandSmokeMaterial = createSandSmokeMaterial({
-                color: this.palette.sandSmoke,
-                isWebGPU: true,
-                sandSmokeCompute: this.sandSmokeCompute,
-                opacity: 0.45,
-            });
+        this.sandSmokeMaterial = createSandSmokeMaterial({
+            color: this.palette.sandSmoke,
+            isWebGPU: this.isWebGPU,
+            sandSmokeCompute: this.sandSmokeCompute,
+            opacity: 0.45,
+        });
 
-            this.sandSmoke = new THREE.InstancedMesh(geometry, this.sandSmokeMaterial.material, count);
-            this.sandSmoke.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        if (this.isWebGPU) {
+            // WebGPU: Use Points with Node Material (Vertex Pulling via storage buffer)
+            const geometry = new THREE.BufferGeometry();
+            // Set draw range to render 'count' points.
+            // In WebGPU with PointsNodeMaterial using positionNode/vertexIndex,
+            // we typically need a dummy position attribute or setDrawRange if no attributes exist.
+            geometry.setDrawRange(0, count);
+
+            // NOTE: Three.js WebGPURenderer might require at least one attribute or index to determine count
+            // if not using setDrawRange? setDrawRange works.
+
+            this.sandSmoke = new THREE.Points(geometry, this.sandSmokeMaterial.material);
+            this.sandSmoke.frustumCulled = false;
         } else {
             // WebGL fallback: points with CPU-updated attributes
             const geometry = new THREE.BufferGeometry();
             const stateData = this.sandSmokeCompute.getStateData();
 
             const positions = new Float32Array(count * 3);
-            const sizes = new Float32Array(count);
+            const lifes = new Float32Array(count);
             const randoms = new Float32Array(count);
-            const wormIntensity = new Float32Array(count);
 
             for (let i = 0; i < count; i++) {
                 const i8 = i * 8;
                 positions[i * 3] = stateData[i8];
                 positions[i * 3 + 1] = stateData[i8 + 1];
                 positions[i * 3 + 2] = stateData[i8 + 2];
-                sizes[i] = stateData[i8 + 7];
-                randoms[i] = stateData[i8 + 4];
-                wormIntensity[i] = stateData[i8 + 5];
+                lifes[i] = stateData[i8 + 3];
+                randoms[i] = stateData[i8 + 7];
             }
 
             this.sandSmokePositionBuffer = new THREE.BufferAttribute(positions, 3);
-            this.sandSmokeWormBuffer = new THREE.BufferAttribute(wormIntensity, 1);
+            this.sandSmokeLifeBuffer = new THREE.BufferAttribute(lifes, 1);
 
             geometry.setAttribute('position', this.sandSmokePositionBuffer);
-            geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-            geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-            geometry.setAttribute('aWorm', this.sandSmokeWormBuffer);
+            geometry.setAttribute('aLife', this.sandSmokeLifeBuffer);
+            geometry.setAttribute('aRand', new THREE.BufferAttribute(randoms, 1));
 
             this.sandSmokeMaterial = createSandSmokeMaterial({
                 color: this.palette.sandSmoke,
@@ -967,20 +972,21 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 } else {
                     this.sandSmokeCompute.updateCPU(elapsed, windStrength);
 
-                    // Sync CPU-updated positions and worm intensity to geometry
+                    // Sync CPU-updated positions and life to geometry
                     if (this.sandSmokePositionBuffer && this.sandSmokeCompute.getStateData()) {
                         const state = this.sandSmokeCompute.getStateData();
                         const positions = this.sandSmokePositionBuffer.array;
-                        const worms = this.sandSmokeWormBuffer?.array;
+                        const lifes = this.sandSmokeLifeBuffer?.array;
+
                         for (let i = 0; i < this.sandSmokeCompute.count; i++) {
                             const i8 = i * 8;
                             positions[i * 3] = state[i8];
                             positions[i * 3 + 1] = state[i8 + 1];
                             positions[i * 3 + 2] = state[i8 + 2];
-                            if (worms) worms[i] = state[i8 + 5];
+                            if (lifes) lifes[i] = state[i8 + 3];
                         }
                         this.sandSmokePositionBuffer.needsUpdate = true;
-                        if (this.sandSmokeWormBuffer) this.sandSmokeWormBuffer.needsUpdate = true;
+                        if (this.sandSmokeLifeBuffer) this.sandSmokeLifeBuffer.needsUpdate = true;
                     }
                 }
             }
@@ -1409,7 +1415,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
             this.sandSmokeCompute = null;
         }
         this.sandSmokePositionBuffer = null;
-        this.sandSmokeWormBuffer = null;
+        this.sandSmokeLifeBuffer = null;
 
         // Cleanup Three.js renderer
         if (this.renderer) {
