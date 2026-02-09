@@ -25,8 +25,56 @@ import {
     smoothstep,
     max,
     pow,
+    dot,
+    mix,
     If,
 } from 'three/tsl';
+
+// ============== TSL TERRAIN HEIGHT APPROXIMATION ==============
+// Matches the CPU PerlinNoise terrain in the theme (simplified 2-octave FBM)
+
+const tslHash2D = /* @__PURE__ */ Fn(([p_immutable]) => {
+    const p = vec2(p_immutable).toVar();
+    const p3 = fract(vec3(p.x, p.y, p.x).mul(0.1031)).toVar();
+    p3.addAssign(dot(p3, vec3(p3.y, p3.z, p3.x).add(33.33)));
+    return fract(p3.x.add(p3.y).mul(p3.z));
+});
+
+const tslSmoothNoise2D = /* @__PURE__ */ Fn(([p_immutable]) => {
+    const p = vec2(p_immutable).toVar();
+    const i = floor(p);
+    const f = fract(p).toVar();
+    f.assign(f.mul(f).mul(float(3.0).sub(f.mul(2.0))));
+
+    const a = tslHash2D(i);
+    const b = tslHash2D(i.add(vec2(1.0, 0.0)));
+    const c = tslHash2D(i.add(vec2(0.0, 1.0)));
+    const d = tslHash2D(i.add(vec2(1.0, 1.0)));
+
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+});
+
+const tslApproxTerrainHeight = /* @__PURE__ */ Fn(([x, z]) => {
+    const dir = float(0.628); // PI * 0.2 (dune direction)
+    const cosDir = cos(dir);
+    const sinDir = sin(dir);
+    const rx = x.mul(cosDir).add(z.mul(sinDir));
+    const rz = x.mul(sinDir).negate().add(z.mul(cosDir));
+
+    // Primary dunes — 2-octave FBM with ridge shaping
+    const duneCoord = vec2(rx.mul(0.003), rz.mul(0.003));
+    const fbm = tslSmoothNoise2D(duneCoord).mul(0.6)
+        .add(tslSmoothNoise2D(duneCoord.mul(2.0)).mul(0.4));
+    const h = abs(fbm.mul(2.0).sub(1.0)).mul(45.0);
+
+    // Secondary rolling hills
+    const h2 = tslSmoothNoise2D(vec2(x.mul(0.012), z.mul(0.012).add(100.0))).mul(15.0);
+
+    // Asymmetric windward factor
+    const windward = sin(rx.mul(0.02)).mul(0.3).add(0.7);
+
+    return h.add(h2).mul(windward).sub(20.0);
+});
 
 /**
  * Compute shader for sandworm trail calculation
@@ -417,14 +465,19 @@ export class SpiceParticleCompute {
  * Features: FBM turbulence, worm trail following, volumetric scattering
  * NOTE: This will be fully implemented in Phase 5
  */
+/**
+ * Enhanced sand smoke with GPU compute simulation
+ * Features: Physics-based particle system with emission, advection, and drag
+ * Fixed: Now emits from the worm head and flows naturally
+ */
 export class SandSmokeCompute {
     constructor(particleCount, wormTrailCompute) {
         this.count = particleCount;
         this.wormTrail = wormTrailCompute;
 
         // Particle state buffer (2x vec4 per particle)
-        // [0]: x, y, z, opacity
-        // [1]: rand, wormIntensity, depth, size
+        // [0]: x, y, z, life (life = 0..1, 0 = dead)
+        // [1]: vx, vy, vz, rand (velocity + stable random)
         this.stateData = new Float32Array(particleCount * 8);
         this.stateBuffer = new THREE.StorageBufferAttribute(this.stateData, 4);
 
@@ -443,17 +496,17 @@ export class SandSmokeCompute {
         for (let i = 0; i < this.count; i++) {
             const i8 = i * 8;
 
-            // Position (spread across view)
-            this.stateData[i8] = (Math.random() - 0.5) * 2000;     // x
-            this.stateData[i8 + 1] = 0;                             // y (set by shader)
-            this.stateData[i8 + 2] = -2000 + Math.random() * 2800;  // z
-            this.stateData[i8 + 3] = 0.3;                           // opacity
+            // Start dead to stagger emission
+            this.stateData[i8] = 0;      // x
+            this.stateData[i8 + 1] = -100; // y (underground)
+            this.stateData[i8 + 2] = 0;   // z
+            this.stateData[i8 + 3] = -Math.random() * 5.0; // life (negative = delay)
 
-            // Properties
-            this.stateData[i8 + 4] = Math.random();                 // rand
-            this.stateData[i8 + 5] = 0;                             // wormIntensity
-            this.stateData[i8 + 6] = 0;                             // depth
-            this.stateData[i8 + 7] = 170 + Math.random() * 130;     // size (tighter, less blobby)
+            // Velocity & Props
+            this.stateData[i8 + 4] = 0; // vx
+            this.stateData[i8 + 5] = 0; // vy
+            this.stateData[i8 + 6] = 0; // vz
+            this.stateData[i8 + 7] = Math.random(); // rand (stable ID)
         }
 
         this.stateBuffer.needsUpdate = true;
@@ -475,56 +528,101 @@ export class SandSmokeCompute {
 
         const computeSmoke = Fn(() => {
             const index = instanceIndex;
-            const pos = state.element(index.mul(2)).toVar();
-            const props = state.element(index.mul(2).add(1)).toVar();
+            const stateIdx0 = index.mul(2);
+            const stateIdx1 = index.mul(2).add(1);
 
-            const rand = props.x;
-            const rand2 = fract(sin(rand.mul(19.17).add(3.1)).mul(43758.5453));
-            const rand3 = fract(sin(rand.mul(77.31).add(1.7)).mul(43758.5453));
+            const posLife = state.element(stateIdx0).toVar(); // x, y, z, life
+            const velRand = state.element(stateIdx1).toVar(); // vx, vy, vz, rand
+
+            const life = posLife.w;
+            const dt = float(0.016); // Fixed delta time
 
             // Read worm position from shared buffer
             const wormHead = wormState.element(0);
             const wormHeadX = wormHead.x;
             const wormHeadZ = wormHead.y;
-            const wormPathBaseX = wormHead.z;
-            const wormPathSlope = wormHead.w;
+            // Additional check: is worm visible / active?
+            // For now assume always emitting if moving, could check horizonFade
 
-            // Distribute particles along the trail, centered around the head
-            const along = rand2.sub(0.6).mul(1600.0); // trail length (tighter to head)
-            const lateral = rand3.sub(0.5).mul(120.0);
+            // --- RESPALM LOGIC ---
+            // If life <= 0, handle respawn or delay
+            If(life.lessThanEqual(0.0), () => {
+                // If deeply negative, just increment (delay)
+                If(life.lessThan(-0.05), () => {
+                    posLife.w.addAssign(dt);
+                }).Else(() => {
+                    // READY TO SPAWN
+                    // Initialize position at worm head + random scatter
+                    const r = velRand.w; // random seed
+                    const angle = r.mul(6.28);
+                    const radius = r.mul(15.0); // Emission radius
 
-            const trailZ = wormHeadZ.add(along);
-            const trailX = wormPathBaseX.add(trailZ.mul(wormPathSlope));
+                    posLife.x.assign(wormHeadX.add(cos(angle).mul(radius)));
+                    posLife.z.assign(wormHeadZ.add(sin(angle).mul(radius)));
 
-            const swirl = sin(time.mul(0.6).add(rand.mul(6.2831))).mul(12.0);
-            const drift = cos(time.mul(0.4).add(rand.mul(3.14))).mul(8.0);
+                    // Height: Terrain height at emission point
+                    // CRITICAL: Must add ridge height (approx 15-20) because dune shader displaces terrain UP
+                    const terrainH = tslApproxTerrainHeight(posLife.x, posLife.z);
+                    posLife.y.assign(terrainH.add(20.0)); // Ridge height offset to spawn ABOVE the worm
 
-            pos.x.assign(trailX.add(lateral).add(swirl));
-            pos.z.assign(trailZ.add(drift));
+                    // Initialize velocity: Upwards + random spread + slight movement direction
+                    // Boost initial velocity to clear the ridge quickly
+                    const upVel = float(25.0).add(r.mul(15.0));
+                    velRand.x.assign(cos(angle).mul(5.0));
+                    velRand.y.assign(upVel);
+                    velRand.z.assign(sin(angle).mul(5.0));
 
-            // Vertical lift (soft, low)
-            const lift = sin(time.mul(0.5).add(rand.mul(9.1))).mul(18.0).add(6.0);
-            pos.y.assign(lift.add(wind.mul(4.0)));
+                    // Reset life (1.0 = fresh, 0.0 = dead)
+                    posLife.w.assign(float(1.0));
+                });
+            }).Else(() => {
+                // --- PHYSICS UPDATE ---
 
-            // Worm visibility (trail proximity + head proximity)
-            const distFromPath = abs(pos.x.sub(trailX));
-            const trailWidth = float(120.0);
-            const pathMask = exp(distFromPath.mul(distFromPath).mul(-1.0).div(trailWidth.mul(trailWidth)));
+                // 1. Gravity / Buoyancy
+                // Smoke rises (buoyancy) but heavier particles might sink? Assume rising hot dust
+                velRand.y.addAssign(float(20.0).mul(dt)); // Buoyancy
 
-            // Favor trailing smoke (behind head)
-            const behindMask = smoothstep(500.0, -100.0, wormHeadZ.sub(pos.z));
-            const distFromHead = abs(pos.z.sub(wormHeadZ));
-            const headMask = smoothstep(450.0, 0.0, distFromHead);
+                // 2. Wind Advection
+                // Wind blows along X direction (approx)
+                const windForce = vec3(wind.mul(20.0), 0.0, 0.0);
+                velRand.xyz.addAssign(windForce.mul(dt));
 
-            const wormVisibility = clamp(pathMask.mul(headMask).mul(behindMask).mul(0.9), 0.0, 1.0);
+                // 3. Turbulence / Curl Noise
+                const noisePos = posLife.xyz.mul(0.02).add(vec3(time.mul(0.1), 0.0, 0.0));
+                // Simple turbulence using sin/cos approximation or noise
+                const turb = vec3(
+                    sin(noisePos.y.mul(4.0)).mul(30.0),
+                    sin(noisePos.x.mul(4.0)).mul(10.0),
+                    sin(noisePos.z.mul(4.0)).mul(30.0)
+                );
+                velRand.xyz.addAssign(turb.mul(dt));
 
-            // Store for fragment shader: wormIntensity + trail fade
-            props.y.assign(wormVisibility);
-            props.z.assign(headMask);
+                // 4. Drag
+                velRand.xyz.mulAssign(float(0.96)); // Air resistance
+
+                // 5. Integration
+                posLife.xyz.addAssign(velRand.xyz.mul(dt));
+
+                // 6. Terrain Collision
+                const groundH = tslApproxTerrainHeight(posLife.x, posLife.z);
+                const minH = groundH.add(1.0);
+                If(posLife.y.lessThan(minH), () => {
+                    posLife.y.assign(minH);
+                    velRand.y.mulAssign(0.5); // Dampen vertical velocity on friction
+                    // Friction
+                    velRand.x.mulAssign(0.9);
+                    velRand.z.mulAssign(0.9);
+                });
+
+                // 7. Life Decay
+                // Decay faster if moving slow? Or just constant.
+                const decay = float(0.3).add(velRand.w.mul(0.2)); // Random decay rate
+                posLife.w.subAssign(decay.mul(dt));
+            });
 
             // Write back
-            state.element(index.mul(2)).assign(pos);
-            state.element(index.mul(2).add(1)).assign(props);
+            state.element(stateIdx0).assign(posLife);
+            state.element(stateIdx1).assign(velRand);
         });
 
         this.computeNode = computeSmoke().compute(this.count);
@@ -541,52 +639,90 @@ export class SandSmokeCompute {
 
     /**
      * CPU fallback update for WebGL backend
-     * Mirrors the GPU compute logic (approximate)
+     * Mirrors the GPU compute logic (simplified)
      */
     updateCPU(time, windStrength) {
         const wind = windStrength ?? 0.5;
-        const wormState = this.wormTrail?.getCPUState?.() ?? null;
-
-        const wormHeadX = wormState?.headX ?? 0;
-        const wormHeadZ = wormState?.headZ ?? 0;
-        const wormPathBaseX = wormState?.pathBaseX ?? 0;
-        const wormPathSlope = wormState?.pathSlope ?? 0;
+        const wormState = this.wormTrail?.getCPUState?.() ?? { headX: 0, headZ: 0 };
+        const dt = 0.016;
 
         for (let i = 0; i < this.count; i++) {
             const i8 = i * 8;
 
-            const rand = this.stateData[i8 + 4];
-            const rand2 = this.fract(Math.sin(rand * 19.17 + 3.1) * 43758.5453);
-            const rand3 = this.fract(Math.sin(rand * 77.31 + 1.7) * 43758.5453);
+            // Unpack
+            let x = this.stateData[i8];
+            let y = this.stateData[i8 + 1];
+            let z = this.stateData[i8 + 2];
+            let life = this.stateData[i8 + 3];
 
-            const along = (rand2 - 0.6) * 1600.0;
-            const lateral = (rand3 - 0.5) * 120.0;
+            let vx = this.stateData[i8 + 4];
+            let vy = this.stateData[i8 + 5];
+            let vz = this.stateData[i8 + 6];
+            const rand = this.stateData[i8 + 7];
 
-            const trailZ = wormHeadZ + along;
-            const trailX = wormPathBaseX + trailZ * wormPathSlope;
+            // Respawn
+            if (life <= 0) {
+                // Only spawn if delay is over (negative life counts up)
+                if (life < -0.02) {
+                    this.stateData[i8 + 3] += dt;
+                    continue;
+                }
 
-            const swirl = Math.sin(time * 0.6 + rand * 6.2831) * 12.0;
-            const drift = Math.cos(time * 0.4 + rand * 3.14) * 8.0;
+                const angle = rand * 6.28;
+                const radius = rand * 15.0;
+                x = wormState.headX + Math.cos(angle) * radius;
+                z = wormState.headZ + Math.sin(angle) * radius;
+                const terrainH = this.approxTerrainHeight(x, z);
+                // CRITICAL: Must add ridge height + boost velocity
+                y = terrainH + 20.0;
 
-            const x = trailX + lateral + swirl;
-            const z = trailZ + drift;
-            const y = Math.sin(time * 0.5 + rand * 9.1) * 18.0 + 6.0 + wind * 4.0;
+                const upVel = 25.0 + rand * 15.0;
+                vx = Math.cos(angle) * 5.0;
+                vy = upVel;
+                vz = Math.sin(angle) * 5.0;
+                life = 1.0;
+            } else {
+                // Physics
+                vy += 20.0 * dt; // Buoyancy
+                vx += wind * 20.0 * dt; // Wind
 
-            const distFromPath = Math.abs(x - trailX);
-            const trailWidth = 120.0;
-            const pathMask = Math.exp(-(distFromPath * distFromPath) / (trailWidth * trailWidth));
+                // Turbulence
+                vx += Math.sin(y * 0.1 + time) * 30.0 * dt;
+                vy += Math.sin(x * 0.1 + time) * 10.0 * dt;
+                vz += Math.sin(z * 0.1 + time) * 30.0 * dt;
 
-            const behindMask = this.smoothstep(500.0, -100.0, wormHeadZ - z);
-            const distFromHead = Math.abs(z - wormHeadZ);
-            const headMask = this.smoothstep(450.0, 0.0, distFromHead);
-            const wormVisibility = Math.min(1.0, pathMask * headMask * behindMask * 0.9);
+                // Drag
+                vx *= 0.96;
+                vy *= 0.96;
+                vz *= 0.96;
 
+                // Integrate
+                x += vx * dt;
+                y += vy * dt;
+                z += vz * dt;
+
+                // Collision
+                const groundH = this.approxTerrainHeight(x, z);
+                if (y < groundH + 1.0) {
+                    y = groundH + 1.0;
+                    vy *= 0.5;
+                    vx *= 0.9;
+                    vz *= 0.9;
+                }
+
+                // Decay
+                const decay = 0.3 + rand * 0.2;
+                life -= decay * dt;
+            }
+
+            // Pack
             this.stateData[i8] = x;
             this.stateData[i8 + 1] = y;
             this.stateData[i8 + 2] = z;
-            // opacity stays in i8+3
-            this.stateData[i8 + 5] = wormVisibility;
-            this.stateData[i8 + 6] = headMask;
+            this.stateData[i8 + 3] = life;
+            this.stateData[i8 + 4] = vx;
+            this.stateData[i8 + 5] = vy;
+            this.stateData[i8 + 6] = vz;
         }
 
         this.stateBuffer.needsUpdate = true;
@@ -611,15 +747,53 @@ export class SandSmokeCompute {
         return x - Math.floor(x);
     }
 
-    // Helper: GLSL-style smoothstep
-    smoothstep(edge0, edge1, x) {
-        const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
-        return t * t * (3 - 2 * t);
+    // Reuse existing terrain approx helper from file scope
+    // But since it's inside the class now and 'approxTerrainHeight' is a method...
+    approxTerrainHeight(x, z) {
+        const dir = 0.628; // PI * 0.2
+        const cosD = Math.cos(dir), sinD = Math.sin(dir);
+        const rx = x * cosD + z * sinD;
+        const rz = -x * sinD + z * cosD;
+
+        // Primary dunes — 2-octave FBM
+        const cx = rx * 0.003, cz = rz * 0.003;
+        const fbm = this._smoothNoise2D(cx, cz) * 0.6
+            + this._smoothNoise2D(cx * 2, cz * 2) * 0.4;
+        const h = Math.abs(fbm * 2 - 1) * 45;
+
+        // Secondary rolling hills
+        const h2 = this._smoothNoise2D(x * 0.012, z * 0.012 + 100) * 15;
+
+        // Asymmetric windward
+        const windward = Math.sin(rx * 0.02) * 0.3 + 0.7;
+
+        return (h + h2) * windward - 20;
     }
 
     // Helper: GLSL-style mod
     mod(a, b) {
         return ((a % b) + b) % b;
+    }
+
+    /* Noise helpers reused from previous implementation */
+    _hash2D(px, py) {
+        const p3x = this.fract(px * 0.1031);
+        const p3y = this.fract(py * 0.1031);
+        const p3z = this.fract(px * 0.1031);
+        const d = p3x * (p3y + 33.33) + p3y * (p3z + 33.33) + p3z * (p3x + 33.33);
+        return this.fract((p3x + d) * (p3y + d) * (p3z + d));
+    }
+
+    _smoothNoise2D(px, py) {
+        const ix = Math.floor(px), iy = Math.floor(py);
+        let fx = px - ix, fy = py - iy;
+        fx = fx * fx * (3 - 2 * fx);
+        fy = fy * fy * (3 - 2 * fy);
+        const a = this._hash2D(ix, iy);
+        const b = this._hash2D(ix + 1, iy);
+        const c = this._hash2D(ix, iy + 1);
+        const d = this._hash2D(ix + 1, iy + 1);
+        return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
     }
 
     /**
