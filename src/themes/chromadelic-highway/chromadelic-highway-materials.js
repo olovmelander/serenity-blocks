@@ -47,8 +47,8 @@ import {
 } from 'three/tsl';
 
 const BLOOM_CLASS_WEIGHTS = {
-    road: 0.1,  // Reduced from 0.2
-    tunnelRing: 0.15, // Reduced from 0.25
+    road: 0.05,  // Low weight: lane stripes cause high-frequency flicker in bloom
+    tunnelRing: 0.08, // Low weight: fresnel + camera sway causes bloom flicker
     planet: 0.64,
     planetGlow: 0.42,
     speedParticle: 0.74,
@@ -171,7 +171,8 @@ export function createRoadNodeMaterial() {
     const finalRoadColor = clamp(finalColor, vec3(0.0), vec3(1.06));
 
     material.colorNode = finalRoadColor;
-    material.emissiveNode = finalRoadColor.mul(BLOOM_CLASS_WEIGHTS.road);
+    // Use smooth rainbow base for emissive (excludes lane stripes) to prevent bloom flicker
+    material.emissiveNode = rainbow.mul(edgeMix).mul(depthMix).mul(BLOOM_CLASS_WEIGHTS.road);
 
     return finalizeNodeMaterial(
         material,
@@ -197,13 +198,13 @@ export function createTunnelRingNodeMaterial(colorVec3) {
     const uPulse = uniform(0);
     const uGlow = uniform(0);
 
-    // Fresnel effect for edge glow (Softer power to reduce shimmering)
+    // Fresnel effect for edge glow (low power = broad, stable glow; less view-angle sensitivity)
     const viewDir = normalize(cameraPosition.sub(positionWorld));
     const nrm = normalWorld;
-    const fresnel = pow(float(1.0).sub(abs(dot(viewDir, nrm))), float(1.2)); // Reduced power from 2.0
+    const fresnel = pow(float(1.0).sub(abs(dot(viewDir, nrm))), float(0.8));
 
-    // Pulsing core brightness (Smoother, less "strobe")
-    const pulse = float(1.0).add(sin(uTime.mul(2.0)).mul(0.1).mul(uPulse)); // Slower freq (3->2), lower amp (0.15->0.1)
+    // Pulsing core brightness (very gentle to avoid bloom flicker)
+    const pulse = float(1.0).add(sin(uTime.mul(1.2)).mul(0.05).mul(uPulse));
 
     // Neon core (bright center)
     const coreColor = uColor.mul(float(1.5).add(uGlow.mul(0.5))).mul(pulse);
@@ -224,7 +225,8 @@ export function createTunnelRingNodeMaterial(colorVec3) {
     const finalRingColor = clamp(ringColor, vec3(0.0), vec3(1.12));
     material.colorNode = finalRingColor;
     material.opacityNode = alpha;
-    material.emissiveNode = finalRingColor.mul(BLOOM_CLASS_WEIGHTS.tunnelRing);
+    // Use stable core color for emissive (not fresnel-dependent edges) to prevent bloom flicker
+    material.emissiveNode = coreColor.mul(BLOOM_CLASS_WEIGHTS.tunnelRing);
 
     return finalizeNodeMaterial(
         material,

@@ -568,6 +568,14 @@ export function createSpiceMaterial(params = {}) {
  * @param {boolean} params.isWebGPU - Whether using WebGPU backend
  * @param {SandSmokeCompute} params.sandSmokeCompute - Compute instance (optional)
  */
+/**
+ * Creates a TSL-based sand smoke material with compute-driven positions
+ *
+ * @param {Object} params - Material parameters
+ * @param {THREE.Color} params.color - Smoke color
+ * @param {boolean} params.isWebGPU - Whether using WebGPU backend
+ * @param {SandSmokeCompute} params.sandSmokeCompute - Compute instance (optional)
+ */
 export function createSandSmokeMaterial(params = {}) {
     const {
         color = new THREE.Color(0xc4a35a),
@@ -583,40 +591,52 @@ export function createSandSmokeMaterial(params = {}) {
     const useGPU = Boolean(isWebGPU && sandSmokeCompute?.getStateBuffer);
 
     if (useGPU) {
-        // WebGPU path: instanced sprites with storage buffer positions/sizes
+        // WebGPU path: Points with storage buffer positions (Vertex Pulling)
+        // Buffer 0: x, y, z, life
+        // Buffer 1: vx, vy, vz, rand
         const smokeState = storage(sandSmokeCompute.getStateBuffer(), 'vec4', sandSmokeCompute.count * 2);
-        const pos = smokeState.element(instanceIndex.mul(2)).xyz;
-        const props = smokeState.element(instanceIndex.mul(2).add(1));
 
-        const rand = props.x;
-        const wormIntensity = clamp(props.y.mul(1.4), 0.0, 1.0);
-        const trailFade = props.z;
-        const sizeNode = props.w;
+        // Use vertexIndex for Points (one vertex per particle)
+        const posLife = smokeState.element(vertexIndex.mul(2));
+        const velRand = smokeState.element(vertexIndex.mul(2).add(1));
 
-        const baseAlpha = rand.mul(0.045).add(0.03).mul(uOpacity);
-        const wormBoost = wormIntensity.mul(0.6).mul(trailFade);
-        const alpha = clamp(baseAlpha.add(wormBoost), 0.0, 0.7);
+        const pos = posLife.xyz;
+        const life = posLife.w;
+        const rand = velRand.w;
 
-        const smokeBase = mix(uColor.mul(0.45), uColor.mul(0.82), rand);
-        const smokeColor = mix(smokeBase, uColor.mul(0.92), wormIntensity.mul(0.35));
-        const sizeScale = float(0.06);
-        const spriteScale = vec2(sizeNode.mul(sizeScale).mul(wormIntensity.mul(0.55).add(0.4)));
+        // Opacity based on life (fade in quickly, fade out slowly)
+        const fadeIn = smoothstep(0.95, 1.0, life);
+        const fadeOut = smoothstep(0.0, 0.2, life);
+        const alpha = uOpacity.mul(fadeIn).mul(fadeOut).mul(0.8);
 
-        // Soft radial mask to avoid square sprites
-        const localUV = vec2(positionLocal.x, positionLocal.y).add(0.5);
-        const mask = smoothstep(0.5, 0.1, length(localUV.sub(vec2(0.5))));
+        // Discard dead particles (life < 0.001)
+        const deadMask = step(0.001, life);
 
-        // Distance-based fade to avoid screen takeover
-        const dist = length(cameraPosition.sub(positionWorld));
-        const distFade = smoothstep(900.0, 250.0, dist);
+        // Color/Lighting
+        const smokeBase = mix(uColor, uColor.mul(0.6), rand);
+        const smokeColor = smokeBase;
 
-        const material = new THREE.SpriteNodeMaterial();
+        // Size expansion over life
+        const age = float(1.0).sub(life);
+        const sizeBase = float(10.0).add(rand.mul(10.0));
+        const expansion = age.mul(40.0);
+        const sizeScale = float(1.0); // Points are pixels by default without attenuation, need larger scale
+        const finalSize = sizeBase.add(expansion).mul(sizeScale);
+
+        // Distance fade - Relaxed range
+        const camDist = length(cameraPosition.sub(positionWorld));
+        const distFade = float(1.0).sub(smoothstep(800.0, 2500.0, camDist));
+
+        const finalAlpha = alpha.mul(distFade).mul(deadMask);
+
+        const material = new THREE.PointsNodeMaterial();
         material.positionNode = pos;
-        material.scaleNode = spriteScale;
-        material.colorNode = vec4(smokeColor, alpha.mul(mask).mul(distFade));
+        material.sizeNode = finalSize;
+        material.colorNode = vec4(smokeColor, finalAlpha);
         material.transparent = true;
         material.depthWrite = false;
         material.blending = THREE.NormalBlending;
+        material.sizeAttenuation = true; // Important for 3D perspective size
 
         return {
             material,
@@ -629,31 +649,34 @@ export function createSandSmokeMaterial(params = {}) {
     }
 
     // WebGL fallback: points with per-vertex attributes
-    const aSize = attribute('aSize');
-    const aRandom = attribute('aRandom');
-    const aWorm = attribute('aWorm');
+    // Attributes must be set up in the theme to match: aLife, aRand
+    const aLife = attribute('aLife');
+    const aRand = attribute('aRand');
 
     const positionNode = Fn(() => positionLocal)();
 
-    const rand = aRandom;
-    const wormIntensity = clamp(aWorm.mul(1.1), 0.0, 1.0);
-    const sizeNode = aSize;
+    // Opacity based on life
+    const fadeIn = smoothstep(0.95, 1.0, aLife);
+    const fadeOut = smoothstep(0.0, 0.2, aLife);
+    const alpha = uOpacity.mul(fadeIn).mul(fadeOut).mul(0.8);
 
-    // Revert to original logic with boosted visibility
-    const baseAlpha = rand.mul(0.12).add(0.15).mul(uOpacity);
-    const wormBoost = wormIntensity.mul(0.55);
-    const alpha = clamp(baseAlpha.add(wormBoost), 0.0, 0.75);
+    const smokeBase = mix(uColor, uColor.mul(0.6), aRand);
 
-    const smokeBase = mix(uColor.mul(0.55), uColor.mul(0.85), rand);
-    const smokeColor = mix(smokeBase, uColor.mul(0.95), wormIntensity.mul(0.3));
+    // Size expansion
+    const age = float(1.0).sub(aLife);
+    const sizeBase = float(150.0).add(aRand.mul(100.0));
+    const expansion = age.mul(200.0);
+    const sizeNode = sizeBase.add(expansion);
 
     const material = new THREE.PointsNodeMaterial();
     material.positionNode = positionNode;
-    material.colorNode = vec4(smokeColor, alpha);
-    material.sizeNode = sizeNode.mul(wormIntensity.mul(0.45).add(0.55));
+    material.colorNode = vec4(smokeBase, alpha);
+    material.sizeNode = sizeNode;
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.NormalBlending;
+    // Normalize size for Points vs Sprite differences (Points are screen space pixels usually, unless sizeAttenuation)
+    material.sizeAttenuation = true;
 
     return {
         material,
