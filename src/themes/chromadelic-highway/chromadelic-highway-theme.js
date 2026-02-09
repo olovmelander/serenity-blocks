@@ -190,7 +190,7 @@ const QUALITY_PRESETS = {
 const BLOOM_TUNING = {
     baseScale: 0.8,
     reactiveScale: 0.62,
-    thresholdLift: 0.08,
+    thresholdLift: 0.14,
 };
 
 const RING_GLOW_TUNING = {
@@ -2708,7 +2708,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             const gasGiantSize = 350;
             const gasGiantGeo = new THREE.SphereGeometry(gasGiantSize, 40, 40);
 
-            const jupiterTexture = textureLoader.load('./textures/2k_jupiter.jpg');
+            const jupiterTexture = textureLoader.load('./textures/2k_makemake_fictional.jpg');
             jupiterTexture.wrapS = THREE.ClampToEdgeWrapping;
             jupiterTexture.wrapT = THREE.ClampToEdgeWrapping;
 
@@ -3259,13 +3259,12 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             // Vivid Rainbow Gradient (Full Spectrum along the tail)
             // t goes from 0 (head) to 1 (tail)
-            // We want the head to be bright/almost white, and the tail to be a full rainbow.
+            // Head is now pure color instead of white-ish
 
-            const hue = (t * 2.5 + this.rand() * 0.2) % 1.0; // Cycle hue along the tail
+            // Start hue is random for each star, then cycles along the tail
+            const hue = (t * 3.0 + this.rand()) % 1.0;
             const saturation = 1.0; // Max saturation for vividness
-            // Reduced lightness: Head (0.6) is bright but colorful, Tail (0.5) is pure vivid color.
-            // Previously went up to 0.9 which caused the "white" look.
-            const lightness = 0.5 + 0.1 * Math.pow(1.0 - t, 4.0);
+            const lightness = 0.5; // Pure vivid color
 
             const color = new THREE.Color().setHSL(hue, saturation, lightness);
 
@@ -3273,8 +3272,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             colors[i * 3 + 1] = color.g;
             colors[i * 3 + 2] = color.b;
 
-            const baseSize = 35 + this.rand() * 25;
-            sizes[i] = baseSize * (1 - t * 0.5);
+            const baseSize = 45 + this.rand() * 30; // Slightly larger for impact
+            sizes[i] = baseSize * (1 - t * 0.4); // Less taper closer to head
         }
 
         const geometry = new THREE.BufferGeometry();
@@ -3335,8 +3334,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                         vec2 center = gl_PointCoord - vec2(0.5);
                         float dist = length(center);
                         float alpha = smoothstep(0.5, 0.0, dist) * uOpacity;
-                        float core = smoothstep(0.25, 0.0, dist) * 0.6;
-                        vec3 finalColor = vColor + core;
+                        // Reduced white core intensity to keep colors vivid
+                        float core = smoothstep(0.25, 0.0, dist) * 0.3; 
+                        vec3 finalColor = vColor + core * 0.5; // Less white add
                         gl_FragColor = vec4(finalColor, alpha);
                     }
                 `,
@@ -3348,9 +3348,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         const points = new THREE.Points(geometry, material);
         points.userData = {
-            velocity: new THREE.Vector3(dirX, dirY, dirZ).multiplyScalar(200 + this.rand() * 100),
+            velocity: new THREE.Vector3(dirX, dirY, dirZ).multiplyScalar(180 + this.rand() * 80), // Slightly slower for longer view
             life: 0,
-            maxLife: 6 + this.rand() * 4,
+            maxLife: 10 + this.rand() * 5, // Longer lifetime (was 6-10)
             materialData,
             compute: starCompute,
         };
