@@ -537,86 +537,89 @@ export class SandSmokeCompute {
             const life = posLife.w;
             const dt = float(0.016); // Fixed delta time
 
-            // Read worm position from shared buffer
+            // Read worm state from shared buffer
             const wormHead = wormState.element(0);
             const wormHeadX = wormHead.x;
-            const wormHeadZ = wormHead.y;
-            // Additional check: is worm visible / active?
-            // For now assume always emitting if moving, could check horizonFade
+            const wormHeadZ = wormHead.y;        // headZ
+            const wormPathBaseX = wormHead.z;     // pathBaseX
+            const wormPathSlope = wormHead.w;     // pathSlope
 
-            // --- RESPALM LOGIC ---
-            // If life <= 0, handle respawn or delay
+            // --- SPAWN LOGIC ---
             If(life.lessThanEqual(0.0), () => {
                 // If deeply negative, just increment (delay)
                 If(life.lessThan(-0.05), () => {
                     posLife.w.addAssign(dt);
                 }).Else(() => {
-                    // READY TO SPAWN
-                    // Initialize position at worm head + random scatter
-                    const r = velRand.w; // random seed
+                    // SPAWN along the worm TRAIL, not just at the head.
+                    // Use a hash of index+time to get a second random for trail offset.
+                    const r = velRand.w; // stable random seed per particle
+                    const r2 = fract(sin(float(index).mul(127.1).add(time.mul(3.7))).mul(43758.5453));
+
+                    // Distribute along the trail: 0..400 units behind the head
+                    const trailOffset = r2.mul(400.0);
+                    const spawnZ = wormHeadZ.sub(trailOffset);
+
+                    // Follow the worm path (baseX + slope * z)
+                    const spawnPathX = wormPathBaseX.add(spawnZ.mul(wormPathSlope));
+
+                    // Scatter perpendicular to path
                     const angle = r.mul(6.28);
-                    const radius = r.mul(15.0); // Emission radius
+                    const radius = float(3.0).add(r.mul(25.0));
 
-                    posLife.x.assign(wormHeadX.add(cos(angle).mul(radius)));
-                    posLife.z.assign(wormHeadZ.add(sin(angle).mul(radius)));
+                    posLife.x.assign(spawnPathX.add(cos(angle).mul(radius)));
+                    posLife.z.assign(spawnZ.add(sin(angle).mul(radius)));
 
-                    // Height: Terrain height at emission point
-                    // CRITICAL: Must add ridge height (approx 15-20) because dune shader displaces terrain UP
+                    // Height: terrain + ridge offset
                     const terrainH = tslApproxTerrainHeight(posLife.x, posLife.z);
-                    posLife.y.assign(terrainH.add(20.0)); // Ridge height offset to spawn ABOVE the worm
+                    posLife.y.assign(terrainH.add(18.0));
 
-                    // Initialize velocity: Upwards + random spread + slight movement direction
-                    // Boost initial velocity to clear the ridge quickly
-                    const upVel = float(25.0).add(r.mul(15.0));
-                    velRand.x.assign(cos(angle).mul(5.0));
+                    // Velocity: strong upward burst + gentle lateral spread
+                    // Particles near the head get more velocity, trail particles get less
+                    const headProximity = float(1.0).sub(trailOffset.div(400.0)); // 1 at head, 0 at tail
+                    const upVel = float(20.0).add(headProximity.mul(30.0)).add(r.mul(15.0));
+                    velRand.x.assign(cos(angle).mul(8.0).add(r.mul(5.0)));
                     velRand.y.assign(upVel);
-                    velRand.z.assign(sin(angle).mul(5.0));
+                    velRand.z.assign(sin(angle).mul(8.0).add(r.mul(5.0)));
 
-                    // Reset life (1.0 = fresh, 0.0 = dead)
                     posLife.w.assign(float(1.0));
                 });
             }).Else(() => {
                 // --- PHYSICS UPDATE ---
 
-                // 1. Gravity / Buoyancy
-                // Smoke rises (buoyancy) but heavier particles might sink? Assume rising hot dust
-                velRand.y.addAssign(float(20.0).mul(dt)); // Buoyancy
+                // 1. Buoyancy — strong upward force for towering plume
+                velRand.y.addAssign(float(28.0).mul(dt));
 
-                // 2. Wind Advection
-                // Wind blows along X direction (approx)
-                const windForce = vec3(wind.mul(20.0), 0.0, 0.0);
+                // 2. Wind advection
+                const windForce = vec3(wind.mul(15.0), 0.0, wind.mul(5.0));
                 velRand.xyz.addAssign(windForce.mul(dt));
 
-                // 3. Turbulence / Curl Noise
-                const noisePos = posLife.xyz.mul(0.02).add(vec3(time.mul(0.1), 0.0, 0.0));
-                // Simple turbulence using sin/cos approximation or noise
+                // 3. Turbulence
+                const noisePos = posLife.xyz.mul(0.015).add(vec3(time.mul(0.08), 0.0, 0.0));
                 const turb = vec3(
-                    sin(noisePos.y.mul(4.0)).mul(30.0),
-                    sin(noisePos.x.mul(4.0)).mul(10.0),
-                    sin(noisePos.z.mul(4.0)).mul(30.0)
+                    sin(noisePos.y.mul(3.0).add(noisePos.z.mul(2.0))).mul(25.0),
+                    sin(noisePos.x.mul(2.5)).mul(8.0),
+                    cos(noisePos.y.mul(3.0).add(noisePos.x.mul(2.0))).mul(25.0)
                 );
                 velRand.xyz.addAssign(turb.mul(dt));
 
-                // 4. Drag
-                velRand.xyz.mulAssign(float(0.96)); // Air resistance
+                // 4. Drag — lighter drag for taller plumes
+                velRand.xyz.mulAssign(float(0.97));
 
                 // 5. Integration
                 posLife.xyz.addAssign(velRand.xyz.mul(dt));
 
-                // 6. Terrain Collision
+                // 6. Terrain collision
                 const groundH = tslApproxTerrainHeight(posLife.x, posLife.z);
                 const minH = groundH.add(1.0);
                 If(posLife.y.lessThan(minH), () => {
                     posLife.y.assign(minH);
-                    velRand.y.mulAssign(0.5); // Dampen vertical velocity on friction
-                    // Friction
-                    velRand.x.mulAssign(0.9);
-                    velRand.z.mulAssign(0.9);
+                    velRand.y.assign(abs(velRand.y).mul(0.3)); // Bounce up slightly
+                    velRand.x.mulAssign(0.85);
+                    velRand.z.mulAssign(0.85);
                 });
 
-                // 7. Life Decay
-                // Decay faster if moving slow? Or just constant.
-                const decay = float(0.3).add(velRand.w.mul(0.2)); // Random decay rate
+                // 7. Life decay — slow for lingering clouds
+                const decay = float(0.12).add(velRand.w.mul(0.08)); // ~5-8 second lifetime
                 posLife.w.subAssign(decay.mul(dt));
             });
 
@@ -669,17 +672,16 @@ export class SandSmokeCompute {
                 }
 
                 const angle = rand * 6.28;
-                const radius = rand * 15.0;
+                const radius = 5.0 + rand * 35.0;
                 x = wormState.headX + Math.cos(angle) * radius;
                 z = wormState.headZ + Math.sin(angle) * radius;
                 const terrainH = this.approxTerrainHeight(x, z);
-                // CRITICAL: Must add ridge height + boost velocity
-                y = terrainH + 20.0;
+                y = terrainH + 22.0;
 
-                const upVel = 25.0 + rand * 15.0;
-                vx = Math.cos(angle) * 5.0;
+                const upVel = 35.0 + rand * 25.0;
+                vx = Math.cos(angle) * 15.0 + rand * 10.0;
                 vy = upVel;
-                vz = Math.sin(angle) * 5.0;
+                vz = Math.sin(angle) * 15.0 + rand * 10.0;
                 life = 1.0;
             } else {
                 // Physics
@@ -710,8 +712,8 @@ export class SandSmokeCompute {
                     vz *= 0.9;
                 }
 
-                // Decay
-                const decay = 0.3 + rand * 0.2;
+                // Decay — slow for lingering dust clouds
+                const decay = 0.15 + rand * 0.1;
                 life -= decay * dt;
             }
 

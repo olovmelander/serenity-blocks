@@ -605,9 +605,11 @@ export function createSandSmokeMaterial(params = {}) {
         const rand = velRand.w;
 
         // Opacity based on life (fade in quickly, fade out slowly)
-        const fadeIn = smoothstep(0.95, 1.0, life);
-        const fadeOut = smoothstep(0.0, 0.2, life);
-        const alpha = uOpacity.mul(fadeIn).mul(fadeOut).mul(0.8);
+        // life goes 1.0 → 0.0; age = 1 - life goes 0.0 → 1.0
+        const age = float(1.0).sub(life);
+        const fadeIn = smoothstep(0.0, 0.08, age);   // ramp up over first 8% of life
+        const fadeOut = smoothstep(0.0, 0.3, life);   // fade out over last 30%
+        const alpha = uOpacity.mul(fadeIn).mul(fadeOut);
 
         // Discard dead particles (life < 0.001)
         const deadMask = step(0.001, life);
@@ -616,12 +618,10 @@ export function createSandSmokeMaterial(params = {}) {
         const smokeBase = mix(uColor, uColor.mul(0.6), rand);
         const smokeColor = smokeBase;
 
-        // Size expansion over life
-        const age = float(1.0).sub(life);
-        const sizeBase = float(10.0).add(rand.mul(10.0));
-        const expansion = age.mul(40.0);
-        const sizeScale = float(1.0); // Points are pixels by default without attenuation, need larger scale
-        const finalSize = sizeBase.add(expansion).mul(sizeScale);
+        // Size expansion over life — large billowing clouds
+        const sizeBase = float(30.0).add(rand.mul(30.0));
+        const expansion = age.mul(120.0);
+        const finalSize = sizeBase.add(expansion);
 
         // Distance fade - Relaxed range
         const camDist = length(cameraPosition.sub(positionWorld));
@@ -655,17 +655,17 @@ export function createSandSmokeMaterial(params = {}) {
 
     const positionNode = Fn(() => positionLocal)();
 
-    // Opacity based on life
-    const fadeIn = smoothstep(0.95, 1.0, aLife);
-    const fadeOut = smoothstep(0.0, 0.2, aLife);
-    const alpha = uOpacity.mul(fadeIn).mul(fadeOut).mul(0.8);
+    // Opacity based on life (fade in quickly, fade out slowly)
+    const ageGL = float(1.0).sub(aLife);
+    const fadeIn = smoothstep(0.0, 0.08, ageGL);   // ramp up over first 8% of life
+    const fadeOut = smoothstep(0.0, 0.3, aLife);    // fade out over last 30%
+    const alpha = uOpacity.mul(fadeIn).mul(fadeOut);
 
     const smokeBase = mix(uColor, uColor.mul(0.6), aRand);
 
-    // Size expansion
-    const age = float(1.0).sub(aLife);
-    const sizeBase = float(150.0).add(aRand.mul(100.0));
-    const expansion = age.mul(200.0);
+    // Size expansion — large billowing clouds
+    const sizeBase = float(250.0).add(aRand.mul(200.0));
+    const expansion = ageGL.mul(400.0);
     const sizeNode = sizeBase.add(expansion);
 
     const material = new THREE.PointsNodeMaterial();

@@ -218,7 +218,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 64,
                 spiceParticleCount: 400,
                 dustParticleCount: 150,
-                sandSmokeCount: 50,
+                sandSmokeCount: 300,
                 enableHeatShimmer: false,
                 enableComboEffects: false,
             },
@@ -227,7 +227,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 96,
                 spiceParticleCount: 800,
                 dustParticleCount: 300,
-                sandSmokeCount: 100,
+                sandSmokeCount: 600,
                 enableHeatShimmer: false,
                 enableComboEffects: true,
             },
@@ -236,7 +236,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 128,
                 spiceParticleCount: 1500,
                 dustParticleCount: 450,
-                sandSmokeCount: 200,
+                sandSmokeCount: 1200,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -245,7 +245,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 196,
                 spiceParticleCount: 2000,
                 dustParticleCount: 600,
-                sandSmokeCount: 400,
+                sandSmokeCount: 2000,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -254,7 +254,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 256,
                 spiceParticleCount: 3000,
                 dustParticleCount: 800,
-                sandSmokeCount: 600,
+                sandSmokeCount: 3000,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -263,7 +263,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 350,
                 spiceParticleCount: 5000,
                 dustParticleCount: 1000,
-                sandSmokeCount: 1000,
+                sandSmokeCount: 5000,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -755,13 +755,10 @@ export default class ShiftingSandsTheme extends BaseTheme {
         if (this.isWebGPU) {
             // WebGPU: Use Points with Node Material (Vertex Pulling via storage buffer)
             const geometry = new THREE.BufferGeometry();
-            // Set draw range to render 'count' points.
-            // In WebGPU with PointsNodeMaterial using positionNode/vertexIndex,
-            // we typically need a dummy position attribute or setDrawRange if no attributes exist.
+            // Three.js requires a position attribute even when positionNode overrides it.
+            // Without it, the renderer skips drawing and warns about missing "position".
+            geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
             geometry.setDrawRange(0, count);
-
-            // NOTE: Three.js WebGPURenderer might require at least one attribute or index to determine count
-            // if not using setDrawRange? setDrawRange works.
 
             this.sandSmoke = new THREE.Points(geometry, this.sandSmokeMaterial.material);
             this.sandSmoke.frustumCulled = false;
@@ -1061,7 +1058,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
             }
 
             if (this.sandSmokeMaterial) {
-                const smokeOpacity = 0.1 + this.uniforms.dustDensity.value * 0.14;
+                const smokeOpacity = 0.55 + this.uniforms.dustDensity.value * 0.35;
                 this.sandSmokeMaterial.update(elapsed, smokeOpacity);
             }
 
