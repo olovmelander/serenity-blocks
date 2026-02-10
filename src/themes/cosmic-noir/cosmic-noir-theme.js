@@ -25,7 +25,11 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { COSMIC_NOIR_TETROMINOS } from './cosmic-noir-tetrominos.js';
-import { CosmicNoirSparkCompute } from './cosmic-noir-compute.js';
+import {
+    CosmicNoirAtmosphereFlowCompute,
+    CosmicNoirSparkCompute,
+    CosmicNoirStarTwinkleCompute,
+} from './cosmic-noir-compute.js';
 import {
     createAtmosphereNodeMaterial,
     createCosmicWaveNodeMaterial,
@@ -263,10 +267,12 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.planetGroup = null;
         this.starfield = null;
         this.starfieldUniforms = null;
+        this.starTwinkleCompute = null;
         this.nebulaClouds = [];
         this.planetGlowLayers = [];
         this.atmosphere = null;
         this.atmosphereUniforms = null;
+        this.atmosphereFlowCompute = null;
         this.cosmicWaves = [];
         this.voidSparks = []; // Fallback pool, or single compute-backed points system
         this.voidSparkIndex = 0; // Cycle index for pooled fallback
@@ -771,6 +777,11 @@ export default class CosmicNoirTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createStarfield() {
+        if (this.starTwinkleCompute) {
+            this.starTwinkleCompute.dispose();
+            this.starTwinkleCompute = null;
+        }
+
         const { starCount } = this.qualityPreset;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(starCount * 3);
@@ -826,10 +837,31 @@ export default class CosmicNoirTheme extends BaseTheme {
         geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
         geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
 
+        const canUseStarCompute = Boolean(
+            this.isWebGPU
+            && this.flags.useCompute
+            && this.renderer?.compute,
+        );
+        if (canUseStarCompute) {
+            try {
+                this.starTwinkleCompute = new CosmicNoirStarTwinkleCompute(starCount);
+                this.starTwinkleCompute.setInitialData(twinkleData, brightness, sizes);
+                this.starTwinkleCompute.createComputeNode();
+            } catch (error) {
+                console.warn('[CosmicNoir] Star twinkle compute init failed, using shader twinkle:', error);
+                if (this.starTwinkleCompute) {
+                    this.starTwinkleCompute.dispose();
+                    this.starTwinkleCompute = null;
+                }
+            }
+        }
+
         let material;
         if (this.isWebGPU) {
             const { material: nodeMaterial, uniforms } = createStarfieldNodeMaterial({
                 pixelRatio: this.renderer.getPixelRatio(),
+                isWebGPU: this.isWebGPU,
+                starCompute: this.starTwinkleCompute,
             });
             material = nodeMaterial;
             this.starfieldUniforms = uniforms;
@@ -1066,14 +1098,40 @@ export default class CosmicNoirTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createAtmosphere() {
+        if (this.atmosphereFlowCompute) {
+            this.atmosphereFlowCompute.dispose();
+            this.atmosphereFlowCompute = null;
+        }
+
         // Create an atmosphere slightly larger than the planet
         const planetSize = 280;
         const atmosphereSize = planetSize * 1.25;
 
+        const canUseFlowCompute = Boolean(
+            this.isWebGPU
+            && this.flags.useCompute
+            && this.renderer?.compute,
+        );
+        if (canUseFlowCompute) {
+            try {
+                this.atmosphereFlowCompute = new CosmicNoirAtmosphereFlowCompute();
+                this.atmosphereFlowCompute.createComputeNode();
+            } catch (error) {
+                console.warn('[CosmicNoir] Atmosphere flow compute init failed, using direct flow:', error);
+                if (this.atmosphereFlowCompute) {
+                    this.atmosphereFlowCompute.dispose();
+                    this.atmosphereFlowCompute = null;
+                }
+            }
+        }
+
         const geometry = new THREE.SphereGeometry(atmosphereSize, 64, 64);
         let material;
         if (this.isWebGPU) {
-            const { material: nodeMaterial, uniforms } = createAtmosphereNodeMaterial();
+            const { material: nodeMaterial, uniforms } = createAtmosphereNodeMaterial({
+                isWebGPU: this.isWebGPU,
+                atmosphereFlowCompute: this.atmosphereFlowCompute,
+            });
             material = nodeMaterial;
             this.atmosphereUniforms = uniforms;
         } else {
@@ -1178,7 +1236,6 @@ export default class CosmicNoirTheme extends BaseTheme {
                     '[CosmicNoir] Spark compute init failed, using pooled fallback:',
                     error,
                 );
-                this.flags.useCompute = false;
                 if (this.sparkCompute) {
                     this.sparkCompute.dispose();
                     this.sparkCompute = null;
@@ -1396,11 +1453,26 @@ export default class CosmicNoirTheme extends BaseTheme {
         if (
             this.isWebGPU
             && this.flags.useCompute
-            && this.sparkCompute?.computeNode
             && this.renderer?.compute
         ) {
-            this.sparkCompute.update(delta, this.time);
-            this.renderer.compute(this.sparkCompute.computeNode);
+            if (this.starTwinkleCompute?.computeNode) {
+                this.starTwinkleCompute.update(delta);
+                this.renderer.compute(this.starTwinkleCompute.computeNode);
+            }
+
+            if (this.atmosphereFlowCompute?.computeNode) {
+                this.atmosphereFlowCompute.update({
+                    time: this.time,
+                    pulseIntensity: this.planetPulseIntensity,
+                    explosionIntensity: this.gasExplosionIntensity,
+                });
+                this.renderer.compute(this.atmosphereFlowCompute.computeNode);
+            }
+
+            if (this.sparkCompute?.computeNode) {
+                this.sparkCompute.update(delta, this.time);
+                this.renderer.compute(this.sparkCompute.computeNode);
+            }
         }
 
         // Update all void spark systems in the pool
@@ -1908,6 +1980,24 @@ export default class CosmicNoirTheme extends BaseTheme {
     }
 
     disposeComputeResources() {
+        if (this.starTwinkleCompute?.dispose) {
+            try {
+                this.starTwinkleCompute.dispose();
+            } catch (error) {
+                console.warn('[CosmicNoir] starTwinkleCompute dispose failed:', error);
+            }
+        }
+        this.starTwinkleCompute = null;
+
+        if (this.atmosphereFlowCompute?.dispose) {
+            try {
+                this.atmosphereFlowCompute.dispose();
+            } catch (error) {
+                console.warn('[CosmicNoir] atmosphereFlowCompute dispose failed:', error);
+            }
+        }
+        this.atmosphereFlowCompute = null;
+
         if (this.sparkCompute?.dispose) {
             try {
                 this.sparkCompute.dispose();
@@ -1946,10 +2036,12 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.planetGroup = null;
         this.starfield = null;
         this.starfieldUniforms = null;
+        this.starTwinkleCompute = null;
         this.nebulaClouds = [];
         this.planetGlowLayers = [];
         this.atmosphere = null;
         this.atmosphereUniforms = null;
+        this.atmosphereFlowCompute = null;
         this.cosmicWaves = [];
         this.voidSparks = [];
         this.voidSparkIndex = 0;
