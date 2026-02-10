@@ -9,12 +9,15 @@
  */
 
 import * as THREE from 'three';
+import * as THREE_WEBGPU from 'three/webgpu';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { normalizeQuality } from '../../utils/quality.js';
 import { SWEDISH_FOREST_TETROMINOS } from './swedish-forest-tetrominos.js';
 import { SwedishForestWater } from './SwedishForestWater.js';
 import { SwedishForestBirds } from './swedish-forest-birds.js';
+import { SwedishForestPost } from './swedish-forest-post.js';
 
 // PBR textures removed - using simple Firewatch-style ground
 import {
@@ -57,6 +60,31 @@ import {
     lensFlareVertexShader,
     lensFlareFragmentShader,
 } from './swedish-forest-shaders.js';
+import {
+    createSkyNodeMaterial,
+    createSunNodeMaterial,
+    createGodRayNodeMaterial,
+    createCloudNodeMaterial,
+    createHazeNodeMaterial,
+    createInstancedFoliageNodeMaterial,
+    createInstancedTrunkNodeMaterial,
+    createGrassNodeMaterial,
+    createSilhouetteGrassNodeMaterial,
+    createShoreReedNodeMaterial,
+    createFramingTreeFoliageNodeMaterial,
+    createFramingTreeTrunkNodeMaterial,
+    createMountainLayerNodeMaterial,
+    createMountainPeakNodeMaterial,
+    createGroundNodeMaterial,
+    createFireflyNodeMaterial,
+    createDustMoteNodeMaterial,
+    createSpiritNodeMaterial,
+    createLensFlareNodeMaterial,
+    createSpiritWindNodeMaterial,
+    createWaterNodeMaterial,
+    createMistNodeMaterial,
+    createShoreFoamNodeMaterial,
+} from './swedish-forest-materials.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // THEME CONSTANTS - Nordic forest color palette
@@ -161,12 +189,116 @@ const COLORS = {
     },
 };
 
+const QUALITY_PRESETS = {
+    Extreme: { enablePostProcessing: true, birdCount: 1024 },
+    Ultra: { enablePostProcessing: true, birdCount: 512 },
+    High: { enablePostProcessing: true, birdCount: 256 },
+    Medium: { enablePostProcessing: true, birdCount: 128 },
+    Low: { enablePostProcessing: false, birdCount: 64 },
+    Minimal: { enablePostProcessing: false, birdCount: 0 },
+};
+
+function parseSwedishForestFlags() {
+    const defaults = {
+        forceWebGL: false,
+        forceWebGPU: false,
+        forceMRT: false,
+        noPost: false,
+        noMRT: false,
+        noCompute: false,
+        baseline: false,
+        debug: false,
+        seed: null,
+        fixedDtMs: null,
+        usePost: false,
+        useMRT: false,
+        useCompute: false,
+        useBloom: false,
+    };
+
+    if (typeof window === 'undefined') {
+        return defaults;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const readBool = (...keys) => keys.some((key) => {
+        if (!params.has(key)) return false;
+        const value = params.get(key);
+        if (value === null || value === '') return true;
+        const normalized = value.toLowerCase();
+        return normalized === '1' || normalized === 'true' || normalized === 'yes';
+    });
+    const readNumber = (...keys) => {
+        for (let i = 0; i < keys.length; i += 1) {
+            const key = keys[i];
+            if (!params.has(key)) continue;
+            const value = params.get(key);
+            if (value === null || value === '') continue;
+            const numeric = Number(value);
+            if (Number.isFinite(numeric)) return numeric;
+        }
+        return null;
+    };
+
+    const fixedDtMs = readNumber('swedishForestFixedDt', 'fixedDt');
+    const seed = readNumber('swedishForestSeed', 'seed');
+
+    return {
+        forceWebGL: readBool('forceWebGL'),
+        forceWebGPU: readBool('swedishForestForceWebGPU', 'forceWebGPU'),
+        forceMRT: readBool('swedishForestForceMRT', 'forceMRT', 'swedishForestMRT'),
+        noPost: readBool('swedishForestNoPost', 'noPost'),
+        noMRT: readBool('swedishForestNoMRT', 'noMRT'),
+        noCompute: readBool('swedishForestNoCompute', 'noCompute'),
+        baseline: readBool('swedishForestBaseline', 'baseline'),
+        debug: readBool('swedishForestDebug', 'debug'),
+        seed: Number.isFinite(seed) ? seed : null,
+        fixedDtMs: Number.isFinite(fixedDtMs) && fixedDtMs > 0 ? fixedDtMs : null,
+        usePost: false,
+        useMRT: false,
+        useCompute: false,
+        useBloom: false,
+    };
+}
+
+function createSeededRandom(seed) {
+    if (!Number.isFinite(seed)) return Math.random;
+    let state = Math.abs(Math.floor(seed)) % 2147483647;
+    if (state <= 0) state = 1;
+    return () => {
+        state = (state * 16807) % 2147483647;
+        return (state - 1) / 2147483646;
+    };
+}
+
 export default class SwedishForestTheme extends BaseTheme {
     constructor() {
         super('swedish-forest');
 
+        this.flags = parseSwedishForestFlags();
+        this.randomFn = createSeededRandom(this.flags.seed);
+        this.fixedDeltaSeconds = this.flags.fixedDtMs ? this.flags.fixedDtMs / 1000 : null;
+        this.fixedElapsedTime = 0;
+        this.isWebGPU = false;
+        this.capabilities = {};
+        this.baselineFrames = [];
+        this.baselineRenderStats = [];
+        this.baselineMaxFrames = 5400;
+        this.distanceFogMode = 'off';
+        this.postComposer = null;
+        this.postPasses = null;
+        this.postToneMappingState = null;
+        this.qualityPreset = QUALITY_PRESETS.High;
+        this.handleDisplaySettingsChange = null;
+        this.waterNormalsTexture = null;
+        this.waterNormalsFallbackTexture = null;
+        this.waterNormalsLoadVersion = 0;
+        this.forceWebGL = false; // Backward-compatible debug override
+
         // Event handling
         this.eventUnsubscribers = [];
+        this.boundOnResize = this.onWindowResize.bind(this);
+        this.boundAnimate = this.animate.bind(this);
 
         // Resolution handling
         this.targetResolution = null;
@@ -179,20 +311,39 @@ export default class SwedishForestTheme extends BaseTheme {
         this.mainGroup = null;
         this.clock = new THREE.Clock();
         this.animationFrame = null;
+        this.birds = null;
 
         // Scene elements
         this.foliageInstancedMesh = null; // Single InstancedMesh for all tree foliage
         this.trunkInstancedMesh = null; // Single InstancedMesh for all tree trunks
+        this.foliageNodeUniforms = null;
+        this.trunkNodeUniforms = null;
+        this.mountainLayerNodeUniforms = [];
+        this.silhouetteMountainNodeUniforms = null;
         this.groundPlane = null;
+        this.groundMaterial = null;
+        this.groundNodeUniforms = null;
         this.starfield = null;
         this.skyDome = null;
         this.skyMaterial = null;
+        this.skyNodeUniforms = null;
         this.clouds = [];
         this.cloudMaterials = [];
+        this.cloudNodeUniforms = [];
         this.mistPlanes = [];
+        this.mistNodeUniforms = [];
         this.godRays = [];
         this.godRayMaterial = null;
+        this.godRayNodeUniforms = null;
         this.fireflySystem = null;
+        this.fireflyNodes = [];
+        this.fireflyNodeUniforms = null;
+        this.fireflyBoostUniform = null;
+        this.dustMoteNodes = [];
+        this.dustNodeUniforms = null;
+        this.spiritNodeUniforms = [];
+        this.spiritWindNodeUniforms = [];
+        this.lensFlareNodeUniforms = [];
         this.spirits = [];
         this.auroraPlanes = [];
         this.spiritWinds = [];
@@ -201,12 +352,24 @@ export default class SwedishForestTheme extends BaseTheme {
         // New features - grass and mushrooms
         this.grassMesh = null;
         this.grassMaterial = null;
+        this.grassTexture = null;
+        this.grassNodeUniforms = null;
+        this.silhouetteGrassMesh = null;
+        this.silhouetteGrassTexture = null;
+        this.silhouetteGrassNodeUniforms = null;
+        this.shoreReeds = [];
+        this.shoreReedNodeUniforms = [];
+        this.framingTrees = [];
+        this.framingTreeFoliageNodeUniforms = [];
+        this.framingTreeTrunkNodeUniforms = null;
+        this.framingTreeTrunkNodeMaterial = null;
         this.mushrooms = [];
         this.mushroomLights = [];
         this.mushroomPulse = 0;
 
         // Sun and atmospheric effects
         this.sun = null;
+        this.sunNodeUniforms = null;
         this.sunGlowLayers = [];
         this.sunPosition = new THREE.Vector3(0, 30, -140); // Y=35, Z=-140
         this.sunBaseY = 30; // Update base Y for animation
@@ -216,9 +379,16 @@ export default class SwedishForestTheme extends BaseTheme {
         // Mountains, haze, and foreground
         this.mountains = [];
         this.hazeLayers = [];
+        this.hazeNodeUniforms = [];
+        this.distanceFogBands = [];
+        this.distanceFogBandUniforms = [];
+        this.shoreFoamMesh = null;
+        this.shoreFoamNodeUniforms = null;
         this.foregroundBranches = [];
         this.lakeMesh = null;
         this.lakeMaterial = null;
+        this.webgpuWater = null;
+        this.waterNodeUniforms = null;
         this.shoreRocks = [];
         this.rockTextureSet = null;
         this.rockMaterials = [];
@@ -227,20 +397,25 @@ export default class SwedishForestTheme extends BaseTheme {
         // 3D Silhouette Mountain (Firewatch-style)
         this.silhouetteMountain = null;
         this.silhouetteMountainMaterial = null;
+        this.tallMountainPeak = null;
+        this.farLeftMountain = null;
+        this.extremeLeftMountain = null;
+        this.rightHill = null;
+        this.farRightMountain = null;
 
         // Random camera movement offsets - different every time theme starts
         this.cameraRandomOffsets = {
-            posX1: Math.random() * Math.PI * 2,
-            posX2: Math.random() * Math.PI * 2,
-            posX3: Math.random() * Math.PI * 2,
-            posY: Math.random() * Math.PI * 2,
-            posZ1: Math.random() * Math.PI * 2,
-            posZ2: Math.random() * Math.PI * 2,
-            lookX1: Math.random() * Math.PI * 2,
-            lookX2: Math.random() * Math.PI * 2,
-            lookY: Math.random() * Math.PI * 2,
+            posX1: this.random() * Math.PI * 2,
+            posX2: this.random() * Math.PI * 2,
+            posX3: this.random() * Math.PI * 2,
+            posY: this.random() * Math.PI * 2,
+            posZ1: this.random() * Math.PI * 2,
+            posZ2: this.random() * Math.PI * 2,
+            lookX1: this.random() * Math.PI * 2,
+            lookX2: this.random() * Math.PI * 2,
+            lookY: this.random() * Math.PI * 2,
             // Random speed multipliers for variety
-            speedMult: 0.7 + Math.random() * 0.6,
+            speedMult: 0.7 + this.random() * 0.6,
         };
 
         // Shared uniforms
@@ -260,12 +435,276 @@ export default class SwedishForestTheme extends BaseTheme {
         this.comboMultiplier = 1.0;
     }
 
+    random() {
+        return this.randomFn();
+    }
+
+    resetBaselineSampling() {
+        this.baselineFrames = [];
+        this.baselineRenderStats = [];
+    }
+
+    recordBaselineSample(deltaSeconds) {
+        if (!this.flags.baseline) return;
+        const frameMs = deltaSeconds * 1000;
+        this.baselineFrames.push(frameMs);
+        if (this.baselineFrames.length > this.baselineMaxFrames) {
+            this.baselineFrames.shift();
+        }
+
+        this.baselineRenderStats.push({
+            calls: this.renderer?.info?.render?.calls ?? 0,
+            triangles: this.renderer?.info?.render?.triangles ?? 0,
+            textures: this.renderer?.info?.memory?.textures ?? 0,
+        });
+        if (this.baselineRenderStats.length > this.baselineMaxFrames) {
+            this.baselineRenderStats.shift();
+        }
+    }
+
+    getBaselineReport() {
+        if (!this.baselineFrames.length) return null;
+        const sorted = [...this.baselineFrames].sort((a, b) => a - b);
+        const count = sorted.length;
+        const avgMs = this.baselineFrames.reduce((sum, value) => sum + value, 0) / count;
+        const p95Ms = sorted[Math.min(count - 1, Math.floor(count * 0.95))];
+        const p99Ms = sorted[Math.min(count - 1, Math.floor(count * 0.99))];
+
+        const totals = this.baselineRenderStats.reduce((acc, sample) => ({
+            calls: acc.calls + sample.calls,
+            triangles: acc.triangles + sample.triangles,
+            textures: acc.textures + sample.textures,
+        }), { calls: 0, triangles: 0, textures: 0 });
+        const renderCount = Math.max(1, this.baselineRenderStats.length);
+
+        return {
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            frames: count,
+            avgMs,
+            avgFps: avgMs > 0 ? 1000 / avgMs : 0,
+            p95Ms,
+            p99Ms,
+            onePercentLowFps: p99Ms > 0 ? 1000 / p99Ms : 0,
+            avgCalls: totals.calls / renderCount,
+            avgTriangles: totals.triangles / renderCount,
+            avgTextures: totals.textures / renderCount,
+            seed: this.flags.seed,
+            fixedDtMs: this.flags.fixedDtMs,
+        };
+    }
+
+    logBaselineReport(context = 'runtime') {
+        if (!this.flags.baseline) return;
+        const report = this.getBaselineReport();
+        if (!report) {
+            console.log('[SwedishForestBaseline] No baseline frames recorded yet.');
+            return;
+        }
+        console.log(`[SwedishForestBaseline] ${context}`, report);
+    }
+
+    getCurrentQualityLevel() {
+        if (typeof window !== 'undefined' && window.settings?.effectQuality) {
+            return normalizeQuality(window.settings.effectQuality);
+        }
+        return 'High';
+    }
+
+    applyQualityPreset(quality) {
+        this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
+    }
+
+    updateFeatureFlags() {
+        const supportsPost = this.capabilities?.supportsPost === true;
+        const supportsMRT = this.capabilities?.supportsMRT === true;
+        const supportsCompute = this.capabilities?.supportsCompute === true;
+        const postEnabledByPreset = this.qualityPreset?.enablePostProcessing !== false;
+
+        this.flags.usePost = supportsPost && postEnabledByPreset && !this.flags.noPost;
+        // Keep MRT opt-in while WebGPU migration is still stabilizing.
+        this.flags.useMRT = this.flags.usePost
+            && supportsMRT
+            && !this.flags.noMRT
+            && this.flags.forceMRT === true;
+        this.flags.useCompute = supportsCompute && !this.flags.noCompute;
+        this.flags.useBloom = this.flags.usePost;
+    }
+
+    probeCapabilities() {
+        if (this.isWebGPU && this.renderer?.backend?.isWebGPUBackend === true) {
+            const device = this.renderer.backend?.device;
+            const maxColorAttachments = device?.limits?.maxColorAttachments ?? 0;
+            const supportsMRT = maxColorAttachments > 1;
+            const supportsPost = true;
+            const supportsCompute = typeof this.renderer.compute === 'function';
+
+            this.capabilities = {
+                isWebGPU: true,
+                isWebGL2: false,
+                maxColorAttachments,
+                supportsMRT,
+                supportsCompute,
+                supportsPost,
+                supportsTimestampQuery: this.renderer.hasFeature?.('timestamp-query') ?? false,
+                supportsFloat32Filterable: this.renderer.hasFeature?.('float32-filterable') ?? false,
+            };
+
+            this.updateFeatureFlags();
+            return;
+        }
+
+        const gl = this.renderer?.getContext?.();
+        const isWebGL2 = typeof WebGL2RenderingContext !== 'undefined'
+            && gl instanceof WebGL2RenderingContext;
+        const maxColorAttachments = gl?.MAX_COLOR_ATTACHMENTS
+            ? gl.getParameter(gl.MAX_COLOR_ATTACHMENTS)
+            : 1;
+        const supportsMRT = isWebGL2 && Number.isFinite(maxColorAttachments) && maxColorAttachments > 1;
+        const supportsPost = this.renderer?.isWebGLRenderer === true;
+        const supportsCompute = this.renderer?.isWebGLRenderer === true; // Bird flocking compute uses GPUComputationRenderer on WebGL.
+
+        this.capabilities = {
+            isWebGPU: false,
+            isWebGL2,
+            maxColorAttachments: Number.isFinite(maxColorAttachments) ? maxColorAttachments : 1,
+            supportsMRT,
+            supportsCompute,
+            supportsPost,
+            supportsTimestampQuery: false,
+            supportsFloat32Filterable: false,
+        };
+
+        this.updateFeatureFlags();
+    }
+
+    logPhaseZeroState() {
+        if (!this.flags.baseline && !this.flags.debug) return;
+        const webgpuBlockers = this.getWebGPUBlockers();
+        console.log('[SwedishForest][Phase0] Flags', {
+            forceWebGL: this.flags.forceWebGL,
+            forceWebGPU: this.flags.forceWebGPU,
+            forceMRT: this.flags.forceMRT,
+            noPost: this.flags.noPost,
+            noMRT: this.flags.noMRT,
+            noCompute: this.flags.noCompute,
+            baseline: this.flags.baseline,
+            seed: this.flags.seed,
+            fixedDtMs: this.flags.fixedDtMs,
+        });
+        console.log('[SwedishForest][Phase0] Capability Matrix', {
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            capabilities: this.capabilities,
+            usePost: this.flags.usePost,
+            useMRT: this.flags.useMRT,
+            useCompute: this.flags.useCompute,
+            useBloom: this.flags.useBloom,
+            webgpuBlockers,
+        });
+    }
+
+    getWebGPUBlockers() {
+        return [];
+    }
+
+    hasWebGLOnlyDependencies() {
+        return this.getWebGPUBlockers().length > 0;
+    }
+
+    async initRenderer(container) {
+        let webgpuRenderer = null;
+        const shouldTryWebGPU = !this.flags.forceWebGL;
+
+        if (shouldTryWebGPU) {
+            try {
+                const isWindows = typeof navigator !== 'undefined'
+                    && /win/i.test(navigator.userAgent || '');
+                const webgpuOptions = {
+                    alpha: true,
+                    antialias: this.getAntialiasEnabled(),
+                    preserveDrawingBuffer: this.flags.baseline === true,
+                };
+                if (!isWindows) {
+                    webgpuOptions.powerPreference = 'high-performance';
+                }
+                webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
+                    ...webgpuOptions,
+                });
+                await webgpuRenderer.init();
+            } catch (error) {
+                console.warn('[SwedishForest] WebGPU init failed, falling back to WebGL:', error);
+                if (webgpuRenderer) {
+                    webgpuRenderer.dispose();
+                    webgpuRenderer = null;
+                }
+            }
+        }
+
+        const hasWebGPUBackend = webgpuRenderer?.backend?.isWebGPUBackend === true;
+        const compatibilityGuardEnabled = this.hasWebGLOnlyDependencies();
+
+        if (hasWebGPUBackend && compatibilityGuardEnabled) {
+            console.warn(
+                '[SwedishForest] WebGPU available, but Phase 1 compatibility guard keeps WebGL path:',
+                this.getWebGPUBlockers(),
+            );
+            if (this.flags.forceWebGPU) {
+                console.warn(
+                    '[SwedishForest] ?swedishForestForceWebGPU=1 was requested, '
+                    + 'but is blocked until remaining WebGPU material/compute migrations are complete.',
+                );
+            }
+        }
+
+        if (hasWebGPUBackend && !compatibilityGuardEnabled) {
+            this.renderer = webgpuRenderer;
+            this.isWebGPU = true;
+            this.renderer.onDeviceLost = (info) => {
+                console.error('[SwedishForest] WebGPU device lost:', info);
+            };
+        } else {
+            if (webgpuRenderer) {
+                webgpuRenderer.dispose();
+                webgpuRenderer = null;
+            }
+
+            this.renderer = new THREE.WebGLRenderer({
+                alpha: true,
+                antialias: this.getAntialiasEnabled(),
+                powerPreference: 'high-performance',
+                preserveDrawingBuffer: this.flags.baseline === true,
+            });
+            this.isWebGPU = false;
+        }
+
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
+        container.appendChild(this.renderer.domElement);
+        this.registerContainer(container);
+
+        this.probeCapabilities();
+        this.logPhaseZeroState();
+        console.log(`[SwedishForest] Backend: ${this.isWebGPU ? 'WebGPU' : 'WebGL2'}`);
+    }
+
     getTetrominoConfig() {
         return SWEDISH_FOREST_TETROMINOS;
     }
 
     async createScene() {
         console.log('[SwedishForest] Initializing Three.js scene...');
+        this.flags = { ...this.flags, ...parseSwedishForestFlags() };
+        if (this.forceWebGL === true) {
+            this.flags.forceWebGL = true;
+        }
+        const quality = this.getCurrentQualityLevel();
+        this.applyQualityPreset(quality);
+        this.randomFn = createSeededRandom(this.flags.seed);
+        this.fixedDeltaSeconds = this.flags.fixedDtMs ? this.flags.fixedDtMs / 1000 : null;
+        this.fixedElapsedTime = 0;
+        this.resetBaselineSampling();
+        this.clock = new THREE.Clock();
 
         const container = document.getElementById('swedish-forest-theme');
         if (!container) {
@@ -297,22 +736,17 @@ export default class SwedishForestTheme extends BaseTheme {
         this.camera.lookAt(0, 6, -20); // Look at lake and distant tree line
         this.baseFov = 55; // Store base FOV for breathing effect
 
-        this.createSkyDome(); // Procedural sky base (gradient + sun halo)
-
         // ─────────────────────────────────────────────────────────────────────
         // RENDERER
         // ─────────────────────────────────────────────────────────────────────
 
-        this.renderer = new THREE.WebGLRenderer({
-            alpha: true,
-            antialias: this.getAntialiasEnabled(),
-            powerPreference: 'high-performance',
-        });
-        this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        container.appendChild(this.renderer.domElement);
+        await this.initRenderer(container);
+        if (this.isWebGPU) {
+            this.uniforms.mistIntensity.value = Math.min(this.uniforms.mistIntensity.value, 0.38);
+            this.targetMistIntensity = Math.min(this.targetMistIntensity, 0.42);
+        }
+
+        this.createSkyDome(); // Procedural sky base (gradient + sun halo)
 
         // ─────────────────────────────────────────────────────────────────────
         // MAIN GROUP (for drift animation)
@@ -342,16 +776,21 @@ export default class SwedishForestTheme extends BaseTheme {
         this.createShoreRocks(); // Warm-colored silhouette boulders along shoreline
         this.createShoreReeds(); // Dried grass/reeds at water's edge
         this.createLakeFramingTrees(); // Silhouette trees framing lake edges
-        this.createGrass(); // Golden sunset grass
+        if (!this.isWebGPU) {
+            this.createGrass(); // Golden sunset grass
+        } else if (this.flags.debug || this.flags.baseline) {
+            console.log('[SwedishForest] Skipping near-shore grass on WebGPU to avoid lake occlusion artifacts.');
+        }
         // this.createGlowingMushrooms(); // Disabled - cleaner Firewatch look
         this.createMistLayers(); // Atmospheric golden fog
         this.createStylizedClouds(); // Flat cloud layers near horizon
-        this.createSilhouetteGrass(); // Dense foreground grass framing
+        if (!this.isWebGPU) {
+            this.createSilhouetteGrass(); // Dense foreground grass framing
+        } else if (this.flags.debug || this.flags.baseline) {
+            console.log('[SwedishForest] Skipping silhouette foreground grass on WebGPU to prevent lake occlusion artifacts.');
+        }
 
-        // Initialize GPGPU Birds
-        this.birds = new SwedishForestBirds(this.renderer, this.scene);
-        this.birds.init();
-        this.mainGroup.add(this.birds.mesh);
+        await this.initBirds();
 
         this.createSpiritWinds(); // Flowing warm energy
         this.createDustMotes(); // Floating particles in sunlight
@@ -360,14 +799,31 @@ export default class SwedishForestTheme extends BaseTheme {
         // this.createForegroundBranches(); // Disabled - foreground branch silhouettes
         // this.createFallingLeavesSystem();  // Disabled - no falling leaves
         this.setupLighting();
+        this.setupDistanceFog();
+        this.setupPostProcessing();
+
+        const shouldCompileAsync = this.isWebGPU
+            && this.renderer?.compileAsync
+            && !this.flags.useMRT
+            && !this.webgpuWater?.renderTarget;
+        if (shouldCompileAsync) {
+            try {
+                await this.renderer.compileAsync(this.scene, this.camera);
+            } catch (error) {
+                console.warn('[SwedishForest] WebGPU compileAsync failed:', error);
+            }
+        } else if (this.isWebGPU && this.renderer?.compileAsync && this.webgpuWater?.renderTarget) {
+            if (this.flags.debug || this.flags.baseline) {
+                console.log('[SwedishForest] Skipping compileAsync for WebGPU reflection render-target path.');
+            }
+        }
 
         // ─────────────────────────────────────────────────────────────────────
         // EVENT LISTENERS
         // ─────────────────────────────────────────────────────────────────────
 
         this.setupEventListeners();
-        this.setupEventListeners();
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundOnResize);
 
         // Listen for resolution changes
         this.handleDisplaySettingsChange = (e) => {
@@ -383,7 +839,45 @@ export default class SwedishForestTheme extends BaseTheme {
 
         this.animate();
 
-        console.log('[SwedishForest] Scene initialized.');
+        console.log(`[SwedishForest] Scene ready (${this.isWebGPU ? 'WebGPU' : 'WebGL2'})`);
+    }
+
+    async initBirds() {
+        if (!this.mainGroup || !this.renderer || !this.scene) return;
+
+        if (!this.flags.useCompute) {
+            console.warn('[SwedishForest] Bird compute disabled by Phase 1 kill switch (?swedishForestNoCompute=1).');
+            return;
+        }
+
+        const birdCount = Math.max(0, Math.floor(this.qualityPreset?.birdCount ?? 256));
+        if (birdCount <= 0) {
+            if (this.flags.debug || this.flags.baseline) {
+                console.log('[SwedishForest] Bird system skipped for this quality preset (birdCount=0).');
+            }
+            return;
+        }
+
+        this.birds = new SwedishForestBirds(this.renderer, this.scene, {
+            randomFn: this.random.bind(this),
+            birdCount,
+        });
+        try {
+            this.birds.init();
+        } catch (error) {
+            console.warn('[SwedishForest] Bird system init failed; continuing without birds:', error);
+            this.birds.dispose();
+            this.birds = null;
+            return;
+        }
+        if (this.birds.mesh) {
+            this.mainGroup.add(this.birds.mesh);
+            if (this.flags.debug || this.flags.baseline) {
+                console.log(
+                    `[SwedishForest] Birds initialized (${this.isWebGPU ? 'WebGPU' : 'WebGL'} compute): ${this.birds.BIRDS}`,
+                );
+            }
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -428,24 +922,58 @@ export default class SwedishForestTheme extends BaseTheme {
             .subVectors(this.sunPosition, this.camera.position)
             .normalize();
 
-        this.skyMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uTopColor: { value: COLORS.skyTop },
-                uMidColor: { value: COLORS.skyMid },
-                uHorizonColor: { value: COLORS.skyHorizon },
-                uSunColor: { value: new THREE.Color(0xFFF1C8) },
-                uHaloColor: { value: new THREE.Color(0xFFB46A) },
-                uSunDirection: { value: sunDir },
-                uSunDiscRadius: { value: 0.015 },
-                uSunHaloRadius: { value: 0.22 },
-                uSunDiscIntensity: { value: 0.22 },
-                uSunHaloIntensity: { value: 0.18 },
-            },
-            vertexShader: skyDomeVertexShader,
-            fragmentShader: skyDomeFragmentShader,
-            side: THREE.BackSide,
-            depthWrite: false,
-        });
+        this.skyNodeUniforms = null;
+        if (this.isWebGPU) {
+            const nodeSky = createSkyNodeMaterial({
+                time: this.uniforms.time.value,
+                topColor: COLORS.skyTop.clone(),
+                upperColor: new THREE.Color(0xB7381F),
+                midColor: COLORS.skyMid.clone(),
+                lowerColor: new THREE.Color(0xF57834),
+                horizonColor: COLORS.skyHorizon.clone(),
+                sunColor: new THREE.Color(0xFFF1C8),
+                haloColor: new THREE.Color(0xFFB46A),
+                horizonHaloColor: new THREE.Color(0xFFD08A),
+                sunDirection: sunDir.clone(),
+                sunDiscRadius: 0.0125,
+                sunHaloRadius: 0.2,
+                sunDiscIntensity: 0.26,
+                sunHaloIntensity: 0.28,
+                horizonHaloIntensity: 0.2,
+                horizonHaloFalloff: 2.35,
+                wispScale: 3.8,
+                wispIntensity: 0.08,
+            });
+            this.skyMaterial = nodeSky.material;
+            this.skyNodeUniforms = nodeSky.uniforms;
+        } else {
+            this.skyMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uTopColor: { value: COLORS.skyTop },
+                    uUpperColor: { value: new THREE.Color(0xB7381F) },
+                    uMidColor: { value: COLORS.skyMid },
+                    uLowerColor: { value: new THREE.Color(0xF57834) },
+                    uHorizonColor: { value: COLORS.skyHorizon },
+                    uSunColor: { value: new THREE.Color(0xFFF1C8) },
+                    uHaloColor: { value: new THREE.Color(0xFFB46A) },
+                    uHorizonHaloColor: { value: new THREE.Color(0xFFD08A) },
+                    uSunDirection: { value: sunDir },
+                    uSunDiscRadius: { value: 0.0125 },
+                    uSunHaloRadius: { value: 0.2 },
+                    uSunDiscIntensity: { value: 0.26 },
+                    uSunHaloIntensity: { value: 0.28 },
+                    uHorizonHaloIntensity: { value: 0.2 },
+                    uHorizonHaloFalloff: { value: 2.35 },
+                    uWispScale: { value: 3.8 },
+                    uWispIntensity: { value: 0.08 },
+                },
+                vertexShader: skyDomeVertexShader,
+                fragmentShader: skyDomeFragmentShader,
+                side: THREE.BackSide,
+                depthWrite: false,
+            });
+        }
 
         this.skyDome = new THREE.Mesh(geometry, this.skyMaterial);
         this.skyDome.frustumCulled = false;
@@ -471,17 +999,17 @@ export default class SwedishForestTheme extends BaseTheme {
             const i3 = i * 3;
 
             // Spread stars across upper sky dome
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.random() * Math.PI * 0.4; // Upper hemisphere
-            const radius = 150 + Math.random() * 50;
+            const theta = this.random() * Math.PI * 2;
+            const phi = this.random() * Math.PI * 0.4; // Upper hemisphere
+            const radius = 150 + this.random() * 50;
 
             positions[i3] = Math.sin(phi) * Math.cos(theta) * radius;
             positions[i3 + 1] = Math.cos(phi) * radius + 20; // Shift up
             positions[i3 + 2] = Math.sin(phi) * Math.sin(theta) * radius - 80;
 
-            randoms[i] = Math.random();
-            phases[i] = Math.random() * Math.PI * 2;
-            brightness[i] = 0.3 + Math.random() * 0.7;
+            randoms[i] = this.random();
+            phases[i] = this.random() * Math.PI * 2;
+            brightness[i] = 0.3 + this.random() * 0.7;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -512,23 +1040,44 @@ export default class SwedishForestTheme extends BaseTheme {
     createSun() {
         // LARGE sun sphere - Firewatch style prominent sun
         const sunGeometry = new THREE.SphereGeometry(38, 32, 32);
-        const sunMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-                uIntensity: { value: 1.2 },
-                uCoreColor: { value: new THREE.Color(0xFFFFDD) },
-                uCoronaColor: { value: new THREE.Color(0xFFCC44) },
-                uEdgeColor: { value: new THREE.Color(0xFF8822) },
-            },
-            vertexShader: sunVertexShader,
-            fragmentShader: sunFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
+        let sunMaterial = null;
+        this.sunNodeUniforms = null;
+
+        if (this.isWebGPU) {
+            const nodeSun = createSunNodeMaterial({
+                time: this.uniforms.time.value,
+                intensity: 1.25,
+                coreColor: new THREE.Color(0xFFFEE7),
+                coronaColor: new THREE.Color(0xFFCC5A),
+                edgeColor: new THREE.Color(0xFF8C2E),
+                haloColor: new THREE.Color(0xFF7A34),
+                haloIntensity: 0.9,
+                emissiveStrength: 1.15,
+            });
+            sunMaterial = nodeSun.material;
+            this.sunNodeUniforms = nodeSun.uniforms;
+        } else {
+            sunMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uIntensity: { value: 1.25 },
+                    uCoreColor: { value: new THREE.Color(0xFFFEE7) },
+                    uCoronaColor: { value: new THREE.Color(0xFFCC5A) },
+                    uEdgeColor: { value: new THREE.Color(0xFF8C2E) },
+                    uHaloColor: { value: new THREE.Color(0xFF7A34) },
+                    uHaloIntensity: { value: 0.9 },
+                },
+                vertexShader: sunVertexShader,
+                fragmentShader: sunFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+        }
 
         this.sun = new THREE.Mesh(sunGeometry, sunMaterial);
         this.sun.position.copy(this.sunPosition);
+        this.sun.userData.phase2BloomEmitter = true;
         this.scene.add(this.sun); // Add to scene, not mainGroup for fixed position
 
         // Multi-layer glow sprites - BIGGER for Firewatch atmospheric look
@@ -590,6 +1139,7 @@ export default class SwedishForestTheme extends BaseTheme {
         console.log('[SwedishForest] Creating lens flares...');
 
         this.lensFlares = [];
+        this.lensFlareNodeUniforms = [];
 
         // Lens flare configurations - subtle flares that flicker like sun peeking through trees
         // Offset is relative to sun position (0 = at sun, 1 = at camera, negative = beyond sun)
@@ -620,24 +1170,37 @@ export default class SwedishForestTheme extends BaseTheme {
             }, // Streak
         ];
 
-        flareConfigs.forEach((config, idx) => {
+        flareConfigs.forEach((config) => {
             const geometry = new THREE.PlaneGeometry(1, 1);
-
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: this.uniforms.time,
-                    uOpacity: { value: config.opacity },
-                    uFlareColor: { value: config.color },
-                    uFlareType: { value: config.type },
-                },
-                vertexShader: lensFlareVertexShader,
-                fragmentShader: lensFlareFragmentShader,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                depthTest: false,
-                side: THREE.DoubleSide,
-            });
+            let material;
+            let nodeUniforms = null;
+            if (this.isWebGPU) {
+                const nodeFlare = createLensFlareNodeMaterial({
+                    time: this.uniforms.time.value,
+                    opacity: config.opacity,
+                    flareColor: config.color.clone(),
+                    flareType: config.type,
+                });
+                material = nodeFlare.material;
+                nodeUniforms = nodeFlare.uniforms;
+                this.lensFlareNodeUniforms.push(nodeUniforms);
+            } else {
+                material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uTime: this.uniforms.time,
+                        uOpacity: { value: config.opacity },
+                        uFlareColor: { value: config.color },
+                        uFlareType: { value: config.type },
+                    },
+                    vertexShader: lensFlareVertexShader,
+                    fragmentShader: lensFlareFragmentShader,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    depthTest: false,
+                    side: THREE.DoubleSide,
+                });
+            }
 
             const flare = new THREE.Mesh(geometry, material);
 
@@ -648,8 +1211,9 @@ export default class SwedishForestTheme extends BaseTheme {
             // Store offset and flicker phase for animation
             flare.userData.offset = config.offset;
             flare.userData.baseOpacity = config.opacity;
-            flare.userData.flickerPhase = Math.random() * Math.PI * 2; // Random phase for each flare
-            flare.userData.flickerSpeed = 2.0 + Math.random() * 3.0; // Variable flicker speed
+            flare.userData.flickerPhase = this.random() * Math.PI * 2; // Random phase for each flare
+            flare.userData.flickerSpeed = 2.0 + this.random() * 3.0; // Variable flicker speed
+            flare.userData.nodeUniforms = nodeUniforms;
 
             // Initial position (will be updated in animate)
             flare.position.copy(this.sunPosition);
@@ -667,6 +1231,41 @@ export default class SwedishForestTheme extends BaseTheme {
 
     createDustMotes() {
         const dustCount = 150; // More dust particles floating in sunlight
+
+        if (this.isWebGPU) {
+            this.dustMoteNodes = [];
+            const nodeDust = createDustMoteNodeMaterial({
+                time: this.uniforms.time.value,
+                opacity: 0.7,
+                sunDirection: this.sunPosition.clone().normalize(),
+                baseColor: new THREE.Color(0xFFCA66),
+                highlightColor: new THREE.Color(0xFFE8B2),
+            });
+            this.dustNodeUniforms = nodeDust.uniforms;
+
+            const dustGeometry = new THREE.PlaneGeometry(1, 1);
+            const dustGroup = new THREE.Group();
+
+            for (let i = 0; i < dustCount; i++) {
+                const dust = new THREE.Mesh(dustGeometry, nodeDust.material);
+                dust.position.set(
+                    (this.random() - 0.5) * 400, // Width: 400 (-200 to 200)
+                    5 + this.random() * 25,
+                    10 - this.random() * 100, // Depth: +10 to -90
+                );
+                const scale = 0.35 + this.random() * 1.1;
+                dust.scale.set(scale, scale, 1);
+                dust.renderOrder = 120;
+                dust.userData.basePosition = dust.position.clone();
+                this.dustMoteNodes.push(dust);
+                dustGroup.add(dust);
+            }
+
+            this.dustMotes = dustGroup;
+            this.mainGroup.add(dustGroup);
+            return;
+        }
+
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(dustCount * 3);
         const phases = new Float32Array(dustCount);
@@ -675,12 +1274,12 @@ export default class SwedishForestTheme extends BaseTheme {
         for (let i = 0; i < dustCount; i++) {
             const i3 = i * 3;
             // Spread dust wider across the scene and deeper
-            positions[i3] = (Math.random() - 0.5) * 400; // Width: 400 (-200 to 200)
-            positions[i3 + 1] = 5 + Math.random() * 25;
-            positions[i3 + 2] = 10 - Math.random() * 100; // Depth: +10 to -90
+            positions[i3] = (this.random() - 0.5) * 400; // Width: 400 (-200 to 200)
+            positions[i3 + 1] = 5 + this.random() * 25;
+            positions[i3 + 2] = 10 - this.random() * 100; // Depth: +10 to -90
 
-            phases[i] = Math.random() * Math.PI * 2;
-            randoms[i] = Math.random();
+            phases[i] = this.random() * Math.PI * 2;
+            randoms[i] = this.random();
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -699,6 +1298,8 @@ export default class SwedishForestTheme extends BaseTheme {
             depthWrite: false,
         });
 
+        this.dustNodeUniforms = null;
+        this.dustMoteNodes = [];
         this.dustMotes = new THREE.Points(geometry, material);
         this.mainGroup.add(this.dustMotes);
     }
@@ -709,70 +1310,119 @@ export default class SwedishForestTheme extends BaseTheme {
 
     createMountains() {
         this.mountains = [];
+        this.mountainLayerNodeUniforms = [];
 
         // Mountain layer configurations - Firewatch style prominent silhouettes
         const mountainConfigs = [
             {
-                z: -88, height: 55, fogAmount: 0.75, layerIndex: 0, width: 280, y: 22,
+                x: 0, z: -88, height: 55, fogAmount: 0.75, layerIndex: 0, width: 280, y: 22,
             }, // Far - warmest, haziest
             {
-                z: -80, height: 50, fogAmount: 0.55, layerIndex: 1, width: 280, y: 24,
+                x: 0, z: -80, height: 50, fogAmount: 0.55, layerIndex: 1, width: 280, y: 24,
             }, // Mid
             {
-                z: -73, height: 45, fogAmount: 0.35, layerIndex: 2, width: 280, y: 26,
+                x: 0, z: -73, height: 45, fogAmount: 0.35, layerIndex: 2, width: 280, y: 26,
             }, // Near - darker
         ];
 
         const fogColor = COLORS.mountains.fog.clone();
-        const lightDirection = new THREE.Vector3(0.15, 0.35, -1.0).normalize();
+        const lightDirection = this.sunPosition.clone().normalize();
 
         mountainConfigs.forEach((config, index) => {
             const geometry = new THREE.PlaneGeometry(config.width, config.height, 1, 1);
             const palette = COLORS.mountains.layers[Math.min(config.layerIndex, COLORS.mountains.layers.length - 1)];
-
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uShadowColor: { value: palette.shadow },
-                    uMidColor: { value: palette.mid },
-                    uHighlightColor: { value: palette.highlight },
-                    uRimColor: { value: palette.rim },
-                    uMistColor: { value: palette.mist },
-                    uFogColor: { value: fogColor },
-                    uLightDirection: { value: lightDirection },
-                    uFogAmount: { value: config.fogAmount },
-                    uLayer: { value: index / (mountainConfigs.length - 1) },
-                    uTime: this.uniforms.time,
-                    uMistStrength: { value: palette.mistStrength },
-                },
-                vertexShader: mountainVertexShader,
-                fragmentShader: mountainFragmentShader,
-                transparent: true,
-                side: THREE.DoubleSide,
-                depthWrite: false,
-            });
+            let material;
+            if (this.isWebGPU) {
+                const nodeMountain = createMountainLayerNodeMaterial({
+                    time: this.uniforms.time.value,
+                    shadowColor: palette.shadow.clone(),
+                    midColor: palette.mid.clone(),
+                    highlightColor: palette.highlight.clone(),
+                    rimColor: palette.rim.clone(),
+                    mistColor: palette.mist.clone(),
+                    fogColor: fogColor.clone(),
+                    lightDirection: lightDirection.clone(),
+                    fogAmount: config.fogAmount,
+                    layer: index / (mountainConfigs.length - 1),
+                    mistStrength: palette.mistStrength,
+                });
+                material = nodeMountain.material;
+                this.mountainLayerNodeUniforms.push(nodeMountain.uniforms);
+            } else {
+                material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uShadowColor: { value: palette.shadow },
+                        uMidColor: { value: palette.mid },
+                        uHighlightColor: { value: palette.highlight },
+                        uRimColor: { value: palette.rim },
+                        uMistColor: { value: palette.mist },
+                        uFogColor: { value: fogColor },
+                        uLightDirection: { value: lightDirection },
+                        uFogAmount: { value: config.fogAmount },
+                        uLayer: { value: index / (mountainConfigs.length - 1) },
+                        uTime: this.uniforms.time,
+                        uMistStrength: { value: palette.mistStrength },
+                    },
+                    vertexShader: mountainVertexShader,
+                    fragmentShader: mountainFragmentShader,
+                    transparent: true,
+                    side: THREE.DoubleSide,
+                    depthWrite: false,
+                });
+            }
 
             const mountain = new THREE.Mesh(geometry, material);
             // Position mountains higher so peaks are visible above tree line
             mountain.position.set(config.x, config.y, config.z);
+            mountain.renderOrder = -24 + index;
 
             this.mountains.push(mountain);
             this.scene.add(mountain); // Add to scene, not mainGroup
         });
     }
-    // ═══════════════════════════════════════════════════════════════════════════
-    // 3D SILHOUETTE MOUNTAIN - Firewatch-style heightmap mountain on left side
-    // ═══════════════════════════════════════════════════════════════════════════
 
-    createSilhouetteMountain() {
-        // Mountain configuration - positioned left of sun, far behind trees
-        const config = {
-            size: 300, // Size of the terrain plane
-            segments: 64, // Resolution (64x64 for performance)
-            peakHeight: 100, // Maximum height at the peak
-            position: new THREE.Vector3(-90, -15, -160), // Main peak shifted right to x=-90
-        };
+    mountainNoise2D(x, y) {
+        const dot = x * 12.9898 + y * 78.233;
+        const noise = Math.sin(dot) * 43758.5453;
+        return noise - Math.floor(noise);
+    }
 
-        // Create plane geometry
+    mountainSmoothNoise2D(x, y) {
+        const ix = Math.floor(x);
+        const iy = Math.floor(y);
+        const fx = x - ix;
+        const fy = y - iy;
+
+        const sx = fx * fx * (3 - 2 * fx);
+        const sy = fy * fy * (3 - 2 * fy);
+
+        const n00 = this.mountainNoise2D(ix, iy);
+        const n10 = this.mountainNoise2D(ix + 1, iy);
+        const n01 = this.mountainNoise2D(ix, iy + 1);
+        const n11 = this.mountainNoise2D(ix + 1, iy + 1);
+
+        const nx0 = THREE.MathUtils.lerp(n00, n10, sx);
+        const nx1 = THREE.MathUtils.lerp(n01, n11, sx);
+        return THREE.MathUtils.lerp(nx0, nx1, sy);
+    }
+
+    mountainFBM2D(x, y, octaves = 4) {
+        let value = 0;
+        let amplitude = 1;
+        let frequency = 1;
+        let maxValue = 0;
+
+        for (let i = 0; i < octaves; i += 1) {
+            value += amplitude * (this.mountainSmoothNoise2D(x * frequency, y * frequency) * 2 - 1);
+            maxValue += amplitude;
+            amplitude *= 0.5;
+            frequency *= 2;
+        }
+
+        return maxValue > 0 ? value / maxValue : 0;
+    }
+
+    createMountainPeakGeometry(config) {
         const geometry = new THREE.PlaneGeometry(
             config.size,
             config.size,
@@ -781,549 +1431,306 @@ export default class SwedishForestTheme extends BaseTheme {
         );
         geometry.rotateX(-Math.PI / 2);
 
-        // --- FBM NOISE FUNCTIONS FOR HEIGHTMAP ---
-        const noise2D = (x, y) => {
-            const dot = x * 12.9898 + y * 78.233;
-            return (Math.sin(dot) * 43758.5453) % 1;
-        };
-
-        const smoothNoise = (x, y) => {
-            const ix = Math.floor(x);
-            const iy = Math.floor(y);
-            const fx = x - ix;
-            const fy = y - iy;
-
-            const sx = fx * fx * (3 - 2 * fx);
-            const sy = fy * fy * (3 - 2 * fy);
-
-            const n00 = noise2D(ix, iy);
-            const n10 = noise2D(ix + 1, iy);
-            const n01 = noise2D(ix, iy + 1);
-            const n11 = noise2D(ix + 1, iy + 1);
-
-            const nx0 = n00 + sx * (n10 - n00);
-            const nx1 = n01 + sx * (n11 - n01);
-
-            return nx0 + sy * (nx1 - nx0);
-        };
-
-        const fbm = (x, y, octaves = 5) => {
-            let value = 0;
-            let amplitude = 1;
-            let frequency = 1;
-            let maxValue = 0;
-
-            for (let i = 0; i < octaves; i++) {
-                value += amplitude * (smoothNoise(x * frequency, y * frequency) * 2 - 1);
-                maxValue += amplitude;
-                amplitude *= 0.5;
-                frequency *= 2;
-            }
-
-            return value / maxValue;
-        };
-
-        // --- APPLY HEIGHTMAP DISPLACEMENT - CLASSIC MOUNTAIN PEAK ---
         const positions = geometry.attributes.position;
         const vertex = new THREE.Vector3();
-        const heights = [];
+        const heights = new Float32Array(positions.count);
 
-        for (let i = 0; i < positions.count; i++) {
+        const peakRadius = config.peakRadius ?? 0.45;
+        const steepness = config.steepness ?? 1.2;
+        const asymmetryFrequency = config.asymmetryFrequency ?? 1.0;
+        const asymmetryPhase = config.asymmetryPhase ?? 0.0;
+        const asymmetryStrength = config.asymmetryStrength ?? 0.12;
+        const ridgeFrequency = config.ridgeFrequency ?? 4.0;
+        const ridgePhase = config.ridgePhase ?? 0.0;
+        const ridgeStrength = config.ridgeStrength ?? 0.08;
+        const ridgeFalloff = config.ridgeFalloff ?? 1.0;
+        const noiseScale = config.noiseScale ?? 0.01;
+        const noiseSeed = config.noiseSeed ?? 0.0;
+        const noiseStrength = config.noiseStrength ?? 0.05;
+        const noiseOctaves = config.noiseOctaves ?? 3;
+
+        for (let i = 0; i < positions.count; i += 1) {
             vertex.fromBufferAttribute(positions, i);
-
-            // Distance from center
             const dx = vertex.x;
             const dz = vertex.z;
             const distance = Math.sqrt(dx * dx + dz * dz);
-            const maxDist = config.size * 0.45;
-            const normDist = distance / maxDist;
+            const maxDistance = config.size * peakRadius;
+            const normalizedDistance = distance / maxDistance;
 
-            // === CLASSIC TRIANGULAR PEAK ===
             let height = 0;
 
-            if (normDist < 1.0) {
-                // Simple conical peak with smooth falloff
-                const peakProfile = (1.0 - normDist) ** 1.2;
+            if (normalizedDistance < 1.0) {
+                const peakProfile = (1.0 - normalizedDistance) ** steepness;
                 height = peakProfile * config.peakHeight;
 
-                // Add asymmetry - slightly steeper on one side
                 const angle = Math.atan2(dz, dx);
-                const asymmetry = 1.0 + Math.sin(angle + 0.5) * 0.15;
-                height *= asymmetry;
+                height *= 1.0 + Math.sin(angle * asymmetryFrequency + asymmetryPhase) * asymmetryStrength;
 
-                // Add ridges
-                const ridges = Math.sin(angle * 3) * 0.08 * (1.0 - normDist);
+                const ridges = Math.sin(angle * ridgeFrequency + ridgePhase)
+                    * ridgeStrength
+                    * (1.0 - normalizedDistance * ridgeFalloff);
                 height += ridges * config.peakHeight;
 
-                // Add noise
-                const noiseScale = 0.01;
-                const rockNoise = fbm(vertex.x * noiseScale, vertex.z * noiseScale, 5);
-                height += rockNoise * config.peakHeight * 0.08 * (1.0 - normDist * 0.5);
+                const rockNoise = this.mountainFBM2D(
+                    vertex.x * noiseScale + noiseSeed,
+                    vertex.z * noiseScale + noiseSeed,
+                    noiseOctaves,
+                );
+                height += rockNoise
+                    * config.peakHeight
+                    * noiseStrength
+                    * (1.0 - normalizedDistance * 0.5);
             }
 
-            heights.push(Math.max(0, height));
-            positions.setY(i, Math.max(0, height));
+            const finalHeight = Math.max(0, height);
+            positions.setY(i, finalHeight);
+            heights[i] = finalHeight / config.peakHeight;
         }
 
         geometry.computeVertexNormals();
+        geometry.setAttribute('aHeight', new THREE.BufferAttribute(heights, 1));
+        return geometry;
+    }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 3D SILHOUETTE MOUNTAIN - Firewatch-style heightmap mountain on left side
+    // ═══════════════════════════════════════════════════════════════════════════
 
-        // Add height attribute for shader coloring
-        const heightAttr = new Float32Array(positions.count);
-        for (let i = 0; i < positions.count; i++) {
-            heightAttr[i] = heights[i] / config.peakHeight;
-        }
-        geometry.setAttribute('aHeight', new THREE.BufferAttribute(heightAttr, 1));
-
-        // Create shader material for atmospheric perspective
-        this.silhouetteMountainMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uShadowColor: { value: new THREE.Color(0x2A1518) }, // Deep shadow (facing camera)
-                uMidColor: { value: new THREE.Color(0x6B3525) }, // Mid-tone warm brown
-                uHighlightColor: { value: new THREE.Color(0xCC6633) }, // Warm orange highlight
-                uRimColor: { value: new THREE.Color(0xFF8844) }, // Bright orange rim
-                uFogColor: { value: new THREE.Color(0xDD7744) }, // Warm atmospheric fog
+    createSilhouetteMountain() {
+        const peakConfigs = [
+            {
+                name: 'mainPeak',
+                size: 300,
+                segments: 64,
+                peakHeight: 100,
+                position: new THREE.Vector3(-90, -15, -160),
+                renderOrder: -5,
+                steepness: 1.2,
+                peakRadius: 0.45,
+                asymmetryFrequency: 1.0,
+                asymmetryPhase: 0.5,
+                asymmetryStrength: 0.15,
+                ridgeFrequency: 3.0,
+                ridgeStrength: 0.08,
+                noiseScale: 0.01,
+                noiseSeed: 0,
+                noiseStrength: 0.08,
+                noiseOctaves: 5,
             },
-            vertexShader: `
-                varying vec2 vUv;
-                varying float vHeight;
-                varying vec3 vWorldPosition;
-                varying vec3 vNormal;
-                varying vec3 vViewDir;
-                attribute float aHeight;
+            {
+                name: 'tallPeak',
+                size: 380,
+                segments: 64,
+                peakHeight: 170,
+                position: new THREE.Vector3(-180, -15, -185),
+                renderOrder: -6,
+                steepness: 1.4,
+                peakRadius: 0.42,
+                asymmetryFrequency: 1.0,
+                asymmetryPhase: 0.8,
+                asymmetryStrength: 0.12,
+                ridgeFrequency: 4.0,
+                ridgeStrength: 0.1,
+                noiseScale: 0.012,
+                noiseSeed: 100,
+                noiseStrength: 0.05,
+                noiseOctaves: 3,
+            },
+            {
+                name: 'farLeftPeak',
+                size: 350,
+                segments: 64,
+                peakHeight: 140,
+                position: new THREE.Vector3(-270, -15, -200),
+                renderOrder: -8,
+                steepness: 1.3,
+                peakRadius: 0.45,
+                asymmetryFrequency: 1.0,
+                asymmetryPhase: 2.0,
+                asymmetryStrength: 0.1,
+                ridgeFrequency: 5.0,
+                ridgeStrength: 0.08,
+                noiseScale: 0.01,
+                noiseSeed: 500,
+                noiseStrength: 0.05,
+                noiseOctaves: 3,
+            },
+            {
+                name: 'extremeLeftRidge',
+                size: 360,
+                segments: 64,
+                peakHeight: 165,
+                position: new THREE.Vector3(-320, -12, -185),
+                renderOrder: -7,
+                steepness: 1.28,
+                peakRadius: 0.43,
+                asymmetryFrequency: 1.0,
+                asymmetryPhase: 1.15,
+                asymmetryStrength: 0.15,
+                ridgeFrequency: 5.2,
+                ridgeStrength: 0.085,
+                ridgeFalloff: 0.85,
+                noiseScale: 0.01,
+                noiseSeed: 640,
+                noiseStrength: 0.06,
+                noiseOctaves: 3,
+            },
+            {
+                name: 'rightHill',
+                size: 320,
+                segments: 64,
+                peakHeight: 115,
+                position: new THREE.Vector3(120, -15, -160),
+                renderOrder: -15,
+                steepness: 1.1,
+                peakRadius: 0.45,
+                asymmetryFrequency: 2.0,
+                asymmetryPhase: 1.0,
+                asymmetryStrength: 0.1,
+                ridgeFrequency: 3.0,
+                ridgeStrength: 0.06,
+                noiseScale: 0.008,
+                noiseSeed: 200,
+                noiseStrength: 0.04,
+                noiseOctaves: 3,
+            },
+            {
+                name: 'farRightPeak',
+                size: 300,
+                segments: 64,
+                peakHeight: 135,
+                position: new THREE.Vector3(215, -12, -185),
+                renderOrder: -16,
+                steepness: 1.35,
+                peakRadius: 0.44,
+                asymmetryFrequency: 1.5,
+                asymmetryPhase: 2.4,
+                asymmetryStrength: 0.12,
+                ridgeFrequency: 4.0,
+                ridgePhase: 0.8,
+                ridgeStrength: 0.08,
+                noiseScale: 0.011,
+                noiseSeed: 320,
+                noiseStrength: 0.045,
+                noiseOctaves: 3,
+            },
+        ];
 
-                void main() {
-                    vUv = uv;
-                    vHeight = aHeight;
-                    vNormal = normalize(normalMatrix * normal);
-                    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                    vWorldPosition = worldPosition.xyz;
-                    vViewDir = normalize(cameraPosition - worldPosition.xyz);
-                    gl_Position = projectionMatrix * viewMatrix * worldPosition;
-                }
-            `,
-            fragmentShader: `
-                uniform vec3 uShadowColor;
-                uniform vec3 uMidColor;
-                uniform vec3 uHighlightColor;
-                uniform vec3 uRimColor;
-                uniform vec3 uFogColor;
-                varying float vHeight;
-                varying vec3 vWorldPosition;
-                varying vec3 vNormal;
-                varying vec3 vViewDir;
+        if (this.isWebGPU) {
+            const nodePeakMaterial = createMountainPeakNodeMaterial({
+                time: this.uniforms.time.value,
+                shadowColor: new THREE.Color(0x2A1518),
+                midColor: new THREE.Color(0x6B3525),
+                highlightColor: new THREE.Color(0xCC6633),
+                rimColor: new THREE.Color(0xFF8844),
+                fogColor: new THREE.Color(0xDD7744),
+                sunDirection: this.sunPosition.clone().normalize(),
+            });
+            this.silhouetteMountainMaterial = nodePeakMaterial.material;
+            this.silhouetteMountainNodeUniforms = nodePeakMaterial.uniforms;
+        } else {
+            this.silhouetteMountainMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uShadowColor: { value: new THREE.Color(0x2A1518) }, // Deep shadow (facing camera)
+                    uMidColor: { value: new THREE.Color(0x6B3525) }, // Mid-tone warm brown
+                    uHighlightColor: { value: new THREE.Color(0xCC6633) }, // Warm orange highlight
+                    uRimColor: { value: new THREE.Color(0xFF8844) }, // Bright orange rim
+                    uFogColor: { value: new THREE.Color(0xDD7744) }, // Warm atmospheric fog
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    varying float vHeight;
+                    varying vec3 vWorldPosition;
+                    varying vec3 vNormal;
+                    varying vec3 vViewDir;
+                    attribute float aHeight;
 
-                void main() {
-                    // Sun is BEHIND the mountains (negative Z), shining toward camera
-                    vec3 sunDir = normalize(vec3(0.0, 0.3, -1.0));
+                    void main() {
+                        vUv = uv;
+                        vHeight = aHeight;
+                        vNormal = normalize(normalMatrix * normal);
+                        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                        vWorldPosition = worldPosition.xyz;
+                        vViewDir = normalize(cameraPosition - worldPosition.xyz);
+                        gl_Position = projectionMatrix * viewMatrix * worldPosition;
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 uShadowColor;
+                    uniform vec3 uMidColor;
+                    uniform vec3 uHighlightColor;
+                    uniform vec3 uRimColor;
+                    uniform vec3 uFogColor;
+                    varying float vHeight;
+                    varying vec3 vWorldPosition;
+                    varying vec3 vNormal;
+                    varying vec3 vViewDir;
 
-                    // === DIRECTIONAL LIGHTING ===
-                    // Surfaces facing camera are in SHADOW (backlit scene)
-                    float facingCamera = max(0.0, dot(vNormal, vViewDir));
+                    void main() {
+                        vec3 sunDir = normalize(vec3(0.0, 0.3, -1.0));
+                        float facingCamera = max(0.0, dot(vNormal, vViewDir));
+                        float facingSun = max(0.0, dot(vNormal, -sunDir));
+                        float facingUp = max(0.0, vNormal.y);
 
-                    // Surfaces facing away from camera catch the sun
-                    float facingSun = max(0.0, dot(vNormal, -sunDir));
+                        vec3 mountainColor = uShadowColor;
+                        float midBlend = vHeight * 0.6 + facingUp * 0.3;
+                        mountainColor = mix(mountainColor, uMidColor, midBlend);
+                        float highlightBlend = facingSun * 0.5 + facingUp * vHeight * 0.4;
+                        mountainColor = mix(mountainColor, uHighlightColor, highlightBlend * 0.6);
 
-                    // Surfaces facing up get some ambient light
-                    float facingUp = max(0.0, vNormal.y);
+                        float rim = pow(1.0 - facingCamera, 2.0);
+                        float rimStrength = rim * (0.5 + facingUp * 0.3 + facingSun * 0.4);
+                        mountainColor = mix(mountainColor, uRimColor, rimStrength * 0.5 * vHeight);
 
-                    // === COLOR ZONES (Firewatch style) ===
-                    vec3 mountainColor;
+                        float dist = length(vWorldPosition - cameraPosition);
+                        float fogFactor = smoothstep(100.0, 280.0, dist);
+                        mountainColor = mix(mountainColor, uFogColor, fogFactor * 0.5);
 
-                    // Start with shadow color (most of front-facing surface)
-                    mountainColor = uShadowColor;
+                        float baseMist = smoothstep(0.25, 0.0, vHeight);
+                        mountainColor = mix(mountainColor, uFogColor * 0.7, baseMist * 0.6);
 
-                    // Blend to mid-tone based on height and angle
-                    float midBlend = vHeight * 0.6 + facingUp * 0.3;
-                    mountainColor = mix(mountainColor, uMidColor, midBlend);
+                        float peakGlow = smoothstep(0.7, 1.0, vHeight);
+                        mountainColor = mix(mountainColor, uRimColor * 0.9, peakGlow * 0.25);
 
-                    // Add warm highlights on sun-catching surfaces
-                    float highlightBlend = facingSun * 0.5 + facingUp * vHeight * 0.4;
-                    mountainColor = mix(mountainColor, uHighlightColor, highlightBlend * 0.6);
+                        gl_FragColor = vec4(mountainColor, 1.0);
+                    }
+                `,
+                side: THREE.DoubleSide,
+            });
+            this.silhouetteMountainNodeUniforms = null;
+        }
 
-                    // === STRONG RIM LIGHTING ===
-                    // Edges perpendicular to view get bright rim light from sun behind
-                    float rim = 1.0 - facingCamera;
-                    rim = pow(rim, 2.0);
-                    // Rim is stronger on upper parts and edges facing up/back
-                    float rimStrength = rim * (0.5 + facingUp * 0.3 + facingSun * 0.4);
-                    mountainColor = mix(mountainColor, uRimColor, rimStrength * 0.5 * vHeight);
+        peakConfigs.forEach((peakConfig) => {
+            const geometry = this.createMountainPeakGeometry(peakConfig);
+            const mountainMesh = new THREE.Mesh(geometry, this.silhouetteMountainMaterial);
+            mountainMesh.position.copy(peakConfig.position);
+            mountainMesh.renderOrder = peakConfig.renderOrder;
+            this.scene.add(mountainMesh);
 
-                    // === ATMOSPHERIC PERSPECTIVE ===
-                    float dist = length(vWorldPosition - cameraPosition);
-                    float fogFactor = smoothstep(100.0, 280.0, dist);
-                    mountainColor = mix(mountainColor, uFogColor, fogFactor * 0.5);
-
-                    // === BASE MIST (darker/hazier at bottom) ===
-                    float baseMist = smoothstep(0.25, 0.0, vHeight);
-                    vec3 mistColor = uFogColor * 0.7;
-                    mountainColor = mix(mountainColor, mistColor, baseMist * 0.6);
-
-                    // === PEAK GLOW (subtle bright cap) ===
-                    float peakGlow = smoothstep(0.7, 1.0, vHeight);
-                    mountainColor = mix(mountainColor, uRimColor * 0.9, peakGlow * 0.25);
-
-                    gl_FragColor = vec4(mountainColor, 1.0);
-                }
-            `,
-            side: THREE.DoubleSide,
+            switch (peakConfig.name) {
+            case 'mainPeak':
+                this.silhouetteMountain = mountainMesh;
+                break;
+            case 'tallPeak':
+                this.tallMountainPeak = mountainMesh;
+                break;
+            case 'farLeftPeak':
+                this.farLeftMountain = mountainMesh;
+                break;
+            case 'extremeLeftRidge':
+                this.extremeLeftMountain = mountainMesh;
+                break;
+            case 'rightHill':
+                this.rightHill = mountainMesh;
+                break;
+            case 'farRightPeak':
+                this.farRightMountain = mountainMesh;
+                break;
+            default:
+                break;
+            }
         });
 
-        // Create the mountain mesh (original peak)
-        this.silhouetteMountain = new THREE.Mesh(geometry, this.silhouetteMountainMaterial);
-        this.silhouetteMountain.position.copy(config.position);
-        this.silhouetteMountain.renderOrder = -5;
-
-        this.scene.add(this.silhouetteMountain);
-
-        // ─────────────────────────────────────────────────────────────────────
-        // CREATE SECOND TALLER PEAK (to the left of the first one)
-        // ─────────────────────────────────────────────────────────────────────
-
-        const tallPeakConfig = {
-            size: 380, // Wide base
-            segments: 64,
-            peakHeight: 170, // Reduced height
-            position: new THREE.Vector3(-180, -15, -185), // Shifted left (x -20) and back (z -10)
-        };
-
-        // Create geometry for tall peak
-        const tallGeometry = new THREE.PlaneGeometry(
-            tallPeakConfig.size,
-            tallPeakConfig.size,
-            tallPeakConfig.segments,
-            tallPeakConfig.segments,
-        );
-        tallGeometry.rotateX(-Math.PI / 2);
-
-        // Apply heightmap to tall peak (reusing same noise functions)
-        const tallPositions = tallGeometry.attributes.position;
-        const tallHeights = [];
-
-        for (let i = 0; i < tallPositions.count; i++) {
-            vertex.fromBufferAttribute(tallPositions, i);
-
-            const dx = vertex.x;
-            const dz = vertex.z;
-            const distance = Math.sqrt(dx * dx + dz * dz);
-            const maxDist = tallPeakConfig.size * 0.42; // Slightly steeper
-            const normDist = distance / maxDist;
-
-            let height = 0;
-
-            if (normDist < 1.0) {
-                // Steeper peak profile for dramatic tall mountain
-                const peakProfile = (1.0 - normDist) ** 1.4;
-                height = peakProfile * tallPeakConfig.peakHeight;
-
-                // Add asymmetry
-                const angle = Math.atan2(dz, dx);
-                const asymmetry = 1.0 + Math.sin(angle + 0.8) * 0.12;
-                height *= asymmetry;
-
-                // Add ridges
-                const ridges = Math.sin(angle * 4) * 0.1 * (1.0 - normDist);
-                height += ridges * tallPeakConfig.peakHeight;
-
-                // Add subtle noise
-                const noiseScale = 0.012;
-                const rockNoise = fbm(vertex.x * noiseScale + 100, vertex.z * noiseScale + 100, 3);
-                height += rockNoise * tallPeakConfig.peakHeight * 0.05 * (1.0 - normDist * 0.5);
-            }
-
-            tallHeights.push(Math.max(0, height));
-            tallPositions.setY(i, Math.max(0, height));
-        }
-
-        tallGeometry.computeVertexNormals();
-
-        // Add height attribute
-        const tallHeightAttr = new Float32Array(tallPositions.count);
-        for (let i = 0; i < tallPositions.count; i++) {
-            tallHeightAttr[i] = tallHeights[i] / tallPeakConfig.peakHeight;
-        }
-        tallGeometry.setAttribute('aHeight', new THREE.BufferAttribute(tallHeightAttr, 1));
-
-        // Create tall peak mesh (reuse same material)
-        this.tallMountainPeak = new THREE.Mesh(tallGeometry, this.silhouetteMountainMaterial);
-        this.tallMountainPeak.position.copy(tallPeakConfig.position);
-        this.tallMountainPeak.renderOrder = -6; // Render behind the first mountain
-
-        this.scene.add(this.tallMountainPeak);
-
-        // ─────────────────────────────────────────────────────────────────────
-        // CREATE THIRD PEAK (FAR LEFT) (to complete the 3-tops request)
-        // ─────────────────────────────────────────────────────────────────────
-
-        const farLeftConfig = {
-            size: 350,
-            segments: 64,
-            peakHeight: 140, // Intermediate height
-            position: new THREE.Vector3(-270, -15, -200), // Shifted left (x -20) and back (z -15)
-        };
-
-        const farLeftGeometry = new THREE.PlaneGeometry(
-            farLeftConfig.size,
-            farLeftConfig.size,
-            farLeftConfig.segments,
-            farLeftConfig.segments,
-        );
-        farLeftGeometry.rotateX(-Math.PI / 2);
-
-        // Apply heightmap to far left peak
-        const farLeftPositions = farLeftGeometry.attributes.position;
-        const farLeftHeights = [];
-
-        for (let i = 0; i < farLeftPositions.count; i++) {
-            vertex.fromBufferAttribute(farLeftPositions, i);
-
-            const dx = vertex.x;
-            const dz = vertex.z;
-            const distance = Math.sqrt(dx * dx + dz * dz);
-            const maxDist = farLeftConfig.size * 0.45;
-            const normDist = distance / maxDist;
-
-            let height = 0;
-
-            if (normDist < 1.0) {
-                // Slightly broader profile
-                const peakProfile = (1.0 - normDist) ** 1.3;
-                height = peakProfile * farLeftConfig.peakHeight;
-
-                // Asymmetry
-                const angle = Math.atan2(dz, dx);
-                height *= (1.0 + Math.sin(angle + 2.0) * 0.1);
-
-                // Ridges
-                const ridges = Math.sin(angle * 5) * 0.08 * (1.0 - normDist);
-                height += ridges * farLeftConfig.peakHeight;
-
-                // Noise
-                const noiseScale = 0.01;
-                const rockNoise = fbm(vertex.x * noiseScale + 500, vertex.z * noiseScale + 500, 3);
-                height += rockNoise * farLeftConfig.peakHeight * 0.05;
-            }
-
-            farLeftHeights.push(Math.max(0, height));
-            farLeftPositions.setY(i, Math.max(0, height));
-        }
-
-        farLeftGeometry.computeVertexNormals();
-
-        const farLeftHeightAttr = new Float32Array(farLeftPositions.count);
-        for (let i = 0; i < farLeftPositions.count; i++) {
-            farLeftHeightAttr[i] = farLeftHeights[i] / farLeftConfig.peakHeight;
-        }
-        farLeftGeometry.setAttribute('aHeight', new THREE.BufferAttribute(farLeftHeightAttr, 1));
-
-        this.farLeftMountain = new THREE.Mesh(farLeftGeometry, this.silhouetteMountainMaterial);
-        this.farLeftMountain.position.copy(farLeftConfig.position);
-        this.farLeftMountain.renderOrder = -8; // Behind tall peak
-        this.scene.add(this.farLeftMountain);
-
-        // ─────────────────────────────────────────────────────────────────────
-        // EXTREME LEFT RIDGE - pushes silhouette farther left for camera framing
-        // ─────────────────────────────────────────────────────────────────────
-
-        const extremeLeftConfig = {
-            size: 360,
-            segments: 64,
-            peakHeight: 165,
-            position: new THREE.Vector3(-320, -12, -185),
-        };
-
-        const extremeLeftGeometry = new THREE.PlaneGeometry(
-            extremeLeftConfig.size,
-            extremeLeftConfig.size,
-            extremeLeftConfig.segments,
-            extremeLeftConfig.segments,
-        );
-        extremeLeftGeometry.rotateX(-Math.PI / 2);
-
-        const extremeLeftPositions = extremeLeftGeometry.attributes.position;
-        const extremeLeftHeights = [];
-
-        for (let i = 0; i < extremeLeftPositions.count; i++) {
-            vertex.fromBufferAttribute(extremeLeftPositions, i);
-
-            const dx = vertex.x;
-            const dz = vertex.z;
-            const distance = Math.sqrt(dx * dx + dz * dz);
-            const maxDist = extremeLeftConfig.size * 0.43;
-            const normDist = distance / maxDist;
-
-            let height = 0;
-
-            if (normDist < 1.0) {
-                // Tall ridge that frames the left edge but still leans inward
-                const peakProfile = (1.0 - normDist) ** 1.28;
-                height = peakProfile * extremeLeftConfig.peakHeight;
-
-                // Offset asymmetry so slope leans toward center of frame
-                const angle = Math.atan2(dz, dx);
-                height *= (1.0 + Math.sin(angle + 1.15) * 0.15);
-
-                // Rugged ridges cascading down toward trees
-                const ridges = Math.sin(angle * 5.2) * 0.085 * (1.0 - normDist * 0.85);
-                height += ridges * extremeLeftConfig.peakHeight;
-
-                // Subtle FBM noise for breakup
-                const noiseScale = 0.01;
-                const rockNoise = fbm(vertex.x * noiseScale + 640, vertex.z * noiseScale + 640, 3);
-                height += rockNoise * extremeLeftConfig.peakHeight * 0.06;
-            }
-
-            extremeLeftHeights.push(Math.max(0, height));
-            extremeLeftPositions.setY(i, Math.max(0, height));
-        }
-
-        extremeLeftGeometry.computeVertexNormals();
-
-        const extremeLeftHeightAttr = new Float32Array(extremeLeftPositions.count);
-        for (let i = 0; i < extremeLeftPositions.count; i++) {
-            extremeLeftHeightAttr[i] = extremeLeftHeights[i] / extremeLeftConfig.peakHeight;
-        }
-        extremeLeftGeometry.setAttribute('aHeight', new THREE.BufferAttribute(extremeLeftHeightAttr, 1));
-
-        this.extremeLeftMountain = new THREE.Mesh(extremeLeftGeometry, this.silhouetteMountainMaterial);
-        this.extremeLeftMountain.position.copy(extremeLeftConfig.position);
-        this.extremeLeftMountain.renderOrder = -7;
-        this.scene.add(this.extremeLeftMountain);
-
-        // ─────────────────────────────────────────────────────────────────────
-        // CREATE RIGHT SIDE MOUNTAIN (Background silhouette matching left mountain depth)
-        // Positioned far back to blend with other background mountains
-        // ─────────────────────────────────────────────────────────────────────
-
-        const rightHillConfig = {
-            size: 320, // Similar to left mountain
-            segments: 64,
-            peakHeight: 115, // Natural height, not looming
-            position: new THREE.Vector3(120, -15, -160), // Balanced position on right side
-        };
-
-        // Create plane geometry for right mountain
-        const rightGeometry = new THREE.PlaneGeometry(
-            rightHillConfig.size,
-            rightHillConfig.size,
-            rightHillConfig.segments,
-            rightHillConfig.segments,
-        );
-
-        // Rotate to horizontal
-        rightGeometry.rotateX(-Math.PI / 2);
-
-        // Apply heightmap to right hill
-        const rightPositions = rightGeometry.attributes.position;
-        const rightHeights = [];
-
-        for (let i = 0; i < rightPositions.count; i++) {
-            vertex.fromBufferAttribute(rightPositions, i);
-
-            const dx = vertex.x;
-            const dz = vertex.z;
-            const distance = Math.sqrt(dx * dx + dz * dz);
-            const maxDist = rightHillConfig.size * 0.45;
-            const normDist = distance / maxDist;
-
-            let height = 0;
-
-            if (normDist < 1.0) {
-                const peakProfile = (1.0 - normDist) ** 1.1;
-                height = peakProfile * rightHillConfig.peakHeight;
-                const angle = Math.atan2(dz, dx);
-                height *= (1.0 + Math.sin(angle * 2.0 + 1.0) * 0.1);
-                const ridges = Math.sin(angle * 3) * 0.06 * (1.0 - normDist);
-                height += ridges * rightHillConfig.peakHeight;
-                const noiseScale = 0.008;
-                const rockNoise = fbm(vertex.x * noiseScale + 200, vertex.z * noiseScale + 200, 3);
-                height += rockNoise * rightHillConfig.peakHeight * 0.04;
-            }
-
-            rightHeights.push(Math.max(0, height));
-            rightPositions.setY(i, Math.max(0, height));
-        }
-
-        rightGeometry.computeVertexNormals();
-
-        const rightHeightAttr = new Float32Array(rightPositions.count);
-        for (let i = 0; i < rightPositions.count; i++) {
-            rightHeightAttr[i] = rightHeights[i] / rightHillConfig.peakHeight;
-        }
-        rightGeometry.setAttribute('aHeight', new THREE.BufferAttribute(rightHeightAttr, 1));
-
-        this.rightHill = new THREE.Mesh(rightGeometry, this.silhouetteMountainMaterial);
-        this.rightHill.position.copy(rightHillConfig.position);
-        this.rightHill.renderOrder = -15; // Far behind
-        this.scene.add(this.rightHill);
-
-        // ─────────────────────────────────────────────────────────────────────
-        // FAR RIGHT PEAK - extends silhouette past the existing right hill
-        // ─────────────────────────────────────────────────────────────────────
-
-        const farRightConfig = {
-            size: 300,
-            segments: 64,
-            peakHeight: 135,
-            position: new THREE.Vector3(215, -12, -185),
-        };
-
-        const farRightGeometry = new THREE.PlaneGeometry(
-            farRightConfig.size,
-            farRightConfig.size,
-            farRightConfig.segments,
-            farRightConfig.segments,
-        );
-        farRightGeometry.rotateX(-Math.PI / 2);
-
-        const farRightPositions = farRightGeometry.attributes.position;
-        const farRightHeights = [];
-
-        for (let i = 0; i < farRightPositions.count; i++) {
-            vertex.fromBufferAttribute(farRightPositions, i);
-
-            const dx = vertex.x;
-            const dz = vertex.z;
-            const distance = Math.sqrt(dx * dx + dz * dz);
-            const maxDist = farRightConfig.size * 0.44;
-            const normDist = distance / maxDist;
-
-            let height = 0;
-
-            if (normDist < 1.0) {
-                // Narrower, steeper peak to punctuate the skyline
-                const peakProfile = (1.0 - normDist) ** 1.35;
-                height = peakProfile * farRightConfig.peakHeight;
-
-                // Lean slightly inward toward the sun
-                const angle = Math.atan2(dz, dx);
-                height *= (1.0 + Math.sin(angle * 1.5 + 2.4) * 0.12);
-
-                const ridges = Math.sin(angle * 4.0 + 0.8) * 0.08 * (1.0 - normDist);
-                height += ridges * farRightConfig.peakHeight;
-
-                const noiseScale = 0.011;
-                const rockNoise = fbm(vertex.x * noiseScale + 320, vertex.z * noiseScale + 320, 3);
-                height += rockNoise * farRightConfig.peakHeight * 0.045;
-            }
-
-            farRightHeights.push(Math.max(0, height));
-            farRightPositions.setY(i, Math.max(0, height));
-        }
-
-        farRightGeometry.computeVertexNormals();
-
-        const farRightHeightAttr = new Float32Array(farRightPositions.count);
-        for (let i = 0; i < farRightPositions.count; i++) {
-            farRightHeightAttr[i] = farRightHeights[i] / farRightConfig.peakHeight;
-        }
-        farRightGeometry.setAttribute('aHeight', new THREE.BufferAttribute(farRightHeightAttr, 1));
-
-        this.farRightMountain = new THREE.Mesh(farRightGeometry, this.silhouetteMountainMaterial);
-        this.farRightMountain.position.copy(farRightConfig.position);
-        this.farRightMountain.renderOrder = -16;
-        this.scene.add(this.farRightMountain);
-
-        console.log('[SwedishForest] 3D silhouette mountains created (4 left + 2 right)');
+        console.log('[SwedishForest] 3D silhouette mountains created (4 left + 2 right, refactored configs)');
     }
 
     /* REMOVED DUPLICATE CODE
@@ -1747,39 +2154,59 @@ export default class SwedishForestTheme extends BaseTheme {
 
     createHazeLayers() {
         this.hazeLayers = [];
+        this.hazeNodeUniforms = [];
 
         // Haze configurations between tree layers
         const hazeConfigs = [
             {
-                z: -55, y: 8, width: 120, height: 25, density: 0.35, color: new THREE.Color(0xFFBB88),
+                z: -62, y: 9, width: 150, height: 30, density: 0.34, color: new THREE.Color(0xFFC08E), drift: new THREE.Vector2(0.018, 0.004),
             },
             {
-                z: -35, y: 6, width: 100, height: 20, density: 0.25, color: new THREE.Color(0xFFAA77),
+                z: -46, y: 7, width: 130, height: 24, density: 0.29, color: new THREE.Color(0xFFB27A), drift: new THREE.Vector2(0.025, -0.003),
             },
             {
-                z: -18, y: 4, width: 80, height: 15, density: 0.18, color: new THREE.Color(0xFF9966),
+                z: -31, y: 5.2, width: 108, height: 19, density: 0.24, color: new THREE.Color(0xFFA06A), drift: new THREE.Vector2(0.032, 0.006),
+            },
+            {
+                z: -18, y: 4.2, width: 84, height: 14, density: 0.19, color: new THREE.Color(0xFF935D), drift: new THREE.Vector2(0.039, -0.004),
             },
         ];
 
-        hazeConfigs.forEach((config) => {
+        hazeConfigs.forEach((config, index) => {
             const geometry = new THREE.PlaneGeometry(config.width, config.height);
 
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: this.uniforms.time,
-                    uHazeColor: { value: config.color },
-                    uDensity: { value: config.density },
-                },
-                vertexShader: hazeVertexShader,
-                fragmentShader: hazeFragmentShader,
-                transparent: true,
-                blending: THREE.NormalBlending,
-                depthWrite: false,
-                side: THREE.DoubleSide,
-            });
+            let material = null;
+            if (this.isWebGPU) {
+                const nodeHaze = createHazeNodeMaterial({
+                    time: this.uniforms.time.value,
+                    hazeColor: config.color.clone(),
+                    density: config.density,
+                    layerDepth: index / Math.max(1, hazeConfigs.length - 1),
+                    drift: config.drift.clone(),
+                });
+                material = nodeHaze.material;
+                this.hazeNodeUniforms.push(nodeHaze.uniforms);
+            } else {
+                material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uTime: this.uniforms.time,
+                        uHazeColor: { value: config.color },
+                        uDensity: { value: config.density },
+                        uLayerDepth: { value: index / Math.max(1, hazeConfigs.length - 1) },
+                        uDrift: { value: config.drift },
+                    },
+                    vertexShader: hazeVertexShader,
+                    fragmentShader: hazeFragmentShader,
+                    transparent: true,
+                    blending: THREE.NormalBlending,
+                    depthWrite: false,
+                    side: THREE.DoubleSide,
+                });
+            }
 
             const haze = new THREE.Mesh(geometry, material);
             haze.position.set(0, config.y, config.z);
+            haze.renderOrder = -25 + index;
 
             this.hazeLayers.push(haze);
             this.mainGroup.add(haze);
@@ -1846,30 +2273,44 @@ export default class SwedishForestTheme extends BaseTheme {
     createForestFloor() {
         // Extended geometry to cover from lake edge to mountains
         const geometry = new THREE.PlaneGeometry(300, 250, 64, 64);
+        let material;
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-                uGroundColor: { value: COLORS.groundBase },
-                uMossColor: { value: COLORS.groundMoss },
-                uDirtColor: { value: COLORS.groundDirt },
-                uGlowIntensity: { value: 0 },
-                uFogColor: { value: COLORS.fog },
-            },
-            vertexShader: groundVertexShader,
-            fragmentShader: groundFragmentShader,
-            side: THREE.DoubleSide,
-        });
+        if (this.isWebGPU) {
+            const groundNodeMaterial = createGroundNodeMaterial({
+                time: this.uniforms.time.value,
+                groundColor: COLORS.groundBase.clone(),
+                mossColor: COLORS.groundMoss.clone(),
+                dirtColor: COLORS.groundDirt.clone(),
+                glowIntensity: this.uniforms.glowIntensity.value,
+                fogColor: COLORS.fog.clone(),
+            });
+            material = groundNodeMaterial.material;
+            this.groundNodeUniforms = groundNodeMaterial.uniforms;
+            this.groundMaterial = null;
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uGroundColor: { value: COLORS.groundBase },
+                    uMossColor: { value: COLORS.groundMoss },
+                    uDirtColor: { value: COLORS.groundDirt },
+                    uGlowIntensity: { value: 0 },
+                    uFogColor: { value: COLORS.fog },
+                },
+                vertexShader: groundVertexShader,
+                fragmentShader: groundFragmentShader,
+                side: THREE.DoubleSide,
+            });
+            this.groundMaterial = material;
+            this.groundNodeUniforms = null;
+        }
 
         this.groundPlane = new THREE.Mesh(geometry, material);
         this.groundPlane.rotation.x = -Math.PI / 2;
-        // Raised to -0.35 to meet water level, pushed back to -40 to cover full depth
-        this.groundPlane.position.set(0, -0.35, -40);
+        // Lowered to -0.55 so water wave troughs (up to -0.2 displacement) never intersect the ground
+        this.groundPlane.position.set(0, -0.55, -40);
 
         this.mainGroup.add(this.groundPlane);
-
-        // Store material reference
-        this.groundMaterial = material;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1879,8 +2320,14 @@ export default class SwedishForestTheme extends BaseTheme {
     createGrass() {
         if (!this.scene) return;
 
+        if (this.grassTexture) {
+            this.grassTexture.dispose();
+            this.grassTexture = null;
+        }
+
         // Generate procedural grass texture
         const grassTexture = this.createGrassTexture();
+        this.grassTexture = grassTexture;
 
         // Billboard geometry - 4 quads at 45° intervals for fluffy look
         const clumpSize = 2.5;
@@ -1919,103 +2366,127 @@ export default class SwedishForestTheme extends BaseTheme {
         clumpGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
         clumpGeo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
         clumpGeo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
+        const grassCount = 400;
+        const grassWindOffsets = new Float32Array(grassCount);
+        clumpGeo.setAttribute(
+            'aWindOffset',
+            new THREE.InstancedBufferAttribute(grassWindOffsets, 1),
+        );
 
-        // Forest grass shader material - bright golden Firewatch sunset tones
-        const grassMat = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uWindStrength: { value: 0.18 },
-                uGrassTexture: { value: grassTexture },
-                uBaseColor: { value: new THREE.Color(0x4A3015) }, // Warm brown base
-                uTipColor: { value: new THREE.Color(0xDDAA44) }, // Bright golden tips (Firewatch)
-                uFogColor: { value: COLORS.fog },
-                uSpiritGlow: { value: 0.0 }, // Reactive to spirits
-            },
-            vertexShader: `
-                uniform float uTime;
-                uniform float uWindStrength;
-                uniform float uSpiritGlow;
+        let grassMat;
+        if (this.isWebGPU) {
+            const grassNodeMaterial = createGrassNodeMaterial({
+                time: this.uniforms.time.value,
+                windStrength: 0.18,
+                spiritGlow: 0.0,
+                grassTexture,
+                baseColor: new THREE.Color(0x4A3015),
+                tipColor: new THREE.Color(0xDDAA44),
+                fogColor: COLORS.fog,
+                glowColor: new THREE.Color(0xFFB067),
+                alphaCutoff: 0.5,
+            });
+            grassMat = grassNodeMaterial.material;
+            this.grassNodeUniforms = grassNodeMaterial.uniforms;
+            this.grassMaterial = null;
+        } else {
+            // Forest grass shader material - bright golden Firewatch sunset tones
+            grassMat = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uWindStrength: { value: 0.18 },
+                    uGrassTexture: { value: grassTexture },
+                    uBaseColor: { value: new THREE.Color(0x4A3015) }, // Warm brown base
+                    uTipColor: { value: new THREE.Color(0xDDAA44) }, // Bright golden tips (Firewatch)
+                    uFogColor: { value: COLORS.fog },
+                    uSpiritGlow: { value: 0.0 }, // Reactive to spirits
+                },
+                vertexShader: `
+                    uniform float uTime;
+                    uniform float uWindStrength;
+                    uniform float uSpiritGlow;
 
-                varying vec2 vUv;
-                varying float vFogDepth;
-                varying float vGlow;
+                    varying vec2 vUv;
+                    varying float vFogDepth;
+                    varying float vGlow;
 
-                void main() {
-                    vUv = uv;
-                    vec3 pos = position;
+                    void main() {
+                        vUv = uv;
+                        vec3 pos = position;
 
-                    #ifdef USE_INSTANCING
-                        vec4 worldPos = modelMatrix * instanceMatrix * vec4(position, 1.0);
-                    #else
-                        vec4 worldPos = modelMatrix * vec4(position, 1.0);
-                    #endif
+                        #ifdef USE_INSTANCING
+                            vec4 worldPos = modelMatrix * instanceMatrix * vec4(position, 1.0);
+                        #else
+                            vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                        #endif
 
-                    // Wind animation
-                    float windPhase = worldPos.x * 0.3 + worldPos.z * 0.25 + uTime * 1.5;
-                    float wind = sin(windPhase) * uWindStrength;
-                    float wind2 = sin(windPhase * 0.6 + 1.5) * uWindStrength * 0.6;
+                        // Wind animation
+                        float windPhase = worldPos.x * 0.3 + worldPos.z * 0.25 + uTime * 1.5;
+                        float wind = sin(windPhase) * uWindStrength;
+                        float wind2 = sin(windPhase * 0.6 + 1.5) * uWindStrength * 0.6;
 
-                    float heightFactor = uv.y * uv.y;
-                    pos.x += wind * heightFactor;
-                    pos.z += wind2 * heightFactor;
+                        float heightFactor = uv.y * uv.y;
+                        pos.x += wind * heightFactor;
+                        pos.z += wind2 * heightFactor;
 
-                    // Spirit glow effect - tips glow when spirits are nearby
-                    float glowPattern = sin(worldPos.x * 0.2) * sin(worldPos.z * 0.15) * 0.5 + 0.5;
-                    vGlow = glowPattern * heightFactor * uSpiritGlow;
+                        // Spirit glow effect - tips glow when spirits are nearby
+                        float glowPattern = sin(worldPos.x * 0.2) * sin(worldPos.z * 0.15) * 0.5 + 0.5;
+                        vGlow = glowPattern * heightFactor * uSpiritGlow;
 
-                    #ifdef USE_INSTANCING
-                        vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
-                    #else
-                        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-                    #endif
+                        #ifdef USE_INSTANCING
+                            vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
+                        #else
+                            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                        #endif
 
-                    vFogDepth = -mvPosition.z;
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-            fragmentShader: `
-                uniform sampler2D uGrassTexture;
-                uniform vec3 uBaseColor;
-                uniform vec3 uTipColor;
-                uniform vec3 uFogColor;
+                        vFogDepth = -mvPosition.z;
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    uniform sampler2D uGrassTexture;
+                    uniform vec3 uBaseColor;
+                    uniform vec3 uTipColor;
+                    uniform vec3 uFogColor;
 
-                varying vec2 vUv;
-                varying float vFogDepth;
-                varying float vGlow;
+                    varying vec2 vUv;
+                    varying float vFogDepth;
+                    varying float vGlow;
 
-                void main() {
-                    vec4 texColor = texture2D(uGrassTexture, vUv);
-                    if (texColor.a < 0.5) discard;
+                    void main() {
+                        vec4 texColor = texture2D(uGrassTexture, vUv);
+                        if (texColor.a < 0.5) discard;
 
-                    // Dark base to lighter tips gradient
-                    float gradient = smoothstep(0.0, 0.7, vUv.y);
-                    vec3 grassColor = mix(uBaseColor, uTipColor, gradient);
+                        // Dark base to lighter tips gradient
+                        float gradient = smoothstep(0.0, 0.7, vUv.y);
+                        vec3 grassColor = mix(uBaseColor, uTipColor, gradient);
 
-                    vec3 finalColor = grassColor * texColor.rgb * 1.3;
+                        vec3 finalColor = grassColor * texColor.rgb * 1.3;
 
-                    // Add warm sunset tint at tips
-                    vec3 sunsetTint = vec3(1.0, 0.85, 0.6);
-                    finalColor = mix(finalColor, finalColor * sunsetTint, gradient * 0.4);
+                        // Add warm sunset tint at tips
+                        vec3 sunsetTint = vec3(1.0, 0.85, 0.6);
+                        finalColor = mix(finalColor, finalColor * sunsetTint, gradient * 0.4);
 
-                    // Add warm spirit glow (golden amber)
-                    finalColor += vec3(1.0, 0.7, 0.3) * vGlow * 0.4;
+                        // Add warm spirit glow (golden amber)
+                        finalColor += vec3(1.0, 0.7, 0.3) * vGlow * 0.4;
 
-                    // Fog
-                    float fogFactor = smoothstep(15.0, 60.0, vFogDepth);
-                    finalColor = mix(finalColor, uFogColor, fogFactor);
+                        // Fog
+                        float fogFactor = smoothstep(15.0, 60.0, vFogDepth);
+                        finalColor = mix(finalColor, uFogColor, fogFactor);
 
-                    gl_FragColor = vec4(finalColor, 1.0);
-                }
-            `,
-            side: THREE.DoubleSide,
-            depthWrite: true,
-            alphaTest: 0.5,
-        });
+                        gl_FragColor = vec4(finalColor, 1.0);
+                    }
+                `,
+                side: THREE.DoubleSide,
+                depthWrite: true,
+                alphaTest: 0.5,
+            });
 
-        this.grassMaterial = grassMat;
+            this.grassMaterial = grassMat;
+            this.grassNodeUniforms = null;
+        }
 
         // Create instanced grass mesh
-        const grassCount = 400;
         const grassMesh = new THREE.InstancedMesh(clumpGeo, grassMat, grassCount);
         const dummy = new THREE.Object3D();
 
@@ -2026,8 +2497,8 @@ export default class SwedishForestTheme extends BaseTheme {
 
         for (let i = 0; i < grassCount; i++) {
             // Distribute grass only on near shore (positive z, in front of lake)
-            const angle = (Math.random() - 0.5) * Math.PI * 0.9;
-            const dist = 5 + Math.random() * 55;
+            const angle = (this.random() - 0.5) * Math.PI * 0.9;
+            const dist = 5 + this.random() * 55;
 
             const x = Math.sin(angle) * dist;
             const z = 40 + Math.cos(angle) * dist * 0.4; // Keep grass on near shore (z > 40)
@@ -2041,18 +2512,20 @@ export default class SwedishForestTheme extends BaseTheme {
                 // Hide grass in lake area
                 dummy.scale.set(0, 0, 0);
             } else {
-                const scale = 0.6 + Math.random() * 0.6;
-                dummy.scale.set(scale, scale * (0.8 + Math.random() * 0.4), scale);
+                const scale = 0.6 + this.random() * 0.6;
+                dummy.scale.set(scale, scale * (0.8 + this.random() * 0.4), scale);
             }
 
             dummy.position.set(x, -0.5, z);
-            dummy.rotation.y = Math.random() * Math.PI * 2;
+            dummy.rotation.y = this.random() * Math.PI * 2;
+            grassWindOffsets[i] = x * 0.3 + z * 0.25;
 
             dummy.updateMatrix();
             grassMesh.setMatrixAt(i, dummy.matrix);
         }
 
         grassMesh.instanceMatrix.needsUpdate = true;
+        clumpGeo.getAttribute('aWindOffset').needsUpdate = true;
         grassMesh.frustumCulled = false;
 
         this.mainGroup.add(grassMesh);
@@ -2061,7 +2534,14 @@ export default class SwedishForestTheme extends BaseTheme {
 
     createSilhouetteGrass() {
         if (!this.scene) return;
+
+        if (this.silhouetteGrassTexture) {
+            this.silhouetteGrassTexture.dispose();
+            this.silhouetteGrassTexture = null;
+        }
+
         const grassTexture = this.createGrassTexture();
+        this.silhouetteGrassTexture = grassTexture;
 
         // Billboard geometry - 4 quads at 45° intervals
         const clumpSize = 3.5; // Larger for foreground
@@ -2099,71 +2579,99 @@ export default class SwedishForestTheme extends BaseTheme {
         clumpGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
         clumpGeo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
         clumpGeo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
+        const instanceCount = 800;
+        const grassWindOffsets = new Float32Array(instanceCount);
+        clumpGeo.setAttribute(
+            'aWindOffset',
+            new THREE.InstancedBufferAttribute(grassWindOffsets, 1),
+        );
 
-        // Dark silhouette shader material
-        const grassMat = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uWindStrength: { value: 0.15 },
-                uGrassTexture: { value: grassTexture },
-                uBaseColor: { value: new THREE.Color(0x150505) }, // Very dark brown/black
-                uTipColor: { value: new THREE.Color(0x2A1005) }, // Slightly warmer tip
-            },
-            vertexShader: `
-                uniform float uTime;
-                uniform float uWindStrength;
-                varying vec2 vUv;
-                void main() {
-                    vUv = uv;
-                    vec3 pos = position;
-                    #ifdef USE_INSTANCING
-                        vec4 worldPos = modelMatrix * instanceMatrix * vec4(position, 1.0);
-                    #else
-                        vec4 worldPos = modelMatrix * vec4(position, 1.0);
-                    #endif
-                    float windPhase = worldPos.x * 0.2 + worldPos.z * 0.15 + uTime * 1.0;
-                    float wind = sin(windPhase) * uWindStrength;
-                    float heightFactor = uv.y * uv.y;
-                    pos.x += wind * heightFactor;
-                    vec4 mvPosition = viewMatrix * worldPos; 
-                    mvPosition.xyz += pos; 
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-            fragmentShader: `
-                uniform sampler2D uGrassTexture;
-                uniform vec3 uBaseColor;
-                uniform vec3 uTipColor;
-                varying vec2 vUv;
-                void main() {
-                    vec4 texColor = texture2D(uGrassTexture, vUv);
-                    if (texColor.a < 0.6) discard; // Sharper cutout
-                    vec3 color = mix(uBaseColor, uTipColor, vUv.y);
-                    gl_FragColor = vec4(color, 1.0);
-                }
-            `,
-            side: THREE.DoubleSide,
-        });
+        let grassMat;
+        if (this.isWebGPU) {
+            const silhouetteGrassNodeMaterial = createSilhouetteGrassNodeMaterial({
+                time: this.uniforms.time.value,
+                windStrength: 0.15,
+                grassTexture,
+                baseColor: new THREE.Color(0x150505),
+                tipColor: new THREE.Color(0x2A1005),
+                alphaCutoff: 0.6,
+            });
+            grassMat = silhouetteGrassNodeMaterial.material;
+            this.silhouetteGrassNodeUniforms = silhouetteGrassNodeMaterial.uniforms;
+        } else {
+            // Dark silhouette shader material
+            grassMat = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uWindStrength: { value: 0.15 },
+                    uGrassTexture: { value: grassTexture },
+                    uBaseColor: { value: new THREE.Color(0x150505) }, // Very dark brown/black
+                    uTipColor: { value: new THREE.Color(0x2A1005) }, // Slightly warmer tip
+                },
+                vertexShader: `
+                    uniform float uTime;
+                    uniform float uWindStrength;
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        vec3 pos = position;
+                        #ifdef USE_INSTANCING
+                            vec4 worldPos = modelMatrix * instanceMatrix * vec4(position, 1.0);
+                        #else
+                            vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                        #endif
+                        float windPhase = worldPos.x * 0.2 + worldPos.z * 0.15 + uTime * 1.0;
+                        float wind = sin(windPhase) * uWindStrength;
+                        float heightFactor = uv.y * uv.y;
+                        pos.x += wind * heightFactor;
+                        #ifdef USE_INSTANCING
+                            vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(pos, 1.0);
+                        #else
+                            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                        #endif
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    uniform sampler2D uGrassTexture;
+                    uniform vec3 uBaseColor;
+                    uniform vec3 uTipColor;
+                    varying vec2 vUv;
+                    void main() {
+                        vec4 texColor = texture2D(uGrassTexture, vUv);
+                        if (texColor.a < 0.6) discard; // Sharper cutout
+                        vec3 color = mix(uBaseColor, uTipColor, vUv.y);
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `,
+                side: THREE.DoubleSide,
+            });
+            this.silhouetteGrassNodeUniforms = null;
+        }
 
         // Dense foreground instances
-        const instanceCount = 800;
         const grassMesh = new THREE.InstancedMesh(clumpGeo, grassMat, instanceCount);
         const dummy = new THREE.Object3D();
 
         for (let i = 0; i < instanceCount; i++) {
-            // Very close to camera: z = 140 to 160 (camera is at 160)
-            const x = (Math.random() - 0.5) * 120; // Wide spread left/right
-            const z = 140 + Math.random() * 25; // Right in front of camera
+            // Keep silhouette grass at far left/right edges so it frames the scene without occluding the lake center.
+            const leftSide = this.random() < 0.52;
+            const x = leftSide
+                ? (-155 + this.random() * 70)
+                : (85 + this.random() * 70);
+            const z = 102 + this.random() * 36;
 
-            const scale = 0.8 + Math.random() * 0.7;
-            dummy.scale.set(scale, scale * (0.9 + Math.random() * 0.3), scale);
+            const scale = 0.8 + this.random() * 0.7;
+            dummy.scale.set(scale, scale * (0.9 + this.random() * 0.3), scale);
             dummy.position.set(x, -2.5, z); // Slightly lower
-            dummy.rotation.y = Math.random() * Math.PI * 2;
+            dummy.rotation.y = this.random() * Math.PI * 2;
+            grassWindOffsets[i] = x * 0.2 + z * 0.15;
             dummy.updateMatrix();
             grassMesh.setMatrixAt(i, dummy.matrix);
         }
 
         grassMesh.instanceMatrix.needsUpdate = true;
+        clumpGeo.getAttribute('aWindOffset').needsUpdate = true;
         grassMesh.frustumCulled = false;
         this.mainGroup.add(grassMesh);
         this.silhouetteGrassMesh = grassMesh;
@@ -2181,10 +2689,10 @@ export default class SwedishForestTheme extends BaseTheme {
         // Draw multiple grass blades
         const bladeCount = 20;
         for (let i = 0; i < bladeCount; i++) {
-            const x = (i / bladeCount) * size + (Math.random() - 0.5) * 30;
-            const height = size * (0.6 + Math.random() * 0.35);
-            const baseWidth = 8 + Math.random() * 6;
-            const lean = (Math.random() - 0.5) * 40;
+            const x = (i / bladeCount) * size + (this.random() - 0.5) * 30;
+            const height = size * (0.6 + this.random() * 0.35);
+            const baseWidth = 8 + this.random() * 6;
+            const lean = (this.random() - 0.5) * 40;
 
             // Gradient from dark base to golden tip (warm sunset tones)
             const gradient = ctx.createLinearGradient(x, size, x + lean, size - height);
@@ -2219,24 +2727,79 @@ export default class SwedishForestTheme extends BaseTheme {
     // LAKE - Firewatch-style stylized water with gradient and ripples
     // ═══════════════════════════════════════════════════════════════════════════
 
-    createLake() {
-        if (!this.scene) return;
+    createFallbackWaterNormalTexture() {
+        // Flat normal (0.5, 0.5, 1.0) avoids "no image data" warnings before JPG load completes.
+        const data = new Uint8Array([128, 128, 255, 255]);
+        const texture = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.needsUpdate = true;
+        return texture;
+    }
 
-        console.log('[SwedishForest] Creating Three.js Water lake with organic shoreline...');
+    loadWaterNormalTexture(loadVersion) {
+        const candidatePaths = ['/textures/water-normal.jpg', 'textures/water-normal.jpg'];
+        const loader = new THREE.TextureLoader();
 
-        // ─────────────────────────────────────────────────────────────────────
-        // ORGANIC LAKE SHAPE - Irregular shoreline using noise
-        // ─────────────────────────────────────────────────────────────────────
+        const applyTexture = (texture, path) => {
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
 
+            if (
+                loadVersion !== this.waterNormalsLoadVersion
+                || !this.isActive
+                || !this.lakeMesh?.material?.uniforms?.normalSampler
+            ) {
+                texture.dispose();
+                return;
+            }
+
+            const previous = this.lakeMesh.material.uniforms.normalSampler.value;
+            this.lakeMesh.material.uniforms.normalSampler.value = texture;
+            this.waterNormalsTexture = texture;
+
+            if (previous && previous !== texture) {
+                previous.dispose();
+                if (previous === this.waterNormalsFallbackTexture) {
+                    this.waterNormalsFallbackTexture = null;
+                }
+            }
+
+            console.log(`[SwedishForest] Water normals loaded from ${path}`);
+        };
+
+        const tryLoad = (index) => {
+            if (index >= candidatePaths.length) {
+                console.warn('[SwedishForest] Failed to load water normals; keeping fallback normal texture.');
+                return;
+            }
+
+            const path = candidatePaths[index];
+            loader.load(
+                path,
+                (texture) => applyTexture(texture, path),
+                undefined,
+                () => {
+                    if (index + 1 < candidatePaths.length) {
+                        console.warn(`[SwedishForest] Failed loading water normals at ${path}, retrying...`);
+                    }
+                    tryLoad(index + 1);
+                },
+            );
+        };
+
+        tryLoad(0);
+    }
+
+    createLakeGeometry() {
         const baseRadius = 70;
-        const segments = 128;
+        const angularSegments = 128;
+        const radialSegments = 32;
 
-        // Create custom geometry with irregular edges
-        const positions = [0, 0, 0]; // Center vertex
-        const uvs = [0.5, 0.5]; // Center UV
+        const positions = [];
+        const uvs = [];
         const indices = [];
 
-        // Simple noise function for shoreline variation
         const noise = (x, y, seed = 0) => {
             const n1 = Math.sin(x * 2.3 + seed) * Math.cos(y * 1.7 + seed * 0.7);
             const n2 = Math.sin(x * 5.1 + seed * 1.3) * Math.cos(y * 4.2 + seed * 0.5) * 0.5;
@@ -2244,27 +2807,44 @@ export default class SwedishForestTheme extends BaseTheme {
             return (n1 + n2 + n3) / 1.75;
         };
 
-        // Generate vertices around the perimeter with organic variation
-        for (let i = 0; i <= segments; i++) {
-            const angle = (i / segments) * Math.PI * 2;
+        // Precompute shoreline radius per angle so each ring follows the same organic contour.
+        const shorelineRadius = new Array(angularSegments + 1);
+        for (let i = 0; i <= angularSegments; i++) {
+            const angle = (i / angularSegments) * Math.PI * 2;
             const cos = Math.cos(angle);
             const sin = Math.sin(angle);
-
-            // Add organic variation to radius (different on near vs far shore)
-            const nearShoreBoost = sin > 0 ? 0.15 : 0; // More variation on near shore (positive Y in local coords)
+            const nearShoreBoost = sin > 0 ? 0.15 : 0;
             const variation = noise(cos * 3, sin * 3, 42) * (0.12 + nearShoreBoost);
-            const radius = baseRadius * (1 + variation);
-
-            const x = cos * radius;
-            const y = sin * radius;
-
-            positions.push(x, y, 0);
-            uvs.push((cos + 1) / 2, (sin + 1) / 2);
+            shorelineRadius[i] = baseRadius * (1 + variation);
         }
 
-        // Create triangle indices (fan from center)
-        for (let i = 1; i <= segments; i++) {
-            indices.push(0, i, i + 1);
+        for (let ring = 0; ring <= radialSegments; ring++) {
+            const t = ring / radialSegments;
+            for (let i = 0; i <= angularSegments; i++) {
+                const angle = (i / angularSegments) * Math.PI * 2;
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+                const radius = shorelineRadius[i] * t;
+
+                positions.push(cos * radius, sin * radius, 0);
+                // Keep UVs radially uniform so edge effects stay stable with the irregular shoreline.
+                uvs.push((cos * t + 1) / 2, (sin * t + 1) / 2);
+            }
+        }
+
+        const rowSize = angularSegments + 1;
+        for (let ring = 0; ring < radialSegments; ring++) {
+            const row = ring * rowSize;
+            const nextRow = (ring + 1) * rowSize;
+            for (let i = 0; i < angularSegments; i++) {
+                const a = row + i;
+                const b = row + i + 1;
+                const c = nextRow + i;
+                const d = nextRow + i + 1;
+
+                indices.push(a, c, b);
+                indices.push(b, c, d);
+            }
         }
 
         const lakeGeometry = new THREE.BufferGeometry();
@@ -2272,36 +2852,188 @@ export default class SwedishForestTheme extends BaseTheme {
         lakeGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
         lakeGeometry.setIndex(indices);
         lakeGeometry.computeVertexNormals();
+        return lakeGeometry;
+    }
 
-        // ─────────────────────────────────────────────────────────────────────
-        // THREE.JS WATER WITH ORANGE TINT
-        // ─────────────────────────────────────────────────────────────────────
+    getWaterReflectionResolution() {
+        const quality = this.getCurrentQualityLevel();
+        switch (quality) {
+        case 'Extreme':
+            return 1024;
+        case 'Ultra':
+        case 'High':
+            return 512;
+        case 'Medium':
+        case 'Low':
+            return 256;
+        case 'Minimal':
+        default:
+            return 128;
+        }
+    }
 
-        const loader = new THREE.TextureLoader();
-        const waterNormals = loader.load('textures/water-normal.jpg');
-        waterNormals.wrapS = waterNormals.wrapT = THREE.RepeatWrapping;
+    createWebGPUWater(lakeGeometry) {
+        const reflectionTextureMatrix = new THREE.Matrix4().identity();
 
-        this.lakeMesh = new SwedishForestWater(lakeGeometry, {
-            textureWidth: 512,
-            textureHeight: 512,
-            waterNormals,
+        const nodeWater = createWaterNodeMaterial({
+            time: this.uniforms.time.value,
+            reflectionMap: null,
+            reflectionMatrix: reflectionTextureMatrix,
+            enableReflectionSample: false,
             sunDirection: this.sunPosition.clone().normalize(),
-            sunColor: 0xffcc88, // Brighter warm sun highlight
-            waterColor: 0x8b4513, // Rich saddle brown/orange for deep water
-            distortionScale: 0.6, // Gentler ripples
-            fog: false,
+            sunColor: new THREE.Color(0xffb062),
+            nearColor: new THREE.Color(0x6e3a1c),
+            farColor: new THREE.Color(0xb97843),
+            skyReflection: COLORS.cloud.fog.clone().multiplyScalar(0.58),
+            rippleStrength: 0.42,
+            distortionStrength: 0.011,
+            fresnelPower: 2.45,
+            fresnelBias: 0.05,
+            sunPathStrength: 0.62,
+            shoreDarkening: 0.42,
+            shoreFoamStrength: 0.32,
+            objectFoamStrength: 0.46,
+            emissiveStrength: 0.24,
         });
 
-        // Position: Horizontal plane
+        this.lakeMesh = new THREE.Mesh(lakeGeometry, nodeWater.material);
         this.lakeMesh.rotation.x = -Math.PI / 2;
         this.lakeMesh.scale.set(2.5, 0.45, 1.0);
         this.lakeMesh.position.set(0, -0.3, 5);
-
-        this.lakeMesh.material.uniforms.size.value = 4.0;
-
+        this.lakeMesh.castShadow = false;
+        this.lakeMesh.receiveShadow = false;
         this.mainGroup.add(this.lakeMesh);
 
+        this.waterNodeUniforms = nodeWater.uniforms;
+        this.webgpuWater = null;
+        console.log('[SwedishForest] WebGPU lake reflection sampling temporarily disabled for stability.');
         console.log('[SwedishForest] Organic shoreline lake created');
+    }
+
+    updateWebGPUWaterReflection(renderer, scene, camera) {
+        if (!this.webgpuWater || !this.lakeMesh || !this.isActive) return;
+        if (camera !== this.camera) return;
+        const state = this.webgpuWater;
+        if (state.isRendering || camera === state.mirrorCamera) return;
+
+        const waterMesh = this.lakeMesh;
+        const mirrorCamera = state.mirrorCamera;
+        const renderTarget = state.renderTarget;
+
+        state.isRendering = true;
+        let previousRenderTarget = null;
+        let previousXrEnabled = null;
+        let previousShadowAutoUpdate = null;
+        try {
+            waterMesh.getWorldPosition(state.worldPos);
+            const waterY = state.worldPos.y;
+
+            mirrorCamera.position.copy(camera.position);
+            mirrorCamera.position.y = waterY - (camera.position.y - waterY);
+
+            camera.getWorldDirection(state.worldDir);
+            state.worldTarget.copy(camera.position).add(state.worldDir);
+            state.reflectionTarget.copy(state.worldTarget);
+            state.reflectionTarget.y = waterY - (state.worldTarget.y - waterY);
+
+            mirrorCamera.up.copy(camera.up);
+            mirrorCamera.up.y *= -1;
+            mirrorCamera.near = camera.near;
+            mirrorCamera.far = camera.far;
+            mirrorCamera.aspect = camera.aspect;
+            mirrorCamera.fov = camera.fov;
+            mirrorCamera.updateProjectionMatrix();
+            mirrorCamera.lookAt(state.reflectionTarget);
+            mirrorCamera.updateMatrixWorld(true);
+
+            state.textureMatrix.set(
+                0.5,
+                0.0,
+                0.0,
+                0.5,
+                0.0,
+                0.5,
+                0.0,
+                0.5,
+                0.0,
+                0.0,
+                0.5,
+                0.5,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+            );
+            state.textureMatrix.multiply(mirrorCamera.projectionMatrix);
+            state.textureMatrix.multiply(mirrorCamera.matrixWorldInverse);
+
+            previousRenderTarget = renderer.getRenderTarget();
+            previousXrEnabled = renderer.xr?.enabled;
+            previousShadowAutoUpdate = renderer.shadowMap?.autoUpdate;
+
+            waterMesh.visible = false;
+
+            if (renderer.xr) renderer.xr.enabled = false;
+            if (renderer.shadowMap) renderer.shadowMap.autoUpdate = false;
+
+            renderer.setRenderTarget(renderTarget);
+            renderer.clear();
+            renderer.render(scene, mirrorCamera);
+        } finally {
+            if (renderer.xr && previousXrEnabled !== null) renderer.xr.enabled = previousXrEnabled;
+            if (renderer.shadowMap && previousShadowAutoUpdate !== null) {
+                renderer.shadowMap.autoUpdate = previousShadowAutoUpdate;
+            }
+            if (previousRenderTarget !== null) {
+                renderer.setRenderTarget(previousRenderTarget);
+            }
+            waterMesh.visible = true;
+            state.isRendering = false;
+        }
+    }
+
+    createWebGLWater(lakeGeometry) {
+        const waterNormals = this.createFallbackWaterNormalTexture();
+        this.waterNormalsFallbackTexture = waterNormals;
+        this.waterNormalsTexture = waterNormals;
+        const loadVersion = ++this.waterNormalsLoadVersion;
+        const reflectionResolution = this.getWaterReflectionResolution();
+
+        this.lakeMesh = new SwedishForestWater(lakeGeometry, {
+            textureWidth: reflectionResolution,
+            textureHeight: reflectionResolution,
+            waterNormals,
+            sunDirection: this.sunPosition.clone().normalize(),
+            sunColor: 0xffcc88,
+            waterColor: 0x8b4513,
+            distortionScale: 0.6,
+            fog: false,
+        });
+
+        this.lakeMesh.rotation.x = -Math.PI / 2;
+        this.lakeMesh.scale.set(2.5, 0.45, 1.0);
+        this.lakeMesh.position.set(0, -0.3, 5);
+        this.lakeMesh.material.uniforms.size.value = 4.0;
+        this.lakeMesh.castShadow = false;
+        this.lakeMesh.receiveShadow = false;
+
+        this.mainGroup.add(this.lakeMesh);
+        this.loadWaterNormalTexture(loadVersion);
+        console.log('[SwedishForest] Organic shoreline lake created');
+    }
+
+    createLake() {
+        if (!this.scene) return;
+
+        console.log('[SwedishForest] Creating Three.js Water lake with organic shoreline...');
+        const lakeGeometry = this.createLakeGeometry();
+
+        if (this.isWebGPU) {
+            this.createWebGPUWater(lakeGeometry);
+            return;
+        }
+
+        this.createWebGLWater(lakeGeometry);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -2312,6 +3044,7 @@ export default class SwedishForestTheme extends BaseTheme {
         if (!this.scene) return;
 
         console.log('[SwedishForest] Creating shore foam ring...');
+        this.shoreFoamNodeUniforms = null;
 
         const baseRadius = 70;
         const segments = 128;
@@ -2368,43 +3101,55 @@ export default class SwedishForestTheme extends BaseTheme {
         foamGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         foamGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
         foamGeometry.setIndex(indices);
+        foamGeometry.computeVertexNormals();
 
-        // Foam shader material
-        const foamMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                time: { value: 0.0 },
-                foamColor: { value: new THREE.Color(0.95, 0.75, 0.45) }, // Warm golden (subtle)
-                opacity: { value: 0.4 },
-            },
-            vertexShader: `
-                varying vec2 vUv;
-                void main() {
-                    vUv = uv;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform float time;
-                uniform vec3 foamColor;
-                uniform float opacity;
-                varying vec2 vUv;
+        let foamMaterial;
+        if (this.isWebGPU) {
+            const nodeFoam = createShoreFoamNodeMaterial({
+                time: this.uniforms.time.value,
+                foamColor: new THREE.Color(0.95, 0.75, 0.45),
+                opacity: 0.4,
+            });
+            foamMaterial = nodeFoam.material;
+            this.shoreFoamNodeUniforms = nodeFoam.uniforms;
+        } else {
+            // Foam shader material
+            foamMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0.0 },
+                    foamColor: { value: new THREE.Color(0.95, 0.75, 0.45) }, // Warm golden (subtle)
+                    opacity: { value: 0.4 },
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform vec3 foamColor;
+                    uniform float opacity;
+                    varying vec2 vUv;
 
-                void main() {
-                    // vUv.y: 0.0 at water edge (inner), 1.0 at land edge (outer)
-                    // Fade from water edge outward
-                    float alpha = 1.0 - smoothstep(0.0, 0.8, vUv.y);
+                    void main() {
+                        // vUv.y: 0.0 at water edge (inner), 1.0 at land edge (outer)
+                        // Fade from water edge outward
+                        float alpha = 1.0 - smoothstep(0.0, 0.8, vUv.y);
 
-                    // Very subtle shimmer
-                    float shimmer = 0.9 + 0.1 * sin(time * 1.0 + vUv.x * 10.0);
-                    alpha *= shimmer;
+                        // Very subtle shimmer
+                        float shimmer = 0.9 + 0.1 * sin(time * 1.0 + vUv.x * 10.0);
+                        alpha *= shimmer;
 
-                    gl_FragColor = vec4(foamColor, alpha * opacity);
-                }
-            `,
-            transparent: true,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-        });
+                        gl_FragColor = vec4(foamColor, alpha * opacity);
+                    }
+                `,
+                transparent: true,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+            });
+        }
 
         this.shoreFoamMesh = new THREE.Mesh(foamGeometry, foamMaterial);
 
@@ -2481,8 +3226,8 @@ export default class SwedishForestTheme extends BaseTheme {
             // Add cut-off branch stubs along the log
             const numBranches = 3 + Math.floor(config.length / 3);
             for (let i = 0; i < numBranches; i++) {
-                const branchRadius = config.radius * (0.25 + Math.random() * 0.15);
-                const branchLength = config.radius * (1.0 + Math.random() * 0.6);
+                const branchRadius = config.radius * (0.25 + this.random() * 0.15);
+                const branchLength = config.radius * (1.0 + this.random() * 0.6);
 
                 const branchGeom = new THREE.CylinderGeometry(
                     branchRadius * 0.4, // Tapered end (cut-off look)
@@ -2502,7 +3247,7 @@ export default class SwedishForestTheme extends BaseTheme {
                 // Angle around the log - alternate top/sides, with randomness
                 // 0 = top, PI/2 = side, PI = bottom
                 const baseAngle = (i % 3) * (Math.PI * 2 / 3); // Distribute around circumference
-                const circumAngle = baseAngle + (Math.random() - 0.5) * 0.6;
+                const circumAngle = baseAngle + (this.random() - 0.5) * 0.6;
 
                 // Position branch base exactly at log surface
                 const surfaceY = Math.cos(circumAngle) * config.radius;
@@ -2513,7 +3258,7 @@ export default class SwedishForestTheme extends BaseTheme {
                 // Rotate branch to point outward from log surface
                 // The branch cylinder's Y-axis should point outward from the log center
                 branch.rotation.x = circumAngle - Math.PI / 2;
-                branch.rotation.z = (Math.random() - 0.5) * 0.3; // Slight random tilt
+                branch.rotation.z = (this.random() - 0.5) * 0.3; // Slight random tilt
 
                 logGroup.add(branch);
             }
@@ -2551,7 +3296,7 @@ export default class SwedishForestTheme extends BaseTheme {
 
     loadRockTextureSet() {
         const loader = new THREE.TextureLoader();
-        const maxAnisotropy = this.renderer?.capabilities.getMaxAnisotropy?.() || 1;
+        const maxAnisotropy = this.renderer?.capabilities?.getMaxAnisotropy?.() || 1;
 
         const albedo = loader.load(
             new URL('./assets/mossy-ground1-albedo.png', import.meta.url).href,
@@ -2586,6 +3331,14 @@ export default class SwedishForestTheme extends BaseTheme {
     }
 
     createRockMaterials(rockColors) {
+        if (this.isWebGPU) {
+            return rockColors.map((tint) => new THREE.MeshStandardMaterial({
+                color: tint,
+                roughness: 0.92,
+                metalness: 0.0,
+            }));
+        }
+
         if (!this.rockTextureSet) {
             this.rockTextureSet = this.loadRockTextureSet();
         }
@@ -2593,7 +3346,7 @@ export default class SwedishForestTheme extends BaseTheme {
         const {
             albedo, normal, roughness, ao, repeat,
         } = this.rockTextureSet;
-        const maxAnisotropy = this.renderer?.capabilities.getMaxAnisotropy?.() || 1;
+        const maxAnisotropy = this.renderer?.capabilities?.getMaxAnisotropy?.() || 1;
         const offsets = [
             new THREE.Vector2(0.05, 0.1),
             new THREE.Vector2(0.38, 0.22),
@@ -2633,6 +3386,10 @@ export default class SwedishForestTheme extends BaseTheme {
 
     createRockShadowCatcher() {
         if (this.rockShadowCatcher || !this.mainGroup) return;
+        if (this.isWebGPU) {
+            // Avoid a large transparent shadow plane in WebGPU; it produces faceted dark artifacts over the lake.
+            return;
+        }
 
         const geometry = new THREE.PlaneGeometry(300, 250);
         const material = new THREE.ShadowMaterial({ opacity: 0.28 });
@@ -2842,8 +3599,8 @@ export default class SwedishForestTheme extends BaseTheme {
             rock.position.set(config.x, -0.3, config.z);
             rock.scale.setScalar(config.scale);
             rock.rotation.y = config.rotY;
-            rock.rotation.x = (Math.random() - 0.5) * 0.15; // Less random tilt
-            rock.rotation.z = (Math.random() - 0.5) * 0.1;
+            rock.rotation.x = (this.random() - 0.5) * 0.15; // Less random tilt
+            rock.rotation.z = (this.random() - 0.5) * 0.1;
             rock.castShadow = true;
             rock.receiveShadow = true;
 
@@ -2922,33 +3679,55 @@ export default class SwedishForestTheme extends BaseTheme {
             new THREE.Color(0x7A5A30),
             new THREE.Color(0x6A4A28),
         ];
+        const reedNodeVariants = [];
+        this.shoreReedNodeUniforms = [];
+        if (this.isWebGPU) {
+            reedColors.forEach((reedColor) => {
+                const tipColor = reedColor.clone().offsetHSL(0, 0.05, 0.08);
+                const reedNodeMaterial = createShoreReedNodeMaterial({
+                    time: this.uniforms.time.value,
+                    windStrength: 0.2,
+                    baseColor: reedColor,
+                    tipColor,
+                    heightScale: 7.0,
+                });
+                reedNodeVariants.push(reedNodeMaterial);
+                this.shoreReedNodeUniforms.push(reedNodeMaterial.uniforms);
+            });
+        }
 
         reedClusters.forEach((cluster) => {
             const group = new THREE.Group();
 
             for (let i = 0; i < cluster.count; i++) {
                 // Create thin triangular reed geometry
-                const height = cluster.height * (0.7 + Math.random() * 0.6);
+                const height = cluster.height * (0.7 + this.random() * 0.6);
                 const geometry = new THREE.ConeGeometry(0.03, height, 4);
                 geometry.translate(0, height / 2, 0);
 
-                const material = new THREE.MeshBasicMaterial({
-                    color: reedColors[Math.floor(Math.random() * reedColors.length)],
-                    side: THREE.DoubleSide,
-                });
+                const reedColorIdx = Math.floor(this.random() * reedColors.length);
+                let material;
+                if (this.isWebGPU) {
+                    material = reedNodeVariants[reedColorIdx].material;
+                } else {
+                    material = new THREE.MeshBasicMaterial({
+                        color: reedColors[reedColorIdx],
+                        side: THREE.DoubleSide,
+                    });
+                }
 
                 const reed = new THREE.Mesh(geometry, material);
 
                 // Position within cluster
                 reed.position.set(
-                    (Math.random() - 0.5) * 2.5,
+                    (this.random() - 0.5) * 2.5,
                     -0.5,
-                    (Math.random() - 0.5) * 2.5,
+                    (this.random() - 0.5) * 2.5,
                 );
 
                 // Random rotation and lean
-                reed.rotation.x = (Math.random() - 0.5) * 0.3;
-                reed.rotation.z = (Math.random() - 0.5) * 0.3;
+                reed.rotation.x = (this.random() - 0.5) * 0.3;
+                reed.rotation.z = (this.random() - 0.5) * 0.3;
 
                 group.add(reed);
             }
@@ -2977,6 +3756,35 @@ export default class SwedishForestTheme extends BaseTheme {
             new THREE.Color(0x1A0A06), // Dark
             new THREE.Color(0x200C08), // Medium dark
         ];
+        const framingFoliageNodeMaterials = [];
+        this.framingTreeFoliageNodeUniforms = [];
+        this.framingTreeTrunkNodeUniforms = null;
+        if (this.isWebGPU) {
+            treeColors.forEach((treeColor) => {
+                const foliageNodeMaterial = createFramingTreeFoliageNodeMaterial({
+                    time: this.uniforms.time.value,
+                    windStrength: 0.12,
+                    baseColor: treeColor,
+                    rimColor: new THREE.Color(0xB86C3A),
+                    sunDirection: this.sunPosition.clone().normalize(),
+                    heightScale: 40.0,
+                    rimStrength: 0.08,
+                });
+                framingFoliageNodeMaterials.push(foliageNodeMaterial);
+                this.framingTreeFoliageNodeUniforms.push(foliageNodeMaterial.uniforms);
+            });
+
+            const trunkNodeMaterial = createFramingTreeTrunkNodeMaterial({
+                time: this.uniforms.time.value,
+                windStrength: 0.08,
+                baseColor: new THREE.Color(0x0A0402),
+                heightScale: 12.0,
+            });
+            this.framingTreeTrunkNodeUniforms = trunkNodeMaterial.uniforms;
+            this.framingTreeTrunkNodeMaterial = trunkNodeMaterial.material;
+        } else {
+            this.framingTreeTrunkNodeMaterial = null;
+        }
 
         // Tree positions at left and right lake edges
         // Lake is scaled 2.5x in X direction (radius 70), so edges are at ~x=±175
@@ -3052,9 +3860,11 @@ export default class SwedishForestTheme extends BaseTheme {
 
             // Trunk
             const trunkGeo = new THREE.CylinderGeometry(0.3, 0.5, config.height * 0.25, 6);
-            const trunkMat = new THREE.MeshBasicMaterial({
-                color: new THREE.Color(0x0A0402),
-            });
+            const trunkMat = this.isWebGPU
+                ? this.framingTreeTrunkNodeMaterial
+                : new THREE.MeshBasicMaterial({
+                    color: new THREE.Color(0x0A0402),
+                });
             const trunk = new THREE.Mesh(trunkGeo, trunkMat);
             trunk.position.y = config.height * 0.125;
             treeGroup.add(trunk);
@@ -3067,9 +3877,11 @@ export default class SwedishForestTheme extends BaseTheme {
                 const layerY = config.height * (0.2 + i * 0.2);
 
                 const coneGeo = new THREE.ConeGeometry(layerRadius, layerHeight, 8);
-                const coneMat = new THREE.MeshBasicMaterial({
-                    color: treeColors[config.colorIdx],
-                });
+                const coneMat = this.isWebGPU
+                    ? framingFoliageNodeMaterials[config.colorIdx].material
+                    : new THREE.MeshBasicMaterial({
+                        color: treeColors[config.colorIdx],
+                    });
                 const cone = new THREE.Mesh(coneGeo, coneMat);
                 cone.position.y = layerY;
                 treeGroup.add(cone);
@@ -3078,7 +3890,7 @@ export default class SwedishForestTheme extends BaseTheme {
             // Position and scale
             treeGroup.position.set(config.x, -0.5, config.z);
             treeGroup.scale.setScalar(config.scale);
-            treeGroup.rotation.y = Math.random() * Math.PI * 0.5;
+            treeGroup.rotation.y = this.random() * Math.PI * 0.5;
 
             this.framingTrees.push(treeGroup);
             this.mainGroup.add(treeGroup);
@@ -3170,7 +3982,7 @@ export default class SwedishForestTheme extends BaseTheme {
 
             mushroom.position.set(data.x, -0.5, data.z);
             mushroom.scale.setScalar(data.scale);
-            mushroom.rotation.y = Math.random() * Math.PI * 2;
+            mushroom.rotation.y = this.random() * Math.PI * 2;
 
             // Store for animation
             mushroom.userData = {
@@ -3412,26 +4224,57 @@ export default class SwedishForestTheme extends BaseTheme {
         const instanceColors = new Float32Array(totalTreeCount * 3);
         const instanceSways = new Float32Array(totalTreeCount);
         const instancePhases = new Float32Array(totalTreeCount);
+        const instanceWindOffsets = new Float32Array(totalTreeCount);
         const trunkColors = new Float32Array(totalTreeCount * 3);
 
         // Create instanced meshes
-        const foliageMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-                uGlowIntensity: this.uniforms.glowIntensity,
-            },
-            vertexShader: instancedFoliageVertexShader,
-            fragmentShader: instancedFoliageFragmentShader,
-            side: THREE.DoubleSide,
-        });
+        let foliageMaterial;
+        let trunkMaterial;
+        this.foliageNodeUniforms = null;
+        this.trunkNodeUniforms = null;
 
-        const trunkMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uGlowIntensity: this.uniforms.glowIntensity,
-            },
-            vertexShader: instancedTrunkVertexShader,
-            fragmentShader: instancedTrunkFragmentShader,
-        });
+        if (this.isWebGPU) {
+            const foliageNodeMaterial = createInstancedFoliageNodeMaterial({
+                time: this.uniforms.time.value,
+                glowIntensity: this.uniforms.glowIntensity.value,
+                windStrength: 0.24,
+                sunDirection: this.sunPosition.clone().normalize(),
+                rimColor: new THREE.Color(0xA35A2E),
+                glowColor: new THREE.Color(0xffb067),
+                rimStrength: 0.08,
+                alphaNearCutoff: 0.0,
+                alphaFarCutoff: 0.0,
+            });
+            foliageMaterial = foliageNodeMaterial.material;
+            this.foliageNodeUniforms = foliageNodeMaterial.uniforms;
+
+            const trunkNodeMaterial = createInstancedTrunkNodeMaterial({
+                time: this.uniforms.time.value,
+                glowIntensity: this.uniforms.glowIntensity.value,
+                windStrength: 0.16,
+                glowColor: new THREE.Color(0xff8f5a),
+            });
+            trunkMaterial = trunkNodeMaterial.material;
+            this.trunkNodeUniforms = trunkNodeMaterial.uniforms;
+        } else {
+            foliageMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: this.uniforms.time,
+                    uGlowIntensity: this.uniforms.glowIntensity,
+                },
+                vertexShader: instancedFoliageVertexShader,
+                fragmentShader: instancedFoliageFragmentShader,
+                side: THREE.DoubleSide,
+            });
+
+            trunkMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uGlowIntensity: this.uniforms.glowIntensity,
+                },
+                vertexShader: instancedTrunkVertexShader,
+                fragmentShader: instancedTrunkFragmentShader,
+            });
+        }
 
         this.foliageInstancedMesh = new THREE.InstancedMesh(foliageGeometry, foliageMaterial, totalTreeCount);
         this.trunkInstancedMesh = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, totalTreeCount);
@@ -3450,16 +4293,16 @@ export default class SwedishForestTheme extends BaseTheme {
             const trunkColor = COLORS.trunkLayers[layer.colorIdx];
 
             for (let i = 0; i < layer.count; i++) {
-                const x = (i - layer.count / 2) * layer.spacing + (Math.random() - 0.5) * 5;
-                const z = layer.z + (Math.random() - 0.5) * 3;
+                const x = (i - layer.count / 2) * layer.spacing + (this.random() - 0.5) * 5;
+                const z = layer.z + (this.random() - 0.5) * 3;
                 const y = 0;
 
                 // Random scale variation
-                const scaleVal = 0.7 + Math.random() * 0.5;
+                const scaleVal = 0.7 + this.random() * 0.5;
                 const heightScale = layer.height / 20; // Normalize to base height of 20
 
                 position.set(x, y, z);
-                quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (Math.random() - 0.5) * 0.2);
+                quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (this.random() - 0.5) * 0.2);
 
                 // ─────────────────────────────────────────────────────────────
                 // LAKE CLEARING LOGIC (ellipse-based)
@@ -3502,7 +4345,9 @@ export default class SwedishForestTheme extends BaseTheme {
                 instanceSways[instanceIdx] = layer.sway;
 
                 // Per-instance random phase for wind variation
-                instancePhases[instanceIdx] = Math.random() * Math.PI * 2;
+                instancePhases[instanceIdx] = this.random() * Math.PI * 2;
+                // Shared world-space wind offset so nearby trees sway coherently.
+                instanceWindOffsets[instanceIdx] = x * 0.15 + z * 0.1;
 
                 instanceIdx++;
             }
@@ -3516,16 +4361,16 @@ export default class SwedishForestTheme extends BaseTheme {
         const darkestTrunkColor = COLORS.trunkLayers[0];
 
         sideFramingTrees.forEach((tree) => {
-            const x = tree.x + (Math.random() - 0.5) * 5;
-            const z = tree.z + (Math.random() - 0.5) * 3;
+            const x = tree.x + (this.random() - 0.5) * 5;
+            const z = tree.z + (this.random() - 0.5) * 3;
             const y = 0;
 
             // Scale based on height
-            const scaleVal = 0.8 + Math.random() * 0.4;
+            const scaleVal = 0.8 + this.random() * 0.4;
             const heightScale = tree.height / 20;
 
             position.set(x, y, z);
-            quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (Math.random() - 0.5) * 0.3);
+            quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), (this.random() - 0.5) * 0.3);
             scale.set(scaleVal, scaleVal * heightScale, scaleVal);
 
             matrix.compose(position, quaternion, scale);
@@ -3542,7 +4387,8 @@ export default class SwedishForestTheme extends BaseTheme {
             trunkColors[instanceIdx * 3 + 2] = darkestTrunkColor.b;
 
             instanceSways[instanceIdx] = 0.20; // Moderate sway
-            instancePhases[instanceIdx] = Math.random() * Math.PI * 2;
+            instancePhases[instanceIdx] = this.random() * Math.PI * 2;
+            instanceWindOffsets[instanceIdx] = x * 0.15 + z * 0.1;
 
             instanceIdx++;
         });
@@ -3560,10 +4406,26 @@ export default class SwedishForestTheme extends BaseTheme {
             'aInstancePhase',
             new THREE.InstancedBufferAttribute(instancePhases, 1),
         );
+        foliageGeometry.setAttribute(
+            'aInstanceWindOffset',
+            new THREE.InstancedBufferAttribute(instanceWindOffsets, 1),
+        );
 
         trunkGeometry.setAttribute(
             'aInstanceColor',
             new THREE.InstancedBufferAttribute(trunkColors, 3),
+        );
+        trunkGeometry.setAttribute(
+            'aInstanceSway',
+            new THREE.InstancedBufferAttribute(instanceSways, 1),
+        );
+        trunkGeometry.setAttribute(
+            'aInstancePhase',
+            new THREE.InstancedBufferAttribute(instancePhases, 1),
+        );
+        trunkGeometry.setAttribute(
+            'aInstanceWindOffset',
+            new THREE.InstancedBufferAttribute(instanceWindOffsets, 1),
         );
 
         this.foliageInstancedMesh.instanceMatrix.needsUpdate = true;
@@ -3629,6 +4491,7 @@ export default class SwedishForestTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     createMistLayers() {
+        this.mistNodeUniforms = [];
         const mistConfigs = [
             {
                 y: 2, z: 8, width: 300, height: 10, density: 0.35,
@@ -3644,20 +4507,32 @@ export default class SwedishForestTheme extends BaseTheme {
         for (const config of mistConfigs) {
             const geometry = new THREE.PlaneGeometry(config.width, config.height);
 
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: this.uniforms.time,
-                    uDensity: { value: config.density },
-                    uMistColor: { value: COLORS.mist },
-                    uIntensity: this.uniforms.mistIntensity,
-                },
-                vertexShader: mistVertexShader,
-                fragmentShader: mistFragmentShader,
-                transparent: true,
-                blending: THREE.NormalBlending,
-                depthWrite: false,
-                side: THREE.DoubleSide,
-            });
+            let material;
+            if (this.isWebGPU) {
+                const nodeMist = createMistNodeMaterial({
+                    time: this.uniforms.time.value,
+                    density: config.density,
+                    mistColor: COLORS.mist.clone(),
+                    intensity: this.uniforms.mistIntensity.value,
+                });
+                material = nodeMist.material;
+                this.mistNodeUniforms.push(nodeMist.uniforms);
+            } else {
+                material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uTime: this.uniforms.time,
+                        uDensity: { value: config.density },
+                        uMistColor: { value: COLORS.mist },
+                        uIntensity: this.uniforms.mistIntensity,
+                    },
+                    vertexShader: mistVertexShader,
+                    fragmentShader: mistFragmentShader,
+                    transparent: true,
+                    blending: THREE.NormalBlending,
+                    depthWrite: false,
+                    side: THREE.DoubleSide,
+                });
+            }
 
             const mist = new THREE.Mesh(geometry, material);
             mist.position.set(0, config.y, config.z);
@@ -3672,6 +4547,7 @@ export default class SwedishForestTheme extends BaseTheme {
         // Firewatch-style cloud cards layered into the upper sky
         this.clouds = [];
         this.cloudMaterials = [];
+        this.cloudNodeUniforms = [];
 
         const cloudFog = COLORS.cloud.fog;
         const cloudBase = COLORS.cloud.base;
@@ -3719,30 +4595,50 @@ export default class SwedishForestTheme extends BaseTheme {
         cloudLayers.forEach((layer, index) => {
             const geometry = new THREE.PlaneGeometry(layer.size.x, layer.size.y, 1, 1);
 
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: this.uniforms.time,
-                    uCloudColor: { value: layer.color },
-                    uHighlightColor: { value: layer.highlight },
-                    uFogColor: { value: cloudFog },
-                    uOpacity: { value: layer.opacity },
-                    uNoiseScale: { value: layer.noiseScale },
-                    uSoftness: { value: layer.softness },
-                    uCoverage: { value: layer.coverage },
-                    uDrift: { value: layer.drift },
-                    uSeed: { value: layer.seed },
-                    uFogStart: { value: 100 },
-                    uFogEnd: { value: 420 },
-                },
-                vertexShader: cloudCardVertexShader,
-                fragmentShader: cloudCardFragmentShader,
-                transparent: true,
-                premultipliedAlpha: true,
-                depthWrite: false,
-                blending: THREE.NormalBlending,
-                alphaTest: 0.02,
-                side: THREE.DoubleSide,
-            });
+            let material = null;
+            if (this.isWebGPU) {
+                const nodeCloud = createCloudNodeMaterial({
+                    time: this.uniforms.time.value,
+                    cloudColor: layer.color.clone(),
+                    highlightColor: layer.highlight.clone(),
+                    fogColor: cloudFog.clone(),
+                    opacity: layer.opacity,
+                    noiseScale: layer.noiseScale,
+                    softness: layer.softness,
+                    coverage: layer.coverage,
+                    drift: layer.drift.clone(),
+                    seed: layer.seed,
+                    fogStart: 100,
+                    fogEnd: 420,
+                });
+                material = nodeCloud.material;
+                this.cloudNodeUniforms.push(nodeCloud.uniforms);
+            } else {
+                material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uTime: this.uniforms.time,
+                        uCloudColor: { value: layer.color },
+                        uHighlightColor: { value: layer.highlight },
+                        uFogColor: { value: cloudFog },
+                        uOpacity: { value: layer.opacity },
+                        uNoiseScale: { value: layer.noiseScale },
+                        uSoftness: { value: layer.softness },
+                        uCoverage: { value: layer.coverage },
+                        uDrift: { value: layer.drift },
+                        uSeed: { value: layer.seed },
+                        uFogStart: { value: 100 },
+                        uFogEnd: { value: 420 },
+                    },
+                    vertexShader: cloudCardVertexShader,
+                    fragmentShader: cloudCardFragmentShader,
+                    transparent: true,
+                    premultipliedAlpha: true,
+                    depthWrite: false,
+                    blending: THREE.NormalBlending,
+                    alphaTest: 0.02,
+                    side: THREE.DoubleSide,
+                });
+            }
 
             const cloud = new THREE.Mesh(geometry, material);
             cloud.position.copy(layer.position);
@@ -3767,24 +4663,39 @@ export default class SwedishForestTheme extends BaseTheme {
         const geometry = new THREE.PlaneGeometry(width, height);
 
         // Create volumetric god ray material using advanced shader
-        this.godRayMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uOpacity: { value: 0.22 }, // Very subtle god rays
-                uSunPosition: { value: this.sunPosition.clone() },
-                uRayColor: { value: new THREE.Color(0xFFCC66) },
-                uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-            },
-            vertexShader: godRayVertexShader,
-            fragmentShader: godRayFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            depthTest: false, // Ignore depth - render on top of everything
-            side: THREE.DoubleSide,
-        });
+        this.godRayNodeUniforms = null;
+        if (this.isWebGPU) {
+            const nodeGodRays = createGodRayNodeMaterial({
+                time: this.uniforms.time.value,
+                opacity: 0.22,
+                rayColor: new THREE.Color(0xFFCC66),
+                sunScreenPos: new THREE.Vector2(0.5, 0.5),
+                emissiveStrength: 1.35,
+            });
+            this.godRayMaterial = nodeGodRays.material;
+            this.godRayNodeUniforms = nodeGodRays.uniforms;
+        } else {
+            this.godRayMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uOpacity: { value: 0.22 }, // Very subtle god rays
+                    uSunPosition: { value: this.sunPosition.clone() },
+                    uSunScreenPos: { value: new THREE.Vector2(0.5, 0.5) },
+                    uRayColor: { value: new THREE.Color(0xFFCC66) },
+                    uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                },
+                vertexShader: godRayVertexShader,
+                fragmentShader: godRayFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                depthTest: false, // Ignore depth - render on top of everything
+                side: THREE.DoubleSide,
+            });
+        }
 
         const godRayPlane = new THREE.Mesh(geometry, this.godRayMaterial);
+        godRayPlane.userData.phase2BloomEmitter = true;
 
         // Position plane CENTERED on the sun (which is at 0, 30, -60 typically)
         // We place it slightly in front at z=-45
@@ -3809,6 +4720,47 @@ export default class SwedishForestTheme extends BaseTheme {
     createFireflySystem() {
         // Many fireflies distributed across scene INCLUDING deep in forest between trees
         const fireflyCount = 200;
+
+        if (this.isWebGPU) {
+            this.fireflyNodes = [];
+            const nodeFirefly = createFireflyNodeMaterial({
+                time: this.uniforms.time.value,
+                boost: 0.0,
+                baseColor: new THREE.Color(0xFFAA44),
+                tipColor: new THREE.Color(0xFFE7A0),
+            });
+            this.fireflyNodeUniforms = nodeFirefly.uniforms;
+            this.fireflyBoostUniform = nodeFirefly.uniforms.uBoost;
+
+            const fireflyGeometry = new THREE.PlaneGeometry(1, 1);
+            const fireflyGroup = new THREE.Group();
+
+            for (let i = 0; i < fireflyCount; i++) {
+                // Distribute evenly across the FULL scene width
+                const gridX = (i % 20) / 19; // 0 to 1 across 20 columns
+                const gridZ = Math.floor(i / 20) / 9; // 0 to 1 across 10 rows
+                const randOffsetX = (this.random() - 0.5) * 25;
+                const randOffsetZ = (this.random() - 0.5) * 18;
+
+                const firefly = new THREE.Mesh(fireflyGeometry, nodeFirefly.material);
+                firefly.position.set(
+                    -250 + gridX * 500 + randOffsetX, // x: -250 to +250
+                    1 + this.random() * 30, // y: 1 to 31
+                    -120 + gridZ * 140 + randOffsetZ, // z: -120 to +20
+                );
+                const scale = 0.7 + this.random() * 1.4;
+                firefly.scale.set(scale, scale, 1);
+                firefly.renderOrder = 130;
+                firefly.userData.basePosition = firefly.position.clone();
+                this.fireflyNodes.push(firefly);
+                fireflyGroup.add(firefly);
+            }
+
+            this.fireflySystem = fireflyGroup;
+            this.mainGroup.add(fireflyGroup);
+            return;
+        }
+
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(fireflyCount * 3);
         const randoms = new Float32Array(fireflyCount);
@@ -3824,22 +4776,22 @@ export default class SwedishForestTheme extends BaseTheme {
             const gridZ = Math.floor(i / 20) / 9; // 0 to 1 across 10 rows
 
             // Add randomness to grid positions for natural look
-            const randOffsetX = (Math.random() - 0.5) * 25;
-            const randOffsetZ = (Math.random() - 0.5) * 18;
+            const randOffsetX = (this.random() - 0.5) * 25;
+            const randOffsetZ = (this.random() - 0.5) * 18;
 
             // Map to scene coordinates - extend deeper and WIDER
             // Width: 500 units (-250 to +250)
             positions[i3] = -250 + gridX * 500 + randOffsetX; // x: -250 to +250
-            positions[i3 + 1] = 1 + Math.random() * 30; // y: 1 to 31
+            positions[i3 + 1] = 1 + this.random() * 30; // y: 1 to 31
             positions[i3 + 2] = -120 + gridZ * 140 + randOffsetZ; // z: -120 to +20
 
-            randoms[i] = Math.random();
-            phases[i] = Math.random() * Math.PI * 2;
+            randoms[i] = this.random();
+            phases[i] = this.random() * Math.PI * 2;
 
             // Gentle local movement (won't drift far from starting position)
-            velocities[i3] = (Math.random() - 0.5) * 0.4; // Gentle X drift
-            velocities[i3 + 1] = (Math.random() - 0.5) * 0.15; // Very gentle Y
-            velocities[i3 + 2] = (Math.random() - 0.5) * 0.2; // Gentle Z drift
+            velocities[i3] = (this.random() - 0.5) * 0.4; // Gentle X drift
+            velocities[i3 + 1] = (this.random() - 0.5) * 0.15; // Very gentle Y
+            velocities[i3 + 2] = (this.random() - 0.5) * 0.2; // Gentle Z drift
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -3860,6 +4812,9 @@ export default class SwedishForestTheme extends BaseTheme {
             depthWrite: false,
         });
 
+        this.fireflyNodeUniforms = null;
+        this.fireflyNodes = [];
+        this.fireflyBoostUniform = material.uniforms.uBoost;
         this.fireflySystem = new THREE.Points(geometry, material);
         this.mainGroup.add(this.fireflySystem);
     }
@@ -3871,41 +4826,55 @@ export default class SwedishForestTheme extends BaseTheme {
     createForestSpirits() {
         // More spirits distributed across the entire scene, deep in forest and high in sky
         const spiritCount = 45;
+        this.spiritNodeUniforms = [];
 
         for (let i = 0; i < spiritCount; i++) {
             // Varied sizes - some small, some larger
-            const size = 0.8 + Math.random() * 2.5;
+            const size = 0.8 + this.random() * 2.5;
             const geometry = new THREE.PlaneGeometry(size, size);
 
             // Vary hue for each spirit - warm amber/golden for sunset
-            const hueShift = (Math.random() - 0.5) * 0.1;
+            const hueShift = (this.random() - 0.5) * 0.1;
             const spiritColor = new THREE.Color().setHSL(
                 0.08 + hueShift, // Warm amber hue
-                0.8 + Math.random() * 0.15,
-                0.6 + Math.random() * 0.15,
+                0.8 + this.random() * 0.15,
+                0.6 + this.random() * 0.15,
             );
 
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: this.uniforms.time,
-                    uOpacity: { value: 0.25 + Math.random() * 0.3 },
-                    uSpiritColor: { value: spiritColor },
-                },
-                vertexShader: spiritVertexShader,
-                fragmentShader: spiritFragmentShader,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                side: THREE.DoubleSide,
-            });
+            let material;
+            let nodeUniforms = null;
+            if (this.isWebGPU) {
+                const nodeSpirit = createSpiritNodeMaterial({
+                    time: this.uniforms.time.value,
+                    opacity: 0.25 + this.random() * 0.3,
+                    spiritColor,
+                });
+                material = nodeSpirit.material;
+                nodeUniforms = nodeSpirit.uniforms;
+                this.spiritNodeUniforms.push(nodeUniforms);
+            } else {
+                material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uTime: this.uniforms.time,
+                        uOpacity: { value: 0.25 + this.random() * 0.3 },
+                        uSpiritColor: { value: spiritColor },
+                    },
+                    vertexShader: spiritVertexShader,
+                    fragmentShader: spiritFragmentShader,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    side: THREE.DoubleSide,
+                });
+            }
 
             const spirit = new THREE.Mesh(geometry, material);
 
             // Spread across FULL scene width and height
             spirit.position.set(
-                (Math.random() - 0.5) * 500, // Very wide horizontal spread (-250 to 250)
-                3 + Math.random() * 52, // From near ground to high above canopy
-                -120 + Math.random() * 140, // Deep forest (-120) to lake (+20)
+                (this.random() - 0.5) * 500, // Very wide horizontal spread (-250 to 250)
+                3 + this.random() * 52, // From near ground to high above canopy
+                -120 + this.random() * 140, // Deep forest (-120) to lake (+20)
             );
 
             spirit.userData = {
@@ -3913,8 +4882,9 @@ export default class SwedishForestTheme extends BaseTheme {
                 targetX: spirit.position.x,
                 targetY: spirit.position.y,
                 velocity: new THREE.Vector2(0, 0),
-                wanderPhase: Math.random() * 100,
-                wanderSpeed: 0.3 + Math.random() * 0.4, // Varied wander speeds
+                wanderPhase: this.random() * 100,
+                wanderSpeed: 0.3 + this.random() * 0.4, // Varied wander speeds
+                nodeUniforms,
             };
 
             spirit.lookAt(this.camera.position);
@@ -3977,43 +4947,58 @@ export default class SwedishForestTheme extends BaseTheme {
     createSpiritWinds() {
         // More wind ribbons spread across the entire scene, moving slowly
         const windCount = 12;
+        this.spiritWindNodeUniforms = [];
 
         for (let i = 0; i < windCount; i++) {
-            const width = 80 + Math.random() * 50; // Wider ribbons
-            const height = 2.0 + Math.random() * 2.5;
+            const width = 80 + this.random() * 50; // Wider ribbons
+            const height = 2.0 + this.random() * 2.5;
 
             const geometry = new THREE.PlaneGeometry(width, height, 48, 2);
-
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: this.uniforms.time,
-                    uOpacity: { value: 0.18 + Math.random() * 0.12 }, // Slightly varied opacity
-                    uWindColor: { value: COLORS.windColor },
-                    uOffset: { value: i * 1.5 },
-                },
-                vertexShader: spiritWindVertexShader,
-                fragmentShader: spiritWindFragmentShader,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                side: THREE.DoubleSide,
-            });
+            let material;
+            let nodeUniforms = null;
+            if (this.isWebGPU) {
+                const nodeWind = createSpiritWindNodeMaterial({
+                    time: this.uniforms.time.value,
+                    opacity: 0.18 + this.random() * 0.12,
+                    windColor: COLORS.windColor.clone(),
+                    offset: i * 1.5,
+                });
+                material = nodeWind.material;
+                nodeUniforms = nodeWind.uniforms;
+                this.spiritWindNodeUniforms.push(nodeUniforms);
+            } else {
+                material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uTime: this.uniforms.time,
+                        uOpacity: { value: 0.18 + this.random() * 0.12 }, // Slightly varied opacity
+                        uWindColor: { value: COLORS.windColor },
+                        uOffset: { value: i * 1.5 },
+                    },
+                    vertexShader: spiritWindVertexShader,
+                    fragmentShader: spiritWindFragmentShader,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    side: THREE.DoubleSide,
+                });
+            }
 
             const wind = new THREE.Mesh(geometry, material);
 
             // Spread across entire scene width and depth
             wind.position.set(
-                (Math.random() - 0.5) * 500, // Full scene width (-250 to 250)
-                3 + Math.random() * 25, // Various heights from low to high
-                -60 + Math.random() * 100, // Deep into scene and near camera
+                (this.random() - 0.5) * 500, // Full scene width (-250 to 250)
+                3 + this.random() * 25, // Various heights from low to high
+                -60 + this.random() * 100, // Deep into scene and near camera
             );
-            wind.rotation.z = (Math.random() - 0.5) * 0.15;
-            wind.rotation.y = (Math.random() - 0.5) * 0.1; // Slight angle variation
+            wind.rotation.z = (this.random() - 0.5) * 0.15;
+            wind.rotation.y = (this.random() - 0.5) * 0.1; // Slight angle variation
 
             wind.userData = {
                 baseX: wind.position.x,
-                speed: 0.15 + Math.random() * 0.2, // SLOWER speed (was 0.6-0.9)
-                verticalDrift: (Math.random() - 0.5) * 0.02, // Gentle vertical movement
+                speed: 0.15 + this.random() * 0.2, // SLOWER speed (was 0.6-0.9)
+                verticalDrift: (this.random() - 0.5) * 0.02, // Gentle vertical movement
+                nodeUniforms,
             };
 
             this.spiritWinds.push(wind);
@@ -4037,18 +5022,18 @@ export default class SwedishForestTheme extends BaseTheme {
 
         for (let i = 0; i < maxLeaves; i++) {
             const i3 = i * 3;
-            positions[i3] = (Math.random() - 0.5) * 60;
-            positions[i3 + 1] = 60 + Math.random() * 20;
-            positions[i3 + 2] = -10 - Math.random() * 30;
+            positions[i3] = (this.random() - 0.5) * 60;
+            positions[i3 + 1] = 60 + this.random() * 20;
+            positions[i3 + 2] = -10 - this.random() * 30;
 
-            randoms[i] = Math.random();
-            phases[i] = Math.random() * Math.PI * 2;
+            randoms[i] = this.random();
+            phases[i] = this.random() * Math.PI * 2;
 
-            velocities[i3] = (Math.random() - 0.5) * 0.3;
-            velocities[i3 + 1] = 1.5 + Math.random() * 1.0;
-            velocities[i3 + 2] = (Math.random() - 0.5) * 0.2;
+            velocities[i3] = (this.random() - 0.5) * 0.3;
+            velocities[i3 + 1] = 1.5 + this.random() * 1.0;
+            velocities[i3 + 2] = (this.random() - 0.5) * 0.2;
 
-            rotations[i] = Math.random() * Math.PI * 2;
+            rotations[i] = this.random() * Math.PI * 2;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -4129,6 +5114,239 @@ export default class SwedishForestTheme extends BaseTheme {
         this.scene.add(floorLight.target);
     }
 
+    createDistanceFogBands() {
+        if (!this.scene) return;
+
+        this.distanceFogBands = [];
+        this.distanceFogBandUniforms = [];
+
+        const fogBands = [
+            {
+                z: -110, y: 16, width: 520, height: 120, density: 0.24, color: new THREE.Color(0xFFCC88), drift: new THREE.Vector2(0.012, 0.004),
+            },
+            {
+                z: -92, y: 14, width: 500, height: 108, density: 0.26, color: new THREE.Color(0xFFB772), drift: new THREE.Vector2(0.016, -0.003),
+            },
+            {
+                z: -74, y: 11, width: 470, height: 96, density: 0.28, color: new THREE.Color(0xFFA15D), drift: new THREE.Vector2(0.021, 0.005),
+            },
+            {
+                z: -56, y: 8.5, width: 430, height: 80, density: 0.3, color: new THREE.Color(0xF9894A), drift: new THREE.Vector2(0.026, -0.004),
+            },
+            {
+                z: -38, y: 6.5, width: 380, height: 64, density: 0.32, color: new THREE.Color(0xE36E38), drift: new THREE.Vector2(0.031, 0.006),
+            },
+        ];
+
+        fogBands.forEach((band, index) => {
+            const geometry = new THREE.PlaneGeometry(band.width, band.height);
+
+            let material;
+            if (this.isWebGPU) {
+                const nodeBand = createHazeNodeMaterial({
+                    time: this.uniforms.time.value,
+                    hazeColor: band.color.clone(),
+                    density: band.density,
+                    layerDepth: index / Math.max(1, fogBands.length - 1),
+                    drift: band.drift.clone(),
+                });
+                material = nodeBand.material;
+                this.distanceFogBandUniforms.push(nodeBand.uniforms);
+            } else {
+                material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uTime: this.uniforms.time,
+                        uHazeColor: { value: band.color.clone() },
+                        uDensity: { value: band.density },
+                        uLayerDepth: { value: index / Math.max(1, fogBands.length - 1) },
+                        uDrift: { value: band.drift.clone() },
+                    },
+                    vertexShader: hazeVertexShader,
+                    fragmentShader: hazeFragmentShader,
+                    transparent: true,
+                    blending: THREE.NormalBlending,
+                    depthWrite: false,
+                    side: THREE.DoubleSide,
+                });
+            }
+
+            const fogBand = new THREE.Mesh(geometry, material);
+            fogBand.position.set(0, band.y, band.z);
+            fogBand.rotation.x = -0.08;
+            fogBand.renderOrder = -45 + index;
+
+            this.distanceFogBands.push(fogBand);
+            this.scene.add(fogBand);
+        });
+    }
+
+    setupDistanceFog() {
+        if (!this.scene) return;
+
+        if (!this.scene.fog) {
+            this.scene.fog = new THREE.FogExp2(COLORS.fog.getHex(), 0.008);
+        }
+        this.createDistanceFogBands();
+        this.distanceFogMode = 'layered-color-bands+exp2';
+
+        if (this.flags.debug || this.flags.baseline) {
+            console.log('[SwedishForest] Distance fog mode:', this.distanceFogMode);
+        }
+    }
+
+    ensureMrtMaterials() {
+        if (!this.isWebGPU || !this.flags.useMRT || !this.scene) {
+            return true;
+        }
+
+        const nonNodeMaterials = [];
+        this.scene.traverse((object) => {
+            if (!object?.material) return;
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            materials.forEach((material, index) => {
+                if (!material || material.isNodeMaterial === true) return;
+                const objectLabel = object.name || object.type || 'Object3D';
+                const materialLabel = material.name || material.type || 'Material';
+                const slot = Array.isArray(object.material) ? `[${index}]` : '';
+                nonNodeMaterials.push(`${objectLabel}${slot}:${materialLabel}`);
+            });
+        });
+
+        if (!nonNodeMaterials.length) {
+            return true;
+        }
+
+        this.flags.useMRT = false;
+        const preview = nonNodeMaterials.slice(0, 12);
+        console.warn(
+            '[SwedishForest] MRT disabled because scene still contains non-NodeMaterial entries.',
+            preview,
+        );
+        if (nonNodeMaterials.length > preview.length) {
+            console.warn(
+                `[SwedishForest] ${nonNodeMaterials.length - preview.length} additional non-NodeMaterial entries omitted.`,
+            );
+        }
+        return false;
+    }
+
+    setPostToneMappingNeutral() {
+        if (!this.renderer || this.postToneMappingState) return;
+        this.postToneMappingState = {
+            toneMapping: this.renderer.toneMapping,
+            toneMappingExposure: this.renderer.toneMappingExposure,
+        };
+        this.renderer.toneMapping = THREE.NoToneMapping;
+        this.renderer.toneMappingExposure = 1.0;
+    }
+
+    restorePostToneMapping() {
+        if (!this.renderer || !this.postToneMappingState) return;
+        this.renderer.toneMapping = this.postToneMappingState.toneMapping;
+        this.renderer.toneMappingExposure = this.postToneMappingState.toneMappingExposure;
+        this.postToneMappingState = null;
+    }
+
+    setupPostProcessing() {
+        this.disposePostProcessing();
+
+        if (!this.flags.usePost) {
+            if (this.flags.noPost) {
+                console.log('[SwedishForest] Post-processing disabled via kill switch (?swedishForestNoPost=1).');
+            }
+            return;
+        }
+
+        if (!this.renderer || !this.scene || !this.camera) {
+            return;
+        }
+
+        try {
+            if (this.isWebGPU && this.flags.useMRT) {
+                this.ensureMrtMaterials();
+            }
+
+            const postParams = this.isWebGPU
+                ? {
+                    useMRT: this.flags.useMRT,
+                    useBloom: this.flags.useBloom,
+                    bloomStrength: 0.18,
+                    bloomRadius: 0.35,
+                    bloomThreshold: 0.92,
+                    exposure: 0.97,
+                    contrast: 1.01,
+                    saturation: 1.04,
+                    warmTint: new THREE.Color(1.02, 0.98, 0.92),
+                    crushBlacks: new THREE.Color(0.015, 0.008, 0.004),
+                    vignetteOffset: 1.28,
+                    vignetteDarkness: 0.34,
+                    grainStrength: 0.008,
+                }
+                : {
+                    useMRT: this.flags.useMRT,
+                    useBloom: this.flags.useBloom,
+                    bloomStrength: 0.35,
+                    bloomRadius: 0.5,
+                    bloomThreshold: 0.8,
+                    exposure: 1.05,
+                    contrast: 1.04,
+                    saturation: 1.12,
+                    warmTint: new THREE.Color(1.08, 0.98, 0.88),
+                    crushBlacks: new THREE.Color(0.02, 0.01, 0.005),
+                    vignetteOffset: 1.3,
+                    vignetteDarkness: 0.4,
+                    grainStrength: 0.015,
+                };
+
+            this.postComposer = new SwedishForestPost(this.renderer, this.scene, this.camera, {
+                ...postParams,
+            });
+
+            if (!this.postComposer?.isEnabled?.()) {
+                console.warn(
+                    '[SwedishForest] Post-processing requested but no compatible post backend initialized.',
+                );
+                this.flags.usePost = false;
+                this.flags.useBloom = false;
+                this.flags.useMRT = false;
+                this.disposePostProcessing();
+                return;
+            }
+
+            this.setPostToneMappingNeutral();
+
+            this.onWindowResize();
+            console.log(
+                `[SwedishForest] Post-processing initialized (${this.isWebGPU ? 'WebGPU' : 'WebGL'}; MRT=${this.flags.useMRT ? 'on' : 'off'}).`,
+            );
+        } catch (error) {
+            console.warn(
+                '[SwedishForest] Post-processing init failed; continuing with direct renderer path:',
+                error,
+            );
+            this.flags.usePost = false;
+            this.flags.useBloom = false;
+            this.flags.useMRT = false;
+            this.disposePostProcessing();
+        }
+    }
+
+    disposePostProcessing() {
+        if (typeof this.postComposer?.dispose === 'function') {
+            this.postComposer.dispose();
+        }
+        this.postComposer = null;
+        this.postPasses = null;
+        this.restorePostToneMapping();
+    }
+
+    getSpiritOpacityUniform(spirit) {
+        if (!spirit) return null;
+        if (spirit.userData?.nodeUniforms?.uOpacity) return spirit.userData.nodeUniforms.uOpacity;
+        if (spirit.material?.uniforms?.uOpacity) return spirit.material.uniforms.uOpacity;
+        return null;
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // GAMEPLAY EVENT HANDLERS
     // ═══════════════════════════════════════════════════════════════════════════
@@ -4168,12 +5386,12 @@ export default class SwedishForestTheme extends BaseTheme {
         this.spawnLeaves(lineCount * 4);
 
         this.spirits.forEach((spirit) => {
-            spirit.userData.velocity.x += (Math.random() - 0.5) * 2.5;
-            spirit.userData.velocity.y += (Math.random() - 0.5) * 2.5;
-            spirit.material.uniforms.uOpacity.value = Math.min(
-                spirit.material.uniforms.uOpacity.value + 0.25,
-                0.95,
-            );
+            spirit.userData.velocity.x += (this.random() - 0.5) * 2.5;
+            spirit.userData.velocity.y += (this.random() - 0.5) * 2.5;
+            const spiritOpacity = this.getSpiritOpacityUniform(spirit);
+            if (spiritOpacity) {
+                spiritOpacity.value = Math.min(spiritOpacity.value + 0.25, 0.95);
+            }
         });
 
         // Boost spirit light
@@ -4203,9 +5421,9 @@ export default class SwedishForestTheme extends BaseTheme {
         }
 
         // Boost fireflies based on combo count (stronger boost for higher combos)
-        if (this.fireflySystem && this.fireflySystem.material.uniforms.uBoost) {
+        if (this.fireflyBoostUniform) {
             const boostAmount = Math.min(0.5 + comboCount * 0.25, 1.0);
-            this.fireflySystem.material.uniforms.uBoost.value = boostAmount;
+            this.fireflyBoostUniform.value = boostAmount;
         }
     }
 
@@ -4214,12 +5432,15 @@ export default class SwedishForestTheme extends BaseTheme {
         this.mushroomPulse = 1.5; // Strong pulse on lock
 
         this.spirits.forEach((spirit) => {
-            spirit.material.uniforms.uOpacity.value += 0.06;
+            const spiritOpacity = this.getSpiritOpacityUniform(spirit);
+            if (spiritOpacity) {
+                spiritOpacity.value += 0.06;
+            }
         });
 
         // Boost fireflies to twinkle and shine
-        if (this.fireflySystem && this.fireflySystem.material.uniforms.uBoost) {
-            this.fireflySystem.material.uniforms.uBoost.value = 1.0;
+        if (this.fireflyBoostUniform) {
+            this.fireflyBoostUniform.value = 1.0;
         }
     }
 
@@ -4235,9 +5456,9 @@ export default class SwedishForestTheme extends BaseTheme {
 
         for (let i = 0; i < count && (start + i) < maxLeaves; i++) {
             const idx = ((start + i) % maxLeaves) * 3;
-            positions[idx] = (Math.random() - 0.5) * 70;
-            positions[idx + 1] = 45 + Math.random() * 15;
-            positions[idx + 2] = -8 - Math.random() * 35;
+            positions[idx] = (this.random() - 0.5) * 70;
+            positions[idx + 1] = 45 + this.random() * 15;
+            positions[idx + 2] = -8 - this.random() * 35;
         }
 
         this.fallingLeaves.geometry.attributes.position.needsUpdate = true;
@@ -4251,20 +5472,103 @@ export default class SwedishForestTheme extends BaseTheme {
     animate() {
         if (!this.isActive) return;
 
-        this.animationFrame = requestAnimationFrame(this.animate.bind(this));
+        this.animationFrame = requestAnimationFrame(this.boundAnimate);
 
-        const delta = this.clock.getDelta();
-        const elapsed = this.clock.getElapsedTime();
+        const rawDelta = this.clock.getDelta();
+        const delta = this.fixedDeltaSeconds !== null ? this.fixedDeltaSeconds : Math.min(rawDelta, 0.05);
+        if (this.fixedDeltaSeconds !== null) {
+            this.fixedElapsedTime += this.fixedDeltaSeconds;
+        }
+        const elapsed = this.fixedDeltaSeconds !== null ? this.fixedElapsedTime : this.clock.getElapsedTime();
         this.uniforms.time.value = elapsed;
+        this.recordBaselineSample(delta);
 
-        // Update Water Waves (slowed down for calmer, more serene look)
-        if (this.lakeMesh && this.lakeMesh.material.uniforms.time) {
-            this.lakeMesh.material.uniforms.time.value += delta * 0.25;
+        if (this.skyNodeUniforms?.uTime) {
+            this.skyNodeUniforms.uTime.value = elapsed;
+        }
+        if (this.sunNodeUniforms?.uTime) {
+            this.sunNodeUniforms.uTime.value = elapsed;
+        }
+        if (this.godRayNodeUniforms?.uTime) {
+            this.godRayNodeUniforms.uTime.value = elapsed;
+        }
+        if (this.cloudNodeUniforms?.length) {
+            this.cloudNodeUniforms.forEach((uniforms) => {
+                if (uniforms?.uTime) {
+                    uniforms.uTime.value = elapsed;
+                }
+            });
+        }
+        if (this.hazeNodeUniforms?.length) {
+            this.hazeNodeUniforms.forEach((uniforms) => {
+                if (uniforms?.uTime) {
+                    uniforms.uTime.value = elapsed;
+                }
+            });
+        }
+        if (this.distanceFogBandUniforms?.length) {
+            this.distanceFogBandUniforms.forEach((uniforms) => {
+                if (uniforms?.uTime) {
+                    uniforms.uTime.value = elapsed;
+                }
+            });
+        }
+        if (this.mountainLayerNodeUniforms?.length) {
+            this.mountainLayerNodeUniforms.forEach((uniforms) => {
+                if (uniforms?.uTime) {
+                    uniforms.uTime.value = elapsed;
+                }
+            });
+        }
+        if (this.silhouetteMountainNodeUniforms?.uTime) {
+            this.silhouetteMountainNodeUniforms.uTime.value = elapsed;
+        }
+        if (this.fireflyNodeUniforms?.uTime) {
+            this.fireflyNodeUniforms.uTime.value = elapsed;
+        }
+        if (this.dustNodeUniforms?.uTime) {
+            this.dustNodeUniforms.uTime.value = elapsed;
+        }
+        if (this.spiritNodeUniforms?.length) {
+            this.spiritNodeUniforms.forEach((uniforms) => {
+                if (uniforms?.uTime) {
+                    uniforms.uTime.value = elapsed;
+                }
+            });
+        }
+        if (this.spiritWindNodeUniforms?.length) {
+            this.spiritWindNodeUniforms.forEach((uniforms) => {
+                if (uniforms?.uTime) {
+                    uniforms.uTime.value = elapsed;
+                }
+            });
+        }
+        if (this.mistNodeUniforms?.length) {
+            this.mistNodeUniforms.forEach((uniforms) => {
+                if (uniforms?.uTime) {
+                    uniforms.uTime.value = elapsed;
+                }
+                if (uniforms?.uIntensity) {
+                    uniforms.uIntensity.value = this.uniforms.mistIntensity.value;
+                }
+            });
+        }
+
+        // Update Water Waves
+        const waterTimeScale = this.isWebGPU ? 0.38 : 0.25;
+        if (this.lakeMesh?.material?.uniforms?.time) {
+            this.lakeMesh.material.uniforms.time.value += delta * waterTimeScale;
+        }
+        if (this.waterNodeUniforms?.uTime) {
+            this.waterNodeUniforms.uTime.value += delta * waterTimeScale;
         }
 
         // Update Shore Foam animation
-        if (this.shoreFoamMesh && this.shoreFoamMesh.material.uniforms.time) {
+        if (this.shoreFoamMesh?.material?.uniforms?.time) {
             this.shoreFoamMesh.material.uniforms.time.value = elapsed;
+        }
+        if (this.shoreFoamNodeUniforms?.uTime) {
+            this.shoreFoamNodeUniforms.uTime.value = elapsed;
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -4300,6 +5604,29 @@ export default class SwedishForestTheme extends BaseTheme {
             delta * 2,
         );
         this.targetWindSpeed *= 0.96;
+
+        if (this.foliageNodeUniforms) {
+            if (this.foliageNodeUniforms.uTime) {
+                this.foliageNodeUniforms.uTime.value = elapsed;
+            }
+            if (this.foliageNodeUniforms.uGlowIntensity) {
+                this.foliageNodeUniforms.uGlowIntensity.value = this.uniforms.glowIntensity.value;
+            }
+            if (this.foliageNodeUniforms.uWindStrength) {
+                this.foliageNodeUniforms.uWindStrength.value = 0.24 + this.uniforms.windSpeed.value * 0.45;
+            }
+        }
+        if (this.trunkNodeUniforms) {
+            if (this.trunkNodeUniforms.uTime) {
+                this.trunkNodeUniforms.uTime.value = elapsed;
+            }
+            if (this.trunkNodeUniforms.uGlowIntensity) {
+                this.trunkNodeUniforms.uGlowIntensity.value = this.uniforms.glowIntensity.value;
+            }
+            if (this.trunkNodeUniforms.uWindStrength) {
+                this.trunkNodeUniforms.uWindStrength.value = 0.16 + this.uniforms.windSpeed.value * 0.3;
+            }
+        }
 
         this.comboMultiplier = Math.max(1, this.comboMultiplier - delta * 0.25);
 
@@ -4362,6 +5689,22 @@ export default class SwedishForestTheme extends BaseTheme {
                 sprite.position.x = sunX;
             });
 
+            if (this.godRayMaterial?.uniforms?.uSunPosition) {
+                this.godRayMaterial.uniforms.uSunPosition.value.copy(this.sun.position);
+            }
+
+            if ((this.godRayMaterial?.uniforms?.uSunScreenPos || this.godRayNodeUniforms?.uSunScreenPos) && this.camera) {
+                const sunNdc = this.sun.position.clone().project(this.camera);
+                const sunX = sunNdc.x * 0.5 + 0.5;
+                const sunY = sunNdc.y * 0.5 + 0.5;
+                if (this.godRayMaterial?.uniforms?.uSunScreenPos) {
+                    this.godRayMaterial.uniforms.uSunScreenPos.value.set(sunX, sunY);
+                }
+                if (this.godRayNodeUniforms?.uSunScreenPos) {
+                    this.godRayNodeUniforms.uSunScreenPos.value.set(sunX, sunY);
+                }
+            }
+
             // Update Lens Flares - position along camera-to-sun axis
             if (this.lensFlares && this.lensFlares.length > 0) {
                 const sunScreenPos = this.sun.position.clone();
@@ -4376,6 +5719,9 @@ export default class SwedishForestTheme extends BaseTheme {
                 const sunVisibility = Math.max(0, cameraDir.dot(toSun));
 
                 this.lensFlares.forEach((flare) => {
+                    if (flare.userData?.nodeUniforms?.uTime) {
+                        flare.userData.nodeUniforms.uTime.value = elapsed;
+                    }
                     // Position flare along sun-to-camera axis
                     const { offset } = flare.userData;
                     const flarePos = sunScreenPos.clone().add(sunToCam.clone().multiplyScalar(offset));
@@ -4401,7 +5747,13 @@ export default class SwedishForestTheme extends BaseTheme {
                     // Only show when camera is mostly facing sun AND flickering is active
                     const { baseOpacity } = flare.userData;
                     const viewFactor = sunVisibility ** 2.0; // Sharper falloff when not looking at sun
-                    flare.material.uniforms.uOpacity.value = baseOpacity * viewFactor * flickerIntensity;
+                    const flareOpacity = baseOpacity * viewFactor * flickerIntensity;
+                    if (flare.material?.uniforms?.uOpacity) {
+                        flare.material.uniforms.uOpacity.value = flareOpacity;
+                    }
+                    if (flare.userData?.nodeUniforms?.uOpacity) {
+                        flare.userData.nodeUniforms.uOpacity.value = flareOpacity;
+                    }
                 });
             }
 
@@ -4410,20 +5762,45 @@ export default class SwedishForestTheme extends BaseTheme {
             if (this.sun.material.uniforms?.uIntensity) {
                 this.sun.material.uniforms.uIntensity.value = pulse;
             }
+            if (this.sunNodeUniforms?.uIntensity) {
+                this.sunNodeUniforms.uIntensity.value = pulse;
+            }
 
             // Update Realistic Water Reflection
-            if (this.lakeMesh && this.lakeMesh.material.uniforms.sunDirection) {
+            if (this.lakeMesh?.material?.uniforms?.sunDirection) {
                 this.lakeMesh.material.uniforms.sunDirection.value.copy(this.sun.position).normalize();
+            }
+            if (this.waterNodeUniforms?.uSunDirection) {
+                this.waterNodeUniforms.uSunDirection.value.copy(this.sun.position).normalize();
+            }
+            if (this.foliageNodeUniforms?.uSunDirection) {
+                this.foliageNodeUniforms.uSunDirection.value.copy(this.sun.position).normalize();
+            }
+            if (this.dustNodeUniforms?.uSunDirection) {
+                this.dustNodeUniforms.uSunDirection.value.copy(this.sun.position).normalize();
+            }
+            if (this.silhouetteMountainNodeUniforms?.uSunDirection) {
+                this.silhouetteMountainNodeUniforms.uSunDirection.value.copy(this.sun.position).normalize();
+            }
+            if (this.mountainLayerNodeUniforms?.length) {
+                this.mountainLayerNodeUniforms.forEach((uniforms) => {
+                    if (uniforms?.uLightDirection) {
+                        uniforms.uLightDirection.value.copy(this.sun.position).normalize();
+                    }
+                });
             }
         }
 
         // Keep sky dome centered on camera and aligned to sun direction
-        if (this.skyDome && this.skyDome.material?.uniforms?.uSunDirection) {
+        if (this.skyDome && (this.skyDome.material?.uniforms?.uSunDirection || this.skyNodeUniforms?.uSunDirection)) {
             const sunTarget = this.sun ? this.sun.position : this.sunPosition;
-            this.skyDome.material.uniforms.uSunDirection.value
-                .copy(sunTarget)
-                .sub(this.camera.position)
-                .normalize();
+            const sunDirection = sunTarget.clone().sub(this.camera.position).normalize();
+            if (this.skyDome.material?.uniforms?.uSunDirection) {
+                this.skyDome.material.uniforms.uSunDirection.value.copy(sunDirection);
+            }
+            if (this.skyNodeUniforms?.uSunDirection) {
+                this.skyNodeUniforms.uSunDirection.value.copy(sunDirection);
+            }
             this.skyDome.position.copy(this.camera.position);
         }
 
@@ -4433,13 +5810,26 @@ export default class SwedishForestTheme extends BaseTheme {
                 cloud.quaternion.copy(this.camera.quaternion);
             });
         }
+        if (this.fireflyNodes?.length && this.camera) {
+            this.fireflyNodes.forEach((firefly) => {
+                firefly.quaternion.copy(this.camera.quaternion);
+            });
+        }
+        if (this.dustMoteNodes?.length && this.camera) {
+            this.dustMoteNodes.forEach((dustMote) => {
+                dustMote.quaternion.copy(this.camera.quaternion);
+            });
+        }
 
         // ─────────────────────────────────────────────────────────────────────
         // GOD RAY SHADER UPDATE
         // ─────────────────────────────────────────────────────────────────────
 
-        if (this.godRayMaterial) {
+        if (this.godRayMaterial?.uniforms?.uTime) {
             this.godRayMaterial.uniforms.uTime.value = elapsed;
+        }
+        if (this.godRayNodeUniforms?.uTime) {
+            this.godRayNodeUniforms.uTime.value = elapsed;
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -4463,9 +5853,12 @@ export default class SwedishForestTheme extends BaseTheme {
             spirit.position.x += spirit.userData.velocity.x;
             spirit.position.y += spirit.userData.velocity.y;
 
-            spirit.material.uniforms.uOpacity.value *= 0.997;
-            if (spirit.material.uniforms.uOpacity.value < 0.25) {
-                spirit.material.uniforms.uOpacity.value = 0.25;
+            const spiritOpacity = this.getSpiritOpacityUniform(spirit);
+            if (spiritOpacity) {
+                spiritOpacity.value *= 0.997;
+                if (spiritOpacity.value < 0.25) {
+                    spiritOpacity.value = 0.25;
+                }
             }
 
             spirit.lookAt(this.camera.position);
@@ -4487,8 +5880,8 @@ export default class SwedishForestTheme extends BaseTheme {
             // Wrap around when reaching edge - wider range for full scene coverage
             if (wind.position.x > 150) {
                 wind.position.x = -150;
-                wind.position.y = 3 + Math.random() * 25;
-                wind.position.z = -60 + Math.random() * 100;
+                wind.position.y = 3 + this.random() * 25;
+                wind.position.z = -60 + this.random() * 100;
             }
         });
 
@@ -4514,6 +5907,14 @@ export default class SwedishForestTheme extends BaseTheme {
             this.groundMaterial.uniforms.uTime.value = elapsed;
             this.groundMaterial.uniforms.uGlowIntensity.value = this.uniforms.glowIntensity.value;
         }
+        if (this.groundNodeUniforms) {
+            if (this.groundNodeUniforms.uTime) {
+                this.groundNodeUniforms.uTime.value = elapsed;
+            }
+            if (this.groundNodeUniforms.uGlowIntensity) {
+                this.groundNodeUniforms.uGlowIntensity.value = this.uniforms.glowIntensity.value;
+            }
+        }
 
         if (this.grassMaterial) {
             this.grassMaterial.uniforms.uTime.value = elapsed;
@@ -4523,6 +5924,60 @@ export default class SwedishForestTheme extends BaseTheme {
                 this.uniforms.glowIntensity.value,
                 delta * 2,
             );
+        }
+        if (this.grassNodeUniforms) {
+            if (this.grassNodeUniforms.uTime) {
+                this.grassNodeUniforms.uTime.value = elapsed;
+            }
+            if (this.grassNodeUniforms.uWindStrength) {
+                this.grassNodeUniforms.uWindStrength.value = 0.18 + this.uniforms.windSpeed.value * 0.32;
+            }
+            if (this.grassNodeUniforms.uSpiritGlow) {
+                this.grassNodeUniforms.uSpiritGlow.value = THREE.MathUtils.lerp(
+                    this.grassNodeUniforms.uSpiritGlow.value,
+                    this.uniforms.glowIntensity.value,
+                    delta * 2,
+                );
+            }
+        }
+        if (this.silhouetteGrassNodeUniforms) {
+            if (this.silhouetteGrassNodeUniforms.uTime) {
+                this.silhouetteGrassNodeUniforms.uTime.value = elapsed;
+            }
+            if (this.silhouetteGrassNodeUniforms.uWindStrength) {
+                this.silhouetteGrassNodeUniforms.uWindStrength.value = 0.15 + this.uniforms.windSpeed.value * 0.24;
+            }
+        }
+        if (this.shoreReedNodeUniforms?.length) {
+            this.shoreReedNodeUniforms.forEach((uniforms) => {
+                if (uniforms?.uTime) {
+                    uniforms.uTime.value = elapsed;
+                }
+                if (uniforms?.uWindStrength) {
+                    uniforms.uWindStrength.value = 0.2 + this.uniforms.windSpeed.value * 0.28;
+                }
+            });
+        }
+        if (this.framingTreeFoliageNodeUniforms?.length) {
+            this.framingTreeFoliageNodeUniforms.forEach((uniforms) => {
+                if (uniforms?.uTime) {
+                    uniforms.uTime.value = elapsed;
+                }
+                if (uniforms?.uWindStrength) {
+                    uniforms.uWindStrength.value = 0.12 + this.uniforms.windSpeed.value * 0.22;
+                }
+                if (uniforms?.uSunDirection && this.sun) {
+                    uniforms.uSunDirection.value.copy(this.sun.position).normalize();
+                }
+            });
+        }
+        if (this.framingTreeTrunkNodeUniforms) {
+            if (this.framingTreeTrunkNodeUniforms.uTime) {
+                this.framingTreeTrunkNodeUniforms.uTime.value = elapsed;
+            }
+            if (this.framingTreeTrunkNodeUniforms.uWindStrength) {
+                this.framingTreeTrunkNodeUniforms.uWindStrength.value = 0.08 + this.uniforms.windSpeed.value * 0.18;
+            }
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -4534,8 +5989,8 @@ export default class SwedishForestTheme extends BaseTheme {
         if (this.mushroomPulse < 0.01) this.mushroomPulse = 0;
 
         // Decay firefly boost for piece lock twinkle effect
-        if (this.fireflySystem && this.fireflySystem.material.uniforms.uBoost) {
-            const boost = this.fireflySystem.material.uniforms.uBoost;
+        if (this.fireflyBoostUniform) {
+            const boost = this.fireflyBoostUniform;
             boost.value *= 0.94; // Smooth decay
             if (boost.value < 0.01) boost.value = 0;
         }
@@ -4577,7 +6032,23 @@ export default class SwedishForestTheme extends BaseTheme {
             this.birds.update(elapsed, delta);
         }
 
-        this.renderer.render(this.scene, this.camera);
+        if (this.postComposer && this.flags.usePost) {
+            try {
+                this.postComposer.update?.({ time: elapsed });
+                this.postComposer.render(delta);
+            } catch (error) {
+                console.warn(
+                    '[SwedishForest] Post-processing render failed; disabling post pipeline and falling back to direct render:',
+                    error,
+                );
+                this.flags.usePost = false;
+                this.flags.useMRT = false;
+                this.disposePostProcessing();
+                this.renderer.render(this.scene, this.camera);
+            }
+        } else {
+            this.renderer.render(this.scene, this.camera);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -4590,18 +6061,39 @@ export default class SwedishForestTheme extends BaseTheme {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
 
+        let renderWidth = window.innerWidth;
+        let renderHeight = window.innerHeight;
+        let pixelRatio = this.getEffectivePixelRatio();
+
         if (this.resolutionMode === 'fixed' && this.targetResolution) {
             // FORCE pixel ratio to 1 to ensure we actually render at the requested resolution
-            this.renderer.setPixelRatio(1);
-            this.renderer.setSize(this.targetResolution.width, this.targetResolution.height, false);
+            renderWidth = this.targetResolution.width;
+            renderHeight = this.targetResolution.height;
+            pixelRatio = 1;
+            this.renderer.setPixelRatio(pixelRatio);
+            this.renderer.setSize(renderWidth, renderHeight, false);
 
             // We must set the DOM element size to window size (CSS handles this, but ThreeJS might set explicit style)
             this.renderer.domElement.style.width = '100%';
             this.renderer.domElement.style.height = '100%';
         } else {
-            // Auto mode: Use native DPR for crispness
-            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            // Auto mode: use the same pixel-ratio policy as renderer initialization.
+            this.renderer.setPixelRatio(pixelRatio);
+            this.renderer.setSize(renderWidth, renderHeight);
+        }
+
+        if (this.postComposer) {
+            this.postComposer.setPixelRatio?.(pixelRatio);
+            this.postComposer.setSize?.(renderWidth, renderHeight);
+        }
+
+        if (this.godRayMaterial?.uniforms?.uResolution) {
+            this.godRayMaterial.uniforms.uResolution.value.set(renderWidth, renderHeight);
+        }
+
+        if (this.webgpuWater?.renderTarget) {
+            const resolution = this.getWaterReflectionResolution();
+            this.webgpuWater.renderTarget.setSize(resolution, resolution);
         }
     }
 
@@ -4618,16 +6110,26 @@ export default class SwedishForestTheme extends BaseTheme {
 
     stop() {
         super.stop();
+        this.waterNormalsLoadVersion += 1;
 
         this.eventUnsubscribers.forEach((unsub) => unsub?.());
         this.eventUnsubscribers = [];
 
-        window.removeEventListener('resize', this.onWindowResize.bind(this));
+        window.removeEventListener('resize', this.boundOnResize);
         window.removeEventListener('displaySettingsChanged', this.handleDisplaySettingsChange);
+        this.handleDisplaySettingsChange = null;
 
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);
             this.animationFrame = null;
+        }
+
+        this.disposePostProcessing();
+        this.logBaselineReport('stop');
+
+        if (this.birds) {
+            this.birds.dispose();
+            this.birds = null;
         }
 
         if (this.renderer) {
@@ -4651,6 +6153,10 @@ export default class SwedishForestTheme extends BaseTheme {
             });
         }
 
+        if (this.webgpuWater?.renderTarget) {
+            this.webgpuWater.renderTarget.dispose();
+        }
+
         if (this.rockMaterials && this.rockMaterials.length) {
             this.rockMaterials.forEach((material) => {
                 material.map?.dispose();
@@ -4665,6 +6171,16 @@ export default class SwedishForestTheme extends BaseTheme {
             this.rockTextureSet.roughness?.dispose();
             this.rockTextureSet.ao?.dispose();
         }
+        const waterTextures = new Set([
+            this.waterNormalsTexture,
+            this.waterNormalsFallbackTexture,
+        ].filter(Boolean));
+        waterTextures.forEach((texture) => texture.dispose());
+        const generatedMaskTextures = new Set([
+            this.grassTexture,
+            this.silhouetteGrassTexture,
+        ].filter(Boolean));
+        generatedMaskTextures.forEach((texture) => texture.dispose());
 
         this.scene = null;
         this.camera = null;
@@ -4672,32 +6188,82 @@ export default class SwedishForestTheme extends BaseTheme {
         this.mainGroup = null;
         this.foliageInstancedMesh = null;
         this.trunkInstancedMesh = null;
+        this.foliageNodeUniforms = null;
+        this.trunkNodeUniforms = null;
+        this.mountainLayerNodeUniforms = [];
+        this.silhouetteMountainNodeUniforms = null;
         this.groundPlane = null;
+        this.groundMaterial = null;
+        this.groundNodeUniforms = null;
+        this.grassMesh = null;
+        this.grassMaterial = null;
+        this.grassTexture = null;
+        this.grassNodeUniforms = null;
+        this.silhouetteGrassMesh = null;
+        this.silhouetteGrassTexture = null;
+        this.silhouetteGrassNodeUniforms = null;
+        this.shoreReeds = [];
+        this.shoreReedNodeUniforms = [];
+        this.framingTrees = [];
+        this.framingTreeFoliageNodeUniforms = [];
+        this.framingTreeTrunkNodeUniforms = null;
+        this.framingTreeTrunkNodeMaterial = null;
         this.starfield = null;
         this.skyDome = null;
         this.skyMaterial = null;
+        this.skyNodeUniforms = null;
+        this.distanceFogMode = 'off';
+        this.distanceFogBands = [];
+        this.distanceFogBandUniforms = [];
+        this.postComposer = null;
+        this.postPasses = null;
+        this.postToneMappingState = null;
         this.clouds = [];
         this.cloudMaterials = [];
+        this.cloudNodeUniforms = [];
         this.mistPlanes = [];
+        this.mistNodeUniforms = [];
         this.godRays = [];
         this.godRayMaterial = null;
+        this.godRayNodeUniforms = null;
         this.fireflySystem = null;
+        this.fireflyNodes = [];
+        this.fireflyNodeUniforms = null;
+        this.fireflyBoostUniform = null;
+        this.dustMoteNodes = [];
+        this.dustNodeUniforms = null;
+        this.spiritNodeUniforms = [];
+        this.spiritWindNodeUniforms = [];
+        this.lensFlareNodeUniforms = [];
         this.spirits = [];
         this.auroraPlanes = [];
         this.spiritWinds = [];
         this.fallingLeaves = null;
         this.spiritLight = null;
         this.sun = null;
+        this.sunNodeUniforms = null;
         this.sunGlowLayers = [];
         this.dustMotes = null;
         this.mountains = [];
         this.hazeLayers = [];
+        this.hazeNodeUniforms = [];
         this.foregroundBranches = [];
         this.silhouetteMountain = null;
         this.silhouetteMountainMaterial = null;
+        this.tallMountainPeak = null;
+        this.farLeftMountain = null;
+        this.extremeLeftMountain = null;
+        this.rightHill = null;
+        this.farRightMountain = null;
         this.shoreRocks = [];
         this.rockTextureSet = null;
         this.rockMaterials = [];
         this.rockShadowCatcher = null;
+        this.webgpuWater = null;
+        this.waterNodeUniforms = null;
+        this.shoreFoamMesh = null;
+        this.shoreFoamNodeUniforms = null;
+        this.waterNormalsTexture = null;
+        this.waterNormalsFallbackTexture = null;
     }
 }

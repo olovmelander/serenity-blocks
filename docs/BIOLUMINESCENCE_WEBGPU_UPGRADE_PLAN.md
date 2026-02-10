@@ -99,11 +99,84 @@ import * as THREE_WEBGPU from 'three/webgpu';
 // 5. URL param ?forceWebGL=1 for testing
 ```
 
+## Platform & Version Constraints
+
+- Three.js version target: **0.181.2** (align all `three/webgpu` + `three/tsl` API usage to this revision)
+- Electron runtime target: **38.3.0** (WebGPU validation in packaged Electron build is mandatory)
+- Platform policy: Desktop/Electron is first-class WebGPU path; WebGL2 fallback must remain stable and visually coherent
+- Visual parity policy: WebGPU can exceed WebGL visual fidelity, but WebGL fallback must preserve the core bioluminescence identity
+
+## Compatibility Constraints (Must Be Explicit)
+
+- `ShaderMaterial`/GLSL pipeline remains WebGL-only; WebGPU path uses TSL node materials
+- `EffectComposer` is WebGL-only; WebGPU path uses `PostProcessing` from `three/webgpu`
+- WebGPU point primitive size limits make `THREE.Points` unsuitable for hero particles; use instanced billboards/sprites on WebGPU
+- Compute, MRT, and advanced post effects are optional capabilities; startup must never fail when one is unavailable
+
+## Capability Matrix & Kill Switches (Best-In-Class Stability)
+
+| Runtime Capability | Enabled Path | Forced Degradation |
+|--------------------|--------------|--------------------|
+| WebGPU + MRT + Compute | Full path (TSL + compute spores/fireflies + emissive-only bloom) | None |
+| WebGPU + MRT (no Compute) | TSL materials + emissive-only bloom + CPU particle sim | Disable compute kernels |
+| WebGPU (no MRT) | TSL materials + standard bloom | Disable emissive isolation |
+| WebGL2 | Existing GLSL + `EffectComposer` | No TSL/compute features |
+
+**Required namespaced debug flags:**
+- `?forceWebGL=1`
+- `?bioluminescenceNoPost=1`
+- `?bioluminescenceNoMRT=1`
+- `?bioluminescenceNoCompute=1`
+- `?bioluminescenceNoMycelium=1`
+- `?bioluminescenceBaseline=1` (logs backend, capability map, frame timings)
+- `?bioluminescenceSeed=1234` (deterministic procedural generation)
+- `?bioluminescenceFixedDt=16.666` (deterministic animation timing for visual diff tests)
+
+**Derived runtime flags (single source of truth):**
+```javascript
+flags.usePost = isWebGPU && !flags.noPost;
+flags.useMRT = flags.usePost && supportsMRT && !flags.noMRT;
+flags.useCompute = isWebGPU && supportsCompute && !flags.noCompute;
+flags.useMyceliumPulse = flags.useCompute && !flags.noMycelium && qualityPreset.enableMyceliumPulse;
+```
+
+## Capability Probes (After `await renderer.init()`)
+
+- `renderer.backend?.isWebGPUBackend`
+- `renderer.hasFeature('compute')` (or equivalent runtime compute support check)
+- `renderer.backend?.device?.limits?.maxColorAttachments > 1` for MRT gate
+- Storage buffer support for compute particle path
+- Optional GPU timestamp query support for pass-level profiling
+
+All probes must be logged when `?bioluminescenceBaseline=1` is set, and all optional features must degrade without throwing.
+
 ---
 
 ## Implementation Phases
 
 ---
+
+### Phase 0: Baseline, Determinism & QA Harness
+**Priority: CRITICAL | Estimated Complexity: Medium**
+
+#### 0.1 - Baseline Capture
+- Capture screenshots and short video clips for current WebGL implementation at `Minimal`, `High`, and `Extreme`
+- Record baseline frame-time and memory numbers on at least one NVIDIA and one AMD GPU
+- Capture event moments: `PIECE_LOCK`, `LINE_CLEAR`, `COMBO`, `TETRIS`
+
+#### 0.2 - Deterministic Debug Harness
+- Add seeded RNG pathway for procedural placement and animation phase offsets
+- Add fixed timestep debug mode for deterministic visual regression tests
+- Add backend/capability logging overlay (`backend`, `useMRT`, `useCompute`, frame time)
+
+#### 0.3 - Baseline Art-Direction Snapshot
+- Export a fixed camera set (foreground, midground, deep background, water close-up)
+- Save approved baseline stills to compare each phase against
+
+**Acceptance Criteria:**
+- Deterministic run is reproducible with identical seed and fixed timestep
+- Baseline captures exist for all quality tiers and event states
+- Instrumentation exists before migration work begins
 
 ### Phase 1: Architecture & Hybrid Renderer Foundation
 **Priority: CRITICAL | Estimated Complexity: Medium**
@@ -199,11 +272,11 @@ Create TSL node material factories for WebGPU path. **Critical: Use `MeshPhysica
   - `roughnessNode` - wet in low areas, dry on ridges
   - `emissiveNode` - faint bioluminescent crack lines via `voronoi` edges
 - `createVineNodeMaterial()` - MeshStandardNodeMaterial with animated emissive veins
-- `createSporeNodeMaterial(isWebGPU, sporeCompute)` - PointsNodeMaterial with:
-  - `positionNode` from `storage()` buffer (GPU) or `attribute()` (CPU fallback)
-  - `colorNode` with lifecycle-based alpha
-  - `sizeNode` with distance attenuation
-- `createFireflyNodeMaterial(isWebGPU, fireflyCompute)` - PointsNodeMaterial with glow + trails
+- `createSporeParticleMaterial(isWebGPU, sporeCompute)` - **WebGPU instanced billboard quads** (or sprite path) + WebGL `THREE.Points` fallback:
+  - WebGPU path reads `positionNode` from `storage()` buffer and writes per-instance quad transform
+  - WebGL path keeps current `Points` shader behavior
+  - `colorNode` includes lifecycle-based alpha and emissive weighting
+- `createFireflyParticleMaterial(isWebGPU, fireflyCompute)` - same hybrid particle pattern as spores (billboards on WebGPU, `Points` fallback on WebGL)
 - `createCaveWallNodeMaterial()` - MeshStandardNodeMaterial with:
   - Animated bioluminescent vein network (multi-frequency sine pattern)
   - Pulsing glow spots (fbm-driven)
@@ -216,7 +289,7 @@ Create TSL node material factories for WebGPU path. **Critical: Use `MeshPhysica
 - `createMyceliumNodeMaterial()` - MeshBasicNodeMaterial with:
   - Additive blending for pure glow
   - Animated brightness wave (for event propagation)
-  - Line-based rendering or tube geometry with emissive pulse
+  - Tube geometry preferred over line primitives (stable width across backends)
 
 Each factory returns `{ material, uniforms }`. Uniforms use TSL `uniform()` nodes.
 
@@ -235,10 +308,13 @@ For the `!this.isWebGPU` path, keep existing GLSL `ShaderMaterial` definitions (
   - Try `new THREE_WEBGPU.WebGPURenderer({ antialias, alpha: false })`
   - `await renderer.init()` in try/catch
   - Verify `backend?.isWebGPUBackend === true`
+  - Probe capabilities and derive `flags.usePost`, `flags.useMRT`, `flags.useCompute`, `flags.useMyceliumPulse`
+  - Warm-up path: `await renderer.compileAsync(scene, camera)` (or hidden warm-up frame) before first visible frame
+  - Timeout-guarded startup: if WebGPU init/compile exceeds threshold (e.g., 3s), auto-fallback to WebGL
   - Fallback: `new THREE.WebGLRenderer({ antialias, alpha: false })`
   - Set `this.isWebGPU` boolean flag
-  - Handle device loss: `renderer.onDeviceLost`
-  - Parse debug flags from URL params (`?forceWebGL=1`, `?noPost=1`, etc.)
+  - Handle device loss: `renderer.onDeviceLost` and restart in WebGL-safe mode
+  - Parse namespaced debug flags from URL params (`?forceWebGL=1`, `?bioluminescenceNoPost=1`, etc.)
 - Make `createScene()` async (awaits `initRenderer`)
 - Gate material creation: TSL materials when `this.isWebGPU`, GLSL when not
 - Progressive scene build: render basic scene immediately, add details over frames
@@ -309,13 +385,16 @@ For the `!this.isWebGPU` path, keep existing GLSL `ShaderMaterial` definitions (
 - Material reads brightness per node to animate mycelium line/tube glow
 
 #### 2.2 - Integrate Compute with Materials
-- Spore `PointsNodeMaterial` reads from `SporeCompute.getStateBuffer()` via `storage()` node
-- Firefly `PointsNodeMaterial` uses compute position + glow phase for dynamic size + color
+- **WebGPU render path:** Spore/firefly visuals use instanced camera-facing quads (or sprite equivalent), with transform/color fed from compute storage buffers
+- Spore material reads from `SporeCompute.getStateBuffer()` via `storage()` node
+- Firefly material reads compute position + glow phase for dynamic size/color and optional trail contribution
 - Mycelium material reads brightness buffer for animated glow intensity
-- **CPU fallback (WebGL):** Keep existing `THREE.Points` with GLSL vertex shader for spores. Fireflies and mycelium pulse are WebGPU-only features (graceful absence on WebGL).
+- **WebGL fallback:** Keep existing `THREE.Points` with GLSL vertex shader for spores; fireflies/mycelium pulse can be simplified or omitted per quality preset
+- No CPU readback from compute buffers in frame loop (strict compute -> render zero-readback path)
 
 **Acceptance Criteria:**
 - Spores computed entirely on GPU (WebGPU) or CPU (WebGL)
+- WebGPU spores/fireflies are visually large enough (not 1px point artifacts)
 - Fireflies add magical atmosphere with emergent behavior patterns
 - Mycelium pulse creates visible glow waves between organisms on game events
 - Minimum 1000 spores at 60fps on mid-range GPU
@@ -512,7 +591,7 @@ const mesh = new THREE.InstancedMesh(capGeo, capMaterial, instanceCount);
 **God rays / light shafts (enhanced from current light cones):**
 - Keep cone geometry approach but use TSL material:
   - Animated intensity: slow sine pulse with per-cone phase offset
-  - Dust motes within shaft: small PointsNodeMaterial particles constrained to cone volume
+  - Dust motes within shaft: small instanced billboards (WebGPU) / `THREE.Points` fallback (WebGL), constrained to cone volume
   - Color tinted by nearest bioluminescent source
   - Opacity varies with height (brighter at ceiling opening, fading toward floor)
 - 4-8 cones (quality-scaled), placed at ceiling openings
@@ -760,9 +839,14 @@ const QUALITY_PRESETS = {
 | `?forceWebGL=1` | Force WebGL renderer (skip WebGPU) |
 | `?quality=extreme` | Override quality preset |
 | `?debugGPU=1` | Show GPU compute stats overlay (particle count, frame time) |
-| `?noPost=1` | Disable all post-processing |
-| `?noCompute=1` | Disable GPU compute (CPU fallback for particles) |
-| `?noBloom=1` | Disable bloom specifically |
+| `?bioluminescenceNoPost=1` | Disable all post-processing |
+| `?bioluminescenceNoMRT=1` | Disable MRT emissive isolation (fall back to standard bloom) |
+| `?bioluminescenceNoCompute=1` | Disable GPU compute (CPU fallback for particles) |
+| `?bioluminescenceNoMycelium=1` | Disable mycelium propagation effects |
+| `?bioluminescenceNoBloom=1` | Disable bloom specifically |
+| `?bioluminescenceBaseline=1` | Print backend/capability/frame timing baseline data |
+| `?bioluminescenceSeed=1234` | Deterministic procedural seed for repeatable tests |
+| `?bioluminescenceFixedDt=16.666` | Fixed timestep mode for deterministic captures |
 | `?wireframe=1` | Wireframe mode for geometry debugging |
 
 #### 7.3 - Final Art Direction Tuning Checklist
@@ -790,6 +874,37 @@ const QUALITY_PRESETS = {
 - Visual quality on WebGL fallback is impressive
 - Art direction checklist fully satisfied
 - Theme is a stunning, world-class bioluminescent cave masterpiece
+
+---
+
+### Phase 8: QA & Validation
+**Priority: CRITICAL | Estimated Complexity: Medium**
+
+#### 8.1 - Visual Regression Validation
+- Capture deterministic screenshots (fixed seed, fixed timestep) for each quality preset
+- Compare WebGPU vs WebGL fallback framing for key camera shots
+- Compare event reaction frames (`PIECE_LOCK`, `LINE_CLEAR`, `COMBO`, `TETRIS`) against approved references
+
+#### 8.2 - Performance Validation
+- Track `avg`, `p95`, and worst frame time per preset and backend
+- Track pass-level costs (`compute`, `bloom`, `post`) when GPU timestamps are available
+- Validate startup time and shader compilation stutter with and without warm-up path
+
+#### 8.3 - Fallback and Kill-Switch Validation
+- Validate each namespaced `?bioluminescenceNo*` flag independently
+- Validate `?forceWebGL=1` and natural WebGL fallback in non-WebGPU environments
+- Confirm game events and cleanup behavior are correct in every fallback mode
+
+#### 8.4 - Long-Run Stability
+- 30-minute soak test per backend without scene reload
+- Theme-switch loop test (`createScene`/`cleanup`) for leak detection
+- Device-loss simulation on WebGPU path where supported
+
+**Acceptance Criteria:**
+- No console errors in WebGPU full path, WebGPU degraded path, or WebGL fallback path
+- p95 frame time <= 16.7ms at `High` on target desktop GPU; fallback meets target at `Medium`
+- 30-minute soak test shows stable memory trend (no unbounded growth)
+- Visual diff remains within approved threshold for deterministic test scenes
 
 ---
 
@@ -1048,42 +1163,42 @@ cleanup() {
 
 ## Risk Mitigation
 
-| Risk | Mitigation |
-|------|------------|
-| WebGPU not available | Silent WebGL fallback with `this.isWebGPU` gate; WebGL path is still visually impressive |
-| MeshPhysicalNodeMaterial too expensive | Quality-gate transmission features (High+ only); Medium/Low use MeshStandardNodeMaterial |
-| GPU compute too slow | Quality presets scale particle counts; CPU fallback path for WebGL |
-| Too many draw calls | InstancedMesh for micro-crystals, moss, cluster mushrooms, rubble |
-| Memory pressure | Proper disposal order (compute → post → scene → renderer); share textures |
-| Visual regression | Side-by-side comparison at each phase; WebGL path preserved and tested |
-| Device loss | `renderer.onDeviceLost` handler with graceful recovery |
-| Browser compatibility | Test Chrome 113+, Firefox 120+, Edge 113+ (WebGPU); all browsers (WebGL) |
-| Mycelium network too complex | Simplify to static tubes with animated emissive on Medium/Low; full compute on High+ |
-| Shader compilation stutter | Create all materials during `createScene()` before first frame; progressive scene build |
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| WebGPU unavailable/blocked | Startup failure or missing visuals | Silent WebGL2 fallback with explicit capability matrix |
+| WebGPU points render at 1px | Spores/fireflies become nearly invisible | Use instanced billboards/sprites on WebGPU path |
+| MRT unsupported or partially supported | Emissive bloom pipeline breaks | Gate `useMRT` via probe + `?bioluminescenceNoMRT=1` kill switch |
+| Compute unsupported/slow | Performance regressions | Capability-gate compute, quality-scaled particle counts, CPU fallback |
+| MeshPhysicalNodeMaterial too expensive | Frame-time spikes | Quality-gate transmission features and per-material LOD simplification |
+| Shader compilation stutter | First-frame hitching | Warm-up compile + timeout fallback to WebGL |
+| Device loss | Black screen during gameplay | Device-loss handler that restarts in safe fallback mode |
+| Visual regression during migration | Art drift from approved look | Deterministic screenshot diff checks + baseline camera set |
+| Memory leaks during theme switching | Long-session instability | Strict disposal order + automated create/cleanup loop soak test |
+| API/version drift | Build/runtime breaks after dependency updates | Keep plan pinned to Three.js `0.181.2`; re-audit plan on version bump |
+| Over-complex mycelium behavior | Feature stalls or unstable performance | Quality-gated fallback: static tubes + CPU pulse on lower tiers |
 
 ---
 
 ## Phase Dependency Graph
 
 ```
-Phase 1 (Foundation) ──┬──> Phase 2 (GPU Compute + Mycelium)
-                       │
-                       ├──> Phase 3 (Environment + World Building)
-                       │
-                       └──> Phase 5 (Post-Processing) ◄── HIGH PRIORITY
-                                                          (do alongside Phase 3)
+Phase 0 (Baseline + Determinism) ──> Phase 1 (Foundation)
 
-Phase 2 + 3 ──> Phase 4 (Lighting & Atmosphere)
+Phase 1 ──┬──> Phase 2 (GPU Compute + Mycelium)
+          ├──> Phase 3 (Environment + World Building)
+          └──> Phase 5 (Post-Processing)
+
+Phase 3 (core geometry locked) + Phase 2 ──> Phase 4 (Lighting & Atmosphere)
 
 Phase 2 + 3 + 4 + 5 ──> Phase 6 (Events & Polish)
 
-Phase 6 ──> Phase 7 (Quality & Tuning)
+Phase 6 ──> Phase 7 (Quality & Tuning) ──> Phase 8 (QA & Validation)
 ```
 
 **Parallel tracks after Phase 1:**
-- Track A: Phase 2 (compute) + Phase 4 (lighting) - systems work
-- Track B: Phase 3 (environment) - art/geometry work
-- Track C: Phase 5 (post-processing) - render pipeline work
+- Track A: Phase 2 (compute + particle rendering architecture)
+- Track B: Phase 3 (environment geometry + materials), then Phase 4 (lighting pass)
+- Track C: Phase 5 (post-processing + MRT validation)
 
 ---
 
@@ -1091,12 +1206,31 @@ Phase 6 ──> Phase 7 (Quality & Tuning)
 
 | Metric | Target |
 |--------|--------|
-| **Visual Impact** | First reaction should be "wow" - cave feels like a living, breathing bioluminescent world |
-| **Signature Moment** | Mycelium glow wave on TETRIS event is memorable and shareable |
-| **Performance (WebGPU)** | 60fps at High quality on GTX 1060 / RX 580 equivalent |
-| **Performance (WebGL)** | 60fps at Medium quality on GTX 1060 / RX 580 equivalent |
-| **Fallback Quality** | WebGL path is visually impressive, not just functional |
-| **Code Quality** | Clean modular architecture matching Black Hole theme pattern (4 files) |
-| **Correctness** | No console errors, clean init/cleanup, no memory leaks, no z-fighting |
-| **Darkness Ratio** | At least 40% of visible screen area is very dark (bioluminescence needs darkness) |
-| **Color Accuracy** | All emissive sources within the defined 8-color palette |
+| **Visual Impact** | First impression is high-contrast, living cave mood in approved camera set |
+| **Signature Moment** | Mycelium pulse on `TETRIS` is clearly visible and repeatable in deterministic capture |
+| **Performance (WebGPU High)** | `avg <= 16.7ms`, `p95 <= 20ms` on GTX 1060 / RX 580 class desktop GPU |
+| **Performance (WebGL Medium)** | `avg <= 16.7ms`, no major stutter during combo/TETRIS event bursts |
+| **Startup Robustness** | First interactive frame < 3s with no fatal init errors; fallback always succeeds |
+| **Fallback Quality** | WebGL path remains art-direction compliant and gameplay-reactive |
+| **Code Quality** | Modular split (`theme`, `materials`, `compute`, `post`) with clear capability gates |
+| **Correctness** | No console errors, clean init/cleanup, no leak trend in soak testing |
+| **Darkness Ratio** | >= 40% of screen area remains very dark in baseline composition shots |
+| **Color Accuracy** | Emissive outputs stay within defined palette, validated in review checklist |
+
+## Browser Compatibility Matrix
+
+| Environment | Expected Path | Notes |
+|-------------|---------------|-------|
+| Electron packaged build | Prefer WebGPU full path | First-class target; must validate kill switches |
+| Chrome desktop | WebGPU full/degraded path | Validate full capability matrix |
+| Edge desktop | WebGPU full/degraded path | Validate full capability matrix |
+| Firefox desktop | WebGL fallback expected | Confirm graceful fallback and quality |
+| Non-WebGPU desktops | WebGL fallback | No startup errors; gameplay visuals intact |
+
+## Release Gates (Definition of Done)
+
+1. Phase 0 deterministic harness and baseline captures are complete.
+2. Every `?bioluminescenceNo*` flag passes startup + gameplay smoke tests.
+3. WebGPU full path and WebGL fallback both pass the Phase 8 validation checklist.
+4. Performance and soak-test targets in Success Metrics are met.
+5. No open P1/P2 rendering, stability, or fallback bugs.

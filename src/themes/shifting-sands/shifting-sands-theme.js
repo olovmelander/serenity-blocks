@@ -154,6 +154,18 @@ export default class ShiftingSandsTheme extends BaseTheme {
             wormHeatIntensity: { value: 0 }, // Underground heat effect
         };
 
+        // Art-direction knobs for final smoke tuning (can be edited at runtime):
+        // window.shiftingSandsSmokeArtDirection = { density: 1.0, lead: 1.0 }
+        const sharedSmokeArt = typeof window !== 'undefined'
+            ? window.shiftingSandsSmokeArtDirection
+            : null;
+        this.smokeArtDirection = (sharedSmokeArt && typeof sharedSmokeArt === 'object')
+            ? sharedSmokeArt
+            : { density: 1.0, lead: 1.62 };
+        if (typeof window !== 'undefined') {
+            window.shiftingSandsSmokeArtDirection = this.smokeArtDirection;
+        }
+
         // Procedural Generation Config - Larger, more dramatic Arrakis dunes
         this.terrainConfig = {
             noiseScale: {
@@ -218,7 +230,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 64,
                 spiceParticleCount: 400,
                 dustParticleCount: 150,
-                sandSmokeCount: 300,
+                sandSmokeCount: 0,
                 enableHeatShimmer: false,
                 enableComboEffects: false,
             },
@@ -227,7 +239,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 96,
                 spiceParticleCount: 800,
                 dustParticleCount: 300,
-                sandSmokeCount: 600,
+                sandSmokeCount: 80,
                 enableHeatShimmer: false,
                 enableComboEffects: true,
             },
@@ -236,7 +248,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 128,
                 spiceParticleCount: 1500,
                 dustParticleCount: 450,
-                sandSmokeCount: 1200,
+                sandSmokeCount: 140,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -245,7 +257,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 196,
                 spiceParticleCount: 2000,
                 dustParticleCount: 600,
-                sandSmokeCount: 2000,
+                sandSmokeCount: 220,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -254,7 +266,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 256,
                 spiceParticleCount: 3000,
                 dustParticleCount: 800,
-                sandSmokeCount: 3000,
+                sandSmokeCount: 320,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -263,7 +275,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 350,
                 spiceParticleCount: 5000,
                 dustParticleCount: 1000,
-                sandSmokeCount: 5000,
+                sandSmokeCount: 420,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -276,6 +288,18 @@ export default class ShiftingSandsTheme extends BaseTheme {
     getGraphicsQuality() {
         const settings = typeof window !== 'undefined' ? window.settings : null;
         return settings?.effectQuality || 'High';
+    }
+
+    getSmokeDensityKnob() {
+        const raw = Number(this.smokeArtDirection?.density);
+        if (!Number.isFinite(raw)) return 1.0;
+        return THREE.MathUtils.clamp(raw, 0.4, 1.8);
+    }
+
+    getSmokeLeadKnob() {
+        const raw = Number(this.smokeArtDirection?.lead);
+        if (!Number.isFinite(raw)) return 1.0;
+        return THREE.MathUtils.clamp(raw, 0.5, 1.8);
     }
 
     applyQualityPreset(quality) {
@@ -409,7 +433,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.scene.fog = new THREE.FogExp2(this.palette.fog.getHex(), 0.0012);
 
         // Camera
-        this.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 5, 4000);
         this.camera.position.set(0, 65, 180);
         this.camera.lookAt(0, 0, 0);
 
@@ -736,11 +760,20 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
     // --- SAND SMOKE - Volumetric Silky Sand ---
     createSandSmoke() {
-        const count = this.activePreset.sandSmokeCount;
+        const requestedCount = this.activePreset.sandSmokeCount;
+        // Billboard quads have significantly higher fill-rate cost than points.
+        // Windows D3D WebGPU is more prone to device hangs when overdraw is extreme.
+        const isWindows = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
+        const webgpuSmokeCap = isWindows ? 320 : 480;
+        const count = this.isWebGPU
+            ? Math.min(requestedCount, webgpuSmokeCap)
+            : requestedCount;
         if (count === 0) return;
 
         // Initialize sand smoke compute (Phase 5)
-        this.sandSmokeCompute = new SandSmokeCompute(count, this.wormTrailCompute);
+        this.sandSmokeCompute = new SandSmokeCompute(count, this.wormTrailCompute, {
+            leadScale: this.getSmokeLeadKnob(),
+        });
         if (this.isWebGPU) {
             this.sandSmokeCompute.createComputeNode();
         }
@@ -753,14 +786,18 @@ export default class ShiftingSandsTheme extends BaseTheme {
         });
 
         if (this.isWebGPU) {
-            // WebGPU: Use Points with Node Material (Vertex Pulling via storage buffer)
-            const geometry = new THREE.BufferGeometry();
-            // Three.js requires a position attribute even when positionNode overrides it.
-            // Without it, the renderer skips drawing and warns about missing "position".
-            geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
-            geometry.setDrawRange(0, count);
+            // WebGPU: Use InstancedMesh for Massive Billboard Clouds
+            // Scaled Quads > Points
+            const geometry = new THREE.PlaneGeometry(1, 1);
 
-            this.sandSmoke = new THREE.Points(geometry, this.sandSmokeMaterial.material);
+            this.sandSmoke = new THREE.InstancedMesh(geometry, this.sandSmokeMaterial.material, count);
+            // InstancedMesh defaults to zero matrices; initialize to identity so vertex positions are valid.
+            const identity = new THREE.Matrix4();
+            for (let i = 0; i < count; i++) {
+                this.sandSmoke.setMatrixAt(i, identity);
+            }
+            this.sandSmoke.instanceMatrix.needsUpdate = true;
+            this.sandSmoke.instanceMatrix.setUsage(THREE.StaticDrawUsage);
             this.sandSmoke.frustumCulled = false;
         } else {
             // WebGL fallback: points with CPU-updated attributes
@@ -962,6 +999,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
             // Sand smoke compute (Phase 5)
             if (this.sandSmokeCompute) {
                 const windStrength = this.uniforms.windStrength.value;
+                this.sandSmokeCompute.setLeadScale(this.getSmokeLeadKnob());
 
                 if (this.isWebGPU && this.sandSmokeCompute.computeNode) {
                     this.sandSmokeCompute.update(elapsed, windStrength);
@@ -1058,7 +1096,9 @@ export default class ShiftingSandsTheme extends BaseTheme {
             }
 
             if (this.sandSmokeMaterial) {
-                const smokeOpacity = 0.55 + this.uniforms.dustDensity.value * 0.35;
+                const smokeDensity = this.getSmokeDensityKnob();
+                const smokeOpacityBase = 0.11 + this.uniforms.dustDensity.value * 0.08;
+                const smokeOpacity = THREE.MathUtils.clamp(smokeOpacityBase * smokeDensity, 0.02, 0.32);
                 this.sandSmokeMaterial.update(elapsed, smokeOpacity);
             }
 

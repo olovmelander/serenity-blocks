@@ -33,6 +33,40 @@ import {
 // ============== TSL TERRAIN HEIGHT APPROXIMATION ==============
 // Matches the CPU PerlinNoise terrain in the theme (simplified 2-octave FBM)
 
+// ============== TSL NOISE FUNCTIONS (Matched with Materials) ==============
+
+const tslHash3 = /* @__PURE__ */ Fn(([p_immutable]) => {
+    const p = vec3(p_immutable).toVar();
+    p.assign(vec3(
+        dot(p, vec3(127.1, 311.7, 74.7)),
+        dot(p, vec3(269.5, 183.3, 246.1)),
+        dot(p, vec3(113.5, 271.9, 124.6))
+    ));
+    return fract(sin(p).mul(43758.5453)).mul(2.0).sub(1.0);
+});
+
+const tslNoise3D = /* @__PURE__ */ Fn(([p_immutable]) => {
+    const p = vec3(p_immutable).toVar();
+    const i = floor(p);
+    const f = fract(p);
+    const u = f.mul(f).mul(float(3.0).sub(f.mul(2.0)));
+
+    const n000 = dot(tslHash3(i.add(vec3(0, 0, 0))), f.sub(vec3(0, 0, 0)));
+    const n100 = dot(tslHash3(i.add(vec3(1, 0, 0))), f.sub(vec3(1, 0, 0)));
+    const n010 = dot(tslHash3(i.add(vec3(0, 1, 0))), f.sub(vec3(0, 1, 0)));
+    const n110 = dot(tslHash3(i.add(vec3(1, 1, 0))), f.sub(vec3(1, 1, 0)));
+    const n001 = dot(tslHash3(i.add(vec3(0, 0, 1))), f.sub(vec3(0, 0, 1)));
+    const n101 = dot(tslHash3(i.add(vec3(1, 0, 1))), f.sub(vec3(1, 0, 1)));
+    const n011 = dot(tslHash3(i.add(vec3(0, 1, 1))), f.sub(vec3(0, 1, 1)));
+    const n111 = dot(tslHash3(i.add(vec3(1, 1, 1))), f.sub(vec3(1, 1, 1)));
+
+    return mix(
+        mix(mix(n000, n100, u.x), mix(n010, n110, u.x), u.y),
+        mix(mix(n001, n101, u.x), mix(n011, n111, u.x), u.y),
+        u.z
+    );
+});
+
 const tslHash2D = /* @__PURE__ */ Fn(([p_immutable]) => {
     const p = vec2(p_immutable).toVar();
     const p3 = fract(vec3(p.x, p.y, p.x).mul(0.1031)).toVar();
@@ -462,16 +496,11 @@ export class SpiceParticleCompute {
 
 /**
  * Enhanced sand smoke with GPU compute simulation
- * Features: FBM turbulence, worm trail following, volumetric scattering
- * NOTE: This will be fully implemented in Phase 5
- */
-/**
- * Enhanced sand smoke with GPU compute simulation
  * Features: Physics-based particle system with emission, advection, and drag
  * Fixed: Now emits from the worm head and flows naturally
  */
 export class SandSmokeCompute {
-    constructor(particleCount, wormTrailCompute) {
+    constructor(particleCount, wormTrailCompute, options = {}) {
         this.count = particleCount;
         this.wormTrail = wormTrailCompute;
 
@@ -483,6 +512,8 @@ export class SandSmokeCompute {
 
         this.uTime = uniform(0);
         this.uWindStrength = uniform(0.5);
+        this.leadScale = options.leadScale ?? 1.0;
+        this.uLeadScale = uniform(this.leadScale);
 
         this.computeNode = null;
 
@@ -500,7 +531,9 @@ export class SandSmokeCompute {
             this.stateData[i8] = 0;      // x
             this.stateData[i8 + 1] = -100; // y (underground)
             this.stateData[i8 + 2] = 0;   // z
-            this.stateData[i8 + 3] = -Math.random() * 5.0; // life (negative = delay)
+
+            // Stagger startup over a short window to avoid a single-frame emission spike.
+            this.stateData[i8 + 3] = -Math.random() * 8.0; // life (negative = delay)
 
             // Velocity & Props
             this.stateData[i8 + 4] = 0; // vx
@@ -525,105 +558,114 @@ export class SandSmokeCompute {
         const wormState = storage(this.wormTrail.getWormStateBuffer(), 'vec4', 2);
         const time = this.uTime;
         const wind = this.uWindStrength;
+        const leadScale = this.uLeadScale;
 
         const computeSmoke = Fn(() => {
             const index = instanceIndex;
             const stateIdx0 = index.mul(2);
             const stateIdx1 = index.mul(2).add(1);
 
-            const posLife = state.element(stateIdx0).toVar(); // x, y, z, life
-            const velRand = state.element(stateIdx1).toVar(); // vx, vy, vz, rand
+            const posLife = state.element(stateIdx0).toVar();
+            const velRand = state.element(stateIdx1).toVar();
 
             const life = posLife.w;
-            const dt = float(0.016); // Fixed delta time
+            const dt = float(0.016);
 
-            // Read worm state from shared buffer
             const wormHead = wormState.element(0);
             const wormHeadX = wormHead.x;
-            const wormHeadZ = wormHead.y;        // headZ
-            const wormPathBaseX = wormHead.z;     // pathBaseX
-            const wormPathSlope = wormHead.w;     // pathSlope
+            const wormHeadZ = wormHead.y;
+            const wormPathBaseX = wormHead.z;
+            const wormPathSlope = wormHead.w;
 
-            // --- SPAWN LOGIC ---
             If(life.lessThanEqual(0.0), () => {
-                // If deeply negative, just increment (delay)
                 If(life.lessThan(-0.05), () => {
                     posLife.w.addAssign(dt);
                 }).Else(() => {
-                    // SPAWN along the worm TRAIL, not just at the head.
-                    // Use a hash of index+time to get a second random for trail offset.
-                    const r = velRand.w; // stable random seed per particle
+                    const r = velRand.w;
                     const r2 = fract(sin(float(index).mul(127.1).add(time.mul(3.7))).mul(43758.5453));
+                    const r3 = fract(sin(float(index).mul(269.5).add(time.mul(1.5))).mul(43758.5453));
 
-                    // Distribute along the trail: 0..400 units behind the head
-                    const trailOffset = r2.mul(400.0);
-                    const spawnZ = wormHeadZ.sub(trailOffset);
+                    // Spawn slightly ahead of the moving head (toward camera) with tiny jitter.
+                    // Keeps the dust front visually "in front of" the worm without drifting far.
+                    const lead = r2.mul(64.0).add(40.0).mul(leadScale); // +40..+104 ahead in Z (before leadScale)
+                    const jitter = r3.mul(20.0).sub(10.0); // -10..+10 variation
+                    const spawnZ = wormHeadZ.add(lead).add(jitter);
 
-                    // Follow the worm path (baseX + slope * z)
-                    const spawnPathX = wormPathBaseX.add(spawnZ.mul(wormPathSlope));
+                    const meander = tslNoise3D(vec3(spawnZ.mul(0.02), float(0.0), time.mul(0.02))).mul(12.0);
+                    const spawnPathX = wormPathBaseX.add(spawnZ.mul(wormPathSlope)).add(meander);
 
-                    // Scatter perpendicular to path
                     const angle = r.mul(6.28);
-                    const radius = float(3.0).add(r.mul(25.0));
+                    const radius = float(8.0).add(r3.mul(22.0));
 
                     posLife.x.assign(spawnPathX.add(cos(angle).mul(radius)));
                     posLife.z.assign(spawnZ.add(sin(angle).mul(radius)));
 
-                    // Height: terrain + ridge offset
+                    // Height: terrain EXACTLY (no gap)
                     const terrainH = tslApproxTerrainHeight(posLife.x, posLife.z);
-                    posLife.y.assign(terrainH.add(18.0));
+                    posLife.y.assign(terrainH.add(float(0.8)).add(r3.mul(2.4)));
 
-                    // Velocity: strong upward burst + gentle lateral spread
-                    // Particles near the head get more velocity, trail particles get less
-                    const headProximity = float(1.0).sub(trailOffset.div(400.0)); // 1 at head, 0 at tail
-                    const upVel = float(20.0).add(headProximity.mul(30.0)).add(r.mul(15.0));
-                    velRand.x.assign(cos(angle).mul(8.0).add(r.mul(5.0)));
-                    velRand.y.assign(upVel);
-                    velRand.z.assign(sin(angle).mul(8.0).add(r.mul(5.0)));
+                    const outwardSpeed = float(14.0).add(r2.mul(12.0));
+                    velRand.x.assign(cos(angle).mul(outwardSpeed));
+                    velRand.z.assign(sin(angle).mul(outwardSpeed));
+
+                    velRand.y.assign(float(12.0).add(r3.mul(18.0)));
+
+
+                    // Very light forward carry; most "lead" comes from spawn position.
+                    velRand.z.addAssign(float(7.6));
 
                     posLife.w.assign(float(1.0));
                 });
             }).Else(() => {
-                // --- PHYSICS UPDATE ---
+                const age = float(1.0).sub(life);
 
-                // 1. Buoyancy — strong upward force for towering plume
-                velRand.y.addAssign(float(28.0).mul(dt));
+                const gravity = mix(float(-30.0), float(2.0), smoothstep(0.0, 0.4, age));
+                velRand.y.addAssign(gravity.mul(dt));
 
-                // 2. Wind advection
-                const windForce = vec3(wind.mul(15.0), 0.0, wind.mul(5.0));
-                velRand.xyz.addAssign(windForce.mul(dt));
+                const drag = mix(float(0.5), float(2.5), smoothstep(0.0, 0.3, age));
+                velRand.x.subAssign(velRand.x.mul(drag).mul(dt));
+                velRand.y.subAssign(velRand.y.mul(drag).mul(dt));
+                velRand.z.subAssign(velRand.z.mul(drag).mul(dt));
 
-                // 3. Turbulence
-                const noisePos = posLife.xyz.mul(0.015).add(vec3(time.mul(0.08), 0.0, 0.0));
-                const turb = vec3(
-                    sin(noisePos.y.mul(3.0).add(noisePos.z.mul(2.0))).mul(25.0),
-                    sin(noisePos.x.mul(2.5)).mul(8.0),
-                    cos(noisePos.y.mul(3.0).add(noisePos.x.mul(2.0))).mul(25.0)
-                );
-                velRand.xyz.addAssign(turb.mul(dt));
+                const windFactor = smoothstep(0.2, 1.0, age);
+                const windForce = float(9.0).mul(wind);
+                velRand.x.addAssign(windForce.mul(windFactor).mul(dt));
 
-                // 4. Drag — lighter drag for taller plumes
-                velRand.xyz.mulAssign(float(0.97));
+                const noisePos = posLife.xyz.mul(0.05).add(vec3(time.mul(0.2), 0.0, 0.0));
+                const turbX = tslNoise3D(noisePos).mul(10.0);
+                const turbY = tslNoise3D(noisePos.add(vec3(100.0, 0.0, 0.0))).mul(5.0);
+                const turbZ = tslNoise3D(noisePos.add(vec3(0.0, 0.0, 100.0))).mul(10.0);
 
-                // 5. Integration
-                posLife.xyz.addAssign(velRand.xyz.mul(dt));
+                velRand.x.addAssign(turbX.mul(windFactor).mul(dt));
+                velRand.y.addAssign(turbY.mul(windFactor).mul(dt));
+                velRand.z.addAssign(turbZ.mul(windFactor).mul(dt));
 
-                // 6. Terrain collision
                 const groundH = tslApproxTerrainHeight(posLife.x, posLife.z);
-                const minH = groundH.add(1.0);
-                If(posLife.y.lessThan(minH), () => {
-                    posLife.y.assign(minH);
-                    velRand.y.assign(abs(velRand.y).mul(0.3)); // Bounce up slightly
-                    velRand.x.mulAssign(0.85);
-                    velRand.z.mulAssign(0.85);
+                If(posLife.y.lessThan(groundH), () => {
+                    posLife.y.assign(groundH.add(0.1));
+                    velRand.y.mulAssign(-0.3);
+                    velRand.x.mulAssign(0.5);
+                    velRand.z.mulAssign(0.5);
                 });
 
-                // 7. Life decay — slow for lingering clouds
-                const decay = float(0.12).add(velRand.w.mul(0.08)); // ~5-8 second lifetime
+                posLife.x.addAssign(velRand.x.mul(dt));
+                posLife.y.addAssign(velRand.y.mul(dt));
+                posLife.z.addAssign(velRand.z.mul(dt));
+
+                const decay = float(0.20).add(velRand.w.mul(0.12));
                 posLife.w.subAssign(decay.mul(dt));
+
+                If(life.greaterThan(0.68).and(life.lessThan(0.72)), () => {
+                    velRand.xyz.mulAssign(float(0.5));
+                });
+
+                // Add cooldown so not all particles are active all the time.
+                If(posLife.w.lessThanEqual(0.0), () => {
+                    posLife.w.assign(float(-0.6).sub(velRand.w.mul(1.4)));
+                    velRand.xyz.assign(vec3(0.0));
+                });
             });
 
-            // Write back
             state.element(stateIdx0).assign(posLife);
             state.element(stateIdx1).assign(velRand);
         });
@@ -641,6 +683,15 @@ export class SandSmokeCompute {
     }
 
     /**
+     * Runtime art-direction knob: adjusts how far ahead of the worm the smoke spawns.
+     */
+    setLeadScale(scale) {
+        if (!Number.isFinite(scale)) return;
+        this.leadScale = Math.max(0.5, Math.min(1.8, scale));
+        this.uLeadScale.value = this.leadScale;
+    }
+
+    /**
      * CPU fallback update for WebGL backend
      * Mirrors the GPU compute logic (simplified)
      */
@@ -648,6 +699,7 @@ export class SandSmokeCompute {
         const wind = windStrength ?? 0.5;
         const wormState = this.wormTrail?.getCPUState?.() ?? { headX: 0, headZ: 0 };
         const dt = 0.016;
+        const leadScale = this.leadScale ?? 1.0;
 
         for (let i = 0; i < this.count; i++) {
             const i8 = i * 8;
@@ -665,56 +717,96 @@ export class SandSmokeCompute {
 
             // Respawn
             if (life <= 0) {
-                // Only spawn if delay is over (negative life counts up)
-                if (life < -0.02) {
+                if (life < -0.05) {
                     this.stateData[i8 + 3] += dt;
                     continue;
                 }
 
-                const angle = rand * 6.28;
-                const radius = 5.0 + rand * 35.0;
-                x = wormState.headX + Math.cos(angle) * radius;
-                z = wormState.headZ + Math.sin(angle) * radius;
-                const terrainH = this.approxTerrainHeight(x, z);
-                y = terrainH + 22.0;
+                const r2 = Math.random();
+                const r3 = Math.random();
 
-                const upVel = 35.0 + rand * 25.0;
-                vx = Math.cos(angle) * 15.0 + rand * 10.0;
-                vy = upVel;
-                vz = Math.sin(angle) * 15.0 + rand * 10.0;
+                // Match GPU: spawn slightly ahead of head with tiny jitter.
+                const lead = (r2 * 64.0 + 40.0) * leadScale;
+                const jitter = r3 * 20.0 - 10.0;
+                const spawnZ = wormState.headZ + lead + jitter;
+
+                // CPU Meander approximation (using sin/cos instead of expensive noise)
+                const meander = Math.sin(spawnZ * 0.02 + time * 0.02) * 12.0;
+                const spawnPathX = wormState.pathBaseX + spawnZ * wormState.pathSlope + meander;
+
+                const angle = rand * 6.28;
+                const radius = 8.0 + r3 * 22.0;
+                x = spawnPathX + Math.cos(angle) * radius;
+                z = spawnZ + Math.sin(angle) * radius;
+                const terrainH = this.approxTerrainHeight(x, z);
+
+                y = terrainH + 0.8 + r3 * 2.4;
+
+                // Burst
+                const outwardSpeed = 14.0 + r2 * 12.0;
+                vx = Math.cos(angle) * outwardSpeed;
+                vz = Math.sin(angle) * outwardSpeed;
+
+                vy = 12.0 + r3 * 18.0;
+                vz += 7.6;
+
+                // Add meander velocity approximation to forward momentum
+                // Tangent of sin(kx) is k*cos(kx). 
+                const meanderVel = Math.cos(spawnZ * 0.02 + time * 0.02) * 12.0 * 0.02 * 10.0; // derivative * speed
+                vx += meanderVel;
+
                 life = 1.0;
             } else {
-                // Physics
-                vy += 20.0 * dt; // Buoyancy
-                vx += wind * 20.0 * dt; // Wind
+                const age = 1.0 - life;
 
-                // Turbulence
-                vx += Math.sin(y * 0.1 + time) * 30.0 * dt;
-                vy += Math.sin(x * 0.1 + time) * 10.0 * dt;
-                vz += Math.sin(z * 0.1 + time) * 30.0 * dt;
+                // Gravity & Buoyancy
+                // mix(-30, 2, smoothstep(0, 0.4, age))
+                let gravity = -30.0;
+                if (age > 0.4) gravity = 2.0;
+                else gravity = -30.0 + (32.0 * (age / 0.4)); // Linear approx
+
+                vy += gravity * dt;
 
                 // Drag
-                vx *= 0.96;
-                vy *= 0.96;
-                vz *= 0.96;
+                // mix(0.5, 2.5, smoothstep(0, 0.3, age))
+                let drag = 0.5;
+                if (age > 0.3) drag = 2.5;
+                else drag = 0.5 + (2.0 * (age / 0.3));
 
-                // Integrate
+                vx -= vx * drag * dt;
+                vy -= vy * drag * dt;
+                vz -= vz * drag * dt;
+
+                // Wind
+                if (age > 0.2) {
+                    vx += 8.0 * wind * dt;
+
+                    // Simple turbulence
+                    vx += Math.sin(y * 0.05 + time) * 8.0 * dt;
+                    vy += Math.sin(x * 0.05 + time) * 4.0 * dt;
+                    vz += Math.sin(z * 0.05 + time) * 8.0 * dt;
+                }
+
                 x += vx * dt;
                 y += vy * dt;
                 z += vz * dt;
 
-                // Collision
                 const groundH = this.approxTerrainHeight(x, z);
-                if (y < groundH + 1.0) {
-                    y = groundH + 1.0;
-                    vy *= 0.5;
-                    vx *= 0.9;
-                    vz *= 0.9;
+                if (y < groundH) {
+                    y = groundH + 0.1;
+                    vy *= -0.3;
+                    vx *= 0.5;
+                    vz *= 0.5;
                 }
 
-                // Decay — slow for lingering dust clouds
-                const decay = 0.15 + rand * 0.1;
+                const decay = 0.20 + rand * 0.12;
                 life -= decay * dt;
+                if (life <= 0) {
+                    life = -0.6 - rand * 1.4;
+                    vx = 0;
+                    vy = 0;
+                    vz = 0;
+                }
             }
 
             // Pack

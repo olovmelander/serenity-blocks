@@ -1,18 +1,40 @@
 import * as THREE from 'three';
+import * as THREE_WEBGPU from 'three/webgpu';
 import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js';
+import {
+    attribute,
+    float,
+    instanceIndex,
+    length,
+    max,
+    positionLocal,
+    sin,
+    smoothstep,
+    storage,
+    vec3,
+} from 'three/tsl';
+import { SwedishForestBirdCompute } from './swedish-forest-compute.js';
 
 export class SwedishForestBirds {
-    constructor(renderer, scene) {
+    constructor(renderer, scene, options = {}) {
         this.renderer = renderer;
         this.scene = scene;
-        this.birds = null;
+        this.mesh = null;
         this.gpuCompute = null;
+        this.birdCompute = null;
+        this.randomFn = typeof options.randomFn === 'function' ? options.randomFn : Math.random;
+        this.isWebGPU = renderer?.backend?.isWebGPUBackend === true;
 
-        // Configuration
-        this.WIDTH = 32; // 32x32 = 1024 birds
-        this.BIRDS = this.WIDTH * this.WIDTH;
+        this.requestedBirdCount = Math.max(1, Math.floor(options.birdCount ?? 1024));
+        if (this.isWebGPU) {
+            this.BIRDS = this.requestedBirdCount;
+            this.WIDTH = Math.max(1, Math.ceil(Math.sqrt(this.BIRDS)));
+        } else {
+            this.WIDTH = Math.max(1, Math.ceil(Math.sqrt(this.requestedBirdCount)));
+            this.BIRDS = this.WIDTH * this.WIDTH;
+        }
 
-        // Shaders
+        // Shaders (WebGL fallback: GPUComputationRenderer + ShaderMaterial)
         this.fragmentShaderPosition = `
             uniform float time;
             uniform float delta;
@@ -155,12 +177,12 @@ export class SwedishForestBirds {
                 // Boundaries - huge range for "all over scene"
                 if (selfPosition.x > 950.0) velocity.x -= 10.0 * delta;
                 if (selfPosition.x < -950.0) velocity.x += 10.0 * delta;
-                
+
                 // Keep above trees but allow canopy skimming
                 if (selfPosition.y > 380.0) velocity.y -= 6.0 * delta;
                 if (selfPosition.y < 18.0) velocity.y += 8.0 * delta; // Avoid ground
                 else if (selfPosition.y < 40.0) velocity.y += 1.5 * delta;
-                
+
                 // Allow flying behind camera (z > 0) and far into distance
                 if (selfPosition.z > 400.0) velocity.z -= 10.0 * delta;
                 if (selfPosition.z < -900.0) velocity.z += 10.0 * delta;
@@ -200,7 +222,7 @@ export class SwedishForestBirds {
                 if (birdVertex == 4.0 || birdVertex == 7.0) {
                     // flap wings based on phase + time
                     // Reduced flap speed for "meditative" feel
-                    newPosition.y = sin(tmpPos.w + time * 5.0) * 0.8; 
+                    newPosition.y = sin(tmpPos.w + time * 5.0) * 0.8;
                 }
 
                 newPosition = mat3(modelMatrix) * newPosition;
@@ -245,17 +267,134 @@ export class SwedishForestBirds {
             uniform vec3 color;
 
             void main() {
-                // Keep birds as dark silhouettes with slight atmospheric fade
-                float distanceFade = smoothstep(-520.0, -120.0, z) * 0.25;
-                vec3 finalColor = mix(color, vColor.rgb, 0.1) + distanceFade;
+                // Dark silhouette birds with restrained distance haze.
+                float distanceFade = smoothstep(-560.0, -140.0, z) * 0.09;
+                vec3 base = mix(color, vColor.rgb, 0.25);
+                vec3 finalColor = base + vec3(distanceFade * 0.7, distanceFade * 0.62, distanceFade * 0.52);
                 gl_FragColor = vec4(finalColor, 1.0);
             }
         `;
     }
 
     init() {
+        if (this.isWebGPU) {
+            this.initWebGPUBirds();
+            return;
+        }
         this.initComputeRenderer();
-        this.initBirds();
+        this.initBirdsWebGL();
+    }
+
+    createBirdBaseGeometry() {
+        const geometry = new THREE.BufferGeometry();
+        const vertices = new Float32Array([
+            // Body triangle (local z is forward in the orientation shader).
+            0.00, -0.03, -0.74, // 0 - tail
+            0.00, 0.01, 0.86, // 1 - beak
+            -0.12, 0.05, 0.08, // 2 - body shoulder
+
+            // Left wing (swept silhouette).
+            -0.08, 0.03, 0.10, // 3 - left wing root
+            -1.30, 0.22, -0.06, // 4 - left wing tip (flaps)
+            -0.24, -0.03, -0.24, // 5 - left trailing edge
+
+            // Right wing (swept silhouette).
+            0.08, 0.03, 0.10, // 6 - right wing root
+            1.30, 0.22, -0.06, // 7 - right wing tip (flaps)
+            0.24, -0.03, -0.24, // 8 - right trailing edge
+        ]);
+
+        for (let i = 0; i < vertices.length; i += 1) {
+            vertices[i] *= 1.55;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+        const normals = new Float32Array(vertices.length);
+        for (let i = 0; i < normals.length; i += 3) {
+            normals[i + 1] = 1.0;
+        }
+        geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+        geometry.setAttribute('birdVertex', new THREE.BufferAttribute(new Float32Array([
+            0, 1, 2,
+            3, 4, 5,
+            6, 7, 8,
+        ]), 1));
+        return geometry;
+    }
+
+    createWebGPUBirdMaterial() {
+        const positionStorage = storage(this.birdCompute.getPositionBuffer(), 'vec4', this.BIRDS);
+        const velocityStorage = storage(this.birdCompute.getVelocityBuffer(), 'vec4', this.BIRDS);
+        const birdVertexAttr = attribute('birdVertex');
+        const simTime = this.birdCompute.uTime;
+
+        const posState = positionStorage.element(instanceIndex);
+        const velState = velocityStorage.element(instanceIndex);
+
+        const local = positionLocal;
+        const leftWingMask = smoothstep(float(3.2), float(4.0), birdVertexAttr)
+            .mul(float(1.0).sub(smoothstep(float(4.0), float(4.8), birdVertexAttr)));
+        const rightWingMask = smoothstep(float(6.2), float(7.0), birdVertexAttr)
+            .mul(float(1.0).sub(smoothstep(float(7.0), float(7.8), birdVertexAttr)));
+        const wingMask = leftWingMask.add(rightWingMask);
+        const flap = sin(posState.w.add(simTime.mul(5.0))).mul(0.8).mul(wingMask);
+        const animatedLocal = vec3(local.x, local.y.add(flap), local.z);
+
+        const flatVelocity = vec3(velState.x, float(0.0), velState.z);
+        const xzSpeed = max(length(flatVelocity), float(0.0001));
+        const forward = vec3(
+            velState.x.div(xzSpeed),
+            float(0.0),
+            velState.z.div(xzSpeed),
+        );
+        const right = vec3(forward.z, float(0.0), forward.x.negate());
+        const up = vec3(0.0, 1.0, 0.0);
+
+        const oriented = right.mul(animatedLocal.x)
+            .add(up.mul(animatedLocal.y))
+            .add(forward.mul(animatedLocal.z));
+        const worldPos = oriented.add(posState.xyz);
+
+        const distanceFade = smoothstep(float(-560.0), float(-140.0), worldPos.z).mul(0.08);
+        const baseColor = vec3(0.03, 0.015, 0.012);
+        const finalColor = baseColor.add(vec3(
+            distanceFade.mul(0.7),
+            distanceFade.mul(0.62),
+            distanceFade.mul(0.52),
+        ));
+
+        const material = new THREE_WEBGPU.MeshBasicNodeMaterial();
+        material.side = THREE.DoubleSide;
+        material.positionNode = worldPos;
+        material.colorNode = finalColor;
+        material.emissiveNode = finalColor.mul(0.01);
+        return material;
+    }
+
+    initWebGPUBirds() {
+        if (typeof this.renderer.compute !== 'function') {
+            console.warn('[SwedishForestBirds] WebGPU renderer has no compute() API; skipping bird compute init.');
+            return;
+        }
+
+        this.birdCompute = new SwedishForestBirdCompute(this.BIRDS, this.randomFn);
+        this.birdCompute.setInitialState();
+        this.birdCompute.createComputeNodes();
+
+        const geometry = this.createBirdBaseGeometry();
+        const material = this.createWebGPUBirdMaterial();
+
+        this.mesh = new THREE.InstancedMesh(geometry, material, this.BIRDS);
+        this.mesh.rotation.y = Math.PI / 2;
+        this.mesh.matrixAutoUpdate = false;
+        this.mesh.updateMatrix();
+        this.mesh.frustumCulled = false;
+
+        const identity = new THREE.Matrix4();
+        for (let i = 0; i < this.BIRDS; i += 1) {
+            this.mesh.setMatrixAt(i, identity);
+        }
+        this.mesh.instanceMatrix.needsUpdate = true;
     }
 
     initComputeRenderer() {
@@ -298,59 +437,18 @@ export class SwedishForestBirds {
         }
     }
 
-    initBirds() {
-        const geometry = new THREE.BufferGeometry();
-        const vertices = new Float32Array([
-            // Body - simple thin triangle
-            0.5, -0.0, 0.0, // 0 - tail
-            -0.5, -0.0, 0.0, // 1 - head
-            0.0, 0.0, 0.5, // 2 - spine low (width)
+    initBirdsWebGL() {
+        const geometry = this.createBirdBaseGeometry();
 
-            // Wings
-            0.0, 0.0, -0.5, // 3 - spine top
-            0.0, 2.0, -0.5, // 4 - wing tip left
-            0.0, 0.0, 0.5, // 5 - spine low (width)
+        const birdColor = new THREE.BufferAttribute(new Float32Array(this.BIRDS * 3 * 9), 3);
+        const references = new THREE.BufferAttribute(new Float32Array(this.BIRDS * 2 * 9), 2);
 
-            0.0, 0.0, 0.5, // 6 - spine low
-            0.0, 2.0, 0.5, // 7 - wing tip right
-            0.0, 0.0, -0.5, // 8 - spine top
-        ]);
-
-        // Just use a simple V shape
-        // 0--1
-        //  \/
-
-        // Simple 3-tri geometry
-        //     4   7
-        //     | \ / |
-        //     |  3  |
-        //     | / \ |
-        //     1     0
-
-        // Scale birds
-        for (let i = 0; i < vertices.length; i++) {
-            vertices[i] *= 1.8; // Slightly larger silhouette for visibility
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-        geometry.setAttribute('birdVertex', new THREE.BufferAttribute(new Float32Array([
-            0, 1, 2,
-            3, 4, 5,
-            6, 7, 8,
-        ]), 1));
-
-        const birdColor = new THREE.BufferAttribute(new Float32Array(this.BIRDS * 3), 3);
-        const references = new THREE.BufferAttribute(new Float32Array(this.BIRDS * 2), 2);
-        const birdVertex = geometry.getAttribute('birdVertex');
-
-        for (let i = 0; i < this.BIRDS; i++) {
+        for (let i = 0; i < this.BIRDS; i += 1) {
             const x = (i % this.WIDTH) / this.WIDTH;
-            const y = ~~(i / this.WIDTH) / this.WIDTH;
+            const y = Math.floor(i / this.WIDTH) / this.WIDTH;
+            const c = new THREE.Color(0x060302);
 
-            // Dark silhouette colors
-            const c = new THREE.Color(0x0C0504);
-
-            for (let v = 0; v < 9; v++) {
+            for (let v = 0; v < 9; v += 1) {
                 birdColor.array[i * 3 * 9 + v * 3 + 0] = c.r;
                 birdColor.array[i * 3 * 9 + v * 3 + 1] = c.g;
                 birdColor.array[i * 3 * 9 + v * 3 + 2] = c.b;
@@ -369,7 +467,7 @@ export class SwedishForestBirds {
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
-                color: { value: new THREE.Color(0x050202) },
+                color: { value: new THREE.Color(0x040201) },
                 texturePosition: { value: null },
                 textureVelocity: { value: null },
                 time: { value: 1.0 },
@@ -390,30 +488,42 @@ export class SwedishForestBirds {
     fillTextures(texturePosition, textureVelocity) {
         const posArray = texturePosition.image.data;
         const velArray = textureVelocity.image.data;
+        const random = this.randomFn;
 
         for (let k = 0, kl = posArray.length; k < kl; k += 4) {
-            // Random start positions everywhere!
-            const x = Math.random() * 2000 - 1000; // -1000 to 1000
-            const nearCanopy = Math.random() < 0.45;
+            const x = random() * 2000 - 1000; // -1000 to 1000
+            const nearCanopy = random() < 0.45;
             const y = nearCanopy
-                ? 28 + Math.random() * 30 // Glide close to treetops
-                : 60 + Math.random() * 160; // Higher soaring
-            const z = Math.random() * 1200 - 800; // -800 to 400
+                ? 28 + random() * 30
+                : 60 + random() * 160;
+            const z = random() * 1200 - 800; // -800 to 400
 
             posArray[k + 0] = x;
             posArray[k + 1] = y;
             posArray[k + 2] = z;
-            posArray[k + 3] = Math.random(); // Phase
+            posArray[k + 3] = random(); // phase
 
-            // Slow drift velocity
-            velArray[k + 0] = Math.random() - 0.5;
-            velArray[k + 1] = Math.random() - 0.5;
-            velArray[k + 2] = Math.random() - 0.5;
-            velArray[k + 3] = Math.random() - 0.5;
+            velArray[k + 0] = random() - 0.5;
+            velArray[k + 1] = random() - 0.5;
+            velArray[k + 2] = random() - 0.5;
+            velArray[k + 3] = random() - 0.5;
         }
     }
 
     update(time, delta) {
+        if (this.isWebGPU) {
+            if (!this.birdCompute || typeof this.renderer.compute !== 'function') return;
+
+            this.birdCompute.update(time, delta);
+            if (this.birdCompute.updateVelocityNode) {
+                this.renderer.compute(this.birdCompute.updateVelocityNode);
+            }
+            if (this.birdCompute.updatePositionNode) {
+                this.renderer.compute(this.birdCompute.updatePositionNode);
+            }
+            return;
+        }
+
         if (!this.gpuCompute) return;
 
         this.positionUniforms.time.value = time;
@@ -428,5 +538,28 @@ export class SwedishForestBirds {
 
         this.mesh.material.uniforms.texturePosition.value = this.gpuCompute.getCurrentRenderTarget(this.positionVariable).texture;
         this.mesh.material.uniforms.textureVelocity.value = this.gpuCompute.getCurrentRenderTarget(this.velocityVariable).texture;
+    }
+
+    dispose() {
+        if (this.gpuCompute) {
+            this.gpuCompute.dispose();
+            this.gpuCompute = null;
+        }
+
+        if (this.birdCompute) {
+            this.birdCompute.dispose();
+            this.birdCompute = null;
+        }
+
+        if (this.mesh) {
+            this.mesh.geometry?.dispose();
+            this.mesh.material?.dispose();
+            this.mesh = null;
+        }
+
+        this.positionVariable = null;
+        this.velocityVariable = null;
+        this.positionUniforms = null;
+        this.velocityUniforms = null;
     }
 }

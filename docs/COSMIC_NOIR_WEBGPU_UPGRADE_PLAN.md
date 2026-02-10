@@ -99,6 +99,35 @@ Phase 7 (MRT patching) should be wired as part of Phase 4 but defined separately
 
 ---
 
+## Non-Negotiable Engineering Gates
+
+To keep this upgrade "best in class", every phase must pass objective gates before merge:
+
+1. **Deterministic visual baseline**
+   - Add seeded randomness (`?cosmicNoirSeed=12345`) so screenshots are reproducible.
+   - Capture before/after frames at fixed timestamps (`?cosmicNoirFixedDeltaMs=16.67`).
+   - Fail phase signoff if visual diffs exceed target thresholds for fallback parity.
+
+2. **Fallback parity first**
+   - WebGL fallback is never a second-class path.
+   - Any WebGPU change that regresses fallback visuals or stability blocks the phase.
+
+3. **Single owner per rendering stage**
+   - Exactly one stage performs tonemapping.
+   - Exactly one stage owns bloom source selection (MRT emissive or full-frame fallback).
+   - Exactly one stage writes reactive envelope values per frame.
+
+4. **Measured budgets, not estimates**
+   - Track p50/p95 frame time, draw calls, and memory proxies (`renderer.info.memory`, texture/buffer counts) for each quality preset.
+   - Record metrics for idle + combat burst scenarios.
+   - No phase closes without baseline numbers captured and attached to PR notes.
+
+5. **Fast rollback switches**
+   - Every major feature has an immediate runtime kill-switch (`noCompute`, `noMRT`, `noPost`, etc.).
+   - Device-loss and runtime failure paths must downgrade without reload loops.
+
+---
+
 ## Phase 1: Hybrid Renderer Foundation
 **Priority: CRITICAL | Estimated Complexity: Medium**
 
@@ -122,6 +151,8 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 ### 1.2 Renderer Initialization
 ```javascript
 async initRenderer(container) {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
     let webgpuRenderer = null;
 
     // Step 1: Try WebGPU (unless forced to WebGL via URL flag)
@@ -144,6 +175,7 @@ async initRenderer(container) {
     if (webgpuRenderer && webgpuRenderer.backend?.isWebGPUBackend === true) {
         this.renderer = webgpuRenderer;
         this.isWebGPU = true;
+        this.isWebGL = false;
         console.log('[CosmicNoir] WebGPU renderer initialized');
     } else {
         // Step 3: Silent fallback to WebGL2
@@ -154,12 +186,13 @@ async initRenderer(container) {
             alpha: false,
         });
         this.isWebGPU = false;
+        this.isWebGL = true;
         console.log('[CosmicNoir] WebGL2 renderer initialized (fallback)');
     }
 
     // Device loss recovery (pattern from chromadelic-highway)
     if (this.isWebGPU) {
-        this.renderer.onDeviceLoss = (info) => this.handleDeviceLoss(info);
+        this.renderer.onDeviceLost = (info) => { void this.handleDeviceLoss(info); };
     }
 
     // Common renderer configuration
@@ -167,19 +200,45 @@ async initRenderer(container) {
     this.renderer.setPixelRatio(this.getEffectivePixelRatio());
     this.renderer.setSize(width, height);
     this.renderer.sortObjects = true;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+
+    // Color pipeline ownership:
+    // - WebGPU + post graph: post pass owns tonemapping
+    // - WebGL fallback (or no post): renderer owns tonemapping
+    const postEnabled = this.isWebGPU && this.qualityPreset.enablePostProcessing && !this.flags.noPost;
+    if (postEnabled) {
+        this.renderer.toneMapping = THREE.NoToneMapping;
+        this.renderer.toneMappingExposure = 1.0;
+    } else {
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.0;
+    }
 }
 
-handleDeviceLoss(info) {
-    console.warn('[CosmicNoir] WebGPU device lost:', info);
-    // Force WebGL on recovery — disable all WebGPU features
-    this.flags.forceWebGL = true;
-    this.flags.noCompute = true;
-    this.flags.noMRT = true;
-    // Restart scene with WebGL fallback
-    this.stop();
-    this.createScene();
+async handleDeviceLoss(info) {
+    if (this.deviceLossRecoveryInProgress || !this.isActive) return;
+    this.deviceLossRecoveryInProgress = true;
+    console.error('[CosmicNoir] WebGPU device lost:', info);
+    try {
+        // Controlled recovery (avoid full stop() to keep lifecycle state coherent)
+        this.cancelAnimationLoop();
+        this.clearEventSubscriptions();
+        this.removeResizeListener();
+        this.disposeRuntimeResources({ removeCanvas: true });
+
+        // Force WebGL on recovery — disable all WebGPU features
+        this.flags.forceWebGL = true;
+        this.flags.noCompute = true;
+        this.flags.noMRT = true;
+
+        // Restart scene with WebGL fallback
+        await this.createScene();
+        console.log('[CosmicNoir] Recovery complete: running on WebGL fallback.');
+    } catch (error) {
+        console.error('[CosmicNoir] Device-loss recovery failed:', error);
+        this.isActive = false;
+    } finally {
+        this.deviceLossRecoveryInProgress = false;
+    }
 }
 ```
 
@@ -229,6 +288,9 @@ updateCapabilityFlags() {
 The method becomes `async createScene()` to accommodate `await renderer.init()`:
 ```javascript
 async createScene() {
+    const container = document.getElementById('cosmic-noir-theme');
+    if (!container) return;
+
     await this.initRenderer(container);
     this.probeCapabilities();
     this.updateCapabilityFlags();
@@ -247,6 +309,8 @@ async createScene() {
 
     // Post-processing (conditional path)
     this.setupPostProcessing();
+    this.setupResizeHandler();
+    this.setupEventListeners();
 
     // Pre-compile shaders with timeout guard (pattern from chromadelic-highway)
     await this.precompileSceneWithTimeout();
@@ -262,14 +326,19 @@ async precompileSceneWithTimeout() {
     if (!this.isWebGPU || !this.renderer?.compileAsync) return;
 
     const TIMEOUT_MS = 3000;
+    let timeoutId = null;
     try {
         await Promise.race([
             this.renderer.compileAsync(this.scene, this.camera),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('compile timeout')), TIMEOUT_MS)),
+            new Promise((_, reject) => {
+                timeoutId = setTimeout(() => reject(new Error('compile timeout')), TIMEOUT_MS);
+            }),
         ]);
         console.log('[CosmicNoir] Scene pre-compiled');
     } catch (e) {
         console.warn('[CosmicNoir] compileAsync skipped:', e.message);
+    } finally {
+        if (timeoutId !== null) clearTimeout(timeoutId);
     }
 }
 ```
@@ -298,7 +367,14 @@ else {
 ### 1.8 Resize Handling
 Must explicitly resize both post-processing pipelines:
 ```javascript
+setupResizeHandler() {
+    this.resizeHandler = () => this.onWindowResize();
+    window.addEventListener('resize', this.resizeHandler);
+}
+
 onWindowResize() {
+    if (!this.camera || !this.renderer) return;
+
     const width = window.innerWidth;
     const height = window.innerHeight;
 
@@ -320,8 +396,26 @@ onWindowResize() {
 ### 1.9 Cleanup / Disposal
 Explicit disposal for both paths:
 ```javascript
-stop() {
-    // WebGPU-specific disposal
+cancelAnimationLoop() {
+    if (this.animationFrameId !== null) {
+        cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
+    }
+}
+
+clearEventSubscriptions() {
+    this.eventUnsubscribers.forEach((unsub) => unsub?.());
+    this.eventUnsubscribers = [];
+}
+
+removeResizeListener() {
+    if (this.resizeHandler) {
+        window.removeEventListener('resize', this.resizeHandler);
+        this.resizeHandler = null;
+    }
+}
+
+disposeRuntimeResources({ removeCanvas = true } = {}) {
     if (this.postProcessing) {
         this.postProcessing.dispose();
         this.postProcessing = null;
@@ -330,17 +424,18 @@ stop() {
         this.sparkCompute.dispose();
         this.sparkCompute = null;
     }
-
-    // WebGL-specific disposal
     if (this.composer) {
-        this.composer = null;  // disposed via renderer.dispose()
+        this.composer.dispose?.();
+        this.composer = null;
     }
+    // dispose scene objects + renderer (+ optional canvas removal)
+}
 
-    // Common disposal (renderer, scene traversal, etc.)
-    if (this.renderer) {
-        this.renderer.dispose();
-    }
-    // ... scene object disposal
+stop() {
+    this.cancelAnimationLoop();
+    this.clearEventSubscriptions();
+    this.removeResizeListener();
+    this.disposeRuntimeResources({ removeCanvas: true });
     super.stop();
 }
 ```
@@ -348,11 +443,12 @@ stop() {
 ---
 
 **Acceptance Criteria (Phase 1):**
-- WebGPU renderer initializes on Chrome 113+, Edge 113+, Safari 18+
+- WebGPU renderer initializes on current stable Chrome/Edge/Safari with WebGPU enabled
 - WebGL fallback activates silently on Firefox and unsupported browsers
 - `?forceWebGL=1` forces WebGL path; all `?cosmicNoirNo*` flags work
-- Device loss triggers auto-restart with WebGL
+- Device loss triggers controlled auto-restart with WebGL (no restart loop, no leaked listeners)
 - `compileAsync` completes or times out within 3s without stalling
+- Tone mapping is applied exactly once per path (no double tone mapping)
 - No console errors on either path
 - Theme renders identically to current on WebGL fallback
 
@@ -694,8 +790,11 @@ import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberratio
 ```javascript
 export class CosmicNoirPost {
     constructor(renderer, scene, camera, params = {}) {
+        this.renderer = renderer;
+        this.size = { width: 0, height: 0 };
         this.postProcessing = new THREE.PostProcessing(renderer);
         this.useMRT = params.useMRT ?? true;
+        this.bloomDownsample = params.bloomDownsample ?? 0.8;
 
         // Scene pass with MRT (color + emissive)
         this.scenePass = pass(scene, camera);
@@ -710,11 +809,13 @@ export class CosmicNoirPost {
             : sceneColor;
 
         // Bloom (emissive-only via MRT — far more efficient)
-        this.bloomNode = bloom(bloomSource, strength, radius, threshold);
+        const bloomStrength = params.bloomStrength ?? 0.40;
+        const bloomRadius = params.bloomRadius ?? 0.35;
+        const bloomThreshold = params.bloomThreshold ?? 0.0;
+        this.bloomNode = bloom(bloomSource, bloomStrength, bloomRadius, bloomThreshold);
 
         // Hook setSize for bloom downsampling
         const originalSetSize = this.bloomNode.setSize.bind(this.bloomNode);
-        this.bloomDownsample = params.bloomDownsample ?? 0.8;
         this.bloomNode.setSize = (w, h) => {
             originalSetSize(w * this.bloomDownsample, h * this.bloomDownsample);
         };
@@ -724,6 +825,9 @@ export class CosmicNoirPost {
         this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.2);
         this.uChromaticStrength = uniform(params.chromaticStrength ?? 0.004);
         this.uExposure = uniform(params.exposure ?? 1.05);
+        this.uContrast = uniform(params.contrast ?? 1.03);
+        this.uSaturation = uniform(params.saturation ?? 0.95);
+        this.uDitherStrength = uniform(params.ditherStrength ?? 0.004);
 
         // Build TSL post-processing graph
         const uv = viewportUV;
@@ -740,22 +844,48 @@ export class CosmicNoirPost {
         // 3. Add bloom
         const combined = chroma.add(this.bloomNode);
 
-        // 4. Exposure + tone mapping
+        // 4. Exposure + ACES tone mapping
         const exposed = combined.mul(this.uExposure);
+        const acesA = float(2.51);
+        const acesB = float(0.03);
+        const acesC = float(2.43);
+        const acesD = float(0.59);
+        const acesE = float(0.14);
+        const acesNum = exposed.mul(exposed.mul(acesA).add(acesB));
+        const acesDen = exposed.mul(exposed.mul(acesC).add(acesD)).add(acesE);
+        let graded = clamp(acesNum.div(acesDen), float(0.0), float(1.0));
 
-        // 5. Dithering (critical for noir — prevents banding in deep blacks)
+        // 5. Subtle noir grading
+        const luma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
+        graded = mix(vec3(luma), graded, this.uSaturation);
+        graded = graded.sub(0.5).mul(this.uContrast).add(0.5);
+
+        // 6. Dithering (critical for noir — prevents banding in deep blacks)
         const dither = fract(sin(dot(uv, vec2(12.9898, 78.233))).mul(43758.5453));
-        const dithered = clamp(exposed.add(dither.sub(0.5).mul(0.004)), 0.0, 1.0);
+        const dithered = clamp(graded.add(dither.sub(0.5).mul(this.uDitherStrength)), 0.0, 1.0);
 
         this.postProcessing.outputNode = dithered;
+        this.postProcessing.needsUpdate = true;
     }
 
     // Dynamic runtime update (called every frame from animation loop)
-    update(params) {
-        if (params.bloomStrength !== undefined) this.bloomNode.strength.value = params.bloomStrength;
+    update(params = {}) {
+        if (params.bloomStrength !== undefined && this.bloomNode.strength) this.bloomNode.strength.value = params.bloomStrength;
+        if (params.bloomRadius !== undefined && this.bloomNode.radius) this.bloomNode.radius.value = params.bloomRadius;
+        if (params.bloomThreshold !== undefined && this.bloomNode.threshold) this.bloomNode.threshold.value = params.bloomThreshold;
         if (params.chromaticStrength !== undefined) this.uChromaticStrength.value = params.chromaticStrength;
+        if (params.vignetteOffset !== undefined) this.uVignetteOffset.value = params.vignetteOffset;
+        if (params.vignetteDarkness !== undefined) this.uVignetteDarkness.value = params.vignetteDarkness;
         if (params.exposure !== undefined) this.uExposure.value = params.exposure;
-        if (params.bloomDownsample !== undefined) this.bloomDownsample = params.bloomDownsample;
+        if (params.contrast !== undefined) this.uContrast.value = params.contrast;
+        if (params.saturation !== undefined) this.uSaturation.value = params.saturation;
+        if (params.ditherStrength !== undefined) this.uDitherStrength.value = params.ditherStrength;
+        if (params.bloomDownsample !== undefined) {
+            this.bloomDownsample = params.bloomDownsample;
+            if (this.size.width > 0 && this.size.height > 0 && this.bloomNode?._separableBlurMaterials?.length) {
+                this.bloomNode.setSize(this.size.width, this.size.height);
+            }
+        }
     }
 
     render() {
@@ -763,10 +893,17 @@ export class CosmicNoirPost {
     }
 
     setSize(width, height) {
-        this.postProcessing.setSize(width, height);
+        this.size.width = width;
+        this.size.height = height;
+        this.scenePass.setSize(width, height);
+        if (this.bloomNode?._separableBlurMaterials?.length) {
+            this.bloomNode.setSize(width, height);
+        }
     }
 
     dispose() {
+        this.scenePass.dispose();
+        this.bloomNode.dispose();
         this.postProcessing.dispose();
     }
 }
@@ -824,11 +961,12 @@ export class CosmicNoirPost {
 - `CosmicNoirPost` class renders MRT bloom with emissive-only isolation
 - Bloom operates on emissive channel — dark scene elements don't false-bloom
 - Vignette, chromatic aberration, dithering all active in post chain
-- `setSize()` correctly resizes post-processing on window resize
+- `setSize()` resizes `scenePass` and bloom targets correctly on window resize
 - `update()` accepts per-frame params (reactive bloom strength)
-- `dispose()` cleans up all post-processing resources
+- `dispose()` cleans up `scenePass`, bloom node, and post-processing resources
 - `?cosmicNoirNoPost=1` disables post-processing entirely
 - `?cosmicNoirNoMRT=1` falls back to full-frame bloom
+- Tone mapping is not applied twice (renderer + post graph conflict avoided)
 - WebGL path uses existing EffectComposer chain unchanged
 
 ---
@@ -968,11 +1106,13 @@ Animation loop reads envelope channels to drive each subsystem independently. Th
 ---
 
 **Acceptance Criteria (Phase 6):**
-- `compileAsync()` eliminates first-frame shader compilation stutter
-- Bloom downsampling active with imperceptible quality loss
-- Single unified particle system reduces draw calls by ~20×
-- 60fps at High quality on GTX 1660 / RX 580 class GPU
-- Quality presets scale features correctly across all 6 levels
+- `compileAsync()` either succeeds or times out within 3s (no startup stall loops)
+- WebGPU High preset meets `p95 <= 16.7ms` frame time at 1080p on GTX 1660 / RX 580 class hardware
+- WebGL High fallback frame time regression is <= 5% versus current production baseline
+- Burst scenarios show draw-call reduction >= 70% versus current void spark architecture
+- Bloom downsampling remains visually clean in A/B captures (no halo stepping or smear artifacts)
+- 10-minute soak shows stable memory usage (no monotonic growth after warm-up)
+- Quality presets scale features correctly across all 6 levels with no runtime exceptions
 
 ---
 
@@ -987,6 +1127,8 @@ isNodeMaterial(material) {
     if (material.isNodeMaterial) return true;
     if (material.isMeshBasicNodeMaterial
         || material.isMeshStandardNodeMaterial
+        || material.isMeshPhysicalNodeMaterial
+        || material.isMeshPhongNodeMaterial
         || material.isPointsNodeMaterial
         || material.isSpriteNodeMaterial) return true;
     const type = material.type || material.constructor?.name || '';
@@ -1005,21 +1147,38 @@ ensureMrtMaterials() {
     const nodeMaterials = [];
     const zeroEmissive = vec3(0, 0, 0);
 
-    this.scene.traverse((child) => {
-        const mat = child.material;
-        if (!mat || seen.has(mat)) return;
+    const recordMaterial = (mat, objectName = 'UnknownObject') => {
+        if (!mat) return;
+        if (Array.isArray(mat)) {
+            mat.forEach((entry) => recordMaterial(entry, objectName));
+            return;
+        }
+        if (seen.has(mat)) return;
         seen.add(mat);
 
         if (!this.isNodeMaterial(mat)) {
-            nonNodeMaterials.push(mat);
+            nonNodeMaterials.push({
+                objectName,
+                materialName: mat.name || mat.type || mat.constructor?.name || 'UnknownMaterial',
+            });
             return;
         }
+
         nodeMaterials.push(mat);
         if (!mat.emissiveNode) {
             mat.emissiveNode = zeroEmissive;
         }
-        mat.mrtNode = mrt({ emissive: mat.emissiveNode });
+        mat.mrtNode = mrt({ emissive: mat.emissiveNode || zeroEmissive });
         mat.needsUpdate = true;
+    };
+
+    if (this.scene.material) {
+        recordMaterial(this.scene.material, this.scene.name || this.scene.type);
+    }
+    this.scene.traverse((child) => {
+        if (child.material) {
+            recordMaterial(child.material, child.name || child.type);
+        }
     });
 
     // FAIL-SAFE: If any non-node material found, disable MRT entirely
@@ -1028,7 +1187,7 @@ ensureMrtMaterials() {
             mat.mrtNode = null;
             mat.needsUpdate = true;
         });
-        console.warn('[CosmicNoir] MRT disabled — non-node materials detected:', nonNodeMaterials.length);
+        console.warn('[CosmicNoir] MRT disabled — non-node materials detected:', nonNodeMaterials);
         this.flags.useMRT = false;
     }
 }
@@ -1058,38 +1217,43 @@ ensureMrtMaterials() {
 
 ## Implementation Order
 
-### Sprint 1: Foundation (Phase 1 + Phase 2 core)
-1. Set up dual imports and async `initRenderer()` with fallback
-2. Add URL debug flags and capability probing
-3. Create `cosmic-noir-materials.js` with planet + starfield TSL materials
-4. Wire conditional material creation in theme class
-5. Verify WebGL fallback still works identically
+### Sprint 0: Guardrails + Baselines
+1. Add deterministic capture flags (`?cosmicNoirSeed`, `?cosmicNoirFixedDeltaMs`).
+2. Add baseline capture helper for frame time, draw calls, and VRAM snapshots.
+3. Validate fallback smoke paths (`forceWebGL`, `noPost`, `noMRT`, `noCompute`) before feature work.
 
-### Sprint 2: Full Materials + Post (Phase 2 complete + Phase 4)
-6. Add atmosphere, nebula, void spark, cosmic wave TSL materials
-7. Create `cosmic-noir-post.js` with MRT PostProcessing
-8. Wire conditional post-processing (WebGPU PostProcessing vs WebGL EffectComposer)
-9. Implement `ensureMrtMaterials()` for MRT patching
-10. Test bloom on emissive-only targets
+### Sprint 1: Foundation (Phase 1 + Phase 2 core)
+1. Set up dual imports and async `initRenderer()` with fallback.
+2. Add capability probing, color pipeline ownership, and device-loss recovery.
+3. Create `cosmic-noir-materials.js` with planet + starfield TSL materials.
+4. Wire conditional material creation in theme class.
+5. Verify WebGL fallback still looks and behaves identically.
+
+### Sprint 2: Full Materials + Post (Phase 2 complete + Phase 4 + Phase 7)
+1. Add atmosphere, nebula, void spark, cosmic wave TSL materials.
+2. Create `cosmic-noir-post.js` with MRT post-processing.
+3. Wire conditional post stack (WebGPU post graph vs WebGL EffectComposer).
+4. Implement hardened `ensureMrtMaterials()` (array-safe, fail-safe downgrade).
+5. Validate emissive-only bloom behavior with `?cosmicNoirMrtAudit=1`.
 
 ### Sprint 3: GPU Compute (Phase 3)
-11. Create `cosmic-noir-compute.js` with `CosmicNoirSparkCompute`
-12. Replace 24-pool void sparks with unified GPU compute system
-13. Wire compute update in animation loop
-14. Maintain WebGL fallback (original pool system)
+1. Create `cosmic-noir-compute.js` with `CosmicNoirSparkCompute`.
+2. Replace 24-pool void sparks with unified GPU compute system.
+3. Wire compute update in animation loop with kill-switch fallback.
+4. Verify burst timing parity versus current gameplay behavior.
 
 ### Sprint 4: Visual Polish (Phase 5)
-15. Planet subsurface scattering + animated surface flow
-16. Starfield depth layers + enhanced parallax
-17. Atmosphere volumetric enhancement (dual layers)
-18. Enhanced combo effects (lens flare, camera shake, richer bursts)
+1. Planet subsurface scattering + animated surface flow.
+2. Starfield depth layers + enhanced parallax.
+3. Atmosphere volumetric enhancement (dual layers).
+4. Enhanced combo effects (lens flare, camera shake, richer bursts).
 
-### Sprint 5: Performance + QA (Phase 6 + Phase 7)
-19. Bloom downsampling tuning
-20. `compileAsync()` integration
-21. Quality preset tuning for all 6 levels
-22. Cross-browser testing (Chrome WebGPU, Firefox WebGL fallback, Safari)
-23. Performance profiling (target: 60fps at High quality on mid-range GPU)
+### Sprint 5: Performance + QA (Phase 6 + Signoff Pack)
+1. Bloom downsampling and post tuning across presets.
+2. `compileAsync()` integration with timeout telemetry.
+3. Quality preset tuning for all 6 levels.
+4. Cross-browser probe-path testing (Chromium, Safari, Firefox, one mobile class).
+5. Produce full release signoff pack and hold merge until all gates pass.
 
 ---
 
@@ -1142,9 +1306,30 @@ const QUALITY_PRESETS = {
 | MRT not supported | `?cosmicNoirNoMRT=1` flag; full-frame bloom as fallback |
 | MRT mixed materials | `ensureMrtMaterials()` fail-safe disables MRT if non-node material found |
 | Bloom washout/flicker | Per-material bloom class weights control emissive contribution |
+| Double tone mapping (washed highlights) | Explicit color-pipeline ownership: post graph OR renderer, never both |
+| Event/listener leaks on restart | Stable handler refs (`resizeHandler`), explicit remove in `stop()` |
+| Non-deterministic visual QA | Seeded random + fixed-delta capture flags for reproducible diffs |
 | Shader compile stall | `precompileSceneWithTimeout()` aborts after 3s; renders without precompile |
 | Performance regression | Per-phase profiling; quality presets gate features |
 | Combo effect feel changes | A/B test combo triggers; preserve exact timing and thresholds |
+
+---
+
+## Release Signoff Pack
+
+Each sprint closes with a signoff pack attached to the PR/release note:
+
+| Gate | Measurement | Pass Condition |
+|------|-------------|----------------|
+| Functional | Manual scenario checklist + automated smoke path | No blocking defects on WebGPU or forced WebGL |
+| Visual parity | Seeded screenshot diff set at fixed timestamps | Fallback visual drift below agreed threshold |
+| Performance | Baseline capture (`p50`, `p95`, draw calls, memory proxies) | Meets Phase 6 budgets for target presets |
+| Stability soak | 10-minute idle + 10-minute combo stress run | No crashes, no device-loss loops, no memory creep |
+| Recovery | Forced device-loss and feature kill-switch tests | Clean downgrade to WebGL path without user action |
+
+No release candidate is approved until every gate is green for both:
+1. Natural WebGPU path
+2. `?forceWebGL=1` fallback path
 
 ---
 
@@ -1159,26 +1344,31 @@ const QUALITY_PRESETS = {
 7. **Void sparks are more explosive** — 50k unified particles vs 24 separate pools
 8. **No console errors** on either path; graceful degradation is silent
 9. **Debug flags work** for isolating and testing each feature independently
+10. **Performance budgets are met** — p95 frame-time targets and draw-call reductions pass signoff
+11. **Soak stability is clean** — no device-loss loops or memory creep in 20-minute stress runs
 
 ---
 
 ## Browser Compatibility Matrix
 
-| Browser | WebGPU | Fallback | Expected Path |
-|---------|--------|----------|---------------|
-| Chrome 113+ (Desktop) | Yes | — | WebGPU + TSL + Compute + MRT |
-| Edge 113+ (Desktop) | Yes | — | WebGPU + TSL + Compute + MRT |
-| Firefox (Desktop) | Partial/Flag | WebGL2 | WebGL2 fallback (GLSL shaders) |
-| Safari 18+ (macOS) | Yes | — | WebGPU + TSL (compute may vary) |
-| All Mobile | No | WebGL2 | WebGL2 fallback (GLSL shaders) |
+This matrix is capability-driven (not version-pinned) to avoid plan drift as browser support changes.
+
+| Browser Family | WebGPU Expectation | Fallback | Expected Path |
+|----------------|--------------------|----------|---------------|
+| Chromium Desktop | Prefer WebGPU when feature probe passes | WebGL2 | WebGPU + TSL + Compute + MRT (or fallback by flags/capability) |
+| Safari Desktop | Prefer WebGPU when feature probe passes | WebGL2 | WebGPU + TSL; compute/MRT gated by probe |
+| Firefox Desktop | Usually fallback unless probe passes | WebGL2 | WebGL2 fallback by default; WebGPU optional |
+| Mobile (iOS/Android) | Capability-dependent | WebGL2 | Probe-driven: WebGPU when stable, else WebGL2 fallback |
 
 **Testing checklist per sprint:**
-1. Chrome WebGPU — full feature path
-2. Chrome `?forceWebGL=1` — WebGL fallback path
-3. Firefox — natural WebGL fallback
-4. Each `?cosmicNoirNo*` flag in isolation
-5. Quality preset switching at runtime
-6. Combo effect triggering at various combo levels (2, 4, 8+)
+1. Chromium desktop WebGPU path
+2. Chromium desktop `?forceWebGL=1` fallback path
+3. Safari desktop probe path (WebGPU if supported, fallback otherwise)
+4. Firefox natural fallback path
+5. One mobile device class (probe path + fallback path)
+6. Each `?cosmicNoirNo*` flag in isolation
+7. Quality preset switching at runtime
+8. Combo effect triggering at various combo levels (2, 4, 8+)
 
 ---
 
@@ -1193,7 +1383,9 @@ const QUALITY_PRESETS = {
 | Spark architecture | Single compute system vs 24-pool | 20× fewer draw calls; enables 50k particles |
 | MRT fail-safe | Disable MRT if any non-node material | Prevents mixed-material rendering crashes (from black-hole) |
 | Device loss | Auto-restart with WebGL fallback | Graceful recovery without user intervention (from chromadelic-highway) |
+| Color pipeline | Post owns tonemapping on WebGPU post path | Prevents double tonemap and highlight washout |
 | Shader compilation | Timeout-guarded `compileAsync` (3s max) | Prevents indefinite stall on slow devices (from chromadelic-highway) |
 | Post-processing dithering | Always on | Critical for noir aesthetic — prevents banding in deep blacks |
 | Bloom threshold | 0.0 with MRT (emissive-only) | Eliminates false glow on dark scene elements |
 | Post-processing update | `update()` method with per-frame params | Enables reactive bloom strength tied to gameplay events |
+| Visual QA reproducibility | Seeded random + fixed-delta capture mode | Enables objective visual diff gating across builds |
