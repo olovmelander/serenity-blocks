@@ -25,7 +25,6 @@ import {
     float,
     floor,
     fract,
-    instanceIndex,
     length,
     max,
     mix,
@@ -39,6 +38,7 @@ import {
     sin,
     smoothstep,
     step,
+    vertexIndex,
     texture,
     storage,
     uniform,
@@ -196,6 +196,11 @@ export function createStarfieldNodeMaterial(params = {}) {
     const uPixelRatio = uniform(params.pixelRatio ?? 1);
     const uEventBoost = uniform(0);
 
+    const useGPU = Boolean(params.isWebGPU && params.starCompute?.getStateBuffer);
+    const starState = useGPU
+        ? storage(params.starCompute.getStateBuffer(), 'vec4', params.starCompute.count)
+        : null;
+
     const aPosition = attribute('position');
     const aColor = attribute('color');
     const aSize = attribute('aSize');
@@ -206,14 +211,22 @@ export function createStarfieldNodeMaterial(params = {}) {
 
     const viewPos = modelViewMatrix.mul(vec4(aPosition, float(1.0)));
     const depth = max(float(1.0), viewPos.z.negate());
+
+    const phase = useGPU ? starState.element(vertexIndex).x : aTwinkle.x;
+    const twinkleSpeed = useGPU ? starState.element(vertexIndex).y : aTwinkle.y;
+    const baseBrightness = useGPU ? starState.element(vertexIndex).z : aBrightness;
+    const sizeValue = useGPU ? starState.element(vertexIndex).w : aSize;
+
     material.sizeNode = clamp(
-        aSize.mul(uPixelRatio).mul(float(300.0)).div(depth),
+        sizeValue.mul(uPixelRatio).mul(float(300.0)).div(depth),
         float(3.0),
         float(80.0),
     );
 
-    const twinkle = sin(uTime.mul(aTwinkle.y).add(aTwinkle.x)).mul(0.3).add(0.7);
-    const brightness = aBrightness.mul(twinkle).mul(float(1.0).add(uEventBoost.mul(0.5)));
+    const twinkle = useGPU
+        ? sin(phase).mul(0.3).add(0.7)
+        : sin(uTime.mul(twinkleSpeed).add(phase)).mul(0.3).add(0.7);
+    const brightness = baseBrightness.mul(twinkle).mul(float(1.0).add(uEventBoost.mul(0.5)));
 
     const center = uv().sub(0.5);
     const dist = length(center).mul(2.0);
@@ -234,7 +247,7 @@ export function createStarfieldNodeMaterial(params = {}) {
     );
 }
 
-export function createAtmosphereNodeMaterial() {
+export function createAtmosphereNodeMaterial(params = {}) {
     const material = new MeshBasicNodeMaterial({
         transparent: true,
         blending: AdditiveBlending,
@@ -247,21 +260,49 @@ export function createAtmosphereNodeMaterial() {
     const uExplosionTimer = uniform(-10.0);
     const uExplosionIntensity = uniform(0);
 
+    const useFlowCompute = Boolean(
+        params.isWebGPU
+        && params.atmosphereFlowCompute?.getFlowBuffer,
+    );
+    const flowState = useFlowCompute
+        ? storage(params.atmosphereFlowCompute.getFlowBuffer(), 'vec4', 2)
+        : null;
+
     const pos = normalize(positionLocal);
     const nrm = normalize(normalWorld);
     const viewDir = normalize(cameraPosition.sub(positionWorld));
     const fresnel = pow(float(1.0).sub(abs(dot(nrm, viewDir))), 2.0);
 
     const flowTime = uTime.mul(0.8);
+    const flowA = useFlowCompute ? flowState.element(0) : null;
+    const flowB = useFlowCompute ? flowState.element(1) : null;
+    const baseFlowA = vec2(flowTime.mul(0.35), flowTime.mul(-0.25));
+    const baseFlowB = vec2(flowTime.mul(-0.2), flowTime.mul(0.3));
+    const flowOffsetA = useFlowCompute ? vec2(flowA.x, flowA.y) : vec2(0.0, 0.0);
+    const flowOffsetB = useFlowCompute ? vec2(flowA.z, flowA.w) : vec2(0.0, 0.0);
+    const warpOffset = useFlowCompute
+        ? vec2(flowB.x, flowB.y).mul(0.22)
+        : vec2(0.0, 0.0);
+    const flowDensityPulse = useFlowCompute ? flowB.z : float(1.0);
+    const flowTurbulence = useFlowCompute ? flowB.w : float(1.0);
+
     const gasA = tslFbm(
-        vec2(pos.x, pos.y).mul(2.0).add(vec2(flowTime.mul(0.35), flowTime.mul(-0.25))),
+        vec2(pos.x, pos.y)
+            .mul(2.0)
+            .add(baseFlowA)
+            .add(flowOffsetA)
+            .add(warpOffset),
         5,
     );
     const gasB = tslFbm(
-        vec2(pos.z, pos.x).mul(3.5).add(vec2(flowTime.mul(-0.2), flowTime.mul(0.3))),
+        vec2(pos.z, pos.x)
+            .mul(3.5)
+            .add(baseFlowB)
+            .add(flowOffsetB)
+            .sub(warpOffset),
         4,
     );
-    const gas = mix(gasA, gasB, 0.4);
+    const gas = mix(gasA, gasB, 0.4).mul(flowDensityPulse);
 
     const explosionAge = max(float(0.0), uExplosionTimer);
     const explosionIn = smoothstep(float(0.0), float(0.15), explosionAge);
@@ -270,7 +311,10 @@ export function createAtmosphereNodeMaterial() {
 
     const radialDist = length(vec2(pos.x, pos.y));
     const shockPhase = sin(explosionAge.mul(12.0).sub(radialDist.mul(6.0))).mul(0.5).add(0.5);
-    const shockwave = shockPhase.mul(explosionWindow).mul(uExplosionIntensity);
+    const shockwave = shockPhase
+        .mul(explosionWindow)
+        .mul(uExplosionIntensity)
+        .mul(flowTurbulence);
 
     const pulseMul = float(1.0).add(uPulseIntensity.mul(0.5));
     let color = mix(vec3(0.12, 0.12, 0.15), vec3(0.35, 0.35, 0.42), gas).mul(pulseMul);
@@ -403,7 +447,7 @@ export function createVoidSparkNodeMaterial(params = {}) {
     const hiddenPos = vec3(0.0, 0.0, -9999.0);
     material.positionNode = Fn(() => {
         if (useGPU) {
-            const pos = positionBuffer.element(instanceIndex);
+            const pos = positionBuffer.element(vertexIndex);
             return mix(hiddenPos, pos.xyz, pos.w);
         }
         return mix(hiddenPos, animatedPos, active);
@@ -411,14 +455,14 @@ export function createVoidSparkNodeMaterial(params = {}) {
 
     const alphaLife = Fn(() => {
         if (useGPU) {
-            return lifeBuffer.element(instanceIndex).y;
+            return lifeBuffer.element(vertexIndex).y;
         }
         return pow(float(1.0).sub(lifeNorm), 0.45).mul(active);
     })();
 
     const sizeValue = Fn(() => {
         if (useGPU) {
-            const baseSize = colorBuffer.element(instanceIndex).w;
+            const baseSize = colorBuffer.element(vertexIndex).w;
             return baseSize.mul(float(0.6).add(alphaLife.mul(0.8)));
         }
         return float(45.0).mul(float(1.2).sub(lifeNorm.mul(0.8))).mul(active);
@@ -436,7 +480,7 @@ export function createVoidSparkNodeMaterial(params = {}) {
 
     const baseColor = Fn(() => {
         if (useGPU) {
-            return colorBuffer.element(instanceIndex).xyz;
+            return colorBuffer.element(vertexIndex).xyz;
         }
         return aColor;
     })();
