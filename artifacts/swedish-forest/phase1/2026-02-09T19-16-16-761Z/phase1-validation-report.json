@@ -1,0 +1,118 @@
+{
+  "generatedAt": "2026-02-09T19:28:26.325Z",
+  "artifactDir": "artifacts/swedish-forest/phase1/2026-02-09T19-16-16-761Z",
+  "smokeResults": [
+    {
+      "scenario": "default",
+      "url": "http://127.0.0.1:4173/?swedishForestBaseline=1&swedishForestSeed=1234&swedishForestFixedDt=16.666",
+      "passed": false,
+      "sceneReadyLogged": false,
+      "backendLogged": null,
+      "warningCount": 6,
+      "errorCount": 0,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+        "[.WebGL-0x25c4051e5500]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x25c4051e5500]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x25c4051e5500]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x25c4051e5500]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "errors": [],
+      "state": null,
+      "screenshotPath": null,
+      "logPath": "artifacts/swedish-forest/phase1/2026-02-09T19-16-16-761Z/default.console.log",
+      "error": "Managers were not ready in time."
+    },
+    {
+      "scenario": "force_webgl",
+      "url": "http://127.0.0.1:4173/?swedishForestBaseline=1&swedishForestSeed=1234&swedishForestFixedDt=16.666&forceWebGL=1",
+      "passed": false,
+      "sceneReadyLogged": false,
+      "backendLogged": null,
+      "warningCount": 2,
+      "errorCount": 0,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged."
+      ],
+      "errors": [],
+      "state": null,
+      "screenshotPath": null,
+      "logPath": "artifacts/swedish-forest/phase1/2026-02-09T19-16-16-761Z/force_webgl.console.log",
+      "error": "Managers were not ready in time."
+    },
+    {
+      "scenario": "no_post",
+      "url": "http://127.0.0.1:4173/?swedishForestBaseline=1&swedishForestSeed=1234&swedishForestFixedDt=16.666&swedishForestNoPost=1",
+      "passed": false,
+      "sceneReadyLogged": false,
+      "backendLogged": null,
+      "warningCount": 2,
+      "errorCount": 0,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged."
+      ],
+      "errors": [],
+      "state": null,
+      "screenshotPath": null,
+      "logPath": "artifacts/swedish-forest/phase1/2026-02-09T19-16-16-761Z/no_post.console.log",
+      "error": "Managers were not ready in time."
+    },
+    {
+      "scenario": "no_mrt",
+      "url": "http://127.0.0.1:4173/?swedishForestBaseline=1&swedishForestSeed=1234&swedishForestFixedDt=16.666&swedishForestNoMRT=1",
+      "passed": false,
+      "sceneReadyLogged": false,
+      "backendLogged": null,
+      "warningCount": 2,
+      "errorCount": 0,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged."
+      ],
+      "errors": [],
+      "state": null,
+      "screenshotPath": null,
+      "logPath": "artifacts/swedish-forest/phase1/2026-02-09T19-16-16-761Z/no_mrt.console.log",
+      "error": "Managers were not ready in time."
+    },
+    {
+      "scenario": "no_compute",
+      "url": "http://127.0.0.1:4173/?swedishForestBaseline=1&swedishForestSeed=1234&swedishForestFixedDt=16.666&swedishForestNoCompute=1",
+      "passed": false,
+      "sceneReadyLogged": false,
+      "backendLogged": null,
+      "warningCount": 2,
+      "errorCount": 0,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged."
+      ],
+      "errors": [],
+      "state": null,
+      "screenshotPath": null,
+      "logPath": "artifacts/swedish-forest/phase1/2026-02-09T19-16-16-761Z/no_compute.console.log",
+      "error": "Managers were not ready in time."
+    }
+  ],
+  "soakResult": {
+    "durationMinutes": 10,
+    "sampleIntervalSeconds": 30,
+    "startedAt": null,
+    "completed": false,
+    "error": "Managers were not ready in time.",
+    "startState": null,
+    "endState": null,
+    "samples": [],
+    "sampleCount": 0,
+    "heapStartMb": null,
+    "heapEndMb": null,
+    "heapDeltaMb": null,
+    "memoryTrendStable": null,
+    "startScreenshotPath": null,
+    "endScreenshotPath": null,
+    "logPath": "artifacts/swedish-forest/phase1/2026-02-09T19-16-16-761Z/soak.console.log"
+  }
+}

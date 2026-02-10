@@ -15,6 +15,7 @@
  */
 
 import * as THREE from 'three';
+import * as THREE_WEBGPU from 'three/webgpu';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -24,13 +25,20 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { COSMIC_NOIR_TETROMINOS } from './cosmic-noir-tetrominos.js';
+import { CosmicNoirSparkCompute } from './cosmic-noir-compute.js';
+import {
+    createAtmosphereNodeMaterial,
+    createCosmicWaveNodeMaterial,
+    createNebulaNodeMaterial,
+    createPlanetNodeMaterial,
+    createStarfieldNodeMaterial,
+    createVoidSparkNodeMaterial,
+} from './cosmic-noir-materials.js';
 import {
     planetVertexShader,
     planetFragmentShader,
     waveVertexShader,
     waveFragmentShader,
-    particleVertexShader,
-    particleFragmentShader,
     starVertexShader,
     starFragmentShader,
     atmosphereVertexShader,
@@ -41,6 +49,79 @@ import {
     nebulaVertexShader,
     nebulaFragmentShader,
 } from './cosmic-noir-shaders.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Debug Flags
+// ─────────────────────────────────────────────────────────────────────────────
+function parseCosmicNoirFlags() {
+    const defaults = {
+        forceWebGL: false,
+        noCompute: false,
+        noMRT: false,
+        noPost: false,
+        mrtAudit: false,
+        baseline: false,
+        seed: null,
+        fixedDeltaMs: null,
+        usePost: false,
+        useMRT: false,
+        useCompute: false,
+    };
+
+    if (typeof window === 'undefined') {
+        return defaults;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const readBool = (...keys) => keys.some((key) => {
+        if (!params.has(key)) return false;
+        const value = params.get(key);
+        if (value === null || value === '') return true;
+        const normalized = value.toLowerCase();
+        return normalized === '1' || normalized === 'true' || normalized === 'yes';
+    });
+    const readNumber = (...keys) => {
+        for (let i = 0; i < keys.length; i += 1) {
+            const key = keys[i];
+            if (!params.has(key)) continue;
+            const value = params.get(key);
+            if (value === null || value === '') continue;
+            const numeric = Number(value);
+            if (Number.isFinite(numeric)) return numeric;
+        }
+        return null;
+    };
+
+    const seed = readNumber('cosmicNoirSeed', 'seed');
+    const fixedDeltaMs = readNumber(
+        'cosmicNoirFixedDeltaMs',
+        'cosmicNoirFixedDt',
+        'fixedDeltaMs',
+        'fixedDt',
+    );
+
+    return {
+        ...defaults,
+        forceWebGL: readBool('forceWebGL'),
+        noCompute: readBool('cosmicNoirNoCompute', 'noCompute'),
+        noMRT: readBool('cosmicNoirNoMRT', 'noMRT'),
+        noPost: readBool('cosmicNoirNoPost', 'noPost'),
+        mrtAudit: readBool('cosmicNoirMrtAudit'),
+        baseline: readBool('cosmicNoirBaseline', 'baseline'),
+        seed: Number.isFinite(seed) ? seed : null,
+        fixedDeltaMs: Number.isFinite(fixedDeltaMs) && fixedDeltaMs > 0 ? fixedDeltaMs : null,
+    };
+}
+
+function createSeededRandom(seed) {
+    if (!Number.isFinite(seed)) return Math.random;
+    let state = Math.abs(Math.floor(seed)) % 2147483647;
+    if (state <= 0) state = 1;
+    return () => {
+        state = (state * 16807) % 2147483647;
+        return (state - 1) / 2147483646;
+    };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Presets
@@ -154,21 +235,42 @@ export default class CosmicNoirTheme extends BaseTheme {
     constructor() {
         super('cosmic-noir');
 
+        this.flags = parseCosmicNoirFlags();
+        this.random = createSeededRandom(this.flags.seed);
+        this.fixedDeltaSeconds = this.flags.fixedDeltaMs ? this.flags.fixedDeltaMs / 1000 : null;
+        this.fixedElapsed = 0;
+        this.isWebGPU = false;
+        this.isWebGL = false;
+        this.capabilities = {
+            isWebGPU: false,
+            maxColorAttachments: 0,
+            supportsCompute: false,
+        };
+        this.deviceLossRecoveryInProgress = false;
+        this.animationFrameId = null;
+        this.resizeHandler = null;
+        this.deferredTimeouts = new Set();
+
         this.renderer = null;
         this.scene = null;
         this.camera = null;
         this.composer = null;
+        this.postProcessing = null;
 
         // Scene elements
         this.planet = null;
+        this.planetUniforms = null;
         this.planetGroup = null;
         this.starfield = null;
+        this.starfieldUniforms = null;
         this.nebulaClouds = [];
         this.planetGlowLayers = [];
         this.atmosphere = null;
+        this.atmosphereUniforms = null;
         this.cosmicWaves = [];
-        this.voidSparks = []; // Pool of particle systems for overlapping bursts
-        this.voidSparkIndex = 0; // Cycle through available systems
+        this.voidSparks = []; // Fallback pool, or single compute-backed points system
+        this.voidSparkIndex = 0; // Cycle index for pooled fallback
+        this.sparkCompute = null;
 
         // Effect states
         this.planetPulseIntensity = 0;
@@ -179,10 +281,10 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.gasExplosionIntensity = 0.0; // Intensity based on combo
 
         // Planet drift animation (Lissajous curves for organic movement)
-        this.planetPhaseX = Math.random() * Math.PI * 2;
-        this.planetPhaseY = Math.random() * Math.PI * 2;
-        this.planetPhaseX2 = Math.random() * Math.PI * 2;
-        this.planetPhaseY2 = Math.random() * Math.PI * 2;
+        this.planetPhaseX = 0;
+        this.planetPhaseY = 0;
+        this.planetPhaseX2 = 0;
+        this.planetPhaseY2 = 0;
 
         // Animation
         this.clock = new THREE.Clock();
@@ -192,8 +294,11 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.qualityPreset = QUALITY_PRESETS.High;
         this.pendingComboCount = 0;
+        this.baselineFrames = [];
+        this.baselineRenderStats = [];
+        this.baselineMaxFrames = 3600;
 
-        console.log('[CosmicNoir] Theme constructed');
+        console.log('[CosmicNoir] Hybrid WebGPU/WebGL theme constructed');
     }
 
     getTetrominoConfig() {
@@ -211,8 +316,298 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
     }
 
+    rand() {
+        return this.random ? this.random() : Math.random();
+    }
+
+    refreshFlagsForScene() {
+        const previous = this.flags || {};
+        const parsed = parseCosmicNoirFlags();
+        parsed.forceWebGL = parsed.forceWebGL || previous.forceWebGL === true;
+        parsed.noCompute = parsed.noCompute || previous.noCompute === true;
+        parsed.noMRT = parsed.noMRT || previous.noMRT === true;
+        parsed.noPost = parsed.noPost || previous.noPost === true;
+        parsed.mrtAudit = parsed.mrtAudit || previous.mrtAudit === true;
+        parsed.baseline = parsed.baseline || previous.baseline === true;
+        if (!Number.isFinite(parsed.seed) && Number.isFinite(previous.seed)) {
+            parsed.seed = previous.seed;
+        }
+        if (!Number.isFinite(parsed.fixedDeltaMs) && Number.isFinite(previous.fixedDeltaMs)) {
+            parsed.fixedDeltaMs = previous.fixedDeltaMs;
+        }
+        this.flags = parsed;
+    }
+
+    initializeDeterministicState() {
+        this.random = createSeededRandom(this.flags.seed);
+        this.fixedDeltaSeconds = this.flags.fixedDeltaMs ? this.flags.fixedDeltaMs / 1000 : null;
+        this.fixedElapsed = 0;
+        this.time = 0;
+        this.planetPhaseX = this.rand() * Math.PI * 2;
+        this.planetPhaseY = this.rand() * Math.PI * 2;
+        this.planetPhaseX2 = this.rand() * Math.PI * 2;
+        this.planetPhaseY2 = this.rand() * Math.PI * 2;
+    }
+
+    getWebGPUBlockers() {
+        return [];
+    }
+
+    hasWebGLOnlyDependencies() {
+        return this.getWebGPUBlockers().length > 0;
+    }
+
+    resetBaselineCapture() {
+        this.baselineFrames = [];
+        this.baselineRenderStats = [];
+    }
+
+    recordBaselineSample(frameMs) {
+        if (!this.flags.baseline || !Number.isFinite(frameMs) || frameMs <= 0) return;
+
+        this.baselineFrames.push(frameMs);
+        if (this.baselineFrames.length > this.baselineMaxFrames) {
+            this.baselineFrames.shift();
+        }
+
+        this.baselineRenderStats.push({
+            calls: this.renderer?.info?.render?.calls ?? 0,
+            triangles: this.renderer?.info?.render?.triangles ?? 0,
+            points: this.renderer?.info?.render?.points ?? 0,
+            textures: this.renderer?.info?.memory?.textures ?? 0,
+            geometries: this.renderer?.info?.memory?.geometries ?? 0,
+        });
+        if (this.baselineRenderStats.length > this.baselineMaxFrames) {
+            this.baselineRenderStats.shift();
+        }
+    }
+
+    getBaselineReport() {
+        if (!this.baselineFrames.length) return null;
+
+        const sortedFrames = [...this.baselineFrames].sort((a, b) => a - b);
+        const frameCount = sortedFrames.length;
+        const getPercentile = (ratio) => {
+            const index = Math.min(frameCount - 1, Math.floor(frameCount * ratio));
+            return sortedFrames[index];
+        };
+        const avgMs = this.baselineFrames.reduce((sum, value) => sum + value, 0) / frameCount;
+        const p50Ms = getPercentile(0.5);
+        const p95Ms = getPercentile(0.95);
+
+        const totals = this.baselineRenderStats.reduce((acc, sample) => ({
+            calls: acc.calls + sample.calls,
+            triangles: acc.triangles + sample.triangles,
+            points: acc.points + sample.points,
+            textures: acc.textures + sample.textures,
+            geometries: acc.geometries + sample.geometries,
+        }), {
+            calls: 0,
+            triangles: 0,
+            points: 0,
+            textures: 0,
+            geometries: 0,
+        });
+
+        const renderSamples = Math.max(1, this.baselineRenderStats.length);
+
+        return {
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            quality: this.getCurrentQualityLevel(),
+            frameCount,
+            avgFrameMs: avgMs,
+            avgFps: avgMs > 0 ? 1000 / avgMs : 0,
+            p50FrameMs: p50Ms,
+            p95FrameMs: p95Ms,
+            avgDrawCalls: totals.calls / renderSamples,
+            avgTriangles: totals.triangles / renderSamples,
+            avgPoints: totals.points / renderSamples,
+            avgTextures: totals.textures / renderSamples,
+            avgGeometries: totals.geometries / renderSamples,
+            seed: this.flags.seed,
+            fixedDeltaMs: this.flags.fixedDeltaMs,
+            flags: {
+                forceWebGL: this.flags.forceWebGL,
+                noPost: this.flags.noPost,
+                noMRT: this.flags.noMRT,
+                noCompute: this.flags.noCompute,
+            },
+            capturedAt: new Date().toISOString(),
+        };
+    }
+
+    downloadBaselineReport(label = 'cosmic-noir-baseline') {
+        const report = this.getBaselineReport();
+        if (!report || typeof window === 'undefined' || typeof document === 'undefined') {
+            return null;
+        }
+
+        const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `${label}.json`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        URL.revokeObjectURL(url);
+        return report;
+    }
+
+    installBaselineHelpers() {
+        if (typeof window === 'undefined') return;
+
+        window.cosmicNoirBaseline = {
+            report: () => this.getBaselineReport(),
+            capture: (label = 'runtime') => {
+                const report = this.getBaselineReport();
+                if (!report) {
+                    console.log('[CosmicNoirBaseline] No baseline frames collected yet.');
+                    return null;
+                }
+                console.log(`[CosmicNoirBaseline] ${label}`, report);
+                return report;
+            },
+            downloadReport: (label = 'cosmic-noir-baseline') => this.downloadBaselineReport(label),
+            reset: () => this.resetBaselineCapture(),
+            getSamples: () => ({
+                frames: [...this.baselineFrames],
+                render: [...this.baselineRenderStats],
+            }),
+        };
+
+        console.log(
+            '[CosmicNoirBaseline] Helpers: window.cosmicNoirBaseline.capture(label), '
+            + 'report(), downloadReport(label), reset(), getSamples()',
+        );
+    }
+
+    removeBaselineHelpers() {
+        if (typeof window !== 'undefined' && window.cosmicNoirBaseline) {
+            delete window.cosmicNoirBaseline;
+        }
+    }
+
+    probeCapabilities() {
+        if (!this.isWebGPU || !this.renderer?.backend?.isWebGPUBackend) {
+            this.capabilities = {
+                isWebGPU: false,
+                maxColorAttachments: 0,
+                supportsCompute: false,
+            };
+            return;
+        }
+
+        const { backend } = this.renderer;
+        const device = backend?.device;
+        this.capabilities = {
+            isWebGPU: true,
+            maxColorAttachments: device?.limits?.maxColorAttachments ?? 0,
+            supportsCompute: typeof this.renderer.compute === 'function',
+        };
+    }
+
+    updateCapabilityFlags() {
+        const usePost = this.isWebGPU && this.qualityPreset.enablePostProcessing && !this.flags.noPost;
+        const supportsMRT = this.capabilities?.maxColorAttachments > 1;
+        const useMRT = usePost && !this.flags.noMRT && supportsMRT;
+        const useCompute = this.isWebGPU && this.capabilities?.supportsCompute && !this.flags.noCompute;
+
+        this.flags.usePost = usePost;
+        this.flags.useMRT = useMRT;
+        this.flags.useCompute = useCompute;
+    }
+
+    configureRendererColorPipeline() {
+        if (!this.renderer) return;
+
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        const postOwnsToneMapping = this.isWebGPU && this.flags.usePost && !!this.postProcessing;
+        if (postOwnsToneMapping) {
+            this.renderer.toneMapping = THREE.NoToneMapping;
+            this.renderer.toneMappingExposure = 1.0;
+        } else {
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = 1.0;
+        }
+    }
+
+    isNodeMaterial(material) {
+        if (!material) return false;
+        if (material.isNodeMaterial) return true;
+        if (
+            material.isMeshBasicNodeMaterial
+            || material.isMeshStandardNodeMaterial
+            || material.isMeshPhysicalNodeMaterial
+            || material.isPointsNodeMaterial
+            || material.isSpriteNodeMaterial
+        ) {
+            return true;
+        }
+        const type = material.type || material.constructor?.name || '';
+        return type.includes('NodeMaterial');
+    }
+
+    auditMrtMaterials() {
+        if (!this.flags.mrtAudit || !this.scene) return;
+
+        const rows = [];
+        const seen = new Set();
+        this.scene.traverse((object) => {
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            materials.forEach((material) => {
+                if (!material || seen.has(material)) return;
+                seen.add(material);
+                rows.push({
+                    object: object.name || object.type || 'Unknown',
+                    material: material.name || material.type || material.constructor?.name || 'Unknown',
+                    nodeMaterial: this.isNodeMaterial(material),
+                    hasEmissiveNode: !!material.emissiveNode,
+                    hasMrtNode: !!material.mrtNode,
+                });
+            });
+        });
+
+        console.log('[CosmicNoir] MRT audit', rows);
+    }
+
+    async precompileSceneWithTimeout() {
+        if (!this.isWebGPU || !this.renderer?.compileAsync || !this.scene || !this.camera) return;
+
+        const timeoutMs = 3000;
+        let timeoutId = null;
+
+        try {
+            await Promise.race([
+                this.renderer.compileAsync(this.scene, this.camera),
+                new Promise((_, reject) => {
+                    timeoutId = setTimeout(() => reject(new Error('compile timeout')), timeoutMs);
+                }),
+            ]);
+            console.log('[CosmicNoir] Scene pre-compiled');
+        } catch (error) {
+            console.warn('[CosmicNoir] compileAsync skipped:', error.message);
+        } finally {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+            }
+        }
+    }
+
     async createScene() {
         console.log('[CosmicNoir] Creating stunning 3D cosmic noir scene...');
+
+        this.cancelAnimationLoop();
+        this.clearDeferredTimeouts();
+        this.clearEventSubscriptions();
+        this.removeResizeListener();
+        this.removeBaselineHelpers();
+        this.disposeRuntimeResources({ removeCanvas: true });
+
+        this.refreshFlagsForScene();
+        this.initializeDeterministicState();
+        this.resetBaselineCapture();
+        this.clock = new THREE.Clock();
 
         const quality = this.getCurrentQualityLevel();
         this.applyQualityPreset(quality);
@@ -223,20 +618,56 @@ export default class CosmicNoirTheme extends BaseTheme {
             return;
         }
 
-        // Clear any existing content (old canvas)
         container.innerHTML = '';
 
-        this.initRenderer(container);
+        await this.initRenderer(container);
+        if (!this.renderer || !this.scene || !this.camera) {
+            console.error('[CosmicNoir] Renderer initialization failed');
+            return;
+        }
+
+        this.probeCapabilities();
+        this.updateCapabilityFlags();
+
         this.createStarfield();
         this.createNebulaClouds();
         this.createPlanet();
         this.createAtmosphere();
         // Ambient particles removed for cleaner noir star aesthetic
         this.createVoidSparks();
+        this.auditMrtMaterials();
         this.setupPostProcessing();
+        this.configureRendererColorPipeline();
+        this.setupResizeHandler();
         this.setupEventListeners();
+
+        if (this.flags.baseline) {
+            this.installBaselineHelpers();
+            console.log('[CosmicNoirBaseline] Baseline capture enabled', {
+                preset: quality,
+                backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+                seed: this.flags.seed,
+                fixedDeltaMs: this.flags.fixedDeltaMs,
+            });
+        }
+
+        await this.precompileSceneWithTimeout();
         this.startAnimation();
 
+        console.log('[CosmicNoir] Runtime capabilities', {
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            maxColorAttachments: this.capabilities.maxColorAttachments,
+            supportsCompute: this.capabilities.supportsCompute,
+            usePost: this.flags.usePost,
+            useMRT: this.flags.useMRT,
+            useCompute: this.flags.useCompute,
+            flags: {
+                forceWebGL: this.flags.forceWebGL,
+                noPost: this.flags.noPost,
+                noMRT: this.flags.noMRT,
+                noCompute: this.flags.noCompute,
+            },
+        });
         console.log('[CosmicNoir] Scene created successfully');
     }
 
@@ -244,11 +675,65 @@ export default class CosmicNoirTheme extends BaseTheme {
     // Renderer & Camera
     // ─────────────────────────────────────────────────────────────────────────
 
-    initRenderer(container) {
+    async initRenderer(container) {
         const width = window.innerWidth;
         const height = window.innerHeight;
+        const preserveDrawingBuffer = this.flags.baseline === true;
+        let webgpuRenderer = null;
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: this.getAntialiasEnabled(), alpha: false });
+        if (!this.flags.forceWebGL) {
+            try {
+                webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
+                    antialias: this.getAntialiasEnabled(),
+                    powerPreference: 'high-performance',
+                    alpha: false,
+                    preserveDrawingBuffer,
+                });
+                await webgpuRenderer.init();
+            } catch (error) {
+                console.warn('[CosmicNoir] WebGPU init failed, falling back to WebGL2:', error.message);
+                if (webgpuRenderer) {
+                    webgpuRenderer.dispose();
+                    webgpuRenderer = null;
+                }
+            }
+        }
+
+        const hasWebGPUBackend = webgpuRenderer?.backend?.isWebGPUBackend === true;
+        const compatibilityGuardEnabled = this.hasWebGLOnlyDependencies();
+
+        if (hasWebGPUBackend && compatibilityGuardEnabled) {
+            console.warn(
+                '[CosmicNoir] WebGPU available, but Phase 1 compatibility guard keeps WebGL path:',
+                this.getWebGPUBlockers(),
+            );
+        }
+
+        if (hasWebGPUBackend && !compatibilityGuardEnabled) {
+            this.renderer = webgpuRenderer;
+            this.isWebGPU = true;
+            this.isWebGL = false;
+            this.renderer.onDeviceLost = (info) => {
+                this.handleDeviceLoss(info);
+            };
+        } else {
+            if (webgpuRenderer) {
+                webgpuRenderer.dispose();
+                webgpuRenderer = null;
+            }
+
+            this.renderer = new THREE.WebGLRenderer({
+                antialias: this.getAntialiasEnabled(),
+                powerPreference: 'high-performance',
+                alpha: false,
+                preserveDrawingBuffer,
+            });
+            this.isWebGPU = false;
+            this.isWebGL = true;
+        }
+
+        if (!this.renderer) return;
+
         this.renderer.setClearColor(0x000000, 1); // Pure black background
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(width, height);
@@ -278,10 +763,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         const ambientLight = new THREE.AmbientLight(0x080808, 0.3);
         this.scene.add(ambientLight);
 
-        // Resize handler
-        window.addEventListener('resize', this.onWindowResize.bind(this));
-
-        console.log('[CosmicNoir] Renderer initialized');
+        console.log(`[CosmicNoir] Renderer initialized (${this.isWebGPU ? 'WebGPU' : 'WebGL2'})`);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -313,29 +795,29 @@ export default class CosmicNoirTheme extends BaseTheme {
 
             // FIXED: Use Spherical Distribution to prevent black voids on rotation
             // Stars are now placed in a full 360-degree sphere around the origin
-            const radius = 2000 + Math.random() * 8000; // Deep depth range
-            const theta = Math.random() * Math.PI * 2; // Horizontal angle
-            const phi = Math.acos(2 * Math.random() - 1); // Vertical angle (acos for uniform sphere)
+            const radius = 2000 + this.rand() * 8000; // Deep depth range
+            const theta = this.rand() * Math.PI * 2; // Horizontal angle
+            const phi = Math.acos(2 * this.rand() - 1); // Vertical angle (acos for uniform sphere)
 
             positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
             positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
             positions[i3 + 2] = radius * Math.cos(phi);
 
             // Color - grayscale noir palette
-            const colorIndex = Math.floor(Math.random() * starColors.length);
+            const colorIndex = Math.floor(this.rand() * starColors.length);
             const color = starColors[colorIndex];
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
             // Larger sizes for atmospheric appearance
-            sizes[i] = 20 + Math.random() * 40;
+            sizes[i] = 20 + this.rand() * 40;
 
             // Twinkle: phase offset, varied speed (0.8 to 2.5 Hz)
-            twinkleData[i2] = Math.random() * Math.PI * 2; // phase
-            twinkleData[i2 + 1] = 0.8 + Math.random() * 1.7; // speed
+            twinkleData[i2] = this.rand() * Math.PI * 2; // phase
+            twinkleData[i2 + 1] = 0.8 + this.rand() * 1.7; // speed
 
-            brightness[i] = 0.3 + Math.random() * 0.7;
+            brightness[i] = 0.3 + this.rand() * 0.7;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -344,19 +826,30 @@ export default class CosmicNoirTheme extends BaseTheme {
         geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
         geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uPixelRatio: { value: this.renderer.getPixelRatio() },
-                uEventBoost: { value: 0 },
-            },
-            vertexShader: starVertexShader,
-            fragmentShader: starFragmentShader,
-            transparent: true,
-            vertexColors: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
+        let material;
+        if (this.isWebGPU) {
+            const { material: nodeMaterial, uniforms } = createStarfieldNodeMaterial({
+                pixelRatio: this.renderer.getPixelRatio(),
+            });
+            material = nodeMaterial;
+            this.starfieldUniforms = uniforms;
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uPixelRatio: { value: this.renderer.getPixelRatio() },
+                    uEventBoost: { value: 0 },
+                },
+                vertexShader: starVertexShader,
+                fragmentShader: starFragmentShader,
+                transparent: true,
+                vertexColors: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+            const { uniforms } = material;
+            this.starfieldUniforms = uniforms;
+        }
 
         this.starfield = new THREE.Points(geometry, material);
         this.scene.add(this.starfield);
@@ -404,30 +897,41 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         nebulaConfigs.forEach((config) => {
             const geometry = new THREE.PlaneGeometry(config.size, config.size);
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    tDiffuse: { value: config.texture },
-                    uOpacity: { value: config.opacity },
-                    uPulse: { value: 0 },
-                },
-                vertexShader: nebulaVertexShader,
-                fragmentShader: nebulaFragmentShader,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-            });
+            let material;
+            let uniforms = null;
+            if (this.isWebGPU) {
+                ({ material, uniforms } = createNebulaNodeMaterial({
+                    map: config.texture,
+                    opacity: config.opacity,
+                }));
+            } else {
+                material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        tDiffuse: { value: config.texture },
+                        uOpacity: { value: config.opacity },
+                        uPulse: { value: 0 },
+                    },
+                    vertexShader: nebulaVertexShader,
+                    fragmentShader: nebulaFragmentShader,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                });
+                ({ uniforms } = material);
+            }
 
             const mesh = new THREE.Mesh(geometry, material);
             // Random position spread
-            mesh.position.x = (Math.random() - 0.5) * 2000;
-            mesh.position.y = (Math.random() - 0.5) * 1000;
+            mesh.position.x = (this.rand() - 0.5) * 2000;
+            mesh.position.y = (this.rand() - 0.5) * 1000;
             mesh.position.z = config.z;
-            mesh.rotation.z = Math.random() * Math.PI * 2;
+            mesh.rotation.z = this.rand() * Math.PI * 2;
 
             mesh.userData = {
                 driftSpeed: config.speed,
                 baseOpacity: config.opacity,
-                pulsePhase: Math.random() * Math.PI * 2,
+                pulsePhase: this.rand() * Math.PI * 2,
+                uniforms,
             };
 
             this.nebulaClouds.push(mesh);
@@ -453,20 +957,37 @@ export default class CosmicNoirTheme extends BaseTheme {
         const planetTexture = textureLoader.load('./textures/2k_haumea_fictional_black.png');
         planetTexture.wrapS = THREE.ClampToEdgeWrapping;
         planetTexture.wrapT = THREE.ClampToEdgeWrapping;
+        const sunDirection = new THREE.Vector3(0.6, 0.4, 0.7).normalize();
 
         // Planet sphere with shader material
-        const geometry = new THREE.SphereGeometry(planetSize, this.qualityPreset.planetDetail, this.qualityPreset.planetDetail);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uPulseIntensity: { value: 0 },
-                uGlowIntensity: { value: 1.0 },
-                uMap: { value: planetTexture },
-                uSunDirection: { value: new THREE.Vector3(0.6, 0.4, 0.7).normalize() }, // Cinematic side lighting
-            },
-            vertexShader: planetVertexShader,
-            fragmentShader: planetFragmentShader,
-        });
+        const geometry = new THREE.SphereGeometry(
+            planetSize,
+            this.qualityPreset.planetDetail,
+            this.qualityPreset.planetDetail,
+        );
+        let material;
+        if (this.isWebGPU) {
+            const { material: nodeMaterial, uniforms } = createPlanetNodeMaterial({
+                map: planetTexture,
+                sunDirection,
+            });
+            material = nodeMaterial;
+            this.planetUniforms = uniforms;
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uPulseIntensity: { value: 0 },
+                    uGlowIntensity: { value: 1.0 },
+                    uMap: { value: planetTexture },
+                    uSunDirection: { value: sunDirection }, // Cinematic side lighting
+                },
+                vertexShader: planetVertexShader,
+                fragmentShader: planetFragmentShader,
+            });
+            const { uniforms } = material;
+            this.planetUniforms = uniforms;
+        }
 
         this.planet = new THREE.Mesh(geometry, material);
         this.planet.renderOrder = 100;
@@ -485,9 +1006,15 @@ export default class CosmicNoirTheme extends BaseTheme {
         for (let i = 0; i < layerCount; i++) {
             const sizeMult = 1.25 + i * 0.22;
             const opacity = 0.25 - i * 0.03;
+            let color = 0x222222;
+            if (i < 3) {
+                color = 0x666666;
+            } else if (i < 5) {
+                color = 0x444444;
+            }
             glowConfigs.push({
                 size: planetSize * sizeMult,
-                color: i < 3 ? 0x666666 : (i < 5 ? 0x444444 : 0x222222), // Grayscale glow
+                color, // Grayscale glow
                 opacity: Math.max(0.04, opacity),
                 z: -5 * (i + 1),
             });
@@ -544,20 +1071,29 @@ export default class CosmicNoirTheme extends BaseTheme {
         const atmosphereSize = planetSize * 1.25;
 
         const geometry = new THREE.SphereGeometry(atmosphereSize, 64, 64);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uPulseIntensity: { value: 0 },
-                uExplosionTimer: { value: -10.0 },
-                uExplosionIntensity: { value: 0 },
-            },
-            vertexShader: atmosphereVertexShader,
-            fragmentShader: atmosphereFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            side: THREE.FrontSide, // Render outside only
-        });
+        let material;
+        if (this.isWebGPU) {
+            const { material: nodeMaterial, uniforms } = createAtmosphereNodeMaterial();
+            material = nodeMaterial;
+            this.atmosphereUniforms = uniforms;
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uPulseIntensity: { value: 0 },
+                    uExplosionTimer: { value: -10.0 },
+                    uExplosionIntensity: { value: 0 },
+                },
+                vertexShader: atmosphereVertexShader,
+                fragmentShader: atmosphereFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.FrontSide, // Render outside only
+            });
+            const { uniforms } = material;
+            this.atmosphereUniforms = uniforms;
+        }
 
         this.atmosphere = new THREE.Mesh(geometry, material);
         this.atmosphere.renderOrder = 101; // Render after planet
@@ -573,8 +1109,12 @@ export default class CosmicNoirTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createVoidSparks() {
-        const poolSize = 24; // Increased number of overlapping bursts allowed
-        const countPerSystem = Math.floor(this.qualityPreset.voidSparks / 3);
+        if (this.sparkCompute) {
+            this.sparkCompute.dispose();
+            this.sparkCompute = null;
+        }
+        this.voidSparks = [];
+        this.voidSparkIndex = 0;
 
         const planetRadius = 180; // Start at planet surface
 
@@ -586,6 +1126,68 @@ export default class CosmicNoirTheme extends BaseTheme {
             new THREE.Color(0xa0a0b0), // Gray silver
             new THREE.Color(0x9090a0), // Darker silver
         ];
+
+        const canUseSparkCompute = Boolean(
+            this.isWebGPU
+            && this.flags.useCompute
+            && this.renderer?.compute,
+        );
+
+        if (canUseSparkCompute) {
+            const sparkCount = Math.min(
+                50000,
+                Math.max(this.qualityPreset.voidSparks * 2, 12000),
+            );
+
+            try {
+                this.sparkCompute = new CosmicNoirSparkCompute(sparkCount, {
+                    randomFn: () => this.rand(),
+                    planetRadius,
+                    colorPalette: colorOptions,
+                });
+                this.sparkCompute.createComputeNode();
+
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute(
+                    'position',
+                    new THREE.BufferAttribute(new Float32Array(sparkCount * 3), 3),
+                );
+
+                const { material, uniforms } = createVoidSparkNodeMaterial({
+                    isWebGPU: this.isWebGPU,
+                    sparkCompute: this.sparkCompute,
+                });
+
+                const sparks = new THREE.Points(geometry, material);
+                sparks.userData = {
+                    ...(sparks.userData || {}),
+                    uniforms,
+                    computeBacked: true,
+                };
+                this.planetGroup.add(sparks);
+                this.voidSparks.push(sparks);
+
+                console.log(
+                    '[CosmicNoir] Void spark compute system created with',
+                    sparkCount,
+                    'particles in one draw call',
+                );
+                return;
+            } catch (error) {
+                console.warn(
+                    '[CosmicNoir] Spark compute init failed, using pooled fallback:',
+                    error,
+                );
+                this.flags.useCompute = false;
+                if (this.sparkCompute) {
+                    this.sparkCompute.dispose();
+                    this.sparkCompute = null;
+                }
+            }
+        }
+
+        const poolSize = 24; // Increased number of overlapping bursts allowed
+        const countPerSystem = Math.floor(this.qualityPreset.voidSparks / 3);
 
         for (let p = 0; p < poolSize; p++) {
             const geometry = new THREE.BufferGeometry();
@@ -599,16 +1201,16 @@ export default class CosmicNoirTheme extends BaseTheme {
 
             for (let i = 0; i < countPerSystem; i++) {
                 // Distribute particles evenly on planet surface
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos(2 * Math.random() - 1);
+                const theta = this.rand() * Math.PI * 2;
+                const phi = Math.acos(2 * this.rand() - 1);
 
                 thetas[i] = theta;
                 phis[i] = phi;
                 radii[i] = planetRadius;
-                randoms[i] = Math.random();
+                randoms[i] = this.rand();
 
                 // Color selection - mostly white/silver with some gray
-                const colorType = Math.random();
+                const colorType = this.rand();
                 let c;
                 if (colorType > 0.5) c = colorOptions[0]; // White
                 else if (colorType > 0.3) c = colorOptions[1]; // Light silver
@@ -632,24 +1234,38 @@ export default class CosmicNoirTheme extends BaseTheme {
             geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
             geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
 
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    time: { value: 0 },
-                    uPulseTimer: { value: -100.0 },
-                },
-                vertexShader: voidSparkVertexShader,
-                fragmentShader: voidSparkFragmentShader,
-                transparent: true,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending,
-            });
+            let material;
+            let uniforms = null;
+            if (this.isWebGPU) {
+                ({ material, uniforms } = createVoidSparkNodeMaterial());
+            } else {
+                material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        time: { value: 0 },
+                        uPulseTimer: { value: -100.0 },
+                    },
+                    vertexShader: voidSparkVertexShader,
+                    fragmentShader: voidSparkFragmentShader,
+                    transparent: true,
+                    depthWrite: false,
+                    blending: THREE.AdditiveBlending,
+                });
+                ({ uniforms } = material);
+            }
 
             const sparks = new THREE.Points(geometry, material);
+            sparks.userData.uniforms = uniforms;
             this.planetGroup.add(sparks);
             this.voidSparks.push(sparks);
         }
 
-        console.log('[CosmicNoir] Void sparks pool created with', poolSize, 'systems,', countPerSystem, 'particles each');
+        console.log(
+            '[CosmicNoir] Void sparks pool created with',
+            poolSize,
+            'systems,',
+            countPerSystem,
+            'particles each',
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -657,8 +1273,20 @@ export default class CosmicNoirTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     setupPostProcessing() {
-        if (!this.qualityPreset.enablePostProcessing) {
+        this.disposePostProcessingStack();
+
+        if (this.flags.noPost || !this.qualityPreset.enablePostProcessing) {
             console.log('[CosmicNoir] Post-processing disabled for quality level');
+            this.flags.usePost = false;
+            return;
+        }
+
+        if (this.isWebGPU) {
+            console.log(
+                '[CosmicNoir] WebGPU post-processing is scheduled for Phase 4; '
+                + 'rendering without post stack for now',
+            );
+            this.flags.usePost = false;
             return;
         }
 
@@ -691,47 +1319,71 @@ export default class CosmicNoirTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     startAnimation() {
+        this.cancelAnimationLoop();
+        this.clock.start();
         this.animate();
     }
 
     animate() {
-        if (!this.isActive) return;
+        if (!this.isActive || !this.renderer || !this.scene || !this.camera) return;
 
-        const animId = requestAnimationFrame(() => this.animate());
-        this.registerAnimation(animId);
+        this.animationFrameId = requestAnimationFrame(() => this.animate());
+        this.registerAnimation(this.animationFrameId);
 
-        const delta = this.clock.getDelta();
-        this.time += delta;
+        const frameStartMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        const measuredDelta = this.clock.getDelta();
+        const rawDelta = this.fixedDeltaSeconds !== null ? this.fixedDeltaSeconds : measuredDelta;
+        const delta = this.fixedDeltaSeconds !== null ? rawDelta : Math.min(rawDelta, 0.05);
+        if (this.fixedDeltaSeconds !== null) {
+            this.fixedElapsed += this.fixedDeltaSeconds;
+            this.time = this.fixedElapsed;
+        } else {
+            this.time += delta;
+        }
 
         // Update shader uniforms
-        if (this.planet && this.planet.material.uniforms) {
-            this.planet.material.uniforms.uTime.value = this.time;
-            this.planet.material.uniforms.uPulseIntensity.value = this.planetPulseIntensity;
-            this.planet.material.uniforms.uGlowIntensity.value = this.planetGlowIntensity;
+        if (this.planet && this.planetUniforms) {
+            if (this.planetUniforms.uTime) {
+                this.planetUniforms.uTime.value = this.time;
+            }
+            if (this.planetUniforms.uPulseIntensity) {
+                this.planetUniforms.uPulseIntensity.value = this.planetPulseIntensity;
+            }
+            if (this.planetUniforms.uGlowIntensity) {
+                this.planetUniforms.uGlowIntensity.value = this.planetGlowIntensity;
+            }
 
             // Spin planet around own axis
             this.planet.rotation.y += delta * 0.05; // Slow, majestic rotation
         }
 
-        if (this.starfield && this.starfield.material.uniforms) {
-            this.starfield.material.uniforms.uTime.value = this.time;
-            this.starfield.material.uniforms.uEventBoost.value = this.starEventBoost;
-        }
-
-        if (this.ambientParticles && this.ambientParticles.material.uniforms) {
-            this.ambientParticles.material.uniforms.uTime.value = this.time;
+        if (this.starfield && this.starfieldUniforms) {
+            if (this.starfieldUniforms.uTime) {
+                this.starfieldUniforms.uTime.value = this.time;
+            }
+            if (this.starfieldUniforms.uEventBoost) {
+                this.starfieldUniforms.uEventBoost.value = this.starEventBoost;
+            }
         }
 
         // Update atmosphere shader
-        if (this.atmosphere && this.atmosphere.material.uniforms) {
-            this.atmosphere.material.uniforms.uTime.value = this.time;
-            this.atmosphere.material.uniforms.uPulseIntensity.value = this.planetPulseIntensity;
+        if (this.atmosphere && this.atmosphereUniforms) {
+            if (this.atmosphereUniforms.uTime) {
+                this.atmosphereUniforms.uTime.value = this.time;
+            }
+            if (this.atmosphereUniforms.uPulseIntensity) {
+                this.atmosphereUniforms.uPulseIntensity.value = this.planetPulseIntensity;
+            }
 
             // Update gas explosion timer
             if (this.gasExplosionTimer > -5.0) {
                 this.gasExplosionTimer += delta;
-                this.atmosphere.material.uniforms.uExplosionTimer.value = this.gasExplosionTimer;
-                this.atmosphere.material.uniforms.uExplosionIntensity.value = this.gasExplosionIntensity;
+                if (this.atmosphereUniforms.uExplosionTimer) {
+                    this.atmosphereUniforms.uExplosionTimer.value = this.gasExplosionTimer;
+                }
+                if (this.atmosphereUniforms.uExplosionIntensity) {
+                    this.atmosphereUniforms.uExplosionIntensity.value = this.gasExplosionIntensity;
+                }
 
                 // Reset after explosion completes
                 if (this.gasExplosionTimer > 5.0) {
@@ -741,19 +1393,36 @@ export default class CosmicNoirTheme extends BaseTheme {
             }
         }
 
+        if (
+            this.isWebGPU
+            && this.flags.useCompute
+            && this.sparkCompute?.computeNode
+            && this.renderer?.compute
+        ) {
+            this.sparkCompute.update(delta, this.time);
+            this.renderer.compute(this.sparkCompute.computeNode);
+        }
+
         // Update all void spark systems in the pool
         for (const sparks of this.voidSparks) {
-            if (sparks && sparks.material.uniforms) {
-                sparks.material.uniforms.time.value = this.time;
+            const sparkUniforms = sparks?.userData?.uniforms || sparks?.material?.uniforms;
+            if (sparks && sparkUniforms) {
+                if (sparkUniforms.time) {
+                    sparkUniforms.time.value = this.time;
+                }
+
+                if (sparks?.userData?.computeBacked || this.sparkCompute?.computeNode) {
+                    continue;
+                }
 
                 // Update pulse wave
-                if (sparks.material.uniforms.uPulseTimer.value > -50.0) {
+                if (sparkUniforms.uPulseTimer?.value > -50.0) {
                     // Move wave outwards - speed increased for more explosive look
-                    sparks.material.uniforms.uPulseTimer.value += delta * 18.0;
+                    sparkUniforms.uPulseTimer.value += delta * 18.0;
 
                     // Turn off when wave completes
-                    if (sparks.material.uniforms.uPulseTimer.value > 85.0) {
-                        sparks.material.uniforms.uPulseTimer.value = -100.0;
+                    if (sparkUniforms.uPulseTimer.value > 85.0) {
+                        sparkUniforms.uPulseTimer.value = -100.0;
                     }
                 }
             }
@@ -816,8 +1485,9 @@ export default class CosmicNoirTheme extends BaseTheme {
             // Pulse: -1 to 1 for subtle breathing
             const pulse = Math.sin(cloud.userData.pulsePhase);
 
-            if (cloud.material.uniforms) {
-                cloud.material.uniforms.uPulse.value = pulse + (this.planetPulseIntensity * 2.0); // React to gameplay
+            const nebulaUniforms = cloud.userData?.uniforms || cloud.material?.uniforms;
+            if (nebulaUniforms?.uPulse) {
+                nebulaUniforms.uPulse.value = pulse + (this.planetPulseIntensity * 2.0); // React to gameplay
             }
         }
 
@@ -845,9 +1515,26 @@ export default class CosmicNoirTheme extends BaseTheme {
         // Update cosmic waves
         this.updateCosmicWaves(delta);
 
-        // Render
+        this.renderFrame();
+
+        const frameEndMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        this.recordBaselineSample(frameEndMs - frameStartMs);
+    }
+
+    renderFrame() {
+        if (!this.renderer || !this.scene || !this.camera) return;
         this.renderer.clear();
-        if (this.composer && this.qualityPreset.enablePostProcessing) {
+
+        if (this.isWebGPU) {
+            if (this.postProcessing && this.flags.usePost) {
+                this.postProcessing.render();
+            } else {
+                this.renderer.render(this.scene, this.camera);
+            }
+            return;
+        }
+
+        if (this.composer && this.qualityPreset.enablePostProcessing && !this.flags.noPost) {
             this.composer.render();
         } else {
             this.renderer.render(this.scene, this.camera);
@@ -860,28 +1547,41 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     createCosmicWave(intensity) {
         const geometry = new THREE.TorusGeometry(30, 2, 8, 48);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: this.time },
-                uOpacity: { value: 1.0 },
-                uColor: { value: new THREE.Color(0x888888) }, // Gray wave
-            },
-            vertexShader: waveVertexShader,
-            fragmentShader: waveFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-        });
+        let material;
+        let uniforms = null;
+        if (this.isWebGPU) {
+            ({ material, uniforms } = createCosmicWaveNodeMaterial({
+                color: new THREE.Color(0x888888),
+            }));
+            if (uniforms.uTime) {
+                uniforms.uTime.value = this.time;
+            }
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: this.time },
+                    uOpacity: { value: 1.0 },
+                    uColor: { value: new THREE.Color(0x888888) }, // Gray wave
+                },
+                vertexShader: waveVertexShader,
+                fragmentShader: waveFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            });
+            ({ uniforms } = material);
+        }
 
         const wave = new THREE.Mesh(geometry, material);
-        wave.rotation.x = Math.random() * Math.PI * 0.3;
-        wave.rotation.y = Math.random() * Math.PI * 2;
+        wave.rotation.x = this.rand() * Math.PI * 0.3;
+        wave.rotation.y = this.rand() * Math.PI * 2;
 
         wave.userData = {
             speed: 70 + intensity * 18,
             life: 1.0,
             maxLife: 1.0,
+            uniforms,
         };
 
         this.planetGroup.add(wave);
@@ -894,8 +1594,12 @@ export default class CosmicNoirTheme extends BaseTheme {
             wave.scale.addScalar(wave.userData.speed * delta * 0.1);
             wave.userData.life -= delta * 0.7;
 
-            if (wave.material.uniforms) {
-                wave.material.uniforms.uOpacity.value = wave.userData.life;
+            const waveUniforms = wave.userData?.uniforms || wave.material?.uniforms;
+            if (waveUniforms?.uOpacity) {
+                waveUniforms.uOpacity.value = wave.userData.life;
+            }
+            if (waveUniforms?.uTime) {
+                waveUniforms.uTime.value = this.time;
             }
 
             if (wave.userData.life <= 0) {
@@ -915,7 +1619,23 @@ export default class CosmicNoirTheme extends BaseTheme {
     // Event Handlers
     // ─────────────────────────────────────────────────────────────────────────
 
+    registerDeferredTimeout(callback, delayMs) {
+        const timerId = setTimeout(() => {
+            this.deferredTimeouts.delete(timerId);
+            callback();
+        }, delayMs);
+        this.deferredTimeouts.add(timerId);
+        return timerId;
+    }
+
+    clearDeferredTimeouts() {
+        this.deferredTimeouts.forEach((timerId) => clearTimeout(timerId));
+        this.deferredTimeouts.clear();
+    }
+
     setupEventListeners() {
+        this.clearEventSubscriptions();
+
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects === true) {
@@ -970,47 +1690,74 @@ export default class CosmicNoirTheme extends BaseTheme {
     onLineClear(lineCount, comboCount) {
         this.comboMultiplier = Math.min(1 + comboCount * 0.25, 2.5);
         this.planetPulseIntensity = Math.min(0.5 + comboCount * 0.18, 1.3);
+        const usingSparkCompute = Boolean(
+            this.isWebGPU
+            && this.flags.useCompute
+            && this.sparkCompute?.computeNode,
+        );
+        const getSparkUniforms = (sparkSystem) => sparkSystem?.userData?.uniforms
+            || sparkSystem?.material?.uniforms
+            || null;
 
         // === COMBO EFFECTS: Void Sparks + Gas Explosion ===
-        if (comboCount >= 2 && this.voidSparks.length > 0) {
-            // Calculate how many systems to trigger based on combo
-            let systemsToTrigger = 1;
-            if (comboCount >= 8) systemsToTrigger = 3;
-            else if (comboCount >= 4) systemsToTrigger = 2;
+        if (comboCount >= 2 && (usingSparkCompute || this.voidSparks.length > 0)) {
+            // Calculate how many burst pulses to trigger based on combo
+            let burstsToTrigger = 1;
+            if (comboCount >= 8) burstsToTrigger = 3;
+            else if (comboCount >= 4) burstsToTrigger = 2;
 
-            for (let s = 0; s < systemsToTrigger; s++) {
-                // Find an inactive spark system (one that has finished animating)
-                let sparkSystem = null;
-                for (let i = 0; i < this.voidSparks.length; i++) {
-                    const idx = (this.voidSparkIndex + i) % this.voidSparks.length;
-                    const candidate = this.voidSparks[idx];
-                    if (candidate && candidate.material.uniforms) {
-                        const timer = candidate.material.uniforms.uPulseTimer.value;
-                        if (timer < -50.0 || timer > 85.0) {
-                            sparkSystem = candidate;
-                            this.voidSparkIndex = (idx + 1) % this.voidSparks.length;
-                            break;
+            if (usingSparkCompute) {
+                for (let s = 0; s < burstsToTrigger; s++) {
+                    const triggerComputeBurst = () => {
+                        if (this.sparkCompute?.computeNode) {
+                            const burstIntensity = Math.min(1.0 + comboCount * 0.14 + s * 0.08, 2.25);
+                            this.sparkCompute.triggerBurst(this.time, burstIntensity);
                         }
+                    };
+
+                    if (s === 0) {
+                        triggerComputeBurst();
+                    } else {
+                        this.registerDeferredTimeout(triggerComputeBurst, s * 150);
                     }
                 }
-
-                // If all systems are active, fallback to the oldest one (cycle through)
-                if (!sparkSystem) {
-                    sparkSystem = this.voidSparks[this.voidSparkIndex];
-                    this.voidSparkIndex = (this.voidSparkIndex + 1) % this.voidSparks.length;
-                }
-
-                // Trigger the spark burst with a slight delay for staggered effect
-                if (sparkSystem && sparkSystem.material.uniforms) {
-                    if (s === 0) {
-                        sparkSystem.material.uniforms.uPulseTimer.value = 0.0;
-                    } else {
-                        // Small offset for subsequent systems
-                        setTimeout(() => {
-                            if (sparkSystem && sparkSystem.material.uniforms) {
-                                sparkSystem.material.uniforms.uPulseTimer.value = 0.0;
+            } else {
+                for (let s = 0; s < burstsToTrigger; s++) {
+                    // Find an inactive spark system (one that has finished animating)
+                    let sparkSystem = null;
+                    for (let i = 0; i < this.voidSparks.length; i++) {
+                        const idx = (this.voidSparkIndex + i) % this.voidSparks.length;
+                        const candidate = this.voidSparks[idx];
+                        const sparkUniforms = getSparkUniforms(candidate);
+                        if (candidate && sparkUniforms?.uPulseTimer) {
+                            const timer = sparkUniforms.uPulseTimer.value;
+                            if (timer < -50.0 || timer > 85.0) {
+                                sparkSystem = candidate;
+                                this.voidSparkIndex = (idx + 1) % this.voidSparks.length;
+                                break;
                             }
-                        }, s * 150);
+                        }
+                    }
+
+                    // If all systems are active, fallback to the oldest one (cycle through)
+                    if (!sparkSystem) {
+                        sparkSystem = this.voidSparks[this.voidSparkIndex];
+                        this.voidSparkIndex = (this.voidSparkIndex + 1) % this.voidSparks.length;
+                    }
+
+                    // Trigger the spark burst with a slight delay for staggered effect
+                    const sparkUniforms = getSparkUniforms(sparkSystem);
+                    if (sparkUniforms?.uPulseTimer) {
+                        if (s === 0) {
+                            sparkUniforms.uPulseTimer.value = 0.0;
+                        } else {
+                            this.registerDeferredTimeout(() => {
+                                const deferredUniforms = getSparkUniforms(sparkSystem);
+                                if (deferredUniforms?.uPulseTimer) {
+                                    deferredUniforms.uPulseTimer.value = 0.0;
+                                }
+                            }, s * 150);
+                        }
                     }
                 }
             }
@@ -1023,7 +1770,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         // Create cosmic waves
         const waveCount = Math.min(lineCount + Math.floor(comboCount / 2), 4);
         for (let i = 0; i < waveCount; i++) {
-            setTimeout(() => this.createCosmicWave(comboCount), i * 100);
+            this.registerDeferredTimeout(() => this.createCosmicWave(comboCount), i * 100);
         }
     }
 
@@ -1031,15 +1778,32 @@ export default class CosmicNoirTheme extends BaseTheme {
     // Resize
     // ─────────────────────────────────────────────────────────────────────────
 
+    setupResizeHandler() {
+        this.removeResizeListener();
+        this.resizeHandler = () => this.onWindowResize();
+        window.addEventListener('resize', this.resizeHandler);
+    }
+
     onWindowResize() {
         if (!this.camera || !this.renderer) return;
 
-        this.camera.aspect = window.innerWidth / window.innerHeight;
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+
+        this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setSize(width, height);
+
+        if (this.postProcessing?.setSize) {
+            this.postProcessing.setSize(width, height);
+        }
 
         if (this.composer) {
-            this.composer.setSize(window.innerWidth, window.innerHeight);
+            this.composer.setSize(width, height);
+        }
+
+        if (this.starfieldUniforms?.uPixelRatio) {
+            this.starfieldUniforms.uPixelRatio.value = this.renderer.getPixelRatio();
         }
     }
 
@@ -1047,49 +1811,211 @@ export default class CosmicNoirTheme extends BaseTheme {
     // Cleanup
     // ─────────────────────────────────────────────────────────────────────────
 
-    stop() {
-        window.removeEventListener('resize', this.onWindowResize.bind(this));
+    cancelAnimationLoop() {
+        if (this.animationFrameId !== null) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+    }
 
-        // Unsubscribe events
-        this.eventUnsubscribers.forEach((unsub) => unsub());
+    clearEventSubscriptions() {
+        this.eventUnsubscribers.forEach((unsub) => unsub?.());
         this.eventUnsubscribers = [];
+    }
 
-        // Cleanup Three.js
-        if (this.renderer) {
-            this.renderer.dispose();
-            const container = document.getElementById('cosmic-noir-theme');
-            if (container && container.contains(this.renderer.domElement)) {
-                container.removeChild(this.renderer.domElement);
+    removeResizeListener() {
+        if (this.resizeHandler) {
+            window.removeEventListener('resize', this.resizeHandler);
+            this.resizeHandler = null;
+        }
+    }
+
+    disposePostProcessingStack() {
+        if (this.postProcessing?.dispose) {
+            try {
+                this.postProcessing.dispose();
+            } catch (error) {
+                console.warn('[CosmicNoir] postProcessing dispose failed:', error);
             }
         }
+        this.postProcessing = null;
 
-        // Dispose scene objects
-        if (this.scene) {
-            this.scene.traverse((object) => {
-                if (object.geometry) object.geometry.dispose();
-                if (object.material) {
-                    if (Array.isArray(object.material)) {
-                        object.material.forEach((m) => m.dispose());
-                    } else {
-                        object.material.dispose();
-                    }
-                }
+        if (this.composer?.dispose) {
+            try {
+                this.composer.dispose();
+            } catch (error) {
+                console.warn('[CosmicNoir] composer dispose failed:', error);
+            }
+        }
+        this.composer = null;
+    }
+
+    disposeMaterialTextures(material, disposedTextures) {
+        if (!material) return;
+
+        const textureKeys = [
+            'map',
+            'alphaMap',
+            'aoMap',
+            'bumpMap',
+            'displacementMap',
+            'emissiveMap',
+            'envMap',
+            'lightMap',
+            'metalnessMap',
+            'normalMap',
+            'roughnessMap',
+            'specularMap',
+            'gradientMap',
+            'clearcoatMap',
+            'clearcoatNormalMap',
+            'clearcoatRoughnessMap',
+            'sheenColorMap',
+            'sheenRoughnessMap',
+            'transmissionMap',
+            'thicknessMap',
+            'iridescenceMap',
+            'iridescenceThicknessMap',
+            'anisotropyMap',
+            'matcap',
+        ];
+
+        textureKeys.forEach((key) => {
+            const texture = material[key];
+            if (texture?.isTexture && !disposedTextures.has(texture.uuid)) {
+                disposedTextures.add(texture.uuid);
+                texture.dispose();
+            }
+        });
+    }
+
+    disposeSceneResources() {
+        if (!this.scene) return;
+
+        const disposedTextures = new Set();
+        this.scene.traverse((object) => {
+            if (object.geometry?.dispose) {
+                object.geometry.dispose();
+            }
+
+            if (!object.material) return;
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            materials.forEach((material) => {
+                this.disposeMaterialTextures(material, disposedTextures);
+                material?.dispose?.();
             });
+        });
+    }
+
+    disposeComputeResources() {
+        if (this.sparkCompute?.dispose) {
+            try {
+                this.sparkCompute.dispose();
+            } catch (error) {
+                console.warn('[CosmicNoir] sparkCompute dispose failed:', error);
+            }
+        }
+        this.sparkCompute = null;
+    }
+
+    disposeRendererResources(removeCanvas = true) {
+        if (!this.renderer) return;
+
+        this.renderer.onDeviceLost = null;
+        const { domElement } = this.renderer;
+        try {
+            this.renderer.dispose();
+        } catch (error) {
+            console.warn('[CosmicNoir] renderer dispose failed:', error);
         }
 
+        if (removeCanvas && domElement?.parentNode) {
+            domElement.parentNode.removeChild(domElement);
+        }
+
+        this.renderer = null;
+    }
+
+    resetRuntimeReferences() {
         this.scene = null;
         this.camera = null;
-        this.renderer = null;
         this.composer = null;
+        this.postProcessing = null;
         this.planet = null;
+        this.planetUniforms = null;
         this.planetGroup = null;
         this.starfield = null;
+        this.starfieldUniforms = null;
         this.nebulaClouds = [];
         this.planetGlowLayers = [];
         this.atmosphere = null;
+        this.atmosphereUniforms = null;
         this.cosmicWaves = [];
         this.voidSparks = [];
         this.voidSparkIndex = 0;
+        this.sparkCompute = null;
+        this.pendingComboCount = 0;
+        this.planetPulseIntensity = 0;
+        this.starEventBoost = 0;
+        this.planetGlowIntensity = 1.0;
+        this.comboMultiplier = 1.0;
+        this.gasExplosionTimer = -10.0;
+        this.gasExplosionIntensity = 0.0;
+        this.time = 0;
+        this.fixedElapsed = 0;
+        this.isWebGPU = false;
+        this.isWebGL = false;
+        this.capabilities = {
+            isWebGPU: false,
+            maxColorAttachments: 0,
+            supportsCompute: false,
+        };
+    }
+
+    disposeRuntimeResources({ removeCanvas = true } = {}) {
+        this.disposePostProcessingStack();
+        this.disposeComputeResources();
+        this.disposeSceneResources();
+        this.disposeRendererResources(removeCanvas);
+        this.resetRuntimeReferences();
+    }
+
+    async handleDeviceLoss(info) {
+        if (this.deviceLossRecoveryInProgress || !this.isActive) return;
+
+        this.deviceLossRecoveryInProgress = true;
+        console.error('[CosmicNoir] WebGPU device lost:', info);
+
+        try {
+            this.cancelAnimationLoop();
+            this.clearDeferredTimeouts();
+            this.clearEventSubscriptions();
+            this.removeResizeListener();
+            this.disposeRuntimeResources({ removeCanvas: true });
+
+            // Force WebGL fallback after device loss.
+            this.flags.forceWebGL = true;
+            this.flags.noCompute = true;
+            this.flags.noMRT = true;
+
+            await this.createScene();
+            console.log('[CosmicNoir] Recovery complete: running on WebGL fallback.');
+        } catch (error) {
+            console.error('[CosmicNoir] Device-loss recovery failed:', error);
+            this.isActive = false;
+        } finally {
+            this.deviceLossRecoveryInProgress = false;
+        }
+    }
+
+    stop() {
+        this.cancelAnimationLoop();
+        this.clock.stop();
+        this.clearDeferredTimeouts();
+        this.clearEventSubscriptions();
+        this.removeResizeListener();
+        this.removeBaselineHelpers();
+        this.disposeRuntimeResources({ removeCanvas: true });
 
         super.stop();
     }
