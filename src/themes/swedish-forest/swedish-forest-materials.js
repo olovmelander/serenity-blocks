@@ -16,6 +16,7 @@ import {
     fract,
     length,
     max,
+    min,
     mix,
     modelWorldMatrix,
     normalWorld,
@@ -48,6 +49,24 @@ const noise2D = /* @__PURE__ */ Fn(([p]) => {
     const d = hash2D(i.add(vec2(1.0, 1.0)));
 
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+});
+
+const fbm2D = /* @__PURE__ */ Fn(([p]) => {
+    const v = float(0.0).toVar();
+    const amp = float(0.5).toVar();
+    const pos = vec2(p).toVar();
+    // Octave 1
+    v.addAssign(noise2D(pos).mul(amp));
+    pos.mulAssign(2.01); amp.mulAssign(0.5);
+    // Octave 2
+    v.addAssign(noise2D(pos).mul(amp));
+    pos.mulAssign(2.01); amp.mulAssign(0.5);
+    // Octave 3
+    v.addAssign(noise2D(pos).mul(amp));
+    pos.mulAssign(2.01); amp.mulAssign(0.5);
+    // Octave 4
+    v.addAssign(noise2D(pos).mul(amp));
+    return v;
 });
 
 export function createSkyNodeMaterial(params = {}) {
