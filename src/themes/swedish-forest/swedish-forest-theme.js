@@ -190,12 +190,48 @@ const COLORS = {
 };
 
 const QUALITY_PRESETS = {
-    Extreme: { enablePostProcessing: true, birdCount: 1024 },
-    Ultra: { enablePostProcessing: true, birdCount: 512 },
-    High: { enablePostProcessing: true, birdCount: 256 },
-    Medium: { enablePostProcessing: true, birdCount: 128 },
-    Low: { enablePostProcessing: false, birdCount: 64 },
-    Minimal: { enablePostProcessing: false, birdCount: 0 },
+    Extreme: {
+        enablePostProcessing: true, birdCount: 1024,
+        fireflyCount: 200, dustMoteCount: 150, spiritCount: 45, spiritLodDistance: 200,
+        grassCount: 400, fogBandCount: 3,
+        bloomStrength: 0.18, bloomRadius: 0.35,
+        waterReflectionRes: 1024, enableFilmGrain: true,
+    },
+    Ultra: {
+        enablePostProcessing: true, birdCount: 512,
+        fireflyCount: 160, dustMoteCount: 120, spiritCount: 35,
+        grassCount: 350, fogBandCount: 3,
+        bloomStrength: 0.18, bloomRadius: 0.35,
+        waterReflectionRes: 1024, enableFilmGrain: true,
+    },
+    High: {
+        enablePostProcessing: true, birdCount: 256,
+        fireflyCount: 120, dustMoteCount: 100, spiritCount: 25,
+        grassCount: 300, fogBandCount: 3,
+        bloomStrength: 0.16, bloomRadius: 0.30,
+        waterReflectionRes: 768, enableFilmGrain: false,
+    },
+    Medium: {
+        enablePostProcessing: true, birdCount: 128,
+        fireflyCount: 80, dustMoteCount: 60, spiritCount: 15,
+        grassCount: 200, fogBandCount: 4,
+        bloomStrength: 0.14, bloomRadius: 0.28,
+        waterReflectionRes: 512, enableFilmGrain: false,
+    },
+    Low: {
+        enablePostProcessing: false, birdCount: 64,
+        fireflyCount: 40, dustMoteCount: 30, spiritCount: 8,
+        grassCount: 120, fogBandCount: 3,
+        bloomStrength: 0, bloomRadius: 0,
+        waterReflectionRes: 256, enableFilmGrain: false,
+    },
+    Minimal: {
+        enablePostProcessing: false, birdCount: 0,
+        fireflyCount: 15, dustMoteCount: 0, spiritCount: 0,
+        grassCount: 0, fogBandCount: 2,
+        bloomStrength: 0, bloomRadius: 0,
+        waterReflectionRes: 256, enableFilmGrain: false,
+    },
 };
 
 function parseSwedishForestFlags() {
@@ -311,6 +347,11 @@ export default class SwedishForestTheme extends BaseTheme {
         this.mainGroup = null;
         this.clock = new THREE.Clock();
         this.animationFrame = null;
+        this.frameCount = 0;
+        // Reusable temp objects for per-frame matrix updates (avoid GC pressure)
+        this._tempMat = new THREE.Matrix4();
+        this._rotMat = new THREE.Matrix4();
+        this._scaleVec = new THREE.Vector3();
         this.birds = null;
 
         // Scene elements
@@ -337,9 +378,13 @@ export default class SwedishForestTheme extends BaseTheme {
         this.godRayNodeUniforms = null;
         this.fireflySystem = null;
         this.fireflyNodes = [];
+        this.fireflyInstancedMesh = null;
+        this.fireflyInstanceData = null;
         this.fireflyNodeUniforms = null;
         this.fireflyBoostUniform = null;
         this.dustMoteNodes = [];
+        this.dustInstancedMesh = null;
+        this.dustInstanceData = null;
         this.dustNodeUniforms = null;
         this.spiritNodeUniforms = [];
         this.spiritWindNodeUniforms = [];
@@ -358,6 +403,7 @@ export default class SwedishForestTheme extends BaseTheme {
         this.silhouetteGrassTexture = null;
         this.silhouetteGrassNodeUniforms = null;
         this.shoreReeds = [];
+        this.shoreReedInstances = [];
         this.shoreReedNodeUniforms = [];
         this.framingTrees = [];
         this.framingTreeFoliageNodeUniforms = [];
@@ -685,7 +731,16 @@ export default class SwedishForestTheme extends BaseTheme {
 
         this.probeCapabilities();
         this.logPhaseZeroState();
-        console.log(`[SwedishForest] Backend: ${this.isWebGPU ? 'WebGPU' : 'WebGL2'}`);
+
+        const quality = this.getCurrentQualityLevel();
+        console.log(
+            `[SwedishForest] Backend: ${this.isWebGPU ? 'WebGPU' : 'WebGL2'}`
+            + ` | Post: ${this.flags.usePost ? 'on' : 'off'}`
+            + ` | MRT: ${this.flags.useMRT ? 'on' : 'off'}`
+            + ` | Compute: ${this.flags.useCompute ? 'on' : 'off'}`
+            + ` | Bloom: ${this.flags.useBloom ? 'on' : 'off'}`
+            + ` | Quality: ${quality}`,
+        );
     }
 
     getTetrominoConfig() {
@@ -837,6 +892,7 @@ export default class SwedishForestTheme extends BaseTheme {
         // START ANIMATION
         // ─────────────────────────────────────────────────────────────────────
 
+        this.createDebugOverlay();
         this.animate();
 
         console.log(`[SwedishForest] Scene ready (${this.isWebGPU ? 'WebGPU' : 'WebGL2'})`);
@@ -1230,7 +1286,8 @@ export default class SwedishForestTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     createDustMotes() {
-        const dustCount = 150; // More dust particles floating in sunlight
+        const dustCount = this.qualityPreset?.dustMoteCount ?? 150;
+        if (dustCount <= 0) return;
 
         if (this.isWebGPU) {
             this.dustMoteNodes = [];
@@ -1244,25 +1301,35 @@ export default class SwedishForestTheme extends BaseTheme {
             this.dustNodeUniforms = nodeDust.uniforms;
 
             const dustGeometry = new THREE.PlaneGeometry(1, 1);
-            const dustGroup = new THREE.Group();
+
+            // ── InstancedMesh: single draw call for all dust motes ──
+            const instancedMesh = new THREE.InstancedMesh(dustGeometry, nodeDust.material, dustCount);
+            instancedMesh.renderOrder = 120;
+
+            this.dustInstanceData = new Float32Array(dustCount * 4); // x, y, z, scale
+            const tempMatrix = new THREE.Matrix4();
 
             for (let i = 0; i < dustCount; i++) {
-                const dust = new THREE.Mesh(dustGeometry, nodeDust.material);
-                dust.position.set(
-                    (this.random() - 0.5) * 400, // Width: 400 (-200 to 200)
-                    5 + this.random() * 25,
-                    10 - this.random() * 100, // Depth: +10 to -90
-                );
+                const px = (this.random() - 0.5) * 400;
+                const py = 5 + this.random() * 25;
+                const pz = 10 - this.random() * 100;
                 const scale = 0.35 + this.random() * 1.1;
-                dust.scale.set(scale, scale, 1);
-                dust.renderOrder = 120;
-                dust.userData.basePosition = dust.position.clone();
-                this.dustMoteNodes.push(dust);
-                dustGroup.add(dust);
-            }
 
-            this.dustMotes = dustGroup;
-            this.mainGroup.add(dustGroup);
+                const i4 = i * 4;
+                this.dustInstanceData[i4] = px;
+                this.dustInstanceData[i4 + 1] = py;
+                this.dustInstanceData[i4 + 2] = pz;
+                this.dustInstanceData[i4 + 3] = scale;
+
+                tempMatrix.makeScale(scale, scale, 1);
+                tempMatrix.setPosition(px, py, pz);
+                instancedMesh.setMatrixAt(i, tempMatrix);
+            }
+            instancedMesh.instanceMatrix.needsUpdate = true;
+
+            this.dustInstancedMesh = instancedMesh;
+            this.dustMotes = instancedMesh;
+            this.mainGroup.add(instancedMesh);
             return;
         }
 
@@ -1707,26 +1774,26 @@ export default class SwedishForestTheme extends BaseTheme {
             this.scene.add(mountainMesh);
 
             switch (peakConfig.name) {
-            case 'mainPeak':
-                this.silhouetteMountain = mountainMesh;
-                break;
-            case 'tallPeak':
-                this.tallMountainPeak = mountainMesh;
-                break;
-            case 'farLeftPeak':
-                this.farLeftMountain = mountainMesh;
-                break;
-            case 'extremeLeftRidge':
-                this.extremeLeftMountain = mountainMesh;
-                break;
-            case 'rightHill':
-                this.rightHill = mountainMesh;
-                break;
-            case 'farRightPeak':
-                this.farRightMountain = mountainMesh;
-                break;
-            default:
-                break;
+                case 'mainPeak':
+                    this.silhouetteMountain = mountainMesh;
+                    break;
+                case 'tallPeak':
+                    this.tallMountainPeak = mountainMesh;
+                    break;
+                case 'farLeftPeak':
+                    this.farLeftMountain = mountainMesh;
+                    break;
+                case 'extremeLeftRidge':
+                    this.extremeLeftMountain = mountainMesh;
+                    break;
+                case 'rightHill':
+                    this.rightHill = mountainMesh;
+                    break;
+                case 'farRightPeak':
+                    this.farRightMountain = mountainMesh;
+                    break;
+                default:
+                    break;
             }
         });
 
@@ -2366,7 +2433,8 @@ export default class SwedishForestTheme extends BaseTheme {
         clumpGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
         clumpGeo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
         clumpGeo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
-        const grassCount = 400;
+        const grassCount = this.qualityPreset?.grassCount ?? 400;
+        if (grassCount <= 0) return;
         const grassWindOffsets = new Float32Array(grassCount);
         clumpGeo.setAttribute(
             'aWindOffset',
@@ -2856,20 +2924,7 @@ export default class SwedishForestTheme extends BaseTheme {
     }
 
     getWaterReflectionResolution() {
-        const quality = this.getCurrentQualityLevel();
-        switch (quality) {
-        case 'Extreme':
-            return 1024;
-        case 'Ultra':
-        case 'High':
-            return 512;
-        case 'Medium':
-        case 'Low':
-            return 256;
-        case 'Minimal':
-        default:
-            return 128;
-        }
+        return this.qualityPreset?.waterReflectionRes ?? 512;
     }
 
     createWebGPUWater(lakeGeometry) {
@@ -3696,48 +3751,81 @@ export default class SwedishForestTheme extends BaseTheme {
             });
         }
 
-        reedClusters.forEach((cluster) => {
-            const group = new THREE.Group();
-
+        // ── InstancedMesh: batch reeds by color variant (~219 → 3 draw calls) ──
+        // First pass: count reeds per color variant
+        const reedCountPerColor = [0, 0, 0];
+        const reedAssignments = []; // { clusterIdx, reedIdx, colorIdx, height, localX, localZ, rotX, rotZ }
+        reedClusters.forEach((cluster, ci) => {
             for (let i = 0; i < cluster.count; i++) {
-                // Create thin triangular reed geometry
                 const height = cluster.height * (0.7 + this.random() * 0.6);
-                const geometry = new THREE.ConeGeometry(0.03, height, 4);
-                geometry.translate(0, height / 2, 0);
-
-                const reedColorIdx = Math.floor(this.random() * reedColors.length);
-                let material;
-                if (this.isWebGPU) {
-                    material = reedNodeVariants[reedColorIdx].material;
-                } else {
-                    material = new THREE.MeshBasicMaterial({
-                        color: reedColors[reedColorIdx],
-                        side: THREE.DoubleSide,
-                    });
-                }
-
-                const reed = new THREE.Mesh(geometry, material);
-
-                // Position within cluster
-                reed.position.set(
-                    (this.random() - 0.5) * 2.5,
-                    -0.5,
-                    (this.random() - 0.5) * 2.5,
-                );
-
-                // Random rotation and lean
-                reed.rotation.x = (this.random() - 0.5) * 0.3;
-                reed.rotation.z = (this.random() - 0.5) * 0.3;
-
-                group.add(reed);
+                const colorIdx = Math.floor(this.random() * reedColors.length);
+                const localX = (this.random() - 0.5) * 2.5;
+                const localZ = (this.random() - 0.5) * 2.5;
+                const rotX = (this.random() - 0.5) * 0.3;
+                const rotZ = (this.random() - 0.5) * 0.3;
+                reedCountPerColor[colorIdx]++;
+                reedAssignments.push({
+                    clusterX: cluster.x, clusterZ: cluster.z,
+                    colorIdx, height, localX, localZ, rotX, rotZ,
+                });
             }
-
-            group.position.set(cluster.x, 0, cluster.z);
-            this.shoreReeds.push(group);
-            this.mainGroup.add(group);
         });
 
-        console.log('[SwedishForest] Shore reeds created');
+        // Reference cone geometry (unit height, will be scaled per-instance)
+        const refHeight = 5.5; // Average reference height
+        const refConeGeo = new THREE.ConeGeometry(0.03, refHeight, 4);
+        refConeGeo.translate(0, refHeight / 2, 0);
+
+        // Create one InstancedMesh per color variant
+        this.shoreReedInstances = [];
+        const instanceIndices = [0, 0, 0]; // Current index per color
+        const instancedMeshes = [];
+
+        for (let c = 0; c < 3; c++) {
+            if (reedCountPerColor[c] === 0) continue;
+            let material;
+            if (this.isWebGPU) {
+                material = reedNodeVariants[c].material;
+            } else {
+                material = new THREE.MeshBasicMaterial({
+                    color: reedColors[c],
+                    side: THREE.DoubleSide,
+                });
+            }
+            const instancedMesh = new THREE.InstancedMesh(refConeGeo, material, reedCountPerColor[c]);
+            instancedMeshes[c] = instancedMesh;
+            this.shoreReedInstances.push(instancedMesh);
+            this.mainGroup.add(instancedMesh);
+        }
+
+        // Second pass: set instance matrices
+        const tempMatrix = new THREE.Matrix4();
+        const rotMatrix = new THREE.Matrix4();
+        const euler = new THREE.Euler();
+        reedAssignments.forEach((reed) => {
+            const c = reed.colorIdx;
+            const idx = instanceIndices[c]++;
+            const heightScale = reed.height / refHeight;
+
+            // Build transform: position + rotation + height-scale
+            euler.set(reed.rotX, 0, reed.rotZ);
+            rotMatrix.makeRotationFromEuler(euler);
+            tempMatrix.copy(rotMatrix);
+            tempMatrix.scale(new THREE.Vector3(1, heightScale, 1));
+            tempMatrix.setPosition(
+                reed.clusterX + reed.localX,
+                -0.5,
+                reed.clusterZ + reed.localZ,
+            );
+            instancedMeshes[c].setMatrixAt(idx, tempMatrix);
+        });
+
+        // Finalize
+        instancedMeshes.forEach((mesh) => {
+            if (mesh) mesh.instanceMatrix.needsUpdate = true;
+        });
+
+        console.log('[SwedishForest] Shore reeds created (instanced)');
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -3994,11 +4082,7 @@ export default class SwedishForestTheme extends BaseTheme {
             this.mushrooms.push(mushroom);
             this.mainGroup.add(mushroom);
 
-            // Add subtle point light for each mushroom
-            const light = new THREE.PointLight(glowColor, 0.3, 8, 2);
-            light.position.set(data.x, 0.5, data.z);
-            this.mushroomLights.push(light);
-            this.mainGroup.add(light);
+            // PointLights removed for performance — emissive cap material provides the glow
         });
     }
 
@@ -4719,7 +4803,8 @@ export default class SwedishForestTheme extends BaseTheme {
 
     createFireflySystem() {
         // Many fireflies distributed across scene INCLUDING deep in forest between trees
-        const fireflyCount = 200;
+        const fireflyCount = this.qualityPreset?.fireflyCount ?? 200;
+        if (fireflyCount <= 0) return;
 
         if (this.isWebGPU) {
             this.fireflyNodes = [];
@@ -4733,31 +4818,41 @@ export default class SwedishForestTheme extends BaseTheme {
             this.fireflyBoostUniform = nodeFirefly.uniforms.uBoost;
 
             const fireflyGeometry = new THREE.PlaneGeometry(1, 1);
-            const fireflyGroup = new THREE.Group();
+
+            // ── InstancedMesh: single draw call for all fireflies ──
+            const instancedMesh = new THREE.InstancedMesh(fireflyGeometry, nodeFirefly.material, fireflyCount);
+            instancedMesh.renderOrder = 130;
+
+            // Pre-compute per-instance positions and scales
+            this.fireflyInstanceData = new Float32Array(fireflyCount * 4); // x, y, z, scale
+            const tempMatrix = new THREE.Matrix4();
 
             for (let i = 0; i < fireflyCount; i++) {
-                // Distribute evenly across the FULL scene width
-                const gridX = (i % 20) / 19; // 0 to 1 across 20 columns
-                const gridZ = Math.floor(i / 20) / 9; // 0 to 1 across 10 rows
+                const gridX = (i % 20) / 19;
+                const gridZ = Math.floor(i / 20) / 9;
                 const randOffsetX = (this.random() - 0.5) * 25;
                 const randOffsetZ = (this.random() - 0.5) * 18;
 
-                const firefly = new THREE.Mesh(fireflyGeometry, nodeFirefly.material);
-                firefly.position.set(
-                    -250 + gridX * 500 + randOffsetX, // x: -250 to +250
-                    1 + this.random() * 30, // y: 1 to 31
-                    -120 + gridZ * 140 + randOffsetZ, // z: -120 to +20
-                );
+                const px = -250 + gridX * 500 + randOffsetX;
+                const py = 1 + this.random() * 30;
+                const pz = -120 + gridZ * 140 + randOffsetZ;
                 const scale = 0.7 + this.random() * 1.4;
-                firefly.scale.set(scale, scale, 1);
-                firefly.renderOrder = 130;
-                firefly.userData.basePosition = firefly.position.clone();
-                this.fireflyNodes.push(firefly);
-                fireflyGroup.add(firefly);
-            }
 
-            this.fireflySystem = fireflyGroup;
-            this.mainGroup.add(fireflyGroup);
+                const i4 = i * 4;
+                this.fireflyInstanceData[i4] = px;
+                this.fireflyInstanceData[i4 + 1] = py;
+                this.fireflyInstanceData[i4 + 2] = pz;
+                this.fireflyInstanceData[i4 + 3] = scale;
+
+                tempMatrix.makeScale(scale, scale, 1);
+                tempMatrix.setPosition(px, py, pz);
+                instancedMesh.setMatrixAt(i, tempMatrix);
+            }
+            instancedMesh.instanceMatrix.needsUpdate = true;
+
+            this.fireflyInstancedMesh = instancedMesh;
+            this.fireflySystem = instancedMesh;
+            this.mainGroup.add(instancedMesh);
             return;
         }
 
@@ -4825,7 +4920,8 @@ export default class SwedishForestTheme extends BaseTheme {
 
     createForestSpirits() {
         // More spirits distributed across the entire scene, deep in forest and high in sky
-        const spiritCount = 45;
+        const spiritCount = this.qualityPreset?.spiritCount ?? 45;
+        if (spiritCount <= 0) return;
         this.spiritNodeUniforms = [];
 
         for (let i = 0; i < spiritCount; i++) {
@@ -5100,11 +5196,8 @@ export default class SwedishForestTheme extends BaseTheme {
         );
         this.scene.add(hemiLight);
 
-        // Warm point light for spirit/effect glow
-        const spiritGlow = new THREE.PointLight(0xFFAA66, 0.5, 50);
-        spiritGlow.position.set(0, 10, -15);
-        this.mainGroup.add(spiritGlow);
-        this.spiritLight = spiritGlow;
+        // Spirit PointLight removed for performance — spirit materials use additive blending for glow
+        this.spiritLight = null;
 
         // Floor illumination light - warm tones
         const floorLight = new THREE.DirectionalLight(0xAA7744, 0.5);
@@ -5120,7 +5213,7 @@ export default class SwedishForestTheme extends BaseTheme {
         this.distanceFogBands = [];
         this.distanceFogBandUniforms = [];
 
-        const fogBands = [
+        const allFogBands = [
             {
                 z: -110, y: 16, width: 520, height: 120, density: 0.24, color: new THREE.Color(0xFFCC88), drift: new THREE.Vector2(0.012, 0.004),
             },
@@ -5137,6 +5230,9 @@ export default class SwedishForestTheme extends BaseTheme {
                 z: -38, y: 6.5, width: 380, height: 64, density: 0.32, color: new THREE.Color(0xE36E38), drift: new THREE.Vector2(0.031, 0.006),
             },
         ];
+
+        const maxBands = this.qualityPreset?.fogBandCount ?? allFogBands.length;
+        const fogBands = allFogBands.slice(0, maxBands);
 
         fogBands.forEach((band, index) => {
             const geometry = new THREE.PlaneGeometry(band.width, band.height);
@@ -5266,12 +5362,16 @@ export default class SwedishForestTheme extends BaseTheme {
                 this.ensureMrtMaterials();
             }
 
+            const presetBloom = this.qualityPreset?.bloomStrength ?? 0.18;
+            const presetRadius = this.qualityPreset?.bloomRadius ?? 0.35;
+            const filmGrain = this.qualityPreset?.enableFilmGrain !== false;
+
             const postParams = this.isWebGPU
                 ? {
                     useMRT: this.flags.useMRT,
                     useBloom: this.flags.useBloom,
-                    bloomStrength: 0.18,
-                    bloomRadius: 0.35,
+                    bloomStrength: presetBloom,
+                    bloomRadius: presetRadius,
                     bloomThreshold: 0.92,
                     exposure: 0.97,
                     contrast: 1.01,
@@ -5280,13 +5380,13 @@ export default class SwedishForestTheme extends BaseTheme {
                     crushBlacks: new THREE.Color(0.015, 0.008, 0.004),
                     vignetteOffset: 1.28,
                     vignetteDarkness: 0.34,
-                    grainStrength: 0.008,
+                    grainStrength: filmGrain ? 0.008 : 0,
                 }
                 : {
                     useMRT: this.flags.useMRT,
                     useBloom: this.flags.useBloom,
-                    bloomStrength: 0.35,
-                    bloomRadius: 0.5,
+                    bloomStrength: presetBloom || 0.35,
+                    bloomRadius: presetRadius || 0.5,
                     bloomThreshold: 0.8,
                     exposure: 1.05,
                     contrast: 1.04,
@@ -5295,7 +5395,7 @@ export default class SwedishForestTheme extends BaseTheme {
                     crushBlacks: new THREE.Color(0.02, 0.01, 0.005),
                     vignetteOffset: 1.3,
                     vignetteDarkness: 0.4,
-                    grainStrength: 0.015,
+                    grainStrength: filmGrain ? 0.015 : 0,
                 };
 
             this.postComposer = new SwedishForestPost(this.renderer, this.scene, this.camera, {
@@ -5345,6 +5445,46 @@ export default class SwedishForestTheme extends BaseTheme {
         if (spirit.userData?.nodeUniforms?.uOpacity) return spirit.userData.nodeUniforms.uOpacity;
         if (spirit.material?.uniforms?.uOpacity) return spirit.material.uniforms.uOpacity;
         return null;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DEBUG OVERLAY
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    createDebugOverlay() {
+        if (!this.flags.debug) return;
+
+        const container = document.getElementById('swedish-forest-theme');
+        if (!container) return;
+
+        const el = document.createElement('div');
+        el.style.cssText = 'position:absolute;top:8px;left:8px;z-index:9999;'
+            + 'background:rgba(0,0,0,0.65);color:#ffd080;font:11px/1.5 monospace;'
+            + 'padding:6px 10px;border-radius:4px;pointer-events:none;white-space:pre;';
+        container.appendChild(el);
+        this.debugOverlay = el;
+        this.debugFrameCounter = 0;
+    }
+
+    updateDebugOverlay(delta) {
+        if (!this.debugOverlay) return;
+        this.debugFrameCounter = (this.debugFrameCounter || 0) + 1;
+        if (this.debugFrameCounter % 30 !== 0) return;
+
+        const fps = delta > 0 ? (1 / delta).toFixed(0) : '--';
+        const info = this.renderer?.info;
+        const calls = info?.render?.calls ?? '--';
+        const tris = info?.render?.triangles ?? '--';
+        const textures = info?.memory?.textures ?? '--';
+        const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
+        const post = this.flags.usePost ? 'on' : 'off';
+        const mrtLabel = this.flags.useMRT ? 'on' : 'off';
+        const compute = this.flags.useCompute ? 'on' : 'off';
+
+        this.debugOverlay.textContent
+            = `${backend} | FPS: ${fps}\n`
+            + `Draw: ${calls} | Tris: ${tris} | Tex: ${textures}\n`
+            + `Post: ${post} | MRT: ${mrtLabel} | Compute: ${compute}`;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -5429,7 +5569,6 @@ export default class SwedishForestTheme extends BaseTheme {
 
     onPieceLock(data) {
         this.targetGlowIntensity += 0.1;
-        this.mushroomPulse = 1.5; // Strong pulse on lock
 
         this.spirits.forEach((spirit) => {
             const spiritOpacity = this.getSpiritOpacityUniform(spirit);
@@ -5481,6 +5620,7 @@ export default class SwedishForestTheme extends BaseTheme {
         }
         const elapsed = this.fixedDeltaSeconds !== null ? this.fixedElapsedTime : this.clock.getElapsedTime();
         this.uniforms.time.value = elapsed;
+        this.frameCount++;
         this.recordBaselineSample(delta);
 
         if (this.skyNodeUniforms?.uTime) {
@@ -5804,21 +5944,57 @@ export default class SwedishForestTheme extends BaseTheme {
             this.skyDome.position.copy(this.camera.position);
         }
 
-        // Billboard cloud cards to camera for clean silhouettes
-        if (this.clouds && this.camera) {
+        // Billboard cloud cards to camera — stride: every 4th frame (nearly static)
+        if (this.clouds && this.camera && (this.frameCount % 4 === 0)) {
             this.clouds.forEach((cloud) => {
                 cloud.quaternion.copy(this.camera.quaternion);
             });
         }
-        if (this.fireflyNodes?.length && this.camera) {
-            this.fireflyNodes.forEach((firefly) => {
-                firefly.quaternion.copy(this.camera.quaternion);
-            });
+        // Update firefly InstancedMesh billboarding (single draw call path)
+        // Stride: every 2nd frame — slow drift tolerates 30Hz update
+        if (this.fireflyInstancedMesh && this.fireflyInstanceData && this.camera && (this.frameCount % 2 === 0)) {
+            const camQuat = this.camera.quaternion;
+            const tempMat = this._tempMat;
+            const rotMat = this._rotMat.makeRotationFromQuaternion(camQuat);
+            const scaleVec = this._scaleVec;
+            const count = this.fireflyInstanceData.length / 4;
+            for (let i = 0; i < count; i++) {
+                const i4 = i * 4;
+                const s = this.fireflyInstanceData[i4 + 3];
+                tempMat.copy(rotMat);
+                scaleVec.set(s, s, 1);
+                tempMat.scale(scaleVec);
+                tempMat.setPosition(
+                    this.fireflyInstanceData[i4],
+                    this.fireflyInstanceData[i4 + 1],
+                    this.fireflyInstanceData[i4 + 2],
+                );
+                this.fireflyInstancedMesh.setMatrixAt(i, tempMat);
+            }
+            this.fireflyInstancedMesh.instanceMatrix.needsUpdate = true;
         }
-        if (this.dustMoteNodes?.length && this.camera) {
-            this.dustMoteNodes.forEach((dustMote) => {
-                dustMote.quaternion.copy(this.camera.quaternion);
-            });
+        // Update dust mote InstancedMesh billboarding (single draw call path)
+        // Stride: every 2nd frame — slow drift tolerates 30Hz update
+        if (this.dustInstancedMesh && this.dustInstanceData && this.camera && (this.frameCount % 2 === 1)) {
+            const camQuat = this.camera.quaternion;
+            const tempMat = this._tempMat;
+            const rotMat = this._rotMat.makeRotationFromQuaternion(camQuat);
+            const scaleVec = this._scaleVec;
+            const count = this.dustInstanceData.length / 4;
+            for (let i = 0; i < count; i++) {
+                const i4 = i * 4;
+                const s = this.dustInstanceData[i4 + 3];
+                tempMat.copy(rotMat);
+                scaleVec.set(s, s, 1);
+                tempMat.scale(scaleVec);
+                tempMat.setPosition(
+                    this.dustInstanceData[i4],
+                    this.dustInstanceData[i4 + 1],
+                    this.dustInstanceData[i4 + 2],
+                );
+                this.dustInstancedMesh.setMatrixAt(i, tempMat);
+            }
+            this.dustInstancedMesh.instanceMatrix.needsUpdate = true;
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -5836,33 +6012,45 @@ export default class SwedishForestTheme extends BaseTheme {
         // SPIRIT MOVEMENT
         // ─────────────────────────────────────────────────────────────────────
 
-        this.spirits.forEach((spirit) => {
-            spirit.userData.wanderPhase += delta * 0.4;
+        // Spirit movement — stride: every 2nd frame (slow wander)
+        if (this.frameCount % 2 === 0) {
+            const spiritLodDistSq = Math.pow(this.qualityPreset?.spiritLodDistance ?? 200, 2);
+            this.spirits.forEach((spirit) => {
+                spirit.userData.wanderPhase += delta * 0.4;
 
-            spirit.userData.targetX += Math.cos(spirit.userData.wanderPhase) * 0.08;
-            spirit.userData.targetY += Math.sin(spirit.userData.wanderPhase * 1.3) * 0.04;
+                spirit.userData.targetX += Math.cos(spirit.userData.wanderPhase) * 0.08;
+                spirit.userData.targetY += Math.sin(spirit.userData.wanderPhase * 1.3) * 0.04;
 
-            const dx = spirit.userData.targetX - spirit.position.x;
-            const dy = spirit.userData.targetY - spirit.position.y;
-            spirit.userData.velocity.x += dx * 0.0015;
-            spirit.userData.velocity.y += dy * 0.0015;
+                const dx = spirit.userData.targetX - spirit.position.x;
+                const dy = spirit.userData.targetY - spirit.position.y;
+                spirit.userData.velocity.x += dx * 0.0015;
+                spirit.userData.velocity.y += dy * 0.0015;
 
-            spirit.userData.velocity.x *= 0.97;
-            spirit.userData.velocity.y *= 0.97;
+                spirit.userData.velocity.x *= 0.97;
+                spirit.userData.velocity.y *= 0.97;
 
-            spirit.position.x += spirit.userData.velocity.x;
-            spirit.position.y += spirit.userData.velocity.y;
+                spirit.position.x += spirit.userData.velocity.x;
+                spirit.position.y += spirit.userData.velocity.y;
 
-            const spiritOpacity = this.getSpiritOpacityUniform(spirit);
-            if (spiritOpacity) {
-                spiritOpacity.value *= 0.997;
-                if (spiritOpacity.value < 0.25) {
-                    spiritOpacity.value = 0.25;
+                // LOD cull: hide spirits far from camera
+                const distSq = spirit.position.distanceToSquared(this.camera.position);
+                if (distSq > spiritLodDistSq) {
+                    spirit.visible = false;
+                    return;
                 }
-            }
+                spirit.visible = true;
 
-            spirit.lookAt(this.camera.position);
-        });
+                const spiritOpacity = this.getSpiritOpacityUniform(spirit);
+                if (spiritOpacity) {
+                    spiritOpacity.value *= 0.997;
+                    if (spiritOpacity.value < 0.25) {
+                        spiritOpacity.value = 0.25;
+                    }
+                }
+
+                spirit.lookAt(this.camera.position);
+            });
+        } // end spirit stride
 
         // ─────────────────────────────────────────────────────────────────────
         // SPIRIT WIND MOVEMENT
@@ -5980,38 +6168,12 @@ export default class SwedishForestTheme extends BaseTheme {
             }
         }
 
-        // ─────────────────────────────────────────────────────────────────────
-        // MUSHROOM GLOW ANIMATION
-        // ─────────────────────────────────────────────────────────────────────
-
-        // Decay pulse
-        this.mushroomPulse *= 0.92;
-        if (this.mushroomPulse < 0.01) this.mushroomPulse = 0;
-
         // Decay firefly boost for piece lock twinkle effect
         if (this.fireflyBoostUniform) {
             const boost = this.fireflyBoostUniform;
             boost.value *= 0.94; // Smooth decay
             if (boost.value < 0.01) boost.value = 0;
         }
-
-        this.mushrooms.forEach((mushroom, idx) => {
-            if (mushroom.userData.capMat) {
-                // Pulsing glow effect + Piece Lock Pulse
-                const pulse = Math.sin(elapsed * 1.5 + mushroom.userData.phase) * 0.3 + 1.0;
-                const comboBoost = 1 + this.uniforms.glowIntensity.value * 2;
-                const lockBoost = 1 + this.mushroomPulse * 2.0; // Strong boost from lock
-
-                mushroom.userData.capMat.emissiveIntensity = mushroom.userData.baseEmissive * pulse * comboBoost * lockBoost;
-            }
-        });
-
-        // Mushroom lights also pulse
-        this.mushroomLights.forEach((light, idx) => {
-            const pulse = Math.sin(elapsed * 1.5 + idx * 0.7) * 0.15 + 0.3;
-            const lockBoost = 1 + this.mushroomPulse * 3.0;
-            light.intensity = pulse * (1 + this.uniforms.glowIntensity.value * 1.5) * lockBoost;
-        });
 
         // ─────────────────────────────────────────────────────────────────────
         // CAMERA BREATHING
@@ -6027,8 +6189,8 @@ export default class SwedishForestTheme extends BaseTheme {
         // RENDER
         // ─────────────────────────────────────────────────────────────────────
 
-        // Update GPGPU Birds
-        if (this.birds) {
+        // Update GPGPU Birds — stride: every 2nd frame (smooth flocking)
+        if (this.birds && (this.frameCount % 2 === 0)) {
             this.birds.update(elapsed, delta);
         }
 
@@ -6048,6 +6210,74 @@ export default class SwedishForestTheme extends BaseTheme {
             }
         } else {
             this.renderer.render(this.scene, this.camera);
+        }
+
+        this.updateDRS(delta);
+        this.updateDebugOverlay(delta);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DYNAMIC RESOLUTION SCALING (DRS)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    updateDRS(delta) {
+        if (!this.renderer) return;
+        // Skip DRS when fixed resolution mode is active
+        if (this.resolutionMode === 'fixed' && this.targetResolution) return;
+
+        // Initialize DRS state on first call
+        if (!this.drsState) {
+            this.drsState = {
+                scale: 1.0,
+                frameTimeSamples: [],
+                maxSamples: 10,
+                lastAdjustFrame: 0,
+                basePixelRatio: this.getEffectivePixelRatio(),
+            };
+        }
+
+        const state = this.drsState;
+
+        // Track frame time
+        state.frameTimeSamples.push(delta);
+        if (state.frameTimeSamples.length > state.maxSamples) {
+            state.frameTimeSamples.shift();
+        }
+
+        // Only adjust every 30 frames to avoid oscillation
+        if (this.frameCount - state.lastAdjustFrame < 30) return;
+        if (state.frameTimeSamples.length < state.maxSamples) return;
+
+        // Calculate average FPS from rolling window
+        const avgDelta = state.frameTimeSamples.reduce((a, b) => a + b, 0) / state.frameTimeSamples.length;
+        const avgFps = 1 / avgDelta;
+
+        let changed = false;
+
+        if (avgFps < 50 && state.scale > 0.6) {
+            // Scale down by 5%
+            state.scale = Math.max(state.scale - 0.05, 0.6);
+            changed = true;
+        } else if (avgFps > 58 && state.scale < 1.0) {
+            // Scale up by 2%
+            state.scale = Math.min(state.scale + 0.02, 1.0);
+            changed = true;
+        }
+
+        if (changed) {
+            state.lastAdjustFrame = this.frameCount;
+            const newRatio = state.basePixelRatio * state.scale;
+            this.renderer.setPixelRatio(newRatio);
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+            if (this.postComposer) {
+                this.postComposer.setPixelRatio?.(newRatio);
+                this.postComposer.setSize?.(window.innerWidth, window.innerHeight);
+            }
+
+            if (this.flags.debug) {
+                console.log(`[SwedishForest DRS] scale=${state.scale.toFixed(2)} ratio=${newRatio.toFixed(2)} fps=${avgFps.toFixed(1)}`);
+            }
         }
     }
 
@@ -6132,12 +6362,14 @@ export default class SwedishForestTheme extends BaseTheme {
             this.birds = null;
         }
 
-        if (this.renderer) {
-            this.renderer.dispose();
-            const container = document.getElementById('swedish-forest-theme');
-            if (container && container.contains(this.renderer.domElement)) {
-                container.removeChild(this.renderer.domElement);
-            }
+        // Dispose scene objects BEFORE the renderer so the WebGPU node manager
+        // is still alive when MeshBasicNodeMaterial.dispose() triggers internal
+        // Nodes.delete() cleanup.
+        if (typeof this.lakeMesh?.dispose === 'function') {
+            this.lakeMesh.dispose();
+        }
+        if (this.webgpuWater?.renderTarget) {
+            this.webgpuWater.renderTarget.dispose();
         }
 
         if (this.scene) {
@@ -6153,8 +6385,13 @@ export default class SwedishForestTheme extends BaseTheme {
             });
         }
 
-        if (this.webgpuWater?.renderTarget) {
-            this.webgpuWater.renderTarget.dispose();
+        // Renderer disposed AFTER scene materials so WebGPU node tracking is intact.
+        if (this.renderer) {
+            this.renderer.dispose();
+            const container = document.getElementById('swedish-forest-theme');
+            if (container && container.contains(this.renderer.domElement)) {
+                container.removeChild(this.renderer.domElement);
+            }
         }
 
         if (this.rockMaterials && this.rockMaterials.length) {
@@ -6203,6 +6440,7 @@ export default class SwedishForestTheme extends BaseTheme {
         this.silhouetteGrassTexture = null;
         this.silhouetteGrassNodeUniforms = null;
         this.shoreReeds = [];
+        this.shoreReedInstances = [];
         this.shoreReedNodeUniforms = [];
         this.framingTrees = [];
         this.framingTreeFoliageNodeUniforms = [];
@@ -6228,10 +6466,16 @@ export default class SwedishForestTheme extends BaseTheme {
         this.godRayNodeUniforms = null;
         this.fireflySystem = null;
         this.fireflyNodes = [];
+        this.fireflyInstancedMesh = null;
+        this.fireflyInstanceData = null;
         this.fireflyNodeUniforms = null;
         this.fireflyBoostUniform = null;
         this.dustMoteNodes = [];
+        this.dustInstancedMesh = null;
+        this.dustInstanceData = null;
         this.dustNodeUniforms = null;
+        this.drsState = null;
+        this.frameCount = 0;
         this.spiritNodeUniforms = [];
         this.spiritWindNodeUniforms = [];
         this.lensFlareNodeUniforms = [];
@@ -6261,9 +6505,18 @@ export default class SwedishForestTheme extends BaseTheme {
         this.rockShadowCatcher = null;
         this.webgpuWater = null;
         this.waterNodeUniforms = null;
+        this.lakeMesh = null;
         this.shoreFoamMesh = null;
         this.shoreFoamNodeUniforms = null;
+        this.lensFlares = [];
+        this.mushrooms = [];
+        this.mushroomLights = [];
         this.waterNormalsTexture = null;
         this.waterNormalsFallbackTexture = null;
+
+        if (this.debugOverlay?.parentNode) {
+            this.debugOverlay.parentNode.removeChild(this.debugOverlay);
+        }
+        this.debugOverlay = null;
     }
 }

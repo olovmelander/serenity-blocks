@@ -13,6 +13,7 @@ import {
     MeshBasicNodeMaterial,
     MeshStandardNodeMaterial,
     PointsNodeMaterial,
+    SpriteNodeMaterial,
 } from 'three/webgpu';
 import {
     Fn,
@@ -131,8 +132,8 @@ export function createPlanetNodeMaterial(params = {}) {
     );
     const contrastLuma = pow(clamp(luma.mul(0.85).add(detailNoise.mul(0.25)), 0.0, 1.0), 2.2);
 
-    const deepCharcoal = vec3(0.01, 0.01, 0.03);
-    const brightSilver = vec3(0.55, 0.55, 0.65);
+    const deepCharcoal = vec3(0.01, 0.01, 0.016);
+    const brightSilver = vec3(0.22, 0.22, 0.3);
     const surfaceColor = mix(deepCharcoal, brightSilver, contrastLuma);
 
     const displacementNoise = tslFbm(
@@ -147,29 +148,42 @@ export function createPlanetNodeMaterial(params = {}) {
     const sunDir = normalize(uSunDirection);
     const fresnel = pow(float(1.0).sub(abs(dot(nrm, viewDir))), 3.0);
     const sunFacing = clamp(dot(nrm, sunDir).mul(0.5).add(0.5), 0.0, 1.0);
-    const rimGlow = vec3(0.5, 0.5, 0.62)
+    const rimGlow = vec3(0.26, 0.26, 0.34)
         .mul(fresnel)
-        .mul(sunFacing.mul(0.6).add(0.4));
-    const pulseGlow = rimGlow.mul(uPulseIntensity.mul(0.65));
+        .mul(sunFacing.mul(0.54).add(0.28));
+    const pulseGlow = rimGlow.mul(uPulseIntensity.mul(0.6));
+    const nightSide = clamp(float(1.0).sub(sunFacing), 0.0, 1.0);
+    const subsurfaceNoise = tslFbm(
+        uvCoord.mul(9.0).add(vec2(uTime.mul(0.12), uTime.mul(-0.07))),
+        4,
+    );
+    const subsurfaceGlow = vec3(0.026, 0.026, 0.04)
+        .mul(pow(nightSide, 1.35))
+        .mul(subsurfaceNoise.mul(0.45).add(0.55))
+        .mul(float(0.2).add(uPulseIntensity.mul(0.27)));
 
     const halfVector = normalize(sunDir.add(viewDir));
-    const specular = pow(max(dot(nrm, halfVector), 0.0), 24.0).mul(contrastLuma).mul(0.65);
+    const specular = pow(max(dot(nrm, halfVector), 0.0), 24.0).mul(contrastLuma).mul(0.26);
     const microHighlights = vec3(specular, specular, specular);
 
-    const pulseMul = float(1.0).add(uPulseIntensity.mul(0.2));
+    const pulseMul = float(1.0).add(uPulseIntensity.mul(0.12));
     const finalColor = surfaceColor
         .add(rimGlow)
         .add(pulseGlow)
+        .add(subsurfaceGlow)
         .add(microHighlights)
         .mul(uGlowIntensity)
         .mul(pulseMul);
 
-    material.colorNode = clamp(finalColor, vec3(0.0), vec3(1.2));
-    material.roughnessNode = clamp(float(0.85).sub(contrastLuma.mul(0.22)), 0.2, 1.0);
-    material.metalnessNode = contrastLuma.mul(0.24);
+    material.colorNode = clamp(finalColor, vec3(0.0), vec3(0.62));
+    material.roughnessNode = clamp(float(0.9).sub(contrastLuma.mul(0.2)), 0.38, 1.0);
+    material.metalnessNode = contrastLuma.mul(0.16);
     material.emissiveNode = rimGlow
-        .add(pulseGlow)
-        .mul(BLOOM_CLASS_WEIGHTS.planet);
+        .mul(0.56)
+        .add(pulseGlow.mul(0.62))
+        .add(subsurfaceGlow.mul(0.36))
+        .add(surfaceColor.mul(0.08))
+        .mul(BLOOM_CLASS_WEIGHTS.planet * 0.58);
 
     return finalizeNodeMaterial(
         material,
@@ -228,13 +242,16 @@ export function createStarfieldNodeMaterial(params = {}) {
         : sin(uTime.mul(twinkleSpeed).add(phase)).mul(0.3).add(0.7);
     const brightness = baseBrightness.mul(twinkle).mul(float(1.0).add(uEventBoost.mul(0.5)));
 
-    const center = uv().sub(0.5);
-    const dist = length(center).mul(2.0);
-    const softCircle = float(1.0).sub(smoothstep(float(0.0), float(1.0), dist));
-    const core = smoothstep(float(0.25), float(0.0), dist);
-
-    const coreColor = aColor.mul(brightness).mul(1.5).add(vec3(0.15, 0.15, 0.15).mul(core));
-    const alpha = softCircle.mul(brightness.add(0.2));
+    // Avoid point-coordinate builtins (gl_PointCoord) to keep WGSL generation stable on RC5.
+    const sizeFactor = clamp(sizeValue.div(float(40.0)), float(0.35), float(1.25));
+    const coreColor = aColor
+        .mul(brightness.mul(1.85))
+        .add(vec3(0.06, 0.06, 0.08).mul(sizeFactor));
+    const alpha = clamp(
+        brightness.mul(0.75).mul(sizeFactor).add(0.1),
+        float(0.08),
+        float(1.0),
+    );
 
     material.colorNode = coreColor;
     material.opacityNode = alpha;
@@ -244,6 +261,58 @@ export function createStarfieldNodeMaterial(params = {}) {
         material,
         { uTime, uPixelRatio, uEventBoost },
         { emitsBloom: true, mrtRole: 'starfield' },
+    );
+}
+
+export function createAmbientDustNodeMaterial(params = {}) {
+    const material = new PointsNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+    });
+
+    const uTime = uniform(0);
+    const uPulse = uniform(0);
+    const uPixelRatio = uniform(params.pixelRatio ?? 1.0);
+
+    const aPosition = attribute('position');
+    const aRandom = attribute('aRandom');
+    const aSize = attribute('aSize');
+
+    const orbitAngle = uTime.mul(0.08).mul(float(1.0).add(aRandom.mul(0.5)));
+    const orbitSin = sin(orbitAngle);
+    const orbitCos = cos(orbitAngle);
+    const rotatedPos = vec3(
+        aPosition.x.mul(orbitCos).sub(aPosition.z.mul(orbitSin)),
+        aPosition.y.add(sin(uTime.mul(0.4).add(aRandom.mul(10.0))).mul(0.5)),
+        aPosition.x.mul(orbitSin).add(aPosition.z.mul(orbitCos)),
+    );
+    material.positionNode = rotatedPos;
+
+    const viewPos = modelViewMatrix.mul(vec4(rotatedPos, float(1.0)));
+    const depth = max(float(1.0), viewPos.z.negate());
+    material.sizeNode = clamp(
+        aSize.mul(uPixelRatio).mul(float(220.0)).div(depth),
+        float(1.5),
+        float(22.0),
+    );
+
+    const pulse = sin(uTime.mul(1.5).add(aRandom.mul(10.0))).mul(0.3).add(0.3);
+    const pulseReactive = pulse.add(uPulse.mul(0.2));
+    const sizeFactor = clamp(aSize.div(float(24.0)), float(0.25), float(0.9));
+    const alpha = clamp(pulseReactive.mul(sizeFactor).mul(0.28), 0.0, 0.35);
+
+    const brightness = aRandom.mul(0.25).add(0.12);
+    const color = vec3(brightness, brightness, brightness.add(0.01));
+
+    material.colorNode = color;
+    material.opacityNode = alpha;
+    material.emissiveNode = vec3(0.0, 0.0, 0.0);
+
+    return finalizeNodeMaterial(
+        material,
+        { uTime, uPulse, uPixelRatio },
+        { emitsBloom: false, mrtRole: 'ambient-dust' },
     );
 }
 
@@ -302,7 +371,20 @@ export function createAtmosphereNodeMaterial(params = {}) {
             .sub(warpOffset),
         4,
     );
-    const gas = mix(gasA, gasB, 0.4).mul(flowDensityPulse);
+    const breath = sin(uTime.mul(0.55)).mul(0.08).add(1.0);
+    const tendrilField = tslFbm(
+        vec2(pos.y, pos.z)
+            .mul(5.2)
+            .add(vec2(flowTime.mul(0.9), flowTime.mul(-0.7)))
+            .add(flowOffsetB.mul(0.7))
+            .add(warpOffset.mul(1.2)),
+        4,
+    );
+    const tendrilMask = smoothstep(float(0.42), float(0.85), tendrilField).mul(flowTurbulence);
+    const gas = mix(gasA, gasB, 0.4)
+        .mul(flowDensityPulse)
+        .mul(breath)
+        .add(tendrilMask.mul(0.2));
 
     const explosionAge = max(float(0.0), uExplosionTimer);
     const explosionIn = smoothstep(float(0.0), float(0.15), explosionAge);
@@ -310,6 +392,11 @@ export function createAtmosphereNodeMaterial(params = {}) {
     const explosionWindow = explosionIn.mul(explosionOut);
 
     const radialDist = length(vec2(pos.x, pos.y));
+    const pulseWave = sin(uTime.mul(4.0).sub(radialDist.mul(8.0)))
+        .mul(0.5)
+        .add(0.5)
+        .mul(uPulseIntensity)
+        .mul(0.35);
     const shockPhase = sin(explosionAge.mul(12.0).sub(radialDist.mul(6.0))).mul(0.5).add(0.5);
     const shockwave = shockPhase
         .mul(explosionWindow)
@@ -317,19 +404,34 @@ export function createAtmosphereNodeMaterial(params = {}) {
         .mul(flowTurbulence);
 
     const pulseMul = float(1.0).add(uPulseIntensity.mul(0.5));
-    let color = mix(vec3(0.12, 0.12, 0.15), vec3(0.35, 0.35, 0.42), gas).mul(pulseMul);
-    color = color.add(vec3(0.95, 0.95, 1.0).mul(shockwave.mul(0.55)));
+    const tendrilGlow = vec3(0.22, 0.22, 0.3)
+        .mul(tendrilMask.mul(0.1).add(pulseWave.mul(0.5)));
+    let color = mix(vec3(0.03, 0.03, 0.045), vec3(0.11, 0.11, 0.16), gas).mul(pulseMul);
+    color = color.add(tendrilGlow);
+    color = color.add(vec3(0.32, 0.32, 0.4).mul(shockwave.mul(0.35)));
 
     const density = smoothstep(float(0.2), float(0.8), gas);
     const alpha = clamp(
-        density.mul(0.4).add(fresnel.mul(0.5)).add(shockwave.mul(0.5)),
+        density
+            .mul(0.16)
+            .add(fresnel.mul(0.23))
+            .add(shockwave.mul(0.28))
+            .add(tendrilMask.mul(0.085))
+            .add(pulseWave.mul(0.065))
+            .add(0.035),
         0.0,
-        0.98,
+        0.46,
     );
 
     const emissive = color
-        .mul(shockwave.add(uPulseIntensity.mul(0.3)).add(fresnel.mul(0.15)))
-        .mul(BLOOM_CLASS_WEIGHTS.atmosphere);
+        .mul(
+            shockwave
+                .add(uPulseIntensity.mul(0.18))
+                .add(fresnel.mul(0.1))
+                .add(tendrilMask.mul(0.12))
+                .add(pulseWave.mul(0.18)),
+        )
+        .mul(BLOOM_CLASS_WEIGHTS.atmosphere * 0.52);
 
     material.colorNode = color;
     material.opacityNode = alpha;
@@ -369,9 +471,9 @@ export function createNebulaNodeMaterial(params = {}) {
     const edgeFade = pow(fadeX.mul(fadeY), 1.5);
 
     const gray = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
-    const pulseFactor = float(1.0).add(uPulse.mul(0.3));
-    const color = vec3(gray, gray, gray).mul(pulseFactor);
-    const alpha = texel.r.mul(uOpacity.add(uPulse.mul(0.05))).mul(edgeFade).mul(1.5);
+    const pulseFactor = float(1.0).add(uPulse.mul(0.14));
+    const color = vec3(gray, gray, gray).mul(pulseFactor).mul(0.24);
+    const alpha = texel.r.mul(uOpacity.add(uPulse.mul(0.014))).mul(edgeFade).mul(0.32);
 
     material.colorNode = color;
     material.opacityNode = alpha;
@@ -381,6 +483,69 @@ export function createNebulaNodeMaterial(params = {}) {
         material,
         { uOpacity, uPulse },
         { emitsBloom: false, mrtRole: 'nebula' },
+    );
+}
+
+export function createPlanetGlowNodeMaterial(params = {}) {
+    const material = new MeshBasicNodeMaterial({
+        transparent: true,
+        blending: AdditiveBlending,
+        depthWrite: false,
+        side: DoubleSide,
+    });
+
+    const uOpacity = uniform(params.opacity ?? 0.2);
+    const uTint = uniform((params.color ?? new THREE.Color(0x666666)).clone());
+
+    const uvCoord = uv();
+    const centered = uvCoord.sub(0.5).mul(2.0);
+    const dist = length(centered);
+    const halo = float(1.0).sub(smoothstep(float(0.0), float(1.0), dist));
+    const core = smoothstep(float(0.14), float(0.0), dist);
+    const ring = smoothstep(float(0.85), float(0.45), dist).mul(0.32);
+    const glowShape = halo.mul(0.72).add(core.mul(0.35)).add(ring);
+    const alpha = glowShape.mul(uOpacity).mul(0.42);
+    const color = uTint.mul(glowShape).mul(0.42);
+
+    material.colorNode = color;
+    material.opacityNode = alpha;
+    material.emissiveNode = vec3(0.0, 0.0, 0.0);
+
+    return finalizeNodeMaterial(
+        material,
+        { uOpacity, uTint },
+        { emitsBloom: false, mrtRole: 'planet-glow' },
+    );
+}
+
+export function createPlanetGlowSpriteNodeMaterial(params = {}) {
+    const material = new SpriteNodeMaterial({
+        transparent: true,
+        blending: AdditiveBlending,
+        depthWrite: false,
+    });
+
+    const uOpacity = uniform(params.opacity ?? 0.2);
+    const uTint = uniform((params.color ?? new THREE.Color(0x666666)).clone());
+
+    const uvCoord = uv();
+    const centered = uvCoord.sub(0.5).mul(2.0);
+    const dist = length(centered);
+    const halo = float(1.0).sub(smoothstep(float(0.0), float(1.0), dist));
+    const core = smoothstep(float(0.14), float(0.0), dist);
+    const ring = smoothstep(float(0.85), float(0.45), dist).mul(0.32);
+    const glowShape = halo.mul(0.72).add(core.mul(0.35)).add(ring);
+    const alpha = glowShape.mul(uOpacity).mul(0.42);
+    const color = uTint.mul(glowShape).mul(0.42);
+
+    material.colorNode = color;
+    material.opacityNode = alpha;
+    material.emissiveNode = vec3(0.0, 0.0, 0.0);
+
+    return finalizeNodeMaterial(
+        material,
+        { uOpacity, uTint },
+        { emitsBloom: false, mrtRole: 'planet-glow-sprite' },
     );
 }
 
@@ -473,10 +638,8 @@ export function createVoidSparkNodeMaterial(params = {}) {
         float(100.0),
     );
 
-    const center = uv().sub(0.5);
-    const dist = length(center).mul(2.0);
-    const glow = float(1.0).sub(smoothstep(float(0.0), float(0.85), dist));
-    const core = smoothstep(float(0.2), float(0.0), dist);
+    const glow = clamp(alphaLife.mul(0.85).add(0.15), float(0.0), float(1.0));
+    const core = clamp(pow(alphaLife, 0.42), float(0.0), float(1.0));
 
     const baseColor = Fn(() => {
         if (useGPU) {

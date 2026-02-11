@@ -70,7 +70,7 @@ export class FrameRateController {
                     this.monitorRefreshRate = 240;
                 } else if (measuredRate >= 55 && measuredRate <= 65) {
                     this.monitorRefreshRate = 60;
-                } else if (measuredRate < 50) {
+                } else if (measuredRate < 30) {
                     this.monitorRefreshRate = 60;
                     console.log(`[FrameRate] Refresh-rate sample (${measuredRate}Hz) looked throttled. Using 60Hz fallback.`);
                 } else {
