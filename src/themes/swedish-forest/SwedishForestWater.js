@@ -67,8 +67,10 @@ class SwedishForestWater extends Mesh {
         const textureMatrix = new Matrix4();
 
         const mirrorCamera = new PerspectiveCamera();
+        this.mirrorCamera = mirrorCamera;
 
         const renderTarget = new WebGLRenderTarget(textureWidth, textureHeight);
+        this.renderTarget = renderTarget;
 
         const mirrorShader = {
 
@@ -545,6 +547,21 @@ class SwedishForestWater extends Mesh {
                 renderer.state.viewport(viewport);
             }
         };
+    }
+
+    dispose() {
+        this.onBeforeRender = function () {};
+        if (this.renderTarget) {
+            this.renderTarget.dispose();
+            this.renderTarget = null;
+        }
+        if (this.material?.dispose) {
+            this.material.dispose();
+        }
+        if (this.geometry?.dispose) {
+            this.geometry.dispose();
+        }
+        this.mirrorCamera = null;
     }
 }
 

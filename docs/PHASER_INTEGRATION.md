@@ -1,276 +1,95 @@
-# Phaser v4 Integration Guide
+# Phaser Integration Guide
 
 ## Overview
 
-Serenity Blocks has been successfully integrated with **Phaser v4** (version 0.2.2) for rendering. This document outlines the integration architecture, what was changed, and how to work with the new system.
+Serenity Blocks now runs on a Phaser-first rendering architecture:
 
-## Architecture
+- Phaser handles board rendering for single-player and multiplayer.
+- A Three.js/WebGL background renderer is orchestrated by a dedicated Phaser background scene.
+- Core game logic remains engine-agnostic and syncs state into Phaser scenes.
 
-### Before Integration
-- **Canvas 2D Rendering**: Direct `CanvasRenderingContext2D` drawing in `src/rendering/draw.js`
-- **WebGL Background**: Separate `WebGLRenderer` for background themes
-- **Manual Game Loop**: Custom `requestAnimationFrame` loop
+Current Phaser dependency:
+- `phaser@4.0.0-rc.5` (`package.json`)
 
-### After Integration
-- **Phaser Scene**: `BoardScene` in `src/rendering/phaser/board-scene.js` handles all game board rendering
-- **WebGL Background**: Still uses `WebGLRenderer` for theme backgrounds (runs alongside Phaser)
-- **Hybrid Game Loop**: Core game logic runs separately, syncs state to Phaser scene each frame
-- **Canvas Fallback**: Original canvas rendering still available as fallback
+## Runtime Composition
 
-## File Structure
+### Rendering Layers
 
-```
-src/
-├── rendering/
-│   ├── phaser/
-│   │   └── board-scene.js    # New Phaser scene for game board
-│   ├── draw.js                # Original canvas rendering (fallback)
-│   ├── canvas-utils.js        # Canvas utilities
-│   └── renderer.js            # WebGL renderer for backgrounds
-├── main.js                    # Updated to initialize Phaser
-└── ...
-```
+1. **Gameplay layer (Phaser)**
+   - `BoardScene` for single player.
+   - `MultiplayerBoardScene` instances for local multiplayer viewports.
+2. **Background layer (Three.js)**
+   - Driven by `BackgroundScene`.
+   - Uses the existing `WebGLRenderer` path and theme manager.
+3. **UI/manager layer**
+   - Game state, input, audio, theme switching, and mode lifecycle in `src/main.js`.
 
-## Key Changes
+## Source Map
 
-### 1. HTML Structure ([public/index.html](../public/index.html))
+- Bootstrap and lifecycle: `src/main.js`
+- Base scene utilities: `src/rendering/phaser/base-board-scene.js`
+- Single-player scene: `src/rendering/phaser/board-scene.js`
+- Multiplayer scene: `src/rendering/phaser/multiplayer/board-panel.js`
+- Background bridge scene: `src/rendering/phaser/background-scene.js`
+- Shared effects: `src/rendering/phaser/shared-effects.js`
+- Event bus: `src/events/event-bus.js`
 
-**Added:**
-- Phaser v4 CDN script tag
-- New container `<div id="phaser-game-container">` for Phaser canvas
-- Hidden original `<canvas id="game-canvas">` for fallback
+## Phaser Boot Flow
 
-```html
-<!-- Phaser 4 Framework -->
-<script src="https://cdn.jsdelivr.net/npm/@phaserjs/phaser@0.2.2/umd/Phaser.js"></script>
+`src/main.js` performs the integration in this order:
 
-<div id="phaser-game-container"></div>
-<canvas id="game-canvas" style="display: none;"></canvas>
-```
+1. Build scene classes using factory helpers:
+   - `createBoardScene(Phaser)`
+   - `createBackgroundScene(Phaser)`
+   - `createMultiplayerBoardScene(Phaser)`
+2. Create a Phaser game instance with:
+   - `type: Phaser.WEBGL`
+   - transparent canvas
+   - configured scale settings
+3. Register startup scenes:
+   - `BoardScene`
+   - `BackgroundScene`
+4. Capture scene references and sync quality settings.
+5. In multiplayer modes, dynamically add/start two `MultiplayerBoardScene` instances with per-player viewports.
 
-### 2. Main Application ([src/main.js](../src/main.js))
+## Data and Event Flow
 
-**Added:**
-- `initializePhaserGame()` method to create Phaser game instance
-- `phaserGame` and `boardScene` properties
-- Scene state synchronization in `gameLoop()`
-- Phaser cleanup in `cleanup()` method
-- `onLineClearImpact` callback to funnel line clear intensity data to Phaser
+### Board State Sync
 
-**Modified:**
-- Physics callbacks now route to Phaser scene effects (line clears, combos, ripples)
-- Fallback to canvas rendering if Phaser scene not available
+- Core logic updates game state.
+- `main.js` pushes snapshots into active Phaser board scene(s).
+- Scene update methods render board cells, active piece, ghost piece, effects, and HUD overlays.
 
-### 3. Phaser Board Scene ([src/rendering/phaser/board-scene.js](../src/rendering/phaser/board-scene.js))
+### Theme and Reactive Events
 
-**Created new Phaser scene with:**
-- `syncFromGameState(gameState)` - Update scene with current game state
-- `renderGameState()` - Render locked pieces, ghost piece, current piece
-- `drawBlock()` - Render individual blocks with 3D effect
-- `triggerLineClearFlash()` - Flash effect for cleared lines
-- `createPieceLockRipple()` - Ripple effect when piece locks
-- `showComboPopup()` - Display combo text with animation
+- Theme changes are emitted through `eventBus` (`EVENTS.THEME_CHANGED`).
+- Consumers (e.g., audio manager, scene systems) subscribe/unsubscribe via cleanup handlers.
+- Background rendering is lifecycle-controlled by Phaser scene start/stop to avoid duplicate RAF loops.
 
-## How It Works
+## Quality Controls
 
-### Game Loop Flow
+Quality profile support (High/Medium/Low) is applied across:
 
-1. **Core Game Loop** (`src/core/game.js`)
-   - Updates game state (piece movement, physics, scoring)
-   - Remains unchanged, no Phaser dependencies
+- Single-player scene
+- Multiplayer scenes
+- Background WebGL renderer
 
-2. **Main Loop** (`src/main.js` → `gameLoop()`)
-   - Syncs game state to Phaser scene: `this.boardScene.syncFromGameState(this.gameState)`
-   - Phaser scene automatically renders in its own update loop
+Quality settings propagate from `main.js` via `applyEffectQuality(...)`, and scenes read normalized quality config through shared utilities.
 
-3. **Phaser Scene Update** (`board-scene.js` → `update()`)
-   - Called automatically by Phaser every frame
-   - Reads game state and renders board, pieces, effects
+## Fallback and Compatibility Notes
 
-### Rendering Pipeline
+- Legacy canvas paths remain as guarded fallback paths.
+- Phaser is bundled via npm/Vite (no CDN global required).
+- The architecture is designed to preserve gameplay behavior while isolating rendering concerns into scene classes.
 
-```
-GameState (data)
-    ↓
-syncFromGameState()
-    ↓
-BoardScene.update()
-    ↓
-renderGameState()
-    ↓
-- drawLockedPieces()
-- drawGhostPiece()
-- drawCurrentPiece()
-    ↓
-Phaser Graphics API
-```
+## Validation Checklist
 
-## Features Ported to Phaser
+When modifying Phaser integration, verify:
 
-✅ **Core Rendering**
-- Grid background
-- Locked pieces (board state)
-- Current falling piece
-- Ghost piece (drop preview)
+1. Boot succeeds and scenes are available.
+2. Single-player board renders and updates correctly.
+3. Multiplayer scenes start/teardown cleanly.
+4. Theme switches do not break background rendering.
+5. Quality level changes propagate to all active scenes.
 
-✅ **Visual Effects**
-- Line clear flash
-- Piece lock ripple
-- Combo popups with tweens
-- 3D block shading
-- Particle bursts & camera shake tied to line clears
-
-✅ **Game Integration**
-- State synchronization
-- Input events (via existing InputController)
-- Audio (via existing SoundManager)
-
-## What's Still Canvas-Based
-
-⚠️ **Multiplayer Mode**
-- Currently uses original canvas rendering
-- TODO: Create separate Phaser scenes for P1 and P2 boards
-
-⚠️ **Next Pieces Preview**
-- Small canvas elements for next piece display
-- Could be migrated to Phaser scenes if needed
-
-⚠️ **Background Themes**
-- Uses separate WebGL renderer
-- Intentionally kept separate (runs behind Phaser canvas)
-
-## Configuration
-
-### Phaser Config (in `main.js`)
-
-```javascript
-{
-    type: window.Phaser.WEBGL,
-    width: COLS * BLOCK_SIZE,
-    height: (ROWS - HIDDEN_ROWS) * BLOCK_SIZE,
-    parent: 'phaser-game-container',
-    transparent: true,              // Shows themes behind
-    scene: [BoardScene],
-    physics: { default: false },    // No Phaser physics needed
-    render: {
-        antialias: true,
-        pixelArt: false
-    }
-}
-```
-
-## Performance Considerations
-
-### Benefits of Phaser
-- **Hardware Acceleration**: WebGL rendering via Phaser
-- **Optimized Graphics API**: Efficient batching and rendering
-- **Built-in Tweens**: Smooth animations for effects
-- **Scene Management**: Clean separation of rendering logic
-
-### Memory Usage
-- Phaser adds ~200KB to bundle (via CDN)
-- Scene graphics cleared each frame, minimal memory growth
-- Original canvas kept hidden as fallback (~10KB overhead)
-
-## Future Enhancements
-
-### Potential Improvements
-1. **Particle Systems**: Theme-aware particles & debris textures
-2. **Sprite Assets**: Load actual sprite sheets for blocks instead of procedural graphics
-3. **Advanced Effects**:
-   - Cinematic camera choreography (zoom/pan on big plays)
-   - Themed particle palettes & debris sprites
-   - Post-processing shaders
-4. **Multiplayer Scenes**: Separate BoardScene instances for each player
-5. **Audio via Phaser**: Migrate SoundManager to Phaser's audio system
-
-### Optional: ES Module Build
-
-Currently using CDN. To use ES modules:
-
-```bash
-npm init -y
-npm install @phaserjs/phaser vite
-```
-
-**vite.config.js:**
-```javascript
-export default {
-    optimizeDeps: {
-        include: ['@phaserjs/phaser']
-    }
-}
-```
-
-**main.js:**
-```javascript
-import * as Phaser from '@phaserjs/phaser';
-// Remove window.Phaser references
-```
-
-## Troubleshooting
-
-### Phaser Not Loading
-- Check browser console for CDN errors
-- Verify `window.Phaser` is defined before init
-- Script tag must be before `main.js`
-
-### Canvas Not Showing
-- Ensure `#phaser-game-container` div exists
-- Check CSS z-index (should be above background, below UI)
-- Verify Phaser config `transparent: true`
-
-### Performance Issues
-- Monitor framerate in browser DevTools
-- Check for memory leaks (scene cleanup)
-- Reduce particle/effect complexity if needed
-
-### Fallback Not Working
-- Ensure original `draw.js` still imported
-- Check `if (!this.boardScene)` condition in gameLoop
-- Canvas element should not be removed from DOM
-
-## Testing
-
-### Manual Testing Steps
-1. Open game in browser
-2. Check browser console for "✅ Phaser game initialized"
-3. Start game, verify pieces render correctly
-4. Clear lines, verify flash effect
-5. Check combo popup appears
-6. Verify piece lock ripple effect
-
-### Known Issues
-- Multiplayer still uses canvas (not migrated yet)
-- Scene resize on window resize needs testing
-- Mobile touch controls not tested with Phaser
-
-## References
-
-- [Phaser 4 Documentation](https://newdocs.phaser.io/docs/)
-- [Phaser Graphics API](https://newdocs.phaser.io/docs/3.55.2/Phaser.GameObjects.Graphics)
-- [Phaser Tweens](https://newdocs.phaser.io/docs/3.55.2/Phaser.Tweens.Tween)
-
-## Migration Checklist
-
-- [x] Load Phaser 4 CDN
-- [x] Create BoardScene wrapper
-- [x] Initialize Phaser game instance
-- [x] Sync game state to scene
-- [x] Port block rendering
-- [x] Port ghost piece rendering
-- [x] Port line clear effects
-- [x] Port piece lock ripple
-- [x] Port combo popups
-- [x] Update input handling
-- [x] Update game loop integration
-- [ ] Migrate multiplayer to Phaser
-- [ ] Add particle effects
-- [ ] Load sprite assets (optional)
-- [ ] Bundle with Vite/Rollup (optional)
-
----
-
-**Last Updated**: 2025-10-11
-**Phaser Version**: 0.2.2
-**Integration Status**: ✅ Complete (Single Player)
+For broader QA coverage, use `docs/qa-checklist.md`.

@@ -175,6 +175,8 @@ export class SwedishForestPost {
                 params.bloomRadius ?? 0.5,
                 params.bloomThreshold ?? 0.8,
             );
+            // Run bloom at half resolution — it's a wide blur so full-res is wasteful
+            this.bloomHalfRes = true;
             combined = combined.add(this.bloomNode);
         }
 
@@ -346,7 +348,11 @@ export class SwedishForestPost {
             const scaledHeight = Math.max(1, Math.round(height * this.pixelRatio));
             this.scenePass.setSize(scaledWidth, scaledHeight);
             if (this.bloomNode?._separableBlurMaterials?.length) {
-                this.bloomNode.setSize(scaledWidth, scaledHeight);
+                const bloomScale = this.bloomHalfRes ? 0.5 : 1;
+                this.bloomNode.setSize(
+                    Math.max(1, Math.round(scaledWidth * bloomScale)),
+                    Math.max(1, Math.round(scaledHeight * bloomScale)),
+                );
             }
         }
 
