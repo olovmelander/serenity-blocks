@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stellar Velocity Baseline Harness</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 24px;
+            font-family: Arial, sans-serif;
+            background: #050812;
+            color: #eef4ff;
+        }
+        .container {
+            max-width: 980px;
+            margin: 0 auto;
+        }
+        .panel {
+            background: #0f172b;
+            border: 1px solid #223352;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        h1 {
+            margin-top: 0;
+            font-size: 22px;
+        }
+        h2 {
+            font-size: 16px;
+            margin: 0 0 12px 0;
+        }
+        .row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        button {
+            border: 1px solid #2c4a78;
+            background: #1a2b49;
+            color: #eef4ff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #233962;
+        }
+        code {
+            display: block;
+            white-space: pre-wrap;
+            background: #0b1220;
+            border: 1px solid #243958;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 8px;
+        }
+        iframe {
+            width: 100%;
+            height: 560px;
+            border: 1px solid #223352;
+            border-radius: 10px;
+            background: #03060b;
+        }
+        .hint {
+            color: #c7d8f5;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Stellar Velocity Phase 0 Baseline Harness</h1>
+
+        <div class="panel">
+            <h2>1) Launch Runtime</h2>
+            <div class="row">
+                <button id="load-webgpu">Load Baseline Runtime</button>
+                <button id="load-webgl">Load Force WebGL Runtime</button>
+                <button id="reload-app">Reload</button>
+            </div>
+            <div class="hint">
+                After load, switch to the <code>stellar-velocity</code> theme in the app, then use controls below.
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>2) Baseline Controls</h2>
+            <div class="row">
+                <button id="play-default">Play Default Sequence</button>
+                <button id="play-stress">Play Stress Sequence</button>
+                <button id="stop-playback">Stop Playback</button>
+                <button id="capture-frame">Capture Frame</button>
+                <button id="report-metrics">Report Metrics</button>
+                <button id="download-report">Download Report JSON</button>
+                <button id="reset-metrics">Reset Metrics</button>
+                <button id="capture-pack">Capture Full Pack</button>
+                <button id="capture-readability">Capture Readability Anchors</button>
+            </div>
+            <div class="hint">
+                Reports print in console as <code>[StellarVelocityBaseline] Report</code>.
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>3) Quick Manual Commands</h2>
+            <code>window.stellarVelocityBaseline.play('default', { loops: 2, stepMs: 320 });
+window.stellarVelocityBaseline.capture('stellar-velocity-hero-frame');
+window.stellarVelocityBaseline.capturePack({ label: 'stellar-velocity-pack', defaultLoops: 2, stressLoops: 2 });
+window.stellarVelocityBaseline.captureReadability({ label: 'stellar-velocity-readability' });
+window.stellarVelocityBaseline.report();
+window.stellarVelocityBaseline.downloadReport('stellar-velocity-baseline');
+window.stellarVelocityBaseline.reset();
+window.stellarVelocityBaseline.stop();</code>
+        </div>
+
+        <iframe id="app-frame" title="Serenity Blocks"></iframe>
+    </div>
+
+    <script>
+        const frame = document.getElementById('app-frame');
+
+        const baselineQuery = '?stellarVelBaseline=1&stellarVelSeed=1234&stellarVelFixedDt=16.666';
+        const runtimeUrl = `../../index.html${baselineQuery}`;
+        const runtimeForceWebglUrl = `../../index.html${baselineQuery}&forceWebGL=1`;
+
+        const getHelper = () => frame.contentWindow?.stellarVelocityBaseline || null;
+
+        function load(url) {
+            frame.src = url;
+        }
+
+        function runOnHelper(action) {
+            const helper = getHelper();
+            if (!helper) {
+                alert('stellarVelocityBaseline helper not found. Load app, switch to stellar-velocity theme, then retry.');
+                return;
+            }
+            action(helper);
+        }
+
+        document.getElementById('load-webgpu').addEventListener('click', () => load(runtimeUrl));
+        document.getElementById('load-webgl').addEventListener('click', () => load(runtimeForceWebglUrl));
+        document.getElementById('reload-app').addEventListener('click', () => frame.contentWindow?.location.reload());
+
+        document.getElementById('play-default').addEventListener('click', () => {
+            runOnHelper((helper) => helper.play('default', { loops: 2, stepMs: 320 }));
+        });
+        document.getElementById('play-stress').addEventListener('click', () => {
+            runOnHelper((helper) => helper.play('stress', { loops: 2, stepMs: 280 }));
+        });
+        document.getElementById('stop-playback').addEventListener('click', () => {
+            runOnHelper((helper) => helper.stop());
+        });
+        document.getElementById('capture-frame').addEventListener('click', () => {
+            runOnHelper((helper) => helper.capture('stellar-velocity-baseline'));
+        });
+        document.getElementById('report-metrics').addEventListener('click', () => {
+            runOnHelper((helper) => helper.report());
+        });
+        document.getElementById('download-report').addEventListener('click', () => {
+            runOnHelper((helper) => helper.downloadReport('stellar-velocity-baseline'));
+        });
+        document.getElementById('reset-metrics').addEventListener('click', () => {
+            runOnHelper((helper) => helper.reset());
+        });
+        document.getElementById('capture-pack').addEventListener('click', () => {
+            runOnHelper((helper) => helper.capturePack({
+                label: 'stellar-velocity-pack',
+                defaultLoops: 2,
+                stressLoops: 2,
+                stepMs: 300,
+            }));
+        });
+        document.getElementById('capture-readability').addEventListener('click', () => {
+            runOnHelper((helper) => helper.captureReadability({
+                label: 'stellar-velocity-readability',
+                settleMs: 300,
+            }));
+        });
+
+        load(runtimeUrl);
+    </script>
+</body>
+</html>

@@ -30,6 +30,7 @@ node test-rainy-window-optimization.js
 node test-moonlit-forest-optimization.js
 node test-chromadelic-phase0.js
 node test-stellar-phase0.js
+node test-stellar-velocity-phase0.js
 node test-ice-temple-phase8.js
 node test-moonlit-phase0.js
 node test-moonlit-phase1.js
@@ -50,6 +51,7 @@ node tests/unit/test-rainy-window-optimization.js
 node tests/unit/test-moonlit-forest-optimization.js
 node tests/unit/test-chromadelic-phase0.js
 node tests/unit/test-stellar-phase0.js
+node tests/unit/test-stellar-velocity-phase0.js
 node tests/unit/test-ice-temple-phase8.js
 node tests/unit/test-moonlit-phase0.js
 node tests/unit/test-moonlit-phase1.js
@@ -123,6 +125,22 @@ node tests/unit/test-moonlit-phase9.js
 - Verifies Phase 6C unified reactive-envelope hooks plus budget/readability-gated comet and aurora event systems with deterministic decay loops
 - Verifies Phase 7 adaptive scaler hooks (resolution/effect scaling, runtime quality budget snapshots, render-path post-cost telemetry)
 - Verifies Phase 7 warmup/runtime-validation hooks (`compileAsync` timeout guard + quality-switch stress harness API)
+
+**`test-stellar-velocity-phase0.js`** - Stellar Velocity Phase 0 Instrumentation
+- Verifies `stellarVelBaseline`/`stellarVelSeed`/`stellarVelFixedDt`/`stellarVelPlayback` flag parsing
+- Confirms shader extraction into `stellar-velocity-shaders.js` and usage by theme runtime
+- Validates deterministic seed + fixed-timestep hooks and centralized timer tracking
+- Validates baseline metric/report payload fields (`avgFps`, `1% low`, variance/stddev, draw calls, memory estimates)
+- Checks baseline helper API exposure via `window.stellarVelocityBaseline`
+- Verifies canned playback/capture pack/readability anchor helpers
+- Verifies Phase 0 cleanup/disposal gaps are closed for passes/textures/core light
+- Verifies Phase 0 docs + harness artifacts exist and reference deterministic workflow
+- Verifies Phase 1 hybrid bootstrap (`WebGPURenderer` + backend check + WebGL fallback)
+- Verifies Phase 1 lifecycle hardening hooks (capabilities, color-pipeline policy, device-loss recovery, runtime fallback)
+- Verifies Phase 1 cleanup helpers (`disposeRuntimeResources`, scene/post/renderer disposal, stable resize teardown, compile warmup timeout)
+- Verifies Phase 2 render-path abstraction (`renderFrame`) and backend parity fallback policy
+- Verifies Phase 2 WebGPU post module wiring (`stellar-velocity-post.js`) with conservative non-MRT defaults
+- Verifies Phase 2 behavioral fallback semantics (post-path failure -> direct render recovery -> WebGL escalation when direct path fails)
 
 **`test-ice-temple-phase8.js`** - Ice Temple Phase 8 Validation Instrumentation
 - Verifies `iceTempleBaseline`/`iceTempleSeed`/`iceTempleFixedDt` parsing
@@ -223,6 +241,12 @@ Performance benchmarks provide interactive measurements and visualizations.
 - Supports default and forced WebGL runtime capture flows
 - Triggers canned gameplay event sequences for repeatable visual stress
 - Exposes one-click capture/report/reset plus full pack/readability anchor/JSON export through `window.stellarBaseline`
+
+**`benchmark-stellar-velocity-baseline.html`** - Stellar Velocity Phase 0 Baseline Harness
+- Launches deterministic baseline runs (`stellarVelSeed`, `stellarVelFixedDt`, `stellarVelBaseline`)
+- Supports default and forced WebGL runtime capture flows
+- Triggers canned gameplay event sequences for repeatable visual stress
+- Exposes one-click capture/report/reset plus full pack/readability anchor/JSON export through `window.stellarVelocityBaseline`
 
 **`benchmark-ice-temple-phase8.html`** - Ice Temple Phase 8 Validation Harness
 - Launches deterministic Ice Temple baseline runtime (`iceTempleBaseline`, `iceTempleSeed`, `iceTempleFixedDt`)
