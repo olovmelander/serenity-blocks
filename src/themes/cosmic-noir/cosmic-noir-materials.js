@@ -126,15 +126,21 @@ export function createPlanetNodeMaterial(params = {}) {
     const texel = texNode ? texNode.sample(uvCoord) : vec4(0.12, 0.12, 0.14, 1.0);
     const luma = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
 
+    // Preserve texture color tint (yellows, grays) instead of pure grayscale
+    const texColor = texel.rgb.mul(1.6).add(vec3(0.02, 0.02, 0.025));
+
     const detailNoise = tslFbm(
         uvCoord.mul(6.5).add(vec2(uTime.mul(0.05), uTime.mul(-0.03))),
         5,
     );
-    const contrastLuma = pow(clamp(luma.mul(0.85).add(detailNoise.mul(0.25)), 0.0, 1.0), 2.2);
+    // Gentler gamma curve (1.4 instead of 2.2) to preserve dark detail
+    const contrastLuma = pow(clamp(luma.mul(1.1).add(detailNoise.mul(0.2)), 0.0, 1.0), 1.4);
 
-    const deepCharcoal = vec3(0.01, 0.01, 0.016);
-    const brightSilver = vec3(0.22, 0.22, 0.3);
-    const surfaceColor = mix(deepCharcoal, brightSilver, contrastLuma);
+    const deepCharcoal = vec3(0.025, 0.025, 0.032);
+    const brightSilver = vec3(0.38, 0.37, 0.44);
+    // Blend between grayscale mapping and actual texture color for richer detail
+    const graySurface = mix(deepCharcoal, brightSilver, contrastLuma);
+    const surfaceColor = mix(graySurface, texColor.mul(contrastLuma.mul(0.6).add(0.15)), 0.35);
 
     const displacementNoise = tslFbm(
         vec2(positionLocal.x, positionLocal.y).mul(0.025).add(vec2(uTime.mul(0.08), 0.0)),
@@ -146,28 +152,35 @@ export function createPlanetNodeMaterial(params = {}) {
     const nrm = normalize(normalWorld);
     const viewDir = normalize(cameraPosition.sub(positionWorld));
     const sunDir = normalize(uSunDirection);
-    const fresnel = pow(float(1.0).sub(abs(dot(nrm, viewDir))), 3.0);
+    const fresnel = pow(float(1.0).sub(abs(dot(nrm, viewDir))), 2.5);
     const sunFacing = clamp(dot(nrm, sunDir).mul(0.5).add(0.5), 0.0, 1.0);
-    const rimGlow = vec3(0.26, 0.26, 0.34)
+    // Stronger rim glow for silhouette definition
+    const rimGlow = vec3(0.34, 0.33, 0.42)
         .mul(fresnel)
-        .mul(sunFacing.mul(0.54).add(0.28));
+        .mul(sunFacing.mul(0.5).add(0.38));
     const pulseGlow = rimGlow.mul(uPulseIntensity.mul(0.6));
     const nightSide = clamp(float(1.0).sub(sunFacing), 0.0, 1.0);
     const subsurfaceNoise = tslFbm(
         uvCoord.mul(9.0).add(vec2(uTime.mul(0.12), uTime.mul(-0.07))),
         4,
     );
-    const subsurfaceGlow = vec3(0.026, 0.026, 0.04)
-        .mul(pow(nightSide, 1.35))
-        .mul(subsurfaceNoise.mul(0.45).add(0.55))
-        .mul(float(0.2).add(uPulseIntensity.mul(0.27)));
+    // Brighter subsurface so night-side terrain is still faintly visible
+    const subsurfaceGlow = vec3(0.045, 0.043, 0.06)
+        .mul(pow(nightSide, 1.2))
+        .mul(subsurfaceNoise.mul(0.5).add(0.5))
+        .mul(float(0.35).add(uPulseIntensity.mul(0.3)));
 
     const halfVector = normalize(sunDir.add(viewDir));
-    const specular = pow(max(dot(nrm, halfVector), 0.0), 24.0).mul(contrastLuma).mul(0.26);
+    const specular = pow(max(dot(nrm, halfVector), 0.0), 20.0).mul(contrastLuma).mul(0.34);
     const microHighlights = vec3(specular, specular, specular);
 
-    const pulseMul = float(1.0).add(uPulseIntensity.mul(0.12));
+    // Direct diffuse term to illuminate the sun-facing hemisphere
+    const diffuse = clamp(dot(nrm, sunDir), 0.0, 1.0);
+    const diffuseLight = surfaceColor.mul(diffuse.mul(0.4));
+
+    const pulseMul = float(1.0).add(uPulseIntensity.mul(0.15));
     const finalColor = surfaceColor
+        .add(diffuseLight)
         .add(rimGlow)
         .add(pulseGlow)
         .add(subsurfaceGlow)
@@ -175,14 +188,14 @@ export function createPlanetNodeMaterial(params = {}) {
         .mul(uGlowIntensity)
         .mul(pulseMul);
 
-    material.colorNode = clamp(finalColor, vec3(0.0), vec3(0.62));
-    material.roughnessNode = clamp(float(0.9).sub(contrastLuma.mul(0.2)), 0.38, 1.0);
-    material.metalnessNode = contrastLuma.mul(0.16);
+    material.colorNode = clamp(finalColor, vec3(0.0), vec3(0.78));
+    material.roughnessNode = clamp(float(0.82).sub(contrastLuma.mul(0.25)), 0.32, 1.0);
+    material.metalnessNode = contrastLuma.mul(0.2);
     material.emissiveNode = rimGlow
-        .mul(0.56)
-        .add(pulseGlow.mul(0.62))
-        .add(subsurfaceGlow.mul(0.36))
-        .add(surfaceColor.mul(0.08))
+        .mul(0.6)
+        .add(pulseGlow.mul(0.65))
+        .add(subsurfaceGlow.mul(0.45))
+        .add(surfaceColor.mul(0.14))
         .mul(BLOOM_CLASS_WEIGHTS.planet * 0.58);
 
     return finalizeNodeMaterial(

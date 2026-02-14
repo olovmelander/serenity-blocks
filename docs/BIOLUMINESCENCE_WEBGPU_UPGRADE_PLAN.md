@@ -1,11 +1,70 @@
-# Bioluminescence Theme - WebGPU Hybrid Upgrade Plan
+# Bioluminescence Theme - WebGPU Hybrid Upgrade Plan (World-Class Revision)
 
-## Overview
+## Executive Summary
 
-Transform the Bioluminescence theme from a WebGL-only implementation into a world-class WebGPU hybrid masterpiece featuring TSL (Three Shading Language) node materials, GPU compute-driven particle systems, advanced post-processing with MRT emissive bloom, and a dramatically enhanced cave environment - while silently falling back to WebGL 2.0 on unsupported hardware.
+This revision transforms the Bioluminescence theme from a WebGL-only, monolithic implementation into a production-grade WebGPU hybrid masterpiece — following the proven patterns established in Chromadelic Highway, Cosmic Noir, Stellar Drift, and Swedish Forest upgrades.
 
-**Gold Standard Reference:** Black Hole theme hybrid pattern
-**Target:** Desktop-first, visually stunning bioluminescent cave environment
+Key outcomes:
+- WebGPU-first startup with silent WebGL2 fallback.
+- TSL (Three Shading Language) node materials with real subsurface scattering, transmission, and procedural noise.
+- GPU compute-driven particle systems (spores, fireflies, mycelium pulse).
+- MRT emissive bloom that isolates glow from non-emissive surfaces (the single biggest visual upgrade).
+- Dramatically enhanced cave environment with depth, atmosphere, and organic detail.
+- Per-material bloom class weights preventing whiteout and false glow.
+- Unified reactive envelope system for gameplay event responses.
+- Strict lifecycle management, capability gating, and deterministic validation.
+
+Scope:
+- `src/themes/bioluminescence/`
+- `docs/BIOLUMINESCENCE_WEBGPU_UPGRADE_PLAN.md`
+
+**Reference implementations:**
+- `src/themes/black-hole/` — Gold standard hybrid pattern (renderer init, MRT, compute, materials)
+- `src/themes/chromadelic-highway/` — Production-hardened patterns (device loss recovery, bloom class weights, material return tuples, compile timeout, MRT audit, adaptive DRS)
+- `src/themes/cosmic-noir/` — TSL materials, MRT patching fail-safe, reactive envelope system
+
+**Three.js version:** r181+ with TSL support
+
+---
+
+## Current Baseline (Verified)
+
+### What Exists (WebGL Only)
+- `bioluminescence-theme.js` (~2000 lines, monolithic)
+- `bioluminescence-tetrominos.js` (color/effects config)
+- Legacy backup: `bioluminescence-theme-old.js` (~1019 lines)
+- `WebGLRenderer` with `EffectComposer` + `UnrealBloomPass`
+- 6 GLSL shaders inline (Mushroom, Crystal, Terrain, Spore, ContactRipple, Shore)
+- CPU-generated PBR textures via Canvas2D (cave rock, vine, mushroom cap)
+- `Water.js` from Three.js examples for cave pool
+- Static `MeshStandardMaterial` for terrain, stems, vines
+- Spore particles via `THREE.Points` with GLSL shader
+- ~20 mushrooms, ~6 crystal clusters, ~300 spores (High preset)
+- Single bloom pass, basic fog, minimal volumetric effects
+
+### Current Weaknesses
+1. **Monolithic file** — all 2000 lines in one file, hard to maintain
+2. **No WebGPU support** — uses only `WebGLRenderer`
+3. **CPU-bound particles** — spores and effects limited by JS
+4. **Basic post-processing** — single UnrealBloomPass, no emissive isolation
+5. **Static lighting** — no dynamic light interaction with bioluminescence
+6. **Fake SSS** — GLSL rim glow approximation instead of true transmission/thickness
+7. **No GPU compute** — all animation driven by CPU uniform updates
+8. **Water is placeholder** — `Water.js` with wrong normal map, looks generic
+9. **Missing atmosphere** — no volumetric fog, no light scattering, no god rays
+10. **Crystals too bright** — additive blending causes complete whiteout (no internal color)
+11. **Cave feels empty** — limited environment depth, sparse decoration
+12. **No mycelium network** — missing the signature bioluminescent neural web connecting organisms
+13. **No instancing** — every small element is a unique mesh (performance waste)
+14. **Mushrooms are flat** — uniform teal color, no SSS, no variation, no gill texture
+15. **No depth layers** — everything sits on one visual plane, no sense of cave vastness
+16. **Cave ceiling unconvincing** — circular glow spots look projected, not organic
+
+### Immediate Risks to Close Before Expanding Scope
+- Lifecycle hardening is incomplete for a hybrid renderer migration (device loss, controlled fallback, full resource teardown).
+- No deterministic replay hooks (`seed`, fixed delta, canned event sequence).
+- No backend-specific render abstraction (`renderFrame`) yet.
+- Expensive visual ambitions are specified before objective baseline captures and budgets.
 
 ---
 
@@ -15,7 +74,7 @@ Transform the Bioluminescence theme from a WebGL-only implementation into a worl
 - **Primary references:** *Avatar* (Pandora bioluminescence), *Subnautica* (alien ocean caves), *Deep Rock Galactic* (crystal caves), real deep-sea bioluminescence footage
 - **Emotional tone:** Awe, mystery, tranquility with moments of spectacle (game events)
 - **Atmosphere:** Dense, humid cave air; the sense that the cave is *alive*; every surface subtly breathes
-- **Key principle:** Darkness is as important as light - bioluminescence only works when surrounded by deep, rich blackness
+- **Key principle:** Darkness is as important as light — bioluminescence only works when surrounded by deep, rich blackness
 
 ### Color Palette (Strict)
 | Role | Color | Hex | Usage |
@@ -30,7 +89,7 @@ Transform the Bioluminescence theme from a WebGL-only implementation into a worl
 | **Water Deep** | Midnight Teal | `#001A1A` | Deep water areas, pool center |
 
 ### Visual Hierarchy (Brightness Order)
-1. Crystal tips & mushroom cap centers (brightest - drives bloom)
+1. Crystal tips & mushroom cap centers (brightest — drives bloom)
 2. Mushroom cap edges (SSS transmission glow)
 3. Fireflies & large spores (moving bright accents)
 4. Vine orbs, moss patches (mid-level ambient glow)
@@ -39,65 +98,53 @@ Transform the Bioluminescence theme from a WebGL-only implementation into a worl
 7. Rock surfaces, stalactites (non-emissive, lit only by scene glow)
 8. Background void, deep shadows (near-black anchor)
 
----
+### Per-Mushroom Color Variation
+Every mushroom in the current theme is identical teal. The upgrade must include:
+- Base hue variation: ±15° around primary cyan per mushroom instance
+- Size-correlated brightness: larger mushrooms = brighter base glow
+- Random pulse phase offset: mushrooms must NOT all breathe in sync
+- Species-specific color shift: Cluster Mini → Phosphor Green, Giant Ancient → deeper Teal
 
-## Current State Analysis
-
-### What Exists (WebGL Only)
-- `bioluminescence-theme.js` (~2000 lines, monolithic)
-- `bioluminescence-tetrominos.js` (color/effects config)
-- `WebGLRenderer` with `EffectComposer` + `UnrealBloomPass`
-- 6 GLSL shaders inline (Mushroom, Crystal, Terrain, Spore, ContactRipple, Shore)
-- CPU-generated PBR textures via Canvas2D (cave rock, vine, mushroom cap)
-- `Water.js` from Three.js examples for cave pool
-- Static `MeshStandardMaterial` for terrain, stems, vines
-- Spore particles via `THREE.Points` with GLSL shader
-- ~20 mushrooms, ~6 crystal clusters, ~300 spores (High preset)
-- Single bloom pass, basic fog, minimal volumetric effects
-
-### Current Weaknesses
-1. **Monolithic file** - all 2000 lines in one file, hard to maintain
-2. **No WebGPU support** - uses only `WebGLRenderer`
-3. **CPU-bound particles** - spores and effects limited by JS
-4. **Basic post-processing** - single UnrealBloomPass, no emissive isolation
-5. **Static lighting** - no dynamic light interaction with bioluminescence
-6. **Fake SSS** - GLSL rim glow approximation instead of true transmission/thickness
-7. **No GPU compute** - all animation driven by CPU uniform updates
-8. **Water is placeholder** - `Water.js` with wrong normal map, looks generic
-9. **Missing atmosphere** - no volumetric fog, no light scattering, no god rays
-10. **Crystals too bright** - additive blending causes whiteout
-11. **Cave feels empty** - limited environment depth, sparse decoration
-12. **No mycelium network** - missing the signature bioluminescent neural web connecting organisms
-13. **No instancing** - every small element is a unique mesh (performance waste)
+### Readability Rules
+- Combo effects must not hide board edges or piece contrast.
+- Bloom budget is capped per quality tier.
+- Chromatic aberration remains subtle and event-scaled.
 
 ---
 
-## Target Architecture
+## Target End State
 
-### New File Structure
-```
-src/themes/bioluminescence/
-  bioluminescence-theme.js          # Main class (hybrid renderer, scene, animation)
-  bioluminescence-materials.js      # TSL node material factories + noise library
-  bioluminescence-compute.js        # GPU compute: spores, fireflies, mycelium
-  bioluminescence-post.js           # WebGPU PostProcessing (MRT bloom, grading)
-  bioluminescence-tetrominos.js     # Tetromino config (keep existing)
-  bioluminescence-theme-icon.png    # Theme icon (keep existing)
-```
+### Rendering Contract
+- Startup never hard-fails due to WebGPU availability.
+- Runtime selects one of these supported paths:
+  - WebGPU + MRT + compute (full feature set)
+  - WebGPU + MRT + CPU particle fallback
+  - WebGPU without MRT
+  - WebGPU without post
+  - WebGL2 fallback (`EffectComposer`)
+- Every optional feature is gated by both capability checks and debug flags.
 
-### Hybrid Renderer Pattern
-```javascript
-// Dual imports
-import * as THREE from 'three';
-import * as THREE_WEBGPU from 'three/webgpu';
+### Visual Contract (Masterpiece Bar)
+- Signature identity: bioluminescent cave where darkness is as important as light.
+- MRT bloom isolates glow — rock never false-blooms; mushrooms/crystals glow beautifully.
+- Mycelium network visibly connects organisms as the theme's defining feature.
+- Player-reactive effects enhance gameplay moments without obscuring board readability.
+- Visual hierarchy remains intentional at all quality levels:
+  - Tier 1: Crystal/mushroom glow hierarchy and board readability
+  - Tier 2: Spore/firefly atmosphere and depth layers
+  - Tier 3: Mycelium pulse, volumetric fog, and spectacle effects
 
-// In initRenderer():
-// 1. Try WebGPURenderer first
-// 2. Check backend?.isWebGPUBackend === true
-// 3. Fall back to WebGLRenderer silently
-// 4. Set this.isWebGPU flag for downstream branching
-// 5. URL param ?forceWebGL=1 for testing
-```
+### Reliability Contract
+- Clean theme switches with no leaked listeners, RAF loops, timers, render targets, or GPU buffers.
+- Deterministic replay for visual regression checks.
+- Cross-backend parity defined by concrete acceptance captures, not subjective memory.
+
+### Performance Contract
+- High tier target: sustained 60 FPS at 1080p on mid-range discrete GPU class (GTX 1060 / RX 580).
+- Low/Minimal tiers remain stable with conservative post and simulation budgets.
+- Adaptive scaling is smooth, bounded, and testable.
+
+---
 
 ## Platform & Version Constraints
 
@@ -113,102 +160,921 @@ import * as THREE_WEBGPU from 'three/webgpu';
 - WebGPU point primitive size limits make `THREE.Points` unsuitable for hero particles; use instanced billboards/sprites on WebGPU
 - Compute, MRT, and advanced post effects are optional capabilities; startup must never fail when one is unavailable
 
-## Capability Matrix & Kill Switches (Best-In-Class Stability)
+---
 
-| Runtime Capability | Enabled Path | Forced Degradation |
-|--------------------|--------------|--------------------|
-| WebGPU + MRT + Compute | Full path (TSL + compute spores/fireflies + emissive-only bloom) | None |
-| WebGPU + MRT (no Compute) | TSL materials + emissive-only bloom + CPU particle sim | Disable compute kernels |
-| WebGPU (no MRT) | TSL materials + standard bloom | Disable emissive isolation |
-| WebGL2 | Existing GLSL + `EffectComposer` | No TSL/compute features |
+## Migration Policy
 
-**Required namespaced debug flags:**
-- `?forceWebGL=1`
-- `?bioluminescenceNoPost=1`
-- `?bioluminescenceNoMRT=1`
-- `?bioluminescenceNoCompute=1`
-- `?bioluminescenceNoMycelium=1`
-- `?bioluminescenceBaseline=1` (logs backend, capability map, frame timings)
-- `?bioluminescenceSeed=1234` (deterministic procedural generation)
-- `?bioluminescenceFixedDt=16.666` (deterministic animation timing for visual diff tests)
+- Stability first: lifecycle hardening before new expensive visuals.
+- Introduce one major rendering risk at a time.
+- Keep WebGL visual parity unless explicitly accepted as a deliberate difference.
+- Do not remove fallback code until parity and perf gates pass.
+- Each phase has objective, file scope, tasks, and hard exit criteria.
 
-**Derived runtime flags (single source of truth):**
-```javascript
-flags.usePost = isWebGPU && !flags.noPost;
-flags.useMRT = flags.usePost && supportsMRT && !flags.noMRT;
-flags.useCompute = isWebGPU && supportsCompute && !flags.noCompute;
-flags.useMyceliumPulse = flags.useCompute && !flags.noMycelium && qualityPreset.enableMyceliumPulse;
+Non-goals until Phase 7+:
+- Large new simulation systems without measured bottleneck evidence.
+- Effect additions that reduce board legibility under gameplay stress.
+- Depth of field and film-grain experimentation before fallback parity, budget compliance, and readability gates are closed.
+
+---
+
+## Non-Negotiable Engineering Gates
+
+To keep this upgrade best-in-class, every phase must pass objective gates before merge:
+
+1. **Deterministic visual baseline**
+   - Add seeded randomness (`?bioluminescenceSeed=12345`) so screenshots are reproducible.
+   - Capture before/after frames at fixed timestamps (`?bioluminescenceFixedDt=16.666`).
+   - Fail phase signoff if visual diffs exceed target thresholds for fallback parity.
+
+2. **Fallback parity first**
+   - WebGL fallback is never a second-class path.
+   - Any WebGPU change that regresses fallback visuals or stability blocks the phase.
+
+3. **Single owner per rendering stage**
+   - Exactly one stage performs tone mapping.
+   - Exactly one stage owns bloom source selection (MRT emissive or full-frame fallback).
+   - Exactly one stage writes reactive envelope values per frame.
+
+4. **Measured budgets, not estimates**
+   - Track p50/p95 frame time, draw calls, and memory proxies (`renderer.info.memory`, texture/buffer counts) for each quality preset.
+   - Record metrics for idle + combo burst scenarios.
+   - No phase closes without baseline numbers captured and attached to PR notes.
+
+5. **Fast rollback switches**
+   - Every major feature has an immediate runtime kill-switch (`noCompute`, `noMRT`, `noPost`, etc.).
+   - Device-loss and runtime failure paths must downgrade without reload loops.
+
+---
+
+## Objective Signoff Thresholds (Locked)
+
+World-class execution requires explicit quantitative pass/fail gates:
+
+| Category | Gate | Threshold |
+|----------|------|-----------|
+| Visual parity | Fallback parity diff (same seed, fixed dt, matched camera) | <= 2.5% changed pixels outside approved glow ROIs |
+| Visual readability | Board ROI contrast during `LINE_CLEAR`, `COMBO`, `TETRIS` anchors | >= 4.5:1 |
+| Bloom containment | Non-emissive leakage in bright bloom mask | <= 3.0% of bright pixels |
+| Mood fidelity | Darkness ratio in hero frames | 40% - 65% of frame remains dark-value dominant |
+| Runtime performance (WebGPU High) | Frame time | `avg <= 16.7ms`, `p95 <= 16.7ms`, `p99 <= 20ms` |
+| Runtime performance (WebGL Medium fallback) | Frame time | `avg <= 16.7ms`, `p95 <= 20ms` |
+| Stability | Soak run | 30 min with no uncaught errors, no unbounded memory trend |
+| Lifecycle | Theme-switch stress | 100+ create/cleanup cycles, no leaked listeners/timers/RAF loops |
+
+Notes:
+- Approved glow ROIs are limited to emissive cores, bloom halos, and event flashes documented in Phase 0 anchors.
+- All thresholds apply to both WebGPU-preferred runtime and `?forceWebGL=1` fallback runtime unless explicitly marked WebGPU-only.
+
+---
+
+## Validation Artifacts (Repo Standard)
+
+To align with existing validation patterns in this repository, Phase 0 must produce these artifacts:
+
+- Create: `docs/BIOLUMINESCENCE_ART_DIRECTION.md` (palette lock, hero-frame composition, brightness hierarchy, readability ROIs).
+- Create: `docs/BIOLUMINESCENCE_BASELINE_CAPTURE_PROTOCOL.md` (deterministic capture runbook and signoff checklist).
+- Create: `tests/performance/benchmark-bioluminescence-phase9.html` (dual-backend harness with preset sweep, event anchors, soak and switch stress).
+- Create: `tests/unit/test-bioluminescence-phase0.js` (flags, deterministic hooks, helper API exposure).
+- Create: `tests/unit/test-bioluminescence-phase1.js` (hybrid init, lifecycle hardening, fallback/device-loss hooks).
+- Create: `tests/unit/test-bioluminescence-phase6.js` (post path, MRT isolation, audit/fail-safe wiring).
+- Create: `tests/unit/test-bioluminescence-phase9.js` (signoff instrumentation, stress helpers, cleanup guarantees).
+
+Harness API target:
+- `window.bioluminescenceBaseline` should expose at minimum: `report`, `capture`, `captureEventAnchors`, `runPresetSweep`, `runSoak`, `runThemeSwitchStress`, `collectEvidence`.
+
+---
+
+## Target Architecture
+
+### New File Structure
+```
+src/themes/bioluminescence/
+  bioluminescence-theme.js          # Main class (hybrid renderer, scene, animation, events)
+  bioluminescence-materials.js      # TSL node material factories + noise library
+  bioluminescence-shaders.js        # GLSL shaders (WebGL fallback — kept and maintained)
+  bioluminescence-compute.js        # GPU compute: spores, fireflies, mycelium
+  bioluminescence-post.js           # WebGPU PostProcessing (MRT bloom, grading)
+  bioluminescence-tetrominos.js     # Tetromino config (keep existing)
+  bioluminescence-theme-icon.png    # Theme icon (keep existing)
 ```
 
-## Capability Probes (After `await renderer.init()`)
+### Hybrid Renderer Pattern (Gold Standard)
+```
+┌─────────────────────────────────────────────┐
+│              createScene() (async)           │
+│                                              │
+│  1. Try WebGPURenderer → await init()        │
+│  2. Check backend?.isWebGPUBackend === true  │
+│  3. Fallback → WebGLRenderer (silent)        │
+│  4. Set this.isWebGPU flag                   │
+│  5. Probe capabilities (MRT, compute)        │
+│  6. Create scene elements (conditional path) │
+│  7. MRT material patching (conditional)      │
+│  8. Setup post-processing (conditional path) │
+│  9. Pre-compile with timeout guard           │
+│  10. Start animation loop                    │
+└─────────────────────────────────────────────┘
+```
 
-- `renderer.backend?.isWebGPUBackend`
-- `renderer.hasFeature('compute')` (or equivalent runtime compute support check)
-- `renderer.backend?.device?.limits?.maxColorAttachments > 1` for MRT gate
-- Storage buffer support for compute particle path
-- Optional GPU timestamp query support for pass-level profiling
+### Import Pattern
+```javascript
+// bioluminescence-theme.js
+import * as THREE from 'three';
+import * as THREE_WEBGPU from 'three/webgpu';
+
+// WebGL fallback post-processing (only used when !isWebGPU)
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+import { BaseTheme } from '../base-theme.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { normalizeQuality } from '../../utils/quality.js';
+import { BIOLUMINESCENCE_TETROMINOS } from './bioluminescence-tetrominos.js';
+import {
+    createMushroomCapNodeMaterial, createMushroomStemNodeMaterial,
+    createCrystalNodeMaterial, createCaveRockNodeMaterial,
+    createCaveWallNodeMaterial, createVineNodeMaterial,
+    createWaterSurfaceNodeMaterial, createBackgroundNodeMaterial,
+    createMyceliumNodeMaterial, createSporeParticleMaterial,
+    createFireflyParticleMaterial, createWebGLFallbackMaterials,
+} from './bioluminescence-materials.js';
+import { BioluminescencePost } from './bioluminescence-post.js';
+import { SporeCompute, FireflyCompute, MyceliumPulseCompute } from './bioluminescence-compute.js';
+```
+
+### Material Factory Return Pattern (from Chromadelic Highway)
+Every material factory returns `{ material, uniforms, meta }`:
+```javascript
+export function createMushroomCapNodeMaterial(params = {}) {
+    const material = new MeshPhysicalNodeMaterial({ ... });
+    const uTime = uniform(0);
+    const uPulseIntensity = uniform(0);
+    // ... build TSL graph ...
+
+    // Bloom class weight controls MRT emissive contribution
+    material.emissiveNode = glowColor.mul(intensity).mul(BLOOM_CLASS_WEIGHTS.mushroomCap);
+
+    return {
+        material,
+        uniforms: { uTime, uPulseIntensity },
+        meta: { emitsBloom: true, mrtRole: 'mushroomCap' },
+    };
+}
+```
+
+---
+
+## Capability Matrix & Kill Switches
+
+| Runtime Capability | Post | MRT | Compute | Expected Path |
+|--------------------|------|-----|---------|---------------|
+| WebGPU + MRT + Compute | Yes | Yes | Yes | Full Bioluminescence feature set |
+| WebGPU + MRT, no Compute | Yes | Yes | No | Node materials + CPU particle fallback |
+| WebGPU, no MRT | Yes | No | Optional | Standard bloom path |
+| WebGPU, no Post | No | No | Optional | Direct scene render |
+| WebGL2 fallback | `EffectComposer` | No | No | Stable fallback-quality experience |
+
+### Required Debug Flags
+| Flag | Effect |
+|------|--------|
+| `?forceWebGL=1` | Force WebGL2 backend |
+| `?bioluminescenceNoPost=1` | Disable all post-processing |
+| `?bioluminescenceNoMRT=1` | Disable MRT emissive isolation |
+| `?bioluminescenceNoCompute=1` | Disable GPU compute (CPU fallback) |
+| `?bioluminescenceNoMycelium=1` | Disable mycelium propagation effects |
+| `?bioluminescenceNoBloom=1` | Disable bloom specifically |
+| `?bioluminescenceMrtAudit=1` | Log material MRT metadata for debugging |
+| `?bioluminescenceBaseline=1` | Log backend, capability map, frame timings |
+| `?bioluminescenceSeed=1234` | Deterministic procedural seed |
+| `?bioluminescenceFixedDt=16.666` | Fixed timestep for deterministic captures |
+| `?quality=extreme` | Override quality preset |
+| `?wireframe=1` | Wireframe mode for geometry debugging |
+
+### Derived Runtime Flags (Single Source of Truth)
+```javascript
+updateCapabilityFlags() {
+    const usePost = this.isWebGPU && this.qualityPreset.enablePostProcessing && !this.flags.noPost;
+    const supportsMRT = this.capabilities?.maxColorAttachments > 1;
+    const useMRT = usePost && !this.flags.noMRT && supportsMRT;
+    const useCompute = this.isWebGPU && this.capabilities?.supportsCompute && !this.flags.noCompute;
+
+    this.flags.usePost = usePost;
+    this.flags.useMRT = useMRT;
+    this.flags.useCompute = useCompute;
+    this.flags.useMyceliumPulse = useCompute && !this.flags.noMycelium && this.qualityPreset.enableMyceliumPulse;
+}
+```
+
+### Capability Probes (After `await renderer.init()`)
+```javascript
+probeCapabilities() {
+    if (!this.isWebGPU) {
+        this.capabilities = { isWebGPU: false };
+        return;
+    }
+    const backend = this.renderer.backend;
+    const device = backend?.device;
+    this.capabilities = {
+        isWebGPU: true,
+        maxColorAttachments: device?.limits?.maxColorAttachments ?? 0,
+        supportsCompute: !!this.renderer.compute,
+    };
+
+    if (this.flags.baseline) {
+        console.log('[Bioluminescence] Capabilities:', this.capabilities);
+    }
+}
+```
 
 All probes must be logged when `?bioluminescenceBaseline=1` is set, and all optional features must degrade without throwing.
 
 ---
 
-## Implementation Phases
+## GPU Timing & Telemetry Hooks (Required)
+
+Pass-level timing is mandatory when timestamp queries are available, and gracefully optional when not:
+
+```javascript
+async initGpuTiming() {
+    if (!this.isWebGPU || !this.renderer?.hasFeature) return;
+    this.capabilities.supportsTimestampQuery = this.renderer.hasFeature('timestamp-query');
+}
+
+async sampleGpuPassTimes() {
+    if (!this.capabilities?.supportsTimestampQuery) return null;
+    // Collect timestamps after compute + post/render passes for baseline reports.
+    await this.renderer.resolveTimestampsAsync();
+    const frames = this.renderer.backend?.getTimestampFrames?.() || [];
+    return frames;
+}
+```
+
+Telemetry minimums for baseline reports:
+- CPU frame stats: `avg`, `p50`, `p95`, `p99`, variance.
+- GPU pass stats (when available): compute, scene pass, bloom, grading.
+- Runtime counters: draw calls, geometry count, texture count, buffer count.
+- Event counters: `PIECE_LOCK`, `LINE_CLEAR`, `COMBO`, `TETRIS`.
+
+When timestamps are unavailable, the harness still reports CPU-side frame metrics and marks GPU pass timings as `unsupported`.
 
 ---
 
-### Phase 0: Baseline, Determinism & QA Harness
-**Priority: CRITICAL | Estimated Complexity: Medium**
+## Bloom Class Weights (from Chromadelic Highway / Cosmic Noir)
 
-#### 0.1 - Baseline Capture
-- Capture screenshots and short video clips for current WebGL implementation at `Minimal`, `High`, and `Extreme`
-- Record baseline frame-time and memory numbers on at least one NVIDIA and one AMD GPU
-- Capture event moments: `PIECE_LOCK`, `LINE_CLEAR`, `COMBO`, `TETRIS`
+Per-material emissive weighting prevents bloom washout and ensures only bioluminescent surfaces glow:
 
-#### 0.2 - Deterministic Debug Harness
-- Add seeded RNG pathway for procedural placement and animation phase offsets
-- Add fixed timestep debug mode for deterministic visual regression tests
-- Add backend/capability logging overlay (`backend`, `useMRT`, `useCompute`, frame time)
+```javascript
+const BLOOM_CLASS_WEIGHTS = {
+    mushroomCap:     0.80,  // Strong organic glow
+    mushroomStem:    0.10,  // Faint wet sheen only
+    crystalTip:      1.00,  // Maximum — crystal tips are brightest
+    crystalBody:     0.60,  // Internal energy glow
+    mycelium:        0.50,  // Moderate network glow
+    vineOrb:         0.45,  // Seed pod glow
+    caveRock:        0.00,  // CRITICAL: rock never blooms
+    caveWall:        0.05,  // Faint vein glow only
+    water:           0.15,  // Subtle subsurface plankton
+    spore:           0.60,  // Medium floating glow
+    firefly:         0.70,  // Bright moving accent
+    moss:            0.30,  // Gentle ambient glow
+    stalactite:      0.00,  // Non-emissive
+    godRay:          0.20,  // Soft atmospheric light
+    background:      0.00,  // No bloom (pure void)
+    jellyfish:       0.55,  // Ghostly translucent glow
+};
+```
 
-#### 0.3 - Baseline Art-Direction Snapshot
-- Export a fixed camera set (foreground, midground, deep background, water close-up)
-- Save approved baseline stills to compare each phase against
+Each material factory multiplies its `emissiveNode` by the weight, preventing bright elements from dominating the bloom pass. This is the key fix for the crystal whiteout problem visible in the current screenshot.
 
-**Acceptance Criteria:**
-- Deterministic run is reproducible with identical seed and fixed timestep
-- Baseline captures exist for all quality tiers and event states
-- Instrumentation exists before migration work begins
+---
 
-### Phase 1: Architecture & Hybrid Renderer Foundation
-**Priority: CRITICAL | Estimated Complexity: Medium**
+## Reactive Envelope System (from Cosmic Noir)
 
-#### 1.1 - TSL Procedural Noise Library (top of `bioluminescence-materials.js`)
+Replace ad-hoc `pulseIntensity *= 0.96` decay with a unified multi-channel envelope:
 
-Build a reusable set of `Fn()` noise functions at the top of the materials file. These are the building blocks for every organic material in the theme. Pattern proven in Neon District and Shifting Sands themes:
+```javascript
+this.reactiveEnvelope = {
+    pulse: 0,        // Mushroom/crystal emissive boost
+    bloom: 0,        // Dynamic bloom strength boost
+    spore: 0,        // Spore emission rate multiplier
+    mycelium: 0,     // Mycelium pulse propagation trigger
+    atmosphere: 0,   // God ray + fog intensity boost
+    water: 0,        // Water glow and ripple intensity
+    exposure: 0,     // Post-processing exposure flash
+};
+
+pushReactiveEnvelope(values) {
+    for (const [key, val] of Object.entries(values)) {
+        this.reactiveEnvelope[key] = Math.min(
+            (this.reactiveEnvelope[key] || 0) + val, 1.0
+        );
+    }
+}
+
+updateReactiveEnvelope(delta) {
+    const decay = 1 - delta * 3.0;  // ~3× per second decay
+    for (const key of Object.keys(this.reactiveEnvelope)) {
+        this.reactiveEnvelope[key] *= decay;
+        if (this.reactiveEnvelope[key] < 0.01) this.reactiveEnvelope[key] = 0;
+    }
+}
+```
+
+Event handlers push multi-channel envelopes:
+```javascript
+PIECE_LOCK:   pushReactiveEnvelope({ pulse: 0.15, spore: 0.2 })
+LINE_CLEAR:   pushReactiveEnvelope({ pulse: 0.2+lines*0.1, bloom: 0.08+lines*0.06, water: 0.15+lines*0.1, mycelium: 0.3 })
+COMBO(n):     pushReactiveEnvelope({ pulse: 0.2+n*0.1, bloom: 0.1+n*0.08, spore: 0.3+n*0.15, atmosphere: 0.2+n*0.1 })
+TETRIS:       pushReactiveEnvelope({ pulse: 1.0, bloom: 0.5, spore: 1.0, mycelium: 1.0, atmosphere: 0.8, water: 0.6, exposure: 0.4 })
+```
+
+Animation loop reads envelope channels to drive each subsystem independently. This replaces scatter-shot per-effect decay with a unified, extensible system.
+
+---
+
+## Performance Budgets per Quality Tier
+
+| Tier | Max Draw Calls | Max Post Cost (ms) | Max Spores | Max Fireflies | Max Instances | Point Lights | Adaptive DRS Range |
+|------|----------------|--------------------|------------|---------------|---------------|--------------|-------------------|
+| Extreme | 450 | 5.0 | 3000 | 200 | 700 | 8 | 0.75 - 1.00 |
+| Ultra | 380 | 4.5 | 2000 | 150 | 500 | 6 | 0.72 - 1.00 |
+| High | 300 | 4.0 | 1000 | 100 | 350 | 5 | 0.68 - 1.00 |
+| Medium | 220 | 3.0 | 500 | 50 | 200 | 0 | 0.62 - 0.94 |
+| Low | 150 | 2.0 | 200 | 0 | 50 | 0 | 0.56 - 0.84 |
+| Minimal | 100 | 1.5 | 80 | 0 | 0 | 0 | 0.50 - 0.78 |
+
+**"Max Instances"** = total micro-crystals + moss patches + rubble + cluster mushroom instances.
+
+---
+
+## Phase Plan
+
+---
+
+### Phase 0: Baseline Lock and Instrumentation (Critical)
+
+**Objective:** Establish objective visual/performance baselines and deterministic replay before migration work begins.
+
+**Files:**
+- Modify: `src/themes/bioluminescence/bioluminescence-theme.js`
+- Create: `docs/BIOLUMINESCENCE_ART_DIRECTION.md`
+- Create: `docs/BIOLUMINESCENCE_BASELINE_CAPTURE_PROTOCOL.md`
+- Create: `tests/performance/benchmark-bioluminescence-phase9.html`
+- Create: `tests/unit/test-bioluminescence-phase0.js`
+
+**Tasks:**
+- [ ] Define hero-frame captures for each quality tier and backend.
+- [ ] Add deterministic controls (`bioluminescenceSeed`, `bioluminescenceFixedDt`, canned event playback).
+- [ ] Record baseline metrics: FPS, 1% low, frame-time variance, draw calls, memory.
+- [ ] Capture readability anchors during `PIECE_LOCK`, `LINE_CLEAR`, `COMBO`, `TETRIS` events.
+- [ ] Capture baseline at `Minimal`, `High`, and `Extreme` presets.
+- [ ] Expose baseline helper API on `window.bioluminescenceBaseline`.
+- [ ] Implement dual-backend campaign helpers in harness (`WebGPU` + `?forceWebGL=1`).
+- [ ] Export evidence bundle JSON containing metrics, anchor captures, and gate evaluation.
+
+**Exit Criteria:**
+- Baseline pack committed and reproducible.
+- Deterministic run is reproducible with identical seed and fixed timestep.
+- Harness report includes quantitative pass/fail status for all thresholds in "Objective Signoff Thresholds".
+- Instrumentation exists before migration work begins.
+
+---
+
+### Phase 1: Renderer Bootstrap and Lifecycle Hardening (Critical)
+
+**Objective:** Make startup/shutdown and fallback transitions robust. Stability before features.
+
+**Files:**
+- Modify: `src/themes/bioluminescence/bioluminescence-theme.js`
+
+#### 1.1 - Dual Import Pattern
+```javascript
+import * as THREE from 'three';
+import * as THREE_WEBGPU from 'three/webgpu';
+```
+- `THREE` — Standard Three.js for WebGL types (Vector3, Color, Clock, BufferGeometry, WebGLRenderer, etc.)
+- `THREE_WEBGPU` — WebGPU-specific renderer only (`WebGPURenderer`)
+
+#### 1.2 - Renderer Initialization
+```javascript
+async initRenderer(container) {
+    let webgpuRenderer = null;
+
+    // Step 1: Try WebGPU (unless forced to WebGL via URL flag)
+    if (!this.flags.forceWebGL) {
+        try {
+            webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
+                antialias: this.getAntialiasEnabled(),
+                powerPreference: 'high-performance',
+                alpha: false,
+            });
+            await webgpuRenderer.init();  // CRITICAL: async initialization
+        } catch (e) {
+            console.warn('[Bioluminescence] WebGPU init failed, falling back to WebGL:', e.message);
+            if (webgpuRenderer) webgpuRenderer.dispose();
+            webgpuRenderer = null;
+        }
+    }
+
+    // Step 2: Backend verification
+    if (webgpuRenderer && webgpuRenderer.backend?.isWebGPUBackend === true) {
+        this.renderer = webgpuRenderer;
+        this.isWebGPU = true;
+        this.isWebGL = false;
+        console.log('[Bioluminescence] WebGPU renderer initialized');
+    } else {
+        // Step 3: Silent fallback to WebGL2
+        if (webgpuRenderer) webgpuRenderer.dispose();
+        this.renderer = new THREE.WebGLRenderer({
+            antialias: this.getAntialiasEnabled(),
+            powerPreference: 'high-performance',
+            alpha: false,
+        });
+        this.isWebGPU = false;
+        this.isWebGL = true;
+        console.log('[Bioluminescence] WebGL2 renderer initialized (fallback)');
+    }
+
+    // Color pipeline ownership (CRITICAL: prevents double tone mapping)
+    // - WebGPU + post graph: post pass owns tone mapping
+    // - WebGL fallback (or no post): renderer owns tone mapping
+    const postEnabled = this.isWebGPU && this.qualityPreset.enablePostProcessing && !this.flags.noPost;
+    if (postEnabled) {
+        this.renderer.toneMapping = THREE.NoToneMapping;
+        this.renderer.toneMappingExposure = 1.0;
+    } else {
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.0;
+    }
+
+    // Common configuration
+    this.renderer.setClearColor(0x000000, 1);
+    this.renderer.setPixelRatio(this.getEffectivePixelRatio());
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.sortObjects = true;
+}
+```
+
+#### 1.3 - Device Loss Recovery (from Chromadelic Highway)
+```javascript
+if (this.isWebGPU) {
+    this.renderer.onDeviceLost = (info) => { void this.handleDeviceLoss(info); };
+}
+
+async handleDeviceLoss(info) {
+    if (this.deviceLossRecoveryInProgress || !this.isActive) return;
+    this.deviceLossRecoveryInProgress = true;
+    console.error('[Bioluminescence] WebGPU device lost:', info);
+    try {
+        this.cancelAnimationLoop();
+        this.clearEventSubscriptions();
+        this.removeResizeListener();
+        this.disposeRuntimeResources({ removeCanvas: true });
+
+        // Force WebGL on recovery
+        this.flags.forceWebGL = true;
+        this.flags.noCompute = true;
+        this.flags.noMRT = true;
+
+        await this.createScene();
+        console.log('[Bioluminescence] Recovery complete: running on WebGL fallback.');
+    } catch (error) {
+        console.error('[Bioluminescence] Device-loss recovery failed:', error);
+        this.isActive = false;
+    } finally {
+        this.deviceLossRecoveryInProgress = false;
+    }
+}
+```
+
+#### 1.4 - Timeout-Guarded Compilation (from Cosmic Noir)
+```javascript
+async precompileSceneWithTimeout() {
+    if (!this.isWebGPU || !this.renderer?.compileAsync) return;
+
+    const TIMEOUT_MS = 3000;
+    let timeoutId = null;
+    try {
+        await Promise.race([
+            this.renderer.compileAsync(this.scene, this.camera),
+            new Promise((_, reject) => {
+                timeoutId = setTimeout(() => reject(new Error('compile timeout')), TIMEOUT_MS);
+            }),
+        ]);
+        console.log('[Bioluminescence] Scene pre-compiled');
+    } catch (e) {
+        console.warn('[Bioluminescence] compileAsync skipped:', e.message);
+    } finally {
+        if (timeoutId !== null) clearTimeout(timeoutId);
+    }
+}
+```
+
+#### 1.5 - Render Frame Abstraction
+```javascript
+renderFrame() {
+    // WebGPU path
+    if (this.isWebGPU) {
+        // Dispatch compute before render
+        if (this.flags.useCompute && this.renderer?.compute) {
+            if (this.sporeCompute?.computeNode) this.renderer.compute(this.sporeCompute.computeNode);
+            if (this.fireflyCompute?.computeNode) this.renderer.compute(this.fireflyCompute.computeNode);
+            if (this.myceliumCompute?.computeNode) this.renderer.compute(this.myceliumCompute.computeNode);
+        }
+        if (this.postProcessing && this.flags.usePost) {
+            this.postProcessing.render();      // sync
+        } else {
+            this.renderer.render(this.scene, this.camera); // sync
+        }
+    }
+    // WebGL path
+    else {
+        if (this.composer) {
+            this.composer.render();             // sync
+        } else {
+            this.renderer.render(this.scene, this.camera); // sync
+        }
+    }
+}
+```
+
+#### 1.6 - Make `createScene()` Async
+```javascript
+async createScene() {
+    const container = document.getElementById('bioluminescence-theme');
+    if (!container) return;
+
+    await this.initRenderer(container);
+    this.probeCapabilities();
+    this.updateCapabilityFlags();
+
+    // Create scene elements (conditional WebGPU/WebGL paths)
+    this.createCaveEnvironment();
+    this.createMushrooms();
+    this.createCrystals();
+    this.createWater();
+    this.createMyceliumNetwork();
+    this.createParticles();
+
+    // MRT patching (WebGPU only)
+    if (this.isWebGPU && this.flags.useMRT) {
+        this.ensureMrtMaterials();
+    }
+
+    // Post-processing (conditional path)
+    this.setupPostProcessing();
+    this.setupResizeHandler();
+    this.setupEventListeners();
+
+    // Pre-compile with timeout guard
+    await this.precompileSceneWithTimeout();
+
+    this.startAnimation();
+}
+```
+
+#### 1.7 - Lifecycle Cleanup
+```javascript
+cancelAnimationLoop() {
+    if (this.animationFrameId !== null) {
+        cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
+    }
+}
+
+clearEventSubscriptions() {
+    this.eventUnsubscribers.forEach((unsub) => unsub?.());
+    this.eventUnsubscribers = [];
+}
+
+removeResizeListener() {
+    if (this.resizeHandler) {
+        window.removeEventListener('resize', this.resizeHandler);
+        this.resizeHandler = null;
+    }
+}
+
+disposeRuntimeResources({ removeCanvas = true } = {}) {
+    const disposeMaterial = (material) => {
+        if (!material) return;
+        const list = Array.isArray(material) ? material : [material];
+        for (const mat of list) {
+            if (!mat) continue;
+            for (const key of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap']) {
+                if (mat[key]?.dispose) mat[key].dispose();
+            }
+            mat.dispose?.();
+        }
+    };
+
+    // 1. Dispose compute nodes first
+    if (this.sporeCompute) { this.sporeCompute.dispose(); this.sporeCompute = null; }
+    if (this.fireflyCompute) { this.fireflyCompute.dispose(); this.fireflyCompute = null; }
+    if (this.myceliumCompute) { this.myceliumCompute.dispose(); this.myceliumCompute = null; }
+
+    // 2. Dispose post-processing
+    if (this.postProcessing) { this.postProcessing.dispose(); this.postProcessing = null; }
+    if (this.composer) { this.composer.dispose?.(); this.composer = null; }
+
+    // 3. Dispose scene objects
+    if (this.scene) {
+        this.scene.traverse((child) => {
+            child.geometry?.dispose?.();
+            if (child.material) disposeMaterial(child.material);
+        });
+    }
+
+    // 4. Dispose renderer last
+    if (this.renderer) { this.renderer.dispose(); this.renderer = null; }
+
+    // 5. Null references
+    this.scene = null;
+    this.camera = null;
+}
+
+stop() {
+    this.cancelAnimationLoop();
+    this.clearEventSubscriptions();
+    this.removeResizeListener();
+    this.disposeRuntimeResources({ removeCanvas: true });
+    super.stop();
+}
+```
+
+**Exit Criteria:**
+- WebGPU renderer initializes on supported browsers; WebGL fallback activates silently on others.
+- `?forceWebGL=1` forces WebGL path; all `?bioluminescenceNo*` flags work.
+- Device loss triggers controlled auto-restart with WebGL (no restart loop, no leaked listeners).
+- `compileAsync` completes or times out within 3s without stalling.
+- Tone mapping is applied exactly once per path (no double tone mapping).
+- 100+ theme switches with no listener/timer/resource leaks.
+- Theme renders identically to current on WebGL fallback.
+
+---
+
+### Phase 2: Render Path Abstraction and Post-Processing (Critical)
+
+**Objective:** Centralize render flow, establish MRT bloom, and validate emissive behavior early. MRT emissive bloom is the single biggest visual upgrade — it must be validated before environment expansion.
+
+**Files:**
+- Modify: `src/themes/bioluminescence/bioluminescence-theme.js`
+- Create: `src/themes/bioluminescence/bioluminescence-post.js`
+
+#### 2.1 - WebGPU Post-Processing Chain (`bioluminescence-post.js`)
+
+```javascript
+import * as THREE from 'three/webgpu';
+import {
+    emissive, mrt, output, pass, viewportUV,
+    uniform, clamp, float, length, mix, smoothstep,
+    vec2, vec3, vec4, dot, fract, sin, pow,
+} from 'three/tsl';
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
+
+export class BioluminescencePost {
+    constructor(renderer, scene, camera, params = {}) {
+        this.renderer = renderer;
+        this.size = { width: 0, height: 0 };
+        this.postProcessing = new THREE.PostProcessing(renderer);
+        this.useMRT = params.useMRT ?? true;
+        this.bloomDownsample = params.bloomDownsample ?? 0.8;
+
+        // Scene pass with MRT
+        this.scenePass = pass(scene, camera);
+        if (this.useMRT) {
+            this.scenePass.setMRT(mrt({ output, emissive }));
+        }
+
+        const sceneColor = this.scenePass.getTextureNode('output');
+        const bloomSource = this.useMRT
+            ? this.scenePass.getTextureNode('emissive')
+            : sceneColor;
+
+        // Emissive Bloom (isolated via MRT)
+        this.uBloomStrength = uniform(params.bloomStrength ?? 0.4);
+        this.uBloomBoost = uniform(0);
+        const totalBloom = this.uBloomStrength.add(this.uBloomBoost);
+        this.bloomNode = bloom(bloomSource, totalBloom, params.bloomRadius ?? 0.3, params.bloomThreshold ?? 0.0);
+
+        // Hook setSize for bloom downsampling
+        const originalSetSize = this.bloomNode.setSize.bind(this.bloomNode);
+        this.bloomNode.setSize = (w, h) => {
+            originalSetSize(w * this.bloomDownsample, h * this.bloomDownsample);
+        };
+
+        // TSL uniforms
+        this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.8);
+        this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.2);
+        this.uChromaticStrength = uniform(params.chromaticStrength ?? 0.0003);
+        this.uExposure = uniform(params.exposure ?? 1.2);
+        this.uContrast = uniform(params.contrast ?? 1.15);
+        this.uSaturation = uniform(params.saturation ?? 1.1);
+        this.uDitherStrength = uniform(params.ditherStrength ?? 0.004);
+
+        // Build TSL post-processing graph
+        const uvCoord = viewportUV;
+
+        // 1. Vignette (strong: cave-appropriate dark edges)
+        const dist = length(uvCoord.sub(0.5).mul(2.0));
+        const vig = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.7), dist);
+        const vignetted = mix(sceneColor.mul(float(1).sub(this.uVignetteDarkness)), sceneColor, vig);
+
+        // 2. Chromatic aberration (subtle, event-scaled)
+        const chroma = chromaticAberration(vignetted, this.uChromaticStrength);
+
+        // 3. Add bloom
+        const combined = chroma.add(this.bloomNode);
+
+        // 4. Exposure + ACES tone mapping
+        const exposed = combined.mul(this.uExposure);
+        const acesA = float(2.51);
+        const acesB = float(0.03);
+        const acesC = float(2.43);
+        const acesD = float(0.59);
+        const acesE = float(0.14);
+        const acesNum = exposed.mul(exposed.mul(acesA).add(acesB));
+        const acesDen = exposed.mul(exposed.mul(acesC).add(acesD)).add(acesE);
+        let graded = clamp(acesNum.div(acesDen), float(0.0), float(1.0));
+
+        // 5. Color grading (bioluminescent cave mood)
+        const luma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
+        graded = mix(vec3(luma), graded, this.uSaturation);
+        graded = graded.sub(0.5).mul(this.uContrast).add(0.5);
+
+        // Shadow push toward Abyss Navy, highlight pull toward White-Cyan
+        const shadowColor = vec3(0.008, 0.03, 0.06);
+        const highlightColor = vec3(0.8, 1.0, 1.0);
+        graded = mix(
+            mix(shadowColor, graded, pow(luma, 0.8)),
+            mix(graded, highlightColor, pow(luma, 2.0)),
+            luma
+        );
+
+        // 6. Dithering (CRITICAL for this theme — prevents banding in deep blacks)
+        const dither = fract(sin(dot(uvCoord, vec2(12.9898, 78.233))).mul(43758.5453));
+        const dithered = clamp(graded.add(dither.sub(0.5).mul(this.uDitherStrength)), 0.0, 1.0);
+
+        this.postProcessing.outputNode = dithered;
+        this.postProcessing.needsUpdate = true;
+    }
+
+    update(params = {}) {
+        if (params.bloomStrength !== undefined) {
+            if (this.uBloomStrength) this.uBloomStrength.value = params.bloomStrength;
+            else if (this.bloomNode?.strength) this.bloomNode.strength.value = params.bloomStrength;
+        }
+        if (params.bloomRadius !== undefined && this.bloomNode?.radius) this.bloomNode.radius.value = params.bloomRadius;
+        if (params.chromaticStrength !== undefined) this.uChromaticStrength.value = params.chromaticStrength;
+        if (params.vignetteOffset !== undefined) this.uVignetteOffset.value = params.vignetteOffset;
+        if (params.vignetteDarkness !== undefined) this.uVignetteDarkness.value = params.vignetteDarkness;
+        if (params.exposure !== undefined) this.uExposure.value = params.exposure;
+        if (params.bloomBoost !== undefined) this.uBloomBoost.value = params.bloomBoost;
+    }
+
+    render() { this.postProcessing.render(); }
+
+    setSize(width, height) {
+        this.size.width = width;
+        this.size.height = height;
+        this.scenePass.setSize(width, height);
+        if (this.bloomNode?.setSize) {
+            this.bloomNode.setSize(width, height);
+        }
+    }
+
+    dispose() {
+        this.scenePass?.dispose?.();
+        this.bloomNode?.dispose?.();
+        this.postProcessing?.dispose?.();
+    }
+}
+```
+
+#### 2.2 - MRT Material Patching and Fail-Safe (from Cosmic Noir Phase 7)
+
+```javascript
+isNodeMaterial(material) {
+    if (!material) return false;
+    if (material.isNodeMaterial) return true;
+    if (material.isMeshBasicNodeMaterial
+        || material.isMeshStandardNodeMaterial
+        || material.isMeshPhysicalNodeMaterial
+        || material.isPointsNodeMaterial
+        || material.isSpriteNodeMaterial) return true;
+    const type = material.type || material.constructor?.name || '';
+    return type.includes('NodeMaterial');
+}
+
+ensureMrtMaterials() {
+    if (!this.isWebGPU || !this.flags.useMRT) return;
+
+    const seen = new Set();
+    const nonNodeMaterials = [];
+    const nodeMaterials = [];
+    const zeroEmissive = vec3(0, 0, 0);
+
+    const recordMaterial = (mat, objectName = 'Unknown') => {
+        if (!mat) return;
+        if (Array.isArray(mat)) {
+            mat.forEach((entry) => recordMaterial(entry, objectName));
+            return;
+        }
+        if (seen.has(mat)) return;
+        seen.add(mat);
+
+        if (!this.isNodeMaterial(mat)) {
+            nonNodeMaterials.push({ objectName, materialName: mat.name || mat.type || 'Unknown' });
+            return;
+        }
+
+        nodeMaterials.push(mat);
+        if (!mat.emissiveNode) {
+            mat.emissiveNode = zeroEmissive;
+        }
+        mat.mrtNode = mrt({ emissive: mat.emissiveNode || zeroEmissive });
+        mat.needsUpdate = true;
+    };
+
+    this.scene.traverse((child) => {
+        if (child.material) recordMaterial(child.material, child.name || child.type);
+    });
+
+    // FAIL-SAFE: If any non-node material found, disable MRT entirely
+    if (nonNodeMaterials.length > 0) {
+        nodeMaterials.forEach((mat) => {
+            mat.mrtNode = null;
+            mat.needsUpdate = true;
+        });
+        console.warn('[Bioluminescence] MRT disabled — non-node materials detected:', nonNodeMaterials);
+        this.flags.useMRT = false;
+    }
+
+    if (this.flags.mrtAudit) {
+        console.log('[Bioluminescence] MRT audit:', {
+            nodeCount: nodeMaterials.length,
+            nonNodeCount: nonNodeMaterials.length,
+            nonNodeMaterials,
+        });
+    }
+}
+```
+
+#### 2.3 - Bloom Configuration per Quality Tier
+
+| Quality | Strength | Radius | Threshold | Downsample |
+|---------|----------|--------|-----------|------------|
+| Extreme | 0.50 | 0.40 | 0.0 (MRT) | 0.9 |
+| Ultra | 0.45 | 0.35 | 0.0 (MRT) | 0.85 |
+| High | 0.40 | 0.30 | 0.0 (MRT) | 0.8 |
+| Medium | 0.30 | 0.25 | 0.0 (MRT) | 0.7 |
+| Low | 0.20 | 0.20 | 0.7 | 0.6 |
+| Minimal | 0.15 | 0.15 | 0.7 | 0.5 |
+
+#### 2.4 - WebGL Post-Processing Fallback
+- `EffectComposer` with:
+  - `RenderPass`
+  - `UnrealBloomPass` (strength: 0.3, radius: 0.2, threshold: 0.85 — higher threshold since no MRT isolation)
+  - `ShaderPass(VignetteShader)` — dark cave edges
+  - `ShaderPass(ColorGradeShader)` — teal shadow push, cyan highlight pull
+- 4 passes total (lean for performance)
+
+**Exit Criteria:**
+- MRT bloom isolates only emissive objects (mushrooms/crystals glow, rock doesn't bloom).
+- `ensureMrtMaterials()` patches all scene materials; fail-safe disables MRT if non-node material found.
+- `?bioluminescenceMrtAudit=1` logs all material MRT metadata to console.
+- Tone mapping is not applied twice (post graph owns it on WebGPU path).
+- WebGL path uses existing `EffectComposer` chain.
+- All flag/capability permutations run without runtime errors.
+
+---
+
+### Phase 3: TSL Node Materials (Critical)
+
+**Objective:** Migrate core shaders to TSL node materials on WebGPU. Extract GLSL to shaders file for WebGL.
+
+**Files:**
+- Create: `src/themes/bioluminescence/bioluminescence-materials.js`
+- Create: `src/themes/bioluminescence/bioluminescence-shaders.js`
+- Modify: `src/themes/bioluminescence/bioluminescence-theme.js`
+
+#### 3.1 - TSL Procedural Noise Library (top of `bioluminescence-materials.js`)
+
+Build reusable `Fn()` noise functions. Pattern proven in Black Hole, Neon District, and Shifting Sands:
 
 ```javascript
 import { Fn, vec2, vec3, float, fract, sin, cos, dot, floor, mix, abs, smoothstep } from 'three/tsl';
 
-// Hash functions (basis for all noise)
 const hash21 = /* @__PURE__ */ Fn(([p]) => {
     return fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453));
 });
 
-const hash22 = /* @__PURE__ */ Fn(([p]) => {
-    const q = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
-    return fract(sin(q).mul(43758.5453));
-});
-
-const hash3 = /* @__PURE__ */ Fn(([p]) => {
-    const q = fract(p.mul(vec3(0.1031, 0.1030, 0.0973)));
-    // ... trilinear hash
-    return fract(q.mul(q.yzx.add(33.33)));
-});
-
-// 2D value noise
 const noise2D = /* @__PURE__ */ Fn(([p]) => {
     const i = floor(p);
     const f = fract(p);
-    const u = f.mul(f).mul(float(3.0).sub(f.mul(2.0))); // smoothstep
+    const u = f.mul(f).mul(float(3.0).sub(f.mul(2.0)));
     return mix(
         mix(hash21(i), hash21(i.add(vec2(1, 0))), u.x),
         mix(hash21(i.add(vec2(0, 1))), hash21(i.add(vec2(1, 1))), u.x),
@@ -216,16 +1082,6 @@ const noise2D = /* @__PURE__ */ Fn(([p]) => {
     );
 });
 
-// 3D gradient noise (Perlin-style) - from Shifting Sands pattern
-const noise3D = /* @__PURE__ */ Fn(([p]) => {
-    const i = floor(p);
-    const f = fract(p);
-    const u = f.mul(f).mul(float(3.0).sub(f.mul(2.0)));
-    // Trilinear interpolation of 8 corner gradients
-    // ... (full implementation as in shifting-sands-materials.js)
-});
-
-// 4-octave FBM - from Neon District pattern
 const fbm4 = /* @__PURE__ */ Fn(([p]) => {
     let noise = noise2D(p);
     noise = noise.add(noise2D(p.mul(2.0).add(vec2(17.0))).mul(0.5));
@@ -234,971 +1090,637 @@ const fbm4 = /* @__PURE__ */ Fn(([p]) => {
     return noise.div(1.875);
 });
 
-// Voronoi (for organic cell patterns on mushroom caps, crystal facets)
 const voronoi = /* @__PURE__ */ Fn(([p]) => {
     const i = floor(p);
     const f = fract(p);
     let minDist = float(8.0);
-    // 3x3 grid search
-    // ... returns { distance, cellCenter }
+    // 3x3 grid search for nearest cell center
+    // ... returns distance to nearest cell
 });
 ```
 
-#### 1.2 - Extract Materials Module (`bioluminescence-materials.js`)
+#### 3.2 - Material Factories
 
-Create TSL node material factories for WebGPU path. **Critical: Use `MeshPhysicalNodeMaterial` for translucent organic objects** (mushrooms, crystals) to leverage built-in transmission, thickness, and attenuation for real SSS:
+Each factory returns `{ material, uniforms, meta }`:
 
-- `createMushroomCapNodeMaterial()` - **MeshPhysicalNodeMaterial** with:
-  - `transmissionNode` - light passes through thin cap edges (0.3-0.6)
-  - `thicknessNode` - varies across cap surface (thin at edges, thick at center)
-  - `attenuationColor` - deep teal-cyan (`#006655`) for subsurface color
-  - `attenuationDistance` - 0.8 for medium absorption
-  - `iorNode` - 1.4 (organic refractive index)
-  - `emissiveNode` - animated pulse glow using `uTime` + `positionLocal`
-  - `normalNode` - voronoi-based cell pattern for organic gill structure
+- **`createMushroomCapNodeMaterial(params)`** — `MeshPhysicalNodeMaterial` with:
+  - `transmissionNode` — light passes through thin cap edges (0.3-0.6)
+  - `thicknessNode` — varies across cap surface (thin at edges, thick at center)
+  - `attenuationColor` — deep teal-cyan (`#006655`)
+  - `iorNode` — 1.4 (organic refractive index)
+  - `emissiveNode` — animated pulse glow × `BLOOM_CLASS_WEIGHTS.mushroomCap`
+  - `normalNode` — voronoi-based cell pattern for organic gill structure
+  - Voronoi displacement on cap geometry (not just normal map) for organic character
   - Iridescence via view-angle-dependent color shift in emissive
-- `createMushroomStemNodeMaterial()` - MeshStandardNodeMaterial with wet look
-- `createCrystalNodeMaterial()` - **MeshPhysicalNodeMaterial** with:
-  - `transmissionNode` - 0.7-0.9 for glass-like transparency
-  - `thicknessNode` - height-gradient (brighter at tips)
-  - `attenuationColor` - `#004488` for deep blue internal tint
-  - `iorNode` - 1.8 (crystal-like refraction)
-  - `emissiveNode` - animated internal energy flow
-  - Fresnel rim with clamped intensity (no whiteout)
-  - Dispersion hint via slight RGB offset in transmission
-- `createCaveRockNodeMaterial()` - MeshStandardNodeMaterial with:
+  - Per-instance hue variation (±15° around primary cyan)
+  - Per-instance pulse phase offset (mushrooms must NOT breathe in sync)
+
+- **`createMushroomStemNodeMaterial()`** — `MeshStandardNodeMaterial` with wet look
+
+- **`createCrystalNodeMaterial(params)`** — `MeshPhysicalNodeMaterial` with:
+  - `transmissionNode` — 0.7-0.9 for glass-like transparency
+  - `thicknessNode` — height-gradient (brighter at tips)
+  - `attenuationColor` — `#004488` for deep blue internal tint
+  - `iorNode` — 1.8 (crystal-like refraction)
+  - `emissiveNode` — animated internal energy flow × `BLOOM_CLASS_WEIGHTS.crystalTip`
+  - Fresnel rim: `pow(1.0 - abs(dot(normal, viewDir)), 4.0)` with **clamped max 0.4** (critical fix for whiteout)
+  - No additive blending (remove all additive blending from crystals)
+  - Internal facet geometry (hexagonal subdivisions) for visible refraction
+
+- **`createCaveRockNodeMaterial()`** — `MeshStandardNodeMaterial` with:
   - Procedural color from `fbm4` (no canvas textures needed)
   - `normalNode` from noise-based detail
-  - `roughnessNode` - wet in low areas, dry on ridges
-  - `emissiveNode` - faint bioluminescent crack lines via `voronoi` edges
-- `createVineNodeMaterial()` - MeshStandardNodeMaterial with animated emissive veins
-- `createSporeParticleMaterial(isWebGPU, sporeCompute)` - **WebGPU instanced billboard quads** (or sprite path) + WebGL `THREE.Points` fallback:
-  - WebGPU path reads `positionNode` from `storage()` buffer and writes per-instance quad transform
-  - WebGL path keeps current `Points` shader behavior
-  - `colorNode` includes lifecycle-based alpha and emissive weighting
-- `createFireflyParticleMaterial(isWebGPU, fireflyCompute)` - same hybrid particle pattern as spores (billboards on WebGPU, `Points` fallback on WebGL)
-- `createCaveWallNodeMaterial()` - MeshStandardNodeMaterial with:
-  - Animated bioluminescent vein network (multi-frequency sine pattern)
-  - Pulsing glow spots (fbm-driven)
-- `createWaterSurfaceNodeMaterial()` - MeshPhysicalNodeMaterial with:
-  - `transmissionNode` for see-through water
+  - `roughnessNode` — wet in low areas, dry on ridges
+  - `emissiveNode` — locked to zero (`vec3(0)`) so cave rock never contributes to bloom
+
+- **`createCaveWallNodeMaterial()`** — `MeshStandardNodeMaterial` with animated bioluminescent vein network and subtle crack-line emissive response
+
+- **`createVineNodeMaterial()`** — `MeshStandardNodeMaterial` with animated emissive veins
+
+- **`createWaterSurfaceNodeMaterial()`** — `MeshPhysicalNodeMaterial` with:
+  - `transmissionNode` — 0.6 for see-through water
   - Animated `normalNode` from multi-layer sine ripples
-  - Subsurface `emissiveNode` for plankton glow
-  - Fresnel-based reflection blend
-- `createBackgroundNodeMaterial()` - MeshBasicNodeMaterial with cave void
-- `createMyceliumNodeMaterial()` - MeshBasicNodeMaterial with:
-  - Additive blending for pure glow
-  - Animated brightness wave (for event propagation)
-  - Tube geometry preferred over line primitives (stable width across backends)
+  - Subsurface `emissiveNode` — animated plankton glow clusters (not uniform)
+  - Depth-based opacity (transparent at edges, opaque at center)
+  - `attenuationColor` — `#001A1A` (Midnight Teal)
 
-Each factory returns `{ material, uniforms }`. Uniforms use TSL `uniform()` nodes.
+- **`createSporeParticleMaterial(isWebGPU, sporeCompute)`** — WebGPU instanced billboard quads + WebGL `THREE.Points` fallback
 
-#### 1.3 - WebGL Fallback Materials
+- **`createFireflyParticleMaterial(isWebGPU, fireflyCompute)`** — same hybrid pattern
 
-For the `!this.isWebGPU` path, keep existing GLSL `ShaderMaterial` definitions (Mushroom, Crystal, Terrain, Spore, ContactRipple, Shore shaders). Migrate them to a `createWebGLFallbackMaterials()` function within the materials file. Key differences:
-- No MeshPhysicalNodeMaterial features (no real SSS, no transmission)
-- Approximate SSS with rim glow GLSL (existing shader works)
-- Standard `THREE.Points` with GLSL vertex/fragment (existing spore shader)
-- No compute-driven particles (CPU animation loop)
-- Standard bloom (no MRT isolation)
+- **`createBackgroundNodeMaterial()`** — `MeshBasicNodeMaterial` with cave void
 
-#### 1.4 - Implement Hybrid Renderer in Main Theme
-- Add dual imports (`three` + `three/webgpu`)
-- Implement `async initRenderer(container)`:
-  - Try `new THREE_WEBGPU.WebGPURenderer({ antialias, alpha: false })`
-  - `await renderer.init()` in try/catch
-  - Verify `backend?.isWebGPUBackend === true`
-  - Probe capabilities and derive `flags.usePost`, `flags.useMRT`, `flags.useCompute`, `flags.useMyceliumPulse`
-  - Warm-up path: `await renderer.compileAsync(scene, camera)` (or hidden warm-up frame) before first visible frame
-  - Timeout-guarded startup: if WebGPU init/compile exceeds threshold (e.g., 3s), auto-fallback to WebGL
-  - Fallback: `new THREE.WebGLRenderer({ antialias, alpha: false })`
-  - Set `this.isWebGPU` boolean flag
-  - Handle device loss: `renderer.onDeviceLost` and restart in WebGL-safe mode
-  - Parse namespaced debug flags from URL params (`?forceWebGL=1`, `?bioluminescenceNoPost=1`, etc.)
-- Make `createScene()` async (awaits `initRenderer`)
-- Gate material creation: TSL materials when `this.isWebGPU`, GLSL when not
-- Progressive scene build: render basic scene immediately, add details over frames
+- **`createMyceliumNodeMaterial()`** — `MeshBasicNodeMaterial` with additive blending, animated brightness wave
 
-#### 1.5 - Dual Post-Processing Setup
-- **WebGPU path:** Create `BioluminescencePost` class in `bioluminescence-post.js`
-  - `PostProcessing` from `three/webgpu`
-  - `pass()`, `mrt()`, `bloom()` from `three/tsl`
-  - MRT with `output` + `emissive` channels for isolated bloom
-  - Bloom only on emissive channel (mushrooms/crystals glow; rock doesn't)
-  - Chromatic aberration, vignette, color grading via TSL nodes
-  - Tone mapping: ACES Filmic via TSL
-  - Exposed uniforms for dynamic adjustment (combo intensity → bloom strength)
-- **WebGL path:** Keep existing `EffectComposer` + `UnrealBloomPass` + add vignette/color grade `ShaderPass`
-- Branch in `setupPostProcessing()` based on `this.isWebGPU`
+#### 3.3 - WebGL Fallback Shaders (`bioluminescence-shaders.js`)
 
-**Acceptance Criteria:**
-- Theme loads with WebGPU on supported browsers, WebGL on others
-- No console errors on either path
-- Visual parity between WebGPU and WebGL at baseline
-- `?forceWebGL=1` works for testing
-- Mushroom caps show visible light transmission through thin edges (WebGPU)
-- Crystals are transparent with internal color tint (WebGPU)
+Extract all 6 existing inline GLSL shaders to a dedicated shaders file (pattern from Cosmic Noir):
+```javascript
+// bioluminescence-shaders.js
+export const mushroomCapVertexShader = `...`;
+export const mushroomCapFragmentShader = `...`;
+export const crystalVertexShader = `...`;
+export const crystalFragmentShader = `...`;
+export const terrainVertexShader = `...`;
+export const terrainFragmentShader = `...`;
+export const sporeVertexShader = `...`;
+export const sporeFragmentShader = `...`;
+export const contactRippleVertexShader = `...`;
+export const contactRippleFragmentShader = `...`;
+export const shoreVertexShader = `...`;
+export const shoreFragmentShader = `...`;
+
+// New WebGL fallback shaders
+export const vignetteShader = { ... };
+export const colorGradeShader = { ... };
+```
+
+`createWebGLFallbackMaterials()` in the materials file creates `ShaderMaterial` instances from these GLSL strings.
+
+#### 3.4 - Conditional Material Creation in Theme
+```javascript
+if (this.isWebGPU) {
+    const result = createMushroomCapNodeMaterial({ transmission: 0.4, ... });
+    this.mushroomCapMaterial = result.material;
+    this.mushroomCapUniforms = result.uniforms;
+} else {
+    this.mushroomCapMaterial = new THREE.ShaderMaterial({
+        vertexShader: mushroomCapVertexShader,
+        fragmentShader: mushroomCapFragmentShader,
+        uniforms: { ... },
+    });
+}
+```
+
+**Exit Criteria:**
+- All material factories return `{ material, uniforms, meta }` tuples.
+- TSL noise helpers produce visuals matching GLSL originals.
+- Bloom class weights prevent emissive washout in MRT bloom pass.
+- Mushroom caps show visible light transmission through thin edges (WebGPU).
+- Crystals are transparent with internal color tint, no whiteout (WebGPU).
+- Fresnel rim on crystals is clamped to max 0.4.
+- WebGL path uses original GLSL shaders from `bioluminescence-shaders.js`.
+- Side-by-side comparison confirms visual parity.
 
 ---
 
-### Phase 2: GPU Compute Particle Systems & Mycelium
-**Priority: HIGH | Estimated Complexity: High**
+### Phase 4: GPU Compute Particle Systems & Mycelium (High)
 
-#### 2.1 - Create `bioluminescence-compute.js`
+**Objective:** Move particle simulation to GPU compute with safe CPU fallback.
 
-**SporeCompute class** - GPU-driven floating spore particles
-- `StorageBufferAttribute` for interleaved buffers:
-  - State buffer: `[x, y, z, life]` + `[vx, vy, vz, seed]` per particle (vec4 pairs, as in Shifting Sands sand smoke pattern)
-- Compute shader via `Fn()`:
-  - Upward float with 3D noise turbulence (reuse `noise3D` from noise library)
-  - Lifecycle: spawn at terrain surface near mushrooms, float upward, fade at ceiling, respawn
-  - Soft attraction toward nearest light source (mushroom/crystal positions passed as uniforms)
-  - Wind gusts: periodic directional force (sine-based wind vector)
-  - Interaction: avoid water surface (bounce off y=-52)
-  - Quality scaling: 1000 (High) → 3000 (Extreme)
-- Expose getters: `getStateBuffer()`, `count`
-- Material uses vertex pulling pattern (as in Shifting Sands):
-  ```javascript
-  const stateBuffer = storage(sporeCompute.getStateBuffer(), 'vec4', sporeCompute.count * 2);
-  const posLife = stateBuffer.element(vertexIndex.mul(2));
-  const velSeed = stateBuffer.element(vertexIndex.mul(2).add(1));
-  material.positionNode = posLife.xyz;
-  ```
+**Files:**
+- Create: `src/themes/bioluminescence/bioluminescence-compute.js`
+- Modify: `src/themes/bioluminescence/bioluminescence-materials.js`
+- Modify: `src/themes/bioluminescence/bioluminescence-theme.js`
 
-**FireflyCompute class** - Larger bioluminescent fireflies with emergent behavior
+#### 4.0 - Compute Buffer Contract (Alignment-Safe, Zero-Readback)
+
+Use explicit 16-byte aligned structures to avoid WGSL layout bugs and keep compute->render data flow stable:
+
+```wgsl
+struct ParticleState {
+    position : vec4f,  // xyz + life
+    velocity : vec4f,  // xyz + seed
+    color    : vec4f,  // rgb + size
+    misc     : vec4f,  // phase, state, age, active
+};
+```
+
+- Stride: 64 bytes per particle (no packed scalars outside `vec4f` lanes).
+- Use ping-pong storage buffers (`readBuffer`, `writeBuffer`) for each simulation system.
+- Swap buffers after each dispatch, never read back to CPU inside frame loop.
+- Keep workgroup size fixed at 64 unless profiling proves a better per-device setting.
+- Document byte offsets in code comments in `bioluminescence-compute.js` for every struct field.
+
+#### 4.1 - SporeCompute Class
+- `StorageBufferAttribute` for interleaved buffers: `[x, y, z, life]` + `[vx, vy, vz, seed]` per particle
+- Compute shader via `Fn()`: upward float + 3D noise turbulence + lifecycle + wind gusts
+- Quality scaling: 1000 (High) → 3000 (Extreme)
+- Material uses vertex pulling: `storage()` → `positionNode`
+
+#### 4.2 - FireflyCompute Class
 - 50-200 particles (quality-scaled)
-- Buffer: `[x, y, z, glowPhase]` + `[vx, vy, vz, state]` per firefly
-- State machine encoded in `state` float:
-  - 0.0-0.3 = idle hover (slow sine orbit)
-  - 0.3-0.5 = dart (fast linear movement to random target)
-  - 0.5-0.8 = idle hover at new position
-  - 0.8-1.0 = glow intensify + slow sink → reset to 0.0
-- `glowPhase` increments based on state (brighter during dart transitions)
-- Color variation per firefly: mix between Primary Glow and Phosphor Green based on seed
-- Optional trail effect: ring buffer of last 4 positions, rendered as fading line segments
+- State machine encoded in `state` float (idle hover → dart → hover → glow → reset)
+- Color variation per firefly based on seed
+- Instanced camera-facing quads on WebGPU (not Points)
 
-**MyceliumPulseCompute class** (WebGPU only, Extreme/Ultra quality)
+#### 4.3 - MyceliumPulseCompute Class (Extreme/Ultra only)
 - Simulates glow propagation through underground network
-- Buffer: `[brightness, targetBrightness, propagationSpeed, connectionCount]` per node
-- Network nodes placed at mushroom/crystal base positions
-- When game event fires, set source node brightness → propagates to connected nodes over frames
-- Material reads brightness per node to animate mycelium line/tube glow
+- Network nodes at mushroom/crystal base positions
+- Game events trigger propagation waves
+- Material reads brightness per node
 
-#### 2.2 - Integrate Compute with Materials
-- **WebGPU render path:** Spore/firefly visuals use instanced camera-facing quads (or sprite equivalent), with transform/color fed from compute storage buffers
-- Spore material reads from `SporeCompute.getStateBuffer()` via `storage()` node
-- Firefly material reads compute position + glow phase for dynamic size/color and optional trail contribution
-- Mycelium material reads brightness buffer for animated glow intensity
-- **WebGL fallback:** Keep existing `THREE.Points` with GLSL vertex shader for spores; fireflies/mycelium pulse can be simplified or omitted per quality preset
-- No CPU readback from compute buffers in frame loop (strict compute -> render zero-readback path)
+#### 4.4 - Integration and Fallback
+- **WebGPU:** Spore/firefly visuals use instanced billboards, transform/color from compute storage buffers
+- **WebGL:** Keep existing `THREE.Points` with GLSL vertex shader for spores; fireflies/mycelium simplified
+- No CPU readback from compute buffers in frame loop (zero-readback path)
+- `?bioluminescenceNoCompute=1` disables compute; falls back to CPU
 
-**Acceptance Criteria:**
-- Spores computed entirely on GPU (WebGPU) or CPU (WebGL)
-- WebGPU spores/fireflies are visually large enough (not 1px point artifacts)
-- Fireflies add magical atmosphere with emergent behavior patterns
-- Mycelium pulse creates visible glow waves between organisms on game events
-- Minimum 1000 spores at 60fps on mid-range GPU
-- No performance regression vs current implementation on WebGL path
+**Exit Criteria:**
+- Spores computed entirely on GPU (WebGPU) or CPU (WebGL).
+- WebGPU particles are visually large enough (not 1px artifacts).
+- Minimum 1000 spores at 60fps on mid-range GPU.
+- No performance regression on WebGL path.
+- Compute and CPU paths are runtime-switch safe.
 
 ---
 
-### Phase 3: Enhanced Environment & World Building
-**Priority: HIGH | Estimated Complexity: High**
+### Phase 5: Enhanced Environment & World Building (High)
 
-#### 3.1 - Dramatic Cave Architecture
+**Objective:** Transform the cave from sparse to vast, deep, and alive.
+
+**Files:**
+- Modify: `src/themes/bioluminescence/bioluminescence-theme.js`
+- Modify: `src/themes/bioluminescence/bioluminescence-materials.js`
+
+#### 5.1 - Dramatic Cave Architecture
 
 **Cave ceiling:**
 - Large dome-shaped displaced PlaneGeometry at y=450-500
 - Procedural stalactite clusters: groups of 3-7 ConeGeometry hanging down
-- Place stalactites using noise-based distribution (avoid center play area)
-- Bioluminescent moss patches on stalactite surfaces (emissive spots in material)
-- Dripping water: occasional small sphere geometry dropping from stalactite tips (simple animation, respawn at top)
+- Bioluminescent moss patches on stalactite surfaces (irregular organic shapes via voronoi, NOT circles)
+- Dripping water: occasional small sphere dropping from stalactite tips
 
 **Side walls (left/right):**
 - Two curved PlaneGeometry walls (concave toward center) at x=±500
 - Displacement from multi-octave noise for rocky surface
 - TSL cave wall material with animated bioluminescent vein network
-- Shelf mushrooms growing from wall surfaces (placed at wall vertices)
+- Shelf mushrooms growing from wall surfaces
 
 **Cave floor enhancement:**
-- Keep terrain PlaneGeometry but increase displacement amplitude
 - Deeper cracks with emissive bioluminescent moss in crevices
-- Small rock formations: scattered low-poly IcosahedronGeometry clusters near walls
-- Rubble/debris scatter (InstancedMesh with per-instance random transform)
+- Small rock formations (InstancedMesh with per-instance random transform)
 
-**Cave depth (background layers):**
+**Cave depth (background layers) — parallax:**
 - Layer 1 (z=-400): Silhouette mushroom/crystal shapes (dark with subtle edge glow)
 - Layer 2 (z=-600): Faint glowing spots suggesting distant cave continuation
 - Layer 3 (z=-800): Pure darkness with occasional dim pulse
-- Atmospheric depth fog: `FogExp2` with teal-tinted color gradient
+- Fog density gradient that fades distant layers naturally
 
-#### 3.2 - Bioluminescent Water Pool Overhaul
+#### 5.2 - Bioluminescent Water Pool Overhaul
 
 Replace `Water.js` entirely with custom implementation:
+- **WebGPU:** `MeshPhysicalNodeMaterial` with transmission, animated sine-wave normals, subsurface plankton glow clusters, depth-based opacity
+- **WebGL:** `ShaderMaterial` with animated sine-wave normals, Fresnel reflection, emissive hint
+- Caustics projection onto underwater terrain (animated texture projection, even faked)
+- Shore foam ring with noise-based pattern
+- Contact ripples at mushroom/crystal bases in water
 
-**TSL Water Material (WebGPU):**
-- `MeshPhysicalNodeMaterial` with:
-  - `transmissionNode` - 0.6 for semi-transparent water
-  - `normalNode` - multi-layer animated sine waves for ripple surface:
-    ```
-    wave1 = sin(uv.x * 15 + time * 0.8) * cos(uv.y * 12 - time * 0.5)
-    wave2 = sin(uv.x * 25 - time * 1.2) * cos(uv.y * 20 + time * 0.7)
-    normal = perturbNormal(wave1 * 0.6 + wave2 * 0.4)
-    ```
-  - `emissiveNode` - subsurface plankton glow: faint animated `noise2D` pattern in cyan
-  - `roughnessNode` - 0.05 (very smooth/reflective)
-  - `attenuationColor` - `#001A1A` (Midnight Teal)
-  - Depth-based color: blend from teal (edges) to dark navy (center) using radial UV distance
-- Vertex displacement for gentle wave motion (small amplitude sine)
+#### 5.3 - Enhanced Mushroom Ecosystem
 
-**GLSL Water Material (WebGL fallback):**
-- `ShaderMaterial` with animated sine-wave normals
-- Fresnel-based reflection approximation
-- Emissive subsurface hint
-
-**Shore interaction:**
-- Animated foam ring (keep existing shore shader, improve with noise-based foam pattern)
-- Wet rock: terrain material `roughnessNode` is lower within 20 units of water edge
-- Contact ripples at mushroom/crystal bases in water (keep existing, enhance with TSL)
-
-#### 3.3 - Enhanced Mushroom Ecosystem
-
-**4 distinct mushroom species** (all share `createMushroomCapNodeMaterial` with per-instance parameter variation):
+4 distinct species (all share material factory with per-instance params):
 
 | Species | Geometry | Size | Placement | Count (High) |
 |---------|----------|------|-----------|---------------|
-| **Tall Spire** | Thin cylinder stem + half-sphere cap (flat) | H: 30-60 | Floor, scattered | 8-12 |
+| **Tall Spire** | Thin cylinder stem + varied cap shapes (some flat, some domed, some upturned) | H: 30-60 | Floor, scattered | 8-12 |
 | **Shelf/Bracket** | Flat disc + quarter-sphere cap | W: 15-30 | Wall surfaces | 6-10 |
-| **Cluster Mini** | InstancedMesh, 5-8 per cluster | H: 3-8 | Rock surfaces, near large mushrooms | 4-6 clusters (20-48 instances) |
-| **Giant Ancient** | Large cylinder + dome cap + root tendrils | H: 80-120 | 1-2 as focal points, back of scene | 1-2 |
+| **Cluster Mini** | InstancedMesh, 5-8 per cluster | H: 3-8 | Rock surfaces, near large mushrooms | 4-6 clusters |
+| **Giant Ancient** | Large cylinder + dome cap + root tendrils + cap underside gill fins | H: 80-120 | 1-2 focal points | 1-2 |
 
-**Per-species material tweaks** (passed as params to material factory):
-- `transmissionStrength` - Tall Spire: 0.4, Giant: 0.6 (more dramatic SSS)
-- `emissiveColor` - Primary Glow for most, shifted toward Phosphor Green for Cluster Mini
-- `pulseSpeed` - faster for small species, slower majestic pulse for Giant
-- `capPattern` - voronoi scale varies (large cells for Giant, small for Cluster)
+Per-species tweaks: transmission strength, emissive color shift, pulse speed, voronoi scale.
 
-**Cluster Mini mushrooms via InstancedMesh:**
-```javascript
-const instanceCount = 40; // Per cluster
-const mesh = new THREE.InstancedMesh(capGeo, capMaterial, instanceCount);
-// Per-instance: position, scale, rotation via InstancedBufferAttribute
-// Material uses instanceIndex for per-instance seed → unique pulse phase
-```
+#### 5.4 - Crystal Formation Upgrade
 
-**Mushroom interactions:**
-- Proximity glow: mushrooms within 50 units of each other have +20% emissive (via proximity uniform array or compute)
-- Chain reaction: game events cause cascading glow waves through mycelium (Phase 2 compute)
-- Spore emission: small spore burst from cap area on PIECE_LOCK (spawn point near cap position)
+3 crystal types with proper transmission materials (no additive blending):
 
-#### 3.4 - Crystal Formation Upgrade
+| Type | Count (High) |
+|------|--------------|
+| **Pillar Crystal** (hex cylinder, pointed top, floor clusters) | 5 clusters |
+| **Ceiling Crystal** (inverted, hanging) | 8-12 |
+| **Micro-Crystal** (InstancedMesh, embedded in rock) | 200-500 instances |
 
-**3 crystal types:**
+#### 5.5 - Mycelium Network (Signature Visual)
 
-| Type | Geometry | Size | Placement | Count (High) |
-|------|----------|------|-----------|---------------|
-| **Pillar Crystal** | Hexagonal CylinderGeometry, pointed top | H: 40-100 | Floor, clusters of 4-8 | 5 clusters |
-| **Ceiling Crystal** | Inverted pointed hex cylinder | H: 20-60 | Hanging from ceiling | 8-12 |
-| **Micro-Crystal** | InstancedMesh, tiny hex prisms | H: 2-5 | Embedded in rock surfaces | 200-500 instances |
+The defining feature:
+- Thin `TubeGeometry` (radius 0.3-0.8) paths between nearby mushroom bases
+- CatmullRomCurve3 with jittered midpoints (no perfectly straight lines)
+- `MeshBasicNodeMaterial` with additive blending, animated brightness from compute or CPU
+- Partially visible through terrain (emissive cracks align with mycelium paths)
 
-**Crystal material (MeshPhysicalNodeMaterial):**
-- High transmission (0.7-0.9) for glass-like transparency
-- Internal energy: animated emissive gradient that flows upward through crystal body
-  ```
-  energyFlow = sin(positionLocal.y * 0.05 - uTime * 2.0) * 0.5 + 0.5
-  emissive = mix(deepAqua, primaryGlow, energyFlow) * intensity
-  ```
-- Fresnel rim: `pow(1.0 - abs(dot(normal, viewDir)), 4.0)` with clamped max (0.6) to prevent whiteout
-- IOR 1.8 for crystal-appropriate refraction
-- Thickness gradient: thin at edges (bright transmission), thick at center (deep color)
+#### 5.6 - Flora & Organic Details
 
-**Micro-crystals via InstancedMesh:**
-- 200-500 tiny hex prisms (quality-scaled)
-- Random position/rotation/scale via InstancedBufferAttribute
-- Material uses `instanceIndex` for per-crystal phase offset → twinkling effect
-- Placed on terrain surface vertices and wall surfaces
+- Glowing vines with animated bioluminescent veins and seed pods at tips
+- Moss patches (InstancedMesh, 50-100 instances, breathing animation)
+- Hanging tendrils from ceiling (4-8, pendulum sway, glow orb at tip)
+- Floating jellyfish (Extreme/Ultra only, 2-4 translucent creatures)
 
-#### 3.5 - Mycelium Network (Signature Visual)
-
-**The defining feature** that separates this from a generic glowing cave:
-
-- Underground network of glowing thread-like connections between mushrooms
-- Implemented as thin `TubeGeometry` (radius 0.3-0.8) paths between nearby mushroom bases
-- Network topology: connect each mushroom to its 2-3 nearest neighbors (Delaunay-like, but simpler)
-- Paths follow terrain surface (sample `getTerrainHeight` along path)
-- Slight random offset to avoid perfectly straight lines (CatmullRomCurve3 with jittered midpoints)
-- Material: `MeshBasicNodeMaterial` with additive blending
-  - Base glow: faint Accent Cool (`#0088AA`) at 20% brightness
-  - Pulse wave: when game event fires, bright Primary Glow wave travels along tube from source
-  - Animated brightness from `MyceliumPulseCompute` buffer (WebGPU) or CPU sine animation (WebGL)
-  - Animated UV scroll for "energy flowing through veins" effect
-- Partially visible through slightly transparent terrain (emissive cracks in terrain material align with mycelium paths)
-
-**WebGL fallback:** Static glowing tubes with sine-animated brightness (no compute propagation, simpler but still visible)
-
-#### 3.6 - Flora & Organic Details
-
-**Glowing vines overhaul:**
-- Thicker, more organic vine shapes with CatmullRomCurve3 branching
-- Animated bioluminescent veins: UV-scrolling emissive pattern along vine surface
-- Glowing seed pods at vine tips: small SphereGeometry with strong emissive pulse
-- Some vines partially submerged in water (glow visible through water transmission)
-
-**Moss patches (InstancedMesh):**
-- Flat disc geometry scattered on floor/walls (50-100 instances, quality-scaled)
-- Emissive Phosphor Green with breathing animation (sine-based emissive intensity cycle, per-instance phase offset)
-- Placed at terrain vertices where height is near water level (damp areas)
-
-**Hanging tendrils from ceiling:**
-- Thin TubeGeometry strands (4-8) hanging from ceiling
-- Gentle pendulum sway animation
-- Bright glow orb at tip (SphereGeometry, strong emissive)
-
-**Floating jellyfish (WebGPU Extreme/Ultra only):**
-- 2-4 ethereal translucent creatures drifting slowly through cave air
-- SphereGeometry (bell) + trailing TubeGeometry tentacles
-- MeshPhysicalNodeMaterial with high transmission for ghostly look
-- Slow sine-based bob + drift movement
-- Pulsing glow cycle (brighter on contraction, dimmer on expansion)
-
-**Acceptance Criteria:**
-- Cave feels like a vast, deep, alive bioluminescent world
-- Multiple layers of depth (foreground, midground, background)
-- Water is a stunning centerpiece with visible subsurface glow
-- At least 4 mushroom species and 3 crystal types
-- Mycelium network visibly connects organisms with animated glow
-- Micro-crystals and moss patches use InstancedMesh efficiently
-- All new elements use TSL materials on WebGPU, fallback GLSL on WebGL
+**Exit Criteria:**
+- Cave feels vast, deep, and alive with multiple depth layers.
+- Water is a stunning centerpiece with visible subsurface glow.
+- At least 4 mushroom species and 3 crystal types.
+- Mycelium network visibly connects organisms.
+- All new elements use TSL materials on WebGPU, fallback on WebGL.
+- Performance stays within budget per tier.
 
 ---
 
-### Phase 4: Advanced Lighting & Atmosphere
-**Priority: HIGH | Estimated Complexity: Medium**
+### Phase 6: Advanced Lighting & Atmosphere (High)
 
-#### 4.1 - Volumetric Atmosphere
+**Objective:** Add volumetric atmosphere and dynamic lighting to sell the cave environment.
 
-**Volumetric fog (TSL material on large sphere/box):**
-- Height-based density: denser near water (y < -30), thinner above (y > 100)
+**Files:**
+- Modify: `src/themes/bioluminescence/bioluminescence-theme.js`
+- Modify: `src/themes/bioluminescence/bioluminescence-materials.js`
+
+#### 6.1 - Volumetric Atmosphere
+- Height-based fog density (denser near water, thinner above)
 - Color-graded: teal near emissive sources, deep navy in dark areas
-- Animated wisps: slow 3D noise displacement (`noise3D` from library)
-- Render as large semi-transparent sphere with ray-march approximation in fragment:
-  ```
-  // Simple fog volume (not true ray march, just height-based density)
-  fogDensity = exp(-positionWorld.y * 0.005) * 0.3
-  fogColor = mix(abyssNavy, deepAqua, fogDensity)
-  ```
+- Animated wisps: slow 3D noise displacement
 
-**God rays / light shafts (enhanced from current light cones):**
-- Keep cone geometry approach but use TSL material:
-  - Animated intensity: slow sine pulse with per-cone phase offset
-  - Dust motes within shaft: small instanced billboards (WebGPU) / `THREE.Points` fallback (WebGL), constrained to cone volume
-  - Color tinted by nearest bioluminescent source
-  - Opacity varies with height (brighter at ceiling opening, fading toward floor)
+#### 6.2 - God Rays / Light Shafts
+- Cone geometry with TSL material (animated intensity, dust motes within)
 - 4-8 cones (quality-scaled), placed at ceiling openings
+- Color tinted by nearest bioluminescent source
 
-#### 4.2 - Dynamic Light Interaction
-
-**Emissive-driven point lights (quality-gated):**
+#### 6.3 - Dynamic Point Lights (Quality-Gated)
 - Only on High+ quality presets
-- 1 PointLight per Giant Ancient Mushroom (colored, radius 200, intensity 0.5)
-- 1 PointLight per Pillar Crystal cluster (colored, radius 150, intensity 0.3)
-- Dynamic count from `qualityPreset.pointLightCount`
+- 1 PointLight per Giant Mushroom (colored, radius 200)
+- 1 PointLight per Pillar Crystal cluster (colored, radius 150)
 - Animate light intensity in sync with object emissive pulse
-- **Medium and below:** No dynamic point lights, rely entirely on hemisphere + directional + emissive materials
+- Medium and below: `pointLightCount = 0` (hard gate, not heuristic)
 
-**Enhanced ambient lighting:**
-- HemisphereLight: sky=`#206060` (cool), ground=`#0A2020` (very dark), intensity 0.3
-- Single directional light from front-above as fill (intensity 0.2)
-- No rim/back lights (cave shouldn't have light from behind)
+#### 6.4 - Atmospheric Particles
+- Dust motes: 500-2000 (quality-scaled), catch light from nearby emissive sources
+- Water vapor (Extreme/Ultra only): subtle mist rising from water surface
 
-#### 4.3 - Atmospheric Particles
-
-**Dust motes** (GPU compute on WebGPU, simplified CPU on WebGL):
-- 500-2000 tiny particles (quality-scaled)
-- Very slow drift, barely visible
-- Catch light from nearby emissive sources (brightness based on proximity to mushrooms)
-- Nearly invisible in dark areas, become visible when near glow sources
-
-**Water vapor** (WebGPU Extreme/Ultra only):
-- Subtle mist rising from water surface
-- 200-500 particles constrained to y: -52 to -20, within water radius
-- Very low opacity (0.05-0.1), additive blending
-- Slow upward drift with slight horizontal wander
-
-**Acceptance Criteria:**
-- Atmosphere feels thick and mysterious
-- Light interacts believably with bioluminescent sources
-- God rays add drama without overwhelming the scene
-- Performance remains smooth at target quality levels
-- Dynamic point lights only on quality presets that can afford them
+**Exit Criteria:**
+- Atmosphere feels thick and mysterious.
+- God rays add drama without overwhelming.
+- Dynamic point lights only on presets that can afford them.
+- Performance remains within budget.
 
 ---
 
-### Phase 5: Post-Processing & Visual Polish
-**Priority: HIGH | Estimated Complexity: Medium**
+### Phase 7: Game Event Reactions & Polish (Medium)
 
-> **Note:** Elevated from MEDIUM to HIGH priority. MRT emissive bloom is the single biggest visual upgrade - it prevents rock/non-glowing surfaces from blooming while making bioluminescent objects glow beautifully. This alone transforms the scene.
+**Objective:** Wire the reactive envelope system to all visual subsystems.
 
-#### 5.1 - WebGPU Post-Processing Chain (`bioluminescence-post.js`)
+**Files:**
+- Modify: `src/themes/bioluminescence/bioluminescence-theme.js`
 
-```
-Scene Pass (MRT: output + emissive)
-  → Emissive Bloom (isolated bloom from emissive channel only)
-      strength: 0.35-0.5 (quality-scaled)
-      radius: 0.3
-      threshold: 0.1 (low threshold since emissive channel is already isolated)
-  → Combine: sceneColor + bloomResult
-  → Chromatic Aberration (very subtle: 0.0003, increases during combos)
-  → Vignette (strong: 0.7 intensity, cave-appropriate dark edges)
-  → Color Grading:
-      shadows: push toward Abyss Navy (#020810)
-      midtones: slight teal shift
-      highlights: pull toward White-Cyan (#CCFFFF)
-      contrast: 1.15
-      saturation: 1.1 (slightly enhanced for bioluminescent vibrancy)
-  → Depth of Field (Extreme/Ultra only):
-      focus distance: 200 (mid-ground)
-      bokeh intensity: subtle
-  → Film Grain (Extreme/Ultra only):
-      intensity: 0.02 (barely perceptible, adds organic texture)
-  → Tone Mapping: ACES Filmic, exposure 1.1-1.3
-  → Dithering (always: prevents banding in dark areas)
+#### 7.1 - Event Response System (via Reactive Envelope)
+
+| Event | Envelope Push | Duration |
+|-------|---------------|----------|
+| **PIECE_LOCK** | `{ pulse: 0.15, spore: 0.2 }` | 0.3s decay |
+| **LINE_CLEAR** | `{ pulse: 0.2+lines*0.1, bloom: 0.08+lines*0.06, water: 0.15+lines*0.1, mycelium: 0.3 }` | 0.8s decay |
+| **COMBO (1-3)** | `{ pulse: 0.2+n*0.1, bloom: 0.1+n*0.08, spore: 0.3+n*0.15, atmosphere: 0.2+n*0.1 }` | Sustained, 1s decay |
+| **COMBO (4+)** | Above + `{ atmosphere: 0.5, water: 0.3 }` | Sustained, 1.5s decay |
+| **TETRIS** | `{ pulse: 1.0, bloom: 0.5, spore: 1.0, mycelium: 1.0, atmosphere: 0.8, water: 0.6, exposure: 0.4 }` | 2s decay |
+
+Animation loop reads envelope channels to update uniforms:
+```javascript
+// In animate():
+this.updateReactiveEnvelope(delta);
+const env = this.reactiveEnvelope;
+
+// Update post-processing
+if (this.postProcessing) {
+    this.postProcessing.update({
+        bloomBoost: env.bloom * 0.3,
+        exposure: 1.2 + env.exposure * 0.3,
+        chromaticStrength: 0.0003 + env.bloom * 0.001,
+    });
+}
+
+// Update material uniforms
+this.mushroomCapUniforms?.uPulseIntensity?.setValue(env.pulse);
+// ... etc for all material systems
 ```
 
-**Dynamic post-processing uniforms exposed for game events:**
-- `uBloomBoost` - increases during combos (0 → 0.3)
-- `uChromaticBoost` - increases during Tetris events (0 → 0.001)
-- `uExposure` - subtle flash on line clear (1.2 → 1.5 → 1.2 decay)
-- `uVignetteIntensity` - relaxes during high combos (0.7 → 0.4)
+#### 7.2 - Ambient Animation (Idle State)
+- Organic breathing: all emissive intensities have base sine cycle (4-8s period, ±10%)
+- Periodic cave life events (random, every 10-30s):
+  - Distant mushroom flash
+  - Water disturbance
+  - Firefly congregation
+  - Spore gust
 
-#### 5.2 - WebGL Post-Processing Fallback
-- `EffectComposer` with:
-  - `RenderPass`
-  - `UnrealBloomPass` (strength: 0.3, radius: 0.2, threshold: 0.85 - higher threshold since no MRT isolation)
-  - `ShaderPass(VignetteShader)` - dark cave edges
-  - `ShaderPass(ColorGradeShader)` - teal shadow push, cyan highlight pull
-- 4 passes total (lean for performance)
-- Still looks good - bloom catches bright emissive objects, vignette sells the cave
+#### 7.3 - Performance Optimization
+- Frustum culling: ensure no `frustumCulled = false` on standard meshes
+- LOD for Giant mushrooms (2 levels)
+- InstancedMesh for micro-crystals, moss, rubble, cluster mushrooms
+- Compute workgroup sizing: 64 invocations
+- Frame budget monitoring with auto-reduce
 
-#### 5.3 - Color Grading & Tone (Art Direction)
-- **Shadows:** Deep navy-black (#020810) - never pure black, always hint of blue
-- **Midtones:** Teal-shifted, organic warmth in greens
-- **Highlights:** White-cyan (#CCFFFF) - bioluminescent peaks feel ethereal
-- **Contrast:** 1.15 - dramatic light/dark separation essential for cave mood
-- **Saturation:** 1.1 - slightly enhanced, bioluminescence should feel vivid
-- **Dithering:** Always enabled to eliminate dark-area banding (critical for this theme)
-
-**Acceptance Criteria:**
-- MRT bloom isolates only emissive objects (mushrooms/crystals glow, rock doesn't bloom)
-- Post-processing chain is quality-gated (fewer passes on lower presets)
-- Color grading creates cohesive, cinematic bioluminescent mood
-- No banding artifacts in dark areas
-- Dynamic bloom/exposure changes are smooth and satisfying during game events
+**Exit Criteria:**
+- Game events create satisfying, visible, layered reactions.
+- TETRIS event is spectacular and memorable.
+- Animation feels alive even during idle.
+- Stable 60fps at High on mid-range desktop GPU.
 
 ---
 
-### Phase 6: Game Event Reactions & Polish
-**Priority: MEDIUM | Estimated Complexity: Low-Medium**
+### Phase 8: Quality Presets & Final Tuning (Low)
 
-#### 6.1 - Event Response System
-
-| Event | Visual Response | Duration |
-|-------|----------------|----------|
-| **PIECE_LOCK** | Nearest 3 mushrooms pulse +30% emissive; small spore burst (10 particles) from nearest mushroom | 0.3s decay |
-| **LINE_CLEAR** | Water surface ripple wave (expanding ring); all mushrooms pulse +50%; mycelium glow wave from center outward | 0.8s decay |
-| **COMBO (1-3)** | All bioluminescence +20% per combo; spore emission rate 2x; crystal flare pulse; post-processing bloom boost | Sustained while combo active, 1s decay |
-| **COMBO (4+)** | Above + god ray intensity 2x; fireflies swarm toward center; water glow intensifies; dust motes become visible | Sustained, 1.5s decay |
-| **TETRIS (4-line)** | Major shockwave: all mushrooms flash to 100% simultaneously; massive spore burst (100 particles) from every mushroom cap; crystal resonance ring (expanding emissive ring geometry); water splash ripple; exposure flash (1.5 → 1.2); camera micro-shake (±2px, 0.3s) | 2s decay |
-
-**Implementation:** Each event handler sets target intensity values. Animation loop decays them smoothly (`pulseIntensity *= 0.96`). Uniform updates propagate to all materials.
-
-#### 6.2 - Ambient Animation Polish (Idle State)
-
-Even when no game events are firing, the cave should feel alive:
-
-- **Organic breathing:** All emissive intensities have base sine cycle (period 4-8s, amplitude ±10%)
-- **Mushroom sway:** Gentle rotation (existing, keep but sync phases for "cave breeze" feel)
-- **Water shimmer:** Continuous ripple animation (existing shore shader, keep)
-- **Firefly wandering:** Constant background movement (from compute)
-- **Periodic cave life events** (random, every 10-30s):
-  - Distant mushroom flash: background layer briefly brightens at random point
-  - Water disturbance: single large ripple as if something moved beneath surface
-  - Firefly congregation: 3-5 fireflies briefly cluster then disperse
-  - Spore gust: wind briefly increases, spores drift sideways
-
-#### 6.3 - Performance Optimization
-
-- **Frustum culling:** Automatic via Three.js, ensure no `frustumCulled = false` on standard meshes
-- **LOD for mushrooms:** Giant mushrooms get 2 LOD levels (full detail < 300 units, simplified > 300)
-- **InstancedMesh everywhere possible:** Micro-crystals, moss patches, cluster mushrooms, rubble, dust motes
-- **Compute workgroup sizing:** 64 invocations per workgroup (standard for most GPUs)
-- **Texture reuse:** Share PBR textures across similar materials (all mushroom caps share textures)
-- **Shader compilation caching:** Materials created once, uniforms updated per frame
-- **Frame budget monitoring:** Track render time, auto-reduce spore count if frame time > 18ms
-
-**Acceptance Criteria:**
-- Game events create satisfying, visible, layered reactions in the environment
-- Combo intensity scaling is clearly visible and rewarding
-- TETRIS event is spectacular and memorable
-- Animation feels alive and organic even during idle
-- Stable 60fps at High quality on mid-range desktop GPU (GTX 1060 / RX 580)
-
----
-
-### Phase 7: Quality Presets & Final Tuning
-**Priority: LOW | Estimated Complexity: Low**
-
-#### 7.1 - Quality Preset Scaling
+#### 8.1 - Quality Preset Scaling
 ```javascript
 const QUALITY_PRESETS = {
     Extreme: {
-        // Scene objects
         mushroomCount: 25, crystalClusterCount: 8, ceilingCrystalCount: 12,
         stalactiteCount: 15, vineCount: 12, tendrilCount: 8,
-        // Instanced elements
         microCrystalCount: 500, mossPatchCount: 100, rubbleCount: 60,
-        // Particles (GPU compute on WebGPU, CPU on WebGL)
         sporeCount: 3000, fireflyCount: 200, dustMoteCount: 2000, vaporCount: 500,
-        // WebGPU-exclusive features
-        enableCompute: true, enableCaustics: true, enableMyceliumPulse: true,
+        enableCompute: true, enableMyceliumPulse: true,
         enableJellyfish: true, jellyfishCount: 4,
-        // Post-processing
-        enableMRT: true, bloomStrength: 0.5, enableSSAO: false,
-        enableDoF: true, enableFilmGrain: true,
-        // Lighting
-        pointLightCount: 8,
-        // Background layers
-        backgroundLayers: 3,
+        enablePostProcessing: true, enableMRT: true,
+        bloomStrength: 0.5, bloomRadius: 0.40, bloomDownsample: 0.9,
+        enableDoF: false, enableFilmGrain: false,
+        pointLightCount: 8, backgroundLayers: 3,
+        adaptiveDrsRange: [0.75, 1.00],
     },
     Ultra: {
         mushroomCount: 20, crystalClusterCount: 6, ceilingCrystalCount: 10,
         stalactiteCount: 12, vineCount: 10, tendrilCount: 6,
         microCrystalCount: 300, mossPatchCount: 80, rubbleCount: 40,
         sporeCount: 2000, fireflyCount: 150, dustMoteCount: 1500, vaporCount: 300,
-        enableCompute: true, enableCaustics: true, enableMyceliumPulse: true,
+        enableCompute: true, enableMyceliumPulse: true,
         enableJellyfish: true, jellyfishCount: 2,
-        enableMRT: true, bloomStrength: 0.45, enableSSAO: false,
-        enableDoF: false, enableFilmGrain: true,
-        pointLightCount: 6,
-        backgroundLayers: 3,
+        enablePostProcessing: true, enableMRT: true,
+        bloomStrength: 0.45, bloomRadius: 0.35, bloomDownsample: 0.85,
+        enableDoF: false, enableFilmGrain: false,
+        pointLightCount: 6, backgroundLayers: 3,
+        adaptiveDrsRange: [0.72, 1.00],
     },
     High: {
         mushroomCount: 15, crystalClusterCount: 5, ceilingCrystalCount: 8,
         stalactiteCount: 8, vineCount: 8, tendrilCount: 4,
         microCrystalCount: 200, mossPatchCount: 50, rubbleCount: 25,
         sporeCount: 1000, fireflyCount: 100, dustMoteCount: 1000, vaporCount: 0,
-        enableCompute: true, enableCaustics: false, enableMyceliumPulse: false,
+        enableCompute: true, enableMyceliumPulse: false,
         enableJellyfish: false, jellyfishCount: 0,
-        enableMRT: true, bloomStrength: 0.4, enableSSAO: false,
+        enablePostProcessing: true, enableMRT: true,
+        bloomStrength: 0.4, bloomRadius: 0.30, bloomDownsample: 0.8,
         enableDoF: false, enableFilmGrain: false,
-        pointLightCount: 5,
-        backgroundLayers: 2,
+        pointLightCount: 5, backgroundLayers: 2,
+        adaptiveDrsRange: [0.68, 1.00],
     },
     Medium: {
         mushroomCount: 10, crystalClusterCount: 3, ceilingCrystalCount: 4,
         stalactiteCount: 5, vineCount: 6, tendrilCount: 2,
         microCrystalCount: 100, mossPatchCount: 30, rubbleCount: 15,
         sporeCount: 500, fireflyCount: 50, dustMoteCount: 500, vaporCount: 0,
-        enableCompute: false, enableCaustics: false, enableMyceliumPulse: false,
+        enableCompute: false, enableMyceliumPulse: false,
         enableJellyfish: false, jellyfishCount: 0,
-        enableMRT: false, bloomStrength: 0.3, enableSSAO: false,
+        enablePostProcessing: true, enableMRT: false,
+        bloomStrength: 0.3, bloomRadius: 0.25, bloomDownsample: 0.7,
         enableDoF: false, enableFilmGrain: false,
-        pointLightCount: 3,
-        backgroundLayers: 1,
+        pointLightCount: 0, backgroundLayers: 1,
+        adaptiveDrsRange: [0.62, 0.94],
     },
     Low: {
         mushroomCount: 6, crystalClusterCount: 2, ceilingCrystalCount: 2,
         stalactiteCount: 3, vineCount: 4, tendrilCount: 0,
         microCrystalCount: 0, mossPatchCount: 0, rubbleCount: 0,
         sporeCount: 200, fireflyCount: 0, dustMoteCount: 0, vaporCount: 0,
-        enableCompute: false, enableCaustics: false, enableMyceliumPulse: false,
+        enableCompute: false, enableMyceliumPulse: false,
         enableJellyfish: false, jellyfishCount: 0,
-        enableMRT: false, bloomStrength: 0.2, enableSSAO: false,
+        enablePostProcessing: true, enableMRT: false,
+        bloomStrength: 0.2, bloomRadius: 0.20, bloomDownsample: 0.6,
         enableDoF: false, enableFilmGrain: false,
-        pointLightCount: 2,
-        backgroundLayers: 1,
+        pointLightCount: 0, backgroundLayers: 1,
+        adaptiveDrsRange: [0.56, 0.84],
     },
     Minimal: {
         mushroomCount: 3, crystalClusterCount: 1, ceilingCrystalCount: 0,
         stalactiteCount: 0, vineCount: 2, tendrilCount: 0,
         microCrystalCount: 0, mossPatchCount: 0, rubbleCount: 0,
         sporeCount: 80, fireflyCount: 0, dustMoteCount: 0, vaporCount: 0,
-        enableCompute: false, enableCaustics: false, enableMyceliumPulse: false,
+        enableCompute: false, enableMyceliumPulse: false,
         enableJellyfish: false, jellyfishCount: 0,
-        enableMRT: false, bloomStrength: 0.15, enableSSAO: false,
+        enablePostProcessing: false, enableMRT: false,
+        bloomStrength: 0.15, bloomRadius: 0.15, bloomDownsample: 0.5,
         enableDoF: false, enableFilmGrain: false,
-        pointLightCount: 1,
-        backgroundLayers: 0,
+        pointLightCount: 0, backgroundLayers: 0,
+        adaptiveDrsRange: [0.50, 0.78],
     },
 };
 ```
 
-#### 7.2 - Debug URL Parameters
-| Parameter | Effect |
-|-----------|--------|
-| `?forceWebGL=1` | Force WebGL renderer (skip WebGPU) |
-| `?quality=extreme` | Override quality preset |
-| `?debugGPU=1` | Show GPU compute stats overlay (particle count, frame time) |
-| `?bioluminescenceNoPost=1` | Disable all post-processing |
-| `?bioluminescenceNoMRT=1` | Disable MRT emissive isolation (fall back to standard bloom) |
-| `?bioluminescenceNoCompute=1` | Disable GPU compute (CPU fallback for particles) |
-| `?bioluminescenceNoMycelium=1` | Disable mycelium propagation effects |
-| `?bioluminescenceNoBloom=1` | Disable bloom specifically |
-| `?bioluminescenceBaseline=1` | Print backend/capability/frame timing baseline data |
-| `?bioluminescenceSeed=1234` | Deterministic procedural seed for repeatable tests |
-| `?bioluminescenceFixedDt=16.666` | Fixed timestep mode for deterministic captures |
-| `?wireframe=1` | Wireframe mode for geometry debugging |
+`enableDoF` and `enableFilmGrain` are locked `false` for this upgrade scope. They may be explored only after all Phase 9 release gates are green.
 
-#### 7.3 - Final Art Direction Tuning Checklist
+#### 8.2 - Adaptive Resolution Scaling (DRS)
+- Track smoothed frame time per frame
+- If frame time exceeds budget, reduce render resolution within `adaptiveDrsRange`
+- If frame time has headroom, gradually increase back toward 1.0
+- Quality floor prevents resolution from dropping below minimum per tier
+
+#### 8.3 - Final Art Direction Tuning Checklist
 - [ ] Balance all glow intensities: no single element overwhelms others
 - [ ] Verify color harmony: all sources within the defined palette
 - [ ] Check brightness hierarchy matches Visual Hierarchy section
 - [ ] Darkness is preserved: at least 40% of visible area should be very dark
 - [ ] Bloom halos don't bleed excessively into dark areas
-- [ ] Water reflections show nearby glow sources convincingly
+- [ ] Water shows visible subsurface glow and depth variation
 - [ ] Mycelium network is visible but subtle (not competing with mushrooms)
 - [ ] Crystal transmission shows internal color tint without whiteout
 - [ ] Mushroom SSS visible from multiple camera angles
-- [ ] Spores and fireflies have distinct movement patterns (not all the same)
+- [ ] Per-mushroom color variation is visible (not all identical teal)
+- [ ] Spores and fireflies have distinct movement patterns
 - [ ] Game events are satisfying at all combo levels
 - [ ] TETRIS event is the most spectacular moment in the scene
-- [ ] WebGL fallback is still visually impressive (not just functional)
-- [ ] Test on sRGB and wide-gamut monitors (P3)
+- [ ] WebGL fallback is still visually impressive
+- [ ] Cave ceiling uses organic shapes (voronoi), not projected circles
+- [ ] Background depth layers create sense of vast cave
 - [ ] Test at 1080p, 1440p, and 4K resolutions
 - [ ] No z-fighting between water surface and terrain
-- [ ] No visible seams between cave wall sections
-
-**Acceptance Criteria:**
-- All quality presets work correctly and scale smoothly
-- Debug parameters work for development and QA
-- Visual quality on WebGL fallback is impressive
-- Art direction checklist fully satisfied
-- Theme is a stunning, world-class bioluminescent cave masterpiece
 
 ---
 
-### Phase 8: QA & Validation
-**Priority: CRITICAL | Estimated Complexity: Medium**
+### Phase 9: QA & Validation (Critical)
 
-#### 8.1 - Visual Regression Validation
+**Objective:** Final correctness, fallback, and stability validation before release.
+
+#### 9.1 - Visual Regression Validation
 - Capture deterministic screenshots (fixed seed, fixed timestep) for each quality preset
 - Compare WebGPU vs WebGL fallback framing for key camera shots
-- Compare event reaction frames (`PIECE_LOCK`, `LINE_CLEAR`, `COMBO`, `TETRIS`) against approved references
+- Compare event reaction frames against approved references
 
-#### 8.2 - Performance Validation
+#### 9.2 - Performance Validation
 - Track `avg`, `p95`, and worst frame time per preset and backend
-- Track pass-level costs (`compute`, `bloom`, `post`) when GPU timestamps are available
-- Validate startup time and shader compilation stutter with and without warm-up path
+- Track pass-level costs when GPU timestamps are available
+- Validate startup time and shader compilation stutter with/without warm-up path
+- Verify budgets from Performance Budgets table are met
 
-#### 8.3 - Fallback and Kill-Switch Validation
-- Validate each namespaced `?bioluminescenceNo*` flag independently
-- Validate `?forceWebGL=1` and natural WebGL fallback in non-WebGPU environments
-- Confirm game events and cleanup behavior are correct in every fallback mode
+#### 9.3 - Fallback and Kill-Switch Validation
+- Validate each `?bioluminescenceNo*` flag independently
+- Validate `?forceWebGL=1` and natural WebGL fallback
+- Confirm game events and cleanup behavior in every fallback mode
 
-#### 8.4 - Long-Run Stability
+#### 9.4 - Long-Run Stability
 - 30-minute soak test per backend without scene reload
-- Theme-switch loop test (`createScene`/`cleanup`) for leak detection
+- Theme-switch loop test (100+ `createScene`/`cleanup` cycles) for leak detection
 - Device-loss simulation on WebGPU path where supported
 
-**Acceptance Criteria:**
-- No console errors in WebGPU full path, WebGPU degraded path, or WebGL fallback path
-- p95 frame time <= 16.7ms at `High` on target desktop GPU; fallback meets target at `Medium`
-- 30-minute soak test shows stable memory trend (no unbounded growth)
-- Visual diff remains within approved threshold for deterministic test scenes
-
----
-
-## Technical Reference
-
-### TSL Mushroom Cap Material (Real SSS via MeshPhysicalNodeMaterial)
-```javascript
-import { MeshPhysicalNodeMaterial } from 'three/webgpu';
-import { Fn, uniform, uv, vec3, float, sin, cos, mix, smoothstep, pow,
-         positionLocal, positionWorld, normalLocal, cameraPosition } from 'three/tsl';
-
-export function createMushroomCapNodeMaterial(params = {}) {
-    const material = new MeshPhysicalNodeMaterial({
-        side: THREE.DoubleSide,
-    });
-
-    const uTime = uniform(0);
-    const uPulseIntensity = uniform(0);
-
-    // ── Subsurface Scattering via Physical Material ──
-    // Transmission: light passes through thin organic material
-    const edgeThinness = float(1.0).sub(uv().sub(0.5).length().mul(2.0).clamp(0, 1));
-    material.transmissionNode = float(params.transmission ?? 0.4).mul(edgeThinness);
-    material.thicknessNode = mix(float(0.5), float(3.0), edgeThinness); // Thin at edges, thick at center
-    material.attenuationColor = new THREE.Color(params.attenuationColor ?? '#006655');
-    material.attenuationDistance = params.attenuationDistance ?? 0.8;
-    material.ior = params.ior ?? 1.4;
-
-    // ── Organic Surface Pattern (Voronoi cells for gill structure) ──
-    const uvScaled = uv().mul(float(params.voronoiScale ?? 8.0));
-    const cellPattern = voronoi(uvScaled); // From noise library
-    const normalPerturbation = cellPattern.distance.mul(0.3);
-    // Apply as subtle normal variation
-    material.normalNode = normalLocal.add(vec3(normalPerturbation, normalPerturbation, 0.0)).normalize();
-
-    // ── Animated Emissive Glow ──
-    const pulse = sin(uTime.mul(params.pulseSpeed ?? 2.0).add(positionWorld.x.mul(0.1))).mul(0.3).add(0.7);
-    const comboBoost = uPulseIntensity.mul(1.5);
-    const finalPulse = pulse.mul(float(1.0).add(comboBoost));
-
-    const glowColor = vec3(...(params.emissiveRGB ?? [0.0, 1.0, 0.83])); // #00FFD4
-    material.emissiveNode = glowColor.mul(float(params.baseEmissive ?? 0.4).mul(finalPulse));
-
-    // ── Iridescence (view-angle color shift) ──
-    const viewDir = cameraPosition.sub(positionWorld).normalize();
-    const fresnel = float(1.0).sub(normalLocal.dot(viewDir).abs()).pow(3.0);
-    const iridescentShift = vec3(fresnel.mul(0.1), 0.0, fresnel.mul(-0.05));
-    material.emissiveNode = material.emissiveNode.add(iridescentShift.mul(finalPulse));
-
-    // ── PBR Properties ──
-    material.roughnessNode = float(params.roughness ?? 0.3);
-    material.metalnessNode = float(0.0);
-
-    return { material, uniforms: { uTime, uPulseIntensity } };
-}
-```
-
-### GPU Compute Pattern (Interleaved State Buffer)
-```javascript
-import { StorageBufferAttribute } from 'three';
-import { Fn, storage, instanceIndex, vertexIndex, uniform, vec4, float, sin, cos, fract } from 'three/tsl';
-
-export class SporeCompute {
-    constructor(count) {
-        this.count = count;
-        // Interleaved: [pos.xyz + life, vel.xyz + seed] per particle
-        this.stateData = new Float32Array(count * 2 * 4); // 2 vec4s per particle
-
-        // Initialize particle data
-        for (let i = 0; i < count; i++) {
-            const base = i * 8;
-            this.stateData[base + 0] = (Math.random() - 0.5) * 800;  // x
-            this.stateData[base + 1] = Math.random() * 300 - 100;     // y
-            this.stateData[base + 2] = (Math.random() - 0.5) * 600;   // z
-            this.stateData[base + 3] = Math.random();                  // life (0-1)
-            this.stateData[base + 4] = (Math.random() - 0.5) * 0.5;   // vx
-            this.stateData[base + 5] = 0.5 + Math.random() * 1.0;     // vy (upward)
-            this.stateData[base + 6] = (Math.random() - 0.5) * 0.5;   // vz
-            this.stateData[base + 7] = Math.random();                  // seed
-        }
-
-        this.stateBuffer = new StorageBufferAttribute(this.stateData, 4);
-        this.uDelta = uniform(0);
-        this.uTime = uniform(0);
-        this.uWindDir = uniform(new THREE.Vector2(0, 0));
-    }
-
-    createComputeNode() {
-        const state = storage(this.stateBuffer, 'vec4', this.count * 2);
-
-        const computeFn = Fn(() => {
-            const posLife = state.element(instanceIndex.mul(2));
-            const velSeed = state.element(instanceIndex.mul(2).add(1));
-
-            // Read current state
-            const pos = posLife.xyz;
-            const life = posLife.w;
-            const vel = velSeed.xyz;
-            const seed = velSeed.w;
-
-            // Decay life
-            const newLife = life.sub(this.uDelta.mul(0.05));
-
-            // Apply forces: upward drift + noise turbulence + wind
-            const turbulence = vec3(
-                sin(pos.y.mul(0.01).add(this.uTime).add(seed.mul(100.0))).mul(0.3),
-                float(0.0),
-                cos(pos.x.mul(0.01).add(this.uTime.mul(0.7)).add(seed.mul(50.0))).mul(0.2)
-            );
-            const wind = vec3(this.uWindDir.x, 0.0, this.uWindDir.y).mul(0.1);
-            const newVel = vel.add(turbulence.add(wind).mul(this.uDelta));
-
-            // Update position
-            const newPos = pos.add(newVel.mul(this.uDelta));
-
-            // Respawn dead particles at random terrain position
-            // (life <= 0 or above ceiling)
-            const shouldRespawn = newLife.lessThan(0.0).or(newPos.y.greaterThan(400.0));
-            const respawnPos = vec3(
-                fract(seed.mul(127.1)).mul(800.0).sub(400.0),
-                float(-50.0), // Terrain level
-                fract(seed.mul(311.7)).mul(600.0).sub(300.0)
-            );
-
-            posLife.assign(vec4(
-                mix(newPos, respawnPos, float(shouldRespawn)),
-                mix(newLife, float(1.0), float(shouldRespawn))
-            ));
-        })().compute(this.count);
-
-        return computeFn;
-    }
-
-    getStateBuffer() { return this.stateBuffer; }
-}
-```
-
-### Post-Processing Pattern (WebGPU with MRT)
-```javascript
-import { PostProcessing } from 'three/webgpu';
-import { pass, mrt, bloom, uniform, Fn, vec3, vec4, float, mix, pow, clamp, dot } from 'three/tsl';
-import { output, emissive } from 'three/tsl';
-
-export class BioluminescencePost {
-    constructor(renderer, scene, camera, params = {}) {
-        this.postProcessing = new PostProcessing(renderer);
-
-        // ── Scene pass with MRT ──
-        this.scenePass = pass(scene, camera);
-        if (params.useMRT !== false) {
-            this.scenePass.setMRT(mrt({ output, emissive }));
-        }
-
-        const sceneColor = this.scenePass.getTextureNode('output');
-        const bloomSource = params.useMRT !== false
-            ? this.scenePass.getTextureNode('emissive')
-            : sceneColor;
-
-        // ── Emissive Bloom (isolated) ──
-        this.uBloomStrength = uniform(params.bloomStrength ?? 0.4);
-        this.uBloomBoost = uniform(0); // Game event boost
-        const totalBloom = this.uBloomStrength.add(this.uBloomBoost);
-        this.bloomNode = bloom(bloomSource, totalBloom, params.bloomRadius ?? 0.3, params.bloomThreshold ?? 0.1);
-
-        let combined = sceneColor.add(this.bloomNode);
-
-        // ── Chromatic Aberration ──
-        this.uChromaticStrength = uniform(params.chromaticStrength ?? 0.0003);
-        // Simple chromatic: offset R and B channels slightly
-        // (Implemented as UV offset sampling - simplified here)
-
-        // ── Vignette ──
-        this.uVignetteIntensity = uniform(params.vignetteIntensity ?? 0.7);
-        const vignetteUV = this.scenePass.getTextureNode('output'); // UV from pass
-        // Vignette: darken edges based on distance from center
-        // combined = combined.mul(vignetteFactor);
-
-        // ── Color Grading ──
-        this.uExposure = uniform(params.exposure ?? 1.2);
-        const exposed = combined.mul(this.uExposure);
-
-        // Shadow push toward navy, highlight pull toward cyan
-        const shadowColor = vec3(0.008, 0.03, 0.06); // Abyss Navy
-        const highlightColor = vec3(0.8, 1.0, 1.0);  // White-Cyan
-        const luminance = dot(exposed.rgb, vec3(0.299, 0.587, 0.114));
-        const graded = mix(
-            mix(shadowColor, exposed.rgb, pow(luminance, 0.8)),
-            mix(exposed.rgb, highlightColor, pow(luminance, 2.0)),
-            luminance
-        );
-
-        // ── Tone Mapping (ACES Filmic) ──
-        const toned = acesToneMapping(vec4(graded, 1.0));
-
-        // ── Dithering ──
-        // Add subtle noise to prevent banding in dark areas
-        const dithered = toned; // + tiny noise offset
-
-        this.postProcessing.outputNode = dithered;
-    }
-
-    setBloomBoost(value) { this.uBloomBoost.value = value; }
-    setExposure(value) { this.uExposure.value = value; }
-    setVignetteIntensity(value) { this.uVignetteIntensity.value = value; }
-
-    render() { this.postProcessing.render(); }
-
-    dispose() {
-        this.postProcessing.dispose();
-    }
-}
-```
-
----
-
-## Resource Disposal Order (Critical for WebGPU)
-
-Proper cleanup prevents GPU memory leaks and device-lost errors:
-
-```javascript
-cleanup() {
-    this.stop(); // Stop animation loop
-
-    // 1. Dispose compute nodes first (release GPU compute pipelines)
-    if (this.sporeCompute) this.sporeCompute.dispose();
-    if (this.fireflyCompute) this.fireflyCompute.dispose();
-    if (this.myceliumCompute) this.myceliumCompute.dispose();
-
-    // 2. Dispose post-processing (release render targets)
-    if (this.postProcessing) this.postProcessing.dispose();
-    if (this.composer) this.composer.dispose();
-
-    // 3. Dispose scene objects (geometry + materials + textures)
-    this.scene.traverse((child) => {
-        if (child.geometry) child.geometry.dispose();
-        if (child.material) {
-            if (child.material.map) child.material.map.dispose();
-            // ... dispose all texture maps
-            child.material.dispose();
-        }
-    });
-
-    // 4. Dispose renderer last
-    if (this.renderer) this.renderer.dispose();
-
-    // 5. Null references
-    this.scene = null;
-    this.camera = null;
-    this.renderer = null;
-
-    super.cleanup();
-}
-```
-
----
-
-## Risk Mitigation
-
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| WebGPU unavailable/blocked | Startup failure or missing visuals | Silent WebGL2 fallback with explicit capability matrix |
-| WebGPU points render at 1px | Spores/fireflies become nearly invisible | Use instanced billboards/sprites on WebGPU path |
-| MRT unsupported or partially supported | Emissive bloom pipeline breaks | Gate `useMRT` via probe + `?bioluminescenceNoMRT=1` kill switch |
-| Compute unsupported/slow | Performance regressions | Capability-gate compute, quality-scaled particle counts, CPU fallback |
-| MeshPhysicalNodeMaterial too expensive | Frame-time spikes | Quality-gate transmission features and per-material LOD simplification |
-| Shader compilation stutter | First-frame hitching | Warm-up compile + timeout fallback to WebGL |
-| Device loss | Black screen during gameplay | Device-loss handler that restarts in safe fallback mode |
-| Visual regression during migration | Art drift from approved look | Deterministic screenshot diff checks + baseline camera set |
-| Memory leaks during theme switching | Long-session instability | Strict disposal order + automated create/cleanup loop soak test |
-| API/version drift | Build/runtime breaks after dependency updates | Keep plan pinned to Three.js `0.181.2`; re-audit plan on version bump |
-| Over-complex mycelium behavior | Feature stalls or unstable performance | Quality-gated fallback: static tubes + CPU pulse on lower tiers |
+**Exit Criteria:**
+- No console errors in WebGPU full path, WebGPU degraded path, or WebGL fallback path.
+- WebGPU `High`: `avg <= 16.7ms`, `p95 <= 16.7ms`; WebGL fallback `Medium`: `avg <= 16.7ms`, `p95 <= 20ms`.
+- 30-minute soak test shows stable memory trend (no unbounded growth).
+- All flag/capability permutations pass without runtime errors.
+- Visual diff, bloom containment, and readability checks pass the locked thresholds.
 
 ---
 
 ## Phase Dependency Graph
 
 ```
-Phase 0 (Baseline + Determinism) ──> Phase 1 (Foundation)
+Phase 0 (Baseline + Instrumentation) ──> Phase 1 (Renderer + Lifecycle)
 
-Phase 1 ──┬──> Phase 2 (GPU Compute + Mycelium)
-          ├──> Phase 3 (Environment + World Building)
-          └──> Phase 5 (Post-Processing)
+Phase 1 ──> Phase 2 (Post-Processing + MRT)   ← MRT validated early
 
-Phase 3 (core geometry locked) + Phase 2 ──> Phase 4 (Lighting & Atmosphere)
+Phase 1 + 2 ──> Phase 3 (TSL Materials)       ← materials need MRT context
 
-Phase 2 + 3 + 4 + 5 ──> Phase 6 (Events & Polish)
+Phase 1 + 3 ──> Phase 4 (GPU Compute)         ← needs materials for particle rendering
 
-Phase 6 ──> Phase 7 (Quality & Tuning) ──> Phase 8 (QA & Validation)
+Phase 3 ──> Phase 5 (Environment)             ← needs materials system
+
+Phase 4 + 5 ──> Phase 6 (Lighting & Atmosphere)
+
+Phase 2 + 4 + 5 + 6 ──> Phase 7 (Events & Polish)
+
+Phase 7 ──> Phase 8 (Quality & Tuning) ──> Phase 9 (QA & Validation)
 ```
 
-**Parallel tracks after Phase 1:**
-- Track A: Phase 2 (compute + particle rendering architecture)
-- Track B: Phase 3 (environment geometry + materials), then Phase 4 (lighting pass)
-- Track C: Phase 5 (post-processing + MRT validation)
+**Key change from original plan:** Post-processing (Phase 2) comes immediately after renderer foundation, before materials. This ensures MRT bloom is validated early and materials can be tested with proper emissive isolation from the start.
+
+**Parallel tracks after Phase 2:**
+- Track A: Phase 3 (TSL materials) → Phase 4 (compute)
+- Track B: Phase 5 (environment) can begin once Phase 3 core materials are ready
+
+---
+
+## Testing and Validation Matrix
+
+### Functional
+- Backend startup scenarios:
+  - WebGPU available
+  - WebGPU unavailable
+  - forced WebGL
+  - post disabled
+  - MRT disabled
+  - compute disabled
+- Theme switch stress: 100+ repeated activate/deactivate cycles.
+- Event stress: sustained combo spam with deterministic playback.
+
+### Visual
+- Side-by-side baseline diffs per quality tier and backend.
+- Hero-frame checks:
+  - mushroom/crystal glow hierarchy
+  - cave depth layering
+  - water quality
+  - bloom containment
+  - darkness ratio (>= 40%)
+
+### Hardware Matrix (Required)
+- Windows desktop NVIDIA (WebGPU + WebGL).
+- Windows desktop AMD/Intel (WebGPU + WebGL).
+- Apple Silicon macOS (WebGPU + WebGL).
+- Linux desktop (WebGL mandatory, WebGPU optional).
+
+### Performance
+- Track per backend/preset:
+  - average FPS
+  - 1% low
+  - frame-time variance
+  - draw calls
+  - memory footprint
+- Verify against Performance Budgets table.
+
+---
+
+## Risk Register and Mitigations
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| WebGPU unavailable/blocked | Startup failure or missing visuals | Silent WebGL2 fallback with explicit capability matrix |
+| WebGPU points render at 1px | Spores/fireflies nearly invisible | Use instanced billboards/sprites on WebGPU path |
+| MRT unsupported or partially supported | Emissive bloom pipeline breaks | Gate `useMRT` via probe + kill switch; fail-safe `ensureMrtMaterials()` |
+| MRT mixed materials | Rendering errors with non-node materials | `ensureMrtMaterials()` disables MRT if any non-node material found |
+| Compute unsupported/slow | Performance regressions | Capability-gate compute, quality-scaled counts, CPU fallback |
+| MeshPhysicalNodeMaterial too expensive | Frame-time spikes | Quality-gate transmission features; per-material LOD |
+| Shader compilation stutter | First-frame hitching | `precompileSceneWithTimeout()` (3s max) |
+| Device loss | Black screen during gameplay | `handleDeviceLoss()` auto-restarts with WebGL |
+| Double tone mapping | Washed-out highlights | Explicit color-pipeline ownership: post OR renderer, never both |
+| Bloom washout/flicker | Bright elements dominate scene | Per-material bloom class weights control emissive contribution |
+| Visual regression during migration | Art drift from approved look | Deterministic screenshot diffs + baseline camera set |
+| Memory leaks during theme switching | Long-session instability | Strict disposal order + 100-cycle soak test |
+| Over-complex mycelium behavior | Feature stalls or instability | Quality-gated: static tubes + CPU pulse on lower tiers |
+| Crystal whiteout (current bug) | Crystals appear as white blobs | Remove additive blending; use transmission + clamped fresnel (0.4 max) |
+| Scope inflation from visual ambition | Schedule risk | Strict phase gates with measurable exits |
+
+---
+
+## Browser Compatibility Matrix
+
+| Environment | WebGPU Expectation | Fallback | Expected Path |
+|-------------|--------------------|----------|---------------|
+| Electron packaged build | Prefer WebGPU when probe passes | WebGL2 | WebGPU + TSL + Compute + MRT (full path) |
+| Chromium Desktop | Prefer WebGPU when probe passes | WebGL2 | WebGPU full; compute/MRT gated by probe |
+| Safari Desktop | Prefer WebGPU when probe passes | WebGL2 | WebGPU + TSL; compute/MRT gated by probe |
+| Firefox Desktop | Usually fallback unless probe passes | WebGL2 | WebGL2 fallback by default |
+| Non-WebGPU desktops | N/A | WebGL2 | No startup errors; gameplay visuals intact |
+
+---
+
+## Key Technical Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Rendering mode | Synchronous `render()` | Matches gold standard themes; avoids async timing complexity |
+| Material return pattern | `{ material, uniforms, meta }` tuple | Clean separation; enables MRT audit logging (from Chromadelic) |
+| Bloom control | Per-material class weights | Prevents washout; fine-grained emissive tuning (from Chromadelic/Cosmic Noir) |
+| Noise implementation | TSL `hash21` + `noise2D` + `fbm4` + `voronoi` | Compile-time graph construction; GPU-native (from Black Hole) |
+| Particle architecture | Instanced billboards (WebGPU) / Points (WebGL) | Avoids 1px point size limit on WebGPU |
+| MRT fail-safe | Disable MRT if any non-node material found | Prevents mixed-material rendering crashes (from Cosmic Noir) |
+| Device loss | Auto-restart with WebGL fallback | Graceful recovery without user intervention (from Chromadelic) |
+| Color pipeline | Post owns tone mapping on WebGPU post path | Prevents double tonemap and highlight washout |
+| Shader compilation | Timeout-guarded `compileAsync` (3s max) | Prevents indefinite stall on slow devices (from Chromadelic) |
+| Post dithering | Always on | Critical for cave theme — prevents banding in deep blacks |
+| Bloom threshold | 0.0 with MRT (emissive-only) | Eliminates false glow on dark scene elements |
+| Event system | Unified reactive envelope with per-channel decay | Replaces ad-hoc pulse variables (from Cosmic Noir) |
+| Crystal fresnel cap | Max 0.4 (not 0.6) | Fixes current whiteout bug visible in screenshot |
+| GLSL fallback location | Separate `bioluminescence-shaders.js` | Keeps materials file focused on TSL (from Cosmic Noir) |
+| Adaptive resolution | DRS with per-tier quality floor | Maintains frame budget under load (from Chromadelic) |
 
 ---
 
@@ -1207,30 +1729,30 @@ Phase 6 ──> Phase 7 (Quality & Tuning) ──> Phase 8 (QA & Validation)
 | Metric | Target |
 |--------|--------|
 | **Visual Impact** | First impression is high-contrast, living cave mood in approved camera set |
-| **Signature Moment** | Mycelium pulse on `TETRIS` is clearly visible and repeatable in deterministic capture |
-| **Performance (WebGPU High)** | `avg <= 16.7ms`, `p95 <= 20ms` on GTX 1060 / RX 580 class desktop GPU |
-| **Performance (WebGL Medium)** | `avg <= 16.7ms`, no major stutter during combo/TETRIS event bursts |
-| **Startup Robustness** | First interactive frame < 3s with no fatal init errors; fallback always succeeds |
+| **Signature Moment** | Mycelium pulse on `TETRIS` is clearly visible and repeatable |
+| **Crystal Fix** | Crystals show internal colored volume, no whiteout |
+| **Mushroom SSS** | Cap edges show light transmission, per-mushroom color variation visible |
+| **Darkness Ratio** | >= 40% of screen area remains very dark |
+| **Performance (WebGPU High)** | `avg <= 16.7ms`, `p95 <= 16.7ms`, `p99 <= 20ms` on GTX 1060 / RX 580 class |
+| **Performance (WebGL Medium)** | `avg <= 16.7ms`, `p95 <= 20ms`, no major stutter during events |
+| **Startup Robustness** | First interactive frame < 3s; fallback always succeeds |
 | **Fallback Quality** | WebGL path remains art-direction compliant and gameplay-reactive |
-| **Code Quality** | Modular split (`theme`, `materials`, `compute`, `post`) with clear capability gates |
-| **Correctness** | No console errors, clean init/cleanup, no leak trend in soak testing |
-| **Darkness Ratio** | >= 40% of screen area remains very dark in baseline composition shots |
-| **Color Accuracy** | Emissive outputs stay within defined palette, validated in review checklist |
+| **Code Quality** | Modular split (`theme`, `materials`, `shaders`, `compute`, `post`) with clear capability gates |
+| **Correctness** | No console errors, clean init/cleanup, no leak trend in 30-min soak |
+| **Color Accuracy** | Emissive outputs stay within defined palette |
+| **Budget Compliance** | Draw calls and frame times within Performance Budgets table |
 
-## Browser Compatibility Matrix
-
-| Environment | Expected Path | Notes |
-|-------------|---------------|-------|
-| Electron packaged build | Prefer WebGPU full path | First-class target; must validate kill switches |
-| Chrome desktop | WebGPU full/degraded path | Validate full capability matrix |
-| Edge desktop | WebGPU full/degraded path | Validate full capability matrix |
-| Firefox desktop | WebGL fallback expected | Confirm graceful fallback and quality |
-| Non-WebGPU desktops | WebGL fallback | No startup errors; gameplay visuals intact |
+---
 
 ## Release Gates (Definition of Done)
 
 1. Phase 0 deterministic harness and baseline captures are complete.
 2. Every `?bioluminescenceNo*` flag passes startup + gameplay smoke tests.
-3. WebGPU full path and WebGL fallback both pass the Phase 8 validation checklist.
-4. Performance and soak-test targets in Success Metrics are met.
-5. No open P1/P2 rendering, stability, or fallback bugs.
+3. `ensureMrtMaterials()` correctly patches all materials or disables MRT gracefully.
+4. WebGPU full path and WebGL fallback both pass the Phase 9 validation checklist.
+5. Performance and soak-test targets in Success Metrics are met.
+6. No open P1/P2 rendering, stability, or fallback bugs.
+7. Reactive envelope system drives all event responses through unified channels.
+8. Final QA checklist passes on required hardware matrix.
+9. `docs/BIOLUMINESCENCE_ART_DIRECTION.md` and `docs/BIOLUMINESCENCE_BASELINE_CAPTURE_PROTOCOL.md` are complete and approved.
+10. `tests/performance/benchmark-bioluminescence-phase9.html` and Phase unit tests (`phase0`, `phase1`, `phase6`, `phase9`) exist and pass.

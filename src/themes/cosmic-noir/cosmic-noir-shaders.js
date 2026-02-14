@@ -154,60 +154,68 @@ void main() {
     vec3 bumpNormal = normalize(abs(det) * normal - bumpScale * surfGrad);
 
     // 3. Noir Color Grading
-    // Darken base significantly - Deep black void with silver highlights
-    vec3 deepCharcoal = vec3(0.002, 0.002, 0.005); // Much darker base
-    vec3 brightSilver = vec3(0.55, 0.55, 0.65); // Slightly muted silver
-    
-    // Enhance contrast - Crush the blacks, keep highlights sharp
-    // Higher power = more contrast, sharper separation
-    float detailLuma = pow(luma, 2.5); 
-    
-    // Mix based on contrast-enhanced luma
-    vec3 surfaceColor = mix(deepCharcoal, brightSilver, detailLuma);
+    vec3 deepCharcoal = vec3(0.025, 0.025, 0.032);
+    vec3 brightSilver = vec3(0.38, 0.37, 0.44);
+
+    // Gentler gamma to preserve dark detail (1.4 instead of 2.5)
+    float detailLuma = pow(clamp(luma * 1.1, 0.0, 1.0), 1.4);
+
+    // Blend grayscale mapping with actual texture color for richer detail
+    vec3 texTinted = baseMap * 1.6 + vec3(0.02, 0.02, 0.025);
+    vec3 graySurface = mix(deepCharcoal, brightSilver, detailLuma);
+    vec3 surfaceColor = mix(graySurface, texTinted * (detailLuma * 0.6 + 0.15), 0.35);
 
     // 4. Lighting
     vec3 lightDir = normalize(uSunDirection);
-    
+
     // Use bumped normal for lighting - makes craters pop
     float NdotL = max(0.0, dot(bumpNormal, lightDir));
-    
+
     // Sharp terminator for dramatic noir look
     float terminator = smoothstep(-0.1, 0.3, NdotL);
-    
-    // Ambient light - purely visible silhouette
-    vec3 ambient = vec3(0.002, 0.002, 0.005);
-    
-    // Diffuse light with boosted intensity for illuminated parts
-    vec3 diffuse = surfaceColor * terminator * 2.0;
-    
-    // 5. Specular / Rim Highlights using Bump Normal
-    
-    // Fresnel rim glow
-    float fresnel = pow(1.0 - abs(dot(normal, viewDir)), 4.0); // Sharper rim
-    fresnel *= smoothstep(-0.2, 0.2, dot(normal, lightDir));
-    
-    vec3 rimColor = vec3(0.5, 0.5, 0.6);
-    vec3 rim = rimColor * fresnel * (0.6 + uPulseIntensity * 0.5);
 
-    // Specular highlight on crater edges - distinct sparkle
+    // Lifted ambient so planet silhouette and dark side are visible
+    vec3 ambient = surfaceColor * 0.12;
+
+    // Diffuse light with boosted intensity for illuminated parts
+    vec3 diffuse = surfaceColor * terminator * 2.2;
+
+    // Fill light from opposite side to prevent pure black night side
+    float fillNdotL = max(0.0, dot(bumpNormal, normalize(vec3(-0.5, -0.2, 0.6))));
+    vec3 fill = surfaceColor * fillNdotL * 0.35;
+
+    // 5. Specular / Rim Highlights using Bump Normal
+
+    // Fresnel rim glow - wider and brighter
+    float fresnel = pow(1.0 - abs(dot(normal, viewDir)), 2.5);
+    float sunFacing = dot(normal, lightDir) * 0.5 + 0.5;
+    fresnel *= (sunFacing * 0.5 + 0.38);
+
+    vec3 rimColor = vec3(0.34, 0.33, 0.42);
+    vec3 rim = rimColor * fresnel * (0.7 + uPulseIntensity * 0.5);
+
+    // Specular highlight on crater edges
     vec3 halfVector = normalize(lightDir + viewDir);
     float NdotH = max(0.0, dot(bumpNormal, halfVector));
-    float specular = pow(NdotH, 24.0) * luma * 0.8; // Sharp small highlights on craters
+    float specular = pow(NdotH, 20.0) * luma * 0.9;
 
-    
+
     // Texture shimmer (subtle animation on bright spots)
     float shimmerNoise = snoise(vLocalPos * 0.05 + vec3(uTime * 0.1));
-    float shimmer = max(0.0, shimmerNoise) * detailLuma * 0.1;
-    
+    float shimmer = max(0.0, shimmerNoise) * detailLuma * 0.12;
+
     // 6. Final Composition
-    vec3 finalColor = ambient + diffuse + rim + vec3(specular) + vec3(shimmer);
+    vec3 finalColor = ambient + diffuse + fill + rim + vec3(specular) + vec3(shimmer);
 
     // Apply Glow Intensity uniform
     finalColor *= uGlowIntensity;
 
     // Gameplay Pulse Effect
-    float pulse = 1.0 + uPulseIntensity * 0.2;
+    float pulse = 1.0 + uPulseIntensity * 0.25;
     finalColor *= pulse;
+
+    // Clamp to preserve noir feel while showing detail
+    finalColor = clamp(finalColor, vec3(0.0), vec3(0.78));
 
     gl_FragColor = vec4(finalColor, 1.0);
 }

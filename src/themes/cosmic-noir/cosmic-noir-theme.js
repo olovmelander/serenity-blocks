@@ -1163,13 +1163,18 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.camera.position.set(0, 0, 1200);
         this.camera.lookAt(0, 0, 0);
 
-        // Very subtle lighting - noir aesthetic
-        const planetLight = new THREE.PointLight(0x8e93ad, 1.35, 2500);
-        planetLight.position.set(300, 200, 500);
+        // Key light - cinematic side lighting to reveal planet texture
+        const planetLight = new THREE.PointLight(0x9ea3be, 2.2, 3500);
+        planetLight.position.set(350, 200, 600);
         this.scene.add(planetLight);
 
-        // Dim ambient
-        const ambientLight = new THREE.AmbientLight(0x06070a, 0.2);
+        // Fill light from opposite side - prevents pure-black night side
+        const fillLight = new THREE.PointLight(0x3a3d52, 0.6, 3000);
+        fillLight.position.set(-250, -100, 300);
+        this.scene.add(fillLight);
+
+        // Subtle ambient to lift overall darkness
+        const ambientLight = new THREE.AmbientLight(0x101218, 0.35);
         this.scene.add(ambientLight);
 
         console.log(`[CosmicNoir] Renderer initialized (${this.isWebGPU ? 'WebGPU' : 'WebGL2'})`);
