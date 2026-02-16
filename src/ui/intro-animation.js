@@ -1,10 +1,11 @@
 /**
  * @fileoverview Epic intro animation for SERENITY BLOCKS
  * Features cosmic particle effects, nebula clouds, stardust, 3D transforms, and galaxy colors
- * REMADE IN THREE.JS for true 3D visuals
+ * Uses WebGPU renderer with TSL shaders when available, falls back to WebGL
  */
 
 import ThreeJSIntroRenderer from './threejs-intro-renderer.js';
+import { INTRO_PHASES } from './intro-visual-config.js';
 
 export class IntroAnimation {
     constructor() {
@@ -15,11 +16,32 @@ export class IntroAnimation {
         this.boundHandlers = {};
         this.soundManager = null;
         this.introMusicTrack = 'CosmicChimes';
+        this.isLoadingMasked = false;
+        this.loadingIndicator = null;
+        this.loadingPromise = null;
+        this.loadingPromiseLabel = 'LOADING ASSETS';
+
+        this.audioAnalyser = null;
+        this.audioFrequencyData = null;
+        this.audioSourceNode = null;
+        this.smoothedAudioPulse = 0;
 
         // Three.js Renderer
         this.threeCanvas = null;
         this.threeRenderer = null;
         this.animationFrameId = null;
+        this.boundAnimate = this.animate.bind(this);
+        this.phaseTimers = [];
+        this.lastTitleBoundsSync = 0;
+        this.currentPhase = INTRO_PHASES.BOOT;
+        this.menuBgReady = false;
+        const params = typeof window !== 'undefined'
+            ? new URLSearchParams(window.location.search)
+            : new URLSearchParams();
+        this.flags = {
+            // Keep v2 on by default for active development, allow explicit opt-out.
+            introV2: params.get('introV2') !== '0',
+        };
     }
 
     /**
@@ -37,13 +59,19 @@ export class IntroAnimation {
 
         this.ensureIntroMusic();
 
+        this.menuBgReady = false;
+        this.clearPhaseTimers();
         this.isActive = true;
         this.isAnimating = true;
-        this.createIntroHTML();
+        await this.createIntroHTML();
         this.setupEventListeners();
 
+        this.setRendererPhase(INTRO_PHASES.BOOT, true);
+        this.schedulePhase(INTRO_PHASES.REVEAL, 220);
+        this.schedulePhase(INTRO_PHASES.IDLE, 1900);
+
         // Start animation loop
-        this.animate(performance.now() / 1000);
+        this.startRenderLoop();
 
         this.startAnimations();
 
@@ -57,16 +85,202 @@ export class IntroAnimation {
      * Animation loop for Three.js renderer
      */
     animate(time) {
-        if (!this.isAnimating) return;
+        if (!this.isAnimating) {
+            this.animationFrameId = null;
+            return;
+        }
 
         // Pass time in seconds
         if (this.threeRenderer) {
-            // Three.js uses seconds usually, but we can pass raw performance.now() / 1000
-            // The renderer manages its own clock getDelta, etc., but might use `time` for global effects
-            this.threeRenderer.update(time * 0.001);
+            const pulse = this.getMusicPulse();
+            this.threeRenderer.setAudioPulse?.(pulse);
+            this.threeRenderer.update();
+            this.syncTitleBounds(time);
         }
 
-        this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
+        this.animationFrameId = requestAnimationFrame(this.boundAnimate);
+    }
+
+    startRenderLoop() {
+        if (this.animationFrameId !== null) return;
+        this.animationFrameId = requestAnimationFrame(this.boundAnimate);
+    }
+
+    emitPhaseChanged(phase) {
+        this.currentPhase = phase;
+        window.dispatchEvent(new CustomEvent('intro:phaseChanged', {
+            detail: { phase },
+        }));
+    }
+
+    setRendererPhase(phase, immediate = false) {
+        this.threeRenderer?.setPhase?.(phase, immediate);
+        this.emitPhaseChanged(phase);
+
+        if (phase === INTRO_PHASES.MENU_BG) {
+            this.menuBgReady = true;
+            window.dispatchEvent(new CustomEvent('intro:menuBgReady', {
+                detail: { phase },
+            }));
+        }
+    }
+
+    clearPhaseTimers() {
+        this.phaseTimers.forEach((timerId) => clearTimeout(timerId));
+        this.phaseTimers.length = 0;
+    }
+
+    schedulePhase(phase, delayMs) {
+        const timerId = setTimeout(() => {
+            this.setRendererPhase(phase);
+        }, delayMs);
+        this.phaseTimers.push(timerId);
+    }
+
+    syncTitleBounds(timeMs = performance.now()) {
+        if (!this.threeRenderer?.setTitleBounds || !this.container) return;
+        if (timeMs - this.lastTitleBoundsSync < 120) return;
+
+        const titleContainer = this.container.querySelector('.intro-title-container');
+        if (!titleContainer) return;
+        const rect = titleContainer.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        this.threeRenderer.setTitleBounds({
+            x: rect.left,
+            y: rect.top,
+            width: rect.width,
+            height: rect.height,
+        });
+        this.lastTitleBoundsSync = timeMs;
+    }
+
+    waitForMenuBgReady(timeoutMs = 2200) {
+        if (this.menuBgReady) return Promise.resolve();
+
+        return new Promise((resolve) => {
+            let settled = false;
+            let timerId = null;
+            const done = () => {
+                if (settled) return;
+                settled = true;
+                if (timerId !== null) clearTimeout(timerId);
+                resolve();
+            };
+            const onReady = () => done();
+            timerId = setTimeout(() => {
+                window.removeEventListener('intro:menuBgReady', onReady);
+                done();
+            }, timeoutMs);
+            window.addEventListener('intro:menuBgReady', onReady, { once: true });
+        });
+    }
+
+    /**
+     * Derive a simple beat pulse from current music playback time.
+     * Returns a stable 0..1 envelope that can drive visual accents.
+     */
+    getMusicPulse() {
+        const audioEl = this.soundManager?.audioElement;
+        if (!audioEl || audioEl.paused || audioEl.ended) return 0;
+
+        if (this.ensureAudioAnalyser()) {
+            this.audioAnalyser.getByteFrequencyData(this.audioFrequencyData);
+            let energy = 0;
+            const bins = Math.min(48, this.audioFrequencyData.length);
+            for (let i = 0; i < bins; i++) {
+                energy += this.audioFrequencyData[i];
+            }
+            const normalized = bins > 0 ? energy / (bins * 255) : 0;
+            this.smoothedAudioPulse = this.smoothedAudioPulse * 0.78 + normalized * 0.22;
+            return Math.min(1, this.smoothedAudioPulse * 1.6);
+        }
+
+        const t = audioEl.currentTime;
+        const primary = Math.max(0, Math.sin(t * Math.PI * 2 * 1.85));
+        const secondary = Math.max(0, Math.sin(t * Math.PI * 2 * 3.7));
+        return Math.min(1, primary * 0.7 + secondary * 0.3);
+    }
+
+    ensureAudioAnalyser() {
+        const { soundManager } = this;
+        const audioEl = soundManager?.audioElement;
+        if (!soundManager || !audioEl) return false;
+
+        try {
+            if (!soundManager.audioContext && typeof soundManager.resumeAudioContext === 'function') {
+                soundManager.resumeAudioContext();
+            }
+
+            const { audioContext: ctx } = soundManager;
+            if (!ctx) return false;
+
+            if (!this.audioSourceNode) {
+                this.audioSourceNode = ctx.createMediaElementSource(audioEl);
+                this.audioAnalyser = ctx.createAnalyser();
+                this.audioAnalyser.fftSize = 256;
+                this.audioAnalyser.smoothingTimeConstant = 0.82;
+                this.audioSourceNode.connect(this.audioAnalyser);
+                this.audioAnalyser.connect(ctx.destination);
+                this.audioFrequencyData = new Uint8Array(this.audioAnalyser.frequencyBinCount);
+            }
+
+            return !!this.audioAnalyser;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    setLoadingPromise(promise, label = 'LOADING ASSETS') {
+        if (!promise || typeof promise.then !== 'function') {
+            this.loadingPromise = null;
+            return;
+        }
+        this.loadingPromiseLabel = label;
+        this.loadingPromise = Promise.resolve(promise)
+            .catch((error) => {
+                console.error('[IntroAnimation] Loading promise failed:', error);
+            })
+            .finally(() => {
+                this.loadingPromise = null;
+            });
+    }
+
+    async waitForLoadingPromise() {
+        if (!this.loadingPromise) return;
+        await this.loadingPromise;
+    }
+
+    /**
+     * Initialize the 3D renderer. Tries WebGPU first, falls back to WebGL.
+     */
+    async initRenderer(canvas) {
+        // Keep a fallback path for rollout / regression checks.
+        if (this.flags.introV2 && navigator.gpu) {
+            try {
+                const { default: WebGPURenderer } = await import('./threejs-intro-renderer-webgpu.js');
+                const webgpuRenderer = new WebGPURenderer(canvas);
+                const success = await webgpuRenderer.init();
+                if (success) {
+                    this.threeRenderer = webgpuRenderer;
+                    this.isWebGPU = true;
+                    this.threeRenderer.setVisualProfile?.('cinematic_clean');
+                    console.log('[IntroAnimation] WebGPU renderer initialized');
+                    return;
+                }
+                // WebGPU init returned false, fall through to WebGL
+                webgpuRenderer.destroy?.();
+            } catch (err) {
+                console.warn('[IntroAnimation] WebGPU init failed, falling back to WebGL:', err);
+            }
+        }
+
+        // Fallback: WebGL renderer
+        this.threeRenderer = new ThreeJSIntroRenderer(canvas);
+        if (this.threeRenderer.init()) {
+            this.isWebGPU = false;
+            console.log('[IntroAnimation] WebGL renderer initialized (fallback)');
+        }
     }
 
     /**
@@ -111,12 +325,12 @@ export class IntroAnimation {
     /**
      * Create the intro animation HTML structure
      */
-    createIntroHTML() {
+    async createIntroHTML() {
         // Create container
         this.container = document.createElement('div');
         this.container.id = 'intro-animation';
 
-        // Create WebGL canvas for Three.js (Background & core visuals)
+        // Create canvas for Three.js (Background & core visuals)
         this.threeCanvas = document.createElement('canvas');
         this.threeCanvas.id = 'intro-webgl-canvas';
         this.threeCanvas.style.position = 'absolute';
@@ -127,19 +341,12 @@ export class IntroAnimation {
         this.threeCanvas.style.zIndex = '0'; // Behind CSS overlays
         this.container.appendChild(this.threeCanvas);
 
-        // Initialize Three.js renderer
-        this.threeRenderer = new ThreeJSIntroRenderer(this.threeCanvas);
-        if (this.threeRenderer.init()) {
-            console.log('[IntroAnimation] Three.js renderer initialized');
-        }
+        // Initialize renderer: try WebGPU first, fall back to WebGL
+        await this.initRenderer(this.threeCanvas);
+        this.setLoadingState(false);
 
-        // Create CSS particle background (optional extra layer, keeping for now as they look nice)
-        const particles = this.createParticles();
-        this.container.appendChild(particles);
-
-        // Create floating orbs (keeping CSS orbs for extra depth/softness)
-        const orbs = this.createOrbs();
-        this.container.appendChild(orbs);
+        // Phase 5: CSS particles/orbs removed; visuals are now GPU-native in both WebGPU and WebGL paths.
+        this.threeRenderer.setBackgroundMode?.(false);
 
         // PERFORMANCE: Removed foreground particles - WebGL handles foreground particles
 
@@ -163,14 +370,27 @@ export class IntroAnimation {
         chromatic.className = 'intro-chromatic';
         this.container.appendChild(chromatic);
 
+        // Warp overlay for dismiss transition polish
+        const warpOverlay = document.createElement('div');
+        warpOverlay.className = 'intro-warp-overlay';
+        this.container.appendChild(warpOverlay);
+
         // Create prompt text
         const prompt = document.createElement('div');
         prompt.className = 'intro-prompt';
         prompt.innerHTML = 'PRESS ANY KEY / CLICK / TAP TO BEGIN';
         this.container.appendChild(prompt);
 
+        // Loading mask indicator (Phase 7 loading integration)
+        this.loadingIndicator = document.createElement('div');
+        this.loadingIndicator.className = 'intro-loading-indicator';
+        this.loadingIndicator.textContent = 'LOADING ASSETS';
+        this.loadingIndicator.style.display = 'none';
+        this.container.appendChild(this.loadingIndicator);
+
         // Add to body
         document.body.appendChild(this.container);
+        this.syncTitleBounds(performance.now());
     }
 
     /**
@@ -201,172 +421,28 @@ export class IntroAnimation {
     }
 
     /**
-     * Create floating particle background with chromadelic colors (CSS layer)
-     * @returns {HTMLElement}
-     */
-    createParticles() {
-        const particlesContainer = document.createElement('div');
-        particlesContainer.className = 'intro-particles';
-
-        // Unified chromadelic color palette
-        const colors = [
-            'rgba(255, 51, 102, 0.75)', // Hot Pink
-            'rgba(0, 255, 255, 0.75)', // Cyan
-            'rgba(153, 51, 255, 0.75)', // Purple
-            'rgba(51, 153, 255, 0.75)', // Electric Blue
-            'rgba(255, 0, 153, 0.7)', // Magenta
-            'rgba(0, 255, 102, 0.7)', // Mint
-            'rgba(255, 255, 0, 0.7)', // Yellow
-            'rgba(255, 102, 0, 0.7)', // Orange
-        ];
-
-        // PERFORMANCE: Reduced particle count from 12 to 6 for cleaner look
-        for (let i = 0; i < 6; i++) {
-            const particle = document.createElement('div');
-            particle.className = 'intro-particle';
-
-            // Random size with some variation
-            const size = Math.random() * 4 + 2;
-            particle.style.width = `${size}px`;
-            particle.style.height = `${size}px`;
-
-            // Random starting position
-            particle.style.left = `${Math.random() * 100}%`;
-
-            // Random animation duration and delay
-            const duration = Math.random() * 10 + 15;
-            const delay = Math.random() * 5;
-            particle.style.animationDuration = `${duration}s`;
-            particle.style.animationDelay = `${delay}s`;
-
-            // Random horizontal drift
-            const drift = (Math.random() - 0.5) * 200;
-            particle.style.setProperty('--drift', `${drift}px`);
-
-            // Assign random color from palette
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            particle.style.setProperty('--particle-color', color);
-
-            particlesContainer.appendChild(particle);
-        }
-
-        return particlesContainer;
-    }
-
-    /**
-     * Create floating orbs in background
-     * @returns {HTMLElement}
-     */
-    createOrbs() {
-        const orbsContainer = document.createElement('div');
-        orbsContainer.className = 'intro-orbs';
-        // Chromadelic orb configurations
-        const orbConfigs = [
-            {
-                color: 'rgba(255, 51, 102, 0.25)', size: 320, x: '15%', y: '25%', floatX: 40, floatY: -25, delay: 0,
-            },
-            {
-                color: 'rgba(153, 51, 255, 0.2)', size: 380, x: '75%', y: '65%', floatX: -50, floatY: 35, delay: 2,
-            },
-            {
-                color: 'rgba(0, 255, 255, 0.2)', size: 280, x: '50%', y: '15%', floatX: 25, floatY: 40, delay: 3,
-            },
-            {
-                color: 'rgba(51, 153, 255, 0.18)', size: 340, x: '25%', y: '75%', floatX: -35, floatY: -40, delay: 1,
-            },
-        ];
-
-        orbConfigs.forEach((config) => {
-            const orb = document.createElement('div');
-            orb.className = 'intro-orb';
-            orb.style.width = `${config.size}px`;
-            orb.style.height = `${config.size}px`;
-            orb.style.left = config.x;
-            orb.style.top = config.y;
-            orb.style.setProperty('--orb-color', config.color);
-            orb.style.setProperty('--float-x', `${config.floatX}px`);
-            orb.style.setProperty('--float-y', `${config.floatY}px`);
-            orb.style.animationDelay = `${config.delay}s`;
-            orbsContainer.appendChild(orb);
-        });
-
-        return orbsContainer;
-    }
-
-    /**
-     * Create FOREGROUND particles for depth (High Z-Index, Blurred, Fast)
-     * @returns {HTMLElement}
-     */
-    createForegroundParticles() {
-        const container = document.createElement('div');
-        container.className = 'intro-foreground-particles';
-        container.style.position = 'absolute';
-        container.style.top = '0';
-        container.style.left = '0';
-        container.style.width = '100%';
-        container.style.height = '100%';
-        container.style.pointerEvents = 'none'; // Click-through
-        container.style.zIndex = '20'; // Above text
-        container.style.overflow = 'hidden';
-
-        // Chromadelic foreground palette
-        const colors = [
-            'rgba(255, 51, 102, 0.45)', // Hot Pink
-            'rgba(0, 255, 255, 0.45)', // Cyan
-            'rgba(153, 51, 255, 0.4)', // Purple
-            'rgba(51, 153, 255, 0.4)', // Electric Blue
-        ];
-
-        // Minimal foreground particles
-        for (let i = 0; i < 4; i++) {
-            const p = document.createElement('div');
-
-            // Smaller bokeh particles
-            const size = Math.random() * 12 + 6; // 6px to 18px
-            p.style.width = `${size}px`;
-            p.style.height = `${size}px`;
-            p.style.borderRadius = '50%';
-            p.style.position = 'absolute';
-            p.style.left = `${Math.random() * 100}%`;
-            p.style.top = `${Math.random() * 120 - 10}%`; // Extend slightly offscreen vert
-
-            // Stronger blur for softer bokeh
-            p.style.filter = `blur(${Math.random() * 5 + 3}px)`;
-
-            // Color with subtle glow
-            p.style.background = colors[Math.floor(Math.random() * colors.length)];
-            p.style.boxShadow = `0 0 12px ${p.style.background}`;
-
-            // Faster animation for parallax (closer things move faster)
-            const duration = Math.random() * 7 + 8; // 8-15s (vs 15-25s for bg)
-            p.style.animation = `floatParticle ${duration}s infinite linear`;
-            p.style.animationDelay = `-${Math.random() * 10}s`; // Start mid-animation
-
-            // Larger drift
-            const driftX = (Math.random() - 0.5) * 400; // Large horizontal movement
-            p.style.setProperty('--drift', `${driftX}px`);
-
-            container.appendChild(p);
-        }
-
-        return container;
-    }
-
-    /**
      * Setup event listeners for user input
      */
     setupEventListeners() {
         // Mouse click
-        this.boundHandlers.click = (e) => this.handleInteraction(e);
+        this.boundHandlers.click = () => this.handleInteraction();
         this.container.addEventListener('click', this.boundHandlers.click);
 
         // Keyboard
-        this.boundHandlers.keydown = (e) => this.handleInteraction(e);
+        this.boundHandlers.keydown = () => this.handleInteraction();
         window.addEventListener('keydown', this.boundHandlers.keydown);
 
         // Touch
-        this.boundHandlers.touchstart = (e) => this.handleInteraction(e);
+        this.boundHandlers.touchstart = () => this.handleInteraction();
         this.container.addEventListener('touchstart', this.boundHandlers.touchstart, { passive: true });
+
+        // Optional external loading mask hook:
+        // window.dispatchEvent(new CustomEvent('intro-loading-state', { detail: { loading: true, label: '...' } }))
+        this.boundHandlers.loadingState = (event) => {
+            const detail = event?.detail || {};
+            this.setLoadingState(Boolean(detail.loading), detail.label);
+        };
+        window.addEventListener('intro-loading-state', this.boundHandlers.loadingState);
 
         // Gamepad (check for button press)
         this.gamepadCheckInterval = setInterval(() => {
@@ -377,7 +453,7 @@ export class IntroAnimation {
                     // Check if any button is pressed
                     for (let j = 0; j < gp.buttons.length; j++) {
                         if (gp.buttons[j].pressed) {
-                            this.handleInteraction({ type: 'gamepad' });
+                            this.handleInteraction();
                             break;
                         }
                     }
@@ -389,22 +465,37 @@ export class IntroAnimation {
     /**
      * Handle user interaction (click, key press, tap, gamepad)
      */
-    handleInteraction(event) {
+    handleInteraction() {
         if (!this.isActive) return;
 
-        // Create ripple effect at click/touch position
-        if (event.clientX !== undefined && event.clientY !== undefined) {
-            this.createRipple(event.clientX, event.clientY);
-            this.createBurstParticles(event.clientX, event.clientY);
-        } else {
-            // For keyboard/gamepad, ripple from center
-            const rect = this.container.getBoundingClientRect();
-            this.createRipple(rect.width / 2, rect.height / 2);
-            this.createBurstParticles(rect.width / 2, rect.height / 2);
+        // Dismiss only the text, keep the background
+        const prompt = this.container?.querySelector('.intro-prompt');
+        if (prompt) {
+            prompt.remove();
+        }
+        if (this.loadingIndicator) {
+            this.loadingIndicator.remove();
+            this.loadingIndicator = null;
         }
 
-        // Dismiss only the text, keep the background
+        this.threeRenderer?.startWarpDismiss?.(1.2);
+        this.setRendererPhase(INTRO_PHASES.DISMISS);
+        this.setLoadingState(false);
         this.dismissText();
+    }
+
+    setLoadingState(isLoading, label = 'LOADING ASSETS') {
+        this.isLoadingMasked = Boolean(isLoading);
+        if (!this.loadingIndicator) return;
+
+        if (this.isLoadingMasked) {
+            this.loadingIndicator.textContent = label;
+            this.loadingIndicator.style.display = '';
+            this.loadingIndicator.classList.add('visible');
+        } else {
+            this.loadingIndicator.classList.remove('visible');
+            this.loadingIndicator.style.display = 'none';
+        }
     }
 
     /**
@@ -481,12 +572,14 @@ export class IntroAnimation {
     dismissText() {
         if (!this.isActive) return;
 
+        this.clearPhaseTimers();
         this.isActive = false;
 
         // Remove event listeners
         this.container.removeEventListener('click', this.boundHandlers.click);
         window.removeEventListener('keydown', this.boundHandlers.keydown);
         this.container.removeEventListener('touchstart', this.boundHandlers.touchstart);
+        window.removeEventListener('intro-loading-state', this.boundHandlers.loadingState);
 
         if (this.gamepadCheckInterval) {
             clearInterval(this.gamepadCheckInterval);
@@ -497,8 +590,8 @@ export class IntroAnimation {
         const prompt = this.container.querySelector('.intro-prompt');
         const chromatic = this.container.querySelector('.intro-chromatic');
 
-        // Fade out prompt and chromatic effect
-        if (prompt) prompt.classList.add('fade-out-text');
+        // Hide bottom prompt immediately to avoid residual glow smear on dismiss.
+        if (prompt) prompt.style.display = 'none';
         if (chromatic) chromatic.classList.add('fade-out-text');
 
         // Transition title to top as logo
@@ -514,10 +607,16 @@ export class IntroAnimation {
             this.container.style.pointerEvents = 'none';
         }
 
+        this.threeRenderer?.setBackgroundMode?.(true);
+        this.setRendererPhase(INTRO_PHASES.DISMISS);
+
         // After animation completes, clean up and resolve
-        setTimeout(() => {
+        setTimeout(async () => {
             if (prompt) prompt.style.display = 'none';
             if (chromatic) chromatic.style.display = 'none';
+
+            await this.waitForLoadingPromise();
+            this.setRendererPhase(INTRO_PHASES.MENU_BG);
 
             // Resolve the promise
             if (this.onComplete) {
@@ -533,6 +632,7 @@ export class IntroAnimation {
         // Allow dismissal even if not active anymore
         if (!this.container) return;
 
+        this.clearPhaseTimers();
         this.isActive = false;
         this.isAnimating = false;
         this.hasCompleted = true;
@@ -543,6 +643,7 @@ export class IntroAnimation {
             this.container.removeEventListener('touchstart', this.boundHandlers.touchstart);
         }
         window.removeEventListener('keydown', this.boundHandlers.keydown);
+        window.removeEventListener('intro-loading-state', this.boundHandlers.loadingState);
 
         if (this.gamepadCheckInterval) {
             clearInterval(this.gamepadCheckInterval);
@@ -569,6 +670,12 @@ export class IntroAnimation {
                 this.container.parentNode.removeChild(this.container);
             }
             this.container = null;
+            this.loadingIndicator = null;
+            this.loadingPromise = null;
+            this.audioAnalyser = null;
+            this.audioFrequencyData = null;
+            this.audioSourceNode = null;
+            this.smoothedAudioPulse = 0;
 
             // Resolve the promise if not already resolved
             if (this.onComplete) {
@@ -581,6 +688,7 @@ export class IntroAnimation {
      * Skip the intro animation (for development/testing)
      */
     skip() {
+        this.clearPhaseTimers();
         if (this.container) {
             this.container.classList.add('hidden');
         }
@@ -606,6 +714,7 @@ export class IntroAnimation {
      * Reset the intro animation (for replay)
      */
     reset() {
+        this.clearPhaseTimers();
         this.hasCompleted = false;
         this.isActive = false;
         this.isAnimating = false;
@@ -624,13 +733,19 @@ export class IntroAnimation {
             this.container.parentNode.removeChild(this.container);
         }
         this.container = null;
+        this.loadingIndicator = null;
+        this.loadingPromise = null;
+        this.audioAnalyser = null;
+        this.audioFrequencyData = null;
+        this.audioSourceNode = null;
+        this.smoothedAudioPulse = 0;
     }
 
     /**
      * Show only the background animation with shrunken logo at top
      * (for returning to start modal from gameplay)
      */
-    showBackgroundOnly(soundManager = null) {
+    async showBackgroundOnly(soundManager = null) {
         // If already showing, check if it's hidden and revive it
         if (this.container && document.body.contains(this.container)) {
             if (this.container.style.display === 'none') {
@@ -640,6 +755,7 @@ export class IntroAnimation {
 
                 // Ensure correct state for background only
                 this.container.classList.add('background-only');
+                this.container.classList.remove('warp-dismiss');
                 this.container.style.zIndex = '100';
                 this.container.style.pointerEvents = 'none';
 
@@ -653,11 +769,14 @@ export class IntroAnimation {
                 if (prompt) prompt.style.display = 'none';
                 const chromatic = this.container.querySelector('.intro-chromatic');
                 if (chromatic) chromatic.style.display = 'none';
+                this.setLoadingState(false);
 
                 // Ensure music
                 this.ensureIntroMusic();
                 this.isAnimating = true;
-                this.animate(performance.now() / 1000);
+                this.threeRenderer?.setBackgroundMode?.(true);
+                this.setRendererPhase(INTRO_PHASES.MENU_BG, true);
+                this.startRenderLoop();
             }
             return;
         }
@@ -689,22 +808,13 @@ export class IntroAnimation {
         this.threeCanvas.style.zIndex = '0'; // Behind everything
         this.container.appendChild(this.threeCanvas);
 
-        // Initialize Three.js renderer
-        this.threeRenderer = new ThreeJSIntroRenderer(this.threeCanvas);
-        if (this.threeRenderer.init()) {
-            console.log('[IntroAnimation] Three.js renderer initialized (Background Only)');
-        }
+        // Initialize renderer (WebGPU with WebGL fallback)
+        await this.initRenderer(this.threeCanvas);
+        this.threeRenderer?.setBackgroundMode?.(true);
+        this.setRendererPhase(INTRO_PHASES.MENU_BG, true);
 
         // Start animation loop
-        this.animate(performance.now() / 1000);
-
-        // Create CSS particles
-        const particles = this.createParticles();
-        this.container.appendChild(particles);
-
-        // Create floating orbs
-        const orbs = this.createOrbs();
-        this.container.appendChild(orbs);
+        this.startRenderLoop();
 
         // Create title container with shrunken logo
         const titleContainer = document.createElement('div');
@@ -721,8 +831,20 @@ export class IntroAnimation {
 
         this.container.appendChild(titleContainer);
 
+        const warpOverlay = document.createElement('div');
+        warpOverlay.className = 'intro-warp-overlay';
+        this.container.appendChild(warpOverlay);
+
+        this.loadingIndicator = document.createElement('div');
+        this.loadingIndicator.className = 'intro-loading-indicator';
+        this.loadingIndicator.textContent = 'LOADING ASSETS';
+        this.loadingIndicator.style.display = 'none';
+        this.container.appendChild(this.loadingIndicator);
+        this.setLoadingState(false);
+
         // Add to DOM
         document.body.appendChild(this.container);
+        this.syncTitleBounds(performance.now());
 
         // Trigger animations
         requestAnimationFrame(() => {

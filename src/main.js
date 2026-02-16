@@ -309,8 +309,8 @@ class SerenityBlocks {
             this.isInitialized = true;
             console.log('✅ Serenity Blocks initialized successfully!');
 
-            // Show start modal
-            this.modalManager.show('start');
+            // Start modal visibility is orchestrated by bootstrap/intro handshake.
+            // Showing it here causes a startup flash before intro dismissal.
         } catch (error) {
             console.error('Failed to initialize application:', error);
             throw error;
@@ -1540,17 +1540,14 @@ class SerenityBlocks {
                 // Hide start modal first
                 this.modalManager.hideAll();
 
-                // Dismiss intro animation background completely BEFORE starting game
-                const { introAnimation } = await import('./ui/intro-animation.js');
+                // Activate the mode
+                await this.gameModeManager.activateMode(mode);
+
+                // Fade out intro background after mode activation has started.
                 if (introAnimation) {
                     introAnimation.dismiss();
                 }
-
-                // Wait a bit for intro to start fading
                 await new Promise((resolve) => setTimeout(resolve, 100));
-
-                // Activate the mode
-                await this.gameModeManager.activateMode(mode);
 
                 // Start the game
                 await this.gameModeManager.startCurrentMode();
@@ -1807,9 +1804,9 @@ class SerenityBlocks {
                 if (singlePlayerStage) singlePlayerStage.style.display = 'none';
 
                 // Show intro animation background (without title text)
-                const { introAnimation } = await import('./ui/intro-animation.js');
                 if (introAnimation) {
-                    introAnimation.showBackgroundOnly(this.soundManager);
+                    await introAnimation.showBackgroundOnly(this.soundManager);
+                    await introAnimation.waitForMenuBgReady?.(1500);
                 }
 
                 // Close settings modal and show start modal
@@ -2961,7 +2958,8 @@ class SerenityBlocks {
             // Step 448 shows 'import { introAnimation } from ./ui/intro-animation.js' at line 80.
             // So we can use it directly.
             if (introAnimation) {
-                introAnimation.showBackgroundOnly(this.soundManager);
+                await introAnimation.showBackgroundOnly(this.soundManager);
+                await introAnimation.waitForMenuBgReady?.(1500);
             }
 
             // Show start modal
@@ -3609,6 +3607,12 @@ async function bootstrap() {
     try {
         console.log('🚀 Bootstrapping Serenity Blocks...');
 
+        const earlyStartModal = document.getElementById('start-modal');
+        if (earlyStartModal) {
+            earlyStartModal.classList.remove('visible');
+        }
+        document.body.classList.remove('start-modal-open');
+
         // Initialize Steam service (non-blocking)
         steamService.initialize().then(() => {
             const status = steamService.getStatus();
@@ -3631,24 +3635,35 @@ async function bootstrap() {
 
         await ensureIntroMusicIsPlaying();
 
+        const appInitPromise = (async () => {
+            const nextApp = new SerenityBlocks(sharedSoundManager);
+            await nextApp.init();
+            return nextApp;
+        })();
+        introAnimation.setLoadingPromise?.(appInitPromise, 'LOADING SYSTEMS');
+
         // Show epic intro animation
         console.log('✨ Playing intro animation...');
         await introAnimation.show(sharedSoundManager);
         console.log('✨ Intro animation complete!');
 
-        // Show the start modal after intro animation completes
-        const startModal = document.getElementById('start-modal');
-        if (startModal) {
-            startModal.classList.add('visible');
+        app = await appInitPromise;
+        await introAnimation.waitForMenuBgReady?.(2200);
+
+        // Show the start modal only after intro transitions into menu background.
+        if (app?.modalManager) {
+            app.modalManager.show('start');
+        } else {
+            const startModal = document.getElementById('start-modal');
+            if (startModal) {
+                startModal.classList.add('visible');
+            }
         }
 
         // Initialize main menu player card (shows Steam avatar/name in top-right)
         initializeMainMenuPlayerCard().catch(err => {
             console.warn('Failed to initialize main menu player card:', err.message);
         });
-
-        app = new SerenityBlocks(sharedSoundManager);
-        await app.init();
 
         // Initialize Steam invite handling (Phase 3: Friends & Social)
         const steamInviteManager = new SteamInviteManager(app.gameModeManager);
