@@ -26,10 +26,8 @@ export default class ThreeJSIntroRenderer {
 
         // New visual effects
         this.shootingStars = [];
-        this.lensFlare = null;
         this.sparkleLayer = null;
         this.nebulaClouds = [];
-        this.tetrominoTrails = [];
         this.lastShootingStarTime = 0;
 
         // Animation state
@@ -119,7 +117,6 @@ export default class ThreeJSIntroRenderer {
             this.createNebulaParticles();
             this.createSparkleLayer();
             this.createNebulaClouds();
-            // this.createLensFlare(); // Disabled - removed pulsing rings
 
             // Start spawning tetrominos
             this.initCachedResources();
@@ -414,54 +411,6 @@ export default class ThreeJSIntroRenderer {
     }
 
     /**
-     * Create lens flare effect behind the center (title area)
-     */
-    createLensFlare() {
-        const geometry = new THREE.PlaneGeometry(80, 80);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-            },
-            vertexShader: `
-                varying vec2 vUv;
-                void main() {
-                    vUv = uv;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform float uTime;
-                varying vec2 vUv;
-                
-                void main() {
-                    vec2 center = vUv - vec2(0.5);
-                    float dist = length(center);
-                    
-                    // Main glow
-                    float glow = smoothstep(0.5, 0.0, dist) * 0.3;
-                    
-                    // Animated rings
-                    float ring1 = smoothstep(0.02, 0.0, abs(dist - 0.15 - sin(uTime) * 0.05)) * 0.2;
-                    float ring2 = smoothstep(0.015, 0.0, abs(dist - 0.25 - cos(uTime * 0.7) * 0.03)) * 0.15;
-                    
-                    // Color gradient (cyan to pink)
-                    vec3 color = mix(vec3(0.0, 1.0, 1.0), vec3(1.0, 0.2, 0.6), dist * 2.0);
-                    
-                    float alpha = glow + ring1 + ring2;
-                    gl_FragColor = vec4(color, alpha);
-                }
-            `,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.lensFlare = new THREE.Mesh(geometry, material);
-        this.lensFlare.position.set(0, 0, -20);
-        this.scene.add(this.lensFlare);
-    }
-
-    /**
      * Spawn a shooting star with trail
      * PERFORMANCE: Uses pooled trail geometry instead of creating new
      */
@@ -495,11 +444,6 @@ export default class ThreeJSIntroRenderer {
         pooled.userData.life = 2.0;
         pooled.userData.active = true;
         pooled.visible = true;
-    }
-
-    createGlowTexture() {
-        // Deprecated - replaced by Shader
-        return null;
     }
 
     /**
@@ -995,22 +939,14 @@ export default class ThreeJSIntroRenderer {
             cloud.rotation.z += cloud.userData.driftSpeed * delta;
         }
 
-        // 9. Update lens flare
-        if (this.lensFlare && this.lensFlare.material.uniforms) {
-            this.lensFlare.material.uniforms.uTime.value = time;
-        }
-
-        // 10. Spawn shooting stars occasionally
+        // 9. Spawn shooting stars occasionally
         if (time - this.lastShootingStarTime > 2 + Math.random() * 3) {
             this.spawnShootingStar();
             this.lastShootingStarTime = time;
         }
 
-        // 11. Update shooting stars
+        // 10. Update shooting stars
         this.updateShootingStars(delta);
-
-        // 12. Update tetromino trails
-        // this.updateTetrominoTrails(delta, time); // Disabled for cleaner look
 
         // Render with post-processing (bloom)
         if (this.composer) {
@@ -1250,63 +1186,6 @@ export default class ThreeJSIntroRenderer {
 
             star.geometry.attributes.position.needsUpdate = true;
         }
-    }
-
-    /**
-     * Create and update tetromino glow trails
-     */
-    updateTetrominoTrails(delta, time) {
-        // Occasionally spawn trail particles behind moving tetrominos
-        if (Math.random() < 0.1) {
-            for (const tetromino of this.activeTetrominos) {
-                if (tetromino.userData.velocity.length() > 0.05) {
-                    this.spawnTrailParticle(
-                        tetromino.position.x,
-                        tetromino.position.y,
-                        tetromino.position.z,
-                        tetromino.userData.type,
-                    );
-                }
-            }
-        }
-
-        // Update existing trail particles
-        for (let i = this.tetrominoTrails.length - 1; i >= 0; i--) {
-            const trail = this.tetrominoTrails[i];
-            trail.userData.life -= delta * 1.5;
-
-            if (trail.userData.life <= 0) {
-                this.scene.remove(trail);
-                trail.geometry.dispose();
-                trail.material.dispose();
-                this.tetrominoTrails.splice(i, 1);
-                continue;
-            }
-
-            trail.material.opacity = trail.userData.life * 0.5;
-            trail.scale.multiplyScalar(0.98);
-        }
-    }
-
-    /**
-     * Spawn a glow particle behind a tetromino
-     */
-    spawnTrailParticle(x, y, z, type) {
-        const color = this.COLORS[type] || 0x00ffff;
-        const geometry = new THREE.SphereGeometry(0.3, 8, 8);
-        const material = new THREE.MeshBasicMaterial({
-            color,
-            transparent: true,
-            opacity: 0.6,
-            blending: THREE.AdditiveBlending,
-        });
-
-        const particle = new THREE.Mesh(geometry, material);
-        particle.position.set(x, y, z);
-        particle.userData = { life: 1.0 };
-
-        this.scene.add(particle);
-        this.tetrominoTrails.push(particle);
     }
 
     onResize() {

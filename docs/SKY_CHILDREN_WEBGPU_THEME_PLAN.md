@@ -2,7 +2,12 @@
 
 ## Executive Summary
 
-This document outlines the implementation plan for a reusable WebGPU Render Theme that replicates the **"painterly, ethereal" art direction** of **SKY: Children of the Light** and **Journey** by thatgamecompany. Every technique in this plan is sourced from the actual rendering approaches used in these games, as documented in GDC presentations, developer breakdowns, and technical analyses.
+This document outlines the implementation plan for a reusable WebGPU Render Theme that replicates the **"painterly, ethereal" art direction** of **SKY: Children of the Light** and **Journey** by thatgamecompany.
+
+The plan now distinguishes between:
+- **Confirmed thatgamecompany techniques** (from primary talks/interviews)
+- **High-confidence technical inferences** (derived from primary constraints and observed output)
+- **Production-ready adaptations** (industry-proven methods used to match the look under WebGPU constraints)
 
 The theme uses a **Stylized PBR** workflow that deliberately "cheats physics in favor of art" — the same philosophy thatgamecompany's engineers followed over 3+ years of continuous shader refinement. All shaders are written in **raw WGSL** with WebGPU pipelines. Target: 60fps with GPU instancing for foliage and compute shaders for particles/post-processing.
 
@@ -12,20 +17,26 @@ The theme uses a **Stylized PBR** workflow that deliberately "cheats physics in 
 
 ## Research Sources
 
-This plan is informed by the following primary sources:
+This plan is informed by the following technical sources:
 
-| Source | Author | Key Contribution |
-|--------|--------|------------------|
-| [Sand Rendering in Journey (GDC 2013)](https://gdcvault.com/play/1017742/Sand-Rendering-in) | John Edwards, thatgamecompany | Definitive sand shader pipeline: diffuse contrast, ocean specular, glitter, sharp mips |
-| [A Journey Into Journey's Sand Shader](https://www.alanzucconi.com/2019/10/08/journey-sand-shader-1/) | Alan Zucconi | 6-part technical recreation with exact math and shader code |
-| [Art of Sky: Children of the Light (GDC 2020)](https://gdcvault.com/play/1026903/Art-of-Sky-Children-of) | Yuichiro Tanabe, thatgamecompany | Art direction philosophy: time-of-day as emotional narrative |
-| [Glitter, Fur and Shadows (GDC 2025)](https://schedule.gdconf.com/session/glitter-fur-and-shadows-character-rendering-technology-of-sky-children-of-the-light/907475) | Oliver Castaneda, thatgamecompany | Character rendering: IBL, self-shadowing, procedural fur/glitter on mobile |
-| [Behind the Design: Sky](https://developer.apple.com/news/?id=zm47it7t) | Apple Developer | Custom Metal engine, mobile optimization philosophy |
-| [Mesh Cloud Rendering (Sea of Thieves)](https://github.com/maajor/Mesh-Cloud-Rendering) | GDC / Rare | Pre-computed occlusion lobes for mesh-based cloud shading |
-| [Better Fog (iquilez.org)](https://iquilezles.org/articles/fog/) | Inigo Quilez | Analytical height fog with sun-colored inscattering |
-| [AgX Tone Mapping](https://github.com/sobotka/AgX) | Troy Sobotka | Color-preserving tone mapping for bright highlights |
-| [Dual Kawase Bloom](https://blog.frost.kiwi/dual-kawase/) | frost.kiwi | Efficient bloom via Kawase dual-filter downsample/upsample |
-| [The Technical Art Behind Journey](https://polycount.com/discussion/125544/the-technical-art-behind-journey) | Polycount community | Oren-Nayar cloth, 3-heightmap terrain, sand shader component list |
+| Source | Author | Key Contribution | Evidence Tier |
+|--------|--------|------------------|---------------|
+| [Sand Rendering in Journey (GDC 2013)](https://gdcvault.com/play/1017742/Sand-Rendering-in) | John Edwards, thatgamecompany | Sand shader components, diffuse/specular shaping | Confirmed |
+| [Art of Sky: Children of the Light (GDC 2020)](https://gdcvault.com/play/1026903/Art-of-Sky-Children-of) | Yuichiro Tanabe, thatgamecompany | Time-of-day emotional framing and visual direction | Confirmed |
+| [Glitter, Fur and Shadows (GDC 2025)](https://schedule.gdconf.com/session/glitter-fur-and-shadows-character-rendering-technology-of-sky-children-of-the-light/907475) | Oliver Castaneda, thatgamecompany | Character rendering themes: IBL, self-shadowing, transparency, procedural glitter/fur | Confirmed (high-level) |
+| [Behind the Design: Sky](https://developer.apple.com/news/?id=zm47it7t) | Apple Developer | Custom Metal stack, mobile optimization philosophy | Confirmed |
+| [A Journey Into Journey's Sand Shader](https://www.alanzucconi.com/2019/10/08/journey-sand-shader-1/) | Alan Zucconi | Practical reconstruction of Journey sand math | Secondary |
+| [Mesh Cloud Rendering (Sea of Thieves)](https://github.com/maajor/Mesh-Cloud-Rendering) | GDC / Rare | Mesh-cloud adaptation path for real-time stylized clouds | Adaptation |
+| [Better Fog (iquilez.org)](https://iquilezles.org/articles/fog/) | Inigo Quilez | Analytical fog model for stylized atmosphere | Adaptation |
+| [AgX Tone Mapping](https://github.com/sobotka/AgX) | Troy Sobotka | Highlight-preserving tonemap transform | Adaptation |
+| [Dual Kawase Bloom](https://blog.frost.kiwi/dual-kawase/) | frost.kiwi | Efficient bloom implementation strategy | Adaptation |
+| [The Technical Art Behind Journey](https://polycount.com/discussion/125544/the-technical-art-behind-journey) | Polycount community | Supplemental notes for Journey era rendering | Secondary |
+
+### Authenticity Rules For This Plan
+
+1. Confirmed techniques are implemented first and treated as visual anchors.
+2. Adaptations are explicitly labeled as adaptations, not reverse-engineered facts.
+3. Every non-confirmed technique must map to an explicit visual goal from Sky/Journey.
 
 ---
 
@@ -309,6 +320,11 @@ John Edwards' GDC 2013 talk documents that Journey's **shipping sand shader** ha
 5. **Diffuse Contrast** — The `4 * dot(N_compressed, L)` formula (see Module 1)
 6. **Detail Heightmaps** — 3 stacked heightmaps for terrain geometry
 
+To satisfy this project's production requirements while preserving Journey/Sky visual language, this plan adds two explicit WebGPU adaptations:
+
+7. **Tri-planar mapping (adaptation)** — prevents UV stretching on steep slopes while preserving painterly continuity
+8. **Distance-based roughness falloff (adaptation)** — gradually smooths noisy micro-detail in distance bands to preserve atmospheric readability and temporal stability
+
 **Sand Normal Generation** (Alan Zucconi reconstruction):
 The sand granularity texture is generated from a **Gaussian distribution**, ensuring the predominant grain direction aligns with the surface normal. The shader blends the geometric normal with random grain normals using **nlerp** (normalized linear interpolation):
 
@@ -380,10 +396,15 @@ struct TerrainMaterial {
     glitter_threshold: f32,     // 0.95+ = rare bright sparkles
     glitter_intensity: f32,     // HDR intensity (>1.0 triggers bloom)
     sand_normal_strength: f32,  // How much grain normals perturb surface
+    triplanar_scale: f32,       // World scale for tri-planar projection (adaptation)
     y_normal_compression: f32,  // Journey default: 0.3
     diffuse_multiplier: f32,    // Journey default: 4.0
     shadow_saturation_boost: f32,
-    ripple_scale: f32,          // UV scale for ripple normal maps
+    roughness_near: f32,        // Near-camera roughness for micro detail
+    roughness_far: f32,         // Far roughness to smooth noisy distance detail
+    roughness_falloff_start: f32, // Distance where smoothing begins
+    roughness_falloff_end: f32,   // Distance where smoothing reaches max
+    ripple_scale: f32,          // Base scale for ripple normal maps
     ripple_sharpness: f32,      // Steepness transition sharpness
 };
 @group(1) @binding(0) var<uniform> mat: TerrainMaterial;
@@ -428,12 +449,50 @@ fn nlerp(a: vec3f, b: vec3f, t: f32) -> vec3f {
 // John Edwards GDC: "The random texture was generated from a Gaussian distribution"
 // This ensures grain normals cluster near the surface normal rather than
 // scattering uniformly, which would look wrong.
-fn sand_grain_normal(uv: vec2f, surface_normal: vec3f, strength: f32) -> vec3f {
-    // Sample Gaussian-distributed random direction from texture
-    let random_raw = textureSample(sand_grain_tex, terrain_sampler, uv).rgb;
-    let random_dir = normalize(random_raw * 2.0 - 1.0); // Remap [0,1] -> [-1,1]
+fn triplanar_weights(normal: vec3f) -> vec3f {
+    let n = pow(abs(normal), vec3f(4.0));
+    return n / max(n.x + n.y + n.z, 0.0001);
+}
 
-    // Blend surface normal toward random grain direction
+// Adaptation: tri-planar normal sampling avoids UV stretch on steep dunes.
+fn triplanar_sample_normal(
+    tex: texture_2d<f32>,
+    world_pos: vec3f,
+    world_normal: vec3f,
+    scale: f32
+) -> vec3f {
+    let w = triplanar_weights(world_normal);
+
+    let x = textureSample(tex, terrain_sampler, world_pos.yz * scale).rgb * 2.0 - 1.0;
+    let y = textureSample(tex, terrain_sampler, world_pos.xz * scale).rgb * 2.0 - 1.0;
+    let z = textureSample(tex, terrain_sampler, world_pos.xy * scale).rgb * 2.0 - 1.0;
+
+    // World-space approximation for stylized shading.
+    let blended = normalize(x * w.x + y * w.y + z * w.z);
+    return blended;
+}
+
+// Adaptation: suppress high-frequency roughness in the distance to keep
+// atmospheric readability and reduce shimmer.
+fn distance_roughness(distance: f32) -> f32 {
+    let t = saturate(
+        (distance - mat.roughness_falloff_start) /
+        max(mat.roughness_falloff_end - mat.roughness_falloff_start, 0.001)
+    );
+    return mix(mat.roughness_near, mat.roughness_far, t);
+}
+
+fn sand_grain_normal(
+    world_pos: vec3f,
+    surface_normal: vec3f,
+    strength: f32
+) -> vec3f {
+    let random_dir = triplanar_sample_normal(
+        sand_grain_tex,
+        world_pos,
+        surface_normal,
+        mat.triplanar_scale
+    );
     return nlerp(surface_normal, random_dir, strength);
 }
 
@@ -441,20 +500,24 @@ fn sand_grain_normal(uv: vec2f, surface_normal: vec3f, strength: f32) -> vec3f {
 // Alan Zucconi Part 6: Ripple normals are selected based on dune steepness.
 // Flat areas get shallow wind ripples; steep slopes get erosion patterns.
 fn ripple_normal(
-    uv: vec2f,
+    world_pos: vec3f,
     world_normal: vec3f,
     scale: f32,
-    sharpness: f32
+    sharpness: f32,
+    view_distance: f32
 ) -> vec3f {
     // Calculate steepness: 1.0 = flat, 0.0 = vertical cliff
     let steepness = saturate(dot(world_normal, vec3f(0.0, 1.0, 0.0)));
     let sharp_steep = pow(steepness, sharpness);
 
-    let ripple_uv = uv * scale;
+    // Distance-driven roughness attenuation.
+    let dist_rough = distance_roughness(view_distance);
+    let detail_attn = 1.0 - saturate((dist_rough - mat.roughness_near) / max(1.0 - mat.roughness_near, 0.001));
+    let local_scale = mix(scale * 0.25, scale, detail_attn);
 
-    // Sample two ripple normal maps
-    let shallow = textureSample(ripple_shallow_tex, terrain_sampler, ripple_uv).rgb * 2.0 - 1.0;
-    let steep = textureSample(ripple_steep_tex, terrain_sampler, ripple_uv * 0.5).rgb * 2.0 - 1.0;
+    // Sample two ripple normal maps via tri-planar projection.
+    let shallow = triplanar_sample_normal(ripple_shallow_tex, world_pos, world_normal, local_scale);
+    let steep = triplanar_sample_normal(ripple_steep_tex, world_pos, world_normal, local_scale * 0.5);
 
     // Blend based on steepness
     let ripple = nlerp(steep, shallow, sharp_steep);
@@ -512,17 +575,27 @@ fn fs_terrain(input: VertexOutput) -> @location(0) vec4f {
     // ============================================
     // COMPONENT 1: Sand Grain Normal Perturbation
     // ============================================
+    let dist_rough = distance_roughness(input.view_distance);
+    let detail_fade = 1.0 - saturate((dist_rough - mat.roughness_near) / max(1.0 - mat.roughness_near, 0.001));
+    let grain_strength = mat.sand_normal_strength * detail_fade;
+
     // Perturbs surface normal to simulate millions of micro-grains
     let grain_normal = sand_grain_normal(
-        input.uv * 40.0,  // Tile the grain texture across the surface
+        world_pos,
         geo_normal,
-        mat.sand_normal_strength
+        grain_strength
     );
 
     // ============================================
     // COMPONENT 2: Steepness-Based Ripple Normals
     // ============================================
-    let ripple = ripple_normal(input.uv, geo_normal, mat.ripple_scale, mat.ripple_sharpness);
+    let ripple = ripple_normal(
+        world_pos,
+        geo_normal,
+        mat.ripple_scale,
+        mat.ripple_sharpness,
+        input.view_distance
+    );
 
     // Combine: base geometry → ripple → grain
     // Ripple applies to the macro shape, grain applies on top
@@ -557,7 +630,7 @@ fn fs_terrain(input: VertexOutput) -> @location(0) vec4f {
         final_normal,
         frame.sun_direction,
         view_dir,
-        mat.ocean_spec_power,
+        mix(mat.ocean_spec_power * 0.65, mat.ocean_spec_power, detail_fade),
         mat.ocean_spec_strength
     );
     let ocean_contrib = mat.ocean_spec_color * ocean;
@@ -566,7 +639,11 @@ fn fs_terrain(input: VertexOutput) -> @location(0) vec4f {
     // COMPONENT 6: Glitter Specular (Microfacet sparkle)
     // ============================================
     // Re-sample grain normal for glitter calculation
-    let glitter_grain = sand_grain_normal(input.uv * 80.0, geo_normal, 0.8);
+    let glitter_grain = sand_grain_normal(
+        world_pos * 2.0,
+        geo_normal,
+        min(0.8, grain_strength * 2.5)
+    );
     let glitter = glitter_specular(
         glitter_grain,
         frame.sun_direction,
@@ -607,9 +684,14 @@ ocean_spec_color:       vec3f(1.0, 0.92, 0.7)     // Warm gold specular
 glitter_threshold:      0.97                       // Very selective = rare bright points
 glitter_intensity:      3.0                        // HDR — triggers bloom
 sand_normal_strength:   0.25                       // Subtle grain perturbation
+triplanar_scale:        0.06                       // World-scale projection to remove UV seams
 y_normal_compression:   0.3                        // Journey's exact value
 diffuse_multiplier:     4.0                        // Journey's exact value
 shadow_saturation_boost: 0.3
+roughness_near:         0.35
+roughness_far:          0.85
+roughness_falloff_start: 90.0
+roughness_falloff_end:  380.0
 ripple_scale:           8.0
 ripple_sharpness:       4.0
 fog_density:            0.012
@@ -624,7 +706,8 @@ fog_sun_power:          8.0                        // Sunset fog glow concentrat
 
 ### Research Findings
 
-Sky: Children of the Light renders its massive clouds using a **mesh-based approach** rather than full-screen raymarching. This is also the technique used by Sea of Thieves (documented at GDC) and Genshin Impact for stylized cloud rendering. The key innovations:
+Primary Sky/Journey talks emphasize atmosphere, silhouette readability, and painterly softness, but do not publicly disclose a full cloud implementation.  
+For this WebGPU plan, we adopt a **mesh-based volumetric cloud adaptation** (inspired by Sea of Thieves production research) instead of full-screen raymarching to hit mobile-friendly frame budgets while matching the artistic target. The key innovations:
 
 1. **Pre-computed Occlusion Lobes** (Sea of Thieves / Rare GDC): Rather than raymarching density per-pixel, light absorption is approximated per-vertex using pre-computed directional occlusion stored in vertex colors. At runtime, the occlusion lobe is rotated to match the current sun direction.
 
@@ -1089,11 +1172,11 @@ wind_direction:         vec2f(0.8, 0.6)
 
 **Dual Kawase Bloom**: The modern standard for game bloom. Kawase blur is a close approximation of Gaussian blur but significantly cheaper. The "dual" variant combines it with progressive downsampling/upsampling for massive blur radii at minimal cost. Used extensively in mobile games including titles like Sky that need to maintain battery life.
 
-**AgX Tone Mapping**: Research confirms AgX is superior to ACES for this art style:
-- ACES **desaturates highlights toward white** — a sunset orange becomes washed-out yellow
-- ACES **shifts hues** at high intensity — reds go orange, which is a known artifact
-- AgX **preserves hue and saturation** in highlights — sunset orange stays orange
-- AgX gently washes out in the brightest areas, matching how eyes perceive "natural" over-exposure
+**AgX Tone Mapping**: For this style target, AgX is preferred as the default look transform because it generally retains saturated highlight color more gracefully in stylized sunset scenes.  
+ACES remains a valid fallback and should be retained as a runtime toggle for A/B lookdev:
+- AgX: default for warm-gold highlight preservation and smooth shoulder roll-off
+- ACES: fallback option for teams preferring established filmic pipelines
+- Decision rule: pick the transform that best matches approved Sky/Journey reference frames, not theoretical preference
 
 **Color Grading for Sky's Look**: The signature warm-cool split:
 - Shadows → blue-purple (cool)
@@ -1441,6 +1524,28 @@ From [Apple Developer: Behind the Design](https://developer.apple.com/news/?id=z
 7. **Post-Processing** (`post_processing.wgsl`) — Dual Kawase bloom + AgX + grading
 8. **Polish** — Tune all uniforms to match golden hour reference, add quality presets
 
+## Phase Gates (Masterpiece Criteria)
+
+Every phase must pass both a **visual gate** and a **performance gate** before moving forward.
+
+| Phase | Deliverable | Visual Gate | Performance Gate |
+|------|-------------|-------------|------------------|
+| Phase 0 | Reference board + look bible | 12-20 curated Sky/Journey frames grouped by mood (sunset, cloud sea, interior haze) with approved palette targets | N/A |
+| Phase 1 | Stylized lighting core | No black shadows; silhouette rim separation visible at 3 distances; warm/cool split approved | < 0.5ms at 1080p |
+| Phase 2 | Terrain pass | No visible UV stretching on steep slopes (tri-planar active); distant terrain stable without noisy shimmer | < 2.0ms at 1080p |
+| Phase 3 | Cloud pass | Hero cloud silhouettes read clearly against sky; backlit silver-lining behavior passes reference check | < 2.5ms at 1080p |
+| Phase 4 | Foliage instancing | Wind motion looks layered/non-synchronous; translucency reads from sun-facing camera angles | < 2.0ms at target instance count |
+| Phase 5 | Post stack | Bloom halo soft but controlled; no highlight hue collapse in approved sunset scenes | < 1.5ms at 1080p |
+| Phase 6 | Integrated shot review | 6 cinematic camera paths validated against look bible; no style drift between shots | Sustained 60fps on target device tier |
+| Phase 7 | Quality-tier QA | Mobile/Medium/High/Ultra tiers preserve artistic identity, not just FPS | Tier frame budget compliance |
+
+### Lookdev Review Workflow
+
+1. Capture fixed-camera screenshots from predefined camera bookmarks each build.
+2. Compare against approved reference board (human review + histogram sanity checks).
+3. Track style regressions in a "look log" with cause and corrective parameter diffs.
+4. Block merges that improve FPS but break silhouette readability, atmosphere continuity, or warm/cool balance.
+
 ---
 
 ## File Structure
@@ -1467,7 +1572,7 @@ src/themes/sky-children/
 ## Risk Mitigation
 
 ### Risk 1: WebGPU Browser Availability
-**Mitigation**: Target Chrome 113+, Edge 113+, Safari 18+. Add capability check with graceful fallback message. Consider simplified Three.js TSL path for broader compatibility.
+**Mitigation**: WebGPU has been Baseline since late 2025, with broad support on modern Chrome/Edge/Safari and newer Firefox cohorts. Use runtime capability detection (`navigator.gpu`, adapter/device acquisition, and feature probes) instead of static browser-version checks. Keep a graceful fallback path (reduced WebGL/TSL variant) for unsupported or blocked environments.
 
 ### Risk 2: Noise Performance on Integrated GPUs
 **Mitigation**: Journey's sharp mips technique is key — pre-compute sand grain normals into textures rather than generating procedurally per-frame. Reduce cloud FBM octaves at distance. Pre-bake cloud occlusion into vertex colors.
@@ -1488,29 +1593,31 @@ src/themes/sky-children/
 
 ## References
 
-### Primary Technical Sources
+### Confirmed thatgamecompany / Official Sources
 - [Sand Rendering in Journey (GDC 2013)](https://gdcvault.com/play/1017742/Sand-Rendering-in) — John Edwards, thatgamecompany
 - [GDC 2013 Recording](https://archive.org/details/GDC2013Edwards) — Full presentation archive
+- [Art of Sky: Children of the Light (GDC 2020)](https://gdcvault.com/play/1026903/Art-of-Sky-Children-of) — Yuichiro Tanabe
+- [Glitter, Fur and Shadows (GDC 2025)](https://schedule.gdconf.com/session/glitter-fur-and-shadows-character-rendering-technology-of-sky-children-of-the-light/907475) — Oliver Castaneda
+- [Behind the Design: Sky (Apple)](https://developer.apple.com/news/?id=zm47it7t) — Custom Metal engine, mobile optimization
+
+### Supporting Analysis / Adaptation Sources
 - [Journey Sand Shader Series](https://www.alanzucconi.com/2019/10/08/journey-sand-shader-1/) — Alan Zucconi's 6-part technical recreation
   - [Part 2: Diffuse Colour](https://www.alanzucconi.com/2019/10/08/journey-sand-shader-2/)
   - [Part 3: Sand Normal](https://www.alanzucconi.com/2019/10/08/journey-sand-shader-3/)
   - [Part 4: Specular Reflection](https://www.alanzucconi.com/2019/10/08/journey-sand-shader-4/)
   - [Part 5: Glitter Reflection](https://www.alanzucconi.com/2019/10/08/journey-sand-shader-5/)
   - [Part 6: Sand Ripples](https://www.alanzucconi.com/2019/10/08/journey-sand-shader-6/)
-- [Art of Sky: Children of the Light (GDC 2020)](https://gdcvault.com/play/1026903/Art-of-Sky-Children-of) — Yuichiro Tanabe
-- [Glitter, Fur and Shadows (GDC 2025)](https://schedule.gdconf.com/session/glitter-fur-and-shadows-character-rendering-technology-of-sky-children-of-the-light/907475) — Oliver Castaneda
 - [Technical Art Behind Journey (Polycount)](https://polycount.com/discussion/125544/the-technical-art-behind-journey) — Community breakdown
-
-### Rendering Techniques
 - [Better Fog](https://iquilezles.org/articles/fog/) — Inigo Quilez, analytical height fog with sun inscattering
 - [Mesh Cloud Rendering](https://github.com/maajor/Mesh-Cloud-Rendering) — Sea of Thieves cloud reimplementation
 - [AgX Tone Mapping](https://github.com/sobotka/AgX) — Troy Sobotka, color-preserving tone mapping
 - [Dual Kawase Bloom](https://blog.frost.kiwi/dual-kawase/) — Efficient bloom technique breakdown
-- [Behind the Design: Sky (Apple)](https://developer.apple.com/news/?id=zm47it7t) — Custom Metal engine, mobile optimization
 
 ### Specifications
 - [WebGPU Specification](https://www.w3.org/TR/webgpu/)
 - [WGSL Specification](https://www.w3.org/TR/WGSL/)
+- [WebGPU Baseline & Browser Support](https://web.dev/blog/webgpu-baseline#browser_support)
+- [WebGPU Implementation Status](https://github.com/gpuweb/gpuweb/wiki/Implementation-Status)
 - [Oren-Nayar Reflectance Model](https://en.wikipedia.org/wiki/Oren%E2%80%93Nayar_reflectance_model)
 
 ---
@@ -1519,5 +1626,6 @@ src/themes/sky-children/
 
 | Date | Version | Author | Changes |
 |------|---------|--------|---------|
+| 2026-02-16 | 2.1 | Codex | Evidence model tightened (confirmed vs inferred vs adaptation). Added authenticity rules. Updated terrain module with explicit tri-planar mapping adaptation and distance-based roughness falloff. Added phase gates with visual/performance acceptance criteria. Softened AgX/ACES language to an A/B lookdev decision. Updated WebGPU availability guidance to runtime capability probing and added current support references. |
 | 2026-02-16 | 2.0 | Claude | Major rewrite: Replaced generic lighting with Journey's actual diffuse contrast (`4*NdotL`, `N.y*=0.3`) + Oren-Nayar cloth model. Added all 6 Journey sand shader components (sharp mips, anisotropic masking, glitter specular, ocean specular, diffuse contrast, detail heightmaps). Replaced generic fog with Inigo Quilez analytical height fog with sun-colored inscattering. Added Henyey-Greenstein phase function and pre-baked occlusion lobes for clouds. Replaced simple SSS with normal-distortion technique. Added Dual Kawase bloom. Added Sky's time-of-day emotional framework. All techniques now sourced from GDC talks and developer documentation. |
 | 2026-02-16 | 1.0 | Claude | Initial plan document |
