@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nimbus Veil Phase 6 Post Validation Harness</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 24px;
+            font-family: Arial, sans-serif;
+            background: #070d1c;
+            color: #eef4ff;
+        }
+        .container {
+            max-width: 1120px;
+            margin: 0 auto;
+        }
+        .panel {
+            background: #10182a;
+            border: 1px solid #223352;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        h1 {
+            margin: 0 0 12px 0;
+            font-size: 24px;
+        }
+        h2 {
+            margin: 0 0 12px 0;
+            font-size: 16px;
+        }
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        button {
+            border: 1px solid #2c4a78;
+            background: #1a2b49;
+            color: #eef4ff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #233962;
+        }
+        .hint {
+            color: #c7d8f5;
+            font-size: 13px;
+        }
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            background: #0b1220;
+            border: 1px solid #243958;
+            border-radius: 8px;
+            padding: 12px;
+            max-height: 280px;
+            overflow: auto;
+        }
+        iframe {
+            width: 100%;
+            height: 560px;
+            border: 1px solid #223352;
+            border-radius: 10px;
+            background: #03060b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Nimbus Veil Phase 6 Post Validation Harness</h1>
+
+        <div class="panel">
+            <h2>1) Launch Runtime</h2>
+            <div class="row">
+                <button id="load-default">Load Default Runtime</button>
+                <button id="load-no-mrt">Load + nimbusNoMRT</button>
+                <button id="load-no-post">Load + nimbusNoPost</button>
+                <button id="load-force-webgl">Load + forceWebGL</button>
+                <button id="reload-app">Reload</button>
+            </div>
+            <div class="hint">
+                After load, switch app theme to <code>nimbus-veil</code> before running checks.
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>2) Phase 6 Controls</h2>
+            <div class="row">
+                <button id="show-state">Show Post Runtime State</button>
+                <button id="run-validation">Run Post Validation</button>
+                <button id="show-report">Show Last Validation Report</button>
+                <button id="download-report">Download Validation Report</button>
+                <button id="show-mrt-audit">Show MRT Audit</button>
+            </div>
+            <div class="hint">
+                Validation checks bloom/grade/vignette runtime, board-safe post masks, god-ray bounds,
+                and MRT/no-MRT/no-post routing behavior.
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>3) Last Result</h2>
+            <pre id="result">Waiting for run...</pre>
+        </div>
+
+        <div class="panel">
+            <h2>4) Helper Commands</h2>
+            <pre>window.nimbusBaseline.phase6PostState();
+window.nimbusBaseline.phase6PostValidate({ warmupMs: 450, settleMs: 320, runSweep: true });
+window.nimbusBaseline.phase6PostReport();
+window.nimbusBaseline.phase6PostDownload('nimbus-phase6-post-validation');
+window.nimbusBaseline.phase6MrtAudit();</pre>
+        </div>
+
+        <iframe id="app-frame" title="Serenity Blocks"></iframe>
+    </div>
+
+    <script>
+        const frame = document.getElementById('app-frame');
+        const resultNode = document.getElementById('result');
+
+        const baseQuery = '?nimbusBaseline=1&nimbusSeed=1234&nimbusFixedDt=16.666';
+        const runtimeUrl = `../../index.html${baseQuery}`;
+        const runtimeNoMrtUrl = `../../index.html${baseQuery}&nimbusNoMRT=1`;
+        const runtimeNoPostUrl = `../../index.html${baseQuery}&nimbusNoPost=1`;
+        const runtimeForceWebglUrl = `../../index.html${baseQuery}&forceWebGL=1`;
+
+        const getHelper = () => frame.contentWindow?.nimbusBaseline || null;
+
+        function setResult(title, payload) {
+            const renderedPayload = payload ? JSON.stringify(payload, null, 2) : '';
+            resultNode.textContent = `${title}\n${renderedPayload}`;
+        }
+
+        function load(url) {
+            frame.src = url;
+            setResult('Runtime loading...', { url });
+        }
+
+        async function runOnHelper(action) {
+            const helper = getHelper();
+            if (!helper) {
+                alert('nimbusBaseline helper not found. Load app, switch to nimbus-veil theme, then retry.');
+                return null;
+            }
+            return action(helper);
+        }
+
+        document.getElementById('load-default').addEventListener('click', () => load(runtimeUrl));
+        document.getElementById('load-no-mrt').addEventListener('click', () => load(runtimeNoMrtUrl));
+        document.getElementById('load-no-post').addEventListener('click', () => load(runtimeNoPostUrl));
+        document.getElementById('load-force-webgl').addEventListener('click', () => load(runtimeForceWebglUrl));
+        document.getElementById('reload-app').addEventListener('click', () => frame.contentWindow?.location.reload());
+
+        document.getElementById('show-state').addEventListener('click', async () => {
+            const state = await runOnHelper((helper) => helper.phase6PostState());
+            setResult('Phase 6 post runtime state', state);
+        });
+
+        document.getElementById('run-validation').addEventListener('click', async () => {
+            setResult('Running Phase 6 post validation...', null);
+            const report = await runOnHelper((helper) => helper.phase6PostValidate({
+                warmupMs: 450,
+                settleMs: 320,
+                runSweep: true,
+            }));
+            setResult('Phase 6 post validation complete', report);
+        });
+
+        document.getElementById('show-report').addEventListener('click', async () => {
+            const report = await runOnHelper((helper) => helper.phase6PostReport());
+            setResult('Phase 6 post validation report', report);
+        });
+
+        document.getElementById('download-report').addEventListener('click', async () => {
+            const report = await runOnHelper((helper) => helper.phase6PostDownload('nimbus-phase6-post-validation'));
+            setResult('Downloaded Phase 6 post validation report', report);
+        });
+
+        document.getElementById('show-mrt-audit').addEventListener('click', async () => {
+            const report = await runOnHelper((helper) => helper.phase6MrtAudit());
+            setResult('Phase 6 MRT audit report', report);
+        });
+
+        load(runtimeUrl);
+    </script>
+</body>
+</html>

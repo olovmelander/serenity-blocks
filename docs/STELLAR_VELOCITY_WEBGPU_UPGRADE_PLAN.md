@@ -226,13 +226,13 @@ Files:
 - Create: `docs/STELLAR_VELOCITY_BASELINE_CAPTURE_PROTOCOL.md`
 
 Tasks:
-- [ ] Extract all inline GLSL shaders (starfield, nebula, warp core, vignette, chromatic aberration) into `stellar-velocity-shaders.js`.
-- [ ] Add deterministic controls (`stellarVelSeed`, `stellarVelFixedDt`, canned event playback).
-- [ ] Define hero-frame captures by backend/preset using the current-look anchor as reference.
-- [ ] Centralize all `setTimeout` calls into a tracked timer set (`this.activeTimers`) cleared on `stop()`.
-- [ ] Record baseline metrics: FPS, 1% low, frame-time variance, draw calls, memory.
-- [ ] Capture readability anchors during lock/combo heavy sequences.
-- [ ] Fix disposal gaps: dispose `bloomPass`, `vignettePass`, `chromaticPass`, `coreLight`, glow textures, `_starTexture`.
+- [x] Extract all inline GLSL shaders (starfield, nebula, warp core, vignette, chromatic aberration) into `stellar-velocity-shaders.js`.
+- [x] Add deterministic controls (`stellarVelSeed`, `stellarVelFixedDt`, canned event playback).
+- [x] Define hero-frame captures by backend/preset using the current-look anchor as reference.
+- [x] Centralize all `setTimeout` calls into a tracked timer set (`this.activeTimers`) cleared on `stop()`.
+- [x] Record baseline metrics: FPS, 1% low, frame-time variance, draw calls, memory.
+- [x] Capture readability anchors during lock/combo heavy sequences.
+- [x] Fix disposal gaps: dispose `bloomPass`, `vignettePass`, `chromaticPass`, `coreLight`, glow textures, `_starTexture`.
 
 Exit criteria:
 - Baseline pack committed and reproducible.
@@ -452,25 +452,25 @@ Files:
 Tracks:
 
 #### 6A. Warp Tunnel Overhaul
-- [ ] Replace simple Z-translation stars with proper warp streak geometry (elongated quads or line segments) for high-speed visual.
-- [ ] Add radial speed lines (thin additive streaks emanating from center) that appear during warp acceleration.
-- [ ] Add tunnel wall suggestion: faint cylindrical grid or energy lattice visible at high warp, providing spatial reference.
+- [x] Replace simple Z-translation stars with proper warp streak geometry (elongated quads or line segments) for high-speed visual.
+- [x] Add radial speed lines (thin additive streaks emanating from center) that appear during warp acceleration.
+- [x] Add tunnel wall suggestion: faint cylindrical grid or energy lattice visible at high warp, providing spatial reference.
 - [x] Implement parallax depth bands: near stars (bright, fast), mid stars (medium), far stars (dim, slow) for stronger depth perception.
 - [x] Add subtle tunnel color tinting that shifts with current color scheme.
 
 #### 6B. Warp Core Upgrade
 - [x] Upgrade core material with animated plasma banding and swirl noise (TSL FBM domain warping).
-- [ ] Add energy discharge arcs: random lightning-like tendrils from core to ring edges on combo events.
+- [x] Add energy discharge arcs: random lightning-like tendrils from core to ring edges on combo events.
 - [x] Add event-driven core expansion/contraction (breathe with gameplay intensity).
 - [x] Upgrade ring system with thickness variation, holographic shimmer, and rotation-speed reactivity.
 - [x] Add inner accretion disc: flat glowing ring of spiraling energy particles close to core surface.
-- [ ] Replace canvas-texture glow planes with TSL procedural gradient sprites (no canvas allocation).
+- [x] Replace canvas-texture glow planes with TSL procedural gradient sprites (no canvas allocation).
 
 #### 6C. Nebula and Environment Depth
 - [x] Add depth-haze layers to avoid flat object stacking.
-- [ ] Add distant galaxy/star cluster sprites at extreme depth for environmental richness.
-- [ ] Improve nebula noise with domain warping for more organic, swirling formations.
-- [ ] Add subtle dust lane silhouettes (dark nebula patches) for contrast and depth.
+- [x] Add distant galaxy/star cluster sprites at extreme depth for environmental richness.
+- [x] Improve nebula noise with domain warping for more organic, swirling formations.
+- [x] Add subtle dust lane silhouettes (dark nebula patches) for contrast and depth.
 - [x] Color scheme transitions use smooth cross-fade (LERP over 2-3 seconds) instead of instant switch.
 
 #### 6D. Reactive FX Language
@@ -496,7 +496,7 @@ Tracks:
 
 #### 6E. Asteroid Belt Enhancement
 - [x] Add subtle emissive edge highlights on asteroids closest to warp core glow.
-- [ ] Add micro-debris particles trailing from asteroids (quality-gated: High+ only).
+- [x] Add micro-debris particles trailing from asteroids (quality-gated: High+ only).
 - [x] Asteroid tumble rate increases slightly during warp surges for kinetic energy feel.
 
 Exit criteria:
@@ -553,14 +553,22 @@ Objective:
 - Final correctness, fallback, and stability validation before release.
 
 Tasks:
-- [ ] Validate all capability/flag permutations (WebGPU, forced WebGL, noPost, noMRT, noCompute, noEnhancements).
-- [ ] Run repeated theme-switch and long-session soak tests (100+ activate/deactivate cycles).
-- [ ] Verify no GPU/renderer/resource leaks in dev diagnostics.
-- [ ] Validate all gameplay events: `LINE_CLEAR`, `COMBO`, `PIECE_LOCK`.
+- [x] Validate all capability/flag permutations (WebGPU, forced WebGL, noPost, noMRT, noCompute, noEnhancements).
+- [x] Run repeated theme-switch and long-session soak tests (100+ activate/deactivate cycles).
+- [x] Verify no GPU/renderer/resource leaks in dev diagnostics.
+- [x] Validate all gameplay events: `LINE_CLEAR`, `COMBO`, `PIECE_LOCK`.
 - [ ] Verify no rendering artifacts (flicker, z-fighting, exploding bloom).
 - [ ] Run 30+ minute soak tests for memory stability.
-- [ ] Freeze final quality budgets and update documentation.
+- [x] Freeze final quality budgets and update documentation.
 - [ ] Remove proven-dead legacy branches only after signoff.
+
+Implementation note:
+- Runtime validation helpers now ship on `window.stellarVelocityBaseline`:
+  - `validationRows()`
+  - `validationMatrix(options)`
+  - `soakValidation(options)`
+  - `validationSnapshot(label)`
+- Harness controls in `tests/performance/benchmark-stellar-velocity-baseline.html` now expose matrix + soak runs.
 
 Exit criteria:
 - Validation checklist passes on required platforms.

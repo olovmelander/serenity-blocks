@@ -783,18 +783,42 @@ function createCoreGlowSpriteNodeMaterial(params = {}) {
 }
 
 function createCoreGlowFallbackMaterial(params = {}) {
-    const material = new THREE.MeshBasicMaterial({
-        map: params.glowTexture ?? null,
-        color: resolveColor(params.color, 0xffffff),
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            uColor: { value: resolveColor(params.color, 0xffffff) },
+            uOpacity: { value: params.opacity ?? 0.5 },
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec2 vUv;
+            uniform vec3 uColor;
+            uniform float uOpacity;
+            void main() {
+                vec2 centered = (vUv - 0.5) * 2.0;
+                float dist = length(centered);
+                float halo = 1.0 - smoothstep(0.0, 1.0, dist);
+                float core = smoothstep(0.2, 0.0, dist);
+                float ring = smoothstep(0.92, 0.45, dist) * 0.24;
+                float glowShape = halo * 0.72 + core * 0.35 + ring;
+                float alpha = clamp(glowShape * uOpacity, 0.0, 1.0);
+                vec3 color = uColor * glowShape;
+                gl_FragColor = vec4(color, alpha);
+            }
+        `,
         transparent: true,
-        opacity: params.opacity ?? 0.5,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
     });
 
     return finalizeStellarVelocityMaterial(
         material,
-        material.uniforms || {},
+        material.uniforms,
         {
             emitsBloom: true,
             bloomWeight: STELLAR_VELOCITY_BLOOM_WEIGHTS.coreGlow,

@@ -323,13 +323,21 @@ export class EnhancedBreathingIndicator {
      * @private
      */
     _preloadWebGL() {
-        // Delay initialization locally to avoid blocking main thread during app startup
-        setTimeout(() => {
+        const preload = () => {
             console.log('[EnhancedBreathingIndicator] Preloading Three.js resources...');
             if (this.threeRenderer) {
                 this.threeRenderer.init();
             }
-        }, 1000);
+        };
+
+        // Run preload during idle time when available to reduce long-task warnings.
+        if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(preload, { timeout: 2500 });
+            return;
+        }
+
+        // Delay initialization locally to avoid blocking main thread during app startup
+        setTimeout(preload, 1000);
     }
 
     /**

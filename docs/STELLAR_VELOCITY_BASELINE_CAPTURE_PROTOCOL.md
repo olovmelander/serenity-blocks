@@ -62,6 +62,32 @@ Optional fallback run adds:
 
 ---
 
+## Phase 8 Validation Procedure
+
+Use harness controls after baseline capture:
+- `Run Validation Matrix`
+- `Run Soak Validation`
+
+Console equivalents:
+```js
+window.stellarVelocityBaseline.validationRows();
+window.stellarVelocityBaseline.validationMatrix({ settleMs: 480, emitEvents: true });
+window.stellarVelocityBaseline.validationSnapshot('after-matrix');
+window.stellarVelocityBaseline.soakValidation({
+  cycles: 180,
+  stepMs: 220,
+  snapshotEvery: 24,
+  fullRebuild: false,
+});
+```
+
+Expected outputs:
+- Matrix summary with per-row backend/render-path/capability state.
+- Soak summary with `textureDelta`, `geometryDelta`, and `timerDelta`.
+- Reload-required row list for force-WebGL scenarios.
+
+---
+
 ## Output Organization
 
 Recommended structure:

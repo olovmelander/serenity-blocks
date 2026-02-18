@@ -94,7 +94,9 @@ export class CosmicNoirPost {
         const dither = fract(sin(dot(uv, vec2(12.9898, 78.233))).mul(43758.5453));
         const dithered = clamp(graded.add(dither.sub(0.5).mul(this.uDitherStrength)), 0.0, 1.0);
 
-        this.postProcessing.outputNode = vec4(dithered, 1.0);
+        // chroma is vec4, so dithered might be vec4. outputNode expects vec4, so we ensure 
+        // we pass vec3 + alpha.
+        this.postProcessing.outputNode = vec4(dithered.rgb, 1.0);
         this.postProcessing.needsUpdate = true;
     }
 

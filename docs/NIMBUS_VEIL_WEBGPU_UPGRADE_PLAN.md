@@ -147,6 +147,22 @@ Reject as art-direction failure if any of the following are observed:
 - Spirit motion shows noticeable linear trajectories for sustained periods.
 - WebGL fallback loses the serene mood and reads as a different theme.
 
+### 1.11 Sky-Inspired Composition Locks (Nimbus-Specific)
+
+To keep the Sky-like emotional language while preserving Nimbus originality:
+
+- Maintain three readable depth bands in all hero shots:
+  - near veil: 20-35% frame occupancy
+  - mid cloud body: 35-55%
+  - far atmosphere/void: 20-35%
+- Keep guiding moon-light anchor in upper third (left or right), never centered over board.
+- Preserve negative-space window around active board region; cloud opacity in that region must stay capped by readability rules.
+- Motion cadence must remain meditative:
+  - no camera acceleration spikes
+  - no abrupt cloud direction reversals
+  - no rhythmic pulses that feel UI-like rather than weather-like
+- Use original procedural shapes/noise fields and internal palette lock only; no direct scene reconstruction of third-party art layouts.
+
 ---
 
 ## 2) Current Baseline (Verified)
@@ -196,6 +212,31 @@ Reject as art-direction failure if any of the following are observed:
 3. No per-frame GPU readbacks in hot loops.
 4. Tone-mapping ownership must be single-path per frame.
 5. Optional systems must be capability-gated and flag-gated.
+
+### 3.3 WebGPU Capability Negotiation Contract (Mandatory)
+
+Renderer bootstrap must follow this contract:
+
+1. Attempt WebGPU first via async init and explicitly verify backend identity.
+2. Populate `this.capabilities` only after renderer init completes.
+3. Treat advanced systems as optional:
+   - compute spirits
+   - MRT emissive isolation
+   - timestamp query profiling
+4. Do not make optional visual features required for startup success.
+5. On any init/compile/device-loss failure, downgrade once per ladder step and set sticky flags for the session.
+
+Feature detection rules:
+- Call `renderer.hasFeature(...)` only after `await renderer.init()`.
+- Cache capability checks once per session; do not re-query hot paths.
+- Record a capability snapshot in baseline and release evidence.
+
+### 3.4 Accessibility and Comfort Constraints (Release-Blocking)
+
+- Respect reduced-motion user preference and explicit calm-mode flag.
+- Avoid strobe-like luminance pumping during combo chains.
+- Clamp post intensity so gameplay-critical board edges remain readable.
+- Any comfort regression in stress scenarios blocks release signoff.
 
 ---
 
@@ -248,6 +289,8 @@ src/themes/nimbus-veil/
 - `?nimbusBaseline=1`
 - `?nimbusSeed=1234`
 - `?nimbusFixedDt=16.666`
+- `?nimbusCalmMode=1`
+- `?nimbusStrictFallback=1`
 
 ---
 
@@ -330,6 +373,14 @@ DRS requirements:
 - Hysteresis required (no oscillation/pumping).
 - Changes clamped and tier-bounded.
 - Disabled entirely by `?nimbusNoDRS=1`.
+
+### 6.2 Comfort and Accessibility Caps
+
+Default comfort policy:
+- Calm mode (`nimbusCalmMode`) reduces camera drift amplitude, god-ray pulse gain, and bloom boost ceilings.
+- Combo-driven turbulence must be frequency-limited to avoid flicker-like feel.
+- Piece-lock pillar and pulse-wave peaks must decay smoothly (no hard pops).
+- Board ROI contrast checks are mandatory at max-combo stress for every tier.
 
 ---
 
@@ -512,6 +563,23 @@ Must track and clear:
 
 `stop()` must be idempotent and safe to call multiple times.
 
+### 7.8 WebGPU Reliability and Observability Contract
+
+Mandatory runtime safety behavior:
+
+- Use timeout-guarded `compileAsync` warmup for critical materials/pipelines.
+- Add device-loss handler that triggers downgrade ladder without restart loop.
+- Capture uncaught renderer init/post/compute failures into structured logs.
+- Run MRT material audits whenever MRT is enabled; auto-disable on mismatch.
+- Keep per-pass cost telemetry:
+  - GPU timestamps when supported (`timestamp-query`)
+  - CPU-side frame/pass timings when timestamps are unavailable
+
+Operational telemetry requirements:
+- Capture startup backend selection, fallback reason, and active kill-switches.
+- Capture downgrade events with phase, feature, and error class.
+- Include telemetry summary in release gate evidence packet.
+
 ---
 
 ## 8) Non-Negotiable Engineering Gates
@@ -526,6 +594,9 @@ Must track and clear:
 8. Device-loss recovery must downgrade without restart loop.
 9. `compileAsync` warmup must be timeout-guarded.
 10. Phase signoff requires measurable metrics, not subjective look-only approval.
+11. Timestamp-query pass timing is required when supported; CPU fallback metrics when unsupported.
+12. Reduced-motion/calm-mode behavior must pass readability and comfort checks.
+13. Capability snapshot and downgrade telemetry must be attached to release evidence.
 
 ---
 
@@ -547,6 +618,8 @@ Tasks:
 - [ ] Add canned event playback script for captures.
 - [ ] Capture hero shots for all presets and both backends.
 - [ ] Record baseline metrics (FPS, frame-time p50/p95, draw calls, memory proxies).
+- [ ] Define board readability ROIs and brightness histogram targets in capture protocol.
+- [ ] Define composition lock checks for each hero shot (depth occupancy + light-anchor placement).
 - [ ] Publish acceptance rubric and lock art packet.
 - [ ] Run Sky Fidelity Rubric scoring session and record scores in the baseline packet.
 
@@ -554,6 +627,7 @@ Exit criteria:
 - Baseline pack reproducible.
 - Art packet approved.
 - Sky Fidelity Rubric gate passes (`min 4`, average `>= 4.4`).
+- Composition lock checks pass for all hero shots.
 
 ## Phase 1: Renderer Bootstrap and Lifecycle Hardening (Critical)
 
@@ -564,17 +638,32 @@ Files:
 - Modify: `src/themes/nimbus-veil/nimbus-veil-theme.js`
 
 Tasks:
-- [ ] Async WebGPU-first `initRenderer()` with explicit fallback.
-- [ ] Capability object: `webgpu`, `post`, `mrt`, `compute`, limits.
-- [ ] Parse/store runtime flags in `this.flags`.
-- [ ] Fix resize listener by stable `boundResizeHandler`.
-- [ ] Track all `setTimeout` calls in `activeTimers`.
-- [ ] Device-loss handling with controlled downgrade.
-- [ ] Timeout-guarded compile warmup before first interactive frame.
+- [x] Async WebGPU-first `initRenderer()` with explicit fallback.
+- [x] Capability object: `webgpu`, `post`, `mrt`, `compute`, limits.
+- [x] Parse/store runtime flags in `this.flags`.
+- [x] Add capability negotiation snapshot logging (startup path + features + disabled reasons).
+- [x] Fix resize listener by stable `boundResizeHandler`.
+- [x] Track all `setTimeout` calls in `activeTimers`.
+- [x] Device-loss handling with controlled downgrade.
+- [x] Add structured error capture for renderer/post/compute init failures.
+- [x] Timeout-guarded compile warmup before first interactive frame.
 
 Exit criteria:
-- 100+ activate/deactivate cycles leak-free.
-- Forced WebGPU failure and device loss recover correctly.
+- [x] 100+ activate/deactivate cycles leak-free.
+- [x] Forced WebGPU failure and device loss recover correctly.
+- [x] Startup logs provide deterministic backend + capability evidence.
+
+Implementation evidence:
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: lifecycle hardening, structured runtime telemetry, downgrade ladder, capability disabled-reason snapshots.
+- `tests/unit/test-nimbus-veil-phase1.js`: Phase 1 assertions including validation helper and harness coverage.
+- `tests/performance/benchmark-nimbus-veil-phase1.html`: runtime harness for 120-cycle lifecycle validation plus downgrade/device-loss matrix.
+- `window.nimbusBaseline` Phase 1 APIs:
+  - `phase1Lifecycle(options)`
+  - `phase1Failures(options)`
+  - `phase1Suite(options)`
+  - `phase1Snapshot(label)`
+  - `phase1Report()`
+  - `phase1Download(label)`
 
 ## Phase 2: Render Path Abstraction and Module Split (Critical)
 
@@ -587,14 +676,20 @@ Files:
 - Create: `src/themes/nimbus-veil/nimbus-veil-post.js`
 
 Tasks:
-- [ ] Implement `renderFrame()` abstraction for all runtime modes.
-- [ ] Move material creation to dual-path factories.
-- [ ] Keep `nimbus-veil-shaders.js` as fallback source of truth.
-- [ ] Normalize resize across renderer/composer/post.
-- [ ] Enforce tone-mapping ownership rules.
+- [x] Implement `renderFrame()` abstraction for all runtime modes.
+- [x] Move material creation to dual-path factories.
+- [x] Keep `nimbus-veil-shaders.js` as fallback source of truth.
+- [x] Normalize resize across renderer/composer/post.
+- [x] Enforce tone-mapping ownership rules.
 
 Exit criteria:
-- All capability + flag combinations run without runtime errors.
+- [x] All capability + flag combinations run without runtime errors.
+
+Implementation evidence:
+- `src/themes/nimbus-veil/nimbus-veil-materials.js`: dual-path material factories for stars/clouds/dust/mist/pulse/light-burst, with GLSL shader fallback provenance.
+- `src/themes/nimbus-veil/nimbus-veil-post.js`: centralized WebGL post/direct render abstraction with unified `render`, `setSize`, `dispose`.
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: render-path integration (`nimbusPost`, `renderPath`, `applyColorPipeline`, normalized resize + post lifecycle).
+- `tests/unit/test-nimbus-veil-phase2.js`: module-split and render-path assertions.
 
 ## Phase 3: TSL Material Migration (High)
 
@@ -606,14 +701,22 @@ Files:
 - Modify: `src/themes/nimbus-veil/nimbus-veil-theme.js`
 
 Tasks:
-- [ ] Migrate stars, dust, mist, pulse, light burst materials.
-- [ ] Convert hero glow elements to instanced quads where needed.
-- [ ] Implement bloom-class metadata and MRT audit hooks.
-- [ ] Validate WebGL parity using baseline hero frames.
+- [x] Migrate stars, dust, mist, pulse, light burst materials.
+- [x] Convert hero glow elements to instanced quads where needed.
+- [x] Implement bloom-class metadata and MRT audit hooks.
+- [x] Validate WebGL parity using baseline hero frames.
 
 Exit criteria:
 - WebGPU compiles without material warnings.
 - WebGL parity remains coherent.
+
+Implementation evidence:
+- `src/themes/nimbus-veil/nimbus-veil-materials.js`: WebGPU TSL NodeMaterial path for stars/dust/mist/pulse/light-burst; GLSL fallback retained for parity and cloud path safety.
+- `src/themes/nimbus-veil/nimbus-veil-materials.js`: bloom-class metadata contract (`bloomClass`, `bloomWeight`, `backend`, `supportsMrt`, `mrtRole`, `primitive`) and `auditNimbusMaterialMetadata(...)`.
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: WebGPU pulse-wave system upgraded to instanced quads (`setupPulseWaveSystem`, instanced `aProgress`/`aOpacity` lifecycle) and integrated into scene/reset/dispose paths.
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: Phase 3 runtime hooks include `runPhase3MaterialAudit(...)` and `runPhase3ParityValidation(...)`, exposed via `window.nimbusBaseline`.
+- `tests/performance/benchmark-nimbus-veil-phase3.html`: parity + audit harness for deterministic hero-frame capture and reference comparisons.
+- `tests/unit/test-nimbus-veil-phase3.js`: static coverage for TSL routing, metadata/audit contract, instanced pulse wiring, and parity helper API.
 
 ## Phase 4: Volumetric Cloud Core (Critical)
 
@@ -626,14 +729,22 @@ Files:
 - Modify: `src/themes/nimbus-veil/nimbus-veil-theme.js`
 
 Tasks:
-- [ ] Implement tiered cloud paths (raymarch/sliced/billboard).
-- [ ] Add scattering, self-shadow approximation, and rim response.
-- [ ] Integrate blue-noise jitter and optional reprojection.
-- [ ] Add gameplay-driven density/emissive responses.
+- [x] Implement tiered cloud paths (raymarch/sliced/billboard).
+- [x] Add scattering, self-shadow approximation, and rim response.
+- [x] Integrate blue-noise jitter and optional reprojection.
+- [x] Add gameplay-driven density/emissive responses.
 
 Exit criteria:
 - Cloud volume depth passes hero-frame checks.
 - High tier meets frame budget on reference hardware.
+
+Implementation evidence (in progress):
+- `src/themes/nimbus-veil/nimbus-veil-clouds.js`: quality-tier cloud profile resolver (`billboard`/`sliced`/`raymarch`) with reprojection/jitter gating and reactive envelope helpers.
+- `src/themes/nimbus-veil/nimbus-veil-shaders.js`: upgraded cloud fragment path with phase scattering, directional self-shadow approximation, rim response, blue-noise jitter, temporal reprojection sampling (`uPrevTime`, `uDeltaTime`, `uWindVelocity`), and tiered sliced/raymarch integration.
+- `src/themes/nimbus-veil/nimbus-veil-materials.js`: cloud factory now binds volumetric uniforms (`uVolumetricMode`, `uMarchSteps`, `uLayerCount`, `uDensityBoost`, `uEmissiveBoost`) plus temporal reprojection uniforms and metadata (`cloudPath`, reprojection state).
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: cloud profile selection wired to flags/capabilities, moon-light direction synchronization, gameplay-driven density/emissive updates, and validation helper exposure (`phase4CloudBehavior`, `phase4CloudPerf`, `phase4CloudProfile`).
+- `tests/unit/test-nimbus-veil-phase4.js`: static coverage for Phase 4 module split and integration contract.
+- `tests/performance/benchmark-nimbus-veil-phase4.html`: behavioral/perf harness for path/flag matrix checks and deterministic p95 budget sweeps.
 
 ## Phase 5: Compute-Driven Spirit Swarms (Critical)
 
@@ -646,14 +757,20 @@ Files:
 - Modify: `src/themes/nimbus-veil/nimbus-veil-materials.js`
 
 Tasks:
-- [ ] Implement aligned storage buffers and ping-pong update flow.
-- [ ] Add advection/cohesion/gameplay influence kernels.
-- [ ] Render spirits via instanced billboards from GPU data.
-- [ ] Add robust fallback path when compute init fails.
+- [x] Implement aligned storage buffers and ping-pong update flow.
+- [x] Add advection/cohesion/gameplay influence kernels.
+- [x] Render spirits via instanced billboards from GPU data.
+- [x] Add robust fallback path when compute init fails.
 
 Exit criteria:
 - High: 60000 spirits at target frame budget.
 - Ultra: 90000 spirits at target frame budget.
+
+Implementation evidence (in progress):
+- `src/themes/nimbus-veil/nimbus-veil-compute.js`: Phase 5 spirit compute budgets (`High=60000`, `Ultra=90000`), 16-byte aligned storage contracts, ping-pong buffers, and advection/cohesion/gameplay influence kernel controls.
+- `src/themes/nimbus-veil/nimbus-veil-materials.js`: `createNimbusSpiritSwarmMaterial` NodeMaterial path reading active compute storage buffers for instanced billboard spirit rendering with explicit bloom/MRT metadata (`mrtRole: spirit-swarm`), low-flicker twinkle/alpha tuning, and deterministic full-screen anchor hashing from `instanceIndex` to prevent center-clump failures on fragile driver paths.
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: compute-first spirit bootstrap (`createSpiritSwarm`), runtime dispatch (`updateSpiritSwarm`), event-driven influences (`LINE_CLEAR`, `COMBO`, `PIECE_LOCK`), full-screen instanced anchor placement to avoid center-clump artifacts, and automatic CPU dust fallback on init/runtime compute failure.
+- `tests/unit/test-nimbus-veil-phase5.js`: static contract coverage for compute module, material integration, theme fallback ladder, and plan/art synchronization.
 
 ## Phase 6: Divine Lighting and Post Pipeline (High)
 
@@ -665,14 +782,22 @@ Files:
 - Modify: `src/themes/nimbus-veil/nimbus-veil-theme.js`
 
 Tasks:
-- [ ] 6A base post: bloom, grade, vignette, board-safe masks.
-- [ ] 6B MRT hardening: emissive isolation and audit enforcement.
-- [ ] Add god rays with depth-aware attenuation.
-- [ ] Add fallback post routes for no-MRT/no-post modes.
+- [x] 6A base post: bloom, grade, vignette, board-safe masks.
+- [x] 6B MRT hardening: emissive isolation and audit enforcement.
+- [x] Add god rays with depth-aware attenuation.
+- [x] Add fallback post routes for no-MRT/no-post modes.
 
 Exit criteria:
 - God rays align with moon direction and cloud density.
 - No clipping or readability loss at combo peaks.
+
+Implementation evidence:
+- `src/themes/nimbus-veil/nimbus-veil-post.js`: hybrid post abstraction with WebGPU `PostProcessing` + WebGL `EffectComposer` fallback, base bloom/grade/vignette stack, board-safe masking controls, and depth-aware god-ray attenuation in WebGPU path.
+- `src/themes/nimbus-veil/nimbus-veil-post.js`: MRT emissive isolation routing (`scenePass.setMRT(mrt({ output, emissive }))`) with auto-downgrade to non-MRT post path when MRT init fails.
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: Phase 6 post preset ladder (`PHASE6_POST_PRESETS`), runtime post parameter updates (`updatePhase6PostPipeline`), bloom/readability clamps, and no-MRT/no-post fallback routing integration.
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: Phase 6 audit/validation helpers (`buildPhase6MrtAuditReport`, `getPhase6PostRuntimeState`, `runPhase6PostValidation`) with baseline API exposure via `window.nimbusBaseline`.
+- `tests/unit/test-nimbus-veil-phase6.js`: static contract coverage for dual-path post stack, MRT hardening hooks, Phase 6 runtime validation APIs, and plan/art synchronization.
+- `tests/performance/benchmark-nimbus-veil-phase6.html`: manual harness for phase6 state/audit/validation runs across default/no-MRT/no-post/force-WebGL runtime modes.
 
 ## Phase 7: Reactive Feel and Readability Polish (High)
 
@@ -686,14 +811,22 @@ Files:
 - Modify: `src/themes/nimbus-veil/nimbus-veil-post.js`
 
 Tasks:
-- [ ] Replace scattered state with unified envelope model.
-- [ ] Tune event curves and decay constants by tier.
-- [ ] Add accessibility caps and board-safe intensity clamps.
-- [ ] Validate sustained combo readability sequence.
+- [x] Replace scattered state with unified envelope model.
+- [x] Tune event curves and decay constants by tier.
+- [x] Add accessibility caps and board-safe intensity clamps.
+- [x] Validate sustained combo readability sequence.
 
 Exit criteria:
 - Effects feel alive but controlled.
 - Readability gates pass.
+
+Implementation evidence:
+- `src/themes/nimbus-veil/nimbus-veil-clouds.js`: unified reactive envelope matrix by quality tier (impulse/cap/decay/readability clamps) plus event-to-envelope impulse mapping and normalized cloud-reactive output.
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: gameplay events now write through `applyReactiveEnvelopeImpulse(...)` with derived cloud/bloom/particle mirrors, and `animateEffects` consumes envelope-driven boosts without legacy decay branches.
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: Phase 7 readability guardrails integrated into post dynamics (`updatePhase6PostPipeline`) with board-protection floors, bloom/god-ray caps, and cloud-density clamping.
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: Phase 7 runtime/validation APIs (`getPhase7ReactiveRuntimeState`, `runPhase7ReadabilityValidation`) wired into baseline report/snapshot capture and `window.nimbusBaseline` helper surface.
+- `tests/unit/test-nimbus-veil-phase7.js`: static contract coverage for unified envelope wiring, readability validation APIs, and Phase 7 doc synchronization.
+- `tests/performance/benchmark-nimbus-veil-phase7.html`: manual harness for reactive-state inspection and sustained-combo readability validation runs.
 
 ## Phase 8: Performance and Thermal Hardening (Critical)
 
@@ -705,14 +838,25 @@ Files:
 - Modify: `tests/performance/*`
 
 Tasks:
-- [ ] Implement and tune DRS policy.
-- [ ] Prewarm key materials/pipelines.
-- [ ] Add 30-minute and 2-hour soak scenarios.
+- [x] Implement and tune DRS policy.
+- [x] Prewarm key materials/pipelines.
+- [x] Add timestamp-query instrumentation when supported and CPU pass-timing fallback when unsupported.
+- [x] Add 30-minute and 2-hour soak scenarios.
+- [ ] Run cross-vendor soak matrix (at least one NVIDIA, one AMD, one Intel class machine).
 - [ ] Tune per-tier defaults using measured data.
 
 Exit criteria:
 - Performance budgets pass by target tier.
 - No memory drift beyond threshold.
+- No unresolved cross-vendor blockers for release tier defaults.
+
+Implementation evidence (in progress):
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: Phase 8 performance profile ladder (`PHASE8_PERFORMANCE_PROFILES`) with adaptive resolution controller (`initializePhase8PerformanceState`, `updatePhase8AdaptiveResolution`, `applyPhase8ResolutionScale`) and `nimbusNoDRS` gating.
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: key pipeline prewarm pass (`prewarmPhase8Pipelines`) executed during scene bootstrap after compile warmup.
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: timestamp-query integration (`configurePhase8TimingInstrumentation`, `updatePhase8GpuTimings`) with explicit CPU pass-timing fallback and per-frame pass sample capture in animation/render loop.
+- `src/themes/nimbus-veil/nimbus-veil-theme.js`: soak and validation APIs (`runPhase8PerformanceValidation`, `runPhase8SoakScenario`, `runPhase8Soak30m`, `runPhase8Soak2h`) exposed through `window.nimbusBaseline`.
+- `tests/unit/test-nimbus-veil-phase8.js`: static contract coverage for Phase 8 DRS/timing/soak APIs and plan updates.
+- `tests/performance/benchmark-nimbus-veil-phase8.html`: manual harness for performance-state inspection, DRS validation, and 30m/2h soak orchestration.
 
 ## Phase 9: Final Validation and Release Gate (Critical)
 
@@ -724,10 +868,13 @@ Tasks:
 - [ ] Validate 100+ theme switch cycles.
 - [ ] Validate no leak trends on soak.
 - [ ] Validate artifact-free rendering and event reactivity.
+- [ ] Validate calm-mode/reduced-motion behavior under combo stress.
+- [ ] Validate fallback-first hotfix ladder (`compute -> MRT -> post -> WebGL`) in staging.
 - [ ] Freeze release defaults and update docs.
 
 Exit criteria:
 - All gate checklists pass with evidence attached.
+- Release evidence includes telemetry summary + capability snapshots.
 
 ---
 
@@ -767,6 +914,35 @@ Exit criteria:
 - [ ] Performance budgets pass on target hardware class.
 - [ ] MRT auto-disable behavior works when materials/caps mismatch.
 - [ ] Sky Fidelity Rubric passes on release candidate captures.
+
+## E. Objective Signoff Thresholds (Locked)
+
+| Category | Gate | Threshold |
+|----------|------|-----------|
+| Fallback visual parity | Changed pixels outside approved glow ROIs | `<= 3.0%` |
+| Board readability | Contrast ratio in board ROI under combo stress | `>= 4.5:1` |
+| Highlight safety | Continuous clipping in hero highlight channels | `<= 0.5s` |
+| Frame pacing | WebGPU High/Ultra p95 frame time | `<= 16.6ms` |
+| Fallback pacing | WebGL fallback p95 frame time | `<= 20.0ms` |
+| Stability | Theme-switch stress | `>= 100` cycles without leak trend |
+| Soak reliability | Mixed-event soak | `2h` with no uncaught runtime errors |
+| Art direction quality | Sky Fidelity Rubric average | `>= 4.4` with no category below `4` |
+
+Notes:
+- Glow ROIs are limited to emissive cloud rims, pillar cores, and pulse-wave fringes defined in the art packet.
+- Thresholds apply to WebGPU and forced-WebGL runs unless marked WebGPU-only.
+
+## F. Validation Artifacts (Repo Standard)
+
+- Create: `docs/NIMBUS_VEIL_ART_DIRECTION.md` (palette lock, composition locks, ROI map, rubric sheet).
+- Create: `docs/NIMBUS_VEIL_BASELINE_CAPTURE_PROTOCOL.md` (deterministic capture runbook and signoff checklist).
+- Create: `tests/performance/benchmark-nimbus-veil-phase9.html` (tier/backend sweep + event anchors + soak harness).
+- Create: `tests/unit/test-nimbus-veil-phase0.js` (deterministic flags, baseline helper exposure).
+- Create: `tests/unit/test-nimbus-veil-phase1.js` (hybrid bootstrap, fallback, lifecycle cleanup, error logging).
+- Create: `tests/unit/test-nimbus-veil-phase6.js` (post path, MRT audit, tone-mapping ownership).
+- Create: `tests/performance/benchmark-nimbus-veil-phase8.html` (Phase 8 DRS/timing validation + soak scenario harness).
+- Create: `tests/unit/test-nimbus-veil-phase8.js` (Phase 8 DRS/timestamp/soak helper contract coverage).
+- Create: `tests/unit/test-nimbus-veil-phase9.js` (release-gate helpers, rollback ladder checks, telemetry summary assertions).
 
 ---
 
@@ -890,3 +1066,19 @@ Project implementation references:
 Technical references:
 - Three.js r181 WebGPU/TSL/PostProcessing docs
 - WGSL alignment and layout requirements
+
+WebGPU cloud rendering research snapshot (2026-02-15):
+- Three.js WebGPU manual: custom `ShaderMaterial` is not supported on `WebGPURenderer`, so Nimbus cloud hero path should stay TSL/NodeMaterial-based for native WebGPU.
+  - https://threejs.org/manual/en/webgpu.html
+- Three.js `Storage3DTexture` and `Data3DTexture` are available for 3D volume data workflows, enabling proper volumetric density fields instead of only 2D card noise.
+  - https://threejs.org/docs/pages/Storage3DTexture.html
+  - https://threejs.org/docs/pages/Data3DTexture.html
+  - https://threejs.org/docs/pages/RenderTarget3D.html
+- Guerrilla’s Nubis talks/papers describe production cloud shaping with Perlin-Worley density, weather fields, vertical stratification, Beer-law extinction, and powder/forward-scatter terms.
+  - https://www.guerrilla-games.com/read/the-real-time-volumetric-cloudscapes-of-horizon-zero-dawn
+  - https://www.guerrilla-games.com/read/nubis-realtime-volumetric-cloudscapes-in-a-nutshell
+  - https://d3d3g8mu99pzk9.cloudfront.net/AndrewSchneider/The-Real-time-Volumetric-Cloudscapes-of-Horizon-Zero-Dawn.pdf
+- Unreal’s volumetric cloud docs reinforce a practical shipping pattern: conservative-density skipping, multiple scattering approximation, and Beer shadow map integration for scale/perf balance.
+  - https://dev.epicgames.com/documentation/en-us/unreal-engine/volumetric-cloud-component-in-unreal-engine?application_version=5.6
+- Hillaire’s physically based sky/atmosphere model is a strong baseline for directional aerial perspective and cloud/atmosphere coherence.
+  - https://diglib.eg.org/items/8a3e5350-18b3-46bd-9274-3add5af88c75

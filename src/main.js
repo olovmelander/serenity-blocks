@@ -283,8 +283,8 @@ class SerenityBlocks {
             // 8. Setup event listeners
             this.setupEventListeners();
 
-            // 8. Load initial theme
-            await this.loadInitialTheme();
+            // 8. Initial theme loading is now deferred until after intro dismissal
+            // to ensure smooth transition without CPU/GPU initialization spikes.
 
             // 9. Setup UI
             this.setupUI();
@@ -3648,6 +3648,17 @@ async function bootstrap() {
         console.log('✨ Intro animation complete!');
 
         app = await appInitPromise;
+
+        // Tiny delay to allow local interaction animations (burst/shrink) to gain momentum
+        // before the main thread hitch of theme loading.
+        await new Promise(resolve => setTimeout(resolve, 150));
+
+        // Load initial theme now that intro is dismissing to avoid transition hitch.
+        // This hides the heavy initialization hitch behind the high-intensity animation.
+        if (app?.loadInitialTheme) {
+            app.loadInitialTheme().catch(err => console.error('Failed to load initial theme:', err));
+        }
+
         await introAnimation.waitForMenuBgReady?.(2200);
 
         // Show the start modal only after intro transitions into menu background.

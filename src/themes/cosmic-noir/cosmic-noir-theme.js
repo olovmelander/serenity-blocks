@@ -42,6 +42,7 @@ import {
     createPlanetGlowSpriteNodeMaterial,
     createStarfieldNodeMaterial,
     createVoidSparkNodeMaterial,
+    createGasSwirlNodeMaterial,
 } from './cosmic-noir-materials.js';
 import {
     planetVertexShader,
@@ -59,6 +60,8 @@ import {
     ChromaticAberrationShader,
     nebulaVertexShader,
     nebulaFragmentShader,
+    gasSwirlVertexShader,
+    gasSwirlFragmentShader,
 } from './cosmic-noir-shaders.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1012,10 +1015,28 @@ export default class CosmicNoirTheme extends BaseTheme {
         const quality = this.getCurrentQualityLevel();
         this.applyQualityPreset(quality);
 
-        const container = document.getElementById('cosmic-noir-theme');
+        let container = document.getElementById('cosmic-noir-theme');
         if (!container) {
-            console.error('[CosmicNoir] Container not found');
-            return;
+            console.warn('[CosmicNoir] Container not found, creating it...');
+            container = document.createElement('div');
+            container.id = 'cosmic-noir-theme';
+            container.className = 'theme-container';
+            Object.assign(container.style, {
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100%',
+                height: '100%',
+                zIndex: '-1',
+                pointerEvents: 'none',
+                opacity: '0', // Start hidden, fade in later
+            });
+            // Insert as first child to be behind UI
+            if (document.body.firstChild) {
+                document.body.insertBefore(container, document.body.firstChild);
+            } else {
+                document.body.appendChild(container);
+            }
         }
 
         container.innerHTML = '';
@@ -1035,6 +1056,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.createPlanet();
         this.createAtmosphere();
         this.createVoidSparks();
+        this.createGasSwirlParticles();
         this.ensureMrtMaterials();
         this.auditMrtMaterials();
         this.setupPostProcessing();
@@ -1393,24 +1415,24 @@ export default class CosmicNoirTheme extends BaseTheme {
         const nebulaConfigs = [
             // Deep background layer (Parallax factor low)
             {
-                texture: textures[0], size: 6000, z: -5200, opacity: 0.045, speed: 0.00007, parallaxX: 0.12, parallaxY: 0.08, rotationSpeed: 0.000025,
+                texture: textures[0], size: 18000, z: -9000, opacity: 0.4, speed: 0.00007, parallaxX: 0.12, parallaxY: 0.08, rotationSpeed: 0.000025,
             },
             {
-                texture: textures[1], size: 7000, z: -4400, opacity: 0.036, speed: 0.00009, parallaxX: 0.16, parallaxY: 0.11, rotationSpeed: -0.00002,
+                texture: textures[1], size: 20000, z: -7800, opacity: 0.35, speed: 0.00009, parallaxX: 0.16, parallaxY: 0.11, rotationSpeed: -0.00002,
             },
             // Mid layer
             {
-                texture: textures[2], size: 5200, z: -3300, opacity: 0.028, speed: 0.00013, parallaxX: 0.24, parallaxY: 0.16, rotationSpeed: 0.00003,
+                texture: textures[2], size: 14000, z: -6400, opacity: 0.3, speed: 0.00013, parallaxX: 0.24, parallaxY: 0.16, rotationSpeed: 0.00003,
             },
             {
-                texture: textures[0], size: 5600, z: -2600, opacity: 0.022, speed: 0.00018, parallaxX: 0.3, parallaxY: 0.2, rotationSpeed: -0.000035,
+                texture: textures[0], size: 15000, z: -5500, opacity: 0.25, speed: 0.00018, parallaxX: 0.3, parallaxY: 0.2, rotationSpeed: -0.000035,
             },
             // Near haze layers
             {
-                texture: textures[1], size: 4200, z: -1800, opacity: 0.016, speed: 0.00024, parallaxX: 0.38, parallaxY: 0.26, rotationSpeed: 0.00004,
+                texture: textures[1], size: 10000, z: -4500, opacity: 0.2, speed: 0.00024, parallaxX: 0.38, parallaxY: 0.26, rotationSpeed: 0.00004,
             },
             {
-                texture: textures[2], size: 3800, z: -1300, opacity: 0.013, speed: 0.00028, parallaxX: 0.46, parallaxY: 0.31, rotationSpeed: -0.00005,
+                texture: textures[2], size: 9000, z: -3800, opacity: 0.15, speed: 0.00028, parallaxX: 0.46, parallaxY: 0.31, rotationSpeed: -0.00005,
             },
         ];
 
@@ -1883,6 +1905,230 @@ export default class CosmicNoirTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Gas Shell Swirl Particles - Tangential particles from atmosphere on combo
+    // ─────────────────────────────────────────────────────────────────────────
+
+    createGasSwirlParticles() {
+        if (this.gasSwirl) {
+            this.planetGroup?.remove(this.gasSwirl);
+            this.gasSwirl.geometry?.dispose?.();
+            this.gasSwirl.material?.dispose?.();
+        }
+        this.gasSwirl = null;
+        this.gasSwirlData = null;
+
+        const count = 30000;
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(count * 3);
+        const alphas = new Float32Array(count);
+        const sizes = new Float32Array(count);
+        // Per-particle velocity (x, y, z) + life remaining
+        const velocities = new Float32Array(count * 4);
+
+        // All particles start dormant
+        for (let i = 0; i < count; i++) {
+            positions[i * 3] = 0;
+            positions[i * 3 + 1] = 0;
+            positions[i * 3 + 2] = -9999;
+            alphas[i] = 0;
+            sizes[i] = 40 + this.rand() * 80;
+            velocities[i * 4 + 3] = 0; // life = 0 means dormant
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aAlpha', new THREE.BufferAttribute(alphas, 1));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+        let material;
+        if (this.isWebGPU) {
+            const { material: nodeMaterial } = createGasSwirlNodeMaterial();
+            material = nodeMaterial;
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {},
+                vertexShader: gasSwirlVertexShader,
+                fragmentShader: gasSwirlFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+        }
+
+        const points = new THREE.Points(geometry, material);
+        points.frustumCulled = false;
+        points.renderOrder = 102;
+
+        this.gasSwirl = points;
+        this.gasSwirlData = {
+            count,
+            positions,
+            alphas,
+            sizes,
+            velocities,
+            nextIndex: 0,
+        };
+        this.planetGroup.add(points);
+
+        console.log('[CosmicNoir] Gas swirl particle system created with', count, 'particles');
+    }
+
+    triggerGasSwirlBurst(comboCount) {
+        if (!this.gasSwirl || !this.gasSwirlData) return;
+
+        const d = this.gasSwirlData;
+        // Scale batch size with combo — MASSIVE burst for "more particles"
+        const batchSize = Math.min(d.count, Math.floor(800 + comboCount * 200));
+
+        // Current gas flow rotation speed (matches atmosphere shader: t = uTime * 0.8, rot = t * 0.5)
+        const flowSpeed = this.time * 0.8 * 0.5;
+        const shellRadius = 350; // atmosphere outer shell radius
+
+        // Target for screen-shooting: approximate camera position or slightly in front
+        // Camera is usually around z=800-1400. Let's aim for z=1200.
+        const screenTargetZ = 1200;
+
+        for (let b = 0; b < batchSize; b++) {
+            const idx = d.nextIndex;
+            d.nextIndex = (d.nextIndex + 1) % d.count;
+
+            // Random point on sphere surface
+            const theta = this.rand() * Math.PI * 2;
+            const phi = Math.acos(2 * this.rand() - 1);
+            const sinPhi = Math.sin(phi);
+
+            const px = shellRadius * sinPhi * Math.cos(theta);
+            const py = shellRadius * sinPhi * Math.sin(theta);
+            const pz = shellRadius * Math.cos(phi);
+
+            d.positions[idx * 3] = px;
+            d.positions[idx * 3 + 1] = py;
+            d.positions[idx * 3 + 2] = pz;
+
+            // Determine if particle is a "Screen Shooter" (25% chance)
+            // Or if combo is high, more shooters
+            const isShooter = this.rand() < (0.2 + comboCount * 0.05);
+
+            if (isShooter) {
+                // Shoot towards camera / screen
+                // Vector from particle to screen plane
+                const dx = (this.rand() - 0.5) * 800; // Spread across screen width
+                const dy = (this.rand() - 0.5) * 600; // Spread across screen height
+                const dz = screenTargetZ; // Target depth
+
+                const vx = dx - px;
+                const vy = dy - py;
+                const vz = dz - pz;
+
+                const len = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
+                const speed = 150.0 + this.rand() * 100.0; // Very fast
+
+                d.velocities[idx * 4] = (vx / len) * speed;
+                d.velocities[idx * 4 + 1] = (vy / len) * speed;
+                d.velocities[idx * 4 + 2] = (vz / len) * speed;
+                d.velocities[idx * 4 + 3] = 10.0; // Shorter life, just needs to pass camera
+            } else {
+                // Standard Swirl Logic
+                // Tangential velocity: cross(position, Y-axis) gives the rotational tangent
+                // matching the atmosphere shader's xz-plane rotation
+                const radialLen = Math.sqrt(px * px + pz * pz) || 1;
+                const tangX = -pz / radialLen;
+                const tangZ = px / radialLen;
+
+                // Tangential speed proportional to combo, outward radial drift
+                // EXTREME INCREASE for full space coverage
+                const tangSpeed = (80 + comboCount * 15) * (0.8 + this.rand() * 0.6);
+                const outwardSpeed = (60 + comboCount * 20) * (0.6 + this.rand() * 0.9);
+                const upDrift = (this.rand() - 0.5) * 25;
+
+                d.velocities[idx * 4] = tangX * tangSpeed + (px / shellRadius) * outwardSpeed;
+                d.velocities[idx * 4 + 1] = py / shellRadius * outwardSpeed + upDrift;
+                d.velocities[idx * 4 + 2] = tangZ * tangSpeed + (pz / shellRadius) * outwardSpeed;
+                // life: total lifetime in seconds - long enough to reach camera (1500+ units out)
+                d.velocities[idx * 4 + 3] = 15.0 + this.rand() * 12.0;
+            }
+
+            d.alphas[idx] = 0.75 + this.rand() * 0.25;
+        }
+
+        // Mark all attributes dirty
+        this.gasSwirl.geometry.attributes.position.needsUpdate = true;
+        this.gasSwirl.geometry.attributes.aAlpha.needsUpdate = true;
+    }
+
+    updateGasSwirlParticles(delta) {
+        if (!this.gasSwirl || !this.gasSwirlData) return;
+
+        const d = this.gasSwirlData;
+        let anyActive = false;
+
+        for (let i = 0; i < d.count; i++) {
+            const life = d.velocities[i * 4 + 3];
+            if (life <= 0) continue;
+
+            anyActive = true;
+
+            // Advance position with complex forces
+            const x = d.positions[i * 3];
+            const y = d.positions[i * 3 + 1];
+            const z = d.positions[i * 3 + 2];
+            const dist = Math.sqrt(x * x + z * z) || 1;
+
+            // 1. Radial Acceleration (OUTWARD)
+            const radialAccel = 20.0 * delta;
+            d.velocities[i * 4] += (x / dist) * radialAccel;
+            d.velocities[i * 4 + 2] += (z / dist) * radialAccel;
+
+            // 2. Tangential Acceleration (SPIN) - Strong vortex effect
+            const spinForce = 25.0 * delta;
+            d.velocities[i * 4] += (-z / dist) * spinForce;
+            d.velocities[i * 4 + 2] += (x / dist) * spinForce;
+
+            // 3. Double-Helix Twist
+            // Two interfering waves create a "DNA-like" or complex tornado structure
+            const twistAmp = 80.0 * delta;
+            const angle = Math.atan2(z, x);
+
+            // Primary wave (slow, large) + Secondary wave (fast, tight)
+            const wave1 = Math.sin(dist * 0.008 - this.time * 2.5 + angle * 2.0);
+            const wave2 = Math.sin(dist * 0.02 + this.time * 1.5 - angle);
+
+            const verticalForce = (wave1 + wave2 * 0.5) * twistAmp;
+            d.velocities[i * 4 + 1] += verticalForce;
+
+            // 4. Turbulence / Noise
+            // Simple random walk to break ease
+            const noise = 15.0 * delta;
+            d.velocities[i * 4] += (Math.random() - 0.5) * noise;
+            d.velocities[i * 4 + 1] += (Math.random() - 0.5) * noise;
+            d.velocities[i * 4 + 2] += (Math.random() - 0.5) * noise;
+
+            // Integrate velocity
+            d.positions[i * 3] += d.velocities[i * 4] * delta;
+            d.positions[i * 3 + 1] += d.velocities[i * 4 + 1] * delta;
+            d.positions[i * 3 + 2] += d.velocities[i * 4 + 2] * delta;
+
+            // Decay life and alpha
+            d.velocities[i * 4 + 3] -= delta;
+            const maxLife = 27.0; // max possible life from init
+            const lifeRatio = Math.max(0, d.velocities[i * 4 + 3]) / (maxLife * 0.5);
+            d.alphas[i] = Math.pow(lifeRatio, 0.3) * 0.95;
+
+            if (d.velocities[i * 4 + 3] <= 0) {
+                // Park dormant particle out of view
+                d.positions[i * 3 + 2] = -9999;
+                d.alphas[i] = 0;
+                d.velocities[i * 4 + 3] = 0;
+            }
+        }
+
+        if (anyActive) {
+            this.gasSwirl.geometry.attributes.position.needsUpdate = true;
+            this.gasSwirl.geometry.attributes.aAlpha.needsUpdate = true;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Void Sparks - Explosive silver/gray burst from planet surface outward
     // Creates a pool of particle systems to allow overlapping bursts
     // ─────────────────────────────────────────────────────────────────────────
@@ -2302,6 +2548,9 @@ export default class CosmicNoirTheme extends BaseTheme {
             }
         }
 
+        // Update gas shell swirl particles
+        this.updateGasSwirlParticles(delta);
+
         // Slow drift planet across entire screen (Lissajous curves for organic movement)
         if (this.planetGroup) {
             const driftX = Math.sin(this.time * 0.025 + this.planetPhaseX) * 550
@@ -2319,16 +2568,26 @@ export default class CosmicNoirTheme extends BaseTheme {
         // Slow camera orbit for parallax depth (independent of planet)
         if (this.camera) {
             const cameraTime = this.time * 0.06; // Slow but noticeable orbit
-            const orbitRadiusX = 400; // Wide horizontal sway
-            const orbitRadiusY = 300; // Vertical sway range
-            const orbitRadiusZ = 200; // Depth breathing
+            const orbitRadiusX = 420; // Tighter horizontal sway
+            const orbitRadiusY = 320; // Tighter vertical sway
 
             // Orbital sway - creates parallax with starfield/nebula
             this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX
                 + Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4;
             this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY
                 + Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3;
-            this.camera.position.z = 1200 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
+
+            // Deep z-breathing: sweeping from far out to EXTREMELY close
+            // Base 800, primary ±600 -> Min theoretically 200 (inside atmosphere)
+            this.camera.position.z = 800
+                + Math.sin(cameraTime * 0.5) * 600
+                + Math.sin(cameraTime * 0.18 + 1.2) * 200;
+
+            // Safety clamp: Prevent clipping into planet (radius 240)
+            // Surface skim distance: ~280
+            if (this.camera.position.length() < 280) {
+                this.camera.position.setLength(280);
+            }
 
             // LookAt drift for dynamic framing (not following planet)
             const lookOffsetX = Math.sin(cameraTime * 0.4) * 150;
@@ -2828,6 +3087,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             } else {
                 for (let s = 0; s < burstsToTrigger; s++) {
                     // Find an inactive spark system (one that has finished animating)
+                    // Never overwrite an active system — let old bursts keep playing (accumulation)
                     let sparkSystem = null;
                     for (let i = 0; i < this.voidSparks.length; i++) {
                         const idx = (this.voidSparkIndex + i) % this.voidSparks.length;
@@ -2843,11 +3103,9 @@ export default class CosmicNoirTheme extends BaseTheme {
                         }
                     }
 
-                    // If all systems are active, fallback to the oldest one (cycle through)
-                    if (!sparkSystem) {
-                        sparkSystem = this.voidSparks[this.voidSparkIndex];
-                        this.voidSparkIndex = (this.voidSparkIndex + 1) % this.voidSparks.length;
-                    }
+                    // If no inactive system is available, skip this burst so old
+                    // particles keep playing — this is the accumulation behaviour.
+                    if (!sparkSystem) continue;
 
                     // Trigger the spark burst with a slight delay for staggered effect
                     const sparkUniforms = getSparkUniforms(sparkSystem);
@@ -2868,11 +3126,19 @@ export default class CosmicNoirTheme extends BaseTheme {
                 for (let t = 0; t < extraTrailBursts; t++) {
                     this.registerDeferredTimeout(() => {
                         if (!this.voidSparks.length) return;
-                        const candidate = this.voidSparks[this.voidSparkIndex];
-                        this.voidSparkIndex = (this.voidSparkIndex + 1) % this.voidSparks.length;
-                        const trailingUniforms = getSparkUniforms(candidate);
-                        if (trailingUniforms?.uPulseTimer) {
-                            trailingUniforms.uPulseTimer.value = 0.0;
+                        // Only trigger trailing burst on an inactive system
+                        for (let i = 0; i < this.voidSparks.length; i++) {
+                            const idx = (this.voidSparkIndex + i) % this.voidSparks.length;
+                            const candidate = this.voidSparks[idx];
+                            const trailingUniforms = getSparkUniforms(candidate);
+                            if (trailingUniforms?.uPulseTimer) {
+                                const timer = trailingUniforms.uPulseTimer.value;
+                                if (timer < -50.0 || timer > 85.0) {
+                                    trailingUniforms.uPulseTimer.value = 0.0;
+                                    this.voidSparkIndex = (idx + 1) % this.voidSparks.length;
+                                    break;
+                                }
+                            }
                         }
                     }, 320 + t * 140);
                 }
@@ -2881,6 +3147,9 @@ export default class CosmicNoirTheme extends BaseTheme {
             // Trigger gas explosion on atmosphere
             this.gasExplosionTimer = 0.0;
             this.gasExplosionIntensity = Math.min(0.5 + comboCount * 0.15, 1.2);
+
+            // Trigger gas shell swirl particles
+            this.triggerGasSwirlBurst(comboCount);
         }
 
         // Create cosmic waves
@@ -3140,6 +3409,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.voidSparks = [];
         this.voidSparkIndex = 0;
         this.sparkCompute = null;
+        this.gasSwirl = null;
+        this.gasSwirlData = null;
         this.pendingComboCount = 0;
         this.planetPulseIntensity = 0;
         this.starEventBoost = 0;

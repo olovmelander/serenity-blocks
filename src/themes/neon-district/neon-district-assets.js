@@ -7,6 +7,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { WebGLRenderer } from 'three';
 import { float, uniformTexture, vec3 } from 'three/tsl';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 
@@ -118,7 +119,7 @@ export class NeonDistrictAssets {
 
     ensureKTX2Support() {
         if (this.ktx2Ready) return;
-        const tempRenderer = this.renderer || new THREE.WebGLRenderer({ antialias: false });
+        const tempRenderer = this.renderer || new WebGLRenderer({ antialias: false });
         this.ktx2Loader.detectSupport(tempRenderer);
         this.ktx2Ready = true;
         if (!this.renderer && tempRenderer?.dispose) {

@@ -95,7 +95,9 @@ export class IntroAnimation {
             const pulse = this.getMusicPulse();
             this.threeRenderer.setAudioPulse?.(pulse);
             this.threeRenderer.update();
-            this.syncTitleBounds(time);
+            if (this.isActive) {
+                this.syncTitleBounds(time);
+            }
         }
 
         this.animationFrameId = requestAnimationFrame(this.boundAnimate);
@@ -610,19 +612,25 @@ export class IntroAnimation {
         this.threeRenderer?.setBackgroundMode?.(true);
         this.setRendererPhase(INTRO_PHASES.DISMISS);
 
-        // After animation completes, clean up and resolve
+        // Signal completion near the midpoint of the warp to mask theme loading hitch.
+        if (this.onComplete) {
+            const handoverPromise = new Promise(resolve => setTimeout(resolve, 380));
+            handoverPromise.then(() => {
+                if (this.onComplete) {
+                    this.onComplete();
+                    this.onComplete = null;
+                }
+            });
+        }
+
+        // After the warp transition reaches a stable point, switch to MENU_BG loop.
         setTimeout(async () => {
             if (prompt) prompt.style.display = 'none';
             if (chromatic) chromatic.style.display = 'none';
 
             await this.waitForLoadingPromise();
             this.setRendererPhase(INTRO_PHASES.MENU_BG);
-
-            // Resolve the promise
-            if (this.onComplete) {
-                this.onComplete();
-            }
-        }, 1000);
+        }, 850);
     }
 
     /**

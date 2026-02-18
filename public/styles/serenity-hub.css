@@ -13,7 +13,7 @@
   --hub-background: rgba(255, 255, 255, 0.1);
   --hub-border: rgba(255, 255, 255, 0.2);
   --hub-shadow: rgba(0, 0, 0, 0.3);
-  --hub-backdrop-blur: 30px;
+  --hub-backdrop-blur: 12px;
 
   --hub-spacing-xs: 8px;
   --hub-spacing-sm: 12px;
@@ -254,8 +254,8 @@
   max-height: 85vh;
   min-height: 700px;
   background: var(--hub-background);
-  backdrop-filter: blur(var(--hub-backdrop-blur)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--hub-backdrop-blur)) saturate(180%);
+  backdrop-filter: blur(var(--hub-backdrop-blur)) saturate(120%);
+  -webkit-backdrop-filter: blur(var(--hub-backdrop-blur)) saturate(120%);
   border-radius: var(--hub-radius-lg);
   border: 1px solid var(--hub-border);
   box-shadow: 0 8px 32px var(--hub-shadow),
@@ -264,6 +264,7 @@
   opacity: 0;
   pointer-events: none;
   transition: all var(--hub-transition-normal);
+  will-change: transform, opacity;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -413,6 +414,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
+  contain: strict;
 }
 
 /* Custom scrollbar */
@@ -3330,4 +3332,59 @@
 
 .enhanced-breathing-indicator.session-elixir .breathing-floating-text {
   text-shadow: 0 0 25px rgba(255, 100, 100, 0.8);
+}
+
+/* ===========================
+   Scroll Performance Optimizations
+   =========================== */
+
+/* Class added via JS when scrolling starts */
+
+
+
+/* Simplified Theme Card for Performance */
+.theme-card {
+  /* ... existing styles ... */
+  /* Optimize default state */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  /* Dramatically simplified shadow */
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  /* Remove box-shadow transition */
+  will-change: transform;
+  /* Hint to browser */
+
+  /* Virtual Scrolling / Smart Rendering */
+  content-visibility: auto;
+  contain-intrinsic-size: 100px 200px;
+  /* Estimate size to prevent scrollbar jumping */
+}
+
+/* Reduce hover complexity */
+.theme-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  /* Simpler hover shadow */
+}
+
+/* Scroll Performance Optimizations */
+.serenity-hub-panel.is-scrolling {
+  pointer-events: none;
+  /* Ignore mouse events during scroll to improve FPS */
+}
+
+.serenity-hub-backdrop.is-scrolling {
+  pointer-events: none;
+}
+
+.serenity-hub-panel.is-scrolling .hub-tab-content {
+  pointer-events: auto;
+  /* Allow scrolling to continue */
+  will-change: scroll-position;
+}
+
+/* Reduce hover complexity */
+.theme-card:hover {
+  transform: translateY(-2px);
+  /* box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2); -> Removed or simplified */
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
 }

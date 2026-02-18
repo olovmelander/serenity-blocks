@@ -292,6 +292,18 @@ export const THEME_REGISTRY = [
         group: 'atmospheric',
     },
     {
+        id: 'sky-children',
+        displayName: 'Sky Children',
+        module: './sky-children-v2/sky-children-alias-theme.js',
+        group: 'sky',
+    },
+    {
+        id: 'sky-children-v2',
+        displayName: 'Sky Children v2',
+        module: './sky-children-v2/sky-children-v2-theme.js',
+        group: 'sky',
+    },
+    {
         id: 'cinder-drift',
         displayName: 'Cinder Drift',
         module: './cinder-drift/cinder-drift-theme.js',

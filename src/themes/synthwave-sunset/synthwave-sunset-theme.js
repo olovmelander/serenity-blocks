@@ -11,6 +11,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { WebGLRenderer } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
@@ -568,7 +569,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             if (this.enableWebGPU && !this.webgpuMaterialsReady) {
                 console.warn('[Synthwave3D] WebGPU requested but TSL materials are not ready. Using WebGL2 fallback.');
             }
-            this.renderer = new THREE.WebGLRenderer({
+            this.renderer = new WebGLRenderer({
                 alpha: false,
                 antialias,
                 powerPreference: 'high-performance',
