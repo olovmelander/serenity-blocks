@@ -485,8 +485,13 @@ export function createNebulaNodeMaterial(params = {}) {
 
     const gray = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
     const pulseFactor = float(1.0).add(uPulse.mul(0.14));
-    const color = vec3(gray, gray, gray).mul(pulseFactor).mul(0.24);
-    const alpha = texel.r.mul(uOpacity.add(uPulse.mul(0.014))).mul(edgeFade).mul(0.32);
+
+    // Subtle cool blue tint
+    const tint = vec3(0.85, 0.9, 1.05);
+    const color = vec3(gray, gray, gray).mul(tint).mul(pulseFactor);
+
+    // Alpha boost (2.0) + smooth fade
+    const alpha = texel.r.mul(uOpacity.add(uPulse.mul(0.014))).mul(edgeFade).mul(2.0);
 
     material.colorNode = color;
     material.opacityNode = alpha;
@@ -705,5 +710,50 @@ export function createCosmicWaveNodeMaterial(params = {}) {
         material,
         { uTime, uOpacity, uColor },
         { emitsBloom: true, mrtRole: 'cosmic-wave' },
+    );
+}
+
+export function createGasSwirlNodeMaterial(params = {}) {
+    const material = new PointsNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+    });
+
+    // Attributes for the CPU-simulated particles
+    const aAlpha = attribute('aAlpha');
+    const aSize = attribute('aSize');
+
+    // Size attenuation match: gl_PointSize = aSize * (320.0 / -mvPosition.z)
+    const viewPos = modelViewMatrix.mul(vec4(positionLocal, float(1.0)));
+    const depth = max(float(1.0), viewPos.z.negate());
+    material.sizeNode = clamp(
+        aSize.mul(float(320.0)).div(depth),
+        float(1.5),
+        float(1.5),
+        float(300.0),
+    );
+
+    // WebGPU: Avoid UV builtins for Points as they can fail or return invalid values
+    // Reverting to soft squares to ensure visibility
+
+    // Silver-blue base
+    const baseColor = vec3(0.72, 0.76, 0.92);
+
+    // High brightness for bloom
+    const finalColor = baseColor.mul(3.0);
+
+    // Soften opacity to account for full quad area
+    const alpha = aAlpha.mul(0.6);
+
+    material.colorNode = finalColor;
+    material.opacityNode = alpha;
+    // Emissive for bloom
+    material.emissiveNode = finalColor.mul(alpha).mul(BLOOM_CLASS_WEIGHTS.voidSpark);
+
+    return finalizeNodeMaterial(
+        material,
+        {},
+        { emitsBloom: true, mrtRole: 'gas-swirl' },
     );
 }

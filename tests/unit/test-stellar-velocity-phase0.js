@@ -729,4 +729,57 @@ console.log('\nTest 37: Phase 7 runtime budget controls and hot-path profile ins
 }
 console.log('  ✓ PASS');
 
-console.log('\n=== All Stellar Velocity Phase 0/1/2/3/4/5/6 + Phase 7 Tests Passed ===');
+console.log('\nTest 38: Phase 6 remaining cinematic systems are implemented and wired');
+assert(themeSource.includes('createWarpStreakLines()'), 'Phase 6 should create warp streak line geometry');
+assert(themeSource.includes('updateWarpStreakLines(delta)'), 'Phase 6 should update warp streak line geometry');
+assert(themeSource.includes('createTunnelLattice()'), 'Phase 6 should create tunnel lattice geometry');
+assert(themeSource.includes('updateTunnelLattice(delta)'), 'Phase 6 should update tunnel lattice visibility and scale');
+assert(themeSource.includes('createEnergyDischargeArc(intensity = 1)'), 'Phase 6 should include discharge arc creation helper');
+assert(themeSource.includes('updateEnergyDischargeArcs(delta)'), 'Phase 6 should include discharge arc lifecycle updater');
+assert(themeSource.includes('createDistantGalaxyClusters()'), 'Phase 6 should create distant galaxy clusters');
+assert(themeSource.includes('updateGalaxyClusters(delta)'), 'Phase 6 should animate distant galaxy clusters');
+assert(themeSource.includes('createDustLanes()'), 'Phase 6 should create dust lane silhouettes');
+assert(themeSource.includes('updateDustLanes(delta)'), 'Phase 6 should animate dust lane silhouettes');
+assert(themeSource.includes('createAsteroidMicroDebris()'), 'Phase 6 should create asteroid micro-debris system');
+assert(themeSource.includes('updateAsteroidMicroDebris(delta)'), 'Phase 6 should update asteroid micro-debris trails');
+assert(themeSource.includes('this.updateWarpStreakLines(rawDelta);'), 'Animation loop should update warp streak lines');
+assert(themeSource.includes('this.updateTunnelLattice(rawDelta);'), 'Animation loop should update tunnel lattice');
+assert(themeSource.includes('this.updateEnergyDischargeArcs(rawDelta);'), 'Animation loop should update discharge arcs');
+assert(themeSource.includes('this.updateAsteroidMicroDebris(rawDelta);'), 'Animation loop should update micro-debris trails');
+{
+    const theme = createRuntimeThemeHarness();
+    theme.scene = new THREE.Scene();
+    theme.applyQualityPreset('High');
+    theme.createWarpStreakLines();
+    theme.createTunnelLattice();
+    theme.createAsteroidField();
+    theme.getStarTexture = () => null;
+    theme.createAsteroidMicroDebris();
+    assert(theme.warpStreakLines?.isLineSegments === true, 'Warp streak lines should use LineSegments geometry');
+    assert(theme.tunnelLattice?.isMesh === true, 'Tunnel lattice should be a mesh');
+    assert(theme.asteroidMicroDebris?.mesh, 'Asteroid micro-debris system should create a runtime mesh');
+}
+console.log('  ✓ PASS');
+
+console.log('\nTest 39: Phase 8 validation helpers and harness controls are available');
+assert(themeSource.includes('captureValidationSnapshot(label = \'snapshot\')'), 'Phase 8 should expose validation snapshot helper');
+assert(themeSource.includes('getValidationMatrixRows()'), 'Phase 8 should expose validation matrix rows helper');
+assert(themeSource.includes('runValidationMatrix(options = {})'), 'Phase 8 should expose validation matrix runner');
+assert(themeSource.includes('runSoakValidation(options = {})'), 'Phase 8 should expose soak validation runner');
+assert(themeSource.includes('validationMatrix: (options = {}) => this.runValidationMatrix(options)'), 'Baseline helper should expose validationMatrix API');
+assert(themeSource.includes('soakValidation: (options = {}) => this.runSoakValidation(options)'), 'Baseline helper should expose soakValidation API');
+assert(harnessSource.includes('run-validation-matrix'), 'Baseline harness should include a validation matrix control');
+assert(harnessSource.includes('run-soak-validation'), 'Baseline harness should include a soak validation control');
+assert(harnessSource.includes('helper.validationMatrix('), 'Harness should call validationMatrix helper API');
+assert(harnessSource.includes('helper.soakValidation('), 'Harness should call soakValidation helper API');
+{
+    const theme = createRuntimeThemeHarness();
+    const rows = theme.getValidationMatrixRows();
+    assert(Array.isArray(rows) && rows.length >= 5, 'Validation matrix should contain baseline runtime rows');
+    assert(rows.some((row) => row.id === 'force-webgl' && row.requiresReload === true), 'Validation matrix should flag force-webgl row as reload-required');
+    const snapshot = theme.captureValidationSnapshot('unit-check');
+    assert(snapshot.label === 'unit-check', 'Validation snapshot should include requested label');
+}
+console.log('  ✓ PASS');
+
+console.log('\n=== All Stellar Velocity Phase 0/1/2/3/4/5/6 + Phase 7/8 Tests Passed ===');

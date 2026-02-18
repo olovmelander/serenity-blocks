@@ -272,6 +272,11 @@ export class SoundManager {
     setTrack(trackName) {
         if (!this.trackNames.includes(trackName)) return;
 
+        // Prevent restarting if already playing this track
+        if (this.musicTrack === trackName && this.currentTrackId) {
+            return;
+        }
+
         this.pendingThemeLinkedTrack = null;
         this.musicTrack = trackName;
 
@@ -444,10 +449,9 @@ export class SoundManager {
     startBackgroundMusic() {
         if (this.isMuted) return;
         this.stopBackgroundMusic();
-        this.currentTrackId = Symbol();
-
         const songPath = getSongPath(this.musicTrack, this.songsData);
         this.playAudioFile(songPath);
+        this.currentTrackId = Symbol();
     }
 
     /**

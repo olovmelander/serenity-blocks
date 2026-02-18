@@ -1,4 +1,6 @@
 import { BaseGameMode } from './BaseGameMode.js';
+import { setGlobalRenderScale } from '../../themes/base-theme.js';
+
 import { GAME_MODES } from '../constants.js';
 import { SerenityHub } from '../../ui/serenity-hub/SerenityHub.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
@@ -248,6 +250,69 @@ export class SerenityMode extends BaseGameMode {
         }
     }
 
+    /**
+     * Called when Serenity Hub is opened
+     * Reduces rendering quality to save GPU for UI blur
+     */
+    onHubOpen() {
+        console.log('[Serenity] Hub opened - reducing background quality');
+        this._setLowQualityMode(true);
+    }
+
+    /**
+     * Called when Serenity Hub is closed
+     * Restores full rendering quality
+     */
+    onHubClose() {
+        console.log('[Serenity] Hub closed - restoring background quality');
+        this._setLowQualityMode(false);
+    }
+
+    /**
+     * Toggle low quality mode for background renderer
+     * @private
+     */
+    _setLowQualityMode(enabled) {
+        const { themeManager } = this.deps;
+        if (!themeManager || !themeManager.webglRenderer) return;
+        setGlobalRenderScale(enabled ? 0.6 : 1.0);
+
+        const { activeTheme } = themeManager;
+        if (!activeTheme) return;
+
+        const { renderer } = activeTheme;
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const rawRatio = typeof activeTheme.getEffectivePixelRatio === 'function'
+            ? activeTheme.getEffectivePixelRatio()
+            : Math.min(window.devicePixelRatio || 1, 2);
+        const effectiveRatio = Number.isFinite(rawRatio) && rawRatio > 0
+            ? rawRatio
+            : Math.min(window.devicePixelRatio || 1, 2);
+
+        // Re-apply pixel ratio and size immediately so quality mode takes effect now.
+        if (renderer?.setPixelRatio) {
+            renderer.setPixelRatio(effectiveRatio);
+            if (renderer.setSize) {
+                renderer.setSize(width, height, false);
+            }
+        }
+
+        if (activeTheme.composer?.setPixelRatio) {
+            activeTheme.composer.setPixelRatio(effectiveRatio);
+        }
+        if (activeTheme.composer?.setSize) {
+            activeTheme.composer.setSize(width, height);
+        }
+
+        if (activeTheme.postComposer?.setPixelRatio) {
+            activeTheme.postComposer.setPixelRatio(effectiveRatio);
+        }
+        if (activeTheme.postComposer?.setSize) {
+            activeTheme.postComposer.setSize(width, height);
+        }
+    }
+
     // ===== Private Methods =====
 
     /**
@@ -440,36 +505,36 @@ export class SerenityMode extends BaseGameMode {
 
         // Handle hardcoded Serenity-specific keys
         switch (key.toLowerCase()) {
-        case 'escape': // Exit to main menu
-            this._exitToMenu();
-            break;
+            case 'escape': // Exit to main menu
+                this._exitToMenu();
+                break;
 
-        case 'h': // Toggle Serenity Hub - Keep this hardcoded for now as it's specific to this mode
-            if (this.serenityHub) {
-                this.serenityHub.toggle();
-            }
-            event.preventDefault(); // Prevent global high score handler
-            event.stopPropagation(); // Stop event from bubbling
-            break;
+            case 'h': // Toggle Serenity Hub - Keep this hardcoded for now as it's specific to this mode
+                if (this.serenityHub) {
+                    this.serenityHub.toggle();
+                }
+                event.preventDefault(); // Prevent global high score handler
+                event.stopPropagation(); // Stop event from bubbling
+                break;
 
-        case '?': // Show keyboard shortcuts (legacy)
-        case '/': // Toggle control hints
-            if (this.serenityHub) {
-                this.serenityHub.toggleButtonHints();
-            } else {
-                this._showKeyboardShortcuts();
-            }
-            break;
+            case '?': // Show keyboard shortcuts (legacy)
+            case '/': // Toggle control hints
+                if (this.serenityHub) {
+                    this.serenityHub.toggleButtonHints();
+                } else {
+                    this._showKeyboardShortcuts();
+                }
+                break;
 
-        case ' ': // Toggle breathing indicator
-            this._toggleBreathingIndicator();
-            event.preventDefault(); // Prevent page scroll
-            break;
+            case ' ': // Toggle breathing indicator
+                this._toggleBreathingIndicator();
+                event.preventDefault(); // Prevent page scroll
+                break;
 
-        case 't': // Cycle breathing technique
-            this._cycleBreathingTechnique();
-            event.preventDefault();
-            break;
+            case 't': // Cycle breathing technique
+                this._cycleBreathingTechnique();
+                event.preventDefault();
+                break;
         }
     }
 

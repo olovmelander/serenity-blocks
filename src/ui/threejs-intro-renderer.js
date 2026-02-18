@@ -742,22 +742,22 @@ export default class ThreeJSIntroRenderer {
 
         const side = Math.floor(Math.random() * 4);
         switch (side) {
-        case 0: // Top
-            mesh.position.set((Math.random() - 0.5) * bounds.width, halfH + margin, z);
-            mesh.userData.velocity.y = -Math.abs(mesh.userData.velocity.y) - 0.025; // Force Down (slower)
-            break;
-        case 1: // Bottom
-            mesh.position.set((Math.random() - 0.5) * bounds.width, -halfH - margin, z);
-            mesh.userData.velocity.y = Math.abs(mesh.userData.velocity.y) + 0.025; // Force Up (slower)
-            break;
-        case 2: // Left
-            mesh.position.set(-halfW - margin, (Math.random() - 0.5) * bounds.height, z);
-            mesh.userData.velocity.x = Math.abs(mesh.userData.velocity.x) + 0.025; // Force Right (slower)
-            break;
-        case 3: // Right
-            mesh.position.set(halfW + margin, (Math.random() - 0.5) * bounds.height, z);
-            mesh.userData.velocity.x = -Math.abs(mesh.userData.velocity.x) - 0.025; // Force Left (slower)
-            break;
+            case 0: // Top
+                mesh.position.set((Math.random() - 0.5) * bounds.width, halfH + margin, z);
+                mesh.userData.velocity.y = -Math.abs(mesh.userData.velocity.y) - 0.025; // Force Down (slower)
+                break;
+            case 1: // Bottom
+                mesh.position.set((Math.random() - 0.5) * bounds.width, -halfH - margin, z);
+                mesh.userData.velocity.y = Math.abs(mesh.userData.velocity.y) + 0.025; // Force Up (slower)
+                break;
+            case 2: // Left
+                mesh.position.set(-halfW - margin, (Math.random() - 0.5) * bounds.height, z);
+                mesh.userData.velocity.x = Math.abs(mesh.userData.velocity.x) + 0.025; // Force Right (slower)
+                break;
+            case 3: // Right
+                mesh.position.set(halfW + margin, (Math.random() - 0.5) * bounds.height, z);
+                mesh.userData.velocity.x = -Math.abs(mesh.userData.velocity.x) - 0.025; // Force Left (slower)
+                break;
         }
 
         this.scene.add(mesh);
@@ -777,112 +777,112 @@ export default class ThreeJSIntroRenderer {
         const shape = new THREE.Shape();
 
         switch (type) {
-        case 'I':
-            // [- - 0 +] (4 blocks long)
-            // Width 8 (-4 to 4), Height 2 (-1 to 1)
-            shape.moveTo(-4, -1);
-            shape.lineTo(4, -1);
-            shape.lineTo(4, 1);
-            shape.lineTo(-4, 1);
-            shape.lineTo(-4, -1);
-            break;
+            case 'I':
+                // [- - 0 +] (4 blocks long)
+                // Width 8 (-4 to 4), Height 2 (-1 to 1)
+                shape.moveTo(-4, -1);
+                shape.lineTo(4, -1);
+                shape.lineTo(4, 1);
+                shape.lineTo(-4, 1);
+                shape.lineTo(-4, -1);
+                break;
 
-        case 'O':
-            // 2x2 Square
-            // Width 4 (-2 to 2), Height 4 (-2 to 2)
-            shape.moveTo(-2, -2);
-            shape.lineTo(2, -2);
-            shape.lineTo(2, 2);
-            shape.lineTo(-2, 2);
-            shape.lineTo(-2, -2);
-            break;
+            case 'O':
+                // 2x2 Square
+                // Width 4 (-2 to 2), Height 4 (-2 to 2)
+                shape.moveTo(-2, -2);
+                shape.lineTo(2, -2);
+                shape.lineTo(2, 2);
+                shape.lineTo(-2, 2);
+                shape.lineTo(-2, -2);
+                break;
 
-        case 'T':
-            //      []
-            //    [][][]
-            // Bottom: -3 to 3, y=-1 to 1.
-            // Top: -1 to 1, y=1 to 3.
-            shape.moveTo(-3, -1);
-            shape.lineTo(3, -1);
-            shape.lineTo(3, 1);
-            shape.lineTo(1, 1);
-            shape.lineTo(1, 3);
-            shape.lineTo(-1, 3);
-            shape.lineTo(-1, 1);
-            shape.lineTo(-3, 1);
-            shape.lineTo(-3, -1);
-            break;
+            case 'T':
+                //      []
+                //    [][][]
+                // Bottom: -3 to 3, y=-1 to 1.
+                // Top: -1 to 1, y=1 to 3.
+                shape.moveTo(-3, -1);
+                shape.lineTo(3, -1);
+                shape.lineTo(3, 1);
+                shape.lineTo(1, 1);
+                shape.lineTo(1, 3);
+                shape.lineTo(-1, 3);
+                shape.lineTo(-1, 1);
+                shape.lineTo(-3, 1);
+                shape.lineTo(-3, -1);
+                break;
 
-        case 'S':
-            //      [][]  (Top Right)
-            //    [][]    (Bottom Left)
-            // Top: x=-1 to 3, y=0 to 2
-            // Bottom: x=-3 to 1, y=-2 to 0
-            shape.moveTo(-3, -2);
-            shape.lineTo(1, -2);
-            shape.lineTo(1, 0); // Inner corner
-            shape.lineTo(3, 0);
-            shape.lineTo(3, 2);
-            shape.lineTo(-1, 2);
-            shape.lineTo(-1, 0); // Inner corner
-            shape.lineTo(-3, 0);
-            shape.lineTo(-3, -2);
-            break;
+            case 'S':
+                //      [][]  (Top Right)
+                //    [][]    (Bottom Left)
+                // Top: x=-1 to 3, y=0 to 2
+                // Bottom: x=-3 to 1, y=-2 to 0
+                shape.moveTo(-3, -2);
+                shape.lineTo(1, -2);
+                shape.lineTo(1, 0); // Inner corner
+                shape.lineTo(3, 0);
+                shape.lineTo(3, 2);
+                shape.lineTo(-1, 2);
+                shape.lineTo(-1, 0); // Inner corner
+                shape.lineTo(-3, 0);
+                shape.lineTo(-3, -2);
+                break;
 
-        case 'Z':
-            //    [][]  (Top Left)
-            //      [][]  (Bottom Right)
-            // Top: x=-3 to 1, y=0 to 2
-            // Bottom: x=-1 to 3, y=-2 to 0
-            shape.moveTo(-1, -2);
-            shape.lineTo(3, -2);
-            shape.lineTo(3, 0);
-            shape.lineTo(1, 0); // Inner corner
-            shape.lineTo(1, 2);
-            shape.lineTo(-3, 2);
-            shape.lineTo(-3, 0);
-            shape.lineTo(-1, 0); // Inner corner
-            shape.lineTo(-1, -2);
-            break;
+            case 'Z':
+                //    [][]  (Top Left)
+                //      [][]  (Bottom Right)
+                // Top: x=-3 to 1, y=0 to 2
+                // Bottom: x=-1 to 3, y=-2 to 0
+                shape.moveTo(-1, -2);
+                shape.lineTo(3, -2);
+                shape.lineTo(3, 0);
+                shape.lineTo(1, 0); // Inner corner
+                shape.lineTo(1, 2);
+                shape.lineTo(-3, 2);
+                shape.lineTo(-3, 0);
+                shape.lineTo(-1, 0); // Inner corner
+                shape.lineTo(-1, -2);
+                break;
 
-        case 'J':
-            //    []      (Top Left relative to stick?) No, J has tail left
-            //    []
-            //  [][]
-            // Stick: x=0 to 2, y=-3 to 3
-            // Tail: x=-2 to 0, y=-3 to -1
-            shape.moveTo(-2, -3);
-            shape.lineTo(2, -3);
-            shape.lineTo(2, 3);
-            shape.lineTo(0, 3);
-            shape.lineTo(0, -1); // Inner corner
-            shape.lineTo(-2, -1);
-            shape.lineTo(-2, -3);
-            break;
+            case 'J':
+                //    []      (Top Left relative to stick?) No, J has tail left
+                //    []
+                //  [][]
+                // Stick: x=0 to 2, y=-3 to 3
+                // Tail: x=-2 to 0, y=-3 to -1
+                shape.moveTo(-2, -3);
+                shape.lineTo(2, -3);
+                shape.lineTo(2, 3);
+                shape.lineTo(0, 3);
+                shape.lineTo(0, -1); // Inner corner
+                shape.lineTo(-2, -1);
+                shape.lineTo(-2, -3);
+                break;
 
-        case 'L':
-            //      []
-            //      []
-            //  [][]
-            // Stick: x=-2 to 0, y=-3 to 3
-            // Tail: x=0 to 2, y=-3 to -1
-            shape.moveTo(-2, -3);
-            shape.lineTo(2, -3);
-            shape.lineTo(2, -1);
-            shape.lineTo(0, -1); // Inner corner
-            shape.lineTo(0, 3);
-            shape.lineTo(-2, 3);
-            shape.lineTo(-2, -3);
-            break;
+            case 'L':
+                //      []
+                //      []
+                //  [][]
+                // Stick: x=-2 to 0, y=-3 to 3
+                // Tail: x=0 to 2, y=-3 to -1
+                shape.moveTo(-2, -3);
+                shape.lineTo(2, -3);
+                shape.lineTo(2, -1);
+                shape.lineTo(0, -1); // Inner corner
+                shape.lineTo(0, 3);
+                shape.lineTo(-2, 3);
+                shape.lineTo(-2, -3);
+                break;
 
-        default:
-            // Default box
-            shape.moveTo(-2, -2);
-            shape.lineTo(2, -2);
-            shape.lineTo(2, 2);
-            shape.lineTo(-2, 2);
-            shape.lineTo(-2, -2);
-            break;
+            default:
+                // Default box
+                shape.moveTo(-2, -2);
+                shape.lineTo(2, -2);
+                shape.lineTo(2, 2);
+                shape.lineTo(-2, 2);
+                shape.lineTo(-2, -2);
+                break;
         }
 
         return shape;

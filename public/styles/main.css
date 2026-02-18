@@ -14294,6 +14294,52 @@ body.phaser-multiplayer-active #p2-canvas {
     scrollbar-color: #8b5cf6 rgba(0, 0, 0, 0.3);
 }
 
+/* Settings modal scroll performance mode */
+#settings-modal .settings-scroll-container {
+    contain: layout paint;
+}
+
+#settings-modal .setting {
+    content-visibility: auto;
+    contain-intrinsic-size: 56px;
+}
+
+#settings-modal.is-scrolling .modal-content {
+    pointer-events: none;
+}
+
+#settings-modal.is-scrolling .settings-scroll-container {
+    pointer-events: auto;
+    will-change: scroll-position;
+}
+
+#settings-modal.is-scrolling .settings-scroll-container * {
+    pointer-events: none;
+}
+
+body.settings-scroll-active #settings-modal .settings-tab,
+body.settings-scroll-active #settings-modal .controls-subtab,
+body.settings-scroll-active #settings-modal .controls-nav-action,
+body.settings-scroll-active #settings-modal .controls-subtab-action,
+body.settings-scroll-active #settings-modal .setting,
+body.settings-scroll-active #settings-modal .setting-select,
+body.settings-scroll-active #settings-modal .key-input,
+body.settings-scroll-active #settings-modal .modal-close-btn {
+    transition: none !important;
+}
+
+body.settings-scroll-active #settings-modal .settings-tab:hover,
+body.settings-scroll-active #settings-modal .controls-subtab:hover,
+body.settings-scroll-active #settings-modal .controls-subtab:focus-visible,
+body.settings-scroll-active #settings-modal .key-input:hover,
+body.settings-scroll-active #settings-modal .setting-select:hover {
+    transform: none !important;
+}
+
+body.settings-scroll-active #settings-modal .modal-content::after {
+    animation-play-state: paused;
+}
+
 #game-over-modal h1,
 #settings-modal h1 {
     background: linear-gradient(135deg, #00ffff, #8b5cf6);

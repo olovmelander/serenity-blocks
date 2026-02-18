@@ -32,6 +32,12 @@ export class SerenityHub {
         this.hideDelay = 3000; // 3 seconds
         this.isMouseOverHub = false;
         this.isMouseOverSettings = false;
+        this.autoHideEnabled = false;
+
+        // Scroll performance mode state
+        this.scrollIdleDelay = 380;
+        this.scrollIdleTimeout = null;
+        this.scrollRafId = null;
 
         // Tab instances
         this.breathingTab = null;
@@ -296,6 +302,28 @@ export class SerenityHub {
 
         document.body.appendChild(this.backdrop);
         document.body.appendChild(this.panel);
+
+        // Scroll Optimization: Detect scrolling to disable hover effects
+        const tabContent = this.panel.querySelector('.hub-tab-content');
+        this.tabContentScrollHandler = () => {
+            if (this.scrollRafId !== null) return;
+            this.scrollRafId = requestAnimationFrame(() => {
+                this.scrollRafId = null;
+                this.setScrollPerformanceMode(true);
+                if (this.scrollIdleTimeout) {
+                    clearTimeout(this.scrollIdleTimeout);
+                }
+                this.scrollIdleTimeout = setTimeout(() => {
+                    this.scrollIdleTimeout = null;
+                    this.setScrollPerformanceMode(false);
+                }, this.scrollIdleDelay);
+            });
+        };
+
+        tabContent.addEventListener('scroll', this.tabContentScrollHandler, {
+            passive: true,
+            signal: this.abortController.signal,
+        });
     }
 
     /**
@@ -360,6 +388,11 @@ export class SerenityHub {
    * Setup auto-hide behavior for the hub icon
    */
     setupAutoHide() {
+        if (!this.autoHideEnabled) {
+            this.showIcon();
+            return;
+        }
+
         let mouseMoveTimeout = null;
 
         // Store document mousemove handler reference
@@ -386,6 +419,31 @@ export class SerenityHub {
 
         // Initially hide after delay
         this.startAutoHide();
+    }
+
+    /**
+     * Toggle temporary lightweight visual mode during active scrolling
+     * @param {boolean} enabled
+     */
+    setScrollPerformanceMode(enabled) {
+        const isEnabled = enabled && this.isOpen;
+        this.panel?.classList.toggle('is-scrolling', isEnabled);
+        this.backdrop?.classList.toggle('is-scrolling', isEnabled);
+    }
+
+    /**
+     * Clear all scroll performance mode timers and classes
+     */
+    clearScrollPerformanceMode() {
+        if (this.scrollIdleTimeout) {
+            clearTimeout(this.scrollIdleTimeout);
+            this.scrollIdleTimeout = null;
+        }
+        if (this.scrollRafId !== null) {
+            cancelAnimationFrame(this.scrollRafId);
+            this.scrollRafId = null;
+        }
+        this.setScrollPerformanceMode(false);
     }
 
     /**
@@ -541,7 +599,13 @@ export class SerenityHub {
     show() {
         if (this.isOpen) return;
 
+        this.clearScrollPerformanceMode();
         this.isOpen = true;
+
+        // Notify Serenity Mode to lower quality
+        if (this.serenityMode && typeof this.serenityMode.onHubOpen === 'function') {
+            this.serenityMode.onHubOpen();
+        }
 
         // Pause game if callback is set (for single player, local MP, infinity mode)
         if (this.onPauseCallback) {
@@ -573,9 +637,18 @@ export class SerenityHub {
    * Hide the hub panel
    */
     hide() {
-        if (!this.isOpen) return;
+        if (!this.isOpen) {
+            this.clearScrollPerformanceMode();
+            return;
+        }
 
         this.isOpen = false;
+        this.clearScrollPerformanceMode();
+
+        // Notify Serenity Mode to restore quality
+        if (this.serenityMode && typeof this.serenityMode.onHubClose === 'function') {
+            this.serenityMode.onHubClose();
+        }
 
         // Hide backdrop and panel
         this.backdrop.classList.remove('visible');
@@ -829,12 +902,10 @@ export class SerenityHub {
                     setTimeout(() => hintsOverlay.remove(), 300);
                 }
             }, 10000);
-        } else {
+        } else if (hintsOverlay.classList.contains('visible')) {
             // Toggle visibility
-            if (hintsOverlay.classList.contains('visible')) {
-                hintsOverlay.classList.remove('visible');
-                setTimeout(() => hintsOverlay.remove(), 300);
-            }
+            hintsOverlay.classList.remove('visible');
+            setTimeout(() => hintsOverlay.remove(), 300);
         }
     }
 
@@ -846,6 +917,7 @@ export class SerenityHub {
 
         // Clear timers
         this.cancelAutoHide();
+        this.clearScrollPerformanceMode();
 
         // Disable gamepad integration
         const gamepadController = this.serenityMode.deps?.gamepadController;
@@ -863,7 +935,7 @@ export class SerenityHub {
 
         // Abort all tab-specific listeners
         if (this.tabAbortControllers.size > 0) {
-            for (const [tab, controller] of this.tabAbortControllers.entries()) {
+            for (const [, controller] of this.tabAbortControllers.entries()) {
                 controller.abort();
             }
             console.log(`  ✅ ${this.tabAbortControllers.size} tab AbortControllers aborted`);

@@ -14,6 +14,7 @@ import {
     If,
     abs,
     clamp,
+    cos,
     float,
     fract,
     instanceIndex,
@@ -30,11 +31,11 @@ const TYPE_SPARKLE = 2;
 const TYPE_SHOOTING_TRAIL = 3;
 const TYPE_COLLISION_BURST = 4;
 
-const STAR_COUNT = 25000;
-const NEBULA_COUNT = 2200;
-const SPARKLE_COUNT = 2500;
+const STAR_COUNT = 45000;
+const NEBULA_COUNT = 4000;
+const SPARKLE_COUNT = 4000;
 const SHOOTING_TRAIL_COUNT = 450;
-const COLLISION_BURST_COUNT = 512;
+const COLLISION_BURST_COUNT = 600;
 const MAX_TETROMINO_SLOTS = 50;
 const RESERVED_TETROMINO_TRAILS = Math.min(SHOOTING_TRAIL_COUNT, MAX_TETROMINO_SLOTS * 2);
 
@@ -77,6 +78,7 @@ export class IntroParticleCompute {
         this.uWarpFactor = uniform(0);
         this.uAudioPulse = uniform(0);
         this.uEventIntensity = uniform(1.0);
+        this.uBgFactor = uniform(0);
 
         this.shootingStarCursor = 0;
         this.trailCursor = 0;
@@ -158,12 +160,13 @@ export class IntroParticleCompute {
 
             this.positionData[idx] = (Math.random() - 0.5) * 300;
             this.positionData[idx + 1] = (Math.random() - 0.5) * 300;
-            this.positionData[idx + 2] = (Math.random() - 0.5) * 200 - 50;
+            // Spawn in full visible Z-range [-160, 60] to fill space immediately
+            this.positionData[idx + 2] = (Math.random() * 220) - 160;
             this.positionData[idx + 3] = TYPE_STAR;
 
-            this.velocityData[idx] = (Math.random() - 0.5) * 0.01 * speedMul;
-            this.velocityData[idx + 1] = (Math.random() - 0.5) * 0.01 * speedMul;
-            this.velocityData[idx + 2] = (Math.random() - 0.5) * 0.005 * speedMul;
+            this.velocityData[idx] = (Math.random() - 0.5) * 0.04 * speedMul;
+            this.velocityData[idx + 1] = (Math.random() - 0.5) * 0.04 * speedMul;
+            this.velocityData[idx + 2] = (Math.random() * 0.15 + 0.05) * speedMul; // Bias Z+ (towards camera)
             this.velocityData[idx + 3] = 0;
 
             this.lifeData[idx] = 1.0;
@@ -188,13 +191,13 @@ export class IntroParticleCompute {
             const spread = 5;
 
             this.positionData[idx] = Math.cos(angle) * radius + (Math.random() - 0.5) * spread;
-            this.positionData[idx + 1] = (Math.random() - 0.5) * 40;
-            this.positionData[idx + 2] = Math.sin(angle) * radius - 20 + (Math.random() - 0.5) * spread;
+            this.positionData[idx + 1] = (Math.random() - 0.5) * 60; // Taller nebula
+            this.positionData[idx + 2] = (Math.random() * 220) - 160; // Match visible Z-range
             this.positionData[idx + 3] = TYPE_NEBULA;
 
-            this.velocityData[idx] = -Math.sin(angle) * 0.02;
-            this.velocityData[idx + 1] = (Math.random() - 0.5) * 0.01;
-            this.velocityData[idx + 2] = Math.cos(angle) * 0.02;
+            this.velocityData[idx] = -Math.sin(angle) * 0.04;
+            this.velocityData[idx + 1] = (Math.random() - 0.5) * 0.028;
+            this.velocityData[idx + 2] = Math.cos(angle) * 0.04;
             this.velocityData[idx + 3] = 0;
 
             this.lifeData[idx] = 1.0;
@@ -213,9 +216,9 @@ export class IntroParticleCompute {
         for (let i = 0; i < SPARKLE_COUNT; i++) {
             const idx = (SPARKLE_OFFSET + i) * 4;
 
-            this.positionData[idx] = (Math.random() - 0.5) * 150;
-            this.positionData[idx + 1] = (Math.random() - 0.5) * 100;
-            this.positionData[idx + 2] = (Math.random() - 0.5) * 100 - 30;
+            this.positionData[idx] = (Math.random() - 0.5) * 200;
+            this.positionData[idx + 1] = (Math.random() - 0.5) * 150;
+            this.positionData[idx + 2] = (Math.random() * 220) - 160; // Match visible Z-range
             this.positionData[idx + 3] = TYPE_SPARKLE;
 
             this.velocityData[idx] = 0;
@@ -323,7 +326,9 @@ export class IntroParticleCompute {
         const warp = this.uWarpFactor;
         const audioPulse = this.uAudioPulse;
         const eventIntensity = this.uEventIntensity;
+        const bgFactor = this.uBgFactor;
 
+        // Defined as a clear TSL function to avoid inline return warnings
         const computeParticles = Fn(() => {
             const index = instanceIndex;
             const pos = positions.element(index).toVar();
@@ -338,47 +343,137 @@ export class IntroParticleCompute {
                 const isStar = particleType.lessThan(float(0.5));
                 If(isStar, () => {
                     const phase = misc.y;
-                    const sway = sin(time.mul(float(0.3)).add(phase)).mul(float(0.005));
+                    const sway = sin(time.mul(float(0.3)).add(phase)).mul(float(0.008));
                     const centerPullX = pos.x.negate().mul(float(0.0004)).mul(attraction);
                     const centerPullY = pos.y.negate().mul(float(0.0003)).mul(attraction);
 
                     pos.x.addAssign(vel.x.add(sway).add(centerPullX).mul(delta));
                     pos.y.addAssign(vel.y.add(centerPullY).mul(delta));
-                    pos.z.addAssign(vel.z.sub(warp.mul(float(0.7))).mul(delta));
+                    // Parallax Drift: Use individual Z-velocity to drive speed (creates depth).
+                    // vel.z is 0.05..0.2. Multiplied by 15.0 => speed 0.75..3.0.
+                    // Warp adds global boost.
+                    pos.z.addAssign(vel.z.mul(float(15.0)).add(warp.mul(float(12.0))).mul(delta));
 
                     const colorShift = sin(time.mul(float(0.5)).add(misc.z.mul(float(10.0)))).mul(float(0.05));
                     life.y.addAssign(colorShift.mul(delta));
                     life.z.addAssign(colorShift.mul(float(0.7)).mul(delta));
                     life.x.assign(clamp(life.x.add(audioPulse.mul(float(0.08))), float(0.2), float(1.0)));
 
-                    const wrapBound = float(150.0);
-                    If(abs(pos.x).greaterThan(wrapBound), () => {
-                        pos.x.assign(pos.x.negate());
+                    // Removed seamless background mode fade: user wants full particle count.
+                    /*
+                    const starFadeStart = float(STAR_COUNT).mul(float(0.45));
+                    If(float(index).greaterThan(starFadeStart), () => {
+                        const fade = float(1.0).sub(bgFactor);
+                        life.x.mulAssign(fade);
                     });
-                    If(abs(pos.y).greaterThan(wrapBound), () => {
-                        pos.y.assign(pos.y.negate());
+                    */
+
+                    // Proper X/Y Wrap (Modular)
+                    const wrapBound = float(150.0);
+                    const wrapSpan = float(300.0);
+                    If(pos.x.greaterThan(wrapBound), () => { pos.x.subAssign(wrapSpan); });
+                    If(pos.x.lessThan(wrapBound.negate()), () => { pos.x.addAssign(wrapSpan); });
+                    If(pos.y.greaterThan(wrapBound), () => { pos.y.subAssign(wrapSpan); });
+                    If(pos.y.lessThan(wrapBound.negate()), () => { pos.y.addAssign(wrapSpan); });
+
+                    // Smart Z-wrap + X/Y Respawn (Infinity Field)
+                    const zMax = float(60.0);
+                    const zMin = float(-160.0);
+                    const zSpan = float(220.0);
+
+                    If(pos.z.greaterThan(zMax), () => {
+                        // Randomize Z across the far half of the range so particles
+                        // re-enter at varied depths, maintaining the 3D layered feel.
+                        const seedX = float(index).mul(float(12.9898)).add(time.mul(float(7.234)));
+                        const seedY = float(index).mul(float(78.2330)).add(time.mul(float(3.123)));
+                        const seedZ = float(index).mul(float(43.7351)).add(time.mul(float(1.789)));
+                        const randX = fract(sin(seedX).mul(float(43758.5453)));
+                        const randY = fract(sin(seedY).mul(float(43758.5453)));
+                        const randZ = fract(sin(seedZ).mul(float(43758.5453)));
+
+                        pos.x.assign(randX.mul(float(300.0)).sub(float(150.0)));
+                        pos.y.assign(randY.mul(float(300.0)).sub(float(150.0)));
+                        // Respawn in far half [-160, -60] so particle travels full visible depth
+                        pos.z.assign(randZ.mul(float(100.0)).sub(float(160.0)));
+                    });
+                    If(pos.z.lessThan(zMin), () => {
+                        pos.z.addAssign(zSpan);
                     });
                 });
 
                 const isNebula = particleType.greaterThan(float(0.5)).and(particleType.lessThan(float(1.5)));
                 If(isNebula, () => {
-                    const swirlX = pos.z.negate().mul(float(0.0005));
-                    const swirlZ = pos.x.mul(float(0.0005));
+                    const swirlX = pos.z.negate().mul(float(0.0008));
+                    const swirlZ = pos.x.mul(float(0.0008));
                     const toCenterX = pos.x.negate().mul(float(0.0008)).mul(attraction);
                     const toCenterZ = pos.z.add(float(20.0)).negate().mul(float(0.0008)).mul(attraction);
 
                     pos.x.addAssign(vel.x.add(swirlX).add(toCenterX).mul(delta).mul(float(60.0)));
                     pos.y.addAssign(vel.y.mul(delta).mul(float(60.0)));
-                    pos.z.addAssign(vel.z.add(swirlZ).add(toCenterZ).sub(warp.mul(float(0.35))).mul(delta).mul(float(60.0)));
+                    // Nebula drift: positive Z (towards camera) to match stars
+                    pos.z.addAssign(vel.z.add(swirlZ).add(toCenterZ).add(warp.mul(float(0.35))).mul(delta).mul(float(60.0)));
 
                     const pulse = sin(time.mul(float(2.0)).add(misc.y)).mul(float(0.25)).add(float(1.0)).add(audioPulse.mul(float(0.15)));
                     misc.x.assign(clamp(misc.x.mul(pulse), float(0.5), float(4.0)));
+
+                    // Removed seamless background mode fade for nebula.
+                    /*
+                    const nebulaFadeStart = float(NEBULA_COUNT).mul(float(0.45));
+                    const nebulaLocalIdx = float(index).sub(float(NEBULA_OFFSET));
+                    If(nebulaLocalIdx.greaterThan(nebulaFadeStart), () => {
+                        const fade = float(1.0).sub(bgFactor);
+                        misc.x.mulAssign(fade);
+                        life.x.mulAssign(fade);
+                    });
+                    */
+
+                    // Wrap nebula in Z (critical for depth persistence) + Respawn
+                    const zMax = float(60.0);
+                    const zMin = float(-160.0);
+                    const zSpan = float(220.0);
+                    If(pos.z.greaterThan(zMax), () => {
+                        // Respawn Nebula in a wide circle at varied far depth
+                        const seed = float(index).mul(float(1.123)).add(time);
+                        const angle = fract(sin(seed).mul(float(43758.5453))).mul(float(Math.PI * 2));
+                        const radius = float(40.0).add(fract(cos(seed).mul(float(1234.5))).mul(float(80.0)));
+                        const seedZ = float(index).mul(float(31.415)).add(time.mul(float(2.718)));
+                        const randZ = fract(sin(seedZ).mul(float(43758.5453)));
+                        pos.x.assign(sin(angle).mul(radius));
+                        pos.y.assign(cos(angle).mul(radius).mul(float(0.5))); // Flatter disc
+                        // Respawn in far half [-160, -60]
+                        pos.z.assign(randZ.mul(float(100.0)).sub(float(160.0)));
+                    });
+                    If(pos.z.lessThan(zMin), () => {
+                        pos.z.addAssign(zSpan);
+                    });
                 });
 
                 const isSparkle = particleType.greaterThan(float(1.5)).and(particleType.lessThan(float(2.5)));
                 If(isSparkle, () => {
                     const twinkle = abs(sin(time.mul(float(3.0)).add(misc.y))).mul(float(0.75)).add(float(0.25));
                     life.x.assign(clamp(twinkle.add(audioPulse.mul(float(0.18))), float(0.0), float(1.0)));
+
+                    // Add subtle float movement to sparkles too
+                    pos.z.addAssign(float(0.5).add(warp).mul(delta).mul(float(5.0)));
+
+                    // Wrap sparkles + Respawn
+                    const zMax = float(60.0);
+                    const zMin = float(-160.0);
+                    const zSpan = float(220.0);
+                    If(pos.z.greaterThan(zMax), () => {
+                        const seed = float(index).mul(float(0.543)).add(time);
+                        const seedZ = float(index).mul(float(17.391)).add(time.mul(float(4.567)));
+                        const rx = fract(sin(seed).mul(float(43758.5453))).mul(float(200.0)).sub(float(100.0));
+                        const ry = fract(cos(seed).mul(float(43758.5453))).mul(float(150.0)).sub(float(75.0));
+                        const randZ = fract(sin(seedZ).mul(float(43758.5453)));
+                        pos.x.assign(rx);
+                        pos.y.assign(ry);
+                        // Respawn in far half [-160, -60]
+                        pos.z.assign(randZ.mul(float(100.0)).sub(float(160.0)));
+                    });
+                    If(pos.z.lessThan(zMin), () => {
+                        pos.z.addAssign(zSpan);
+                    });
                 });
 
                 const isTrail = particleType.greaterThan(float(2.5)).and(particleType.lessThan(float(3.5)));
@@ -506,7 +601,6 @@ export class IntroParticleCompute {
             lifeData.element(index).assign(life);
             miscData.element(index).assign(misc);
         });
-
         this.computeNode = computeParticles().compute(this.count);
         return this.computeNode;
     }
@@ -672,6 +766,10 @@ export class IntroParticleCompute {
 
     setAudioPulse(value) {
         this.uAudioPulse.value = Math.max(0.0, Math.min(1.0, value));
+    }
+
+    setBgFactor(value) {
+        this.uBgFactor.value = Math.max(0.0, Math.min(1.0, value));
     }
 
     setBackgroundMode(enabled) {

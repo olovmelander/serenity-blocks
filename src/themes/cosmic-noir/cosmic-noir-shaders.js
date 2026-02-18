@@ -391,15 +391,21 @@ export const nebulaFragmentShader = `
         fade = pow(fade, 1.5);
 
         // Desaturate to ensure pure black/white noir look (just in case texture has color)
+        // Desaturate to ensure pure black/white noir look (just in case texture has color)
         float gray = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
-        vec3 color = vec3(gray);
+        
+        // Subtle cool blue tint for volumetric depth without breaking noir
+        vec3 color = vec3(gray) * vec3(0.85, 0.9, 1.05);
 
         // Pulse effect boosts brightness
         float pulseFactor = 1.0 + uPulse * 0.3;
         color *= pulseFactor;
 
         // Final alpha combines texture alpha, master opacity, and edge fade
-        float alpha = texColor.r * (uOpacity + uPulse * 0.05) * fade * 1.5; // Boost visibility slightly
+        // Boost alpha by 2.0x for deep visibility like Blood Moon
+        // Restore power curve for soft edges
+        float softFade = pow(fade, 1.5);
+        float alpha = texColor.r * (uOpacity + uPulse * 0.05) * softFade * 2.0;
 
         gl_FragColor = vec4(color, alpha);
     }
@@ -701,6 +707,55 @@ void main() {
 
     // Boost overall brightness
     finalColor *= 1.3;
+
+    gl_FragColor = vec4(finalColor, vAlpha * glow);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gas Swirl Particle Shader - Tangential particles from atmosphere shell
+// ─────────────────────────────────────────────────────────────────────────────
+export const gasSwirlVertexShader = `
+attribute float aAlpha;
+attribute float aSize;
+
+varying float vAlpha;
+varying vec3 vColor;
+
+void main() {
+    vAlpha = aAlpha;
+
+    // Silver-blue tint matching atmosphere palette
+    vColor = vec3(0.72, 0.76, 0.92);
+
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+
+    // Size attenuation — larger when close, smaller far away
+    gl_PointSize = aSize * (320.0 / -mvPosition.z);
+    gl_PointSize = clamp(gl_PointSize, 1.5, 300.0);
+}
+`;
+
+export const gasSwirlFragmentShader = `
+varying float vAlpha;
+varying vec3 vColor;
+
+void main() {
+    if (vAlpha <= 0.005) discard;
+
+    vec2 coord = 2.0 * gl_PointCoord - 1.0;
+    float dist = dot(coord, coord);
+    if (dist > 1.0) discard;
+
+    // Soft glow falloff - Blood Moon style (linear to 0.9)
+    float glow = 1.0 - smoothstep(0.0, 0.9, dist);
+    
+    // Bright hot core - wider like Blood Moon
+    float core = 1.0 - smoothstep(0.0, 0.25, dist);
+    
+    vec3 finalColor = mix(vColor, vec3(1.0, 1.0, 1.0), core * 0.6);
+    finalColor *= 3.0; // High brightness for bloom
 
     gl_FragColor = vec4(finalColor, vAlpha * glow);
 }

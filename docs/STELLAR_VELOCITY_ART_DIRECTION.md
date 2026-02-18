@@ -164,6 +164,8 @@ Capture helpers:
 - `window.stellarVelocityBaseline.capturePack(...)`
 - `window.stellarVelocityBaseline.captureReadability(...)`
 - `window.stellarVelocityBaseline.presetSwitchStress(...)`
+- `window.stellarVelocityBaseline.validationMatrix(...)`
+- `window.stellarVelocityBaseline.soakValidation(...)`
 
 ## Source Notes
 

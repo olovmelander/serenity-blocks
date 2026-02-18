@@ -6,6 +6,8 @@ This revision transforms the Bioluminescence theme from a WebGL-only, monolithic
 
 Key outcomes:
 - WebGPU-first startup with silent WebGL2 fallback.
+- Subnautica-inspired art direction lock with objective acceptance shots and fidelity rubric.
+- Intentional full-scene art-direction rebuild (legacy look is baseline for measurement, not aesthetic target).
 - TSL (Three Shading Language) node materials with real subsurface scattering, transmission, and procedural noise.
 - GPU compute-driven particle systems (spores, fireflies, mycelium pulse).
 - MRT emissive bloom that isolates glow from non-emissive surfaces (the single biggest visual upgrade).
@@ -68,15 +70,36 @@ Scope:
 
 ---
 
-## Art Direction & Visual Identity
+## Art Direction Lock (Subnautica-Inspired)
 
-### Mood & Inspiration
-- **Primary references:** *Avatar* (Pandora bioluminescence), *Subnautica* (alien ocean caves), *Deep Rock Galactic* (crystal caves), real deep-sea bioluminescence footage
-- **Emotional tone:** Awe, mystery, tranquility with moments of spectacle (game events)
-- **Atmosphere:** Dense, humid cave air; the sense that the cave is *alive*; every surface subtly breathes
-- **Key principle:** Darkness is as important as light — bioluminescence only works when surrounded by deep, rich blackness
+### North Star
+"A living subterranean ecosystem where darkness dominates, bioluminescence guides attention, and gameplay events feel like pulses through a cave-wide neural web."
 
-### Color Palette (Strict)
+### Primary Game Reference
+- **Primary reference game:** *Subnautica* (Unknown Worlds, 2018), focused on the mood language of Jellyshroom Cave + Lost River biomes.
+- **Target bar:** Hero shots should read as a Subnautica-grade bioluminescent cave masterpiece while remaining original to this project.
+- **Why this is the best fit for Bioluminescence:**
+  - Darkness-first composition with selective emissive organisms.
+  - Deep volumetric atmosphere and layered distance silhouettes.
+  - Organic, non-mechanical motion language (floating spores, drifting life, pulsing flora).
+  - Strong gameplay readability despite extreme low-light mood.
+- **Secondary references:** real deep-sea bioluminescence macro footage (motion and pulse rhythm only).
+
+### Visual Pillars (All Must Hold)
+- Darkness is the canvas: most pixels remain low-luminance, with emissive accents carrying attention.
+- Organic glow hierarchy: mushrooms and crystals lead; mycelium, spores, and water support.
+- Living cave rhythm: ambient breathing and event reactions feel biological, never synthetic.
+- Depth continuity: near, mid, and far cave layers stay readable in still frames and during events.
+- Restraint under stress: combo/TETRIS escalation is dramatic but never obscures board readability.
+
+### Anti-Goals (Automatic Reject)
+- Full-frame neon haze that removes contrast structure.
+- Constant maximum bloom or clipping highlights.
+- Uniform pulse timing across all emissive organisms.
+- Particles moving in straight, robotic trajectories for long durations.
+- Any sequence where board boundaries lose readability during normal gameplay events.
+
+### Subnautica-Informed Palette Lock (Strict)
 | Role | Color | Hex | Usage |
 |------|-------|-----|-------|
 | **Primary Glow** | Vivid Cyan | `#00FFD4` | Mushroom caps, spore cores, primary emissive |
@@ -88,6 +111,11 @@ Scope:
 | **Rock Base** | Wet Slate | `#0A1518` | Cave floor, walls, stalactites (non-emissive) |
 | **Water Deep** | Midnight Teal | `#001A1A` | Deep water areas, pool center |
 
+Palette rules:
+- `#CCFFFF` highlight is short-lived and event-gated; never baseline ambience.
+- Warm accents (`#66FFAA`) remain sparse and localized to avoid palette drift.
+- Rock and background values stay materially dark, even under combo bursts.
+
 ### Visual Hierarchy (Brightness Order)
 1. Crystal tips & mushroom cap centers (brightest — drives bloom)
 2. Mushroom cap edges (SSS transmission glow)
@@ -98,6 +126,15 @@ Scope:
 7. Rock surfaces, stalactites (non-emissive, lit only by scene glow)
 8. Background void, deep shadows (near-black anchor)
 
+### Composition Locks (Subnautica Mood Transfer)
+- Maintain three readable depth bands in hero shots:
+  - near foreground occluders: 20-35% frame occupancy
+  - mid playable cave volume: 35-55%
+  - far haze/void: 20-35%
+- Keep board region inside a negative-space luminance pocket; peak bloom can overlap but not erase edge contrast.
+- Preserve darkness ratio target: 40%-65% of frame remains dark-value dominant in idle and event shots.
+- Restrict simultaneous hero highlights to at most two major anchors (for example, crystal tip cluster + event pulse), avoiding visual clutter.
+
 ### Per-Mushroom Color Variation
 Every mushroom in the current theme is identical teal. The upgrade must include:
 - Base hue variation: ±15° around primary cyan per mushroom instance
@@ -105,10 +142,56 @@ Every mushroom in the current theme is identical teal. The upgrade must include:
 - Random pulse phase offset: mushrooms must NOT all breathe in sync
 - Species-specific color shift: Cluster Mini → Phosphor Green, Giant Ancient → deeper Teal
 
+### Motion Grammar
+- Ambient pulse period: 4-9 seconds per organism, phase-randomized.
+- Spore drift: curl-noise-like meander with intermittent buoyancy lifts (no linear conveyor motion).
+- Firefly movement: short elliptical loops with stochastic rest intervals.
+- Event escalation:
+  - `LINE_CLEAR`: local pulse + mild atmospheric lift.
+  - `COMBO`: broader spore density and mycelium activation.
+  - `TETRIS`: full-cave synchronized wave with fast decay back to calm baseline.
+
+### Hero Frames and Acceptance Shots
+Phase 0 baseline pack must lock these deterministic captures:
+- Shot A: idle cave mood (no event, 8 seconds).
+- Shot B: `LINE_CLEAR` readability anchor.
+- Shot C: sustained `COMBO` (n >= 6) stress.
+- Shot D: `TETRIS` signature pulse moment.
+- Shot E: forced WebGL fallback parity (`?forceWebGL=1`).
+
+### Bioluminescence Fidelity Rubric (Signoff Required)
+Score 1-5 on each shot for `High`, `Ultra`, and forced WebGL fallback:
+
+| Category | What "5" Means |
+|----------|-----------------|
+| Darkness Discipline | Darkness feels intentional and dominant without crushed gameplay readability |
+| Organic Glow Hierarchy | Mushroom/crystal/mycelium intensity ordering is always clear |
+| Cave Depth Presence | Scene reads as layered cavern volume, not flat stage cards |
+| Living Motion | Pulses and particles feel biological, not procedural noise artifacts |
+| Event Spectacle Restraint | Gameplay reactions are powerful but never chaotic or blinding |
+| Fallback Identity | WebGL fallback preserves the same mood and hierarchy language |
+
+Rubric gate:
+- Minimum per-category score: `4`
+- Average score across categories: `>= 4.4`
+- Any category `< 4` blocks phase signoff
+
 ### Readability Rules
 - Combo effects must not hide board edges or piece contrast.
 - Bloom budget is capped per quality tier.
 - Chromatic aberration remains subtle and event-scaled.
+- Event-driven luminance shifts must avoid strobe-like behavior.
+
+### Style Guardrails
+- Emulate Subnautica mood principles (darkness-first, selective glow, layered depth), not specific set pieces or exact layouts.
+- No direct copying of third-party assets, symbols, creatures, landmarks, or composition replicas.
+- Preserve Bioluminescence theme identity through existing mushroom/crystal/mycelium motif and palette lock.
+
+### Visual Drift Reject Conditions
+- More than 0.5s of sustained clipping on emissive highlights during normal play.
+- Bloom leakage makes non-emissive cave rock read as glowing.
+- Event sequences collapse depth layering into a single bright plane.
+- WebGL fallback loses the darkness-first mood and reads as a different theme.
 
 ---
 
@@ -160,18 +243,55 @@ Every mushroom in the current theme is identical teal. The upgrade must include:
 - WebGPU point primitive size limits make `THREE.Points` unsuitable for hero particles; use instanced billboards/sprites on WebGPU
 - Compute, MRT, and advanced post effects are optional capabilities; startup must never fail when one is unavailable
 
+## WebGPU Gold Standard Contract (Mandatory)
+
+This plan is only considered complete if implementation follows the discipline below:
+
+1. **Strict capability negotiation**
+   - Probe optional features only after `await renderer.init()`.
+   - Cache one immutable capability snapshot per session and log it in baseline evidence.
+   - Never hard-require compute, MRT, or timestamp queries for startup success.
+
+2. **Runtime downgrade ladder (one-way)**
+   - Downgrade order is fixed: `WebGPU full -> WebGPU no compute -> WebGPU no MRT -> WebGPU no post -> WebGL`.
+   - On failure, step down one rung and set sticky flags for the session.
+   - Prevent retry loops that thrash startup.
+
+3. **GPU resource ownership and disposal**
+   - Every render target, texture, buffer, and compute resource has explicit owner and dispose path.
+   - No per-frame transient allocations for geometry/material/render targets in hot paths.
+   - All cleanup paths (`stop`, `device loss`, `theme switch`) converge to the same teardown contract.
+
+4. **Validation and error scopes**
+   - Wrap optional WebGPU setup blocks with error scopes and report once per category.
+   - Treat uncaptured errors as release-blocking defects.
+   - Keep warning logs actionable (feature + fallback chosen), never noisy per-frame spam.
+
+5. **Frame graph discipline**
+   - Frame order is deterministic: `update -> compute (optional) -> scene pass -> post pass (optional) -> present`.
+   - No GPU readbacks in gameplay frame loop.
+   - Tone mapping ownership remains single-path per frame.
+
+6. **Pipeline warm-up and observability**
+   - Use timeout-guarded `compileAsync` for WebGPU path.
+   - Baseline harness must report CPU timings on all devices and GPU pass timings when available.
+   - Label major passes/resources for debugging and postmortem clarity.
+
 ---
 
 ## Migration Policy
 
-- Stability first: lifecycle hardening before new expensive visuals.
+- Art-direction-first rebuild: substantial visual redesign is required to meet the Subnautica bar.
+- Legacy baseline captures are for measurement only (readability, performance, regression safety), not visual parity targets.
+- WebGL fallback parity means parity with the new art lock, not parity with the pre-upgrade look.
+- Stability first: lifecycle hardening and controlled fallback remain mandatory during the rebuild.
 - Introduce one major rendering risk at a time.
-- Keep WebGL visual parity unless explicitly accepted as a deliberate difference.
-- Do not remove fallback code until parity and perf gates pass.
+- Do not remove fallback code until rubric, readability, parity-to-target, and perf gates pass.
 - Each phase has objective, file scope, tasks, and hard exit criteria.
 
 Non-goals until Phase 7+:
-- Large new simulation systems without measured bottleneck evidence.
+- Direct copying of third-party scene layouts, assets, or iconic landmarks.
+- Unbounded simulation systems that are not tied to Subnautica-inspired visual pillars.
 - Effect additions that reduce board legibility under gameplay stress.
 - Depth of field and film-grain experimentation before fallback parity, budget compliance, and readability gates are closed.
 
@@ -185,6 +305,7 @@ To keep this upgrade best-in-class, every phase must pass objective gates before
    - Add seeded randomness (`?bioluminescenceSeed=12345`) so screenshots are reproducible.
    - Capture before/after frames at fixed timestamps (`?bioluminescenceFixedDt=16.666`).
    - Fail phase signoff if visual diffs exceed target thresholds for fallback parity.
+   - Track redesign delta against legacy baseline to confirm this is a substantive visual rebuild.
 
 2. **Fallback parity first**
    - WebGL fallback is never a second-class path.
@@ -204,6 +325,11 @@ To keep this upgrade best-in-class, every phase must pass objective gates before
    - Every major feature has an immediate runtime kill-switch (`noCompute`, `noMRT`, `noPost`, etc.).
    - Device-loss and runtime failure paths must downgrade without reload loops.
 
+6. **WebGPU correctness and error hygiene**
+   - `GPUValidationError` / uncaptured error events are treated as release-blocking.
+   - Optional feature setup uses error scopes and degrades cleanly on failure.
+   - Runtime logs include one capability snapshot and one downgrade reason per session.
+
 ---
 
 ## Objective Signoff Thresholds (Locked)
@@ -213,12 +339,15 @@ World-class execution requires explicit quantitative pass/fail gates:
 | Category | Gate | Threshold |
 |----------|------|-----------|
 | Visual parity | Fallback parity diff (same seed, fixed dt, matched camera) | <= 2.5% changed pixels outside approved glow ROIs |
+| Redesign delta vs legacy | Legacy-vs-target diff on Shot A + Shot C (matched camera, board ROI excluded) | >= 25% changed pixels |
 | Visual readability | Board ROI contrast during `LINE_CLEAR`, `COMBO`, `TETRIS` anchors | >= 4.5:1 |
 | Bloom containment | Non-emissive leakage in bright bloom mask | <= 3.0% of bright pixels |
 | Mood fidelity | Darkness ratio in hero frames | 40% - 65% of frame remains dark-value dominant |
+| Art-direction fidelity | Subnautica-inspired rubric score (`High`, `Ultra`, WebGL fallback) | each category >= 4, average >= 4.4 |
 | Runtime performance (WebGPU High) | Frame time | `avg <= 16.7ms`, `p95 <= 16.7ms`, `p99 <= 20ms` |
 | Runtime performance (WebGL Medium fallback) | Frame time | `avg <= 16.7ms`, `p95 <= 20ms` |
 | Stability | Soak run | 30 min with no uncaught errors, no unbounded memory trend |
+| WebGPU validation hygiene | `GPUValidationError` / uncaptured errors during baseline + soak + switch stress | 0 |
 | Lifecycle | Theme-switch stress | 100+ create/cleanup cycles, no leaked listeners/timers/RAF loops |
 
 Notes:
@@ -304,8 +433,8 @@ import { BioluminescencePost } from './bioluminescence-post.js';
 import { SporeCompute, FireflyCompute, MyceliumPulseCompute } from './bioluminescence-compute.js';
 ```
 
-### Material Factory Return Pattern (from Chromadelic Highway)
-Every material factory returns `{ material, uniforms, meta }`:
+### Material Factory Return Pattern (from Cosmic Noir)
+Every material factory returns `{ material, uniforms, meta }` via `finalizeNodeMaterial()`:
 ```javascript
 export function createMushroomCapNodeMaterial(params = {}) {
     const material = new MeshPhysicalNodeMaterial({ ... });
@@ -316,11 +445,11 @@ export function createMushroomCapNodeMaterial(params = {}) {
     // Bloom class weight controls MRT emissive contribution
     material.emissiveNode = glowColor.mul(intensity).mul(BLOOM_CLASS_WEIGHTS.mushroomCap);
 
-    return {
+    return finalizeNodeMaterial(
         material,
-        uniforms: { uTime, uPulseIntensity },
-        meta: { emitsBloom: true, mrtRole: 'mushroomCap' },
-    };
+        { uTime, uPulseIntensity },
+        { emitsBloom: true, mrtRole: 'mushroomCap', bloomWeight: BLOOM_CLASS_WEIGHTS.mushroomCap },
+    );
 }
 ```
 
@@ -467,9 +596,10 @@ this.reactiveEnvelope = {
 
 pushReactiveEnvelope(values) {
     for (const [key, val] of Object.entries(values)) {
-        this.reactiveEnvelope[key] = Math.min(
+        // Negative values force rapid decay toward zero (e.g., TOP_OUT)
+        this.reactiveEnvelope[key] = Math.max(0, Math.min(
             (this.reactiveEnvelope[key] || 0) + val, 1.0
-        );
+        ));
     }
 }
 
@@ -484,10 +614,11 @@ updateReactiveEnvelope(delta) {
 
 Event handlers push multi-channel envelopes:
 ```javascript
-PIECE_LOCK:   pushReactiveEnvelope({ pulse: 0.15, spore: 0.2 })
+PIECE_LOCK:   pushReactiveEnvelope({ pulse: 0.15, spore: 0.5, mycelium: 0.1 })   // spore: discrete burst, not subtle
 LINE_CLEAR:   pushReactiveEnvelope({ pulse: 0.2+lines*0.1, bloom: 0.08+lines*0.06, water: 0.15+lines*0.1, mycelium: 0.3 })
 COMBO(n):     pushReactiveEnvelope({ pulse: 0.2+n*0.1, bloom: 0.1+n*0.08, spore: 0.3+n*0.15, atmosphere: 0.2+n*0.1 })
 TETRIS:       pushReactiveEnvelope({ pulse: 1.0, bloom: 0.5, spore: 1.0, mycelium: 1.0, atmosphere: 0.8, water: 0.6, exposure: 0.4 })
+TOP_OUT:      pushReactiveEnvelope({ pulse: -1.0, bloom: -1.0, spore: -1.0, mycelium: -1.0, atmosphere: -1.0, water: -1.0, exposure: -0.5 })  // negative = force decay to zero
 ```
 
 Animation loop reads envelope channels to drive each subsystem independently. This replaces scatter-shot per-effect decay with a unified, extensible system.
@@ -515,7 +646,7 @@ Animation loop reads envelope channels to drive each subsystem independently. Th
 
 ### Phase 0: Baseline Lock and Instrumentation (Critical)
 
-**Objective:** Establish objective visual/performance baselines and deterministic replay before migration work begins.
+**Objective:** Establish deterministic baselines plus a concrete Subnautica art packet before rebuild implementation begins.
 
 **Files:**
 - Modify: `src/themes/bioluminescence/bioluminescence-theme.js`
@@ -526,9 +657,13 @@ Animation loop reads envelope channels to drive each subsystem independently. Th
 
 **Tasks:**
 - [ ] Define hero-frame captures for each quality tier and backend.
+- [ ] Build `BIOLUMINESCENCE_ART_DIRECTION.md` with biome translation board (foreground fungal grove, mid cavern corridor, far abyss chamber).
 - [ ] Add deterministic controls (`bioluminescenceSeed`, `bioluminescenceFixedDt`, canned event playback).
 - [ ] Record baseline metrics: FPS, 1% low, frame-time variance, draw calls, memory.
+- [ ] Record capability snapshot + downgrade reason log for each backend run.
 - [ ] Capture readability anchors during `PIECE_LOCK`, `LINE_CLEAR`, `COMBO`, `TETRIS` events.
+- [ ] Score Shot A-E using the Subnautica-inspired fidelity rubric for `High`, `Ultra`, and forced WebGL fallback.
+- [ ] Compute intentional redesign delta against legacy baseline for Shot A and Shot C.
 - [ ] Capture baseline at `Minimal`, `High`, and `Extreme` presets.
 - [ ] Expose baseline helper API on `window.bioluminescenceBaseline`.
 - [ ] Implement dual-backend campaign helpers in harness (`WebGPU` + `?forceWebGL=1`).
@@ -538,6 +673,8 @@ Animation loop reads envelope channels to drive each subsystem independently. Th
 - Baseline pack committed and reproducible.
 - Deterministic run is reproducible with identical seed and fixed timestep.
 - Harness report includes quantitative pass/fail status for all thresholds in "Objective Signoff Thresholds".
+- Art-direction rubric scores are attached for Shot A-E on both backends.
+- Intentional redesign delta evidence (legacy vs target) is attached for Shot A and Shot C.
 - Instrumentation exists before migration work begins.
 
 ---
@@ -610,7 +747,7 @@ async initRenderer(container) {
     }
 
     // Common configuration
-    this.renderer.setClearColor(0x000000, 1);
+    this.renderer.setClearColor(0x020810, 1);  // Abyss Navy — never pure black (art direction lock)
     this.renderer.setPixelRatio(this.getEffectivePixelRatio());
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.sortObjects = true;
@@ -810,7 +947,7 @@ stop() {
 - `compileAsync` completes or times out within 3s without stalling.
 - Tone mapping is applied exactly once per path (no double tone mapping).
 - 100+ theme switches with no listener/timer/resource leaks.
-- Theme renders identically to current on WebGL fallback.
+- Pre-rebuild rendering remains stable and readable on WebGL fallback (identity shift is expected in later phases).
 
 ---
 
@@ -1099,9 +1236,34 @@ const voronoi = /* @__PURE__ */ Fn(([p]) => {
 });
 ```
 
-#### 3.2 - Material Factories
+#### 3.2 - Material Finalization Wrapper (from Cosmic Noir)
 
-Each factory returns `{ material, uniforms, meta }`:
+All material factories use a shared wrapper for consistent structure and MRT metadata:
+
+```javascript
+function finalizeNodeMaterial(material, uniforms = {}, meta = {}) {
+    const normalizedMeta = {
+        emitsBloom: meta.emitsBloom ?? false,
+        mrtRole: meta.mrtRole ?? 'default',
+        bloomWeight: meta.bloomWeight ?? 0,
+        ...meta,
+    };
+
+    // Store uniforms and metadata on material.userData for runtime access
+    material.userData = { ...(material.userData || {}), uniforms, ...normalizedMeta };
+
+    // Zero emissive enforcement for non-bloom materials
+    if (!normalizedMeta.emitsBloom && !material.emissiveNode) {
+        material.emissiveNode = vec3(0, 0, 0);
+    }
+
+    return { material, uniforms, meta: normalizedMeta };
+}
+```
+
+#### 3.3 - Material Factories
+
+Each factory returns `{ material, uniforms, meta }` via `finalizeNodeMaterial()`:
 
 - **`createMushroomCapNodeMaterial(params)`** — `MeshPhysicalNodeMaterial` with:
   - `transmissionNode` — light passes through thin cap edges (0.3-0.6)
@@ -1152,7 +1314,7 @@ Each factory returns `{ material, uniforms, meta }`:
 
 - **`createMyceliumNodeMaterial()`** — `MeshBasicNodeMaterial` with additive blending, animated brightness wave
 
-#### 3.3 - WebGL Fallback Shaders (`bioluminescence-shaders.js`)
+#### 3.4 - WebGL Fallback Shaders (`bioluminescence-shaders.js`)
 
 Extract all 6 existing inline GLSL shaders to a dedicated shaders file (pattern from Cosmic Noir):
 ```javascript
@@ -1177,7 +1339,7 @@ export const colorGradeShader = { ... };
 
 `createWebGLFallbackMaterials()` in the materials file creates `ShaderMaterial` instances from these GLSL strings.
 
-#### 3.4 - Conditional Material Creation in Theme
+#### 3.5 - Conditional Material Creation in Theme
 ```javascript
 if (this.isWebGPU) {
     const result = createMushroomCapNodeMaterial({ transmission: 0.4, ... });
@@ -1194,13 +1356,13 @@ if (this.isWebGPU) {
 
 **Exit Criteria:**
 - All material factories return `{ material, uniforms, meta }` tuples.
-- TSL noise helpers produce visuals matching GLSL originals.
+- TSL noise helpers produce deterministic, art-directable output for the redesigned biome materials.
 - Bloom class weights prevent emissive washout in MRT bloom pass.
 - Mushroom caps show visible light transmission through thin edges (WebGPU).
 - Crystals are transparent with internal color tint, no whiteout (WebGPU).
 - Fresnel rim on crystals is clamped to max 0.4.
 - WebGL path uses original GLSL shaders from `bioluminescence-shaders.js`.
-- Side-by-side comparison confirms visual parity.
+- Side-by-side comparison confirms intentional visual redesign from legacy while preserving readability and fallback identity.
 
 ---
 
@@ -1267,11 +1429,23 @@ struct ParticleState {
 
 ### Phase 5: Enhanced Environment & World Building (High)
 
-**Objective:** Transform the cave from sparse to vast, deep, and alive.
+**Objective:** Rebuild the environment into a Subnautica-grade bioluminescent cave biome, not a light polish of the current scene.
 
 **Files:**
 - Modify: `src/themes/bioluminescence/bioluminescence-theme.js`
 - Modify: `src/themes/bioluminescence/bioluminescence-materials.js`
+
+#### 5.0 - Subnautica Biome Composition Plan (Mandatory)
+
+Scene composition must be planned as three biome bands, each with distinct density, luminance, and motion:
+- **Band A: Foreground fungal grove** (board-adjacent framing, high detail, controllable occlusion).
+- **Band B: Mid cavern corridor** (dominant mushroom/crystal/mycelium storytelling layer).
+- **Band C: Far abyss chamber** (large silhouettes, sparse pulses, deep negative space).
+
+Rules:
+- Board readability pocket remains protected in all event states.
+- Each band has separate animation cadence and brightness ceiling.
+- Composition is asymmetric and organic; avoid mirrored placement and repeated silhouettes.
 
 #### 5.1 - Dramatic Cave Architecture
 
@@ -1346,6 +1520,7 @@ The defining feature:
 
 **Exit Criteria:**
 - Cave feels vast, deep, and alive with multiple depth layers.
+- Scene clearly reads as a new Subnautica-inspired biome composition, not the legacy layout.
 - Water is a stunning centerpiece with visible subsurface glow.
 - At least 4 mushroom species and 3 crystal types.
 - Mycelium network visibly connects organisms.
@@ -1356,7 +1531,7 @@ The defining feature:
 
 ### Phase 6: Advanced Lighting & Atmosphere (High)
 
-**Objective:** Add volumetric atmosphere and dynamic lighting to sell the cave environment.
+**Objective:** Deliver Subnautica-style atmospheric depth and selective luminance guidance across the rebuilt cave.
 
 **Files:**
 - Modify: `src/themes/bioluminescence/bioluminescence-theme.js`
@@ -1366,6 +1541,7 @@ The defining feature:
 - Height-based fog density (denser near water, thinner above)
 - Color-graded: teal near emissive sources, deep navy in dark areas
 - Animated wisps: slow 3D noise displacement
+- Distance-ramped atmospheric coloration that reinforces biome bands (foreground readable, mid luminous, far abyssal)
 
 #### 6.2 - God Rays / Light Shafts
 - Cone geometry with TSL material (animated intensity, dust motes within)
@@ -1383,8 +1559,14 @@ The defining feature:
 - Dust motes: 500-2000 (quality-scaled), catch light from nearby emissive sources
 - Water vapor (Extreme/Ultra only): subtle mist rising from water surface
 
+#### 6.5 - Luminance Choreography (Subnautica-Inspired)
+- Maintain darkness-first baseline in idle state.
+- During events, light propagation should travel through mycelium and nearby fog volumes before decaying.
+- Prevent full-frame brightness spikes; luminance peaks stay localized to biologically plausible sources.
+
 **Exit Criteria:**
 - Atmosphere feels thick and mysterious.
+- Lighting behavior reads as biologically driven and spatially layered.
 - God rays add drama without overwhelming.
 - Dynamic point lights only on presets that can afford them.
 - Performance remains within budget.
@@ -1402,11 +1584,12 @@ The defining feature:
 
 | Event | Envelope Push | Duration |
 |-------|---------------|----------|
-| **PIECE_LOCK** | `{ pulse: 0.15, spore: 0.2 }` | 0.3s decay |
+| **PIECE_LOCK** | `{ pulse: 0.15, spore: 0.5, mycelium: 0.1 }` | 0.3s decay |
 | **LINE_CLEAR** | `{ pulse: 0.2+lines*0.1, bloom: 0.08+lines*0.06, water: 0.15+lines*0.1, mycelium: 0.3 }` | 0.8s decay |
 | **COMBO (1-3)** | `{ pulse: 0.2+n*0.1, bloom: 0.1+n*0.08, spore: 0.3+n*0.15, atmosphere: 0.2+n*0.1 }` | Sustained, 1s decay |
 | **COMBO (4+)** | Above + `{ atmosphere: 0.5, water: 0.3 }` | Sustained, 1.5s decay |
 | **TETRIS** | `{ pulse: 1.0, bloom: 0.5, spore: 1.0, mycelium: 1.0, atmosphere: 0.8, water: 0.6, exposure: 0.4 }` | 2s decay |
+| **TOP_OUT** | Force all channels to zero via negative push. Spores settle, mycelium goes dark, atmosphere collapses to Abyss Navy. | 1.5s forced decay |
 
 Animation loop reads envelope channels to update uniforms:
 ```javascript
@@ -1429,7 +1612,7 @@ this.mushroomCapUniforms?.uPulseIntensity?.setValue(env.pulse);
 ```
 
 #### 7.2 - Ambient Animation (Idle State)
-- Organic breathing: all emissive intensities have base sine cycle (4-8s period, ±10%)
+- Organic breathing: all emissive intensities have base sine cycle (4-9s period, ±10%)
 - Periodic cave life events (random, every 10-30s):
   - Distant mushroom flash
   - Water disturbance
@@ -1733,12 +1916,15 @@ Phase 7 ──> Phase 8 (Quality & Tuning) ──> Phase 9 (QA & Validation)
 | **Crystal Fix** | Crystals show internal colored volume, no whiteout |
 | **Mushroom SSS** | Cap edges show light transmission, per-mushroom color variation visible |
 | **Darkness Ratio** | >= 40% of screen area remains very dark |
+| **Art Direction Fidelity** | Subnautica-inspired rubric passes (`>= 4` per category, `>= 4.4` average) on High, Ultra, and WebGL fallback |
+| **Transformation Magnitude** | Legacy-vs-target redesign delta meets threshold on Shot A and Shot C (`>= 25%` changed pixels outside board ROI) |
 | **Performance (WebGPU High)** | `avg <= 16.7ms`, `p95 <= 16.7ms`, `p99 <= 20ms` on GTX 1060 / RX 580 class |
 | **Performance (WebGL Medium)** | `avg <= 16.7ms`, `p95 <= 20ms`, no major stutter during events |
 | **Startup Robustness** | First interactive frame < 3s; fallback always succeeds |
 | **Fallback Quality** | WebGL path remains art-direction compliant and gameplay-reactive |
 | **Code Quality** | Modular split (`theme`, `materials`, `shaders`, `compute`, `post`) with clear capability gates |
 | **Correctness** | No console errors, clean init/cleanup, no leak trend in 30-min soak |
+| **WebGPU Validation Hygiene** | 0 uncaptured WebGPU validation errors across baseline, soak, and switch-stress runs |
 | **Color Accuracy** | Emissive outputs stay within defined palette |
 | **Budget Compliance** | Draw calls and frame times within Performance Budgets table |
 
@@ -1756,3 +1942,19 @@ Phase 7 ──> Phase 8 (Quality & Tuning) ──> Phase 9 (QA & Validation)
 8. Final QA checklist passes on required hardware matrix.
 9. `docs/BIOLUMINESCENCE_ART_DIRECTION.md` and `docs/BIOLUMINESCENCE_BASELINE_CAPTURE_PROTOCOL.md` are complete and approved.
 10. `tests/performance/benchmark-bioluminescence-phase9.html` and Phase unit tests (`phase0`, `phase1`, `phase6`, `phase9`) exist and pass.
+11. Art-direction rubric passes on Shot A-E capture set for `High`, `Ultra`, and forced WebGL fallback.
+12. Baseline evidence confirms zero uncaptured WebGPU validation errors and clean downgrade logging.
+13. Redesign delta gate (`>= 25%` on Shot A and Shot C, board ROI excluded) is satisfied.
+
+---
+
+## References
+
+Art-direction references:
+- Unknown Worlds: Subnautica concept and environment showcases (`https://unknownworlds.com/subnautica/the-art-of-subnautica/`, `https://unknownworlds.com/subnautica/subnautica-cave-crusher/`)
+- Subnautica biome mood reference: Jellyshroom Cave and Lost River (`https://subnautica.fandom.com/wiki/Jellyshroom_Cave`, `https://subnautica.fandom.com/wiki/Lost_River`)
+
+Technical references:
+- Three.js `WebGPURenderer` docs (`https://threejs.org/docs/pages/WebGPURenderer.html`)
+- Three.js TSL wiki (`https://github.com/mrdoob/three.js/wiki/Three.js-Shading-Language`)
+- WebGPU WGSL spec (`https://www.w3.org/TR/WGSL/`)

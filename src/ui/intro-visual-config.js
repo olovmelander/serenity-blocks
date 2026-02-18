@@ -26,8 +26,8 @@ export const INTRO_VISUAL_PROFILES = {
             titleGlowSecondary: [0.52, 0.44, 1.0],
         },
         post: {
-            bloomThreshold: 0.58,
-            bloomRadius: 0.8,
+            bloomThreshold: 0.15,
+            bloomRadius: 1.8,
             vignette: 0.028,
             grain: 0.0025,
             baseExposure: 1.13,
@@ -103,12 +103,12 @@ export const INTRO_VISUAL_PROFILES = {
             },
             [INTRO_PHASES.MENU_BG]: {
                 durationMs: 700,
-                bloomMul: 0.48,
-                attractionMul: 0.72,
-                spawnMul: 0.5,
-                titleGlowMul: 0.5,
-                particleMul: 0.62,
-                cameraDriftMul: 0.42,
+                bloomMul: 1.1,
+                attractionMul: 1.0,
+                spawnMul: 1.0,
+                titleGlowMul: 0.8,
+                particleMul: 1.0,
+                cameraDriftMul: 1.0,
             },
         },
         heroInhale: {
@@ -120,7 +120,7 @@ export const INTRO_VISUAL_PROFILES = {
         qualityBudgets: {
             HIGH: createQualityBudget('HIGH', {
                 bloom: true,
-                bloomStrength: 0.34,
+                bloomStrength: 0.5,
                 godRays: 0.0,
                 dof: 0.015,
                 fringe: 0.0,
@@ -133,7 +133,7 @@ export const INTRO_VISUAL_PROFILES = {
             }),
             MEDIUM: createQualityBudget('MEDIUM', {
                 bloom: true,
-                bloomStrength: 0.28,
+                bloomStrength: 0.42,
                 godRays: 0.0,
                 dof: 0.01,
                 fringe: 0.0,

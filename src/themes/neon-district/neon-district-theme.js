@@ -16,6 +16,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { UniformsUtils } from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -3306,7 +3307,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
             const fallback = this.buildingMaterial.clone();
             if (fallback.uniforms) {
-                fallback.uniforms = THREE.UniformsUtils.clone(this.buildingMaterial.uniforms);
+                fallback.uniforms = UniformsUtils.clone(this.buildingMaterial.uniforms);
                 fallback.uniforms.uSeed.value = seed * 1000;
             }
             return fallback;

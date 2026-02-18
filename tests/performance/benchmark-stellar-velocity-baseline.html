@@ -98,6 +98,8 @@
                 <button id="reset-metrics">Reset Metrics</button>
                 <button id="capture-pack">Capture Full Pack</button>
                 <button id="capture-readability">Capture Readability Anchors</button>
+                <button id="run-validation-matrix">Run Validation Matrix</button>
+                <button id="run-soak-validation">Run Soak Validation</button>
             </div>
             <div class="hint">
                 Reports print in console as <code>[StellarVelocityBaseline] Report</code>.
@@ -110,6 +112,9 @@
 window.stellarVelocityBaseline.capture('stellar-velocity-hero-frame');
 window.stellarVelocityBaseline.capturePack({ label: 'stellar-velocity-pack', defaultLoops: 2, stressLoops: 2 });
 window.stellarVelocityBaseline.captureReadability({ label: 'stellar-velocity-readability' });
+window.stellarVelocityBaseline.validationRows();
+window.stellarVelocityBaseline.validationMatrix({ settleMs: 480 });
+window.stellarVelocityBaseline.soakValidation({ cycles: 180, stepMs: 220 });
 window.stellarVelocityBaseline.report();
 window.stellarVelocityBaseline.downloadReport('stellar-velocity-baseline');
 window.stellarVelocityBaseline.reset();
@@ -178,6 +183,20 @@ window.stellarVelocityBaseline.stop();</code>
             runOnHelper((helper) => helper.captureReadability({
                 label: 'stellar-velocity-readability',
                 settleMs: 300,
+            }));
+        });
+        document.getElementById('run-validation-matrix').addEventListener('click', () => {
+            runOnHelper((helper) => helper.validationMatrix({
+                settleMs: 480,
+                emitEvents: true,
+            }));
+        });
+        document.getElementById('run-soak-validation').addEventListener('click', () => {
+            runOnHelper((helper) => helper.soakValidation({
+                cycles: 180,
+                stepMs: 220,
+                snapshotEvery: 24,
+                fullRebuild: false,
             }));
         });
 

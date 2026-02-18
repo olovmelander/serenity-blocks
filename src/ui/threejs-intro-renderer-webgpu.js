@@ -8,7 +8,6 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     abs,
-    attribute,
     clamp,
     cos,
     float,
@@ -39,7 +38,6 @@ const {
     LineBasicNodeMaterial,
     MeshBasicNodeMaterial,
     MeshStandardNodeMaterial,
-    PointsNodeMaterial,
 } = THREE;
 
 export default class ThreeJSIntroRendererWebGPU {
@@ -324,42 +322,73 @@ export default class ThreeJSIntroRendererWebGPU {
         this.particleCompute.createComputeNode();
 
         const count = IntroParticleCompute.TOTAL_PARTICLES;
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', this.particleCompute.getPositionBuffer());
-        geometry.setDrawRange(0, count);
 
-        const material = new PointsNodeMaterial({
+        // Use MeshBasicNodeMaterial + InstancedMesh — same proven pattern as tetrominoes.
+        // Avoids PointsNodeMaterial.setupVertexSprite() double-offset bug with InstancedMesh.
+        const posStore = storage(this.particleCompute.getPositionBuffer(), 'vec4', count);
+        const lifeStore = storage(this.particleCompute.getLifeBuffer(), 'vec4', count);
+        const miscStore = storage(this.particleCompute.getMiscBuffer(), 'vec4', count);
+
+        const material = new MeshBasicNodeMaterial({
             transparent: true,
             depthWrite: false,
             blending: AdditiveBlending,
-            sizeAttenuation: true,
         });
 
-        const lifeStore = storage(this.particleCompute.getLifeBuffer(), 'vec4', count);
-        const miscStore = storage(this.particleCompute.getMiscBuffer(), 'vec4', count);
-        const idx = attribute('storageIndex');
-
-        const particleLife = lifeStore.element(idx);
-        const particleMisc = miscStore.element(idx);
+        // Per-instance position: scale local quad by particle size, offset by world position.
+        // misc.x = particle base size (0.07-0.72 world units from config).
         const warpScale = float(1.0).add(this.uWarp.mul(float(3.0)));
+        // Unwrapped positionNode logic
+        const particlePos = posStore.element(instanceIndex);
+        const particleLife = lifeStore.element(instanceIndex);
+        const particleMisc = miscStore.element(instanceIndex);
 
-        material.sizeNode = clamp(
-            particleMisc.x.mul(float(16.0)).mul(particleLife.x).mul(warpScale),
-            float(0.0),
-            float(90.0),
+        // Scale the quad by particle size; misc.x is base size (0.07-0.72).
+        // Multiply by 0.06 for small visible dots with soft glow texture.
+        const size = particleMisc.x.mul(float(0.06)).mul(particleLife.x).mul(warpScale);
+        const local = positionLocal.mul(size);
+
+        // Unwrapped positionNode logic to avoid TSL/WGSL errors with inline Fn return types
+        // Offset by world position; hide dead particles off-screen
+        const alive = clamp(particleLife.x, float(0.0), float(1.0));
+        const worldPos = mix(
+            vec3(float(0.0), float(-9999.0), float(0.0)),
+            particlePos.xyz,
+            alive,
         );
-        material.colorNode = vec3(particleLife.y, particleLife.z, particleLife.w).mul(float(1.08));
-        material.opacityNode = clamp(
-            particleLife.x.add(this.uWarp.mul(float(0.2))).add(float(0.04)),
+        material.positionNode = local.add(worldPos);
+
+        // Unwrapped colorNode logic
+        const particleLifeColor = lifeStore.element(instanceIndex);
+        material.colorNode = vec3(particleLifeColor.y, particleLifeColor.z, particleLifeColor.w).mul(float(2.5));
+
+        // Unwrapped opacityNode logic
+        const particleLifeOpacity = lifeStore.element(instanceIndex);
+        const particlePosOpacity = posStore.element(instanceIndex); // Needed for depth fade
+        const baseOpacity = clamp(
+            particleLifeOpacity.x.mul(float(0.6)).add(this.uWarp.mul(float(0.1))),
             float(0.0),
-            float(1.0),
+            float(0.7),
         );
 
-        const indices = new Float32Array(count);
-        for (let i = 0; i < count; i++) indices[i] = i;
-        geometry.setAttribute('storageIndex', new THREE.BufferAttribute(indices, 1));
+        // Circular soft falloff using UV distance from center.
+        // This makes each quad render as a round glowing dot instead of a square.
+        const uvCentered = uv().sub(vec2(0.5, 0.5));
+        const dist = length(uvCentered).mul(float(2.0)); // 0 at center, 1 at edge
+        const circle = clamp(float(1.0).sub(dist.mul(dist).mul(float(3.0))), float(0.0), float(1.0));
 
-        this.particleMesh = new THREE.Points(geometry, material);
+        // Atmospheric Depth Fade:
+        // Camera is at Z=40. Particles exist from Z=-160 to Z=60.
+        // Map Z range [-160, 40] to opacity [0.2, 1.0].
+        // This makes distant particles dimmer, enhancing 3D perception.
+        const zPos = particlePosOpacity.z;
+        const depthFade = smoothstep(float(-160.0), float(40.0), zPos).mul(float(0.8)).add(float(0.2));
+
+        material.opacityNode = baseOpacity.mul(circle).mul(depthFade);
+
+        // InstancedMesh: each instance = one particle billboard quad
+        const planeGeo = new THREE.PlaneGeometry(1, 1);
+        this.particleMesh = new THREE.InstancedMesh(planeGeo, material, count);
         this.particleMesh.frustumCulled = false;
         this.scene.add(this.particleMesh);
     }
@@ -649,7 +678,7 @@ export default class ThreeJSIntroRendererWebGPU {
         const rotationStore = storage(this.tetrominoCompute.getRotationBuffer(), 'vec4', capacity);
         const velocityStore = storage(this.tetrominoCompute.getVelocityBuffer(), 'vec4', capacity);
 
-        const createPositionNode = (typeIdx, scale) => Fn(() => {
+        const createPositionNode = (typeIdx, baseScale) => {
             const slot = instanceIndex;
             const statePos = positionStore.element(slot);
             const stateRot = rotationStore.element(slot);
@@ -660,7 +689,11 @@ export default class ThreeJSIntroRendererWebGPU {
             const typeMask = float(1.0).sub(clamp(typeDiff, float(0.0), float(1.0)));
             const drawMask = active.mul(typeMask);
 
-            const local = positionLocal.mul(float(scale));
+            // Collision scale pulse: flash (rot.w) drives a brief 20% scale-up
+            const flash = stateRot.w.mul(typeMask);
+            const scale = float(baseScale).add(flash.mul(float(baseScale * 0.2)));
+
+            const local = positionLocal.mul(scale);
             const sx = sin(stateRot.x);
             const cx = cos(stateRot.x);
             const sy = sin(stateRot.y);
@@ -684,7 +717,7 @@ export default class ThreeJSIntroRendererWebGPU {
             const hiddenPos = vec3(float(0.0), float(-20000.0), float(0.0));
 
             return mix(hiddenPos, worldPos, drawMask);
-        })();
+        };
 
         SHAPE_KEYS.forEach((type, typeIdx) => {
             const resources = this.cachedResources[type];
@@ -697,6 +730,22 @@ export default class ThreeJSIntroRendererWebGPU {
 
             resources.material.positionNode = createPositionNode(typeIdx, 0.75);
             resources.glowMaterial.positionNode = createPositionNode(typeIdx, 0.82);
+
+            // Collision flash visual feedback:
+            // rotationBuffer.w stores collision flash intensity (0→1 on hit, decays each frame).
+            // Boost emissive intensity and glow opacity when a tetromino collides.
+            const flashSlot = instanceIndex;
+            const flashRot = rotationStore.element(flashSlot);
+            const flashVel = velocityStore.element(flashSlot);
+            const flashTypeDiff = abs(flashVel.w.sub(float(typeIdx)));
+            const flashTypeMask = float(1.0).sub(clamp(flashTypeDiff, float(0.0), float(1.0)));
+            const flashIntensity = flashRot.w.mul(flashTypeMask);
+
+            // Emissive boost: base 0.5 → up to 3.0 on collision flash
+            resources.material.emissiveIntensityNode = float(0.5).add(flashIntensity.mul(float(2.5)));
+
+            // Glow opacity boost: base 0.33 → up to 0.85 on collision flash
+            resources.glowMaterial.opacityNode = float(0.33).add(flashIntensity.mul(float(0.52)));
 
             this.scene.add(mesh);
             this.scene.add(glowMesh);
@@ -720,26 +769,26 @@ export default class ThreeJSIntroRendererWebGPU {
 
         const side = Math.floor(Math.random() * 4);
         switch (side) {
-        case 0:
-            x = (Math.random() - 0.5) * bounds.width;
-            y = halfH + margin;
-            vy = -Math.abs(vy) - 0.025;
-            break;
-        case 1:
-            x = (Math.random() - 0.5) * bounds.width;
-            y = -halfH - margin;
-            vy = Math.abs(vy) + 0.025;
-            break;
-        case 2:
-            x = -halfW - margin;
-            y = (Math.random() - 0.5) * bounds.height;
-            vx = Math.abs(vx) + 0.025;
-            break;
-        default:
-            x = halfW + margin;
-            y = (Math.random() - 0.5) * bounds.height;
-            vx = -Math.abs(vx) - 0.025;
-            break;
+            case 0:
+                x = (Math.random() - 0.5) * bounds.width;
+                y = halfH + margin;
+                vy = -Math.abs(vy) - 0.025;
+                break;
+            case 1:
+                x = (Math.random() - 0.5) * bounds.width;
+                y = -halfH - margin;
+                vy = Math.abs(vy) + 0.025;
+                break;
+            case 2:
+                x = -halfW - margin;
+                y = (Math.random() - 0.5) * bounds.height;
+                vx = Math.abs(vx) + 0.025;
+                break;
+            default:
+                x = halfW + margin;
+                y = (Math.random() - 0.5) * bounds.height;
+                vx = -Math.abs(vx) - 0.025;
+                break;
         }
 
         const slot = this.tetrominoCompute.spawn(x, y, z, vx, vy, vz, typeIdx);
@@ -760,35 +809,35 @@ export default class ThreeJSIntroRendererWebGPU {
     createTetrominoShape(type) {
         const shape = new THREE.Shape();
         switch (type) {
-        case 'I':
-            shape.moveTo(-4, -1); shape.lineTo(4, -1); shape.lineTo(4, 1); shape.lineTo(-4, 1); shape.lineTo(-4, -1);
-            break;
-        case 'O':
-            shape.moveTo(-2, -2); shape.lineTo(2, -2); shape.lineTo(2, 2); shape.lineTo(-2, 2); shape.lineTo(-2, -2);
-            break;
-        case 'T':
-            shape.moveTo(-3, -1); shape.lineTo(3, -1); shape.lineTo(3, 1); shape.lineTo(1, 1);
-            shape.lineTo(1, 3); shape.lineTo(-1, 3); shape.lineTo(-1, 1); shape.lineTo(-3, 1); shape.lineTo(-3, -1);
-            break;
-        case 'S':
-            shape.moveTo(-3, -2); shape.lineTo(1, -2); shape.lineTo(1, 0); shape.lineTo(3, 0);
-            shape.lineTo(3, 2); shape.lineTo(-1, 2); shape.lineTo(-1, 0); shape.lineTo(-3, 0); shape.lineTo(-3, -2);
-            break;
-        case 'Z':
-            shape.moveTo(-1, -2); shape.lineTo(3, -2); shape.lineTo(3, 0); shape.lineTo(1, 0);
-            shape.lineTo(1, 2); shape.lineTo(-3, 2); shape.lineTo(-3, 0); shape.lineTo(-1, 0); shape.lineTo(-1, -2);
-            break;
-        case 'J':
-            shape.moveTo(-2, -3); shape.lineTo(2, -3); shape.lineTo(2, 3); shape.lineTo(0, 3);
-            shape.lineTo(0, -1); shape.lineTo(-2, -1); shape.lineTo(-2, -3);
-            break;
-        case 'L':
-            shape.moveTo(-2, -3); shape.lineTo(2, -3); shape.lineTo(2, -1); shape.lineTo(0, -1);
-            shape.lineTo(0, 3); shape.lineTo(-2, 3); shape.lineTo(-2, -3);
-            break;
-        default:
-            shape.moveTo(-2, -2); shape.lineTo(2, -2); shape.lineTo(2, 2); shape.lineTo(-2, 2); shape.lineTo(-2, -2);
-            break;
+            case 'I':
+                shape.moveTo(-4, -1); shape.lineTo(4, -1); shape.lineTo(4, 1); shape.lineTo(-4, 1); shape.lineTo(-4, -1);
+                break;
+            case 'O':
+                shape.moveTo(-2, -2); shape.lineTo(2, -2); shape.lineTo(2, 2); shape.lineTo(-2, 2); shape.lineTo(-2, -2);
+                break;
+            case 'T':
+                shape.moveTo(-3, -1); shape.lineTo(3, -1); shape.lineTo(3, 1); shape.lineTo(1, 1);
+                shape.lineTo(1, 3); shape.lineTo(-1, 3); shape.lineTo(-1, 1); shape.lineTo(-3, 1); shape.lineTo(-3, -1);
+                break;
+            case 'S':
+                shape.moveTo(-3, -2); shape.lineTo(1, -2); shape.lineTo(1, 0); shape.lineTo(3, 0);
+                shape.lineTo(3, 2); shape.lineTo(-1, 2); shape.lineTo(-1, 0); shape.lineTo(-3, 0); shape.lineTo(-3, -2);
+                break;
+            case 'Z':
+                shape.moveTo(-1, -2); shape.lineTo(3, -2); shape.lineTo(3, 0); shape.lineTo(1, 0);
+                shape.lineTo(1, 2); shape.lineTo(-3, 2); shape.lineTo(-3, 0); shape.lineTo(-1, 0); shape.lineTo(-1, -2);
+                break;
+            case 'J':
+                shape.moveTo(-2, -3); shape.lineTo(2, -3); shape.lineTo(2, 3); shape.lineTo(0, 3);
+                shape.lineTo(0, -1); shape.lineTo(-2, -1); shape.lineTo(-2, -3);
+                break;
+            case 'L':
+                shape.moveTo(-2, -3); shape.lineTo(2, -3); shape.lineTo(2, -1); shape.lineTo(0, -1);
+                shape.lineTo(0, 3); shape.lineTo(-2, 3); shape.lineTo(-2, -3);
+                break;
+            default:
+                shape.moveTo(-2, -2); shape.lineTo(2, -2); shape.lineTo(2, 2); shape.lineTo(-2, 2); shape.lineTo(-2, -2);
+                break;
         }
         return shape;
     }
@@ -820,14 +869,33 @@ export default class ThreeJSIntroRendererWebGPU {
 
     updateWarp(time) {
         if (this.warpStartTime < 0) {
-            this.uWarp.value = 0;
+            // Smoothly decay any residual warp to avoid a pop
+            if (this.uWarp.value > 0.001) {
+                this.uWarp.value *= 0.92;
+            } else {
+                this.uWarp.value = 0;
+            }
             return;
         }
 
         const elapsed = time - this.warpStartTime;
-        const progressValue = Math.max(0, Math.min(1, elapsed / this.warpDuration));
+        const t = Math.max(0, Math.min(1, elapsed / this.warpDuration));
 
-        this.uWarp.value = progressValue;
+        // Bell-curve: smoothly rises to peak at ~40% progress, then gently decays.
+        // This avoids both the hard start and the abrupt snap at the end.
+        const peak = 0.4;
+        let warp;
+        if (t < peak) {
+            // Ease-in to peak: smoothstep 0→1 over [0, peak]
+            const s = t / peak;
+            warp = s * s * (3 - 2 * s);
+        } else {
+            // Ease-out from peak: smoothstep 1→0 over [peak, 1]
+            const s = (t - peak) / (1 - peak);
+            warp = 1 - s * s * (3 - 2 * s);
+        }
+
+        this.uWarp.value = warp;
 
         if (elapsed >= this.warpDuration) {
             this.warpStartTime = -1;
@@ -889,10 +957,10 @@ export default class ThreeJSIntroRendererWebGPU {
         this.spawnAccumulator += delta;
         const effectiveSpawnInterval = this.spawnInterval / Math.max(0.2, phase.spawnMul);
         if (this.spawnAccumulator >= effectiveSpawnInterval) {
+            this.spawnAccumulator -= effectiveSpawnInterval;
             const spawned = this.spawnTetromino();
             if (spawned) {
                 this.lastSpawnTime = this.simulationTime;
-                this.spawnAccumulator -= effectiveSpawnInterval;
             }
         }
 
