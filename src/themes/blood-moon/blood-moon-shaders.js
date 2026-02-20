@@ -186,11 +186,11 @@ void main() {
     vec3 pos = normalize(vLocalPos) * 5.0;
     
     // === DEEP BLOOD RED COLOR PALETTE ===
-    vec3 brightHighland = vec3(0.75, 0.08, 0.12);    // Deep blood red
-    vec3 darkMaria = vec3(0.18, 0.02, 0.03);         // Very dark blood maria
-    vec3 craterFloor = vec3(0.06, 0.005, 0.01);      // Nearly black crater floors  
-    vec3 craterRim = vec3(0.95, 0.18, 0.22);         // Bright crimson rims
-    vec3 craterWall = vec3(0.35, 0.03, 0.06);        // Shadowed crater walls
+    vec3 brightHighland = vec3(0.50, 0.05, 0.08);    // Subdued blood red
+    vec3 darkMaria = vec3(0.14, 0.015, 0.025);       // Very dark blood maria
+    vec3 craterFloor = vec3(0.03, 0.002, 0.005);     // Near-black crater floors
+    vec3 craterRim = vec3(0.70, 0.12, 0.16);         // Crimson rims (toned down)
+    vec3 craterWall = vec3(0.25, 0.02, 0.04);        // Shadowed crater walls
     
     // === PRONOUNCED MARIA (DARK SEAS) ===
     float maria1 = smoothstep(0.2, 0.6, fbm(pos * 0.5 + vec3(1.5, 0.8, 0.3)));
@@ -201,33 +201,33 @@ void main() {
     // Base color with strong contrast
     vec3 baseColor = mix(brightHighland, darkMaria, totalMaria);
     
-    // === MAJOR IMPACT CRATERS (Very visible) ===
+    // === MAJOR IMPACT CRATERS (Very visible, enlarged) ===
     float majorCraters = 0.0;
-    majorCraters += sharpCrater(pos, vec3(2.2, 0.5, 0.8), 1.4, 0.6);   // Large prominent crater
-    majorCraters += sharpCrater(pos, vec3(-1.5, 1.5, 1.0), 1.2, 0.55);
-    majorCraters += sharpCrater(pos, vec3(0.5, -1.8, 1.3), 1.1, 0.5);
-    majorCraters += sharpCrater(pos, vec3(-0.8, 0.2, -2.0), 1.3, 0.55);
-    majorCraters += sharpCrater(pos, vec3(1.8, -0.8, 1.5), 1.0, 0.48);
-    majorCraters += sharpCrater(pos, vec3(-2.0, -1.0, 0.8), 1.15, 0.52);
-    majorCraters += sharpCrater(pos, vec3(0.3, 2.3, 0.5), 1.05, 0.5);
-    majorCraters += sharpCrater(pos, vec3(-0.5, -0.5, 2.3), 0.95, 0.45);
-    majorCraters += sharpCrater(pos, vec3(1.2, 1.2, 1.8), 0.9, 0.42);
-    
-    // === MEDIUM CRATERS ===
+    majorCraters += sharpCrater(pos, vec3(2.2, 0.5, 0.8), 1.9, 0.75);   // Large prominent crater
+    majorCraters += sharpCrater(pos, vec3(-1.5, 1.5, 1.0), 1.7, 0.70);
+    majorCraters += sharpCrater(pos, vec3(0.5, -1.8, 1.3), 1.5, 0.65);
+    majorCraters += sharpCrater(pos, vec3(-0.8, 0.2, -2.0), 1.8, 0.70);
+    majorCraters += sharpCrater(pos, vec3(1.8, -0.8, 1.5), 1.4, 0.62);
+    majorCraters += sharpCrater(pos, vec3(-2.0, -1.0, 0.8), 1.6, 0.68);
+    majorCraters += sharpCrater(pos, vec3(0.3, 2.3, 0.5), 1.45, 0.65);
+    majorCraters += sharpCrater(pos, vec3(-0.5, -0.5, 2.3), 1.35, 0.58);
+    majorCraters += sharpCrater(pos, vec3(1.2, 1.2, 1.8), 1.3, 0.55);
+
+    // === MEDIUM CRATERS (enlarged) ===
     float medCraters = 0.0;
-    medCraters += sharpCrater(pos, vec3(1.5, 0.0, 2.0), 0.6, 0.35);
-    medCraters += sharpCrater(pos, vec3(-1.0, 1.8, 1.2), 0.55, 0.32);
-    medCraters += sharpCrater(pos, vec3(0.8, -1.2, 1.8), 0.5, 0.3);
-    medCraters += sharpCrater(pos, vec3(-0.3, -1.5, 1.6), 0.58, 0.33);
-    medCraters += sharpCrater(pos, vec3(2.0, 1.0, 0.5), 0.52, 0.31);
-    medCraters += sharpCrater(pos, vec3(-1.8, 0.5, 1.5), 0.48, 0.28);
-    medCraters += sharpCrater(pos, vec3(0.5, 1.5, 1.8), 0.55, 0.32);
-    medCraters += sharpCrater(pos, vec3(-0.8, -0.8, 2.0), 0.5, 0.3);
-    
-    // === VORONOI SMALL CRATERS (Distributed naturally) ===
-    float smallCraters = voronoiCraters(pos, 3.0, 0.25);
-    float tinyCraters = voronoiCraters(pos, 6.0, 0.12);
-    float microCraters = voronoiCraters(pos, 12.0, 0.06);
+    medCraters += sharpCrater(pos, vec3(1.5, 0.0, 2.0), 0.85, 0.45);
+    medCraters += sharpCrater(pos, vec3(-1.0, 1.8, 1.2), 0.80, 0.42);
+    medCraters += sharpCrater(pos, vec3(0.8, -1.2, 1.8), 0.75, 0.40);
+    medCraters += sharpCrater(pos, vec3(-0.3, -1.5, 1.6), 0.82, 0.43);
+    medCraters += sharpCrater(pos, vec3(2.0, 1.0, 0.5), 0.78, 0.41);
+    medCraters += sharpCrater(pos, vec3(-1.8, 0.5, 1.5), 0.70, 0.38);
+    medCraters += sharpCrater(pos, vec3(0.5, 1.5, 1.8), 0.80, 0.42);
+    medCraters += sharpCrater(pos, vec3(-0.8, -0.8, 2.0), 0.75, 0.40);
+
+    // === VORONOI SMALL CRATERS (Distributed naturally, bigger) ===
+    float smallCraters = voronoiCraters(pos, 2.2, 0.35);
+    float tinyCraters = voronoiCraters(pos, 4.5, 0.18);
+    float microCraters = voronoiCraters(pos, 10.0, 0.08);
     
     float allCraters = majorCraters + medCraters + smallCraters + tinyCraters + microCraters;
     
@@ -239,9 +239,9 @@ void main() {
     float totalRough = roughLarge + roughMed + roughFine + roughMicro;
     
     // === APPLY CRATER EFFECTS TO COLOR ===
-    // Deep crater floors (very dark)
-    float floorDepth = max(0.0, -allCraters * 4.0);
-    baseColor = mix(baseColor, craterFloor, smoothstep(0.0, 1.0, floorDepth) * 0.9);
+    // Deep crater floors (very dark — stronger multiplier for blacker pits)
+    float floorDepth = max(0.0, -allCraters * 5.5);
+    baseColor = mix(baseColor, craterFloor, smoothstep(0.0, 0.8, floorDepth) * 0.95);
     
     // Crater walls (medium darkness)
     float wallFactor = max(0.0, -allCraters * 2.0) * (1.0 - floorDepth);
@@ -251,23 +251,23 @@ void main() {
     float rimBrightness = max(0.0, allCraters * 3.5);
     baseColor = mix(baseColor, craterRim, smoothstep(0.0, 0.8, rimBrightness) * 0.7);
     
-    // Surface roughness adds variation
-    baseColor += vec3(totalRough * 0.5, totalRough * 0.08, totalRough * 0.1);
+    // Surface roughness adds variation — clamp to prevent negatives in deep craters
+    baseColor = max(baseColor + vec3(totalRough * 0.5, totalRough * 0.08, totalRough * 0.1), vec3(0.0));
     
     // === DRAMATIC LIGHTING ===
     vec3 lightDir = normalize(vec3(0.6, 0.5, 0.6));
     
-    // Calculate surface normal from height
+    // Calculate surface normal from height (using just rough fbm for bump mapping)
     float eps = 0.08;
-    float hCenter = allCraters + totalRough;
-    float hRight = sharpCrater(pos + vec3(eps, 0.0, 0.0), vec3(0.0), 0.5, 0.3) + fbm((pos + vec3(eps, 0.0, 0.0)) * 4.0) * 0.1;
-    float hUp = sharpCrater(pos + vec3(0.0, eps, 0.0), vec3(0.0), 0.5, 0.3) + fbm((pos + vec3(0.0, eps, 0.0)) * 4.0) * 0.1;
-    float hForward = sharpCrater(pos + vec3(0.0, 0.0, eps), vec3(0.0), 0.5, 0.3) + fbm((pos + vec3(0.0, 0.0, eps)) * 4.0) * 0.1;
+    float bumpCenter = fbm(pos * 4.0) * 0.1;
+    float bumpRight = fbm((pos + vec3(eps, 0.0, 0.0)) * 4.0) * 0.1;
+    float bumpUp = fbm((pos + vec3(0.0, eps, 0.0)) * 4.0) * 0.1;
+    float bumpForward = fbm((pos + vec3(0.0, 0.0, eps)) * 4.0) * 0.1;
     
     vec3 surfaceNormal = normalize(vNormal + vec3(
-        (hCenter - hRight) * 8.0,
-        (hCenter - hUp) * 8.0,
-        (hCenter - hForward) * 8.0
+        (bumpCenter - bumpRight) * 8.0,
+        (bumpCenter - bumpUp) * 8.0,
+        (bumpCenter - bumpForward) * 8.0
     ));
     
     // Strong directional light
@@ -283,15 +283,20 @@ void main() {
     // Specular on rims only
     vec3 reflectDir = reflect(-lightDir, surfaceNormal);
     float spec = pow(max(0.0, dot(reflectDir, viewDir)), 32.0);
-    spec *= rimBrightness * 0.4;
+    spec *= rimBrightness * 0.4 * smoothstep(0.0, 0.2, diffuse);
     
     vec3 litColor = baseColor * lighting + vec3(0.9, 0.15, 0.2) * spec;
     
-    // === BLOOD MOON RIM GLOW ===
-    float fresnel = pow(1.0 - abs(dot(vNormal, viewDir)), 4.0);
-    vec3 rimGlow = vec3(0.9, 0.1, 0.15);
-    float rimIntensity = 0.8 + uPulseIntensity * 0.5;
-    litColor += rimGlow * fresnel * rimIntensity * uGlowIntensity;
+    // === EPIC BLOOD MOON RIM GLOW ===
+    // Much sharper and tighter fresnel for atmospheric edge, plus a softer inner rim
+    float fresnelTight = pow(clamp(1.0 - abs(dot(vNormal, viewDir)), 0.0, 1.0), 5.0);
+    float fresnelWide = pow(clamp(1.0 - abs(dot(vNormal, viewDir)), 0.0, 1.0), 1.5);
+    vec3 rimGlowHot = vec3(1.0, 0.3, 0.1); // Fiery hot rim
+    vec3 rimGlowSoft = vec3(0.6, 0.0, 0.05); // Deep red bleed
+    
+    // Add intense rim lighting
+    litColor += rimGlowHot * fresnelTight * (2.0 + uPulseIntensity * 2.0) * uGlowIntensity;
+    litColor += rimGlowSoft * fresnelWide * (0.8 + uPulseIntensity * 0.8) * uGlowIntensity;
     
     // === SUBTLE ANIMATION ===
     float shimmer = snoise(pos * 6.0 + vec3(uTime * 0.2, 0.0, uTime * 0.15));
@@ -303,11 +308,11 @@ void main() {
     float pulse = sin(uTime * 1.5) * 0.06 + 1.0;
     litColor *= pulse * (1.0 + uPulseIntensity * 0.4);
     
-    // Boost overall contrast
-    litColor = pow(litColor, vec3(0.92));
-    
+    // Boost overall contrast — darker gamma for moodier moon
+    litColor = pow(max(litColor, vec3(0.0)), vec3(1.1));
+
     // Ensure we don't wash out
-    litColor = clamp(litColor, 0.0, 1.5);
+    litColor = clamp(litColor, 0.0, 1.2);
     
     gl_FragColor = vec4(litColor, 1.0);
 }
@@ -316,13 +321,26 @@ void main() {
 // Blood Wave Shader - Expanding crimson rings
 // ─────────────────────────────────────────────────────────────────────────────
 export const waveVertexShader = `
+uniform float uTime;
 varying vec2 vUv;
 varying vec3 vNormal;
+varying vec3 vWorldPosition;
+
+\${noiseCommon}
 
 void main() {
     vUv = uv;
     vNormal = normalize(normalMatrix * normal);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    
+    // Violent energy displacement
+    vec3 pos = position;
+    float noise = snoise(pos * 0.15 + uTime * 6.0) * 3.0;
+    pos += normal * noise;
+    
+    vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+    vWorldPosition = worldPos.xyz;
+    
+    gl_Position = projectionMatrix * viewMatrix * worldPos;
 }
 `;
 
@@ -333,11 +351,25 @@ uniform vec3 uColor;
 
 varying vec2 vUv;
 varying vec3 vNormal;
+varying vec3 vWorldPosition;
+
+\${noiseCommon}
 
 void main() {
-    float intensity = pow(0.6 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 2.0);
-    vec3 color = uColor * (0.5 + intensity * 0.5);
-    gl_FragColor = vec4(color, uOpacity * (0.3 + intensity * 0.7));
+    // Dynamic plasma/energy effect
+    float noiseVal = snoise(vWorldPosition * 0.08 - uTime * 4.0);
+    
+    // Intense energy core based on view angle and noise
+    float intensity = pow(clamp(0.8 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 0.0, 1.0), 1.5);
+    intensity += noiseVal * 0.3;
+    
+    vec3 energyColor = mix(uColor, vec3(1.0, 0.8, 0.3), intensity * 0.6); // Hot core
+    
+    // Fade out edges smoothly
+    float alpha = uOpacity * smoothstep(-0.1, 0.8, intensity);
+    alpha = pow(alpha, 1.2); // Sharper fade
+    
+    gl_FragColor = vec4(energyColor * (1.0 + intensity * 1.5), alpha);
 }
 `;
 
@@ -469,69 +501,76 @@ attribute vec3 aColor;
 
 varying vec3 vColor;
 varying float vAlpha;
+varying float vAgeRatio;
+varying float vRandom;
 
 void main() {
-    // Initial position on moon surface (spherical coordinates)
+    // Initial position on moon surface
     vec3 initialPos;
     initialPos.x = aRadius * sin(aPhi) * cos(aTheta);
     initialPos.y = aRadius * sin(aPhi) * sin(aTheta);
     initialPos.z = aRadius * cos(aPhi);
 
-    // Radial direction - outward from moon center
     vec3 radialDir = normalize(initialPos);
 
     // Stagger eruption timing based on random value
-    float triggerTime = aRandom * 3.0;
+    float triggerTime = aRandom * 1.5;
     float age = uPulseTimer - triggerTime;
 
     vec3 animatedPos = initialPos;
     float alpha = 0.0;
     float size = 0.0;
+    float ageRatio = 0.0;
 
-    // Effect parameters
-    float maxLife = 150.0;
+    // Effect parameters — longer life so particles reach deep space
+    float maxLife = 200.0 + aRandom * 120.0;
 
     if (age > 0.0 && age < maxLife) {
-        // EXPLOSION! Burst outward from moon surface
+        ageRatio = age / maxLife;
 
-        // Add slight random spread to the radial direction
-        float spreadX = (aRandom - 0.5) * 0.4;
-        float spreadY = (fract(aRandom * 7.0) - 0.5) * 0.4;
-        float spreadZ = (fract(aRandom * 13.0) - 0.5) * 0.4;
+        // Random spread for varied explosion directions
+        float spreadX = (aRandom - 0.5) * 0.8;
+        float spreadY = (fract(aRandom * 7.0) - 0.5) * 0.8;
+        float spreadZ = (fract(aRandom * 13.0) - 0.5) * 0.8;
         vec3 burstDir = normalize(radialDir + vec3(spreadX, spreadY, spreadZ));
 
-        // Epic outward velocity - explosive burst
-        float speed = 25.0 + aRandom * 15.0;
-        vec3 velocity = burstDir * speed;
-
-        // Apply velocity over time with drag/deceleration for a more natural expansion
+        // Fast outward burst, slower decay so they keep drifting into space
         float t = age;
-        float drag = 1.0 - (t / maxLife) * 0.7;
-        animatedPos += velocity * t * drag;
+        float driftFactor = 1.0 - exp(-t * 0.02);
+        animatedPos += burstDir * (400.0 + aRandom * 600.0) * driftFactor;
 
-        // Fade out over a much longer lifetime - stays dense longer
-        alpha = 1.0 - (age / maxLife);
-        alpha = pow(alpha, 0.5); // Slower initial fade
+        // Upward convection carries particles further
+        animatedPos.y += pow(ageRatio, 2.0) * 250.0 * (aRandom - 0.2);
 
-        // Larger particles that shrink gracefully
-        size = (1.5 - (age / maxLife) * 0.8) * 50.0;
+        // Alpha peaks quickly then fades out slowly
+        alpha = smoothstep(0.0, 0.05, ageRatio) * (1.0 - pow(ageRatio, 2.0));
+
+        // Sizes - power law distribution for a few massive chunks and many tiny sparks
+        float sizeCurve = pow(aRandom, 2.5);
+        size = mix(10.0, 90.0, sizeCurve);
+
+        // Shrink slightly as they cool off
+        size *= (1.0 - ageRatio * 0.5);
     }
 
     vec4 mvPosition = modelViewMatrix * vec4(animatedPos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
 
-    // Large point size for dramatic explosion
     gl_PointSize = size * (350.0 / -mvPosition.z);
-    gl_PointSize = clamp(gl_PointSize, 4.0, 140.0);
+    gl_PointSize = clamp(gl_PointSize, 2.0, 180.0);
 
     vColor = aColor;
     vAlpha = alpha;
+    vAgeRatio = ageRatio;
+    vRandom = aRandom;
 }
 `;
 
 export const bloodSparkFragmentShader = `
 varying vec3 vColor;
 varying float vAlpha;
+varying float vAgeRatio;
+varying float vRandom;
 
 void main() {
     if (vAlpha <= 0.01) discard;
@@ -540,18 +579,25 @@ void main() {
     float dist = dot(circCoord, circCoord);
     if (dist > 1.0) discard;
 
-    // Bright hot center
-    float core = 1.0 - smoothstep(0.0, 0.25, dist);
+    // Hot bright core (white/yellow) that quickly cools down over age
+    float coreTemp = clamp(1.0 - (vAgeRatio * (2.0 + vRandom)), 0.0, 1.0);
+    vec3 hotColor = mix(vec3(1.0, 0.9, 0.6), vec3(1.0, 0.4, 0.1), 1.0 - coreTemp); 
+    
+    float coreRadius = 0.2 * coreTemp;
+    float coreIntensity = 1.0 - smoothstep(0.0, coreRadius, sqrt(dist));
 
-    // Soft outer glow - stays visible longer
-    float glow = 1.0 - smoothstep(0.0, 0.9, dist);
+    // Soft outer glow - Deep reds
+    float glow = 1.0 - smoothstep(0.0, 0.9, sqrt(dist));
 
-    // Mix color with bright red-hot center
-    vec3 finalColor = mix(vColor, vec3(1.0, 0.3, 0.2), core * 0.6);
+    // Base particle color, getting darker as it ages
+    vec3 baseCol = vColor * mix(2.0, 0.3, vAgeRatio); 
+    
+    // Add hot core directly into the base color
+    vec3 finalColor = mix(baseCol, hotColor, coreIntensity * coreTemp * 1.5);
 
-    // Boost overall brightness
-    finalColor *= 1.2;
-
+    // Give it punch
+    finalColor *= (1.0 + coreTemp);
+    
     gl_FragColor = vec4(finalColor, vAlpha * glow);
 }
 `;
@@ -571,20 +617,31 @@ export const nebulaFragmentShader = `
     uniform sampler2D tDiffuse;
     uniform float uOpacity;
     uniform float uPulse;
+    uniform float uTime;
     varying vec2 vUv;
+    
+    \${noiseCommon}
 
     void main() {
-        vec4 texColor = texture2D(tDiffuse, vUv);
+        // Fluid billowy distortion across UVs
+        float distortX = fbm(vec3(vUv * 2.0, uTime * 0.05)) * 0.1;
+        float distortY = fbm(vec3(vUv * 2.0 + 10.0, uTime * 0.05)) * 0.1;
+        vec2 distortedUv = vUv + vec2(distortX, distortY);
+        
+        vec4 texColor = texture2D(tDiffuse, distortedUv);
 
         // Aggressive edge fade to hide plane boundaries
-        float fadeX = smoothstep(0.0, 0.4, vUv.x) * smoothstep(1.0, 0.6, vUv.x);
-        float fadeY = smoothstep(0.0, 0.4, vUv.y) * smoothstep(1.0, 0.6, vUv.y);
+        float fadeX = smoothstep(0.0, 0.4, distortedUv.x) * smoothstep(1.0, 0.6, distortedUv.x);
+        float fadeY = smoothstep(0.0, 0.4, distortedUv.y) * smoothstep(1.0, 0.6, distortedUv.y);
         float fade = fadeX * fadeY;
-        fade = pow(fade, 1.5);
+        fade = pow(clamp(fade, 0.0, 1.0), 1.5);
 
         // Pulse effect
-        float alpha = texColor.a * (uOpacity + uPulse * 0.05) * fade;
-        vec3 color = texColor.rgb * (1.0 + uPulse * 0.3);
+        float alpha = texColor.a * (uOpacity + uPulse * 0.1) * fade;
+        
+        // Enhance highlights based on distortion gradients to simulate gas volume catching light
+        float volHi = smoothstep(0.0, 0.05, distortX) * 0.5 * texColor.r;
+        vec3 color = texColor.rgb * (1.0 + uPulse * 0.3) + vec3(volHi, volHi * 0.2, volHi * 0.1);
 
         gl_FragColor = vec4(color, alpha);
     }

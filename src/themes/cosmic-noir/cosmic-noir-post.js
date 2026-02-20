@@ -62,10 +62,24 @@ export class CosmicNoirPost {
         this.uBlackFloor = uniform(params.blackFloor ?? 0.06);
         this.uDitherStrength = uniform(params.ditherStrength ?? 0.004);
 
+        this.uBhScreenPos = uniform(params.bhScreenPos ?? new THREE.Vector2(0.5, 0.5));
+        this.uScreenAspect = uniform(1.0);
+
         const uv = viewportUV;
-        const dist = length(uv.sub(0.5).mul(2.0));
-        const vig = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.7), dist);
-        const baseSample = sceneColor.sample(uv);
+
+        // Gravitational Lensing Distortion
+        const dir = uv.sub(this.uBhScreenPos);
+        const dirAspect = vec2(dir.x.mul(this.uScreenAspect), dir.y);
+        const distToBh = length(dirAspect);
+
+        const lensingRadius = float(0.35); // Radius of maximal bending
+        const lensPower = float(0.045); // Strength of the bend
+        const lensingAmount = lensPower.mul(smoothstep(float(0.0), lensingRadius, distToBh)).div(max(distToBh, 0.01));
+        const lensedUV = clamp(uv.sub(dir.mul(lensingAmount)), vec2(0.0), vec2(1.0));
+
+        const vigDist = length(uv.sub(0.5).mul(2.0));
+        const vig = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.7), vigDist);
+        const baseSample = sceneColor.sample(lensedUV);
         const vignetted = mix(
             baseSample.mul(float(1.0).sub(this.uVignetteDarkness)),
             baseSample,
@@ -134,6 +148,9 @@ export class CosmicNoirPost {
         if (params.ditherStrength !== undefined) {
             this.uDitherStrength.value = params.ditherStrength;
         }
+        if (params.bhScreenPos !== undefined) {
+            this.uBhScreenPos.value.copy(params.bhScreenPos);
+        }
         if (params.bloomDownsample !== undefined) {
             this.bloomDownsample = params.bloomDownsample;
             if (
@@ -153,6 +170,9 @@ export class CosmicNoirPost {
     setSize(width, height) {
         this.size.width = width;
         this.size.height = height;
+        if (this.uScreenAspect) {
+            this.uScreenAspect.value = width / height;
+        }
         this.scenePass.setSize(width, height);
         if (this.bloomNode?._separableBlurMaterials?.length) {
             this.bloomNode.setSize(width, height);

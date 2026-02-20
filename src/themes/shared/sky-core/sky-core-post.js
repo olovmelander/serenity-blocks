@@ -165,6 +165,13 @@ export class SkyCorePost {
                 params.bloomRadius ?? 0.58,
                 params.bloomThreshold ?? 0.84,
             );
+
+            // Stylized God Rays
+            const screenCenterUv = viewportUV.sub(0.5);
+            // Push bright spots outwards aggressively
+            const rayScatter = this.bloomNode.mul(smoothstep(0.1, 0.35, dot(screenCenterUv, screenCenterUv))).mul(0.3);
+            this.bloomNode = this.bloomNode.add(rayScatter);
+
             this.bloomHalfRes = true;
             combined = combined.add(this.bloomNode);
         }

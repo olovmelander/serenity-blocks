@@ -1444,10 +1444,10 @@ export function createWaterNodeMaterial(params = {}) {
 
     const worldXZ = vec2(positionWorld.x, positionWorld.z);
 
-    const wave1 = sin(positionLocal.x.mul(0.34).add(uTime.mul(0.55))).mul(0.2);
-    const wave2 = sin(positionLocal.y.mul(0.46).sub(uTime.mul(0.41)).add(1.4)).mul(0.15);
-    const wave3 = sin(positionLocal.x.mul(0.9).add(positionLocal.y.mul(0.72)).add(uTime.mul(0.88))).mul(0.08);
-    const wave4 = sin(positionLocal.x.mul(1.7).sub(positionLocal.y.mul(1.25)).sub(uTime.mul(1.15))).mul(0.05);
+    const wave1 = sin(positionLocal.x.mul(0.12).add(uTime.mul(0.35))).mul(0.2);
+    const wave2 = sin(positionLocal.y.mul(0.18).sub(uTime.mul(0.28)).add(1.4)).mul(0.15);
+    const wave3 = sin(positionLocal.x.mul(0.28).add(positionLocal.y.mul(0.25)).add(uTime.mul(0.44))).mul(0.08);
+    const wave4 = sin(positionLocal.x.mul(0.45).sub(positionLocal.y.mul(0.42)).sub(uTime.mul(0.65))).mul(0.05);
     const waveDisplacement = wave1.add(wave2).add(wave3).add(wave4).mul(uRippleStrength);
 
     const distortion = vec2(
@@ -1497,8 +1497,8 @@ export function createWaterNodeMaterial(params = {}) {
     waterBase = waterBase.add(vec3(0.22, 0.12, 0.05).mul(waveCrestMask.mul(0.08)));
 
     const verticalReflect = float(1.0).sub(uvNode.y).mul(0.55).add(0.45);
-    const reflected = mix(uSkyReflection.mul(0.72), reflectionSample, 0.62).mul(verticalReflect);
-    const reflectionMix = clamp(fresnel.mul(0.52).add(waveCrestMask.mul(0.12)), 0.0, 0.86);
+    const reflected = mix(uSkyReflection.mul(0.85), reflectionSample, 0.75).mul(verticalReflect);
+    const reflectionMix = clamp(fresnel.mul(0.88).add(waveCrestMask.mul(0.15)), 0.0, 0.95);
     waterBase = mix(waterBase, reflected, reflectionMix);
 
     const centerDist = length(uvNode.sub(0.5)).mul(2.0);
@@ -1569,9 +1569,9 @@ export function createWaterNodeMaterial(params = {}) {
         .mul(sunFacing);
 
     const sunHalfDir = normalize(viewDir.add(normalize(uSunDirection)));
-    const sunSpecular = pow(max(dot(normalize(normalWorld), sunHalfDir), 0.0), 42.0)
-        .mul(waveCrestMask.mul(0.75).add(0.25))
-        .mul(0.22);
+    const sunSpecular = pow(max(dot(normalize(normalWorld), sunHalfDir), 0.0), 90.0)
+        .mul(waveCrestMask.mul(0.65).add(0.35))
+        .mul(1.4);
     const sunSpecularColor = mix(uSunColor, vec3(1.0, 0.95, 0.82), 0.45).mul(sunSpecular);
 
     const sunPathColor = mix(uSunColor, vec3(1.0, 0.92, 0.78), sunPathCore.mul(0.45)).mul(sunPath);

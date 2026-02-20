@@ -9,11 +9,14 @@ import {
     createTerrainMaterial,
     createMountainMaterial,
     createCottonCloudMaterial,
+    createCliffMaterial,
 } from '../shared/sky-core/sky-core-materials.js';
 import { createSkyTerrainField } from '../shared/sky-core/sky-core-terrain-field.js';
 import {
     createGrassSystem,
     createFlowerSystem,
+    createMoteSystem,
+    createWindLinesSystem,
     updateVegetation,
     disposeVegetation,
 } from '../shared/sky-core/sky-core-vegetation.js';
@@ -162,6 +165,8 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         this.vegetation = {
             grass: null,
             flowers: null,
+            motes: null,
+            wind: null,
         };
 
         this.edgeDiagnostics = {
@@ -178,8 +183,8 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
         this.runtime = {
             time: 0,
-            windStrength: 0.86,
-            windTarget: 0.86,
+            windStrength: 2.5, // Much higher base wind
+            windTarget: 2.5,
             eventEnergy: 0,
             eventEnergyTarget: 0,
             comboEnergy: 0,
@@ -187,6 +192,8 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             cameraPhaseX: Math.random() * Math.PI * 2,
             cameraPhaseY: Math.random() * Math.PI * 2,
         };
+
+        this._vegetationCallbackId = null;
 
         this.performance = {
             frameTimes: [],
@@ -293,6 +300,18 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         this.performance.lastFrameNow = performance.now();
         this.clock.start();
         this.startAnimation();
+
+        // Defer vegetation so the first frame (mountains, sky, terrain) renders immediately
+        if (this._vegetationCallbackId !== null) {
+            clearTimeout(this._vegetationCallbackId);
+        }
+        this._vegetationCallbackId = setTimeout(() => {
+            this._vegetationCallbackId = null;
+            if (this.scene && this.terrainField) {
+                this.createVegetation();
+                this.syncCarpetDebug();
+            }
+        }, 0);
 
         this.installDebugHelpers();
         this.installCompatibilityHelpers();
@@ -423,32 +442,69 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         this.createTerrain();
         this.createMountains();
         this.createClouds();
-        this.createVegetation();
+        // Vegetation is deferred — see createScene()
         this.syncPathDebug();
         this.syncCarpetDebug();
     }
 
     createLighting() {
-        const ambient = new THREE.AmbientLight(0xe9f3ff, 0.52);
+        // Deep purple/blue ambient shadow fill
+        const ambient = new THREE.AmbientLight(0xdbe3ff, 0.28);
         this.scene.add(ambient);
 
-        const hemisphere = new THREE.HemisphereLight(0xbfd8ff, 0x60835a, 0.6);
+        // Strong contrast between warm sky and cool ground
+        const hemisphere = new THREE.HemisphereLight(0xffdfb2, 0x4a5373, 0.95);
         this.scene.add(hemisphere);
 
-        const sun = new THREE.DirectionalLight(0xfff3db, 1.08);
-        sun.position.set(110, 140, -150);
+        // Punchy, very warm golden hour key light
+        const sun = new THREE.DirectionalLight(0xffebb2, 0.9); // Reigned in from 1.4 to let the sky colors show
+        sun.position.set(110, 80, -180); // Lowering the sun slightly for longer shadows
         this.scene.add(sun);
 
         this.keyLight = sun;
     }
 
+    createVegetation() {
+        this.vegetation.grass = createGrassSystem(this.scene, this.terrainField, {
+            ...this.qualityPreset,
+            terrainSize: this.terrainSize,
+            sunDirection: this.sunDirection,
+            antialias: this.getAntialiasEnabled(),
+        });
+
+        this.vegetation.flowers = createFlowerSystem(this.scene, this.terrainField, {
+            ...this.qualityPreset,
+            terrainSize: this.terrainSize,
+            sunDirection: this.sunDirection,
+            antialias: this.getAntialiasEnabled(),
+            flowerPalettePreset: this.flowerPalettePreset,
+            flowerCarpetStrength: this.flowerCarpetStrength,
+            flowerGroundLiftHead: this.flowerGroundLiftHead,
+            flowerGroundLiftStem: this.flowerGroundLiftStem,
+            flowerSlopeLift: this.flowerSlopeLift,
+        });
+
+        this.vegetation.motes = createMoteSystem(this.scene, {
+            ...this.qualityPreset,
+            terrainSize: this.terrainSize,
+            moteCount: this.qualityPreset.grassInstances ? this.qualityPreset.grassInstances * 0.05 : 400,
+        });
+
+        this.vegetation.wind = createWindLinesSystem(this.scene, {
+            ...this.qualityPreset,
+            terrainSize: this.terrainSize,
+            windLineCount: this.qualityPreset.grassInstances ? this.qualityPreset.grassInstances * 0.005 : 30,
+        });
+    }
+
     createSkyDome() {
+        // Significantly deepened sky gradient to lower sky exposure
         const skyRuntime = createSkyAtmosphereMaterial({
             sunDirection: this.sunDirection,
-            topColor: new THREE.Color(0x8fb2eb),
-            midColor: new THREE.Color(0x90cdee),
-            horizonColor: new THREE.Color(0xf2dfbf),
-            cloudTint: new THREE.Color(0xf7f8ff),
+            topColor: new THREE.Color(0x28476b), // Deeper blue
+            midColor: new THREE.Color(0x695e87), // Richer purple
+            horizonColor: new THREE.Color(0xd1a486), // Warmer, dimmer horizon
+            cloudTint: new THREE.Color(0xded0d2), // Dimmer background clouds
         });
 
         const geometry = new THREE.SphereGeometry(980, 64, 32);
@@ -464,8 +520,8 @@ export default class SkyChildrenV2Theme extends BaseTheme {
     createTerrainField() {
         this.terrainField = createSkyTerrainField({
             size: this.terrainSize,
-            minHeight: -48,
-            maxHeight: 74,
+            minHeight: -110, // Much deeper valleys
+            maxHeight: 140,  // Much higher rolling hills
             pathWidth: 79,
             pathDepth: 8.9,
             shoulderLift: 6.4,
@@ -473,7 +529,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             pathNearSoftening: 0.6,
             nearSofteningStart: 52,
             nearSofteningEnd: 236,
-            valleyStrength: 4.8,
+            valleyStrength: 14.8, // Drastically stronger valley carving
         });
     }
 
@@ -617,15 +673,15 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         geometry.computeVertexNormals();
 
         const terrainRuntime = createTerrainMaterial({
-            nearColor: new THREE.Color(0x5f9a5d),
-            farColor: new THREE.Color(0x89bf8c),
-            ridgeColor: new THREE.Color(0xcbe0b4),
-            pathTint: new THREE.Color(0xc8d8b2),
-            valleyTint: new THREE.Color(0x6e9f74),
-            crestTint: new THREE.Color(0xe2ebc8),
-            fogColor: new THREE.Color(0xb8d0df),
-            fogNear: 128,
-            fogFar: 520,
+            nearColor: new THREE.Color(0xb2cc7a), // Vibrant warm green
+            farColor: new THREE.Color(0x9dcb78), // Warmer mid-distance
+            ridgeColor: new THREE.Color(0xe6ff99), // Brighter sun-hit ridges
+            pathTint: new THREE.Color(0xcfc3a2),
+            valleyTint: new THREE.Color(0x4a8a4f), // Deeper shadows in valleys
+            crestTint: new THREE.Color(0xffe6b3), // Warmer rim light catching the crests
+            fogColor: new THREE.Color(0xcba8dc), // Deeper lilac fog
+            fogNear: 90, // Bring fog closer to blend the harsh horizon
+            fogFar: 380,
             farCoverageStrength: this.qualityPreset.farCoverageStrength ?? 0.56,
             flowerFarTintStrength: this.qualityPreset.flowerFarTintStrength ?? 0.42,
             sunDirection: this.sunDirection,
@@ -643,42 +699,102 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             new THREE.MeshBasicMaterial({ color: 0x3f6f47 }),
         );
         underlay.rotation.x = -Math.PI / 2;
-        underlay.position.y = (this.terrainField?.config?.minHeight ?? -48) - 56;
+        underlay.position.y = (this.terrainField?.config?.minHeight ?? -110) - 56;
         underlay.renderOrder = -2;
         this.terrainUnderlayMesh = underlay;
         this.scene.add(underlay);
 
+        const skirtRuntime = createCliffMaterial({
+            shadowColor: new THREE.Color(0x345b3d), // Blend with underlay
+            midColor: new THREE.Color(0x5a7a58),
+            highlightColor: new THREE.Color(0x9cb894),
+            fogColor: new THREE.Color(0xcba8dc),
+            fogNear: 60,
+            fogFar: 300,
+            sunDirection: this.sunDirection
+        });
+
         const skirt = new THREE.Mesh(
             this.createTerrainSkirtGeometry(Math.max(32, Math.floor(segments * 0.5))),
-            new THREE.MeshBasicMaterial({
-                color: 0x345b3d,
-                side: THREE.DoubleSide,
-            }),
+            skirtRuntime.material
         );
         skirt.renderOrder = -1;
         this.terrainSkirtMesh = skirt;
         this.scene.add(skirt);
 
         this.uniformSets.push(terrainRuntime.uniforms);
+        this.uniformSets.push(skirtRuntime.uniforms);
     }
 
     distortMountainGeometry(geometry, seed = 0) {
+        geometry.computeBoundingBox();
+        const minY = geometry.boundingBox.min.y;
+        const maxY = geometry.boundingBox.max.y;
+        const height = (maxY - minY) || 1;
         const pos = geometry.attributes.position;
-        const maxY = 0.5;
+
+        // Smooth hash for value noise
+        const hash = (n) => { const s = Math.sin(n) * 43758.5453; return s - Math.floor(s); };
+
+        // 2D value noise
+        const vnoise = (x, z) => {
+            const ix = Math.floor(x); const iz = Math.floor(z);
+            const fx = x - ix; const fz = z - iz;
+            const ux = fx * fx * (3 - 2 * fx); const uz = fz * fz * (3 - 2 * fz);
+            const s = seed * 17.431;
+            const a = hash(ix + iz * 127.1 + s);
+            const b = hash(ix + 1 + iz * 127.1 + s);
+            const c = hash(ix + (iz + 1) * 127.1 + s);
+            const d = hash(ix + 1 + (iz + 1) * 127.1 + s);
+            return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
+        };
+
+        // FBM: sum of octaves
+        const fbm = (x, z, oct = 5) => {
+            let v = 0; let amp = 1; let freq = 1; let sum = 0;
+            for (let o = 0; o < oct; o += 1) {
+                v += vnoise(x * freq, z * freq) * amp;
+                sum += amp; amp *= 0.5; freq *= 2.07;
+            }
+            return v / sum;
+        };
+
+        // Ridge noise: sharp crests via inverted absolute value
+        const ridgeN = (x, z) => 1 - Math.abs(fbm(x, z, 3) * 2 - 1);
 
         for (let i = 0; i < pos.count; i += 1) {
             const x = pos.getX(i);
             const y = pos.getY(i);
             const z = pos.getZ(i);
+            const yNorm = (y - minY) / height;
 
-            const yNorm = (y / maxY + 1) * 0.5;
-            const ridgeNoise = Math.sin((x + seed * 1.3) * 8.0) * Math.cos((z - seed * 0.7) * 6.0);
-            const crackNoise = Math.sin((x - z + seed * 4.0) * 11.0) * 0.22;
-            const displacement = (ridgeNoise * 0.18 + crackNoise) * (1 - yNorm * 0.55);
+            const dist = Math.sqrt(x * x + z * z) || 1;
+            const dirX = x / dist;
+            const dirZ = z / dist;
 
-            pos.setX(i, x + x * displacement * 0.06);
-            pos.setZ(i, z + z * displacement * 0.06);
-            pos.setY(i, y + displacement * 0.03);
+            // Taper all displacement to zero at the apex — kills the top artifact
+            const apexMask = Math.pow(Math.max(0, 1 - yNorm), 0.55);
+
+            // Large-scale asymmetric body warping (low-freq, high-amplitude)
+            const b = fbm(x * 0.005 + seed * 1.7, z * 0.005 + seed * 2.3, 2);
+            const bodyDisplace = (b - 0.5) * height * 0.42
+                * apexMask * Math.pow(Math.sin(yNorm * Math.PI), 0.65);
+
+            // Sharp vertical ridges running up the slopes
+            const r = ridgeN(x * 0.014 + seed * 4.7, z * 0.014 + seed * 6.1);
+            const ridgeDisplace = r * r * height * 0.20 * apexMask * Math.pow(1 - yNorm, 0.35);
+
+            // High-frequency surface faceting for rocky texture
+            const d = fbm(x * 0.048 + seed * 8.3, z * 0.048 + seed * 11.7, 2);
+            const detailDisplace = (d - 0.5) * height * 0.065 * apexMask;
+
+            // Rock strata: horizontal banding with noise warp
+            const warp = fbm(x * 0.008 + seed * 3.1, z * 0.008 + seed * 4.8, 2) * 5;
+            const strataDisplace = Math.sin(yNorm * 16 + warp) * height * 0.028 * apexMask * (1 - yNorm);
+
+            const totalRadial = bodyDisplace + ridgeDisplace + detailDisplace + strataDisplace;
+            pos.setX(i, x + dirX * totalRadial);
+            pos.setZ(i, z + dirZ * totalRadial);
         }
 
         pos.needsUpdate = true;
@@ -693,68 +809,69 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         }
 
         const runtime = createMountainMaterial({
-            shadowColor: new THREE.Color(0x3d5d80),
-            midColor: new THREE.Color(0x78a1c4),
-            highlightColor: new THREE.Color(0xd3e2f4),
-            rimColor: new THREE.Color(0xfff4df),
-            atmosphereColor: new THREE.Color(0xb7d0e3),
-            fogNear: 120,
-            fogFar: 460,
+            shadowColor: new THREE.Color(0x3d3252), // Deep purple-shadow crevices
+            midColor: new THREE.Color(0x7a718e),    // Cool grey-purple rock face
+            highlightColor: new THREE.Color(0xbcb8cc), // Pale grey lit rock
+            peakColor: new THREE.Color(0xd4d0e0),   // Lighter exposed rock at summits
+            rimColor: new THREE.Color(0xffe6a3),    // Warm golden rim from sun
+            atmosphereColor: new THREE.Color(0xcba8dc),
+            fogNear: 80,
+            fogFar: 360,
             sunDirection: this.sunDirection,
         });
 
         const group = new THREE.Group();
         const mountainCount = this.qualityPreset.mountainMeshes;
-        const arcStart = -1.2;
-        const arcEnd = 1.2;
+        const arcStart = -1.0;
+        const arcEnd = 1.0;
 
         for (let i = 0; i < mountainCount; i += 1) {
             const t = mountainCount <= 1 ? 0.5 : i / (mountainCount - 1);
             const angle = arcStart + (arcEnd - arcStart) * t;
 
-            const radius = 48 + Math.random() * 34;
-            const height = 96 + Math.random() * 84;
-            const geometry = new THREE.ConeGeometry(radius, height, 28, 10, true);
-            this.distortMountainGeometry(geometry, (i + 1) * 1.93);
+            const radius = 280 + Math.random() * 180; // Massive wide bases
+            const height = 480 + Math.random() * 260; // Towering peaks
+            const geometry = new THREE.ConeGeometry(radius, height, 80, 48, true); // Much higher poly for ridges
+            this.distortMountainGeometry(geometry, (i + 1) * 3.14);
 
             const mountain = new THREE.Mesh(geometry, runtime.material);
-            const distance = 225 + Math.random() * 80;
+            const distance = 550 + Math.random() * 180; // Pushed even further back
             mountain.position.set(
                 Math.sin(angle) * distance,
-                24 + (Math.random() - 0.5) * 7,
-                -Math.cos(angle) * distance - 104,
+                -70 + (Math.random() - 0.5) * 50, // Deep anchor
+                -Math.cos(angle) * distance - 240,
             );
-            mountain.rotation.y = (Math.random() - 0.5) * 0.3;
+            mountain.rotation.y = (Math.random() - 0.5) * 0.6;
             mountain.scale.set(
-                1.0 + Math.random() * 0.22,
-                1.0 + Math.random() * 0.28,
-                1.0 + Math.random() * 0.22,
+                1.4 + Math.random() * 0.6,
+                1.2 + Math.random() * 0.5,
+                1.4 + Math.random() * 0.6,
             );
             group.add(mountain);
         }
 
-        const heroGeometry = new THREE.ConeGeometry(92, 210, 34, 12, true);
+        const heroGeometry = new THREE.ConeGeometry(460, 920, 110, 64, true); // Behemoth centerpiece
         this.distortMountainGeometry(heroGeometry, 12.7);
         const heroPeak = new THREE.Mesh(heroGeometry, runtime.material);
-        heroPeak.position.set(0, 42, -300);
-        heroPeak.scale.set(1.0, 1.12, 1.0);
+        heroPeak.position.set(0, -90, -850);
+        heroPeak.scale.set(1.6, 1.4, 1.6);
         group.add(heroPeak);
 
         const wingConfigs = [
             {
-                x: -356, y: 24, z: -252, radius: 58, height: 150, seed: 21.4, rotY: -0.35,
+                x: -780, y: -65, z: -620, radius: 360, height: 680, seed: 21.4, rotY: -0.45,
             },
             {
-                x: 362, y: 23, z: -266, radius: 60, height: 154, seed: 24.1, rotY: 0.28,
+                x: 820, y: -70, z: -650, radius: 410, height: 740, seed: 24.1, rotY: 0.38,
             },
         ];
         wingConfigs.forEach((config) => {
-            const wingGeometry = new THREE.ConeGeometry(config.radius, config.height, 28, 10, true);
+            const wingGeometry = new THREE.ConeGeometry(config.radius, config.height, 80, 48, true);
             this.distortMountainGeometry(wingGeometry, config.seed);
             const wing = new THREE.Mesh(wingGeometry, runtime.material);
             wing.position.set(config.x, config.y, config.z);
             wing.rotation.y = config.rotY;
-            wing.scale.set(1.04, 1.08, 1.0);
+            wing.scale.set(1.5, 1.3, 1.5);
             group.add(wing);
         });
 
@@ -888,10 +1005,10 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         }
 
         const cloudRuntime = createCottonCloudMaterial({
-            litColor: new THREE.Color(0xffffff),
-            shadowColor: new THREE.Color(0xc8d8f0),
-            rimColor: new THREE.Color(0xfff5e2),
-            opacity: 0.78,
+            litColor: new THREE.Color(0xfffbef),
+            shadowColor: new THREE.Color(0xbaabdc),
+            rimColor: new THREE.Color(0xffeacc),
+            opacity: 0.85,
             sunDirection: this.sunDirection,
         });
 
@@ -905,20 +1022,22 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
             for (let j = 0; j < puffCount; j += 1) {
                 const puff = new THREE.Mesh(
-                    new THREE.SphereGeometry(1, 14, 10),
+                    new THREE.SphereGeometry(1, 24, 16),
                     cloudRuntime.material,
                 );
 
+                const centerBiasX = (Math.random() - 0.5) * 4.8;
+                const centerBiasZ = (Math.random() - 0.5) * 4.2;
                 puff.position.set(
-                    (Math.random() - 0.5) * 2.6,
-                    (Math.random() - 0.5) * 0.9,
-                    (Math.random() - 0.5) * 2.2,
+                    centerBiasX,
+                    (Math.random() - 0.5) * 0.75 - Math.abs(centerBiasX * 0.15),
+                    centerBiasZ,
                 );
-                const puffScale = 2.4 + Math.random() * 3.4;
+                const puffScale = 3.2 + Math.random() * 5.4 - (Math.abs(centerBiasX) * 0.3);
                 puff.scale.set(
-                    puffScale,
-                    puffScale * (0.58 + Math.random() * 0.38),
-                    puffScale * (0.74 + Math.random() * 0.42),
+                    puffScale * (1.1 + Math.random() * 0.3),
+                    puffScale * (0.85 + Math.random() * 0.25), // Increased Y scale for rounder clouds
+                    puffScale * (1.1 + Math.random() * 0.3),
                 );
 
                 cluster.add(puff);
@@ -1369,6 +1488,14 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             gust: this.runtime.eventEnergy * 0.12 + this.runtime.comboEnergy * 0.16,
             sunDirection: this.sunDirection,
         });
+
+        if (this.vegetation.motes) {
+            this.vegetation.motes.update(time, windStrength, this.terrainField);
+        }
+
+        if (this.vegetation.wind) {
+            this.vegetation.wind.update(time, windStrength, this.terrainField);
+        }
     }
 
     updateCloudDrift(deltaSeconds) {
@@ -1392,8 +1519,17 @@ export default class SkyChildrenV2Theme extends BaseTheme {
     }
 
     updateCamera() {
-        const swayX = Math.sin(this.runtime.time * 0.11 + this.runtime.cameraPhaseX) * 3.8;
-        const swayY = Math.sin(this.runtime.time * 0.15 + this.runtime.cameraPhaseY) * 1.1;
+        // Continuous slow forward movement
+        const forwardSpeed = 3.5; // units per second
+        this.cameraBasePosition.z -= forwardSpeed * 0.016; // rough delta estimation for base progression
+
+        // Wrap camera back to start if it goes too far to create an infinite loop feel
+        if (this.cameraBasePosition.z < -200) {
+            this.cameraBasePosition.z = 240;
+        }
+
+        const swayX = Math.sin(this.runtime.time * 0.11 + this.runtime.cameraPhaseX) * 12.0; // Wider sway
+        const swayY = Math.sin(this.runtime.time * 0.15 + this.runtime.cameraPhaseY) * 2.5;
 
         const nextX = this.cameraBasePosition.x + swayX;
         const nextZ = this.cameraBasePosition.z;
@@ -1417,11 +1553,22 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             underlayEnabled: !!this.terrainUnderlayMesh,
         };
 
+        // Make the camera look target drift lazily to lead the eye
+        const targetDriftX = Math.sin(this.runtime.time * 0.08) * 40;
+        const lookPosX = this.cameraTarget.x + targetDriftX;
+        // Keep target slightly ahead of current Z
+        const lookPosZ = nextZ - 120;
+
         const targetY = Math.max(
             this.cameraTarget.y,
-            this.sampleTerrainHeight(this.cameraTarget.x, this.cameraTarget.z) + 2.2,
+            this.sampleTerrainHeight(lookPosX, lookPosZ) + 4.2,
         );
-        this.camera.lookAt(this.cameraTarget.x, targetY, this.cameraTarget.z);
+
+        // Smoothly interpolate current look target to prevent snapping on wrap
+        if (!this._currentLookAt) this._currentLookAt = new THREE.Vector3(lookPosX, targetY, lookPosZ);
+        this._currentLookAt.lerp(new THREE.Vector3(lookPosX, targetY, lookPosZ), 0.05);
+
+        this.camera.lookAt(this._currentLookAt);
     }
 
     updateSunDirection() {
@@ -1644,7 +1791,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
         const cloudVolumeReadability = clamp(
             ((this.qualityPreset.cloudClusters || 0) / 14)
-                * ((this.qualityPreset.cloudPuffsPerCluster || 0) / 5),
+            * ((this.qualityPreset.cloudPuffsPerCluster || 0) / 5),
             0,
             1,
         );
@@ -1657,7 +1804,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
         const terrainVariation = clamp(
             ((this.qualityPreset.terrainSegments || 0) / 220) * 0.68
-                + (this.qualityPreset.farCoverageStrength ?? 0.56) * 0.45,
+            + (this.qualityPreset.farCoverageStrength ?? 0.56) * 0.45,
             0,
             1,
         );
@@ -1904,6 +2051,11 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
+        }
+
+        if (this._vegetationCallbackId !== null) {
+            clearTimeout(this._vegetationCallbackId);
+            this._vegetationCallbackId = null;
         }
 
         this.eventUnsubscribers.forEach((unsubscribe) => {

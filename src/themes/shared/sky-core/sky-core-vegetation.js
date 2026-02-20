@@ -50,8 +50,8 @@ function configureAtlasTexture(texture) {
 }
 
 export function createGrassAtlasTexture(params = {}) {
-    const width = params.width ?? 256;
-    const height = params.height ?? 256;
+    const width = params.width ?? 128;
+    const height = params.height ?? 128;
     const canvas = createCanvas(width, height);
 
     if (!canvas) {
@@ -59,36 +59,21 @@ export function createGrassAtlasTexture(params = {}) {
         const fallback = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat);
         return configureAtlasTexture(fallback);
     }
-
     const context = canvas.getContext('2d');
-    if (!context) {
-        const data = new Uint8Array([255, 255, 255, 255]);
-        const fallback = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat);
-        return configureAtlasTexture(fallback);
-    }
-    context.clearRect(0, 0, width, height);
 
+    // Smooth soft unified blade texture
     const gradient = context.createLinearGradient(0, height, 0, 0);
-    gradient.addColorStop(0.0, 'rgba(122,166,94,0.75)');
-    gradient.addColorStop(0.45, 'rgba(172,214,134,0.86)');
-    gradient.addColorStop(1.0, 'rgba(226,245,196,0.98)');
-
+    gradient.addColorStop(0.0, 'rgba(150, 150, 150, 0.4)');
+    gradient.addColorStop(1.0, 'rgba(255, 255, 255, 1.0)');
     context.fillStyle = gradient;
-    const bladeCount = 48;
-    for (let i = 0; i < bladeCount; i += 1) {
-        const t = i / Math.max(1, bladeCount - 1);
-        const x = width * (0.04 + (t * 0.92));
-        const baseY = height * (0.98 + (Math.random() - 0.5) * 0.02);
-        const topY = height * (0.08 + Math.random() * 0.36);
-        const bend = (Math.random() - 0.5) * width * 0.12;
-        const bottomWidth = width * (0.015 + Math.random() * 0.01);
+    context.fillRect(0, 0, width, height);
 
-        context.beginPath();
-        context.moveTo(x - bottomWidth, baseY);
-        context.quadraticCurveTo(x + bend * 0.26, (baseY + topY) * 0.55, x + bend, topY);
-        context.quadraticCurveTo(x + bend * 0.18 + bottomWidth * 0.25, (baseY + topY) * 0.62, x + bottomWidth, baseY);
-        context.closePath();
-        context.fill();
+    // Subtle vertical fiber noise
+    context.fillStyle = 'rgba(0, 0, 0, 0.05)';
+    for (let i = 0; i < 60; i += 1) {
+        const x = Math.random() * width;
+        const w = 1 + Math.random() * 2;
+        context.fillRect(x, 0, w, height);
     }
 
     const texture = new THREE.CanvasTexture(canvas);
@@ -96,8 +81,8 @@ export function createGrassAtlasTexture(params = {}) {
 }
 
 export function createFlowerAtlasTexture(params = {}) {
-    const width = params.width ?? 256;
-    const height = params.height ?? 256;
+    const width = params.width ?? 128;
+    const height = params.height ?? 128;
     const canvas = createCanvas(width, height);
 
     if (!canvas) {
@@ -105,58 +90,33 @@ export function createFlowerAtlasTexture(params = {}) {
         const fallback = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat);
         return configureAtlasTexture(fallback);
     }
-
     const context = canvas.getContext('2d');
-    if (!context) {
-        const data = new Uint8Array([255, 255, 255, 255]);
-        const fallback = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat);
-        return configureAtlasTexture(fallback);
-    }
-    context.clearRect(0, 0, width, height);
 
-    const baseDisc = context.createRadialGradient(
-        width * 0.5,
-        height * 0.5,
-        width * 0.04,
-        width * 0.5,
-        height * 0.5,
-        width * 0.42,
-    );
-    baseDisc.addColorStop(0, 'rgba(255,255,255,0.98)');
-    baseDisc.addColorStop(0.58, 'rgba(255,255,255,0.82)');
-    baseDisc.addColorStop(1, 'rgba(255,255,255,0)');
-    context.fillStyle = baseDisc;
-    context.beginPath();
-    context.arc(width * 0.5, height * 0.5, width * 0.43, 0, Math.PI * 2);
-    context.fill();
+    const centerX = width * 0.5;
+    const centerY = height * 0.5;
+    const radius = width * 0.42;
 
-    const centerGlow = context.createRadialGradient(
-        width * 0.5,
-        height * 0.52,
-        width * 0.01,
-        width * 0.5,
-        height * 0.52,
-        width * 0.12,
-    );
-    centerGlow.addColorStop(0, 'rgba(255,255,255,0.94)');
-    centerGlow.addColorStop(1, 'rgba(255,255,255,0)');
-    context.fillStyle = centerGlow;
-    context.beginPath();
-    context.arc(width * 0.5, height * 0.52, width * 0.12, 0, Math.PI * 2);
-    context.fill();
+    // Soft glowing base
+    const aura = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+    aura.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+    aura.addColorStop(0.5, 'rgba(255, 255, 255, 0.8)');
+    aura.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+    context.fillStyle = aura;
+    context.fillRect(0, 0, width, height);
 
-    for (let i = 0; i < 26; i += 1) {
-        const angle = (i / 26) * Math.PI * 2;
-        const radius = width * (0.16 + Math.random() * 0.22);
-        const px = width * 0.5 + Math.cos(angle) * radius;
-        const py = height * 0.5 + Math.sin(angle) * radius;
-        const petal = context.createRadialGradient(px, py, width * 0.01, px, py, width * 0.08);
-        petal.addColorStop(0, 'rgba(255,255,255,0.62)');
-        petal.addColorStop(1, 'rgba(255,255,255,0)');
-        context.fillStyle = petal;
+    // Simple overlapping rounded petals for a clean, stylized look
+    context.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    const numPetals = 5;
+    for (let i = 0; i < numPetals; i += 1) {
+        const angle = (i / numPetals) * Math.PI * 2;
+        context.save();
+        context.translate(centerX, centerY);
+        context.rotate(angle);
+
         context.beginPath();
-        context.arc(px, py, width * (0.05 + Math.random() * 0.03), 0, Math.PI * 2);
+        context.ellipse(0, radius * 0.4, radius * 0.28, radius * 0.5, 0, 0, Math.PI * 2);
         context.fill();
+        context.restore();
     }
 
     const texture = new THREE.CanvasTexture(canvas);
@@ -261,7 +221,7 @@ function computePlacementMask(terrainField, x, z, normalY, options = {}) {
 
 function buildGrassInstances(mesh, terrainField, params = {}, kind = 'near') {
     const { count } = mesh;
-    const spread = (params.terrainSize ?? 640) * (kind === 'near' ? 0.47 : 0.5);
+    const spread = (params.terrainSize ?? 640) * (kind === 'near' ? 0.65 : 0.95);
     const maxAttempts = count * (kind === 'near' ? 8 : 6);
 
     const phases = new Float32Array(count);
@@ -286,7 +246,7 @@ function buildGrassInstances(mesh, terrainField, params = {}, kind = 'near') {
 
         const placement = computePlacementMask(terrainField, x, z, terrainNormal.y, {
             base: kind === 'near' ? 0.2 : 0.16,
-            slopeMin: kind === 'near' ? 0.5 : 0.56,
+            slopeMin: kind === 'near' ? 0.72 : 0.76,
             valleyWeight: kind === 'near' ? 0.32 : 0.28,
             shoulderWeight: kind === 'near' ? 0.44 : 0.36,
             slopeWeight: kind === 'near' ? 0.24 : 0.2,
@@ -294,15 +254,22 @@ function buildGrassInstances(mesh, terrainField, params = {}, kind = 'near') {
             pathWeight: kind === 'near' ? 0.24 : 0.3,
         });
 
-        const noise = hash2(x * 0.027 + (kind === 'near' ? 1.7 : 7.3), z * 0.027 - 3.1);
-        const acceptChance = placement.mask * (0.65 + noise * 0.35);
+        // Organic sweeping clustering waves
+        const wave1 = Math.sin(x * 0.03 + Math.cos(z * 0.02)) * 0.5 + 0.5;
+        const wave2 = Math.sin(z * 0.05 + Math.cos(x * 0.04)) * 0.5 + 0.5;
+        const clusterNoise = Math.pow(wave1 * 0.6 + wave2 * 0.4, 2.0);
 
-        if (acceptChance < Math.random()) {
+        const strictSlopeMask = smoothstep(0.68, 0.82, terrainNormal.y);
+        const acceptChance = placement.mask * clusterNoise * strictSlopeMask;
+
+        // Higher threshold makes distinct dense clumps instead of uniform spread
+        if (acceptChance < 0.15 + Math.random() * 0.3 || terrainNormal.y < 0.68) {
             continue;
         }
 
         const y = terrainField.sampleHeight(x, z);
-        smoothedNormal.copy(terrainNormal).lerp(WORLD_UP, kind === 'near' ? 0.54 : 0.68).normalize();
+        // Point more upright to prevent awkward horizontal sticking out
+        smoothedNormal.copy(terrainNormal).lerp(WORLD_UP, kind === 'near' ? 0.6 : 0.75).normalize();
         slopeQuat.setFromUnitVectors(WORLD_UP, smoothedNormal);
         const pathDir = terrainField.samplePathCenter(x + 4.2) - terrainField.samplePathCenter(x - 4.2);
         const flowAngle = Math.atan2(pathDir, 8.4);
@@ -312,9 +279,15 @@ function buildGrassInstances(mesh, terrainField, params = {}, kind = 'near') {
         dummy.position.set(x, y + (kind === 'near' ? 0.16 : 0.1), z);
         dummy.quaternion.copy(slopeQuat).multiply(yawQuat);
 
-        const scaleBase = kind === 'near' ? 0.74 : 0.54;
-        const scaleSpread = kind === 'near' ? 0.72 : 0.48;
-        const localScale = scaleBase + acceptChance * scaleSpread;
+        const scaleBase = kind === 'near' ? 0.95 : 0.75;
+        const scaleSpread = kind === 'near' ? 0.85 : 0.55;
+        let localScale = scaleBase + acceptChance * scaleSpread;
+
+        // 15% chance for a tall 'hero' blade to break up the uniform carpet
+        if (Math.random() < 0.15) {
+            localScale *= 1.4 + Math.random() * 0.6;
+        }
+
         dummy.scale.set(
             localScale * (0.92 + Math.random() * 0.28),
             localScale * (0.98 + Math.random() * 0.34),
@@ -325,7 +298,7 @@ function buildGrassInstances(mesh, terrainField, params = {}, kind = 'near') {
 
         phases[placed] = Math.random() * Math.PI * 2;
 
-        const tint = 0.88 + noise * 0.16;
+        const tint = 0.88 + clusterNoise * 0.16;
         tints[placed * 3] = tint * (0.94 + placement.valleyMask * 0.05);
         tints[placed * 3 + 1] = tint * (0.97 + placement.slopeMask * 0.04);
         tints[placed * 3 + 2] = tint * (0.9 + (1 - placement.pathMask) * 0.04);
@@ -352,22 +325,28 @@ function buildGrassInstances(mesh, terrainField, params = {}, kind = 'near') {
 
 const FLOWER_PALETTES = Object.freeze({
     prairie: Object.freeze({
-        pink: [0.97, 0.62, 0.78],
-        yellow: [0.96, 0.82, 0.42],
-        white: [0.96, 0.94, 0.88],
-        stem: [0.46, 0.7, 0.43],
+        pink:   [0.97, 0.42, 0.68],
+        yellow: [0.98, 0.75, 0.22],
+        purple: [0.72, 0.36, 0.94],
+        blue:   [0.36, 0.60, 0.98],
+        white:  [0.96, 0.94, 0.88],
+        stem:   [0.46, 0.70, 0.43],
     }),
     sunset: Object.freeze({
-        pink: [0.97, 0.62, 0.76],
-        yellow: [0.95, 0.78, 0.44],
-        white: [0.94, 0.9, 0.84],
-        stem: [0.48, 0.68, 0.42],
+        pink:   [0.98, 0.45, 0.66],
+        yellow: [0.98, 0.72, 0.25],
+        purple: [0.75, 0.38, 0.90],
+        blue:   [0.38, 0.58, 0.96],
+        white:  [0.95, 0.90, 0.84],
+        stem:   [0.48, 0.68, 0.42],
     }),
     soft: Object.freeze({
-        pink: [0.92, 0.74, 0.83],
-        yellow: [0.92, 0.83, 0.58],
-        white: [0.93, 0.92, 0.9],
-        stem: [0.54, 0.78, 0.5],
+        pink:   [0.95, 0.54, 0.73],
+        yellow: [0.95, 0.80, 0.35],
+        purple: [0.78, 0.50, 0.92],
+        blue:   [0.46, 0.68, 0.94],
+        white:  [0.93, 0.92, 0.90],
+        stem:   [0.54, 0.78, 0.50],
     }),
 });
 
@@ -384,6 +363,10 @@ function toFlowerColor(family, palette, layer = 'head') {
         source = palette.pink;
     } else if (family === 'yellow') {
         source = palette.yellow;
+    } else if (family === 'purple') {
+        source = palette.purple ?? palette.pink;
+    } else if (family === 'blue') {
+        source = palette.blue ?? palette.white;
     }
     const shade = 0.9 + (Math.random() * 0.16);
     const sat = 0.94 + (Math.random() * 0.14);
@@ -477,6 +460,8 @@ function sampleFlowerCoverageMetrics(terrainField, carpetField, params = {}) {
     const familyCounts = {
         yellow: 0,
         pink: 0,
+        purple: 0,
+        blue: 0,
         white: 0,
     };
 
@@ -488,7 +473,8 @@ function sampleFlowerCoverageMetrics(terrainField, carpetField, params = {}) {
             if (carpet.density >= 0.05) coverage05 += 1;
             if (carpet.density >= 0.1) {
                 coverage10 += 1;
-                const family = carpet.family === 'pink' || carpet.family === 'yellow' ? carpet.family : 'white';
+                const knownFamily = ['yellow', 'pink', 'purple', 'blue'].includes(carpet.family);
+                const family = knownFamily ? carpet.family : 'white';
                 familyCounts[family] += 1;
             }
             if (carpet.density >= 0.2) coverage20 += 1;
@@ -496,7 +482,7 @@ function sampleFlowerCoverageMetrics(terrainField, carpetField, params = {}) {
     }
 
     const denom = Math.max(1, sampleCount);
-    const familyDenom = Math.max(1, familyCounts.yellow + familyCounts.pink + familyCounts.white);
+    const familyDenom = Math.max(1, familyCounts.yellow + familyCounts.pink + familyCounts.purple + familyCounts.blue + familyCounts.white);
     return {
         sampleCount,
         coverage05: coverage05 / denom,
@@ -505,8 +491,10 @@ function sampleFlowerCoverageMetrics(terrainField, carpetField, params = {}) {
         familyCounts,
         familyShare: {
             yellow: familyCounts.yellow / familyDenom,
-            pink: familyCounts.pink / familyDenom,
-            white: familyCounts.white / familyDenom,
+            pink:   familyCounts.pink   / familyDenom,
+            purple: familyCounts.purple / familyDenom,
+            blue:   familyCounts.blue   / familyDenom,
+            white:  familyCounts.white  / familyDenom,
         },
     };
 }
@@ -529,38 +517,34 @@ function assignFlowerFamilies(candidates, params = {}) {
     const whiteShareMax = clamp(params.flowerWhiteShareMax ?? 0.1, 0, 0.4);
     const total = candidates.length;
     const whiteCap = Math.floor(total * whiteShareMax);
-    const yellowTarget = Math.round(total * 0.52);
-    const pinkTarget = Math.round(total * 0.4);
-    const counts = { yellow: 0, pink: 0, white: 0 };
+    const yellowTarget = Math.round(total * 0.28);
+    const pinkTarget   = Math.round(total * 0.24);
+    const purpleTarget = Math.round(total * 0.20);
+    const blueTarget   = Math.round(total * 0.18);
+    // white gets the remaining ~10%
+    const counts = { yellow: 0, pink: 0, purple: 0, blue: 0, white: 0 };
 
     return candidates.map((candidate) => {
-        const weights = candidate.familyWeights || { yellow: 0.34, pink: 0.34, white: 0.12 };
+        const weights = candidate.familyWeights || { yellow: 0.22, pink: 0.22, purple: 0.14, blue: 0.14, white: 0.08 };
         const familyHint = candidate.familyHint;
 
-        const yellowDeficit = yellowTarget - counts.yellow;
-        const pinkDeficit = pinkTarget - counts.pink;
-        const yellowScore = weights.yellow
-            + (familyHint === 'yellow' ? 0.08 : 0)
-            + (yellowDeficit > 0 ? 0.24 : -0.08);
-        const pinkScore = weights.pink
-            + (familyHint === 'pink' ? 0.08 : 0)
-            + (pinkDeficit > 0 ? 0.24 : -0.08);
-        const whiteScore = counts.white < whiteCap
-            ? (weights.white * 0.34) + (familyHint === 'white' ? 0.03 : 0)
+        const yellowScore  = (weights.yellow  ?? 0.22) + (familyHint === 'yellow'  ? 0.08 : 0) + (yellowTarget  - counts.yellow  > 0 ? 0.24 : -0.08);
+        const pinkScore    = (weights.pink    ?? 0.22) + (familyHint === 'pink'    ? 0.08 : 0) + (pinkTarget    - counts.pink    > 0 ? 0.24 : -0.08);
+        const purpleScore  = (weights.purple  ?? 0.14) + (familyHint === 'purple'  ? 0.08 : 0) + (purpleTarget  - counts.purple  > 0 ? 0.20 : -0.08);
+        const blueScore    = (weights.blue    ?? 0.14) + (familyHint === 'blue'    ? 0.08 : 0) + (blueTarget    - counts.blue    > 0 ? 0.20 : -0.08);
+        const whiteScore   = counts.white < whiteCap
+            ? (weights.white ?? 0.08) * 0.34 + (familyHint === 'white' ? 0.03 : 0)
             : -2;
 
+        const best = Math.max(yellowScore, pinkScore, purpleScore, blueScore, whiteScore);
         let family = 'yellow';
-        if (pinkScore >= yellowScore && pinkScore >= whiteScore) {
-            family = 'pink';
-        } else if (whiteScore > yellowScore && whiteScore > pinkScore) {
-            family = 'white';
-        }
+        if      (purpleScore === best) family = 'purple';
+        else if (blueScore   === best) family = 'blue';
+        else if (pinkScore   === best) family = 'pink';
+        else if (whiteScore  === best) family = 'white';
 
         counts[family] += 1;
-        return {
-            ...candidate,
-            family,
-        };
+        return { ...candidate, family };
     });
 }
 
@@ -568,7 +552,7 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
     const anchorCount = Math.max(0, Math.floor(params.flowerAnchorCount ?? 900));
     const anchorMin = Math.max(0, Math.floor(params.flowerAnchorMin ?? Math.round(anchorCount * 0.35)));
     const terrainSize = params.terrainSize ?? 640;
-    const spread = terrainSize * 0.5;
+    const spread = terrainSize * 0.8;
     const depthMin = params.flowerDepthMin ?? (-terrainSize * 0.34);
     const depthMax = params.flowerDepthMax ?? (terrainSize * 0.22);
     const requiredCandidates = Math.max(anchorMin, anchorCount);
@@ -589,7 +573,7 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
             if (z < depthMin || z > depthMax) continue;
 
             terrainField.sampleNormal(x, z, normal);
-            if (normal.y < 0.48) continue;
+            if (normal.y < 0.75) continue;
 
             const exclusion = carpetField.sampleExclusion(x, z);
             if (exclusion.pathCore > 0.98 || exclusion.steepnessPenalty > 0.88) continue;
@@ -597,9 +581,13 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
             const carpet = carpetField.sampleCarpet(x, z);
             if (!carpet || carpet.density < 0.02) continue;
 
+            const wave1 = Math.sin(x * 0.03 + Math.cos(z * 0.02)) * 0.5 + 0.5;
+            const wave2 = Math.sin(z * 0.05 + Math.cos(x * 0.04)) * 0.5 + 0.5;
+            const clusterNoise = Math.pow(wave1 * 0.6 + wave2 * 0.4, 2.0);
+
             const scored = scoreFlowerCandidate(carpet, exclusion);
             const nearBias = smoothstep(depthMin + terrainSize * 0.06, depthMax - terrainSize * 0.05, z);
-            const weightedScore = scored.score * (0.4 + nearBias * 0.85);
+            const weightedScore = scored.score * (0.4 + nearBias * 0.85) * (0.3 + clusterNoise * 0.7);
             if (weightedScore < 0.006) continue;
 
             candidates.push({
@@ -618,7 +606,7 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
     }
 
     // Relaxed fallback sweep to guarantee visible anchors for lower tiers.
-    const maxAttempts = anchorCount * 80;
+    const maxAttempts = anchorCount * 15;
     let attempts = 0;
     while (candidates.length < requiredCandidates && attempts < maxAttempts) {
         attempts += 1;
@@ -626,7 +614,7 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
         const nearU = 1 - ((1 - Math.random()) ** 2);
         const z = depthMin + nearU * (depthMax - depthMin);
         terrainField.sampleNormal(x, z, normal);
-        if (normal.y < 0.5) continue;
+        if (normal.y < 0.72) continue;
 
         const exclusion = carpetField.sampleExclusion(x, z);
         if (exclusion.pathCore > 0.96 || exclusion.steepnessPenalty > 0.82) continue;
@@ -634,9 +622,13 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
         const carpet = carpetField.sampleCarpet(x, z);
         if (!carpet || carpet.density < 0.02) continue;
 
+        const wave1 = Math.sin(x * 0.03 + Math.cos(z * 0.02)) * 0.5 + 0.5;
+        const wave2 = Math.sin(z * 0.05 + Math.cos(x * 0.04)) * 0.5 + 0.5;
+        const clusterNoise = Math.pow(wave1 * 0.6 + wave2 * 0.4, 2.0);
+
         const scored = scoreFlowerCandidate(carpet, exclusion);
         const nearBias = smoothstep(depthMin + terrainSize * 0.08, depthMax - terrainSize * 0.04, z);
-        const weightedScore = scored.score * (0.5 + nearBias * 0.78);
+        const weightedScore = scored.score * (0.5 + nearBias * 0.78) * (0.3 + clusterNoise * 0.7);
         if (weightedScore < 0.012) continue;
 
         candidates.push({
@@ -674,6 +666,8 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
     const familyCounts = {
         yellow: 0,
         pink: 0,
+        purple: 0,
+        blue: 0,
         white: 0,
     };
     const depthBuckets = {
@@ -683,7 +677,8 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
     };
     let depthSum = 0;
     anchors.forEach((anchor) => {
-        const key = anchor.family === 'pink' || anchor.family === 'yellow' ? anchor.family : 'white';
+        const knownFamily = ['yellow', 'pink', 'purple', 'blue'].includes(anchor.family);
+        const key = knownFamily ? anchor.family : 'white';
         familyCounts[key] += 1;
         depthSum += anchor.z;
         if (anchor.z > terrainSize * 0.02) {
@@ -710,8 +705,10 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
             averageAnchorDepth: anchors.length > 0 ? depthSum / anchors.length : 0,
             familyShareAccepted: {
                 yellow: familyCounts.yellow / familyTotal,
-                pink: familyCounts.pink / familyTotal,
-                white: familyCounts.white / familyTotal,
+                pink:   familyCounts.pink   / familyTotal,
+                purple: familyCounts.purple / familyTotal,
+                blue:   familyCounts.blue   / familyTotal,
+                white:  familyCounts.white  / familyTotal,
             },
         },
     };
@@ -759,7 +756,8 @@ function buildFlowerLayerInstances(mesh, terrainField, anchors, params = {}) {
             const y = terrainField.sampleHeight(x, z);
 
             terrainField.sampleNormal(x, z, normal);
-            smoothedNormal.copy(normal).lerp(WORLD_UP, layer === 'stem' ? 0.76 : 0.9).normalize();
+            // More upright to avoid horizontal flowers poking out of ridges
+            smoothedNormal.copy(normal).lerp(WORLD_UP, layer === 'stem' ? 0.75 : 0.85).normalize();
             slopeQuat.setFromUnitVectors(WORLD_UP, smoothedNormal);
             yawQuat.setFromAxisAngle(smoothedNormal, Math.random() * Math.PI * 2);
 
@@ -849,9 +847,9 @@ export function createGrassSystem(scene, terrainField, params = {}) {
     const nearRuntime = createGrassMaterial({
         atlasTexture,
         windStrength: params.windStrength ?? 0.9,
-        baseColor: params.baseColor || new THREE.Color(0x62a267),
-        tipColor: params.tipColor || new THREE.Color(0xc7e4b4),
-        backlightColor: params.backlightColor || new THREE.Color(0xf2f8cf),
+        baseColor: params.baseColor || new THREE.Color(0x3d7e3d), // Deeper forest green root
+        tipColor: params.tipColor || new THREE.Color(0xb4df74), // Warmer, brighter tip
+        backlightColor: params.backlightColor || new THREE.Color(0xe9f8a6), // Very bright yellow-green scatter
         fogColor: params.fogColor || new THREE.Color(0xb8d0df),
         fogNear: params.fogNear ?? 86,
         fogFar: params.fogFar ?? 350,
@@ -862,9 +860,9 @@ export function createGrassSystem(scene, terrainField, params = {}) {
     const midRuntime = createGrassMaterial({
         atlasTexture,
         windStrength: (params.windStrength ?? 0.9) * 0.88,
-        baseColor: params.baseColor || new THREE.Color(0x62a267),
-        tipColor: params.tipColor || new THREE.Color(0xc7e4b4),
-        backlightColor: params.backlightColor || new THREE.Color(0xf2f8cf),
+        baseColor: params.baseColor || new THREE.Color(0x3d7e3d),
+        tipColor: params.tipColor || new THREE.Color(0xb4df74),
+        backlightColor: params.backlightColor || new THREE.Color(0xe9f8a6),
         fogColor: params.fogColor || new THREE.Color(0xb8d0df),
         fogNear: (params.fogNear ?? 86) + 18,
         fogFar: (params.fogFar ?? 350) + 24,
@@ -1151,6 +1149,207 @@ export function createFlowerSystem(scene, terrainField, params = {}) {
     };
 }
 
+export function createMoteSystem(scene, params = {}) {
+    const count = Math.max(0, Math.floor(params.moteCount ?? 800));
+    const geometry = new THREE.PlaneGeometry(0.8, 0.8);
+    const material = new THREE.MeshBasicMaterial({
+        color: 0xfffcbd, // Warm glowing yellow
+        transparent: true,
+        opacity: 0.6,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide
+    });
+
+    // We'll use instanced mesh but constantly update the matrices in a render loop 
+    // to simulate wandering flocking paths without complex compute shaders for now.
+    const mesh = new THREE.InstancedMesh(geometry, material, count);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 20; // Render over vegetation
+
+    const motes = new Float32Array(count * 4); // x, y, z, phase
+    const spread = (params.terrainSize ?? 640) * 0.45;
+
+    for (let i = 0; i < count; i++) {
+        motes[i * 4] = (Math.random() - 0.5) * spread * 2; // x
+        motes[i * 4 + 1] = 2 + Math.random() * 40; // y
+        motes[i * 4 + 2] = (Math.random() - 0.5) * spread * 2; // z
+        motes[i * 4 + 3] = Math.random() * Math.PI * 2; // phase
+    }
+
+    mesh.userData.motes = motes;
+    mesh.userData.maxCount = count;
+
+    scene.add(mesh);
+
+    return {
+        type: 'motes',
+        mesh,
+        update: (time, windStrength = 1, terrainField = null) => {
+            const dummy = new THREE.Object3D();
+            const data = mesh.userData.motes;
+            let idx = 0;
+
+            // Simple camera tracking to keep motes wrapped around the player
+            // But for this static scene, we just let them drift based on time
+
+            for (let i = 0; i < count; i++) {
+                let x = data[idx];
+                let y = data[idx + 1];
+                let z = data[idx + 2];
+                const phase = data[idx + 3];
+
+                // Drift with wind + turbulence
+                x += Math.sin(time * 0.5 + phase) * 0.1 * windStrength;
+                z += Math.cos(time * 0.6 + phase) * 0.1 * windStrength;
+                y += Math.sin(time * 1.2 + phase * 2.1) * 0.05;
+
+                // Keep them roughly above ground
+                if (terrainField) {
+                    const ty = terrainField.sampleHeight(x, z);
+                    if (y < ty + 1) y = ty + 1 + Math.random() * 2;
+                }
+
+                // Wrap around bounds softly
+                if (x > spread) x = -spread;
+                if (x < -spread) x = spread;
+                if (z > spread) z = -spread;
+                if (z < -spread) z = spread;
+
+                data[idx] = x;
+                data[idx + 1] = y;
+                data[idx + 2] = z;
+
+                // Billboarding is faked by just facing camera in update loop?
+                // For simplicity, they are just fast moving planes that look like streaks
+                dummy.position.set(x, y, z);
+
+                // Scale pulses
+                const pulse = 0.5 + 0.5 * Math.sin(time * 3.0 + phase * 5.0);
+                dummy.scale.setScalar(0.4 + pulse * 0.6);
+
+                // Orient along movement
+                dummy.lookAt(x + Math.sin(time * 0.5 + phase), y + Math.sin(time * 1.2 + phase * 2.1), z + Math.cos(time * 0.6 + phase));
+
+                dummy.updateMatrix();
+                mesh.setMatrixAt(i, dummy.matrix);
+                idx += 4;
+            }
+            mesh.instanceMatrix.needsUpdate = true;
+        },
+        dispose() {
+            if (mesh?.parent) mesh.parent.remove(mesh);
+            geometry.dispose();
+            material.dispose();
+        }
+    }
+}
+
+export function createWindLinesSystem(scene, params = {}) {
+    const count = (params.windLineCount ?? 40) * 1.5; // More ribbons
+    // Use a cylinder aligned to Z axis so it's visible from all angles when moving
+    const geometry = new THREE.CylinderGeometry(0.25, 0.05, 38, 4);
+    geometry.rotateX(Math.PI / 2); // Align height with Z axis for lookAt
+    const material = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.65, // Much more opaque
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide
+    });
+
+    const mesh = new THREE.InstancedMesh(geometry, material, count);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 25; // Render over vegetation
+
+    // x, y, z, phase
+    const lines = new Float32Array(count * 4);
+    const spread = (params.terrainSize ?? 640) * 0.45;
+
+    for (let i = 0; i < count; i++) {
+        lines[i * 4] = (Math.random() - 0.5) * spread * 2; // x
+        lines[i * 4 + 1] = 2 + Math.random() * 40; // y
+        lines[i * 4 + 2] = (Math.random() - 0.5) * spread * 2; // z
+        lines[i * 4 + 3] = Math.random(); // lifespan/phase
+    }
+
+    mesh.userData.lines = lines;
+    scene.add(mesh);
+
+    return {
+        type: 'windLines',
+        mesh,
+        update: (time, windStrength = 1, terrainField = null) => {
+            const dummy = new THREE.Object3D();
+            const data = mesh.userData.lines;
+            let idx = 0;
+
+            for (let i = 0; i < count; i++) {
+                let x = data[idx];
+                let y = data[idx + 1];
+                let z = data[idx + 2];
+                let phase = data[idx + 3];
+
+                // Fast, forceful wind currents
+                const windDx = Math.sin(time * 0.5) * 0.3 + 1.8;
+                const windDz = Math.cos(time * 0.6) * 0.3 + 1.2;
+
+                x += windDx * windStrength * 3.5; // Faster
+                z += windDz * windStrength * 3.5; // Faster
+                phase += 0.008; // Age faster
+
+                if (phase > 1.0) {
+                    phase = 0;
+                    x = (Math.random() - 0.5) * spread * 2;
+                    z = (Math.random() - 0.5) * spread * 2;
+
+                    if (terrainField) {
+                        const ty = terrainField.sampleHeight(x, z);
+                        y = ty + 2 + Math.random() * 10;
+                    }
+                }
+
+                if (terrainField) {
+                    const ty = terrainField.sampleHeight(x, z);
+                    // Hug terrain loosely
+                    y += (ty + 3 - y) * 0.02;
+                }
+
+                // Wrap around bounds softly
+                if (x > spread) x = -spread;
+                if (x < -spread) x = spread;
+                if (z > spread) z = -spread;
+                if (z < -spread) z = spread;
+
+                data[idx] = x;
+                data[idx + 1] = y;
+                data[idx + 2] = z;
+                data[idx + 3] = phase;
+
+                dummy.position.set(x, y, z);
+
+                // Fade in and fade out based on phase
+                const scaleStr = Math.sin(phase * Math.PI);
+                dummy.scale.set(scaleStr, scaleStr, scaleStr);
+
+                // Orient along movement path
+                dummy.lookAt(x + windDx, y, z + windDz);
+
+                dummy.updateMatrix();
+                mesh.setMatrixAt(i, dummy.matrix);
+                idx += 4;
+            }
+            mesh.instanceMatrix.needsUpdate = true;
+        },
+        dispose() {
+            if (mesh?.parent) mesh.parent.remove(mesh);
+            geometry.dispose();
+            material.dispose();
+        }
+    }
+}
+
 function updateUniformSet(uniforms, time, windStrength, sunDirection) {
     if (!uniforms) return;
     if (uniforms.uTime) uniforms.uTime.value = time;
@@ -1194,4 +1393,6 @@ export function disposeVegetation(bundle) {
     if (!bundle) return;
     if (bundle.grass?.dispose) bundle.grass.dispose();
     if (bundle.flowers?.dispose) bundle.flowers.dispose();
+    if (bundle.motes?.dispose) bundle.motes.dispose();
+    if (bundle.wind?.dispose) bundle.wind.dispose();
 }

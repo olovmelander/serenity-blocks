@@ -428,23 +428,44 @@ export class BlackHoleBurstCompute {
             const active = angle.w;
 
             If(active.greaterThan(0.5), () => {
-                const nextLife = life.x.add(delta.mul(0.4));
+                const nextLife = life.x.add(delta.mul(1.5));
                 life.x.assign(nextLife);
 
                 const lifeClamped = clamp(nextLife, float(0.0), float(1.0));
-                const easeOut = float(1.0).sub(pow(float(1.0).sub(lifeClamped), float(3.0)));
 
-                const baseMax = float(900.0).add(angle.z.mul(500.0));
-                const maxRadius = baseMax.mul(float(1.0).add(burstFactor.mul(0.08)));
-                const radius = float(120.0).add(maxRadius.sub(120.0).mul(easeOut));
+                // Relativistic Jet math
+                // Shoot almost purely UP or DOWN from the center
+                const polarity = step(0.5, misc.y).mul(2.0).sub(1.0); // 1.0 or -1.0
 
-                const sinPhi = sin(angle.y);
+                const baseMaxY = float(1800.0).add(angle.z.mul(800.0));
+                const maxHeight = baseMaxY.mul(float(1.0).add(burstFactor.mul(0.12)));
+
+                // Fast ease out for beam-like emission
+                const easeOut = float(1.0).sub(pow(float(1.0).sub(lifeClamped), float(2.0)));
+
+                const heightY = float(40.0).add(maxHeight.mul(easeOut)).mul(polarity);
+
+                // Tight spiral around the axis
                 const localSeed = misc.y;
-                const spiralAngle = angle.x.add(localSeed).add(lifeClamped.mul(3.0).mul(angle.z.sub(0.5)));
+                const spiralRadius = float(5.0).add(lifeClamped.mul(60.0)).add(angle.y.mul(20.0));
+                const spiralAngle = angle.x.add(localSeed).add(lifeClamped.mul(12.0).mul(angle.z.sub(0.5)));
 
-                pos.x.assign(radius.mul(sinPhi).mul(cos(spiralAngle)).add(blackHolePos.x));
-                pos.y.assign(radius.mul(sinPhi).mul(sin(spiralAngle)).add(blackHolePos.y));
-                pos.z.assign(radius.mul(cos(angle.y)));
+                const tilt = float(-1.319468914); // Match disk tilt exactly
+                const cosT = cos(tilt);
+                const sinT = sin(tilt);
+
+                // Unrotated coordinates
+                const px = spiralRadius.mul(cos(spiralAngle));
+                const py = heightY;
+                const pz = spiralRadius.mul(sin(spiralAngle));
+
+                // Rotate to match the tilted system
+                const pY = py.mul(cosT).sub(pz.mul(sinT));
+                const pZ = py.mul(sinT).add(pz.mul(cosT));
+
+                pos.x.assign(px.add(blackHolePos.x));
+                pos.y.assign(pY.add(blackHolePos.y));
+                pos.z.assign(pZ.add(blackHolePos.z));
 
                 If(nextLife.greaterThan(1.0), () => {
                     angle.w.assign(0.0);
