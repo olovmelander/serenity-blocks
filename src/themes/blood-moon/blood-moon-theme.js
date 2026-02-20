@@ -48,8 +48,8 @@ const QUALITY_PRESETS = {
         nebulaCount: 30,
         ambientParticles: 600,
         bloodSparks: 10000,
-        bloomStrength: 0.6,
-        bloomRadius: 0.5,
+        bloomStrength: 0.85,
+        bloomRadius: 0.75,
         enablePostProcessing: true,
         moonDetail: 64,
         glowLayers: 8,
@@ -59,8 +59,8 @@ const QUALITY_PRESETS = {
         nebulaCount: 25,
         ambientParticles: 450,
         bloodSparks: 8000,
-        bloomStrength: 0.55,
-        bloomRadius: 0.45,
+        bloomStrength: 0.8,
+        bloomRadius: 0.65,
         enablePostProcessing: true,
         moonDetail: 56,
         glowLayers: 7,
@@ -70,8 +70,8 @@ const QUALITY_PRESETS = {
         nebulaCount: 20,
         ambientParticles: 300,
         bloodSparks: 6400,
-        bloomStrength: 0.5,
-        bloomRadius: 0.4,
+        bloomStrength: 0.7,
+        bloomRadius: 0.55,
         enablePostProcessing: true,
         moonDetail: 48,
         glowLayers: 6,
@@ -81,8 +81,8 @@ const QUALITY_PRESETS = {
         nebulaCount: 12,
         ambientParticles: 180,
         bloodSparks: 4800,
-        bloomStrength: 0.4,
-        bloomRadius: 0.35,
+        bloomStrength: 0.55,
+        bloomRadius: 0.45,
         enablePostProcessing: true,
         moonDetail: 36,
         glowLayers: 5,
@@ -405,6 +405,7 @@ export default class BloodMoonTheme extends BaseTheme {
                     tDiffuse: { value: config.texture },
                     uOpacity: { value: config.opacity },
                     uPulse: { value: 0 },
+                    uTime: { value: 0 },
                 },
                 vertexShader: nebulaVertexShader,
                 fragmentShader: nebulaFragmentShader,
@@ -638,6 +639,7 @@ export default class BloodMoonTheme extends BaseTheme {
             });
 
             const sparks = new THREE.Points(geometry, material);
+            sparks.frustumCulled = false;
             this.moonGroup.add(sparks);
             this.bloodSparks.push(sparks);
         }
@@ -723,23 +725,25 @@ export default class BloodMoonTheme extends BaseTheme {
                     // Move wave outwards at 10 units/sec for longer-lasting, sweeping explosion
                     sparks.material.uniforms.uPulseTimer.value += delta * 10.0;
 
-                    // Turn off when wave completes (maxLife 150 + stagger 3 + buffer)
-                    if (sparks.material.uniforms.uPulseTimer.value > 160.0) {
+                    // Turn off when wave completes (maxLife 320 + stagger 1.5 + buffer)
+                    if (sparks.material.uniforms.uPulseTimer.value > 330.0) {
                         sparks.material.uniforms.uPulseTimer.value = -100.0;
                     }
                 }
             }
         }
 
-        // Slow drift moon across entire screen
+        // Slow drift moon across entire screen, including coming closer to the camera
         if (this.moonGroup) {
             const driftX = Math.sin(this.time * 0.03 + this.moonPhaseX) * 550
                 + Math.cos(this.time * 0.02 + this.moonPhaseX2) * 250;
             const driftY = Math.cos(this.time * 0.025 + this.moonPhaseY) * 350
                 + Math.sin(this.time * 0.015 + this.moonPhaseY2) * 150;
+            const driftZ = Math.sin(this.time * 0.015 + this.moonPhaseX) * 350 + Math.cos(this.time * 0.02 + this.moonPhaseY2) * 150 + 200;
 
             this.moonGroup.position.x = driftX;
             this.moonGroup.position.y = driftY;
+            this.moonGroup.position.z = driftZ;
 
             // Gentle rotation
             this.moonGroup.rotation.z = Math.sin(this.time * 0.01) * 0.05;
@@ -794,6 +798,7 @@ export default class BloodMoonTheme extends BaseTheme {
 
             if (cloud.material.uniforms) {
                 cloud.material.uniforms.uPulse.value = pulse + (this.moonPulseIntensity * 2.0); // React to gameplay
+                cloud.material.uniforms.uTime.value = this.time;
             }
         }
 
@@ -829,7 +834,7 @@ export default class BloodMoonTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createBloodWave(intensity) {
-        const geometry = new THREE.TorusGeometry(30, 2, 8, 48);
+        const geometry = new THREE.SphereGeometry(30, 64, 64);
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 uTime: { value: this.time },
@@ -845,6 +850,7 @@ export default class BloodMoonTheme extends BaseTheme {
         });
 
         const wave = new THREE.Mesh(geometry, material);
+        wave.frustumCulled = false;
         wave.rotation.x = Math.random() * Math.PI * 0.3;
         wave.rotation.y = Math.random() * Math.PI * 2;
 
@@ -866,6 +872,7 @@ export default class BloodMoonTheme extends BaseTheme {
 
             if (wave.material.uniforms) {
                 wave.material.uniforms.uOpacity.value = wave.userData.life;
+                wave.material.uniforms.uTime.value = this.time;
             }
 
             if (wave.userData.life <= 0) {
@@ -891,13 +898,15 @@ export default class BloodMoonTheme extends BaseTheme {
         });
 
         const orb = new THREE.Mesh(geometry, material);
+        orb.frustumCulled = false;
         orb.position.x = (Math.random() - 0.5) * 300;
         orb.position.y = -200;
         orb.position.z = (Math.random() - 0.5) * 200;
 
         orb.userData = {
-            velocityY: 30 + Math.random() * 40,
-            velocityX: (Math.random() - 0.5) * 10,
+            velocityY: 60 + Math.random() * 80,
+            velocityX: (Math.random() - 0.5) * 20,
+            velocityZ: (Math.random() - 0.5) * 15,
             life: 1.0,
             pulsePhase: Math.random() * Math.PI * 2,
         };
@@ -911,14 +920,15 @@ export default class BloodMoonTheme extends BaseTheme {
             const orb = this.soulOrbs[i];
             orb.position.y += orb.userData.velocityY * delta;
             orb.position.x += orb.userData.velocityX * delta;
-            orb.userData.life -= delta * 0.3;
+            orb.position.z += (orb.userData.velocityZ || 0) * delta;
+            orb.userData.life -= delta * 0.12; // much slower decay — lasts ~8 seconds
 
             // Pulse
             orb.userData.pulsePhase += delta * 5;
             const pulse = Math.sin(orb.userData.pulsePhase) * 0.3 + 0.7;
             orb.material.opacity = orb.userData.life * pulse;
 
-            if (orb.userData.life <= 0 || orb.position.y > 300) {
+            if (orb.userData.life <= 0 || orb.position.y > 800) {
                 this.moonGroup.remove(orb);
                 orb.geometry.dispose();
                 orb.material.dispose();
@@ -996,21 +1006,27 @@ export default class BloodMoonTheme extends BaseTheme {
             this.starfield.material.uniforms.uEventBoost.value = boost;
         }
 
-        // Trigger blood spark burst on combos - cycle through pool for overlapping
+        // Trigger blood spark burst on combos - only use idle systems so active particles accumulate
         if (comboCount >= 2 && this.bloodSparks.length > 0) {
-            // Trigger multiple systems for higher combos for more density
             const systemsToTrigger = Math.min(1 + Math.floor(comboCount / 3), 4);
+            let triggered = 0;
 
-            for (let i = 0; i < systemsToTrigger; i++) {
-                const index = (this.bloodSparkIndex + i) % this.bloodSparks.length;
+            // Scan the entire pool for idle systems instead of blindly cycling
+            for (let scan = 0; scan < this.bloodSparks.length && triggered < systemsToTrigger; scan++) {
+                const index = (this.bloodSparkIndex + scan) % this.bloodSparks.length;
                 const sparks = this.bloodSparks[index];
                 if (sparks && sparks.material.uniforms) {
-                    sparks.material.uniforms.uPulseTimer.value = 0.0;
+                    // Only fire into systems that have finished their lifecycle
+                    const timer = sparks.material.uniforms.uPulseTimer.value;
+                    if (timer < -50.0 || timer > 320.0) {
+                        sparks.material.uniforms.uPulseTimer.value = 0.0;
+                        triggered++;
+                    }
                 }
             }
 
-            // Cycle the pool index
-            this.bloodSparkIndex = (this.bloodSparkIndex + systemsToTrigger) % this.bloodSparks.length;
+            // Advance index past what we scanned
+            this.bloodSparkIndex = (this.bloodSparkIndex + triggered) % this.bloodSparks.length;
         }
 
         // Create blood waves

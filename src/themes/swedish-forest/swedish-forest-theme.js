@@ -469,7 +469,7 @@ export default class SwedishForestTheme extends BaseTheme {
             time: { value: 0 },
             glowIntensity: { value: 0 },
             mistIntensity: { value: 0.6 },
-            auroraIntensity: { value: 0 },
+            auroraIntensity: { value: 0.85 }, // Increased baseline intensity for the spirit wisps
             windSpeed: { value: 0 },
         };
 
@@ -818,7 +818,7 @@ export default class SwedishForestTheme extends BaseTheme {
         this.createMountains(); // Distant mountain silhouettes (Firewatch style)
         this.createSilhouetteMountain(); // 3D heightmap mountain on left side
         this.createSun(); // Large glowing sun at horizon
-        // this.createAuroraLayers();   // Disabled - doesn't fit sunset theme
+        this.createAuroraLayers(); // Repurposed for massive warm spirit winds in the upper sky
         this.createGodRays(); // Light beams from sun
         this.createLensFlares(); // Camera lens flare from sun
         this.createTrees(); // Layered trees
@@ -2936,18 +2936,20 @@ export default class SwedishForestTheme extends BaseTheme {
             reflectionMatrix: reflectionTextureMatrix,
             enableReflectionSample: false,
             sunDirection: this.sunPosition.clone().normalize(),
-            sunColor: new THREE.Color(0xffb062),
-            nearColor: new THREE.Color(0x6e3a1c),
-            farColor: new THREE.Color(0xb97843),
-            skyReflection: COLORS.cloud.fog.clone().multiplyScalar(0.58),
-            rippleStrength: 0.42,
-            distortionStrength: 0.011,
-            fresnelPower: 2.45,
-            fresnelBias: 0.05,
-            sunPathStrength: 0.62,
-            shoreDarkening: 0.42,
-            shoreFoamStrength: 0.32,
-            objectFoamStrength: 0.46,
+            sunColor: new THREE.Color(0xffaa33), // Slightly warmer gold
+            nearColor: new THREE.Color(0x351005), // Even darker, richer base
+            farColor: new THREE.Color(0xa64510), // More muted, darker amber at horizon
+            skyReflection: COLORS.cloud.fog.clone().multiplyScalar(0.65), // Less saturated sky reflection
+            rippleStrength: 0.12, // Even smoother waves
+            distortionStrength: 0.006, // Less distortion
+            fresnelPower: 6.0, // Sharper highly reflective edge
+            fresnelBias: 0.10, // Less base reflection, more depth
+            sunPathStrength: 0.9, // Softer sun path
+            shoreDarkening: 0.65, // Stronger dark vignetting near shore
+            shoreFoamStrength: 0.10, // Barely visible foam
+            objectFoamStrength: 0.15,
+
+
             emissiveStrength: 0.24,
         });
 
@@ -3055,14 +3057,14 @@ export default class SwedishForestTheme extends BaseTheme {
         const reflectionResolution = this.getWaterReflectionResolution();
 
         this.lakeMesh = new SwedishForestWater(lakeGeometry, {
-            textureWidth: reflectionResolution,
-            textureHeight: reflectionResolution,
-            waterNormals,
+            textureWidth: this.getWaterReflectionResolution(),
+            textureHeight: this.getWaterReflectionResolution(),
+            waterNormals: this.waterNormalsTexture || this.waterNormalsFallbackTexture,
             sunDirection: this.sunPosition.clone().normalize(),
-            sunColor: 0xffcc88,
-            waterColor: 0x8b4513,
-            distortionScale: 0.6,
-            fog: false,
+            sunColor: 0xffaa33, // Slightly warmer gold
+            waterColor: 0x220800, // Almost black/dark brown base
+            distortionScale: 1.2, // Smoother reflections
+            fog: this.scene.fog !== undefined,
         });
 
         this.lakeMesh.rotation.x = -Math.PI / 2;
@@ -3875,71 +3877,26 @@ export default class SwedishForestTheme extends BaseTheme {
         }
 
         // Tree positions at left and right lake edges
-        // Lake is scaled 2.5x in X direction (radius 70), so edges are at ~x=±175
-        // Camera is at z=100, looking at z=-20, visible lake edges are around x=±120-160
+        // Camera is at z=160, looking at z=-20.
+        // We want these trees to act as an intimate, dark foreground frame.
         const treePositions = [
-            // LEFT EDGE FRAMING TREES - visible at left side of camera view
-            {
-                x: -120, z: 50, height: 25, scale: 1.8, colorIdx: 0,
-            },
-            {
-                x: -135, z: 42, height: 30, scale: 2.0, colorIdx: 1,
-            },
-            {
-                x: -125, z: 35, height: 22, scale: 1.6, colorIdx: 0,
-            },
-            {
-                x: -145, z: 48, height: 35, scale: 2.2, colorIdx: 2,
-            },
-            {
-                x: -130, z: 28, height: 28, scale: 1.9, colorIdx: 0,
-            },
-            {
-                x: -155, z: 55, height: 38, scale: 2.4, colorIdx: 1,
-            },
-            {
-                x: -140, z: 38, height: 26, scale: 1.7, colorIdx: 2,
-            },
-            {
-                x: -160, z: 45, height: 40, scale: 2.5, colorIdx: 0,
-            },
-            {
-                x: -115, z: 58, height: 20, scale: 1.5, colorIdx: 1,
-            },
-            {
-                x: -150, z: 32, height: 32, scale: 2.1, colorIdx: 2,
-            },
-            // RIGHT EDGE FRAMING TREES - visible at right side of camera view
-            {
-                x: 120, z: 48, height: 24, scale: 1.7, colorIdx: 0,
-            },
-            {
-                x: 135, z: 40, height: 28, scale: 1.9, colorIdx: 1,
-            },
-            {
-                x: 125, z: 32, height: 22, scale: 1.6, colorIdx: 2,
-            },
-            {
-                x: 145, z: 52, height: 34, scale: 2.2, colorIdx: 0,
-            },
-            {
-                x: 130, z: 25, height: 26, scale: 1.8, colorIdx: 1,
-            },
-            {
-                x: 155, z: 58, height: 36, scale: 2.3, colorIdx: 0,
-            },
-            {
-                x: 140, z: 35, height: 30, scale: 2.0, colorIdx: 2,
-            },
-            {
-                x: 160, z: 42, height: 42, scale: 2.6, colorIdx: 1,
-            },
-            {
-                x: 115, z: 55, height: 18, scale: 1.4, colorIdx: 0,
-            },
-            {
-                x: 150, z: 30, height: 33, scale: 2.1, colorIdx: 2,
-            },
+            // LEFT EDGE FRAMING TREES
+            { x: -55, z: 155, height: 45, scale: 2.5, colorIdx: 0 },
+            { x: -80, z: 145, height: 60, scale: 3.0, colorIdx: 1 },
+            { x: -40, z: 162, height: 35, scale: 2.2, colorIdx: 0 },
+            { x: -95, z: 135, height: 55, scale: 2.8, colorIdx: 2 },
+            { x: -65, z: 150, height: 50, scale: 2.6, colorIdx: 1 },
+            { x: -110, z: 125, height: 65, scale: 3.2, colorIdx: 0 },
+            { x: -45, z: 148, height: 40, scale: 2.0, colorIdx: 2 },
+
+            // RIGHT EDGE FRAMING TREES
+            { x: 50, z: 158, height: 42, scale: 2.4, colorIdx: 0 },
+            { x: 75, z: 148, height: 55, scale: 2.9, colorIdx: 1 },
+            { x: 35, z: 165, height: 32, scale: 2.1, colorIdx: 0 },
+            { x: 90, z: 138, height: 50, scale: 2.7, colorIdx: 2 },
+            { x: 60, z: 152, height: 48, scale: 2.5, colorIdx: 1 },
+            { x: 105, z: 128, height: 60, scale: 3.1, colorIdx: 0 },
+            { x: 42, z: 150, height: 38, scale: 1.9, colorIdx: 2 },
         ];
 
         treePositions.forEach((config) => {
@@ -4577,15 +4534,15 @@ export default class SwedishForestTheme extends BaseTheme {
     createMistLayers() {
         this.mistNodeUniforms = [];
         const mistConfigs = [
-            {
-                y: 2, z: 8, width: 300, height: 10, density: 0.35,
-            }, // Much wider mist layers
-            {
-                y: 4, z: -8, width: 320, height: 14, density: 0.3,
-            },
-            {
-                y: 6, z: -22, width: 350, height: 18, density: 0.25,
-            },
+            // Distant mist at tree line
+            { y: 7, z: -35, width: 2500, height: 18, density: 0.4 },
+            { y: 5, z: -15, width: 2500, height: 15, density: 0.35 },
+            // Mid-ground lake mist
+            { y: 3, z: 20, width: 2500, height: 12, density: 0.3 },
+            { y: 2, z: 60, width: 2500, height: 10, density: 0.25 },
+            // Foreground lake mist
+            { y: 1.5, z: 100, width: 2500, height: 8, density: 0.2 },
+            { y: 1.0, z: 140, width: 2500, height: 6, density: 0.15 },
         ];
 
         for (const config of mistConfigs) {
@@ -4742,8 +4699,8 @@ export default class SwedishForestTheme extends BaseTheme {
     createGodRays() {
         // Large plane covering entire view with volumetric god ray shader
         // Position FORWARD of trees so rays overlay the scene
-        const width = 250; // Very wide to cover full scene
-        const height = 180; // Tall to reach from sky to ground
+        const width = 800; // Scaled up massive size to cover full width from sun
+        const height = 450;
         const geometry = new THREE.PlaneGeometry(width, height);
 
         // Create volumetric god ray material using advanced shader
@@ -4751,10 +4708,10 @@ export default class SwedishForestTheme extends BaseTheme {
         if (this.isWebGPU) {
             const nodeGodRays = createGodRayNodeMaterial({
                 time: this.uniforms.time.value,
-                opacity: 0.22,
-                rayColor: new THREE.Color(0xFFCC66),
+                opacity: 0.35, // Stronger presence
+                rayColor: new THREE.Color(0xFFBB44), // Warmer golden rays
                 sunScreenPos: new THREE.Vector2(0.5, 0.5),
-                emissiveStrength: 1.35,
+                emissiveStrength: 1.6, // Brighter rays
             });
             this.godRayMaterial = nodeGodRays.material;
             this.godRayNodeUniforms = nodeGodRays.uniforms;
@@ -4762,10 +4719,10 @@ export default class SwedishForestTheme extends BaseTheme {
             this.godRayMaterial = new THREE.ShaderMaterial({
                 uniforms: {
                     uTime: { value: 0 },
-                    uOpacity: { value: 0.22 }, // Very subtle god rays
+                    uOpacity: { value: 0.35 },
                     uSunPosition: { value: this.sunPosition.clone() },
                     uSunScreenPos: { value: new THREE.Vector2(0.5, 0.5) },
-                    uRayColor: { value: new THREE.Color(0xFFCC66) },
+                    uRayColor: { value: new THREE.Color(0xFFBB44) },
                     uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
                 },
                 vertexShader: godRayVertexShader,
@@ -4781,9 +4738,9 @@ export default class SwedishForestTheme extends BaseTheme {
         const godRayPlane = new THREE.Mesh(geometry, this.godRayMaterial);
         godRayPlane.userData.phase2BloomEmitter = true;
 
-        // Position plane CENTERED on the sun (which is at 0, 30, -60 typically)
-        // We place it slightly in front at z=-45
-        godRayPlane.position.set(0, 30, -45);
+        // Position plane slightly in front of the sun
+        godRayPlane.position.copy(this.sunPosition);
+        godRayPlane.position.z += 20; // Place slightly in front
 
         // Face the camera
         godRayPlane.rotation.x = 0;
@@ -5008,7 +4965,8 @@ export default class SwedishForestTheme extends BaseTheme {
         ];
 
         for (const config of auroraConfigs) {
-            const geometry = new THREE.PlaneGeometry(150, 30, 32, 8);
+            // Massive sky-spanning ribbons (drastically widened to prevent edge clipping)
+            const geometry = new THREE.PlaneGeometry(1500, 150, 48, 12);
 
             const material = new THREE.ShaderMaterial({
                 uniforms: {
@@ -5028,8 +4986,9 @@ export default class SwedishForestTheme extends BaseTheme {
             });
 
             const aurora = new THREE.Mesh(geometry, material);
-            aurora.position.set(0, 45 + config.offset * 4, -80);
-            aurora.rotation.x = 0.25;
+            // Higher up in the sky, further back
+            aurora.position.set(0, 75 + config.offset * 8, -120);
+            aurora.rotation.x = 0.15;
 
             this.auroraPlanes.push(aurora);
             this.mainGroup.add(aurora);

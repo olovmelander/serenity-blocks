@@ -43,6 +43,8 @@ import {
     createStarfieldNodeMaterial,
     createVoidSparkNodeMaterial,
     createGasSwirlNodeMaterial,
+    createAccretionDiskNodeMaterial,
+    createAnamorphicFlareNodeMaterial,
 } from './cosmic-noir-materials.js';
 import {
     planetVertexShader,
@@ -62,6 +64,8 @@ import {
     nebulaFragmentShader,
     gasSwirlVertexShader,
     gasSwirlFragmentShader,
+    accretionDiskVertexShader,
+    accretionDiskFragmentShader,
 } from './cosmic-noir-shaders.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,6 +160,13 @@ const QUALITY_PRESETS = {
         glowLayers: 8,
         atmosphereLayers: 2,
         dustParticles: 500,
+        // Shader FBM octave counts — baked at material creation time
+        atmosphereFbmOctaves: 5,  // gasA=5, gasB=4, tendril=4
+        diskFbmOctaves: 5,
+        planetFbmOctaves: 4,
+        // Geometry tessellation
+        atmosphereDetail: 64,
+        diskSegments: 128,
     },
     Ultra: {
         starCount: 50000,
@@ -172,6 +183,11 @@ const QUALITY_PRESETS = {
         glowLayers: 7,
         atmosphereLayers: 2,
         dustParticles: 380,
+        atmosphereFbmOctaves: 5,
+        diskFbmOctaves: 4,
+        planetFbmOctaves: 4,
+        atmosphereDetail: 64,
+        diskSegments: 96,
     },
     High: {
         starCount: 30000,
@@ -188,6 +204,11 @@ const QUALITY_PRESETS = {
         glowLayers: 6,
         atmosphereLayers: 2,
         dustParticles: 280,
+        atmosphereFbmOctaves: 4,  // gasA=4, gasB=3, tendril=3
+        diskFbmOctaves: 3,
+        planetFbmOctaves: 4,
+        atmosphereDetail: 48,
+        diskSegments: 64,
     },
     Medium: {
         starCount: 15000,
@@ -204,6 +225,11 @@ const QUALITY_PRESETS = {
         glowLayers: 5,
         atmosphereLayers: 2,
         dustParticles: 0,
+        atmosphereFbmOctaves: 3,  // gasA=3, gasB=2, tendril=2
+        diskFbmOctaves: 3,
+        planetFbmOctaves: 3,
+        atmosphereDetail: 40,
+        diskSegments: 48,
     },
     Low: {
         starCount: 8000,
@@ -220,6 +246,11 @@ const QUALITY_PRESETS = {
         glowLayers: 4,
         atmosphereLayers: 1,
         dustParticles: 0,
+        atmosphereFbmOctaves: 3,  // gasA=3, gasB=2, tendril=2
+        diskFbmOctaves: 2,
+        planetFbmOctaves: 3,
+        atmosphereDetail: 32,
+        diskSegments: 32,
     },
     Minimal: {
         starCount: 4000,
@@ -236,6 +267,11 @@ const QUALITY_PRESETS = {
         glowLayers: 3,
         atmosphereLayers: 1,
         dustParticles: 0,
+        atmosphereFbmOctaves: 2,  // gasA=2, gasB=2, tendril=2
+        diskFbmOctaves: 2,
+        planetFbmOctaves: 3,
+        atmosphereDetail: 24,
+        diskSegments: 24,
     },
 };
 
@@ -358,6 +394,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.clock = new THREE.Clock();
         this.time = 0;
         this.tempCameraForward = new THREE.Vector3();
+        this.tempScreenVector = new THREE.Vector3();
+        this.tempBhScreenPos = new THREE.Vector2(0.5, 0.5);
 
         // State
         this.eventUnsubscribers = [];
@@ -1516,6 +1554,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             const { material: nodeMaterial, uniforms } = createPlanetNodeMaterial({
                 map: planetTexture,
                 sunDirection,
+                fbmOctaves: this.qualityPreset.planetFbmOctaves ?? 4,
             });
             material = nodeMaterial;
             this.planetUniforms = uniforms;
@@ -1543,8 +1582,9 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.createPlanetGlowLayers(planetSize);
         this.createComboFlashLayer(planetSize);
         this.createComboLensFlareLayer();
+        this.createAccretionDisk();
 
-        console.log('[CosmicNoir] 3D Black Planet created with texture');
+        console.log('[CosmicNoir] 3D Black Planet created with texture and accretion disk');
     }
 
     createPlanetGlowLayers(planetSize) {
@@ -1677,6 +1717,68 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.planetGroup.add(mesh);
     }
 
+    createAccretionDisk() {
+        if (this.accretionDisk) {
+            this.planetGroup?.remove(this.accretionDisk);
+            this.accretionDisk.geometry?.dispose?.();
+            this.accretionDisk.material?.dispose?.();
+        }
+
+        const innerRadius = 210; // Starts right outside the singularity core
+        const outerRadius = 1200; // Massive sweeping disk
+        const diskSegments = this.qualityPreset.diskSegments ?? 128;
+        const geometry = new THREE.RingGeometry(innerRadius, outerRadius, diskSegments, 1);
+
+        // Rewrite UVs so uv.x = angle (0..1) and uv.y = radius (0..1)
+        const posAttribute = geometry.attributes.position;
+        const uvAttribute = geometry.attributes.uv;
+        for (let i = 0; i < posAttribute.count; i++) {
+            const x = posAttribute.getX(i);
+            const y = posAttribute.getY(i);
+            const rad = Math.sqrt(x * x + y * y);
+            const rNorm = (rad - innerRadius) / (outerRadius - innerRadius);
+
+            let angle = Math.atan2(y, x);
+            if (angle < 0) angle += Math.PI * 2;
+            const aNorm = angle / (Math.PI * 2);
+
+            uvAttribute.setXY(i, aNorm, rNorm);
+        }
+
+        let material;
+        let uniforms;
+
+        if (this.isWebGPU) {
+            ({ material, uniforms } = createAccretionDiskNodeMaterial({
+                fbmOctaves: this.qualityPreset.diskFbmOctaves ?? 5,
+            }));
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uPulseIntensity: { value: 0 },
+                },
+                vertexShader: accretionDiskVertexShader,
+                fragmentShader: accretionDiskFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+            });
+            ({ uniforms } = material);
+        }
+
+        const mesh = new THREE.Mesh(geometry, material);
+        // Tilt the disk for a cinematic angle
+        mesh.rotation.x = Math.PI * 0.42;
+        mesh.rotation.y = Math.PI * 0.12;
+        mesh.renderOrder = 102; // Under the gas swirl and behind combo flares
+
+        this.accretionDisk = mesh;
+        this.accretionDiskUniforms = uniforms;
+        this.planetGroup.add(mesh);
+    }
+
     createComboLensFlareLayer() {
         if (this.comboLensFlare) {
             this.scene?.remove(this.comboLensFlare);
@@ -1691,8 +1793,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         let uniforms = null;
 
         if (this.isWebGPU) {
-            ({ material, uniforms } = createPlanetGlowNodeMaterial({
-                color: new THREE.Color(0xdedeea),
+            ({ material, uniforms } = createAnamorphicFlareNodeMaterial({
                 opacity: 0.0,
             }));
         } else {
@@ -1849,8 +1950,9 @@ export default class CosmicNoirTheme extends BaseTheme {
             }
         }
 
+        const atmosphereDetail = this.qualityPreset.atmosphereDetail ?? 64;
         const createAtmosphereLayer = (radius, opacity, renderOrder) => {
-            const geometry = new THREE.SphereGeometry(radius, 64, 64);
+            const geometry = new THREE.SphereGeometry(radius, atmosphereDetail, atmosphereDetail);
             let material;
             let uniforms;
 
@@ -1858,6 +1960,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                 ({ material, uniforms } = createAtmosphereNodeMaterial({
                     isWebGPU: this.isWebGPU,
                     atmosphereFlowCompute: this.atmosphereFlowCompute,
+                    fbmOctaves: this.qualityPreset.atmosphereFbmOctaves ?? 5,
                 }));
             } else {
                 material = new THREE.ShaderMaterial({
@@ -2432,6 +2535,15 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.planet.rotation.y += delta * 0.05; // Slow, majestic rotation
         }
 
+        if (this.accretionDisk && this.accretionDiskUniforms) {
+            if (this.accretionDiskUniforms.uTime) {
+                this.accretionDiskUniforms.uTime.value = this.time;
+            }
+            if (this.accretionDiskUniforms.uPulseIntensity) {
+                this.accretionDiskUniforms.uPulseIntensity.value = this.planetPulseIntensity;
+            }
+        }
+
         if (this.starfield && Array.isArray(this.starfieldUniforms)) {
             this.starfieldUniforms.forEach((uniforms) => {
                 if (!uniforms) return;
@@ -2723,6 +2835,16 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.updateCosmicWaves(delta);
 
         if (this.isWebGPU && this.flags.usePost && this.postProcessing?.update) {
+            this.tempBhScreenPos.set(0.5, 0.5);
+            if (this.planetGroup && this.camera) {
+                this.planetGroup.getWorldPosition(this.tempScreenVector);
+                this.tempScreenVector.project(this.camera);
+                this.tempBhScreenPos.set(
+                    this.tempScreenVector.x * 0.5 + 0.5,
+                    this.tempScreenVector.y * 0.5 + 0.5,
+                );
+            }
+
             const reactiveBloomBoost = Math.min(
                 this.flags.useMRT ? 0.6 : 0.28,
                 this.planetPulseIntensity * 0.32
@@ -2734,6 +2856,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                 ? this.qualityPreset.bloomStrength
                 : this.qualityPreset.bloomStrength * 0.42;
             this.postProcessing.update({
+                bhScreenPos: this.tempBhScreenPos,
                 bloomStrength: bloomBaseStrength * (1.0 + reactiveBloomBoost),
                 bloomRadius: this.qualityPreset.bloomRadius,
                 bloomThreshold: this.flags.useMRT ? 0.0 : 0.88,

@@ -1,23 +1,28 @@
 import {
     AdditiveBlending,
+    BackSide,
     DoubleSide,
     MeshBasicNodeMaterial,
     NormalBlending,
     PointsNodeMaterial,
     Vector2,
+    Vector3,
 } from 'three/webgpu';
 import {
-    Fn,
+    abs,
     atan,
     attribute,
     cameraPosition,
     clamp,
     cos,
+    cross,
     dot,
     exp,
     float,
     floor,
     fract,
+    Fn,
+    If,
     instanceIndex,
     length,
     max,
@@ -85,35 +90,41 @@ export function createBlackHoleCoreNodeMaterial() {
     const uvCoord = uv().mul(2.0).sub(1.0);
     const dist = length(uvCoord);
 
-    const eventHorizon = float(0.25).mul(uScale);
-    const photonSphere = float(0.4).mul(uScale);
-    const photonWidth = float(0.08);
+    // Event Horizon scale - tight black circle
+    const eventHorizon = float(0.22).mul(uScale);
+    // Photon sphere is extremely narrow and bright
+    const photonSphere = float(0.26).mul(uScale);
+    const photonWidth = float(0.015);
 
-    const black = smoothstep(eventHorizon.add(0.02), eventHorizon.sub(0.02), dist);
+    // Very sharp edge for the event horizon
+    const black = smoothstep(eventHorizon.add(0.005), eventHorizon.sub(0.005), dist);
 
-    const photonDist = dist.sub(photonSphere).div(photonWidth);
-    const photonRing = exp(photonDist.mul(photonDist).negate()).mul(uIntensity);
+    // Intense, physically sharp exponential falloff for the photon ring
+    const photonDist = clamp(dist.sub(photonSphere), float(0.0), float(1.0)).div(photonWidth);
+    const photonRing = exp(photonDist.mul(photonDist).negate().mul(3.0)).mul(uIntensity).mul(2.5);
 
-    const shimmerCoord = uvCoord.mul(8.0).add(uTime.mul(0.5));
-    const shimmer = tslFbm(shimmerCoord, 5).mul(0.3);
-    const shimmerMask = smoothstep(float(0.5), float(0.3), dist).mul(float(1.0).sub(black));
-    const photonRingWithShimmer = photonRing.add(shimmer.mul(shimmerMask));
+    const shimmerCoord = uvCoord.mul(12.0).add(uTime.mul(0.8));
+    const shimmer = tslFbm(shimmerCoord, 5).mul(0.4);
+
+    // Mask shimmer exactly to the photon ring
+    const shimmerMask = smoothstep(float(0.4), float(0.22), dist).mul(float(1.0).sub(black));
+    const photonRingWithShimmer = photonRing.add(shimmer.mul(shimmerMask).mul(uIntensity));
 
     const orangeColor = vec3(1.0, 0.6, 0.2);
-    const whiteColor = vec3(1.0, 1.0, 1.0);
-    const blueColor = vec3(0.4, 0.6, 1.0);
+    const whiteColor = vec3(1.4, 1.4, 1.4); // Overblown white hot
+    const blueColor = vec3(0.5, 0.7, 1.0);
 
-    let photonColor = mix(orangeColor, whiteColor, photonRingWithShimmer);
-    photonColor = mix(photonColor, blueColor, smoothstep(float(0.35), float(0.5), dist).mul(0.3));
+    let photonColor = mix(orangeColor, whiteColor, photonRingWithShimmer.mul(0.5));
+    photonColor = mix(photonColor, blueColor, smoothstep(float(0.28), float(0.45), dist).mul(0.4));
 
-    let color = photonColor.mul(photonRingWithShimmer).mul(uIntensity);
+    let color = photonColor.mul(photonRingWithShimmer);
     color = mix(color, vec3(0.0, 0.0, 0.0), black);
 
-    const alpha = photonRingWithShimmer.mul(float(1.0).sub(black)).add(black.mul(0.95));
+    const alpha = clamp(photonRingWithShimmer.mul(float(1.0).sub(black)).add(black), float(0.0), float(1.0));
 
     material.colorNode = color;
     material.opacityNode = alpha;
-    material.emissiveNode = color;
+    material.emissiveNode = color; // Additive emissive
 
     material.userData = { uTime, uIntensity, uScale };
 
@@ -185,68 +196,127 @@ export function createAccretionDiskNodeMaterial() {
     return material;
 }
 
-export function createVolumetricAccretionDiskNodeMaterial() {
+export function createVolumetricAccretionDiskNodeMaterial(diskNormal) {
     const material = new MeshBasicNodeMaterial({
         transparent: true,
         depthWrite: false,
-        side: DoubleSide,
+        side: BackSide,
         blending: AdditiveBlending,
     });
 
     const uTime = uniform(0);
     const uIntensity = uniform(0.35);
     const uRotationSpeed = uniform(1.0);
-    const uCenter = uniform(new Vector2(0, 0));
+    const uCenter = uniform(new Vector3(0, 0, 0));
+    const uDiskNormal = uniform(diskNormal);
+    const uDopplerBoost = uniform(1.0); // For reactive heating
+    const uEventHorizon = uniform(110.0); // For gravitational ripples
 
     const worldPos = positionWorld;
-    const viewDir = normalize(worldPos.sub(cameraPosition));
-    const normal = normalize(normalWorld);
 
-    const center = vec3(uCenter.x, uCenter.y, float(0.0));
-    const baseToCenter = worldPos.sub(center);
-    const baseHeight = dot(baseToCenter, normal);
-    const baseRadial = baseToCenter.sub(normal.mul(baseHeight));
-    const baseRadialDist = length(baseRadial);
-    const baseAngle = atan(baseRadial.y, baseRadial.x);
+    const baseColorFn = Fn(() => {
+        const ro = cameraPosition.toVar();
+        const rd = normalize(worldPos.sub(cameraPosition)).toVar();
 
-    const innerRadius = float(140.0);
-    const outerRadius = float(400.0);
-    const thickness = float(50.0);
-    const steps = 10;
-    const stepSize = thickness.div(float(steps));
+        const steps = 36;
+        const stepSize = float(18.0);
 
-    let accum = float(0.0);
-    for (let i = 0; i < steps; i += 1) {
-        const offset = float(i).sub(float(steps - 1).mul(0.5)).mul(stepSize);
-        const samplePos = worldPos.add(viewDir.mul(offset));
-        const toCenter = samplePos.sub(center);
-        const height = dot(toCenter, normal);
-        const radialVec = toCenter.sub(normal.mul(height));
-        const radial = length(radialVec);
+        const accumColor = vec3(0.0).toVar();
+        const activeRay = float(1.0).toVar();
 
-        const radialMask = smoothstep(innerRadius, innerRadius.add(30.0), radial)
-            .mul(float(1.0).sub(smoothstep(outerRadius.sub(40.0), outerRadius, radial)));
-        const heightFalloff = exp(height.mul(height).negate().mul(0.02));
-        const swirl = sin(atan(radialVec.y, radialVec.x).mul(6.0).add(uTime.mul(uRotationSpeed).mul(0.8)))
-            .mul(0.4)
-            .add(0.6);
+        const gravStrength = float(2600.0);
 
-        accum = accum.add(radialMask.mul(heightFalloff).mul(swirl));
-    }
+        for (let i = 0; i < steps; i++) {
+            const toCenter = uCenter.sub(ro);
+            const distSq = dot(toCenter, toCenter);
+            const dist = pow(distSq, 0.5);
 
-    const radialT = clamp(baseRadialDist.div(outerRadius), float(0.0), float(1.0));
-    let baseColor = mix(vec3(1.0, 0.9, 0.7), vec3(0.8, 0.35, 0.1), radialT);
-    const doppler = sin(baseAngle).mul(0.15);
-    baseColor = mix(baseColor, vec3(0.6, 0.7, 1.0), max(float(0.0), doppler));
-    baseColor = mix(baseColor, vec3(0.9, 0.2, 0.05), max(float(0.0), doppler.negate()));
+            If(dist.lessThan(uEventHorizon), () => {
+                activeRay.assign(0.0);
+                // break equivalent in TSL is handled by condition inside the loop but we can't easily break from a js for-loop emitting nodes.
+                // We'll just stop accumulating by zeroing activeRay and using it as a multiplier.
+            });
 
-    const intensity = accum.mul(uIntensity).mul(0.18);
+            // Only accumulate if we haven't hit the event horizon
+            If(activeRay.greaterThan(0.0), () => {
+                const forceDist = max(distSq, uEventHorizon.mul(uEventHorizon));
+                const gravityForce = toCenter.div(dist).mul(gravStrength.div(forceDist));
+                rd.assign(normalize(rd.add(gravityForce.mul(stepSize))));
 
-    material.colorNode = baseColor.mul(intensity);
-    material.opacityNode = intensity;
-    material.emissiveNode = baseColor.mul(intensity);
+                ro.addAssign(rd.mul(stepSize));
 
-    material.userData = { uTime, uIntensity, uRotationSpeed, uCenter };
+                const height = dot(ro.sub(uCenter), uDiskNormal);
+                const radialVec = ro.sub(uCenter).sub(uDiskNormal.mul(height));
+                const radialDist = length(radialVec);
+
+                If(radialDist.greaterThan(130.0)
+                    .and(radialDist.lessThan(450.0))
+                    .and(abs(height).lessThan(40.0)), () => {
+
+                        const radialMask = smoothstep(130.0, 160.0, radialDist)
+                            .mul(float(1.0).sub(smoothstep(380.0, 450.0, radialDist)));
+                        const heightFalloff = exp(height.mul(height).negate().mul(0.003));
+
+                        const angle = atan(radialVec.z, radialVec.x);
+                        const rotatedAngle = angle.add(uTime.mul(uRotationSpeed).mul(0.12));
+                        const normalizedRadius = clamp(radialDist.sub(130.0).div(320.0), 0.0, 1.0);
+
+                        const turbUv = vec2(rotatedAngle.mul(2.0), normalizedRadius.mul(8.0));
+                        const turb = tslFbm(turbUv.add(uTime.mul(0.1)), 5);
+                        const swirl = sin(rotatedAngle.mul(4.0).add(normalizedRadius.mul(12.0)).add(turb.mul(2.0)))
+                            .mul(0.4).add(0.6);
+
+                        // Add burst heating
+                        const heating = uDopplerBoost.sub(1.0).mul(0.5);
+                        const density = radialMask.mul(heightFalloff).mul(swirl.add(heating));
+
+                        If(density.greaterThan(0.01), () => {
+                            const temp = float(1.0).sub(pow(normalizedRadius, 0.6));
+                            const innerColor = vec3(1.0, 0.8, 0.5);
+                            const midColor = vec3(0.9, 0.35, 0.1);
+                            const outerColor = vec3(0.4, 0.1, 0.05);
+
+                            const lowMix = mix(outerColor, midColor, temp.mul(2.0));
+                            const highMix = mix(midColor, innerColor, temp.sub(0.5).mul(2.0));
+                            const color = mix(lowMix, highMix, step(0.5, temp)).toVar();
+
+                            const tangent = normalize(cross(uDiskNormal, radialVec));
+                            const dopplerFactor = dot(tangent, rd);
+
+                            const blueShift = vec3(0.6, 0.7, 1.0);
+                            const redShift = vec3(0.9, 0.2, 0.05);
+
+                            // Scale the doppler color shift based on the boost
+                            const appliedDoppler = dopplerFactor.mul(uDopplerBoost);
+                            color.assign(mix(color, blueShift, max(0.0, appliedDoppler.mul(1.5))));
+                            color.assign(mix(color, redShift, max(0.0, appliedDoppler.negate().mul(1.0))));
+
+                            // Brighter white hot approaching side
+                            const dopplerBright = float(1.0).add(appliedDoppler.mul(1.2));
+
+                            accumColor.addAssign(color.mul(density).mul(dopplerBright).mul(0.05));
+                        });
+                    });
+            });
+        }
+
+        return vec4(accumColor, activeRay);
+    });
+
+    const result = baseColorFn();
+    const accumColor = vec3(result.xyz);
+    const activeRay = result.w;
+
+    // Scale intensity
+    const intensity = length(accumColor).mul(uIntensity);
+    const finalColor = accumColor.mul(uIntensity);
+    const finalAlpha = intensity.mul(activeRay);
+
+    material.colorNode = finalColor;
+    material.opacityNode = finalAlpha;
+    material.emissiveNode = finalColor.mul(activeRay); // Kill emissive if absorbed
+
+    material.userData = { uTime, uIntensity, uRotationSpeed, uCenter, uDiskNormal, uDopplerBoost, uEventHorizon };
 
     return material;
 }

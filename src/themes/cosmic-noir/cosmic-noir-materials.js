@@ -121,82 +121,40 @@ export function createPlanetNodeMaterial(params = {}) {
         (params.sunDirection ?? new THREE.Vector3(0.6, 0.4, 0.7)).clone().normalize(),
     );
 
-    const uvCoord = uv();
-    const texNode = params.map ? texture(params.map) : null;
-    const texel = texNode ? texNode.sample(uvCoord) : vec4(0.12, 0.12, 0.14, 1.0);
-    const luma = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
-
-    // Preserve texture color tint (yellows, grays) instead of pure grayscale
-    const texColor = texel.rgb.mul(1.6).add(vec3(0.02, 0.02, 0.025));
-
-    const detailNoise = tslFbm(
-        uvCoord.mul(6.5).add(vec2(uTime.mul(0.05), uTime.mul(-0.03))),
-        5,
-    );
-    // Gentler gamma curve (1.4 instead of 2.2) to preserve dark detail
-    const contrastLuma = pow(clamp(luma.mul(1.1).add(detailNoise.mul(0.2)), 0.0, 1.0), 1.4);
-
-    const deepCharcoal = vec3(0.025, 0.025, 0.032);
-    const brightSilver = vec3(0.38, 0.37, 0.44);
-    // Blend between grayscale mapping and actual texture color for richer detail
-    const graySurface = mix(deepCharcoal, brightSilver, contrastLuma);
-    const surfaceColor = mix(graySurface, texColor.mul(contrastLuma.mul(0.6).add(0.15)), 0.35);
-
-    const displacementNoise = tslFbm(
-        vec2(positionLocal.x, positionLocal.y).mul(0.025).add(vec2(uTime.mul(0.08), 0.0)),
-        4,
-    );
-    const displacement = displacementNoise.sub(0.5).mul(1.2);
-    material.positionNode = positionLocal.add(normalLocal.mul(displacement));
-
     const nrm = normalize(normalWorld);
     const viewDir = normalize(cameraPosition.sub(positionWorld));
-    const sunDir = normalize(uSunDirection);
-    const fresnel = pow(float(1.0).sub(abs(dot(nrm, viewDir))), 2.5);
-    const sunFacing = clamp(dot(nrm, sunDir).mul(0.5).add(0.5), 0.0, 1.0);
-    // Stronger rim glow for silhouette definition
-    const rimGlow = vec3(0.34, 0.33, 0.42)
-        .mul(fresnel)
-        .mul(sunFacing.mul(0.5).add(0.38));
-    const pulseGlow = rimGlow.mul(uPulseIntensity.mul(0.6));
-    const nightSide = clamp(float(1.0).sub(sunFacing), 0.0, 1.0);
-    const subsurfaceNoise = tslFbm(
-        uvCoord.mul(9.0).add(vec2(uTime.mul(0.12), uTime.mul(-0.07))),
-        4,
-    );
-    // Brighter subsurface so night-side terrain is still faintly visible
-    const subsurfaceGlow = vec3(0.045, 0.043, 0.06)
-        .mul(pow(nightSide, 1.2))
-        .mul(subsurfaceNoise.mul(0.5).add(0.5))
-        .mul(float(0.35).add(uPulseIntensity.mul(0.3)));
 
-    const halfVector = normalize(sunDir.add(viewDir));
-    const specular = pow(max(dot(nrm, halfVector), 0.0), 20.0).mul(contrastLuma).mul(0.34);
-    const microHighlights = vec3(specular, specular, specular);
+    const NdotV = dot(nrm, viewDir);
+    const fresnel = float(1.0).sub(abs(NdotV)); // 0 at center, 1 at edge
 
-    // Direct diffuse term to illuminate the sun-facing hemisphere
-    const diffuse = clamp(dot(nrm, sunDir), 0.0, 1.0);
-    const diffuseLight = surfaceColor.mul(diffuse.mul(0.4));
+    // Singularity Core Mask - Pure black until the very edge
+    const coreMask = smoothstep(float(0.85), float(0.98), fresnel);
 
-    const pulseMul = float(1.0).add(uPulseIntensity.mul(0.15));
-    const finalColor = surfaceColor
-        .add(diffuseLight)
-        .add(rimGlow)
-        .add(pulseGlow)
-        .add(subsurfaceGlow)
-        .add(microHighlights)
-        .mul(uGlowIntensity)
-        .mul(pulseMul);
+    // Intense Photon Ring
+    const photonRing = pow(fresnel, 5.0).mul(1.5);
+    const sharpRing = pow(fresnel, 20.0).mul(3.0);
 
-    material.colorNode = clamp(finalColor, vec3(0.0), vec3(0.78));
-    material.roughnessNode = clamp(float(0.82).sub(contrastLuma.mul(0.25)), 0.32, 1.0);
-    material.metalnessNode = contrastLuma.mul(0.2);
-    material.emissiveNode = rimGlow
-        .mul(0.6)
-        .add(pulseGlow.mul(0.65))
-        .add(subsurfaceGlow.mul(0.45))
-        .add(surfaceColor.mul(0.14))
-        .mul(BLOOM_CLASS_WEIGHTS.planet * 0.58);
+    // Plasma noise in the ring
+    const ringNoise = tslFbm(positionLocal.mul(8.0).add(vec3(0.0, uTime.mul(0.5), uTime.mul(0.25))), params.fbmOctaves ?? 4);
+
+    // Fracture effect on combos
+    const fractureNoise = tslNoise(positionLocal.mul(15.0).sub(vec3(uTime.mul(2.0), 0.0, 0.0)));
+    const fracture = fractureNoise.mul(0.5).add(0.5).mul(uPulseIntensity);
+
+    const ringColorBase = vec3(0.8, 0.85, 1.0);
+    const hotCore = vec3(1.0, 1.0, 1.0);
+
+    const ringColor = mix(ringColorBase, hotCore, ringNoise.mul(0.5).add(0.5))
+        .add(ringColorBase.mul(fracture).mul(2.0));
+
+    const finalColor = ringColor.mul(photonRing.add(sharpRing)).mul(coreMask)
+        .mul(float(1.0).add(uPulseIntensity.mul(1.5)))
+        .mul(uGlowIntensity);
+
+    material.colorNode = finalColor;
+    material.roughnessNode = float(1.0);
+    material.metalnessNode = float(0.0);
+    material.emissiveNode = finalColor.mul(BLOOM_CLASS_WEIGHTS.planet);
 
     return finalizeNodeMaterial(
         material,
@@ -368,13 +326,15 @@ export function createAtmosphereNodeMaterial(params = {}) {
     const flowDensityPulse = useFlowCompute ? flowB.z : float(1.0);
     const flowTurbulence = useFlowCompute ? flowB.w : float(1.0);
 
+    const atmFbmOctaves = params.fbmOctaves ?? 5;
+    const atmFbmOctavesSub1 = Math.max(2, atmFbmOctaves - 1);
     const gasA = tslFbm(
         vec2(pos.x, pos.y)
             .mul(2.0)
             .add(baseFlowA)
             .add(flowOffsetA)
             .add(warpOffset),
-        5,
+        atmFbmOctaves,
     );
     const gasB = tslFbm(
         vec2(pos.z, pos.x)
@@ -382,7 +342,7 @@ export function createAtmosphereNodeMaterial(params = {}) {
             .add(baseFlowB)
             .add(flowOffsetB)
             .sub(warpOffset),
-        4,
+        atmFbmOctavesSub1,
     );
     const breath = sin(uTime.mul(0.55)).mul(0.08).add(1.0);
     const tendrilField = tslFbm(
@@ -391,7 +351,7 @@ export function createAtmosphereNodeMaterial(params = {}) {
             .add(vec2(flowTime.mul(0.9), flowTime.mul(-0.7)))
             .add(flowOffsetB.mul(0.7))
             .add(warpOffset.mul(1.2)),
-        4,
+        atmFbmOctavesSub1,
     );
     const tendrilMask = smoothstep(float(0.42), float(0.85), tendrilField).mul(flowTurbulence);
     const gas = mix(gasA, gasB, 0.4)
@@ -730,7 +690,6 @@ export function createGasSwirlNodeMaterial(params = {}) {
     material.sizeNode = clamp(
         aSize.mul(float(320.0)).div(depth),
         float(1.5),
-        float(1.5),
         float(300.0),
     );
 
@@ -755,5 +714,106 @@ export function createGasSwirlNodeMaterial(params = {}) {
         material,
         {},
         { emitsBloom: true, mrtRole: 'gas-swirl' },
+    );
+}
+
+export function createAnamorphicFlareNodeMaterial(params = {}) {
+    const material = new MeshBasicNodeMaterial({
+        transparent: true,
+        blending: AdditiveBlending,
+        depthWrite: false,
+    });
+
+    const uOpacity = uniform(params.opacity ?? 0.0);
+    const uvCoord = uv();
+
+    const dx = uvCoord.x.sub(0.5);
+    const dy = uvCoord.y.sub(0.5);
+
+    // Sharp horizontal streak
+    const streakY = smoothstep(0.02, 0.0, abs(dy));
+    const streakX = pow(smoothstep(0.5, 0.0, abs(dx)), 1.5);
+    const streak = streakY.mul(streakX).mul(1.5);
+
+    // Core glow
+    const centerDist = length(vec2(dx, dy));
+    const centerGlow = pow(smoothstep(0.15, 0.0, centerDist), 2.0).mul(2.0);
+
+    const intensity = streak.add(centerGlow).mul(uOpacity);
+
+    const flareColor = vec3(0.8, 0.85, 1.0); // Silver-blue
+
+    material.colorNode = flareColor.mul(intensity).mul(3.0);
+    material.opacityNode = intensity;
+    material.emissiveNode = material.colorNode.mul(BLOOM_CLASS_WEIGHTS.effects);
+
+    return finalizeNodeMaterial(
+        material,
+        {
+            uOpacity,
+        },
+        { emitsBloom: true, mrtRole: 'combo-flare' },
+    );
+}
+
+export function createAccretionDiskNodeMaterial(params = {}) {
+    const material = new MeshBasicNodeMaterial({
+        transparent: true,
+        blending: AdditiveBlending,
+        depthWrite: false,
+        side: DoubleSide,
+    });
+
+    const uTime = uniform(0);
+    const uPulseIntensity = uniform(0);
+
+    const uvCoord = uv();
+
+    // uv.x = angle (0 to 1), uv.y = radius (0 to 1)
+    const radius = uvCoord.y;
+    const angle = uvCoord.x.mul(Math.PI * 2.0);
+
+    const speed = float(1.2).add(uPulseIntensity.mul(3.0));
+    const rTime = uTime.mul(speed);
+
+    // Differential rotation
+    const spin = angle.add(rTime.mul(float(1.1).sub(radius)).mul(2.0));
+
+    const noisePos = vec3(
+        cos(spin).mul(radius).mul(12.0),
+        sin(spin).mul(radius).mul(12.0),
+        uTime.mul(0.15)
+    );
+
+    const plasma = tslFbm(noisePos, params.fbmOctaves ?? 5);
+    const bands = sin(radius.mul(30.0).add(plasma.mul(7.0))).mul(0.5).add(0.5);
+
+    const edgeFade = smoothstep(float(0.0), float(0.15), radius)
+        .mul(smoothstep(float(1.0), float(0.6), radius));
+
+    const intensityGrad = pow(float(1.0).sub(radius), 2.0);
+
+    let finalIntensity = plasma.mul(0.6).add(bands.mul(0.4)).mul(edgeFade).mul(intensityGrad);
+    finalIntensity = finalIntensity.mul(float(1.0).add(uPulseIntensity.mul(3.5)));
+
+    const colorCore = vec3(1.0, 1.0, 1.0);
+    const colorOuter = vec3(0.4, 0.45, 0.6);
+    let diskColor = mix(colorOuter, colorCore, finalIntensity);
+
+    // Doppler effect
+    const doppler = sin(angle).mul(0.5).add(0.5);
+    diskColor = diskColor.mul(float(0.6).add(doppler.mul(0.8)));
+
+    material.colorNode = diskColor.mul(finalIntensity).mul(2.5);
+    material.opacityNode = finalIntensity.mul(edgeFade).mul(2.0);
+    material.emissiveNode = material.colorNode.mul(material.opacityNode).mul(BLOOM_CLASS_WEIGHTS.planet);
+
+    return finalizeNodeMaterial(
+        material,
+        {
+            uTime,
+            uPulseIntensity,
+        },
+        { emitsBloom: true, mrtRole: 'accretion-disk' },
     );
 }

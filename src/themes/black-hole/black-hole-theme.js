@@ -516,47 +516,127 @@ const VolumetricAccretionDiskShader = {
         uniform float uIntensity;
         uniform float uRotationSpeed;
         uniform vec3 uCenter;
+        uniform vec3 uDiskNormal;
         varying vec3 vWorldPos;
 
+        #define PI 3.14159265359
+
+        // Noise functions for the plasma
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+        
+        float noise(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            
+            float a = hash(i);
+            float b = hash(i + vec2(1.0, 0.0));
+            float c = hash(i + vec2(0.0, 1.0));
+            float d = hash(i + vec2(1.0, 1.0));
+            
+            return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+        
+        float fbm(vec2 p) {
+            float v = 0.0;
+            float a = 0.5;
+            for (int i = 0; i < 5; i++) {
+                v += a * noise(p);
+                p *= 2.0;
+                a *= 0.5;
+            }
+            return v;
+        }
+
         void main() {
-            vec3 normal = normalize((modelMatrix * vec4(0.0, 0.0, 1.0, 0.0)).xyz);
-            vec3 viewDir = normalize(vWorldPos - cameraPosition);
+            vec3 ro = cameraPosition;
+            vec3 rd = normalize(vWorldPos - cameraPosition);
 
-            vec3 baseToCenter = vWorldPos - uCenter;
-            float baseHeight = dot(baseToCenter, normal);
-            vec3 baseRadial = baseToCenter - normal * baseHeight;
-            float baseRadialDist = length(baseRadial);
-            float baseAngle = atan(baseRadial.y, baseRadial.x);
+            const int STEPS = 36;
+            float stepSize = 18.0;
 
-            const int STEPS = 10;
-            float thickness = 50.0;
-            float stepSize = thickness / float(STEPS);
+            vec3 accumColor = vec3(0.0);
+            float activeRay = 1.0;
+            
+            float eventHorizon = 110.0;
+            float gravStrength = 2600.0;
 
-            float accum = 0.0;
             for (int i = 0; i < STEPS; i++) {
-                float offset = (float(i) - float(STEPS - 1) * 0.5) * stepSize;
-                vec3 p = vWorldPos + viewDir * offset;
-                vec3 toCenter = p - uCenter;
-                float height = dot(toCenter, normal);
-                vec3 radialVec = toCenter - normal * height;
-                float radial = length(radialVec);
+                vec3 toCenter = uCenter - ro;
+                float distSq = dot(toCenter, toCenter);
+                float dist = sqrt(distSq);
 
-                float radialMask = smoothstep(140.0, 170.0, radial)
-                    * (1.0 - smoothstep(360.0, 400.0, radial));
-                float heightFalloff = exp(-height * height * 0.02);
-                float swirl = 0.6 + 0.4 * sin(atan(radialVec.y, radialVec.x) * 6.0 + uTime * uRotationSpeed * 0.8);
+                // Event horizon kill switch (light absorbed)
+                if (dist < eventHorizon) {
+                    activeRay = 0.0;
+                    break;
+                }
 
-                accum += radialMask * heightFalloff * swirl;
+                // Gravity bends the ray path towards the black hole
+                float forceDist = max(distSq, eventHorizon * eventHorizon);
+                vec3 gravityForce = (toCenter / dist) * (gravStrength / forceDist);
+                rd = normalize(rd + gravityForce * stepSize);
+
+                ro += rd * stepSize;
+
+                // Sample accretion disk volume at current warped position (ro)
+                float height = dot(ro - uCenter, uDiskNormal);
+                vec3 radialVec = (ro - uCenter) - uDiskNormal * height;
+                float radialDist = length(radialVec);
+
+                // Disk bounds
+                if (radialDist > 130.0 && radialDist < 450.0 && abs(height) < 40.0) {
+                    float radialMask = smoothstep(130.0, 160.0, radialDist) * (1.0 - smoothstep(380.0, 450.0, radialDist));
+                    float heightFalloff = exp(-height * height * 0.003);
+                    
+                    float angle = atan(radialVec.z, radialVec.x); // Using x/z of radial vec relative to normal
+                    float rotatedAngle = angle + uTime * uRotationSpeed * 0.12;
+                    float normalizedRadius = clamp((radialDist - 130.0) / 320.0, 0.0, 1.0);
+
+                    // Plasma noise
+                    vec2 turbUv = vec2(rotatedAngle * 2.0, normalizedRadius * 8.0);
+                    float turb = fbm(turbUv + uTime * 0.1);
+                    float swirl = sin(rotatedAngle * 4.0 + normalizedRadius * 12.0 + turb * 2.0) * 0.4 + 0.6;
+                    
+                    float density = radialMask * heightFalloff * swirl;
+                    
+                    if (density > 0.01) {
+                        // Temperature and base color
+                        float temp = 1.0 - pow(normalizedRadius, 0.6);
+                        vec3 innerColor = vec3(1.0, 0.8, 0.5);
+                        vec3 midColor = vec3(0.9, 0.35, 0.1);
+                        vec3 outerColor = vec3(0.4, 0.1, 0.05);
+
+                        vec3 color;
+                        if (temp > 0.5) {
+                            color = mix(midColor, innerColor, (temp - 0.5) * 2.0);
+                        } else {
+                            color = mix(outerColor, midColor, temp * 2.0);
+                        }
+
+                        // Doppler beaming - calculate orbital velocity and its projection to ray
+                        vec3 tangent = normalize(cross(uDiskNormal, radialVec)); // Orbital direction
+                        float dopplerFactor = dot(tangent, rd); // Shift based on relative motion
+                        
+                        vec3 blueShift = vec3(0.6, 0.7, 1.0);
+                        vec3 redShift = vec3(0.9, 0.2, 0.05);
+                        
+                        // Multiply color and add brightness
+                        color = mix(color, blueShift, max(0.0, dopplerFactor * 1.5));
+                        color = mix(color, redShift, max(0.0, -dopplerFactor * 1.0));
+                        
+                        // Brightness boosting on approaching side
+                        float dopplerBright = 1.0 + dopplerFactor * 1.2;
+                        
+                        accumColor += color * density * dopplerBright * 0.05;
+                    }
+                }
             }
 
-            float radialT = clamp(baseRadialDist / 400.0, 0.0, 1.0);
-            vec3 baseColor = mix(vec3(1.0, 0.9, 0.7), vec3(0.8, 0.35, 0.1), radialT);
-            float doppler = sin(baseAngle) * 0.15;
-            baseColor = mix(baseColor, vec3(0.6, 0.7, 1.0), max(0.0, doppler));
-            baseColor = mix(baseColor, vec3(0.9, 0.2, 0.05), max(0.0, -doppler));
-
-            float intensity = accum * uIntensity * 0.18;
-            gl_FragColor = vec4(baseColor * intensity, intensity);
+            float intensity = length(accumColor) * uIntensity;
+            gl_FragColor = vec4(accumColor * uIntensity, intensity * activeRay);
         }
     `,
 };
@@ -748,6 +828,8 @@ export default class BlackHoleTheme extends BaseTheme {
         this.coreTargetIntensity = 1.0;
         this.diskRotationSpeed = 1.0;
         this.diskTargetRotationSpeed = 1.0;
+        this.diskDopplerBoost = 1.0;
+        this.diskEventHorizon = 110.0;
         this.starFlashIntensity = 0;
         this.bloomPulseIntensity = 0;
         this.starFlashIntensity = 0;
@@ -1608,11 +1690,12 @@ export default class BlackHoleTheme extends BaseTheme {
     createAccretionDisk() {
         const segments = this.qualityPreset.diskSegments;
 
-        // Create a smaller, more refined disk
+        // Create a smaller, more refined base disk
         const innerRadius = 140;
         const outerRadius = 400;
-        const geometry = new THREE.RingGeometry(innerRadius, outerRadius, segments, 6);
+        const baseGeometry = new THREE.RingGeometry(innerRadius, outerRadius, segments, 6);
 
+        // Core opaque disk material
         const material = this.isWebGPU
             ? createAccretionDiskNodeMaterial()
             : new THREE.ShaderMaterial({
@@ -1622,31 +1705,16 @@ export default class BlackHoleTheme extends BaseTheme {
                 transparent: true,
                 side: THREE.DoubleSide,
                 depthWrite: false,
-                blending: THREE.NormalBlending, // Changed from Additive for more control
+                blending: THREE.NormalBlending,
             });
 
-        this.accretionDisk = new THREE.Mesh(geometry, material);
-        this.accretionDisk.rotation.x = -Math.PI * 0.42; // Slightly less tilt
+        this.accretionDisk = new THREE.Mesh(baseGeometry, material);
+        this.accretionDisk.rotation.x = -Math.PI * 0.42;
         this.accretionDisk.position.set(0, 0, 0);
         this.accretionDisk.renderOrder = 50;
         this.scene.add(this.accretionDisk);
 
-        // Second disk layer - behind with additive for glow
-        const glowMaterial = this.isWebGPU ? createAccretionDiskNodeMaterial() : material.clone();
-        glowMaterial.blending = THREE.AdditiveBlending;
-        if (glowMaterial.uniforms?.uIntensity) {
-            glowMaterial.uniforms.uIntensity.value = 0.3;
-        } else if (glowMaterial.userData?.uIntensity) {
-            glowMaterial.userData.uIntensity.value = 0.3;
-        }
-        const glowDisk = new THREE.Mesh(geometry.clone(), glowMaterial);
-        glowDisk.rotation.x = -Math.PI * 0.42;
-        glowDisk.scale.set(1.1, 1.1, 1.1);
-        glowDisk.renderOrder = 49;
-        this.scene.add(glowDisk);
-        this.innerDisk = glowDisk;
-
-        // Volumetric haze layers - raymarched disk when enabled (fallback to stacked rings)
+        // Volumetric curved raymarching disk
         if (this.accretionVolumeLayers.length) {
             this.accretionVolumeLayers.forEach((layer) => {
                 this.scene.remove(layer);
@@ -1657,20 +1725,26 @@ export default class BlackHoleTheme extends BaseTheme {
         }
 
         if (this.flags.useVolume) {
+            // A large bounding box allows the raymarcher to sample bent light far from the disk
+            const volumeGeometry = new THREE.BoxGeometry(1600, 1600, 1600);
+
+            const diskNormal = new THREE.Vector3(0, Math.sin(Math.PI * 0.42), Math.cos(Math.PI * 0.42)).normalize();
+
             const volumeMaterial = this.isWebGPU
-                ? createVolumetricAccretionDiskNodeMaterial()
+                ? createVolumetricAccretionDiskNodeMaterial(diskNormal)
                 : new THREE.ShaderMaterial({
-                    uniforms: { ...VolumetricAccretionDiskShader.uniforms },
+                    uniforms: {
+                        ...VolumetricAccretionDiskShader.uniforms,
+                        uDiskNormal: { value: diskNormal }
+                    },
                     vertexShader: VolumetricAccretionDiskShader.vertexShader,
                     fragmentShader: VolumetricAccretionDiskShader.fragmentShader,
                     transparent: true,
                     depthWrite: false,
                     blending: THREE.AdditiveBlending,
-                    side: THREE.DoubleSide,
+                    side: THREE.BackSide, // Raymarch once from backfaces to avoid near-plane clipping
                 });
-            const volume = new THREE.Mesh(geometry.clone(), volumeMaterial);
-            volume.rotation.x = -Math.PI * 0.42;
-            volume.scale.set(1.08, 1.08, 1.0);
+            const volume = new THREE.Mesh(volumeGeometry, volumeMaterial);
             volume.renderOrder = 48;
             this.accretionVolumeLayers.push(volume);
             this.scene.add(volume);
@@ -1687,7 +1761,7 @@ export default class BlackHoleTheme extends BaseTheme {
                 layerMaterial.blending = THREE.AdditiveBlending;
                 layerMaterial.depthWrite = false;
 
-                const layer = new THREE.Mesh(geometry.clone(), layerMaterial);
+                const layer = new THREE.Mesh(baseGeometry.clone(), layerMaterial);
                 layer.rotation.x = -Math.PI * 0.42;
                 layer.position.z = (i - 1) * 8;
                 layer.scale.set(1.05 + i * 0.02, 1.05 + i * 0.02, 1.0);
@@ -2725,6 +2799,9 @@ export default class BlackHoleTheme extends BaseTheme {
         this.chromaticPulse = Math.min(0.02, this.chromaticPulse + lineCount * 0.0018);
         this.hawkingTargetIntensity = Math.min(2.0, this.hawkingTargetIntensity + lineCount * 0.16);
         this.photonSpherePulse = Math.min(1.4, this.photonSpherePulse + lineCount * 0.08);
+
+        // Add heating to accretion disk
+        this.diskDopplerBoost = Math.max(1.0, this.diskDopplerBoost + lineCount * 0.5);
     }
 
     onCombo(comboCount) {
@@ -2741,6 +2818,12 @@ export default class BlackHoleTheme extends BaseTheme {
 
         // Additive combo energy: every combo contributes immediately.
         this.gravitySurgeFactor = Math.min(36.0, this.gravitySurgeFactor + surgeGain);
+
+        // Add extreme heating to accretion disk
+        this.diskDopplerBoost = Math.min(4.0, this.diskDopplerBoost + comboCount * 1.5);
+
+        // Ripple the event horizon
+        this.diskEventHorizon = Math.max(70.0, this.diskEventHorizon - comboCount * 8.0);
 
         // Only use ambient-override jets if dedicated burst systems are unavailable.
         if (comboCount > 3 && !this.hasDedicatedComboBurstSystem()) {
