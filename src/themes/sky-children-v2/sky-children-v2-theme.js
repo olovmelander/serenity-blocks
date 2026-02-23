@@ -1139,8 +1139,9 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             flowerAnchorMin: this.qualityPreset.flowerAnchorMin
                 ?? Math.floor((this.qualityPreset.flowerAnchorCount ?? 1800) * 0.4),
             flowerAnchorCellSize: this.qualityPreset.flowerAnchorCellSize ?? 8,
-            flowerDepthMin: -this.terrainSize * 0.26,
-            flowerDepthMax: this.terrainSize * 0.24,
+            // Match grass-like coverage so flowers remain visible in the foreground too.
+            flowerDepthMin: -this.terrainSize * 0.42,
+            flowerDepthMax: this.terrainSize * 0.56,
             flowerHeadsCount: this.qualityPreset.flowerHeadsCount
                 ?? this.qualityPreset.flowerNearCount
                 ?? this.qualityPreset.flowerInstances

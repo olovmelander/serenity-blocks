@@ -626,14 +626,15 @@ export function createVoidSparkNodeMaterial(params = {}) {
         return aColor;
     })();
 
-    let color = mix(baseColor, vec3(1.0, 1.0, 1.0), core.mul(0.7));
-    color = mix(color, vec3(0.7, 0.7, 0.85), float(1.0).sub(core).mul(0.2));
-    color = color.mul(1.3);
+    let color = mix(baseColor, vec3(1.0, 1.0, 1.0), core.mul(0.85));
+    color = mix(color, vec3(0.75, 0.78, 0.95), float(1.0).sub(core).mul(0.15));
+    color = color.mul(2.4);
 
     const alpha = alphaLife.mul(glow);
     material.colorNode = color.mul(glow);
     material.opacityNode = alpha;
-    material.emissiveNode = color.mul(alpha).mul(BLOOM_CLASS_WEIGHTS.voidSpark);
+    // Boosted emissive for stronger bloom contribution
+    material.emissiveNode = color.mul(alpha).mul(BLOOM_CLASS_WEIGHTS.voidSpark * 1.8);
 
     const uniforms = useGPU ? { time } : { time, uPulseTimer };
     return finalizeNodeMaterial(
@@ -696,19 +697,19 @@ export function createGasSwirlNodeMaterial(params = {}) {
     // WebGPU: Avoid UV builtins for Points as they can fail or return invalid values
     // Reverting to soft squares to ensure visibility
 
-    // Silver-blue base
-    const baseColor = vec3(0.72, 0.76, 0.92);
+    // Silver-blue base with a hotter core tint
+    const baseColor = vec3(0.78, 0.82, 1.0);
 
-    // High brightness for bloom
-    const finalColor = baseColor.mul(3.0);
+    // High brightness for bloom — pushed higher for visible glow
+    const finalColor = baseColor.mul(5.5);
 
     // Soften opacity to account for full quad area
-    const alpha = aAlpha.mul(0.6);
+    const alpha = aAlpha.mul(0.65);
 
     material.colorNode = finalColor;
     material.opacityNode = alpha;
-    // Emissive for bloom
-    material.emissiveNode = finalColor.mul(alpha).mul(BLOOM_CLASS_WEIGHTS.voidSpark);
+    // Boosted emissive for stronger bloom contribution on combo swirl
+    material.emissiveNode = finalColor.mul(alpha).mul(BLOOM_CLASS_WEIGHTS.voidSpark * 1.5);
 
     return finalizeNodeMaterial(
         material,

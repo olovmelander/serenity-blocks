@@ -1667,7 +1667,7 @@
   width: 96px;
   height: 96px;
   object-fit: cover;
-  border-radius: 12px;
+  border-radius: 50%;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
   animation: float 3s ease-in-out infinite;
   transition: transform var(--hub-transition-fast);

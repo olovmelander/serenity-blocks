@@ -15,11 +15,20 @@ function hash2(x, y) {
 }
 
 function normalizeWeights(weights) {
-    const sum = Math.max(1e-6, weights.pink + weights.yellow + weights.white);
+    const sum = Math.max(
+        1e-6,
+        (weights.pink || 0)
+        + (weights.yellow || 0)
+        + (weights.purple || 0)
+        + (weights.blue || 0)
+        + (weights.white || 0),
+    );
     return {
-        pink: clamp(weights.pink / sum, 0, 1),
-        yellow: clamp(weights.yellow / sum, 0, 1),
-        white: clamp(weights.white / sum, 0, 1),
+        pink: clamp((weights.pink || 0) / sum, 0, 1),
+        yellow: clamp((weights.yellow || 0) / sum, 0, 1),
+        purple: clamp((weights.purple || 0) / sum, 0, 1),
+        blue: clamp((weights.blue || 0) / sum, 0, 1),
+        white: clamp((weights.white || 0) / sum, 0, 1),
     };
 }
 
@@ -66,16 +75,22 @@ function resolvePalette(name, overrides = {}) {
         prairie: {
             pinkBoost: 1.0,
             yellowBoost: 1.0,
+            purpleBoost: 1.0,
+            blueBoost: 1.0,
             whiteBoost: 0.34,
         },
         sunset: {
             pinkBoost: 1.22,
             yellowBoost: 0.88,
+            purpleBoost: 0.85,
+            blueBoost: 0.72,
             whiteBoost: 0.3,
         },
         soft: {
             pinkBoost: 0.9,
             yellowBoost: 0.82,
+            purpleBoost: 1.1,
+            blueBoost: 1.15,
             whiteBoost: 0.42,
         },
     };
@@ -83,6 +98,8 @@ function resolvePalette(name, overrides = {}) {
     return {
         pinkBoost: clamp(overrides.pinkBoost ?? base.pinkBoost, 0.2, 2.4),
         yellowBoost: clamp(overrides.yellowBoost ?? base.yellowBoost, 0.2, 2.4),
+        purpleBoost: clamp(overrides.purpleBoost ?? base.purpleBoost, 0.2, 2.4),
+        blueBoost: clamp(overrides.blueBoost ?? base.blueBoost, 0.2, 2.4),
         whiteBoost: clamp(overrides.whiteBoost ?? base.whiteBoost, 0.1, 1.4),
         preset: normalized in presets ? normalized : 'prairie',
     };
@@ -95,9 +112,13 @@ export function createFlowerCarpetField(terrainField, params = {}) {
         pathCenterYellowOffset: params.pathCenterYellowOffset ?? 42,
         pathCenterPinkOffset: params.pathCenterPinkOffset ?? 16,
         pathCenterWhiteOffset: params.pathCenterWhiteOffset ?? -14,
+        pathCenterPurpleOffset: params.pathCenterPurpleOffset ?? -54,
+        pathCenterBlueOffset: params.pathCenterBlueOffset ?? 78,
         yellowWidth: params.yellowWidth ?? 44,
         pinkWidth: params.pinkWidth ?? 36,
         whiteWidth: params.whiteWidth ?? 22,
+        purpleWidth: params.purpleWidth ?? 38,
+        blueWidth: params.blueWidth ?? 42,
         patchCellSize: params.patchCellSize ?? 32,
         patchJitter: params.patchJitter ?? 8,
         patchActivationThreshold: params.patchActivationThreshold ?? 0.34,
@@ -119,16 +140,22 @@ export function createFlowerCarpetField(terrainField, params = {}) {
         const yellowCenter = pathCenter + config.pathCenterYellowOffset + Math.sin((x * 0.017) - 1.2) * 8.5;
         const pinkCenter = pathCenter + config.pathCenterPinkOffset + Math.sin((x * 0.021) + 0.7) * 7.8;
         const whiteCenter = pathCenter + config.pathCenterWhiteOffset + Math.sin((x * 0.019) + 2.1) * 5.6;
+        const purpleCenter = pathCenter + config.pathCenterPurpleOffset + Math.sin((x * 0.023) - 0.8) * 9.2;
+        const blueCenter = pathCenter + config.pathCenterBlueOffset + Math.sin((x * 0.015) + 1.4) * 10.4;
 
         const yellowBand = sampleLaneMask(z - yellowCenter, config.yellowWidth);
         const pinkBand = sampleLaneMask(z - pinkCenter, config.pinkWidth);
         const whiteBand = sampleLaneMask(z - whiteCenter, config.whiteWidth);
-        const bandMask = clamp(Math.max(yellowBand, pinkBand, whiteBand), 0, 1);
+        const purpleBand = sampleLaneMask(z - purpleCenter, config.purpleWidth);
+        const blueBand = sampleLaneMask(z - blueCenter, config.blueWidth);
+        const bandMask = clamp(Math.max(yellowBand, pinkBand, whiteBand, purpleBand, blueBand), 0, 1);
 
         return {
             yellowBand,
             pinkBand,
             whiteBand,
+            purpleBand,
+            blueBand,
             bandMask,
         };
     }
@@ -154,15 +181,21 @@ export function createFlowerCarpetField(terrainField, params = {}) {
         const yellowShape = Math.max(bands.yellowBand * 0.55, patchMask);
         const pinkShape = Math.max(bands.pinkBand * 0.4, patchMask);
         const whiteShape = Math.max(bands.whiteBand * 0.35, patchMask * 0.52);
+        const purpleShape = Math.max(bands.purpleBand * 0.48, patchMask * 0.60);
+        const blueShape = Math.max(bands.blueBand * 0.52, patchMask * 0.55);
 
         const weights = {
             pink: bands.pinkBand * pinkShape * directional * (0.74 + valley * 0.42),
             yellow: bands.yellowBand * yellowShape * directional * (0.84 + valley * 0.24),
+            purple: bands.purpleBand * purpleShape * directional * (0.80 + valley * 0.38),
+            blue: bands.blueBand * blueShape * directional * (0.82 + valley * 0.30),
             white: bands.whiteBand * whiteShape * directional * 0.28,
         };
 
         weights.pink *= state.palette.pinkBoost;
         weights.yellow *= state.palette.yellowBoost;
+        weights.purple *= state.palette.purpleBoost;
+        weights.blue *= state.palette.blueBoost;
         weights.white *= state.palette.whiteBoost;
 
         return normalizeWeights(weights);
@@ -175,7 +208,7 @@ export function createFlowerCarpetField(terrainField, params = {}) {
         const exclusion = sampleExclusion(x, z);
 
         const farFade = smoothstep(config.horizonFadeStart, config.horizonFadeEnd, z);
-        const familyMax = Math.max(family.pink, family.yellow, family.white);
+        const familyMax = Math.max(family.pink, family.yellow, family.purple, family.blue, family.white);
         const valleyMask = terrainField.sampleValleyMask(x, z);
         const densityBase = Math.max(
             0,
@@ -195,11 +228,17 @@ export function createFlowerCarpetField(terrainField, params = {}) {
         );
 
         let familyName = 'yellow';
-        if (family.pink >= family.yellow && family.pink >= family.white) {
+        let bestWeight = family.yellow;
+        if (family.pink > bestWeight) {
             familyName = 'pink';
-        } else if (family.white >= family.pink && family.white >= family.yellow) {
-            familyName = 'white';
+            bestWeight = family.pink;
         }
+        if (family.purple > bestWeight) { familyName = 'purple'; bestWeight = family.purple; }
+        if (family.blue > bestWeight) {
+            familyName = 'blue';
+            bestWeight = family.blue;
+        }
+        if (family.white > bestWeight) { familyName = 'white'; }
 
         return {
             density,

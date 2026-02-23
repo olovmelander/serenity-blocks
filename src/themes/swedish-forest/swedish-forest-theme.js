@@ -4965,8 +4965,8 @@ export default class SwedishForestTheme extends BaseTheme {
         ];
 
         for (const config of auroraConfigs) {
-            // Massive sky-spanning ribbons (drastically widened to prevent edge clipping)
-            const geometry = new THREE.PlaneGeometry(1500, 150, 48, 12);
+            // Open-ended cylinder wraps 360° around the camera — no visible edges when panning
+            const geometry = new THREE.CylinderGeometry(380, 380, 150, 64, 12, true);
 
             const material = new THREE.ShaderMaterial({
                 uniforms: {
@@ -4982,16 +4982,15 @@ export default class SwedishForestTheme extends BaseTheme {
                 transparent: true,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
-                side: THREE.DoubleSide,
+                side: THREE.BackSide,
             });
 
             const aurora = new THREE.Mesh(geometry, material);
-            // Higher up in the sky, further back
-            aurora.position.set(0, 75 + config.offset * 8, -120);
-            aurora.rotation.x = 0.15;
+            // Fixed sky height; X/Z follow camera each frame (see update loop)
+            aurora.position.set(0, 75 + config.offset * 8, 0);
 
             this.auroraPlanes.push(aurora);
-            this.mainGroup.add(aurora);
+            this.scene.add(aurora);
         }
     }
 
@@ -5901,6 +5900,14 @@ export default class SwedishForestTheme extends BaseTheme {
                 this.skyNodeUniforms.uSunDirection.value.copy(sunDirection);
             }
             this.skyDome.position.copy(this.camera.position);
+        }
+
+        // Keep aurora cylinders centered on camera to prevent edge artifacts when panning
+        if (this.auroraPlanes?.length) {
+            for (const plane of this.auroraPlanes) {
+                plane.position.x = this.camera.position.x;
+                plane.position.z = this.camera.position.z;
+            }
         }
 
         // Billboard cloud cards to camera — stride: every 4th frame (nearly static)

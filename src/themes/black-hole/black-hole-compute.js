@@ -351,7 +351,7 @@ export class BlackHoleBurstCompute {
         // position: xyz + spare
         // angles: theta, phi, random, active
         // life: life, color.r, color.g, color.b
-        // misc: baseSize, seedOffset, spare, spare
+        // misc: baseSize, origin.x, origin.y, origin.z
         this.positionData = new Float32Array(particleCount * 4);
         this.angleData = new Float32Array(particleCount * 4);
         this.lifeData = new Float32Array(particleCount * 4);
@@ -368,6 +368,9 @@ export class BlackHoleBurstCompute {
         this.uBurstFactor = uniform(0);
         this.uBurstSeed = uniform(0);
         this.nextTriggerIndex = 0;
+        this.reuseUntil = new Float32Array(particleCount);
+        this.currentTime = 0;
+        this.burstLifetimeSeconds = 21.0;
 
         this.computeNode = null;
     }
@@ -400,6 +403,7 @@ export class BlackHoleBurstCompute {
             this.miscData[i4 + 1] = 0;
             this.miscData[i4 + 2] = 0;
             this.miscData[i4 + 3] = 0;
+            this.reuseUntil[i] = 0;
         }
 
         this.positionBuffer.needsUpdate = true;
@@ -415,8 +419,6 @@ export class BlackHoleBurstCompute {
         const miscData = storage(this.miscBuffer, 'vec4', this.count);
 
         const delta = this.uDelta;
-        const blackHolePos = this.uBlackHolePos;
-        const burstFactor = this.uBurstFactor;
 
         const computeBursts = Fn(() => {
             const index = instanceIndex;
@@ -428,44 +430,41 @@ export class BlackHoleBurstCompute {
             const active = angle.w;
 
             If(active.greaterThan(0.5), () => {
-                const nextLife = life.x.add(delta.mul(1.5));
+                const nextLife = life.x.add(delta.mul(0.05));
                 life.x.assign(nextLife);
 
                 const lifeClamped = clamp(nextLife, float(0.0), float(1.0));
 
-                // Relativistic Jet math
-                // Shoot almost purely UP or DOWN from the center
-                const polarity = step(0.5, misc.y).mul(2.0).sub(1.0); // 1.0 or -1.0
+                // Explosion phase: life 0→0.4  |  Float phase: life 0.4→1.0
+                const explosionProgress = clamp(lifeClamped.div(float(0.4)), float(0.0), float(1.0));
+                const floatProgress = clamp(lifeClamped.sub(float(0.4)).div(float(0.6)), float(0.0), float(1.0));
 
-                const baseMaxY = float(1800.0).add(angle.z.mul(800.0));
-                const maxHeight = baseMaxY.mul(float(1.0).add(burstFactor.mul(0.12)));
+                const maxRadius = float(900.0).add(angle.z.mul(700.0));
+                const startRadius = float(120.0);
 
-                // Fast ease out for beam-like emission
-                const easeOut = float(1.0).sub(pow(float(1.0).sub(lifeClamped), float(2.0)));
+                const easeOut = float(1.0).sub(pow(float(1.0).sub(explosionProgress), float(2.5)));
+                const explosionRadius = startRadius.add(maxRadius.sub(startRadius).mul(easeOut));
 
-                const heightY = float(40.0).add(maxHeight.mul(easeOut)).mul(polarity);
+                // Drift angle - slight spiral during float phase
+                const driftAngle = angle.x.add(lifeClamped.mul(1.5).mul(angle.z.sub(0.5)));
 
-                // Tight spiral around the axis
-                const localSeed = misc.y;
-                const spiralRadius = float(5.0).add(lifeClamped.mul(60.0)).add(angle.y.mul(20.0));
-                const spiralAngle = angle.x.add(localSeed).add(lifeClamped.mul(12.0).mul(angle.z.sub(0.5)));
+                // Gentle oscillating drift after explosion settles
+                const driftAmt = maxRadius.mul(0.12);
+                const driftX = sin(angle.z.mul(float(6.2832)).add(nextLife.mul(float(2.5)))).mul(driftAmt).mul(floatProgress);
+                const driftY = cos(angle.z.mul(float(9.4248)).add(nextLife.mul(float(1.8)))).mul(driftAmt).mul(floatProgress);
 
-                const tilt = float(-1.319468914); // Match disk tilt exactly
-                const cosT = cos(tilt);
-                const sinT = sin(tilt);
+                const px = explosionRadius.mul(cos(driftAngle)).add(driftX);
+                const py = explosionRadius.mul(sin(driftAngle)).add(driftY);
+                const pz = explosionRadius.mul(angle.y.sub(float(1.5708)).mul(float(0.04)));
 
-                // Unrotated coordinates
-                const px = spiralRadius.mul(cos(spiralAngle));
-                const py = heightY;
-                const pz = spiralRadius.mul(sin(spiralAngle));
-
-                // Rotate to match the tilted system
-                const pY = py.mul(cosT).sub(pz.mul(sinT));
-                const pZ = py.mul(sinT).add(pz.mul(cosT));
-
-                pos.x.assign(px.add(blackHolePos.x));
-                pos.y.assign(pY.add(blackHolePos.y));
-                pos.z.assign(pZ.add(blackHolePos.z));
+                // Keep every burst anchored to its own trigger-time origin so
+                // chained combos accumulate instead of re-centering on drift.
+                const originX = misc.y;
+                const originY = misc.z;
+                const originZ = misc.w;
+                pos.x.assign(px.add(originX));
+                pos.y.assign(py.add(originY));
+                pos.z.assign(pz.add(originZ));
 
                 If(nextLife.greaterThan(1.0), () => {
                     angle.w.assign(0.0);
@@ -494,6 +493,9 @@ export class BlackHoleBurstCompute {
         this.uDelta.value = delta;
         if (params.time !== undefined) {
             this.uTime.value = params.time;
+            this.currentTime = params.time;
+        } else {
+            this.currentTime += delta;
         }
         if (params.blackHolePos) {
             this.uBlackHolePos.value.copy(params.blackHolePos);
@@ -503,14 +505,19 @@ export class BlackHoleBurstCompute {
         }
     }
 
-    trigger(seed = 0, intensity = 1.0) {
+    trigger(seed = 0, intensity = 1.0, origin = null) {
         const clampedIntensity = Math.max(0.0, Math.min(1.0, intensity));
-        const minBatch = Math.max(256, Math.floor(this.count * 0.12));
-        const maxBatch = Math.max(minBatch, Math.floor(this.count * 0.45));
+        const minBatch = Math.max(96, Math.floor(this.count * 0.008));
+        const maxBatch = Math.max(minBatch, Math.floor(this.count * 0.06));
         const targetBatch = Math.min(
             this.count,
             Math.floor(minBatch + (maxBatch - minBatch) * clampedIntensity),
         );
+        const now = this.currentTime;
+        const fallbackOrigin = this.uBlackHolePos?.value;
+        const originX = origin?.x ?? fallbackOrigin?.x ?? 0.0;
+        const originY = origin?.y ?? fallbackOrigin?.y ?? 0.0;
+        const originZ = origin?.z ?? fallbackOrigin?.z ?? 0.0;
 
         let activated = 0;
         let scanned = 0;
@@ -521,10 +528,13 @@ export class BlackHoleBurstCompute {
             const index = (startIndex + scanned) % this.count;
             const i4 = index * 4;
 
-            if (this.angleData[i4 + 3] < 0.5) {
+            if (now >= this.reuseUntil[index]) {
                 this.angleData[i4 + 3] = 1.0;
                 this.lifeData[i4] = 0.0;
-                this.miscData[i4 + 1] = seed + (Math.random() - 0.5) * 0.9;
+                this.miscData[i4 + 1] = originX;
+                this.miscData[i4 + 2] = originY;
+                this.miscData[i4 + 3] = originZ;
+                this.reuseUntil[index] = now + this.burstLifetimeSeconds;
                 activated += 1;
             }
 
@@ -567,6 +577,7 @@ export class BlackHoleBurstCompute {
         this.angleData = null;
         this.lifeData = null;
         this.miscData = null;
+        this.reuseUntil = null;
     }
 }
 

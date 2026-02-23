@@ -747,6 +747,7 @@ export class FFAGameStateP2P {
         const prefixText = data.prefixText || 'ROUND OVER';
         const countFrom = data.countFrom !== undefined ? data.countFrom : 3;
         const includeZero = data.includeZero === true;
+        const instantStart = data.instantStart === true;
 
         // ... (Same reset logic as before) ...
         console.log(`🔄 Host performing local restart...`);
@@ -802,6 +803,12 @@ export class FFAGameStateP2P {
             this.startGameLoop();
             this.startStateSyncLoop(); // Host needs to start sync loop!
         };
+
+        if (instantStart) {
+            this.hideCountdownOverlay();
+            startRound();
+            return;
+        }
 
         this.showCountdown(startRound, prefixText, countFrom, includeZero);
     }
@@ -2560,7 +2567,7 @@ export class FFAGameStateP2P {
 
     /**
     * Restart the match (new round with same players)
-    * HOST ONLY - Shows countdown 3, 2, 1, GO!
+    * HOST ONLY - Instant restart (no between-round countdown)
     */
     restartMatch() {
         if (!this.isHost) {
@@ -2606,16 +2613,12 @@ export class FFAGameStateP2P {
 
         console.log('🎮 Starting next round...');
 
-        // Broadcast round restart to all peers BEFORE showing countdown
+        // Broadcast round restart to all peers BEFORE starting the next round
         const newSeed = Math.floor(Math.random() * 1000000);
-        const prefixText = 'ROUND OVER';
-        const countFrom = 3;
-        const includeZero = false;
+        const instantStart = true;
         this.network.broadcastToAll(MessageTypes.GAME_ROUND_RESTART, {
             newSeed,
-            prefixText,
-            countFrom,
-            includeZero,
+            instantStart,
         });
 
         // Dispatch event to clear death visuals for all players
@@ -2648,7 +2651,13 @@ export class FFAGameStateP2P {
             console.log('🎮 Round started!');
         };
 
-        this.showCountdown(startRound, prefixText, countFrom, includeZero);
+        if (instantStart) {
+            this.hideCountdownOverlay();
+            startRound();
+            return;
+        }
+
+        this.showCountdown(startRound, 'ROUND OVER', 3, false);
     }
 
     /**
@@ -2845,6 +2854,16 @@ export class FFAGameStateP2P {
         }
     }
 
+    hideCountdownOverlay() {
+        const countdownElement = document.getElementById('multiplayer-countdown');
+        if (!countdownElement) return;
+
+        countdownElement.style.display = 'none';
+        countdownElement.style.transition = '';
+        countdownElement.style.opacity = '';
+        countdownElement.style.animation = '';
+        countdownElement.textContent = '';
+    }
 
     /**
     * Clean up (leave match)

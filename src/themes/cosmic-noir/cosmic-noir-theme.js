@@ -2020,7 +2020,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.gasSwirl = null;
         this.gasSwirlData = null;
 
-        const count = 30000;
+        const count = 65000;
         const geometry = new THREE.BufferGeometry();
 
         const positions = new Float32Array(count * 3);
@@ -2035,7 +2035,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             positions[i * 3 + 1] = 0;
             positions[i * 3 + 2] = -9999;
             alphas[i] = 0;
-            sizes[i] = 40 + this.rand() * 80;
+            sizes[i] = 55 + this.rand() * 105;
             velocities[i * 4 + 3] = 0; // life = 0 means dormant
         }
 
@@ -2073,15 +2073,15 @@ export default class CosmicNoirTheme extends BaseTheme {
         };
         this.planetGroup.add(points);
 
-        console.log('[CosmicNoir] Gas swirl particle system created with', count, 'particles');
+        console.log('[CosmicNoir] Gas swirl particle system created with', count, 'particles (swirl spiral mode)');
     }
 
     triggerGasSwirlBurst(comboCount) {
         if (!this.gasSwirl || !this.gasSwirlData) return;
 
         const d = this.gasSwirlData;
-        // Scale batch size with combo — MASSIVE burst for "more particles"
-        const batchSize = Math.min(d.count, Math.floor(800 + comboCount * 200));
+        // Scale batch size with combo — large burst for strong combo feedback
+        const batchSize = Math.min(d.count, Math.floor(2200 + comboCount * 450));
 
         // Current gas flow rotation speed (matches atmosphere shader: t = uTime * 0.8, rot = t * 0.5)
         const flowSpeed = this.time * 0.8 * 0.5;
@@ -2131,24 +2131,25 @@ export default class CosmicNoirTheme extends BaseTheme {
                 d.velocities[idx * 4 + 2] = (vz / len) * speed;
                 d.velocities[idx * 4 + 3] = 10.0; // Shorter life, just needs to pass camera
             } else {
-                // Standard Swirl Logic
+                // Swirling Spiral Logic — logarithmic spiral arms expanding into space
                 // Tangential velocity: cross(position, Y-axis) gives the rotational tangent
-                // matching the atmosphere shader's xz-plane rotation
                 const radialLen = Math.sqrt(px * px + pz * pz) || 1;
                 const tangX = -pz / radialLen;
                 const tangZ = px / radialLen;
 
-                // Tangential speed proportional to combo, outward radial drift
-                // EXTREME INCREASE for full space coverage
-                const tangSpeed = (80 + comboCount * 15) * (0.8 + this.rand() * 0.6);
-                const outwardSpeed = (60 + comboCount * 20) * (0.6 + this.rand() * 0.9);
-                const upDrift = (this.rand() - 0.5) * 25;
+                // Strong tangential (arc) component so particles spiral before escaping.
+                // Outward speed is intentionally lower to preserve the spiral shape.
+                const tangSpeed = (160 + comboCount * 22) * (0.85 + this.rand() * 0.5);
+                const outwardSpeed = (30 + comboCount * 10) * (0.5 + this.rand() * 0.8);
+                // Small helical lift to add depth to the spiral arm
+                const helixPhase = Math.atan2(pz, px);
+                const upDrift = Math.sin(helixPhase * 2.0) * 35.0 * (this.rand() * 0.6 + 0.7);
 
                 d.velocities[idx * 4] = tangX * tangSpeed + (px / shellRadius) * outwardSpeed;
                 d.velocities[idx * 4 + 1] = py / shellRadius * outwardSpeed + upDrift;
                 d.velocities[idx * 4 + 2] = tangZ * tangSpeed + (pz / shellRadius) * outwardSpeed;
-                // life: total lifetime in seconds - long enough to reach camera (1500+ units out)
-                d.velocities[idx * 4 + 3] = 15.0 + this.rand() * 12.0;
+                // Longer life so spiral arms reach deep into space
+                d.velocities[idx * 4 + 3] = 20.0 + this.rand() * 16.0;
             }
 
             d.alphas[idx] = 0.75 + this.rand() * 0.25;
@@ -2177,13 +2178,13 @@ export default class CosmicNoirTheme extends BaseTheme {
             const z = d.positions[i * 3 + 2];
             const dist = Math.sqrt(x * x + z * z) || 1;
 
-            // 1. Radial Acceleration (OUTWARD)
-            const radialAccel = 20.0 * delta;
+            // 1. Radial Acceleration (OUTWARD) — gentle, so the spiral stays tight
+            const radialAccel = 14.0 * delta;
             d.velocities[i * 4] += (x / dist) * radialAccel;
             d.velocities[i * 4 + 2] += (z / dist) * radialAccel;
 
-            // 2. Tangential Acceleration (SPIN) - Strong vortex effect
-            const spinForce = 25.0 * delta;
+            // 2. Tangential Acceleration (SPIN) — strong persistent vortex
+            const spinForce = 55.0 * delta;
             d.velocities[i * 4] += (-z / dist) * spinForce;
             d.velocities[i * 4 + 2] += (x / dist) * spinForce;
 
@@ -2213,7 +2214,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
             // Decay life and alpha
             d.velocities[i * 4 + 3] -= delta;
-            const maxLife = 27.0; // max possible life from init
+            const maxLife = 36.0; // max possible life from init (20 + 16)
             const lifeRatio = Math.max(0, d.velocities[i * 4 + 3]) / (maxLife * 0.5);
             d.alphas[i] = Math.pow(lifeRatio, 0.3) * 0.95;
 
