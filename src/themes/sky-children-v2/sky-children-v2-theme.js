@@ -292,14 +292,15 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             return;
         }
 
-        this.buildScene();
-        this.setupPostProcessing();
         this.setupEventListeners();
         this.handleResize();
 
         this.performance.lastFrameNow = performance.now();
         this.clock.start();
         this.startAnimation();
+
+        await this.buildScene();
+        this.setupPostProcessing();
 
         // Defer vegetation so the first frame (mountains, sky, terrain) renders immediately
         if (this._vegetationCallbackId !== null) {
@@ -421,7 +422,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         }
     }
 
-    buildScene() {
+    async buildScene() {
         this.scene = new THREE.Scene();
         this.scene.fog = new THREE.FogExp2(0xb8d0df, this.qualityPreset.fogDensity);
 
@@ -438,9 +439,17 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
         this.createLighting();
         this.createSkyDome();
-        this.createTerrainField();
-        this.createTerrain();
-        this.createMountains();
+        await new Promise((resolve) => { setTimeout(resolve, 0); });
+        
+        await this.createTerrainField();
+        await new Promise((resolve) => { setTimeout(resolve, 0); });
+        
+        await this.createTerrain();
+        await new Promise((resolve) => { setTimeout(resolve, 0); });
+        
+        await this.createMountains();
+        await new Promise((resolve) => { setTimeout(resolve, 0); });
+        
         this.createClouds();
         // Vegetation is deferred — see createScene()
         this.syncPathDebug();
@@ -517,7 +526,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         this.uniformSets.push(skyRuntime.uniforms);
     }
 
-    createTerrainField() {
+    async createTerrainField() {
         this.terrainField = createSkyTerrainField({
             size: this.terrainSize,
             minHeight: -110, // Much deeper valleys
@@ -627,7 +636,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         return geometry;
     }
 
-    createTerrain() {
+    async createTerrain() {
         if (this.terrainMesh) {
             if (this.terrainMesh.parent) {
                 this.terrainMesh.parent.remove(this.terrainMesh);
@@ -658,7 +667,12 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         const pathMasks = new Float32Array(position.count);
         const valleyMasks = new Float32Array(position.count);
         const curvatures = new Float32Array(position.count);
+        
+        const CHUNK_SIZE = 4000;
         for (let i = 0; i < position.count; i += 1) {
+            if (i > 0 && i % CHUNK_SIZE === 0) {
+                await new Promise((resolve) => { setTimeout(resolve, 0); });
+            }
             const x = position.getX(i);
             const z = position.getZ(i);
             position.setY(i, this.sampleTerrainHeight(x, z));
@@ -801,7 +815,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         geometry.computeVertexNormals();
     }
 
-    createMountains() {
+    async createMountains() {
         if (this.mountainGroup) {
             this.scene.remove(this.mountainGroup);
             this.disposeObject3D(this.mountainGroup);
@@ -848,6 +862,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
                 1.4 + Math.random() * 0.6,
             );
             group.add(mountain);
+            await new Promise((resolve) => { setTimeout(resolve, 0); });
         }
 
         const heroGeometry = new THREE.ConeGeometry(460, 920, 110, 64, true); // Behemoth centerpiece
@@ -856,6 +871,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         heroPeak.position.set(0, -90, -850);
         heroPeak.scale.set(1.6, 1.4, 1.6);
         group.add(heroPeak);
+        await new Promise((resolve) => { setTimeout(resolve, 0); });
 
         const wingConfigs = [
             {
@@ -865,7 +881,8 @@ export default class SkyChildrenV2Theme extends BaseTheme {
                 x: 820, y: -70, z: -650, radius: 410, height: 740, seed: 24.1, rotY: 0.38,
             },
         ];
-        wingConfigs.forEach((config) => {
+        for (let i = 0; i < wingConfigs.length; i += 1) {
+            const config = wingConfigs[i];
             const wingGeometry = new THREE.ConeGeometry(config.radius, config.height, 80, 48, true);
             this.distortMountainGeometry(wingGeometry, config.seed);
             const wing = new THREE.Mesh(wingGeometry, runtime.material);
@@ -873,7 +890,8 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             wing.rotation.y = config.rotY;
             wing.scale.set(1.5, 1.3, 1.5);
             group.add(wing);
-        });
+            await new Promise((resolve) => { setTimeout(resolve, 0); });
+        }
 
         this.mountainGroup = group;
         this.scene.add(group);
@@ -1447,14 +1465,18 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
         if (options.rebuild === true && this.scene) {
             this.uniformSets = this.skyUniforms ? [this.skyUniforms] : [];
-            this.createTerrainField();
-            this.createTerrain();
-            this.createMountains();
-            this.createClouds();
-            this.createVegetation();
-            this.syncPathDebug();
-            this.syncCarpetDebug();
-            this.setupPostProcessing();
+            (async () => {
+                await this.createTerrainField();
+                await this.createTerrain();
+                await this.createMountains();
+                this.createClouds();
+                
+                await new Promise((resolve) => { setTimeout(resolve, 0); });
+                this.createVegetation();
+                this.syncPathDebug();
+                this.syncCarpetDebug();
+                this.setupPostProcessing();
+            })();
         }
 
         return true;
@@ -1520,6 +1542,8 @@ export default class SkyChildrenV2Theme extends BaseTheme {
     }
 
     updateCamera() {
+        if (!this.camera) return;
+
         // Continuous slow forward movement
         const forwardSpeed = 3.5; // units per second
         this.cameraBasePosition.z -= forwardSpeed * 0.016; // rough delta estimation for base progression

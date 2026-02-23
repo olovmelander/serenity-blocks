@@ -478,6 +478,7 @@ export function createParticleNodeMaterial(params = {}) {
     const aColor = attribute('instanceColor');
     const aPosition = attribute('instancePosition');
     const uBlackHolePos = uniform(new Vector3(0, 0, 0));
+    const uEventBoost = uniform(1.0);
 
     const useGPU = Boolean(
         isWebGPU
@@ -551,11 +552,11 @@ export function createParticleNodeMaterial(params = {}) {
 
     const colorBoost = float(0.82).add(life.mul(0.18));
     const emissiveScale = float(0.28).add(life.mul(0.52));
-    material.colorNode = colorValue.mul(colorBoost);
+    material.colorNode = colorValue.mul(colorBoost).mul(uEventBoost);
     material.opacityNode = alpha.mul(0.58).mul(visibility);
-    material.emissiveNode = colorValue.mul(glow).mul(emissiveScale).mul(visibility);
+    material.emissiveNode = colorValue.mul(glow).mul(emissiveScale).mul(visibility).mul(uEventBoost);
 
-    material.userData = { uBlackHolePos };
+    material.userData = { uBlackHolePos, uEventBoost };
 
     return material;
 }
@@ -644,20 +645,29 @@ export function createBurstSparkNodeMaterial(params = {}) {
 
     const spiralAngle = useGPU ? null : aTheta.add(life.mul(1.5).mul(aRandom.sub(0.5)));
     const driftAmt = useGPU ? null : maxRadius.mul(0.12);
-    const driftX = useGPU ? null : cos(aRandom.mul(float(6.2832)).add(life.mul(float(2.5)))).mul(driftAmt).mul(floatProgress);
-    const driftY = useGPU ? null : sin(aRandom.mul(float(9.4248)).add(life.mul(float(1.8)))).mul(driftAmt).mul(floatProgress);
+    const driftDiskX = useGPU ? null : cos(aRandom.mul(float(6.2832)).add(life.mul(float(2.5)))).mul(driftAmt).mul(floatProgress);
+    const driftDiskZ = useGPU ? null : sin(aRandom.mul(float(9.4248)).add(life.mul(float(1.8)))).mul(driftAmt).mul(floatProgress);
+    // Disk tilt constants — rotate disk-local XZ positions to world space
+    const burstCosTilt = float(0.2486898871648548); // cos(-PI * 0.42)
+    const burstSinTilt = float(-0.9685831611286311); // sin(-PI * 0.42)
 
     const hidden = vec3(0.0, 0.0, -9999.0);
 
     const positionNode = Fn(() => {
         if (useGPU) {
-            const activeNode = angleBuffer.element(instanceIndex).w;
+            const activeNode = positionBuffer.element(instanceIndex).w;
             const pos = positionBuffer.element(instanceIndex).xyz;
-            return mix(hidden, pos, activeNode);
+            const worldPos = pos.add(uBlackHolePos);
+            return mix(hidden, worldPos, activeNode);
         }
-        const x = explosionRadius.mul(cos(spiralAngle)).add(driftX).add(uBlackHolePos.x);
-        const y = explosionRadius.mul(sin(spiralAngle)).add(driftY).add(uBlackHolePos.y);
-        const z = explosionRadius.mul(aPhi.sub(float(1.5708)).mul(float(0.04))).add(uBlackHolePos.z);
+        // Burst expands in the disk plane (disk lies in XZ before rotation)
+        const diskX = explosionRadius.mul(cos(spiralAngle)).add(driftDiskX);
+        const diskZ = explosionRadius.mul(sin(spiralAngle)).add(driftDiskZ);
+        const diskH = explosionRadius.mul(aPhi.sub(float(1.5708)).mul(float(0.04)));
+        // Rotate by disk tilt (-PI * 0.42 around X) to match accretion disk
+        const x = diskX.add(uBlackHolePos.x);
+        const y = diskH.mul(burstCosTilt).sub(diskZ.mul(burstSinTilt)).add(uBlackHolePos.y);
+        const z = diskH.mul(burstSinTilt).add(diskZ.mul(burstCosTilt)).add(uBlackHolePos.z);
         const position = vec3(x, y, z);
         return mix(hidden, position, active);
     })();
@@ -704,7 +714,7 @@ export function createBurstSparkNodeMaterial(params = {}) {
 
     const activeValue = Fn(() => {
         if (useGPU) {
-            return angleBuffer.element(instanceIndex).w;
+            return positionBuffer.element(instanceIndex).w;
         }
         return active;
     })();

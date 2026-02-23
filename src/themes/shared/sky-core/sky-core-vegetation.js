@@ -184,6 +184,69 @@ function createTaperedCrossGeometry({
     return geometry;
 }
 
+function createCurvedBladeGeometry({
+    bladeCount = 3,
+    widthBottom = 0.12,
+    widthTop = 0.02,
+    height = 1,
+    curve = 0.25,
+    segments = 4,
+}) {
+    const positions = [];
+    const uvs = [];
+    const indices = [];
+    let vertexOffset = 0;
+
+    for (let c = 0; c < bladeCount; c += 1) {
+        const angle = (Math.PI * 2 / bladeCount) * c + (c * 0.1);
+        const cosA = Math.cos(angle);
+        const sinA = Math.sin(angle);
+        const bladeHeight = height * (1.0 - (c % 2) * 0.15); // Slight height variation
+        const bladeCurve = curve * (1.0 + (c % 2) * 0.2);
+
+        for (let i = 0; i <= segments; i++) {
+            const t = i / segments;
+            const w = widthBottom * (1 - t * t) + widthTop * (t * t); 
+            const y = t * bladeHeight;
+            const bend = t * t * bladeCurve;
+
+            const lx = -w * 0.5;
+            const lz = bend;
+            const rx = w * 0.5;
+            const rz = bend;
+
+            const worldLx = lx * cosA - lz * sinA;
+            const worldLz = lx * sinA + lz * cosA;
+            const worldRx = rx * cosA - rz * sinA;
+            const worldRz = rx * sinA + rz * cosA;
+
+            positions.push(worldLx, y, worldLz);
+            positions.push(worldRx, y, worldRz);
+
+            uvs.push(0, t);
+            uvs.push(1, t);
+
+            if (i < segments) {
+                const v0 = vertexOffset + i * 2;
+                const v1 = vertexOffset + i * 2 + 1;
+                const v2 = vertexOffset + (i + 1) * 2;
+                const v3 = vertexOffset + (i + 1) * 2 + 1;
+
+                indices.push(v0, v1, v2);
+                indices.push(v1, v3, v2);
+            }
+        }
+        vertexOffset += (segments + 1) * 2;
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return geometry;
+}
+
 function fillHiddenInstances(mesh, startIndex, dummy) {
     for (let i = startIndex; i < mesh.count; i += 1) {
         dummy.position.set(0, -9999, 0);
@@ -219,14 +282,19 @@ function computePlacementMask(terrainField, x, z, normalY, options = {}) {
     };
 }
 
-function buildGrassInstances(mesh, terrainField, params = {}, kind = 'near') {
+async function buildGrassInstances(mesh, terrainField, params = {}, kind = 'near') {
     const { count } = mesh;
+    mesh.count = 0; // Start at 0 for progressive loading
     const spread = (params.terrainSize ?? 640) * (kind === 'near' ? 0.65 : 0.95);
     const maxAttempts = count * (kind === 'near' ? 8 : 6);
 
     const phases = new Float32Array(count);
     const tints = new Float32Array(count * 3);
     const leans = new Float32Array(count * 2);
+
+    mesh.geometry.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases, 1));
+    mesh.geometry.setAttribute('aTint', new THREE.InstancedBufferAttribute(tints, 3));
+    mesh.geometry.setAttribute('aLean', new THREE.InstancedBufferAttribute(leans, 2));
 
     const dummy = new THREE.Object3D();
     const terrainNormal = new THREE.Vector3();
@@ -236,8 +304,20 @@ function buildGrassInstances(mesh, terrainField, params = {}, kind = 'near') {
 
     let placed = 0;
     let attempts = 0;
+    const CHUNK_SIZE = 1000;
 
     while (placed < count && attempts < maxAttempts) {
+        if (attempts > 0 && attempts % CHUNK_SIZE === 0) {
+            // Update progressively
+            fillHiddenInstances(mesh, placed, dummy);
+            mesh.instanceMatrix.needsUpdate = true;
+            mesh.geometry.attributes.aPhase.needsUpdate = true;
+            mesh.geometry.attributes.aTint.needsUpdate = true;
+            mesh.geometry.attributes.aLean.needsUpdate = true;
+            mesh.count = placed;
+            await new Promise((resolve) => { setTimeout(resolve, 0); });
+        }
+
         attempts += 1;
 
         const x = (Math.random() - 0.5) * spread * 2;
@@ -313,9 +393,9 @@ function buildGrassInstances(mesh, terrainField, params = {}, kind = 'near') {
 
     fillHiddenInstances(mesh, placed, dummy);
     mesh.instanceMatrix.needsUpdate = true;
-    mesh.geometry.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases, 1));
-    mesh.geometry.setAttribute('aTint', new THREE.InstancedBufferAttribute(tints, 3));
-    mesh.geometry.setAttribute('aLean', new THREE.InstancedBufferAttribute(leans, 2));
+    mesh.geometry.attributes.aPhase.needsUpdate = true;
+    mesh.geometry.attributes.aTint.needsUpdate = true;
+    mesh.geometry.attributes.aLean.needsUpdate = true;
 
     mesh.userData.maxCount = placed;
     mesh.count = placed;
@@ -571,7 +651,7 @@ function pickFlowerFamilyFromWeights(weights = {}) {
     return family;
 }
 
-function generateFlowerAnchors(terrainField, carpetField, params = {}) {
+async function generateFlowerAnchors(terrainField, carpetField, params = {}) {
     const anchorCount = Math.max(0, Math.floor(params.flowerAnchorCount ?? 900));
     const anchorMin = Math.max(0, Math.floor(params.flowerAnchorMin ?? Math.round(anchorCount * 0.35)));
     const terrainSize = params.terrainSize ?? 640;
@@ -585,8 +665,16 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
     const cellsX = Math.max(1, Math.floor((spread * 2) / cellSize));
     const cellsZ = Math.max(1, Math.floor((depthMax - depthMin) / cellSize));
 
+    let iterationCount = 0;
+    const CHUNK_SIZE = 400;
+
     for (let ix = 0; ix < cellsX; ix += 1) {
         for (let iz = 0; iz < cellsZ; iz += 1) {
+            iterationCount++;
+            if (iterationCount % CHUNK_SIZE === 0) {
+                await new Promise((resolve) => { setTimeout(resolve, 0); });
+            }
+
             const centerX = -spread + ((ix + 0.5) * cellSize);
             const centerZ = depthMin + ((iz + 0.5) * cellSize);
             const jitterX = (hash2((ix + 1) * 0.73, (iz + 1) * 1.17) - 0.5) * cellSize * 0.84;
@@ -633,6 +721,10 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
     let attempts = 0;
     while (candidates.length < requiredCandidates && attempts < maxAttempts) {
         attempts += 1;
+        if (attempts % CHUNK_SIZE === 0) {
+            await new Promise((resolve) => { setTimeout(resolve, 0); });
+        }
+
         const x = (Math.random() - 0.5) * spread * 2;
         const nearU = 1 - ((1 - Math.random()) ** 2);
         const z = depthMin + nearU * (depthMax - depthMin);
@@ -673,6 +765,9 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
     let meadowAttempts = 0;
     while (candidates.length < requiredCandidates && meadowAttempts < meadowAttemptsMax) {
         meadowAttempts += 1;
+        if (meadowAttempts % CHUNK_SIZE === 0) {
+            await new Promise((resolve) => { setTimeout(resolve, 0); });
+        }
 
         const x = (Math.random() - 0.5) * spread * 2;
         const z = depthMin + (Math.random() * (depthMax - depthMin));
@@ -799,11 +894,17 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
     };
 }
 
-function buildFlowerLayerInstances(mesh, terrainField, anchors, params = {}) {
+async function buildFlowerLayerInstances(mesh, terrainField, anchors, params = {}) {
     const capacity = mesh.count;
+    mesh.count = 0;
     const phases = new Float32Array(capacity);
     const colors = new Float32Array(capacity * 3);
     const leans = new Float32Array(capacity * 2);
+
+    mesh.geometry.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases, 1));
+    mesh.geometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
+    mesh.geometry.setAttribute('aLean', new THREE.InstancedBufferAttribute(leans, 2));
+
     const normal = new THREE.Vector3();
     const smoothedNormal = new THREE.Vector3();
     const slopeQuat = new THREE.Quaternion();
@@ -818,8 +919,19 @@ function buildFlowerLayerInstances(mesh, terrainField, anchors, params = {}) {
     const slopeLiftScale = params.flowerSlopeLift ?? 0.12;
 
     let placed = 0;
+    const CHUNK_SIZE = 1000;
 
     for (let i = 0; i < anchors.length && placed < capacity; i += 1) {
+        if (placed > 0 && placed % CHUNK_SIZE === 0) {
+            fillHiddenInstances(mesh, placed, dummy);
+            mesh.instanceMatrix.needsUpdate = true;
+            mesh.geometry.attributes.aPhase.needsUpdate = true;
+            mesh.geometry.attributes.aColor.needsUpdate = true;
+            mesh.geometry.attributes.aLean.needsUpdate = true;
+            mesh.count = placed;
+            await new Promise((resolve) => { setTimeout(resolve, 0); });
+        }
+
         const anchor = anchors[i];
         const horizonFade = smoothstep(-terrainSize * 0.16, -terrainSize * 0.45, anchor.z);
         const clusterBase = layer === 'stem' ? 3 : 2;
@@ -879,9 +991,9 @@ function buildFlowerLayerInstances(mesh, terrainField, anchors, params = {}) {
 
     fillHiddenInstances(mesh, placed, dummy);
     mesh.instanceMatrix.needsUpdate = true;
-    mesh.geometry.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases, 1));
-    mesh.geometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
-    mesh.geometry.setAttribute('aLean', new THREE.InstancedBufferAttribute(leans, 2));
+    mesh.geometry.attributes.aPhase.needsUpdate = true;
+    mesh.geometry.attributes.aColor.needsUpdate = true;
+    mesh.geometry.attributes.aLean.needsUpdate = true;
 
     mesh.userData.maxCount = placed;
     mesh.count = placed;
@@ -913,20 +1025,22 @@ export function createGrassSystem(scene, terrainField, params = {}) {
 
     const atlasTexture = createGrassAtlasTexture();
 
-    const nearGeometry = createTaperedCrossGeometry({
-        cardCount: 4,
-        widthBottom: 0.94,
-        widthTop: 0.18,
-        height: 0.96,
-        curve: 0.06,
+    const nearGeometry = createCurvedBladeGeometry({
+        bladeCount: 3,
+        widthBottom: 0.16,
+        widthTop: 0.02,
+        height: 0.95,
+        curve: 0.25,
+        segments: 4,
     });
 
-    const midGeometry = createTaperedCrossGeometry({
-        cardCount: 2,
-        widthBottom: 0.76,
-        widthTop: 0.2,
-        height: 0.72,
-        curve: 0.05,
+    const midGeometry = createCurvedBladeGeometry({
+        bladeCount: 2,
+        widthBottom: 0.14,
+        widthTop: 0.02,
+        height: 0.75,
+        curve: 0.2,
+        segments: 3,
     });
 
     const nearRuntime = createGrassMaterial({
@@ -1078,43 +1192,53 @@ export function createFlowerSystem(scene, terrainField, params = {}) {
 
     let anchors = [];
     let lastDiagnostics = null;
-    const rebuildInstances = () => {
-        const generated = generateFlowerAnchors(terrainField, carpetField, {
-            ...params,
-            flowerAnchorCount: anchorCapacity,
-            flowerGroundLiftHead: activeHeadLift,
-            flowerGroundLiftStem: activeStemLift,
-            flowerSlopeLift: activeSlopeLift,
-        });
-        anchors = generated.anchors;
-        lastDiagnostics = generated.diagnostics;
+    let isRebuilding = false;
 
-        const headsPlaced = buildFlowerLayerInstances(headMesh, terrainField, anchors, {
-            ...params,
-            layer: 'head',
-            flowerPalettePreset: activePalettePreset,
-            flowerGroundLiftHead: activeHeadLift,
-            flowerGroundLiftStem: activeStemLift,
-            flowerSlopeLift: activeSlopeLift,
-        });
-        const stemsPlaced = buildFlowerLayerInstances(stemMesh, terrainField, anchors, {
-            ...params,
-            layer: 'stem',
-            flowerPalettePreset: activePalettePreset,
-            flowerGroundLiftHead: activeHeadLift,
-            flowerGroundLiftStem: activeStemLift,
-            flowerSlopeLift: activeSlopeLift,
-        });
+    const rebuildInstancesAsync = async () => {
+        if (isRebuilding) return null;
+        isRebuilding = true;
+        
+        try {
+            const generated = await generateFlowerAnchors(terrainField, carpetField, {
+                ...params,
+                flowerAnchorCount: anchorCapacity,
+                flowerGroundLiftHead: activeHeadLift,
+                flowerGroundLiftStem: activeStemLift,
+                flowerSlopeLift: activeSlopeLift,
+            });
+            anchors = generated.anchors;
+            lastDiagnostics = generated.diagnostics;
 
-        return {
-            anchors: anchors.length,
-            heads: headsPlaced,
-            stems: stemsPlaced,
-            diagnostics: lastDiagnostics,
-        };
+            const headsPlaced = await buildFlowerLayerInstances(headMesh, terrainField, anchors, {
+                ...params,
+                layer: 'head',
+                flowerPalettePreset: activePalettePreset,
+                flowerGroundLiftHead: activeHeadLift,
+                flowerGroundLiftStem: activeStemLift,
+                flowerSlopeLift: activeSlopeLift,
+            });
+            const stemsPlaced = await buildFlowerLayerInstances(stemMesh, terrainField, anchors, {
+                ...params,
+                layer: 'stem',
+                flowerPalettePreset: activePalettePreset,
+                flowerGroundLiftHead: activeHeadLift,
+                flowerGroundLiftStem: activeStemLift,
+                flowerSlopeLift: activeSlopeLift,
+            });
+
+            return {
+                anchors: anchors.length,
+                heads: headsPlaced,
+                stems: stemsPlaced,
+                diagnostics: lastDiagnostics,
+            };
+        } finally {
+            isRebuilding = false;
+        }
     };
 
-    const initial = rebuildInstances();
+    // Start initial build asynchronously without blocking
+    rebuildInstancesAsync();
     scene.add(group);
 
     return {
@@ -1125,9 +1249,9 @@ export function createFlowerSystem(scene, terrainField, params = {}) {
         stemMesh,
         headAtlasTexture,
         carpetField,
-        anchorCount: initial.anchors,
+        get anchorCount() { return anchors.length; },
         flowerPalettePreset: activePalettePreset,
-        carpetStrength: carpetField.getState().strength,
+        get carpetStrength() { return carpetField.getState().strength; },
         uniformSets: [headRuntime.uniforms, stemRuntime.uniforms],
         windScale: 0.72,
         densityScale: 1,
@@ -1146,33 +1270,30 @@ export function createFlowerSystem(scene, terrainField, params = {}) {
             };
         },
         setCarpetStrength(value = 1) {
-            this.carpetStrength = carpetField.setStrength(value);
-            const result = rebuildInstances();
-            this.anchorCount = result.anchors;
+            carpetField.setStrength(value);
+            rebuildInstancesAsync();
             this.setDensityScale(this.densityScale);
             return {
                 carpetStrength: this.carpetStrength,
-                ...result,
+                anchors: this.anchorCount,
             };
         },
         rebuild() {
-            const result = rebuildInstances();
-            this.anchorCount = result.anchors;
+            rebuildInstancesAsync();
             this.setDensityScale(this.densityScale);
             return {
-                ...result,
+                anchors: this.anchorCount,
             };
         },
         setPalette(preset = 'prairie') {
             activePalettePreset = String(preset || 'prairie').toLowerCase();
             this.flowerPalettePreset = activePalettePreset;
             carpetField.setPalette(activePalettePreset);
-            const result = rebuildInstances();
-            this.anchorCount = result.anchors;
+            rebuildInstancesAsync();
             this.setDensityScale(this.densityScale);
             return {
                 palette: this.flowerPalettePreset,
-                ...result,
+                anchors: this.anchorCount,
             };
         },
         setGroundLift(headLift = activeHeadLift, stemLift = activeStemLift, slopeLift = activeSlopeLift) {
@@ -1182,14 +1303,13 @@ export function createFlowerSystem(scene, terrainField, params = {}) {
             this.flowerGroundLiftHead = activeHeadLift;
             this.flowerGroundLiftStem = activeStemLift;
             this.flowerSlopeLift = activeSlopeLift;
-            const result = rebuildInstances();
-            this.anchorCount = result.anchors;
+            rebuildInstancesAsync();
             this.setDensityScale(this.densityScale);
             return {
                 headLift: activeHeadLift,
                 stemLift: activeStemLift,
                 slopeLift: activeSlopeLift,
-                ...result,
+                anchors: this.anchorCount,
             };
         },
         sampleCarpet(x, z) {

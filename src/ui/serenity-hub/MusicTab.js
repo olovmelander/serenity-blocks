@@ -9,8 +9,10 @@ export class MusicTab {
         this.soundManager = soundManager;
         this.serenityMode = hubInstance.serenityMode;
         this.currentSong = null;
+        this.audibleSong = null;
         this.songs = [];
         this.updateInterval = null;
+        this.reconcilePromise = null;
         this.init();
     }
 
@@ -20,6 +22,7 @@ export class MusicTab {
     async init() {
         this.songs = this.soundManager.songsData || [];
         this.currentSong = this.soundManager.musicTrack;
+        this.audibleSong = this.getAudibleTrackKey() || this.currentSong;
         this.render();
         this.attachEventListeners();
         this.startProgressTracking();
@@ -295,8 +298,8 @@ export class MusicTab {
         // Update UI after a short delay to ensure soundManager has updated
         setTimeout(() => {
             this.currentSong = this.soundManager.musicTrack;
-            this.updateNowPlaying();
             this.updatePlaylist();
+            this.syncWithAudioState();
         }, 100);
     }
 
@@ -307,6 +310,7 @@ export class MusicTab {
     selectTrack(trackKey) {
         this.soundManager.setTrack(trackKey);
         this.currentSong = trackKey;
+        this.audibleSong = this.getAudibleTrackKey() || trackKey;
         this.updateNowPlaying();
         this.updatePlaylist();
         this.updatePlayPauseButton(true);
@@ -358,7 +362,7 @@ export class MusicTab {
     updateNowPlaying() {
         const titleElement = document.getElementById('current-track-title');
         if (titleElement) {
-            titleElement.textContent = this.getCurrentSongName();
+            titleElement.textContent = this.getCurrentSongName(this.audibleSong || this.currentSong);
         }
     }
 
@@ -518,8 +522,8 @@ export class MusicTab {
      * Gets the current song name
      * @returns {string} Current song display name
      */
-    getCurrentSongName() {
-        const song = this.songs.find((s) => this.nameToKey(s.name) === this.currentSong);
+    getCurrentSongName(trackKey = this.audibleSong || this.currentSong) {
+        const song = this.songs.find((s) => this.nameToKey(s.name) === trackKey);
         return song ? song.name : 'No track selected';
     }
 
@@ -530,6 +534,32 @@ export class MusicTab {
     isPlaying() {
         const { audioElement } = this.soundManager;
         return audioElement && !audioElement.paused && !this.soundManager.isMuted;
+    }
+
+    getAudibleTrackKey() {
+        if (typeof this.soundManager.getActualTrackKey === 'function') {
+            return this.soundManager.getActualTrackKey();
+        }
+        return this.soundManager.musicTrack || null;
+    }
+
+    reconcileTrackMismatch() {
+        if (this.reconcilePromise || typeof this.soundManager.ensureTrackPlaybackSynced !== 'function') {
+            return;
+        }
+
+        this.reconcilePromise = Promise.resolve(
+            this.soundManager.ensureTrackPlaybackSynced({
+                reason: 'music-tab-reconcile',
+                force: true,
+            }),
+        )
+            .catch((error) => {
+                console.warn('[MusicTab] Failed to reconcile playback state:', error);
+            })
+            .finally(() => {
+                this.reconcilePromise = null;
+            });
     }
 
     /**
@@ -550,7 +580,6 @@ export class MusicTab {
             if (trackName && trackName !== this.currentSong) {
                 console.log('[MusicTab] External track change detected:', trackName);
                 this.currentSong = trackName;
-                this.updateNowPlaying();
                 this.updatePlaylist();
 
                 // Sync play/pause state when track changes
@@ -561,6 +590,8 @@ export class MusicTab {
                     this.updateVinylAnimation(isPlaying);
                 }
             }
+
+            this.syncWithAudioState();
         };
 
         window.addEventListener('musicTrackChanged', this.trackChangeHandler);
@@ -626,13 +657,29 @@ export class MusicTab {
         this.updatePlayPauseButton(isPlaying);
         this.updateVinylAnimation(isPlaying);
 
-        // Sync current track
-        const currentTrack = this.soundManager.musicTrack;
-        if (currentTrack && currentTrack !== this.currentSong) {
-            console.log('[MusicTab] Syncing current track:', currentTrack);
-            this.currentSong = currentTrack;
-            this.updateNowPlaying();
+        // Selected track is UI state; audible track is derived from the audio source.
+        const selectedTrack = this.soundManager.musicTrack;
+        if (selectedTrack && selectedTrack !== this.currentSong) {
+            this.currentSong = selectedTrack;
             this.updatePlaylist();
+        }
+
+        const audibleTrack = this.getAudibleTrackKey() || selectedTrack;
+        if (audibleTrack && audibleTrack !== this.audibleSong) {
+            this.audibleSong = audibleTrack;
+            this.updateNowPlaying();
+        } else if (!this.audibleSong) {
+            this.audibleSong = selectedTrack;
+            this.updateNowPlaying();
+        }
+
+        if (
+            selectedTrack
+            && audibleTrack
+            && selectedTrack !== audibleTrack
+            && !this.soundManager.isMuted
+        ) {
+            this.reconcileTrackMismatch();
         }
 
         // Immediately update progress bar

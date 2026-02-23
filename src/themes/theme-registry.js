@@ -286,6 +286,13 @@ export const THEME_REGISTRY = [
         group: 'cosmic',
     },
     {
+        id: 'chiral-gold',
+        displayName: 'Chiral Gold',
+        module: './chiral-gold/chiral-gold-theme.js',
+        group: 'cosmic',
+        icon: './chiral-gold/chiral-gold-theme-icon.svg',
+    },
+    {
         id: 'nimbus-veil',
         displayName: 'Nimbus Veil',
         module: './nimbus-veil/nimbus-veil-theme.js',
