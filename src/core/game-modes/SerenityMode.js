@@ -107,8 +107,8 @@ export class SerenityMode extends BaseGameMode {
             console.log('[Serenity] Gamepad controller enabled and menu navigation disabled');
         }
 
-        // Start music if not already playing
-        this._ensureMusicPlaying();
+        // Ensure selected track and audible playback are synchronized.
+        await this._ensureMusicPlaying();
 
         // Setup keyboard controls
         this._setupKeyboardControls();
@@ -437,16 +437,22 @@ export class SerenityMode extends BaseGameMode {
      * Ensure music is playing
      * @private
      */
-    _ensureMusicPlaying() {
+    async _ensureMusicPlaying() {
         const { soundManager } = this.deps;
         if (soundManager) {
             // Resume audio context if suspended (browser autoplay policy)
             soundManager.resumeAudioContext();
 
-            // Check if audio element exists and is playing
-            const isPlaying = soundManager.audioElement && !soundManager.audioElement.paused;
+            if (typeof soundManager.ensureTrackPlaybackSynced === 'function') {
+                await soundManager.ensureTrackPlaybackSynced({
+                    reason: 'serenity-enter',
+                    force: true,
+                });
+                return;
+            }
 
-            // Start music if not playing
+            // Backward-compatible fallback for older sound manager implementations.
+            const isPlaying = soundManager.audioElement && !soundManager.audioElement.paused;
             if (!isPlaying) {
                 const settings = this.deps.settingsManager.get();
                 const trackName = settings.musicTrack || 'Ambient';

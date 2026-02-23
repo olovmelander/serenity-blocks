@@ -40,6 +40,11 @@ const {
     MeshStandardNodeMaterial,
 } = THREE;
 
+function isWindowsPlatform() {
+    if (typeof navigator === 'undefined') return false;
+    return /Windows/i.test(navigator.userAgent || '');
+}
+
 export default class ThreeJSIntroRendererWebGPU {
     constructor(canvas) {
         this.canvas = canvas;
@@ -120,12 +125,17 @@ export default class ThreeJSIntroRendererWebGPU {
         try {
             this.detectInitialQuality();
 
-            this.renderer = new THREE.WebGPURenderer({
+            const webgpuOptions = {
                 canvas: this.canvas,
                 alpha: true,
                 antialias: true,
-                powerPreference: 'high-performance',
-            });
+            };
+            // Chromium on Windows currently warns that powerPreference is ignored for requestAdapter().
+            if (!isWindowsPlatform()) {
+                webgpuOptions.powerPreference = 'high-performance';
+            }
+
+            this.renderer = new THREE.WebGPURenderer(webgpuOptions);
             await this.renderer.init();
 
             if (!this.renderer.backend?.isWebGPUBackend) {

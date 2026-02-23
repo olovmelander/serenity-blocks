@@ -1267,15 +1267,6 @@ class SerenityBlocks {
         this.soundManager.settingsManager = this.settingsManager;
         this.soundManager.themeManager = this.themeManager;
 
-        this.cleanupHandlers.push(
-            eventBus.on(EVENTS.THEME_CHANGED, ({ themeName }) => {
-                const settings = this.settingsManager.get();
-                if (settings.themeLinkedMode) {
-                    this.soundManager.applyThemeLinkedMusic(themeName);
-                }
-            }),
-        );
-
         // Input controller
         this.inputController = new InputController();
 
@@ -1443,6 +1434,12 @@ class SerenityBlocks {
 
                     // Start the game
                     await this.gameModeManager.startCurrentMode();
+                    if (this.soundManager?.ensureTrackPlaybackSynced) {
+                        await this.soundManager.ensureTrackPlaybackSynced({
+                            reason: 'legacy-start-button',
+                            force: true,
+                        });
+                    }
 
                     // Hide start modal
                     this.modalManager.hideAll();
@@ -1532,6 +1529,8 @@ class SerenityBlocks {
                 const { mode } = e.detail;
                 console.log('[Main] Starting game with mode from card selection:', mode);
 
+                this.soundManager?.resumeAudioContext?.();
+
                 // Disable gamepad mode selection
                 if (this.gamepadController) {
                     this.gamepadController.disableGameModeSelection();
@@ -1545,6 +1544,12 @@ class SerenityBlocks {
 
                 // Start the game
                 await this.gameModeManager.startCurrentMode();
+                if (this.soundManager?.ensureTrackPlaybackSynced) {
+                    await this.soundManager.ensureTrackPlaybackSynced({
+                        reason: 'card-start',
+                        force: true,
+                    });
+                }
 
                 const activeMode = this.gameModeManager.getCurrentMode();
                 const modeStarted = !!activeMode
@@ -2617,8 +2622,8 @@ class SerenityBlocks {
         // Hide modals
         this.modalManager.hideAll();
 
-        // Play move sound to initialize audio context
-        this.soundManager.sfxPlayer.playMove();
+        // Resume audio context without emitting a synthetic click sound.
+        this.soundManager?.resumeAudioContext?.();
 
         // Check game mode
         const currentMode = this.gameModeUI.getMode();
@@ -2649,6 +2654,12 @@ class SerenityBlocks {
             // Activate and start the selected mode
             await this.gameModeManager.activateMode(currentMode);
             await this.gameModeManager.startCurrentMode();
+            if (this.soundManager?.ensureTrackPlaybackSynced) {
+                await this.soundManager.ensureTrackPlaybackSynced({
+                    reason: 'start-game',
+                    force: true,
+                });
+            }
 
             console.log(`[Main] Started game mode: ${currentMode}`);
         } catch (error) {

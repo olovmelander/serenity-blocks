@@ -207,6 +207,12 @@ export class GameModeManager {
             if (this.deps?.themeManager?.resumeThemes) {
                 await this.deps.themeManager.resumeThemes();
             }
+            if (this.deps?.soundManager?.ensureTrackPlaybackSynced) {
+                await this.deps.soundManager.ensureTrackPlaybackSynced({
+                    reason: 'mode-start',
+                    force: true,
+                });
+            }
 
             this._emitEvent('modeStarted', { modeId: this.currentModeId, mode });
             console.log(`[GameModeManager] Mode ${this.currentModeId} started successfully`);

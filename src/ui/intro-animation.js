@@ -20,10 +20,6 @@ export class IntroAnimation {
         this.loadingIndicator = null;
         this.loadingPromise = null;
         this.loadingPromiseLabel = 'LOADING ASSETS';
-
-        this.audioAnalyser = null;
-        this.audioFrequencyData = null;
-        this.audioSourceNode = null;
         this.smoothedAudioPulse = 0;
 
         // Three.js Renderer
@@ -186,51 +182,20 @@ export class IntroAnimation {
         const audioEl = this.soundManager?.audioElement;
         if (!audioEl || audioEl.paused || audioEl.ended) return 0;
 
-        if (this.ensureAudioAnalyser()) {
-            this.audioAnalyser.getByteFrequencyData(this.audioFrequencyData);
-            let energy = 0;
-            const bins = Math.min(48, this.audioFrequencyData.length);
-            for (let i = 0; i < bins; i++) {
-                energy += this.audioFrequencyData[i];
-            }
-            const normalized = bins > 0 ? energy / (bins * 255) : 0;
-            this.smoothedAudioPulse = this.smoothedAudioPulse * 0.78 + normalized * 0.22;
-            return Math.min(1, this.smoothedAudioPulse * 1.6);
+        if (this.soundManager?.hasAudioAnalyzer?.() && this.soundManager?.getAudioAnalysis) {
+            const analysis = this.soundManager.getAudioAnalysis(1 / 60);
+            const weightedEnergy = (analysis.bassEnergy * 0.6)
+                + (analysis.midEnergy * 0.25)
+                + (analysis.trebleEnergy * 0.15);
+            this.smoothedAudioPulse = this.smoothedAudioPulse * 0.78 + weightedEnergy * 0.22;
+            const beatBoost = analysis.beatDetected ? 0.18 : 0;
+            return Math.min(1, this.smoothedAudioPulse * 1.6 + beatBoost);
         }
 
         const t = audioEl.currentTime;
         const primary = Math.max(0, Math.sin(t * Math.PI * 2 * 1.85));
         const secondary = Math.max(0, Math.sin(t * Math.PI * 2 * 3.7));
         return Math.min(1, primary * 0.7 + secondary * 0.3);
-    }
-
-    ensureAudioAnalyser() {
-        const { soundManager } = this;
-        const audioEl = soundManager?.audioElement;
-        if (!soundManager || !audioEl) return false;
-
-        try {
-            if (!soundManager.audioContext && typeof soundManager.resumeAudioContext === 'function') {
-                soundManager.resumeAudioContext();
-            }
-
-            const { audioContext: ctx } = soundManager;
-            if (!ctx) return false;
-
-            if (!this.audioSourceNode) {
-                this.audioSourceNode = ctx.createMediaElementSource(audioEl);
-                this.audioAnalyser = ctx.createAnalyser();
-                this.audioAnalyser.fftSize = 256;
-                this.audioAnalyser.smoothingTimeConstant = 0.82;
-                this.audioSourceNode.connect(this.audioAnalyser);
-                this.audioAnalyser.connect(ctx.destination);
-                this.audioFrequencyData = new Uint8Array(this.audioAnalyser.frequencyBinCount);
-            }
-
-            return !!this.audioAnalyser;
-        } catch (error) {
-            return false;
-        }
     }
 
     setLoadingPromise(promise, label = 'LOADING ASSETS') {
@@ -680,9 +645,6 @@ export class IntroAnimation {
             this.container = null;
             this.loadingIndicator = null;
             this.loadingPromise = null;
-            this.audioAnalyser = null;
-            this.audioFrequencyData = null;
-            this.audioSourceNode = null;
             this.smoothedAudioPulse = 0;
 
             // Resolve the promise if not already resolved
@@ -743,9 +705,6 @@ export class IntroAnimation {
         this.container = null;
         this.loadingIndicator = null;
         this.loadingPromise = null;
-        this.audioAnalyser = null;
-        this.audioFrequencyData = null;
-        this.audioSourceNode = null;
         this.smoothedAudioPulse = 0;
     }
 
