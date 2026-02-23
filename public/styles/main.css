@@ -13281,13 +13281,21 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 18px;
+    gap: 0;
 }
 
 .single-player-card .player-next-pieces {
     width: var(--board-width);
     justify-content: center;
     margin: 0;
+    background: rgba(10, 8, 24, 0.4);
+    border: 4px solid rgba(139, 92, 246, 0.9);
+    border-bottom: none;
+    border-radius: 12px 12px 0 0;
+    padding: 12px 0;
+    box-shadow:
+        0 0 30px rgba(139, 92, 246, 0.45),
+        inset 0 0 18px rgba(139, 92, 246, 0.35);
 }
 
 /* Opacity fade for next pieces queue in single player */
@@ -13320,6 +13328,8 @@ body {
 
 .single-player-card .phaser-board-container {
     border: 2px solid rgba(139, 92, 246, 0.45);
+    border-top: none;
+    border-radius: 0 0 12px 12px;
     box-shadow:
         inset 0 0 18px rgba(139, 92, 246, 0.15),
         0 0 30px rgba(139, 92, 246, 0.25);
@@ -13327,6 +13337,8 @@ body {
 
 #single-player-border {
     border-color: rgba(139, 92, 246, 0.9);
+    border-top: none;
+    border-radius: 0 0 12px 12px;
     box-shadow:
         0 0 30px rgba(139, 92, 246, 0.45),
         inset 0 0 18px rgba(139, 92, 246, 0.35);
@@ -13446,6 +13458,27 @@ body.phaser-multiplayer-active #p2-canvas {
     line-height: 1.05;
     color: #ffffff;
     text-shadow: 0 0 12px rgba(99, 102, 241, 0.5);
+}
+
+/* Typography Hierarchy Adjustments */
+.single-player-stat.stat-score .single-player-stat-value,
+.single-player-stat.stat-lines .single-player-stat-value,
+.single-player-stat.stat-level .single-player-stat-value,
+.single-player-stat.stat-next-level .single-player-stat-value {
+    font-size: 24px;
+}
+
+.single-player-stat.stat-speed,
+.single-player-stat.stat-bpm,
+.single-player-stat.stat-ppm {
+    padding: 4px 8px;
+    opacity: 0.85;
+}
+
+.single-player-stat.stat-speed .single-player-stat-value,
+.single-player-stat.stat-bpm .single-player-stat-value,
+.single-player-stat.stat-ppm .single-player-stat-value {
+    font-size: 14px;
 }
 
 /* Color-coded stat values */
@@ -21199,20 +21232,34 @@ body.phaser-multiplayer-active #single-player-container {
 }
 
 /* ============================================
-   RESPONSIVE BREAKPOINTS
-   ============================================ */
-
-/* Media queries removed to allow JavaScript dynamic sizing to take full control */
-/* This ensures smooth, continuous resizing without "steps" or conflicts */
-
-.multiplayer-game-area.players-3 {
-    --board-width: max(260px, min(320px, calc((100vw - 220px) / 3), calc((100vh - 380px) / 2)));
-    gap: 50px;
+/* 2 players - 1 row × 2 columns */
+.multiplayer-game-area.players-2 {
+    /* --board-width is set by JS */
+    grid-template-columns: repeat(2, calc(var(--board-width) + 30px));
+    grid-template-rows: 1fr;
+    gap: var(--board-gap, 60px);
+    align-items: center;
+    justify-content: center;
 }
 
+/* 3 players - 1 row × 3 columns */
+.multiplayer-game-area.players-3 {
+    /* --board-width is set by JS */
+    grid-template-columns: repeat(3, calc(var(--board-width) + 30px));
+    grid-template-rows: 1fr;
+    gap: var(--board-gap, 40px);
+    align-items: center;
+    justify-content: center;
+}
+
+/* 4 players - 1 row × 4 columns */
 .multiplayer-game-area.players-4 {
-    --board-width: max(240px, min(290px, calc((100vw - 240px) / 4), calc((100vh - 380px) / 2)));
-    gap: 40px;
+    /* --board-width is set by JS */
+    grid-template-columns: repeat(4, calc(var(--board-width) + 30px));
+    grid-template-rows: 1fr;
+    gap: var(--board-gap, 30px);
+    align-items: center;
+    justify-content: center;
 }
 
 /* Mobile (< 768px) - Stack all players vertically */
@@ -21252,6 +21299,116 @@ body.phaser-multiplayer-active #single-player-container {
         width: 16px;
         height: 16px;
     }
+}
+
+/* ============================================
+   GLOBAL STANDINGS HUD
+   ============================================ */
+
+.global-standings-hud {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+    padding: 12px 30px;
+    background: linear-gradient(180deg, rgba(10, 10, 15, 0.95), rgba(15, 15, 25, 0.8));
+    border-radius: 100px;
+    /* Pill shape */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.7),
+        inset 0 1px 2px rgba(255, 255, 255, 0.05);
+    z-index: 1000;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.global-standings-hud.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(-20px);
+}
+
+.standing-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 14px;
+    border-radius: 50px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.standing-item .rank-badge {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 900;
+    color: #fff;
+    width: 24px;
+    text-align: center;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
+.standing-item[data-rank="1"] {
+    background: linear-gradient(90deg, rgba(251, 191, 36, 0.15), rgba(251, 191, 36, 0.05));
+    border-color: rgba(251, 191, 36, 0.4);
+    box-shadow: 0 0 15px rgba(251, 191, 36, 0.15);
+    transform: scale(1.05);
+}
+
+.standing-item[data-rank="1"] .rank-badge {
+    color: #fbbf24;
+    text-shadow: 0 0 10px rgba(251, 191, 36, 0.8);
+}
+
+.standing-item[data-rank="2"] {
+    background: linear-gradient(90deg, rgba(156, 163, 175, 0.15), rgba(156, 163, 175, 0.05));
+    border-color: rgba(156, 163, 175, 0.4);
+}
+
+.standing-item[data-rank="2"] .rank-badge {
+    color: #e5e7eb;
+}
+
+.standing-item[data-rank="3"] {
+    background: linear-gradient(90deg, rgba(180, 83, 9, 0.15), rgba(180, 83, 9, 0.05));
+    border-color: rgba(180, 83, 9, 0.4);
+}
+
+.standing-item[data-rank="3"] .rank-badge {
+    color: #d97706;
+}
+
+.standing-item .player-color-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    box-shadow: 0 0 8px currentColor;
+}
+
+.standing-item .player-name {
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: #e2e8f0;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.standing-item .player-score {
+    font-family: 'Orbitron', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+    padding-left: 8px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* ============================================
@@ -21558,27 +21715,23 @@ body.phaser-multiplayer-active #single-player-container {
 }
 
 .player-stats-bar .stat-icon {
-    font-size: 14px;
+    font-size: 16px !important;
     line-height: 1;
     filter: saturate(0.8);
 }
 
 .player-stats-bar .stat-label {
-    font-family: 'Space Mono', monospace;
-    font-size: 8px;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.5);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    display: none !important;
 }
 
 .player-stats-bar .stat-value {
     font-family: 'Orbitron', sans-serif;
-    font-size: 14px;
+    font-size: 20px !important;
     font-weight: 700;
     color: #ffffff;
     text-shadow: 0 0 6px rgba(255, 255, 255, 0.3);
     font-variant-numeric: tabular-nums;
+    margin-top: 2px;
 }
 
 /* Stat-specific colors */
@@ -24224,6 +24377,7 @@ body.cursor-hidden * {
 #game-over-main-menu {
     min-width: 180px;
 }
+
 /* Steam Leaderboards Panel */
 .steam-leaderboard-panel {
     margin-top: 16px;

@@ -1543,14 +1543,22 @@ class SerenityBlocks {
                 // Activate the mode
                 await this.gameModeManager.activateMode(mode);
 
-                // Fade out intro background after mode activation has started.
-                if (introAnimation) {
-                    introAnimation.dismiss();
-                }
-                await new Promise((resolve) => setTimeout(resolve, 100));
-
                 // Start the game
                 await this.gameModeManager.startCurrentMode();
+
+                const activeMode = this.gameModeManager.getCurrentMode();
+                const modeStarted = !!activeMode
+                    && activeMode.getModeId() === mode
+                    && activeMode.isRunning;
+
+                // Keep the intro background visible for pre-start flows (like local match config).
+                const shouldDismissIntroHere = modeStarted && mode !== GAME_MODES.LOCAL_MULTIPLAYER;
+                if (shouldDismissIntroHere && introAnimation) {
+                    introAnimation.dismiss();
+                    await new Promise((resolve) => {
+                        setTimeout(resolve, 100);
+                    });
+                }
             } catch (error) {
                 console.error('[Main] Failed to start game from card selection:', error);
                 alert(`Failed to start game: ${error.message}`);

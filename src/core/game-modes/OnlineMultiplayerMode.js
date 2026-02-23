@@ -77,6 +77,10 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.networkStats = null;
         this.snapshotStats = null;
         this.pingInterval = null;
+        this.roundNumber = 1;
+        this.roundStingerElement = null;
+        this.roundStingerTimer = null;
+        this.roundStingerRunId = 0;
 
         // Cleanup handlers
         this.cleanupHandlers = [];
@@ -540,6 +544,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         // Clear any death overlays from previous match
         this._clearDeathState();
+        this._clearRoundStartEffects();
+        this.roundNumber = 1;
 
         // Hide other containers
         this._hideOtherContainers();
@@ -1225,6 +1231,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             () => {
                 console.log('[OnlineMultiplayer] Round restarting - clearing death state');
                 this._clearDeathState();
+                this.roundNumber += 1;
+                this._playRoundStartStinger();
             },
         );
         this.cleanupHandlers.push(this.roundRestartUnsub);
@@ -1711,6 +1719,194 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }
     }
 
+    _ensureRoundStartStinger() {
+        const container = document.getElementById('online-multiplayer-container');
+        if (!container) return null;
+
+        if (this.roundStingerElement && this.roundStingerElement.isConnected) {
+            return this.roundStingerElement;
+        }
+
+        const stinger = document.createElement('div');
+        stinger.className = 'online-round-stinger';
+        stinger.setAttribute('aria-hidden', 'true');
+        stinger.innerHTML = `
+            <div class="online-round-stinger__line"></div>
+            <div class="online-round-stinger__content">
+                <div class="online-round-stinger__label">ROUND START</div>
+                <div class="online-round-stinger__round">ROUND 1</div>
+                <div class="online-round-stinger__subtitle">FIRST TO 10 FRAGS</div>
+            </div>
+            <div class="online-round-stinger__line"></div>
+        `;
+        container.appendChild(stinger);
+        this.roundStingerElement = stinger;
+        return stinger;
+    }
+
+    _playRoundStartStinger() {
+        const container = document.getElementById('online-multiplayer-container');
+        const mainBoard = document.getElementById('online-main-board');
+        const stinger = this._ensureRoundStartStinger();
+        if (!container || !mainBoard || !stinger) return;
+
+        const localColor = this._getPlayerColor(this.steamNetworking?.steamId) || '#4fd1c5';
+        const accentRgb = this._parseAccentColorToRgb(localColor);
+        const prefersReducedMotion = typeof window !== 'undefined'
+            && typeof window.matchMedia === 'function'
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        container.style.setProperty('--round-start-accent', localColor);
+        container.style.setProperty('--round-start-accent-rgb', `${accentRgb[0]}, ${accentRgb[1]}, ${accentRgb[2]}`);
+
+        const roundText = stinger.querySelector('.online-round-stinger__round');
+        const subtitle = stinger.querySelector('.online-round-stinger__subtitle');
+        if (roundText) {
+            roundText.textContent = `ROUND ${this.roundNumber}`;
+        }
+        if (subtitle) {
+            subtitle.textContent = this._buildRoundStingerSubtitle();
+        }
+
+        const opponentCards = Array.from(container.querySelectorAll('.opponent-mini-board'));
+        opponentCards.forEach((card, index) => {
+            card.style.setProperty('--round-start-delay', `${Math.min(index * 45, 180)}ms`);
+            card.classList.remove('round-start-burst');
+        });
+
+        container.classList.remove('round-start-pulse');
+        mainBoard.classList.remove('round-start-burst');
+        mainBoard.classList.remove('round-start-burst-reduced');
+        stinger.classList.remove('is-active');
+        stinger.classList.remove('is-active-reduced');
+
+        this.roundStingerRunId += 1;
+        const runId = this.roundStingerRunId;
+
+        if (prefersReducedMotion) {
+            stinger.classList.add('is-active-reduced');
+            mainBoard.classList.add('round-start-burst-reduced');
+            this.roundStingerTimer = setTimeout(() => {
+                if (runId !== this.roundStingerRunId) return;
+                mainBoard.classList.remove('round-start-burst-reduced');
+                stinger.classList.remove('is-active-reduced');
+                opponentCards.forEach((card) => {
+                    card.style.removeProperty('--round-start-delay');
+                });
+                this.roundStingerTimer = null;
+            }, 360);
+            return;
+        }
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (runId !== this.roundStingerRunId) return;
+                container.classList.add('round-start-pulse');
+                mainBoard.classList.add('round-start-burst');
+                stinger.classList.add('is-active');
+                opponentCards.forEach((card) => card.classList.add('round-start-burst'));
+            });
+        });
+
+        if (this.roundStingerTimer) {
+            clearTimeout(this.roundStingerTimer);
+        }
+        this.roundStingerTimer = setTimeout(() => {
+            if (runId !== this.roundStingerRunId) return;
+            container.classList.remove('round-start-pulse');
+            mainBoard.classList.remove('round-start-burst');
+            stinger.classList.remove('is-active');
+            opponentCards.forEach((card) => {
+                card.classList.remove('round-start-burst');
+                card.style.removeProperty('--round-start-delay');
+            });
+            this.roundStingerTimer = null;
+        }, 850);
+    }
+
+    _buildRoundStingerSubtitle() {
+        const config = this.ffaGameState?.matchConfig || {};
+        const goal = Number(config.endConditionValue) || 0;
+
+        switch (config.endCondition) {
+        case 'frags':
+            return `FIRST TO ${goal || 10} FRAGS`;
+        case 'points':
+            return `FIRST TO ${(goal || 10) * 1000} POINTS`;
+        case 'lines':
+            return `FIRST TO ${goal || 40} LINES`;
+        case 'time':
+            return `${goal || 3} MINUTE SPRINT`;
+        case 'never':
+            return 'ENDLESS BATTLE';
+        default:
+            return 'STAY SHARP';
+        }
+    }
+
+    _parseAccentColorToRgb(color) {
+        if (!color || typeof color !== 'string') return [79, 209, 197];
+
+        const trimmed = color.trim();
+
+        if (trimmed.startsWith('#')) {
+            const hex = trimmed.slice(1);
+            if (hex.length === 3) {
+                return hex.split('').map((value) => parseInt(value + value, 16));
+            }
+            if (hex.length === 6) {
+                return [
+                    parseInt(hex.slice(0, 2), 16),
+                    parseInt(hex.slice(2, 4), 16),
+                    parseInt(hex.slice(4, 6), 16),
+                ];
+            }
+        }
+
+        const rgbMatch = trimmed.match(/rgba?\(([^)]+)\)/i);
+        if (rgbMatch && rgbMatch[1]) {
+            const channels = rgbMatch[1]
+                .split(',')
+                .slice(0, 3)
+                .map((value) => Number.parseInt(value.trim(), 10))
+                .map((value) => (Number.isNaN(value) ? 0 : Math.max(0, Math.min(255, value))));
+            if (channels.length === 3) {
+                return channels;
+            }
+        }
+
+        return [79, 209, 197];
+    }
+
+    _clearRoundStartEffects() {
+        if (this.roundStingerTimer) {
+            clearTimeout(this.roundStingerTimer);
+            this.roundStingerTimer = null;
+        }
+
+        const container = document.getElementById('online-multiplayer-container');
+        const mainBoard = document.getElementById('online-main-board');
+
+        if (container) {
+            container.classList.remove('round-start-pulse');
+            const opponentCards = container.querySelectorAll('.opponent-mini-board.round-start-burst');
+            opponentCards.forEach((card) => {
+                card.classList.remove('round-start-burst');
+                card.style.removeProperty('--round-start-delay');
+            });
+        }
+
+        if (mainBoard) {
+            mainBoard.classList.remove('round-start-burst');
+            mainBoard.classList.remove('round-start-burst-reduced');
+        }
+
+        if (this.roundStingerElement) {
+            this.roundStingerElement.classList.remove('is-active');
+            this.roundStingerElement.classList.remove('is-active-reduced');
+        }
+    }
+
     /**
      * Update the garbage meter display
      * PERF: Caches DOM elements and only updates when values change
@@ -2075,6 +2271,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * Clean up game rendering
      */
     _cleanupGameRendering() {
+        this._clearRoundStartEffects();
+        this.roundStingerRunId += 1;
+        if (this.roundStingerElement) {
+            this.roundStingerElement.remove();
+            this.roundStingerElement = null;
+        }
+
         // Stop game loop
         if (this.gameLoopId) {
             cancelAnimationFrame(this.gameLoopId);

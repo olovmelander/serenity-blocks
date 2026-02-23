@@ -168,5 +168,10 @@
     "name": "Wolfhour",
     "file": "wolfhour.mp3",
     "path": "./assets/music/wolfhour.mp3"
+  },
+  {
+    "name": "Black Hole",
+    "file": "black-hole.mp3",
+    "path": "./assets/music/black-hole.mp3"
   }
 ]

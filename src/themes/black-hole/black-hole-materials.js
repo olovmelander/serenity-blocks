@@ -330,7 +330,7 @@ export function createStarfieldNodeMaterial(params = {}) {
     });
     material.sizeAttenuation = false;
 
-    const uBlackHolePos = uniform(new Vector2(0, 0));
+    const uBlackHolePos = uniform(new Vector3(0, 0, 0));
 
     const aSize = attribute('instanceSize');
     const aTwinkle = attribute('instanceTwinkle');
@@ -359,8 +359,9 @@ export function createStarfieldNodeMaterial(params = {}) {
     const viewPos = modelViewMatrix.mul(vec4(basePosition, float(1.0)));
     const depth = max(float(1.0), viewPos.z.negate());
 
-    const toCenter = vec2(basePosition.x, basePosition.y).sub(uBlackHolePos);
-    const distToCenter = length(toCenter);
+    const toCenter = vec3(basePosition.x, basePosition.y, basePosition.z).sub(uBlackHolePos);
+    // Project to 2D for stretch calculation to keep visual effect consistent
+    const distToCenter = length(vec2(toCenter.x, toCenter.y));
     const stretchZone = smoothstep(float(760.0), float(260.0), distToCenter);
     const stretchFactor = float(1.0).add(stretchZone.mul(0.55));
     material.sizeNode = min(
@@ -476,7 +477,7 @@ export function createParticleNodeMaterial(params = {}) {
     const aSize = attribute('instanceSize');
     const aColor = attribute('instanceColor');
     const aPosition = attribute('instancePosition');
-    const uBlackHolePos = uniform(new Vector2(0, 0));
+    const uBlackHolePos = uniform(new Vector3(0, 0, 0));
 
     const useGPU = Boolean(
         isWebGPU
@@ -522,7 +523,7 @@ export function createParticleNodeMaterial(params = {}) {
         return aSize;
     })();
 
-    material.positionNode = basePos;
+    material.positionNode = basePos.add(uBlackHolePos);
     material.sizeNode = sizeValue;
 
     const center = uv().sub(0.5);
@@ -534,7 +535,7 @@ export function createParticleNodeMaterial(params = {}) {
 
     // Keep ambient particles concentrated around the tilted accretion torus while
     // allowing larger combo bursts to remain bright and readable.
-    const rel = basePos.sub(vec3(uBlackHolePos.x, uBlackHolePos.y, 0.0));
+    const rel = basePos;
     const cosTilt = float(0.2486898871648548); // cos(-Math.PI * 0.42)
     const sinTilt = float(-0.9685831611286311); // sin(-Math.PI * 0.42)
     const localY = rel.y.mul(cosTilt).add(rel.z.mul(sinTilt));
@@ -622,7 +623,7 @@ export function createBurstSparkNodeMaterial(params = {}) {
         : null;
 
     const uPulseTimer = uniform(-100.0);
-    const uBlackHolePos = uniform(new Vector2(0, 0));
+    const uBlackHolePos = uniform(new Vector3(0, 0, 0));
 
     const aTheta = useGPU ? null : attribute('instanceTheta');
     const aPhi = useGPU ? null : attribute('instancePhi');
@@ -633,14 +634,18 @@ export function createBurstSparkNodeMaterial(params = {}) {
     const localTime = useGPU ? null : uPulseTimer.sub(stagger);
     const active = useGPU ? null : step(float(0.0), localTime).mul(step(float(-50.0), uPulseTimer));
 
-    const life = useGPU ? null : clamp(localTime.div(45.0), float(0.0), float(1.0));
-    const easeOut = useGPU ? null : float(1.0).sub(pow(float(1.0).sub(life), float(3.0)));
+    const life = useGPU ? null : clamp(localTime.div(120.0), float(0.0), float(1.0));
+    const explosionProgress = useGPU ? null : clamp(life.div(float(0.4)), float(0.0), float(1.0));
+    const floatProgress = useGPU ? null : clamp(life.sub(float(0.4)).div(float(0.6)), float(0.0), float(1.0));
+    const easeOut = useGPU ? null : float(1.0).sub(pow(float(1.0).sub(explosionProgress), float(2.5)));
     const startRadius = float(120.0);
-    const maxRadius = useGPU ? null : float(900.0).add(aRandom.mul(500.0));
-    const radius = useGPU ? null : startRadius.add(maxRadius.sub(startRadius).mul(easeOut));
+    const maxRadius = useGPU ? null : float(900.0).add(aRandom.mul(700.0));
+    const explosionRadius = useGPU ? null : startRadius.add(maxRadius.sub(startRadius).mul(easeOut));
 
-    const sinPhi = useGPU ? null : sin(aPhi);
-    const spiralAngle = useGPU ? null : aTheta.add(life.mul(3.0).mul(aRandom.sub(0.5)));
+    const spiralAngle = useGPU ? null : aTheta.add(life.mul(1.5).mul(aRandom.sub(0.5)));
+    const driftAmt = useGPU ? null : maxRadius.mul(0.12);
+    const driftX = useGPU ? null : cos(aRandom.mul(float(6.2832)).add(life.mul(float(2.5)))).mul(driftAmt).mul(floatProgress);
+    const driftY = useGPU ? null : sin(aRandom.mul(float(9.4248)).add(life.mul(float(1.8)))).mul(driftAmt).mul(floatProgress);
 
     const hidden = vec3(0.0, 0.0, -9999.0);
 
@@ -650,9 +655,9 @@ export function createBurstSparkNodeMaterial(params = {}) {
             const pos = positionBuffer.element(instanceIndex).xyz;
             return mix(hidden, pos, activeNode);
         }
-        const x = radius.mul(sinPhi).mul(cos(spiralAngle)).add(uBlackHolePos.x);
-        const y = radius.mul(sinPhi).mul(sin(spiralAngle)).add(uBlackHolePos.y);
-        const z = radius.mul(cos(aPhi));
+        const x = explosionRadius.mul(cos(spiralAngle)).add(driftX).add(uBlackHolePos.x);
+        const y = explosionRadius.mul(sin(spiralAngle)).add(driftY).add(uBlackHolePos.y);
+        const z = explosionRadius.mul(aPhi.sub(float(1.5708)).mul(float(0.04))).add(uBlackHolePos.z);
         const position = vec3(x, y, z);
         return mix(hidden, position, active);
     })();
@@ -704,8 +709,10 @@ export function createBurstSparkNodeMaterial(params = {}) {
         return active;
     })();
 
+    // Hold full brightness through float phase, fade only in last 20%
+    const fadeCurve = float(1.0).sub(smoothstep(float(0.8), float(1.0), lifeValue));
     const alpha = glow
-        .mul(float(1.0).sub(lifeValue.mul(lifeValue)))
+        .mul(fadeCurve)
         .mul(float(0.9).add(randomValue.mul(0.1)))
         .mul(activeValue);
 

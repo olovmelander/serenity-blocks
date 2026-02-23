@@ -131,7 +131,7 @@ export class CosmicNoirSparkCompute {
             this.colorData[i4] = paletteColor[0];
             this.colorData[i4 + 1] = paletteColor[1];
             this.colorData[i4 + 2] = paletteColor[2];
-            this.colorData[i4 + 3] = 26 + this.random() * 26;
+            this.colorData[i4 + 3] = 38 + this.random() * 44;
         }
 
         this.positionBuffer.needsUpdate = true;

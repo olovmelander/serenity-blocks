@@ -204,6 +204,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Update layout for player count
         this._updatePlayerLayout(numPlayers);
 
+        // Initialize standings HUD
+        this._initStandingsHUD();
+
         // Ensure UI is sized correctly before creating games
         this.onResize();
 
@@ -309,6 +312,23 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Now we're ready to actually start the game
         await super.onStart();
+
+        // We deferred this mode start until config was confirmed, so resume
+        // gameplay themes/music and dismiss the intro only at this point.
+        if (this.deps.soundManager?.resumeThemeLinkedMusic) {
+            this.deps.soundManager.resumeThemeLinkedMusic(true);
+        }
+        if (this.deps.themeManager?.resumeThemes) {
+            await this.deps.themeManager.resumeThemes();
+        }
+
+        const { introAnimation } = await import('../../ui/intro-animation.js');
+        if (introAnimation) {
+            introAnimation.dismiss();
+            await new Promise((resolve) => {
+                setTimeout(resolve, 100);
+            });
+        }
 
         // Hide start modal immediately
         this.deps.modalManager.hideAll();
@@ -531,6 +551,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Resume single player scene
         this._resumeSinglePlayerScene();
+
+        // Hide standings HUD
+        const standingsHud = document.getElementById('global-standings-hud');
+        if (standingsHud) standingsHud.classList.add('hidden');
+        this._hudItems = null;
 
         // Clean up state
         this.multiplayerState = null;
@@ -790,7 +815,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 const totalLines = (matchTotals.lines || 0) + (playerState.totalLinesCleared || 0);
                 const totalLevel = playerState.level ?? 1;
                 const totalGarbage = this.multiplayerState.garbageQueues?.[i]?.getTotalLines?.() ?? 0;
-                const roundFrags = this.roundWins[matchKey] ?? 0;
+                const roundFrags = (matchTotals.frags || 0) + (this.multiplayerState.frags[i] ?? 0);
 
                 // Fix: Sum match deaths + current round deaths
                 const totalDeaths = (matchTotals.deaths || 0) + (this.multiplayerState.deaths?.[i] ?? 0);
@@ -857,7 +882,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     }
                 }
                 if (scoreEl) {
-                    scoreEl.textContent = totalScore;
+                    scoreEl.textContent = this._formatStatValue(totalScore);
                     if (totalScore !== prev.score) {
                         this._pulseElement(scoreEl);
                         prev.score = totalScore;
@@ -894,7 +919,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 const boardFragDisplay = document.getElementById(`p${i}-board-frags`);
                 if (boardFragDisplay) {
                     const playerKey = `player${i}`;
-                    let displayVal = `${this.roundWins[playerKey] || 0} F`;
+                    let displayVal = `${(this.matchStats[playerKey]?.frags || 0) + (this.multiplayerState.frags[i - 1] || 0)} F`;
 
                     // If team mode, show team total frags on the board
                     if (this.matchConfig?.isTeamMode) {
@@ -911,6 +936,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
                     boardFragDisplay.textContent = displayVal;
                 }
             }
+
+            // Update top standings HUD
+            this._updateStandingsHUD();
         }
 
         // Update minimaps for infinity mode
@@ -929,6 +957,154 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 }
             });
         }
+    }
+
+    /**
+     * Format a stat number with K/M suffixes for readability.
+     * @private
+     */
+    _formatStatValue(n) {
+        if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+        if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+        return String(n);
+    }
+
+    /**
+     * Build the global standings HUD items (one per player).
+     * Called once from _setupMultiplayerUI().
+     * @private
+     */
+    _initStandingsHUD() {
+        const hud = document.getElementById('global-standings-hud');
+        if (!hud) return;
+
+        const numPlayers = this.matchConfig?.numPlayers || 2;
+        hud.innerHTML = '';
+        this._hudItems = {};
+
+        for (let i = 0; i < numPlayers; i++) {
+            const playerNum = i + 1;
+            const colorScheme = this._getPlayerColorScheme(i);
+            const color = colorScheme?.primary || '#8b5cf6';
+
+            const item = document.createElement('div');
+            item.className = 'standing-item';
+            item.dataset.player = playerNum;
+            item.dataset.rank = playerNum;
+            item.innerHTML = `
+                <span class="rank-badge">${playerNum}</span>
+                <span class="player-color-dot" style="background:${color};color:${color}"></span>
+                <span class="player-name">P${playerNum}</span>
+                <span class="player-score">0</span>
+                <span class="player-meta">Lv1 · 0L</span>
+            `;
+            hud.appendChild(item);
+            this._hudItems[i] = {
+                el: item,
+                rankEl: item.querySelector('.rank-badge'),
+                scoreEl: item.querySelector('.player-score'),
+                metaEl: item.querySelector('.player-meta'),
+            };
+        }
+
+        hud.classList.remove('hidden');
+    }
+
+    /**
+     * Returns sort key, primary value renderer, and meta renderer for the HUD
+     * based on the active win condition.
+     * @private
+     */
+    _getHUDProfile() {
+        const ec = this.matchConfig?.endCondition || 'frags';
+        const fmt = (n) => this._formatStatValue(n);
+
+        switch (ec) {
+            case 'frags':
+            case 'time':
+                // Frags wins / time limit: most kills leads
+                return {
+                    sortKey: 'frags',
+                    primaryFn: (e) => `⚔️ ${e.frags}`,
+                    metaFn: (e) => `${fmt(e.score)} · Lv${e.level} · ${e.lines}L`,
+                };
+            case 'lines':
+                // First to N lines: lines cleared leads
+                return {
+                    sortKey: 'lines',
+                    primaryFn: (e) => `${e.lines}L`,
+                    metaFn: (e) => `⚔️${e.frags} · ${fmt(e.score)} · Lv${e.level}`,
+                };
+            case 'infinity-lms':
+                // Survival: alive status + lines cleared as tiebreak
+                return {
+                    sortKey: 'lines',
+                    primaryFn: (e) => `${e.lines}L`,
+                    metaFn: (e) => `Lv${e.level}`,
+                };
+            case 'points':
+            case 'never':
+            default:
+                // Score-based / endless: score leads
+                return {
+                    sortKey: 'score',
+                    primaryFn: (e) => fmt(e.score),
+                    metaFn: (e) => `⚔️${e.frags} · Lv${e.level} · ${e.lines}L`,
+                };
+        }
+    }
+
+    /**
+     * Update the global standings HUD with live player data, sorted by the
+     * active win condition stat.
+     * Called inside the shouldUpdateText throttle in _updateMultiplayerStats().
+     * @private
+     */
+    _updateStandingsHUD() {
+        const hud = document.getElementById('global-standings-hud');
+        if (!hud || !this.multiplayerState || !this._hudItems) return;
+
+        const { numPlayers } = this.multiplayerState;
+        const RANK_LABELS = ['🥇', '🥈', '🥉', '4th'];
+        const { sortKey, primaryFn, metaFn } = this._getHUDProfile();
+
+        // Build standings array from live state
+        const standings = [];
+        for (let i = 0; i < numPlayers; i++) {
+            const playerState = this.multiplayerState.players[i];
+            if (!playerState) continue;
+            const matchKey = `player${i + 1}`;
+            const matchTotals = this.matchStats[matchKey] || {};
+            standings.push({
+                playerIndex: i,
+                score: (matchTotals.score || 0) + (playerState.score || 0),
+                level: playerState.level ?? 1,
+                lines: (matchTotals.lines || 0) + (playerState.totalLinesCleared || 0),
+                frags: (matchTotals.frags || 0) + (this.multiplayerState.frags[i] ?? 0),
+                isAlive: playerState.isAlive !== false,
+            });
+        }
+
+        // Sort: alive players by the win-condition stat descending, eliminated last
+        standings.sort((a, b) => {
+            if (a.isAlive !== b.isAlive) return a.isAlive ? -1 : 1;
+            return b[sortKey] - a[sortKey];
+        });
+
+        standings.forEach((entry, rankIndex) => {
+            const refs = this._hudItems[entry.playerIndex];
+            if (!refs) return;
+            const { el, rankEl, scoreEl, metaEl } = refs;
+
+            rankEl.textContent = RANK_LABELS[rankIndex] ?? `${rankIndex + 1}`;
+            el.dataset.rank = rankIndex + 1;
+            scoreEl.textContent = entry.isAlive ? primaryFn(entry) : 'ELIM';
+            metaEl.textContent = entry.isAlive ? metaFn(entry) : '';
+            el.classList.toggle('standing-item--eliminated', !entry.isAlive);
+
+            // Re-appending reorders DOM nodes to match sorted standings
+            hud.appendChild(el);
+        });
     }
 
     /**
@@ -1569,7 +1745,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Height constraint
         // Fixed elements: top/bottom screen padding (40px each), player label (~30px),
         // stats section (~50px), card padding (~30px), bottom gap (~30px)
-        const fixedVerticalSpace = 220;
+        // +60px for standings HUD pill (always shown in all player counts)
+        const fixedVerticalSpace = 280;
         const availableHeight = windowHeight - fixedVerticalSpace;
 
         // The next pieces also scale with blockSize (~2.5 blocks tall including padding)
@@ -2316,8 +2493,20 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const wonMatch = this._checkMatchWinCondition(winner);
 
         if (wonMatch) {
+            // For frags mode, the winner is whoever has the most individual kills,
+            // not necessarily the round winner (they may have been outfragged mid-match)
+            let matchWinner = winner;
+            if (this.matchConfig?.endCondition === 'frags') {
+                const np = this.matchConfig.numPlayers || 2;
+                let maxF = -1;
+                for (let fi = 0; fi < np; fi++) {
+                    const mk = `player${fi + 1}`;
+                    const f = (this.matchStats[mk]?.frags || 0) + (this.multiplayerState.frags[fi] ?? 0);
+                    if (f > maxF) { maxF = f; matchWinner = `player${fi + 1}`; }
+                }
+            }
             console.log(`[LocalMultiplayer] ${winnerName} wins the match!`);
-            await this._showMatchEnd(winner);
+            await this._showMatchEnd(matchWinner);
             return;
         }
 
@@ -2358,9 +2547,16 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const config = this.matchConfig;
 
         switch (config.endCondition) {
-        case 'frags':
-            // Frags are round wins
-            return this.roundWins[lastRoundWinner] >= config.endConditionValue;
+        case 'frags': {
+            // Check if any player has reached the cumulative individual kill target
+            const numFragPlayers = config.numPlayers || 2;
+            for (let fi = 0; fi < numFragPlayers; fi++) {
+                const matchKey = `player${fi + 1}`;
+                const cumulative = (this.matchStats[matchKey]?.frags || 0) + (this.multiplayerState.frags[fi] ?? 0);
+                if (cumulative >= config.endConditionValue) return true;
+            }
+            return false;
+        }
 
         case 'time': {
             // Check if time limit has been reached
@@ -2494,6 +2690,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
             this.matchStats[matchKey].score += playerState.score || 0;
             this.matchStats[matchKey].lines += playerState.totalLinesCleared || 0;
+            this.matchStats[matchKey].frags = (this.matchStats[matchKey].frags || 0) + (this.multiplayerState.frags[i] || 0);
             this.matchStats[matchKey].deaths = (this.matchStats[matchKey].deaths || 0) + (this.multiplayerState.deaths[i] || 0);
             this.matchStats[matchKey].duration = (this.matchStats[matchKey].duration || 0) + roundDuration;
 
@@ -2593,7 +2790,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         let fragsText = '';
         for (let i = 0; i < numPlayers; i++) {
             if (i > 0) fragsText += ' - ';
-            fragsText += this.roundWins[`player${i + 1}`];
+            fragsText += this.multiplayerState.frags[i] ?? 0;
         }
 
         console.log(`[LocalMultiplayer] Match ended! Winner: ${winnerName}`);
@@ -2615,7 +2812,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const finalScore = (stats.score || 0) + (current.score || 0);
             const finalLines = (stats.lines || 0) + (current.totalLinesCleared || 0);
             const finalDeaths = (stats.deaths || 0) + (this.multiplayerState.deaths[i] || 0);
-            const frags = this.roundWins[key] || 0;
+            const frags = this.multiplayerState.frags[i] || 0;
 
             // Aggregate pieces
             const pieces = { ...stats.pieceCounts };

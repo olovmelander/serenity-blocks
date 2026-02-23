@@ -308,6 +308,7 @@ export const THEME_REGISTRY = [
         displayName: 'Cinder Drift',
         module: './cinder-drift/cinder-drift-theme.js',
         group: 'atmospheric',
+        icon: './cinder-drift/cinder-drift-theme-icon.png',
     },
     {
         id: 'pyrestorm',

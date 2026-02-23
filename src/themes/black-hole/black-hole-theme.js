@@ -191,7 +191,7 @@ const BurstSparkVertexShader = `
 
     uniform float uTime;
     uniform float uPulseTimer;
-    uniform vec2 uBlackHolePos;
+    uniform vec3 uBlackHolePos;
 
     varying vec3 vColor;
     varying float vAlpha;
@@ -211,30 +211,32 @@ const BurstSparkVertexShader = `
             return;
         }
 
-        // Explosion parameters
-        float maxLife = 45.0;
+        // Explosion phase (life 0→0.4) + Float phase (life 0.4→1.0)
+        float maxLife = 120.0;
         float life = clamp(localTime / maxLife, 0.0, 1.0);
 
-        // Burst outward from event horizon
-        float startRadius = 120.0; // Event horizon radius
-        float maxRadius = 900.0 + aRandom * 500.0;
+        float explosionProgress = clamp(life / 0.4, 0.0, 1.0);
+        float floatProgress = clamp((life - 0.4) / 0.6, 0.0, 1.0);
 
-        // Explosive easing - fast start, slow end
-        float easeOut = 1.0 - pow(1.0 - life, 3.0);
-        float radius = startRadius + (maxRadius - startRadius) * easeOut;
+        float startRadius = 120.0;
+        float maxRadius = 900.0 + aRandom * 700.0;
 
-        // Spherical to cartesian
-        float x = radius * sin(aPhi) * cos(aTheta);
-        float y = radius * sin(aPhi) * sin(aTheta);
-        float z = radius * cos(aPhi);
+        // Fast ease-out for explosion
+        float easeOut = 1.0 - pow(1.0 - explosionProgress, 2.5);
+        float explosionRadius = startRadius + (maxRadius - startRadius) * easeOut;
 
-        // Add spiral motion for dramatic effect
-        float spiralAngle = aTheta + life * 3.0 * (aRandom - 0.5);
-        x = radius * sin(aPhi) * cos(spiralAngle);
-        y = radius * sin(aPhi) * sin(spiralAngle);
+        // Gentle oscillating drift during float phase
+        float driftAmt = maxRadius * 0.12;
+        float driftX = cos(aRandom * 6.2832 + life * 2.5) * driftAmt * floatProgress;
+        float driftY = sin(aRandom * 9.4248 + life * 1.8) * driftAmt * floatProgress;
+
+        float spiralAngle = aTheta + life * 1.5 * (aRandom - 0.5);
+        float x = explosionRadius * cos(spiralAngle) + driftX;
+        float y = explosionRadius * sin(spiralAngle) + driftY;
+        float z = explosionRadius * (aPhi - 1.5708) * 0.04;
 
         // Offset by black hole position
-        vec3 pos = vec3(x + uBlackHolePos.x, y + uBlackHolePos.y, z);
+        vec3 pos = vec3(x + uBlackHolePos.x, y + uBlackHolePos.y, z + uBlackHolePos.z);
 
         vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
         gl_Position = projectionMatrix * mvPosition;
@@ -244,8 +246,9 @@ const BurstSparkVertexShader = `
         float sizeLife = 1.0 - life * 0.6;
         gl_PointSize = baseSize * sizeLife * (300.0 / -mvPosition.z);
 
-        // Alpha - fade out over lifetime
-        vAlpha = (1.0 - life * life) * (0.9 + aRandom * 0.1);
+        // Hold bright through float, only fade in last 20%
+        float fadeCurve = 1.0 - smoothstep(0.8, 1.0, life);
+        vAlpha = fadeCurve * (0.9 + aRandom * 0.1);
     }
 `;
 
@@ -815,8 +818,9 @@ export default class BlackHoleTheme extends BaseTheme {
         this.hawkingSwirl = null;
         this.hawkingBaseSizes = null;
         this.burstSparksPool = []; // Pool of burst particle systems for overlapping effects
-        this.burstPoolSize = 8; // Maximum simultaneous bursts
+        this.burstPoolSize = 24; // Maximum simultaneous bursts
         this.nextBurstIndex = 0; // Round-robin index for pool allocation
+        this.pendingBurstPoolTriggers = 0; // Queue combo bursts when pool is temporarily saturated
         this.nextBurstParticleIndex = 0; // Ring allocator for combo burst particles
         this.nextJetParticleIndex = 0; // Ring allocator for jet particles
         this.comboSpawnReuseUntil = null; // Per-particle reuse lock to avoid combo overwrite resets
@@ -860,7 +864,8 @@ export default class BlackHoleTheme extends BaseTheme {
         this.driftPhaseY = this.random() * Math.PI * 2;
 
         // Camera motion state
-        this.cameraBasePosition = new THREE.Vector3(0, 200, 800);
+        // Lowered Z from 800 to 500 to bring the black hole closer
+        this.cameraBasePosition = new THREE.Vector3(0, 200, 500);
         this.cameraTargetPosition = this.cameraBasePosition.clone();
         this.cameraLookTarget = new THREE.Vector3(0, 0, 0);
         this.cameraLookTargetSmoothed = new THREE.Vector3(0, 0, 0);
@@ -1056,6 +1061,7 @@ export default class BlackHoleTheme extends BaseTheme {
         const initialDrift = this.computeDriftPosition(0);
         this.driftX = initialDrift.x;
         this.driftY = initialDrift.y;
+        this.driftZ = initialDrift.z;
 
         if (this.flags.baseline) {
             console.log('[BlackHole] Baseline capture enabled', {
@@ -1138,59 +1144,68 @@ export default class BlackHoleTheme extends BaseTheme {
     }
 
     computeDriftPosition(timeSeconds = this.time) {
-        const widthRange = window.innerWidth * 0.35;
-        const heightRange = window.innerHeight * 0.35;
-        const t = timeSeconds * 0.003; // Slowed down from 0.01 to reduce shimmering
+        // Increased range from 0.35 to 0.5 to allow it to float across the full screen
+        const widthRange = window.innerWidth * 0.5;
+        const heightRange = window.innerHeight * 0.5;
+        const depthRange = 250; // Move up to 250 units closer or further
+        const t = timeSeconds * 0.05; // Speed up drift so it floats noticeably
 
         const x = (Math.sin(t + this.driftPhaseX) + Math.cos(t * 1.34 + this.driftPhaseX)) * 0.5 * widthRange;
         const y = (Math.cos(t * 0.89 + this.driftPhaseY) + Math.sin(t * 1.67 + this.driftPhaseY)) * 0.5 * heightRange;
-        return { x, y };
+        const z = (Math.sin(t * 0.73 + this.driftPhaseX) + Math.cos(t * 1.1 + this.driftPhaseY)) * 0.5 * depthRange;
+
+        return { x, y, z };
     }
 
     applyBlackHoleDriftState() {
         const x = this.driftX || 0;
         const y = this.driftY || 0;
+        const z = this.driftZ || 0;
 
         if (this.blackHoleCore) {
             this.blackHoleCore.position.x = x;
             this.blackHoleCore.position.y = y;
+            this.blackHoleCore.position.z = z;
         }
         if (this.eventHorizonSphere) {
             this.eventHorizonSphere.position.x = x;
             this.eventHorizonSphere.position.y = y;
+            this.eventHorizonSphere.position.z = z;
         }
         if (this.accretionDisk) {
             this.accretionDisk.position.x = x;
             this.accretionDisk.position.y = y;
+            this.accretionDisk.position.z = z;
         }
         if (this.innerDisk) {
             this.innerDisk.position.x = x;
             this.innerDisk.position.y = y;
+            this.innerDisk.position.z = z;
         }
         if (this.accretionVolumeLayers.length) {
             this.accretionVolumeLayers.forEach((layer) => {
                 layer.position.x = x;
                 layer.position.y = y;
-                this.setMaterialUniformVec3(layer?.material, 'uCenter', x, y, 0);
+                layer.position.z = z;
+                this.setMaterialUniformVec3(layer?.material, 'uCenter', x, y, z);
             });
         }
         if (this.hawkingParticles) {
             this.hawkingParticles.position.x = x;
             this.hawkingParticles.position.y = y;
+            this.hawkingParticles.position.z = z;
         }
         if (this.photonSphere) {
             this.photonSphere.position.x = x;
             this.photonSphere.position.y = y;
+            this.photonSphere.position.z = z;
         }
 
-        this.setMaterialUniformVec2(this.starfield?.material, 'uBlackHolePos', x, y);
-        this.setMaterialUniformVec2(this.particles?.material, 'uBlackHolePos', x, y);
+        this.setMaterialUniformVec3(this.starfield?.material, 'uBlackHolePos', x, y, z);
+        this.setMaterialUniformVec3(this.particles?.material, 'uBlackHolePos', x, y, z);
 
-        if (!this.burstCompute?.computeNode) {
-            this.burstSparksPool.forEach((burstSparks) => {
-                this.setMaterialUniformVec2(burstSparks?.material, 'uBlackHolePos', x, y);
-            });
-        }
+        // Burst systems keep trigger-time origins to preserve additive combo trails.
+
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1398,10 +1413,10 @@ export default class BlackHoleTheme extends BaseTheme {
             // Custom shader material for static-luma stars
             const material = new THREE.ShaderMaterial({
                 uniforms: {
-                    uBlackHolePos: { value: new THREE.Vector2(0, 0) },
+                    uBlackHolePos: { value: new THREE.Vector3(0, 0, 0) },
                 },
                 vertexShader: `
-                    uniform vec2 uBlackHolePos;
+                    uniform vec3 uBlackHolePos;
                     attribute float size;
                     attribute float twinkle;
                     varying vec3 vColor;
@@ -1413,7 +1428,7 @@ export default class BlackHoleTheme extends BaseTheme {
                         vColor = color;
                         vLuma = twinkle;
                         vPos = position.xy;
-                        float distToCenter = length(vPos - uBlackHolePos);
+                        float distToCenter = length(vPos - uBlackHolePos.xy);
                         vStretchZone = smoothstep(760.0, 260.0, distToCenter);
                         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                         float targetSize = size * (1200.0 / -mvPosition.z) * (1.0 + vStretchZone * 0.12);
@@ -1422,14 +1437,14 @@ export default class BlackHoleTheme extends BaseTheme {
                     }
                 `,
                 fragmentShader: `
-                    uniform vec2 uBlackHolePos;
+                    uniform vec3 uBlackHolePos;
                     varying vec3 vColor;
                     varying float vLuma;
                     varying vec2 vPos;
                     varying float vStretchZone;
                     
                     void main() {
-                        vec2 toCenter = vPos - uBlackHolePos;
+                        vec2 toCenter = vPos - uBlackHolePos.xy;
                         float stretch = 1.0 + vStretchZone * 0.55;
 
                         vec2 dir = normalize(toCenter + vec2(0.0001));
@@ -1806,7 +1821,7 @@ export default class BlackHoleTheme extends BaseTheme {
                 particleColors,
                 this.driftX || 0,
                 this.driftY || 0,
-                0,
+                this.driftZ || 0,
             );
             if (randoms) {
                 const seed = (this.flags.seed ?? 0) + i * 12.9898;
@@ -1867,8 +1882,10 @@ export default class BlackHoleTheme extends BaseTheme {
                 uniforms: {
                     uTime: { value: 0 },
                     uIntensity: { value: 1.0 },
+                    uBlackHolePos: { value: new THREE.Vector3(0, 0, 0) },
                 },
                 vertexShader: `
+                    uniform vec3 uBlackHolePos;
                     attribute float size;
                     attribute float lifetime;
                     varying vec3 vColor;
@@ -1877,7 +1894,8 @@ export default class BlackHoleTheme extends BaseTheme {
                     void main() {
                         vColor = color;
                         vLifetime = lifetime;
-                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        vec3 pos = position + uBlackHolePos;
+                        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
                         gl_PointSize = size * (200.0 / -mvPosition.z);
                         gl_Position = projectionMatrix * mvPosition;
                     }
@@ -2035,8 +2053,11 @@ export default class BlackHoleTheme extends BaseTheme {
             const material = new THREE.ShaderMaterial({
                 uniforms: {
                     uTime: { value: 0 },
+                    uIntensity: { value: 1.0 },
+                    uBlackHolePos: { value: new THREE.Vector3(0, 0, 0) },
                 },
                 vertexShader: `
+                    uniform vec3 uBlackHolePos;
                     attribute float size;
                     attribute float lifetime;
                     varying vec3 vColor;
@@ -2045,7 +2066,8 @@ export default class BlackHoleTheme extends BaseTheme {
                     void main() {
                         vColor = color;
                         vLifetime = lifetime;
-                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        vec3 pos = position + uBlackHolePos;
+                        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
                         gl_PointSize = size * (220.0 / -mvPosition.z);
                         gl_Position = projectionMatrix * mvPosition;
                     }
@@ -2154,6 +2176,10 @@ export default class BlackHoleTheme extends BaseTheme {
         this.hawkingAttributes.size.needsUpdate = true;
         this.hawkingAttributes.lifetime.needsUpdate = true;
         this.hawkingAttributes.color.needsUpdate = true;
+
+        if (!this.isWebGPU && this.hawkingParticles?.material) {
+            this.setMaterialUniformVec3(this.hawkingParticles.material, 'uBlackHolePos', this.driftX || 0, this.driftY || 0, this.driftZ || 0);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2309,6 +2335,15 @@ export default class BlackHoleTheme extends BaseTheme {
             || this.time <= this.performanceState.burstComputeActiveUntil;
     }
 
+    getBlackHoleCorePosition(target = this.computeBlackHolePos) {
+        if (this.blackHoleCore?.position) {
+            target.copy(this.blackHoleCore.position);
+            return target;
+        }
+        target.set(this.driftX || 0, this.driftY || 0, this.driftZ || 0);
+        return target;
+    }
+
     async updateGpuTimings() {
         if (!this.gpuTimings?.enabled || !this.renderer?.backend) return;
         const now = performance.now();
@@ -2350,6 +2385,7 @@ export default class BlackHoleTheme extends BaseTheme {
         const count = this.qualityPreset.burstSparkCount;
         const particlesPerBurst = Math.floor(count / this.burstPoolSize);
         this.performanceState.burstComputeActiveUntil = 0;
+        this.pendingBurstPoolTriggers = 0;
 
         // Color palette - cosmic hot colors
         const colorOptions = [
@@ -2504,7 +2540,7 @@ export default class BlackHoleTheme extends BaseTheme {
                     uniforms: {
                         uTime: { value: 0 },
                         uPulseTimer: { value: -100.0 }, // Inactive by default
-                        uBlackHolePos: { value: new THREE.Vector2(0, 0) },
+                        uBlackHolePos: { value: new THREE.Vector3(0, 0, 0) },
                     },
                     vertexShader: BurstSparkVertexShader,
                     fragmentShader: BurstSparkFragmentShader,
@@ -2856,25 +2892,65 @@ export default class BlackHoleTheme extends BaseTheme {
 
         // Prefer dedicated burst systems (like Galaxy/Blood Moon behavior).
         if (this.isWebGPU && this.flags.useCompute && this.burstCompute?.computeNode) {
-            const triggerCount = Math.min(1 + Math.floor(comboCount / 3), 4);
+            const triggerCount = Math.min(1 + Math.floor(comboCount / 6), 2);
+            const burstOrigin = this.getBlackHoleCorePosition(this.computeBlackHolePos);
             for (let i = 0; i < triggerCount; i++) {
-                const intensity = Math.min(1.0, comboCount / 8 + i * 0.1);
-                this.burstCompute.trigger(this.random() * Math.PI * 2, intensity);
+                const intensity = Math.min(0.9, comboCount / 12 + i * 0.06);
+                this.burstCompute.trigger(this.random() * Math.PI * 2, intensity, burstOrigin);
             }
-            const activeWindow = 2.2 + comboCount * 0.14;
+            const activeWindow = 22.0 + comboCount * 0.45;
             this.performanceState.burstComputeActiveUntil = Math.max(
                 this.performanceState.burstComputeActiveUntil,
                 this.time + activeWindow,
             );
         } else if (this.burstSparksPool.length > 0) {
-            const systemsToTrigger = Math.min(1 + Math.floor(comboCount / 3), this.burstSparksPool.length, 4);
-            for (let i = 0; i < systemsToTrigger; i++) {
-                const index = (this.nextBurstIndex + i) % this.burstSparksPool.length;
+            const systemsToTrigger = Math.min(1 + Math.floor(comboCount / 6), this.burstSparksPool.length, 2);
+            let triggered = 0;
+            let scanned = 0;
+            const startIndex = this.nextBurstIndex;
+            const burstOrigin = this.getBlackHoleCorePosition(this.computeBlackHolePos);
+
+            while (triggered < systemsToTrigger && scanned < this.burstSparksPool.length) {
+                const index = (startIndex + scanned) % this.burstSparksPool.length;
                 const burstSparks = this.burstSparksPool[index];
-                this.setMaterialUniform(burstSparks?.material, 'uPulseTimer', 0.0);
+                const pulseTimer = this.getMaterialUniform(burstSparks?.material, 'uPulseTimer');
+                const isIdleByTimer = pulseTimer === undefined || pulseTimer <= -50.0 || pulseTimer > 130.0;
+
+                // Never rewind active waves; only trigger idle systems so bursts stack additively.
+                if (isIdleByTimer) {
+                    // Anchor each burst to the black-hole position at trigger time.
+                    this.setMaterialUniformVec3(
+                        burstSparks?.material,
+                        'uBlackHolePos',
+                        burstOrigin.x,
+                        burstOrigin.y,
+                        burstOrigin.z,
+                    );
+                    this.setMaterialUniform(burstSparks?.material, 'uPulseTimer', 0.0);
+                    triggered += 1;
+                }
+
+                scanned += 1;
             }
-            this.nextBurstIndex = (this.nextBurstIndex + systemsToTrigger) % this.burstSparksPool.length;
-            console.log('[BlackHole] Triggered burst systems:', systemsToTrigger);
+
+            this.nextBurstIndex = (startIndex + scanned) % this.burstSparksPool.length;
+            const shortfall = systemsToTrigger - triggered;
+            if (shortfall > 0) {
+                this.pendingBurstPoolTriggers = Math.min(
+                    this.burstSparksPool.length,
+                    this.pendingBurstPoolTriggers + shortfall,
+                );
+                console.log(
+                    '[BlackHole] Burst pool saturated (queued, no reset):',
+                    triggered,
+                    '/',
+                    systemsToTrigger,
+                    'queued:',
+                    this.pendingBurstPoolTriggers,
+                );
+            } else {
+                console.log('[BlackHole] Triggered burst systems:', triggered);
+            }
         } else {
             // Fallback for environments where dedicated burst systems are unavailable.
             this.spawnBurstParticles(comboCount);
@@ -2962,34 +3038,38 @@ export default class BlackHoleTheme extends BaseTheme {
     }
 
     /**
-     * Spawn particles from center during burst for explosive effect
+     * Spawn particles from event-horizon shell during burst for explosive effect
      */
     spawnBurstParticles(comboCount) {
         if (!this.particles) return;
 
         if (this.isWebGPU && this.flags.useCompute && this.particleCompute?.computeNode) {
-            const bhX = this.driftX || 0;
-            const bhY = this.driftY || 0;
+            const bhX = 0;
+            const bhY = 0;
             const bhZ = 0;
             const total = this.particles?.count ?? this.particleCompute.count;
             if (total <= 0) return;
             const burstCount = this.getBurstSpawnCount(comboCount, total);
-            const indices = this.allocateComboParticleIndices(burstCount, 'nextBurstParticleIndex', 0.45);
+            const indices = this.allocateComboParticleIndices(burstCount, 'nextBurstParticleIndex', 2.2);
             if (!indices.length) return;
 
             for (let i = 0; i < indices.length; i++) {
                 const index = indices[i];
                 const theta = this.random() * Math.PI * 2;
                 const phi = Math.acos(2 * this.random() - 1);
-                const speed = 8 + this.random() * 12 + comboCount * 2;
+                const speed = 18 + this.random() * 28 + comboCount * 3;
+                const shellRadius = 110 + this.random() * 30;
+                const shellX = Math.sin(phi) * Math.cos(theta);
+                const shellY = Math.sin(phi) * Math.sin(theta);
+                const shellZ = Math.cos(phi);
 
-                const x = bhX + (this.random() - 0.5) * 30;
-                const y = bhY + (this.random() - 0.5) * 30;
-                const z = bhZ + (this.random() - 0.5) * 30;
+                const x = bhX + shellX * shellRadius;
+                const y = bhY + shellY * shellRadius;
+                const z = bhZ + shellZ * shellRadius * 0.35;
 
-                const vx = Math.sin(phi) * Math.cos(theta) * speed;
-                const vy = Math.sin(phi) * Math.sin(theta) * speed;
-                const vz = Math.cos(phi) * speed;
+                const vx = shellX * speed;
+                const vy = shellY * speed;
+                const vz = shellZ * speed * 0.22;
 
                 const colorChoice = this.random();
                 let color;
@@ -3025,33 +3105,37 @@ export default class BlackHoleTheme extends BaseTheme {
         const sizes = this.particleAttributes.size.array;
         const lifetimes = this.particleLifetimes;
 
-        const bhX = this.driftX || 0;
-        const bhY = this.driftY || 0;
+        const bhX = 0;
+        const bhY = 0;
         const bhZ = 0;
 
         const total = this.particles?.geometry?.drawRange?.count ?? (positions.length / 3);
         if (total <= 0) return;
         const burstCount = this.getBurstSpawnCount(comboCount, total);
-        const indices = this.allocateComboParticleIndices(burstCount, 'nextBurstParticleIndex', 0.45);
+        const indices = this.allocateComboParticleIndices(burstCount, 'nextBurstParticleIndex', 2.2);
         if (!indices.length) return;
 
         for (let i = 0; i < indices.length; i++) {
             const index = indices[i];
             const i3 = index * 3;
 
-            // Spawn at black hole center with small random offset
-            positions[i3] = bhX + (this.random() - 0.5) * 30;
-            positions[i3 + 1] = bhY + (this.random() - 0.5) * 30;
-            positions[i3 + 2] = bhZ + (this.random() - 0.5) * 30;
-
-            // Explosive outward velocity in random direction
             const theta = this.random() * Math.PI * 2;
             const phi = Math.acos(2 * this.random() - 1);
-            const speed = 8 + this.random() * 12 + comboCount * 2;
+            const shellRadius = 110 + this.random() * 30;
+            const shellX = Math.sin(phi) * Math.cos(theta);
+            const shellY = Math.sin(phi) * Math.sin(theta);
+            const shellZ = Math.cos(phi);
 
-            velocities[i3] = Math.sin(phi) * Math.cos(theta) * speed;
-            velocities[i3 + 1] = Math.sin(phi) * Math.sin(theta) * speed;
-            velocities[i3 + 2] = Math.cos(phi) * speed;
+            // Spawn from the event-horizon shell and shoot outward
+            positions[i3] = bhX + shellX * shellRadius;
+            positions[i3 + 1] = bhY + shellY * shellRadius;
+            positions[i3 + 2] = bhZ + shellZ * shellRadius * 0.35;
+
+            const speed = 18 + this.random() * 28 + comboCount * 3;
+
+            velocities[i3] = shellX * speed;
+            velocities[i3 + 1] = shellY * speed;
+            velocities[i3 + 2] = shellZ * speed * 0.22;
 
             // Bright hot colors for burst particles
             const colorChoice = this.random();
@@ -3205,21 +3289,23 @@ export default class BlackHoleTheme extends BaseTheme {
 
         const followX = this.driftX * 0.08;
         const followY = this.driftY * 0.06;
+        const followZ = (this.driftZ || 0) * 0.15; // Camera slightly follows Z depth
         const surgePushIn = comboEnergy * 24;
 
         this.cameraTargetPosition.set(
             this.cameraBasePosition.x + followX + swayX,
             this.cameraBasePosition.y + followY + swayY,
-            this.cameraBasePosition.z + breatheZ - surgePushIn,
+            this.cameraBasePosition.z + followZ + breatheZ - surgePushIn,
         );
 
         const moveLerp = Math.min(1.0, delta * (1.8 + comboEnergy * 0.9));
         this.camera.position.lerp(this.cameraTargetPosition, moveLerp);
 
-        const lookX = this.driftX + Math.sin(t * 0.2 + this.cameraPhaseX) * (2.6 + comboEnergy * 1.8);
-        const lookY = this.driftY + Math.cos(t * 0.17 + this.cameraPhaseY) * (1.9 + comboEnergy * 1.5);
+        const lookX = this.driftX * 0.3 + Math.sin(t * 0.2 + this.cameraPhaseX) * (2.6 + comboEnergy * 1.8);
+        const lookY = this.driftY * 0.3 + Math.cos(t * 0.17 + this.cameraPhaseY) * (1.9 + comboEnergy * 1.5);
+        const lookZ = this.driftZ * 0.3; // Look target slightly tracks depth
 
-        this.cameraLookTarget.set(lookX, lookY, 0);
+        this.cameraLookTarget.set(lookX, lookY, lookZ);
         const lookLerp = Math.min(1.0, delta * (2.4 + comboEnergy * 1.2));
         this.cameraLookTargetSmoothed.lerp(this.cameraLookTarget, lookLerp);
         this.camera.lookAt(this.cameraLookTargetSmoothed);
@@ -3338,22 +3424,52 @@ export default class BlackHoleTheme extends BaseTheme {
 
                     this.setMaterialUniform(material, 'uTime', this.time);
 
-                    // Advance pulse wave when active
                     const pulseTimer = this.getMaterialUniform(material, 'uPulseTimer');
                     if (pulseTimer !== undefined && pulseTimer > -50.0) {
-                        // Move wave outwards - speed controls explosion rate
-                        const nextPulse = pulseTimer + delta * 18.0;
-
-                        // Turn off when wave completes (maxLife 45 + stagger 3 + buffer)
-                        this.setMaterialUniform(material, 'uPulseTimer', nextPulse > 60.0 ? -100.0 : nextPulse);
+                        const nextPulse = pulseTimer + delta * 6.0;
+                        this.setMaterialUniform(material, 'uPulseTimer', nextPulse > 130.0 ? -100.0 : nextPulse);
                     }
                 });
+
+                if (this.pendingBurstPoolTriggers > 0 && this.burstSparksPool.length > 0) {
+                    let queuedTriggered = 0;
+                    let scanned = 0;
+                    const startIndex = this.nextBurstIndex;
+                    const burstOrigin = this.getBlackHoleCorePosition(this.computeBlackHolePos);
+
+                    while (queuedTriggered < this.pendingBurstPoolTriggers && scanned < this.burstSparksPool.length) {
+                        const index = (startIndex + scanned) % this.burstSparksPool.length;
+                        const burstSparks = this.burstSparksPool[index];
+                        const pulseTimer = this.getMaterialUniform(burstSparks?.material, 'uPulseTimer');
+                        const isIdle = pulseTimer === undefined || pulseTimer <= -50.0 || pulseTimer > 130.0;
+
+                        if (isIdle) {
+                            this.setMaterialUniformVec3(
+                                burstSparks?.material,
+                                'uBlackHolePos',
+                                burstOrigin.x,
+                                burstOrigin.y,
+                                burstOrigin.z,
+                            );
+                            this.setMaterialUniform(burstSparks?.material, 'uPulseTimer', 0.0);
+                            queuedTriggered += 1;
+                        }
+
+                        scanned += 1;
+                    }
+
+                    if (queuedTriggered > 0) {
+                        this.pendingBurstPoolTriggers = Math.max(0, this.pendingBurstPoolTriggers - queuedTriggered);
+                        this.nextBurstIndex = (startIndex + scanned) % this.burstSparksPool.length;
+                    }
+                }
             }
 
             // Black hole floating/drifting motion
             const drift = this.computeDriftPosition(this.time);
             this.driftX = drift.x;
             this.driftY = drift.y;
+            this.driftZ = drift.z;
             this.applyBlackHoleDriftState();
 
             if (this.starLensingCompute?.computeNode && this.renderer?.compute) {
@@ -3386,19 +3502,12 @@ export default class BlackHoleTheme extends BaseTheme {
             if (this.shouldRunBurstCompute()) {
                 this.burstCompute.update(delta, {
                     time: this.time,
-                    blackHolePos: this.computeBlackHolePos.set(this.driftX || 0, this.driftY || 0, 0),
+                    blackHolePos: this.computeBlackHolePos.set(this.driftX || 0, this.driftY || 0, this.driftZ || 0),
                     burstFactor: this.burstFactor,
                 });
                 if (this.renderer?.compute) {
                     this.renderer.compute(this.burstCompute.computeNode);
                 }
-            }
-
-            // Update burst sparks position to follow black hole (pool path only)
-            if (!this.burstCompute?.computeNode) {
-                this.burstSparksPool.forEach((burstSparks) => {
-                    this.setMaterialUniformVec2(burstSparks?.material, 'uBlackHolePos', this.driftX, this.driftY);
-                });
             }
 
             // Update particles
@@ -3457,8 +3566,8 @@ export default class BlackHoleTheme extends BaseTheme {
         if (!this.particles) return;
 
         if (this.isWebGPU && this.flags.useCompute && this.particleCompute?.computeNode && this.renderer?.compute) {
-            const bhX = this.driftX || 0;
-            const bhY = this.driftY || 0;
+            const bhX = 0;
+            const bhY = 0;
             const bhZ = 0;
 
             this.computeBlackHolePos.set(bhX, bhY, bhZ);
@@ -3480,8 +3589,8 @@ export default class BlackHoleTheme extends BaseTheme {
         const velocities = this.particleVelocities;
         const lifetimes = this.particleLifetimes;
 
-        const bhX = this.driftX || 0;
-        const bhY = this.driftY || 0;
+        const bhX = 0;
+        const bhY = 0;
         const bhZ = 0;
         const burstBlend = Math.min(1.0, this.burstFactor / 8.0);
         const tilt = -Math.PI * 0.42;
@@ -3654,6 +3763,10 @@ export default class BlackHoleTheme extends BaseTheme {
 
         this.particleAttributes.position.needsUpdate = true;
         this.particleAttributes.lifetime.needsUpdate = true;
+
+        if (!this.isWebGPU && this.particles?.material) {
+            this.setMaterialUniformVec3(this.particles.material, 'uBlackHolePos', this.driftX || 0, this.driftY || 0, this.driftZ || 0);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -1957,6 +1957,8 @@
   --online-info-width: 420px;
   --online-opponent-board-min-width: 200px;
   --online-opponent-board-min-height: 260px;
+  --round-start-accent: #4fd1c5;
+  --round-start-accent-rgb: 79, 209, 197;
   display: grid;
   grid-template-columns: var(--online-opponents-width) minmax(0, 1fr) var(--online-info-width);
   grid-template-rows: 1fr;
@@ -1970,6 +1972,39 @@
   box-sizing: border-box;
   background: transparent;
   z-index: 200;
+}
+
+.online-game-area::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 50% 52%, rgba(var(--round-start-accent-rgb), 0.26), transparent 58%),
+    radial-gradient(circle at 50% 52%, rgba(var(--round-start-accent-rgb), 0.18), transparent 72%);
+  z-index: 8;
+}
+
+.online-game-area.round-start-pulse::after {
+  animation: onlineRoundStartPulse 820ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes onlineRoundStartPulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+
+  30% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.06);
+  }
 }
 
 /* LEFT COLUMN: Opponents Panel */
@@ -2213,6 +2248,10 @@
 .opponent-mini-board:hover {
   border-color: rgba(102, 126, 234, 0.6);
   transform: scale(1.02);
+}
+
+.opponent-mini-board.round-start-burst {
+  animation: onlineOpponentRoundBurst 520ms ease-out var(--round-start-delay, 0ms);
 }
 
 .opponent-mini-board.dead {
@@ -2492,6 +2531,258 @@
   position: relative;
   /* Use content-box so width/height is the content area, not including border */
   box-sizing: content-box;
+}
+
+.online-main-board::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 10px;
+  background:
+    linear-gradient(
+      110deg,
+      transparent 12%,
+      rgba(var(--round-start-accent-rgb), 0.94) 40%,
+      transparent 70%
+    );
+  mix-blend-mode: screen;
+  opacity: 0;
+  transform: translateX(-130%);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.online-main-board.round-start-burst {
+  animation: onlineMainRoundBurst 760ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.online-main-board.round-start-burst::after {
+  animation: onlineMainRoundSweep 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes onlineMainRoundBurst {
+  0% {
+    box-shadow: 0 0 24px rgba(var(--round-start-accent-rgb), 0.42);
+    border-color: rgba(var(--round-start-accent-rgb), 0.62);
+  }
+
+  38% {
+    box-shadow:
+      0 0 28px rgba(var(--round-start-accent-rgb), 0.55),
+      0 0 52px rgba(var(--round-start-accent-rgb), 0.24);
+    border-color: rgba(var(--round-start-accent-rgb), 0.82);
+  }
+
+  100% {
+    box-shadow: 0 0 30px rgba(102, 126, 234, 0.2);
+    border-color: rgba(102, 126, 234, 0.4);
+  }
+}
+
+@keyframes onlineMainRoundSweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-130%);
+  }
+
+  18% {
+    opacity: 0.8;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(130%);
+  }
+}
+
+@keyframes onlineOpponentRoundBurst {
+  0% {
+    transform: scale(0.98);
+    border-color: rgba(var(--round-start-accent-rgb), 0.4);
+    box-shadow: 0 0 18px rgba(var(--round-start-accent-rgb), 0.22);
+  }
+
+  45% {
+    transform: scale(1.025);
+    border-color: rgba(var(--round-start-accent-rgb), 0.6);
+    box-shadow: 0 0 20px rgba(var(--round-start-accent-rgb), 0.31);
+  }
+
+  100% {
+    transform: scale(1);
+    border-color: rgba(102, 126, 234, 0.3);
+    box-shadow: 0 0 18px rgba(102, 126, 234, 0.15);
+  }
+}
+
+.online-round-stinger {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -52%) scale(0.95);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 20;
+  min-width: 280px;
+  filter: drop-shadow(0 10px 24px rgba(4, 8, 15, 0.45));
+  will-change: opacity, transform;
+}
+
+.online-round-stinger.is-active {
+  animation: onlineRoundStingerReveal 760ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.online-round-stinger.is-active .online-round-stinger__line {
+  animation: onlineRoundStingerLine 560ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.online-round-stinger__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 9px 15px;
+  border-radius: 10px;
+  border: 1px solid rgba(var(--round-start-accent-rgb), 0.44);
+  background:
+    linear-gradient(145deg, rgba(var(--round-start-accent-rgb), 0.12), rgba(8, 12, 20, 0.88) 70%),
+    rgba(8, 12, 20, 0.86);
+  box-shadow:
+    0 0 24px rgba(var(--round-start-accent-rgb), 0.2),
+    inset 0 0 12px rgba(var(--round-start-accent-rgb), 0.1);
+  backdrop-filter: blur(4px);
+}
+
+.online-round-stinger__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #d5def0;
+  opacity: 0.9;
+}
+
+.online-round-stinger__round {
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: rgba(var(--round-start-accent-rgb), 0.9);
+  text-shadow: 0 0 18px rgba(var(--round-start-accent-rgb), 0.35);
+  font-family: 'Orbitron', 'Segoe UI', sans-serif;
+  line-height: 1;
+}
+
+.online-round-stinger__subtitle {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: rgba(214, 226, 248, 0.72);
+}
+
+.online-round-stinger__line {
+  width: 72px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(var(--round-start-accent-rgb), 0.8),
+    transparent
+  );
+  opacity: 0.7;
+  transform: scaleX(0.45);
+  transform-origin: center;
+}
+
+@keyframes onlineRoundStingerLine {
+  0% {
+    opacity: 0;
+    transform: scaleX(0.25);
+  }
+
+  35% {
+    opacity: 0.9;
+    transform: scaleX(1);
+  }
+
+  100% {
+    opacity: 0.7;
+    transform: scaleX(0.45);
+  }
+}
+
+@keyframes onlineRoundStingerReveal {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -55%) scale(0.95);
+  }
+
+  28% {
+    opacity: 1;
+    transform: translate(-50%, -52%) scale(1);
+  }
+
+  76% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(1.01);
+  }
+}
+
+.online-main-board.round-start-burst-reduced {
+  animation: onlineMainRoundBurstReduced 320ms ease-out;
+}
+
+.online-round-stinger.is-active-reduced {
+  animation: onlineRoundStingerReduced 340ms ease-out;
+}
+
+@keyframes onlineMainRoundBurstReduced {
+  0% {
+    box-shadow: 0 0 20px rgba(var(--round-start-accent-rgb), 0.4);
+    border-color: rgba(var(--round-start-accent-rgb), 0.7);
+  }
+
+  100% {
+    box-shadow: 0 0 30px rgba(102, 126, 234, 0.2);
+    border-color: rgba(102, 126, 234, 0.4);
+  }
+}
+
+@keyframes onlineRoundStingerReduced {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -52%) scale(0.98);
+  }
+
+  35% {
+    opacity: 1;
+    transform: translate(-50%, -51%) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .online-game-area.round-start-pulse::after,
+  .opponent-mini-board.round-start-burst,
+  .online-main-board.round-start-burst,
+  .online-main-board.round-start-burst::after,
+  .online-round-stinger.is-active,
+  .online-round-stinger.is-active .online-round-stinger__line {
+    animation: none !important;
+  }
 }
 
 /* Force canvas to fill container exactly - matches single player approach */
@@ -3678,4 +3969,41 @@
     flex: 1;
     min-height: 0; /* Allow shrinking */
     overflow-y: auto;
+}
+
+/* ============================================
+   STANDINGS HUD EXTENSIONS
+   ============================================ */
+
+/* Secondary info line: level + lines cleared */
+.standing-item .player-meta {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: rgba(200, 210, 230, 0.5);
+    letter-spacing: 0.5px;
+    padding-left: 8px;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    white-space: nowrap;
+}
+
+/* Tabular numbers, fixed width, no wrapping for score/frags column */
+.standing-item .player-score {
+    font-variant-numeric: tabular-nums;
+    min-width: 40px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+/* Eliminated player: dim and desaturate */
+.standing-item--eliminated {
+    opacity: 0.35;
+    filter: grayscale(0.7);
+}
+
+.standing-item--eliminated .player-score {
+    font-size: 10px !important;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #6b7280 !important;
+    text-shadow: none !important;
 }

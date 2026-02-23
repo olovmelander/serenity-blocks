@@ -548,6 +548,29 @@ function assignFlowerFamilies(candidates, params = {}) {
     });
 }
 
+function pickFlowerFamilyFromWeights(weights = {}) {
+    let family = 'yellow';
+    let best = weights.yellow ?? 0;
+
+    if ((weights.pink ?? 0) > best) {
+        family = 'pink';
+        best = weights.pink ?? 0;
+    }
+    if ((weights.purple ?? 0) > best) {
+        family = 'purple';
+        best = weights.purple ?? 0;
+    }
+    if ((weights.blue ?? 0) > best) {
+        family = 'blue';
+        best = weights.blue ?? 0;
+    }
+    if ((weights.white ?? 0) > best) {
+        family = 'white';
+    }
+
+    return family;
+}
+
 function generateFlowerAnchors(terrainField, carpetField, params = {}) {
     const anchorCount = Math.max(0, Math.floor(params.flowerAnchorCount ?? 900));
     const anchorMin = Math.max(0, Math.floor(params.flowerAnchorMin ?? Math.round(anchorCount * 0.35)));
@@ -579,7 +602,7 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
             if (exclusion.pathCore > 0.98 || exclusion.steepnessPenalty > 0.88) continue;
 
             const carpet = carpetField.sampleCarpet(x, z);
-            if (!carpet || carpet.density < 0.02) continue;
+            if (!carpet || carpet.density < 0.012) continue;
 
             const wave1 = Math.sin(x * 0.03 + Math.cos(z * 0.02)) * 0.5 + 0.5;
             const wave2 = Math.sin(z * 0.05 + Math.cos(x * 0.04)) * 0.5 + 0.5;
@@ -588,7 +611,7 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
             const scored = scoreFlowerCandidate(carpet, exclusion);
             const nearBias = smoothstep(depthMin + terrainSize * 0.06, depthMax - terrainSize * 0.05, z);
             const weightedScore = scored.score * (0.4 + nearBias * 0.85) * (0.3 + clusterNoise * 0.7);
-            if (weightedScore < 0.006) continue;
+            if (weightedScore < 0.003) continue;
 
             candidates.push({
                 x,
@@ -606,7 +629,7 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
     }
 
     // Relaxed fallback sweep to guarantee visible anchors for lower tiers.
-    const maxAttempts = anchorCount * 15;
+    const maxAttempts = anchorCount * 36;
     let attempts = 0;
     while (candidates.length < requiredCandidates && attempts < maxAttempts) {
         attempts += 1;
@@ -620,7 +643,7 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
         if (exclusion.pathCore > 0.96 || exclusion.steepnessPenalty > 0.82) continue;
 
         const carpet = carpetField.sampleCarpet(x, z);
-        if (!carpet || carpet.density < 0.02) continue;
+        if (!carpet || carpet.density < 0.012) continue;
 
         const wave1 = Math.sin(x * 0.03 + Math.cos(z * 0.02)) * 0.5 + 0.5;
         const wave2 = Math.sin(z * 0.05 + Math.cos(x * 0.04)) * 0.5 + 0.5;
@@ -629,7 +652,7 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
         const scored = scoreFlowerCandidate(carpet, exclusion);
         const nearBias = smoothstep(depthMin + terrainSize * 0.08, depthMax - terrainSize * 0.04, z);
         const weightedScore = scored.score * (0.5 + nearBias * 0.78) * (0.3 + clusterNoise * 0.7);
-        if (weightedScore < 0.012) continue;
+        if (weightedScore < 0.003) continue;
 
         candidates.push({
             x,
@@ -642,6 +665,68 @@ function generateFlowerAnchors(terrainField, carpetField, params = {}) {
             familyWeights: carpetField.sampleFamilyWeights(x, z),
             score: weightedScore,
             sortJitter: hash2(x * 0.039 + 1.7, z * 0.041 + 7.3),
+        });
+    }
+
+    // Broad meadow fallback: fill anchors with the same wide-area logic style used for grass.
+    const meadowAttemptsMax = anchorCount * 42;
+    let meadowAttempts = 0;
+    while (candidates.length < requiredCandidates && meadowAttempts < meadowAttemptsMax) {
+        meadowAttempts += 1;
+
+        const x = (Math.random() - 0.5) * spread * 2;
+        const z = depthMin + (Math.random() * (depthMax - depthMin));
+        terrainField.sampleNormal(x, z, normal);
+        if (normal.y < 0.66) continue;
+
+        const placement = computePlacementMask(terrainField, x, z, normal.y, {
+            base: 0.2,
+            slopeMin: 0.68,
+            valleyWeight: 0.32,
+            shoulderWeight: 0.36,
+            slopeWeight: 0.16,
+            pitWeight: 0.22,
+            pathWeight: 0.18,
+        });
+
+        const carpet = carpetField.sampleCarpet(x, z);
+        const familyWeights = carpetField.sampleFamilyWeights(x, z);
+        const wave1 = Math.sin(x * 0.03 + Math.cos(z * 0.02)) * 0.5 + 0.5;
+        const wave2 = Math.sin(z * 0.05 + Math.cos(x * 0.04)) * 0.5 + 0.5;
+        const clusterNoise = Math.pow(wave1 * 0.6 + wave2 * 0.4, 2.0);
+        const nearBias = smoothstep(depthMin + terrainSize * 0.1, depthMax - terrainSize * 0.08, z);
+
+        const carpetDensity = carpet?.density ?? 0;
+        const pocketMask = carpet?.pocketMask ?? 0;
+        const bandMask = carpet?.bandMask ?? 0;
+        const acceptance = clamp(
+            ((placement.mask * 0.74) + (carpetDensity * 0.92) + (pocketMask * 0.24))
+            * (0.58 + clusterNoise * 0.42)
+            * (0.7 + nearBias * 0.35),
+            0,
+            1,
+        );
+        if (acceptance < (0.16 + Math.random() * 0.44)) continue;
+
+        const familyHint = (carpetDensity >= 0.04 && carpet?.family)
+            ? carpet.family
+            : pickFlowerFamilyFromWeights(familyWeights);
+        const weightedScore = Math.max(
+            0.004,
+            acceptance * (0.34 + (bandMask * 0.33) + (pocketMask * 0.33)),
+        );
+
+        candidates.push({
+            x,
+            y: terrainField.sampleHeight(x, z),
+            z,
+            density: Math.max(carpetDensity, acceptance * 0.85),
+            bandMask,
+            pocketMask,
+            familyHint,
+            familyWeights,
+            score: weightedScore,
+            sortJitter: hash2(x * 0.051 + 5.9, z * 0.049 - 3.7),
         });
     }
 
@@ -765,9 +850,9 @@ function buildFlowerLayerInstances(mesh, terrainField, anchors, params = {}) {
             dummy.position.set(x, y + groundLift + slopeLift, z);
             dummy.quaternion.copy(slopeQuat).multiply(yawQuat);
 
-            const scaleBase = layer === 'stem' ? 0.66 : 0.72;
-            const scaleGain = layer === 'stem' ? 0.94 : 1.08;
-            const scale = scaleBase + anchor.density * scaleGain + Math.random() * (layer === 'stem' ? 0.28 : 0.22);
+            const scaleBase = layer === 'stem' ? 0.74 : 0.86;
+            const scaleGain = layer === 'stem' ? 1.02 : 1.24;
+            const scale = scaleBase + anchor.density * scaleGain + Math.random() * (layer === 'stem' ? 0.32 : 0.28);
             dummy.scale.set(
                 scale * (0.82 + Math.random() * 0.24),
                 scale * (0.88 + Math.random() * 0.26),
