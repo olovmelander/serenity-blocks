@@ -79,42 +79,65 @@ export class ChiralGoldDustCompute {
     setInitialState(options = {}) {
         const palette = toLinearColorArray(options.colorPalette);
 
-        const nearRatio = 0.25;
-        const midRatio = 0.4;
+        const nearRatio = 0.20;
+        const midRatio = 0.35;
+        const farRatio = 0.25;
+        // remaining 0.20 = envelope band
 
         for (let i = 0; i < this.count; i += 1) {
             const i4 = i * 4;
             const r = this.random();
             const theta = this.random() * TAU;
 
-            let minRadius = 2400;
-            let maxRadius = 5000;
-            let baseSizeMin = 2;
-            let baseSizeMax = 10;
-            let baseSpeed = 0.03;
+            // Defaults = far band
+            let minRadius = 2800;
+            let maxRadius = 6500;
+            let baseSizeMin = 5;
+            let baseSizeMax = 16;
+            let baseSpeed = 0.025;
+            let zDepthMin = -2000;
+            let zDepthMax = 400;
+            let yRange = 3200;
 
             if (r < nearRatio) {
-                minRadius = 400;
-                maxRadius = 1200;
-                baseSizeMin = 15;
-                baseSizeMax = 25;
-                baseSpeed = 0.15;
+                minRadius = 300;
+                maxRadius = 1400;
+                baseSizeMin = 14;
+                baseSizeMax = 28;
+                baseSpeed = 0.14;
+                zDepthMin = -600;
+                zDepthMax = 800;
+                yRange = 1200;
             } else if (r < nearRatio + midRatio) {
-                minRadius = 1000;
-                maxRadius = 2800;
-                baseSizeMin = 8;
-                baseSizeMax = 18;
-                baseSpeed = 0.08;
+                minRadius = 900;
+                maxRadius = 3200;
+                baseSizeMin = 10;
+                baseSizeMax = 22;
+                baseSpeed = 0.07;
+                zDepthMin = -1200;
+                zDepthMax = 600;
+                yRange = 2000;
+            } else if (r >= nearRatio + midRatio + farRatio) {
+                // Envelope band: wraps around camera for edge-to-edge coverage
+                minRadius = 1200;
+                maxRadius = 4500;
+                baseSizeMin = 3;
+                baseSizeMax = 12;
+                baseSpeed = 0.018;
+                zDepthMin = -3000;
+                zDepthMax = 1200;
+                yRange = 3000;
             }
 
             const radius = minRadius + this.random() * (maxRadius - minRadius);
-            const height = (this.random() - 0.5) * (r < nearRatio ? 760 : r < nearRatio + midRatio ? 1350 : 1900);
+            const height = (this.random() - 0.5) * yRange;
             const tilt = (this.random() - 0.5) * 0.52;
             const stretchX = 1.2 + this.random() * 0.85;
             const stretchZ = 0.72 + this.random() * 0.65;
 
+            const zDepth = zDepthMin + this.random() * (zDepthMax - zDepthMin);
             const x = Math.cos(theta) * radius * stretchX;
-            const z = Math.sin(theta) * radius * stretchZ;
+            const z = Math.sin(theta) * radius * stretchZ + zDepth;
             const y = height + Math.sin(theta * 0.7) * 150 * (1 + r);
 
             // velocity.w stores per-particle orbital speed baseline.
@@ -178,22 +201,33 @@ export class ChiralGoldDustCompute {
                 const seedD = sin(life.w.mul(33.41).add(this.uTime.mul(0.53))).mul(0.5).add(0.5);
                 const seedLife = sin(life.w.mul(79.91).add(this.uTime.mul(0.17))).mul(0.5).add(0.5);
 
+                const seedE = sin(life.w.mul(53.19).add(this.uTime.mul(0.61))).mul(0.5).add(0.5);
+
+                // Band masks based on orbital speed stored in vel.w
+                // Near≈0.14, Mid≈0.07, Far≈0.025, Envelope≈0.018
                 const nearMask = step(float(0.11), vel.w);
                 const midOrNearMask = step(float(0.055), vel.w);
                 const midMask = clamp(midOrNearMask.sub(nearMask), 0.0, 1.0);
-                const farMask = float(1.0).sub(midOrNearMask);
+                const belowMidMask = float(1.0).sub(midOrNearMask);
+                const envMask = clamp(float(1.0).sub(step(float(0.020), vel.w)), 0.0, 1.0);
+                const farMask = clamp(belowMidMask.sub(envMask), 0.0, 1.0);
 
-                const minRadius = nearMask.mul(400.0).add(midMask.mul(1000.0)).add(farMask.mul(2400.0));
-                const maxRadius = nearMask.mul(1200.0).add(midMask.mul(2800.0)).add(farMask.mul(5000.0));
-                const yRange = nearMask.mul(760.0).add(midMask.mul(1350.0)).add(farMask.mul(1900.0));
+                const minRadius = nearMask.mul(300.0).add(midMask.mul(900.0)).add(farMask.mul(2800.0)).add(envMask.mul(1200.0));
+                const maxRadius = nearMask.mul(1400.0).add(midMask.mul(3200.0)).add(farMask.mul(6500.0)).add(envMask.mul(4500.0));
+                const yRange = nearMask.mul(1200.0).add(midMask.mul(2000.0)).add(farMask.mul(3200.0)).add(envMask.mul(3000.0));
+
+                // Z-depth offset per band: scatter particles in front of and behind the camera plane
+                const zDepthMin = nearMask.mul(-600.0).add(midMask.mul(-1200.0)).add(farMask.mul(-2000.0)).add(envMask.mul(-3000.0));
+                const zDepthRange = nearMask.mul(1400.0).add(midMask.mul(1800.0)).add(farMask.mul(2400.0)).add(envMask.mul(4200.0));
 
                 const radius = mix(minRadius, maxRadius, seedA);
                 const angle = seedB.mul(TAU).add(this.uTime.mul(0.035));
                 const stretchX = float(1.2).add(seedC.mul(0.85));
                 const stretchZ = float(0.72).add(seedD.mul(0.65));
+                const zScatter = zDepthMin.add(seedE.mul(zDepthRange));
 
                 pos.x.assign(cos(angle).mul(radius).mul(stretchX));
-                pos.z.assign(sin(angle).mul(radius).mul(stretchZ));
+                pos.z.assign(sin(angle).mul(radius).mul(stretchZ).add(zScatter));
                 pos.y.assign(seedD.sub(0.5).mul(yRange));
 
                 life.x.assign(this.uTime);
@@ -201,7 +235,8 @@ export class ChiralGoldDustCompute {
                 life.w.assign(sin(life.w.mul(37.0).add(this.uTime.mul(0.31))).mul(0.5).add(0.5));
                 life.y.assign(0.18);
             }).Else(() => {
-                const speed = vel.w.mul(float(1.0).add(this.uMid.mul(0.5)));
+                // Orbital rotation — mid frequency accelerates the swirl
+                const speed = vel.w.mul(float(1.0).add(this.uMid.mul(1.2)));
                 const angle = speed.mul(this.uDelta);
                 const orbitSin = sin(angle);
                 const orbitCos = cos(angle);
@@ -211,6 +246,7 @@ export class ChiralGoldDustCompute {
                 pos.x.assign(nextX);
                 pos.z.assign(nextZ);
 
+                // Curl noise flow field — amplitude reacts strongly to overall energy and mids
                 const noiseFrequency = float(0.002);
                 const noiseTime = this.uTime.mul(0.05);
                 const flowX = sin(pos.y.mul(noiseFrequency).add(noiseTime))
@@ -220,15 +256,17 @@ export class ChiralGoldDustCompute {
                 const flowZ = sin(pos.x.mul(noiseFrequency).sub(noiseTime.mul(1.1)))
                     .sub(cos(pos.y.mul(noiseFrequency).sub(noiseTime.mul(0.4))));
                 const flowVec = normalize(vec3(flowX, flowY, flowZ).add(vec3(0.0001, 0.0001, 0.0001)));
-                const flowAmp = mix(float(40.0), float(80.0), clamp(this.uEnergy.mul(0.8).add(this.uMid.mul(0.35)), 0.0, 1.0));
+                const flowAmp = mix(float(50.0), float(180.0), clamp(this.uEnergy.mul(1.2).add(this.uMid.mul(0.6)), 0.0, 1.0));
                 pos.xyz.addAssign(flowVec.mul(flowAmp).mul(this.uDelta));
 
+                // Beat push — radial outward impulse (2.8x stronger than before)
                 const radialDir = normalize(vec3(pos.x, 0.0, pos.z).add(vec3(0.0001, 0.0, 0.0001)));
-                const beatPush = this.uBeatPulse.mul(this.uDelta).mul(170.0);
+                const beatPush = this.uBeatPulse.mul(this.uDelta).mul(480.0);
                 pos.xyz.addAssign(radialDir.mul(beatPush));
 
+                // Bass breathing — radial scale (4x stronger than before)
                 const radius = max(float(1.0), length(vec2(pos.x, pos.z)));
-                const bassScale = float(1.0).add(this.uBass.mul(0.004).mul(this.uDelta).mul(60.0));
+                const bassScale = float(1.0).add(this.uBass.mul(0.016).mul(this.uDelta).mul(60.0));
                 pos.x.assign(pos.x.div(radius).mul(radius.mul(bassScale)));
                 pos.z.assign(pos.z.div(radius).mul(radius.mul(bassScale)));
 
@@ -651,7 +689,8 @@ export class ChiralGoldWispCompute {
             const pA = paramA.element(index).toVar();
             const pB = paramB.element(index).toVar();
 
-            const t = this.uTime.mul(float(1.0).add(this.uTreble.mul(0.8)));
+            // Treble doubles Lissajous speed — wisps dance faster with bright sounds
+            const t = this.uTime.mul(float(1.0).add(this.uTreble.mul(1.6)));
 
             const lx = pA.x.mul(sin(t.mul(pA.w).add(pB.z)));
             const ly = pA.y.mul(sin(t.mul(pB.x).add(pB.z.mul(0.7))));
@@ -689,10 +728,12 @@ export class ChiralGoldWispCompute {
                 });
             });
 
-            const cohesion = clamp(float(0.18).add(this.uMid.mul(0.32)), 0.12, 0.5);
+            // Mid drives cohesion: quiet=scattered, loud=clustered together
+            const cohesion = clamp(float(0.12).add(this.uMid.mul(0.55)), 0.08, 0.65);
             const target = mix(lissajous, attractor, cohesion);
 
-            const beatScale = float(1.0).add(this.uBeatPulse.mul(0.35));
+            // Beats push wisps dramatically outward (0.35 → 0.75)
+            const beatScale = float(1.0).add(this.uBeatPulse.mul(0.75));
             pos.xyz.assign(target.mul(beatScale));
 
             const flash = smoothstep(float(0.0), float(1.0), this.uBeatPulse).mul(0.45);
