@@ -115,10 +115,15 @@ export function createGoldDustNodeMaterial(params = {}) {
         ? colorBuffer.element(vertexIndex).w
         : aSize;
 
+    // Bass swells particle size (up to 35%), reactive pulse envelope adds another 50%
+    const bassPulse = float(1.0).add(uBass.mul(0.35));
+    const beatBoom = float(1.0).add(uPulse.mul(0.5));
     material.sizeNode = clamp(
-        baseSize.mul(uPixelRatio).mul(float(220.0)).div(depth),
-        float(2.0),
-        float(72.0),
+        baseSize.mul(uPixelRatio).mul(float(320.0)).div(depth)
+            .mul(bassPulse)
+            .mul(beatBoom),
+        float(3.0),
+        float(90.0),
     );
 
     const baseColor = useGPU
@@ -299,7 +304,9 @@ export function createWispNodeMaterial(params = {}) {
     );
 
     const baseColor = useGPU ? colorBuffer.element(vertexIndex).xyz : aColor;
-    const shimmer = sin(uTime.mul(1.7).add(length(pos.xy).mul(0.025))).mul(0.25).add(0.75);
+    // Treble drives shimmer frequency: 1.7 Hz (quiet) → 5.7 Hz (bright treble)
+    const shimmerSpeed = float(1.7).add(uTreble.mul(4.0));
+    const shimmer = sin(uTime.mul(shimmerSpeed).add(length(pos.xy).mul(0.025))).mul(0.35).add(0.65);
     const heatedColor = mix(baseColor, vec3(1.0, 0.97, 0.9), clamp(uColorTemperature.mul(0.85), 0.0, 1.0));
     const color = mix(heatedColor, vec3(1.0, 0.95, 0.82), 0.45)
         .mul(shimmer)

@@ -26,7 +26,7 @@ void main() {
     vec4 mvPosition = modelViewMatrix * vec4(rotated, 1.0);
     gl_Position = projectionMatrix * mvPosition;
 
-    gl_PointSize = aSize * (220.0 / max(1.0, -mvPosition.z)) * (1.0 + uPulse * 0.4);
+    gl_PointSize = aSize * (320.0 / max(1.0, -mvPosition.z)) * (1.0 + uPulse * 0.4);
 
     vAlpha = aAlpha * (0.58 + 0.42 * sin(uTime * 1.6 + aTwinkle * 8.0));
     vColor = color;
