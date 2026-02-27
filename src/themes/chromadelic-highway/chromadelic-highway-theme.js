@@ -113,7 +113,7 @@ const QUALITY_PRESETS = {
         speedParticleCount: 3000,
         ambientParticleCount: 2000,
         roadSegments: 200,
-        planetCount: 5,
+        planetCount: 9,
         bloomStrength: 0.5,
         bloomRadius: 0.3,
         bloomThreshold: 0.65,
@@ -126,7 +126,7 @@ const QUALITY_PRESETS = {
         speedParticleCount: 2000,
         ambientParticleCount: 1500,
         roadSegments: 150,
-        planetCount: 4,
+        planetCount: 7,
         bloomStrength: 0.45,
         bloomRadius: 0.25,
         bloomThreshold: 0.7,
@@ -139,7 +139,7 @@ const QUALITY_PRESETS = {
         speedParticleCount: 800,
         ambientParticleCount: 800,
         roadSegments: 100,
-        planetCount: 3,
+        planetCount: 5,
         bloomStrength: 0.4,
         bloomRadius: 0.2,
         bloomThreshold: 0.75,
@@ -152,7 +152,7 @@ const QUALITY_PRESETS = {
         speedParticleCount: 300,
         ambientParticleCount: 400,
         roadSegments: 70,
-        planetCount: 2,
+        planetCount: 3,
         bloomStrength: 0.35,
         bloomRadius: 0.2,
         bloomThreshold: 0.8,
@@ -165,7 +165,7 @@ const QUALITY_PRESETS = {
         speedParticleCount: 100,
         ambientParticleCount: 150,
         roadSegments: 40,
-        planetCount: 1,
+        planetCount: 2,
         bloomStrength: 0.3,
         bloomRadius: 0.15,
         bloomThreshold: 0.85,
@@ -188,9 +188,9 @@ const QUALITY_PRESETS = {
 };
 
 const BLOOM_TUNING = {
-    baseScale: 0.8,
-    reactiveScale: 0.62,
-    thresholdLift: 0.14,
+    baseScale: 1.15,
+    reactiveScale: 0.85,
+    thresholdLift: 0.10,
 };
 
 const RING_GLOW_TUNING = {
@@ -2934,6 +2934,211 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.createPlanetGlowLayers(this.venusOrb, venusSize, this.venusOrbGlows, 'rgba(255, 170, 80,');
         }
 
+        // Mars - right side, medium depth
+        if (planetCount >= 6) {
+            const marsSize = 140;
+            const marsGeo = new THREE.SphereGeometry(marsSize, 32, 32);
+            const marsTex = textureLoader.load('./textures/2k_mars.jpg');
+
+            let marsMat;
+            let marsMatData = null;
+            if (this.isWebGPU) {
+                // Reuse gas giant material for simplified shader logic that supports pulse
+                marsMatData = createGasGiantNodeMaterial(marsTex);
+                marsMat = marsMatData.material;
+            } else {
+                marsMat = new THREE.MeshBasicMaterial({ map: marsTex });
+            }
+
+            this.marsPlanet = new THREE.Mesh(marsGeo, marsMat);
+            this.marsPlanet.position.set(1300, 600, -2800);
+            this.marsPlanet.renderOrder = -63;
+            this.marsPlanet.userData.materialData = marsMatData;
+            this.marsPlanet.userData.basePosition = this.marsPlanet.position.clone();
+            this.marsPlanet.userData.approachProfile = {
+                start: new THREE.Vector3(1300, 500, -5000),
+                close: new THREE.Vector3(1800, 600, -1800),
+                end: new THREE.Vector3(2600, 800, 800),
+                phaseOffset: 90,
+                approachEnd: 140,
+                flybyEnd: 170,
+                arcAmplitudeX: 30,
+                arcAmplitudeY: 15,
+            };
+            this.marsPlanet.userData.baseScale = 1.0;
+            this.marsPlanet.userData.scaleProfile = {
+                minScale: 0.7, maxScale: 1.3,
+                nearDistance: 600, farDistance: 4500,
+                glowScale: 0.15, pulseScale: 0.03, paceScale: 0.04,
+            };
+            this.marsPlanet.userData.driftPhase = this.rand() * Math.PI * 2;
+            this.marsPlanet.userData.driftSpeed = 0.025;
+            this.marsPlanet.userData.driftAmplitudeX = 50;
+            this.marsPlanet.userData.driftAmplitudeY = 40;
+            this.scene.add(this.marsPlanet);
+            this.marsGlows = [];
+            this.createPlanetGlowLayers(this.marsPlanet, marsSize, this.marsGlows, 'rgba(255, 80, 50,');
+        }
+
+        // Mercury - left side, closer depth
+        if (planetCount >= 7) {
+            const mercurySize = 200;
+            const mercuryGeo = new THREE.SphereGeometry(mercurySize, 40, 40);
+            const mercuryTex = textureLoader.load('./textures/2k_mercury.jpg');
+
+            let mercuryMat;
+            let mercuryMatData = null;
+            if (this.isWebGPU) {
+                mercuryMatData = createGasGiantNodeMaterial(mercuryTex);
+                mercuryMat = mercuryMatData.material;
+            } else {
+                mercuryMat = new THREE.MeshBasicMaterial({ map: mercuryTex });
+            }
+
+            this.mercuryPlanet = new THREE.Mesh(mercuryGeo, mercuryMat);
+            this.mercuryPlanet.position.set(-1800, 400, -2100);
+            this.mercuryPlanet.renderOrder = -60;
+            this.mercuryPlanet.userData.materialData = mercuryMatData;
+            this.mercuryPlanet.userData.basePosition = this.mercuryPlanet.position.clone();
+
+            // Approach profile to make it get closer over time
+            this.mercuryPlanet.userData.approachProfile = {
+                start: new THREE.Vector3(-1800, 400, -4500),
+                close: new THREE.Vector3(-2400, 500, -1500),
+                end: new THREE.Vector3(-3200, 700, 1000),
+                phaseOffset: 60,
+                approachEnd: 140,
+                flybyEnd: 170,
+                arcAmplitudeX: 40,
+                arcAmplitudeY: 20,
+            };
+
+            this.mercuryPlanet.userData.baseScale = 1.1;
+            this.mercuryPlanet.userData.scaleProfile = {
+                minScale: 0.6, maxScale: 1.4,
+                nearDistance: 500, farDistance: 3500,
+                glowScale: 0.18, pulseScale: 0.04, paceScale: 0.05,
+            };
+            this.mercuryPlanet.userData.driftPhase = this.rand() * Math.PI * 2;
+            this.mercuryPlanet.userData.driftSpeed = 0.035;
+            this.mercuryPlanet.userData.driftAmplitudeX = 60;
+            this.mercuryPlanet.userData.driftAmplitudeY = 50;
+            this.scene.add(this.mercuryPlanet);
+            this.mercuryGlows = [];
+            this.createPlanetGlowLayers(this.mercuryPlanet, mercurySize, this.mercuryGlows, 'rgba(150, 150, 150,');
+        }
+
+        // Saturn - far right background
+        if (planetCount >= 8) {
+            const saturnSize = 280;
+            const saturnGeo = new THREE.SphereGeometry(saturnSize, 40, 40);
+            const saturnTex = textureLoader.load('./textures/2k_saturn.jpg');
+
+            let saturnMat;
+            let saturnMatData = null;
+            if (this.isWebGPU) {
+                saturnMatData = createGasGiantNodeMaterial(saturnTex);
+                saturnMat = saturnMatData.material;
+            } else {
+                saturnMat = new THREE.MeshBasicMaterial({ map: saturnTex });
+            }
+
+            this.saturnPlanet = new THREE.Group();
+            const saturnBody = new THREE.Mesh(saturnGeo, saturnMat);
+            this.saturnPlanet.add(saturnBody);
+
+            // Saturn Rings
+            const ringGeo = new THREE.RingGeometry(saturnSize * 1.3, saturnSize * 2.4, 64);
+            const ringTex = textureLoader.load('./textures/2k_saturn_ring_alpha.png');
+            let ringMat;
+            if (this.isWebGPU) {
+                // Reuse gas giant material for simplified shader logic
+                const ringMatData = createGasGiantNodeMaterial(ringTex);
+                ringMat = ringMatData.material;
+                ringMat.transparent = true;
+                ringMat.side = THREE.DoubleSide;
+            } else {
+                ringMat = new THREE.MeshBasicMaterial({ map: ringTex, transparent: true, side: THREE.DoubleSide });
+            }
+            const saturnRings = new THREE.Mesh(ringGeo, ringMat);
+            saturnRings.rotation.x = Math.PI / 2.5;
+            saturnRings.rotation.y = Math.PI / 8;
+            this.saturnPlanet.add(saturnRings);
+
+            this.saturnPlanet.position.set(2200, 700, -4500);
+            this.saturnPlanet.renderOrder = -68;
+            this.saturnPlanet.userData.materialData = saturnMatData;
+            this.saturnPlanet.userData.basePosition = this.saturnPlanet.position.clone();
+            this.saturnPlanet.userData.approachProfile = {
+                start: new THREE.Vector3(2200, 700, -5500),
+                close: new THREE.Vector3(2900, 800, -2200),
+                end: new THREE.Vector3(3800, 1000, 1200),
+                phaseOffset: 30,
+                approachEnd: 140,
+                flybyEnd: 170,
+                arcAmplitudeX: 50,
+                arcAmplitudeY: 30,
+            };
+            this.saturnPlanet.userData.baseScale = 0.9;
+            this.saturnPlanet.userData.scaleProfile = {
+                minScale: 0.6, maxScale: 1.2,
+                nearDistance: 800, farDistance: 5500,
+                glowScale: 0.2, pulseScale: 0.05, paceScale: 0.05,
+            };
+            this.saturnPlanet.userData.driftPhase = this.rand() * Math.PI * 2;
+            this.saturnPlanet.userData.driftSpeed = 0.015;
+            this.saturnPlanet.userData.driftAmplitudeX = 40;
+            this.saturnPlanet.userData.driftAmplitudeY = 30;
+            this.scene.add(this.saturnPlanet);
+            this.saturnGlows = [];
+            this.createPlanetGlowLayers(this.saturnPlanet, saturnSize * 1.5, this.saturnGlows, 'rgba(230, 200, 130,');
+        }
+
+        // Uranus - far deep center/left
+        if (planetCount >= 9) {
+            const uranusSize = 220;
+            const uranusGeo = new THREE.SphereGeometry(uranusSize, 32, 32);
+            const uranusTex = textureLoader.load('./textures/2k_uranus.jpg');
+
+            let uranusMat;
+            let uranusMatData = null;
+            if (this.isWebGPU) {
+                uranusMatData = createGasGiantNodeMaterial(uranusTex);
+                uranusMat = uranusMatData.material;
+            } else {
+                uranusMat = new THREE.MeshBasicMaterial({ map: uranusTex });
+            }
+
+            this.uranusPlanet = new THREE.Mesh(uranusGeo, uranusMat);
+            this.uranusPlanet.position.set(-800, 900, -5000);
+            this.uranusPlanet.renderOrder = -70;
+            this.uranusPlanet.userData.materialData = uranusMatData;
+            this.uranusPlanet.userData.basePosition = this.uranusPlanet.position.clone();
+            this.uranusPlanet.userData.approachProfile = {
+                start: new THREE.Vector3(-800, 900, -6000),
+                close: new THREE.Vector3(-1400, 1100, -2800),
+                end: new THREE.Vector3(-2200, 1400, 1500),
+                phaseOffset: 0,
+                approachEnd: 140,
+                flybyEnd: 170,
+                arcAmplitudeX: 60,
+                arcAmplitudeY: 35,
+            };
+            this.uranusPlanet.userData.baseScale = 1.0;
+            this.uranusPlanet.userData.scaleProfile = {
+                minScale: 0.5, maxScale: 1.1,
+                nearDistance: 1000, farDistance: 6000,
+                glowScale: 0.15, pulseScale: 0.03, paceScale: 0.04,
+            };
+            this.uranusPlanet.userData.driftPhase = this.rand() * Math.PI * 2;
+            this.uranusPlanet.userData.driftSpeed = 0.018;
+            this.uranusPlanet.userData.driftAmplitudeX = 80;
+            this.uranusPlanet.userData.driftAmplitudeY = 60;
+            this.scene.add(this.uranusPlanet);
+            this.uranusGlows = [];
+            this.createPlanetGlowLayers(this.uranusPlanet, uranusSize, this.uranusGlows, 'rgba(150, 230, 255,');
+        }
+
         console.log(`[ChromadelicHighway] ${planetCount - 1} additional celestial bodies created`);
     }
 
@@ -3003,6 +3208,16 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             new THREE.Color(0xFF0099),
             new THREE.Color(0x3399FF),
         ];
+
+        // Add deep cosmic purples for intense swirling in Extreme/Ultra modes
+        if (this.qualityPreset.speedParticleCount >= 2000) {
+            palette.push(
+                new THREE.Color(0x6600cc),
+                new THREE.Color(0xcc00ff),
+                new THREE.Color(0xb84dff),
+                new THREE.Color(0x5c00e6)
+            );
+        }
 
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
@@ -3105,6 +3320,16 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             new THREE.Color(0xFF0099),
             new THREE.Color(0x3399FF),
         ];
+
+        // Add deep cosmic purples for intense swirling in Extreme/Ultra modes
+        if (this.qualityPreset.ambientParticleCount >= 1500) {
+            palette.push(
+                new THREE.Color(0x6600cc),
+                new THREE.Color(0xcc00ff),
+                new THREE.Color(0xb84dff),
+                new THREE.Color(0x5c00e6)
+            );
+        }
 
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
@@ -3226,7 +3451,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     }
 
     spawnShootingStar() {
-        const starBudget = this.performanceBudget?.maxActiveShootingStars ?? 8; // Increased budget
+        const baseBudget = this.performanceBudget?.maxActiveShootingStars ?? 8;
+        const starBudget = baseBudget * 3; // Tripled budget to allow meteor showers
         if (this.shootingStars.length >= starBudget) return;
 
         const startX = (this.rand() - 0.5) * 3000;
@@ -3362,14 +3588,29 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     updateShootingStars(delta) {
         this.shootingStarTimer += delta;
         if (this.shootingStarTimer >= this.nextShootingStarDelay) {
-            if (this.shootingStars.length < (this.performanceBudget?.maxActiveShootingStars ?? 8)) {
-                this.spawnShootingStar();
+
+            // 20% chance for a meteor shower
+            const isMeteorShower = this.rand() > 0.8;
+            const spawnCount = isMeteorShower ? 3 + Math.floor(this.rand() * 4) : 1;
+
+            for (let s = 0; s < spawnCount; s++) {
+                const baseBudget = this.performanceBudget?.maxActiveShootingStars ?? 8;
+                if (this.shootingStars.length < baseBudget * 3) {
+                    this.spawnShootingStar();
+                }
             }
+
             this.shootingStarTimer = 0;
             const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
             const delayScale = THREE.MathUtils.clamp(1.42 - effectScale * 0.4, 1.0, 1.4);
-            // Much more frequent shooting stars! (0.5s - 2.5s base delay)
-            this.nextShootingStarDelay = (0.5 + this.rand() * 2.0) * delayScale;
+
+            if (isMeteorShower) {
+                // Wait longer if a shower just happened
+                this.nextShootingStarDelay = (2.0 + this.rand() * 2.0) * delayScale;
+            } else {
+                // Short wait for frequent single stars
+                this.nextShootingStarDelay = (0.15 + this.rand() * 0.5) * delayScale;
+            }
         }
 
         for (let i = this.shootingStars.length - 1; i >= 0; i--) {
@@ -4100,6 +4341,56 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 glowBoost,
             });
         }
+
+        // Animate the new custom celestial bodies using a helper
+        const animateNewPlanet = (planet, glows, rotSpeed) => {
+            if (!planet) return;
+            planet.rotation.y += rotSpeed;
+
+            const phase = planet.userData.driftPhase || 0;
+            const speed = planet.userData.driftSpeed || 0.02;
+            const ampX = planet.userData.driftAmplitudeX || 50;
+            const ampY = planet.userData.driftAmplitudeY || 30;
+
+            let glowBoost = 0;
+            if (planet.userData.approachProfile) {
+                const pathSample = this.sampleCelestialJourney(planet.userData.approachProfile);
+                if (pathSample) {
+                    planet.position.copy(pathSample.targetPos);
+                    glowBoost = pathSample.glowBoost;
+                }
+            } else if (planet.userData.basePosition) {
+                planet.position.copy(planet.userData.basePosition);
+            }
+
+            planet.position.x += Math.sin(this.time * speed + phase) * ampX * 0.6;
+            planet.position.y += Math.cos(this.time * speed * 0.8 + phase) * ampY * 0.6;
+
+            const baseScale = planet.userData.baseScale ?? 1.0;
+            const dynamicScale = this.computeCelestialScale(
+                planet.position,
+                planet.userData.scaleProfile,
+                0
+            );
+            planet.scale.setScalar(baseScale * dynamicScale);
+
+            const md = planet.userData.materialData;
+            if (md && md.uniforms && md.uniforms.uTime) {
+                md.uniforms.uTime.value = this.time;
+            }
+            if (md && md.uniforms && md.uniforms.uPulse) {
+                md.uniforms.uPulse.value = this.pulseIntensity * 0.15 * readabilityScale;
+            }
+
+            if (glows) {
+                this.syncCelestialGlowLayers(glows, planet, { readabilityScale, glowBoost: 0 });
+            }
+        };
+
+        animateNewPlanet(this.marsPlanet, this.marsGlows, 0.0004);
+        animateNewPlanet(this.mercuryPlanet, this.mercuryGlows, 0.0003);
+        animateNewPlanet(this.saturnPlanet, this.saturnGlows, 0.0002);
+        animateNewPlanet(this.uranusPlanet, this.uranusGlows, 0.00018);
     }
 
     animateSpeedParticles(delta) {

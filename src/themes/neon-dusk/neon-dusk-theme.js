@@ -3364,13 +3364,15 @@ export default class NeonDuskTheme extends BaseTheme {
             this.shootingStars = [];
         }
 
-        // Dispose Three.js resources
-        if (this.renderer) {
-            this.renderer.dispose();
-            const container = document.getElementById('neon-dusk-theme');
-            if (container && container.contains(this.renderer.domElement)) {
-                container.removeChild(this.renderer.domElement);
+        if (this.highlightInstanced) {
+            this.scene?.remove(this.highlightInstanced);
+            this.highlightInstanced.geometry.dispose();
+            if (this.highlightInstanced.material) {
+                this.highlightInstanced.material.dispose();
             }
+            this.highlightInstanced = null;
+            this.highlightInstancedAttributes = null;
+            this.highlightInstancedMode = 'none';
         }
 
         if (this.scene) {
@@ -3396,17 +3398,6 @@ export default class NeonDuskTheme extends BaseTheme {
             this.postProcessing = null;
         }
 
-        if (this.highlightInstanced) {
-            this.scene?.remove(this.highlightInstanced);
-            this.highlightInstanced.geometry.dispose();
-            if (this.highlightInstanced.material) {
-                this.highlightInstanced.material.dispose();
-            }
-            this.highlightInstanced = null;
-            this.highlightInstancedAttributes = null;
-            this.highlightInstancedMode = 'none';
-        }
-
         if (this.highlightCompute) {
             this.highlightCompute.dispose();
             this.highlightCompute = null;
@@ -3422,6 +3413,15 @@ export default class NeonDuskTheme extends BaseTheme {
         if (this.starCompute) {
             this.starCompute.dispose();
             this.starCompute = null;
+        }
+
+        // Dispose Three.js resources LAST to avoid WebGPU errors
+        if (this.renderer) {
+            this.renderer.dispose();
+            const container = document.getElementById('neon-dusk-theme');
+            if (container && container.contains(this.renderer.domElement)) {
+                container.removeChild(this.renderer.domElement);
+            }
         }
 
         this.baselineStats = null;

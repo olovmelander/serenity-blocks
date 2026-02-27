@@ -474,163 +474,52 @@ export const wormFragmentShader = `
 // ============== SAND SMOKE SHADERS (PREMIUM DUNE-STYLE) ==============
 // Advanced: Smooth FBM, billowing turbulence, worm trail emphasis, atmospheric depth
 
+// ============== SAND SMOKE SHADERS (PREMIUM DUNE-STYLE) ==============
+// Advanced: Smooth FBM, billowing turbulence, worm trail emphasis, atmospheric depth
+
 export const sandSmokeVertexShader = `
-    attribute float size;
+    attribute float aLife;
     attribute float random;
     
     varying float vOpacity;
     varying float vRand;
-    varying float vWormIntensity;
+    varying float vLife;
     varying float vDepth;
     varying vec2 vWorldXZ;
     
     uniform float time;
-    uniform float windStrength;
-
-    // Smooth interpolated hash noise (no grid artifacts)
-    float hash(vec2 p) {
-        vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-        p3 += dot(p3, p3.yzx + 33.33);
-        return fract((p3.x + p3.y) * p3.z);
-    }
-    
-    float smoothNoise(vec2 p) {
-        vec2 i = floor(p);
-        vec2 f = fract(p);
-        f = f * f * (3.0 - 2.0 * f); // Smoothstep interpolation
-        
-        float a = hash(i);
-        float b = hash(i + vec2(1.0, 0.0));
-        float c = hash(i + vec2(0.0, 1.0));
-        float d = hash(i + vec2(1.0, 1.0));
-        
-        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-    }
-    
-    // Simple FBM for terrain (2 octaves, optimized)
-    float fbm(vec2 p) {
-        float v = 0.0;
-        v += smoothNoise(p) * 0.6;
-        v += smoothNoise(p * 2.0) * 0.4;
-        return v;
-    }
-    
-    float getApproxTerrainHeight(float x, float z) {
-        float dir = 0.628;
-        float rx = x * cos(dir) + z * sin(dir);
-        float rz = -x * sin(dir) + z * cos(dir);
-        float h = fbm(vec2(rx * 0.003, rz * 0.003));
-        h = abs(h * 2.0 - 1.0);
-        return h * 45.0 - 20.0;
-    }
 
     void main() {
         vRand = random;
+        vLife = aLife; // 1.0 = born, 0.0 = dead
+        
         vec3 pos = position;
-
-        // --- FLOW MOTION ---
-        float moveSpeed = 12.0 + windStrength * 25.0;
-        float zOffset = time * moveSpeed;
-        float range = 4000.0;
-        float startZ = 1000.0;
-        pos.z = startZ - mod(startZ - (pos.z - zOffset), range);
-
-        // --- WORM PATH FOLLOWING ---
-        float wormSpeed = 30.0;
-        float wormCycleLength = 2000.0;
-        float wormCycleTime = wormCycleLength / wormSpeed;
-        float currentCycle = floor(time / wormCycleTime);
-        float wormHeadZ = mod(time * wormSpeed, wormCycleLength) - 1000.0;
-        
-        // HORIZON FADE-IN: Prevent pop-in when resetting to -1000.0
-        float distFromStart = wormHeadZ - (-1000.0);
-        // Fade in extremely slowly over first 1200 units
-        float horizonFade = smoothstep(0.0, 1200.0, distFromStart);
-        horizonFade = pow(horizonFade, 5.0); // Power 5.0 for extremely subtle start 
-
-        
-        float cycleHash = hash(vec2(currentCycle, 0.0));
-        float cycleHash2 = hash(vec2(currentCycle, 1.0));
-        float wormPathBaseX = (cycleHash - 0.5) * 200.0;
-        float wormPathSlope = (cycleHash2 - 0.5) * 0.6;
-        float wormHeadX = wormPathBaseX + wormHeadZ * wormPathSlope;
-        
-        // 30% of particles are worm-attracted (optimized for performance)
-        float isWormSmoke = step(0.7, random);
-        
-        if (isWormSmoke > 0.5) {
-            // Particles attracted strongly to worm head with turbulent spread
-            float spreadX = (hash(vec2(random, 17.3)) - 0.5) * 80.0;
-            float spreadZ = (hash(vec2(random, 31.7)) - 0.5) * 150.0 + 50.0;
-            
-            // Add billowing turbulence
-            float turb = sin(time * 3.0 + random * 100.0) * 15.0;
-            spreadX += turb;
-            
-            pos.x = wormHeadX + spreadX;
-            pos.z = wormHeadZ + spreadZ;
-        }
-        
-        float wormPathX = wormPathBaseX + pos.z * wormPathSlope;
-        float distFromPath = abs(pos.x - wormPathX);
-        float trailWidth = 60.0;
-        float pathMask = exp(-distFromPath * distFromPath / (trailWidth * trailWidth));
-        float distFromHead = pos.z - wormHeadZ;
-        
-        // Smoke zone - extended trail
-        float smokeZone = 0.0;
-        if (distFromHead >= -500.0 && distFromHead <= 120.0) {
-            if (distFromHead <= 0.0) {
-                smokeZone = 1.0 - abs(distFromHead) / 500.0;
-                smokeZone = pow(smokeZone, 0.4); // Denser near head
-            } else {
-                smokeZone = 1.0 - distFromHead / 120.0;
-                smokeZone = pow(smokeZone, 0.5); // Sharp front
-            }
-        }
-        
-        // Strong boost for worm particles
-        if (isWormSmoke > 0.5) {
-            smokeZone = max(smokeZone, 0.9);
-            pathMask = max(pathMask, 0.95);
-        }
-        
-        float wormVisibility = smokeZone * pathMask;
-        wormVisibility *= horizonFade; // Apply smooth entrance
-        vWormIntensity = wormVisibility;
-        
-        // Billowing turbulence on worm trail (only for worm particles)
-        if (wormVisibility > 0.1) {
-            float billow = sin(pos.z * 0.02 + time * 2.5) * cos(pos.x * 0.03 + time * 1.8);
-            pos.x += billow * 20.0 * wormVisibility;
-        }
-
-        // --- TERRAIN FOLLOWING (optimized) ---
-        // Simplified height for ambient particles, full calc for worm trail
-        float groundH = wormVisibility > 0.2 ? getApproxTerrainHeight(pos.x, pos.z) : -15.0;
-
-        // Worm smoke rises higher and billows more
-        float baseHeight = -5.0 + random * 25.0;
-        float wormLift = wormVisibility * 35.0;
-        float breath = sin(time * 2.0 + random * 80.0) * 8.0 * (1.0 + wormVisibility);
-        pos.y = groundH + baseHeight + wormLift + breath;
-
         vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
         gl_Position = projectionMatrix * mvPosition;
         
         vWorldXZ = pos.xz * 0.01;
         vDepth = -mvPosition.z;
 
-        // Size: Optimized for performance - larger base particles, smaller boost
-        float sizeBoost = 1.0 + wormVisibility * 3.5; // Further reduced for performance
-        float distToCam = max(10.0, vDepth);
-        gl_PointSize = size * sizeBoost * (500.0 / distToCam); // Balanced with larger base sizes
+        // Massive particles for "wall of sand" look
+        // Expand as they age
+        float growth = 1.0 + (1.0 - vLife) * 1.5;
+        
+        // Random size variation
+        float randSize = 1.0 + random * 1.0;
+        
+        // Distance attenuation
+        float distScale = 800.0 / vDepth;
+        
+        gl_PointSize = 150.0 * growth * randSize * distScale; 
+        gl_PointSize = clamp(gl_PointSize, 5.0, 500.0);
 
-        // Opacity: Nearly invisible ambient, subtle worm trail
-        float farFade = smoothstep(-2500.0, -400.0, pos.z);
-        float ambientOpacity = farFade * 0.02; // Nearly invisible (was 0.05)
-        float wormOpacity = wormVisibility * 1.5; // Reduced from 3.0
-        vOpacity = ambientOpacity + wormOpacity;
+        // Opacity Logic
+        // Fade in very fast (shockwave)
+        float fadeIn = smoothstep(0.9, 1.0, vLife);
+        // Fade out at end
+        float fadeOut = smoothstep(0.0, 0.3, vLife);
+        
+        vOpacity = fadeIn * fadeOut;
     }
 `;
 
@@ -640,106 +529,102 @@ export const sandSmokeFragmentShader = `
     
     varying float vOpacity;
     varying float vRand;
-    varying float vWormIntensity;
+    varying float vLife;
     varying float vDepth;
     varying vec2 vWorldXZ;
 
-    // Smooth interpolated noise
+    // Fast noise
     float hash(vec2 p) {
         vec3 p3 = fract(vec3(p.xyx) * 0.1031);
         p3 += dot(p3, p3.yzx + 33.33);
         return fract((p3.x + p3.y) * p3.z);
     }
     
-    float smoothNoise(vec2 p) {
+    float noise(vec2 p) {
         vec2 i = floor(p);
         vec2 f = fract(p);
         f = f * f * (3.0 - 2.0 * f);
-        float a = hash(i);
-        float b = hash(i + vec2(1.0, 0.0));
-        float c = hash(i + vec2(0.0, 1.0));
-        float d = hash(i + vec2(1.0, 1.0));
-        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+                   mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
     }
-    
-    // Smooth FBM for billowing texture (2 octaves - optimized)
+
+    // FBM for roiling dust texture
     float fbm(vec2 p) {
         float v = 0.0;
-        v += 0.5 * smoothNoise(p);
-        v += 0.25 * smoothNoise(p * 2.2);
+        float amp = 0.5;
+        for (int i = 0; i < 3; i++) {
+            v += amp * noise(p);
+            p *= 2.0;
+            amp *= 0.5;
+        }
         return v;
     }
 
     void main() {
         vec2 uv = gl_PointCoord - 0.5;
         float dist = length(uv);
-        if (dist > 0.5) discard;
         
-        // Very soft gaussian core
-        float coreMask = exp(-dist * dist * 5.0);
+        // Soft round particle
+        float circle = 1.0 - smoothstep(0.3, 0.5, dist);
+        if (circle < 0.01) discard;
         
-        // Animated billowing noise coordinates
-        float smokeTime = time * 0.35;
-        vec2 noiseCoord = uv * 5.0 + vWorldXZ + vec2(smokeTime * 0.25, smokeTime * 0.15);
-        noiseCoord += vec2(vRand * 6.0);
+        // ---------------------------------------------
+        // VOLUMETRIC NOISE TEXTURE
+        // ---------------------------------------------
+        // Animate texture coordinates
+        // Move texture downwards to simulate falling sand/upward movement relative to camera
+        vec2 noiseUV = uv * 3.0 + vWorldXZ + vec2(0.0, -time * 0.5);
+        noiseUV += vRand * 10.0; // Random offset per particle
         
-        // Turbulent billowing effect - optimized for performance
-        float turbulence = smoothNoise(noiseCoord);
-        float billow = fbm(noiseCoord * 1.8 + vec2(turbulence * 0.6, -smokeTime * 0.15));
+        // Roiling turbulence
+        float n = fbm(noiseUV);
+        
+        // Erode edges of the particle for wispy look (but keep center dense)
+        float alpha = circle * (0.4 + 0.6 * n);
+        
+        // ---------------------------------------------
+        // DENSITY & LIGHTING
+        // ---------------------------------------------
+        
+        // Heavy Sand look: high opacity
+        // Heavy particles (vLife > 0.7) are almost opaque blocks
+        // Light dust (vLife < 0.7) is more transparent
+        float density = 0.8; 
+        if (vLife > 0.7) density = 0.95;
+        
+        // Global opacity multiplier
+        alpha *= density * vOpacity;
+        
+        // Volumetric Lighting approximation
+        // Assume light comes from top-right (sun/moon)
+        vec2 lightDir = normalize(vec2(0.5, 0.8));
+        float lightIntensity = dot(normalize(uv), lightDir) * 0.5 + 0.5;
+        
+        // Self-shadowing: denser parts are darker at bottom-left
+        float shadow = smoothstep(0.2, 0.8, n * lightIntensity);
+        
+        // Colors
+        vec3 dustColor = color; // Base sand color
+        vec3 lightColor = vec3(1.1, 1.0, 0.9) * dustColor; // Sunlit
+        vec3 shadowColor = vec3(0.6, 0.5, 0.4) * dustColor; // Shadowed
+        
+        vec3 finalColor = mix(shadowColor, lightColor, shadow);
+        
+        // Add "Sparkle" for fresh sand (high life)
+        if (vLife > 0.8) {
+            float sparkle = step(0.92, hash(gl_FragCoord.xy * 0.1 + time));
+            finalColor += sparkle * vec3(0.5, 0.4, 0.3) * shadow; // glint
+        }
 
-        // Simplified wispy edge erosion
-        float edgeNoise = smoothNoise(uv * 6.0 + vec2(vRand * 15.0, smokeTime * 0.8));
-        float wispyEdge = smoothstep(0.25 + edgeNoise * 0.2, 0.48, dist);
+        // Atmospheric blending (depth)
+        // Fade to haze color in distance
+        float fogFactor = smoothstep(200.0, 1500.0, vDepth);
+        vec3 fogColor = vec3(0.6, 0.4, 0.3); // Haze color
+        finalColor = mix(finalColor, fogColor, fogFactor * 0.8);
 
-        // Combine for final smoke shape - more wispy and transparent
-        float density = coreMask * (0.3 + billow * 0.5);
-        density *= (1.0 - wispyEdge * 0.9);
-        
-        // Worm trail smoke is only slightly denser
-        density = mix(density * 0.25, density * 0.5, vWormIntensity);
-        
-        // VERY TRANSPARENT - barely visible
-        float alpha = density * vOpacity * 0.25;
-        alpha = clamp(alpha, 0.0, 0.2); // Max 20% opacity
-
-        // --- DYNAMIC GOLDEN PARTICLES (flow with smoke) ---
-        // Sparkles tied to the turbulence flow, not screen space
-        vec2 flowCoord = noiseCoord * 2.0 + vec2(turbulence, billow) * 3.0;
-        float sparkle = smoothNoise(flowCoord * 8.0);
-        
-        // Threshold creates scattered sparkles that move with the flow
-        float sparkleThreshold = smoothstep(0.85, 0.95, sparkle);
-        
-        // Intensity modulated by smoke density - brighter in denser areas
-        float sparkleIntensity = sparkleThreshold * density * 0.6;
-        
-        // Subtle warm gold that blends with smoke
-        vec3 sparkleColor = vec3(1.0, 0.92, 0.7) * 1.5;
-
-        // Realistic Arrakis sand dust colors with volumetric depth
-        vec3 sandDust = color;
-        
-        // Volumetric light scattering - brighter core, darker edges
-        vec3 litCore = sandDust * vec3(1.25, 1.15, 1.0); // Warm lit center
-        vec3 shadowEdge = sandDust * vec3(0.7, 0.65, 0.6); // Cool shadow
-        float lightScatter = pow(1.0 - dist, 2.0) * billow;
-        sandDust = mix(shadowEdge, litCore, lightScatter);
-        
-        // Depth-based atmospheric fade
-        float depthFade = smoothstep(50.0, 800.0, vDepth);
-        vec3 hazeColor = vec3(0.75, 0.65, 0.5);
-        sandDust = mix(sandDust, hazeColor, depthFade * 0.6);
-        
-        // Subtle variation from turbulence
-        sandDust *= (0.9 + billow * 0.2);
-        
-        // Add flowing golden particles
-        sandDust += sparkleColor * sparkleIntensity;
-        
-        // Sparkles boost alpha slightly
-        alpha += sparkleIntensity * 0.15;
-        alpha = clamp(alpha, 0.0, 0.3);
-        
-        gl_FragColor = vec4(sandDust, alpha);
+        // Output
+        // Boost alpha for "Wall of Sand" effect
+        // We want it to OCCLUDE things behind it.
+        gl_FragColor = vec4(finalColor, alpha * 0.9);
     }
 `;

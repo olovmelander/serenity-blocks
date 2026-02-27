@@ -758,7 +758,7 @@ export class SharedEffects {
                     if (cell > 0) {
                         // Check if this is a bottom block (no block below it)
                         const isBottom = localY === piece.shape.length - 1
-                                       || piece.shape[localY + 1][localX] === 0;
+                            || piece.shape[localY + 1][localX] === 0;
                         if (isBottom) {
                             bottomBlocks.push({
                                 x: piece.x + localX,
@@ -904,6 +904,147 @@ export class SharedEffects {
 
         // Remove completed timers
         this.activeTimers = this.activeTimers.filter((t) => t && !t.hasDispatched);
+    }
+
+    /**
+     * Play hard drop visual effect
+     * @param {Object} dropData - Data about the hard drop
+     * @param {Object} dropData.piece - The piece that was dropped
+     * @param {number} dropData.startY - The start Y grid coordinate
+     * @param {number} dropData.endY - The end Y grid coordinate
+     */
+    playHardDropEffect(dropData) {
+        if (!dropData || !dropData.piece || dropData.startY === dropData.endY) return;
+
+        const { piece, startY, endY } = dropData;
+        const colorHex = this.getPieceColor(piece, '#ffffff');
+        const colorInt = parseInt(colorHex.replace('#', ''), 16) || 0xffffff;
+
+        const isInfinityMode = Boolean(this.scene.gameState?.isInfinityMode);
+
+        let startScreenY, endScreenY;
+
+        if (isInfinityMode) {
+            startScreenY = startY * this.scene.blockSize;
+            endScreenY = endY * this.scene.blockSize;
+        } else {
+            startScreenY = (startY - this.scene.hiddenRows) * this.scene.blockSize;
+            endScreenY = (endY - this.scene.hiddenRows) * this.scene.blockSize;
+        }
+
+        const screenX = piece.x * this.scene.blockSize;
+
+        // Calculate the actual visual width and offset of the piece within its matrix
+        let minX = 4, maxX = -1;
+        piece.shape.forEach((row) => {
+            row.forEach((cell, cX) => {
+                if (cell > 0) {
+                    minX = Math.min(minX, cX);
+                    maxX = Math.max(maxX, cX);
+                }
+            });
+        });
+
+        const pieceWidth = (maxX - minX + 1) * this.scene.blockSize;
+        const displayScreenX = screenX + (minX * this.scene.blockSize);
+        const displayCenterX = displayScreenX + pieceWidth / 2;
+        const dropHeight = endScreenY - startScreenY;
+        const finalDropHeight = dropHeight + this.scene.blockSize;
+
+        console.log('[SharedEffects] Rendering playHardDropEffect: ', {
+            pieceShape: piece.shape,
+            isInfinityMode,
+            hiddenRows: this.scene.hiddenRows,
+            startY, endY,
+            startScreenY, endScreenY,
+            dropHeight, finalDropHeight,
+            displayCenterX, pieceWidth,
+            colorHex, colorInt
+        });
+
+        const PhaserRef = window.Phaser;
+
+        // 1. Drop Path Beam Effect (Masterpiece Layered Gradient)
+        const beamGraphics = this.scene.add.graphics();
+        this._trackGraphics(beamGraphics);
+        beamGraphics.setScrollFactor(isInfinityMode ? 1 : 0);
+        beamGraphics.setPosition(displayCenterX, startScreenY);
+
+        if (beamGraphics.setBlendMode && PhaserRef?.BlendModes?.ADD) {
+            beamGraphics.setBlendMode(PhaserRef.BlendModes.ADD);
+        }
+
+        // Draw Outer Glow (wide, colored, vertical gradient)
+        if (beamGraphics.fillGradientStyle) {
+            beamGraphics.fillGradientStyle(colorInt, colorInt, colorInt, colorInt, 0.0, 0.0, 0.6, 0.6);
+        } else {
+            beamGraphics.fillStyle(colorInt, 0.3);
+        }
+        beamGraphics.fillRect(-pieceWidth * 0.8, 0, pieceWidth * 1.6, finalDropHeight);
+
+        // Draw Inner Core (narrow, hot white, vertical gradient)
+        if (beamGraphics.fillGradientStyle) {
+            beamGraphics.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, 0.0, 0.0, 1.0, 1.0);
+        } else {
+            beamGraphics.fillStyle(0xffffff, 0.8);
+        }
+        beamGraphics.fillRect(-pieceWidth * 0.2, 0, pieceWidth * 0.4, finalDropHeight);
+
+        this.scene.tweens.add({
+            targets: beamGraphics,
+            alpha: { from: 1, to: 0 },
+            scaleX: { from: 1, to: 0.1 },
+            duration: 350,
+            ease: 'Expo.easeOut', // Sharp, punchy decay
+            onComplete: () => {
+                beamGraphics.destroy();
+            }
+        });
+
+        // 2. Impact Burst (Masterpiece Shockwave + Flash)
+        const burstGraphics = this.scene.add.graphics();
+        this._trackGraphics(burstGraphics);
+        burstGraphics.setScrollFactor(isInfinityMode ? 1 : 0);
+
+        // Bottom of the piece grid area
+        let maxY = -1;
+        piece.shape.forEach((row, rY) => {
+            row.forEach((cell) => {
+                if (cell > 0) maxY = Math.max(maxY, rY);
+            });
+        });
+        const burstY = endScreenY + (maxY + 1) * this.scene.blockSize;
+        burstGraphics.setPosition(displayCenterX, burstY);
+
+        if (burstGraphics.setBlendMode && PhaserRef?.BlendModes?.ADD) {
+            burstGraphics.setBlendMode(PhaserRef.BlendModes.ADD);
+        }
+
+        const burstData = { radius: pieceWidth * 0.5, alpha: 0.6, thickness: 4, coreScale: 1 };
+
+        this.scene.tweens.add({
+            targets: burstData,
+            radius: pieceWidth * 1.5,
+            alpha: 0,
+            thickness: 0,
+            coreScale: 0,
+            duration: 300,
+            ease: 'Cubic.easeOut',
+            onUpdate: () => {
+                burstGraphics.clear();
+
+                // Expanding shockwave ring
+                burstGraphics.lineStyle(burstData.thickness, colorInt, burstData.alpha * 0.8);
+                burstGraphics.strokeEllipse(0, 0, burstData.radius * 2, burstData.radius * 0.8);
+
+                // Subtle central flash
+                burstGraphics.fillStyle(0xffffff, burstData.alpha * 0.5);
+                burstGraphics.fillEllipse(0, 0, (pieceWidth * 0.6) * burstData.coreScale, (pieceWidth * 0.25) * burstData.coreScale);
+            },
+            onComplete: () => {
+                burstGraphics.destroy();
+            }
+        });
     }
 
     /**

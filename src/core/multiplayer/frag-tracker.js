@@ -278,18 +278,16 @@ export class FragTracker {
             });
         } else {
             // ROUND OVER - Continue to next round
-            console.log('🏁 ROUND OVER - Next round starting soon...');
+            console.log('🏁 ROUND OVER - Starting next round immediately...');
 
             if (this.gameState.isHost && this.gameState.players.size >= 1) {
-                // Show "Round Over" message briefly
+                // Emit round-over for any listeners, then immediately restart.
                 emitMultiplayerEvent(MULTIPLAYER_EVENTS.ROUND_OVER, {
                     winner,
                     finalStats,
                 });
 
-                setTimeout(() => {
-                    this.gameState.restartMatch();
-                }, 3000);
+                this.gameState.restartMatch();
             }
         }
     }

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nimbus Veil Phase 1 Validation Harness</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 24px;
+            font-family: Arial, sans-serif;
+            background: #070d1c;
+            color: #eef4ff;
+        }
+        .container {
+            max-width: 1080px;
+            margin: 0 auto;
+        }
+        .panel {
+            background: #10182a;
+            border: 1px solid #223352;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        h1 {
+            margin-top: 0;
+            font-size: 24px;
+        }
+        h2 {
+            margin: 0 0 12px 0;
+            font-size: 16px;
+        }
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        button {
+            border: 1px solid #2c4a78;
+            background: #1a2b49;
+            color: #eef4ff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #233962;
+        }
+        .hint {
+            color: #c7d8f5;
+            font-size: 13px;
+        }
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            background: #0b1220;
+            border: 1px solid #243958;
+            border-radius: 8px;
+            padding: 12px;
+            max-height: 260px;
+            overflow: auto;
+        }
+        iframe {
+            width: 100%;
+            height: 560px;
+            border: 1px solid #223352;
+            border-radius: 10px;
+            background: #03060b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Nimbus Veil Phase 1 Validation Harness</h1>
+
+        <div class="panel">
+            <h2>1) Launch Runtime</h2>
+            <div class="row">
+                <button id="load-default">Load Default Runtime</button>
+                <button id="load-force-webgl">Load Runtime + forceWebGL</button>
+                <button id="reload-app">Reload</button>
+            </div>
+            <div class="hint">
+                After load, switch to the <code>nimbus-veil</code> theme in app UI before running validation.
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>2) Phase 1 Validation</h2>
+            <div class="row">
+                <button id="run-lifecycle">Run 120 Lifecycle Cycles</button>
+                <button id="run-failures">Run Downgrade + Device-Loss Matrix</button>
+                <button id="run-suite">Run Full Phase 1 Suite</button>
+                <button id="capture-snapshot">Capture Validation Snapshot</button>
+                <button id="download-report">Download Phase 1 Report</button>
+            </div>
+            <div class="hint">
+                This executes the Phase 1 exit-gate checks: cycle leak test, forced downgrade ladder, and device-loss recovery.
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>3) Last Result</h2>
+            <pre id="result">Waiting for run...</pre>
+        </div>
+
+        <div class="panel">
+            <h2>4) Helper Commands</h2>
+            <pre>window.nimbusBaseline.phase1Lifecycle({ cycles: 120, settleMs: 140 });
+window.nimbusBaseline.phase1Failures({ maxSteps: 4, settleMs: 140 });
+window.nimbusBaseline.phase1Suite({ cycles: 120, settleMs: 140 });
+window.nimbusBaseline.phase1Snapshot('manual');
+window.nimbusBaseline.phase1Report();
+window.nimbusBaseline.phase1Download('nimbus-phase1-validation');</pre>
+        </div>
+
+        <iframe id="app-frame" title="Serenity Blocks"></iframe>
+    </div>
+
+    <script>
+        const frame = document.getElementById('app-frame');
+        const resultNode = document.getElementById('result');
+
+        const baselineQuery = '?nimbusBaseline=1&nimbusSeed=1234&nimbusFixedDt=16.666';
+        const runtimeUrl = `../../index.html${baselineQuery}`;
+        const runtimeForceWebglUrl = `../../index.html${baselineQuery}&forceWebGL=1`;
+
+        const getHelper = () => frame.contentWindow?.nimbusBaseline || null;
+
+        function setResult(title, payload) {
+            const renderedPayload = payload ? JSON.stringify(payload, null, 2) : '';
+            resultNode.textContent = `${title}\n${renderedPayload}`;
+        }
+
+        function load(url) {
+            frame.src = url;
+            setResult('Runtime loading...', { url });
+        }
+
+        async function runOnHelper(action) {
+            const helper = getHelper();
+            if (!helper) {
+                alert('nimbusBaseline helper not found. Load app, switch to nimbus-veil theme, then retry.');
+                return null;
+            }
+            return action(helper);
+        }
+
+        document.getElementById('load-default').addEventListener('click', () => load(runtimeUrl));
+        document.getElementById('load-force-webgl').addEventListener('click', () => load(runtimeForceWebglUrl));
+        document.getElementById('reload-app').addEventListener('click', () => frame.contentWindow?.location.reload());
+
+        document.getElementById('run-lifecycle').addEventListener('click', async () => {
+            setResult('Running lifecycle validation...', null);
+            const report = await runOnHelper((helper) => helper.phase1Lifecycle({
+                cycles: 120,
+                settleMs: 140,
+                restoreActive: true,
+            }));
+            setResult('Lifecycle validation complete', report);
+        });
+
+        document.getElementById('run-failures').addEventListener('click', async () => {
+            setResult('Running downgrade + device-loss matrix...', null);
+            const report = await runOnHelper((helper) => helper.phase1Failures({
+                maxSteps: 4,
+                settleMs: 140,
+                restoreRuntime: true,
+            }));
+            setResult('Failure matrix complete', report);
+        });
+
+        document.getElementById('run-suite').addEventListener('click', async () => {
+            setResult('Running full Phase 1 suite...', null);
+            const report = await runOnHelper((helper) => helper.phase1Suite({
+                cycles: 120,
+                settleMs: 140,
+                maxSteps: 4,
+            }));
+            setResult('Phase 1 suite complete', report);
+        });
+
+        document.getElementById('capture-snapshot').addEventListener('click', async () => {
+            const snapshot = await runOnHelper((helper) => helper.phase1Snapshot('manual-snapshot'));
+            setResult('Manual snapshot', snapshot);
+        });
+
+        document.getElementById('download-report').addEventListener('click', async () => {
+            const report = await runOnHelper((helper) => helper.phase1Download('nimbus-phase1-validation'));
+            setResult('Downloaded phase1 report', report);
+        });
+
+        load(runtimeUrl);
+    </script>
+</body>
+</html>

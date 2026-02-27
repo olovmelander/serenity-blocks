@@ -45,6 +45,7 @@ import {
     step,
     mod,
     cross,
+    uv,
     transformDirection,
     vertexIndex,
     instanceIndex,
@@ -591,52 +592,135 @@ export function createSandSmokeMaterial(params = {}) {
     const useGPU = Boolean(isWebGPU && sandSmokeCompute?.getStateBuffer);
 
     if (useGPU) {
-        // WebGPU path: Points with storage buffer positions (Vertex Pulling)
-        // Buffer 0: x, y, z, life
-        // Buffer 1: vx, vy, vz, rand
+        // WebGPU path: Instanced camera-facing quads (billboards).
+        // Read compute state in vertex stage and pass color/alpha through varyings.
         const smokeState = storage(sandSmokeCompute.getStateBuffer(), 'vec4', sandSmokeCompute.count * 2);
+        const vSmokeColor = varying(vec3(0), 'vSmokeColor');
+        const vSmokeAlpha = varying(float(0), 'vSmokeAlpha');
+        const vSmokeRand = varying(float(0), 'vSmokeRand');
+        const vSmokeAge = varying(float(0), 'vSmokeAge');
+        const vFlowDir = varying(vec2(0), 'vFlowDir');
+        const vFlowSpeed = varying(float(0), 'vFlowSpeed');
+        const vHeightLerp = varying(float(0), 'vHeightLerp');
 
-        // Use vertexIndex for Points (one vertex per particle)
-        const posLife = smokeState.element(vertexIndex.mul(2));
-        const velRand = smokeState.element(vertexIndex.mul(2).add(1));
+        const positionNode = Fn(() => {
+            const index = instanceIndex;
+            const posLife = smokeState.element(index.mul(2));
+            const velRand = smokeState.element(index.mul(2).add(1));
 
-        const pos = posLife.xyz;
-        const life = posLife.w;
-        const rand = velRand.w;
+            const center = posLife.xyz;
+            const life = posLife.w;
+            const rand = velRand.w;
+            const age = float(1.0).sub(life);
 
-        // Opacity based on life (fade in quickly, fade out slowly)
-        const fadeIn = smoothstep(0.95, 1.0, life);
-        const fadeOut = smoothstep(0.0, 0.2, life);
-        const alpha = uOpacity.mul(fadeIn).mul(fadeOut).mul(0.8);
+            // Keep cloud feel, but constrain overdraw for stable frame times.
+            const sizeBase = float(62.0).add(rand.mul(40.0));
+            const expansion = age.mul(72.0);
+            const finalSize = sizeBase.add(expansion);
 
-        // Discard dead particles (life < 0.001)
-        const deadMask = step(0.001, life);
+            // Stable billboard basis, including near-vertical camera rays.
+            const toCameraVec = cameraPosition.sub(center);
+            const toCamera = toCameraVec.div(max(length(toCameraVec), float(0.0001)));
+            const worldUp = vec3(0.0, 1.0, 0.0);
+            const altUp = vec3(1.0, 0.0, 0.0);
+            const upBlend = smoothstep(0.97, 0.995, abs(dot(toCamera, worldUp)));
+            const billboardUp = normalize(mix(worldUp, altUp, upBlend));
+            const rightVec = cross(billboardUp, toCamera);
+            const right = rightVec.div(max(length(rightVec), float(0.0001)));
+            const upVec = cross(toCamera, right);
+            const up = upVec.div(max(length(upVec), float(0.0001)));
 
-        // Color/Lighting
-        const smokeBase = mix(uColor, uColor.mul(0.6), rand);
-        const smokeColor = smokeBase;
+            // Stretch billboard along projected velocity for windy dune-dust streaks.
+            const velocity = velRand.xyz;
+            const speed = length(velocity);
+            const speedNorm = clamp(speed.div(28.0), 0.0, 1.0);
+            const velInBillboard = vec2(dot(velocity, right), dot(velocity, up));
+            const velLen = max(length(velInBillboard), float(0.0001));
+            const velDir = velInBillboard.div(velLen);
+            const dirBlend = smoothstep(0.8, 7.0, speed);
+            const flowDir = normalize(mix(vec2(1.0, 0.0), velDir, dirBlend));
+            const flowPerp = vec2(flowDir.y.negate(), flowDir.x);
 
-        // Size expansion over life
-        const age = float(1.0).sub(life);
-        const sizeBase = float(10.0).add(rand.mul(10.0));
-        const expansion = age.mul(40.0);
-        const sizeScale = float(1.0); // Points are pixels by default without attenuation, need larger scale
-        const finalSize = sizeBase.add(expansion).mul(sizeScale);
+            const localXY = positionLocal.xy;
+            const along = dot(localXY, flowDir);
+            const across = dot(localXY, flowPerp);
 
-        // Distance fade - Relaxed range
-        const camDist = length(cameraPosition.sub(positionWorld));
-        const distFade = float(1.0).sub(smoothstep(800.0, 2500.0, camDist));
+            const stretch = mix(float(1.0), float(2.2), speedNorm).mul(mix(float(1.0), float(1.3), age));
+            const spread = mix(float(1.0), float(0.78), speedNorm);
+            const rotatedX = along.mul(stretch);
+            const rotatedY = across.mul(spread);
 
-        const finalAlpha = alpha.mul(distFade).mul(deadMask);
+            const worldOffset = right.mul(rotatedX).add(up.mul(rotatedY)).mul(finalSize);
+            const cloudPos = center.add(worldOffset);
 
-        const material = new THREE.PointsNodeMaterial();
-        material.positionNode = pos;
-        material.sizeNode = finalSize;
-        material.colorNode = vec4(smokeColor, finalAlpha);
+            const fadeIn = smoothstep(0.0, 0.03, age);
+            const fadeOut = smoothstep(0.0, 0.25, life);
+            const density = mix(float(1.15), float(0.38), age);
+            const deadMask = step(0.001, life);
+            const camDist = length(cameraPosition.sub(center));
+            const nearFade = smoothstep(6.0, 64.0, camDist);
+            const distFade = float(1.0).sub(smoothstep(1200.0, 1950.0, camDist));
+            const alpha = uOpacity.mul(fadeIn).mul(fadeOut).mul(density).mul(deadMask).mul(distFade).mul(nearFade);
+
+            const colorVar = mix(float(0.85), float(1.15), rand);
+            vSmokeColor.assign(uColor.mul(colorVar));
+            vSmokeAlpha.assign(alpha);
+            vSmokeRand.assign(rand);
+            vSmokeAge.assign(age);
+            vFlowDir.assign(flowDir);
+            vFlowSpeed.assign(speedNorm);
+            vHeightLerp.assign(smoothstep(-8.0, 64.0, center.y));
+
+            return cloudPos;
+        })();
+
+        // Break up the underlying quad so smoke reads as cinematic volumetric dust.
+        const smokeUV = uv();
+        const centeredUV = smokeUV.sub(vec2(0.5, 0.5));
+        const flowOffset = vFlowDir.mul(uTime.mul(0.032).mul(mix(0.28, 0.92, vFlowSpeed)));
+        const domainUV = smokeUV.add(flowOffset).add(vec2(vSmokeRand.mul(0.23), vSmokeRand.mul(0.17)));
+
+        const edgeNoiseA = hash2D(domainUV.mul(14.0).add(vec2(vSmokeRand.mul(37.0), uTime.mul(0.07))));
+        const radialA = length(centeredUV);
+        const contourA = radialA.add(edgeNoiseA.sub(0.5).mul(0.22));
+        const lobeA = float(1.0).sub(smoothstep(0.10, 0.53, contourA));
+
+        const lobeShift = vFlowDir.mul(0.18).add(vec2(vSmokeRand.sub(0.5).mul(0.10), sin(uTime.mul(0.05).add(vSmokeRand.mul(6.28))).mul(0.05)));
+        const radialB = length(centeredUV.sub(lobeShift));
+        const edgeNoiseB = hash2D(domainUV.mul(18.0).add(vec2(vSmokeRand.mul(61.0), uTime.mul(-0.06))));
+        const contourB = radialB.add(edgeNoiseB.sub(0.5).mul(0.26));
+        const lobeB = float(1.0).sub(smoothstep(0.05, 0.41, contourB));
+
+        const softShape = max(lobeA.mul(0.82), lobeB.mul(0.72));
+
+        const detailA = hash2D(domainUV.mul(9.0).add(vec2(vSmokeRand.mul(19.0), uTime.mul(0.04))));
+        const detailB = hash2D(domainUV.mul(26.0).add(vec2(vSmokeRand.mul(53.0), uTime.mul(-0.05))));
+        const detailC = hash2D(domainUV.mul(38.0).add(vec2(vSmokeRand.mul(73.0), uTime.mul(0.09))));
+        const wisps = mix(float(0.48), float(0.98), detailA.mul(0.45).add(detailB.mul(0.35)).add(detailC.mul(0.2)));
+        const ageSoftness = mix(float(1.0), float(0.74), vSmokeAge);
+        const heightDensity = mix(float(1.06), float(0.52), vHeightLerp);
+        const flowAxis = dot(centeredUV, vFlowDir);
+        const plumeBias = smoothstep(-0.42, 0.58, flowAxis);
+        const plumeBody = mix(float(0.75), float(1.08), plumeBias);
+        const shapeAlpha = softShape.mul(wisps).mul(ageSoftness).mul(heightDensity).mul(plumeBody);
+
+        const rim = smoothstep(0.26, 0.62, radialA);
+        const innerLift = float(1.0).sub(smoothstep(0.0, 0.34, radialA)).mul(0.10);
+        const warmEdge = vec3(1.02, 0.94, 0.82);
+        const denseCore = vec3(0.82, 0.74, 0.62);
+        const tonal = mix(denseCore, warmEdge, rim);
+        const ageTone = mix(vec3(1.0, 0.98, 0.96), vec3(0.84, 0.82, 0.80), vSmokeAge);
+        const shadedColor = vSmokeColor.mul(tonal).mul(ageTone).mul(float(0.9).add(innerLift));
+
+        const material = new THREE.MeshBasicNodeMaterial();
+        material.positionNode = positionNode;
+        material.colorNode = shadedColor;
+        material.opacityNode = vSmokeAlpha.mul(shapeAlpha);
         material.transparent = true;
         material.depthWrite = false;
         material.blending = THREE.NormalBlending;
-        material.sizeAttenuation = true; // Important for 3D perspective size
+        material.side = THREE.FrontSide;
+        material.alphaTest = 0.002;
 
         return {
             material,
@@ -655,17 +739,17 @@ export function createSandSmokeMaterial(params = {}) {
 
     const positionNode = Fn(() => positionLocal)();
 
-    // Opacity based on life
-    const fadeIn = smoothstep(0.95, 1.0, aLife);
-    const fadeOut = smoothstep(0.0, 0.2, aLife);
-    const alpha = uOpacity.mul(fadeIn).mul(fadeOut).mul(0.8);
+    // Opacity based on life (fade in quickly, fade out slowly)
+    const ageGL = float(1.0).sub(aLife);
+    const fadeIn = smoothstep(0.0, 0.08, ageGL);   // ramp up over first 8% of life
+    const fadeOut = smoothstep(0.0, 0.3, aLife);    // fade out over last 30%
+    const alpha = uOpacity.mul(fadeIn).mul(fadeOut);
 
     const smokeBase = mix(uColor, uColor.mul(0.6), aRand);
 
-    // Size expansion
-    const age = float(1.0).sub(aLife);
-    const sizeBase = float(150.0).add(aRand.mul(100.0));
-    const expansion = age.mul(200.0);
+    // Size expansion — large billowing clouds
+    const sizeBase = float(55.0).add(aRand.mul(40.0));
+    const expansion = ageGL.mul(95.0);
     const sizeNode = sizeBase.add(expansion);
 
     const material = new THREE.PointsNodeMaterial();
@@ -675,6 +759,7 @@ export function createSandSmokeMaterial(params = {}) {
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.NormalBlending;
+    material.alphaTest = 0.01;
     // Normalize size for Points vs Sprite differences (Points are screen space pixels usually, unless sizeAttenuation)
     material.sizeAttenuation = true;
 

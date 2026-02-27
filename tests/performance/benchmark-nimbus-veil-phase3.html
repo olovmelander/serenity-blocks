@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nimbus Veil Phase 3 Parity Harness</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 24px;
+            font-family: Arial, sans-serif;
+            background: #070d1c;
+            color: #eef4ff;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        .panel {
+            background: #10182a;
+            border: 1px solid #223352;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        h1 {
+            margin: 0 0 12px 0;
+            font-size: 24px;
+        }
+        h2 {
+            margin: 0 0 12px 0;
+            font-size: 16px;
+        }
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        button {
+            border: 1px solid #2c4a78;
+            background: #1a2b49;
+            color: #eef4ff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #233962;
+        }
+        .hint {
+            color: #c7d8f5;
+            font-size: 13px;
+        }
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            background: #0b1220;
+            border: 1px solid #243958;
+            border-radius: 8px;
+            padding: 12px;
+            max-height: 280px;
+            overflow: auto;
+        }
+        iframe {
+            width: 100%;
+            height: 560px;
+            border: 1px solid #223352;
+            border-radius: 10px;
+            background: #03060b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Nimbus Veil Phase 3 Parity Harness</h1>
+
+        <div class="panel">
+            <h2>1) Launch Runtime</h2>
+            <div class="row">
+                <button id="load-default">Load Default Runtime</button>
+                <button id="load-force-webgl">Load Runtime + forceWebGL</button>
+                <button id="reload-app">Reload</button>
+            </div>
+            <div class="hint">
+                After load, switch app theme to <code>nimbus-veil</code> before running Phase 3 checks.
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>2) Phase 3 Controls</h2>
+            <div class="row">
+                <button id="run-material-audit">Run Material Audit</button>
+                <button id="run-parity">Run Parity Capture</button>
+                <button id="run-parity-with-reference">Run Parity vs Last Reference</button>
+                <button id="show-parity-report">Show Last Parity Report</button>
+                <button id="download-parity-report">Download Last Parity Report</button>
+            </div>
+            <div class="hint">
+                Use <code>Run Parity Capture</code> in forceWebGL first, then copy result JSON and pass it as reference for WebGPU run.
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>3) Last Result</h2>
+            <pre id="result">Waiting for run...</pre>
+        </div>
+
+        <div class="panel">
+            <h2>4) Helper Commands</h2>
+            <pre>const reference = window.nimbusBaseline.phase3ParityReport();
+window.nimbusBaseline.phase3MaterialAudit({ log: true });
+window.nimbusBaseline.phase3Parity({ label: 'nimbus-phase3-force-webgl' });
+window.nimbusBaseline.phase3Parity({
+  label: 'nimbus-phase3-webgpu',
+  reference,
+  tolerances: { avgFrameMsPct: 0.35, drawCallsPct: 0.35 }
+});
+window.nimbusBaseline.phase3ParityReport();
+window.nimbusBaseline.phase3ParityDownload('nimbus-phase3-parity');</pre>
+        </div>
+
+        <iframe id="app-frame" title="Serenity Blocks"></iframe>
+    </div>
+
+    <script>
+        const frame = document.getElementById('app-frame');
+        const resultNode = document.getElementById('result');
+
+        const baselineQuery = '?nimbusBaseline=1&nimbusSeed=1234&nimbusFixedDt=16.666';
+        const runtimeUrl = `../../index.html${baselineQuery}`;
+        const runtimeForceWebglUrl = `../../index.html${baselineQuery}&forceWebGL=1`;
+        let lastReference = null;
+
+        const getHelper = () => frame.contentWindow?.nimbusBaseline || null;
+
+        function setResult(title, payload) {
+            const renderedPayload = payload ? JSON.stringify(payload, null, 2) : '';
+            resultNode.textContent = `${title}\n${renderedPayload}`;
+        }
+
+        function load(url) {
+            frame.src = url;
+            setResult('Runtime loading...', { url });
+        }
+
+        async function runOnHelper(action) {
+            const helper = getHelper();
+            if (!helper) {
+                alert('nimbusBaseline helper not found. Load app, switch to nimbus-veil theme, then retry.');
+                return null;
+            }
+            return action(helper);
+        }
+
+        document.getElementById('load-default').addEventListener('click', () => load(runtimeUrl));
+        document.getElementById('load-force-webgl').addEventListener('click', () => load(runtimeForceWebglUrl));
+        document.getElementById('reload-app').addEventListener('click', () => frame.contentWindow?.location.reload());
+
+        document.getElementById('run-material-audit').addEventListener('click', async () => {
+            setResult('Running Phase 3 material audit...', null);
+            const report = await runOnHelper((helper) => helper.phase3MaterialAudit({ log: true }));
+            setResult('Phase 3 material audit complete', report);
+        });
+
+        document.getElementById('run-parity').addEventListener('click', async () => {
+            setResult('Running Phase 3 parity capture...', null);
+            const report = await runOnHelper((helper) => helper.phase3Parity({
+                label: 'nimbus-phase3-run',
+                settleMs: 320,
+            }));
+            lastReference = report;
+            setResult('Phase 3 parity capture complete', report);
+        });
+
+        document.getElementById('run-parity-with-reference').addEventListener('click', async () => {
+            setResult('Running Phase 3 parity capture with reference...', null);
+            const report = await runOnHelper((helper) => helper.phase3Parity({
+                label: 'nimbus-phase3-compare',
+                settleMs: 320,
+                reference: lastReference,
+                tolerances: {
+                    avgFrameMsPct: 0.35,
+                    drawCallsPct: 0.35,
+                },
+            }));
+            setResult('Phase 3 parity comparison complete', report);
+        });
+
+        document.getElementById('show-parity-report').addEventListener('click', async () => {
+            const report = await runOnHelper((helper) => helper.phase3ParityReport());
+            setResult('Last parity report', report);
+        });
+
+        document.getElementById('download-parity-report').addEventListener('click', async () => {
+            const report = await runOnHelper((helper) => helper.phase3ParityDownload('nimbus-phase3-parity'));
+            setResult('Downloaded parity report', report);
+        });
+
+        load(runtimeUrl);
+    </script>
+</body>
+</html>

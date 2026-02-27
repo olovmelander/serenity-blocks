@@ -1,84 +1,56 @@
 # Serenity Blocks
 
-A meditative Tetris-inspired game with beautiful themes and ambient music.
+Serenity Blocks is a Tetris-inspired game with a Phaser-first gameplay renderer and Three.js/WebGL theme backgrounds.
 
-## 🚀 Quick Start
+## Quick Start
 
-### Run Locally
+### Prerequisites
+- Node.js 20+ (project currently developed on Node 22)
+- npm
 
+### Run in Development
 ```bash
-# Option 1: Use the serve script (easiest)
-./serve.sh
-
-# Option 2: Manual server start
-python3 -m http.server 8000
-
-# Then open in your browser:
-# http://localhost:8000/
+npm install
+npm run dev
 ```
 
-The root URL automatically redirects to the game!
+Open the URL printed by Vite (typically `http://localhost:5173`).
 
-## 📁 Project Structure
-
-```
-/workspaces/quadra/
-├── index.html          # Auto-redirects to public/index.html
-├── serve.sh           # Development server script
-├── public/            # 🎯 Game files (ready for deployment)
-│   ├── index.html
-│   ├── styles/main.css
-│   └── assets/music/  # 28 ambient tracks
-├── src/               # Source code (ES6 modules)
-│   ├── main.js
-│   ├── core/
-│   ├── rendering/
-│   ├── audio/
-│   ├── themes/
-│   └── ui/
-├── tests/             # Integration & unit tests
-├── legacy/            # Old monolithic files (archived)
-└── docs/              # Documentation
-```
-
-## 🎮 Features
-
-- **Modular ES6 Architecture** - Clean, maintainable code structure
-- **40+ Visual Themes** - From forests to galaxies to zen gardens
-- **28 Ambient Music Tracks** - Curated for relaxation and focus
-- **Theme-Linked Music** - Music automatically changes with themes
-- **WebGL Rendering** - Smooth, optimized graphics
-- **Customizable Controls** - DAS settings, key remapping, and more
-- **High Score System** - Track your progress
-
-## 🧪 Testing
-
+### Production Build
 ```bash
-# Run integration tests
-python3 -m http.server 8000
-# Then open: http://localhost:8000/tests/integration.html
+npm run build
+npm run preview
 ```
 
-## 📖 Documentation
+## Core Architecture
 
-See the [docs/](docs/) folder for:
-- [FINAL_MIGRATION_PLAN.md](docs/FINAL_MIGRATION_PLAN.md) - Architecture overview
-- Additional documentation
+- Gameplay rendering: Phaser 4 (`phaser@4.0.0-rc.5`)
+- Background themes: Three.js renderer managed by Phaser lifecycle
+- Runtime orchestration: `src/main.js`
+- Scene layer:
+  - `src/rendering/phaser/board-scene.js`
+  - `src/rendering/phaser/background-scene.js`
+  - `src/rendering/phaser/multiplayer/board-panel.js`
 
-## 🛠️ Development
+## Useful Scripts
 
-The codebase uses:
-- **ES6 Modules** for clean separation of concerns
-- **Web Audio API** for sound and music
-- **WebGL** for high-performance rendering
-- **Canvas API** for UI elements
+- `npm run dev` - Start Vite dev server
+- `npm run build` - Build production bundle
+- `npm run preview` - Preview production build
+- `npm run lint` - ESLint checks
+- `npm run format:check` - Prettier checks
 
-## 📦 Deployment
+## Documentation
 
-Deploy the `public/` folder to your web server. Make sure to:
-- Serve from the `public/` directory as root, OR
-- Keep the current structure and serve from project root
+- `docs/PHASER_MIGRATION_PLAN.md` - Migration roadmap and phase status
+- `PHASER_QUICKSTART.md` - Phaser-first developer quickstart
+- `docs/PHASER_INTEGRATION.md` - Current integration and rendering flow
+- `docs/PHASER_ARCHITECTURE.md` - Scene graph and asset pipeline diagrams
+- `docs/PHASER_TROUBLESHOOTING.md` - Common Phaser/Vite runtime issues
+- `docs/part_9.md` - Phase 8 handoff summary and maintenance notes
+- `docs/qa-checklist.md` - Manual QA matrix
 
-## 📝 License
+## Notes
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+- The game uses Phaser for board rendering and keeps theme backgrounds in Three.js for visual flexibility.
+- Legacy canvas paths remain only as guarded fallback paths.

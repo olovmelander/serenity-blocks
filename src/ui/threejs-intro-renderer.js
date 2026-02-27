@@ -26,10 +26,8 @@ export default class ThreeJSIntroRenderer {
 
         // New visual effects
         this.shootingStars = [];
-        this.lensFlare = null;
         this.sparkleLayer = null;
         this.nebulaClouds = [];
-        this.tetrominoTrails = [];
         this.lastShootingStarTime = 0;
 
         // Animation state
@@ -119,7 +117,6 @@ export default class ThreeJSIntroRenderer {
             this.createNebulaParticles();
             this.createSparkleLayer();
             this.createNebulaClouds();
-            // this.createLensFlare(); // Disabled - removed pulsing rings
 
             // Start spawning tetrominos
             this.initCachedResources();
@@ -414,54 +411,6 @@ export default class ThreeJSIntroRenderer {
     }
 
     /**
-     * Create lens flare effect behind the center (title area)
-     */
-    createLensFlare() {
-        const geometry = new THREE.PlaneGeometry(80, 80);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-            },
-            vertexShader: `
-                varying vec2 vUv;
-                void main() {
-                    vUv = uv;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform float uTime;
-                varying vec2 vUv;
-                
-                void main() {
-                    vec2 center = vUv - vec2(0.5);
-                    float dist = length(center);
-                    
-                    // Main glow
-                    float glow = smoothstep(0.5, 0.0, dist) * 0.3;
-                    
-                    // Animated rings
-                    float ring1 = smoothstep(0.02, 0.0, abs(dist - 0.15 - sin(uTime) * 0.05)) * 0.2;
-                    float ring2 = smoothstep(0.015, 0.0, abs(dist - 0.25 - cos(uTime * 0.7) * 0.03)) * 0.15;
-                    
-                    // Color gradient (cyan to pink)
-                    vec3 color = mix(vec3(0.0, 1.0, 1.0), vec3(1.0, 0.2, 0.6), dist * 2.0);
-                    
-                    float alpha = glow + ring1 + ring2;
-                    gl_FragColor = vec4(color, alpha);
-                }
-            `,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.lensFlare = new THREE.Mesh(geometry, material);
-        this.lensFlare.position.set(0, 0, -20);
-        this.scene.add(this.lensFlare);
-    }
-
-    /**
      * Spawn a shooting star with trail
      * PERFORMANCE: Uses pooled trail geometry instead of creating new
      */
@@ -495,11 +444,6 @@ export default class ThreeJSIntroRenderer {
         pooled.userData.life = 2.0;
         pooled.userData.active = true;
         pooled.visible = true;
-    }
-
-    createGlowTexture() {
-        // Deprecated - replaced by Shader
-        return null;
     }
 
     /**
@@ -798,22 +742,22 @@ export default class ThreeJSIntroRenderer {
 
         const side = Math.floor(Math.random() * 4);
         switch (side) {
-        case 0: // Top
-            mesh.position.set((Math.random() - 0.5) * bounds.width, halfH + margin, z);
-            mesh.userData.velocity.y = -Math.abs(mesh.userData.velocity.y) - 0.025; // Force Down (slower)
-            break;
-        case 1: // Bottom
-            mesh.position.set((Math.random() - 0.5) * bounds.width, -halfH - margin, z);
-            mesh.userData.velocity.y = Math.abs(mesh.userData.velocity.y) + 0.025; // Force Up (slower)
-            break;
-        case 2: // Left
-            mesh.position.set(-halfW - margin, (Math.random() - 0.5) * bounds.height, z);
-            mesh.userData.velocity.x = Math.abs(mesh.userData.velocity.x) + 0.025; // Force Right (slower)
-            break;
-        case 3: // Right
-            mesh.position.set(halfW + margin, (Math.random() - 0.5) * bounds.height, z);
-            mesh.userData.velocity.x = -Math.abs(mesh.userData.velocity.x) - 0.025; // Force Left (slower)
-            break;
+            case 0: // Top
+                mesh.position.set((Math.random() - 0.5) * bounds.width, halfH + margin, z);
+                mesh.userData.velocity.y = -Math.abs(mesh.userData.velocity.y) - 0.025; // Force Down (slower)
+                break;
+            case 1: // Bottom
+                mesh.position.set((Math.random() - 0.5) * bounds.width, -halfH - margin, z);
+                mesh.userData.velocity.y = Math.abs(mesh.userData.velocity.y) + 0.025; // Force Up (slower)
+                break;
+            case 2: // Left
+                mesh.position.set(-halfW - margin, (Math.random() - 0.5) * bounds.height, z);
+                mesh.userData.velocity.x = Math.abs(mesh.userData.velocity.x) + 0.025; // Force Right (slower)
+                break;
+            case 3: // Right
+                mesh.position.set(halfW + margin, (Math.random() - 0.5) * bounds.height, z);
+                mesh.userData.velocity.x = -Math.abs(mesh.userData.velocity.x) - 0.025; // Force Left (slower)
+                break;
         }
 
         this.scene.add(mesh);
@@ -833,112 +777,112 @@ export default class ThreeJSIntroRenderer {
         const shape = new THREE.Shape();
 
         switch (type) {
-        case 'I':
-            // [- - 0 +] (4 blocks long)
-            // Width 8 (-4 to 4), Height 2 (-1 to 1)
-            shape.moveTo(-4, -1);
-            shape.lineTo(4, -1);
-            shape.lineTo(4, 1);
-            shape.lineTo(-4, 1);
-            shape.lineTo(-4, -1);
-            break;
+            case 'I':
+                // [- - 0 +] (4 blocks long)
+                // Width 8 (-4 to 4), Height 2 (-1 to 1)
+                shape.moveTo(-4, -1);
+                shape.lineTo(4, -1);
+                shape.lineTo(4, 1);
+                shape.lineTo(-4, 1);
+                shape.lineTo(-4, -1);
+                break;
 
-        case 'O':
-            // 2x2 Square
-            // Width 4 (-2 to 2), Height 4 (-2 to 2)
-            shape.moveTo(-2, -2);
-            shape.lineTo(2, -2);
-            shape.lineTo(2, 2);
-            shape.lineTo(-2, 2);
-            shape.lineTo(-2, -2);
-            break;
+            case 'O':
+                // 2x2 Square
+                // Width 4 (-2 to 2), Height 4 (-2 to 2)
+                shape.moveTo(-2, -2);
+                shape.lineTo(2, -2);
+                shape.lineTo(2, 2);
+                shape.lineTo(-2, 2);
+                shape.lineTo(-2, -2);
+                break;
 
-        case 'T':
-            //      []
-            //    [][][]
-            // Bottom: -3 to 3, y=-1 to 1.
-            // Top: -1 to 1, y=1 to 3.
-            shape.moveTo(-3, -1);
-            shape.lineTo(3, -1);
-            shape.lineTo(3, 1);
-            shape.lineTo(1, 1);
-            shape.lineTo(1, 3);
-            shape.lineTo(-1, 3);
-            shape.lineTo(-1, 1);
-            shape.lineTo(-3, 1);
-            shape.lineTo(-3, -1);
-            break;
+            case 'T':
+                //      []
+                //    [][][]
+                // Bottom: -3 to 3, y=-1 to 1.
+                // Top: -1 to 1, y=1 to 3.
+                shape.moveTo(-3, -1);
+                shape.lineTo(3, -1);
+                shape.lineTo(3, 1);
+                shape.lineTo(1, 1);
+                shape.lineTo(1, 3);
+                shape.lineTo(-1, 3);
+                shape.lineTo(-1, 1);
+                shape.lineTo(-3, 1);
+                shape.lineTo(-3, -1);
+                break;
 
-        case 'S':
-            //      [][]  (Top Right)
-            //    [][]    (Bottom Left)
-            // Top: x=-1 to 3, y=0 to 2
-            // Bottom: x=-3 to 1, y=-2 to 0
-            shape.moveTo(-3, -2);
-            shape.lineTo(1, -2);
-            shape.lineTo(1, 0); // Inner corner
-            shape.lineTo(3, 0);
-            shape.lineTo(3, 2);
-            shape.lineTo(-1, 2);
-            shape.lineTo(-1, 0); // Inner corner
-            shape.lineTo(-3, 0);
-            shape.lineTo(-3, -2);
-            break;
+            case 'S':
+                //      [][]  (Top Right)
+                //    [][]    (Bottom Left)
+                // Top: x=-1 to 3, y=0 to 2
+                // Bottom: x=-3 to 1, y=-2 to 0
+                shape.moveTo(-3, -2);
+                shape.lineTo(1, -2);
+                shape.lineTo(1, 0); // Inner corner
+                shape.lineTo(3, 0);
+                shape.lineTo(3, 2);
+                shape.lineTo(-1, 2);
+                shape.lineTo(-1, 0); // Inner corner
+                shape.lineTo(-3, 0);
+                shape.lineTo(-3, -2);
+                break;
 
-        case 'Z':
-            //    [][]  (Top Left)
-            //      [][]  (Bottom Right)
-            // Top: x=-3 to 1, y=0 to 2
-            // Bottom: x=-1 to 3, y=-2 to 0
-            shape.moveTo(-1, -2);
-            shape.lineTo(3, -2);
-            shape.lineTo(3, 0);
-            shape.lineTo(1, 0); // Inner corner
-            shape.lineTo(1, 2);
-            shape.lineTo(-3, 2);
-            shape.lineTo(-3, 0);
-            shape.lineTo(-1, 0); // Inner corner
-            shape.lineTo(-1, -2);
-            break;
+            case 'Z':
+                //    [][]  (Top Left)
+                //      [][]  (Bottom Right)
+                // Top: x=-3 to 1, y=0 to 2
+                // Bottom: x=-1 to 3, y=-2 to 0
+                shape.moveTo(-1, -2);
+                shape.lineTo(3, -2);
+                shape.lineTo(3, 0);
+                shape.lineTo(1, 0); // Inner corner
+                shape.lineTo(1, 2);
+                shape.lineTo(-3, 2);
+                shape.lineTo(-3, 0);
+                shape.lineTo(-1, 0); // Inner corner
+                shape.lineTo(-1, -2);
+                break;
 
-        case 'J':
-            //    []      (Top Left relative to stick?) No, J has tail left
-            //    []
-            //  [][]
-            // Stick: x=0 to 2, y=-3 to 3
-            // Tail: x=-2 to 0, y=-3 to -1
-            shape.moveTo(-2, -3);
-            shape.lineTo(2, -3);
-            shape.lineTo(2, 3);
-            shape.lineTo(0, 3);
-            shape.lineTo(0, -1); // Inner corner
-            shape.lineTo(-2, -1);
-            shape.lineTo(-2, -3);
-            break;
+            case 'J':
+                //    []      (Top Left relative to stick?) No, J has tail left
+                //    []
+                //  [][]
+                // Stick: x=0 to 2, y=-3 to 3
+                // Tail: x=-2 to 0, y=-3 to -1
+                shape.moveTo(-2, -3);
+                shape.lineTo(2, -3);
+                shape.lineTo(2, 3);
+                shape.lineTo(0, 3);
+                shape.lineTo(0, -1); // Inner corner
+                shape.lineTo(-2, -1);
+                shape.lineTo(-2, -3);
+                break;
 
-        case 'L':
-            //      []
-            //      []
-            //  [][]
-            // Stick: x=-2 to 0, y=-3 to 3
-            // Tail: x=0 to 2, y=-3 to -1
-            shape.moveTo(-2, -3);
-            shape.lineTo(2, -3);
-            shape.lineTo(2, -1);
-            shape.lineTo(0, -1); // Inner corner
-            shape.lineTo(0, 3);
-            shape.lineTo(-2, 3);
-            shape.lineTo(-2, -3);
-            break;
+            case 'L':
+                //      []
+                //      []
+                //  [][]
+                // Stick: x=-2 to 0, y=-3 to 3
+                // Tail: x=0 to 2, y=-3 to -1
+                shape.moveTo(-2, -3);
+                shape.lineTo(2, -3);
+                shape.lineTo(2, -1);
+                shape.lineTo(0, -1); // Inner corner
+                shape.lineTo(0, 3);
+                shape.lineTo(-2, 3);
+                shape.lineTo(-2, -3);
+                break;
 
-        default:
-            // Default box
-            shape.moveTo(-2, -2);
-            shape.lineTo(2, -2);
-            shape.lineTo(2, 2);
-            shape.lineTo(-2, 2);
-            shape.lineTo(-2, -2);
-            break;
+            default:
+                // Default box
+                shape.moveTo(-2, -2);
+                shape.lineTo(2, -2);
+                shape.lineTo(2, 2);
+                shape.lineTo(-2, 2);
+                shape.lineTo(-2, -2);
+                break;
         }
 
         return shape;
@@ -995,22 +939,14 @@ export default class ThreeJSIntroRenderer {
             cloud.rotation.z += cloud.userData.driftSpeed * delta;
         }
 
-        // 9. Update lens flare
-        if (this.lensFlare && this.lensFlare.material.uniforms) {
-            this.lensFlare.material.uniforms.uTime.value = time;
-        }
-
-        // 10. Spawn shooting stars occasionally
+        // 9. Spawn shooting stars occasionally
         if (time - this.lastShootingStarTime > 2 + Math.random() * 3) {
             this.spawnShootingStar();
             this.lastShootingStarTime = time;
         }
 
-        // 11. Update shooting stars
+        // 10. Update shooting stars
         this.updateShootingStars(delta);
-
-        // 12. Update tetromino trails
-        // this.updateTetrominoTrails(delta, time); // Disabled for cleaner look
 
         // Render with post-processing (bloom)
         if (this.composer) {
@@ -1250,63 +1186,6 @@ export default class ThreeJSIntroRenderer {
 
             star.geometry.attributes.position.needsUpdate = true;
         }
-    }
-
-    /**
-     * Create and update tetromino glow trails
-     */
-    updateTetrominoTrails(delta, time) {
-        // Occasionally spawn trail particles behind moving tetrominos
-        if (Math.random() < 0.1) {
-            for (const tetromino of this.activeTetrominos) {
-                if (tetromino.userData.velocity.length() > 0.05) {
-                    this.spawnTrailParticle(
-                        tetromino.position.x,
-                        tetromino.position.y,
-                        tetromino.position.z,
-                        tetromino.userData.type,
-                    );
-                }
-            }
-        }
-
-        // Update existing trail particles
-        for (let i = this.tetrominoTrails.length - 1; i >= 0; i--) {
-            const trail = this.tetrominoTrails[i];
-            trail.userData.life -= delta * 1.5;
-
-            if (trail.userData.life <= 0) {
-                this.scene.remove(trail);
-                trail.geometry.dispose();
-                trail.material.dispose();
-                this.tetrominoTrails.splice(i, 1);
-                continue;
-            }
-
-            trail.material.opacity = trail.userData.life * 0.5;
-            trail.scale.multiplyScalar(0.98);
-        }
-    }
-
-    /**
-     * Spawn a glow particle behind a tetromino
-     */
-    spawnTrailParticle(x, y, z, type) {
-        const color = this.COLORS[type] || 0x00ffff;
-        const geometry = new THREE.SphereGeometry(0.3, 8, 8);
-        const material = new THREE.MeshBasicMaterial({
-            color,
-            transparent: true,
-            opacity: 0.6,
-            blending: THREE.AdditiveBlending,
-        });
-
-        const particle = new THREE.Mesh(geometry, material);
-        particle.position.set(x, y, z);
-        particle.userData = { life: 1.0 };
-
-        this.scene.add(particle);
-        this.tetrominoTrails.push(particle);
     }
 
     onResize() {

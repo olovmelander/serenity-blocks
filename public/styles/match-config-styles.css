@@ -54,10 +54,32 @@
     animation: modalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     overflow-y: auto;
     overflow-x: hidden;
-    
+
     /* Firefox scrollbar styling */
     scrollbar-width: thin;
     scrollbar-color: #8b5cf6 rgba(0, 0, 0, 0.4);
+
+    /* Scroll performance */
+    contain: layout paint;
+}
+
+/* Scroll performance mode - suppresses hover churn while scrolling */
+#local-match-config-modal.is-scrolling .match-config-content {
+    will-change: scroll-position;
+}
+
+#local-match-config-modal.is-scrolling .match-config-form *,
+#local-match-config-modal.is-scrolling .form-group *,
+#local-match-config-modal.is-scrolling .advanced-settings *,
+#local-match-config-modal.is-scrolling .form-actions * {
+    transition: none !important;
+}
+
+#local-match-config-modal.is-scrolling .form-actions button:hover,
+#local-match-config-modal.is-scrolling .checkbox-label:hover,
+#local-match-config-modal.is-scrolling .advanced-settings:hover,
+#local-match-config-modal.is-scrolling .close-btn:hover {
+    transform: none !important;
 }
 
 /* Custom Scrollbar - Enhanced */

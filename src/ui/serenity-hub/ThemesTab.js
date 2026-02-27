@@ -21,6 +21,8 @@ export class ThemesTab {
         // Group themes by category
         this.categories = this.getCategories();
         this.themeParamInputHandler = (event) => this.handleThemeParamInput(event);
+        this.tabContainer = null;
+        this.tabClickHandler = null;
 
         this.init();
     }
@@ -139,6 +141,8 @@ export class ThemesTab {
             'Cosmic Chimes': '🎐',
             'Singing Bowl': '🔔',
             Starlight: '⭐',
+            'Sky Children': '☁️',
+            'Sky Children v2': '🌤️',
             'Swedish Forest': '🌲',
             Geode: '💎',
             Bioluminescence: '🦑',
@@ -368,35 +372,51 @@ export class ThemesTab {
      * Attach event listeners
      */
     attachEventListeners() {
-        // Category filter pills
-        const pills = document.querySelectorAll('.category-pill');
-        pills.forEach((pill) => {
-            pill.addEventListener('click', () => {
-                const { category } = pill.dataset;
-                this.selectCategory(category);
-            });
-        });
-
-        // Theme cards
-        const themeCards = document.querySelectorAll('.theme-card');
-        themeCards.forEach((card) => {
-            card.addEventListener('click', () => {
-                const themeId = card.dataset.theme;
-                this.selectTheme(themeId);
-            });
-        });
-
-        // Random theme button
-        const randomBtn = document.getElementById('random-theme-btn');
-        if (randomBtn) {
-            randomBtn.addEventListener('click', () => this.selectRandomTheme());
+        this.tabContainer = document.getElementById('tab-themes');
+        if (!this.tabContainer) {
+            console.warn('[ThemesTab] Tab container not found when attaching listeners');
+            return;
         }
+
+        this.tabClickHandler = (event) => {
+            const { target } = event;
+            if (!target) return;
+
+            const categoryPill = target.closest('.category-pill');
+            if (categoryPill && this.tabContainer.contains(categoryPill)) {
+                const { category } = categoryPill.dataset;
+                if (category) {
+                    this.selectCategory(category);
+                }
+                return;
+            }
+
+            const themeCard = target.closest('.theme-card');
+            if (themeCard && this.tabContainer.contains(themeCard)) {
+                const themeId = themeCard.dataset.theme;
+                if (themeId) {
+                    this.selectTheme(themeId).catch((error) => {
+                        console.error('[ThemesTab] Failed to select theme:', error);
+                    });
+                }
+                return;
+            }
+
+            const randomBtn = target.closest('#random-theme-btn');
+            if (randomBtn && this.tabContainer.contains(randomBtn)) {
+                this.selectRandomTheme().catch((error) => {
+                    console.error('[ThemesTab] Failed to select random theme:', error);
+                });
+            }
+        };
+
+        this.tabContainer.addEventListener('click', this.tabClickHandler);
 
         this.attachThemeParamListeners();
     }
 
     attachThemeParamListeners() {
-        const panel = document.getElementById('theme-params');
+        const panel = this.tabContainer?.querySelector('#theme-params') || document.getElementById('theme-params');
         if (!panel) return;
         const inputs = panel.querySelectorAll('[data-theme-param]');
         inputs.forEach((input) => {
@@ -416,14 +436,15 @@ export class ThemesTab {
         this.settingsManager.update({ tornadoThemeParams: params });
         this.settingsManager.save();
 
-        const valueEl = document.querySelector(`[data-theme-param-value="${key}"]`);
+        const valueEl = this.tabContainer?.querySelector(`[data-theme-param-value="${key}"]`)
+            || document.querySelector(`[data-theme-param-value="${key}"]`);
         if (valueEl) {
             valueEl.textContent = this.formatParamValue(key, value);
         }
     }
 
     refreshThemeParams() {
-        const panel = document.getElementById('theme-params');
+        const panel = this.tabContainer?.querySelector('#theme-params') || document.getElementById('theme-params');
         if (!panel) return;
         panel.innerHTML = this.renderThemeParams();
         this.attachThemeParamListeners();
@@ -439,23 +460,15 @@ export class ThemesTab {
         this.selectedCategory = category;
 
         // Update filter pills
-        document.querySelectorAll('.category-pill').forEach((pill) => {
+        const pills = this.tabContainer?.querySelectorAll('.category-pill') || [];
+        pills.forEach((pill) => {
             pill.classList.toggle('active', pill.dataset.category === category);
         });
 
         // Update themes grid
-        const grid = document.getElementById('themes-grid');
+        const grid = this.tabContainer?.querySelector('#themes-grid') || document.getElementById('themes-grid');
         if (grid) {
             grid.innerHTML = this.renderThemeCards();
-
-            // Reattach event listeners to theme cards
-            const themeCards = grid.querySelectorAll('.theme-card');
-            themeCards.forEach((card) => {
-                card.addEventListener('click', () => {
-                    const themeId = card.dataset.theme;
-                    this.selectTheme(themeId);
-                });
-            });
         }
     }
 
@@ -501,7 +514,8 @@ export class ThemesTab {
         await this.selectTheme(randomTheme.id);
 
         // Scroll to the theme card
-        const card = document.querySelector(`.theme-card[data-theme="${randomTheme.id}"]`);
+        const card = this.tabContainer?.querySelector(`.theme-card[data-theme="${randomTheme.id}"]`)
+            || document.querySelector(`.theme-card[data-theme="${randomTheme.id}"]`);
         if (card) {
             card.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
@@ -595,6 +609,12 @@ export class ThemesTab {
      * Cleanup
      */
     destroy() {
+        if (this.tabContainer && this.tabClickHandler) {
+            this.tabContainer.removeEventListener('click', this.tabClickHandler);
+            this.tabClickHandler = null;
+        }
+        this.tabContainer = null;
+
         // Unsubscribe from theme change events
         if (this.unsubscribeThemeChange) {
             this.unsubscribeThemeChange();

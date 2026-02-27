@@ -325,6 +325,7 @@ uniform float uOpacity;
 uniform vec3 uSunPosition;
 uniform vec3 uRayColor;
 uniform vec2 uResolution;
+uniform vec2 uSunScreenPos;
 
 varying vec2 vUv;
 varying vec3 vWorldPos;
@@ -334,7 +335,7 @@ ${noiseCommon}
 // Soft beam function - creates individual ray beams
 float rayBeam(vec2 uv, float angle, float width, float softness) {
     // Rotate UV around sun center (CENTERED)
-    vec2 center = vec2(0.5, 0.5);
+    vec2 center = uSunScreenPos;
     vec2 p = uv - center;
     
     float c = cos(angle);
@@ -344,8 +345,15 @@ float rayBeam(vec2 uv, float angle, float width, float softness) {
     // Distance from ray center line
     float dist = abs(rotUV.x);
 
+    // Tapered ends (rectangular shafts that narrow with distance from source)
+    float along = clamp(rotUV.y + 0.45, 0.0, 1.0);
+    float taperedWidth = mix(width * 1.35, width * 0.45, along);
+
     // Soft-edged beam
-    float beam = smoothstep(width, width * softness, dist);
+    float beam = smoothstep(taperedWidth, taperedWidth * softness, dist);
+
+    // Segment mask keeps rays as downward shafts with soft end falloff
+    float segment = smoothstep(-0.18, 0.02, rotUV.y) * (1.0 - smoothstep(0.98, 1.22, rotUV.y));
 
     // Fade with distance from sun
     float lengthFade = 1.0 - smoothstep(0.0, 0.8, length(p));
@@ -353,14 +361,14 @@ float rayBeam(vec2 uv, float angle, float width, float softness) {
     // Full 360 degrees visibility (removed directional mask)
     // But we focus on downward rays by keeping the angles as they are
     
-    return beam * lengthFade;
+    return beam * lengthFade * segment;
 }
 
 void main() {
     vec2 uv = vUv;
 
-    // Sun position in UV space (CENTERED)
-    vec2 sunUV = vec2(0.5, 0.5);
+    // Sun position in UV space (projected from world in theme animation update)
+    vec2 sunUV = clamp(uSunScreenPos, vec2(0.04), vec2(0.96));
     vec2 toSun = sunUV - uv;
     float distToSun = length(toSun);
     
@@ -417,7 +425,13 @@ void main() {
         float dustNoise = snoise(vec3(uv * 6.0, uTime * 0.04 + float(i)));
         dustNoise = 0.75 + dustNoise * 0.25;
 
-        rays += beam * intensity * dustNoise;
+        // Irregular flicker for branch-gap style interruption
+        float flicker = 0.82
+            + sin(uTime * (0.21 + float(i) * 0.03) + float(i) * 1.7) * 0.1
+            + sin(uTime * (0.37 + float(i) * 0.02) + float(i) * 2.3) * 0.08;
+        flicker = clamp(flicker, 0.55, 1.15);
+
+        rays += beam * intensity * dustNoise * flicker;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -923,6 +937,8 @@ uniform float uIntensity;
 uniform vec3 uCoreColor;
 uniform vec3 uCoronaColor;
 uniform vec3 uEdgeColor;
+uniform vec3 uHaloColor;
+uniform float uHaloIntensity;
 
 varying vec2 vUv;
 varying vec3 vNormal;
@@ -934,29 +950,33 @@ void main() {
     float dist = length(center);
 
     // Animated turbulence for living sun effect
-    float turb = snoise(vec3(vUv * 6.0, uTime * 0.3)) * 0.08;
-    turb += snoise(vec3(vUv * 12.0, -uTime * 0.2)) * 0.04;
+    float turb = snoise(vec3(vUv * 5.5, uTime * 0.25)) * 0.06;
+    turb += snoise(vec3(vUv * 11.5 + 9.0, -uTime * 0.18)) * 0.03;
 
-    // Core glow - bright center
-    float core = 1.0 - smoothstep(0.0, 0.25 + turb, dist);
+    // Layered radial components
+    float core = 1.0 - smoothstep(0.0, 0.18 + turb * 0.35, dist);
+    float corona = 1.0 - smoothstep(0.08, 0.42 + turb * 0.65, dist);
+    float halo = 1.0 - smoothstep(0.22, 0.72 + turb * 0.45, dist);
 
-    // Corona - mid glow
-    float corona = 1.0 - smoothstep(0.1, 0.4 + turb, dist);
+    // Fresnel-like term for edge richness
+    float fresnel = pow(1.0 - clamp(abs(vNormal.z), 0.0, 1.0), 1.5);
+    float blend = clamp(pow(dist * 1.8, 1.2) + fresnel * 0.25, 0.0, 1.0);
+    vec3 sunSurface = mix(uCoreColor, uCoronaColor, blend);
 
-    // Edge glow
-    float edge = 1.0 - smoothstep(0.2, 0.5, dist);
+    vec3 color = sunSurface * (core * 1.85 + corona * 0.95);
+    color += uHaloColor * halo * (0.45 + fresnel * 0.65) * uHaloIntensity;
 
-    // Combine colors with layered intensity
-    vec3 color = uCoreColor * core * 2.0;
-    color += uCoronaColor * corona * 1.0;
-    color += uEdgeColor * edge * 0.5;
+    // Warm edge ring for separation from halo
+    float edgeRing = smoothstep(0.22, 0.52, dist) * (1.0 - smoothstep(0.52, 0.82, dist));
+    color += uEdgeColor * edgeRing * 0.55;
 
-    // Subtle pulse animation
-    float pulse = 1.0 + sin(uTime * 1.2) * 0.06;
+    // Gentle breathing pulse (Phase 2 target)
+    float pulse = 1.0 + sin(uTime * 0.8) * 0.05;
     color *= pulse * uIntensity;
 
-    // Soft alpha falloff
-    float alpha = smoothstep(0.5, 0.3, dist);
+    float alpha = smoothstep(0.86, 0.1, dist);
+    alpha = max(alpha, halo * 0.28 * uHaloIntensity);
+    alpha = clamp(alpha, 0.0, 1.0);
 
     gl_FragColor = vec4(color, alpha);
 }
@@ -1136,6 +1156,8 @@ export const hazeFragmentShader = `
 uniform float uTime;
 uniform vec3 uHazeColor;
 uniform float uDensity;
+uniform float uLayerDepth;
+uniform vec2 uDrift;
 
 varying vec2 vUv;
 varying float vFogDepth;
@@ -1145,9 +1167,10 @@ ${noiseCommon}
 void main() {
     vec2 uv = vUv;
 
-    // Animated noise for organic haze movement
-    float noise1 = snoise(vec3(uv.x * 2.0 + uTime * 0.05, uv.y * 1.5, uTime * 0.02)) * 0.5 + 0.5;
-    float noise2 = snoise(vec3(uv.x * 4.0 - uTime * 0.03, uv.y * 3.0, uTime * 0.015)) * 0.5 + 0.5;
+    // Animated multi-band noise for organic haze movement
+    vec2 flow = uv + uDrift * uTime * 0.03;
+    float noise1 = snoise(vec3(flow.x * 2.0, flow.y * 1.45, uTime * 0.02)) * 0.5 + 0.5;
+    float noise2 = snoise(vec3(flow.x * 4.0 - uTime * 0.03, flow.y * 2.7, uTime * 0.015)) * 0.5 + 0.5;
 
     float haze = noise1 * 0.7 + noise2 * 0.3;
 
@@ -1157,12 +1180,18 @@ void main() {
     // Horizontal variation
     float horizontalVar = 0.85 + sin(uv.x * 3.14159) * 0.15;
 
-    float alpha = haze * verticalFade * horizontalVar * uDensity;
+    // Deeper layers appear softer/fainter
+    float layerSoftness = mix(1.05, 0.7, clamp(uLayerDepth, 0.0, 1.0));
+    float alpha = haze * verticalFade * horizontalVar * uDensity * layerSoftness;
+    float depthFade = smoothstep(18.0, 160.0, vFogDepth);
+    alpha *= mix(1.0, 0.72, depthFade);
 
     // Warmer color toward bottom
-    vec3 color = mix(uHazeColor, uHazeColor * 1.15, verticalFade * 0.3);
+    vec3 warmBoost = vec3(1.06, 0.98, 0.9);
+    vec3 color = mix(uHazeColor, uHazeColor * warmBoost, verticalFade * 0.35);
+    color = mix(color, uHazeColor * 0.92, clamp(uLayerDepth, 0.0, 1.0) * 0.25);
 
-    gl_FragColor = vec4(color, alpha * 0.5);
+    gl_FragColor = vec4(color, alpha * 0.58);
 }
 `;
 
@@ -1464,33 +1493,60 @@ void main() {
 
 export const skyDomeFragmentShader = `
 uniform vec3 uTopColor;
+uniform vec3 uUpperColor;
 uniform vec3 uMidColor;
+uniform vec3 uLowerColor;
 uniform vec3 uHorizonColor;
 uniform vec3 uSunColor;
 uniform vec3 uHaloColor;
+uniform vec3 uHorizonHaloColor;
 uniform vec3 uSunDirection;
 uniform float uSunDiscRadius;
 uniform float uSunHaloRadius;
 uniform float uSunDiscIntensity;
 uniform float uSunHaloIntensity;
+uniform float uHorizonHaloIntensity;
+uniform float uHorizonHaloFalloff;
+uniform float uWispScale;
+uniform float uWispIntensity;
+uniform float uTime;
 
 varying vec3 vWorldDir;
 
+${noiseCommon}
+
 void main() {
     vec3 dir = normalize(vWorldDir);
-    float t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
+    float elevationT = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
 
-    vec3 sky = mix(uHorizonColor, uMidColor, smoothstep(0.0, 0.55, t));
-    sky = mix(sky, uTopColor, smoothstep(0.3, 1.0, t));
+    // Multi-stop sky gradient (Phase 2 target: 4+ stops)
+    vec3 sky = mix(uHorizonColor, uLowerColor, smoothstep(0.0, 0.22, elevationT));
+    sky = mix(sky, uMidColor, smoothstep(0.16, 0.48, elevationT));
+    sky = mix(sky, uUpperColor, smoothstep(0.44, 0.75, elevationT));
+    sky = mix(sky, uTopColor, smoothstep(0.72, 1.0, elevationT));
 
     float sunDot = max(dot(dir, normalize(uSunDirection)), 0.0);
-    float sunDistance = 1.0 - sunDot;
-    float sunDisk = 1.0 - smoothstep(0.0, uSunDiscRadius, sunDistance);
-    float sunHalo = 1.0 - smoothstep(0.0, uSunHaloRadius, sunDistance);
+    float sunDisk = 1.0 - smoothstep(0.0, uSunDiscRadius, 1.0 - sunDot);
+    float sunHalo = 1.0 - smoothstep(0.0, uSunHaloRadius, 1.0 - sunDot);
+
+    // Horizon halo is independent of sun direction (Phase 2 target)
+    float horizonBand = 1.0 - clamp(abs(dir.y), 0.0, 1.0);
+    float horizonHalo = pow(horizonBand, uHorizonHaloFalloff);
+
+    // Subtle wispy cloud noise to break pure gradient
+    float azimuth = atan(dir.z, dir.x) / 6.28318530718 + 0.5;
+    vec2 wispUv = vec2(azimuth, elevationT);
+    vec2 flowUv = wispUv * vec2(uWispScale, uWispScale * 0.65)
+        + vec2(uTime * 0.0018, -uTime * 0.0006);
+    float wispNoise = fbm(vec3(flowUv, uTime * 0.01));
+    wispNoise = smoothstep(0.46, 0.76, wispNoise * 0.5 + 0.5);
+    float wispMask = smoothstep(0.18, 0.58, elevationT) * (1.0 - smoothstep(0.7, 0.95, elevationT));
 
     vec3 color = sky;
     color += uSunColor * sunDisk * uSunDiscIntensity;
     color += uHaloColor * pow(sunHalo, 2.0) * uSunHaloIntensity;
+    color += uHorizonHaloColor * horizonHalo * uHorizonHaloIntensity;
+    color += mix(uLowerColor, uUpperColor, 0.5) * wispNoise * wispMask * uWispIntensity;
 
     gl_FragColor = vec4(color, 1.0);
 }

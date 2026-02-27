@@ -129,85 +129,36 @@ void main() {
     vec3 viewDir = normalize(vViewPosition); // View direction
     vec3 normal = normalize(vNormal); // Surface normal
 
-    // 1. Sample Texture
-    vec4 texColor = texture2D(uMap, vUv);
-    vec3 baseMap = texColor.rgb;
+    // 1. Singularity Core & Photon Ring
+    float NdotV = dot(normal, viewDir);
+    float fresnel = 1.0 - abs(NdotV);
+    
+    // The event horizon: pure black center
+    float coreMask = smoothstep(0.85, 0.98, fresnel);
+    
+    // Intense photon ring at the edge
+    float photonRing = pow(fresnel, 5.0) * 1.5;
+    float sharpRing = pow(fresnel, 20.0) * 3.0;
+    
+    // 2. Plasma Noise
+    float time = uTime * 0.5;
+    float ringNoise = fbm(vLocalPos * 8.0 + vec3(0.0, time, time * 0.5));
+    
+    // 3. Fracture Effect (Combos)
+    float fracture = (snoise(vLocalPos * 15.0 - vec3(uTime * 2.0)) * 0.5 + 0.5) * uPulseIntensity;
+    
+    // 4. Noir Coloring
+    vec3 ringColorBase = vec3(0.8, 0.85, 1.0); // Silver-blue
+    vec3 hotCore = vec3(1.0, 1.0, 1.0); // Pure white
+    
+    vec3 ringColor = mix(ringColorBase, hotCore, ringNoise * 0.5 + 0.5);
+    ringColor += ringColorBase * fracture * 2.0;
 
-    // Calculate luminance for height/detail
-    float luma = dot(baseMap, vec3(0.299, 0.587, 0.114));
-
-    // 2. Bump Mapping (Fake Normal)
-    // Use texture gradients to perturb normal for crater depth
-    float bumpScale = 4.0;
-    vec3 dPdx = dFdx(vPosition);
-    vec3 dPdy = dFdy(vPosition);
-    vec3 R1 = cross(dPdy, normal);
-    vec3 R2 = cross(normal, dPdx);
-    float det = dot(dPdx, R1);
+    // 5. Final Composition
+    vec3 finalColor = ringColor * (photonRing + sharpRing) * coreMask;
     
-    // Gradient of height (luma)
-    float dHdx = dFdx(luma);
-    float dHdy = dFdy(luma);
-    
-    // Perturb normal
-    vec3 surfGrad = sign(det) * (dHdx * R1 + dHdy * R2);
-    vec3 bumpNormal = normalize(abs(det) * normal - bumpScale * surfGrad);
-
-    // 3. Noir Color Grading
-    // Darken base significantly - Deep black void with silver highlights
-    vec3 deepCharcoal = vec3(0.002, 0.002, 0.005); // Much darker base
-    vec3 brightSilver = vec3(0.55, 0.55, 0.65); // Slightly muted silver
-    
-    // Enhance contrast - Crush the blacks, keep highlights sharp
-    // Higher power = more contrast, sharper separation
-    float detailLuma = pow(luma, 2.5); 
-    
-    // Mix based on contrast-enhanced luma
-    vec3 surfaceColor = mix(deepCharcoal, brightSilver, detailLuma);
-
-    // 4. Lighting
-    vec3 lightDir = normalize(uSunDirection);
-    
-    // Use bumped normal for lighting - makes craters pop
-    float NdotL = max(0.0, dot(bumpNormal, lightDir));
-    
-    // Sharp terminator for dramatic noir look
-    float terminator = smoothstep(-0.1, 0.3, NdotL);
-    
-    // Ambient light - purely visible silhouette
-    vec3 ambient = vec3(0.002, 0.002, 0.005);
-    
-    // Diffuse light with boosted intensity for illuminated parts
-    vec3 diffuse = surfaceColor * terminator * 2.0;
-    
-    // 5. Specular / Rim Highlights using Bump Normal
-    
-    // Fresnel rim glow
-    float fresnel = pow(1.0 - abs(dot(normal, viewDir)), 4.0); // Sharper rim
-    fresnel *= smoothstep(-0.2, 0.2, dot(normal, lightDir));
-    
-    vec3 rimColor = vec3(0.5, 0.5, 0.6);
-    vec3 rim = rimColor * fresnel * (0.6 + uPulseIntensity * 0.5);
-
-    // Specular highlight on crater edges - distinct sparkle
-    vec3 halfVector = normalize(lightDir + viewDir);
-    float NdotH = max(0.0, dot(bumpNormal, halfVector));
-    float specular = pow(NdotH, 24.0) * luma * 0.8; // Sharp small highlights on craters
-
-    
-    // Texture shimmer (subtle animation on bright spots)
-    float shimmerNoise = snoise(vLocalPos * 0.05 + vec3(uTime * 0.1));
-    float shimmer = max(0.0, shimmerNoise) * detailLuma * 0.1;
-    
-    // 6. Final Composition
-    vec3 finalColor = ambient + diffuse + rim + vec3(specular) + vec3(shimmer);
-
-    // Apply Glow Intensity uniform
-    finalColor *= uGlowIntensity;
-
-    // Gameplay Pulse Effect
-    float pulse = 1.0 + uPulseIntensity * 0.2;
-    finalColor *= pulse;
+    // Apply Glow Intensity & Pulse
+    finalColor *= uGlowIntensity * (1.0 + uPulseIntensity * 1.5);
 
     gl_FragColor = vec4(finalColor, 1.0);
 }
@@ -383,15 +334,21 @@ export const nebulaFragmentShader = `
         fade = pow(fade, 1.5);
 
         // Desaturate to ensure pure black/white noir look (just in case texture has color)
+        // Desaturate to ensure pure black/white noir look (just in case texture has color)
         float gray = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
-        vec3 color = vec3(gray);
+        
+        // Subtle cool blue tint for volumetric depth without breaking noir
+        vec3 color = vec3(gray) * vec3(0.85, 0.9, 1.05);
 
         // Pulse effect boosts brightness
         float pulseFactor = 1.0 + uPulse * 0.3;
         color *= pulseFactor;
 
         // Final alpha combines texture alpha, master opacity, and edge fade
-        float alpha = texColor.r * (uOpacity + uPulse * 0.05) * fade * 1.5; // Boost visibility slightly
+        // Boost alpha by 2.0x for deep visibility like Blood Moon
+        // Restore power curve for soft edges
+        float softFade = pow(fade, 1.5);
+        float alpha = texColor.r * (uOpacity + uPulse * 0.05) * softFade * 2.0;
 
         gl_FragColor = vec4(color, alpha);
     }
@@ -695,6 +652,123 @@ void main() {
     finalColor *= 1.3;
 
     gl_FragColor = vec4(finalColor, vAlpha * glow);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gas Swirl Particle Shader - Tangential particles from atmosphere shell
+// ─────────────────────────────────────────────────────────────────────────────
+export const gasSwirlVertexShader = `
+attribute float aAlpha;
+attribute float aSize;
+
+varying float vAlpha;
+varying vec3 vColor;
+
+void main() {
+    vAlpha = aAlpha;
+
+    // Silver-blue tint matching atmosphere palette
+    vColor = vec3(0.72, 0.76, 0.92);
+
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+
+    // Size attenuation — larger when close, smaller far away
+    gl_PointSize = aSize * (320.0 / -mvPosition.z);
+    gl_PointSize = clamp(gl_PointSize, 1.5, 300.0);
+}
+`;
+
+export const gasSwirlFragmentShader = `
+varying float vAlpha;
+varying vec3 vColor;
+
+void main() {
+    if (vAlpha <= 0.005) discard;
+
+    vec2 coord = 2.0 * gl_PointCoord - 1.0;
+    float dist = dot(coord, coord);
+    if (dist > 1.0) discard;
+
+    // Soft glow falloff - Blood Moon style (linear to 0.9)
+    float glow = 1.0 - smoothstep(0.0, 0.9, dist);
+    
+    // Bright hot core - wider like Blood Moon
+    float core = 1.0 - smoothstep(0.0, 0.25, dist);
+    
+    vec3 finalColor = mix(vColor, vec3(1.0, 1.0, 1.0), core * 0.6);
+    finalColor *= 3.0; // High brightness for bloom
+
+    gl_FragColor = vec4(finalColor, vAlpha * glow);
+}
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Accretion Disk Shader - High-energy swirling ring of matter
+// ─────────────────────────────────────────────────────────────────────────────
+export const accretionDiskVertexShader = `
+varying vec2 vUv;
+varying vec3 vPosition;
+
+void main() {
+    vUv = uv;
+    vPosition = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+export const accretionDiskFragmentShader = `
+uniform float uTime;
+uniform float uPulseIntensity;
+varying vec2 vUv;
+
+${noiseCommon}
+
+void main() {
+    // uv.x = angle (0 to 1), uv.y = radius (0 to 1) for a RingGeometry
+    float radius = vUv.y;
+    float angle = vUv.x * 6.2831853;
+    
+    // Swirling dynamics
+    float speed = 1.2 + uPulseIntensity * 3.0; // Spins much faster on combos
+    float rTime = uTime * speed;
+    
+    // Differential rotation: inner edge spins faster
+    float spin = angle + rTime * (1.1 - radius) * 2.0; 
+    
+    // Plasma noise lookup
+    // Convert polar back to cartesian for continuous noise
+    vec3 noisePos = vec3(cos(spin) * radius * 12.0, sin(spin) * radius * 12.0, uTime * 0.15);
+    float plasma = fbm(noisePos);
+    
+    // Dense structural bands
+    float bands = sin(radius * 30.0 + plasma * 7.0) * 0.5 + 0.5;
+    
+    // Edge falloff (soft inner and outer)
+    float edgeFade = smoothstep(0.0, 0.15, radius) * smoothstep(1.0, 0.6, radius);
+    
+    // Gradient (brighter close to the event horizon)
+    float intensityGrad = pow(1.0 - radius, 2.0);
+    
+    // Final alpha/intensity
+    float intensity = (plasma * 0.6 + bands * 0.4) * edgeFade * intensityGrad;
+    intensity *= (1.0 + uPulseIntensity * 3.5); // Flare up during combos
+    
+    // Color grading for Noir: Deep silver/blue outer, blinding white core
+    vec3 colorCore = vec3(1.0, 1.0, 1.0);
+    vec3 colorOuter = vec3(0.4, 0.45, 0.6);
+    vec3 diskColor = mix(colorOuter, colorCore, intensity);
+    
+    // Doppler Beaming Effect
+    // The side moving toward the camera appears brighter and bluer.
+    // Assuming rotation is counter-clockwise and camera looks from positive Z.
+    // Right side is approaching
+    float doppler = sin(angle) * 0.5 + 0.5;
+    diskColor *= 0.6 + doppler * 0.8; 
+    
+    // Overbright for intense bloom in HDR
+    gl_FragColor = vec4(diskColor * intensity * 2.5, intensity * edgeFade * 2.0);
 }
 `;
 

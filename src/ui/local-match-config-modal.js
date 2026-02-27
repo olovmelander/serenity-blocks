@@ -239,6 +239,47 @@ export class LocalMatchConfigModal {
                 }
             });
         }
+
+        this.setupScrollPerformanceMode();
+    }
+
+    /**
+     * Reduces hover/transition churn while scrolling, matching the settings
+     * modal and Serenity Hub scroll-performance pattern.
+     */
+    setupScrollPerformanceMode() {
+        const scrollContainer = this.container.querySelector('.match-config-content');
+        if (!scrollContainer) return;
+
+        const scrollIdleDelay = 120;
+        let scrollRafId = null;
+        let scrollIdleTimeout = null;
+
+        const setMode = (enabled) => {
+            this.container.classList.toggle('is-scrolling', enabled);
+        };
+
+        const onScroll = () => {
+            if (scrollRafId !== null) return;
+            scrollRafId = requestAnimationFrame(() => {
+                scrollRafId = null;
+                setMode(true);
+                if (scrollIdleTimeout) clearTimeout(scrollIdleTimeout);
+                scrollIdleTimeout = setTimeout(() => {
+                    scrollIdleTimeout = null;
+                    setMode(false);
+                }, scrollIdleDelay);
+            });
+        };
+
+        scrollContainer.addEventListener('scroll', onScroll, { passive: true });
+
+        // Clean up when modal is destroyed
+        this._clearScrollPerf = () => {
+            scrollContainer.removeEventListener('scroll', onScroll);
+            if (scrollRafId !== null) cancelAnimationFrame(scrollRafId);
+            if (scrollIdleTimeout) clearTimeout(scrollIdleTimeout);
+        };
     }
 
     /**
@@ -522,6 +563,10 @@ export class LocalMatchConfigModal {
  * Destroy the modal and remove from DOM
  */
     destroy() {
+        if (this._clearScrollPerf) {
+            this._clearScrollPerf();
+            this._clearScrollPerf = null;
+        }
         if (this.container && this.container.parentNode) {
             this.container.parentNode.removeChild(this.container);
             this.container = null;
