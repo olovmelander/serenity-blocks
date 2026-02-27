@@ -1,4 +1,5 @@
 import { BaseGameMode } from './BaseGameMode.js';
+import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import {
     GameState,
     spawnPiece,
@@ -419,6 +420,12 @@ export class SinglePlayerMode extends BaseGameMode {
 
         this._stopPhaserBoardScene();
 
+        // Clean up board juice
+        if (this.boardJuice) {
+            this.boardJuice.destroy();
+            this.boardJuice = null;
+        }
+
         // Restore inputs
         this._restoreInputs();
 
@@ -493,15 +500,28 @@ export class SinglePlayerMode extends BaseGameMode {
         };
 
         // Replace with mode-specific functions that use THIS mode's physics callbacks
+        // Initialize BoardJuice for reactive board motion
+        this._initBoardJuice();
+
         window.move = (dir) => {
             if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
 
-            coreMove(
+            const moved = coreMove(
                 this.gameState,
                 dir,
                 () => this.deps.soundManager.sfxPlayer.playMove(),
                 () => { }, // addPieceTrail - no trail for now
             );
+
+            // Board juice: nudge + tilt on move, smaller on wall hit
+            if (this.boardJuice) {
+                if (moved) {
+                    this.boardJuice.nudge(dir * 1.5, 0);
+                    this.boardJuice.tilt(dir * 0.4);
+                } else {
+                    this.boardJuice.nudge(dir * 0.8, 0);
+                }
+            }
 
             // Record input
             if (this.isRecording) {
@@ -519,6 +539,11 @@ export class SinglePlayerMode extends BaseGameMode {
                 () => { }, // addPieceTrail
             );
 
+            // Board juice: tilt on rotate
+            if (this.boardJuice) {
+                this.boardJuice.tilt(dir === 'left' ? -0.3 : 0.3);
+            }
+
             // Record input
             if (this.isRecording) {
                 this.demoRecorder.recordInput('rotate', dir);
@@ -526,14 +551,18 @@ export class SinglePlayerMode extends BaseGameMode {
         };
 
         window.hardDrop = () => {
-            console.log('[SinglePlayer] >>> HOOKED hardDrop called! <<<');
             if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
 
-            console.log('[SinglePlayer] Calling coreHardDrop with mode physics callbacks');
+            // Board juice: dip + bounce on hard drop
+            if (this.boardJuice) {
+                this.boardJuice.dip(3);
+                this.boardJuice.bounce();
+            }
+
             coreHardDrop(
                 this.gameState,
                 () => this.deps.soundManager.sfxPlayer.playDrop(),
-                this._getPhysicsCallbacks(), // ← USE MODE'S PHYSICS CALLBACKS!
+                this._getPhysicsCallbacks(),
             );
 
             // Record input
@@ -716,7 +745,13 @@ export class SinglePlayerMode extends BaseGameMode {
                 eventBus.emit(EVENTS.LINE_CLEAR, { lineCount });
             },
             onLevelUp: () => this.deps.soundManager.sfxPlayer.playLevelUp(),
-            onHardDrop: () => this.deps.soundManager.sfxPlayer.playDrop(),
+            onHardDrop: (dropData) => {
+                this.deps.soundManager.sfxPlayer.playDrop();
+                const boardScene = this._getBoardScene();
+                if (boardScene && boardScene.playHardDropEffect) {
+                    boardScene.playHardDropEffect(dropData);
+                }
+            },
             // Trigger combo visual effects
             triggerCombo: (comboCount) => {
                 // Emit event for theme reactions
@@ -753,6 +788,12 @@ export class SinglePlayerMode extends BaseGameMode {
                 if (boardScene && boardScene.playLineClearImpact) {
                     boardScene.playLineClearImpact(lineCount, cascadeCount);
                 }
+
+                // Board juice: pulse on line clear, scaled by count
+                if (this.boardJuice) {
+                    const intensity = 1 + (Math.min(lineCount, 4) * 0.004);
+                    this.boardJuice.pulse(intensity);
+                }
             },
             // Background pulse / ambience
             triggerBackgroundPulse: (lineCount) => {
@@ -771,6 +812,12 @@ export class SinglePlayerMode extends BaseGameMode {
                 const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.createPieceLockRipple) {
                     boardScene.createPieceLockRipple(piece);
+                }
+
+                // Board juice: gentle dip + pulse on piece lock
+                if (this.boardJuice) {
+                    this.boardJuice.dip(1);
+                    this.boardJuice.pulse(1.005);
                 }
             },
             // CRITICAL: Spawn next piece after physics completes (after piece lock)
@@ -948,6 +995,28 @@ export class SinglePlayerMode extends BaseGameMode {
             steamService.incrementStat('total_lines_cleared', this.gameState.lines),
             steamService.incrementStat('playtime_minutes', durationMinutes),
         ]);
+    }
+
+    /**
+     * Initialize BoardJuice for reactive board motion
+     * Targets .player-board-section so the entire board frame moves as a unit
+     * (canvas is inside overflow:hidden containers, so transforms on it get clipped)
+     * @private
+     */
+    _initBoardJuice() {
+        if (this.boardJuice) {
+            this.boardJuice.destroy();
+            this.boardJuice = null;
+        }
+
+        // Target the board section — parent of the overflow:hidden containers
+        const container = document.getElementById('phaser-game-container');
+        const boardSection = container?.closest('.player-board-section');
+        if (boardSection) {
+            this.boardJuice = new BoardJuice(boardSection);
+        } else {
+            console.warn('[SinglePlayer] Could not find .player-board-section for BoardJuice');
+        }
     }
 
     /**

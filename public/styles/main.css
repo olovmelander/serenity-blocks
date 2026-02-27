@@ -13482,34 +13482,53 @@ body.phaser-multiplayer-active #p2-canvas {
 }
 
 /* Color-coded stat values */
-.single-player-stat.stat-score .single-player-stat-value {
+.single-player-stat.stat-score .single-player-stat-value,
+.single-player-stat.stat-score .stat-icon {
     color: #34d399;
     text-shadow: 0 0 18px rgba(52, 211, 153, 0.55);
+    filter: drop-shadow(0 0 12px rgba(52, 211, 153, 0.55));
 }
 
-.single-player-stat.stat-lines .single-player-stat-value {
+.single-player-stat.stat-lines .single-player-stat-value,
+.single-player-stat.stat-lines .stat-icon {
     color: #60a5fa;
     text-shadow: 0 0 14px rgba(96, 165, 250, 0.5);
+    filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.5));
 }
 
-.single-player-stat.stat-level .single-player-stat-value {
+.single-player-stat.stat-level .single-player-stat-value,
+.single-player-stat.stat-level .stat-icon {
     color: #a78bfa;
     text-shadow: 0 0 14px rgba(167, 139, 250, 0.5);
+    filter: drop-shadow(0 0 10px rgba(167, 139, 250, 0.5));
 }
 
-.single-player-stat.stat-next-level .single-player-stat-value {
+.single-player-stat.stat-next-level .single-player-stat-value,
+.single-player-stat.stat-next-level .stat-icon {
     color: #fbbf24;
     text-shadow: 0 0 14px rgba(251, 191, 36, 0.5);
+    filter: drop-shadow(0 0 10px rgba(251, 191, 36, 0.5));
 }
 
-.single-player-stat.stat-speed .single-player-stat-value {
+.single-player-stat.stat-speed .single-player-stat-value,
+.single-player-stat.stat-speed .stat-icon {
     color: #f472b6;
     text-shadow: 0 0 14px rgba(244, 114, 182, 0.5);
+    filter: drop-shadow(0 0 10px rgba(244, 114, 182, 0.5));
 }
 
-.single-player-stat.stat-bpm .single-player-stat-value {
+.single-player-stat.stat-bpm .single-player-stat-value,
+.single-player-stat.stat-bpm .stat-icon {
     color: #22d3ee;
     text-shadow: 0 0 14px rgba(34, 211, 238, 0.5);
+    filter: drop-shadow(0 0 10px rgba(34, 211, 238, 0.5));
+}
+
+.single-player-stat.stat-ppm .single-player-stat-value,
+.single-player-stat.stat-ppm .stat-icon {
+    color: #fb923c;
+    text-shadow: 0 0 14px rgba(251, 146, 60, 0.5);
+    filter: drop-shadow(0 0 10px rgba(251, 146, 60, 0.5));
 }
 
 /* Pulse animation for value changes */
@@ -21611,74 +21630,6 @@ body.phaser-multiplayer-active #single-player-container {
     transition: height 0.3s ease-out;
 }
 
-/* Corner Bracket Decorations */
-.board-border-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: 5;
-}
-
-.corner-bracket {
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    border: 3px solid var(--player-primary, #8b5cf6);
-    opacity: 0.8;
-}
-
-.corner-bracket.top-left {
-    top: -2px;
-    left: -2px;
-    border-right: none;
-    border-bottom: none;
-    border-radius: 8px 0 0 0;
-}
-
-.corner-bracket.top-right {
-    top: -2px;
-    right: -2px;
-    border-left: none;
-    border-bottom: none;
-    border-radius: 0 8px 0 0;
-}
-
-.corner-bracket.bottom-left {
-    bottom: -2px;
-    left: -2px;
-    border-right: none;
-    border-top: none;
-    border-radius: 0 0 0 8px;
-}
-
-.corner-bracket.bottom-right {
-    bottom: -2px;
-    right: -2px;
-    border-left: none;
-    border-top: none;
-    border-radius: 0 0 8px 0;
-}
-
-/* Player-specific corner bracket colors */
-.player-card[data-player="1"] .corner-bracket {
-    border-color: #3B82F6;
-}
-
-.player-card[data-player="2"] .corner-bracket {
-    border-color: #EF4444;
-}
-
-.player-card[data-player="3"] .corner-bracket {
-    border-color: #10B981;
-}
-
-.player-card[data-player="4"] .corner-bracket {
-    border-color: #F59E0B;
-}
-
 /* Enhanced Stats Bar */
 .player-stats-bar {
     display: flex;
@@ -21735,29 +21686,53 @@ body.phaser-multiplayer-active #single-player-container {
 }
 
 /* Stat-specific colors */
-.player-stats-bar .stat-frags .stat-value {
+.player-stats-bar .stat-frags .stat-value,
+.player-stats-bar .stat-frags .stat-icon {
     color: #10b981;
     text-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+    filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.5));
 }
 
-.player-stats-bar .stat-score .stat-value {
+.player-stats-bar .stat-deaths .stat-value,
+.player-stats-bar .stat-deaths .stat-icon {
+    color: #ffffff;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.5));
+}
+
+.player-stats-bar .stat-score .stat-value,
+.player-stats-bar .stat-score .stat-icon {
     color: #fbbf24;
     text-shadow: 0 0 8px rgba(251, 191, 36, 0.5);
+    filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.5));
 }
 
-.player-stats-bar .stat-lines .stat-value {
+.player-stats-bar .stat-lines .stat-value,
+.player-stats-bar .stat-lines .stat-icon {
     color: #60a5fa;
     text-shadow: 0 0 8px rgba(96, 165, 250, 0.5);
+    filter: drop-shadow(0 0 6px rgba(96, 165, 250, 0.5));
 }
 
-.player-stats-bar .stat-level .stat-value {
+.player-stats-bar .stat-level .stat-value,
+.player-stats-bar .stat-level .stat-icon {
     color: #a78bfa;
     text-shadow: 0 0 8px rgba(167, 139, 250, 0.5);
+    filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.5));
 }
 
-.player-stats-bar .stat-garbage .stat-value {
+.player-stats-bar .stat-garbage .stat-value,
+.player-stats-bar .stat-garbage .stat-icon {
     color: #f87171;
     text-shadow: 0 0 8px rgba(248, 113, 113, 0.5);
+    filter: drop-shadow(0 0 6px rgba(248, 113, 113, 0.5));
+}
+
+.player-stats-bar .stat-ceiling .stat-value,
+.player-stats-bar .stat-ceiling .stat-icon {
+    color: #f472b6;
+    text-shadow: 0 0 8px rgba(244, 114, 182, 0.5);
+    filter: drop-shadow(0 0 6px rgba(244, 114, 182, 0.5));
 }
 
 /* Animated value change pulse */

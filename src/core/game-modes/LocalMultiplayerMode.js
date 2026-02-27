@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
+import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import { MultiplayerGameState } from '../multiplayer.js';
 import { MultiPlayerState, PLAYER_COLORS } from '../multi-player-state.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
@@ -459,6 +460,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         this._syncBoardScenes();
 
+        // Setup reactive board juice inputs
+        this._setupInputWrappers();
+
         // Start game loop
         this.multiplayerState.isPaused = false;
         this.multiplayerState.lastTime = performance.now();
@@ -548,6 +552,17 @@ export class LocalMultiplayerMode extends BaseGameMode {
             this.p2PhaserGame = null;
             this.p2BoardScene = null;
         }
+
+        // Clean up BoardJuice
+        for (let i = 1; i <= 4; i++) {
+            if (this[`boardJuiceP${i}`]) {
+                this[`boardJuiceP${i}`].destroy();
+                this[`boardJuiceP${i}`] = null;
+            }
+        }
+
+        // Restore global inputs
+        this._removeInputWrappers();
 
         // Resume single player scene
         this._resumeSinglePlayerScene();
@@ -746,8 +761,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
             onLineClear: () => {
                 this.deps.soundManager.sfxPlayer.playLineClear();
             },
-            onLevelUp: () => this.deps.soundManager.sfxPlayer.playLevelUp(),
-            onHardDrop: () => this.deps.soundManager.sfxPlayer.playHardDrop(),
+            onHardDrop: (dropData) => {
+                this.deps.soundManager.sfxPlayer.playHardDrop();
+                this.boardScenes.forEach((scene) => {
+                    if (scene && scene.playHardDropEffect) {
+                        scene.playHardDropEffect(dropData);
+                    }
+                });
+            },
             onGarbageReceived: () => this.deps.soundManager.sfxPlayer.playGarbageReceived?.(),
             onDrop: () => this.deps.soundManager.sfxPlayer.playDrop(),
             // Trigger combo visual effects
@@ -1019,13 +1040,15 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const ec = this.matchConfig?.endCondition || 'frags';
         const fmt = (n) => this._formatStatValue(n);
 
+        const fragsIcon = `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.125em;margin-right:2px"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" y1="11" x2="11" y2="5"/><line x1="3" y1="13" x2="5" y2="15"/><line x1="8" y1="8" x2="4" y2="12"/></svg>`;
+
         switch (ec) {
             case 'frags':
             case 'time':
                 // Frags wins / time limit: most kills leads
                 return {
                     sortKey: 'frags',
-                    primaryFn: (e) => `⚔️ ${e.frags}`,
+                    primaryFn: (e) => `${fragsIcon}${e.frags}`,
                     metaFn: (e) => `${fmt(e.score)} · Lv${e.level} · ${e.lines}L`,
                 };
             case 'lines':
@@ -1033,7 +1056,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 return {
                     sortKey: 'lines',
                     primaryFn: (e) => `${e.lines}L`,
-                    metaFn: (e) => `⚔️${e.frags} · ${fmt(e.score)} · Lv${e.level}`,
+                    metaFn: (e) => `${fragsIcon}${e.frags} · ${fmt(e.score)} · Lv${e.level}`,
                 };
             case 'infinity-lms':
                 // Survival: alive status + lines cleared as tiebreak
@@ -1049,7 +1072,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 return {
                     sortKey: 'score',
                     primaryFn: (e) => fmt(e.score),
-                    metaFn: (e) => `⚔️${e.frags} · Lv${e.level} · ${e.lines}L`,
+                    metaFn: (e) => `${fragsIcon}${e.frags} · Lv${e.level} · ${e.lines}L`,
                 };
         }
     }
@@ -1065,7 +1088,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         if (!hud || !this.multiplayerState || !this._hudItems) return;
 
         const { numPlayers } = this.multiplayerState;
-        const RANK_LABELS = ['🥇', '🥈', '🥉', '4th'];
+        const trophySvg = (color) => `<svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-0.2em"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>`;
+        const RANK_LABELS = [trophySvg('#FFF480'), trophySvg('#E2E8F0'), trophySvg('#CD7F32'), '4th'];
         const { sortKey, primaryFn, metaFn } = this._getHUDProfile();
 
         // Build standings array from live state
@@ -1096,10 +1120,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
             if (!refs) return;
             const { el, rankEl, scoreEl, metaEl } = refs;
 
-            rankEl.textContent = RANK_LABELS[rankIndex] ?? `${rankIndex + 1}`;
+            rankEl.innerHTML = RANK_LABELS[rankIndex] ?? `${rankIndex + 1}`;
             el.dataset.rank = rankIndex + 1;
-            scoreEl.textContent = entry.isAlive ? primaryFn(entry) : 'ELIM';
-            metaEl.textContent = entry.isAlive ? metaFn(entry) : '';
+            scoreEl.innerHTML = entry.isAlive ? primaryFn(entry) : 'ELIM';
+            metaEl.innerHTML = entry.isAlive ? metaFn(entry) : '';
             el.classList.toggle('standing-item--eliminated', !entry.isAlive);
 
             // Re-appending reorders DOM nodes to match sorted standings
@@ -2071,7 +2095,115 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Wait for all scenes to fully initialize
         await new Promise((resolve) => setTimeout(resolve, 200));
 
+        // Initialize BoardJuice for each player's canvas
+        this._initBoardJuice();
+
         console.log(`[LocalMultiplayer] ${numPlayers} Phaser instances created successfully`);
+    }
+
+    /**
+     * Initialize BoardJuice for reactive board motion on each player's canvas
+     * @private
+     */
+    _initBoardJuice() {
+        for (let i = 1; i <= 4; i++) {
+            if (this[`boardJuiceP${i}`]) {
+                this[`boardJuiceP${i}`].destroy();
+                this[`boardJuiceP${i}`] = null;
+            }
+
+            const container = document.getElementById(`p${i}-phaser-container`);
+            const section = container?.closest('.player-board-section');
+            if (section) {
+                this[`boardJuiceP${i}`] = new BoardJuice(section);
+            }
+        }
+    }
+
+    /**
+     * Wrap global input handlers to trigger board juice per player
+     * @private
+     */
+    _setupInputWrappers() {
+        if (this._inputWrappersSetup) return;
+        this._inputWrappersSetup = true;
+
+        this._originalInputs = {
+            move: window.move, rotate: window.rotate, hardDrop: window.hardDrop,
+            moveP2: window.moveP2, rotateP2: window.rotateP2, hardDropP2: window.hardDropP2,
+            moveP3: window.moveP3, rotateP3: window.rotateP3, hardDropP3: window.hardDropP3,
+            moveP4: window.moveP4, rotateP4: window.rotateP4, hardDropP4: window.hardDropP4,
+        };
+
+        const wrapMove = (playerNum, origMove) => (dir) => {
+            if (origMove) origMove(dir);
+            const juice = this[`boardJuiceP${playerNum}`];
+            if (juice) {
+                juice.nudge(dir * 0.5, 0);
+            }
+        };
+
+        const wrapRotate = (playerNum, origRotate) => (dir) => {
+            if (origRotate) origRotate(dir);
+            const juice = this[`boardJuiceP${playerNum}`];
+            if (juice) {
+                const degrees = (dir === 'left' ? -1 : (dir === 'flip' ? 2 : 1));
+                juice.tilt(degrees * 1.5);
+                juice.nudge(0, -0.5);
+            }
+        };
+
+        const wrapHardDrop = (playerNum, origHardDrop) => () => {
+            if (origHardDrop) origHardDrop();
+            const juice = this[`boardJuiceP${playerNum}`];
+            if (juice) {
+                juice.dip(4);
+                juice.bounce();
+            }
+        };
+
+        window.move = wrapMove(1, this._originalInputs.move);
+        window.rotate = wrapRotate(1, this._originalInputs.rotate);
+        window.hardDrop = wrapHardDrop(1, this._originalInputs.hardDrop);
+
+        if (this._originalInputs.moveP2) window.moveP2 = wrapMove(2, this._originalInputs.moveP2);
+        if (this._originalInputs.rotateP2) window.rotateP2 = wrapRotate(2, this._originalInputs.rotateP2);
+        if (this._originalInputs.hardDropP2) window.hardDropP2 = wrapHardDrop(2, this._originalInputs.hardDropP2);
+
+        if (this._originalInputs.moveP3) window.moveP3 = wrapMove(3, this._originalInputs.moveP3);
+        if (this._originalInputs.rotateP3) window.rotateP3 = wrapRotate(3, this._originalInputs.rotateP3);
+        if (this._originalInputs.hardDropP3) window.hardDropP3 = wrapHardDrop(3, this._originalInputs.hardDropP3);
+
+        if (this._originalInputs.moveP4) window.moveP4 = wrapMove(4, this._originalInputs.moveP4);
+        if (this._originalInputs.rotateP4) window.rotateP4 = wrapRotate(4, this._originalInputs.rotateP4);
+        if (this._originalInputs.hardDropP4) window.hardDropP4 = wrapHardDrop(4, this._originalInputs.hardDropP4);
+    }
+
+    /**
+     * Restore global input handlers
+     * @private
+     */
+    _removeInputWrappers() {
+        if (!this._originalInputs) return;
+
+        window.move = this._originalInputs.move;
+        window.rotate = this._originalInputs.rotate;
+        window.hardDrop = this._originalInputs.hardDrop;
+
+        if (this._originalInputs.moveP2 !== undefined) window.moveP2 = this._originalInputs.moveP2;
+        if (this._originalInputs.rotateP2 !== undefined) window.rotateP2 = this._originalInputs.rotateP2;
+        if (this._originalInputs.hardDropP2 !== undefined) window.hardDropP2 = this._originalInputs.hardDropP2;
+
+        if (this._originalInputs.moveP3 !== undefined) window.moveP3 = this._originalInputs.moveP3;
+        if (this._originalInputs.rotateP3 !== undefined) window.rotateP3 = this._originalInputs.rotateP3;
+        if (this._originalInputs.hardDropP3 !== undefined) window.hardDropP3 = this._originalInputs.hardDropP3;
+
+        if (this._originalInputs.moveP4 !== undefined) window.moveP4 = this._originalInputs.moveP4;
+        if (this._originalInputs.rotateP4 !== undefined) window.rotateP4 = this._originalInputs.rotateP4;
+        if (this._originalInputs.hardDropP4 !== undefined) window.hardDropP4 = this._originalInputs.hardDropP4;
+
+        this._originalInputs = null;
+        this._inputWrappersSetup = false;
     }
 
     /**
@@ -2299,30 +2431,30 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const config = this.matchConfig;
 
         switch (config.endCondition) {
-        case 'frags':
-            return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
+            case 'frags':
+                return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
 
-        case 'time': {
-            const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
-            return elapsedMinutes >= config.endConditionValue;
-        }
+            case 'time': {
+                const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
+                return elapsedMinutes >= config.endConditionValue;
+            }
 
-        case 'points': {
-            const targetScore = config.endConditionValue * 1000;
-            const totals = this._getTeamAggregateStats(teamId);
-            return totals.score >= targetScore;
-        }
+            case 'points': {
+                const targetScore = config.endConditionValue * 1000;
+                const totals = this._getTeamAggregateStats(teamId);
+                return totals.score >= targetScore;
+            }
 
-        case 'lines': {
-            const totals = this._getTeamAggregateStats(teamId);
-            return totals.lines >= config.endConditionValue;
-        }
+            case 'lines': {
+                const totals = this._getTeamAggregateStats(teamId);
+                return totals.lines >= config.endConditionValue;
+            }
 
-        case 'never':
-            return false;
+            case 'never':
+                return false;
 
-        default:
-            return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
+            default:
+                return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
         }
     }
 
@@ -2351,6 +2483,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 playerCard.style.background = `linear-gradient(145deg, rgba(0, 0, 0, 0.5), ${backgroundTint})`;
             }
 
+            // Darken the board explicitly
+            const boardSection = document.querySelector(`#player-${i}-card .player-board-section`);
+            if (boardSection) {
+                boardSection.style.background = 'rgba(10, 8, 24, 0.8)';
+            }
+
             // Update label color
             const label = document.querySelector(`#player-${i}-card .player-board-label`);
             if (label) {
@@ -2359,10 +2497,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 label.style.textShadow = `0 0 10px ${primary}80`;
             }
 
-            // Update border overlay
             const border = document.getElementById(`p${i}-border`);
             if (border) {
                 border.style.borderColor = primary;
+                border.style.borderTop = 'none';
+                border.style.borderRadius = '0 0 12px 12px';
                 border.style.boxShadow = `0 0 15px ${primary}60, inset 0 0 10px ${primary}40`;
             }
 
@@ -2370,6 +2509,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const container = document.getElementById(`p${i}-phaser-container`);
             if (container) {
                 container.style.border = `2px solid ${primary}`;
+                container.style.borderTop = 'none';
+                container.style.borderRadius = '0 0 12px 12px';
                 container.style.boxShadow = `0 0 20px ${primary}40`;
             }
 
@@ -2385,11 +2526,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 avatarText.style.color = primary;
                 avatarText.style.textShadow = `0 0 6px ${primary}80`;
             }
-
-            const cornerBrackets = document.querySelectorAll(`#player-${i}-card .corner-bracket`);
-            cornerBrackets.forEach((bracket) => {
-                bracket.style.borderColor = primary;
-            });
         }
     }
 
@@ -2451,18 +2587,18 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 : `Last player standing wins (${maxRows} rows)`;
         }
         switch (config.endCondition) {
-        case 'frags':
-            return `First to ${config.endConditionValue} frags wins`;
-        case 'time':
-            return `${config.endConditionValue} minute time limit`;
-        case 'points':
-            return `First to ${config.endConditionValue * 1000} points wins`;
-        case 'lines':
-            return `First to ${config.endConditionValue} lines wins`;
-        case 'never':
-            return 'Play until manual end';
-        default:
-            return `First to ${config.endConditionValue} frags wins`;
+            case 'frags':
+                return `First to ${config.endConditionValue} frags wins`;
+            case 'time':
+                return `${config.endConditionValue} minute time limit`;
+            case 'points':
+                return `First to ${config.endConditionValue * 1000} points wins`;
+            case 'lines':
+                return `First to ${config.endConditionValue} lines wins`;
+            case 'never':
+                return 'Play until manual end';
+            default:
+                return `First to ${config.endConditionValue} frags wins`;
         }
     }
 
@@ -2547,44 +2683,44 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const config = this.matchConfig;
 
         switch (config.endCondition) {
-        case 'frags': {
-            // Check if any player has reached the cumulative individual kill target
-            const numFragPlayers = config.numPlayers || 2;
-            for (let fi = 0; fi < numFragPlayers; fi++) {
-                const matchKey = `player${fi + 1}`;
-                const cumulative = (this.matchStats[matchKey]?.frags || 0) + (this.multiplayerState.frags[fi] ?? 0);
-                if (cumulative >= config.endConditionValue) return true;
+            case 'frags': {
+                // Check if any player has reached the cumulative individual kill target
+                const numFragPlayers = config.numPlayers || 2;
+                for (let fi = 0; fi < numFragPlayers; fi++) {
+                    const matchKey = `player${fi + 1}`;
+                    const cumulative = (this.matchStats[matchKey]?.frags || 0) + (this.multiplayerState.frags[fi] ?? 0);
+                    if (cumulative >= config.endConditionValue) return true;
+                }
+                return false;
             }
-            return false;
-        }
 
-        case 'time': {
-            // Check if time limit has been reached
-            const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
-            return elapsedMinutes >= config.endConditionValue;
-        }
+            case 'time': {
+                // Check if time limit has been reached
+                const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
+                return elapsedMinutes >= config.endConditionValue;
+            }
 
-        case 'points': {
-            // Check if either player reached the score target
-            const targetScore = config.endConditionValue * 1000;
-            const p1TotalScore = this.matchStats.player1.score + this.multiplayerState.players[0].score;
-            const p2TotalScore = this.matchStats.player2.score + this.multiplayerState.players[1].score;
-            return p1TotalScore >= targetScore || p2TotalScore >= targetScore;
-        }
+            case 'points': {
+                // Check if either player reached the score target
+                const targetScore = config.endConditionValue * 1000;
+                const p1TotalScore = this.matchStats.player1.score + this.multiplayerState.players[0].score;
+                const p2TotalScore = this.matchStats.player2.score + this.multiplayerState.players[1].score;
+                return p1TotalScore >= targetScore || p2TotalScore >= targetScore;
+            }
 
-        case 'lines': {
-            // Check if either player cleared enough lines
-            const p1TotalLines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
-            const p2TotalLines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
-            return p1TotalLines >= config.endConditionValue || p2TotalLines >= config.endConditionValue;
-        }
+            case 'lines': {
+                // Check if either player cleared enough lines
+                const p1TotalLines = this.matchStats.player1.lines + this.multiplayerState.players[0].totalLinesCleared;
+                const p2TotalLines = this.matchStats.player2.lines + this.multiplayerState.players[1].totalLinesCleared;
+                return p1TotalLines >= config.endConditionValue || p2TotalLines >= config.endConditionValue;
+            }
 
-        case 'never':
-            // Never end automatically
-            return false;
+            case 'never':
+                // Never end automatically
+                return false;
 
-        default:
-            return this.roundWins[lastRoundWinner] >= config.endConditionValue;
+            default:
+                return this.roundWins[lastRoundWinner] >= config.endConditionValue;
         }
     }
 
@@ -3439,10 +3575,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
                             y;
 
                         switch (edge) {
-                        case 0: x = Math.random() * width; y = 0; break; // Top
-                        case 1: x = width; y = Math.random() * height; break; // Right
-                        case 2: x = Math.random() * width; y = height; break; // Bottom
-                        case 3: x = 0; y = Math.random() * height; break; // Left
+                            case 0: x = Math.random() * width; y = 0; break; // Top
+                            case 1: x = width; y = Math.random() * height; break; // Right
+                            case 2: x = Math.random() * width; y = height; break; // Bottom
+                            case 3: x = 0; y = Math.random() * height; break; // Left
                         }
 
                         const sparkle = boardScene.add.particles(x, y, particleKey, {

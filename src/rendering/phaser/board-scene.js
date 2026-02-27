@@ -551,6 +551,16 @@ export function createBoardScene(phaserLib = typeof window !== 'undefined' ? win
         }
 
         /**
+         * Play hard drop visual effect
+         * @param {Object} dropData - Data about the hard drop
+         */
+        playHardDropEffect(dropData) {
+            if (this.sharedEffects) {
+                this.sharedEffects.playHardDropEffect(dropData);
+            }
+        }
+
+        /**
          * Update game state reference
          * @param {Object} gameState - The game state object
          */

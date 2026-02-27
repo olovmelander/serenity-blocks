@@ -129,7 +129,94 @@ export class OpponentWatchManager {
         };
         document.addEventListener('click', this.boundDocClick);
 
+        // Add resize listener for perfect aspect ratio sizing
+        this.boundResize = this._handleResize.bind(this);
+        window.addEventListener('resize', this.boundResize);
+
+        // Use ResizeObserver for more robust layout tracking
+        this.resizeObserver = new ResizeObserver(() => this._handleResize());
+        if (this.container) {
+            // Container may BE the .watch-grid or wrap it
+            const grid = this.container.classList.contains('watch-grid')
+                ? this.container
+                : this.container.querySelector('.watch-grid');
+            this.resizeObserver.observe(grid || this.container);
+        }
+
         this._updateAutoWatchUI();
+        this._handleResize(); // Initial sizing
+    }
+
+    /**
+     * Calculates available space in the watch grid cells and sets explicit dimensions
+     * to guarantee perfect 1:2 Tetris aspect ratio without CSS flexbox bugs.
+     * Dynamically measures actual chrome from the DOM for pixel-perfect sizing.
+     */
+    _handleResize() {
+        if (!this.container) return;
+
+        // Container may BE the .watch-grid element or may wrap it
+        const grid = this.container.classList.contains('watch-grid')
+            ? this.container
+            : this.container.querySelector('.watch-grid');
+        if (!grid) return;
+
+        // Calculate available space for a single opponent cell
+        // 2 columns, 2 rows, 4px gap
+        const cellW = (grid.clientWidth - 4) / 2;
+        const cellH = (grid.clientHeight - 4) / 2;
+
+        if (cellW <= 0 || cellH <= 0) return;
+
+        // Dynamically measure chrome from the first rendered mini-board
+        let verticalChrome = 42; // Conservative fallback
+        let horizontalChrome = 12;
+
+        const firstBoard = grid.querySelector('.opponent-mini-board');
+        if (firstBoard) {
+            const cs = getComputedStyle(firstBoard);
+            const padTop = parseFloat(cs.paddingTop) || 0;
+            const padBot = parseFloat(cs.paddingBottom) || 0;
+            const borderV = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+            const padLeft = parseFloat(cs.paddingLeft) || 0;
+            const padRight = parseFloat(cs.paddingRight) || 0;
+            const borderH = (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.borderRightWidth) || 0);
+
+            // Measure each chrome element's actual height
+            const nextQueue = firstBoard.querySelector('.opponent-next-queue');
+            const nameEl = firstBoard.querySelector('.opponent-name');
+            const fragsEl = firstBoard.querySelector('.opponent-frags');
+
+            const nextH = nextQueue ? nextQueue.offsetHeight : 0;
+            const nameH = nameEl ? nameEl.offsetHeight + (parseFloat(getComputedStyle(nameEl).marginTop) || 0) : 0;
+            const fragsH = fragsEl ? fragsEl.offsetHeight + (parseFloat(getComputedStyle(fragsEl).marginTop) || 0) : 0;
+
+            verticalChrome = padTop + padBot + borderV + nextH + nameH + fragsH;
+            horizontalChrome = padLeft + padRight + borderH;
+        }
+
+        // Also account for garbage meter width + gap inside grid-frame
+        const garbageMeterWidth = 10 + 3; // 10px meter + 3px gap
+
+        const maxCanvasHeight = cellH - verticalChrome;
+        const maxCanvasWidth = cellW - horizontalChrome - garbageMeterWidth;
+
+        // Determine dimensions keeping strictly 1:2 aspect ratio (width:height)
+        let canvasW = maxCanvasWidth;
+        let canvasH = canvasW * 2;
+
+        // Constrain to available height if needed
+        if (canvasH > maxCanvasHeight) {
+            canvasH = maxCanvasHeight;
+            canvasW = canvasH / 2;
+        }
+
+        // Apply sensible minimum bound (min 50px width)
+        canvasW = Math.max(50, Math.floor(canvasW));
+        canvasH = canvasW * 2;
+
+        grid.style.setProperty('--mini-canvas-width-px', `${canvasW}px`);
+        grid.style.setProperty('--mini-canvas-height-px', `${canvasH}px`);
     }
 
     _normalizeId(id) {
@@ -483,7 +570,7 @@ export class OpponentWatchManager {
             this.container.appendChild(boardEl);
 
             const canvas = boardEl.querySelector('canvas.opponent-grid');
-            const nextCanvas = boardEl.querySelector('canvas.next-queue-canvas');
+            const nextCanvases = Array.from(boardEl.querySelectorAll('.opponent-next-piece canvas'));
             const garbageMeter = boardEl.querySelector('.opponent-garbage-meter');
             const garbageFill = boardEl.querySelector('.opponent-garbage-fill');
             const garbageSegments = boardEl.querySelector('.opponent-garbage-segments');
@@ -494,7 +581,7 @@ export class OpponentWatchManager {
             this.playerBoards.set(playerKey, {
                 canvas,
                 ctx: canvas.getContext('2d'),
-                nextCtx: nextCanvas ? nextCanvas.getContext('2d') : null,
+                nextCtxs: nextCanvases.map(c => c.getContext('2d')),
                 garbageMeter,
                 garbageFill,
                 garbageSegments,
@@ -510,11 +597,15 @@ export class OpponentWatchManager {
                 // Use the map entry we just created (using player.id)
                 this._renderMiniBoard(this.playerBoards.get(playerKey).ctx, player.grid, player.currentPiece);
             }
-            if (player.nextPieces && this.playerBoards.get(playerKey).nextCtx) {
-                this._renderNextQueue(this.playerBoards.get(playerKey).nextCtx, player.nextPieces);
+            if (player.nextPieces && this.playerBoards.get(playerKey).nextCtxs) {
+                this._renderNextQueue(this.playerBoards.get(playerKey).nextCtxs, player.nextPieces);
             }
             this._updateGarbageMeter(this.playerBoards.get(playerKey), player);
         });
+
+        // Recalculate canvas sizes now that boards are in the DOM
+        // (dynamic chrome measurement needs rendered elements)
+        this._handleResize();
     }
 
     /**
@@ -538,7 +629,11 @@ export class OpponentWatchManager {
 
         div.innerHTML = `
             <div class="opponent-next-queue">
-                <canvas class="next-queue-canvas" width="96" height="24"></canvas>
+                <div class="opponent-next-pieces">
+                    <div class="opponent-next-piece highlight"><canvas></canvas></div>
+                    <div class="opponent-next-piece"><canvas></canvas></div>
+                    <div class="opponent-next-piece"><canvas></canvas></div>
+                </div>
             </div>
             <div class="opponent-grid-frame">
                 <div class="opponent-garbage-meter">
@@ -546,7 +641,7 @@ export class OpponentWatchManager {
                     <div class="opponent-garbage-segments"></div>
                     <div class="opponent-garbage-glow"></div>
                 </div>
-                <canvas class="opponent-grid" width="80" height="160"></canvas>
+                <canvas class="opponent-grid"></canvas>
             </div>
             <span class="opponent-name">${this._escapeHtml(player.name)}</span>
             <span class="opponent-frags">⚔️ ${player.frags || 0}</span>
@@ -609,11 +704,11 @@ export class OpponentWatchManager {
                 */
 
                 // Update next queue only if changed
-                if (state.nextPieces && board.nextCtx) {
+                if (state.nextPieces && board.nextCtxs) {
                     const nextSig = state.nextPieces.slice(0, 3).join(',');
                     const prevNextSig = this._lastNextPieces.get(stateId);
                     if (nextSig !== prevNextSig) {
-                        this._renderNextQueue(board.nextCtx, state.nextPieces);
+                        this._renderNextQueue(board.nextCtxs, state.nextPieces);
                         this._lastNextPieces.set(stateId, nextSig);
                     }
                 }
@@ -649,9 +744,20 @@ export class OpponentWatchManager {
                     fragsEl.textContent = `⚔️ ${state.frags || 0}`;
                 }
 
-                // Apply player color to border
+                // Apply player color: subtle outer card + prominent inner grid border
                 if (state.color) {
-                    board.element.style.borderColor = state.color;
+                    const c = state.color;
+                    // Outer card stays subtle — just a gentle glow
+                    board.element.style.boxShadow = `0 0 20px ${c}25, inset 0 0 12px ${c}0a`;
+                    board.element.style.background = `linear-gradient(145deg, rgba(0, 0, 0, 0.5), ${c}08)`;
+
+                    // Inner grid canvas border is the prominent player-colored frame
+                    const gridCanvas = board.element.querySelector('canvas.opponent-grid');
+                    if (gridCanvas) {
+                        gridCanvas.style.borderRightColor = c;
+                        gridCanvas.style.borderBottomColor = c;
+                        gridCanvas.style.borderLeftColor = c;
+                    }
                 }
 
                 this._updateGarbageMeter(board, state);
@@ -663,37 +769,62 @@ export class OpponentWatchManager {
     }
 
     /**
-     * Render next queue for opponent
+     * Render next queue for opponent into individual piece canvases
      */
-    _renderNextQueue(ctx, nextPieces) {
-        if (!ctx || !nextPieces) return;
+    _renderNextQueue(ctxs, nextPieces) {
+        if (!ctxs || !ctxs.length || !nextPieces) return;
 
-        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-        ctx.imageSmoothingEnabled = false;
-
-        const slots = 3;
-        const slotWidth = ctx.canvas.width / slots;
-        const slotHeight = ctx.canvas.height;
-        const padding = 2;
+        const slots = ctxs.length;
 
         for (let i = 0; i < Math.min(slots, nextPieces.length); i++) {
+            const ctx = ctxs[i];
+            const canvas = ctx.canvas;
+
+            // CSS sets the pixel size of the canvas, we just need to match internal res
+            const rect = canvas.getBoundingClientRect();
+            // Fallbacks based on CSS
+            const fallbackSizes = [36, 28, 22]; // First piece is bigger
+            const displayWidth = Math.floor(rect.width) || fallbackSizes[i];
+            const displayHeight = Math.floor(rect.height) || fallbackSizes[i];
+
+            if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+                canvas.width = displayWidth;
+                canvas.height = displayHeight;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.imageSmoothingEnabled = false;
+
             const shapeKey = nextPieces[i];
             const shape = SHAPES[shapeKey];
             if (!shape) continue;
 
             const rows = shape.length;
             const cols = shape[0].length;
-            const maxBlockWidth = Math.floor((slotWidth - padding * 2) / cols);
-            const maxBlockHeight = Math.floor((slotHeight - padding * 2) / rows);
-            const blockSize = Math.max(2, Math.min(maxBlockWidth, maxBlockHeight));
+
+            // Dynamic block size based on slot size to fill it well
+            const padding = 2; // 2px padding inside the box
+            const maxBlockWidth = Math.floor((displayWidth - padding * 2) / cols);
+            const maxBlockHeight = Math.floor((displayHeight - padding * 2) / rows);
+
+            // Scale first piece slightly differently if desired, but min works best
+            const blockSize = Math.min(maxBlockWidth, maxBlockHeight);
 
             const pieceWidth = cols * blockSize;
             const pieceHeight = rows * blockSize;
-            const startX = Math.round(i * slotWidth + (slotWidth - pieceWidth) / 2);
-            const startY = Math.round((slotHeight - pieceHeight) / 2);
+            const startX = Math.round((displayWidth - pieceWidth) / 2);
+            const startY = Math.round((displayHeight - pieceHeight) / 2);
 
             const styleConfig = this._getStyleConfig(shapeKey);
             drawPieceSolid(ctx, shape, startX, startY, blockSize, styleConfig);
+        }
+
+        // Clear any remaining slots
+        for (let i = nextPieces.length; i < slots; i++) {
+            const ctx = ctxs[i];
+            if (ctx && ctx.canvas) {
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+            }
         }
     }
 
@@ -1059,14 +1190,29 @@ export class OpponentWatchManager {
     _renderMiniBoard(ctx, grid, currentPiece) {
         if (!ctx || !grid) return;
 
-        const blockSize = 8;
-        // Skip spawn area rows (0-3), display rows 4-23 as visible rows 0-19
+        // Dynamically get the parent frame's actual dimensions or the element's client dimensions
+        // This ensures the internal canvas resolution exactly matches the CSS display resolution
+        const canvas = ctx.canvas;
+        const rect = canvas.getBoundingClientRect();
+
+        // Only resize if the dimensions have actually changed to avoid expensive DOM operations
+        const displayWidth = Math.floor(rect.width) || parseFloat(getComputedStyle(canvas).getPropertyValue('--mini-canvas-width-px')) || 80;
+        const displayHeight = Math.floor(rect.height) || parseFloat(getComputedStyle(canvas).getPropertyValue('--mini-canvas-height-px')) || 160;
+
+        if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+            canvas.width = displayWidth;
+            canvas.height = displayHeight;
+        }
+
+        // Tetris board is ALWAYS exactly 10 blocks wide.
+        // Calculate dynamic block size based on the new, true canvas width.
+        const blockSize = canvas.width / 10;
 
         // Clear canvas
-        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.imageSmoothingEnabled = false;
         ctx.fillStyle = 'rgba(10, 15, 25, 0.6)';
-        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         // PERF: Use persistent color cache instead of creating new Map every frame
         this._drawLockedCells(ctx, grid, blockSize, this._colorCache);
@@ -1318,11 +1464,23 @@ export class OpponentWatchManager {
         return div.innerHTML;
     }
 
+
+
     /**
      * Cleanup resources
      */
     destroy() {
         this.stopAnimationLoop();
+
+        if (this.boundResize) {
+            window.removeEventListener('resize', this.boundResize);
+            this.boundResize = null;
+        }
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
+        }
+
         this.playerBoards.clear();
         this.watchedPlayers = [];
         this.allPlayers = [];

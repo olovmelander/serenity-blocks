@@ -31,11 +31,11 @@ import {
 } from 'three/tsl';
 
 export const BLOOM_CLASS_WEIGHTS = {
-    burstSpark: 0.9,
-    wisp: 0.6,
-    strand: 0.5,
-    goldDust: 0.4,
-    lightBeam: 0.3,
+    burstSpark: 2.5,
+    wisp: 1.5,
+    strand: 1.0,
+    goldDust: 0.8,
+    lightBeam: 0.6,
 };
 
 function finalizeNodeMaterial(material, uniforms = {}, meta = {}) {
@@ -233,8 +233,8 @@ export function createBurstSparkNodeMaterial(params = {}) {
 
     const hotCore = pow(alphaLife, 0.32);
     const heatedColor = mix(baseColor, vec3(1.0, 0.98, 0.94), clamp(uColorTemperature.mul(0.9), 0.0, 1.0));
-    const color = mix(heatedColor, vec3(1.0, 1.0, 1.0), hotCore.mul(0.85))
-        .mul(float(2.8).add(uSparkBoost.mul(1.1)));
+    const color = mix(heatedColor, vec3(1.0, 1.0, 1.0), hotCore.mul(1.5))
+        .mul(float(4.5).add(uSparkBoost.mul(2.0)));
 
     const alpha = clamp(alphaLife.mul(0.92), 0.0, 1.0);
 

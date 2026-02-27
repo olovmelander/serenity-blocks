@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
+import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import {
     GAME_MODES, COLS, ROWS, BLOCK_SIZE,
 } from '../constants.js';
@@ -1188,6 +1189,24 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         );
         this.cleanupHandlers.push(this.pieceLockEffectUnsub);
 
+        // Hard drop effect handler
+        this.hardDropEffectUnsub = onMultiplayerEvent(
+            'game:hard_drop',
+            (detail) => {
+                if (detail.steamId !== localSteamId) return;
+                if (!this.mainBoardScene) return;
+
+                const { dropData } = detail;
+
+                this.deps.soundManager?.sfxPlayer.playDrop();
+
+                if (dropData && this.mainBoardScene.sharedEffects?.playHardDropEffect) {
+                    this.mainBoardScene.sharedEffects.playHardDropEffect(dropData);
+                }
+            },
+        );
+        this.cleanupHandlers.push(this.hardDropEffectUnsub);
+
         // Player topped out / death effect handler
         this.playerToppedOutUnsub = onMultiplayerEvent(
             MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT,
@@ -1451,12 +1470,63 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             }
         }
 
-        // Apply local player's color to main board border
+        // Apply local player's color to the player-card using the same approach as local multiplayer
         if (localPlayer) {
-            const mainBoard = document.getElementById('online-main-board');
+            const playerCard = document.getElementById('online-player-card');
             const localColor = localPlayer.color || this._getPlayerColor(localId);
-            if (mainBoard && localColor) {
-                mainBoard.style.borderColor = localColor;
+
+            if (localColor && playerCard) {
+                // Set CSS custom properties (same as local multiplayer)
+                playerCard.style.setProperty('--player-primary', localColor);
+                playerCard.style.setProperty('--player-primary-light', localColor);
+                playerCard.style.setProperty('--player-glow', `${localColor}80`);
+
+                // Set board dimensions — account for next pieces (~60px), stats bar (~50px), padding (~70px)
+                const boardWidth = Math.min(
+                    Math.max(180, window.innerWidth * 0.20),
+                    280,
+                    (window.innerHeight - 180) / 2.2
+                );
+                const boardHeight = boardWidth * 2;
+                playerCard.style.setProperty('--board-width', `${boardWidth}px`);
+                playerCard.style.setProperty('--board-height', `${boardHeight}px`);
+                playerCard.style.setProperty('--next-piece-size', '38px');
+                playerCard.style.setProperty('--next-piece-highlight-size', '44px');
+                playerCard.style.setProperty('--next-piece-gap', `${boardWidth * 0.025}px`);
+
+                // Apply card border, shadow, and background (same as local multiplayer data-player styles)
+                playerCard.style.borderColor = `${localColor}cc`;
+                playerCard.style.borderWidth = '3px';
+                playerCard.style.boxShadow = `0 0 30px ${localColor}66, inset 0 0 20px ${localColor}1a`;
+                playerCard.style.background = `linear-gradient(145deg, rgba(0, 0, 0, 0.5), ${localColor}0d)`;
+
+                // Darken the board explicitly
+                const boardSection = playerCard.querySelector('.player-board-section');
+                if (boardSection) {
+                    boardSection.style.background = 'rgba(10, 8, 24, 0.8)';
+                }
+
+                // Apply color to phaser board container border
+                const boardContainer = playerCard.querySelector('.phaser-board-container');
+                if (boardContainer) {
+                    boardContainer.style.borderTop = 'none';
+                    boardContainer.style.borderRight = `2px solid ${localColor}`;
+                    boardContainer.style.borderBottom = `2px solid ${localColor}`;
+                    boardContainer.style.borderLeft = `2px solid ${localColor}`;
+                    boardContainer.style.borderRadius = '0 0 12px 12px';
+                    boardContainer.style.boxShadow = `0 0 20px ${localColor}40`;
+                }
+
+                // Apply color to board border overlay
+                const borderOverlay = document.getElementById('online-board-border');
+                if (borderOverlay) {
+                    borderOverlay.style.borderTop = 'none';
+                    borderOverlay.style.borderRightColor = localColor;
+                    borderOverlay.style.borderBottomColor = localColor;
+                    borderOverlay.style.borderLeftColor = localColor;
+                    borderOverlay.style.borderRadius = '0 0 12px 12px';
+                    borderOverlay.style.boxShadow = `0 0 15px ${localColor}60, inset 0 0 10px ${localColor}40`;
+                }
             }
         }
 
@@ -1829,18 +1899,18 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         const goal = Number(config.endConditionValue) || 0;
 
         switch (config.endCondition) {
-        case 'frags':
-            return `FIRST TO ${goal || 10} FRAGS`;
-        case 'points':
-            return `FIRST TO ${(goal || 10) * 1000} POINTS`;
-        case 'lines':
-            return `FIRST TO ${goal || 40} LINES`;
-        case 'time':
-            return `${goal || 3} MINUTE SPRINT`;
-        case 'never':
-            return 'ENDLESS BATTLE';
-        default:
-            return 'STAY SHARP';
+            case 'frags':
+                return `FIRST TO ${goal || 10} FRAGS`;
+            case 'points':
+                return `FIRST TO ${(goal || 10) * 1000} POINTS`;
+            case 'lines':
+                return `FIRST TO ${goal || 40} LINES`;
+            case 'time':
+                return `${goal || 3} MINUTE SPRINT`;
+            case 'never':
+                return 'ENDLESS BATTLE';
+            default:
+                return 'STAY SHARP';
         }
     }
 
@@ -2138,12 +2208,24 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             softDrop: window.softDrop,
         };
 
+        // Initialize BoardJuice for reactive board motion
+        this._initBoardJuice();
+
         window.move = (dir) => {
             this.ffaGameState?.sendInput('move', { direction: dir });
+            // Board juice: nudge + tilt on move
+            if (this.boardJuice) {
+                this.boardJuice.nudge(dir * 1.5, 0);
+                this.boardJuice.tilt(dir * 0.4);
+            }
         };
 
         window.rotate = (dir) => {
             this.ffaGameState?.sendInput('rotate', { direction: dir });
+            // Board juice: tilt on rotate
+            if (this.boardJuice) {
+                this.boardJuice.tilt(dir === 'left' ? -0.3 : 0.3);
+            }
         };
 
         window.softDrop = () => {
@@ -2152,7 +2234,30 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         window.hardDrop = () => {
             this.ffaGameState?.sendInput('drop', { type: 'hard' });
+            // Board juice: dip + bounce on hard drop
+            if (this.boardJuice) {
+                this.boardJuice.dip(3);
+                this.boardJuice.bounce();
+            }
         };
+    }
+
+    /**
+     * Initialize BoardJuice for reactive board motion
+     * @private
+     */
+    _initBoardJuice() {
+        if (this.boardJuice) {
+            this.boardJuice.destroy();
+            this.boardJuice = null;
+        }
+
+        // Online mode: target the main board container
+        const mainBoard = document.getElementById('online-main-board');
+        const boardSection = mainBoard?.closest('.player-board-section') || mainBoard;
+        if (boardSection) {
+            this.boardJuice = new BoardJuice(boardSection);
+        }
     }
 
     /**
@@ -2289,6 +2394,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.mainPhaserGame.destroy(true);
             this.mainPhaserGame = null;
             this.mainBoardScene = null;
+        }
+
+        // Clean up BoardJuice
+        if (this.boardJuice) {
+            this.boardJuice.destroy();
+            this.boardJuice = null;
         }
 
         // Destroy UI components

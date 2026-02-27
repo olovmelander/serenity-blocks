@@ -115,8 +115,8 @@ const QUALITY_PRESETS = {
         strandCount: 6,
         strandParticles: 4200,
         lightBeamCount: 4,
-        bloomStrength: 0.55,
-        bloomRadius: 0.4,
+        bloomStrength: 0.85,
+        bloomRadius: 0.6,
         enableCompute: true,
         enablePostProcessing: true,
         enableFilmGrain: true,
@@ -132,8 +132,8 @@ const QUALITY_PRESETS = {
         strandCount: 4,
         strandParticles: 3200,
         lightBeamCount: 3,
-        bloomStrength: 0.5,
-        bloomRadius: 0.38,
+        bloomStrength: 0.75,
+        bloomRadius: 0.55,
         enableCompute: true,
         enablePostProcessing: true,
         enableFilmGrain: true,
@@ -149,8 +149,8 @@ const QUALITY_PRESETS = {
         strandCount: 3,
         strandParticles: 2600,
         lightBeamCount: 2,
-        bloomStrength: 0.45,
-        bloomRadius: 0.35,
+        bloomStrength: 0.65,
+        bloomRadius: 0.5,
         enableCompute: true,
         enablePostProcessing: true,
         enableFilmGrain: true,
@@ -166,8 +166,8 @@ const QUALITY_PRESETS = {
         strandCount: 2,
         strandParticles: 1800,
         lightBeamCount: 0,
-        bloomStrength: 0.35,
-        bloomRadius: 0.3,
+        bloomStrength: 0.5,
+        bloomRadius: 0.4,
         enableCompute: true,
         enablePostProcessing: true,
         enableFilmGrain: false,
@@ -418,9 +418,9 @@ export default class ChiralGoldTheme extends BaseTheme {
         if (typeof window === 'undefined') return;
 
         const aspect = window.innerWidth / Math.max(window.innerHeight, 1);
-        // Mild aspect-ratio compensation — particle depth spread now handles full-screen coverage
-        const dustScaleX = clamp(1.08 + (aspect - 1.0) * 0.06, 1.02, 1.18);
-        const dustScaleY = clamp(1.04 + (1 / Math.max(0.8, aspect) - 0.75) * 0.08, 1.0, 1.12);
+        // Agressive aspect-ratio compensation for screen flooding (Tetris Effect style)
+        const dustScaleX = clamp(2.5 + (aspect - 1.0) * 0.1, 2.5, 4.0);
+        const dustScaleY = clamp(2.5 + (1 / Math.max(0.8, aspect) - 0.75) * 0.1, 2.5, 4.0);
 
         if (this.dustPoints) {
             this.dustPoints.scale.set(dustScaleX, dustScaleY, 1.05);
@@ -465,11 +465,11 @@ export default class ChiralGoldTheme extends BaseTheme {
         const buildCandidate = () => {
             const clampedIntensity = clamp(intensity, 0.2, 3.0);
             if (profile === 'hero_close') {
-                const x = ((this.rand() - 0.5) * 480) + (this.rand() - 0.5) * (50 + clampedIntensity * 70);
-                const y = ((this.rand() - 0.5) * 440) + (this.rand() - 0.5) * (38 + clampedIntensity * 60);
+                const x = ((this.rand() - 0.5) * 960) + (this.rand() - 0.5) * (50 + clampedIntensity * 120);
+                const y = ((this.rand() - 0.5) * 880) + (this.rand() - 0.5) * (38 + clampedIntensity * 100);
                 return new THREE.Vector3(
-                    clamp(x, -240, 240),
-                    clamp(y, -220, 220),
+                    clamp(x, -600, 600),
+                    clamp(y, -500, 500),
                     760 + this.rand() * 420,
                 );
             }
@@ -954,11 +954,11 @@ export default class ChiralGoldTheme extends BaseTheme {
         for (let i = 0; i < count; i += 1) {
             const i3 = i * 3;
             const theta = this.rand() * Math.PI * 2;
-            const radius = 700 + this.rand() * 3600;
+            const radius = 2200 + this.rand() * 6000;
             const stretchX = 1.35 + this.rand() * 0.65;
             const stretchZ = 0.75 + this.rand() * 0.55;
             positions[i3] = Math.cos(theta) * radius * stretchX;
-            positions[i3 + 1] = (this.rand() - 0.5) * 1500;
+            positions[i3 + 1] = (this.rand() - 0.5) * 3500;
             positions[i3 + 2] = Math.sin(theta) * radius * stretchZ;
 
             const color = palette[Math.floor(this.rand() * palette.length)];
@@ -1113,38 +1113,38 @@ export default class ChiralGoldTheme extends BaseTheme {
             const r = this.rand();
             const theta = this.rand() * Math.PI * 2;
 
-            let minRadius = 2800;
-            let maxRadius = 6500;
+            let minRadius = 3800;
+            let maxRadius = 8500;
             let sizeMin = 5;
             let sizeMax = 16;
             let zDepthMin = -2000;
             let zDepthMax = 400;
-            let yRange = 3200;
+            let yRange = 4200;
             if (r < 0.20) {
-                minRadius = 300;
-                maxRadius = 1400;
+                minRadius = 1800;
+                maxRadius = 3400;
                 sizeMin = 14;
                 sizeMax = 28;
                 zDepthMin = -600;
                 zDepthMax = 800;
-                yRange = 1200;
+                yRange = 2800;
             } else if (r < 0.55) {
-                minRadius = 900;
-                maxRadius = 3200;
+                minRadius = 2900;
+                maxRadius = 5200;
                 sizeMin = 10;
                 sizeMax = 22;
                 zDepthMin = -1200;
                 zDepthMax = 600;
-                yRange = 2000;
+                yRange = 3800;
             } else if (r >= 0.80) {
                 // Envelope band
-                minRadius = 1200;
-                maxRadius = 4500;
+                minRadius = 2000;
+                maxRadius = 8000;
                 sizeMin = 3;
                 sizeMax = 12;
-                zDepthMin = -3000;
-                zDepthMax = 1200;
-                yRange = 3000;
+                zDepthMin = -5000;
+                zDepthMax = 1800;
+                yRange = 4800;
             }
 
             const radius = minRadius + this.rand() * (maxRadius - minRadius);
@@ -2498,7 +2498,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         // Audio-reactive depth: bass pulls camera closer into the particle field
         const audioPush = (analysis.bassEnergy ?? 0) * 80 + (analysis.overallEnergy ?? 0) * 40;
 
-        const shakeAmp = clamp(this.reactiveEnvelope.shake * 30, 0, 30);
+        const shakeAmp = clamp(this.reactiveEnvelope.shake * 90, 0, 90);
         this.cameraShake.set(
             (Math.random() - 0.5) * shakeAmp,
             (Math.random() - 0.5) * shakeAmp,
@@ -3123,11 +3123,23 @@ export default class ChiralGoldTheme extends BaseTheme {
 
         if (!Array.isArray(this.burstPools) || this.burstPools.length === 0) return;
 
-        const pool = this.burstPools[this.burstPoolIndex % this.burstPools.length];
-        this.burstPoolIndex = (this.burstPoolIndex + 1) % this.burstPools.length;
+        // Scan for an idle pool (one with no active particles) — this ensures
+        // previous combo bursts keep playing instead of being overwritten.
+        let pool = null;
+        for (let scan = 0; scan < this.burstPools.length; scan++) {
+            const idx = (this.burstPoolIndex + scan) % this.burstPools.length;
+            const candidate = this.burstPools[idx];
+            const candidateState = candidate?.userData?.cpuBurst;
+            if (candidateState && !candidateState.active) {
+                pool = candidate;
+                this.burstPoolIndex = (idx + 1) % this.burstPools.length;
+                break;
+            }
+        }
+        // If no idle pool is found, skip this burst so old particles accumulate.
+        if (!pool) return;
 
-        const state = pool?.userData?.cpuBurst;
-        if (!state) return;
+        const state = pool.userData.cpuBurst;
 
         const batchMin = Math.max(120, Math.floor(state.life.length * 0.08));
         const batchMax = Math.max(batchMin, Math.floor(state.life.length * 0.26));

@@ -13,6 +13,7 @@
  */
 
 import { BaseGameMode } from './BaseGameMode.js';
+import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import {
     GameState,
     spawnPiece,
@@ -327,6 +328,12 @@ export class OdysseyMode extends BaseGameMode {
 
         // Dispose the 3D Odyssey Board and overlay
         this._disposeOdysseyBoard();
+
+        // Clean up BoardJuice
+        if (this.boardJuice) {
+            this.boardJuice.destroy();
+            this.boardJuice = null;
+        }
 
         // Cleanup
         this.gameState = null;
@@ -897,6 +904,9 @@ export class OdysseyMode extends BaseGameMode {
         // Start game loop
         this._startGameLoop();
 
+        // Initialize BoardJuice for reactive board motion
+        this._initBoardJuice();
+
         // Mark as running
         this.isRunning = true;
 
@@ -1020,7 +1030,18 @@ export class OdysseyMode extends BaseGameMode {
                 });
             },
             onLevelUp: () => this.deps.soundManager?.sfxPlayer?.playLevelUp(),
-            onHardDrop: () => this.deps.soundManager?.sfxPlayer?.playDrop(),
+            onHardDrop: (dropData) => {
+                this.deps.soundManager?.sfxPlayer?.playDrop();
+                const boardScene = this._getBoardScene();
+                if (boardScene?.playHardDropEffect) {
+                    boardScene.playHardDropEffect(dropData);
+                }
+                // Board juice: dip + bounce on hard drop
+                if (this.boardJuice) {
+                    this.boardJuice.dip(3);
+                    this.boardJuice.bounce();
+                }
+            },
             triggerCombo: (comboCount) => {
                 // Metrics are tracked by hybridEngine.buildPhysicsCallbacks() wrapper
 
@@ -1054,6 +1075,11 @@ export class OdysseyMode extends BaseGameMode {
                 if (boardScene?.playLineClearImpact) {
                     boardScene.playLineClearImpact(lineCount, cascadeCount);
                 }
+                // Board juice: pulse on line clear
+                if (this.boardJuice) {
+                    const intensity = 1 + (Math.min(lineCount, 4) * 0.004);
+                    this.boardJuice.pulse(intensity);
+                }
             },
             triggerBackgroundPulse: (lineCount) => {
                 const boardScene = this._getBoardScene();
@@ -1062,12 +1088,16 @@ export class OdysseyMode extends BaseGameMode {
                 }
             },
             onPieceLock: (piece) => {
-                // Metrics (piece placed) are tracked by hybridEngine.buildPhysicsCallbacks()
                 eventBus.emit(EVENTS.PIECE_LOCK, { piece });
 
                 const boardScene = this._getBoardScene();
                 if (boardScene?.createPieceLockRipple) {
                     boardScene.createPieceLockRipple(piece);
+                }
+                // Board juice: gentle dip + pulse on piece lock
+                if (this.boardJuice) {
+                    this.boardJuice.dip(1);
+                    this.boardJuice.pulse(1.005);
                 }
             },
             spawnPiece: () => {
@@ -1833,12 +1863,12 @@ export class OdysseyMode extends BaseGameMode {
     _formatObjective(primary) {
         if (!primary) return 'Complete the level';
         switch (primary.type) {
-        case 'lines': return `Clear ${primary.target} lines`;
-        case 'score': return `Score ${primary.target.toLocaleString()} points`;
-        case 'cascade': return `Trigger ${primary.target} cascades`;
-        case 'time': return `Clear in ${primary.target} seconds`;
-        case 'combo': return `Achieve ${primary.target}x combo`;
-        default: return `Complete: ${primary.type} (${primary.target})`;
+            case 'lines': return `Clear ${primary.target} lines`;
+            case 'score': return `Score ${primary.target.toLocaleString()} points`;
+            case 'cascade': return `Trigger ${primary.target} cascades`;
+            case 'time': return `Clear in ${primary.target} seconds`;
+            case 'combo': return `Achieve ${primary.target}x combo`;
+            default: return `Complete: ${primary.type} (${primary.target})`;
         }
     }
 
@@ -2681,18 +2711,36 @@ export class OdysseyMode extends BaseGameMode {
             softDrop: window.softDrop,
         };
 
+        // Initialize BoardJuice for reactive board motion
+        this._initBoardJuice();
+
         window.move = (dir) => {
             if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
-            coreMove(this.gameState, dir, () => this.deps.soundManager?.sfxPlayer?.playMove());
+            const moved = coreMove(this.gameState, dir, () => this.deps.soundManager?.sfxPlayer?.playMove());
+            if (this.boardJuice) {
+                if (moved) {
+                    this.boardJuice.nudge(dir * 1.5, 0);
+                    this.boardJuice.tilt(dir * 0.4);
+                } else {
+                    this.boardJuice.nudge(dir * 0.8, 0);
+                }
+            }
         };
 
         window.rotate = (dir) => {
             if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
             coreRotate(this.gameState, dir, () => this.deps.soundManager?.sfxPlayer?.playRotate());
+            if (this.boardJuice) {
+                this.boardJuice.tilt(dir === 'left' ? -0.3 : 0.3);
+            }
         };
 
         window.hardDrop = () => {
             if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
+            if (this.boardJuice) {
+                this.boardJuice.dip(3);
+                this.boardJuice.bounce();
+            }
             coreHardDrop(
                 this.gameState,
                 () => this.deps.soundManager?.sfxPlayer?.playDrop(),
@@ -2708,6 +2756,23 @@ export class OdysseyMode extends BaseGameMode {
                 this._getPhysicsCallbacks(),
             );
         };
+    }
+
+    /**
+     * Initialize BoardJuice for reactive board motion
+     * @private
+     */
+    _initBoardJuice() {
+        if (this.boardJuice) {
+            this.boardJuice.destroy();
+            this.boardJuice = null;
+        }
+
+        const container = document.getElementById('phaser-game-container');
+        const boardSection = container?.closest('.player-board-section');
+        if (boardSection) {
+            this.boardJuice = new BoardJuice(boardSection);
+        }
     }
 
     /**
@@ -3029,37 +3094,37 @@ export class OdysseyMode extends BaseGameMode {
         let deltaRows = 0;
 
         switch (event.key) {
-        case 'ArrowUp':
-            deltaRows = -3;
-            event.preventDefault();
-            event.stopPropagation();
-            break;
-        case 'ArrowDown':
-            deltaRows = 3;
-            event.preventDefault();
-            event.stopPropagation();
-            break;
-        case 'ArrowLeft':
-        case 'ArrowRight':
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-        case 'PageUp':
-            deltaRows = -10;
-            event.preventDefault();
-            event.stopPropagation();
-            break;
-        case 'PageDown':
-            deltaRows = 10;
-            event.preventDefault();
-            event.stopPropagation();
-            break;
-        case 'p':
-        case 'P':
-        case 'Escape':
-            return; // Let pause/settings propagate
-        default:
-            return;
+            case 'ArrowUp':
+                deltaRows = -3;
+                event.preventDefault();
+                event.stopPropagation();
+                break;
+            case 'ArrowDown':
+                deltaRows = 3;
+                event.preventDefault();
+                event.stopPropagation();
+                break;
+            case 'ArrowLeft':
+            case 'ArrowRight':
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            case 'PageUp':
+                deltaRows = -10;
+                event.preventDefault();
+                event.stopPropagation();
+                break;
+            case 'PageDown':
+                deltaRows = 10;
+                event.preventDefault();
+                event.stopPropagation();
+                break;
+            case 'p':
+            case 'P':
+            case 'Escape':
+                return; // Let pause/settings propagate
+            default:
+                return;
         }
 
         if (deltaRows !== 0 && this.boardScene.cameraSettings) {

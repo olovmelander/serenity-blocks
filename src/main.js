@@ -3286,6 +3286,14 @@ class SerenityBlocks {
             },
             playLineClear: () => this.soundManager.sfxPlayer.playLineClear(),
             playLevelUp: () => this.soundManager.sfxPlayer.playLevelUp(),
+            onHardDrop: (dropData) => {
+                this.soundManager.sfxPlayer.playDrop();
+                const scene = sceneRef();
+                console.log(`[Main] onHardDrop for player ${playerNum}, scene exists: ${!!scene}, playHardDropEffect exists: ${!!scene?.playHardDropEffect}`, dropData);
+                if (scene?.playHardDropEffect) {
+                    scene.playHardDropEffect(dropData);
+                }
+            },
             triggerFlash: (clearedRows) => {
                 const settings = this.settingsManager.get();
                 const scene = sceneRef();
