@@ -892,7 +892,16 @@ export class FFAGameStateP2P {
                 if (data.type === 'soft') {
                     softDrop(gameState, null, callbacks);
                 } else if (data.type === 'hard') {
-                    hardDrop(gameState, null, callbacks);
+                    // Update callbacks to proxy the hard drop effect through to the client
+                    const dropCallbacks = {
+                        ...callbacks,
+                        onHardDrop: (dropData) => {
+                            if (callbacks.onHardDrop) callbacks.onHardDrop(dropData);
+                            // Provide a hook for local UI integration in FFA multiplayer
+                            emitMultiplayerEvent('hard_drop_effect', { steamId, dropData });
+                        }
+                    };
+                    hardDrop(gameState, null, dropCallbacks);
                 }
                 break;
             default:
@@ -2292,6 +2301,17 @@ export class FFAGameStateP2P {
                     steamId,
                     playerName: player.name,
                     piece,
+                    isLocal: isLocal(),
+                });
+            },
+            onHardDrop: (dropData) => {
+                const player = getPlayer();
+                if (!player) return;
+
+                emitMultiplayerEvent('game:hard_drop', {
+                    steamId,
+                    playerName: player.name,
+                    dropData,
                     isLocal: isLocal(),
                 });
             },

@@ -90,43 +90,43 @@ export class ChiralGoldDustCompute {
             const theta = this.random() * TAU;
 
             // Defaults = far band
-            let minRadius = 2800;
-            let maxRadius = 6500;
+            let minRadius = 3800;
+            let maxRadius = 8500;
             let baseSizeMin = 5;
             let baseSizeMax = 16;
             let baseSpeed = 0.025;
             let zDepthMin = -2000;
             let zDepthMax = 400;
-            let yRange = 3200;
+            let yRange = 4200;
 
             if (r < nearRatio) {
-                minRadius = 300;
-                maxRadius = 1400;
+                minRadius = 1800;
+                maxRadius = 3400;
                 baseSizeMin = 14;
                 baseSizeMax = 28;
                 baseSpeed = 0.14;
                 zDepthMin = -600;
                 zDepthMax = 800;
-                yRange = 1200;
+                yRange = 2800;
             } else if (r < nearRatio + midRatio) {
-                minRadius = 900;
-                maxRadius = 3200;
+                minRadius = 2900;
+                maxRadius = 5200;
                 baseSizeMin = 10;
                 baseSizeMax = 22;
                 baseSpeed = 0.07;
                 zDepthMin = -1200;
                 zDepthMax = 600;
-                yRange = 2000;
+                yRange = 3800;
             } else if (r >= nearRatio + midRatio + farRatio) {
                 // Envelope band: wraps around camera for edge-to-edge coverage
-                minRadius = 1200;
-                maxRadius = 4500;
+                minRadius = 2000;
+                maxRadius = 8000;
                 baseSizeMin = 3;
                 baseSizeMax = 12;
                 baseSpeed = 0.018;
-                zDepthMin = -3000;
-                zDepthMax = 1200;
-                yRange = 3000;
+                zDepthMin = -5000;
+                zDepthMax = 1800;
+                yRange = 4800;
             }
 
             const radius = minRadius + this.random() * (maxRadius - minRadius);
@@ -212,13 +212,13 @@ export class ChiralGoldDustCompute {
                 const envMask = clamp(float(1.0).sub(step(float(0.020), vel.w)), 0.0, 1.0);
                 const farMask = clamp(belowMidMask.sub(envMask), 0.0, 1.0);
 
-                const minRadius = nearMask.mul(300.0).add(midMask.mul(900.0)).add(farMask.mul(2800.0)).add(envMask.mul(1200.0));
-                const maxRadius = nearMask.mul(1400.0).add(midMask.mul(3200.0)).add(farMask.mul(6500.0)).add(envMask.mul(4500.0));
-                const yRange = nearMask.mul(1200.0).add(midMask.mul(2000.0)).add(farMask.mul(3200.0)).add(envMask.mul(3000.0));
+                const minRadius = nearMask.mul(1800.0).add(midMask.mul(2900.0)).add(farMask.mul(3800.0)).add(envMask.mul(2000.0));
+                const maxRadius = nearMask.mul(3400.0).add(midMask.mul(5200.0)).add(farMask.mul(8500.0)).add(envMask.mul(8000.0));
+                const yRange = nearMask.mul(2800.0).add(midMask.mul(3800.0)).add(farMask.mul(4200.0)).add(envMask.mul(4800.0));
 
                 // Z-depth offset per band: scatter particles in front of and behind the camera plane
-                const zDepthMin = nearMask.mul(-600.0).add(midMask.mul(-1200.0)).add(farMask.mul(-2000.0)).add(envMask.mul(-3000.0));
-                const zDepthRange = nearMask.mul(1400.0).add(midMask.mul(1800.0)).add(farMask.mul(2400.0)).add(envMask.mul(4200.0));
+                const zDepthMin = nearMask.mul(-600.0).add(midMask.mul(-1200.0)).add(farMask.mul(-2000.0)).add(envMask.mul(-5000.0));
+                const zDepthRange = nearMask.mul(1400.0).add(midMask.mul(1800.0)).add(farMask.mul(2400.0)).add(envMask.mul(6800.0));
 
                 const radius = mix(minRadius, maxRadius, seedA);
                 const angle = seedB.mul(TAU).add(this.uTime.mul(0.035));
@@ -256,7 +256,7 @@ export class ChiralGoldDustCompute {
                 const flowZ = sin(pos.x.mul(noiseFrequency).sub(noiseTime.mul(1.1)))
                     .sub(cos(pos.y.mul(noiseFrequency).sub(noiseTime.mul(0.4))));
                 const flowVec = normalize(vec3(flowX, flowY, flowZ).add(vec3(0.0001, 0.0001, 0.0001)));
-                const flowAmp = mix(float(50.0), float(180.0), clamp(this.uEnergy.mul(1.2).add(this.uMid.mul(0.6)), 0.0, 1.0));
+                const flowAmp = mix(float(120.0), float(380.0), clamp(this.uEnergy.mul(1.5).add(this.uMid.mul(0.8)), 0.0, 1.0));
                 pos.xyz.addAssign(flowVec.mul(flowAmp).mul(this.uDelta));
 
                 // Beat push — radial outward impulse (2.8x stronger than before)
@@ -362,15 +362,25 @@ export class ChiralGoldBurstCompute {
         this.maxLife = Number.isFinite(options.maxLife) ? options.maxLife : 4.0;
         this.maxDelay = Number.isFinite(options.maxDelay) ? options.maxDelay : 0.5;
 
+        // CPU writes configuration to spawn buffers (GPU Read-only)
+        this.spawnPosData = new Float32Array(particleCount * 4);
+        this.spawnVelData = new Float32Array(particleCount * 4);
+        this.spawnMiscData = new Float32Array(particleCount * 4); // x: maxLife, y: delay
+        this.colorData = new Float32Array(particleCount * 4);     // Material reads
+
+        // GPU updates state tracking buffers (GPU Read-Write, Material reads)
         this.positionData = new Float32Array(particleCount * 4);
         this.velocityData = new Float32Array(particleCount * 4);
-        this.lifeData = new Float32Array(particleCount * 4);
-        this.colorData = new Float32Array(particleCount * 4);
+        this.lifeData = new Float32Array(particleCount * 4);      // y: alphaLife
+
+        this.spawnPosBuffer = new THREE.StorageBufferAttribute(this.spawnPosData, 4);
+        this.spawnVelBuffer = new THREE.StorageBufferAttribute(this.spawnVelData, 4);
+        this.spawnMiscBuffer = new THREE.StorageBufferAttribute(this.spawnMiscData, 4);
+        this.colorBuffer = new THREE.StorageBufferAttribute(this.colorData, 4);
 
         this.positionBuffer = new THREE.StorageBufferAttribute(this.positionData, 4);
         this.velocityBuffer = new THREE.StorageBufferAttribute(this.velocityData, 4);
         this.lifeBuffer = new THREE.StorageBufferAttribute(this.lifeData, 4);
-        this.colorBuffer = new THREE.StorageBufferAttribute(this.colorData, 4);
 
         this.uDelta = uniform(0);
         this.uTime = uniform(0);
@@ -390,21 +400,23 @@ export class ChiralGoldBurstCompute {
         for (let i = 0; i < this.count; i += 1) {
             const i4 = i * 4;
 
-            this.positionData[i4] = 0;
-            this.positionData[i4 + 1] = 0;
-            this.positionData[i4 + 2] = -9999;
-            this.positionData[i4 + 3] = 0;
+            // Spawn configuration
+            this.spawnPosData[i4] = 0;
+            this.spawnPosData[i4 + 1] = 0;
+            this.spawnPosData[i4 + 2] = -9999;
+            this.spawnPosData[i4 + 3] = -1000; // spawnTime
 
-            this.velocityData[i4] = 0;
-            this.velocityData[i4 + 1] = 0;
-            this.velocityData[i4 + 2] = 0;
-            this.velocityData[i4 + 3] = 0;
+            this.spawnVelData[i4] = 0;
+            this.spawnVelData[i4 + 1] = 0;
+            this.spawnVelData[i4 + 2] = 0;
+            this.spawnVelData[i4 + 3] = 0;
 
-            this.lifeData[i4] = -1000;
-            this.lifeData[i4 + 1] = 0;
-            this.lifeData[i4 + 2] = this.minLife + this.random() * (this.maxLife - this.minLife);
-            this.lifeData[i4 + 3] = this.random() * this.maxDelay;
+            this.spawnMiscData[i4] = this.minLife + this.random() * (this.maxLife - this.minLife); // maxLife
+            this.spawnMiscData[i4 + 1] = this.random() * this.maxDelay; // delay
+            this.spawnMiscData[i4 + 2] = 0;
+            this.spawnMiscData[i4 + 3] = 0;
 
+            // Material bindings
             const paletteRoll = this.random();
             let colorIndex = 0;
             if (paletteRoll <= 0.6) colorIndex = 1;
@@ -415,31 +427,72 @@ export class ChiralGoldBurstCompute {
             this.colorData[i4] = c[0];
             this.colorData[i4 + 1] = c[1];
             this.colorData[i4 + 2] = c[2];
-            this.colorData[i4 + 3] = 4 + this.random() * 96;
+            this.colorData[i4 + 3] = 4 + this.random() * 96; // size
+
+            // Initial GPU state overrides (GPU owns these)
+            this.positionData[i4] = 0;
+            this.positionData[i4 + 1] = 0;
+            this.positionData[i4 + 2] = -9999;
+            this.positionData[i4 + 3] = -9000; // pos.w holds initialization timestamp
+
+            this.velocityData[i4] = 0;
+            this.velocityData[i4 + 1] = 0;
+            this.velocityData[i4 + 2] = 0;
+            this.velocityData[i4 + 3] = 0;
+
+            this.lifeData[i4] = 0;
+            this.lifeData[i4 + 1] = 0; // alphaLife
+            this.lifeData[i4 + 2] = 0;
+            this.lifeData[i4 + 3] = 0;
         }
 
+        // We only upload the GPU ownership buffers on initialization
+        this.spawnPosBuffer.needsUpdate = true;
+        this.spawnVelBuffer.needsUpdate = true;
+        this.spawnMiscBuffer.needsUpdate = true;
+        this.colorBuffer.needsUpdate = true;
         this.positionBuffer.needsUpdate = true;
         this.velocityBuffer.needsUpdate = true;
         this.lifeBuffer.needsUpdate = true;
-        this.colorBuffer.needsUpdate = true;
     }
 
     createComputeNode() {
+        const spawnPosData = storage(this.spawnPosBuffer, 'vec4', this.count);
+        const spawnVelData = storage(this.spawnVelBuffer, 'vec4', this.count);
+        const spawnMiscData = storage(this.spawnMiscBuffer, 'vec4', this.count);
         const positions = storage(this.positionBuffer, 'vec4', this.count);
         const velocities = storage(this.velocityBuffer, 'vec4', this.count);
         const lifeData = storage(this.lifeBuffer, 'vec4', this.count);
 
         const computeBurst = Fn(() => {
             const index = instanceIndex;
+            const spawnPos = spawnPosData.element(index).toVar();
+            const spawnVel = spawnVelData.element(index).toVar();
+            const spawnMisc = spawnMiscData.element(index).toVar();
+
             const pos = positions.element(index).toVar();
             const vel = velocities.element(index).toVar();
             const life = lifeData.element(index).toVar();
 
-            const spawnTime = life.x.add(life.w);
+            // Hardware reads spawnTime and lifetime params cleanly written by CPU
+            const spawnTime = spawnPos.w.add(spawnMisc.y);
+            const maxLife = max(float(0.001), spawnMisc.x);
+            const maxLifePlusSpawn = spawnTime.add(maxLife);
             const age = this.uTime.sub(spawnTime);
-            const maxLife = max(float(0.001), life.z);
 
-            const active = age.greaterThanEqual(float(0.0)).and(age.lessThan(maxLife));
+            const active = this.uTime.greaterThanEqual(spawnTime).and(this.uTime.lessThan(maxLifePlusSpawn));
+
+            // To ensure stateful integration doesn't overwrite manually,
+            // we snapshot spawn parameters strictly once per trigger.
+            const isInitialized = pos.w.equals(spawnTime);
+            const justSpawned = active.and(isInitialized.not());
+
+            If(justSpawned, () => {
+                pos.xyz.assign(spawnPos.xyz);
+                vel.xyz.assign(spawnVel.xyz);
+                pos.w.assign(spawnTime); // Timestamp prevents re-initialization
+            });
+
             If(active, () => {
                 const lifeNorm = clamp(age.div(maxLife), 0.0, 1.0);
                 const decel = max(float(0.25), float(1.0).sub(pow(lifeNorm, 1.5)));
@@ -452,10 +505,9 @@ export class ChiralGoldBurstCompute {
                 const orbitalFlow = vec3(radialDir.z.negate(), 0.16, radialDir.x).mul(36.0);
                 vel.xyz.assign(mix(vel.xyz, orbitalFlow, joinFlow.mul(this.uFlowBlend)));
 
-                life.y.assign(float(1.0).sub(lifeNorm));
-                pos.w.assign(1.0);
+                life.y.assign(float(1.0).sub(lifeNorm)); // alphaLife
             }).Else(() => {
-                pos.assign(vec4(0.0, 0.0, -9999.0, 0.0));
+                pos.xyz.assign(vec3(0.0, 0.0, -9999.0));
                 life.y.assign(0.0);
             });
 
@@ -494,8 +546,8 @@ export class ChiralGoldBurstCompute {
 
         const clampedIntensity = Math.max(0.75, Math.min(2.25, intensity));
         const normalizedIntensity = (clampedIntensity - 0.75) / 1.5;
-        const minBatch = Math.max(400, Math.floor(this.count * 0.08));
-        const maxBatch = Math.max(minBatch, Math.floor(this.count * 0.26));
+        const minBatch = Math.max(120, Math.floor(this.count * 0.015));
+        const maxBatch = Math.max(minBatch, Math.floor(this.count * 0.045));
         const targetBatch = Math.min(
             this.count,
             Math.floor(minBatch + (maxBatch - minBatch) * normalizedIntensity),
@@ -522,15 +574,15 @@ export class ChiralGoldBurstCompute {
                 const dirX = sinPhi * Math.cos(theta);
                 const dirY = sinPhi * Math.sin(theta);
                 const dirZ = Math.cos(phi);
-                const speed = 60 + this.random() * 60;
+                const speed = 180 + this.random() * 220;
                 vx = dirX * speed * clampedIntensity * velocityMultiplier;
                 vy = dirY * speed * clampedIntensity * velocityMultiplier;
                 vz = dirZ * speed * clampedIntensity * velocityMultiplier;
             } else if (patternRoll < 0.85) {
                 // Spiral shooters
                 const angle = this.random() * TAU;
-                const tangentialSpeed = 80 + comboCount * 15;
-                const outwardSpeed = 40 + comboCount * 8;
+                const tangentialSpeed = 160 + comboCount * 25;
+                const outwardSpeed = 120 + comboCount * 20;
                 vx = (
                     (-Math.sin(angle) * tangentialSpeed + Math.cos(angle) * outwardSpeed)
                     * (0.7 + this.random() * 0.6)
@@ -544,35 +596,37 @@ export class ChiralGoldBurstCompute {
                 vy = (Math.sin(angle * 2.0) * 25 + 20 + this.random() * 30) * velocityMultiplier;
             } else {
                 // Screen streakers
-                const streakSpeed = 200 + this.random() * 150;
+                const streakSpeed = 400 + this.random() * 350;
                 vx = (this.random() - 0.5) * 40 * velocityMultiplier;
                 vy = (this.random() - 0.5) * 40 * velocityMultiplier;
                 vz = streakSpeed * velocityMultiplier;
             }
 
-            this.positionData[i4] = this.origin.x + (this.random() - 0.5) * 12;
-            this.positionData[i4 + 1] = this.origin.y + (this.random() - 0.5) * 12;
-            this.positionData[i4 + 2] = this.origin.z + (this.random() - 0.5) * 12;
-            this.positionData[i4 + 3] = 1;
+            this.spawnPosData[i4] = this.origin.x + (this.random() - 0.5) * 12;
+            this.spawnPosData[i4 + 1] = this.origin.y + (this.random() - 0.5) * 12;
+            this.spawnPosData[i4 + 2] = this.origin.z + (this.random() - 0.5) * 12;
+            this.spawnPosData[i4 + 3] = time; // spawnTime
 
-            this.velocityData[i4] = vx;
-            this.velocityData[i4 + 1] = vy;
-            this.velocityData[i4 + 2] = vz;
-            this.velocityData[i4 + 3] = 1;
+            this.spawnVelData[i4] = vx;
+            this.spawnVelData[i4 + 1] = vy;
+            this.spawnVelData[i4 + 2] = vz;
+            this.spawnVelData[i4 + 3] = 0;
 
-            this.lifeData[i4] = time;
-            this.lifeData[i4 + 1] = 0;
-            this.lifeData[i4 + 2] = localLife;
-            this.lifeData[i4 + 3] = localDelay;
+            this.spawnMiscData[i4] = localLife; // maxLife
+            this.spawnMiscData[i4 + 1] = localDelay; // delay
 
             const sizeBoost = sizeMultiplier * (1.0 + sparkBoost * 0.32);
             this.colorData[i4 + 3] = Math.min(220, Math.max(3, (3 + this.random() * 117) * sizeBoost));
         }
 
         this.nextTriggerIndex = (startIndex + targetBatch) % this.count;
-        this.positionBuffer.needsUpdate = true;
-        this.velocityBuffer.needsUpdate = true;
-        this.lifeBuffer.needsUpdate = true;
+
+        // Critical Fix: We ONLY update spawn parameters and color sizes via CPU to WebGPU.
+        // We MUST NOT upload `positionBuffer` or `velocityBuffer` natively, as that 
+        // overwrites and destroys the active simulation properties across frames.
+        this.spawnPosBuffer.needsUpdate = true;
+        this.spawnVelBuffer.needsUpdate = true;
+        this.spawnMiscBuffer.needsUpdate = true;
         this.colorBuffer.needsUpdate = true;
     }
 
@@ -590,10 +644,16 @@ export class ChiralGoldBurstCompute {
 
     dispose() {
         this.computeNode = null;
+        this.spawnPosBuffer = null;
+        this.spawnVelBuffer = null;
+        this.spawnMiscBuffer = null;
         this.positionBuffer = null;
         this.velocityBuffer = null;
         this.lifeBuffer = null;
         this.colorBuffer = null;
+        this.spawnPosData = null;
+        this.spawnVelData = null;
+        this.spawnMiscData = null;
         this.positionData = null;
         this.velocityData = null;
         this.lifeData = null;
@@ -643,9 +703,9 @@ export class ChiralGoldWispCompute {
             const phase = this.random() * TAU;
             const attractorGroup = this.random();
 
-            this.positionData[i4] = (this.random() - 0.5) * 1300;
-            this.positionData[i4 + 1] = (this.random() - 0.5) * 900;
-            this.positionData[i4 + 2] = (this.random() - 0.5) * 1000;
+            this.positionData[i4] = (this.random() - 0.5) * 3200;
+            this.positionData[i4 + 1] = (this.random() - 0.5) * 2200;
+            this.positionData[i4 + 2] = (this.random() - 0.5) * 2400;
             this.positionData[i4 + 3] = 1;
 
             this.paramAData[i4] = ampX;
@@ -700,29 +760,29 @@ export class ChiralGoldWispCompute {
             const attractor = vec3(0.0, 0.0, 0.0).toVar();
             If(pB.w.lessThan(float(0.25)), () => {
                 attractor.assign(vec3(
-                    sin(t.mul(0.22)).mul(640.0),
-                    cos(t.mul(0.19)).mul(240.0),
-                    cos(t.mul(0.25)).mul(520.0),
+                    sin(t.mul(0.22)).mul(1400.0),
+                    cos(t.mul(0.19)).mul(600.0),
+                    cos(t.mul(0.25)).mul(1100.0),
                 ));
             }).Else(() => {
                 If(pB.w.lessThan(float(0.5)), () => {
                     attractor.assign(vec3(
-                        cos(t.mul(0.17)).mul(580.0),
-                        sin(t.mul(0.21)).mul(260.0),
-                        sin(t.mul(0.27)).mul(600.0),
+                        cos(t.mul(0.17)).mul(1300.0),
+                        sin(t.mul(0.21)).mul(600.0),
+                        sin(t.mul(0.27)).mul(1300.0),
                     ));
                 }).Else(() => {
                     If(pB.w.lessThan(float(0.75)), () => {
                         attractor.assign(vec3(
-                            sin(t.mul(0.28).add(1.2)).mul(520.0),
-                            cos(t.mul(0.16).add(0.8)).mul(300.0),
-                            cos(t.mul(0.24).add(2.0)).mul(560.0),
+                            sin(t.mul(0.28).add(1.2)).mul(1200.0),
+                            cos(t.mul(0.16).add(0.8)).mul(700.0),
+                            cos(t.mul(0.24).add(2.0)).mul(1200.0),
                         ));
                     }).Else(() => {
                         attractor.assign(vec3(
-                            cos(t.mul(0.25).add(2.1)).mul(620.0),
-                            sin(t.mul(0.18).add(1.7)).mul(220.0),
-                            sin(t.mul(0.23).add(0.5)).mul(500.0),
+                            cos(t.mul(0.25).add(2.1)).mul(1400.0),
+                            sin(t.mul(0.18).add(1.7)).mul(550.0),
+                            sin(t.mul(0.23).add(0.5)).mul(1100.0),
                         ));
                     });
                 });

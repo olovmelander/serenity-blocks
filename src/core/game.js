@@ -600,11 +600,10 @@ export function processAutoDrop(gameState, delta, playDropCallback, physicsCallb
 export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
     if (!gameState.currentPiece || gameState.isProcessingPhysics) return;
 
-    if (physicsCallbacks?.onHardDrop) {
-        physicsCallbacks.onHardDrop();
-    }
-
     invalidateGhostCache(gameState);
+
+    // Calculate drop start and end positions for VFX
+    const startY = gameState.currentPiece.y;
     let distance = 0;
     while (canPlacePiece(
         gameState,
@@ -614,6 +613,16 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
     )) {
         gameState.currentPiece.y++;
         distance++;
+    }
+    const endY = gameState.currentPiece.y;
+
+    if (physicsCallbacks?.onHardDrop) {
+        // Pass drop data to callback for VFX rendering
+        physicsCallbacks.onHardDrop({
+            piece: gameState.currentPiece,
+            startY,
+            endY
+        });
     }
 
     // Quadra: No points for hard drop distance - only line clears and time-based lock bonus
