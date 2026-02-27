@@ -142,12 +142,12 @@ export function createRoadNodeMaterial() {
     const depth = viewPos.z.negate();
 
     // Rainbow bands flowing forward
-    const hue = fract(float(1.0).sub(uvCoord.y).mul(4.0).add(uProgress.mul(0.5)));
+    const hue = fract(float(1.0).sub(uvCoord.y).mul(4.0).add(uProgress.mul(1.5)));
     const rainbow = tslHsv2rgb(hue, float(0.9), float(0.7));
 
     // Lane stripes with controlled pace-linked modulation
     const laneFrequency = float(86.0).add(uPace.sub(1.0).mul(34.0));
-    const laneFlow = uProgress.mul(float(18.0).add(uPace.mul(6.0))).add(uTime.mul(0.15));
+    const laneFlow = uProgress.mul(float(18.0).add(uPace.mul(8.0))).add(uTime.mul(0.65));
     const lanes = abs(sin(float(1.0).sub(uvCoord.y).mul(laneFrequency).add(laneFlow)));
     const laneLow = clamp(float(0.68).sub(uPace.sub(1.0).mul(0.08)), float(0.5), float(0.85));
     const laneHigh = clamp(float(0.9).sub(uPace.sub(1.0).mul(0.04)), float(0.74), float(0.97));

@@ -1,62 +1,46 @@
-# Phaser v3 Quick Start Guide 🎮
+# Phaser Quickstart
 
-Your game has been successfully integrated with **Phaser v3** (version 3.80.1)!
+This is the fastest path to run and validate Serenity Blocks on the current Phaser-first stack.
 
-> **Note**: We're using **Phaser v3** (stable) instead of v4 (alpha) for better CDN support and production stability.
+## Stack Snapshot
 
-## ✅ Integration Complete!
+- Phaser: `4.0.0-rc.5` (bundled via npm + Vite)
+- Build/dev server: Vite
+- Background themes: Three.js renderer driven by Phaser lifecycle
 
-### What Works with Phaser v3
-- ✅ **Single Player Mode** - Fully migrated to Phaser rendering
-- ✅ **All Visual Effects** - Line clears, ripples, combos
-- ✅ **Hardware Acceleration** - WebGL rendering
-- ✅ **Smooth Animations** - Built-in tween system
-- ✅ **Rock Solid Stability** - Battle-tested
+## Run Locally
 
-## Quick Test
+```bash
+npm install
+npm run dev
+```
 
-1. **Open the game**
-   ```bash
-   python3 -m http.server 8080
-   # Then open: http://localhost:8080/public/index.html
-   ```
+Open Vite's local URL (typically `http://localhost:5173`).
 
-2. **Check console** for:
-   ```
-   ✅ Phaser game initialized with BoardScene
-   ✅ Serenity Blocks initialized successfully!
-   ```
+## What To Verify
 
-3. **Play** - Single player now uses Phaser!
+1. Boot logs include Phaser initialization and loaded scenes.
+2. Single-player board renders in Phaser (no visible legacy canvas path).
+3. Switching game modes still keeps background themes active.
+4. Theme switching works without restarting Phaser.
 
-## Why Phaser v3 instead of v4?
+## Key Entry Points
 
-| Feature | Phaser v3 | Phaser v4 |
-|---------|-----------|-----------|
-| Stability | ✅ Production | ⚠️ Alpha |
-| CDN Support | ✅ Works | ❌ Broken |
-| Documentation | ✅ Extensive | ⚠️ Limited |
+- App bootstrap: `src/main.js`
+- Single-player scene: `src/rendering/phaser/board-scene.js`
+- Background bridge scene: `src/rendering/phaser/background-scene.js`
+- Multiplayer scenes: `src/rendering/phaser/multiplayer/board-panel.js`
+- Shared base scene: `src/rendering/phaser/base-board-scene.js`
 
-**Recommendation**: v3 until v4 is stable.
+## Common Commands
 
-## Quick Troubleshooting
+```bash
+npm run lint
+npm run build
+npm run preview
+```
 
-**"Phaser is not defined"**
-- Check CDN script loads before main.js
-- Verify: `https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js`
+## If Something Breaks
 
-**"Canvas not appearing"**
-- Check `#phaser-game-container` exists
-- Verify Phaser config parent ID
-
-**"Effects not showing"**
-- Check console for initialization messages
-- Verify settings have effects enabled
-
-## Resources
-
-- [Full Documentation](docs/PHASER_INTEGRATION.md)
-- [Phaser 3 Docs](https://newdocs.phaser.io/docs/3.80.1)
-- [Phaser Examples](https://phaser.io/examples/v3)
-
-🎮 **Ready to go!** Your game now uses Phaser v3 for hardware-accelerated rendering.
+Use the troubleshooting guide:
+- `docs/PHASER_TROUBLESHOOTING.md`

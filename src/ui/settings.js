@@ -528,16 +528,27 @@ export function updateGamepadControlsDisplay(settings) {
  * Sets up settings tab switching
  */
 export function setupSettingsTabs() {
-    document.querySelectorAll('.settings-tab').forEach((tab) => {
-        tab.addEventListener('click', () => {
-            const targetTab = tab.getAttribute('data-tab');
-            document.querySelectorAll('.settings-tab').forEach((t) => t.classList.remove('active'));
-            document
-                .querySelectorAll('.settings-tab-content')
-                .forEach((c) => c.classList.remove('active'));
-            tab.classList.add('active');
-            document.getElementById(`settings-${targetTab}`).classList.add('active');
-        });
+    const tabsContainer = document.querySelector('#settings-modal .settings-tabs');
+    if (!tabsContainer) return;
+
+    // Guard against duplicate listener registration.
+    if (tabsContainer.dataset.delegatedClick === 'true') return;
+    tabsContainer.dataset.delegatedClick = 'true';
+
+    tabsContainer.addEventListener('click', (event) => {
+        const tab = event.target.closest('.settings-tab');
+        if (!tab || !tabsContainer.contains(tab)) return;
+
+        const targetTab = tab.getAttribute('data-tab');
+        if (!targetTab) return;
+        if (tab.classList.contains('active')) return;
+
+        const settingsModal = document.getElementById('settings-modal');
+        settingsModal?.querySelectorAll('.settings-tab').forEach((t) => t.classList.remove('active'));
+        settingsModal?.querySelectorAll('.settings-tab-content').forEach((c) => c.classList.remove('active'));
+
+        tab.classList.add('active');
+        settingsModal?.querySelector(`#settings-${targetTab}`)?.classList.add('active');
     });
 }
 
@@ -545,16 +556,27 @@ export function setupSettingsTabs() {
  * Sets up controls sub-tab switching
  */
 export function setupControlsSubTabs() {
-    document.querySelectorAll('.controls-subtab').forEach((subtab) => {
-        subtab.addEventListener('click', () => {
-            const targetSubtab = subtab.getAttribute('data-subtab');
-            document.querySelectorAll('.controls-subtab').forEach((t) => t.classList.remove('active'));
-            document
-                .querySelectorAll('.controls-subtab-content')
-                .forEach((c) => c.classList.remove('active'));
-            subtab.classList.add('active');
-            document.getElementById(`controls-${targetSubtab}`).classList.add('active');
-        });
+    const controlsNav = document.querySelector('#settings-modal .controls-nav');
+    if (!controlsNav) return;
+
+    // Guard against duplicate listener registration.
+    if (controlsNav.dataset.delegatedClick === 'true') return;
+    controlsNav.dataset.delegatedClick = 'true';
+
+    controlsNav.addEventListener('click', (event) => {
+        const subtab = event.target.closest('.controls-subtab');
+        if (!subtab || !controlsNav.contains(subtab)) return;
+
+        const targetSubtab = subtab.getAttribute('data-subtab');
+        if (!targetSubtab) return;
+        if (subtab.classList.contains('active')) return;
+
+        const controlsTab = document.getElementById('settings-controls');
+        controlsTab?.querySelectorAll('.controls-subtab').forEach((t) => t.classList.remove('active'));
+        controlsTab?.querySelectorAll('.controls-subtab-content').forEach((c) => c.classList.remove('active'));
+
+        subtab.classList.add('active');
+        controlsTab?.querySelector(`#controls-${targetSubtab}`)?.classList.add('active');
     });
 }
 

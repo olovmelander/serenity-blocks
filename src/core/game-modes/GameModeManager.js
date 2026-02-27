@@ -191,14 +191,30 @@ export class GameModeManager {
         console.log(`[GameModeManager] Starting mode: ${this.currentModeId}`, options);
 
         try {
+            const mode = this.currentMode;
+            await mode.onStart(options);
+
+            if (!mode.isRunning) {
+                console.log(
+                    `[GameModeManager] Mode ${this.currentModeId} start deferred (awaiting mode-specific setup)`,
+                );
+                return;
+            }
+
             if (this.deps?.soundManager?.resumeThemeLinkedMusic) {
                 this.deps.soundManager.resumeThemeLinkedMusic(true);
             }
-            await this.currentMode.onStart(options);
             if (this.deps?.themeManager?.resumeThemes) {
                 await this.deps.themeManager.resumeThemes();
             }
-            this._emitEvent('modeStarted', { modeId: this.currentModeId, mode: this.currentMode });
+            if (this.deps?.soundManager?.ensureTrackPlaybackSynced) {
+                await this.deps.soundManager.ensureTrackPlaybackSynced({
+                    reason: 'mode-start',
+                    force: true,
+                });
+            }
+
+            this._emitEvent('modeStarted', { modeId: this.currentModeId, mode });
             console.log(`[GameModeManager] Mode ${this.currentModeId} started successfully`);
         } catch (error) {
             console.error(`[GameModeManager] Failed to start mode ${this.currentModeId}:`, error);

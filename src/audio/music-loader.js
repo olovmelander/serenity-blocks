@@ -71,6 +71,7 @@ export function getSongPath(trackName, songsData) {
 export function getSongForTheme(themeName, songsData) {
     const explicitThemeSongMap = {
         'chromadelic-highway': 'ElectricDreams',
+        'black-hole': 'BlackHole',
     };
     const explicitTrack = explicitThemeSongMap[themeName];
     if (explicitTrack && songsData.some((s) => nameToKey(s.name) === explicitTrack)) {

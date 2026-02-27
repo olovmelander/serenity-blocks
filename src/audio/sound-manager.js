@@ -11,7 +11,16 @@ import {
     getThemeForSong,
 } from './music-loader.js';
 import { createSoundSets, SoundEffectPlayer } from './sound-effects.js';
+import { AudioAnalyzer } from './audio-analyzer.js';
 import { random } from '../utils/helpers.js';
+
+function clampUnitVolume(value, fallback = 1.0) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+        return Math.max(0, Math.min(1, fallback));
+    }
+    return Math.max(0, Math.min(1, numeric));
+}
 
 /**
  * Main sound manager class
@@ -33,10 +42,33 @@ export class SoundManager {
         this.songsData = [];
         this.themeLinkSuspended = false;
         this.pendingThemeLinkedTrack = null;
+        this.pendingTrackKey = null;
+        this.lastRequestedTrackKey = null;
+        this.lastAppliedTrackKey = null;
+        this.trackRequestToken = 0;
+        this.audioAnalyzer = null;
+        this.trackSwitchPromise = Promise.resolve();
+        this.trackFadeOutMs = 48;
+        this.trackFadeInMs = 72;
+        this.volumeFadeFrame = null;
+        this.volumeFadeToken = 0;
+        this.lastAnalyzerBootstrapAtMs = 0;
+        this.analyzerBootstrapCooldownMs = 800;
+        this.lastAnalyzerBootstrapError = null;
+        this.lastAudioAnalysis = {
+            bassEnergy: 0,
+            midEnergy: 0,
+            trebleEnergy: 0,
+            overallEnergy: 0,
+            beatDetected: false,
+        };
 
         // Initialize sound sets (will be populated after init)
         this.soundSets = null;
         this.sfxPlayer = null;
+        this.onAudioEnded = () => {
+            this.nextTrack();
+        };
 
         // References to managers (set after initialization)
         this.settingsManager = null;
@@ -61,6 +93,130 @@ export class SoundManager {
         }
     }
 
+    disposeAudioAnalysis() {
+        if (this.audioAnalyzer?.dispose) {
+            try {
+                this.audioAnalyzer.dispose();
+            } catch (error) {
+                console.warn('[SoundManager] Failed to dispose audio analyzer:', error);
+            }
+        }
+        this.audioAnalyzer = null;
+        this.lastAudioAnalysis = {
+            bassEnergy: 0,
+            midEnergy: 0,
+            trebleEnergy: 0,
+            overallEnergy: 0,
+            beatDetected: false,
+        };
+        this.lastAnalyzerBootstrapError = null;
+    }
+
+    ensureAudioAnalysisReady({ force = false } = {}) {
+        if (typeof performance !== 'undefined' && performance.now) {
+            const nowMs = performance.now();
+            if (!force && nowMs - this.lastAnalyzerBootstrapAtMs < this.analyzerBootstrapCooldownMs) {
+                return this.audioAnalyzer;
+            }
+            this.lastAnalyzerBootstrapAtMs = nowMs;
+        }
+
+        if (!this.audioElement) {
+            return null;
+        }
+
+        try {
+            if (!this.audioContext) {
+                this.resumeAudioContext();
+            }
+        } catch (error) {
+            const message = error?.message || String(error);
+            if (this.lastAnalyzerBootstrapError !== message) {
+                console.warn('[SoundManager] Unable to initialize audio context for analyzer:', message);
+                this.lastAnalyzerBootstrapError = message;
+            }
+            return this.audioAnalyzer;
+        }
+
+        if (this.audioContext?.state === 'suspended') {
+            this.audioContext.resume().catch((error) => {
+                const message = error?.message || String(error);
+                if (this.lastAnalyzerBootstrapError !== message) {
+                    console.warn('[SoundManager] Unable to resume audio context for analyzer:', message);
+                    this.lastAnalyzerBootstrapError = message;
+                }
+            });
+        }
+
+        if (!this.audioAnalyzer && this.audioContext && this.audioElement) {
+            try {
+                this.audioAnalyzer = new AudioAnalyzer(this.audioContext, this.audioElement);
+                this.lastAnalyzerBootstrapError = null;
+            } catch (error) {
+                const message = error?.message || String(error);
+                if (this.lastAnalyzerBootstrapError !== message) {
+                    console.warn('[SoundManager] Audio analyzer unavailable:', message);
+                    this.lastAnalyzerBootstrapError = message;
+                }
+                this.audioAnalyzer = null;
+            }
+        }
+
+        return this.audioAnalyzer;
+    }
+
+    /**
+     * Returns shared analyzer instance for themes/visual systems.
+     * This centralizes MediaElementSource ownership and avoids duplicate-node errors.
+     */
+    getAnalyzer(createIfMissing = true) {
+        if (this.audioAnalyzer) {
+            return this.audioAnalyzer;
+        }
+
+        if (!createIfMissing) {
+            return null;
+        }
+
+        return this.ensureAudioAnalysisReady({ force: true });
+    }
+
+    hasAudioAnalyzer() {
+        return Boolean(this.audioAnalyzer);
+    }
+
+    /**
+     * Updates and returns the latest audio analysis snapshot.
+     * Safe to call every frame from any theme.
+     */
+    getAudioAnalysis(deltaTime = 1 / 60) {
+        let analyzer = this.getAnalyzer(false);
+        if (!analyzer && this.isMusicPlaying()) {
+            analyzer = this.ensureAudioAnalysisReady();
+        }
+
+        if (!analyzer) {
+            this.lastAudioAnalysis = {
+                bassEnergy: 0,
+                midEnergy: 0,
+                trebleEnergy: 0,
+                overallEnergy: 0,
+                beatDetected: false,
+            };
+            return this.lastAudioAnalysis;
+        }
+
+        const snapshot = analyzer.update(deltaTime);
+        this.lastAudioAnalysis = {
+            bassEnergy: snapshot.bassEnergy,
+            midEnergy: snapshot.midEnergy,
+            trebleEnergy: snapshot.trebleEnergy,
+            overallEnergy: snapshot.overallEnergy,
+            beatDetected: snapshot.beatDetected,
+        };
+        return this.lastAudioAnalysis;
+    }
+
     /**
      * Creates a tone using Web Audio API
      * @param {number} frequency - Frequency in Hz
@@ -80,7 +236,7 @@ export class SoundManager {
     ) {
         if (!this.audioContext || this.isMuted) return;
 
-        const volumeMultiplier = isMusic ? this.musicVolume : this.sfxVolume;
+        const volumeMultiplier = isMusic ? this.getMusicVolume() : this.getSfxVolume();
         const adjustedVolume = volume * volumeMultiplier;
         if (adjustedVolume <= 0) return;
 
@@ -119,7 +275,7 @@ export class SoundManager {
     }) {
         if (!this.audioContext || this.isMuted) return;
 
-        const volumeMultiplier = isMusic ? this.musicVolume : this.sfxVolume;
+        const volumeMultiplier = isMusic ? this.getMusicVolume() : this.getSfxVolume();
         const masterGainValue = volume * volumeMultiplier;
         if (masterGainValue <= 0) return;
 
@@ -265,18 +421,200 @@ export class SoundManager {
         dropdown.value = this.musicTrack;
     }
 
+    normalizeAudioUrl(url) {
+        if (!url) return null;
+        try {
+            return new URL(url, window.location.href).href;
+        } catch {
+            return String(url);
+        }
+    }
+
+    resolveTrackUrl(trackKey) {
+        if (!trackKey) return null;
+        const songPath = getSongPath(trackKey, this.songsData);
+        if (!songPath) return null;
+        return this.normalizeAudioUrl(songPath);
+    }
+
+    resolveTrackKeyFromUrl(url) {
+        const normalizedUrl = this.normalizeAudioUrl(url);
+        if (!normalizedUrl) return null;
+
+        for (const trackKey of this.trackNames) {
+            const trackUrl = this.resolveTrackUrl(trackKey);
+            if (trackUrl && trackUrl === normalizedUrl) {
+                return trackKey;
+            }
+        }
+
+        return null;
+    }
+
+    getActualTrackKey() {
+        if (!this.audioElement) return null;
+        const currentSrc = this.audioElement.currentSrc || this.audioElement.src;
+        return this.resolveTrackKeyFromUrl(currentSrc);
+    }
+
+    isTrackActuallyPlaying(trackKey) {
+        if (!trackKey || !this.audioElement) return false;
+        const actualTrack = this.getActualTrackKey();
+        return actualTrack === trackKey && !this.audioElement.paused && !this.audioElement.ended;
+    }
+
+    async ensureTrackPlaybackSynced(options = {}) {
+        const { reason = 'manual-sync', force = false } = options;
+        const selectedTrack = this.musicTrack;
+
+        if (!selectedTrack || !this.trackNames.includes(selectedTrack)) {
+            return;
+        }
+
+        let actualTrack = this.getActualTrackKey();
+        let isPlaying = this.isMusicPlaying();
+        const isPendingSelectedTrack = this.pendingTrackKey === selectedTrack;
+
+        this.lastRequestedTrackKey = selectedTrack;
+
+        if (isPendingSelectedTrack) {
+            await this.trackSwitchPromise.catch(() => {});
+
+            actualTrack = this.getActualTrackKey();
+            isPlaying = this.isMusicPlaying();
+
+            const isStillMismatched = actualTrack !== selectedTrack || (!this.isMuted && !isPlaying);
+            if (!isStillMismatched) {
+                return;
+            }
+        }
+
+        const hasMismatch = actualTrack !== selectedTrack || (!this.isMuted && !isPlaying);
+        if (!hasMismatch) {
+            return;
+        }
+
+        if (this.isMuted) {
+            return;
+        }
+
+        const targetUrl = this.resolveTrackUrl(selectedTrack);
+        if (!targetUrl) {
+            return;
+        }
+
+        await this.playAudioFile(targetUrl, {
+            trackKey: selectedTrack,
+            reason,
+            forceSwitch: force && actualTrack !== selectedTrack,
+        });
+    }
+
+    emitMusicPlaybackError(detail = {}) {
+        if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
+            return;
+        }
+
+        window.dispatchEvent(new CustomEvent('musicPlaybackError', {
+            detail,
+        }));
+    }
+
+    createSupersededRequestError() {
+        const error = new Error('Track switch superseded by a newer request');
+        error.name = 'AbortError';
+        return error;
+    }
+
+    assertTrackRequestIsCurrent(requestToken) {
+        if (requestToken !== this.trackRequestToken) {
+            throw this.createSupersededRequestError();
+        }
+    }
+
+    async performTrackSwitch({
+        filename,
+        trackKey,
+        requestToken,
+        useFade = true,
+        forceSwitch = false,
+    }) {
+        this.assertTrackRequestIsCurrent(requestToken);
+
+        if (!this.audioElement) {
+            this.audioElement = new Audio();
+            this.audioElement.addEventListener('ended', this.onAudioEnded);
+        }
+
+        const requestedUrl = this.normalizeAudioUrl(filename);
+        const currentUrl = this.normalizeAudioUrl(this.audioElement.currentSrc || this.audioElement.src);
+        const isSameSource = Boolean(requestedUrl) && requestedUrl === currentUrl;
+        const isPlaying = !this.audioElement.paused && !this.audioElement.ended;
+
+        if (!forceSwitch && isSameSource && isPlaying) {
+            this.audioElement.muted = this.isMuted;
+            this.audioElement.loop = false;
+            if (!this.isMuted) {
+                this.setAudioElementVolume(this.getMusicVolume());
+            }
+            this.lastAppliedTrackKey = this.getActualTrackKey() || trackKey || null;
+            return;
+        }
+
+        const isSourceSwitch = !isSameSource;
+
+        if (useFade && isSourceSwitch && isPlaying && !this.isMuted) {
+            await this.fadeMusicVolume(0, this.trackFadeOutMs);
+        } else {
+            this.cancelMusicVolumeFade();
+        }
+
+        this.assertTrackRequestIsCurrent(requestToken);
+        await this.pauseAudioElement(true);
+        this.assertTrackRequestIsCurrent(requestToken);
+
+        if (isSourceSwitch) {
+            this.audioElement.src = filename;
+        }
+
+        const shouldFadeIn = useFade && isSourceSwitch && !this.isMuted;
+        this.setAudioElementVolume(shouldFadeIn ? 0 : this.getMusicVolume());
+        this.audioElement.muted = this.isMuted;
+        this.audioElement.loop = false;
+
+        this.ensureAudioAnalysisReady({ force: true });
+
+        this.playPromise = this.audioElement.play();
+        if (this.playPromise !== undefined) {
+            await this.playPromise;
+        }
+
+        this.assertTrackRequestIsCurrent(requestToken);
+
+        if (shouldFadeIn) {
+            await this.fadeMusicVolume(this.getMusicVolume(), this.trackFadeInMs);
+        }
+
+        this.lastAppliedTrackKey = this.getActualTrackKey() || trackKey || null;
+    }
+
     /**
      * Sets the active music track
      * @param {string} trackName - Track name/key
      */
     setTrack(trackName) {
         if (!this.trackNames.includes(trackName)) return;
+        const previousTrack = this.musicTrack;
+        const didSelectionChange = previousTrack !== trackName;
+        const hasPendingSameRequest = this.pendingTrackKey === trackName;
+        const isAlreadyAudible = this.isTrackActuallyPlaying(trackName);
 
         this.pendingThemeLinkedTrack = null;
         this.musicTrack = trackName;
+        this.lastRequestedTrackKey = trackName;
 
         // Update settings if available
-        if (typeof settings !== 'undefined') {
+        if (didSelectionChange && typeof settings !== 'undefined') {
             settings.musicTrack = trackName;
             if (typeof saveSettings === 'function') saveSettings();
         }
@@ -284,11 +622,14 @@ export class SoundManager {
         const dropdown = document.getElementById('music-track');
         if (dropdown) dropdown.value = trackName;
 
-        this.stopBackgroundMusic();
-        if (!this.isMuted) this.startBackgroundMusic();
+        if (!this.isMuted && !isAlreadyAudible && !hasPendingSameRequest) {
+            this.startBackgroundMusic({ trackKey: trackName, reason: 'set-track' });
+        }
 
         // Apply auto theme change if enabled
-        this.applyAutoThemeChange(trackName);
+        if (didSelectionChange) {
+            this.applyAutoThemeChange(trackName);
+        }
 
         // Dispatch track change event for UI components to listen
         window.dispatchEvent(new CustomEvent('musicTrackChanged', {
@@ -436,57 +777,199 @@ export class SoundManager {
         if (this.sfxPlayer) this.sfxPlayer.playGarbageSend();
     }
 
+    cancelMusicVolumeFade() {
+        this.volumeFadeToken += 1;
+        if (this.volumeFadeFrame !== null) {
+            cancelAnimationFrame(this.volumeFadeFrame);
+            this.volumeFadeFrame = null;
+        }
+    }
+
+    getMusicVolume() {
+        this.musicVolume = clampUnitVolume(this.musicVolume, 1.0);
+        return this.musicVolume;
+    }
+
+    getSfxVolume() {
+        this.sfxVolume = clampUnitVolume(this.sfxVolume, 1.0);
+        return this.sfxVolume;
+    }
+
+    setAudioElementVolume(value) {
+        if (!this.audioElement) return;
+        this.audioElement.volume = clampUnitVolume(value, 1.0);
+    }
+
+    fadeMusicVolume(targetVolume, durationMs = 0) {
+        if (!this.audioElement) {
+            return Promise.resolve();
+        }
+
+        const clampedTarget = Math.max(0, Math.min(1, targetVolume));
+        if (!Number.isFinite(durationMs) || durationMs <= 0) {
+            this.setAudioElementVolume(clampedTarget);
+            return Promise.resolve();
+        }
+
+        this.cancelMusicVolumeFade();
+        const token = this.volumeFadeToken;
+        const startVolume = Number.isFinite(this.audioElement.volume) ? this.audioElement.volume : clampedTarget;
+
+        if (Math.abs(startVolume - clampedTarget) < 0.001) {
+            this.setAudioElementVolume(clampedTarget);
+            return Promise.resolve();
+        }
+
+        const startTime = performance.now();
+        return new Promise((resolve) => {
+            const tick = (now) => {
+                if (token !== this.volumeFadeToken) {
+                    resolve();
+                    return;
+                }
+                if (!this.audioElement) {
+                    this.volumeFadeFrame = null;
+                    resolve();
+                    return;
+                }
+
+                const progress = Math.min(1, (now - startTime) / durationMs);
+                this.setAudioElementVolume(startVolume + ((clampedTarget - startVolume) * progress));
+
+                if (progress >= 1) {
+                    this.volumeFadeFrame = null;
+                    this.setAudioElementVolume(clampedTarget);
+                    resolve();
+                    return;
+                }
+
+                this.volumeFadeFrame = requestAnimationFrame(tick);
+            };
+
+            this.volumeFadeFrame = requestAnimationFrame(tick);
+        });
+    }
+
+    async pauseAudioElement(resetPosition = true) {
+        if (!this.audioElement) return;
+
+        if (this.playPromise) {
+            try {
+                await this.playPromise;
+            } catch {
+                // Ignore aborted play() during rapid switches.
+            } finally {
+                this.playPromise = null;
+            }
+        }
+
+        this.audioElement.pause();
+        if (resetPosition) {
+            this.audioElement.currentTime = 0;
+        }
+    }
+
     // ==================== Music Playback ====================
 
     /**
      * Starts background music (MP3 file from songs folder)
      */
-    startBackgroundMusic() {
+    startBackgroundMusic(options = {}) {
+        const { trackKey = this.musicTrack, reason = 'start-background-music', forceSwitch = false } = options;
         if (this.isMuted) return;
-        this.stopBackgroundMusic();
-        this.currentTrackId = Symbol();
+        const songPath = this.resolveTrackUrl(trackKey);
+        if (!songPath) return;
 
-        const songPath = getSongPath(this.musicTrack, this.songsData);
-        this.playAudioFile(songPath);
+        if (this.musicInterval) {
+            clearInterval(this.musicInterval);
+            this.musicInterval = null;
+        }
+
+        this.lastRequestedTrackKey = trackKey;
+        const switchPromise = this.playAudioFile(songPath, {
+            trackKey,
+            reason,
+            forceSwitch,
+        });
+        this.currentTrackId = Symbol();
+        return switchPromise;
     }
 
     /**
      * Plays an MP3 audio file
      * @param {string} filename - Path to the audio file
      */
-    playAudioFile(filename) {
-        // Stop any existing music first
-        this.stopBackgroundMusic();
+    playAudioFile(filename, options = {}) {
+        if (!filename) return Promise.resolve();
+        const requestedTrackKey = options.trackKey || this.resolveTrackKeyFromUrl(filename) || this.musicTrack;
+        const reason = options.reason || 'play-audio-file';
+        const forceSwitch = Boolean(options.forceSwitch);
 
-        // Create or reuse audio element
-        if (!this.audioElement) {
-            this.audioElement = new Audio();
-            // Add event listener for automatic song progression
-            this.audioElement.addEventListener('ended', () => {
-                this.nextTrack();
-            });
+        this.lastRequestedTrackKey = requestedTrackKey;
+
+        if (this.pendingTrackKey === requestedTrackKey) {
+            return this.trackSwitchPromise;
         }
 
-        // Set the source and configure
-        this.audioElement.src = filename;
-        this.audioElement.volume = this.musicVolume;
-        this.audioElement.muted = this.isMuted;
-        this.audioElement.loop = false; // Disable loop to enable automatic progression
+        this.pendingTrackKey = requestedTrackKey;
+        const requestToken = ++this.trackRequestToken;
 
-        // Play the audio (handle autoplay restrictions)
-        this.playPromise = this.audioElement.play();
-        if (this.playPromise !== undefined) {
-            this.playPromise
-                .catch((error) => {
-                    // Only log non-abort errors (abort is expected when switching tracks)
-                    if (error.name !== 'AbortError') {
-                        console.log('Audio playback prevented:', error);
+        this.trackSwitchPromise = this.trackSwitchPromise
+            .catch(() => {})
+            .then(async () => {
+                // Last-request-wins: only the newest queued request is allowed to apply.
+                if (requestToken !== this.trackRequestToken) {
+                    return;
+                }
+
+                try {
+                    await this.performTrackSwitch({
+                        filename,
+                        trackKey: requestedTrackKey,
+                        requestToken,
+                        useFade: true,
+                        forceSwitch,
+                    });
+                } catch (error) {
+                    if (error?.name === 'AbortError') {
+                        return;
                     }
-                })
-                .finally(() => {
+
+                    try {
+                        await this.performTrackSwitch({
+                            filename,
+                            trackKey: requestedTrackKey,
+                            requestToken,
+                            useFade: false,
+                            forceSwitch: true,
+                        });
+                    } catch (fallbackError) {
+                        if (fallbackError?.name !== 'AbortError') {
+                            console.error('[SoundManager] Music switch failed:', fallbackError);
+                            this.emitMusicPlaybackError({
+                                reason,
+                                trackKey: requestedTrackKey,
+                                requestedSrc: filename,
+                                message: fallbackError?.message || String(fallbackError),
+                            });
+                        }
+                    }
+                } finally {
+                    if (requestToken === this.trackRequestToken) {
+                        this.pendingTrackKey = null;
+                    }
                     this.playPromise = null;
-                });
-        }
+                    this.cancelMusicVolumeFade();
+                    if (this.audioElement) {
+                        this.audioElement.muted = this.isMuted;
+                        if (!this.isMuted) {
+                            this.setAudioElementVolume(this.getMusicVolume());
+                        }
+                    }
+                }
+            });
+
+        return this.trackSwitchPromise;
     }
 
     /**
@@ -494,6 +977,9 @@ export class SoundManager {
      */
     stopBackgroundMusic() {
         this.currentTrackId = null;
+        this.pendingTrackKey = null;
+        this.trackRequestToken += 1;
+        this.cancelMusicVolumeFade();
 
         if (this.musicInterval) {
             clearInterval(this.musicInterval);
@@ -505,6 +991,7 @@ export class SoundManager {
             const doPause = () => {
                 this.audioElement.pause();
                 this.audioElement.currentTime = 0;
+                this.setAudioElementVolume(this.getMusicVolume());
             };
 
             if (this.playPromise) {
@@ -532,14 +1019,34 @@ export class SoundManager {
     }
 
     setMusicVolume(volume) {
-        this.musicVolume = volume;
+        this.musicVolume = clampUnitVolume(volume, 1.0);
         if (this.audioElement) {
-            this.audioElement.volume = this.musicVolume;
+            this.setAudioElementVolume(this.musicVolume);
         }
     }
 
     setSFXVolume(volume) {
-        this.sfxVolume = volume;
+        this.sfxVolume = clampUnitVolume(volume, 1.0);
+    }
+
+    cleanup() {
+        this.stopBackgroundMusic();
+        this.disposeAudioAnalysis();
+
+        if (this.audioElement) {
+            this.audioElement.removeEventListener('ended', this.onAudioEnded);
+            this.audioElement.src = '';
+            this.audioElement.load();
+            this.audioElement = null;
+        }
+
+        this.playPromise = null;
+        this.currentTrackId = null;
+        this.pendingTrackKey = null;
+        this.lastRequestedTrackKey = null;
+        this.lastAppliedTrackKey = null;
+        this.musicInterval = null;
+        this.pendingThemeLinkedTrack = null;
     }
 
     /**

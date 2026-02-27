@@ -850,19 +850,14 @@ export class WebGLRenderer {
     }
 
     start() {
-        console.log('[WebGLRenderer] start() called');
         if (this.animationFrameId) {
             this.stop();
         }
         if (this.useExternalRenderLoop) {
-            console.log(
-                '[WebGLRenderer] External render loop enabled; skipping internal RAF start',
-            );
             return;
         }
 
         this.animationFrameId = requestAnimationFrame(this.renderFrameBound);
-        console.log('[WebGLRenderer] Animation frame requested, ID:', this.animationFrameId);
     }
 
     stop() {

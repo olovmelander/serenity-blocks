@@ -727,6 +727,77 @@ export function closeSettingsModal(modalManager) {
 }
 
 /**
+ * Sets up temporary scroll performance mode for the settings modal.
+ * Reduces hover/pointer churn while the user is actively scrolling.
+ * @param {ModalManager} modalManager - Modal manager instance
+ */
+function setupSettingsScrollPerformanceMode(modalManager) {
+    const settingsModal = modalManager?.modals?.settings || document.getElementById('settings-modal');
+    const scrollContainer = settingsModal?.querySelector('.settings-scroll-container');
+    if (!settingsModal || !scrollContainer) return;
+
+    // Guard against duplicate setup if this initializer is called again.
+    if (scrollContainer.dataset.scrollPerfSetup === 'true') return;
+    scrollContainer.dataset.scrollPerfSetup = 'true';
+
+    const scrollIdleDelay = 120;
+    let scrollRafId = null;
+    let scrollIdleTimeout = null;
+
+    const setScrollPerformanceMode = (enabled) => {
+        const isEnabled = enabled && settingsModal.classList.contains('visible');
+        settingsModal.classList.toggle('is-scrolling', isEnabled);
+        document.body.classList.toggle('settings-scroll-active', isEnabled);
+    };
+
+    const clearScrollPerformanceMode = () => {
+        if (scrollIdleTimeout) {
+            clearTimeout(scrollIdleTimeout);
+            scrollIdleTimeout = null;
+        }
+        if (scrollRafId !== null) {
+            cancelAnimationFrame(scrollRafId);
+            scrollRafId = null;
+        }
+        setScrollPerformanceMode(false);
+    };
+
+    const onSettingsScroll = () => {
+        if (!settingsModal.classList.contains('visible')) return;
+        if (scrollRafId !== null) return;
+
+        scrollRafId = requestAnimationFrame(() => {
+            scrollRafId = null;
+            setScrollPerformanceMode(true);
+
+            if (scrollIdleTimeout) {
+                clearTimeout(scrollIdleTimeout);
+            }
+            scrollIdleTimeout = setTimeout(() => {
+                scrollIdleTimeout = null;
+                setScrollPerformanceMode(false);
+            }, scrollIdleDelay);
+        });
+    };
+
+    const onModalHidden = (event) => {
+        if (event?.detail?.modalName === 'settings') {
+            clearScrollPerformanceMode();
+        }
+    };
+
+    const onModalShown = (event) => {
+        if (event?.detail?.modalName === 'settings') {
+            clearScrollPerformanceMode();
+        }
+    };
+
+    scrollContainer.addEventListener('scroll', onSettingsScroll, { passive: true });
+    window.addEventListener('modalHidden', onModalHidden);
+    window.addEventListener('modalShown', onModalShown);
+}
+
+/**
  * Sets up UI button listeners
  * @param {ModalManager} modalManager - Modal manager instance
  * @param {Object} callbacks - Callback functions
@@ -742,6 +813,8 @@ export function setupModalUI(modalManager, callbacks, gameModeManager = null) {
         onNextTrack,
         onRandomTheme,
     } = callbacks;
+
+    setupSettingsScrollPerformanceMode(modalManager);
 
     // Settings button (single player)
     // Global Settings button

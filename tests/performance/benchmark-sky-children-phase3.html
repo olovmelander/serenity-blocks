@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sky Children Phase 3 Cloud Validation Harness</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 24px;
+            font-family: Arial, sans-serif;
+            background: #08101f;
+            color: #edf3ff;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        .panel {
+            background: #101a31;
+            border: 1px solid #29406b;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .frame-wrap {
+            border: 1px solid #29406b;
+            border-radius: 10px;
+            background: #03070f;
+            overflow: auto;
+            padding: 8px;
+        }
+        h1 {
+            margin-top: 0;
+            margin-bottom: 16px;
+            font-size: 24px;
+        }
+        h2 {
+            margin: 0 0 12px 0;
+            font-size: 16px;
+        }
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        button {
+            border: 1px solid #355692;
+            background: #1c2f53;
+            color: #edf3ff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #264173;
+        }
+        .hint {
+            font-size: 13px;
+            color: #c2d5f6;
+        }
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            background: #0a1325;
+            border: 1px solid #2a436e;
+            border-radius: 8px;
+            padding: 12px;
+            max-height: 260px;
+            overflow: auto;
+        }
+        iframe {
+            width: 100%;
+            height: 560px;
+            border: 0;
+            border-radius: 8px;
+            background: #03070f;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sky Children Phase 3 Cloud Validation Harness</h1>
+
+        <div class="panel">
+            <h2>1) Launch Runtime</h2>
+            <div class="row">
+                <button id="load-default">Load Runtime</button>
+                <button id="load-force-webgl">Load Runtime + forceWebGL</button>
+                <button id="reload-app">Reload</button>
+                <button id="switch-theme">Switch To Sky Children</button>
+                <button id="viewport-lock-1080p">Lock 1920x1080 Viewport</button>
+                <button id="viewport-responsive">Use Responsive Viewport</button>
+                <button id="theme-lock-1080p">Theme Lock 1920x1080</button>
+                <button id="theme-unlock">Theme Unlock</button>
+            </div>
+            <div class="hint">
+                The helper auto-activates once <code>sky-children</code> is the active theme. Use locked viewport and/or theme lock for strict 1080p performance gating.
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>2) Phase 3 Gate Checks</h2>
+            <div class="row">
+                <button id="capture-snapshot">Capture Snapshot</button>
+                <button id="run-visual-gate">Run Cloud Visual Gate</button>
+                <button id="run-perf-gate">Run Cloud Perf Gate</button>
+                <button id="run-perf-gate-relaxed">Run Cloud Perf Gate (Ignore Resolution)</button>
+                <button id="run-validation">Run Full Phase 3 Validation</button>
+                <button id="download-report">Download Report</button>
+            </div>
+            <div class="hint">
+                Phase 3 target: clear hero cloud silhouettes, approved backlit silver-lining behavior, and &lt; 2.5ms at 1080p.
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>3) Last Result</h2>
+            <pre id="result">Waiting for run...</pre>
+        </div>
+
+        <div class="panel">
+            <h2>4) Helper Commands</h2>
+            <pre>window.skyChildrenPhase3.snapshot('manual');
+window.skyChildrenPhase3.visualGate();
+window.skyChildrenPhase3.perfGate({
+  sampleCount: 180, settleMs: 800, minimumSamples: 60,
+  requiredWidth: 1920, requiredHeight: 1080, strictResolution: true
+});
+window.skyChildrenPhase3.perfGate({
+  sampleCount: 180, settleMs: 800, strictResolution: false
+});
+window.skyChildrenPhase3.validate({
+  performance: {
+    sampleCount: 180, settleMs: 800, minimumSamples: 60,
+    requiredWidth: 1920, requiredHeight: 1080, strictResolution: true
+  }
+});
+window.skyChildrenPhase3.setResolutionLock(1920, 1080);
+window.skyChildrenPhase3.clearResolutionLock();
+window.skyChildrenPhase3.resolutionLock();
+window.skyChildrenPhase3.report();
+window.skyChildrenPhase3.download('sky-children-phase3-validation');</pre>
+        </div>
+
+        <div class="panel">
+            <h2>5) Runtime Viewport</h2>
+            <div class="hint">
+                Current mode: <code id="viewport-mode">responsive</code>
+            </div>
+            <div class="frame-wrap">
+                <iframe id="app-frame" title="Serenity Blocks"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const frame = document.getElementById('app-frame');
+        const resultNode = document.getElementById('result');
+        const viewportModeNode = document.getElementById('viewport-mode');
+
+        const runtimeUrl = '../../index.html?theme=sky-children';
+        const runtimeForceWebglUrl = '../../index.html?theme=sky-children&forceWebGL=1';
+
+        const waitForMs = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs));
+
+        function setResult(title, payload) {
+            const renderedPayload = payload ? JSON.stringify(payload, null, 2) : '';
+            resultNode.textContent = `${title}\n${renderedPayload}`;
+        }
+
+        function load(url) {
+            frame.src = url;
+            setResult('Runtime loading...', { url });
+        }
+
+        function setViewportMode(mode) {
+            if (mode === 'locked1080p') {
+                frame.style.width = '1920px';
+                frame.style.height = '1080px';
+                viewportModeNode.textContent = 'locked1080p';
+                return;
+            }
+            frame.style.width = '100%';
+            frame.style.height = '560px';
+            viewportModeNode.textContent = 'responsive';
+        }
+
+        async function ensureSkyChildrenActive() {
+            const appWindow = frame.contentWindow;
+            if (!appWindow) return false;
+
+            const themeManager = appWindow.themeManager || appWindow.serenityBlocks?.themeManager;
+            if (!themeManager || typeof themeManager.switchTheme !== 'function') {
+                return false;
+            }
+
+            if (themeManager.activeThemeName !== 'sky-children') {
+                await themeManager.switchTheme('sky-children', true);
+            }
+
+            const startedAt = performance.now();
+            while ((performance.now() - startedAt) < 7000) {
+                if (appWindow.skyChildrenPhase3) {
+                    return true;
+                }
+                await waitForMs(70);
+            }
+            return !!appWindow.skyChildrenPhase3;
+        }
+
+        async function runOnHelper(action) {
+            const ok = await ensureSkyChildrenActive();
+            if (!ok) {
+                alert('skyChildrenPhase3 helper not found. Ensure the app is loaded and sky-children theme is active.');
+                return null;
+            }
+            const helper = frame.contentWindow.skyChildrenPhase3;
+            return action(helper);
+        }
+
+        document.getElementById('load-default').addEventListener('click', () => load(runtimeUrl));
+        document.getElementById('load-force-webgl').addEventListener('click', () => load(runtimeForceWebglUrl));
+        document.getElementById('reload-app').addEventListener('click', () => frame.contentWindow?.location.reload());
+        document.getElementById('viewport-lock-1080p').addEventListener('click', () => setViewportMode('locked1080p'));
+        document.getElementById('viewport-responsive').addEventListener('click', () => setViewportMode('responsive'));
+        document.getElementById('theme-lock-1080p').addEventListener('click', async () => {
+            const size = await runOnHelper((helper) => helper.setResolutionLock(1920, 1080));
+            setResult('Theme resolution lock set', { requested: { width: 1920, height: 1080 }, size });
+        });
+        document.getElementById('theme-unlock').addEventListener('click', async () => {
+            const size = await runOnHelper((helper) => helper.clearResolutionLock());
+            setResult('Theme resolution lock cleared', { size });
+        });
+        document.getElementById('switch-theme').addEventListener('click', async () => {
+            const ok = await ensureSkyChildrenActive();
+            setResult('Theme activation result', { ok });
+        });
+
+        document.getElementById('capture-snapshot').addEventListener('click', async () => {
+            const report = await runOnHelper((helper) => helper.snapshot('manual-snapshot'));
+            setResult('Snapshot captured', report);
+        });
+
+        document.getElementById('run-visual-gate').addEventListener('click', async () => {
+            const report = await runOnHelper((helper) => helper.visualGate());
+            setResult('Cloud visual gate complete', report);
+        });
+
+        document.getElementById('run-perf-gate').addEventListener('click', async () => {
+            setResult('Running cloud performance gate...', null);
+            const report = await runOnHelper((helper) => helper.perfGate({
+                sampleCount: 180,
+                settleMs: 800,
+                minimumSamples: 60,
+                requiredWidth: 1920,
+                requiredHeight: 1080,
+                strictResolution: true,
+            }));
+            setResult('Cloud performance gate complete', report);
+        });
+
+        document.getElementById('run-perf-gate-relaxed').addEventListener('click', async () => {
+            setResult('Running cloud performance gate (resolution ignored)...', null);
+            const report = await runOnHelper((helper) => helper.perfGate({
+                sampleCount: 180,
+                settleMs: 800,
+                minimumSamples: 60,
+                strictResolution: false,
+            }));
+            setResult('Cloud performance gate complete', report);
+        });
+
+        document.getElementById('run-validation').addEventListener('click', async () => {
+            setResult('Running full Phase 3 validation...', null);
+            const report = await runOnHelper((helper) => helper.validate({
+                snapshotLabel: 'manual-phase3-validation',
+                performance: {
+                    sampleCount: 180,
+                    settleMs: 800,
+                    minimumSamples: 60,
+                    requiredWidth: 1920,
+                    requiredHeight: 1080,
+                    strictResolution: true,
+                },
+            }));
+            setResult('Phase 3 validation complete', report);
+        });
+
+        document.getElementById('download-report').addEventListener('click', async () => {
+            const report = await runOnHelper((helper) => helper.download('sky-children-phase3-validation'));
+            setResult('Downloaded phase3 report', report);
+        });
+
+        setViewportMode('responsive');
+        load(runtimeUrl);
+    </script>
+</body>
+</html>

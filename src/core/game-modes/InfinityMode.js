@@ -1,4 +1,5 @@
 import { BaseGameMode } from './BaseGameMode.js';
+import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import {
     GAME_MODES, COLS, ROWS, BLOCK_SIZE,
 } from '../constants.js';
@@ -342,6 +343,36 @@ export class InfinityMode extends BaseGameMode {
         // Start game loop
         this._startGameLoop();
 
+        // Initialize BoardJuice for reactive board motion
+        this._initBoardJuice();
+
+        // Wrap move/rotate to add board juice on piece movement
+        if (this.boardJuice) {
+            this._originalMove = window.move;
+            this._originalRotate = window.rotate;
+
+            const juice = this.boardJuice;
+            const origMove = this._originalMove;
+            const origRotate = this._originalRotate;
+
+            window.move = (dir) => {
+                const result = origMove?.(dir);
+                if (juice && !juice.disabled) {
+                    juice.nudge(dir * 1.5, 0);
+                    juice.tilt(dir * 0.4);
+                }
+                return result;
+            };
+
+            window.rotate = (dir) => {
+                const result = origRotate?.(dir);
+                if (juice && !juice.disabled) {
+                    juice.tilt(dir === 'left' ? -0.3 : 0.3);
+                }
+                return result;
+            };
+        }
+
         // Enable gamepad exploration control
         this._enableGamepadExploration();
 
@@ -468,6 +499,16 @@ export class InfinityMode extends BaseGameMode {
         if (this.cosmicExploration) {
             this.cosmicExploration.dispose();
             this.cosmicExploration = null;
+        }
+
+        // Restore wrapped inputs
+        if (this._originalMove) { window.move = this._originalMove; this._originalMove = null; }
+        if (this._originalRotate) { window.rotate = this._originalRotate; this._originalRotate = null; }
+
+        // Clean up BoardJuice
+        if (this.boardJuice) {
+            this.boardJuice.destroy();
+            this.boardJuice = null;
         }
 
         this.boardScene = null;
@@ -827,7 +868,7 @@ export class InfinityMode extends BaseGameMode {
             onLevelUp: () => {
                 // Level up disabled in infinity mode, but keep callback for compatibility
             },
-            onHardDrop: () => {
+            onHardDrop: (dropData) => {
                 this.lastDropWasHard = true;
                 this.suppressFollowUntilLock = true;
 
@@ -836,6 +877,17 @@ export class InfinityMode extends BaseGameMode {
                     sfxPlayer.playHardDrop();
                 } else if (sfxPlayer?.playDrop) {
                     sfxPlayer.playDrop();
+                }
+
+                const boardScene = this._getBoardScene();
+                if (boardScene && boardScene.playHardDropEffect) {
+                    boardScene.playHardDropEffect(dropData);
+                }
+
+                // Board juice: dip + bounce on hard drop
+                if (this.boardJuice) {
+                    this.boardJuice.dip(3);
+                    this.boardJuice.bounce();
                 }
             },
             // Trigger combo visual effects
@@ -903,6 +955,12 @@ export class InfinityMode extends BaseGameMode {
                 if (boardScene && boardScene.playLineClearImpact) {
                     boardScene.playLineClearImpact(lineCount);
                 }
+
+                // Board juice: pulse on line clear
+                if (this.boardJuice) {
+                    const intensity = 1 + (Math.min(lineCount, 4) * 0.004);
+                    this.boardJuice.pulse(intensity);
+                }
             },
             // Background pulse effect
             triggerBackgroundPulse: (lineCount) => {
@@ -932,9 +990,14 @@ export class InfinityMode extends BaseGameMode {
                 const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.createPieceLockRipple) {
                     boardScene.createPieceLockRipple(piece);
-                    console.log('[Infinity] Piece lock ripple triggered for piece:', piece.type);
                 } else {
                     console.warn('[Infinity] BoardScene or createPieceLockRipple not available');
+                }
+
+                // Board juice: gentle dip + pulse on piece lock
+                if (this.boardJuice) {
+                    this.boardJuice.dip(1);
+                    this.boardJuice.pulse(1.005);
                 }
 
                 // Update infinity stats
@@ -1559,6 +1622,23 @@ export class InfinityMode extends BaseGameMode {
             hasGameState: !!this.gameState,
             hasMinimap: !!this.minimap,
         };
+    }
+
+    /**
+     * Initialize BoardJuice for reactive board motion
+     * @private
+     */
+    _initBoardJuice() {
+        if (this.boardJuice) {
+            this.boardJuice.destroy();
+            this.boardJuice = null;
+        }
+
+        const container = document.getElementById('phaser-game-container');
+        const boardSection = container?.closest('.player-board-section');
+        if (boardSection) {
+            this.boardJuice = new BoardJuice(boardSection);
+        }
     }
 
     /**

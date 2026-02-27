@@ -286,16 +286,36 @@ export const THEME_REGISTRY = [
         group: 'cosmic',
     },
     {
+        id: 'chiral-gold',
+        displayName: 'Chiral Gold',
+        module: './chiral-gold/chiral-gold-theme.js',
+        group: 'cosmic',
+        icon: './chiral-gold/chiral-gold-theme-icon.svg',
+    },
+    {
         id: 'nimbus-veil',
         displayName: 'Nimbus Veil',
         module: './nimbus-veil/nimbus-veil-theme.js',
         group: 'atmospheric',
     },
     {
+        id: 'sky-children',
+        displayName: 'Sky Children',
+        module: './sky-children-v2/sky-children-alias-theme.js',
+        group: 'sky',
+    },
+    {
+        id: 'sky-children-v2',
+        displayName: 'Sky Children v2',
+        module: './sky-children-v2/sky-children-v2-theme.js',
+        group: 'sky',
+    },
+    {
         id: 'cinder-drift',
         displayName: 'Cinder Drift',
         module: './cinder-drift/cinder-drift-theme.js',
         group: 'atmospheric',
+        icon: './cinder-drift/cinder-drift-theme-icon.png',
     },
     {
         id: 'pyrestorm',

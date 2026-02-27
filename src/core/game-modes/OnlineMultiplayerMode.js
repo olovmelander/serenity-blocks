@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BaseGameMode } from './BaseGameMode.js';
+import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import {
     GAME_MODES, COLS, ROWS, BLOCK_SIZE,
 } from '../constants.js';
@@ -77,6 +78,10 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.networkStats = null;
         this.snapshotStats = null;
         this.pingInterval = null;
+        this.roundNumber = 1;
+        this.roundStingerElement = null;
+        this.roundStingerTimer = null;
+        this.roundStingerRunId = 0;
 
         // Cleanup handlers
         this.cleanupHandlers = [];
@@ -540,6 +545,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         // Clear any death overlays from previous match
         this._clearDeathState();
+        this._clearRoundStartEffects();
+        this.roundNumber = 1;
 
         // Hide other containers
         this._hideOtherContainers();
@@ -1182,6 +1189,24 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         );
         this.cleanupHandlers.push(this.pieceLockEffectUnsub);
 
+        // Hard drop effect handler
+        this.hardDropEffectUnsub = onMultiplayerEvent(
+            'game:hard_drop',
+            (detail) => {
+                if (detail.steamId !== localSteamId) return;
+                if (!this.mainBoardScene) return;
+
+                const { dropData } = detail;
+
+                this.deps.soundManager?.sfxPlayer.playDrop();
+
+                if (dropData && this.mainBoardScene.sharedEffects?.playHardDropEffect) {
+                    this.mainBoardScene.sharedEffects.playHardDropEffect(dropData);
+                }
+            },
+        );
+        this.cleanupHandlers.push(this.hardDropEffectUnsub);
+
         // Player topped out / death effect handler
         this.playerToppedOutUnsub = onMultiplayerEvent(
             MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT,
@@ -1225,6 +1250,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             () => {
                 console.log('[OnlineMultiplayer] Round restarting - clearing death state');
                 this._clearDeathState();
+                this.roundNumber += 1;
+                this._playRoundStartStinger();
             },
         );
         this.cleanupHandlers.push(this.roundRestartUnsub);
@@ -1443,12 +1470,63 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             }
         }
 
-        // Apply local player's color to main board border
+        // Apply local player's color to the player-card using the same approach as local multiplayer
         if (localPlayer) {
-            const mainBoard = document.getElementById('online-main-board');
+            const playerCard = document.getElementById('online-player-card');
             const localColor = localPlayer.color || this._getPlayerColor(localId);
-            if (mainBoard && localColor) {
-                mainBoard.style.borderColor = localColor;
+
+            if (localColor && playerCard) {
+                // Set CSS custom properties (same as local multiplayer)
+                playerCard.style.setProperty('--player-primary', localColor);
+                playerCard.style.setProperty('--player-primary-light', localColor);
+                playerCard.style.setProperty('--player-glow', `${localColor}80`);
+
+                // Set board dimensions — account for next pieces (~60px), stats bar (~50px), padding (~70px)
+                const boardWidth = Math.min(
+                    Math.max(180, window.innerWidth * 0.20),
+                    280,
+                    (window.innerHeight - 180) / 2.2
+                );
+                const boardHeight = boardWidth * 2;
+                playerCard.style.setProperty('--board-width', `${boardWidth}px`);
+                playerCard.style.setProperty('--board-height', `${boardHeight}px`);
+                playerCard.style.setProperty('--next-piece-size', '38px');
+                playerCard.style.setProperty('--next-piece-highlight-size', '44px');
+                playerCard.style.setProperty('--next-piece-gap', `${boardWidth * 0.025}px`);
+
+                // Apply card border, shadow, and background (same as local multiplayer data-player styles)
+                playerCard.style.borderColor = `${localColor}cc`;
+                playerCard.style.borderWidth = '3px';
+                playerCard.style.boxShadow = `0 0 30px ${localColor}66, inset 0 0 20px ${localColor}1a`;
+                playerCard.style.background = `linear-gradient(145deg, rgba(0, 0, 0, 0.5), ${localColor}0d)`;
+
+                // Darken the board explicitly
+                const boardSection = playerCard.querySelector('.player-board-section');
+                if (boardSection) {
+                    boardSection.style.background = 'rgba(10, 8, 24, 0.8)';
+                }
+
+                // Apply color to phaser board container border
+                const boardContainer = playerCard.querySelector('.phaser-board-container');
+                if (boardContainer) {
+                    boardContainer.style.borderTop = 'none';
+                    boardContainer.style.borderRight = `2px solid ${localColor}`;
+                    boardContainer.style.borderBottom = `2px solid ${localColor}`;
+                    boardContainer.style.borderLeft = `2px solid ${localColor}`;
+                    boardContainer.style.borderRadius = '0 0 12px 12px';
+                    boardContainer.style.boxShadow = `0 0 20px ${localColor}40`;
+                }
+
+                // Apply color to board border overlay
+                const borderOverlay = document.getElementById('online-board-border');
+                if (borderOverlay) {
+                    borderOverlay.style.borderTop = 'none';
+                    borderOverlay.style.borderRightColor = localColor;
+                    borderOverlay.style.borderBottomColor = localColor;
+                    borderOverlay.style.borderLeftColor = localColor;
+                    borderOverlay.style.borderRadius = '0 0 12px 12px';
+                    borderOverlay.style.boxShadow = `0 0 15px ${localColor}60, inset 0 0 10px ${localColor}40`;
+                }
             }
         }
 
@@ -1711,6 +1789,194 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }
     }
 
+    _ensureRoundStartStinger() {
+        const container = document.getElementById('online-multiplayer-container');
+        if (!container) return null;
+
+        if (this.roundStingerElement && this.roundStingerElement.isConnected) {
+            return this.roundStingerElement;
+        }
+
+        const stinger = document.createElement('div');
+        stinger.className = 'online-round-stinger';
+        stinger.setAttribute('aria-hidden', 'true');
+        stinger.innerHTML = `
+            <div class="online-round-stinger__line"></div>
+            <div class="online-round-stinger__content">
+                <div class="online-round-stinger__label">ROUND START</div>
+                <div class="online-round-stinger__round">ROUND 1</div>
+                <div class="online-round-stinger__subtitle">FIRST TO 10 FRAGS</div>
+            </div>
+            <div class="online-round-stinger__line"></div>
+        `;
+        container.appendChild(stinger);
+        this.roundStingerElement = stinger;
+        return stinger;
+    }
+
+    _playRoundStartStinger() {
+        const container = document.getElementById('online-multiplayer-container');
+        const mainBoard = document.getElementById('online-main-board');
+        const stinger = this._ensureRoundStartStinger();
+        if (!container || !mainBoard || !stinger) return;
+
+        const localColor = this._getPlayerColor(this.steamNetworking?.steamId) || '#4fd1c5';
+        const accentRgb = this._parseAccentColorToRgb(localColor);
+        const prefersReducedMotion = typeof window !== 'undefined'
+            && typeof window.matchMedia === 'function'
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        container.style.setProperty('--round-start-accent', localColor);
+        container.style.setProperty('--round-start-accent-rgb', `${accentRgb[0]}, ${accentRgb[1]}, ${accentRgb[2]}`);
+
+        const roundText = stinger.querySelector('.online-round-stinger__round');
+        const subtitle = stinger.querySelector('.online-round-stinger__subtitle');
+        if (roundText) {
+            roundText.textContent = `ROUND ${this.roundNumber}`;
+        }
+        if (subtitle) {
+            subtitle.textContent = this._buildRoundStingerSubtitle();
+        }
+
+        const opponentCards = Array.from(container.querySelectorAll('.opponent-mini-board'));
+        opponentCards.forEach((card, index) => {
+            card.style.setProperty('--round-start-delay', `${Math.min(index * 45, 180)}ms`);
+            card.classList.remove('round-start-burst');
+        });
+
+        container.classList.remove('round-start-pulse');
+        mainBoard.classList.remove('round-start-burst');
+        mainBoard.classList.remove('round-start-burst-reduced');
+        stinger.classList.remove('is-active');
+        stinger.classList.remove('is-active-reduced');
+
+        this.roundStingerRunId += 1;
+        const runId = this.roundStingerRunId;
+
+        if (prefersReducedMotion) {
+            stinger.classList.add('is-active-reduced');
+            mainBoard.classList.add('round-start-burst-reduced');
+            this.roundStingerTimer = setTimeout(() => {
+                if (runId !== this.roundStingerRunId) return;
+                mainBoard.classList.remove('round-start-burst-reduced');
+                stinger.classList.remove('is-active-reduced');
+                opponentCards.forEach((card) => {
+                    card.style.removeProperty('--round-start-delay');
+                });
+                this.roundStingerTimer = null;
+            }, 360);
+            return;
+        }
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (runId !== this.roundStingerRunId) return;
+                container.classList.add('round-start-pulse');
+                mainBoard.classList.add('round-start-burst');
+                stinger.classList.add('is-active');
+                opponentCards.forEach((card) => card.classList.add('round-start-burst'));
+            });
+        });
+
+        if (this.roundStingerTimer) {
+            clearTimeout(this.roundStingerTimer);
+        }
+        this.roundStingerTimer = setTimeout(() => {
+            if (runId !== this.roundStingerRunId) return;
+            container.classList.remove('round-start-pulse');
+            mainBoard.classList.remove('round-start-burst');
+            stinger.classList.remove('is-active');
+            opponentCards.forEach((card) => {
+                card.classList.remove('round-start-burst');
+                card.style.removeProperty('--round-start-delay');
+            });
+            this.roundStingerTimer = null;
+        }, 850);
+    }
+
+    _buildRoundStingerSubtitle() {
+        const config = this.ffaGameState?.matchConfig || {};
+        const goal = Number(config.endConditionValue) || 0;
+
+        switch (config.endCondition) {
+            case 'frags':
+                return `FIRST TO ${goal || 10} FRAGS`;
+            case 'points':
+                return `FIRST TO ${(goal || 10) * 1000} POINTS`;
+            case 'lines':
+                return `FIRST TO ${goal || 40} LINES`;
+            case 'time':
+                return `${goal || 3} MINUTE SPRINT`;
+            case 'never':
+                return 'ENDLESS BATTLE';
+            default:
+                return 'STAY SHARP';
+        }
+    }
+
+    _parseAccentColorToRgb(color) {
+        if (!color || typeof color !== 'string') return [79, 209, 197];
+
+        const trimmed = color.trim();
+
+        if (trimmed.startsWith('#')) {
+            const hex = trimmed.slice(1);
+            if (hex.length === 3) {
+                return hex.split('').map((value) => parseInt(value + value, 16));
+            }
+            if (hex.length === 6) {
+                return [
+                    parseInt(hex.slice(0, 2), 16),
+                    parseInt(hex.slice(2, 4), 16),
+                    parseInt(hex.slice(4, 6), 16),
+                ];
+            }
+        }
+
+        const rgbMatch = trimmed.match(/rgba?\(([^)]+)\)/i);
+        if (rgbMatch && rgbMatch[1]) {
+            const channels = rgbMatch[1]
+                .split(',')
+                .slice(0, 3)
+                .map((value) => Number.parseInt(value.trim(), 10))
+                .map((value) => (Number.isNaN(value) ? 0 : Math.max(0, Math.min(255, value))));
+            if (channels.length === 3) {
+                return channels;
+            }
+        }
+
+        return [79, 209, 197];
+    }
+
+    _clearRoundStartEffects() {
+        if (this.roundStingerTimer) {
+            clearTimeout(this.roundStingerTimer);
+            this.roundStingerTimer = null;
+        }
+
+        const container = document.getElementById('online-multiplayer-container');
+        const mainBoard = document.getElementById('online-main-board');
+
+        if (container) {
+            container.classList.remove('round-start-pulse');
+            const opponentCards = container.querySelectorAll('.opponent-mini-board.round-start-burst');
+            opponentCards.forEach((card) => {
+                card.classList.remove('round-start-burst');
+                card.style.removeProperty('--round-start-delay');
+            });
+        }
+
+        if (mainBoard) {
+            mainBoard.classList.remove('round-start-burst');
+            mainBoard.classList.remove('round-start-burst-reduced');
+        }
+
+        if (this.roundStingerElement) {
+            this.roundStingerElement.classList.remove('is-active');
+            this.roundStingerElement.classList.remove('is-active-reduced');
+        }
+    }
+
     /**
      * Update the garbage meter display
      * PERF: Caches DOM elements and only updates when values change
@@ -1942,12 +2208,24 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             softDrop: window.softDrop,
         };
 
+        // Initialize BoardJuice for reactive board motion
+        this._initBoardJuice();
+
         window.move = (dir) => {
             this.ffaGameState?.sendInput('move', { direction: dir });
+            // Board juice: nudge + tilt on move
+            if (this.boardJuice) {
+                this.boardJuice.nudge(dir * 1.5, 0);
+                this.boardJuice.tilt(dir * 0.4);
+            }
         };
 
         window.rotate = (dir) => {
             this.ffaGameState?.sendInput('rotate', { direction: dir });
+            // Board juice: tilt on rotate
+            if (this.boardJuice) {
+                this.boardJuice.tilt(dir === 'left' ? -0.3 : 0.3);
+            }
         };
 
         window.softDrop = () => {
@@ -1956,7 +2234,30 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         window.hardDrop = () => {
             this.ffaGameState?.sendInput('drop', { type: 'hard' });
+            // Board juice: dip + bounce on hard drop
+            if (this.boardJuice) {
+                this.boardJuice.dip(3);
+                this.boardJuice.bounce();
+            }
         };
+    }
+
+    /**
+     * Initialize BoardJuice for reactive board motion
+     * @private
+     */
+    _initBoardJuice() {
+        if (this.boardJuice) {
+            this.boardJuice.destroy();
+            this.boardJuice = null;
+        }
+
+        // Online mode: target the main board container
+        const mainBoard = document.getElementById('online-main-board');
+        const boardSection = mainBoard?.closest('.player-board-section') || mainBoard;
+        if (boardSection) {
+            this.boardJuice = new BoardJuice(boardSection);
+        }
     }
 
     /**
@@ -2075,6 +2376,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * Clean up game rendering
      */
     _cleanupGameRendering() {
+        this._clearRoundStartEffects();
+        this.roundStingerRunId += 1;
+        if (this.roundStingerElement) {
+            this.roundStingerElement.remove();
+            this.roundStingerElement = null;
+        }
+
         // Stop game loop
         if (this.gameLoopId) {
             cancelAnimationFrame(this.gameLoopId);
@@ -2086,6 +2394,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.mainPhaserGame.destroy(true);
             this.mainPhaserGame = null;
             this.mainBoardScene = null;
+        }
+
+        // Clean up BoardJuice
+        if (this.boardJuice) {
+            this.boardJuice.destroy();
+            this.boardJuice = null;
         }
 
         // Destroy UI components
