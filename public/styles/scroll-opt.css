@@ -5,40 +5,29 @@
 /* Class added via JS when scrolling starts */
 .serenity-hub-panel.is-scrolling {
     pointer-events: none;
-    /* Ignore mouse events during scroll to improve FPS */
 }
 
 .serenity-hub-panel.is-scrolling .theme-card {
     pointer-events: none;
-    /* Ensure cards don't trigger hover effects */
     box-shadow: none;
-    /* Remove shadow during scroll */
 }
 
 .serenity-hub-panel.is-scrolling .hub-tab-content {
     pointer-events: auto;
-    /* Allow scrolling to continue */
 }
 
 /* Simplified Theme Card for Performance */
 .theme-card {
-    /* ... existing styles ... */
-    /* Optimize default state */
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    /* Lighter shadow */
-    transition: transform 0.2s ease, opacity 0.2s ease;
-    /* Remove box-shadow transition if possible */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
     will-change: transform;
-    /* Hint to browser */
     content-visibility: auto;
-    /* Skip rendering off-screen cards */
-    contain-intrinsic-size: 100px 200px;
-    /* Estimate size */
+    contain-intrinsic-size: 100px 130px;
 }
 
-/* Reduce hover complexity */
+/* Hover state aligned with main stylesheet */
 .theme-card:hover {
-    transform: translateY(-2px);
-    /* box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2); -> Removed or simplified */
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-3px) scale(1.03);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3),
+                0 0 0 1px rgba(102, 126, 234, 0.3);
 }

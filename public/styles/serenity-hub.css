@@ -249,17 +249,17 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) scale(0.9);
-  width: 680px;
-  max-width: 90vw;
-  max-height: 85vh;
-  min-height: 700px;
+  width: 960px;
+  max-width: 96vw;
+  height: 88vh;
+  max-height: 88vh;
   background: var(--hub-background);
-  backdrop-filter: blur(var(--hub-backdrop-blur)) saturate(120%);
-  -webkit-backdrop-filter: blur(var(--hub-backdrop-blur)) saturate(120%);
+  backdrop-filter: blur(var(--hub-backdrop-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--hub-backdrop-blur)) saturate(150%);
   border-radius: var(--hub-radius-lg);
   border: 1px solid var(--hub-border);
-  box-shadow: 0 8px 32px var(--hub-shadow),
-    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset;
   z-index: 2000;
   opacity: 0;
   pointer-events: none;
@@ -285,16 +285,16 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--hub-spacing-lg);
+  padding: 12px var(--hub-spacing-lg);
   border-bottom: 1px solid var(--hub-border);
   background: linear-gradient(180deg,
-      rgba(255, 255, 255, 0.05) 0%,
+      rgba(255, 255, 255, 0.06) 0%,
       transparent 100%);
 }
 
 .hub-title {
   margin: 0;
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--hub-primary);
   letter-spacing: 0.5px;
@@ -302,8 +302,8 @@
 }
 
 .hub-close-btn {
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   background: transparent;
   border: none;
@@ -317,8 +317,8 @@
 }
 
 .hub-close-btn svg {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .hub-close-btn:hover {
@@ -345,7 +345,7 @@
 
 .hub-tab {
   flex: 1;
-  padding: var(--hub-spacing-md) var(--hub-spacing-sm);
+  padding: 9px var(--hub-spacing-sm);
   background: transparent;
   border: none;
   color: var(--hub-secondary);
@@ -355,15 +355,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--hub-spacing-xs);
-  font-size: 14px;
+  gap: 6px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
 }
 
 .tab-icon {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   stroke-width: 2;
 }
 
@@ -414,7 +414,8 @@
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
-  contain: strict;
+  contain: layout paint style;
+  min-height: 0;
 }
 
 /* Custom scrollbar */
@@ -437,7 +438,7 @@
 
 .tab-panel {
   display: none;
-  padding: var(--hub-spacing-md) var(--hub-spacing-lg);
+  padding: 10px var(--hub-spacing-md);
 }
 
 .tab-panel.active {
@@ -470,65 +471,12 @@
 /* ===========================
    Responsive Design
    =========================== */
-/* Desktop (>900px) */
+/* Desktop layout (canonical) */
 @media (min-width: 901px) {
   .serenity-hub-panel {
-    width: 680px;
-    max-height: 85vh;
-  }
-}
-
-/* Tablet (601-900px) */
-@media (min-width: 601px) and (max-width: 900px) {
-  .serenity-hub-panel {
-    width: 85%;
-    max-width: 650px;
-    max-height: 85vh;
-  }
-}
-
-/* Mobile (≤600px) */
-@media (max-width: 600px) {
-  .serenity-hub-icon {
-    bottom: 88px;
-    right: 10px;
-    width: 50px;
-    height: 50px;
-  }
-
-  .serenity-hub-panel {
-    width: 95%;
-    max-height: 85vh;
-  }
-
-  .hub-panel-header {
-    padding: var(--hub-spacing-md);
-  }
-
-  .hub-title {
-    font-size: 18px;
-  }
-
-  .hub-tabs {
-    padding: 0 var(--hub-spacing-sm);
-  }
-
-  .hub-tab {
-    padding: var(--hub-spacing-sm);
-    font-size: 12px;
-  }
-
-  .hub-tab span {
-    display: none;
-  }
-
-  .tab-icon {
-    width: 24px;
-    height: 24px;
-  }
-
-  .tab-panel {
-    padding: var(--hub-spacing-md);
+    width: 960px;
+    height: 88vh;
+    max-height: 88vh;
   }
 }
 
@@ -890,42 +838,7 @@
 }
 
 /* Mobile Responsive */
-@media (max-width: 600px) {
-  .technique-grid {
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-    gap: var(--hub-spacing-sm);
-  }
-
-  .technique-card {
-    padding: var(--hub-spacing-sm);
-    min-height: 120px;
-  }
-
-  .technique-icon {
-    width: 50px;
-    height: 50px;
-    font-size: 24px;
-  }
-
-  .technique-name {
-    font-size: 12px;
-  }
-
-  .info-emoji {
-    font-size: 28px;
-  }
-
-  .info-title {
-    font-size: 16px;
-  }
-}
-
-/* Tablet Responsive */
-@media (min-width: 601px) and (max-width: 900px) {
-  .technique-grid {
-    grid-template-columns: repeat(auto-fill, minmax(115px, 1fr));
-  }
-}
+/* Breathing tab mobile/tablet breakpoints removed — desktop-only */
 
 /* ===========================
    MUSIC TAB STYLES
@@ -1451,66 +1364,7 @@
   }
 }
 
-/* Music Tab Mobile Responsive */
-@media (max-width: 600px) {
-  .music-tab {
-    gap: var(--hub-spacing-md);
-  }
-
-  .now-playing-card {
-    flex-direction: column;
-    text-align: center;
-  }
-
-  .track-info {
-    text-align: center;
-  }
-
-  .album-art {
-    width: 100px;
-    height: 100px;
-  }
-
-  .vinyl-disc {
-    width: 90px;
-    height: 90px;
-  }
-
-  .track-title {
-    font-size: 15px;
-  }
-
-  .control-btn.primary {
-    width: 52px;
-    height: 52px;
-  }
-
-  .control-btn.secondary {
-    width: 42px;
-    height: 42px;
-  }
-
-  /* Adjust volume section padding on mobile */
-  .volume-section {
-    padding-bottom: 32px;
-  }
-
-  /* Compact mute button on mobile - icon only */
-  .mute-btn {
-    padding: 4px 6px;
-    bottom: 8px;
-    right: 12px;
-  }
-
-  .mute-text {
-    display: none;
-  }
-
-  .volume-label {
-    min-width: 90px;
-    font-size: 12px;
-  }
-}
+/* Music tab mobile breakpoints removed — desktop-only */
 
 /* ===========================
    THEMES TAB STYLES
@@ -1519,24 +1373,58 @@
 .themes-tab {
   display: flex;
   flex-direction: column;
-  gap: var(--hub-spacing-lg);
-  padding: var(--hub-spacing-sm);
+  gap: 10px;
+  padding: var(--hub-spacing-xs);
 }
 
-/* Themes Header */
-.themes-header {
+/* Themes Control Bar (search + current badge) */
+.themes-control-bar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: var(--hub-spacing-md);
-  flex-wrap: wrap;
+  gap: var(--hub-spacing-sm);
 }
 
-.themes-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
+.themes-search-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  color: var(--hub-secondary);
+  pointer-events: none;
+}
+
+.themes-search-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px 0 32px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
   color: var(--hub-primary);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--hub-transition-fast),
+              background var(--hub-transition-fast);
+  box-sizing: border-box;
+}
+
+.themes-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.themes-search-input:focus {
+  border-color: rgba(102, 126, 234, 0.6);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
 }
 
 .current-theme-badge {
@@ -1546,13 +1434,15 @@
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid var(--hub-border);
   border-radius: 20px;
-  padding: 6px 14px;
-  font-size: 13px;
+  padding: 5px 12px;
+  font-size: 12px;
   color: var(--hub-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .badge-icon {
-  font-size: 14px;
+  font-size: 12px;
   color: #4CAF50;
 }
 
@@ -1560,27 +1450,35 @@
   font-weight: 500;
 }
 
-/* Category Filter */
+/* Category Filter — single-row horizontal scroll */
 .category-filter {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--hub-spacing-xs);
-  padding: var(--hub-spacing-sm) 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 6px;
+  padding: 4px 0 8px;
+  scrollbar-width: none;
+}
+
+.category-filter::-webkit-scrollbar {
+  display: none;
 }
 
 .category-pill {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid transparent;
-  border-radius: 20px;
-  padding: 8px 14px;
+  border-radius: 16px;
+  padding: 5px 10px;
   cursor: pointer;
   transition: all var(--hub-transition-fast);
   color: var(--hub-secondary);
-  font-size: 13px;
+  font-size: 12px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .category-pill:hover {
@@ -1597,7 +1495,7 @@
 }
 
 .pill-icon {
-  font-size: 16px;
+  font-size: 13px;
 }
 
 .pill-text {
@@ -1606,11 +1504,11 @@
 
 .pill-count {
   background: rgba(255, 255, 255, 0.2);
-  border-radius: 10px;
-  padding: 2px 6px;
-  font-size: 11px;
+  border-radius: 8px;
+  padding: 1px 5px;
+  font-size: 10px;
   font-weight: 600;
-  min-width: 20px;
+  min-width: 16px;
   text-align: center;
 }
 
@@ -1618,43 +1516,54 @@
   background: rgba(255, 255, 255, 0.3);
 }
 
-/* Themes Grid */
+/* Themes Grid — 6 columns, compact */
 .themes-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-auto-rows: minmax(180px, auto);
-  gap: var(--hub-spacing-sm);
+  grid-template-columns: repeat(6, 1fr);
+  grid-auto-rows: auto;
+  gap: 8px;
 }
 
-
-/* Theme Card */
+/* Theme Card — compact */
 .theme-card {
   display: flex;
   flex-direction: column;
   background: rgba(255, 255, 255, 0.05);
-  border: 2px solid transparent;
-  border-radius: var(--hub-radius-md);
+  border: 1.5px solid transparent;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all var(--hub-transition-fast);
   overflow: hidden;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  will-change: transform;
+  content-visibility: auto;
+  contain-intrinsic-size: 100px 130px;
 }
 
 .theme-card:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: var(--hub-border);
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-3px) scale(1.03);
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(102, 126, 234, 0.3);
 }
 
 .theme-card.active {
-  border-color: white;
-  box-shadow: 0 0 20px rgba(255, 255, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 0 0 1px white,
+    0 0 16px rgba(255, 255, 255, 0.35);
+}
+
+.theme-card:focus-visible {
+  outline: 2px solid rgba(102, 126, 234, 0.8);
+  outline-offset: 2px;
 }
 
 /* Theme Swatch (Color Preview) */
 .theme-swatch {
   position: relative;
-  height: 120px;
+  height: 72px;
   background: var(--theme-gradient);
   display: flex;
   align-items: center;
@@ -1662,10 +1571,29 @@
   overflow: hidden;
 }
 
+/* Shimmer overlay on hover */
+.theme-swatch::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    120deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.theme-card:hover .theme-swatch::after {
+  opacity: 1;
+}
+
 /* Theme Icon - PNG Image */
 .theme-icon-img {
-  width: 96px;
-  height: 96px;
+  width: 52px;
+  height: 52px;
   object-fit: cover;
   border-radius: 50%;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
@@ -1674,19 +1602,19 @@
 }
 
 .theme-card:hover .theme-icon-img {
-  transform: scale(1.05);
+  transform: scale(1.08);
 }
 
 /* Theme Icon - Emoji Fallback */
 .theme-icon-emoji {
-  font-size: 48px;
+  font-size: 28px;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
   animation: float 3s ease-in-out infinite;
 }
 
 /* Legacy support for old .theme-icon class */
 .theme-icon {
-  font-size: 48px;
+  font-size: 28px;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
   animation: float 3s ease-in-out infinite;
 }
@@ -1699,25 +1627,25 @@
   }
 
   50% {
-    transform: translateY(-6px);
+    transform: translateY(-3px);
   }
 }
 
 .active-indicator {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 26px;
-  height: 26px;
+  top: 5px;
+  right: 5px;
+  width: 18px;
+  height: 18px;
   background: white;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 10px;
   color: #4CAF50;
   font-weight: bold;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
   animation: pop 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 }
 
@@ -1737,24 +1665,24 @@
 
 /* Theme Info */
 .theme-info {
-  padding: var(--hub-spacing-md);
+  padding: 6px 8px 8px;
   text-align: center;
 }
 
 .theme-name {
-  font-size: 15px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--hub-primary);
-  margin-bottom: 6px;
+  margin-bottom: 2px;
   line-height: 1.3;
-  min-height: 38px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .theme-category {
-  font-size: 12px;
+  font-size: 10px;
   color: var(--hub-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1889,87 +1817,7 @@
   color: var(--hub-secondary);
 }
 
-/* Themes Tab Mobile Responsive */
-@media (max-width: 600px) {
-  .themes-tab {
-    gap: var(--hub-spacing-md);
-  }
-
-  .themes-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .themes-grid {
-    grid-template-columns: repeat(2, 1fr);
-    grid-auto-rows: minmax(160px, auto);
-    gap: var(--hub-spacing-sm);
-  }
-
-  .theme-swatch {
-    height: 100px;
-  }
-
-  .theme-icon-img {
-    width: 72px;
-    height: 72px;
-  }
-
-  .theme-icon-emoji,
-  .theme-icon {
-    font-size: 36px;
-  }
-
-  .theme-name {
-    font-size: 13px;
-    min-height: 32px;
-  }
-
-  .theme-category {
-    font-size: 10px;
-  }
-
-  .category-filter {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .category-pill {
-    flex-shrink: 0;
-  }
-
-  .theme-param-row {
-    grid-template-columns: 1fr;
-    align-items: flex-start;
-  }
-
-  .theme-param-value {
-    text-align: left;
-  }
-}
-
-/* Tablet Responsive */
-@media (min-width: 601px) and (max-width: 900px) {
-  .themes-grid {
-    grid-template-columns: repeat(3, 1fr);
-    grid-auto-rows: minmax(175px, auto);
-  }
-
-  .theme-swatch {
-    height: 100px;
-  }
-
-  .theme-icon-img {
-    width: 84px;
-    height: 84px;
-  }
-
-  .theme-icon-emoji,
-  .theme-icon {
-    font-size: 40px;
-  }
-}
+/* Mobile/tablet breakpoints removed — desktop-only game */
 
 /* ===========================
    GESTURE CONTROL STYLES
@@ -2081,21 +1929,7 @@
   position: relative;
 }
 
-/* Swipe Indicator Mobile Adjustments */
-@media (max-width: 600px) {
-  .swipe-icon {
-    padding: var(--hub-spacing-md);
-    font-size: 16px;
-  }
-
-  .swipe-arrow {
-    font-size: 28px;
-  }
-
-  .swipe-text {
-    font-size: 12px;
-  }
-}
+/* Swipe indicator mobile breakpoints removed — desktop-only */
 
 /* ===========================
    GAMEPAD CONTROLLER STYLES
@@ -2255,41 +2089,7 @@
   background: rgba(255, 255, 255, 0.3);
 }
 
-/* Mobile adjustments for gamepad UI */
-@media (max-width: 600px) {
-  .gamepad-hints {
-    bottom: 10px;
-    right: 10px;
-    left: 10px;
-    max-width: none;
-    padding: var(--hub-spacing-md);
-  }
-
-  .hint-title {
-    font-size: 16px;
-  }
-
-  .hint-grid {
-    grid-template-columns: 1fr;
-    gap: var(--hub-spacing-xs);
-  }
-
-  .hint-item {
-    font-size: 12px;
-  }
-
-  .hint-button {
-    font-size: 10px;
-    min-width: 50px;
-    padding: 3px 8px;
-  }
-}
-
-@media (min-width: 601px) and (max-width: 900px) {
-  .gamepad-hints {
-    max-width: 380px;
-  }
-}
+/* Gamepad mobile/tablet breakpoints removed — desktop-only */
 
 /* Gamepad focus styles for specific elements */
 .technique-card.gamepad-focused,
@@ -2400,15 +2200,7 @@
   border-radius: 50%;
 }
 
-/* Mobile adjustments */
-@media (max-width: 600px) {
-  .replays-icon {
-    bottom: 200px;
-    right: 14px;
-    width: 42px;
-    height: 42px;
-  }
-}
+/* Replays mobile breakpoints removed — desktop-only */
 
 /* ===========================
    High Scores Icon (Floating Button above Serenity Hub)
@@ -2481,15 +2273,7 @@
   border-radius: 50%;
 }
 
-/* Mobile adjustments */
-@media (max-width: 600px) {
-  .highscores-icon {
-    bottom: 148px;
-    right: 14px;
-    width: 42px;
-    height: 42px;
-  }
-}
+/* Highscores mobile breakpoints removed — desktop-only */
 
 /* ===========================
    Sessions Tab Styles
@@ -3342,34 +3126,9 @@
 
 
 
-/* Simplified Theme Card for Performance */
-.theme-card {
-  /* ... existing styles ... */
-  /* Optimize default state */
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  /* Dramatically simplified shadow */
-  transition: transform 0.2s ease, opacity 0.2s ease;
-  /* Remove box-shadow transition */
-  will-change: transform;
-  /* Hint to browser */
-
-  /* Virtual Scrolling / Smart Rendering */
-  content-visibility: auto;
-  contain-intrinsic-size: 100px 200px;
-  /* Estimate size to prevent scrollbar jumping */
-}
-
-/* Reduce hover complexity */
-.theme-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-  /* Simpler hover shadow */
-}
-
 /* Scroll Performance Optimizations */
 .serenity-hub-panel.is-scrolling {
   pointer-events: none;
-  /* Ignore mouse events during scroll to improve FPS */
 }
 
 .serenity-hub-backdrop.is-scrolling {
@@ -3378,13 +3137,5 @@
 
 .serenity-hub-panel.is-scrolling .hub-tab-content {
   pointer-events: auto;
-  /* Allow scrolling to continue */
   will-change: scroll-position;
-}
-
-/* Reduce hover complexity */
-.theme-card:hover {
-  transform: translateY(-2px);
-  /* box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2); -> Removed or simplified */
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
 }

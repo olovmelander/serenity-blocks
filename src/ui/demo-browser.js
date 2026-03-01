@@ -38,11 +38,6 @@ export class DemoBrowser {
             this.importInput.addEventListener('change', (e) => this.handleFileImport(e));
         }
 
-        // Import from URL button
-        const importUrlBtn = document.getElementById('import-url-btn');
-        if (importUrlBtn) {
-            importUrlBtn.addEventListener('click', () => this.handleUrlImport());
-        }
     }
 
     show() {
@@ -199,24 +194,4 @@ export class DemoBrowser {
         event.target.value = '';
     }
 
-    async handleUrlImport() {
-        const url = prompt('Paste the replay URL here:');
-        if (!url) return;
-
-        try {
-            // Extract base64 data from URL parameter 'demo'
-            const urlObj = new URL(url);
-            const base64Data = urlObj.searchParams.get('demo');
-
-            if (!base64Data) throw new Error('Invalid URL format');
-
-            const demo = await this.demoManager.importFromURL(base64Data);
-            await this.demoManager.saveDemo(demo);
-            this.refreshList();
-            alert('Replay imported successfully!');
-        } catch (err) {
-            console.error('URL import failed:', err);
-            alert('Failed to import replay from URL.');
-        }
-    }
 }
