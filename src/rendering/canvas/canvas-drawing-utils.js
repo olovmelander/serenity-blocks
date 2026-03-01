@@ -122,16 +122,16 @@ export function drawBlockStyled(ctx, x, y, blockSize, styleConfig, isGhost = fal
 
     // Route to appropriate rendering function based on mode
     switch (renderMode) {
-    case 'glow':
-        drawBlockGlow(ctx, x, y, blockSize, color, effects, alpha);
-        break;
-    case 'gradient':
-        drawBlockGradient(ctx, x, y, blockSize, color, effects, alpha);
-        break;
-    case 'solid':
-    default:
-        drawBlockSolid(ctx, x, y, blockSize, color, effects, alpha);
-        break;
+        case 'glow':
+            drawBlockGlow(ctx, x, y, blockSize, color, effects, alpha);
+            break;
+        case 'gradient':
+            drawBlockGradient(ctx, x, y, blockSize, color, effects, alpha);
+            break;
+        case 'solid':
+        default:
+            drawBlockSolid(ctx, x, y, blockSize, color, effects, alpha);
+            break;
     }
 }
 
@@ -615,7 +615,8 @@ export function drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleCon
             if (cell) {
                 const px = Math.round(offsetX + x * size);
                 const py = Math.round(offsetY + y * size);
-                ctx.rect(px, py, size, size);
+                // Expand rect by 0.5px on all sides to eliminate sub-pixel antialiasing gaps
+                ctx.rect(px - 0.5, py - 0.5, size + 1, size + 1);
             }
         });
     });
@@ -680,8 +681,9 @@ export function drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleCon
     ctx.globalAlpha = 1;
 
     // Second pass: Draw outline only on outer edges (matching game board exactly)
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1;
+    // Phaser uses 0.5 width and 0.08 opacity for extreme subtlety
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+    ctx.lineWidth = 0.5;
 
     ctx.beginPath();
     shape.forEach((row, y) => {

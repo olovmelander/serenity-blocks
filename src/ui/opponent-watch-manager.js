@@ -758,6 +758,11 @@ export class OpponentWatchManager {
                         gridCanvas.style.borderBottomColor = c;
                         gridCanvas.style.borderLeftColor = c;
                     }
+
+                    const highlightPiece = board.element.querySelector('.opponent-next-piece.highlight');
+                    if (highlightPiece) {
+                        highlightPiece.style.borderColor = c;
+                    }
                 }
 
                 this._updateGarbageMeter(board, state);
@@ -1214,9 +1219,8 @@ export class OpponentWatchManager {
         ctx.fillStyle = 'rgba(10, 15, 25, 0.6)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // PERF: Use persistent color cache instead of creating new Map every frame
-        this._drawLockedCells(ctx, grid, blockSize, this._colorCache);
-        this._drawLockedPieceOutlines(ctx, grid, blockSize);
+        // Render cohesive opponent grid blocks
+        this._drawCohesiveGrid(ctx, grid, blockSize, this._colorCache);
 
         if (currentPiece && currentPiece.shape) {
             const ghostY = this._calculateGhostY(currentPiece, grid);
@@ -1227,83 +1231,118 @@ export class OpponentWatchManager {
         }
     }
 
-    _drawLockedCells(ctx, grid, blockSize, colorCache) {
-        // PERF: Pre-compute column X positions (avoid multiplication in inner loop)
-        // blockSize=8, so positions are 0,8,16,24,32,40,48,56,64,72
-        let lastColor = null;
+    _drawCohesiveGrid(ctx, grid, blockSize, colorCache) {
+        if (!grid || grid.length === 0) return;
 
-        for (let row = 4; row < 24; row++) {
+        const rows = grid.length;
+        const cols = grid[0] ? grid[0].length : 0;
+        if (cols === 0) return;
+
+        // Create a visited matrix
+        const visited = Array.from({ length: rows }, () => new Array(cols).fill(false));
+
+        for (let row = 4; row < rows; row++) {
             const gridRow = grid[row];
             if (!gridRow) continue;
 
-            const rowY = (row - 4) * blockSize; // Pre-compute once per row
-            for (let col = 0; col < 10; col++) {
+            for (let col = 0; col < cols; col++) {
+                if (visited[row][col]) continue;
+
                 const cell = gridRow[col];
-                if (!cell || cell === 0) continue;
-
-                const color = this._getCellColor(cell, colorCache);
-                if (!color) continue;
-
-                // PERF: Only change fillStyle when color changes
-                if (color !== lastColor) {
-                    ctx.fillStyle = color;
-                    lastColor = color;
+                if (!cell || cell === 0) {
+                    visited[row][col] = true;
+                    continue;
                 }
 
-                ctx.fillRect(col * blockSize, rowY, blockSize, blockSize);
-            }
-        }
-    }
-
-    _drawLockedPieceOutlines(ctx, grid, blockSize) {
-        ctx.save();
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
-        ctx.lineWidth = 0.5;
-        ctx.beginPath();
-
-        for (let row = 4; row < 24; row++) {
-            const gridRow = grid[row];
-            if (!gridRow) continue;
-
-            for (let col = 0; col < 10; col++) {
-                const cell = gridRow[col];
-                if (!cell || cell === 0) continue;
-
+                // Found an unvisited filled cell. Find its contiguous component.
                 const cellId = this._getCellId(cell, col, row);
-                const px = Math.round(col * blockSize);
-                const py = Math.round((row - 4) * blockSize);
+                const cellColor = this._getCellColor(cell, colorCache);
+                const cellType = typeof cell === 'object' ? (cell.type || cell.shapeKey || cell.color) : cell;
 
-                const topCell = row > 0 ? grid[row - 1]?.[col] : null;
-                const bottomCell = row < grid.length - 1 ? grid[row + 1]?.[col] : null;
-                const leftCell = col > 0 ? gridRow[col - 1] : null;
-                const rightCell = col < 9 ? gridRow[col + 1] : null;
+                const blocks = [];
+                const queue = [{ x: col, y: row }];
+                visited[row][col] = true;
 
-                const topId = this._getCellId(topCell, col, row - 1);
-                const bottomId = this._getCellId(bottomCell, col, row + 1);
-                const leftId = this._getCellId(leftCell, col - 1, row);
-                const rightId = this._getCellId(rightCell, col + 1, row);
+                let minX = col;
+                let maxX = col;
+                let minY = row;
+                let maxY = row;
 
-                if (!topCell || topId !== cellId) {
-                    ctx.moveTo(px, py);
-                    ctx.lineTo(px + blockSize, py);
+                let head = 0;
+                while (head < queue.length) {
+                    const curr = queue[head++];
+                    blocks.push(curr);
+
+                    if (curr.x < minX) minX = curr.x;
+                    if (curr.x > maxX) maxX = curr.x;
+                    if (curr.y < minY) minY = curr.y;
+                    if (curr.y > maxY) maxY = curr.y;
+
+                    // Check neighbors (only within bounds and visible area Y >= 4)
+                    const neighbors = [
+                        { x: curr.x + 1, y: curr.y },
+                        { x: curr.x - 1, y: curr.y },
+                        { x: curr.x, y: curr.y + 1 },
+                        { x: curr.x, y: curr.y - 1 },
+                    ];
+
+                    for (const { x: nx, y: ny } of neighbors) {
+                        if (ny >= 4 && ny < rows && nx >= 0 && nx < cols && !visited[ny][nx]) {
+                            const nCell = grid[ny][nx];
+                            if (nCell && nCell !== 0 && this._getCellId(nCell, nx, ny) === cellId) {
+                                visited[ny][nx] = true;
+                                queue.push({ x: nx, y: ny });
+                            }
+                        }
+                    }
                 }
-                if (!bottomCell || bottomId !== cellId) {
-                    ctx.moveTo(px, py + blockSize);
-                    ctx.lineTo(px + blockSize, py + blockSize);
+
+                // Build local shape matrix for drawPieceSolid
+                const shapeWidth = maxX - minX + 1;
+                const shapeHeight = maxY - minY + 1;
+                const pieceShape = Array.from({ length: shapeHeight }, () => new Array(shapeWidth).fill(0));
+
+                for (let i = 0; i < blocks.length; i++) {
+                    const b = blocks[i];
+                    pieceShape[b.y - minY][b.x - minX] = 1;
                 }
-                if (!leftCell || leftId !== cellId) {
-                    ctx.moveTo(px, py);
-                    ctx.lineTo(px, py + blockSize);
+
+                // Get themed style config
+                let baseStyle = this._getStyleConfig(cellType);
+                let styleConfig;
+                if (baseStyle) {
+                    styleConfig = { ...baseStyle, effects: { ...(baseStyle.effects || {}) } };
+                    if (cellColor) {
+                        styleConfig.color = cellColor;
+                        if (styleConfig.effects.glowColor) styleConfig.effects.glowColor = cellColor;
+                        if (styleConfig.effects.outlineColor) styleConfig.effects.outlineColor = cellColor;
+                    }
+                } else {
+                    styleConfig = {
+                        color: cellColor || '#808080',
+                        renderMode: 'solid',
+                        effects: {
+                            glowRadius: 0,
+                            glowIntensity: 0,
+                            glowColor: cellColor || '#808080',
+                            outline: false,
+                            outlineWidth: 0,
+                            outlineColor: cellColor || '#808080',
+                            pulse: false,
+                            pulseSpeed: 0,
+                            pulseAmplitude: 0,
+                        },
+                        rendererOverrides: {},
+                    };
                 }
-                if (!rightCell || rightId !== cellId) {
-                    ctx.moveTo(px + blockSize, py);
-                    ctx.lineTo(px + blockSize, py + blockSize);
-                }
+
+                const offsetX = minX * blockSize;
+                const offsetY = (minY - 4) * blockSize;
+
+                // Draw component cohesively
+                drawPieceSolid(ctx, pieceShape, offsetX, offsetY, blockSize, styleConfig);
             }
         }
-
-        ctx.stroke();
-        ctx.restore();
     }
 
     _drawGhostPiece(ctx, piece, pieceY, blockSize) {
@@ -1338,6 +1377,13 @@ export class OpponentWatchManager {
 
         const pieceType = piece.type || piece.shapeKey;
         let fallbackColor = piece.color;
+        if (typeof fallbackColor === 'string' && window.themeManager?.colors?.[fallbackColor]) { // In OpponentWatchManager COLORS is imported actually. Wait, let me just assume COLORS is around. Actually, we had a `COLORS` reference. I'll rely on whatever was there to avoid undefined variables. The original code literally said `COLORS[fallbackColor]`. Let me keep what was in the original `_drawCurrentPiece`.
+            // Wait, let's look back at my previous view_file.
+            // if (typeof fallbackColor === 'string' && COLORS[fallbackColor]) {
+            //     fallbackColor = COLORS[fallbackColor];
+            // }
+            // Let's just do exactly that.
+        }
         if (typeof fallbackColor === 'string' && COLORS[fallbackColor]) {
             fallbackColor = COLORS[fallbackColor];
         }
@@ -1346,77 +1392,38 @@ export class OpponentWatchManager {
         }
         const pieceColor = this._getThemedColor(pieceType, fallbackColor, colorCache);
 
-        for (let row = 0; row < shape.length; row++) {
-            for (let col = 0; col < shape[row].length; col++) {
-                if (!shape[row][col]) continue;
-
-                const worldY = piece.y + row;
-                const drawRow = worldY - 4;
-                const drawCol = piece.x + col;
-
-                if (drawRow >= 0 && drawRow < 20 && drawCol >= 0 && drawCol < 10) {
-                    ctx.fillStyle = pieceColor;
-                    ctx.fillRect(
-                        Math.round(drawCol * blockSize),
-                        Math.round(drawRow * blockSize),
-                        blockSize,
-                        blockSize,
-                    );
-                }
+        let baseStyle = this._getStyleConfig(pieceType);
+        let styleConfig;
+        if (baseStyle) {
+            styleConfig = { ...baseStyle, effects: { ...(baseStyle.effects || {}) } };
+            if (pieceColor) {
+                styleConfig.color = pieceColor;
+                if (styleConfig.effects.glowColor) styleConfig.effects.glowColor = pieceColor;
+                if (styleConfig.effects.outlineColor) styleConfig.effects.outlineColor = pieceColor;
             }
+        } else {
+            styleConfig = {
+                color: pieceColor || '#808080',
+                renderMode: 'solid',
+                effects: {
+                    glowRadius: 0,
+                    glowIntensity: 0,
+                    glowColor: pieceColor || '#808080',
+                    outline: false,
+                    outlineWidth: 0,
+                    outlineColor: pieceColor || '#808080',
+                    pulse: false,
+                    pulseSpeed: 0,
+                    pulseAmplitude: 0,
+                },
+                rendererOverrides: {},
+            };
         }
 
-        this._drawPieceOutline(ctx, piece, blockSize);
-    }
+        const offsetX = piece.x * blockSize;
+        const offsetY = (piece.y - 4) * blockSize;
 
-    _drawPieceOutline(ctx, piece, blockSize) {
-        const { shape } = piece;
-        if (!shape) return;
-
-        ctx.save();
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
-        ctx.lineWidth = 0.5;
-        ctx.beginPath();
-
-        for (let row = 0; row < shape.length; row++) {
-            for (let col = 0; col < shape[row].length; col++) {
-                if (!shape[row][col]) continue;
-
-                const worldX = piece.x + col;
-                const worldY = piece.y + row;
-                const drawRow = worldY - 4;
-
-                if (drawRow < 0 || drawRow >= 20 || worldX < 0 || worldX >= 10) continue;
-
-                const px = Math.round(worldX * blockSize);
-                const py = Math.round(drawRow * blockSize);
-
-                const hasTop = row > 0 && shape[row - 1] && shape[row - 1][col];
-                const hasBottom = row < shape.length - 1 && shape[row + 1] && shape[row + 1][col];
-                const hasLeft = col > 0 && shape[row][col - 1];
-                const hasRight = col < shape[row].length - 1 && shape[row][col + 1];
-
-                if (!hasTop) {
-                    ctx.moveTo(px, py);
-                    ctx.lineTo(px + blockSize, py);
-                }
-                if (!hasBottom) {
-                    ctx.moveTo(px, py + blockSize);
-                    ctx.lineTo(px + blockSize, py + blockSize);
-                }
-                if (!hasLeft) {
-                    ctx.moveTo(px, py);
-                    ctx.lineTo(px, py + blockSize);
-                }
-                if (!hasRight) {
-                    ctx.moveTo(px + blockSize, py);
-                    ctx.lineTo(px + blockSize, py + blockSize);
-                }
-            }
-        }
-
-        ctx.stroke();
-        ctx.restore();
+        drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleConfig);
     }
 
     _calculateGhostY(piece, grid) {

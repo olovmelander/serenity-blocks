@@ -17,12 +17,14 @@ export class ThemesTab {
         this.themes = THEME_REGISTRY;
         this.currentTheme = this.themeManager.activeThemeName;
         this.selectedCategory = 'all';
+        this.searchQuery = '';
 
         // Group themes by category
         this.categories = this.getCategories();
         this.themeParamInputHandler = (event) => this.handleThemeParamInput(event);
         this.tabContainer = null;
         this.tabClickHandler = null;
+        this.searchInputHandler = null;
 
         this.init();
     }
@@ -182,9 +184,22 @@ export class ThemesTab {
         // Clear loading message
         container.innerHTML = `
             <div class="themes-tab">
-                <!-- Header with category filter -->
-                <div class="themes-header">
-                    <h3 class="themes-title">Browse Themes</h3>
+                <!-- Compact control bar: search + badge -->
+                <div class="themes-control-bar">
+                    <div class="themes-search-wrap">
+                        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <path d="m21 21-4.35-4.35"></path>
+                        </svg>
+                        <input
+                            type="text"
+                            class="themes-search-input"
+                            id="themes-search-input"
+                            placeholder="Search themes..."
+                            autocomplete="off"
+                            spellcheck="false"
+                        />
+                    </div>
                     <div class="current-theme-badge">
                         <span class="badge-icon">✓</span>
                         <span class="badge-text">Current: ${this.getCurrentThemeDisplayName()}</span>
@@ -233,20 +248,35 @@ export class ThemesTab {
     }
 
     /**
+     * Get filtered and sorted themes based on current category + search query
+     * @returns {Array} Filtered theme array
+     */
+    filterThemes() {
+        let filtered = this.selectedCategory === 'all'
+            ? this.themes
+            : this.themes.filter((t) => t.group === this.selectedCategory);
+
+        if (this.searchQuery.trim()) {
+            const q = this.searchQuery.toLowerCase();
+            filtered = filtered.filter((t) =>
+                t.displayName.toLowerCase().includes(q)
+                || (t.group && t.group.toLowerCase().includes(q))
+            );
+        }
+
+        return filtered.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    }
+
+    /**
      * Render theme cards
      * @returns {string} HTML for theme cards
      */
     renderThemeCards() {
-        const filteredThemes = this.selectedCategory === 'all'
-            ? this.themes
-            : this.themes.filter((t) => t.group === this.selectedCategory);
+        const sortedThemes = this.filterThemes();
 
-        if (filteredThemes.length === 0) {
-            return '<div class="no-themes">No themes in this category</div>';
+        if (sortedThemes.length === 0) {
+            return '<div class="no-themes">No themes found</div>';
         }
-
-        // Sort themes alphabetically by display name
-        const sortedThemes = filteredThemes.sort((a, b) => a.displayName.localeCompare(b.displayName));
 
         return sortedThemes.map((theme) => {
             const isActive = theme.id === this.currentTheme;
@@ -411,6 +441,19 @@ export class ThemesTab {
         };
 
         this.tabContainer.addEventListener('click', this.tabClickHandler);
+
+        // Wire up search input
+        const searchInput = this.tabContainer.querySelector('#themes-search-input');
+        if (searchInput) {
+            this.searchInputHandler = (e) => {
+                this.searchQuery = e.target.value;
+                const grid = this.tabContainer.querySelector('#themes-grid');
+                if (grid) {
+                    grid.innerHTML = this.renderThemeCards();
+                }
+            };
+            searchInput.addEventListener('input', this.searchInputHandler);
+        }
 
         this.attachThemeParamListeners();
     }
@@ -613,6 +656,14 @@ export class ThemesTab {
             this.tabContainer.removeEventListener('click', this.tabClickHandler);
             this.tabClickHandler = null;
         }
+
+        // Clean up search input listener
+        const searchInput = this.tabContainer?.querySelector('#themes-search-input');
+        if (searchInput && this.searchInputHandler) {
+            searchInput.removeEventListener('input', this.searchInputHandler);
+            this.searchInputHandler = null;
+        }
+
         this.tabContainer = null;
 
         // Unsubscribe from theme change events
