@@ -19,6 +19,7 @@ import {
     drawLockedPieces,
     calculateGhostY,
     drawBlockStyled,
+    drawPieceSolid,
 } from '../rendering/canvas/canvas-drawing-utils.js';
 import { MultiplayerEffectsManager } from '../rendering/phaser/multiplayer-effects-manager.js';
 import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
@@ -1496,21 +1497,29 @@ export class MultiPlayerCanvasLayout {
     drawStyledPiece(ctx, piece, blockSize, isGhost = false) {
         if (!piece || !piece.shape) return;
 
-        piece.shape.forEach((row, localY) => {
-            row.forEach((cell, localX) => {
-                if (cell > 0) {
-                    const worldY = piece.y + localY;
-                    const x = (piece.x + localX) * blockSize;
-                    const y = (worldY - HIDDEN_ROWS) * blockSize;
+        // Get themed style for this piece type
+        const styleConfig = this.styleManager.getStyleForPiece(piece.type);
 
-                    // Get themed style for this piece type
-                    const styleConfig = this.styleManager.getStyleForPiece(piece.type);
+        if (isGhost) {
+            // Draw ghosts block-by-block
+            piece.shape.forEach((row, localY) => {
+                row.forEach((cell, localX) => {
+                    if (cell > 0) {
+                        const worldY = piece.y + localY;
+                        const x = (piece.x + localX) * blockSize;
+                        const y = (worldY - HIDDEN_ROWS) * blockSize;
 
-                    // Use styled drawing
-                    drawBlockStyled(ctx, x, y, blockSize, styleConfig, isGhost);
-                }
+                        // Use styled drawing
+                        drawBlockStyled(ctx, x, y, blockSize, styleConfig, isGhost);
+                    }
+                });
             });
-        });
+        } else {
+            // Draw cohesively without internal block lines
+            const offsetX = piece.x * blockSize;
+            const offsetY = (piece.y - HIDDEN_ROWS) * blockSize;
+            drawPieceSolid(ctx, piece.shape, offsetX, offsetY, blockSize, styleConfig);
+        }
     }
 
     /**
@@ -1525,25 +1534,18 @@ export class MultiPlayerCanvasLayout {
         lockedPieces.forEach((piece) => {
             if (!piece.shape) return;
 
-            piece.shape.forEach((row, localY) => {
-                row.forEach((cell, localX) => {
-                    if (cell > 0) {
-                        const worldY = piece.y + localY;
+            // Skip drawing if the piece rests completely above the visible board
+            const pieceBottomRow = piece.y + piece.shape.length;
+            if (pieceBottomRow <= HIDDEN_ROWS) return;
 
-                        // Only draw visible area (below hidden rows)
-                        if (worldY >= HIDDEN_ROWS) {
-                            const x = (piece.x + localX) * blockSize;
-                            const y = (worldY - HIDDEN_ROWS) * blockSize;
+            // Get themed style for this piece type
+            const styleConfig = this.styleManager.getStyleForPiece(piece.type);
 
-                            // Get themed style for this piece type
-                            const styleConfig = this.styleManager.getStyleForPiece(piece.type);
+            const offsetX = piece.x * blockSize;
+            const offsetY = (piece.y - HIDDEN_ROWS) * blockSize;
 
-                            // Use styled drawing
-                            drawBlockStyled(ctx, x, y, blockSize, styleConfig, false);
-                        }
-                    }
-                });
-            });
+            // Draw piece cohesively without internal divider lines
+            drawPieceSolid(ctx, piece.shape, offsetX, offsetY, blockSize, styleConfig);
         });
     }
 

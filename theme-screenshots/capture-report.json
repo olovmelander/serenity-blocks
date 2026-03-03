@@ -1,0 +1,39 @@
+{
+  "generatedAt": "2026-03-02T21:27:21.983Z",
+  "totalThemes": 5,
+  "captured": 5,
+  "failed": 0,
+  "settleTimeMs": 25000,
+  "results": [
+    {
+      "theme": "cosmic-chimes",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\cosmic-chimes.png",
+      "error": null
+    },
+    {
+      "theme": "starlight",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\starlight.png",
+      "error": null
+    },
+    {
+      "theme": "fluid-dreams",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\fluid-dreams.png",
+      "error": null
+    },
+    {
+      "theme": "moonrise-summit",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\moonrise-summit.png",
+      "error": null
+    },
+    {
+      "theme": "neon-dusk",
+      "passed": true,
+      "screenshot": "docs\\theme-screenshots\\neon-dusk.png",
+      "error": null
+    }
+  ]
+}
