@@ -3669,10 +3669,22 @@ async function bootstrap() {
         })();
         introAnimation.setLoadingPromise?.(appInitPromise, 'LOADING SYSTEMS');
 
-        // Show epic intro animation
-        console.log('✨ Playing intro animation...');
-        await introAnimation.show(sharedSoundManager);
-        console.log('✨ Intro animation complete!');
+        const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+        const skipIntro = urlParams.get('skipIntro') === '1' || urlParams.get('wolfhourBaseline') === '1' || urlParams.get('swedishForestBaseline') === '1';
+
+        if (skipIntro) {
+            console.log('⏭️ Skipping intro animation due to URL flag...');
+            if (introAnimation?.skip) {
+                introAnimation.skip();
+            } else if (introAnimation?.dismiss) {
+                introAnimation.dismiss();
+            }
+        } else {
+            // Show epic intro animation
+            console.log('✨ Playing intro animation...');
+            await introAnimation.show(sharedSoundManager);
+            console.log('✨ Intro animation complete!');
+        }
 
         app = await appInitPromise;
 
