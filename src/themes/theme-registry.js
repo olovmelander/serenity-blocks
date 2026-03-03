@@ -32,7 +32,7 @@ export const THEME_REGISTRY = [
         displayName: 'Wolfhour',
         module: './wolfhour/wolfhour-theme.js',
         group: 'biomes',
-        icon: './wolfhour/wolfhour-theme-icon.png',
+        icon: './wolfhour/wolfhour-hub-icon.png',
     },
     {
         id: 'ocean',
@@ -88,7 +88,7 @@ export const THEME_REGISTRY = [
         displayName: 'Sakura Twilight',
         module: './sakura-twilight/sakura-twilight-theme.js',
         group: 'biomes',
-        icon: './sakura-twilight/sakura-twilight-theme-icon.png',
+        icon: './sakura-twilight/sakura-twilight-hub-icon.png',
     },
     {
         id: 'aurora',
@@ -233,6 +233,7 @@ export const THEME_REGISTRY = [
         displayName: 'Nebula Flow',
         module: './nebula-flow/nebula-flow-theme.js',
         group: 'abstract',
+        icon: './nebula-flow/nebula-flow-hub-icon.png',
     },
     {
         id: 'chromatic-impasto',
@@ -290,7 +291,7 @@ export const THEME_REGISTRY = [
         displayName: 'Chiral Gold',
         module: './chiral-gold/chiral-gold-theme.js',
         group: 'cosmic',
-        icon: './chiral-gold/chiral-gold-theme-icon.svg',
+        icon: './chiral-gold/chiral-gold-hub-icon.png',
     },
     {
         id: 'nimbus-veil',
@@ -322,6 +323,7 @@ export const THEME_REGISTRY = [
         displayName: 'Pyrestorm',
         module: './pyrestorm/pyrestorm-theme.js',
         group: 'fantasy',
+        icon: './pyrestorm/pyrestorm-hub-icon.png',
     },
     {
         id: 'neon-dusk',
@@ -361,7 +363,7 @@ export const THEME_REGISTRY = [
         displayName: 'Blood Moon',
         module: './blood-moon/blood-moon-theme.js',
         group: 'cosmic',
-        icon: './blood-moon/blood-moon-icon.png',
+        icon: './blood-moon/blood-moon-hub-icon.png',
     },
     {
         id: 'astral-weave',
