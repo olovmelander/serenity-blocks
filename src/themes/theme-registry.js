@@ -32,7 +32,7 @@ export const THEME_REGISTRY = [
         displayName: 'Wolfhour',
         module: './wolfhour/wolfhour-theme.js',
         group: 'biomes',
-        icon: './wolfhour/wolfhour-hub-icon.png',
+        icon: './wolfhour/wolfhour-theme-icon.png',
     },
     {
         id: 'ocean',
@@ -88,7 +88,7 @@ export const THEME_REGISTRY = [
         displayName: 'Sakura Twilight',
         module: './sakura-twilight/sakura-twilight-theme.js',
         group: 'biomes',
-        icon: './sakura-twilight/sakura-twilight-hub-icon.png',
+        icon: './sakura-twilight/sakura-twilight-theme-icon.png',
     },
     {
         id: 'aurora',
@@ -116,12 +116,14 @@ export const THEME_REGISTRY = [
         displayName: 'Rainy Window',
         module: './rainy-window/rainy-window-theme.js',
         group: 'urban',
+        icon: './rainy-window/rainy-window-theme-icon.png',
     },
     {
         id: 'koi-pond',
         displayName: 'Koi Pond',
         module: './koi-pond/koi-pond-theme.js',
         group: 'biomes',
+        icon: './koi-pond/koi-pond-theme-icon.png',
     },
     {
         id: 'meadow',
@@ -141,6 +143,7 @@ export const THEME_REGISTRY = [
         id: 'cosmic-chimes',
         displayName: 'Cosmic Chimes',
         module: './cosmic-chimes/cosmic-chimes-theme.js',
+        icon: './cosmic-chimes/cosmic-chimes-theme-icon.png',
         group: 'cosmic',
     },
     {
@@ -148,12 +151,14 @@ export const THEME_REGISTRY = [
         displayName: 'Singing Bowl',
         module: './singing-bowl/singing-bowl-theme.js',
         group: 'meditation',
+        icon: './singing-bowl/singing-bowl-theme-icon.png',
     },
     {
         id: 'starlight',
         displayName: 'Starlight',
         module: './starlight/starlight-theme.js',
         group: 'cosmic',
+        icon: './starlight/starlight-theme-icon.png',
     },
     {
         id: 'swedish-forest',
@@ -167,6 +172,7 @@ export const THEME_REGISTRY = [
         displayName: 'Geode',
         module: './geode/geode-theme.js',
         group: 'cosmic',
+        icon: './geode/geode-theme-icon.png',
     },
     {
         id: 'bioluminescence',
@@ -208,12 +214,14 @@ export const THEME_REGISTRY = [
         displayName: 'Fluid Dreams',
         module: './fluid-dreams/fluid-dreams-theme.js',
         group: 'abstract',
+        icon: './fluid-dreams/fluid-dreams-theme-icon.png',
     },
     {
         id: 'crystal-cave',
         displayName: 'Crystal Cave',
         module: './crystal-cave/crystal-cave-theme.js',
         group: 'cosmic',
+        icon: './crystal-cave/crystal-cave-theme-icon.png',
     },
     {
         id: 'moonlit-greenhouse',
@@ -226,6 +234,7 @@ export const THEME_REGISTRY = [
         id: 'electric-dreams',
         displayName: 'Electric Dreams',
         module: './electric-dreams/electric-dreams-theme.js',
+        icon: './electric-dreams/electric-dreams-theme-icon.png',
         group: 'abstract',
     },
     {
@@ -233,7 +242,7 @@ export const THEME_REGISTRY = [
         displayName: 'Nebula Flow',
         module: './nebula-flow/nebula-flow-theme.js',
         group: 'abstract',
-        icon: './nebula-flow/nebula-flow-hub-icon.png',
+        icon: './nebula-flow/nebula-flow-theme-icon.png',
     },
     {
         id: 'chromatic-impasto',
@@ -246,6 +255,7 @@ export const THEME_REGISTRY = [
         id: 'voltage-storm',
         displayName: 'Voltage Storm',
         module: './voltage-storm/voltage-storm-theme.js',
+        icon: './voltage-storm/voltage-storm-theme-icon.png',
         group: 'abstract',
     },
     {
@@ -253,12 +263,14 @@ export const THEME_REGISTRY = [
         displayName: 'Lunara',
         module: './lunara/lunara-theme.js',
         group: 'cosmic',
+        icon: './lunara/lunara-theme-icon.png',
     },
     {
         id: 'solar-eclipse',
         displayName: 'Solar Eclipse',
         module: './solar-eclipse/solar-eclipse-theme.js',
         group: 'cosmic',
+        icon: './solar-eclipse/solar-eclipse-theme-icon.png',
     },
     {
         id: 'moonrise-summit',
@@ -279,36 +291,41 @@ export const THEME_REGISTRY = [
         displayName: 'Supernova',
         module: './supernova/supernova-theme.js',
         group: 'cosmic',
+        icon: './supernova/supernova-theme-icon.png',
     },
     {
         id: 'cosmic-noir',
         displayName: 'Cosmic Noir',
         module: './cosmic-noir/cosmic-noir-theme.js',
         group: 'cosmic',
+        icon: './cosmic-noir/cosmic-noir-theme-icon.png',
     },
     {
         id: 'chiral-gold',
         displayName: 'Chiral Gold',
         module: './chiral-gold/chiral-gold-theme.js',
         group: 'cosmic',
-        icon: './chiral-gold/chiral-gold-hub-icon.png',
+        icon: './chiral-gold/chiral-gold-theme-icon.png',
     },
     {
         id: 'nimbus-veil',
         displayName: 'Nimbus Veil',
         module: './nimbus-veil/nimbus-veil-theme.js',
         group: 'atmospheric',
+        icon: './nimbus-veil/nimbus-veil-theme-icon.png',
     },
     {
         id: 'sky-children',
         displayName: 'Sky Children',
         module: './sky-children-v2/sky-children-alias-theme.js',
         group: 'sky',
+        icon: './sky-children-v2/sky-children-theme-icon.png',
     },
     {
         id: 'sky-children-v2',
         displayName: 'Sky Children v2',
         module: './sky-children-v2/sky-children-v2-theme.js',
+        icon: './sky-children-v2/sky-children-theme-icon.png',
         group: 'sky',
     },
     {
@@ -323,7 +340,7 @@ export const THEME_REGISTRY = [
         displayName: 'Pyrestorm',
         module: './pyrestorm/pyrestorm-theme.js',
         group: 'fantasy',
-        icon: './pyrestorm/pyrestorm-hub-icon.png',
+        icon: './pyrestorm/pyrestorm-theme-icon.png',
     },
     {
         id: 'neon-dusk',
@@ -337,12 +354,14 @@ export const THEME_REGISTRY = [
         displayName: 'Neon District',
         module: './neon-district/neon-district-theme.js',
         group: 'urban',
+        icon: './neon-district/neon-district-theme-icon.png',
     },
     {
         id: 'synthwave-sunset',
         displayName: 'Synthwave Sunset',
         module: './synthwave-sunset/synthwave-sunset-theme.js',
         group: 'urban',
+        icon: './synthwave-sunset/synthwave-sunset-theme-icon.png',
     },
     {
         id: 'chromadelic-highway',
@@ -363,25 +382,27 @@ export const THEME_REGISTRY = [
         displayName: 'Blood Moon',
         module: './blood-moon/blood-moon-theme.js',
         group: 'cosmic',
-        icon: './blood-moon/blood-moon-hub-icon.png',
+        icon: './blood-moon/blood-moon-theme-icon.png',
     },
     {
         id: 'astral-weave',
         displayName: 'Astral Weave',
         module: './astral-weave/astral-weave-theme.js',
         group: 'cosmic',
-        icon: './astral-weave/astral-weave-icon.png',
+        icon: './astral-weave/astral-weave-theme-icon.png',
     },
     {
         id: 'stellar-velocity',
         displayName: 'Stellar Velocity',
         module: './stellar-velocity/stellar-velocity-theme.js',
+        icon: './stellar-velocity/stellar-velocity-theme-icon.png',
         group: 'cosmic',
     },
     {
         id: 'stellar-drift',
         displayName: 'Stellar Drift',
         module: './stellar-drift/stellar-drift-theme.js',
+        icon: './stellar-drift/stellar-drift-theme-icon.png',
         group: 'cosmic',
     },
 ];
