@@ -1516,12 +1516,12 @@
   background: rgba(255, 255, 255, 0.3);
 }
 
-/* Themes Grid — 6 columns, compact */
+/* Themes Grid — 4 columns */
 .themes-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   grid-auto-rows: auto;
-  gap: 8px;
+  gap: 10px;
 }
 
 /* Theme Card — compact */
@@ -1563,7 +1563,7 @@
 /* Theme Swatch (Color Preview) */
 .theme-swatch {
   position: relative;
-  height: 72px;
+  height: 110px;
   background: var(--theme-gradient);
   display: flex;
   align-items: center;
@@ -1592,8 +1592,8 @@
 
 /* Theme Icon - PNG Image */
 .theme-icon-img {
-  width: 52px;
-  height: 52px;
+  width: 80px;
+  height: 80px;
   object-fit: cover;
   border-radius: 50%;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
@@ -1607,7 +1607,7 @@
 
 /* Theme Icon - Emoji Fallback */
 .theme-icon-emoji {
-  font-size: 28px;
+  font-size: 40px;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
   animation: float 3s ease-in-out infinite;
 }
