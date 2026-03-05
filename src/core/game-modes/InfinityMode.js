@@ -87,6 +87,16 @@ export class InfinityMode extends BaseGameMode {
         this.lastCameraUpdateTime = 0;
         this.minCameraUpdateInterval = 32; // Minimum 32ms between updates (~30fps camera tracking)
 
+        // Scroll-to-explore state (two-phase: buffer → explore)
+        this._scrollIdleTimer = null;
+        this._scrollAccumulator = 0;
+        this._scrollBufferAccumulator = 0;
+        this._scrollBufferTimer = null;
+        this.isScrollExploring = false;
+        this.isScrollBuffering = false;
+        this._wheelHandler = null;
+        this._scrollExitKeyHandler = null;
+
         // Cache physics callbacks so input handlers can reuse them
         this.physicsCallbacks = null;
         this.usingHybridLoop = false;
@@ -294,8 +304,14 @@ export class InfinityMode extends BaseGameMode {
                     }, 400);
                 }
 
-                // Resume game
+                // Resume game — reset lastTime so gravity doesn't accumulate
+                // the entire exploration duration as one massive delta
                 this.gameState.isPaused = false;
+                this.gameState.lastTime = performance.now();
+
+                if (this.usingHybridLoop) {
+                    this.deps.frameRateController?.resumeHybridLoop();
+                }
 
                 // Trigger minimap unpause visual feedback
                 if (this.minimap) {
@@ -376,6 +392,9 @@ export class InfinityMode extends BaseGameMode {
         // Enable gamepad exploration control
         this._enableGamepadExploration();
 
+        // Enable scroll-to-explore on the game canvas
+        this._enableScrollExploration();
+
         console.log('[Infinity] Game started! Phase 3-5 Complete: ✅ Camera + Minimap + HUD + 🎮 Gamepad');
     }
 
@@ -420,6 +439,7 @@ export class InfinityMode extends BaseGameMode {
 
         // Reset exploration mode flag if somehow still set
         this.isInExplorationMode = false;
+        this._cleanupScrollState();
 
         // Trigger minimap unpause effect
         if (this.minimap) {
@@ -437,6 +457,7 @@ export class InfinityMode extends BaseGameMode {
 
         // Reset exploration mode
         this.isInExplorationMode = false;
+        this._cleanupScrollState();
         this._disableGamepadExploration();
 
         // Cancel standard RAF loop
@@ -1680,6 +1701,200 @@ export class InfinityMode extends BaseGameMode {
         const { gamepadController } = this.deps;
         if (gamepadController) {
             gamepadController.disableExplorationMode();
+        }
+    }
+
+    /**
+     * Enable scroll-to-explore on the game board
+     * @private
+     */
+    _enableScrollExploration() {
+        this._wheelHandler = this._onWheelScroll.bind(this);
+        document.addEventListener('wheel', this._wheelHandler, { passive: false });
+
+        this.cleanupHandlers.push(() => {
+            document.removeEventListener('wheel', this._wheelHandler);
+            this._wheelHandler = null;
+            this._cleanupScrollState();
+        });
+
+        console.log('[Infinity] Scroll exploration enabled');
+    }
+
+    /**
+     * Normalize wheel deltaY to pixels across all deltaMode types
+     * @param {WheelEvent} event
+     * @returns {number} deltaY in pixels
+     * @private
+     */
+    _normalizeWheelDelta(event) {
+        let deltaY = event.deltaY;
+        if (event.deltaMode === 1) deltaY *= 20;  // line mode
+        if (event.deltaMode === 2) deltaY *= 400; // page mode
+        return deltaY;
+    }
+
+    /**
+     * Handle wheel/trackpad scroll — two-phase buffer then explore
+     * @param {WheelEvent} event
+     * @private
+     */
+    _onWheelScroll(event) {
+        if (!this.gameState || this.gameState.isGameOver || !this.boardScene) return;
+
+        event.preventDefault();
+
+        // Block if externally paused (not by our own exploration)
+        if (!this.isInExplorationMode && !this.isScrollBuffering && this.gameState.isPaused) return;
+
+        const PIXELS_PER_ROW = 30;
+        const BUFFER_THRESHOLD_ROWS = 3;
+        const MAX_DELTA_ROWS = 10;
+        const IDLE_TIMEOUT_MS = 1500;
+
+        const deltaY = this._normalizeWheelDelta(event);
+        const deltaRows = deltaY / PIXELS_PER_ROW;
+
+        // === PHASE 1: BUFFERING (game still running) ===
+        if (!this.isInExplorationMode && !this.isScrollExploring) {
+            if (!this.isScrollBuffering) {
+                this.isScrollBuffering = true;
+                this._scrollBufferAccumulator = 0;
+            }
+
+            this._scrollBufferAccumulator += deltaRows;
+
+            // Reset buffer timeout — if no scroll for 300ms, reset buffer
+            clearTimeout(this._scrollBufferTimer);
+            this._scrollBufferTimer = setTimeout(() => {
+                this.isScrollBuffering = false;
+                this._scrollBufferAccumulator = 0;
+            }, 300);
+
+            // Check if buffer threshold reached → commit to exploration
+            if (Math.abs(this._scrollBufferAccumulator) >= BUFFER_THRESHOLD_ROWS) {
+                clearTimeout(this._scrollBufferTimer);
+                this._scrollBufferTimer = null;
+                const bufferedDelta = this._scrollBufferAccumulator;
+                this._scrollBufferAccumulator = 0;
+                this.isScrollBuffering = false;
+
+                this._startScrollExploration();
+
+                // Apply the buffered scroll offset immediately
+                this._applyScrollDelta(Math.trunc(bufferedDelta));
+            }
+            return;
+        }
+
+        // === PHASE 2: EXPLORING (game paused, free scroll) ===
+        this._scrollAccumulator += deltaRows;
+
+        const wholeRows = Math.sign(this._scrollAccumulator)
+            * Math.min(Math.abs(Math.trunc(this._scrollAccumulator)), MAX_DELTA_ROWS);
+
+        if (wholeRows !== 0) {
+            this._scrollAccumulator -= wholeRows;
+            this._applyScrollDelta(wholeRows);
+        }
+
+        // Reset idle timer — exit exploration after 1.5s of no scrolling
+        clearTimeout(this._scrollIdleTimer);
+        this._scrollIdleTimer = setTimeout(() => this._endScrollExploration(), IDLE_TIMEOUT_MS);
+    }
+
+    /**
+     * Commit to scroll exploration mode (from buffer phase)
+     * @private
+     */
+    _startScrollExploration() {
+        this.isScrollExploring = true;
+        this._scrollAccumulator = 0;
+
+        // Dispatch exploration-start (reuses existing pause/cosmic/minimap logic)
+        if (this.minimap?.container) {
+            this.minimap.container.dispatchEvent(
+                new CustomEvent('minimap-exploration-start', { bubbles: true }),
+            );
+        }
+
+        // Register game-key exit: any game action key instantly exits exploration
+        this._scrollExitKeyHandler = (e) => {
+            const key = e.key === ' ' ? 'Space' : e.key;
+            const bindings = window.settings?.keyBindings || {};
+            const action = Object.keys(bindings).find((k) => bindings[k] === key);
+            const exitActions = ['moveLeft', 'moveRight', 'rotateLeft', 'rotateRight', 'softDrop', 'hardDrop', 'flip'];
+            if (action && exitActions.includes(action)) {
+                this._endScrollExploration();
+            }
+        };
+        document.addEventListener('keydown', this._scrollExitKeyHandler);
+    }
+
+    /**
+     * Apply a scroll delta to the camera during exploration
+     * @param {number} deltaRows - Number of rows to scroll (positive = down)
+     * @private
+     */
+    _applyScrollDelta(deltaRows) {
+        if (!this.boardScene || !this.isInExplorationMode) return;
+
+        const currentTop = this.boardScene.cameraSettings?.currentTopRow ?? 0;
+        const visibleRows = this.boardScene.cameraSettings?.visibleRows || this.visibleRows;
+        const totalRows = this.gameState?.board?.length || 0;
+        const maxCameraRow = Math.max(0, totalRows - visibleRows);
+
+        const targetTopRow = Math.max(0, Math.min(maxCameraRow, currentTop + deltaRows));
+
+        this.boardScene.updateCameraPosition(targetTopRow, true);
+        this._updateMinimapView();
+
+        if (this.cosmicExploration) {
+            const now = performance.now();
+            const dt = Math.max((now - (this._lastExplorationTime || now)) / 1000, 0.016);
+            this._lastExplorationTime = now;
+            this.cosmicExploration.updateCameraPosition(targetTopRow, dt);
+        }
+    }
+
+    /**
+     * End scroll-triggered exploration mode
+     * @private
+     */
+    _endScrollExploration() {
+        if (!this.isScrollExploring) return;
+
+        this._cleanupScrollState();
+
+        // Dispatch exploration-end (reuses existing resume/snap-back logic)
+        if (this.minimap?.container) {
+            this.minimap.container.dispatchEvent(
+                new CustomEvent('minimap-exploration-end', { bubbles: true }),
+            );
+        }
+    }
+
+    /**
+     * Clean up all scroll exploration state and listeners
+     * @private
+     */
+    _cleanupScrollState() {
+        this.isScrollExploring = false;
+        this.isScrollBuffering = false;
+        this._scrollAccumulator = 0;
+        this._scrollBufferAccumulator = 0;
+
+        if (this._scrollIdleTimer) {
+            clearTimeout(this._scrollIdleTimer);
+            this._scrollIdleTimer = null;
+        }
+        if (this._scrollBufferTimer) {
+            clearTimeout(this._scrollBufferTimer);
+            this._scrollBufferTimer = null;
+        }
+        if (this._scrollExitKeyHandler) {
+            document.removeEventListener('keydown', this._scrollExitKeyHandler);
+            this._scrollExitKeyHandler = null;
         }
     }
 
