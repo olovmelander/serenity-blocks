@@ -3845,19 +3845,23 @@ export default class WolfhourTheme extends BaseTheme {
         const slowDrift = 0.025;
 
         // Horizontal drift with layered motion for organic feel
-        const xDrift = Math.sin(this.time * driftSpeed) * 70
-            + Math.sin(this.time * slowDrift * 0.6) * 30; // Combined ±100 units max
+        const xDrift = Math.sin(this.time * driftSpeed) * 85
+            + Math.sin(this.time * slowDrift * 0.6) * 40
+            + Math.cos(this.time * 0.018 + 0.8) * 18; // Combined ~±143 units max
 
-        // Vertical breathing movement - larger range to shift mountain up/down
-        const yDrift = Math.sin(this.time * driftSpeed * 0.8 + 1.0) * 55
-            + Math.cos(this.time * slowDrift * 0.5) * 25; // Combined ±80 units max
+        // Vertical breathing movement - stronger inhale/exhale lift/drop.
+        const yDrift = Math.sin(this.time * driftSpeed * 0.8 + 1.0) * 70
+            + Math.cos(this.time * slowDrift * 0.5) * 35
+            + Math.sin(this.time * 0.03 + 0.35) * 20; // Combined ~±125 units max
 
-        // Deep breathing zoom — two layered cycles for organic feel:
-        // 1. Slow, deep "approach" cycle (~25s period) — pushes camera closer to mountains
-        const deepBreathe = Math.sin(this.time * 0.08) * 0.08; // ±8% zoom
-        // 2. Faster micro-breath (~15s period) — subtle life
-        const microBreathe = Math.sin(this.time * 0.14 + 0.5) * 0.03; // ±3% zoom
-        const breathe = deepBreathe + microBreathe; // Combined ±11% max
+        // Deep breathing zoom — stronger forward/back movement against the mountains.
+        // 1. Slow "approach/retreat" cycle (~25s period)
+        const deepBreathe = Math.sin(this.time * 0.08) * 0.14; // ±14% zoom
+        // 2. Mid-frequency cinematic swell (~40s period)
+        const tidalBreathe = Math.sin(this.time * 0.045 + 1.2) * 0.045; // ±4.5% zoom
+        // 3. Faster micro-breath (~15s period)
+        const microBreathe = Math.sin(this.time * 0.14 + 0.5) * 0.055; // ±5.5% zoom
+        const breathe = deepBreathe + tidalBreathe + microBreathe; // ~±24% peak
 
         const shakeScale = (this.qualityPreset.cameraShakeScale || 1.0) * this.effectState.cameraShake;
         const shakeX = (
@@ -3883,9 +3887,11 @@ export default class WolfhourTheme extends BaseTheme {
         // Apply breathing zoom (adjust frustum size)
         const baseSize = 1000;
         // Impact Zoom: Zoom out slightly during high-impact events for a "push back" visceral feeling
-        const impactZoom = shakeScale * 0.045;
+        const impactZoom = shakeScale * 0.04;
+        // During pulse-heavy moments, bias slightly toward approaching the mountains.
+        const reactiveApproach = this.effectState.mountainPulse * 0.02;
         // Negative breathe = smaller frustum = zoomed IN (closer to mountains)
-        const zoomFactor = 1 - breathe + impactZoom;
+        const zoomFactor = THREE.MathUtils.clamp(1 - breathe - reactiveApproach + impactZoom, 0.72, 1.3);
         const aspect = window.innerWidth / window.innerHeight;
         const frustumSize = baseSize * zoomFactor;
 
