@@ -111,6 +111,10 @@ export class OdysseyMode extends BaseGameMode {
         // Prevent multiple level completions
         this.levelCompleting = false;
         this.usingHybridLoop = false;
+
+        // Board-view audio state (restore menu track when returning from level gameplay)
+        this.boardTrackKey = null;
+        this.boardTrackWasPlaying = false;
     }
 
     /**
@@ -139,6 +143,59 @@ export class OdysseyMode extends BaseGameMode {
         return 'Odyssey Mode';
     }
 
+    getStartRuntimePolicy() {
+        return {
+            resumeThemeLinkedMusic: false,
+            resumeThemes: false,
+            syncMusicPlayback: false,
+        };
+    }
+
+    _captureBoardTrack() {
+        const soundManager = this.deps?.soundManager;
+        if (!soundManager) return;
+
+        const actualTrack = typeof soundManager.getActualTrackKey === 'function'
+            ? soundManager.getActualTrackKey()
+            : null;
+        const selectedTrack = soundManager.musicTrack || null;
+
+        this.boardTrackKey = actualTrack || selectedTrack || this.boardTrackKey;
+        this.boardTrackWasPlaying = typeof soundManager.isMusicPlaying === 'function'
+            ? soundManager.isMusicPlaying()
+            : this.boardTrackWasPlaying;
+    }
+
+    async _applyBoardAudioPolicy(options = {}) {
+        const { restoreTrack = false } = options;
+        const soundManager = this.deps?.soundManager;
+        if (!soundManager) return;
+
+        soundManager.suspendThemeLinkedMusic?.();
+
+        if (restoreTrack && this.boardTrackKey && soundManager.musicTrack !== this.boardTrackKey) {
+            soundManager.setTrack(this.boardTrackKey);
+        }
+
+        const actualTrack = typeof soundManager.getActualTrackKey === 'function'
+            ? soundManager.getActualTrackKey()
+            : null;
+        const trackMismatch = restoreTrack
+            && !!this.boardTrackKey
+            && actualTrack !== this.boardTrackKey;
+        const shouldRecoverPlayback = !soundManager.isMuted
+            && this.boardTrackWasPlaying
+            && typeof soundManager.isMusicPlaying === 'function'
+            && !soundManager.isMusicPlaying();
+
+        if ((trackMismatch || shouldRecoverPlayback) && soundManager.ensureTrackPlaybackSynced) {
+            await soundManager.ensureTrackPlaybackSynced({
+                reason: 'odyssey-board-view',
+                force: true,
+            });
+        }
+    }
+
     // =============================
     // Lifecycle Methods
     // =============================
@@ -150,6 +207,9 @@ export class OdysseyMode extends BaseGameMode {
         await super.onActivate();
 
         console.log('[Odyssey] Activating Odyssey Mode...');
+
+        this._captureBoardTrack();
+        await this._applyBoardAudioPolicy({ restoreTrack: false });
 
         // Load saved progress
         this.odysseyState.load();
@@ -163,6 +223,16 @@ export class OdysseyMode extends BaseGameMode {
         // Phase 4: Initialize theme transition manager
         if (this.deps?.themeManager && !this.transitionManager) {
             this.transitionManager = new ThemeTransitionManager(this.deps.themeManager);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PERFORMANCE: Suspend the active theme's render loop while in
+        // board view. The Odyssey board has its own Three.js renderer;
+        // running two heavy 3D render loops simultaneously crushes FPS.
+        // The theme is resumed when entering a level (via resumeThemes).
+        // ═══════════════════════════════════════════════════════════════════
+        if (this.deps?.themeManager && !this.deps.themeManager.themesSuspended) {
+            this.deps.themeManager.suspendThemes();
         }
 
         // Default to board view (level selection)
@@ -188,6 +258,7 @@ export class OdysseyMode extends BaseGameMode {
      */
     async onStart() {
         await super.onStart();
+        await this._applyBoardAudioPolicy({ restoreTrack: true });
         console.log('[Odyssey] onStart called - entering level');
     }
 
@@ -312,6 +383,7 @@ export class OdysseyMode extends BaseGameMode {
      * Called when mode is deselected
      */
     async onDeactivate() {
+        await this._applyBoardAudioPolicy({ restoreTrack: true });
         await super.onDeactivate();
 
         console.log('[Odyssey] Deactivating...');
@@ -322,6 +394,10 @@ export class OdysseyMode extends BaseGameMode {
 
         // Restore inputs
         this._restoreInputs();
+
+        // Clean up cinematic loading overlay if still present
+        const loadingOverlay = document.getElementById('odyssey-loading-overlay');
+        if (loadingOverlay) loadingOverlay.remove();
 
         // Hide odyssey UI
         this._hideOdysseyUI();
@@ -355,6 +431,7 @@ export class OdysseyMode extends BaseGameMode {
      */
     async enterLevel(levelId) {
         console.log(`[Odyssey] Entering level ${levelId}...`);
+        this._captureBoardTrack();
 
         // Check if level is unlocked
         if (!this.odysseyState.isLevelUnlocked(levelId)) {
@@ -511,6 +588,7 @@ export class OdysseyMode extends BaseGameMode {
         console.log('[Odyssey] Loading theme and board in background...');
 
         const { theme } = levelConfig;
+        const soundManager = this.deps?.soundManager;
 
         try {
             // Load theme silently in background
@@ -534,6 +612,14 @@ export class OdysseyMode extends BaseGameMode {
                     console.log('[Odyssey] Resuming suspended themes after switch...');
                     await this.deps.themeManager.resumeThemes();
                 }
+            }
+
+            soundManager?.resumeThemeLinkedMusic?.(true);
+            if (soundManager?.ensureTrackPlaybackSynced) {
+                await soundManager.ensureTrackPlaybackSynced({
+                    reason: 'odyssey-level-entry',
+                    force: true,
+                });
             }
 
             // HIDE the odyssey board (don't dispose yet to avoid stutter)
@@ -668,6 +754,7 @@ export class OdysseyMode extends BaseGameMode {
 
         // Switch to board view
         this.isInBoardView = true;
+        await this._applyBoardAudioPolicy({ restoreTrack: true });
         this._showBoardView();
 
         // Restore inputs
@@ -1411,6 +1498,238 @@ export class OdysseyMode extends BaseGameMode {
         if (introAnimation) {
             introAnimation.style.setProperty('display', 'none', 'important');
         }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // IMMEDIATELY hide game-specific UI elements so they don't flash
+        // while the 3D Odyssey board is loading asynchronously.
+        // These are revealed later by _showGameplayView() when entering a level.
+        // ═══════════════════════════════════════════════════════════════════
+        const gameContainer = document.getElementById('single-player-container');
+        if (gameContainer) {
+            gameContainer.style.opacity = '0';
+            gameContainer.style.visibility = 'hidden';
+        }
+
+        const phaserContainer = document.getElementById('phaser-game-container');
+        if (phaserContainer) {
+            phaserContainer.style.opacity = '0';
+            phaserContainer.style.visibility = 'hidden';
+        }
+
+        const statsBar = document.querySelector('.single-player-stats-bar');
+        if (statsBar) {
+            statsBar.style.opacity = '0';
+            statsBar.style.visibility = 'hidden';
+        }
+
+        const bgContainer = document.querySelector('.background-container');
+        if (bgContainer) {
+            bgContainer.style.opacity = '0';
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // CINEMATIC LOADING OVERLAY
+        // Shows an animated starfield + title while the 3D board loads.
+        // Removed by _onBoardReady() with a smooth crossfade.
+        // ═══════════════════════════════════════════════════════════════════
+        this._showCinematicLoadingOverlay();
+    }
+
+    /**
+     * Show cinematic loading overlay with animated stars and title
+     * @private
+     */
+    _showCinematicLoadingOverlay() {
+        // Record when the overlay was shown for minimum display time
+        this._overlayShownAt = Date.now();
+
+        // Remove any existing overlay
+        const existing = document.getElementById('odyssey-loading-overlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'odyssey-loading-overlay';
+        Object.assign(overlay.style, {
+            position: 'fixed',
+            top: '0',
+            left: '0',
+            width: '100vw',
+            height: '100vh',
+            zIndex: '1100',
+            background: 'radial-gradient(ellipse at 50% 60%, #0a0a2e 0%, #050510 50%, #020208 100%)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: '0',
+            transition: 'opacity 0.4s ease-in',
+            overflow: 'hidden',
+        });
+
+        // Inject keyframes for animations
+        if (!document.getElementById('odyssey-loading-keyframes')) {
+            const style = document.createElement('style');
+            style.id = 'odyssey-loading-keyframes';
+            style.textContent = `
+                @keyframes odyssey-star-drift {
+                    0% { transform: translateY(0) translateX(0); opacity: 0; }
+                    10% { opacity: 1; }
+                    90% { opacity: 1; }
+                    100% { transform: translateY(-100vh) translateX(20px); opacity: 0; }
+                }
+                @keyframes odyssey-title-glow {
+                    0%, 100% { text-shadow: 0 0 30px rgba(100, 140, 255, 0.3), 0 0 60px rgba(100, 140, 255, 0.1); opacity: 0.9; }
+                    50% { text-shadow: 0 0 40px rgba(100, 140, 255, 0.5), 0 0 80px rgba(100, 140, 255, 0.2), 0 0 120px rgba(100, 140, 255, 0.1); opacity: 1; }
+                }
+                @keyframes odyssey-shimmer {
+                    0% { background-position: -200% center; }
+                    100% { background-position: 200% center; }
+                }
+                @keyframes odyssey-dot-bounce {
+                    0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+                    40% { transform: translateY(-10px); opacity: 1; }
+                }
+                @keyframes odyssey-ring-pulse {
+                    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.15; }
+                    50% { transform: translate(-50%, -50%) scale(1.05); opacity: 0.25; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // Animated star particles (CSS-based, no Three.js overhead)
+        const starField = document.createElement('div');
+        Object.assign(starField.style, {
+            position: 'absolute',
+            top: '0',
+            left: '0',
+            width: '100%',
+            height: '100%',
+            pointerEvents: 'none',
+        });
+
+        const starCount = 60;
+        for (let i = 0; i < starCount; i++) {
+            const star = document.createElement('div');
+            const size = 1 + Math.random() * 2.5;
+            const x = Math.random() * 100;
+            const startY = 100 + Math.random() * 20; // Start below bottom
+            const duration = 4 + Math.random() * 6;
+            const delay = Math.random() * 3;
+            const hue = 200 + Math.random() * 60; // Blue-purple range
+            const brightness = 0.5 + Math.random() * 0.5;
+
+            Object.assign(star.style, {
+                position: 'absolute',
+                left: `${x}%`,
+                top: `${startY}%`,
+                width: `${size}px`,
+                height: `${size}px`,
+                borderRadius: '50%',
+                background: `hsla(${hue}, 80%, 80%, ${brightness})`,
+                boxShadow: `0 0 ${size * 3}px hsla(${hue}, 80%, 70%, 0.5)`,
+                animation: `odyssey-star-drift ${duration}s linear ${delay}s infinite`,
+                pointerEvents: 'none',
+            });
+            starField.appendChild(star);
+        }
+        overlay.appendChild(starField);
+
+        // Decorative ring (subtle cosmic ring behind the title)
+        const ring = document.createElement('div');
+        Object.assign(ring.style, {
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: '350px',
+            height: '350px',
+            border: '1px solid rgba(100, 140, 255, 0.1)',
+            borderRadius: '50%',
+            animation: 'odyssey-ring-pulse 3s ease-in-out infinite',
+            pointerEvents: 'none',
+        });
+        overlay.appendChild(ring);
+
+        const ring2 = document.createElement('div');
+        Object.assign(ring2.style, {
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: '420px',
+            height: '420px',
+            border: '1px solid rgba(100, 140, 255, 0.05)',
+            borderRadius: '50%',
+            animation: 'odyssey-ring-pulse 4s ease-in-out 0.5s infinite',
+            pointerEvents: 'none',
+        });
+        overlay.appendChild(ring2);
+
+        // Title: "ODYSSEY"
+        const title = document.createElement('div');
+        title.textContent = 'ODYSSEY';
+        Object.assign(title.style, {
+            fontFamily: "'Inter', 'Segoe UI', sans-serif",
+            fontSize: '3.5rem',
+            fontWeight: '200',
+            letterSpacing: '1.2em',
+            paddingLeft: '1.2em', // Compensate for letter-spacing
+            color: 'rgba(200, 220, 255, 0.95)',
+            animation: 'odyssey-title-glow 3s ease-in-out infinite',
+            zIndex: '2',
+            userSelect: 'none',
+            position: 'relative',
+        });
+        overlay.appendChild(title);
+
+        // Animated bouncing dots
+        const dotsContainer = document.createElement('div');
+        Object.assign(dotsContainer.style, {
+            display: 'flex',
+            gap: '12px',
+            marginTop: '1.5rem',
+            zIndex: '2',
+        });
+
+        for (let d = 0; d < 3; d++) {
+            const dot = document.createElement('div');
+            Object.assign(dot.style, {
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: 'rgba(160, 190, 255, 0.7)',
+                boxShadow: '0 0 8px rgba(120, 160, 255, 0.4)',
+                animation: `odyssey-dot-bounce 1.4s ease-in-out ${d * 0.2}s infinite`,
+            });
+            dotsContainer.appendChild(dot);
+        }
+        overlay.appendChild(dotsContainer);
+
+        document.body.appendChild(overlay);
+
+        // Fade in quickly
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                overlay.style.opacity = '1';
+            });
+        });
+    }
+
+    /**
+     * Smoothly remove the cinematic loading overlay (crossfade to 3D board)
+     * @private
+     */
+    _dismissCinematicLoadingOverlay() {
+        const overlay = document.getElementById('odyssey-loading-overlay');
+        if (!overlay) return;
+
+        overlay.style.transition = 'opacity 0.8s ease-out';
+        overlay.style.opacity = '0';
+
+        setTimeout(() => {
+            overlay.remove();
+        }, 850);
     }
 
     /**
@@ -1435,6 +1754,19 @@ export class OdysseyMode extends BaseGameMode {
         // The HTML UI is disabled - 3D board handles level selection via click
         // this._showLevelSelectUI();
         this._stopPhaserBoardScene();
+
+        // Ensure the cinematic overlay stays visible for a minimum time
+        // so it feels intentional and cinematic, not just a flash
+        const MIN_OVERLAY_DISPLAY_MS = 5000;
+        const elapsed = Date.now() - (this._overlayShownAt || 0);
+        const remaining = Math.max(0, MIN_OVERLAY_DISPLAY_MS - elapsed);
+
+        if (remaining > 0) {
+            await new Promise((resolve) => setTimeout(resolve, remaining));
+        }
+
+        // Dismiss the cinematic loading overlay now that the board is ready
+        this._dismissCinematicLoadingOverlay();
     }
 
     /**

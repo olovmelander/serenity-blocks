@@ -117,6 +117,35 @@ const DEFAULT_CONFIG = {
     },
 };
 
+const KEYBOARD_BINDING_ACTIONS = [
+    'moveLeft',
+    'moveRight',
+    'rotateRight',
+    'rotateLeft',
+    'flip',
+    'softDrop',
+    'hardDrop',
+];
+
+function sanitizeBindings(bindings, fallbackBindings) {
+    const source = (bindings && typeof bindings === 'object') ? bindings : {};
+    const sanitized = {};
+
+    KEYBOARD_BINDING_ACTIONS.forEach((action) => {
+        const value = source[action];
+        if (typeof value === 'string' && value.length > 0) {
+            sanitized[action] = value;
+        } else {
+            sanitized[action] = fallbackBindings[action];
+        }
+    });
+
+    return sanitized;
+}
+
+const sanitizePlayer1KeyBindings = (bindings) => sanitizeBindings(bindings, DEFAULT_CONFIG.keyBindings);
+const sanitizePlayer2KeyBindings = (bindings) => sanitizeBindings(bindings, DEFAULT_CONFIG.player2KeyBindings);
+
 const GAMEPAD_BINDING_KEYS = [
     'gamepadBindings',
     'player2GamepadBindings',
@@ -157,7 +186,6 @@ const SERENITY_KEYBOARD_DEFAULTS = [
     'H',
     'Space',
     'T',
-    'M',
     'B',
     'F',
     '/ or ?',
@@ -193,12 +221,25 @@ export class SettingsManager {
      */
     update(newSettings, emit = true) {
         const oldSettings = { ...this.settings };
+        const previousSettings = this.settings;
         this.settings = { ...this.settings, ...newSettings };
+
         if (newSettings.keyBindings) {
-            this.settings.keyBindings = {
-                ...this.settings.keyBindings,
+            this.settings.keyBindings = sanitizePlayer1KeyBindings({
+                ...previousSettings.keyBindings,
                 ...newSettings.keyBindings,
-            };
+            });
+        } else {
+            this.settings.keyBindings = sanitizePlayer1KeyBindings(this.settings.keyBindings);
+        }
+
+        if (newSettings.player2KeyBindings) {
+            this.settings.player2KeyBindings = sanitizePlayer2KeyBindings({
+                ...previousSettings.player2KeyBindings,
+                ...newSettings.player2KeyBindings,
+            });
+        } else {
+            this.settings.player2KeyBindings = sanitizePlayer2KeyBindings(this.settings.player2KeyBindings);
         }
 
         // Emit settings changed event
@@ -258,21 +299,26 @@ export class SettingsManager {
                 const loaded = JSON.parse(saved);
                 const loadedKeyBindings = loaded.keyBindings || {};
                 const loadedP2KeyBindings = loaded.player2KeyBindings || {};
+                const sanitizedKeyBindings = sanitizePlayer1KeyBindings({
+                    ...DEFAULT_CONFIG.keyBindings,
+                    ...loadedKeyBindings,
+                });
+                const sanitizedP2KeyBindings = sanitizePlayer2KeyBindings({
+                    ...DEFAULT_CONFIG.player2KeyBindings,
+                    ...loadedP2KeyBindings,
+                });
 
                 this.settings = {
                     ...DEFAULT_CONFIG,
                     ...loaded,
-                    keyBindings: {
-                        ...DEFAULT_CONFIG.keyBindings,
-                        ...loadedKeyBindings,
-                    },
-                    player2KeyBindings: {
-                        ...DEFAULT_CONFIG.player2KeyBindings,
-                        ...loadedP2KeyBindings,
-                    },
+                    keyBindings: sanitizedKeyBindings,
+                    player2KeyBindings: sanitizedP2KeyBindings,
                 };
-                if (this.settings.keyBindings?.togglePause) {
-                    delete this.settings.keyBindings.togglePause;
+
+                const keyBindingsChanged = JSON.stringify(loadedKeyBindings) !== JSON.stringify(sanitizedKeyBindings);
+                const player2BindingsChanged = JSON.stringify(loadedP2KeyBindings) !== JSON.stringify(sanitizedP2KeyBindings);
+                if (keyBindingsChanged || player2BindingsChanged) {
+                    this.save({ emitEvent: false });
                 }
             }
         } catch (error) {
