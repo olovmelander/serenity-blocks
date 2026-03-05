@@ -16,8 +16,10 @@
     "format:check": "prettier --check \"src/**/*.js\"",
     "build:gpu-launcher": "bash scripts/build-gpu-launcher.sh",
     "validate:cosmic-noir:phase6": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/cosmic-noir-phase6-validation.mjs",
+    "validate:wolfhour:phase6": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/wolfhour-phase6-validation.mjs",
     "build:win": "vite build && electron-builder --win --x64",
-    "build:linux": "vite build && electron-builder --linux"
+    "build:linux": "vite build && electron-builder --linux",
+    "capture:themes": "npx electron scripts/capture-theme-screenshots.mjs"
   },
   "build": {
     "appId": "com.serenityblocks.game",

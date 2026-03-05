@@ -51,6 +51,23 @@ export class BaseGameMode {
     }
 
     /**
+     * Runtime policies that the manager applies right after mode start.
+     * Modes can override this to defer theme/audio side effects.
+     * @returns {{
+     *   resumeThemeLinkedMusic: boolean,
+     *   resumeThemes: boolean,
+     *   syncMusicPlayback: boolean
+     * }}
+     */
+    getStartRuntimePolicy() {
+        return {
+            resumeThemeLinkedMusic: true,
+            resumeThemes: true,
+            syncMusicPlayback: true,
+        };
+    }
+
+    /**
      * Called when this mode is selected in the UI
      * Use this to prepare UI, show instructions, etc.
      * DO NOT start the game loop here.

@@ -64,7 +64,7 @@ export class InfinityMode extends BaseGameMode {
 
         // Cooldown to prevent camera follow immediately after snapping
         this.snapCooldownFrames = 0;
-        this.snapCooldownDuration = 18;
+        this.snapCooldownDuration = 8;
 
         // Track whether the last drop action was a hard drop
         this.lastDropWasHard = false;
@@ -86,6 +86,16 @@ export class InfinityMode extends BaseGameMode {
         this.cameraUpdateInterval = 3; // Update camera every 3 gravity steps (configurable)
         this.lastCameraUpdateTime = 0;
         this.minCameraUpdateInterval = 32; // Minimum 32ms between updates (~30fps camera tracking)
+
+        // Scroll-to-explore state (two-phase: buffer → explore)
+        this._scrollIdleTimer = null;
+        this._scrollAccumulator = 0;
+        this._scrollBufferAccumulator = 0;
+        this._scrollBufferTimer = null;
+        this.isScrollExploring = false;
+        this.isScrollBuffering = false;
+        this._wheelHandler = null;
+        this._scrollExitKeyHandler = null;
 
         // Cache physics callbacks so input handlers can reuse them
         this.physicsCallbacks = null;
@@ -294,8 +304,14 @@ export class InfinityMode extends BaseGameMode {
                     }, 400);
                 }
 
-                // Resume game
+                // Resume game — reset lastTime so gravity doesn't accumulate
+                // the entire exploration duration as one massive delta
                 this.gameState.isPaused = false;
+                this.gameState.lastTime = performance.now();
+
+                if (this.usingHybridLoop) {
+                    this.deps.frameRateController?.resumeHybridLoop();
+                }
 
                 // Trigger minimap unpause visual feedback
                 if (this.minimap) {
@@ -376,6 +392,9 @@ export class InfinityMode extends BaseGameMode {
         // Enable gamepad exploration control
         this._enableGamepadExploration();
 
+        // Enable scroll-to-explore on the game canvas
+        this._enableScrollExploration();
+
         console.log('[Infinity] Game started! Phase 3-5 Complete: ✅ Camera + Minimap + HUD + 🎮 Gamepad');
     }
 
@@ -420,6 +439,7 @@ export class InfinityMode extends BaseGameMode {
 
         // Reset exploration mode flag if somehow still set
         this.isInExplorationMode = false;
+        this._cleanupScrollState();
 
         // Trigger minimap unpause effect
         if (this.minimap) {
@@ -437,6 +457,7 @@ export class InfinityMode extends BaseGameMode {
 
         // Reset exploration mode
         this.isInExplorationMode = false;
+        this._cleanupScrollState();
         this._disableGamepadExploration();
 
         // Cancel standard RAF loop
@@ -1281,7 +1302,7 @@ export class InfinityMode extends BaseGameMode {
      * @private
      */
     _snapCameraToTopArea() {
-        if (!this.boardScene || !this.boardScene.cameraSettings) return;
+        if (!this.boardScene?.cameraSettings) return;
 
         const { cameraSettings } = this.boardScene;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
@@ -1291,15 +1312,21 @@ export class InfinityMode extends BaseGameMode {
 
         if (highestBlockRow >= this.gameState.board.length) {
             targetTopRow = Math.max(0, this.gameState.board.length - visibleRows);
-            console.log(`[Infinity] Camera snapped to bottom: row ${targetTopRow}`);
         } else {
-            const preferredRow = highestBlockRow - Math.floor(visibleRows * 0.3);
+            const preferredRow = highestBlockRow - Math.floor(visibleRows * 0.2);
             const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
             targetTopRow = Math.max(0, Math.min(maxCameraRow, preferredRow));
-            console.log(`[Infinity] Camera snapped back to top area: row ${targetTopRow} (highest block: ${highestBlockRow})`);
         }
 
-        this.boardScene.updateCameraPosition(targetTopRow, true);
+        // Use fast lerp instead of instant jump for smoother feel
+        const originalLerpSpeed = cameraSettings.lerpSpeed || 0.08;
+        cameraSettings.lerpSpeed = 0.25;
+        this.boardScene.updateCameraPosition(targetTopRow);
+        setTimeout(() => {
+            if (this.boardScene?.cameraSettings) {
+                this.boardScene.cameraSettings.lerpSpeed = originalLerpSpeed;
+            }
+        }, 300);
     }
 
     /**
@@ -1339,19 +1366,20 @@ export class InfinityMode extends BaseGameMode {
         const totalRows = this.gameState?.board?.length || 1000;
         const maxCameraRow = Math.max(0, totalRows - visibleRows);
 
-        // If there's an active piece, center on it
+        // Use unified smart target: tower top at 20%, piece at 80%
+        const highestBlockRow = this._findHighestBlockRow();
+        let targetCameraRow = highestBlockRow < totalRows
+            ? highestBlockRow - Math.floor(visibleRows * 0.2)
+            : maxCameraRow;
+
         const { currentPiece } = this.gameState;
         if (currentPiece) {
             const pieceBottomRow = currentPiece.y + (currentPiece.shape?.length || 0);
-            // Position piece at roughly 50% of the viewport
-            const targetCameraRow = pieceBottomRow - Math.floor(visibleRows * 0.5);
-            return Math.max(0, Math.min(maxCameraRow, targetCameraRow));
+            const pieceTarget = pieceBottomRow - Math.floor(visibleRows * 0.8);
+            targetCameraRow = Math.max(targetCameraRow, pieceTarget);
         }
 
-        // Fallback: position to show highest blocks
-        const highestBlockRow = this._findHighestBlockRow();
-        if (highestBlockRow < totalRows) {
-            const targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.3);
+        if (targetCameraRow <= maxCameraRow) {
             return Math.max(0, Math.min(maxCameraRow, targetCameraRow));
         }
 
@@ -1366,118 +1394,66 @@ export class InfinityMode extends BaseGameMode {
      * @private
      */
     _updateCameraPosition() {
-        if (!this.boardScene || !this.boardScene.cameraSettings) return;
+        if (!this.boardScene?.cameraSettings) return;
 
-        const camera = this.boardScene.cameras.main;
         const { cameraSettings } = this.boardScene;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
-
-        // Get block size from board config
-        const blockSize = this.boardScene.boardConfig?.blockSize || 30;
-
-        // Calculate current viewport in row coordinates
-        const currentCameraRow = Math.floor(camera.scrollY / blockSize);
-        const viewportBottomRow = currentCameraRow + visibleRows;
-
-        // Check if we need to follow a falling piece
+        const board = this.gameState.board;
+        const maxCameraRow = Math.max(0, board.length - visibleRows);
         const { currentPiece } = this.gameState;
+
+        // Brief cooldown after snap to prevent jitter
         if (this.snapCooldownFrames > 0) {
             this.snapCooldownFrames--;
             return;
         }
 
-        if (currentPiece && !this.suppressFollowUntilLock) {
-            // Calculate the bottom of the current piece
-            const pieceBottomRow = currentPiece.y + currentPiece.shape.length;
-
-            // Define the threshold - when piece goes below 50% of viewport, follow it
-            const followThreshold = currentCameraRow + Math.floor(visibleRows * 0.5);
-
-            // If piece is below the follow threshold, smoothly follow it down
-            if (pieceBottomRow > followThreshold) {
-                // Calculate the maximum camera position (bottom of grid)
-                const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
-
-                // Target: keep piece at 50% position in viewport (center)
-                const targetCameraRow = pieceBottomRow - Math.floor(visibleRows * 0.5);
-
-                // Clamp to valid range
-                const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
-
-                // Update camera (lerp handles smooth transition)
-                this.boardScene.updateCameraPosition(clampedCameraRow);
-
-                // Store for minimap
-                this.gameState.cameraRow = clampedCameraRow;
-
-                // Mark that we're following a piece (and remember it for a few frames)
-                this.wasFollowingPiece = true;
-                this.followMemoryFrames = this.followMemoryDuration;
-
-                return; // Exit early - we're following the piece
-            }
-        }
-
-        if (this.followMemoryFrames > 0) {
-            this.followMemoryFrames--;
-            if (this.followMemoryFrames === 0) {
-                this.wasFollowingPiece = false;
-            }
-        } else {
-            this.wasFollowingPiece = false;
-        }
-
-        // Find highest block (smallest row number where blocks exist)
+        // Find tower top
         const highestBlockRow = this._findHighestBlockRow();
 
-        // If no blocks exist yet (highestBlockRow == board.length), don't move camera
-        // This prevents the camera from jumping at game start
-        if (highestBlockRow >= this.gameState.board.length) {
-            // No blocks placed yet, keep camera at initial position (bottom)
-            this.gameState.cameraRow = currentCameraRow;
+        // No blocks yet — stay at bottom
+        if (highestBlockRow >= board.length) return;
+
+        // --- Unified smart target ---
+        // Base target: tower top at 20% from viewport top (maximize placement area below)
+        let targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.2);
+
+        // If piece exists, ensure it stays visible (bottom at ~80% of viewport)
+        if (currentPiece && !this.suppressFollowUntilLock) {
+            const pieceBottomRow = currentPiece.y + currentPiece.shape.length;
+            const pieceTarget = pieceBottomRow - Math.floor(visibleRows * 0.8);
+            targetCameraRow = Math.max(targetCameraRow, pieceTarget);
+        }
+
+        // Clamp to valid range
+        targetCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
+
+        // Stay at bottom until tower actually needs scrolling
+        const currentCameraRow = cameraSettings.currentTopRow ?? 0;
+        if (currentCameraRow >= maxCameraRow - 1 && highestBlockRow >= currentCameraRow + Math.floor(visibleRows * 0.2)) {
             return;
         }
 
-        // CRITICAL: Camera should stay at bottom until blocks reach near the TOP of viewport
-        // Calculate the maximum bottom position (where camera should stay initially)
-        const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
+        // Smooth lerp to target
+        this.boardScene.updateCameraPosition(targetCameraRow);
+        this.gameState.cameraRow = targetCameraRow;
 
-        // Only start scrolling UP when blocks reach the top 30% of the viewport
-        // This keeps the bottom visible as long as possible
-        const scrollThreshold = currentCameraRow + Math.floor(visibleRows * 0.3);
-
-        // If we're at the bottom position and blocks haven't reached the scroll threshold yet,
-        // stay at the bottom to keep all placed blocks visible
-        if (currentCameraRow >= maxCameraRow - 1 && highestBlockRow >= scrollThreshold) {
-            // Still at bottom, blocks haven't filled enough of the viewport yet
-            this.gameState.cameraRow = currentCameraRow;
-            return;
-        }
-
-        // If blocks have built UP past the threshold (smaller row number than threshold)
-        // then scroll camera UP (decrease camera row)
-        if (highestBlockRow < scrollThreshold) {
-            // Target: keep highest blocks at 30% position in viewport (closer to top)
-            // This ensures bottom blocks remain visible longer
-            const targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.3);
-
-            // Clamp to valid range
-            // Min: 0 (can show rows 0-20 at the very top)
-            // Max: (totalRows - visibleRows) (can show bottom rows)
-            const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
-
-            // Update camera (lerp handles smooth transition)
-            this.boardScene.updateCameraPosition(clampedCameraRow);
-
-            // Store for minimap
-            this.gameState.cameraRow = clampedCameraRow;
-
-            if (highestBlockRow < currentCameraRow + 5) { // Only log when significantly changed
-                console.log(`[Infinity] Camera following: highest block at row ${highestBlockRow}, camera at row ${clampedCameraRow}`);
+        // Track piece following for snap-on-lock logic
+        if (currentPiece && !this.suppressFollowUntilLock) {
+            const pieceBottomRow = currentPiece.y + currentPiece.shape.length;
+            const pieceTarget = pieceBottomRow - Math.floor(visibleRows * 0.8);
+            if (pieceTarget > highestBlockRow - Math.floor(visibleRows * 0.2)) {
+                this.wasFollowingPiece = true;
+                this.followMemoryFrames = this.followMemoryDuration;
             }
+        }
+
+        // Decay follow memory
+        if (this.followMemoryFrames > 0) {
+            this.followMemoryFrames--;
+            if (this.followMemoryFrames === 0) this.wasFollowingPiece = false;
         } else {
-            // Not past threshold yet, keep current camera position
-            this.gameState.cameraRow = currentCameraRow;
+            this.wasFollowingPiece = false;
         }
     }
 
@@ -1577,22 +1553,22 @@ export class InfinityMode extends BaseGameMode {
         const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
 
         // When following cleared lines, center them at 50-60% from top
-        // When following highest block, use the existing 30%/70% thresholds
+        // When following highest block, use the unified 20%/80% thresholds
         let targetCameraRow;
         if (clearedLineCenter !== null) {
             // Position camera so cleared lines appear at 55% from top
             targetCameraRow = targetRow - Math.floor(visibleRows * 0.55);
         } else {
-            // Original logic for highest block tracking
-            const topThreshold = currentCameraRow + Math.floor(visibleRows * 0.25);
-            const bottomThreshold = currentCameraRow + Math.floor(visibleRows * 0.75);
+            // Unified logic for highest block tracking (matches _updateCameraPosition)
+            const topThreshold = currentCameraRow + Math.floor(visibleRows * 0.2);
+            const bottomThreshold = currentCameraRow + Math.floor(visibleRows * 0.8);
 
             if (targetRow < topThreshold) {
-                // Blocks moved upward - keep them at 30% from top
-                targetCameraRow = targetRow - Math.floor(visibleRows * 0.3);
+                // Blocks moved upward - keep them at 20% from top
+                targetCameraRow = targetRow - Math.floor(visibleRows * 0.2);
             } else if (targetRow > bottomThreshold) {
-                // Blocks cascaded downward - keep them at 70% from top
-                targetCameraRow = targetRow - Math.floor(visibleRows * 0.7);
+                // Blocks cascaded downward - keep them at 80% from top
+                targetCameraRow = targetRow - Math.floor(visibleRows * 0.8);
             } else {
                 // Within viewport, no adjustment needed
                 return;
@@ -1680,6 +1656,202 @@ export class InfinityMode extends BaseGameMode {
         const { gamepadController } = this.deps;
         if (gamepadController) {
             gamepadController.disableExplorationMode();
+        }
+    }
+
+    /**
+     * Enable scroll-to-explore on the game board
+     * @private
+     */
+    _enableScrollExploration() {
+        this._wheelHandler = this._onWheelScroll.bind(this);
+        document.addEventListener('wheel', this._wheelHandler, { passive: false });
+
+        this.cleanupHandlers.push(() => {
+            document.removeEventListener('wheel', this._wheelHandler);
+            this._wheelHandler = null;
+            this._cleanupScrollState();
+        });
+
+        console.log('[Infinity] Scroll exploration enabled');
+    }
+
+    /**
+     * Normalize wheel deltaY to pixels across all deltaMode types
+     * @param {WheelEvent} event
+     * @returns {number} deltaY in pixels
+     * @private
+     */
+    _normalizeWheelDelta(event) {
+        let deltaY = event.deltaY;
+        if (event.deltaMode === 1) deltaY *= 20;  // line mode
+        if (event.deltaMode === 2) deltaY *= 400; // page mode
+        return deltaY;
+    }
+
+    /**
+     * Handle wheel/trackpad scroll — two-phase buffer then explore
+     * @param {WheelEvent} event
+     * @private
+     */
+    _onWheelScroll(event) {
+        if (!this.gameState || this.gameState.isGameOver || !this.boardScene) return;
+
+        // Block if externally paused (not by our own exploration) — let the
+        // event propagate so settings/hub menus can still scroll normally
+        if (!this.isInExplorationMode && !this.isScrollBuffering && this.gameState.isPaused) return;
+
+        // Only prevent default page scroll when we're handling the event
+        event.preventDefault();
+
+        const PIXELS_PER_ROW = 30;
+        const BUFFER_THRESHOLD_ROWS = 3;
+        const MAX_DELTA_ROWS = 10;
+        const IDLE_TIMEOUT_MS = 1500;
+
+        const deltaY = this._normalizeWheelDelta(event);
+        const deltaRows = deltaY / PIXELS_PER_ROW;
+
+        // === PHASE 1: BUFFERING (game still running) ===
+        if (!this.isInExplorationMode && !this.isScrollExploring) {
+            if (!this.isScrollBuffering) {
+                this.isScrollBuffering = true;
+                this._scrollBufferAccumulator = 0;
+            }
+
+            this._scrollBufferAccumulator += deltaRows;
+
+            // Reset buffer timeout — if no scroll for 300ms, reset buffer
+            clearTimeout(this._scrollBufferTimer);
+            this._scrollBufferTimer = setTimeout(() => {
+                this.isScrollBuffering = false;
+                this._scrollBufferAccumulator = 0;
+            }, 300);
+
+            // Check if buffer threshold reached → commit to exploration
+            if (Math.abs(this._scrollBufferAccumulator) >= BUFFER_THRESHOLD_ROWS) {
+                clearTimeout(this._scrollBufferTimer);
+                this._scrollBufferTimer = null;
+                const bufferedDelta = this._scrollBufferAccumulator;
+                this._scrollBufferAccumulator = 0;
+                this.isScrollBuffering = false;
+
+                this._startScrollExploration();
+
+                // Apply the buffered scroll offset immediately
+                this._applyScrollDelta(Math.trunc(bufferedDelta));
+            }
+            return;
+        }
+
+        // === PHASE 2: EXPLORING (game paused, free scroll) ===
+        this._scrollAccumulator += deltaRows;
+
+        const wholeRows = Math.sign(this._scrollAccumulator)
+            * Math.min(Math.abs(Math.trunc(this._scrollAccumulator)), MAX_DELTA_ROWS);
+
+        if (wholeRows !== 0) {
+            this._scrollAccumulator -= wholeRows;
+            this._applyScrollDelta(wholeRows);
+        }
+
+        // Reset idle timer — exit exploration after 1.5s of no scrolling
+        clearTimeout(this._scrollIdleTimer);
+        this._scrollIdleTimer = setTimeout(() => this._endScrollExploration(), IDLE_TIMEOUT_MS);
+    }
+
+    /**
+     * Commit to scroll exploration mode (from buffer phase)
+     * @private
+     */
+    _startScrollExploration() {
+        this.isScrollExploring = true;
+        this._scrollAccumulator = 0;
+
+        // Dispatch exploration-start (reuses existing pause/cosmic/minimap logic)
+        if (this.minimap?.container) {
+            this.minimap.container.dispatchEvent(
+                new CustomEvent('minimap-exploration-start', { bubbles: true }),
+            );
+        }
+
+        // Register game-key exit: any game action key instantly exits exploration
+        this._scrollExitKeyHandler = (e) => {
+            const key = e.key === ' ' ? 'Space' : e.key;
+            const bindings = window.settings?.keyBindings || {};
+            const action = Object.keys(bindings).find((k) => bindings[k] === key);
+            const exitActions = ['moveLeft', 'moveRight', 'rotateLeft', 'rotateRight', 'softDrop', 'hardDrop', 'flip'];
+            if (action && exitActions.includes(action)) {
+                this._endScrollExploration();
+            }
+        };
+        document.addEventListener('keydown', this._scrollExitKeyHandler);
+    }
+
+    /**
+     * Apply a scroll delta to the camera during exploration
+     * @param {number} deltaRows - Number of rows to scroll (positive = down)
+     * @private
+     */
+    _applyScrollDelta(deltaRows) {
+        if (!this.boardScene || !this.isInExplorationMode) return;
+
+        const currentTop = this.boardScene.cameraSettings?.currentTopRow ?? 0;
+        const visibleRows = this.boardScene.cameraSettings?.visibleRows || this.visibleRows;
+        const totalRows = this.gameState?.board?.length || 0;
+        const maxCameraRow = Math.max(0, totalRows - visibleRows);
+
+        const targetTopRow = Math.max(0, Math.min(maxCameraRow, currentTop + deltaRows));
+
+        this.boardScene.updateCameraPosition(targetTopRow, true);
+        this._updateMinimapView();
+
+        if (this.cosmicExploration) {
+            const now = performance.now();
+            const dt = Math.max((now - (this._lastExplorationTime || now)) / 1000, 0.016);
+            this._lastExplorationTime = now;
+            this.cosmicExploration.updateCameraPosition(targetTopRow, dt);
+        }
+    }
+
+    /**
+     * End scroll-triggered exploration mode
+     * @private
+     */
+    _endScrollExploration() {
+        if (!this.isScrollExploring) return;
+
+        this._cleanupScrollState();
+
+        // Dispatch exploration-end (reuses existing resume/snap-back logic)
+        if (this.minimap?.container) {
+            this.minimap.container.dispatchEvent(
+                new CustomEvent('minimap-exploration-end', { bubbles: true }),
+            );
+        }
+    }
+
+    /**
+     * Clean up all scroll exploration state and listeners
+     * @private
+     */
+    _cleanupScrollState() {
+        this.isScrollExploring = false;
+        this.isScrollBuffering = false;
+        this._scrollAccumulator = 0;
+        this._scrollBufferAccumulator = 0;
+
+        if (this._scrollIdleTimer) {
+            clearTimeout(this._scrollIdleTimer);
+            this._scrollIdleTimer = null;
+        }
+        if (this._scrollBufferTimer) {
+            clearTimeout(this._scrollBufferTimer);
+            this._scrollBufferTimer = null;
+        }
+        if (this._scrollExitKeyHandler) {
+            document.removeEventListener('keydown', this._scrollExitKeyHandler);
+            this._scrollExitKeyHandler = null;
         }
     }
 

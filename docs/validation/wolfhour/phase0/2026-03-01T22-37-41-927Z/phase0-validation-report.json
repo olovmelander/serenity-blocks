@@ -1,0 +1,110 @@
+{
+  "generatedAt": "2026-03-01T22:38:38.304Z",
+  "artifactDir": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z",
+  "smokeResults": [
+    {
+      "scenario": "default",
+      "url": "http://127.0.0.1:4173/?wolfhourBaseline=1&wolfhourSeed=1234&wolfhourFixedDt=16.666&wolfhourPlayback=default",
+      "passed": true,
+      "warningCount": 10,
+      "errorCount": 0,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+        "[.WebGL-0x2bdc014d8000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x2bdc014d8000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[BaseTheme] >>>>>> START METHOD CALLED <<<<<< forest",
+        "[BaseTheme] About to call loadTheme...",
+        "[BaseTheme] >>>>>> START METHOD CALLED <<<<<< wolfhour",
+        "[BaseTheme] About to call loadTheme...",
+        "[.WebGL-0x2bdc050ea200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x2bdc014d8000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "errors": [],
+      "screenshotIdlePath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/default_idle.png",
+      "screenshotPlaybackPath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/default_playback.png",
+      "logPath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/default.console.log",
+      "error": null
+    },
+    {
+      "scenario": "force_webgl",
+      "url": "http://127.0.0.1:4173/?wolfhourBaseline=1&wolfhourSeed=1234&wolfhourFixedDt=16.666&wolfhourPlayback=default&forceWebGL=1",
+      "passed": true,
+      "warningCount": 6,
+      "errorCount": 0,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+        "[BaseTheme] >>>>>> START METHOD CALLED <<<<<< forest",
+        "[BaseTheme] About to call loadTheme...",
+        "[BaseTheme] >>>>>> START METHOD CALLED <<<<<< wolfhour",
+        "[BaseTheme] About to call loadTheme..."
+      ],
+      "errors": [],
+      "screenshotIdlePath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/force_webgl_idle.png",
+      "screenshotPlaybackPath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/force_webgl_playback.png",
+      "logPath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/force_webgl.console.log",
+      "error": null
+    },
+    {
+      "scenario": "no_post",
+      "url": "http://127.0.0.1:4173/?wolfhourBaseline=1&wolfhourSeed=1234&wolfhourFixedDt=16.666&wolfhourPlayback=default&wolfhourNoPost=1",
+      "passed": true,
+      "warningCount": 6,
+      "errorCount": 0,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+        "[BaseTheme] >>>>>> START METHOD CALLED <<<<<< forest",
+        "[BaseTheme] About to call loadTheme...",
+        "[BaseTheme] >>>>>> START METHOD CALLED <<<<<< wolfhour",
+        "[BaseTheme] About to call loadTheme..."
+      ],
+      "errors": [],
+      "screenshotIdlePath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/no_post_idle.png",
+      "screenshotPlaybackPath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/no_post_playback.png",
+      "logPath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/no_post.console.log",
+      "error": null
+    },
+    {
+      "scenario": "no_mrt",
+      "url": "http://127.0.0.1:4173/?wolfhourBaseline=1&wolfhourSeed=1234&wolfhourFixedDt=16.666&wolfhourPlayback=default&wolfhourNoMRT=1",
+      "passed": true,
+      "warningCount": 6,
+      "errorCount": 0,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+        "[BaseTheme] >>>>>> START METHOD CALLED <<<<<< forest",
+        "[BaseTheme] About to call loadTheme...",
+        "[BaseTheme] >>>>>> START METHOD CALLED <<<<<< wolfhour",
+        "[BaseTheme] About to call loadTheme..."
+      ],
+      "errors": [],
+      "screenshotIdlePath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/no_mrt_idle.png",
+      "screenshotPlaybackPath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/no_mrt_playback.png",
+      "logPath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/no_mrt.console.log",
+      "error": null
+    },
+    {
+      "scenario": "no_compute",
+      "url": "http://127.0.0.1:4173/?wolfhourBaseline=1&wolfhourSeed=1234&wolfhourFixedDt=16.666&wolfhourPlayback=default&wolfhourNoCompute=1",
+      "passed": true,
+      "warningCount": 6,
+      "errorCount": 0,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+        "[BaseTheme] >>>>>> START METHOD CALLED <<<<<< forest",
+        "[BaseTheme] About to call loadTheme...",
+        "[BaseTheme] >>>>>> START METHOD CALLED <<<<<< wolfhour",
+        "[BaseTheme] About to call loadTheme..."
+      ],
+      "errors": [],
+      "screenshotIdlePath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/no_compute_idle.png",
+      "screenshotPlaybackPath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/no_compute_playback.png",
+      "logPath": "docs/validation/wolfhour/phase0/2026-03-01T22-37-41-927Z/no_compute.console.log",
+      "error": null
+    }
+  ]
+}

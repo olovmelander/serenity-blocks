@@ -876,7 +876,6 @@ export class SerenityHub {
             <div class="hint-item"><span class="hint-button">H</span> Toggle Hub</div>
             <div class="hint-item"><span class="hint-button">Space</span> Breathing Guide</div>
             <div class="hint-item"><span class="hint-button">T</span> Cycle Technique</div>
-            <div class="hint-item"><span class="hint-button">M</span> Next Track</div>
             <div class="hint-item"><span class="hint-button">B</span> Random Theme</div>
             <div class="hint-item"><span class="hint-button">F</span> Fullscreen</div>
             <div class="hint-item"><span class="hint-button">/</span> Toggle Hints</div>

@@ -437,16 +437,16 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 - Uses TSL uniform animation for smooth transitions
 
 ### Tasks
-- [ ] Add star diffraction spikes to starfield TSL material
-- [ ] Implement depth-of-field star glow variation
-- [ ] Upgrade celestial beams with volumetric noise
-- [ ] Add ridge highlight animation to mountain material
-- [ ] Implement ground fog layer (TSL FBM volumetric)
-- [ ] Create ambient particle field system
-- [ ] Enhance meteor trail density and atmospheric glow
-- [ ] Increase debris count with GPU compute
-- [ ] Add screen-shake camera effect on meteor crash
-- [ ] Implement reactive nebula color temperature shifts
+- [x] Add star diffraction spikes to starfield TSL material
+- [x] Implement depth-of-field star glow variation
+- [x] Upgrade celestial beams with volumetric noise
+- [x] Add ridge highlight animation to mountain material
+- [x] Implement ground fog layer (TSL FBM volumetric)
+- [x] Create ambient particle field system
+- [x] Enhance meteor trail density and atmospheric glow
+- [x] Increase debris count with GPU compute
+- [x] Add screen-shake camera effect on meteor crash
+- [x] Implement reactive nebula color temperature shifts
 
 ---
 
@@ -492,10 +492,10 @@ Extend presets with new WebGPU-specific parameters:
 
 ### 6.3 Polish Items
 - [ ] Verify all materials properly dispose on cleanup
-- [ ] Ensure `handleResize()` updates PostProcessing + compute buffers
+- [x] Ensure `handleResize()` updates PostProcessing + compute buffers
 - [ ] Test WebGL fallback on browsers without WebGPU
-- [ ] Add `?forceWebGL` debug flag for testing
-- [ ] Profile GPU memory usage at each quality level
+- [x] Add `?forceWebGL` debug flag for testing
+- [x] Profile GPU memory usage at each quality level
 - [ ] Verify no visual regression from current theme at any quality using deterministic baseline diffs
 - [ ] Test device-loss recovery (WebGPU)
 - [ ] Ensure smooth transition when switching to/from this theme

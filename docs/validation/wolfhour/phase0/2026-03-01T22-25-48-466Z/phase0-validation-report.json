@@ -1,0 +1,125 @@
+{
+  "generatedAt": "2026-03-01T22:35:55.887Z",
+  "artifactDir": "docs/validation/wolfhour/phase0/2026-03-01T22-25-48-466Z",
+  "smokeResults": [
+    {
+      "scenario": "default",
+      "url": "http://127.0.0.1:4173/?wolfhourBaseline=1&wolfhourSeed=1234&wolfhourFixedDt=16.666&wolfhourPlayback=default",
+      "passed": false,
+      "warningCount": 11,
+      "errorCount": 1,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+        "Failed to create WebGPU Context Provider",
+        "THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.",
+        "[IntroWebGPU] WebGPU backend not available",
+        "WebGL: INVALID_OPERATION: loseContext: context already lost",
+        "[ThreeJSIntroRenderer] Initialization failed: TypeError: Cannot read properties of null (reading 'precision')",
+        "[.WebGL-0x3af402523800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3af402523800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3af402523800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3af402523800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      ],
+      "errors": [
+        "[ThreeJSIntroRenderer] Initialization failed: TypeError: Cannot read properties of null (reading 'precision')"
+      ],
+      "screenshotIdlePath": null,
+      "screenshotPlaybackPath": null,
+      "logPath": "docs/validation/wolfhour/phase0/2026-03-01T22-25-48-466Z/default.console.log",
+      "error": "Managers were not ready in time."
+    },
+    {
+      "scenario": "force_webgl",
+      "url": "http://127.0.0.1:4173/?wolfhourBaseline=1&wolfhourSeed=1234&wolfhourFixedDt=16.666&wolfhourPlayback=default&forceWebGL=1",
+      "passed": false,
+      "warningCount": 7,
+      "errorCount": 1,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+        "Failed to create WebGPU Context Provider",
+        "THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.",
+        "[IntroWebGPU] WebGPU backend not available",
+        "WebGL: INVALID_OPERATION: loseContext: context already lost",
+        "[ThreeJSIntroRenderer] Initialization failed: TypeError: Cannot read properties of null (reading 'precision')"
+      ],
+      "errors": [
+        "[ThreeJSIntroRenderer] Initialization failed: TypeError: Cannot read properties of null (reading 'precision')"
+      ],
+      "screenshotIdlePath": null,
+      "screenshotPlaybackPath": null,
+      "logPath": "docs/validation/wolfhour/phase0/2026-03-01T22-25-48-466Z/force_webgl.console.log",
+      "error": "Managers were not ready in time."
+    },
+    {
+      "scenario": "no_post",
+      "url": "http://127.0.0.1:4173/?wolfhourBaseline=1&wolfhourSeed=1234&wolfhourFixedDt=16.666&wolfhourPlayback=default&wolfhourNoPost=1",
+      "passed": false,
+      "warningCount": 7,
+      "errorCount": 1,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+        "Failed to create WebGPU Context Provider",
+        "THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.",
+        "[IntroWebGPU] WebGPU backend not available",
+        "WebGL: INVALID_OPERATION: loseContext: context already lost",
+        "[ThreeJSIntroRenderer] Initialization failed: TypeError: Cannot read properties of null (reading 'precision')"
+      ],
+      "errors": [
+        "[ThreeJSIntroRenderer] Initialization failed: TypeError: Cannot read properties of null (reading 'precision')"
+      ],
+      "screenshotIdlePath": null,
+      "screenshotPlaybackPath": null,
+      "logPath": "docs/validation/wolfhour/phase0/2026-03-01T22-25-48-466Z/no_post.console.log",
+      "error": "Managers were not ready in time."
+    },
+    {
+      "scenario": "no_mrt",
+      "url": "http://127.0.0.1:4173/?wolfhourBaseline=1&wolfhourSeed=1234&wolfhourFixedDt=16.666&wolfhourPlayback=default&wolfhourNoMRT=1",
+      "passed": false,
+      "warningCount": 7,
+      "errorCount": 1,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+        "Failed to create WebGPU Context Provider",
+        "THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.",
+        "[IntroWebGPU] WebGPU backend not available",
+        "WebGL: INVALID_OPERATION: loseContext: context already lost",
+        "[ThreeJSIntroRenderer] Initialization failed: TypeError: Cannot read properties of null (reading 'precision')"
+      ],
+      "errors": [
+        "[ThreeJSIntroRenderer] Initialization failed: TypeError: Cannot read properties of null (reading 'precision')"
+      ],
+      "screenshotIdlePath": null,
+      "screenshotPlaybackPath": null,
+      "logPath": "docs/validation/wolfhour/phase0/2026-03-01T22-25-48-466Z/no_mrt.console.log",
+      "error": "Managers were not ready in time."
+    },
+    {
+      "scenario": "no_compute",
+      "url": "http://127.0.0.1:4173/?wolfhourBaseline=1&wolfhourSeed=1234&wolfhourFixedDt=16.666&wolfhourPlayback=default&wolfhourNoCompute=1",
+      "passed": false,
+      "warningCount": 7,
+      "errorCount": 1,
+      "warnings": [
+        "[SteamService] Failed to load Electron IPC: window.require is not a function",
+        "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+        "Failed to create WebGPU Context Provider",
+        "THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.",
+        "[IntroWebGPU] WebGPU backend not available",
+        "WebGL: INVALID_OPERATION: loseContext: context already lost",
+        "[ThreeJSIntroRenderer] Initialization failed: TypeError: Cannot read properties of null (reading 'precision')"
+      ],
+      "errors": [
+        "[ThreeJSIntroRenderer] Initialization failed: TypeError: Cannot read properties of null (reading 'precision')"
+      ],
+      "screenshotIdlePath": null,
+      "screenshotPlaybackPath": null,
+      "logPath": "docs/validation/wolfhour/phase0/2026-03-01T22-25-48-466Z/no_compute.console.log",
+      "error": "Managers were not ready in time."
+    }
+  ]
+}

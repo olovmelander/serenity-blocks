@@ -322,33 +322,38 @@ export const nebulaFragmentShader = `
     uniform sampler2D tDiffuse;
     uniform float uOpacity;
     uniform float uPulse;
+    uniform float uTime;
     varying vec2 vUv;
 
+    ${noiseCommon}
+
     void main() {
-        vec4 texColor = texture2D(tDiffuse, vUv);
+        // Match Blood Moon's gas billow behavior.
+        float distortX = fbm(vec3(vUv * 2.0, uTime * 0.05)) * 0.1;
+        float distortY = fbm(vec3(vUv * 2.0 + 10.0, uTime * 0.05)) * 0.1;
+        vec2 distortedUv = vUv + vec2(distortX, distortY);
+
+        vec4 texColor = texture2D(tDiffuse, distortedUv);
 
         // Aggressive edge fade to hide plane boundaries and blend properly
-        float fadeX = smoothstep(0.0, 0.4, vUv.x) * smoothstep(1.0, 0.6, vUv.x);
-        float fadeY = smoothstep(0.0, 0.4, vUv.y) * smoothstep(1.0, 0.6, vUv.y);
+        float fadeX = smoothstep(0.0, 0.4, distortedUv.x) * smoothstep(1.0, 0.6, distortedUv.x);
+        float fadeY = smoothstep(0.0, 0.4, distortedUv.y) * smoothstep(1.0, 0.6, distortedUv.y);
         float fade = fadeX * fadeY;
-        fade = pow(fade, 1.5);
+        fade = pow(clamp(fade, 0.0, 1.0), 1.5);
 
-        // Desaturate to ensure pure black/white noir look (just in case texture has color)
-        // Desaturate to ensure pure black/white noir look (just in case texture has color)
+        // Desaturate so Blood Moon texture structure renders as noir-white gas.
         float gray = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
-        
-        // Subtle cool blue tint for volumetric depth without breaking noir
-        vec3 color = vec3(gray) * vec3(0.85, 0.9, 1.05);
+        gray = pow(clamp(gray * 1.25, 0.0, 1.0), 0.9);
+
+        // Cool silver-white tint for depth without color bleed.
+        vec3 color = vec3(gray) * vec3(0.92, 0.96, 1.0);
 
         // Pulse effect boosts brightness
         float pulseFactor = 1.0 + uPulse * 0.3;
         color *= pulseFactor;
 
-        // Final alpha combines texture alpha, master opacity, and edge fade
-        // Boost alpha by 2.0x for deep visibility like Blood Moon
-        // Restore power curve for soft edges
-        float softFade = pow(fade, 1.5);
-        float alpha = texColor.r * (uOpacity + uPulse * 0.05) * softFade * 2.0;
+        // Luminance-driven alpha keeps shape detail from reused colored textures.
+        float alpha = gray * (uOpacity + uPulse * 0.1) * fade;
 
         gl_FragColor = vec4(color, alpha);
     }
