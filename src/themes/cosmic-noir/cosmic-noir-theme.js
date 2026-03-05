@@ -1436,12 +1436,12 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     createNebulaClouds() {
         const textureLoader = new THREE.TextureLoader();
-        const texturePath = './textures/cosmic-noir/';
+        const texturePath = './textures/blood-moon/';
 
         const textures = [
-            textureLoader.load(`${texturePath}nebula-noir-1.png`),
-            textureLoader.load(`${texturePath}nebula-noir-2.png`),
-            textureLoader.load(`${texturePath}nebula-noir-3.png`),
+            textureLoader.load(`${texturePath}nebula-red-1.png`),
+            textureLoader.load(`${texturePath}nebula-red-2.png`),
+            textureLoader.load(`${texturePath}nebula-red-3.png`),
         ];
 
         textures.forEach((t) => {
@@ -1449,28 +1449,21 @@ export default class CosmicNoirTheme extends BaseTheme {
             t.wrapT = THREE.ClampToEdgeWrapping;
         });
 
-        // Configure nebula planes at different depths
+        // Mirror Blood Moon layer structure for similar gas motion silhouette.
         const nebulaConfigs = [
-            // Deep background layer (Parallax factor low)
+            // Deep background layer
             {
-                texture: textures[0], size: 18000, z: -9000, opacity: 0.4, speed: 0.00007, parallaxX: 0.12, parallaxY: 0.08, rotationSpeed: 0.000025,
+                texture: textures[0], size: 6000, z: -4500, opacity: 0.3, speed: 0.0001, parallaxX: 0.1, parallaxY: 0.1, rotationSpeed: 0.0,
             },
             {
-                texture: textures[1], size: 20000, z: -7800, opacity: 0.35, speed: 0.00009, parallaxX: 0.16, parallaxY: 0.11, rotationSpeed: -0.00002,
+                texture: textures[1], size: 7000, z: -4000, opacity: 0.25, speed: 0.00015, parallaxX: 0.1, parallaxY: 0.1, rotationSpeed: 0.0,
             },
             // Mid layer
             {
-                texture: textures[2], size: 14000, z: -6400, opacity: 0.3, speed: 0.00013, parallaxX: 0.24, parallaxY: 0.16, rotationSpeed: 0.00003,
+                texture: textures[2], size: 5000, z: -3000, opacity: 0.2, speed: 0.0002, parallaxX: 0.3, parallaxY: 0.2, rotationSpeed: 0.0,
             },
             {
-                texture: textures[0], size: 15000, z: -5500, opacity: 0.25, speed: 0.00018, parallaxX: 0.3, parallaxY: 0.2, rotationSpeed: -0.000035,
-            },
-            // Near haze layers
-            {
-                texture: textures[1], size: 10000, z: -4500, opacity: 0.2, speed: 0.00024, parallaxX: 0.38, parallaxY: 0.26, rotationSpeed: 0.00004,
-            },
-            {
-                texture: textures[2], size: 9000, z: -3800, opacity: 0.15, speed: 0.00028, parallaxX: 0.46, parallaxY: 0.31, rotationSpeed: -0.00005,
+                texture: textures[0], size: 5500, z: -2500, opacity: 0.15, speed: 0.00025, parallaxX: 0.3, parallaxY: 0.2, rotationSpeed: 0.0,
             },
         ];
 
@@ -1491,6 +1484,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                         tDiffuse: { value: config.texture },
                         uOpacity: { value: config.opacity },
                         uPulse: { value: 0 },
+                        uTime: { value: 0 },
                     },
                     vertexShader: nebulaVertexShader,
                     fragmentShader: nebulaFragmentShader,
@@ -2776,13 +2770,16 @@ export default class CosmicNoirTheme extends BaseTheme {
             cloud.position.y = (this.camera?.position.y || 0) * parallaxY;
             cloud.rotation.z += (cloud.userData.rotationSpeed ?? 0) * delta;
 
-            cloud.userData.pulsePhase += 0.003;
+            cloud.userData.pulsePhase += 0.005;
             // Pulse: -1 to 1 for subtle breathing
             const pulse = Math.sin(cloud.userData.pulsePhase);
 
             const nebulaUniforms = cloud.userData?.uniforms || cloud.material?.uniforms;
             if (nebulaUniforms?.uPulse) {
                 nebulaUniforms.uPulse.value = pulse + (this.planetPulseIntensity * 2.0); // React to gameplay
+            }
+            if (nebulaUniforms?.uTime) {
+                nebulaUniforms.uTime.value = this.time;
             }
         }
 

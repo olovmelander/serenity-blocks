@@ -21,22 +21,22 @@ import { PostProcessingStack } from './effects/PostProcessingStack.js';
  */
 const QUALITY_PRESETS = {
     Minimal: {
-        enableBloom: false, bloomStrength: 0.3, particleCount: 200, starCount: 500,
+        enableBloom: false, bloomStrength: 0.3, particleCount: 100, starCount: 300,
     },
     Low: {
-        enableBloom: true, bloomStrength: 0.4, particleCount: 400, starCount: 800,
+        enableBloom: true, bloomStrength: 0.4, particleCount: 200, starCount: 500,
     },
     Medium: {
-        enableBloom: true, bloomStrength: 0.5, particleCount: 600, starCount: 1200,
+        enableBloom: true, bloomStrength: 0.5, particleCount: 400, starCount: 800,
     },
     High: {
-        enableBloom: true, bloomStrength: 0.6, particleCount: 1000, starCount: 2000,
+        enableBloom: true, bloomStrength: 0.6, particleCount: 600, starCount: 1200,
     },
     Ultra: {
-        enableBloom: true, bloomStrength: 0.7, particleCount: 1500, starCount: 3000,
+        enableBloom: true, bloomStrength: 0.7, particleCount: 900, starCount: 1800,
     },
     Extreme: {
-        enableBloom: true, bloomStrength: 0.8, particleCount: 2000, starCount: 4000,
+        enableBloom: true, bloomStrength: 0.8, particleCount: 1200, starCount: 2500,
     },
 };
 
@@ -88,6 +88,20 @@ export class OdysseyBoardController {
         this.nebulaMesh = null;
         this.ambientParticles = null;
 
+        // Interaction/performance tracking
+        this.lastInteractionAt = performance.now();
+        this.backgroundLoadQuietWindowMs = 700;
+        this.cameraSettledThreshold = 0.0008;
+        this.globalEnvProgressThreshold = 0.0005;
+        this.globalEnvMaxIntervalMs = 33;
+        this.lastGlobalEnvUpdateTime = 0;
+        this.lastGlobalEnvUpdateProgress = Number.NaN;
+        this.globalAmbientLight = null;
+        this.prewarmQueue = [];
+        this.queuedPrewarmChapters = new Set();
+        this.isPrewarming = false;
+        this.prewarmDrainTimer = null;
+
         console.log('[OdysseyBoard] Controller created');
     }
 
@@ -97,6 +111,9 @@ export class OdysseyBoardController {
 
     /**
      * Initialize the odyssey board
+     * Structured to yield to the main thread between heavy steps
+     * so the loading overlay CSS animations stay smooth.
+     *
      * @param {Object} levelData - Level configurations
      * @param {Object} progressData - Player progress data
      */
@@ -108,30 +125,42 @@ export class OdysseyBoardController {
         this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
         this.qualityName = quality;
 
-        // Create Three.js fundamentals
+        // ─── Step 1: Lightweight Three.js shell (very fast) ───
         this.initRenderer();
         this.initScene();
         this.initCamera();
-
-        // Create minimal background base (starfield only)
         this.createStarfield();
 
-        // Initialize chapter-specific environments
+        // Yield — let the loading overlay render & animate smoothly
+        await this._yieldToMain();
+
+        // ─── Step 2: Load chapter 1 environment ───
         this.environmentManager = new ChapterEnvironmentManager(this.scene, this.renderer);
-        await this.environmentManager.initialize([1, 2, 3, 4, 5, 6], {
+        await this.environmentManager.initialize([1], {
             particleCount: this.qualityPreset.particleCount,
         });
 
-        // Create path
+        await this._yieldToMain();
+
+        // ─── Step 3: Load chapter 2 environment ───
+        await this.environmentManager.createChapterEnvironment(2);
+
+        await this._yieldToMain();
+
+        // ─── Step 4: Build path ───
         this.pathRenderer = new OdysseyPathRenderer(this.scene);
         await this.pathRenderer.buildPath(ODYSSEY_PATH_DATA);
 
-        // Create level nodes
+        await this._yieldToMain();
+
+        // ─── Step 5: Create level nodes (55 nodes) ───
         this.nodeManager = new LevelNodeManager(this.scene, this.pathRenderer.pathCurve);
         await this.nodeManager.createNodes(levelData);
         this.nodeManager.updateFromProgress(progressData);
 
-        // Setup camera controller
+        await this._yieldToMain();
+
+        // ─── Step 6: Camera, post-processing, lighting, interaction ───
         this.cameraController = new OdysseyCameraController(
             this.camera,
             this.pathRenderer.pathCurve,
@@ -141,7 +170,6 @@ export class OdysseyBoardController {
         if (this.environmentManager && this.cameraController) {
             this.environmentManager.setOnChapterChange((chapterId, previousChapter) => {
                 this.cameraController.onChapterChange(chapterId);
-                // Trigger post-processing transition effect
                 this.postProcessingStack?.triggerTransitionEffect();
                 console.log(`[OdysseyBoard] Chapter transition: ${previousChapter} → ${chapterId}`);
             });
@@ -154,20 +182,154 @@ export class OdysseyBoardController {
             );
         }
 
-        // Post-processing (enhanced pipeline)
         this.setupPostProcessing();
-
-        // Setup lighting
         this.setupLighting();
 
-        // Setup interaction
+        await this._yieldToMain();
+
+        // ─── Step 7: Interaction + start render loop ───
         this.setupInteraction();
 
-        // Start animation
         this.isActive = true;
         this.animate();
+        this._queueChapterPrewarm(2);
+
+        // Load remaining chapters in background (idle time, one at a time)
+        this.environmentManager.loadChaptersInBackground([1, 2], {
+            canRunTask: () => this._canRunBackgroundTask(),
+            onEnvironmentCreated: (chapterId) => {
+                this._queueChapterPrewarm(chapterId);
+            },
+        });
 
         console.log('[OdysseyBoard] Initialized successfully');
+    }
+
+    /**
+     * Yield to the main thread so CSS animations and repaints can happen.
+     * Uses a double-rAF to guarantee a full frame is painted.
+     * @private
+     */
+    _yieldToMain() {
+        return new Promise((resolve) => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(resolve);
+            });
+        });
+    }
+
+    _markInteraction() {
+        this.lastInteractionAt = performance.now();
+    }
+
+    _isInteractionIdle() {
+        return (performance.now() - this.lastInteractionAt) >= this.backgroundLoadQuietWindowMs;
+    }
+
+    _isCameraSettled() {
+        if (!this.cameraController) return true;
+        if (this.cameraController.isAnimating) return false;
+
+        const currentPosition = Number.isFinite(this.cameraController.currentPosition)
+            ? this.cameraController.currentPosition
+            : this.cameraController.getCurrentPosition?.();
+        const targetPosition = Number.isFinite(this.cameraController.targetPosition)
+            ? this.cameraController.targetPosition
+            : currentPosition;
+
+        if (!Number.isFinite(currentPosition) || !Number.isFinite(targetPosition)) {
+            return true;
+        }
+
+        return Math.abs(targetPosition - currentPosition) <= this.cameraSettledThreshold;
+    }
+
+    _canRunBackgroundTask() {
+        return this._isInteractionIdle() && this._isCameraSettled();
+    }
+
+    _queueChapterPrewarm(chapterId) {
+        if (!Number.isFinite(chapterId)) return;
+        if (this.queuedPrewarmChapters.has(chapterId)) return;
+
+        const env = this.environmentManager?.environments?.get(chapterId);
+        if (env?.prewarmed) return;
+
+        this.queuedPrewarmChapters.add(chapterId);
+        this.prewarmQueue.push(chapterId);
+        this._schedulePrewarmDrain(80);
+    }
+
+    _schedulePrewarmDrain(delayMs = 120) {
+        if (this.prewarmDrainTimer || this.prewarmQueue.length === 0) return;
+
+        this.prewarmDrainTimer = setTimeout(() => {
+            this.prewarmDrainTimer = null;
+            this._drainPrewarmQueue().catch((error) => {
+                console.warn('[OdysseyBoard] Prewarm drain failed:', error);
+            });
+        }, delayMs);
+    }
+
+    async _drainPrewarmQueue() {
+        if (!this.isActive || this.isPrewarming || this.prewarmQueue.length === 0) return;
+        if (!this._canRunBackgroundTask()) {
+            this._schedulePrewarmDrain(160);
+            return;
+        }
+
+        const chapterId = this.prewarmQueue.shift();
+        this.queuedPrewarmChapters.delete(chapterId);
+        this.isPrewarming = true;
+
+        try {
+            await this._prewarmChapterEnvironment(chapterId);
+        } finally {
+            this.isPrewarming = false;
+        }
+
+        if (this.prewarmQueue.length > 0) {
+            this._schedulePrewarmDrain(60);
+        }
+    }
+
+    async _prewarmChapterEnvironment(chapterId) {
+        if (!this.environmentManager || !this.renderer || !this.scene || !this.camera) return;
+
+        const env = this.environmentManager.environments.get(chapterId);
+        if (!env || env.prewarmed) return;
+
+        const { group } = env;
+        const previousGroupVisibility = group.visible;
+        const frustumOverrides = [];
+
+        group.traverse((child) => {
+            if (child?.isMesh || child?.isPoints || child?.isLine || child?.isSprite) {
+                frustumOverrides.push({ child, frustumCulled: child.frustumCulled });
+                child.frustumCulled = false;
+            }
+        });
+
+        try {
+            // Temporarily force visibility for shader compilation, then restore.
+            group.visible = true;
+
+            if (typeof this.renderer.compileAsync === 'function') {
+                await this.renderer.compileAsync(this.scene, this.camera);
+            } else if (typeof this.renderer.compile === 'function') {
+                this.renderer.compile(this.scene, this.camera);
+            }
+
+            env.prewarmed = true;
+            console.log(`[OdysseyBoard] Prewarmed chapter ${chapterId} shaders`);
+        } catch (error) {
+            console.warn(`[OdysseyBoard] Shader prewarm failed for chapter ${chapterId}:`, error);
+        } finally {
+            group.visible = previousGroupVisibility;
+            frustumOverrides.forEach(({ child, frustumCulled }) => {
+                child.frustumCulled = frustumCulled;
+            });
+        }
     }
 
     initRenderer() {
@@ -177,7 +339,9 @@ export class OdysseyBoardController {
             powerPreference: 'high-performance',
         });
         this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        // Cap pixel ratio to 1.5 for performance — the Odyssey board doesn't
+        // need 2x DPR since it's mostly particles, paths, and glowing orbs
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
         this.renderer.setClearColor(0x050510, 1);
         this.container.appendChild(this.renderer.domElement);
     }
@@ -230,8 +394,9 @@ export class OdysseyBoardController {
 
     setupLighting() {
         // Ambient light
-        const ambient = new THREE.AmbientLight(0x404080, 0.3);
-        this.scene.add(ambient);
+        this.globalAmbientLight = new THREE.AmbientLight(0x404080, 0.3);
+        this.scene.add(this.globalAmbientLight);
+        this.environmentManager?.registerAmbientLight(this.globalAmbientLight);
 
         // Main directional light
         const directional = new THREE.DirectionalLight(0xffffff, 0.5);
@@ -414,7 +579,7 @@ export class OdysseyBoardController {
         this.checkHover();
     }
 
-    onClick(event) {
+    onClick() {
         if (this.hoveredLevelId !== null) {
             this.selectLevel(this.hoveredLevelId);
         } else {
@@ -429,12 +594,14 @@ export class OdysseyBoardController {
 
     onWheel(event) {
         event.preventDefault();
+        this._markInteraction();
         const delta = event.deltaY * 0.001;
         this.cameraController?.scroll(delta);
     }
 
     onTouchStart(event) {
         if (event.touches.length === 1) {
+            this._markInteraction();
             const touch = event.touches[0];
             const rect = this.renderer.domElement.getBoundingClientRect();
             this.mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
@@ -445,6 +612,7 @@ export class OdysseyBoardController {
 
     onTouchMove(event) {
         if (event.touches.length === 1) {
+            this._markInteraction();
             const touch = event.touches[0];
             const delta = (this.touchStartY - touch.clientY) * 0.005;
             this.cameraController?.scroll(delta);
@@ -452,7 +620,7 @@ export class OdysseyBoardController {
         }
     }
 
-    onTouchEnd(event) {
+    onTouchEnd() {
         // Check for tap selection
         this.checkHover();
         if (this.hoveredLevelId !== null) {
@@ -562,7 +730,20 @@ export class OdysseyBoardController {
         if (this.environmentManager && this.camera) {
             const cameraProgress = this.cameraController?.getCurrentPosition() ?? 0;
             this.environmentManager.updateVisibility(cameraProgress, { mode: 'progress' });
-            this.environmentManager.updateGlobalEnvironment(cameraProgress);
+
+            const nowMs = performance.now();
+            const progressDelta = Number.isFinite(this.lastGlobalEnvUpdateProgress)
+                ? Math.abs(cameraProgress - this.lastGlobalEnvUpdateProgress)
+                : Infinity;
+            const shouldUpdateGlobalEnvironment = progressDelta > this.globalEnvProgressThreshold
+                || (nowMs - this.lastGlobalEnvUpdateTime) >= this.globalEnvMaxIntervalMs;
+
+            if (shouldUpdateGlobalEnvironment) {
+                this.environmentManager.updateGlobalEnvironment(cameraProgress);
+                this.lastGlobalEnvUpdateTime = nowMs;
+                this.lastGlobalEnvUpdateProgress = cameraProgress;
+            }
+
             this.environmentManager.update(delta, this.camera);
         }
 
@@ -611,6 +792,13 @@ export class OdysseyBoardController {
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
         }
+        if (this.prewarmDrainTimer) {
+            clearTimeout(this.prewarmDrainTimer);
+            this.prewarmDrainTimer = null;
+        }
+        this.prewarmQueue.length = 0;
+        this.queuedPrewarmChapters.clear();
+        this.isPrewarming = false;
 
         // Dispose sub-controllers
         this.environmentManager?.dispose();

@@ -201,13 +201,25 @@ export class GameModeManager {
                 return;
             }
 
-            if (this.deps?.soundManager?.resumeThemeLinkedMusic) {
+            const startRuntimePolicy = {
+                resumeThemeLinkedMusic: true,
+                resumeThemes: true,
+                syncMusicPlayback: true,
+                ...(typeof mode.getStartRuntimePolicy === 'function'
+                    ? mode.getStartRuntimePolicy()
+                    : {}),
+            };
+
+            if (startRuntimePolicy.resumeThemeLinkedMusic
+                && this.deps?.soundManager?.resumeThemeLinkedMusic) {
                 this.deps.soundManager.resumeThemeLinkedMusic(true);
             }
-            if (this.deps?.themeManager?.resumeThemes) {
+            if (startRuntimePolicy.resumeThemes
+                && this.deps?.themeManager?.resumeThemes) {
                 await this.deps.themeManager.resumeThemes();
             }
-            if (this.deps?.soundManager?.ensureTrackPlaybackSynced) {
+            if (startRuntimePolicy.syncMusicPlayback
+                && this.deps?.soundManager?.ensureTrackPlaybackSynced) {
                 await this.deps.soundManager.ensureTrackPlaybackSynced({
                     reason: 'mode-start',
                     force: true,

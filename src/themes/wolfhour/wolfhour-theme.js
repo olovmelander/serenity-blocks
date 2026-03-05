@@ -41,8 +41,6 @@ import {
     meteorHeadVertexShader,
     meteorHeadFragmentShader,
     // Meteor crash effect shaders
-    impactFlashVertexShader,
-    impactFlashFragmentShader,
     debrisVertexShader,
     debrisFragmentShader,
     shockwaveVertexShader,
@@ -64,80 +62,343 @@ const QUALITY_PRESETS = {
         mountainSegments: 32,
         nebulaResolution: 512,
         spiritCount: 0,
+        spiritComputeCount: 0,
+        ambientParticles: 0,
         enableBloom: false,
+        enableNodePost: false,
+        enableMRT: false,
+        enableFilmGrain: false,
+        enableCompute: false,
+        computeStarTwinkle: false,
+        computeSpirits: false,
+        computeMeteorTrails: false,
+        computeDebris: false,
         bloomStrength: 0,
-        maxStarBursts: 3,
+        bloomDownsample: 0.58,
+        debrisPerCrash: 40,
+        meteorTrailSegments: 40,
+        maxStarBursts: 5,
         maxCosmicRifts: 1,
         maxCelestialBeams: 0,
-        maxMeteorCrashes: 0,
+        maxMeteorCrashes: 2,
         starTwinkleSpeed: 0.5,
+        enableDiffraction: false,
+        enableGroundFog: false,
+        enableVolumetricBeams: false,
+        meteorAtmosphereGlow: 0.0,
+        cameraShakeScale: 0.15,
     },
     Low: {
         starCount: 10000,
         mountainSegments: 64,
         nebulaResolution: 512,
         spiritCount: 3,
+        spiritComputeCount: 0,
+        ambientParticles: 0,
         enableBloom: false,
+        enableNodePost: false,
+        enableMRT: false,
+        enableFilmGrain: false,
+        enableCompute: false,
+        computeStarTwinkle: false,
+        computeSpirits: false,
+        computeMeteorTrails: false,
+        computeDebris: false,
         bloomStrength: 0,
-        maxStarBursts: 5,
+        bloomDownsample: 0.58,
+        debrisPerCrash: 40,
+        meteorTrailSegments: 40,
+        maxStarBursts: 8,
         maxCosmicRifts: 2,
         maxCelestialBeams: 0,
-        maxMeteorCrashes: 4,
+        maxMeteorCrashes: 6,
         starTwinkleSpeed: 0.7,
+        enableDiffraction: false,
+        enableGroundFog: false,
+        enableVolumetricBeams: false,
+        meteorAtmosphereGlow: 0.0,
+        cameraShakeScale: 0.2,
     },
     Medium: {
-        starCount: 25000,
-        mountainSegments: 128,
+        starCount: 20000,
+        mountainSegments: 112,
         nebulaResolution: 1024,
         spiritCount: 8,
+        spiritComputeCount: 24,
+        ambientParticles: 600,
         enableBloom: true,
+        enableNodePost: true,
+        enableMRT: true,
+        enableFilmGrain: false,
+        enableCompute: true,
+        computeStarTwinkle: false,
+        computeSpirits: true,
+        computeMeteorTrails: true,
+        computeDebris: true,
         bloomStrength: 0.3,
-        maxStarBursts: 8,
+        bloomDownsample: 0.58,
+        debrisPerCrash: 72,
+        meteorTrailSegments: 52,
+        maxStarBursts: 14,
         maxCosmicRifts: 3,
         maxCelestialBeams: 2,
-        maxMeteorCrashes: 5,
-        starTwinkleSpeed: 1.0,
-    },
-    High: {
-        starCount: 50000,
-        mountainSegments: 256,
-        nebulaResolution: 1024,
-        spiritCount: 15,
-        enableBloom: true,
-        bloomStrength: 0.5,
-        maxStarBursts: 12,
-        maxCosmicRifts: 4,
-        maxCelestialBeams: 4,
-        maxMeteorCrashes: 6,
-        starTwinkleSpeed: 1.0,
-    },
-    Ultra: {
-        starCount: 80000,
-        mountainSegments: 256,
-        nebulaResolution: 2048,
-        spiritCount: 25,
-        enableBloom: true,
-        bloomStrength: 0.6,
-        maxStarBursts: 15,
-        maxCosmicRifts: 5,
-        maxCelestialBeams: 6,
         maxMeteorCrashes: 8,
         starTwinkleSpeed: 1.0,
+        enableDiffraction: true,
+        enableGroundFog: true,
+        enableVolumetricBeams: true,
+        meteorAtmosphereGlow: 0.35,
+        cameraShakeScale: 0.45,
+    },
+    High: {
+        starCount: 38000,
+        mountainSegments: 176,
+        nebulaResolution: 1024,
+        spiritCount: 15,
+        spiritComputeCount: 48,
+        ambientParticles: 1000,
+        enableBloom: true,
+        enableNodePost: true,
+        enableMRT: true,
+        enableFilmGrain: true,
+        enableCompute: true,
+        computeStarTwinkle: false,
+        computeSpirits: true,
+        computeMeteorTrails: true,
+        computeDebris: true,
+        bloomStrength: 0.5,
+        bloomDownsample: 0.62,
+        debrisPerCrash: 96,
+        meteorTrailSegments: 56,
+        maxStarBursts: 20,
+        maxCosmicRifts: 4,
+        maxCelestialBeams: 4,
+        maxMeteorCrashes: 10,
+        starTwinkleSpeed: 1.0,
+        enableDiffraction: true,
+        enableGroundFog: true,
+        enableVolumetricBeams: true,
+        meteorAtmosphereGlow: 0.5,
+        cameraShakeScale: 0.6,
+    },
+    Ultra: {
+        starCount: 55000,
+        mountainSegments: 208,
+        nebulaResolution: 2048,
+        spiritCount: 25,
+        spiritComputeCount: 72,
+        ambientParticles: 1600,
+        enableBloom: true,
+        enableNodePost: true,
+        enableMRT: true,
+        enableFilmGrain: true,
+        enableCompute: true,
+        computeStarTwinkle: false,
+        computeSpirits: true,
+        computeMeteorTrails: true,
+        computeDebris: true,
+        bloomStrength: 0.6,
+        bloomDownsample: 0.68,
+        debrisPerCrash: 128,
+        meteorTrailSegments: 60,
+        maxStarBursts: 25,
+        maxCosmicRifts: 5,
+        maxCelestialBeams: 6,
+        maxMeteorCrashes: 12,
+        starTwinkleSpeed: 1.0,
+        enableDiffraction: true,
+        enableGroundFog: true,
+        enableVolumetricBeams: true,
+        meteorAtmosphereGlow: 0.65,
+        cameraShakeScale: 0.8,
     },
     Extreme: {
-        starCount: 150000,
-        mountainSegments: 512,
+        starCount: 90000,
+        mountainSegments: 288,
         nebulaResolution: 2048,
-        spiritCount: 40,
+        spiritCount: 80,
+        spiritComputeCount: 96,
+        ambientParticles: 3000,
         enableBloom: true,
+        enableNodePost: true,
+        enableMRT: true,
+        enableFilmGrain: true,
+        enableCompute: true,
+        computeStarTwinkle: false,
+        computeSpirits: true,
+        computeMeteorTrails: true,
+        computeDebris: true,
         bloomStrength: 0.8,
-        maxStarBursts: 20,
+        bloomDownsample: 0.74,
+        debrisPerCrash: 150,
+        meteorTrailSegments: 64,
+        maxStarBursts: 30,
         maxCosmicRifts: 6,
         maxCelestialBeams: 8,
-        maxMeteorCrashes: 10,
+        maxMeteorCrashes: 15,
         starTwinkleSpeed: 1.2,
+        enableDiffraction: true,
+        enableGroundFog: true,
+        enableVolumetricBeams: true,
+        meteorAtmosphereGlow: 0.8,
+        cameraShakeScale: 1.0,
     },
 };
+
+const BASELINE_PRESET_ORDER = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
+
+const QUALITY_BUDGETS = {
+    Extreme: {
+        targetFps: 60,
+        maxDrawCalls: 40,
+        maxTriangles: 2000000,
+        maxPoints: 250000,
+    },
+    Ultra: {
+        targetFps: 60,
+        maxDrawCalls: 35,
+        maxTriangles: 1500000,
+        maxPoints: 150000,
+    },
+    High: {
+        targetFps: 60,
+        maxDrawCalls: 30,
+        maxTriangles: 1000000,
+        maxPoints: 100000,
+    },
+    Medium: {
+        targetFps: 60,
+        maxDrawCalls: 25,
+        maxTriangles: 500000,
+        maxPoints: 60000,
+    },
+    Low: {
+        targetFps: 60,
+        maxDrawCalls: 20,
+        maxTriangles: 250000,
+        maxPoints: 30000,
+    },
+    Minimal: {
+        targetFps: 30,
+        maxDrawCalls: 15,
+        maxTriangles: 100000,
+        maxPoints: 15000,
+    },
+};
+
+const REACTIVE_BUDGET_CREDITS = Object.freeze({
+    Minimal: 1,
+    Low: 1,
+    Medium: 2,
+    High: 3,
+    Ultra: 4,
+    Extreme: 5,
+});
+
+const REACTIVE_TOKEN_COSTS = Object.freeze({
+    starBurst: 1,
+    beam: 1,
+    rift: 1,
+    wave: 1,
+    meteor: 2,
+    crash: 4,
+});
+
+const REACTIVE_TOKEN_EXPIRY_MS = Object.freeze({
+    starBurst: 200,
+    beam: 200,
+    rift: 200,
+    wave: 200,
+    meteor: 900,
+    crash: 900,
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Deterministic Flags Pipeline
+// ─────────────────────────────────────────────────────────────────────────────
+function parseWolfhourFlags() {
+    const defaults = {
+        forceWebGL: false,
+        noPost: false,
+        noMRT: false,
+        noCompute: false,
+        noAdaptivePacing: false,
+        noPrewarm: false,
+        baseline: false,
+        seed: null,
+        fixedDtMs: null,
+        playback: null,
+        playbackLoops: 1,
+    };
+
+    if (typeof window === 'undefined') {
+        return defaults;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const readBool = (...keys) => keys.some((key) => {
+        if (!params.has(key)) return false;
+        const value = params.get(key);
+        if (value === null || value === '') return true;
+        const normalized = value.toLowerCase();
+        return normalized === '1' || normalized === 'true' || normalized === 'yes';
+    });
+
+    const readNumber = (...keys) => {
+        for (let i = 0; i < keys.length; i += 1) {
+            const key = keys[i];
+            if (!params.has(key)) continue;
+            const value = params.get(key);
+            if (value === null || value === '') continue;
+            const numeric = Number(value);
+            if (Number.isFinite(numeric)) return numeric;
+        }
+        return null;
+    };
+
+    const readString = (...keys) => {
+        for (let i = 0; i < keys.length; i += 1) {
+            const key = keys[i];
+            if (!params.has(key)) continue;
+            const value = params.get(key);
+            if (value !== null && value !== '') return value;
+        }
+        return null;
+    };
+
+    const fixedDtMs = readNumber('wolfhourFixedDt', 'fixedDt');
+    const seed = readNumber('wolfhourSeed', 'seed');
+    const playbackLoops = readNumber('wolfhourPlaybackLoops', 'playbackLoops');
+
+    return {
+        forceWebGL: readBool('forceWebGL', 'wolfhourForceWebGL'),
+        noPost: readBool('noPost', 'wolfhourNoPost'),
+        noMRT: readBool('noMRT', 'wolfhourNoMRT'),
+        noCompute: readBool('noCompute', 'wolfhourNoCompute'),
+        noAdaptivePacing: readBool('wolfhourNoAdaptivePacing', 'noAdaptivePacing'),
+        noPrewarm: readBool('wolfhourNoPrewarm', 'noPrewarm'),
+        baseline: readBool('wolfhourBaseline', 'baseline'),
+        seed: Number.isFinite(seed) ? seed : null,
+        fixedDtMs: Number.isFinite(fixedDtMs) && fixedDtMs > 0 ? fixedDtMs : null,
+        playback: readString('wolfhourPlayback', 'playback'),
+        playbackLoops: Number.isFinite(playbackLoops) && playbackLoops > 0
+            ? Math.floor(playbackLoops)
+            : 1,
+        usePost: false,
+        useMRT: false,
+        useCompute: false,
+    };
+}
+
+function createSeededRandom(seed) {
+    if (!Number.isFinite(seed)) return Math.random;
+    let state = Math.abs(Math.floor(seed)) % 2147483647;
+    if (state <= 0) state = 1;
+    return () => {
+        state = (state * 16807) % 2147483647;
+        return (state - 1) / 2147483646;
+    };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Theme Class
@@ -146,18 +407,33 @@ export default class WolfhourTheme extends BaseTheme {
     constructor() {
         super('wolfhour');
 
+        this.flags = parseWolfhourFlags();
+        this.randomFn = createSeededRandom(this.flags.seed);
+        this.fixedDeltaSeconds = this.flags.fixedDtMs ? this.flags.fixedDtMs / 1000 : null;
+        this.fixedElapsedTime = 0;
+
+        // Baseline sequence tracking
+        this.baselineTimeouts = new Set();
+        this.baselineSequenceStats = { sequence: null, loops: 0, startedAt: 0 };
+        this.baselineFrames = [];
+        this.baselineRenderStats = [];
+        this.baselineMaxFrames = 3600;
+
         // Three.js core
         this.renderer = null;
         this.scene = null;
         this.camera = null;
         this.composer = null;
+        this.postProcessing = null;
         this.clock = new THREE.Clock();
 
         // Scene elements
         this.mountains = [];
         this.starfield = null;
         this.nebulaPlanes = [];
+        this.groundFog = null;
         this.spirits = null;
+        this.ambientParticles = null;
         this.bloomPass = null;
         this.silverTintPass = null;
 
@@ -168,8 +444,35 @@ export default class WolfhourTheme extends BaseTheme {
         this.cosmicWaves = [];
         this.meteors = []; // Shooting star meteors
         this.lastMeteorTime = 0; // Time of last meteor spawn
-        this.nextMeteorDelay = 5 + Math.random() * 7; // 5-12 seconds
+        this.nextMeteorDelay = 2 + this.random() * 2; // 2-4 seconds
         this.meteorCrashes = []; // Dramatic meteor crash impacts
+        this.effectPools = {
+            starBurst: [],
+            beam: [],
+            rift: [],
+            wave: [],
+            meteor: [],
+            crash: [],
+        };
+        this.geometryCache = {
+            unitQuad: null,
+            shockwavePlane: null,
+            trailGeometry: null,
+            crashTrailGeometry: null,
+            waveGeometry: null,
+        };
+        this.reactiveQueue = [];
+        this.reactiveMetrics = {
+            queueMaxDepth: 0,
+            tokensDropped: 0,
+            poolMisses: 0,
+            spawnDurationsMs: [],
+        };
+        this.reactiveTokenCosts = { ...REACTIVE_TOKEN_COSTS };
+        this.reactiveBudgetCredits = { ...REACTIVE_BUDGET_CREDITS };
+        this.reactiveTokenExpiryMs = { ...REACTIVE_TOKEN_EXPIRY_MS };
+        this.meteorTrailBatchCompute = null;
+        this.debrisBatchCompute = null;
 
         // Effect state (smooth decay)
         this.effectState = {
@@ -181,15 +484,49 @@ export default class WolfhourTheme extends BaseTheme {
             spiritSurge: 0,
             bloomBoost: 0,
             nebulaBoost: 0,
+            nebulaColorShift: 0,
+            nebulaDefinition: 0,
+            ambientScatter: 0,
+            ambientSwirl: 0,
+            cameraShake: 0,
         };
 
         // Animation
         this.time = 0;
         this.animationFrameId = null;
         this.eventUnsubscribers = [];
+        this.qualityChangeHandler = null;
+        this.qualityRebuildPending = false;
+        this.lastCameraFrustum = null;
 
         // Quality
+        this.activeQualityLevel = 'High';
         this.qualityPreset = QUALITY_PRESETS.High;
+        this.performanceBudget = { ...QUALITY_BUDGETS.High };
+        this.computeBudget = null;
+
+        // Compute systems (WebGPU only)
+        this.computeFactories = null;
+        this.spiritCompute = null;
+        this.starTwinkleCompute = null;
+        this.ambientParticleCompute = null;
+        this.computeFallbackPending = false;
+
+        // Post-processing systems (WebGPU node post)
+        this.postFactories = null;
+        this.postProfile = null;
+
+        // Renderer Capabilities
+        this.isWebGPU = false;
+        this.isWebGL = false;
+        this.capabilities = {
+            webgpu: false,
+            webgl: false,
+            maxColorAttachments: 1,
+            supportsPost: false,
+            supportsMRT: false,
+            supportsCompute: false,
+        };
 
         // Resize handler reference
         this.resizeHandler = null;
@@ -201,15 +538,579 @@ export default class WolfhourTheme extends BaseTheme {
         return WOLFHOUR_TETROMINOS;
     }
 
+    random() {
+        return this.randomFn();
+    }
+
     getCurrentQualityLevel() {
-        if (typeof window !== 'undefined' && window.settings?.graphicsQuality) {
-            return normalizeQuality(window.settings.graphicsQuality);
+        if (typeof window !== 'undefined' && window.settings) {
+            if (window.settings.effectQuality) {
+                return normalizeQuality(window.settings.effectQuality);
+            }
+            if (window.settings.graphicsQuality) {
+                return normalizeQuality(window.settings.graphicsQuality);
+            }
         }
         return 'High';
     }
 
+    getBaselinePresetOrder() {
+        return [...BASELINE_PRESET_ORDER];
+    }
+
+    resolvePerformanceBudget(quality) {
+        const normalized = normalizeQuality(quality);
+        return {
+            ...(QUALITY_BUDGETS[normalized] || QUALITY_BUDGETS.High),
+        };
+    }
+
     applyQualityPreset(quality) {
-        this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
+        const normalized = normalizeQuality(quality);
+        this.activeQualityLevel = normalized;
+        this.qualityPreset = QUALITY_PRESETS[normalized] || QUALITY_PRESETS.High;
+        this.performanceBudget = this.resolvePerformanceBudget(normalized);
+    }
+
+    resetBaselineSamples() {
+        this.baselineFrames = [];
+        this.baselineRenderStats = [];
+        this.reactiveQueue.length = 0;
+        this.reactiveMetrics.queueMaxDepth = 0;
+        this.reactiveMetrics.tokensDropped = 0;
+        this.reactiveMetrics.poolMisses = 0;
+        this.reactiveMetrics.spawnDurationsMs = [];
+    }
+
+    trackBaselineFrame(deltaSeconds) {
+        if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return;
+
+        const frameMs = deltaSeconds * 1000;
+        this.baselineFrames.push(frameMs);
+        if (this.baselineFrames.length > this.baselineMaxFrames) {
+            this.baselineFrames.shift();
+        }
+
+        this.baselineRenderStats.push({
+            calls: this.renderer?.info?.render?.calls ?? 0,
+            triangles: this.renderer?.info?.render?.triangles ?? 0,
+            points: this.renderer?.info?.render?.points ?? 0,
+            lines: this.renderer?.info?.render?.lines ?? 0,
+            textures: this.renderer?.info?.memory?.textures ?? 0,
+            geometries: this.renderer?.info?.memory?.geometries ?? 0,
+        });
+        if (this.baselineRenderStats.length > this.baselineMaxFrames) {
+            this.baselineRenderStats.shift();
+        }
+    }
+
+    estimateGpuMemoryMb(memoryInfo = this.renderer?.info?.memory) {
+        if (!memoryInfo) return null;
+        const textures = memoryInfo.textures ?? 0;
+        const geometries = memoryInfo.geometries ?? 0;
+        return Number((textures * 1.5 + geometries * 0.25).toFixed(1));
+    }
+
+    getRuntimeFeatureSnapshot() {
+        return {
+            usePost: this.flags.usePost === true,
+            useMRT: this.flags.useMRT === true,
+            useCompute: this.flags.useCompute === true,
+            qualityAllowsCompute: this.qualityPreset.enableCompute === true,
+            qualityAllowsPost: this.qualityPreset.enableNodePost === true,
+            qualityAllowsMRT: this.qualityPreset.enableMRT === true,
+            spirits: this.spiritCompute?.computeNode ? 'compute' : 'material',
+            ambient: this.ambientParticleCompute?.computeNode ? 'compute' : 'off',
+            starTwinkle: this.starTwinkleCompute?.computeNode ? 'compute' : 'material',
+            meteorTrail: this.qualityPreset.computeMeteorTrails ? 'compute-capable' : 'cpu',
+            debris: this.qualityPreset.computeDebris ? 'compute-capable' : 'shader',
+            postProfile: this.postProfile?.profile || 'off',
+            cameraShakeScale: this.qualityPreset.cameraShakeScale ?? 1,
+            starCount: this.qualityPreset.starCount ?? 0,
+            ambientParticles: this.qualityPreset.ambientParticles ?? 0,
+        };
+    }
+
+    recordReactiveSpawnDuration(ms) {
+        if (!Number.isFinite(ms)) return;
+        const samples = this.reactiveMetrics.spawnDurationsMs;
+        samples.push(ms);
+        if (samples.length > 512) {
+            samples.shift();
+        }
+    }
+
+    getReactivePerformanceSnapshot() {
+        const durations = this.reactiveMetrics.spawnDurationsMs;
+        if (!durations.length) {
+            return {
+                queueMaxDepth: this.reactiveMetrics.queueMaxDepth,
+                tokensDropped: this.reactiveMetrics.tokensDropped,
+                poolMisses: this.reactiveMetrics.poolMisses,
+                avgSpawnMs: 0,
+                p95SpawnMs: 0,
+            };
+        }
+
+        const sorted = [...durations].sort((a, b) => a - b);
+        const avgSpawnMs = durations.reduce((sum, value) => sum + value, 0) / durations.length;
+        const p95Index = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95));
+        return {
+            queueMaxDepth: this.reactiveMetrics.queueMaxDepth,
+            tokensDropped: this.reactiveMetrics.tokensDropped,
+            poolMisses: this.reactiveMetrics.poolMisses,
+            avgSpawnMs: Number(avgSpawnMs.toFixed(3)),
+            p95SpawnMs: Number(sorted[p95Index].toFixed(3)),
+        };
+    }
+
+    getBaselineReport() {
+        if (!this.baselineFrames.length) return null;
+
+        const sortedFrames = [...this.baselineFrames].sort((a, b) => a - b);
+        const frameCount = sortedFrames.length;
+        const percentile = (ratio) => {
+            const index = Math.min(frameCount - 1, Math.floor(frameCount * ratio));
+            return sortedFrames[index];
+        };
+
+        const avgFrameMs = this.baselineFrames.reduce((sum, value) => sum + value, 0) / frameCount;
+        const p50FrameMs = percentile(0.50);
+        const p95FrameMs = percentile(0.95);
+        const p99FrameMs = percentile(0.99);
+
+        const renderSamples = Math.max(1, this.baselineRenderStats.length);
+        const totals = this.baselineRenderStats.reduce((acc, sample) => ({
+            calls: acc.calls + sample.calls,
+            triangles: acc.triangles + sample.triangles,
+            points: acc.points + sample.points,
+            lines: acc.lines + sample.lines,
+            textures: acc.textures + sample.textures,
+            geometries: acc.geometries + sample.geometries,
+        }), {
+            calls: 0,
+            triangles: 0,
+            points: 0,
+            lines: 0,
+            textures: 0,
+            geometries: 0,
+        });
+
+        const peaks = this.baselineRenderStats.reduce((acc, sample) => ({
+            calls: Math.max(acc.calls, sample.calls),
+            triangles: Math.max(acc.triangles, sample.triangles),
+            points: Math.max(acc.points, sample.points),
+            lines: Math.max(acc.lines, sample.lines),
+            textures: Math.max(acc.textures, sample.textures),
+            geometries: Math.max(acc.geometries, sample.geometries),
+        }), {
+            calls: 0,
+            triangles: 0,
+            points: 0,
+            lines: 0,
+            textures: 0,
+            geometries: 0,
+        });
+
+        const budget = this.performanceBudget || QUALITY_BUDGETS.High;
+        const budgetResult = {
+            targetFps: budget.targetFps ?? 60,
+            maxDrawCalls: budget.maxDrawCalls ?? null,
+            maxTriangles: budget.maxTriangles ?? null,
+            maxPoints: budget.maxPoints ?? null,
+            avgDrawCalls: totals.calls / renderSamples,
+            avgTriangles: totals.triangles / renderSamples,
+            avgPoints: totals.points / renderSamples,
+            peakDrawCalls: peaks.calls,
+            peakTriangles: peaks.triangles,
+            peakPoints: peaks.points,
+            pass: true,
+        };
+
+        if (Number.isFinite(budget.maxDrawCalls)) {
+            budgetResult.pass = budgetResult.pass && peaks.calls <= budget.maxDrawCalls;
+        }
+        if (Number.isFinite(budget.maxTriangles)) {
+            budgetResult.pass = budgetResult.pass && peaks.triangles <= budget.maxTriangles;
+        }
+        if (Number.isFinite(budget.maxPoints)) {
+            budgetResult.pass = budgetResult.pass && peaks.points <= budget.maxPoints;
+        }
+
+        const memoryInfo = this.renderer?.info?.memory || {};
+        const heapUsedMb = (typeof performance !== 'undefined' && performance.memory?.usedJSHeapSize)
+            ? Number((performance.memory.usedJSHeapSize / (1024 * 1024)).toFixed(1))
+            : null;
+
+        return {
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            quality: this.activeQualityLevel,
+            frameCount,
+            avgFrameMs,
+            avgFps: avgFrameMs > 0 ? 1000 / avgFrameMs : 0,
+            p50FrameMs,
+            p95FrameMs,
+            p99FrameMs,
+            avgDrawCalls: totals.calls / renderSamples,
+            avgTriangles: totals.triangles / renderSamples,
+            avgPoints: totals.points / renderSamples,
+            avgLines: totals.lines / renderSamples,
+            peakDrawCalls: peaks.calls,
+            peakTriangles: peaks.triangles,
+            peakPoints: peaks.points,
+            peakLines: peaks.lines,
+            textures: memoryInfo.textures ?? null,
+            geometries: memoryInfo.geometries ?? null,
+            gpuMemoryEstimateMb: this.estimateGpuMemoryMb(memoryInfo),
+            heapUsedMb,
+            flags: {
+                forceWebGL: this.flags.forceWebGL === true,
+                noPost: this.flags.noPost === true,
+                noMRT: this.flags.noMRT === true,
+                noCompute: this.flags.noCompute === true,
+                noAdaptivePacing: this.flags.noAdaptivePacing === true,
+                noPrewarm: this.flags.noPrewarm === true,
+                baseline: this.flags.baseline === true,
+            },
+            capabilities: { ...this.capabilities },
+            runtimeFeatures: this.getRuntimeFeatureSnapshot(),
+            reactivePerformance: this.getReactivePerformanceSnapshot(),
+            computeBudget: this.computeBudget ? { ...this.computeBudget } : null,
+            sequence: { ...this.baselineSequenceStats },
+            budget: budgetResult,
+            seed: this.flags.seed,
+            fixedDtMs: this.flags.fixedDtMs,
+            capturedAt: new Date().toISOString(),
+        };
+    }
+
+    downloadBaselineReport(label = 'wolfhour-baseline') {
+        const report = this.getBaselineReport();
+        if (!report || typeof window === 'undefined' || typeof document === 'undefined') {
+            return null;
+        }
+
+        const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `${label}-${this.isWebGPU ? 'webgpu' : 'webgl'}-${Date.now()}.json`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        URL.revokeObjectURL(url);
+        return report;
+    }
+
+    captureBaseline(label = 'wolfhour') {
+        const canvas = this.renderer?.domElement;
+        if (!canvas || typeof window === 'undefined' || typeof document === 'undefined') {
+            return null;
+        }
+
+        const filename = `${label}-${this.isWebGPU ? 'webgpu' : 'webgl'}-${Date.now()}.png`;
+        if (canvas.toBlob) {
+            canvas.toBlob((blob) => {
+                if (!blob) return;
+                const url = URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.href = url;
+                anchor.download = filename;
+                document.body.appendChild(anchor);
+                anchor.click();
+                document.body.removeChild(anchor);
+                URL.revokeObjectURL(url);
+            });
+        } else {
+            const anchor = document.createElement('a');
+            anchor.href = canvas.toDataURL('image/png');
+            anchor.download = filename;
+            document.body.appendChild(anchor);
+            anchor.click();
+            document.body.removeChild(anchor);
+        }
+
+        return filename;
+    }
+
+    installBaselineHelpers() {
+        if (typeof window === 'undefined') return;
+        window.wolfhourBaseline = {
+            report: () => this.getBaselineReport(),
+            downloadReport: (label) => this.downloadBaselineReport(label),
+            capture: (label) => this.captureBaseline(label),
+            reset: () => this.resetBaselineSamples(),
+            play: (sequence = 'default', options = {}) => this.playBaselineSequence(sequence, options),
+            getPresetOrder: () => this.getBaselinePresetOrder(),
+            stop: () => this.clearBaselinePlaybackTimers(),
+        };
+        console.log(
+            '[WolfhourBaseline] Helpers: window.wolfhourBaseline.capture(label), report(), '
+            + 'downloadReport(label), reset(), play(sequence, options), getPresetOrder(), stop()',
+        );
+    }
+
+    removeBaselineHelpers() {
+        if (typeof window !== 'undefined' && window.wolfhourBaseline) {
+            delete window.wolfhourBaseline;
+        }
+    }
+
+    configureRendererColorPipeline() {
+        if (!this.renderer) return;
+
+        if (this.renderer.outputColorSpace !== undefined) {
+            this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        }
+
+        const postOwnsToneMapping = this.isWebGPU === true
+            && this.flags.usePost === true
+            && !!this.postProcessing;
+
+        if (postOwnsToneMapping) {
+            this.renderer.toneMapping = THREE.NoToneMapping;
+            this.renderer.toneMappingExposure = 1.0;
+            return;
+        }
+
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.0;
+    }
+
+    resolvePostProfile() {
+        if (!this.postFactories?.getWolfhourPostProfile) {
+            return { enabled: false, profile: 'off' };
+        }
+        return this.postFactories.getWolfhourPostProfile(this.getCurrentQualityLevel());
+    }
+
+    disablePostRuntime(stage, error) {
+        console.warn(`[Wolfhour] Post-processing failure at ${stage}; disabling post stack.`, error);
+
+        if (this.postProcessing) {
+            try {
+                this.postProcessing.dispose?.();
+            } catch (disposeError) {
+                console.warn('[Wolfhour] Post-processing dispose failed during runtime fallback:', disposeError);
+            }
+        }
+
+        this.postProcessing = null;
+        this.postProfile = null;
+        this.flags.noPost = true;
+        this.flags.usePost = false;
+        this.configureRendererColorPipeline();
+    }
+
+    enforceMRTRuntimeCompatibility() {
+        if (!this.isWebGPU) return;
+        if (this.flags.useMRT !== true) return;
+        // Wolfhour relies heavily on unlit node materials (MeshBasic/Points) that can
+        // produce invalid dual-target pipelines on Chromium WebGPU when MRT is enabled.
+        // Keep node post path active, but force single target to avoid pipeline failures.
+        this.flags.useMRT = false;
+    }
+
+    shouldUseCompute() {
+        return this.isWebGPU === true
+            && this.flags.useCompute === true
+            && this.qualityPreset.enableCompute === true
+            && typeof this.renderer?.compute === 'function'
+            && !!this.computeFactories;
+    }
+
+    shouldEnableStarTwinkleCompute() {
+        const benchmarkGainMs = Number(this.computeBenchmark?.starTwinkleGainMs ?? 0);
+        return this.shouldUseCompute()
+            && this.qualityPreset.computeStarTwinkle === true
+            && benchmarkGainMs > 0.5;
+    }
+
+    getComputeBoundsFromCamera() {
+        if (!this.camera) {
+            return {
+                xMin: -1000,
+                xMax: 1000,
+                yMin: -700,
+                yMax: 700,
+                zMin: -2200,
+                zMax: 350,
+            };
+        }
+
+        return {
+            xMin: this.camera.left - 180,
+            xMax: this.camera.right + 180,
+            yMin: this.camera.bottom - 240,
+            yMax: this.camera.top + 260,
+            zMin: -2200,
+            zMax: 350,
+        };
+    }
+
+    updateComputeBoundsFromCamera() {
+        const bounds = this.getComputeBoundsFromCamera();
+        this.spiritCompute?.setBounds?.(bounds);
+        this.ambientParticleCompute?.setBounds?.(bounds);
+    }
+
+    setupComputeSystems() {
+        this.disposeComputeSystems();
+        this.computeBudget = this.computeFactories?.getWolfhourComputeBudget?.(this.getCurrentQualityLevel()) || null;
+        this.flags.useCompute = this.flags.useCompute
+            && this.qualityPreset.enableCompute === true
+            && !!this.computeFactories;
+
+        if (!this.shouldUseCompute()) return;
+
+        this.updateComputeBoundsFromCamera();
+
+        if (this.shouldEnableStarTwinkleCompute()) {
+            try {
+                this.starTwinkleCompute = new this.computeFactories.WolfhourStarTwinkleCompute(
+                    this.qualityPreset.starCount,
+                    () => this.random(),
+                );
+                this.starTwinkleCompute.createComputeNode();
+            } catch (error) {
+                console.warn('[Wolfhour] Star twinkle compute init failed; keeping material twinkle path.', error);
+                this.starTwinkleCompute?.dispose?.();
+                this.starTwinkleCompute = null;
+            }
+        }
+
+        if (
+            this.qualityPreset.computeMeteorTrails === true
+            && this.computeFactories?.WolfhourMeteorTrailBatchCompute
+        ) {
+            try {
+                this.meteorTrailBatchCompute = new this.computeFactories.WolfhourMeteorTrailBatchCompute(
+                    10,
+                    this.qualityPreset.meteorTrailSegments,
+                );
+                this.meteorTrailBatchCompute.createComputeNode();
+            } catch (error) {
+                console.warn('[Wolfhour] Meteor trail batch compute init failed; using CPU updates.', error);
+                this.meteorTrailBatchCompute?.dispose?.();
+                this.meteorTrailBatchCompute = null;
+            }
+        }
+
+        if (
+            this.qualityPreset.computeDebris === true
+            && this.computeFactories?.WolfhourDebrisBatchCompute
+        ) {
+            try {
+                this.debrisBatchCompute = new this.computeFactories.WolfhourDebrisBatchCompute(
+                    this.qualityPreset.maxMeteorCrashes,
+                    this.qualityPreset.debrisPerCrash,
+                    () => this.random(),
+                );
+                this.debrisBatchCompute.createComputeNode();
+            } catch (error) {
+                console.warn('[Wolfhour] Debris batch compute init failed; using shader fallback.', error);
+                this.debrisBatchCompute?.dispose?.();
+                this.debrisBatchCompute = null;
+            }
+        }
+    }
+
+    disposeComputeSystems() {
+        if (this.starTwinkleCompute) {
+            this.starTwinkleCompute.dispose?.();
+            this.starTwinkleCompute = null;
+        }
+        if (this.spiritCompute) {
+            this.spiritCompute.dispose?.();
+            this.spiritCompute = null;
+        }
+        if (this.ambientParticleCompute) {
+            this.ambientParticleCompute.dispose?.();
+            this.ambientParticleCompute = null;
+        }
+        if (this.meteorTrailBatchCompute) {
+            this.meteorTrailBatchCompute.dispose?.();
+            this.meteorTrailBatchCompute = null;
+        }
+        if (this.debrisBatchCompute) {
+            this.debrisBatchCompute.dispose?.();
+            this.debrisBatchCompute = null;
+        }
+
+        this.meteors.forEach((meteor) => {
+            if (meteor.userData) meteor.userData.trailSlot = -1;
+        });
+        this.meteorCrashes.forEach((crash) => {
+            if (crash.userData) {
+                crash.userData.trailSlot = -1;
+                crash.userData.debrisSlot = -1;
+            }
+        });
+    }
+
+    requestComputeFallbackRebuild(stage, error) {
+        if (this.computeFallbackPending) return;
+        this.computeFallbackPending = true;
+
+        console.warn(`[Wolfhour] Compute failure at ${stage}; rebuilding with compute disabled.`, error);
+        this.flags.noCompute = true;
+        this.flags.useCompute = false;
+        this.disposeComputeSystems();
+
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+
+        setTimeout(() => {
+            this.computeFallbackPending = false;
+            this.cleanup();
+            if (this.container) {
+                this.createScene();
+            }
+        }, 0);
+    }
+
+    updateComputeSystems(deltaTime) {
+        if (!this.shouldUseCompute()) return;
+
+        try {
+            if (this.starTwinkleCompute?.computeNode) {
+                this.starTwinkleCompute.update(deltaTime, {
+                    twinkleScale: this.qualityPreset.starTwinkleSpeed || 1,
+                });
+                this.renderer.compute(this.starTwinkleCompute.computeNode);
+            }
+
+            if (this.spiritCompute?.computeNode) {
+                this.spiritCompute.update(deltaTime, this.time, {
+                    surge: this.effectState.spiritSurge,
+                    scatter: this.effectState.ambientScatter * 0.35,
+                });
+                this.renderer.compute(this.spiritCompute.computeNode);
+            }
+
+            if (this.ambientParticleCompute?.computeNode) {
+                this.ambientParticleCompute.update(deltaTime, this.time, {
+                    scatter: this.effectState.ambientScatter,
+                    swirl: this.effectState.ambientSwirl,
+                });
+                this.renderer.compute(this.ambientParticleCompute.computeNode);
+            }
+            if (this.meteorTrailBatchCompute?.computeNode && this.meteorTrailBatchCompute.hasActiveSlots?.()) {
+                this.meteorTrailBatchCompute.update(deltaTime);
+                this.renderer.compute(this.meteorTrailBatchCompute.computeNode);
+            }
+            if (this.debrisBatchCompute?.computeNode && this.debrisBatchCompute.hasActiveSlots?.()) {
+                this.debrisBatchCompute.update(deltaTime, {
+                    drag: 0.983,
+                    gravity: -380.0,
+                });
+                this.renderer.compute(this.debrisBatchCompute.computeNode);
+            }
+        } catch (error) {
+            this.requestComputeFallbackRebuild('updateComputeSystems', error);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -218,6 +1119,44 @@ export default class WolfhourTheme extends BaseTheme {
 
     async createScene() {
         console.log('[Wolfhour] Creating Three.js scene...');
+        this.computeFallbackPending = false;
+
+        // Filter benign Three.js warning: PointsNodeMaterial internally provides
+        // point UVs via quad geometry, but the node compiler warns because the
+        // original BufferGeometry has no "uv" attribute. This is a known Three.js
+        // bug (PointUVNode hardcodes GLSL gl_PointCoord instead of using the
+        // builder's backend-appropriate getBuiltin).
+        if (!this._origConsoleWarn) {
+            const origWarn = console.warn;
+            this._origConsoleWarn = origWarn;
+            console.warn = function (...args) {
+                if (typeof args[0] === 'string'
+                    && args[0].includes('Vertex attribute "uv" not found on geometry')) return;
+                origWarn.apply(console, args);
+            };
+        }
+
+        const previousFlags = { ...this.flags };
+        const parsedFlags = parseWolfhourFlags();
+        this.flags = { ...previousFlags, ...parsedFlags };
+        this.flags.forceWebGL = previousFlags.forceWebGL === true || parsedFlags.forceWebGL === true;
+        this.flags.noPost = previousFlags.noPost === true || parsedFlags.noPost === true;
+        this.flags.noMRT = previousFlags.noMRT === true || parsedFlags.noMRT === true;
+        this.flags.noCompute = previousFlags.noCompute === true || parsedFlags.noCompute === true;
+        this.flags.noAdaptivePacing = previousFlags.noAdaptivePacing === true || parsedFlags.noAdaptivePacing === true;
+        this.flags.noPrewarm = previousFlags.noPrewarm === true || parsedFlags.noPrewarm === true;
+        if (!this.flags.playback && previousFlags.playback) {
+            this.flags.playback = previousFlags.playback;
+        }
+        if (!Number.isFinite(this.flags.playbackLoops) || this.flags.playbackLoops <= 0) {
+            this.flags.playbackLoops = Number.isFinite(previousFlags.playbackLoops) && previousFlags.playbackLoops > 0
+                ? Math.floor(previousFlags.playbackLoops)
+                : 1;
+        }
+        this.randomFn = createSeededRandom(this.flags.seed);
+        this.fixedDeltaSeconds = this.flags.fixedDtMs ? this.flags.fixedDtMs / 1000 : null;
+        this.fixedElapsedTime = 0;
+        this.resetBaselineSamples();
 
         const quality = this.getCurrentQualityLevel();
         this.applyQualityPreset(quality);
@@ -227,32 +1166,176 @@ export default class WolfhourTheme extends BaseTheme {
             console.error('[Wolfhour] Container not found');
             return;
         }
+        this.container = container;
 
-        this.initRenderer(container);
+        await this.initRenderer(container);
+
+        this.materialFactories = null;
+        this.computeFactories = null;
+        this.postFactories = null;
+        this.postProfile = null;
+
+        // WebGPU path: dynamically import node material factories + compute module
+        if (this.isWebGPU) {
+            try {
+                const materialsModule = await import('./wolfhour-materials.js');
+                this.materialFactories = materialsModule;
+                console.log('[Wolfhour] TSL node material factories loaded');
+            } catch (err) {
+                console.warn('[Wolfhour] Failed to load node materials, using legacy:', err);
+                this.materialFactories = null;
+            }
+
+            if (this.materialFactories) {
+                try {
+                    const computeModule = await import('./wolfhour-compute.js');
+                    this.computeFactories = computeModule;
+                } catch (err) {
+                    console.warn('[Wolfhour] Failed to load compute module; keeping non-compute WebGPU path:', err);
+                    this.flags.noCompute = true;
+                    this.flags.useCompute = false;
+                    this.computeFactories = null;
+                }
+            } else {
+                this.computeFactories = null;
+                this.flags.noCompute = true;
+            }
+
+            try {
+                const postModule = await import('./wolfhour-post.js');
+                this.postFactories = postModule;
+            } catch (err) {
+                console.warn('[Wolfhour] Failed to load post module; disabling WebGPU post path:', err);
+                this.flags.noPost = true;
+                this.flags.usePost = false;
+                this.postFactories = null;
+            }
+        }
+
+        this.setupComputeSystems();
+        this.enforceMRTRuntimeCompatibility();
+
         this.createStarfield();
         this.createNebulaBackdrop();
         this.createMountains();
-        this.createSpirits();
+        this.createGroundFog();
         this.setupPostProcessing();
+        this.configureRendererColorPipeline();
+        this.setupReactivePools();
+        this.runReactivePrewarm();
         this.setupEventListeners();
+        this.setupQualityListener();
         this.startAnimation();
 
-        console.log('[Wolfhour] Scene created');
+        if (this.flags.baseline) {
+            this.installBaselineHelpers();
+            console.log('[WolfhourBaseline] Baseline mode enabled', {
+                backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+                quality,
+                seed: this.flags.seed,
+                fixedDtMs: this.flags.fixedDtMs,
+                playback: this.flags.playback,
+                playbackLoops: this.flags.playbackLoops,
+                budget: this.performanceBudget,
+            });
+        }
+        if (this.flags.playback) {
+            this.playBaselineSequence(this.flags.playback, {
+                loops: this.flags.playbackLoops,
+            });
+        }
+
+        const materialMode = this.isWebGPU && this.materialFactories ? 'node' : 'legacy';
+        const computeEnabled = this.shouldUseCompute();
+        console.log('[Wolfhour] Scene created', {
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            materialMode,
+            compute: computeEnabled,
+            post: this.flags.usePost,
+            mrt: this.flags.useMRT,
+            performanceBudget: this.performanceBudget,
+        });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Renderer & Camera
     // ─────────────────────────────────────────────────────────────────────────
 
-    initRenderer(container) {
+    async initRenderer(container) {
         const width = window.innerWidth;
         const height = window.innerHeight;
 
-        this.renderer = new THREE.WebGLRenderer({
-            antialias: this.getAntialiasEnabled(),
-            alpha: false,
-            powerPreference: 'high-performance',
-        });
+        this.isWebGPU = false;
+        this.isWebGL = false;
+        this.capabilities = {
+            webgpu: false,
+            webgl: false,
+            maxColorAttachments: 1,
+            supportsPost: false,
+            supportsMRT: false,
+            supportsCompute: false,
+        };
+
+        const useWebGPU = !this.flags.forceWebGL && navigator.gpu;
+
+        if (useWebGPU) {
+            try {
+                const THREE_WEBGPU = await import('three/webgpu');
+                const renderer = new THREE_WEBGPU.WebGPURenderer({
+                    antialias: this.getAntialiasEnabled(),
+                    alpha: false,
+                    preserveDrawingBuffer: this.flags.baseline === true,
+                });
+
+                await renderer.init();
+
+                if (renderer.backend && renderer.backend.isWebGPUBackend) {
+                    this.renderer = renderer;
+                    this.isWebGPU = true;
+
+                    this.capabilities.webgpu = true;
+                    this.capabilities.supportsPost = true;
+                    this.capabilities.maxColorAttachments = 8;
+                    this.capabilities.supportsMRT = true;
+                    this.capabilities.supportsCompute = typeof renderer.compute === 'function';
+
+                    console.log('[Wolfhour] WebGPU backend initialized successfully');
+                } else {
+                    console.log('[Wolfhour] WebGPU backend not acquired, falling back to WebGL');
+                    if (renderer.dispose) renderer.dispose();
+                }
+            } catch (err) {
+                console.warn('[Wolfhour] WebGPU initialization failed:', err);
+            }
+        }
+
+        if (!this.renderer) {
+            console.log('[Wolfhour] Initializing WebGL fallback renderer');
+            this.renderer = new THREE.WebGLRenderer({
+                antialias: this.getAntialiasEnabled(),
+                alpha: false,
+                powerPreference: 'high-performance',
+                preserveDrawingBuffer: this.flags.baseline === true,
+            });
+            this.isWebGL = true;
+            this.capabilities.webgl = true;
+            this.capabilities.maxColorAttachments = 1;
+            this.capabilities.supportsPost = true; // via EffectComposer
+            this.capabilities.supportsMRT = false;
+            this.capabilities.supportsCompute = false;
+        }
+
+        // Apply policy flags
+        this.flags.usePost = this.capabilities.supportsPost
+            && !this.flags.noPost
+            && this.qualityPreset.enableNodePost !== false;
+        this.flags.useMRT = this.capabilities.supportsMRT
+            && !this.flags.noMRT
+            && this.qualityPreset.enableMRT !== false;
+        this.flags.useCompute = this.capabilities.supportsCompute
+            && !this.flags.noCompute
+            && this.qualityPreset.enableCompute === true;
+
         this.renderer.setClearColor(0x000000, 1);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
         this.renderer.setSize(width, height);
@@ -263,6 +1346,18 @@ export default class WolfhourTheme extends BaseTheme {
         this.registerContainer(container);
 
         this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x000000);
+
+        // Setup Device-Loss handling
+        if (this.isWebGPU && this.renderer.backend && this.renderer.backend.device) {
+            this.renderer.backend.device.lost.then((info) => {
+                this.handleDeviceLost(info);
+            });
+        }
+        this.renderer.domElement.addEventListener('webglcontextlost', (e) => {
+            e.preventDefault();
+            this.handleDeviceLost(e);
+        });
 
         // Orthographic camera for 2D-style layered scene
         const aspect = width / height;
@@ -282,10 +1377,87 @@ export default class WolfhourTheme extends BaseTheme {
         this.resizeHandler = () => this.handleResize();
         window.addEventListener('resize', this.resizeHandler);
 
-        console.log('[Wolfhour] Renderer initialized with orthographic camera');
+        this.configureRendererColorPipeline();
+
+        console.log(`[Wolfhour] Renderer initialized (WebGPU: ${this.isWebGPU}, WebGL: ${this.isWebGL})`);
+    }
+
+    handleDeviceLost(info) {
+        console.error('[Wolfhour] Device lost detected!', info);
+
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+
+        this.flags.forceWebGL = true;
+        this.flags.noMRT = true;
+        this.flags.noCompute = true;
+        this.flags.useCompute = false;
+        this.disposeComputeSystems();
+
+        setTimeout(() => {
+            console.log('[Wolfhour] Rebuilding scene on fallback renderer after device loss...');
+            this.cleanup();
+            if (this.container) {
+                this.createScene();
+            }
+        }, 1000);
+    }
+
+    updateNodePixelRatio(nodeData, pixelRatio) {
+        if (nodeData?.uniforms?.uPixelRatio && typeof nodeData.uniforms.uPixelRatio.value === 'number') {
+            nodeData.uniforms.uPixelRatio.value = pixelRatio;
+        }
+    }
+
+    updatePixelRatioUniforms(pixelRatio) {
+        const withPool = (active, pooled) => [...active, ...(pooled || [])];
+
+        this.updateNodePixelRatio(this.starfieldNodeData, pixelRatio);
+        this.updateNodePixelRatio(this.spiritNodeData, pixelRatio);
+        this.updateNodePixelRatio(this.ambientParticles?.userData?.nodeData, pixelRatio);
+        this.updateNodePixelRatio(this.groundFog?.userData?.nodeData, pixelRatio);
+
+        this.nebulaPlanes.forEach((nebula) => this.updateNodePixelRatio(nebula?.userData?.nodeData, pixelRatio));
+        this.mountains.forEach((mountain) => this.updateNodePixelRatio(mountain?.userData?.nodeData, pixelRatio));
+        withPool(this.starBursts, this.effectPools.starBurst)
+            .forEach((burst) => this.updateNodePixelRatio(burst?.userData?.nodeData, pixelRatio));
+        withPool(this.celestialBeams, this.effectPools.beam)
+            .forEach((beam) => this.updateNodePixelRatio(beam?.userData?.nodeData, pixelRatio));
+        withPool(this.cosmicRifts, this.effectPools.rift)
+            .forEach((rift) => this.updateNodePixelRatio(rift?.userData?.nodeData, pixelRatio));
+        withPool(this.cosmicWaves, this.effectPools.wave)
+            .forEach((wave) => this.updateNodePixelRatio(wave?.userData?.nodeData, pixelRatio));
+
+        withPool(this.meteors, this.effectPools.meteor).forEach((meteor) => {
+            this.updateNodePixelRatio(meteor?.userData?.trailNodeData, pixelRatio);
+            this.updateNodePixelRatio(meteor?.userData?.headNodeData, pixelRatio);
+        });
+        withPool(this.meteorCrashes, this.effectPools.crash).forEach((crash) => {
+            this.updateNodePixelRatio(crash?.userData?.trailNodeData, pixelRatio);
+            this.updateNodePixelRatio(crash?.userData?.headNodeData, pixelRatio);
+            this.updateNodePixelRatio(crash?.userData?.debrisNodeData, pixelRatio);
+            this.updateNodePixelRatio(crash?.userData?.dustNodeData, pixelRatio);
+            this.updateNodePixelRatio(crash?.userData?.shockwaveNodeData, pixelRatio);
+        });
+
+        if (!this.scene) return;
+        this.scene.traverse((object) => {
+            const material = object?.material;
+            if (!material) return;
+            const materials = Array.isArray(material) ? material : [material];
+            materials.forEach((entry) => {
+                if (entry?.uniforms?.uPixelRatio && typeof entry.uniforms.uPixelRatio.value === 'number') {
+                    entry.uniforms.uPixelRatio.value = pixelRatio;
+                }
+            });
+        });
     }
 
     handleResize() {
+        if (!this.camera || !this.renderer) return;
+
         const width = window.innerWidth;
         const height = window.innerHeight;
         const aspect = width / height;
@@ -296,10 +1468,26 @@ export default class WolfhourTheme extends BaseTheme {
         this.camera.top = frustumSize / 2;
         this.camera.bottom = frustumSize / -2;
         this.camera.updateProjectionMatrix();
+        this.lastCameraFrustum = {
+            left: this.camera.left,
+            right: this.camera.right,
+            top: this.camera.top,
+            bottom: this.camera.bottom,
+        };
 
+        const pixelRatio = this.getEffectivePixelRatio();
+        this.renderer.setPixelRatio(pixelRatio);
         this.renderer.setSize(width, height);
+        this.updatePixelRatioUniforms(pixelRatio);
+        if (this.postProcessing && this.postProcessing.setSize) {
+            this.postProcessing.setSize(width, height);
+        }
         if (this.composer) {
             this.composer.setSize(width, height);
+        }
+
+        if (this.shouldUseCompute()) {
+            this.updateComputeBoundsFromCamera();
         }
     }
 
@@ -307,7 +1495,7 @@ export default class WolfhourTheme extends BaseTheme {
     // GPU-Driven Starfield
     // ─────────────────────────────────────────────────────────────────────────
 
-    createStarfield() {
+    createStarfieldGeometry() {
         const count = this.qualityPreset.starCount;
         const geometry = new THREE.BufferGeometry();
 
@@ -329,35 +1517,33 @@ export default class WolfhourTheme extends BaseTheme {
             const i3 = i * 3;
             const i2 = i * 2;
 
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
+            const theta = this.random() * Math.PI * 2;
+            const phi = Math.acos(2 * this.random() - 1);
 
             // 3 depth layers: Z = -1000 to -4500
-            const layerRand = Math.random();
+            const layerRand = this.random();
             let radius;
             if (layerRand < 0.33) {
-                radius = 1200 + Math.random() * 300;
+                radius = 1200 + this.random() * 300;
             } else if (layerRand < 0.66) {
-                radius = 2500 + Math.random() * 500;
+                radius = 2500 + this.random() * 500;
             } else {
-                radius = 3500 + Math.random() * 1000;
+                radius = 3500 + this.random() * 1000;
             }
 
             positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
-            // Allow stars across full screen height (positive and negative Y)
             positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta) * 0.6;
-            // Ensure ALL stars are behind mountains (min Z = -1700, far behind back mountain at -1500)
             positions[i3 + 2] = -Math.abs(radius * Math.cos(phi)) - 1700;
 
-            const color = starColors[Math.floor(Math.random() * starColors.length)];
+            const color = starColors[Math.floor(this.random() * starColors.length)];
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
-            sizes[i] = 20 + Math.random() * 40;
-            twinkleData[i2] = Math.random() * Math.PI * 2;
-            twinkleData[i2 + 1] = 1.0 + Math.random() * 2.5;
-            brightness[i] = 0.3 + Math.random() * 0.7;
+            sizes[i] = 20 + this.random() * 40;
+            twinkleData[i2] = this.random() * Math.PI * 2;
+            twinkleData[i2 + 1] = 1.0 + this.random() * 2.5;
+            brightness[i] = 0.3 + this.random() * 0.7;
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -366,23 +1552,74 @@ export default class WolfhourTheme extends BaseTheme {
         geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
         geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uPixelRatio: { value: this.renderer.getPixelRatio() },
-                uEventBoost: { value: 0 },
-            },
-            vertexShader: starfieldVertexShader,
-            fragmentShader: starfieldFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            depthTest: true, // Stars are occluded by mountains
-            vertexColors: true,
-        });
+        return geometry;
+    }
 
-        this.starfield = new THREE.Points(geometry, material);
-        this.starfield.renderOrder = 1000; // Render AFTER mountains (so depth test occludes them)
+    /**
+     * Converts a points geometry into an InstancedMesh using a quad for WebGPU compatibility.
+     * WebGPU doesn't support variable point sizes for Points, so we use billboarding on InstancedMesh.
+     */
+    _createInstancedParticleMesh(pointsGeometry, material) {
+        if (!this.isWebGPU) {
+            return new THREE.Points(pointsGeometry, material);
+        }
+
+        const count = pointsGeometry.attributes.position.count;
+        const quad = new THREE.PlaneGeometry(1, 1);
+        const instancedMesh = new THREE.InstancedMesh(quad, material, count);
+
+        // Copy instance matrices from position attribute (just translation)
+        const dummy = new THREE.Object3D();
+        const posAttr = pointsGeometry.attributes.position;
+        for (let i = 0; i < count; i++) {
+            dummy.position.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+            dummy.updateMatrix();
+            instancedMesh.setMatrixAt(i, dummy.matrix);
+        }
+        instancedMesh.instanceMatrix.needsUpdate = true;
+
+        // Copy all other explicit attributes as InstancedBufferAttributes
+        for (const key in pointsGeometry.attributes) {
+            if (key !== 'position') {
+                const attr = pointsGeometry.attributes[key];
+                instancedMesh.geometry.setAttribute(key, new THREE.InstancedBufferAttribute(attr.array, attr.itemSize, attr.normalized));
+            }
+        }
+
+        return instancedMesh;
+    }
+
+    createStarfield() {
+        const geometry = this.createStarfieldGeometry();
+
+        if (this.isWebGPU && this.materialFactories) {
+            const result = this.materialFactories.createStarfieldNodeMaterial({
+                pixelRatio: this.renderer.getPixelRatio(),
+                enableDiffraction: this.qualityPreset.enableDiffraction === true,
+                diffractionStrength: this.qualityPreset.enableDiffraction ? 0.18 : 0.0,
+                depthGlowStrength: this.qualityPreset.enableDiffraction ? 0.95 : 0.55,
+            });
+            this.starfieldNodeData = result;
+            this.starfield = this._createInstancedParticleMesh(geometry, result.material);
+        } else {
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uPixelRatio: { value: this.renderer.getPixelRatio() },
+                    uEventBoost: { value: 0 },
+                },
+                vertexShader: starfieldVertexShader,
+                fragmentShader: starfieldFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                depthTest: true,
+                vertexColors: true,
+            });
+            this.starfield = new THREE.Points(geometry, material);
+        }
+
+        this.starfield.renderOrder = 1000;
         this.scene.add(this.starfield);
     }
 
@@ -445,18 +1682,29 @@ export default class WolfhourTheme extends BaseTheme {
         nebulaConfigs.forEach((config, index) => {
             const geometry = new THREE.PlaneGeometry(config.size, config.size * 0.6);
 
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    tDiffuse: { value: config.texture },
-                    uOpacity: { value: config.opacity },
-                    uPulse: { value: 0 },
-                },
-                vertexShader: nebulaVertexShader,
-                fragmentShader: nebulaFragmentShader,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-            });
+            let material;
+            let nodeData = null;
+            if (this.isWebGPU && this.materialFactories) {
+                const result = this.materialFactories.createNebulaNodeMaterial({
+                    texture: config.texture,
+                    opacity: config.opacity,
+                });
+                material = result.material;
+                nodeData = result;
+            } else {
+                material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        tDiffuse: { value: config.texture },
+                        uOpacity: { value: config.opacity },
+                        uPulse: { value: 0 },
+                    },
+                    vertexShader: nebulaVertexShader,
+                    fragmentShader: nebulaFragmentShader,
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                });
+            }
 
             const mesh = new THREE.Mesh(geometry, material);
             mesh.position.set(config.x, config.y, config.z);
@@ -465,6 +1713,7 @@ export default class WolfhourTheme extends BaseTheme {
             mesh.userData.speed = config.speed;
             mesh.userData.startX = config.x;
             mesh.userData.wrapBoundary = config.size * 1.5;
+            if (nodeData) mesh.userData.nodeData = nodeData;
 
             this.nebulaPlanes.push(mesh);
             this.scene.add(mesh);
@@ -639,28 +1888,64 @@ export default class WolfhourTheme extends BaseTheme {
         }
         geometry.setAttribute('aHeight', new THREE.BufferAttribute(heightAttr, 1));
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uRockColorDark: { value: new THREE.Color(0x151515) },
-                uRockColorMid: { value: new THREE.Color(0x202020) },
-                uRockColorLight: { value: new THREE.Color(0x303030) },
-                uMountainLayer: { value: config.layer },
-                uPulseIntensity: { value: 0 },
-                uShockwave: { value: 0 }, // For onPieceLock displacement
-                uTime: { value: 0 },
-            },
-            vertexShader: mountainVertexShader,
-            fragmentShader: mountainFragmentShader,
-            transparent: false,
-        });
+        let material;
+        let nodeData = null;
+        if (this.isWebGPU && this.materialFactories) {
+            const result = this.materialFactories.createMountainNodeMaterial({
+                layer: config.layer,
+                ridgeStrength: 0.18 + (1.0 - config.layer) * 0.28,
+                snowAmount: 0.2 + config.layer * 0.15,
+            });
+            material = result.material;
+            nodeData = result;
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uRockColorDark: { value: new THREE.Color(0x151515) },
+                    uRockColorMid: { value: new THREE.Color(0x202020) },
+                    uRockColorLight: { value: new THREE.Color(0x303030) },
+                    uMountainLayer: { value: config.layer },
+                    uPulseIntensity: { value: 0 },
+                    uShockwave: { value: 0 },
+                    uTime: { value: 0 },
+                },
+                vertexShader: mountainVertexShader,
+                fragmentShader: mountainFragmentShader,
+                transparent: false,
+            });
+        }
 
         const mesh = new THREE.Mesh(geometry, material);
-        // Position with X offset for mountain range spread, higher up to fill screen more
         const xPos = config.x || 0;
         mesh.position.set(xPos, -450, config.z);
-        // Render in front of stars (higher layer = closer to camera = renders later)
         mesh.renderOrder = -100 + Math.round(config.layer * 10);
+        if (nodeData) {
+            mesh.userData.nodeData = nodeData;
+            mesh.userData.baseRidgeStrength = nodeData.uniforms?.uRidgeStrength?.value ?? 0.25;
+            mesh.userData.baseSnowAmount = nodeData.uniforms?.uSnowAmount?.value ?? 0.22;
+        }
         return mesh;
+    }
+
+    createGroundFog() {
+        const shouldCreateFog = this.isWebGPU
+            && this.materialFactories
+            && this.qualityPreset.enableGroundFog === true
+            && typeof this.materialFactories.createGroundFogNodeMaterial === 'function';
+        if (!shouldCreateFog) return;
+
+        const geometry = new THREE.PlaneGeometry(5600, 1800);
+        const fogResult = this.materialFactories.createGroundFogNodeMaterial({
+            opacity: 0.2,
+        });
+
+        const fog = new THREE.Mesh(geometry, fogResult.material);
+        fog.position.set(0, -260, -780);
+        fog.renderOrder = -55;
+        fog.userData.nodeData = fogResult;
+
+        this.groundFog = fog;
+        this.scene.add(fog);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -668,45 +1953,11 @@ export default class WolfhourTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createSpirits() {
-        const count = this.qualityPreset.spiritCount;
-        if (count === 0) return;
+        // Removed as per user request
+    }
 
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(count * 3);
-        const phases = new Float32Array(count);
-        const speeds = new Float32Array(count);
-        const sizes = new Float32Array(count);
-
-        for (let i = 0; i < count; i++) {
-            positions[i * 3] = (Math.random() - 0.5) * 1500;
-            positions[i * 3 + 1] = 100 + Math.random() * 400;
-            positions[i * 3 + 2] = -200 - Math.random() * 600;
-
-            phases[i] = Math.random() * Math.PI * 2;
-            speeds[i] = 0.5 + Math.random() * 1.0;
-            sizes[i] = 30 + Math.random() * 50;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
-        geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uPixelRatio: { value: this.renderer.getPixelRatio() },
-                uSurgeIntensity: { value: 0 },
-            },
-            vertexShader: spiritVertexShader,
-            fragmentShader: spiritFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        this.spirits = new THREE.Points(geometry, material);
-        this.scene.add(this.spirits);
+    createAmbientParticles() {
+        // Removed as per user request
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -714,7 +1965,92 @@ export default class WolfhourTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     setupPostProcessing() {
-        if (!this.qualityPreset.enableBloom) return;
+        if (this.postProcessing) {
+            this.postProcessing.dispose?.();
+            this.postProcessing = null;
+        }
+        if (this.composer) {
+            this.composer.dispose();
+            this.composer = null;
+        }
+        this.bloomPass = null;
+        this.silverTintPass = null;
+        this.postProfile = null;
+
+        if (!this.flags.usePost) {
+            this.configureRendererColorPipeline();
+            return;
+        }
+
+        if (this.isWebGPU) {
+            if (!this.postFactories?.WolfhourPost) {
+                this.flags.usePost = false;
+                this.configureRendererColorPipeline();
+                return;
+            }
+
+            const profile = this.resolvePostProfile();
+            this.postProfile = profile;
+            if (profile.enabled !== true) {
+                this.configureRendererColorPipeline();
+                return;
+            }
+
+            try {
+                this.postProcessing = new this.postFactories.WolfhourPost(
+                    this.renderer,
+                    this.scene,
+                    this.camera,
+                    {
+                        useMRT: this.flags.useMRT === true,
+                        profile: profile.profile,
+                        bloomStrength: this.qualityPreset.bloomStrength,
+                        bloomRadius: profile.bloomRadius,
+                        bloomThreshold: profile.bloomThreshold,
+                        bloomDownsample: profile.bloomDownsample,
+                        silverTintStrength: profile.silverTintStrength,
+                        tintDesaturation: profile.tintDesaturation,
+                        vignetteOffset: profile.vignetteOffset,
+                        vignetteDarkness: profile.vignetteDarkness,
+                        exposure: profile.exposure,
+                        contrast: profile.contrast,
+                        saturation: profile.saturation,
+                        useFilmGrain: profile.useFilmGrain,
+                        grainStrength: profile.grainStrength,
+                        ditherStrength: profile.ditherStrength,
+                    },
+                );
+                this.postProcessing.updateStaticProfile?.({
+                    bloomRadius: profile.bloomRadius,
+                    bloomThreshold: profile.bloomThreshold,
+                    bloomDownsample: profile.bloomDownsample,
+                    silverTintStrength: profile.silverTintStrength,
+                    tintDesaturation: profile.tintDesaturation,
+                    vignetteOffset: profile.vignetteOffset,
+                    vignetteDarkness: profile.vignetteDarkness,
+                    exposure: profile.exposure,
+                    contrast: profile.contrast,
+                    saturation: profile.saturation,
+                    useFilmGrain: profile.useFilmGrain,
+                    grainStrength: profile.grainStrength,
+                    ditherStrength: profile.ditherStrength,
+                });
+                this.postProcessing.setSize(window.innerWidth, window.innerHeight);
+            } catch (error) {
+                this.disablePostRuntime('setupPostProcessing', error);
+                return;
+            }
+
+            this.configureRendererColorPipeline();
+            return;
+        }
+
+        this.setupPostProcessingLegacy();
+        this.configureRendererColorPipeline();
+    }
+
+    setupPostProcessingLegacy() {
+        if (!this.flags.usePost || !this.qualityPreset.enableBloom) return;
 
         this.composer = new EffectComposer(this.renderer);
 
@@ -776,19 +2112,181 @@ export default class WolfhourTheme extends BaseTheme {
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, levelUpUnsub);
     }
 
+    setupQualityListener() {
+        if (typeof window === 'undefined') return;
+        this.teardownQualityListener();
+        this.qualityChangeHandler = (event) => {
+            const changed = event?.detail || {};
+            if (
+                !Object.prototype.hasOwnProperty.call(changed, 'effectQuality')
+                && !Object.prototype.hasOwnProperty.call(changed, 'graphicsQuality')
+            ) {
+                return;
+            }
+
+            const runtimeQuality = this.getCurrentQualityLevel();
+            if (runtimeQuality === this.activeQualityLevel) return;
+            this.requestRuntimeQualityRebuild('settingsChanged');
+        };
+        window.addEventListener('settingsChanged', this.qualityChangeHandler);
+    }
+
+    teardownQualityListener() {
+        if (typeof window === 'undefined') return;
+        if (!this.qualityChangeHandler) return;
+        window.removeEventListener('settingsChanged', this.qualityChangeHandler);
+        this.qualityChangeHandler = null;
+    }
+
+    requestRuntimeQualityRebuild(reason = 'settingsChanged') {
+        if (!this.isActive || this.qualityRebuildPending) return;
+        this.qualityRebuildPending = true;
+        console.log(`[Wolfhour] Rebuilding scene after quality update (${reason})`);
+        setTimeout(() => {
+            this.qualityRebuildPending = false;
+            this.cleanup();
+            if (this.container) {
+                this.createScene();
+            }
+        }, 0);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Gameplay Effects
     // ─────────────────────────────────────────────────────────────────────────
 
-    onPieceLock() {
-        if (this.starBursts.length < this.qualityPreset.maxStarBursts) {
-            this.createStarBurst();
+    getReactiveBudgetCredits() {
+        const quality = normalizeQuality(this.activeQualityLevel || this.getCurrentQualityLevel());
+        return this.reactiveBudgetCredits[quality] ?? REACTIVE_BUDGET_CREDITS.High;
+    }
+
+    enqueueReactiveToken(type, payload = {}, createdAtMs = performance.now()) {
+        const expiryMs = this.reactiveTokenExpiryMs[type];
+        if (!Number.isFinite(expiryMs)) return;
+
+        this.reactiveQueue.push({
+            type,
+            payload,
+            createdAtMs,
+            expiresAtMs: createdAtMs + expiryMs,
+        });
+        this.reactiveMetrics.queueMaxDepth = Math.max(
+            this.reactiveMetrics.queueMaxDepth,
+            this.reactiveQueue.length,
+        );
+    }
+
+    enqueueReactiveBurst(type, count, payload = {}) {
+        const burstCount = Math.max(0, Math.floor(count));
+        const startAt = performance.now();
+        for (let i = 0; i < burstCount; i += 1) {
+            const spacing = type === 'meteor' ? 120 : type === 'crash' ? 260 : 35;
+            const createdAtMs = startAt + (i * spacing);
+            this.enqueueReactiveToken(type, payload, createdAtMs);
         }
+    }
+
+    applyReactiveExpiryEnvelope(token) {
+        this.reactiveMetrics.tokensDropped += 1;
+        const heavy = token.type === 'meteor' || token.type === 'crash';
+
+        this.effectState.bloomBoost = Math.max(
+            this.effectState.bloomBoost,
+            heavy ? 0.18 : 0.08,
+        );
+        this.effectState.nebulaDefinition = Math.max(
+            this.effectState.nebulaDefinition,
+            heavy ? 0.65 : 0.45,
+        );
+        this.effectState.cameraShake = Math.max(
+            this.effectState.cameraShake,
+            heavy ? 0.42 : 0.16,
+        );
+    }
+
+    spawnReactiveToken(token) {
+        let created = false;
+        if (token.type === 'starBurst') {
+            const before = this.starBursts.length;
+            this.createStarBurst();
+            created = this.starBursts.length > before;
+        } else if (token.type === 'beam') {
+            const before = this.celestialBeams.length;
+            this.createCelestialBeam();
+            created = this.celestialBeams.length > before;
+        } else if (token.type === 'rift') {
+            const before = this.cosmicRifts.length;
+            this.createCosmicRift();
+            created = this.cosmicRifts.length > before;
+        } else if (token.type === 'wave') {
+            const before = this.cosmicWaves.length;
+            this.createCosmicWave();
+            created = this.cosmicWaves.length > before;
+        } else if (token.type === 'meteor') {
+            const before = this.meteors.length;
+            this.createMeteor();
+            created = this.meteors.length > before;
+        } else if (token.type === 'crash') {
+            const before = this.meteorCrashes.length;
+            this.createMeteorCrash();
+            created = this.meteorCrashes.length > before;
+        }
+
+        if (!created) {
+            this.reactiveMetrics.poolMisses += 1;
+        }
+        return created;
+    }
+
+    processReactiveQueue() {
+        if (!this.reactiveQueue.length) return;
+
+        const now = performance.now();
+        const adaptivePacingEnabled = this.flags.noAdaptivePacing !== true;
+        let credits = adaptivePacingEnabled ? this.getReactiveBudgetCredits() : Number.POSITIVE_INFINITY;
+
+        while (this.reactiveQueue.length > 0 && credits > 0) {
+            const token = this.reactiveQueue[0];
+
+            if (token.expiresAtMs <= now) {
+                this.reactiveQueue.shift();
+                this.applyReactiveExpiryEnvelope(token);
+                continue;
+            }
+            if (token.createdAtMs > now) break;
+
+            const cost = this.reactiveTokenCosts[token.type] ?? 1;
+            if (adaptivePacingEnabled && cost > credits) break;
+
+            const spawnStart = performance.now();
+            const created = this.spawnReactiveToken(token);
+            const spawnDuration = performance.now() - spawnStart;
+            this.recordReactiveSpawnDuration(spawnDuration);
+
+            if (created) {
+                this.reactiveQueue.shift();
+                if (adaptivePacingEnabled) {
+                    credits -= cost;
+                }
+                continue;
+            }
+
+            // Pool is saturated this frame; try next frame until token expires.
+            break;
+        }
+    }
+
+    onPieceLock() {
+        this.enqueueReactiveToken('starBurst');
 
         this.effectState.mountainPulse = 0.8;
         this.effectState.mountainShockwave = 1.0; // Trigger vertex wave
+        this.effectState.ambientScatter = Math.max(this.effectState.ambientScatter, 0.85);
+        this.effectState.nebulaDefinition = Math.max(this.effectState.nebulaDefinition, 0.35);
 
-        if (this.starfield) {
+        if (this.isWebGPU && this.starfieldNodeData) {
+            this.starfieldNodeData.uniforms.uEventBoost.value = 0.5;
+        } else if (this.starfield) {
             this.starfield.material.uniforms.uEventBoost.value = 0.5;
         }
     }
@@ -796,56 +2294,57 @@ export default class WolfhourTheme extends BaseTheme {
     onLineClear(data) {
         const lineCount = data?.detail?.lineCount ?? data?.lineCount ?? 1;
 
-        if (this.celestialBeams.length < this.qualityPreset.maxCelestialBeams) {
-            for (let i = 0; i < Math.min(lineCount, 2); i++) {
-                this.createCelestialBeam();
-            }
-        }
+        this.enqueueReactiveBurst('beam', Math.min(lineCount, 2));
 
         // Create horizontal ripple
-        this.createCosmicWave();
+        this.enqueueReactiveToken('wave');
 
         this.effectState.nebulaBoost = 0.1 + lineCount * 0.02;
         this.effectState.bloomBoost = 0.05 + lineCount * 0.02;
         this.effectState.mountainPulse = Math.min(lineCount * 0.3, 1.0);
+        this.effectState.nebulaDefinition = Math.max(
+            this.effectState.nebulaDefinition,
+            Math.min(0.35 + lineCount * 0.1, 0.9),
+        );
+        this.effectState.nebulaColorShift = Math.max(
+            this.effectState.nebulaColorShift,
+            Math.min(0.18 + lineCount * 0.08, 0.85),
+        );
     }
 
     onCombo(data) {
         const comboCount = data?.detail?.comboCount ?? data?.comboCount ?? 0;
 
         if (comboCount >= 3) {
-            if (this.cosmicRifts.length < this.qualityPreset.maxCosmicRifts) {
-                this.createCosmicRift();
-            }
+            this.enqueueReactiveToken('rift');
             this.effectState.cosmicRiftIntensity = Math.min(comboCount * 0.2, 1.0);
         }
 
-        // Spawn shooting stars based on combo count (more stars at higher combos)
         if (comboCount >= 3) {
-            const starCount = Math.min((comboCount - 1) * 2, 8); // 4 stars at combo 3, up to 8 stars at combo 5+
-            for (let i = 0; i < starCount; i++) {
-                this.createMeteor();
-            }
-        }
-
-        // Spawn dramatic meteor crashes on combos of 5+ (more crashes at higher combos)
-        if (comboCount >= 5) {
-            // 1 crash at combo 5, 2 at combo 6-7, 3 at combo 8+
-            const crashCount = comboCount >= 8 ? 3 : (comboCount >= 6 ? 2 : 1);
-            for (let i = 0; i < crashCount; i++) {
-                if (this.meteorCrashes.length < this.qualityPreset.maxMeteorCrashes) {
-                    this.createMeteorCrash();
-                }
-            }
+            const starCount = Math.min(comboCount - 1, 4);
+            this.enqueueReactiveBurst('meteor', starCount);
         }
 
         if (comboCount >= 5) {
-            this.effectState.spiritSurge = Math.min(comboCount * 0.15, 1.0);
+            const crashCount = comboCount >= 10 ? 2 : 1;
+            this.enqueueReactiveBurst('crash', crashCount);
         }
+
+        // Surge intensity removed as per spirit removal
+        this.effectState.nebulaDefinition = Math.max(
+            this.effectState.nebulaDefinition,
+            Math.min(0.28 + comboCount * 0.08, 1.0),
+        );
+        this.effectState.nebulaColorShift = Math.max(
+            this.effectState.nebulaColorShift,
+            Math.min(0.2 + comboCount * 0.1, 1.0),
+        );
 
         this.effectState.mountainPulse = Math.min(comboCount * 0.1, 0.8);
 
-        if (this.starfield) {
+        if (this.isWebGPU && this.starfieldNodeData) {
+            this.starfieldNodeData.uniforms.uEventBoost.value = Math.min(comboCount * 0.1, 0.5);
+        } else if (this.starfield) {
             this.starfield.material.uniforms.uEventBoost.value = Math.min(comboCount * 0.1, 0.5);
         }
     }
@@ -855,23 +2354,208 @@ export default class WolfhourTheme extends BaseTheme {
         this.effectState.bloomBoost = 0.2;
         this.effectState.spiritSurge = 0.3;
         this.effectState.mountainPulse = 0.3;
+        this.effectState.ambientSwirl = Math.max(this.effectState.ambientSwirl, 0.5);
+        this.effectState.nebulaDefinition = Math.max(this.effectState.nebulaDefinition, 0.5);
+        this.effectState.nebulaColorShift = Math.max(this.effectState.nebulaColorShift, 0.35);
         // Trigger multiple beams
-        for (let i = 0; i < 3; i++) this.createCelestialBeam();
+        this.enqueueReactiveBurst('beam', 3);
+    }
+
+    ensureSharedGeometries() {
+        if (!this.geometryCache.unitQuad) {
+            this.geometryCache.unitQuad = new THREE.PlaneGeometry(1, 1);
+        }
+        if (!this.geometryCache.shockwavePlane) {
+            this.geometryCache.shockwavePlane = new THREE.PlaneGeometry(1000, 1000);
+        }
+
+        const resizeWaveGeometry = !this.geometryCache.waveGeometry
+            || this.geometryCache.waveGeometry.parameters?.width !== window.innerWidth
+            || this.geometryCache.waveGeometry.parameters?.height !== window.innerHeight;
+        if (resizeWaveGeometry) {
+            this.geometryCache.waveGeometry?.dispose?.();
+            this.geometryCache.waveGeometry = new THREE.PlaneGeometry(window.innerWidth, window.innerHeight);
+        }
+    }
+
+    getReactivePoolCapacity(type) {
+        if (type === 'starBurst') return this.qualityPreset.maxStarBursts;
+        if (type === 'beam') return this.qualityPreset.maxCelestialBeams;
+        if (type === 'rift') return this.qualityPreset.maxCosmicRifts;
+        if (type === 'wave') return 4;
+        if (type === 'meteor') return 10;
+        if (type === 'crash') return this.qualityPreset.maxMeteorCrashes;
+        return 0;
+    }
+
+    getReactivePoolTotal(type, activeList) {
+        const pool = this.effectPools[type] || [];
+        return activeList.length + pool.length;
+    }
+
+    acquireReactiveEffect(type, activeList, buildFn, resetFn) {
+        const pool = this.effectPools[type] || [];
+        const capacity = this.getReactivePoolCapacity(type);
+
+        let effect = pool.pop();
+        if (!effect) {
+            if (this.getReactivePoolTotal(type, activeList) >= capacity) {
+                return null;
+            }
+            effect = buildFn.call(this);
+            if (!effect) return null;
+            effect.visible = false;
+            effect.userData.active = false;
+            this.scene.add(effect);
+        }
+
+        resetFn.call(this, effect);
+        effect.userData.active = true;
+        effect.visible = true;
+        activeList.push(effect);
+        return effect;
+    }
+
+    releaseReactiveEffect(type, activeList, index, effect) {
+        effect.visible = false;
+        effect.userData.active = false;
+        activeList.splice(index, 1);
+        this.effectPools[type].push(effect);
+    }
+
+    preallocateReactivePool(type, count, buildFn) {
+        const clamped = Math.max(0, Math.floor(count));
+        for (let i = 0; i < clamped; i += 1) {
+            const effect = buildFn.call(this);
+            if (!effect) continue;
+            effect.visible = false;
+            effect.userData.active = false;
+            this.scene.add(effect);
+            this.effectPools[type].push(effect);
+        }
+    }
+
+    setupReactivePools() {
+        this.ensureSharedGeometries();
+        this.reactiveQueue.length = 0;
+        this.starBursts.length = 0;
+        this.celestialBeams.length = 0;
+        this.cosmicRifts.length = 0;
+        this.cosmicWaves.length = 0;
+        this.meteors.length = 0;
+        this.meteorCrashes.length = 0;
+        this.effectPools.starBurst.length = 0;
+        this.effectPools.beam.length = 0;
+        this.effectPools.rift.length = 0;
+        this.effectPools.wave.length = 0;
+        this.effectPools.meteor.length = 0;
+        this.effectPools.crash.length = 0;
+
+        this.preallocateReactivePool('starBurst', this.getReactivePoolCapacity('starBurst'), this.buildStarBurstEffect);
+        this.preallocateReactivePool('beam', this.getReactivePoolCapacity('beam'), this.buildCelestialBeamEffect);
+        this.preallocateReactivePool('rift', this.getReactivePoolCapacity('rift'), this.buildCosmicRiftEffect);
+        this.preallocateReactivePool('wave', this.getReactivePoolCapacity('wave'), this.buildCosmicWaveEffect);
+        this.preallocateReactivePool('meteor', this.getReactivePoolCapacity('meteor'), this.buildMeteorEffect);
+        this.preallocateReactivePool('crash', this.getReactivePoolCapacity('crash'), this.buildMeteorCrashEffect);
+    }
+
+    prewarmReactiveMaterials() {
+        const warmList = [
+            this.effectPools.starBurst[0],
+            this.effectPools.beam[0],
+            this.effectPools.rift[0],
+            this.effectPools.wave[0],
+            this.effectPools.meteor[0],
+            this.effectPools.crash[0],
+        ].filter(Boolean);
+
+        warmList.forEach((effect) => {
+            effect.visible = true;
+            effect.visible = false;
+        });
+    }
+
+    async precompileSceneWithTimeout(timeoutMs = 3000) {
+        if (!this.renderer || !this.scene || !this.camera) return false;
+
+        const compilePromise = (async () => {
+            if (typeof this.renderer.compileAsync === 'function') {
+                await this.renderer.compileAsync(this.scene, this.camera);
+                return true;
+            }
+            if (typeof this.renderer.compile === 'function') {
+                this.renderer.compile(this.scene, this.camera);
+                return true;
+            }
+            return false;
+        })();
+
+        const timeoutPromise = new Promise((resolve) => {
+            setTimeout(() => resolve(false), timeoutMs);
+        });
+        return Promise.race([compilePromise, timeoutPromise]);
+    }
+
+    runReactivePrewarm() {
+        if (this.flags.noPrewarm === true) return;
+        this.prewarmReactiveMaterials();
+        this.precompileSceneWithTimeout(3000).catch((error) => {
+            console.warn('[Wolfhour] Scene precompile failed; continuing without prewarm compile.', error);
+        });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Effect Creation Methods
     // ─────────────────────────────────────────────────────────────────────────
 
-    createStarBurst() {
+    buildStarBurstEffect() {
         const particleCount = 30;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         const velocities = new Float32Array(particleCount * 3);
         const sizes = new Float32Array(particleCount);
 
-        const cx = (Math.random() - 0.5) * 800;
-        const cy = (Math.random() - 0.5) * 400;
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aVelocity', new THREE.BufferAttribute(velocities, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+        let material;
+        let nodeData = null;
+        if (this.isWebGPU && this.materialFactories) {
+            const result = this.materialFactories.createStarBurstNodeMaterial({
+                pixelRatio: this.renderer.getPixelRatio(),
+            });
+            material = result.material;
+            nodeData = result;
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uPixelRatio: { value: this.renderer.getPixelRatio() },
+                },
+                vertexShader: burstVertexShader,
+                fragmentShader: burstFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+        }
+
+        const burst = this._createInstancedParticleMesh(geometry, material);
+        burst.userData.duration = 0.8;
+        burst.userData.particleCount = particleCount;
+        if (nodeData) burst.userData.nodeData = nodeData;
+
+        return burst;
+    }
+
+    resetStarBurstEffect(burst) {
+        const positions = burst.geometry.attributes.position.array;
+        const velocities = burst.geometry.attributes.aVelocity.array;
+        const sizes = burst.geometry.attributes.aSize.array;
+        const particleCount = burst.userData.particleCount;
+        const cx = (this.random() - 0.5) * 800;
+        const cy = (this.random() - 0.5) * 400;
 
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
@@ -879,128 +2563,203 @@ export default class WolfhourTheme extends BaseTheme {
             positions[i3 + 1] = cy;
             positions[i3 + 2] = 100;
 
-            const angle = Math.random() * Math.PI * 2;
-            const speed = 200 + Math.random() * 300;
+            const angle = this.random() * Math.PI * 2;
+            const speed = 200 + this.random() * 300;
             velocities[i3] = Math.cos(angle) * speed;
             velocities[i3 + 1] = Math.sin(angle) * speed;
-            velocities[i3 + 2] = (Math.random() - 0.5) * 100;
-
-            sizes[i] = 15 + Math.random() * 25;
+            velocities[i3 + 2] = (this.random() - 0.5) * 100;
+            sizes[i] = 15 + this.random() * 25;
         }
 
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aVelocity', new THREE.BufferAttribute(velocities, 3));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uPixelRatio: { value: this.renderer.getPixelRatio() },
-            },
-            vertexShader: burstVertexShader,
-            fragmentShader: burstFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        const burst = new THREE.Points(geometry, material);
+        burst.geometry.attributes.position.needsUpdate = true;
+        burst.geometry.attributes.aVelocity.needsUpdate = true;
+        burst.geometry.attributes.aSize.needsUpdate = true;
         burst.userData.startTime = this.time;
-        burst.userData.duration = 0.8;
+        if (burst.userData.nodeData?.uniforms?.uTime) {
+            burst.userData.nodeData.uniforms.uTime.value = 0;
+        } else if (burst.material?.uniforms?.uTime) {
+            burst.material.uniforms.uTime.value = 0;
+        }
+    }
 
-        this.starBursts.push(burst);
-        this.scene.add(burst);
+    createStarBurst() {
+        return !!this.acquireReactiveEffect(
+            'starBurst',
+            this.starBursts,
+            this.buildStarBurstEffect,
+            this.resetStarBurstEffect,
+        );
+    }
+
+    buildCelestialBeamEffect() {
+        const geometry = this.geometryCache.unitQuad.clone();
+
+        let material;
+        let nodeData = null;
+        if (this.isWebGPU && this.materialFactories) {
+            const result = this.materialFactories.createCelestialBeamNodeMaterial({
+                volumetricStrength: this.qualityPreset.enableVolumetricBeams ? 0.82 : 0.0,
+            });
+            material = result.material;
+            nodeData = result;
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uOpacity: { value: 1.0 },
+                },
+                vertexShader: beamVertexShader,
+                fragmentShader: beamFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+            });
+        }
+
+        const beam = new THREE.Mesh(geometry, material);
+        beam.userData.duration = 1.5;
+        if (nodeData) beam.userData.nodeData = nodeData;
+
+        return beam;
+    }
+
+    resetCelestialBeamEffect(beam) {
+        const beamWidth = 40 + this.random() * 60;
+        beam.scale.set(beamWidth, 4000, 1);
+        beam.position.set((this.random() - 0.5) * 1000, -200, -800);
+        beam.rotation.z = (this.random() - 0.5) * 0.1;
+        beam.userData.startTime = this.time;
+
+        if (beam.userData.nodeData?.uniforms) {
+            beam.userData.nodeData.uniforms.uTime.value = 0;
+            beam.userData.nodeData.uniforms.uOpacity.value = 1;
+        } else if (beam.material?.uniforms) {
+            beam.material.uniforms.uTime.value = 0;
+            beam.material.uniforms.uOpacity.value = 1;
+        }
     }
 
     createCelestialBeam() {
-        // Make beam MUCH larger than camera frustum (1000) so edges are never visible
-        // Using 4000 units = 4x frustum size, ensuring edges are far outside view
-        const beamWidth = 40 + Math.random() * 60;
-        const beamHeight = 4000;
-        const geometry = new THREE.PlaneGeometry(beamWidth, beamHeight);
+        return !!this.acquireReactiveEffect(
+            'beam',
+            this.celestialBeams,
+            this.buildCelestialBeamEffect,
+            this.resetCelestialBeamEffect,
+        );
+    }
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uOpacity: { value: 1.0 },
-            },
-            vertexShader: beamVertexShader,
-            fragmentShader: beamFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-        });
+    buildCosmicRiftEffect() {
+        const geometry = this.geometryCache.unitQuad.clone();
 
-        const beam = new THREE.Mesh(geometry, material);
-        // Position slightly below center so the visible portion is well-centered
-        beam.position.set((Math.random() - 0.5) * 1000, -200, -800);
-        beam.rotation.z = (Math.random() - 0.5) * 0.1;
+        let material;
+        let nodeData = null;
+        if (this.isWebGPU && this.materialFactories) {
+            const result = this.materialFactories.createCosmicRiftNodeMaterial();
+            material = result.material;
+            nodeData = result;
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uOpacity: { value: 1.0 },
+                },
+                vertexShader: riftVertexShader,
+                fragmentShader: riftFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+            });
+        }
 
-        beam.userData.startTime = this.time;
-        beam.userData.duration = 1.5;
+        const rift = new THREE.Mesh(geometry, material);
+        rift.userData.duration = 1.2;
+        if (nodeData) rift.userData.nodeData = nodeData;
 
-        this.celestialBeams.push(beam);
-        this.scene.add(beam);
+        return rift;
+    }
+
+    resetCosmicRiftEffect(rift) {
+        const riftLength = 100 + this.random() * 150;
+        const riftWidth = 3 + this.random() * 4;
+        rift.scale.set(riftLength, riftWidth, 1);
+        rift.position.set(
+            (this.random() - 0.5) * 1200,
+            this.random() * 300 + 100,
+            -200,
+        );
+        rift.rotation.z = (this.random() - 0.5) * 0.4;
+        rift.userData.startTime = this.time;
+
+        if (rift.userData.nodeData?.uniforms) {
+            rift.userData.nodeData.uniforms.uTime.value = 0;
+            rift.userData.nodeData.uniforms.uOpacity.value = 1;
+        } else if (rift.material?.uniforms) {
+            rift.material.uniforms.uTime.value = 0;
+            rift.material.uniforms.uOpacity.value = 1;
+        }
     }
 
     createCosmicRift() {
-        const riftLength = 100 + Math.random() * 150;
-        const riftWidth = 3 + Math.random() * 4;
-        const geometry = new THREE.PlaneGeometry(riftLength, riftWidth);
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uOpacity: { value: 1.0 },
-            },
-            vertexShader: riftVertexShader,
-            fragmentShader: riftFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-        });
-
-        const rift = new THREE.Mesh(geometry, material);
-        rift.position.set(
-            (Math.random() - 0.5) * 1200,
-            Math.random() * 300 + 100,
-            -200,
+        return !!this.acquireReactiveEffect(
+            'rift',
+            this.cosmicRifts,
+            this.buildCosmicRiftEffect,
+            this.resetCosmicRiftEffect,
         );
-        rift.rotation.z = (Math.random() - 0.5) * 0.4;
+    }
 
-        rift.userData.startTime = this.time;
-        rift.userData.duration = 1.2;
+    buildCosmicWaveEffect() {
+        const geometry = this.geometryCache.waveGeometry.clone();
 
-        this.cosmicRifts.push(rift);
-        this.scene.add(rift);
+        let material;
+        let nodeData = null;
+        if (this.isWebGPU && this.materialFactories) {
+            const result = this.materialFactories.createCosmicWaveNodeMaterial();
+            material = result.material;
+            nodeData = result;
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uOpacity: { value: 0.5 },
+                },
+                vertexShader: waveVertexShader,
+                fragmentShader: waveFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+        }
+
+        const wave = new THREE.Mesh(geometry, material);
+        wave.position.z = 50;
+        wave.userData.duration = 1.0;
+        if (nodeData) wave.userData.nodeData = nodeData;
+
+        return wave;
+    }
+
+    resetCosmicWaveEffect(wave) {
+        wave.position.z = 50;
+        wave.userData.startTime = this.time;
+        if (wave.userData.nodeData?.uniforms) {
+            wave.userData.nodeData.uniforms.uTime.value = 0;
+            wave.userData.nodeData.uniforms.uOpacity.value = 0.5;
+        } else if (wave.material?.uniforms) {
+            wave.material.uniforms.uTime.value = 0;
+            wave.material.uniforms.uOpacity.value = 0.5;
+        }
     }
 
     createCosmicWave() {
-        // Horizontal ripple across screen
-        const geometry = new THREE.PlaneGeometry(window.innerWidth, window.innerHeight);
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uOpacity: { value: 0.5 },
-            },
-            vertexShader: waveVertexShader,
-            fragmentShader: waveFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        const wave = new THREE.Mesh(geometry, material);
-        wave.position.z = 50; // In front
-
-        wave.userData.startTime = this.time;
-        wave.userData.duration = 1.0;
-
-        this.cosmicWaves.push(wave);
-        this.scene.add(wave);
+        return !!this.acquireReactiveEffect(
+            'wave',
+            this.cosmicWaves,
+            this.buildCosmicWaveEffect,
+            this.resetCosmicWaveEffect,
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1009,7 +2768,8 @@ export default class WolfhourTheme extends BaseTheme {
 
     updateNebulas(deltaTime) {
         this.nebulaPlanes.forEach((nebula) => {
-            nebula.position.x += nebula.userData.speed * deltaTime;
+            const reactiveSpeed = 1.0 + this.effectState.nebulaDefinition * 0.45;
+            nebula.position.x += nebula.userData.speed * reactiveSpeed * deltaTime;
             if (nebula.position.x > nebula.userData.wrapBoundary) {
                 nebula.position.x = -nebula.userData.wrapBoundary;
             }
@@ -1025,28 +2785,97 @@ export default class WolfhourTheme extends BaseTheme {
         this.effectState.cosmicRiftIntensity *= decay;
         this.effectState.spiritSurge *= decay;
         this.effectState.nebulaBoost *= decay;
+        this.effectState.nebulaColorShift *= decay;
+        this.effectState.nebulaDefinition *= decay;
         this.effectState.bloomBoost *= decay;
+        this.effectState.ambientScatter *= decay;
+        this.effectState.ambientSwirl *= decay;
+        this.effectState.cameraShake *= 0.9 ** (deltaTime * 60);
 
-        if (this.starfield) {
-            this.starfield.material.uniforms.uEventBoost.value = this.effectState.starBurstIntensity;
+        if (this.isWebGPU && this.materialFactories) {
+            if (this.starfieldNodeData) {
+                this.starfieldNodeData.uniforms.uEventBoost.value = this.effectState.starBurstIntensity;
+                if (this.starfieldNodeData.uniforms.uDiffractionStrength) {
+                    const baseDiffraction = this.qualityPreset.enableDiffraction ? 0.18 : 0.0;
+                    this.starfieldNodeData.uniforms.uDiffractionStrength.value = baseDiffraction
+                        + this.effectState.starBurstIntensity * 0.12;
+                }
+                if (this.starfieldNodeData.uniforms.uDepthGlowStrength) {
+                    this.starfieldNodeData.uniforms.uDepthGlowStrength.value = this.qualityPreset.enableDiffraction
+                        ? 0.9 + this.effectState.starBurstIntensity * 0.2
+                        : 0.55;
+                }
+            }
+            this.mountains.forEach((m) => {
+                if (m.userData.nodeData) {
+                    m.userData.nodeData.uniforms.uPulseIntensity.value = this.effectState.mountainPulse;
+                    m.userData.nodeData.uniforms.uShockwave.value = this.effectState.mountainShockwave;
+                    if (m.userData.nodeData.uniforms.uRidgeStrength) {
+                        const baseRidge = m.userData.baseRidgeStrength ?? 0.25;
+                        m.userData.nodeData.uniforms.uRidgeStrength.value = baseRidge
+                            * (0.9 + this.effectState.mountainPulse * 0.8 + this.effectState.cosmicRiftIntensity * 0.4);
+                    }
+                    if (m.userData.nodeData.uniforms.uSnowAmount) {
+                        const baseSnow = m.userData.baseSnowAmount ?? 0.22;
+                        m.userData.nodeData.uniforms.uSnowAmount.value = baseSnow
+                            * (0.95 + this.effectState.nebulaDefinition * 0.35);
+                    }
+                }
+            });
+            if (this.spiritNodeData) {
+                this.spiritNodeData.uniforms.uSurgeIntensity.value = this.effectState.spiritSurge;
+            }
+            this.nebulaPlanes.forEach((n) => {
+                if (n.userData.nodeData) {
+                    n.userData.nodeData.uniforms.uPulse.value = this.effectState.nebulaBoost;
+                    if (n.userData.nodeData.uniforms.uColorShift) {
+                        n.userData.nodeData.uniforms.uColorShift.value = this.effectState.nebulaColorShift;
+                    }
+                    if (n.userData.nodeData.uniforms.uDefinition) {
+                        n.userData.nodeData.uniforms.uDefinition.value = this.effectState.nebulaDefinition;
+                    }
+                }
+            });
+            if (this.ambientParticles?.userData?.nodeData?.uniforms?.uOpacity) {
+                this.ambientParticles.userData.nodeData.uniforms.uOpacity.value = 0.42
+                    + this.effectState.ambientSwirl * 0.16;
+            }
+            if (this.groundFog?.userData?.nodeData?.uniforms) {
+                const fogUniforms = this.groundFog.userData.nodeData.uniforms;
+                if (fogUniforms.uPulse) {
+                    fogUniforms.uPulse.value = this.effectState.nebulaDefinition;
+                }
+                if (fogUniforms.uSwirl) {
+                    fogUniforms.uSwirl.value = this.effectState.ambientSwirl;
+                }
+            }
+        } else {
+            if (this.starfield) {
+                this.starfield.material.uniforms.uEventBoost.value = this.effectState.starBurstIntensity;
+            }
+            this.mountains.forEach((m) => {
+                m.material.uniforms.uPulseIntensity.value = this.effectState.mountainPulse;
+                m.material.uniforms.uShockwave.value = this.effectState.mountainShockwave;
+            });
+            // Spirit surge updates removed
+            this.nebulaPlanes.forEach((n) => {
+                n.material.uniforms.uPulse.value = this.effectState.nebulaBoost;
+            });
         }
 
-        this.mountains.forEach((m) => {
-            m.material.uniforms.uPulseIntensity.value = this.effectState.mountainPulse;
-            m.material.uniforms.uShockwave.value = this.effectState.mountainShockwave;
-        });
-
-        if (this.spirits) {
-            this.spirits.material.uniforms.uSurgeIntensity.value = this.effectState.spiritSurge;
-        }
-
-        this.nebulaPlanes.forEach((n) => {
-            n.material.uniforms.uPulse.value = this.effectState.nebulaBoost;
-        });
-
+        const dynamicBloomStrength = this.qualityPreset.bloomStrength + this.effectState.bloomBoost * 0.5;
         if (this.bloomPass) {
-            const baseStrength = this.qualityPreset.bloomStrength;
-            this.bloomPass.strength = baseStrength + this.effectState.bloomBoost * 0.5;
+            this.bloomPass.strength = dynamicBloomStrength;
+        }
+        if (this.isWebGPU && this.postProcessing && this.postProfile?.enabled) {
+            try {
+                this.postProcessing.updateDynamic?.({
+                    time: this.time,
+                    bloomStrength: dynamicBloomStrength,
+                });
+            } catch (error) {
+                this.disablePostRuntime('updateEffects', error);
+            }
         }
 
         this.updateStarBursts();
@@ -1060,10 +2889,9 @@ export default class WolfhourTheme extends BaseTheme {
             const burst = this.starBursts[i];
             const elapsed = this.time - burst.userData.startTime;
             if (elapsed > burst.userData.duration) {
-                this.scene.remove(burst);
-                burst.geometry.dispose();
-                burst.material.dispose();
-                this.starBursts.splice(i, 1);
+                this.releaseReactiveEffect('starBurst', this.starBursts, i, burst);
+            } else if (burst.userData.nodeData) {
+                burst.userData.nodeData.uniforms.uTime.value = elapsed;
             } else {
                 burst.material.uniforms.uTime.value = elapsed;
             }
@@ -1075,14 +2903,19 @@ export default class WolfhourTheme extends BaseTheme {
             const beam = this.celestialBeams[i];
             const elapsed = this.time - beam.userData.startTime;
             if (elapsed > beam.userData.duration) {
-                this.scene.remove(beam);
-                beam.geometry.dispose();
-                beam.material.dispose();
-                this.celestialBeams.splice(i, 1);
+                this.releaseReactiveEffect('beam', this.celestialBeams, i, beam);
             } else {
-                beam.material.uniforms.uTime.value = elapsed;
                 const progress = elapsed / beam.userData.duration;
-                beam.material.uniforms.uOpacity.value = 1.0 - progress;
+                if (beam.userData.nodeData) {
+                    beam.userData.nodeData.uniforms.uTime.value = elapsed;
+                    beam.userData.nodeData.uniforms.uOpacity.value = 1.0 - progress;
+                    if (beam.userData.nodeData.uniforms.uVolumetricPulse) {
+                        beam.userData.nodeData.uniforms.uVolumetricPulse.value = this.effectState.cosmicRiftIntensity;
+                    }
+                } else {
+                    beam.material.uniforms.uTime.value = elapsed;
+                    beam.material.uniforms.uOpacity.value = 1.0 - progress;
+                }
             }
         }
     }
@@ -1092,14 +2925,16 @@ export default class WolfhourTheme extends BaseTheme {
             const rift = this.cosmicRifts[i];
             const elapsed = this.time - rift.userData.startTime;
             if (elapsed > rift.userData.duration) {
-                this.scene.remove(rift);
-                rift.geometry.dispose();
-                rift.material.dispose();
-                this.cosmicRifts.splice(i, 1);
+                this.releaseReactiveEffect('rift', this.cosmicRifts, i, rift);
             } else {
-                rift.material.uniforms.uTime.value = elapsed;
                 const progress = elapsed / rift.userData.duration;
-                rift.material.uniforms.uOpacity.value = 1.0 - progress;
+                if (rift.userData.nodeData) {
+                    rift.userData.nodeData.uniforms.uTime.value = elapsed;
+                    rift.userData.nodeData.uniforms.uOpacity.value = 1.0 - progress;
+                } else {
+                    rift.material.uniforms.uTime.value = elapsed;
+                    rift.material.uniforms.uOpacity.value = 1.0 - progress;
+                }
             }
         }
     }
@@ -1109,14 +2944,16 @@ export default class WolfhourTheme extends BaseTheme {
             const wave = this.cosmicWaves[i];
             const elapsed = this.time - wave.userData.startTime;
             if (elapsed > wave.userData.duration) {
-                this.scene.remove(wave);
-                wave.geometry.dispose();
-                wave.material.dispose();
-                this.cosmicWaves.splice(i, 1);
+                this.releaseReactiveEffect('wave', this.cosmicWaves, i, wave);
             } else {
-                wave.material.uniforms.uTime.value = elapsed;
                 const progress = elapsed / wave.userData.duration;
-                wave.material.uniforms.uOpacity.value = 0.5 * (1.0 - progress);
+                if (wave.userData.nodeData) {
+                    wave.userData.nodeData.uniforms.uTime.value = elapsed;
+                    wave.userData.nodeData.uniforms.uOpacity.value = 0.5 * (1.0 - progress);
+                } else {
+                    wave.material.uniforms.uTime.value = elapsed;
+                    wave.material.uniforms.uOpacity.value = 0.5 * (1.0 - progress);
+                }
             }
         }
     }
@@ -1125,157 +2962,305 @@ export default class WolfhourTheme extends BaseTheme {
     // Meteor / Shooting Star System
     // ─────────────────────────────────────────────────────────────────────────
 
-    createMeteor() {
-        // Limit to 5 simultaneous meteors for more dramatic effect
-        if (this.meteors.length >= 5) return;
-
-        // Random start position in upper portion of sky
-        const startX = (Math.random() - 0.5) * 1200;
-        const startY = 200 + Math.random() * 250; // Upper sky
-        const startZ = -1800 - Math.random() * 500; // Behind mountains
-
-        // Random direction (diagonal downward)
-        const angle = -0.3 - Math.random() * 0.5; // -0.3 to -0.8 radians (diagonal down-right or down-left)
-        const direction = Math.random() > 0.5 ? 1 : -1; // Left or right
-        const speed = 400 + Math.random() * 200; // Units per second
-        const trailLength = 150 + Math.random() * 100;
-        const duration = 2.5 + Math.random() * 1.5; // 2.5-4 seconds
-
-        // Create trail geometry (LINE with varying alpha)
-        const trailSegments = 40;
+    createTrailGeometry(trailSegments) {
+        const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(trailSegments * 3);
         const trailPositions = new Float32Array(trailSegments);
+        const slotOffsets = new Float32Array(trailSegments);
 
-        // Initialize all points at start position
-        for (let i = 0; i < trailSegments; i++) {
-            positions[i * 3] = startX;
-            positions[i * 3 + 1] = startY;
-            positions[i * 3 + 2] = startZ;
-            trailPositions[i] = i / (trailSegments - 1); // 0 to 1
+        const denom = Math.max(1, trailSegments - 1);
+        for (let i = 0; i < trailSegments; i += 1) {
+            trailPositions[i] = i / denom;
+            slotOffsets[i] = 0;
         }
 
-        const trailGeometry = new THREE.BufferGeometry();
-        trailGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        trailGeometry.setAttribute('aTrailPosition', new THREE.BufferAttribute(trailPositions, 1));
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aTrailPosition', new THREE.BufferAttribute(trailPositions, 1));
+        geometry.setAttribute('aSlotOffset', new THREE.BufferAttribute(slotOffsets, 1));
+        return geometry;
+    }
 
-        const trailMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uProgress: { value: 0 },
-            },
-            vertexShader: meteorTrailVertexShader,
-            fragmentShader: meteorTrailFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
+    setScalarAttribute(attribute, value) {
+        if (!attribute) return;
+        const array = attribute.array;
+        for (let i = 0; i < array.length; i += 1) {
+            array[i] = value;
+        }
+        attribute.needsUpdate = true;
+    }
+
+    setTrailSlotOffset(geometry, slotOffset) {
+        this.setScalarAttribute(geometry?.attributes?.aSlotOffset, slotOffset);
+    }
+
+    setDebrisSlotOffset(geometry, slotOffset) {
+        this.setScalarAttribute(geometry?.attributes?.aComputeOffset, slotOffset);
+    }
+
+    setTrailPositions(geometry, trailSegments, headX, headY, headZ, angle, direction, trailLength) {
+        const positionAttribute = geometry?.attributes?.position;
+        if (!positionAttribute) return;
+        const positions = positionAttribute.array;
+        const denom = Math.max(1, trailSegments - 1);
+        for (let i = 0; i < trailSegments; i += 1) {
+            const t = i / denom;
+            const offset = t * trailLength;
+            positions[i * 3] = headX - Math.cos(angle) * offset * direction;
+            positions[i * 3 + 1] = headY - Math.sin(angle) * offset;
+            positions[i * 3 + 2] = headZ;
+        }
+        positionAttribute.needsUpdate = true;
+    }
+
+    setHeadPosition(geometry, x, y, z) {
+        const positionAttribute = geometry?.attributes?.position;
+        if (!positionAttribute) return;
+        const position = positionAttribute.array;
+        position[0] = x;
+        position[1] = y;
+        position[2] = z;
+        positionAttribute.needsUpdate = true;
+    }
+
+    buildMeteorEffect() {
+        const trailSegments = this.qualityPreset.meteorTrailSegments || 40;
+        const trailGeometry = this.createTrailGeometry(trailSegments);
+
+        let trailMaterial;
+        let headMaterial;
+        let trailNodeData = null;
+        let headNodeData = null;
+
+        if (this.isWebGPU && this.materialFactories) {
+            const trailResult = this.materialFactories.createMeteorTrailNodeMaterial({
+                meteorTrailCompute: this.meteorTrailBatchCompute,
+                atmosphereGlow: this.qualityPreset.meteorAtmosphereGlow || 0,
+                slotAttributeName: 'aSlotOffset',
+            });
+            trailMaterial = trailResult.material;
+            trailNodeData = trailResult;
+
+            const headResult = this.materialFactories.createMeteorHeadNodeMaterial({
+                pixelRatio: this.renderer.getPixelRatio(),
+                atmosphereGlow: this.qualityPreset.meteorAtmosphereGlow || 0,
+            });
+            headMaterial = headResult.material;
+            headNodeData = headResult;
+        } else {
+            trailMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uProgress: { value: 0 },
+                },
+                vertexShader: meteorTrailVertexShader,
+                fragmentShader: meteorTrailFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+
+            headMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uProgress: { value: 0 },
+                    uPixelRatio: { value: this.renderer.getPixelRatio() },
+                },
+                vertexShader: meteorHeadVertexShader,
+                fragmentShader: meteorHeadFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
+        }
 
         const trail = new THREE.Line(trailGeometry, trailMaterial);
-        trail.renderOrder = 500; // Above mountains, below UI
+        trail.renderOrder = 500;
 
-        // Create glowing head point
         const headGeometry = new THREE.BufferGeometry();
-        headGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([startX, startY, startZ]), 3));
-
-        const headMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uProgress: { value: 0 },
-                uPixelRatio: { value: this.renderer.getPixelRatio() },
-            },
-            vertexShader: meteorHeadVertexShader,
-            fragmentShader: meteorHeadFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        const head = new THREE.Points(headGeometry, headMaterial);
+        headGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, -9999]), 3));
+        const head = this._createInstancedParticleMesh(headGeometry, headMaterial);
         head.renderOrder = 501;
 
-        // Group them
         const meteor = new THREE.Group();
         meteor.add(trail);
         meteor.add(head);
 
         meteor.userData = {
-            startTime: this.time,
-            duration,
-            startX,
-            startY,
-            startZ,
-            angle,
-            direction,
-            speed,
-            trailLength,
+            startTime: 0,
+            duration: 0,
+            startX: 0,
+            startY: 0,
+            startZ: 0,
+            angle: 0,
+            direction: 1,
+            speed: 0,
+            trailLength: 0,
             trailSegments,
             trail,
             head,
+            trailNodeData,
+            headNodeData,
+            trailSlot: -1,
         };
 
-        this.meteors.push(meteor);
-        this.scene.add(meteor);
+        return meteor;
+    }
 
-        console.log('[Wolfhour] Meteor spawned');
+    resetMeteorEffect(meteor) {
+        const data = meteor.userData;
+        data.startTime = this.time;
+        data.duration = 2.5 + this.random() * 1.5;
+        data.startX = (this.random() - 0.5) * 1200;
+        data.startY = 200 + this.random() * 250;
+        data.startZ = -1800 - this.random() * 500;
+        data.angle = -0.3 - this.random() * 0.5;
+        data.direction = this.random() > 0.5 ? 1 : -1;
+        data.speed = 400 + this.random() * 200;
+        data.trailLength = 150 + this.random() * 100;
+
+        if (data.trailSlot >= 0 && this.meteorTrailBatchCompute) {
+            this.meteorTrailBatchCompute.releaseSlot(data.trailSlot);
+            data.trailSlot = -1;
+        }
+
+        if (this.meteorTrailBatchCompute && this.shouldUseCompute() && this.qualityPreset.computeMeteorTrails === true) {
+            const slot = this.meteorTrailBatchCompute.acquireSlot();
+            if (slot >= 0) {
+                data.trailSlot = slot;
+                this.setTrailSlotOffset(
+                    data.trail.geometry,
+                    this.meteorTrailBatchCompute.getSlotOffset(slot),
+                );
+                this.meteorTrailBatchCompute.setLinearTrailState(slot, {
+                    headX: data.startX,
+                    headY: data.startY,
+                    headZ: data.startZ,
+                    angle: data.angle,
+                    direction: data.direction,
+                    trailLength: data.trailLength,
+                });
+            } else {
+                this.reactiveMetrics.poolMisses += 1;
+                this.setTrailSlotOffset(data.trail.geometry, 0);
+            }
+        } else {
+            this.setTrailSlotOffset(data.trail.geometry, 0);
+        }
+
+        this.setTrailPositions(
+            data.trail.geometry,
+            data.trailSegments,
+            data.startX,
+            data.startY,
+            data.startZ,
+            data.angle,
+            data.direction,
+            data.trailLength,
+        );
+        this.setHeadPosition(data.head.geometry, data.startX, data.startY, data.startZ);
+
+        if (data.trailNodeData) {
+            data.trailNodeData.uniforms.uTime.value = this.time;
+            data.trailNodeData.uniforms.uProgress.value = 0;
+        } else if (data.trail.material?.uniforms) {
+            data.trail.material.uniforms.uTime.value = this.time;
+            data.trail.material.uniforms.uProgress.value = 0;
+        }
+        if (data.headNodeData) {
+            data.headNodeData.uniforms.uProgress.value = 0;
+        } else if (data.head.material?.uniforms) {
+            data.head.material.uniforms.uProgress.value = 0;
+        }
+    }
+
+    createMeteor() {
+        return !!this.acquireReactiveEffect(
+            'meteor',
+            this.meteors,
+            this.buildMeteorEffect,
+            this.resetMeteorEffect,
+        );
+    }
+
+    releaseMeteor(index, meteor) {
+        const data = meteor.userData;
+        if (data.trailSlot >= 0 && this.meteorTrailBatchCompute) {
+            this.meteorTrailBatchCompute.releaseSlot(data.trailSlot);
+            data.trailSlot = -1;
+        }
+        this.releaseReactiveEffect('meteor', this.meteors, index, meteor);
     }
 
     updateMeteors() {
-        // Auto-spawn meteors periodically (more frequently for dramatic sky)
         if (this.time - this.lastMeteorTime > this.nextMeteorDelay) {
-            // Spawn 1-2 shooting stars at a time
-            const spawnCount = Math.random() > 0.5 ? 2 : 1;
-            for (let s = 0; s < spawnCount; s++) {
+            const r = this.random();
+            const spawnCount = r > 0.7 ? 3 : r > 0.3 ? 2 : 1;
+            for (let s = 0; s < spawnCount; s += 1) {
                 this.createMeteor();
             }
             this.lastMeteorTime = this.time;
-            this.nextMeteorDelay = 5 + Math.random() * 7; // 5-12 seconds
+            this.nextMeteorDelay = 2 + this.random() * 2;
         }
 
-        // Update existing meteors
-        for (let i = this.meteors.length - 1; i >= 0; i--) {
+        for (let i = this.meteors.length - 1; i >= 0; i -= 1) {
             const meteor = this.meteors[i];
             const data = meteor.userData;
             const elapsed = this.time - data.startTime;
             const progress = elapsed / data.duration;
 
             if (progress > 1.0) {
-                // Cleanup
-                this.scene.remove(meteor);
-                data.trail.geometry.dispose();
-                data.trail.material.dispose();
-                data.head.geometry.dispose();
-                data.head.material.dispose();
-                this.meteors.splice(i, 1);
+                this.releaseMeteor(i, meteor);
                 continue;
             }
 
-            // Calculate current head position
             const travelDistance = elapsed * data.speed;
             const headX = data.startX + Math.cos(data.angle) * travelDistance * data.direction;
             const headY = data.startY + Math.sin(data.angle) * travelDistance;
             const headZ = data.startZ;
 
-            // Update trail positions (head to tail)
-            const trailPositions = data.trail.geometry.attributes.position.array;
-            for (let j = 0; j < data.trailSegments; j++) {
-                const t = j / (data.trailSegments - 1);
-                const trailOffset = t * data.trailLength;
-                trailPositions[j * 3] = headX - Math.cos(data.angle) * trailOffset * data.direction;
-                trailPositions[j * 3 + 1] = headY - Math.sin(data.angle) * trailOffset;
-                trailPositions[j * 3 + 2] = headZ;
+            if (data.trailSlot >= 0 && this.meteorTrailBatchCompute) {
+                this.meteorTrailBatchCompute.setLinearTrailState(data.trailSlot, {
+                    headX,
+                    headY,
+                    headZ,
+                    angle: data.angle,
+                    direction: data.direction,
+                    trailLength: data.trailLength,
+                });
+            } else {
+                this.setTrailPositions(
+                    data.trail.geometry,
+                    data.trailSegments,
+                    headX,
+                    headY,
+                    headZ,
+                    data.angle,
+                    data.direction,
+                    data.trailLength,
+                );
             }
-            data.trail.geometry.attributes.position.needsUpdate = true;
 
-            // Update uniforms
-            data.trail.material.uniforms.uTime.value = this.time;
-            data.trail.material.uniforms.uProgress.value = progress;
-            data.head.material.uniforms.uProgress.value = progress;
+            if (data.trailNodeData) {
+                data.trailNodeData.uniforms.uTime.value = this.time;
+                data.trailNodeData.uniforms.uProgress.value = progress;
+                if (data.trailNodeData.uniforms.uAtmosphereGlow) {
+                    data.trailNodeData.uniforms.uAtmosphereGlow.value = (this.qualityPreset.meteorAtmosphereGlow || 0)
+                        * (1.0 - progress * 0.45);
+                }
+            } else {
+                data.trail.material.uniforms.uTime.value = this.time;
+                data.trail.material.uniforms.uProgress.value = progress;
+            }
+            if (data.headNodeData) {
+                data.headNodeData.uniforms.uProgress.value = progress;
+                if (data.headNodeData.uniforms.uAtmosphereGlow) {
+                    data.headNodeData.uniforms.uAtmosphereGlow.value = (this.qualityPreset.meteorAtmosphereGlow || 0)
+                        * (1.0 - progress * 0.5);
+                }
+            } else {
+                data.head.material.uniforms.uProgress.value = progress;
+            }
 
-            // Update head position
-            const headPositions = data.head.geometry.attributes.position.array;
-            headPositions[0] = headX;
-            headPositions[1] = headY;
-            headPositions[2] = headZ;
-            data.head.geometry.attributes.position.needsUpdate = true;
+            this.setHeadPosition(data.head.geometry, headX, headY, headZ);
         }
     }
 
@@ -1283,319 +3268,488 @@ export default class WolfhourTheme extends BaseTheme {
     // Meteor Crash System (Combo 6+)
     // ─────────────────────────────────────────────────────────────────────────
 
-    createMeteorCrash() {
-        // Choose a random mountain as target
-        const targetMountain = this.mountains[Math.floor(Math.random() * this.mountains.length)];
-        const targetX = targetMountain.position.x + (Math.random() - 0.5) * 200;
-        const targetY = targetMountain.position.y + 200 + Math.random() * 150; // Mountain peak area
-        const targetZ = targetMountain.position.z + 100; // Slightly in front of mountain
+    buildMeteorCrashEffect() {
+        const trailSegments = this.qualityPreset.meteorTrailSegments || 50;
+        const trailGeometry = this.createTrailGeometry(trailSegments);
+        const debrisCount = this.qualityPreset.debrisPerCrash || 40;
+        const dustCount = 25;
 
-        // Start position - upper sky, off to one side
-        const startX = targetX + (Math.random() > 0.5 ? 1 : -1) * (400 + Math.random() * 300);
-        const startY = 400 + Math.random() * 150;
-        const startZ = targetZ;
+        let trailMaterial;
+        let headMaterial;
+        let trailNodeData = null;
+        let headNodeData = null;
+        if (this.isWebGPU && this.materialFactories) {
+            const trailResult = this.materialFactories.createCrashMeteorTrailNodeMaterial({
+                meteorTrailCompute: this.meteorTrailBatchCompute,
+                atmosphereGlow: (this.qualityPreset.meteorAtmosphereGlow || 0) + 0.1,
+                slotAttributeName: 'aSlotOffset',
+            });
+            trailMaterial = trailResult.material;
+            trailNodeData = trailResult;
 
-        const duration = 0.8; // Faster descent for impact
-        const trailSegments = 50;
-        const trailLength = 200;
+            const headResult = this.materialFactories.createCrashMeteorHeadNodeMaterial({
+                pixelRatio: this.renderer.getPixelRatio(),
+                atmosphereGlow: (this.qualityPreset.meteorAtmosphereGlow || 0) + 0.1,
+            });
+            headMaterial = headResult.material;
+            headNodeData = headResult;
+        } else {
+            trailMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uProgress: { value: 0 },
+                },
+                vertexShader: crashMeteorTrailVertexShader,
+                fragmentShader: crashMeteorTrailFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
 
-        // Create trail geometry
-        const positions = new Float32Array(trailSegments * 3);
-        const trailPositions = new Float32Array(trailSegments);
-
-        for (let i = 0; i < trailSegments; i++) {
-            positions[i * 3] = startX;
-            positions[i * 3 + 1] = startY;
-            positions[i * 3 + 2] = startZ;
-            trailPositions[i] = i / (trailSegments - 1);
+            headMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uProgress: { value: 0 },
+                    uPixelRatio: { value: this.renderer.getPixelRatio() },
+                },
+                vertexShader: crashMeteorHeadVertexShader,
+                fragmentShader: crashMeteorHeadFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            });
         }
-
-        const trailGeometry = new THREE.BufferGeometry();
-        trailGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        trailGeometry.setAttribute('aTrailPosition', new THREE.BufferAttribute(trailPositions, 1));
-
-        const trailMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uProgress: { value: 0 },
-            },
-            vertexShader: crashMeteorTrailVertexShader,
-            fragmentShader: crashMeteorTrailFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
 
         const trail = new THREE.Line(trailGeometry, trailMaterial);
         trail.renderOrder = 510;
 
-        // Create glowing head
         const headGeometry = new THREE.BufferGeometry();
-        headGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([startX, startY, startZ]), 3));
-
-        const headMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uProgress: { value: 0 },
-                uPixelRatio: { value: this.renderer.getPixelRatio() },
-            },
-            vertexShader: crashMeteorHeadVertexShader,
-            fragmentShader: crashMeteorHeadFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        const head = new THREE.Points(headGeometry, headMaterial);
+        headGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, -9999]), 3));
+        const head = this._createInstancedParticleMesh(headGeometry, headMaterial);
         head.renderOrder = 511;
+
+        const debrisGeometry = new THREE.BufferGeometry();
+        debrisGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(debrisCount * 3), 3));
+        debrisGeometry.setAttribute('aVelocity', new THREE.BufferAttribute(new Float32Array(debrisCount * 3), 3));
+        debrisGeometry.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(debrisCount), 1));
+        debrisGeometry.setAttribute('aRotation', new THREE.BufferAttribute(new Float32Array(debrisCount), 1));
+        debrisGeometry.setAttribute('aComputeOffset', new THREE.BufferAttribute(new Float32Array(debrisCount), 1));
+
+        let debrisMaterial;
+        let debrisNodeData = null;
+        if (this.isWebGPU && this.materialFactories) {
+            const debrisResult = this.materialFactories.createDebrisNodeMaterial({
+                pixelRatio: this.renderer.getPixelRatio(),
+                debrisCompute: this.debrisBatchCompute,
+                slotAttributeName: 'aComputeOffset',
+            });
+            debrisMaterial = debrisResult.material;
+            debrisNodeData = debrisResult;
+        } else {
+            debrisMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uPixelRatio: { value: this.renderer.getPixelRatio() },
+                },
+                vertexShader: debrisVertexShader,
+                fragmentShader: debrisFragmentShader,
+                transparent: true,
+                depthWrite: false,
+            });
+        }
+        const debris = this._createInstancedParticleMesh(debrisGeometry, debrisMaterial);
+        debris.renderOrder = 520;
+
+        let shockwaveMaterial;
+        let shockwaveNodeData = null;
+        if (this.isWebGPU && this.materialFactories) {
+            const shockwaveResult = this.materialFactories.createShockwaveNodeMaterial();
+            shockwaveMaterial = shockwaveResult.material;
+            shockwaveNodeData = shockwaveResult;
+        } else {
+            shockwaveMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uProgress: { value: 0 },
+                    uOpacity: { value: 1.0 },
+                },
+                vertexShader: shockwaveVertexShader,
+                fragmentShader: shockwaveFragmentShader,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+            });
+        }
+        const shockwave = new THREE.Mesh(this.geometryCache.shockwavePlane.clone(), shockwaveMaterial);
+        shockwave.renderOrder = 515;
+
+        const dustGeometry = new THREE.BufferGeometry();
+        dustGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(dustCount * 3), 3));
+        dustGeometry.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(dustCount), 1));
+        dustGeometry.setAttribute('aPhase', new THREE.BufferAttribute(new Float32Array(dustCount), 1));
+        dustGeometry.setAttribute('aVelocity', new THREE.BufferAttribute(new Float32Array(dustCount * 3), 3));
+
+        let dustMaterial;
+        let dustNodeData = null;
+        if (this.isWebGPU && this.materialFactories) {
+            const dustResult = this.materialFactories.createDustCloudNodeMaterial({
+                pixelRatio: this.renderer.getPixelRatio(),
+            });
+            dustMaterial = dustResult.material;
+            dustNodeData = dustResult;
+        } else {
+            dustMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uPixelRatio: { value: this.renderer.getPixelRatio() },
+                },
+                vertexShader: dustCloudVertexShader,
+                fragmentShader: dustCloudFragmentShader,
+                transparent: true,
+                blending: THREE.NormalBlending,
+                depthWrite: false,
+            });
+        }
+        const dustCloud = this._createInstancedParticleMesh(dustGeometry, dustMaterial);
+        dustCloud.renderOrder = 505;
 
         const crash = new THREE.Group();
         crash.add(trail);
         crash.add(head);
+        crash.add(shockwave);
+        crash.add(debris);
+        crash.add(dustCloud);
 
         crash.userData = {
-            phase: 'descent', // 'descent', 'impact', 'explosion', 'cleanup'
-            startTime: this.time,
-            duration,
-            startX,
-            startY,
-            startZ,
-            targetX,
-            targetY,
-            targetZ,
-            trailLength,
+            phase: 'idle',
+            startTime: 0,
+            duration: 0.8,
+            explosionStartTime: 0,
+            startX: 0,
+            startY: 0,
+            startZ: 0,
+            targetX: 0,
+            targetY: 0,
+            targetZ: 0,
+            trailLength: 200,
             trailSegments,
             trail,
             head,
-            // Explosion components (created on impact)
-            debris: null,
-            shockwave: null,
-            dustCloud: null,
-            impactFlash: null,
+            trailNodeData,
+            headNodeData,
+            trailSlot: -1,
+            debris,
+            debrisNodeData,
+            debrisSlot: -1,
+            debrisCount,
+            shockwave,
+            shockwaveNodeData,
+            dustCloud,
+            dustNodeData,
         };
 
-        this.meteorCrashes.push(crash);
-        this.scene.add(crash);
+        shockwave.visible = false;
+        debris.visible = false;
+        dustCloud.visible = false;
 
-        console.log('[Wolfhour] Meteor crash initiated');
+        return crash;
+    }
+
+    resetMeteorCrashEffect(crash) {
+        const data = crash.userData;
+        const targetMountain = this.mountains[Math.floor(this.random() * this.mountains.length)];
+        data.targetX = targetMountain.position.x + (this.random() - 0.5) * 200;
+        data.targetY = targetMountain.position.y + 200 + this.random() * 150;
+        data.targetZ = targetMountain.position.z + 100;
+
+        data.startX = data.targetX + (this.random() > 0.5 ? 1 : -1) * (400 + this.random() * 300);
+        data.startY = 400 + this.random() * 150;
+        data.startZ = data.targetZ;
+        data.startTime = this.time;
+        data.phase = 'descent';
+        data.duration = 0.8;
+        data.explosionStartTime = 0;
+
+        data.trail.visible = true;
+        data.head.visible = true;
+        data.shockwave.visible = false;
+        data.debris.visible = false;
+        data.dustCloud.visible = false;
+
+        if (data.trailSlot >= 0 && this.meteorTrailBatchCompute) {
+            this.meteorTrailBatchCompute.releaseSlot(data.trailSlot);
+            data.trailSlot = -1;
+        }
+        if (data.debrisSlot >= 0 && this.debrisBatchCompute) {
+            this.debrisBatchCompute.releaseSlot(data.debrisSlot);
+            data.debrisSlot = -1;
+        }
+
+        if (this.meteorTrailBatchCompute && this.shouldUseCompute() && this.qualityPreset.computeMeteorTrails === true) {
+            const slot = this.meteorTrailBatchCompute.acquireSlot();
+            if (slot >= 0) {
+                data.trailSlot = slot;
+                this.setTrailSlotOffset(
+                    data.trail.geometry,
+                    this.meteorTrailBatchCompute.getSlotOffset(slot),
+                );
+            } else {
+                this.reactiveMetrics.poolMisses += 1;
+                this.setTrailSlotOffset(data.trail.geometry, 0);
+            }
+        } else {
+            this.setTrailSlotOffset(data.trail.geometry, 0);
+        }
+
+        const trailAngle = Math.atan2(data.targetY - data.startY, data.targetX - data.startX);
+        this.setTrailPositions(
+            data.trail.geometry,
+            data.trailSegments,
+            data.startX,
+            data.startY,
+            data.startZ,
+            trailAngle,
+            1,
+            data.trailLength,
+        );
+        this.setHeadPosition(data.head.geometry, data.startX, data.startY, data.startZ);
+
+        if (data.trailNodeData) {
+            data.trailNodeData.uniforms.uTime.value = this.time;
+            data.trailNodeData.uniforms.uProgress.value = 0;
+        } else if (data.trail.material?.uniforms) {
+            data.trail.material.uniforms.uTime.value = this.time;
+            data.trail.material.uniforms.uProgress.value = 0;
+        }
+        if (data.headNodeData) {
+            data.headNodeData.uniforms.uProgress.value = 0;
+        } else if (data.head.material?.uniforms) {
+            data.head.material.uniforms.uProgress.value = 0;
+        }
+    }
+
+    createMeteorCrash() {
+        return !!this.acquireReactiveEffect(
+            'crash',
+            this.meteorCrashes,
+            this.buildMeteorCrashEffect,
+            this.resetMeteorCrashEffect,
+        );
+    }
+
+    releaseMeteorCrash(index, crash) {
+        const data = crash.userData;
+        if (data.trailSlot >= 0 && this.meteorTrailBatchCompute) {
+            this.meteorTrailBatchCompute.releaseSlot(data.trailSlot);
+            data.trailSlot = -1;
+        }
+        if (data.debrisSlot >= 0 && this.debrisBatchCompute) {
+            this.debrisBatchCompute.releaseSlot(data.debrisSlot);
+            data.debrisSlot = -1;
+        }
+        this.releaseReactiveEffect('crash', this.meteorCrashes, index, crash);
     }
 
     createImpactExplosion(crash) {
-        const { targetX, targetY, targetZ } = crash.userData;
+        const data = crash.userData;
+        const { targetX, targetY, targetZ } = data;
 
-        // Create debris particles
-        const debrisCount = 40;
-        const debrisPositions = new Float32Array(debrisCount * 3);
-        const debrisVelocities = new Float32Array(debrisCount * 3);
-        const debrisSizes = new Float32Array(debrisCount);
-        const debrisRotations = new Float32Array(debrisCount);
+        if (data.trailSlot >= 0 && this.meteorTrailBatchCompute) {
+            this.meteorTrailBatchCompute.releaseSlot(data.trailSlot);
+            data.trailSlot = -1;
+        }
 
-        for (let i = 0; i < debrisCount; i++) {
+        data.phase = 'explosion';
+        data.explosionStartTime = this.time;
+        data.trail.visible = false;
+        data.head.visible = false;
+        data.debris.visible = true;
+        data.shockwave.visible = true;
+        data.dustCloud.visible = true;
+
+        const debrisPositions = data.debris.geometry.attributes.position.array;
+        const debrisVelocities = data.debris.geometry.attributes.aVelocity.array;
+        const debrisSizes = data.debris.geometry.attributes.aSize.array;
+        const debrisRotations = data.debris.geometry.attributes.aRotation.array;
+        for (let i = 0; i < data.debrisCount; i += 1) {
             const i3 = i * 3;
             debrisPositions[i3] = targetX;
             debrisPositions[i3 + 1] = targetY;
             debrisPositions[i3 + 2] = targetZ + 50;
 
-            // Radial explosion pattern, biased upward
-            const angle = Math.random() * Math.PI * 2;
-            const upAngle = Math.random() * Math.PI * 0.6; // More upward
-            const speed = 250 + Math.random() * 400; // Faster debris
+            const angle = this.random() * Math.PI * 2;
+            const upAngle = this.random() * Math.PI * 0.6;
+            const speed = 250 + this.random() * 400;
             debrisVelocities[i3] = Math.cos(angle) * Math.sin(upAngle) * speed;
-            debrisVelocities[i3 + 1] = Math.cos(upAngle) * speed + 50; // Upward bias
+            debrisVelocities[i3 + 1] = Math.cos(upAngle) * speed + 50;
             debrisVelocities[i3 + 2] = Math.sin(angle) * Math.sin(upAngle) * speed * 0.3;
-
-            debrisSizes[i] = 12 + Math.random() * 20; // Larger debris
-            debrisRotations[i] = Math.random() * Math.PI * 2;
+            debrisSizes[i] = 12 + this.random() * 20;
+            debrisRotations[i] = this.random() * Math.PI * 2;
         }
 
-        const debrisGeometry = new THREE.BufferGeometry();
-        debrisGeometry.setAttribute('position', new THREE.BufferAttribute(debrisPositions, 3));
-        debrisGeometry.setAttribute('aVelocity', new THREE.BufferAttribute(debrisVelocities, 3));
-        debrisGeometry.setAttribute('aSize', new THREE.BufferAttribute(debrisSizes, 1));
-        debrisGeometry.setAttribute('aRotation', new THREE.BufferAttribute(debrisRotations, 1));
+        if (this.debrisBatchCompute && this.shouldUseCompute() && this.qualityPreset.computeDebris === true) {
+            let slot = data.debrisSlot;
+            if (slot < 0) slot = this.debrisBatchCompute.acquireSlot();
+            if (slot >= 0) {
+                data.debrisSlot = slot;
+                this.setDebrisSlotOffset(
+                    data.debris.geometry,
+                    this.debrisBatchCompute.getSlotOffset(slot),
+                );
+                this.debrisBatchCompute.triggerDebrisSlot(
+                    slot,
+                    debrisPositions,
+                    debrisVelocities,
+                    debrisSizes,
+                    debrisRotations,
+                );
+            } else {
+                this.reactiveMetrics.poolMisses += 1;
+                this.setDebrisSlotOffset(data.debris.geometry, 0);
+            }
+        } else {
+            data.debris.geometry.attributes.position.needsUpdate = true;
+            data.debris.geometry.attributes.aVelocity.needsUpdate = true;
+            data.debris.geometry.attributes.aSize.needsUpdate = true;
+            data.debris.geometry.attributes.aRotation.needsUpdate = true;
+            this.setDebrisSlotOffset(data.debris.geometry, 0);
+        }
 
-        const debrisMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uPixelRatio: { value: this.renderer.getPixelRatio() },
-            },
-            vertexShader: debrisVertexShader,
-            fragmentShader: debrisFragmentShader,
-            transparent: true,
-            depthWrite: false,
-        });
+        data.shockwave.position.set(targetX, targetY, targetZ + 60);
+        if (data.shockwaveNodeData) {
+            data.shockwaveNodeData.uniforms.uProgress.value = 0;
+            data.shockwaveNodeData.uniforms.uOpacity.value = 1;
+        } else if (data.shockwave.material?.uniforms) {
+            data.shockwave.material.uniforms.uProgress.value = 0;
+            data.shockwave.material.uniforms.uOpacity.value = 1;
+        }
 
-        const debris = new THREE.Points(debrisGeometry, debrisMaterial);
-        debris.renderOrder = 520;
-        crash.add(debris);
-        crash.userData.debris = debris;
-
-        // Create shockwave ring
-        const shockwaveGeometry = new THREE.PlaneGeometry(1000, 1000); // Larger shockwave
-        const shockwaveMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uProgress: { value: 0 },
-                uOpacity: { value: 1.0 },
-            },
-            vertexShader: shockwaveVertexShader,
-            fragmentShader: shockwaveFragmentShader,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-        });
-
-        const shockwave = new THREE.Mesh(shockwaveGeometry, shockwaveMaterial);
-        shockwave.position.set(targetX, targetY, targetZ + 60);
-        shockwave.renderOrder = 515;
-        crash.add(shockwave);
-        crash.userData.shockwave = shockwave;
-
-        // Create dust cloud
-        const dustCount = 25;
-        const dustPositions = new Float32Array(dustCount * 3);
-        const dustSizes = new Float32Array(dustCount);
-        const dustPhases = new Float32Array(dustCount);
-        const dustVelocities = new Float32Array(dustCount * 3);
-
-        for (let i = 0; i < dustCount; i++) {
+        const dustPositions = data.dustCloud.geometry.attributes.position.array;
+        const dustSizes = data.dustCloud.geometry.attributes.aSize.array;
+        const dustPhases = data.dustCloud.geometry.attributes.aPhase.array;
+        const dustVelocities = data.dustCloud.geometry.attributes.aVelocity.array;
+        const dustCount = dustSizes.length;
+        for (let i = 0; i < dustCount; i += 1) {
             const i3 = i * 3;
-            dustPositions[i3] = targetX + (Math.random() - 0.5) * 150; // Wider spread
-            dustPositions[i3 + 1] = targetY + Math.random() * 60;
+            dustPositions[i3] = targetX + (this.random() - 0.5) * 150;
+            dustPositions[i3 + 1] = targetY + this.random() * 60;
             dustPositions[i3 + 2] = targetZ + 40;
-
-            dustSizes[i] = 100 + Math.random() * 120; // Larger clouds
-            dustPhases[i] = Math.random() * Math.PI * 2;
-            dustVelocities[i3] = (Math.random() - 0.5) * 80; // Faster spread
-            dustVelocities[i3 + 1] = Math.random() * 40;
-            dustVelocities[i3 + 2] = Math.random() * 20;
+            dustSizes[i] = 100 + this.random() * 120;
+            dustPhases[i] = this.random() * Math.PI * 2;
+            dustVelocities[i3] = (this.random() - 0.5) * 80;
+            dustVelocities[i3 + 1] = this.random() * 40;
+            dustVelocities[i3 + 2] = this.random() * 20;
         }
+        data.dustCloud.geometry.attributes.position.needsUpdate = true;
+        data.dustCloud.geometry.attributes.aSize.needsUpdate = true;
+        data.dustCloud.geometry.attributes.aPhase.needsUpdate = true;
+        data.dustCloud.geometry.attributes.aVelocity.needsUpdate = true;
 
-        const dustGeometry = new THREE.BufferGeometry();
-        dustGeometry.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
-        dustGeometry.setAttribute('aSize', new THREE.BufferAttribute(dustSizes, 1));
-        dustGeometry.setAttribute('aPhase', new THREE.BufferAttribute(dustPhases, 1));
-        dustGeometry.setAttribute('aVelocity', new THREE.BufferAttribute(dustVelocities, 3));
-
-        const dustMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uPixelRatio: { value: this.renderer.getPixelRatio() },
-            },
-            vertexShader: dustCloudVertexShader,
-            fragmentShader: dustCloudFragmentShader,
-            transparent: true,
-            blending: THREE.NormalBlending,
-            depthWrite: false,
-        });
-
-        const dustCloud = new THREE.Points(dustGeometry, dustMaterial);
-        dustCloud.renderOrder = 505;
-        crash.add(dustCloud);
-        crash.userData.dustCloud = dustCloud;
-
-        // Boost bloom and mountain effects
         this.effectState.bloomBoost = 0.3;
         this.effectState.mountainShockwave = 1.5;
         this.effectState.mountainPulse = 1.0;
+        this.effectState.cameraShake = Math.max(
+            this.effectState.cameraShake,
+            0.85 * (this.qualityPreset.cameraShakeScale || 1.0),
+        );
+        this.effectState.nebulaDefinition = Math.max(this.effectState.nebulaDefinition, 0.65);
+        this.effectState.nebulaColorShift = Math.max(this.effectState.nebulaColorShift, 0.45);
     }
 
-    updateMeteorCrashes() {
-        for (let i = this.meteorCrashes.length - 1; i >= 0; i--) {
+    updateMeteorCrashes(deltaTime) {
+        for (let i = this.meteorCrashes.length - 1; i >= 0; i -= 1) {
             const crash = this.meteorCrashes[i];
             const data = crash.userData;
             const elapsed = this.time - data.startTime;
 
             if (data.phase === 'descent') {
                 const progress = elapsed / data.duration;
-
                 if (progress >= 1.0) {
-                    // Impact! Remove meteor trail/head, create explosion
-                    crash.remove(data.trail);
-                    crash.remove(data.head);
-                    data.trail.geometry.dispose();
-                    data.trail.material.dispose();
-                    data.head.geometry.dispose();
-                    data.head.material.dispose();
-
-                    data.phase = 'explosion';
-                    data.explosionStartTime = this.time;
                     this.createImpactExplosion(crash);
-                    console.log('[Wolfhour] Meteor impact!');
                     continue;
                 }
 
-                // Animate meteor descent with acceleration
-                const easedProgress = progress * progress; // Accelerate
+                const easedProgress = progress * progress;
                 const currentX = data.startX + (data.targetX - data.startX) * easedProgress;
                 const currentY = data.startY + (data.targetY - data.startY) * easedProgress;
                 const currentZ = data.startZ;
 
-                // Update trail
-                const trailPositions = data.trail.geometry.attributes.position.array;
                 const dx = data.targetX - data.startX;
                 const dy = data.targetY - data.startY;
                 const trailAngle = Math.atan2(dy, dx);
 
-                for (let j = 0; j < data.trailSegments; j++) {
-                    const t = j / (data.trailSegments - 1);
-                    const offset = t * data.trailLength;
-                    trailPositions[j * 3] = currentX - Math.cos(trailAngle) * offset;
-                    trailPositions[j * 3 + 1] = currentY - Math.sin(trailAngle) * offset;
-                    trailPositions[j * 3 + 2] = currentZ;
+                if (data.trailSlot >= 0 && this.meteorTrailBatchCompute) {
+                    this.meteorTrailBatchCompute.setTargetTrailState(data.trailSlot, {
+                        startX: data.startX,
+                        startY: data.startY,
+                        targetX: data.targetX,
+                        targetY: data.targetY,
+                        progress,
+                        headZ: currentZ,
+                        angle: trailAngle,
+                        direction: 1,
+                        trailLength: data.trailLength,
+                    });
+                } else {
+                    this.setTrailPositions(
+                        data.trail.geometry,
+                        data.trailSegments,
+                        currentX,
+                        currentY,
+                        currentZ,
+                        trailAngle,
+                        1,
+                        data.trailLength,
+                    );
                 }
-                data.trail.geometry.attributes.position.needsUpdate = true;
 
-                data.trail.material.uniforms.uTime.value = this.time;
-                data.trail.material.uniforms.uProgress.value = progress;
-                data.head.material.uniforms.uProgress.value = progress;
+                if (data.trailNodeData) {
+                    data.trailNodeData.uniforms.uTime.value = this.time;
+                    data.trailNodeData.uniforms.uProgress.value = progress;
+                    if (data.trailNodeData.uniforms.uAtmosphereGlow) {
+                        data.trailNodeData.uniforms.uAtmosphereGlow.value = ((this.qualityPreset.meteorAtmosphereGlow || 0) + 0.1)
+                            * (1.0 - progress * 0.3);
+                    }
+                } else {
+                    data.trail.material.uniforms.uTime.value = this.time;
+                    data.trail.material.uniforms.uProgress.value = progress;
+                }
+                if (data.headNodeData) {
+                    data.headNodeData.uniforms.uProgress.value = progress;
+                    if (data.headNodeData.uniforms.uAtmosphereGlow) {
+                        data.headNodeData.uniforms.uAtmosphereGlow.value = ((this.qualityPreset.meteorAtmosphereGlow || 0) + 0.1)
+                            * (1.0 - progress * 0.25);
+                    }
+                } else {
+                    data.head.material.uniforms.uProgress.value = progress;
+                }
 
-                // Update head position
-                const headPos = data.head.geometry.attributes.position.array;
-                headPos[0] = currentX;
-                headPos[1] = currentY;
-                headPos[2] = currentZ;
-                data.head.geometry.attributes.position.needsUpdate = true;
+                this.setHeadPosition(data.head.geometry, currentX, currentY, currentZ);
             } else if (data.phase === 'explosion') {
                 const explosionElapsed = this.time - data.explosionStartTime;
-                const explosionDuration = 4.5; // Longer duration (was 2.5)
-
+                const explosionDuration = 4.5;
                 if (explosionElapsed > explosionDuration) {
-                    // Cleanup
-                    if (data.debris) {
-                        data.debris.geometry.dispose();
-                        data.debris.material.dispose();
-                    }
-                    if (data.shockwave) {
-                        data.shockwave.geometry.dispose();
-                        data.shockwave.material.dispose();
-                    }
-                    if (data.dustCloud) {
-                        data.dustCloud.geometry.dispose();
-                        data.dustCloud.material.dispose();
-                    }
-                    this.scene.remove(crash);
-                    this.meteorCrashes.splice(i, 1);
-                    console.log('[Wolfhour] Meteor crash cleaned up');
+                    this.releaseMeteorCrash(i, crash);
                     continue;
                 }
 
-                const explosionProgress = explosionElapsed / explosionDuration;
-
-                // Update debris
-                if (data.debris) {
+                if (data.debrisNodeData) {
+                    data.debrisNodeData.uniforms.uTime.value = explosionElapsed;
+                } else if (data.debris.material?.uniforms) {
                     data.debris.material.uniforms.uTime.value = explosionElapsed;
                 }
 
-                // Update shockwave
-                if (data.shockwave) {
-                    // Slower expansion (over 2.5s instead of 1.0s)
-                    const shockwaveProgress = Math.min(explosionElapsed / 2.5, 1.0);
+                const shockwaveProgress = Math.min(explosionElapsed / 2.5, 1.0);
+                if (data.shockwaveNodeData) {
+                    data.shockwaveNodeData.uniforms.uProgress.value = shockwaveProgress;
+                    data.shockwaveNodeData.uniforms.uOpacity.value = 1.0 - shockwaveProgress;
+                } else if (data.shockwave.material?.uniforms) {
                     data.shockwave.material.uniforms.uProgress.value = shockwaveProgress;
-                    data.shockwave.material.uniforms.uOpacity.value = 1.0 - shockwaveProgress; // Fade out slowly
+                    data.shockwave.material.uniforms.uOpacity.value = 1.0 - shockwaveProgress;
                 }
 
-                // Update dust cloud
-                if (data.dustCloud) {
+                if (data.dustNodeData) {
+                    data.dustNodeData.uniforms.uTime.value = explosionElapsed;
+                } else if (data.dustCloud.material?.uniforms) {
                     data.dustCloud.material.uniforms.uTime.value = explosionElapsed;
                 }
             }
@@ -1612,27 +3766,72 @@ export default class WolfhourTheme extends BaseTheme {
 
             this.animationFrameId = requestAnimationFrame(animate);
 
-            const deltaTime = this.clock.getDelta();
-            this.time += deltaTime;
+            let deltaTime;
+            if (this.fixedDeltaSeconds) {
+                deltaTime = this.fixedDeltaSeconds;
+                this.fixedElapsedTime += deltaTime;
+                this.time = this.fixedElapsedTime;
+            } else {
+                deltaTime = this.clock.getDelta();
+                this.time += deltaTime;
+            }
 
             // Subtle camera drift animation for immersive feel
             this.updateCameraAnimation();
 
-            if (this.starfield) this.starfield.material.uniforms.uTime.value = this.time;
-            if (this.spirits) this.spirits.material.uniforms.uTime.value = this.time;
-            this.mountains.forEach((m) => {
-                m.material.uniforms.uTime.value = this.time;
-            });
+            // Update time uniforms — branch by backend
+            if (this.isWebGPU && this.materialFactories) {
+                if (this.starfieldNodeData) {
+                    this.starfieldNodeData.uniforms.uTime.value = this.time;
+                }
+                if (this.spiritNodeData) {
+                    this.spiritNodeData.uniforms.uTime.value = this.time;
+                }
+                if (this.ambientParticles?.userData?.nodeData?.uniforms?.uTime) {
+                    this.ambientParticles.userData.nodeData.uniforms.uTime.value = this.time;
+                }
+                this.mountains.forEach((m) => {
+                    if (m.userData.nodeData) {
+                        m.userData.nodeData.uniforms.uTime.value = this.time;
+                    }
+                });
+                if (this.groundFog?.userData?.nodeData?.uniforms?.uTime) {
+                    this.groundFog.userData.nodeData.uniforms.uTime.value = this.time;
+                }
+            } else {
+                if (this.starfield) this.starfield.material.uniforms.uTime.value = this.time;
+                if (this.spirits) this.spirits.material.uniforms.uTime.value = this.time;
+                this.mountains.forEach((m) => {
+                    m.material.uniforms.uTime.value = this.time;
+                });
+            }
 
             this.updateNebulas(deltaTime);
             this.updateEffects(deltaTime);
-            this.updateMeteors(); // Shooting star system
-            this.updateMeteorCrashes(); // Meteor crash system
+            this.processReactiveQueue();
+            this.updateMeteors(deltaTime); // Shooting star system
+            this.updateMeteorCrashes(deltaTime); // Meteor crash system
+            this.updateComputeSystems(deltaTime);
 
-            if (this.composer) {
+            if (this.isWebGPU) {
+                if (this.postProcessing) {
+                    try {
+                        this.postProcessing.render();
+                    } catch (error) {
+                        this.disablePostRuntime('render', error);
+                        this.renderer.render(this.scene, this.camera);
+                    }
+                } else {
+                    this.renderer.render(this.scene, this.camera);
+                }
+            } else if (this.composer) {
                 this.composer.render();
             } else {
                 this.renderer.render(this.scene, this.camera);
+            }
+
+            if (this.flags.baseline) {
+                this.trackBaselineFrame(deltaTime);
             }
         };
 
@@ -1646,38 +3845,259 @@ export default class WolfhourTheme extends BaseTheme {
         const slowDrift = 0.025;
 
         // Horizontal drift with layered motion for organic feel
-        const xDrift = Math.sin(this.time * driftSpeed) * 60
-            + Math.sin(this.time * slowDrift * 0.6) * 25; // Combined ±85 units max
+        const xDrift = Math.sin(this.time * driftSpeed) * 85
+            + Math.sin(this.time * slowDrift * 0.6) * 40
+            + Math.cos(this.time * 0.018 + 0.8) * 18; // Combined ~±143 units max
 
-        // Vertical breathing movement - larger range to shift mountain up/down
-        const yDrift = Math.sin(this.time * driftSpeed * 0.8 + 1.0) * 45
-            + Math.cos(this.time * slowDrift * 0.5) * 20; // Combined ±65 units max
+        // Vertical breathing movement - stronger inhale/exhale lift/drop.
+        const yDrift = Math.sin(this.time * driftSpeed * 0.8 + 1.0) * 70
+            + Math.cos(this.time * slowDrift * 0.5) * 35
+            + Math.sin(this.time * 0.03 + 0.35) * 20; // Combined ~±125 units max
 
-        // Breathing zoom effect - subtle but noticeable
-        // Period: ~15 seconds
-        const breathe = Math.sin(this.time * 0.12) * 0.035; // ±3.5% zoom
+        // Deep breathing zoom — stronger forward/back movement against the mountains.
+        // 1. Slow "approach/retreat" cycle (~25s period)
+        const deepBreathe = Math.sin(this.time * 0.08) * 0.14; // ±14% zoom
+        // 2. Mid-frequency cinematic swell (~40s period)
+        const tidalBreathe = Math.sin(this.time * 0.045 + 1.2) * 0.045; // ±4.5% zoom
+        // 3. Faster micro-breath (~15s period)
+        const microBreathe = Math.sin(this.time * 0.14 + 0.5) * 0.055; // ±5.5% zoom
+        const breathe = deepBreathe + tidalBreathe + microBreathe; // ~±24% peak
+
+        const shakeScale = (this.qualityPreset.cameraShakeScale || 1.0) * this.effectState.cameraShake;
+        const shakeX = (
+            Math.sin(this.time * 51.0)
+            + Math.cos(this.time * 83.0) * 0.6
+        ) * shakeScale * 14.0;
+        const shakeY = (
+            Math.cos(this.time * 47.0)
+            + Math.sin(this.time * 79.0) * 0.5
+        ) * shakeScale * 11.0;
 
         // Apply position drift
-        this.camera.position.x = xDrift;
-        this.camera.position.y = yDrift;
+        this.camera.position.x = xDrift + shakeX;
+        this.camera.position.y = yDrift + shakeY;
+
+        // Deep Immersion: Dynamic Camera Roll (Banking & Tilt)
+        // Bank slightly into the direction of the horizontal drift
+        const bankTilt = -xDrift * 0.00015;
+        // Add chaotic tilt during screen shake events (hard drops, line clears, combos)
+        const shakeTilt = (Math.sin(this.time * 61.0) + Math.cos(this.time * 43.0)) * shakeScale * 0.012;
+        this.camera.rotation.z = bankTilt + shakeTilt;
 
         // Apply breathing zoom (adjust frustum size)
         const baseSize = 1000;
-        const zoomFactor = 1 + breathe;
+        // Impact Zoom: Zoom out slightly during high-impact events for a "push back" visceral feeling
+        const impactZoom = shakeScale * 0.04;
+        // During pulse-heavy moments, bias slightly toward approaching the mountains.
+        const reactiveApproach = this.effectState.mountainPulse * 0.02;
+        // Negative breathe = smaller frustum = zoomed IN (closer to mountains)
+        const zoomFactor = THREE.MathUtils.clamp(1 - breathe - reactiveApproach + impactZoom, 0.72, 1.3);
         const aspect = window.innerWidth / window.innerHeight;
         const frustumSize = baseSize * zoomFactor;
 
-        this.camera.left = (frustumSize * aspect) / -2;
-        this.camera.right = (frustumSize * aspect) / 2;
-        this.camera.top = frustumSize / 2;
-        this.camera.bottom = frustumSize / -2;
-        this.camera.updateProjectionMatrix();
+        const nextLeft = (frustumSize * aspect) / -2;
+        const nextRight = (frustumSize * aspect) / 2;
+        const nextTop = frustumSize / 2;
+        const nextBottom = frustumSize / -2;
+        const previousFrustum = this.lastCameraFrustum;
+        const frustumEpsilon = 0.5;
+        const needsProjectionUpdate = !previousFrustum
+            || Math.abs(previousFrustum.left - nextLeft) > frustumEpsilon
+            || Math.abs(previousFrustum.right - nextRight) > frustumEpsilon
+            || Math.abs(previousFrustum.top - nextTop) > frustumEpsilon
+            || Math.abs(previousFrustum.bottom - nextBottom) > frustumEpsilon;
+
+        if (needsProjectionUpdate) {
+            this.camera.left = nextLeft;
+            this.camera.right = nextRight;
+            this.camera.top = nextTop;
+            this.camera.bottom = nextBottom;
+            this.camera.updateProjectionMatrix();
+            this.lastCameraFrustum = {
+                left: nextLeft,
+                right: nextRight,
+                top: nextTop,
+                bottom: nextBottom,
+            };
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Deterministic Baseline Playback
+    // ─────────────────────────────────────────────────────────────────────────
+
+    clearBaselinePlaybackTimers() {
+        this.baselineTimeouts.forEach((id) => clearTimeout(id));
+        this.baselineTimeouts.clear();
+        this.baselineSequenceStats = { sequence: null, loops: 0, startedAt: 0 };
+    }
+
+    scheduleBaselineTimeout(callback, delayMs) {
+        if (typeof window === 'undefined') return null;
+        const timeoutId = window.setTimeout(() => {
+            this.baselineTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.baselineTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    waitForBaseline(delayMs) {
+        return new Promise((resolve) => {
+            this.scheduleBaselineTimeout(resolve, delayMs);
+        });
+    }
+
+    getBaselineSequence(name = 'default') {
+        const sequences = {
+            default: [
+                { event: EVENTS.PIECE_LOCK, payload: {} },
+                { event: EVENTS.LINE_CLEAR, payload: { lineCount: 2 } },
+                { event: EVENTS.COMBO, payload: { comboCount: 3 } },
+                { event: EVENTS.PIECE_LOCK, payload: {} },
+                { event: EVENTS.LINE_CLEAR, payload: { lineCount: 4 } },
+                { event: EVENTS.COMBO, payload: { comboCount: 5 } },
+            ],
+            stress: [
+                { event: EVENTS.PIECE_LOCK, payload: {} },
+                { event: EVENTS.LINE_CLEAR, payload: { lineCount: 4 } },
+                { event: EVENTS.COMBO, payload: { comboCount: 6 } },
+                { event: EVENTS.PIECE_LOCK, payload: {} },
+                { event: EVENTS.COMBO, payload: { comboCount: 8 } },
+                { event: EVENTS.LINE_CLEAR, payload: { lineCount: 4 } },
+                { event: EVENTS.PIECE_LOCK, payload: {} },
+                { event: EVENTS.COMBO, payload: { comboCount: 10 } },
+            ],
+        };
+        return sequences[name] || sequences.default;
+    }
+
+    getBaselineSequenceDurationMs(name = 'default', loops = 1, stepMs = 320) {
+        const sequence = this.getBaselineSequence(name);
+        return sequence.length * loops * stepMs + 50;
+    }
+
+    playBaselineSequence(name = 'default', options = {}) {
+        if (typeof window === 'undefined') return false;
+
+        const sequence = this.getBaselineSequence(name);
+        const loops = Number.isFinite(options.loops) && options.loops > 0
+            ? Math.floor(options.loops)
+            : (this.flags.playbackLoops || 1);
+        const stepMs = Number.isFinite(options.stepMs) && options.stepMs > 0
+            ? options.stepMs
+            : 320;
+
+        this.clearBaselinePlaybackTimers();
+        this.baselineSequenceStats = {
+            sequence: name,
+            loops,
+            startedAt: Date.now(),
+        };
+
+        for (let loop = 0; loop < loops; loop++) {
+            sequence.forEach((step, index) => {
+                const delayMs = (loop * sequence.length + index) * stepMs;
+                this.scheduleBaselineTimeout(() => {
+                    if (!this.isActive) return;
+                    const originalWindow = typeof window !== 'undefined' ? window : {};
+                    if (!originalWindow.settings) originalWindow.settings = { backgroundComboEffects: true };
+
+                    const payload = step.payload && typeof step.payload === 'object'
+                        ? { ...step.payload }
+                        : step.payload;
+
+                    // Manually route sequence events safely
+                    if (step.event === EVENTS.PIECE_LOCK) this.onPieceLock();
+                    else if (step.event === EVENTS.LINE_CLEAR) this.onLineClear(payload);
+                    else if (step.event === EVENTS.COMBO) this.onCombo(payload);
+                    else if (step.event === EVENTS.LEVEL_UP) this.onLevelUp(payload);
+                }, delayMs);
+            });
+        }
+
+        // Add dummy timeout to track completion
+        this.scheduleBaselineTimeout(() => { }, this.getBaselineSequenceDurationMs(name, loops, stepMs));
+
+        console.log('[WolfhourBaseline] Playing sequence', { name, loops, stepMs });
+        return true;
+    }
+
+    disposeMaterialResources(material) {
+        const disposeSingleMaterial = (entry) => {
+            if (!entry) return;
+
+            const textureSlots = [
+                'map',
+                'alphaMap',
+                'emissiveMap',
+                'normalMap',
+                'metalnessMap',
+                'roughnessMap',
+                'aoMap',
+                'bumpMap',
+                'displacementMap',
+                'specularMap',
+                'clearcoatMap',
+                'clearcoatNormalMap',
+                'clearcoatRoughnessMap',
+            ];
+
+            textureSlots.forEach((slot) => {
+                const texture = entry[slot];
+                if (texture?.isTexture) {
+                    texture.dispose?.();
+                }
+            });
+
+            if (entry.uniforms && typeof entry.uniforms === 'object') {
+                Object.values(entry.uniforms).forEach((uniformValue) => {
+                    const value = uniformValue?.value;
+                    if (value?.isTexture) {
+                        value.dispose?.();
+                        return;
+                    }
+                    if (Array.isArray(value)) {
+                        value.forEach((texture) => {
+                            if (texture?.isTexture) texture.dispose?.();
+                        });
+                    }
+                });
+            }
+
+            entry.dispose?.();
+        };
+
+        if (Array.isArray(material)) {
+            material.forEach((entry) => disposeSingleMaterial(entry));
+            return;
+        }
+        disposeSingleMaterial(material);
+    }
+
+    disposeObjectResources(object) {
+        if (!object) return;
+        object.geometry?.dispose?.();
+        this.disposeMaterialResources(object.material);
     }
 
     cleanup() {
         this.stop();
+
+        // Restore console.warn if we filtered the uv attribute warning
+        if (this._origConsoleWarn) {
+            console.warn = this._origConsoleWarn;
+            this._origConsoleWarn = null;
+        }
+
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
+        this.teardownQualityListener();
+
+        this.removeBaselineHelpers();
+        this.clearBaselinePlaybackTimers();
+        this.resetBaselineSamples();
+        this.disposeComputeSystems();
 
         if (this.resizeHandler) {
             window.removeEventListener('resize', this.resizeHandler);
@@ -1686,53 +4106,84 @@ export default class WolfhourTheme extends BaseTheme {
 
         this.mountains.forEach((m) => {
             m.geometry.dispose();
-            m.material.dispose();
+            this.disposeMaterialResources(m.material);
         });
         this.mountains = [];
 
         if (this.starfield) {
             this.starfield.geometry.dispose();
-            this.starfield.material.dispose();
+            this.disposeMaterialResources(this.starfield.material);
             this.starfield = null;
         }
 
         this.nebulaPlanes.forEach((n) => {
             n.geometry.dispose();
-            n.material.uniforms.tDiffuse.value?.dispose();
-            n.material.dispose();
+            this.disposeMaterialResources(n.material);
         });
         this.nebulaPlanes = [];
 
-        this.starBursts.forEach((b) => { b.geometry.dispose(); b.material.dispose(); });
+        [...this.starBursts, ...this.effectPools.starBurst].forEach((b) => this.disposeObjectResources(b));
         this.starBursts = [];
-        this.celestialBeams.forEach((b) => { b.geometry.dispose(); b.material.dispose(); });
+        this.effectPools.starBurst = [];
+        [...this.celestialBeams, ...this.effectPools.beam].forEach((b) => this.disposeObjectResources(b));
         this.celestialBeams = [];
-        this.cosmicRifts.forEach((b) => { b.geometry.dispose(); b.material.dispose(); });
+        this.effectPools.beam = [];
+        [...this.cosmicRifts, ...this.effectPools.rift].forEach((b) => this.disposeObjectResources(b));
         this.cosmicRifts = [];
-        this.cosmicWaves.forEach((b) => { b.geometry.dispose(); b.material.dispose(); });
+        this.effectPools.rift = [];
+        [...this.cosmicWaves, ...this.effectPools.wave].forEach((b) => this.disposeObjectResources(b));
         this.cosmicWaves = [];
-        this.meteors.forEach((m) => {
-            m.userData.trail.geometry.dispose();
-            m.userData.trail.material.dispose();
-            m.userData.head.geometry.dispose();
-            m.userData.head.material.dispose();
+        this.effectPools.wave = [];
+        [...this.meteors, ...this.effectPools.meteor].forEach((m) => {
+            this.disposeObjectResources(m.userData.trail);
+            this.disposeObjectResources(m.userData.head);
         });
         this.meteors = [];
-        this.meteorCrashes.forEach((c) => {
+        this.effectPools.meteor = [];
+        [...this.meteorCrashes, ...this.effectPools.crash].forEach((c) => {
             const d = c.userData;
-            if (d.trail) { d.trail.geometry.dispose(); d.trail.material.dispose(); }
-            if (d.head) { d.head.geometry.dispose(); d.head.material.dispose(); }
-            if (d.debris) { d.debris.geometry.dispose(); d.debris.material.dispose(); }
-            if (d.shockwave) { d.shockwave.geometry.dispose(); d.shockwave.material.dispose(); }
-            if (d.dustCloud) { d.dustCloud.geometry.dispose(); d.dustCloud.material.dispose(); }
-            if (d.impactFlash) { d.impactFlash.geometry.dispose(); d.impactFlash.material.dispose(); }
+            this.disposeObjectResources(d.trail);
+            this.disposeObjectResources(d.head);
+            this.disposeObjectResources(d.debris);
+            this.disposeObjectResources(d.shockwave);
+            this.disposeObjectResources(d.dustCloud);
         });
         this.meteorCrashes = [];
+        this.effectPools.crash = [];
+        this.reactiveQueue = [];
+
+        this.geometryCache.waveGeometry?.dispose?.();
+        this.geometryCache.shockwavePlane?.dispose?.();
+        this.geometryCache.unitQuad?.dispose?.();
+        this.geometryCache = {
+            unitQuad: null,
+            shockwavePlane: null,
+            trailGeometry: null,
+            crashTrailGeometry: null,
+            waveGeometry: null,
+        };
 
         if (this.spirits) {
             this.spirits.geometry.dispose();
-            this.spirits.material.dispose();
+            this.disposeMaterialResources(this.spirits.material);
             this.spirits = null;
+        }
+
+        if (this.ambientParticles) {
+            this.ambientParticles.geometry.dispose();
+            this.disposeMaterialResources(this.ambientParticles.material);
+            this.ambientParticles = null;
+        }
+
+        if (this.groundFog) {
+            this.groundFog.geometry.dispose();
+            this.disposeMaterialResources(this.groundFog.material);
+            this.groundFog = null;
+        }
+
+        if (this.postProcessing) {
+            this.postProcessing.dispose?.();
+            this.postProcessing = null;
         }
 
         if (this.composer) {
@@ -1748,6 +4199,12 @@ export default class WolfhourTheme extends BaseTheme {
 
         this.scene = null;
         this.camera = null;
+        this.materialFactories = null;
+        this.computeFactories = null;
+        this.postFactories = null;
+        this.postProfile = null;
+        this.starfieldNodeData = null;
+        this.spiritNodeData = null;
 
         console.log('[Wolfhour] Theme cleaned up');
     }

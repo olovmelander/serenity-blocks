@@ -326,7 +326,7 @@ varying vec2 vUv;
 varying vec3 vNormal;
 varying vec3 vWorldPosition;
 
-\${noiseCommon}
+${noiseCommon}
 
 void main() {
     vUv = uv;
@@ -353,7 +353,7 @@ varying vec2 vUv;
 varying vec3 vNormal;
 varying vec3 vWorldPosition;
 
-\${noiseCommon}
+${noiseCommon}
 
 void main() {
     // Dynamic plasma/energy effect
@@ -620,7 +620,7 @@ export const nebulaFragmentShader = `
     uniform float uTime;
     varying vec2 vUv;
     
-    \${noiseCommon}
+    ${noiseCommon}
 
     void main() {
         // Fluid billowy distortion across UVs

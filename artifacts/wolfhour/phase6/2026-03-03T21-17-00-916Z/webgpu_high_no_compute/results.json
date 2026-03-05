@@ -1,0 +1,193 @@
+{
+  "scenario": "webgpu_high_no_compute",
+  "url": "http://127.0.0.1:4175/?wolfhourBaseline=1&wolfhourSeed=12345&wolfhourNoCompute=1",
+  "idle": {
+    "ok": true,
+    "mode": "idle",
+    "durationMs": 12000,
+    "comboTriggers": 0,
+    "startMemory": {
+      "textures": 16,
+      "geometries": 14
+    },
+    "endMemory": {
+      "textures": 16,
+      "geometries": 18
+    },
+    "growth": {
+      "texturesPct": 0,
+      "geometriesPct": 0.2857142857142857
+    },
+    "report": {
+      "backend": "WebGL2",
+      "quality": "High",
+      "frameCount": 12,
+      "avgFrameMs": 1000.46666666617,
+      "avgFps": 0.9995335510100251,
+      "p50FrameMs": 1000.3000000119209,
+      "p95FrameMs": 1002.2999999970197,
+      "p99FrameMs": 1002.2999999970197,
+      "avgDrawCalls": 1,
+      "avgTriangles": 1,
+      "avgPoints": 0,
+      "avgLines": 0,
+      "peakDrawCalls": 1,
+      "peakTriangles": 1,
+      "peakPoints": 0,
+      "peakLines": 0,
+      "textures": 16,
+      "geometries": 18,
+      "gpuMemoryEstimateMb": 28.5,
+      "heapUsedMb": 116.5,
+      "flags": {
+        "forceWebGL": false,
+        "noPost": false,
+        "noMRT": false,
+        "noCompute": true,
+        "baseline": true
+      },
+      "capabilities": {
+        "webgpu": false,
+        "webgl": true,
+        "maxColorAttachments": 1,
+        "supportsPost": true,
+        "supportsMRT": false,
+        "supportsCompute": false
+      },
+      "runtimeFeatures": {
+        "usePost": true,
+        "useMRT": false,
+        "useCompute": false,
+        "qualityAllowsCompute": true,
+        "qualityAllowsPost": true,
+        "qualityAllowsMRT": true,
+        "spirits": "material",
+        "ambient": "off",
+        "starTwinkle": "material",
+        "meteorTrail": "compute-capable",
+        "debris": "compute-capable",
+        "postProfile": "off",
+        "cameraShakeScale": 0.6,
+        "starCount": 50000,
+        "ambientParticles": 1000
+      },
+      "computeBudget": null,
+      "sequence": {
+        "sequence": null,
+        "loops": 0,
+        "startedAt": 0
+      },
+      "budget": {
+        "targetFps": 60,
+        "maxDrawCalls": 30,
+        "maxTriangles": 1000000,
+        "maxPoints": 100000,
+        "avgDrawCalls": 1,
+        "avgTriangles": 1,
+        "avgPoints": 0,
+        "peakDrawCalls": 1,
+        "peakTriangles": 1,
+        "peakPoints": 0,
+        "pass": true
+      },
+      "seed": 12345,
+      "fixedDtMs": null,
+      "capturedAt": "2026-03-03T21:18:04.696Z"
+    }
+  },
+  "combat": {
+    "ok": true,
+    "mode": "combat",
+    "durationMs": 12000,
+    "comboTriggers": 31,
+    "startMemory": {
+      "textures": 16,
+      "geometries": 18
+    },
+    "endMemory": {
+      "textures": 16,
+      "geometries": 38
+    },
+    "growth": {
+      "texturesPct": 0,
+      "geometriesPct": 1.1111111111111112
+    },
+    "report": {
+      "backend": "WebGL2",
+      "quality": "High",
+      "frameCount": 12,
+      "avgFrameMs": 1000.6416666669151,
+      "avgFps": 0.9993587448051684,
+      "p50FrameMs": 1000.7000000029802,
+      "p95FrameMs": 1002.9999999999999,
+      "p99FrameMs": 1002.9999999999999,
+      "avgDrawCalls": 1,
+      "avgTriangles": 1,
+      "avgPoints": 0,
+      "avgLines": 0,
+      "peakDrawCalls": 1,
+      "peakTriangles": 1,
+      "peakPoints": 0,
+      "peakLines": 0,
+      "textures": 16,
+      "geometries": 38,
+      "gpuMemoryEstimateMb": 33.5,
+      "heapUsedMb": 117.3,
+      "flags": {
+        "forceWebGL": false,
+        "noPost": false,
+        "noMRT": false,
+        "noCompute": true,
+        "baseline": true
+      },
+      "capabilities": {
+        "webgpu": false,
+        "webgl": true,
+        "maxColorAttachments": 1,
+        "supportsPost": true,
+        "supportsMRT": false,
+        "supportsCompute": false
+      },
+      "runtimeFeatures": {
+        "usePost": true,
+        "useMRT": false,
+        "useCompute": false,
+        "qualityAllowsCompute": true,
+        "qualityAllowsPost": true,
+        "qualityAllowsMRT": true,
+        "spirits": "material",
+        "ambient": "off",
+        "starTwinkle": "material",
+        "meteorTrail": "compute-capable",
+        "debris": "compute-capable",
+        "postProfile": "off",
+        "cameraShakeScale": 0.6,
+        "starCount": 50000,
+        "ambientParticles": 1000
+      },
+      "computeBudget": null,
+      "sequence": {
+        "sequence": null,
+        "loops": 0,
+        "startedAt": 0
+      },
+      "budget": {
+        "targetFps": 60,
+        "maxDrawCalls": 30,
+        "maxTriangles": 1000000,
+        "maxPoints": 100000,
+        "avgDrawCalls": 1,
+        "avgTriangles": 1,
+        "avgPoints": 0,
+        "peakDrawCalls": 1,
+        "peakTriangles": 1,
+        "peakPoints": 0,
+        "pass": true
+      },
+      "seed": 12345,
+      "fixedDtMs": null,
+      "capturedAt": "2026-03-03T21:18:14.256Z"
+    }
+  },
+  "soak": null
+}

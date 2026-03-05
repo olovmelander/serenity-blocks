@@ -3,81 +3,86 @@
  *
  * Controls chapter-specific 3D backgrounds that change based on camera position
  * and player progress. Handles smooth transitions between chapter atmospheres.
+ *
+ * PERFORMANCE: Uses dynamic imports so chapter environments are loaded on-demand
+ * instead of all at startup. Only the player's current chapter + neighbors are
+ * loaded eagerly; remaining chapters load in background chunks.
  */
 
 import * as THREE from 'three';
-import {
-    EARTH_CORE_CONFIG,
-    createEarthCoreEnvironment,
-    updateEarthCoreEnvironment,
-    DEEP_OCEAN_CONFIG,
-    createDeepOceanEnvironment,
-    updateDeepOceanEnvironment,
-    SURFACE_WORLD_CONFIG,
-    createSurfaceWorldEnvironment,
-    updateSurfaceWorldEnvironment,
-    MOUNTAIN_PEAKS_CONFIG,
-    createMountainPeaksEnvironment,
-    updateMountainPeaksEnvironment,
-    SKY_DRIFT_CONFIG,
-    createSkyDriftEnvironment,
-    updateSkyDriftEnvironment,
-    COSMIC_EXPANSE_CONFIG,
-    createCosmicExpanseEnvironment,
-    updateCosmicExpanseEnvironment,
-} from './chapter-environments/index.js';
 import { CHAPTER_CONFIGS } from '../../core/odyssey/data/chapters.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 
 /**
- * Chapter environment definitions
+ * Dynamic chapter module map — each entry returns a Promise that loads the module
+ * only when requested. This avoids bundling all 6 heavy shader/geometry chapters
+ * into the initial load.
  */
-const CHAPTER_DEFS = [
-    {
-        id: 1,
-        config: EARTH_CORE_CONFIG,
-        create: createEarthCoreEnvironment,
-        update: updateEarthCoreEnvironment,
-    },
-    {
-        id: 2,
-        config: DEEP_OCEAN_CONFIG,
-        create: createDeepOceanEnvironment,
-        update: updateDeepOceanEnvironment,
-    },
-    {
-        id: 3,
-        config: SURFACE_WORLD_CONFIG,
-        create: createSurfaceWorldEnvironment,
-        update: updateSurfaceWorldEnvironment,
-    },
-    {
-        id: 4,
-        config: MOUNTAIN_PEAKS_CONFIG,
-        create: createMountainPeaksEnvironment,
-        update: updateMountainPeaksEnvironment,
-    },
-    {
-        id: 5,
-        config: SKY_DRIFT_CONFIG,
-        create: createSkyDriftEnvironment,
-        update: updateSkyDriftEnvironment,
-    },
-    {
-        id: 6,
-        config: COSMIC_EXPANSE_CONFIG,
-        create: createCosmicExpanseEnvironment,
-        update: updateCosmicExpanseEnvironment,
-    },
-];
+const CHAPTER_MODULE_LOADERS = {
+    1: () => import('./chapter-environments/earth-core.js'),
+    2: () => import('./chapter-environments/deep-ocean.js'),
+    3: () => import('./chapter-environments/surface-world.js'),
+    4: () => import('./chapter-environments/mountain-peaks.js'),
+    5: () => import('./chapter-environments/sky-drift.js'),
+    6: () => import('./chapter-environments/cosmic-expanse.js'),
+};
+
+/**
+ * Maps chapter IDs to the export names used in each module.
+ * Pattern: CONFIG_NAME, CREATE_FN_NAME, UPDATE_FN_NAME
+ */
+const CHAPTER_EXPORT_NAMES = {
+    1: { config: 'EARTH_CORE_CONFIG', create: 'createEarthCoreEnvironment', update: 'updateEarthCoreEnvironment' },
+    2: { config: 'DEEP_OCEAN_CONFIG', create: 'createDeepOceanEnvironment', update: 'updateDeepOceanEnvironment' },
+    3: { config: 'SURFACE_WORLD_CONFIG', create: 'createSurfaceWorldEnvironment', update: 'updateSurfaceWorldEnvironment' },
+    4: { config: 'MOUNTAIN_PEAKS_CONFIG', create: 'createMountainPeaksEnvironment', update: 'updateMountainPeaksEnvironment' },
+    5: { config: 'SKY_DRIFT_CONFIG', create: 'createSkyDriftEnvironment', update: 'updateSkyDriftEnvironment' },
+    6: { config: 'COSMIC_EXPANSE_CONFIG', create: 'createCosmicExpanseEnvironment', update: 'updateCosmicExpanseEnvironment' },
+};
+
+const CHAPTER_POSITIONS = ODYSSEY_PATH_DATA.chapterPositions || [];
+const CHAPTER_ENVIRONMENTS_BY_ID = new Map(
+    CHAPTER_CONFIGS
+        .filter((chapter) => chapter?.environment)
+        .map((chapter) => [chapter.id, chapter.environment]),
+);
+
+// Cache for loaded modules so we don't re-import
+const _loadedModules = new Map();
+
+/**
+ * Dynamically load a chapter module (cached).
+ * @param {number} chapterId
+ * @returns {Promise<{config: Object, create: Function, update: Function}>}
+ */
+async function loadChapterModule(chapterId) {
+    if (_loadedModules.has(chapterId)) {
+        return _loadedModules.get(chapterId);
+    }
+
+    const loader = CHAPTER_MODULE_LOADERS[chapterId];
+    if (!loader) return null;
+
+    const mod = await loader();
+    const names = CHAPTER_EXPORT_NAMES[chapterId];
+
+    const result = {
+        config: mod[names.config],
+        create: mod[names.create],
+        update: mod[names.update],
+    };
+
+    _loadedModules.set(chapterId, result);
+    return result;
+}
 
 const DEFAULT_PATH_TRANSITION_ZONE = 0.02;
+const OPACITY_APPLY_EPSILON = 0.01;
 
 function getChapterPathRange(chapterId) {
-    const positions = ODYSSEY_PATH_DATA.chapterPositions || [];
-    const start = positions[chapterId - 1];
+    const start = CHAPTER_POSITIONS[chapterId - 1];
     if (start === undefined) return null;
-    const end = positions[chapterId] ?? 1;
+    const end = CHAPTER_POSITIONS[chapterId] ?? 1;
     return { start, end };
 }
 
@@ -103,6 +108,8 @@ export class ChapterEnvironmentManager {
 
         // Active environment references
         this.environments = new Map(); // chapterId -> { group, update }
+        this.ambientLights = new Set();
+        this.chapterEnvironmentById = CHAPTER_ENVIRONMENTS_BY_ID;
 
         // Current state
         this.currentChapter = 1;
@@ -125,6 +132,12 @@ export class ChapterEnvironmentManager {
             particleCount: 500,
         };
 
+        // Scratch values to avoid per-frame allocations in global blending.
+        this._skyColorScratch = new THREE.Color();
+        this._fogColorScratch = new THREE.Color();
+        this._ambientColorScratch = new THREE.Color();
+        this._blendColorScratch = new THREE.Color();
+
         console.log('[ChapterEnvironmentManager] Created');
     }
 
@@ -134,6 +147,66 @@ export class ChapterEnvironmentManager {
      */
     setOnChapterChange(callback) {
         this.onChapterChangeCallback = callback;
+    }
+
+    /**
+     * Register an ambient light for fast global updates.
+     * @param {THREE.AmbientLight} light
+     */
+    registerAmbientLight(light) {
+        if (!light?.isAmbientLight) return;
+        this.ambientLights.add(light);
+    }
+
+    /**
+     * Build one-time opacity targets for a chapter environment.
+     * @param {THREE.Group} group
+     * @returns {{uniformTargets: Object[], materialTargets: THREE.Material[]}}
+     */
+    _collectOpacityTargets(group) {
+        const uniformTargets = [];
+        const materialTargets = [];
+
+        const seenUniforms = new Set();
+        const seenMaterials = new Set();
+
+        const collectMaterial = (material) => {
+            if (!material || seenMaterials.has(material)) return;
+            seenMaterials.add(material);
+
+            const opacityUniform = material.uniforms?.uOpacity;
+            if (opacityUniform && typeof opacityUniform.value === 'number') {
+                if (!seenUniforms.has(opacityUniform)) {
+                    seenUniforms.add(opacityUniform);
+                    uniformTargets.push(opacityUniform);
+                }
+                return;
+            }
+
+            if (typeof material.opacity === 'number') {
+                if (material.userData.baseOpacity === undefined) {
+                    material.userData.baseOpacity = material.opacity;
+                    material.userData.baseTransparent = material.transparent;
+                    material.userData.lastTransparent = material.transparent;
+                }
+                materialTargets.push(material);
+            }
+        };
+
+        group.traverse((child) => {
+            if (child.isAmbientLight) {
+                this.registerAmbientLight(child);
+            }
+
+            if (!child.material) return;
+            if (Array.isArray(child.material)) {
+                child.material.forEach(collectMaterial);
+            } else {
+                collectMaterial(child.material);
+            }
+        });
+
+        return { uniformTargets, materialTargets };
     }
 
     /**
@@ -157,15 +230,20 @@ export class ChapterEnvironmentManager {
     }
 
     /**
-     * Create a single chapter's environment
+     * Create a single chapter's environment (loads module dynamically)
      * @param {number} chapterId
      */
     async createChapterEnvironment(chapterId) {
-        const def = CHAPTER_DEFS.find((d) => d.id === chapterId);
+        // Skip if already loaded
+        if (this.environments.has(chapterId)) {
+            return this.environments.get(chapterId).group;
+        }
+
+        const def = await loadChapterModule(chapterId);
 
         if (!def) {
-            console.warn(`[ChapterEnvironmentManager] No definition for chapter ${chapterId}`);
-            return;
+            console.warn(`[ChapterEnvironmentManager] No module for chapter ${chapterId}`);
+            return null;
         }
 
         // Create the environment group
@@ -174,13 +252,77 @@ export class ChapterEnvironmentManager {
 
         this.environmentGroup.add(group);
 
+        const opacityTargets = this._collectOpacityTargets(group);
+
         this.environments.set(chapterId, {
             group,
             update: def.update,
             config: def.config,
+            opacityTargets,
+            lastOpacity: null,
+            lastVisible: false,
+            prewarmed: false,
         });
 
         console.log(`[ChapterEnvironmentManager] Created chapter ${chapterId} environment`);
+        return group;
+    }
+
+    /**
+     * Load remaining chapters in background without blocking the main thread.
+     * Uses requestIdleCallback (with setTimeout fallback) to spread the work
+     * across idle frames.
+     * @param {number[]} alreadyLoaded - Chapter IDs that are already loaded
+     * @param {Object} options
+     * @param {Function} [options.canRunTask] - Returns true if it is safe to run heavy work
+     * @param {Function} [options.onEnvironmentCreated] - Hook run after each environment loads
+     */
+    loadChaptersInBackground(alreadyLoaded = [], options = {}) {
+        const allChapterIds = Object.keys(CHAPTER_MODULE_LOADERS).map(Number);
+        const remaining = allChapterIds.filter((id) => !alreadyLoaded.includes(id));
+        const canRunTask = typeof options.canRunTask === 'function'
+            ? options.canRunTask
+            : () => true;
+        const onEnvironmentCreated = typeof options.onEnvironmentCreated === 'function'
+            ? options.onEnvironmentCreated
+            : null;
+
+        if (remaining.length === 0) return;
+
+        console.log('[ChapterEnvironmentManager] Background loading chapters:', remaining);
+
+        const scheduleNext = (typeof requestIdleCallback === 'function')
+            ? (fn) => requestIdleCallback(fn, { timeout: 3000 })
+            : (fn) => setTimeout(fn, 200);
+
+        let index = 0;
+        const loadNext = () => {
+            if (index >= remaining.length) {
+                console.log('[ChapterEnvironmentManager] All chapters loaded in background');
+                return;
+            }
+
+            if (!canRunTask()) {
+                scheduleNext(loadNext);
+                return;
+            }
+
+            const chapterId = remaining[index++];
+            this.createChapterEnvironment(chapterId).then(async () => {
+                // Update visibility after loading so the new environment shows if camera is there
+                this.updateVisibility(this.cameraProgress, { mode: 'progress' });
+                if (onEnvironmentCreated) {
+                    await onEnvironmentCreated(chapterId);
+                }
+                scheduleNext(loadNext);
+            }).catch((err) => {
+                console.warn(`[ChapterEnvironmentManager] Background load failed for chapter ${chapterId}:`, err);
+                scheduleNext(loadNext);
+            });
+        };
+
+        // Start background loading after a brief delay to let the initial render settle
+        setTimeout(() => scheduleNext(loadNext), 500);
     }
 
     /**
@@ -236,62 +378,66 @@ export class ChapterEnvironmentManager {
             opacity = THREE.MathUtils.clamp(opacity, 0, 1);
 
             // Show/hide based on opacity
-            env.group.visible = opacity > 0;
+            const isVisible = opacity > 0;
+            env.group.visible = isVisible;
 
-            // Apply opacity to all materials
-            if (opacity > 0 && opacity < 1) {
-                this.setGroupOpacity(env.group, opacity);
-            } else if (opacity >= 1) {
-                this.setGroupOpacity(env.group, 1);
+            const visibilityChanged = env.lastVisible !== isVisible;
+            const opacityDelta = env.lastOpacity === null
+                ? Infinity
+                : Math.abs(opacity - env.lastOpacity);
+            const shouldApplyOpacity = visibilityChanged
+                || opacityDelta >= OPACITY_APPLY_EPSILON
+                || (opacity > 0 && opacity < 1)
+                || (opacity === 1 && env.lastOpacity !== 1);
+
+            if (isVisible && shouldApplyOpacity) {
+                this.setGroupOpacity(env.opacityTargets, opacity);
             }
+
+            env.lastOpacity = opacity;
+            env.lastVisible = isVisible;
         });
     }
 
     /**
-     * Set opacity for all materials in a group
-     * @param {THREE.Group} group
+     * Set opacity for cached shader/material targets
+     * @param {{uniformTargets: Object[], materialTargets: THREE.Material[]}} opacityTargets
      * @param {number} opacity
      */
-    setGroupOpacity(group, opacity) {
-        group.traverse((child) => {
-            const applyOpacity = (mat) => {
-                if (mat.uniforms?.uOpacity) {
-                    mat.uniforms.uOpacity.value = opacity;
-                    return;
-                }
+    setGroupOpacity(opacityTargets, opacity) {
+        if (!opacityTargets) return;
 
-                if (mat.opacity !== undefined) {
-                    // Save initial state
-                    if (mat.userData.baseOpacity === undefined) {
-                        mat.userData.baseOpacity = mat.opacity;
-                        mat.userData.baseTransparent = mat.transparent;
-                    }
+        const clampedOpacity = THREE.MathUtils.clamp(opacity, 0, 1);
 
-                    mat.opacity = mat.userData.baseOpacity * opacity;
+        for (const uniform of opacityTargets.uniformTargets) {
+            // Preserve the manager-controlled value so chapter-local effects
+            // can layer their own opacity without compounding over frames.
+            uniform.__odysseyBaseOpacity = clampedOpacity;
+            uniform.value = clampedOpacity;
+        }
 
-                    if (opacity < 1) {
-                        mat.transparent = true;
-                    } else {
-                        // Restore original transparency state when fully opaque
-                        mat.transparent = mat.userData.baseTransparent;
-                    }
-
-                    // Update material needsUpdate if transparency changed
-                    if (mat.transparent !== mat.userData.lastTransparent) {
-                        mat.needsUpdate = true;
-                        mat.userData.lastTransparent = mat.transparent;
-                    }
-                }
-            };
-
-            if (child.material) {
-                if (Array.isArray(child.material)) {
-                    child.material.forEach(applyOpacity);
-                } else {
-                    applyOpacity(child.material);
-                }
+        for (const material of opacityTargets.materialTargets) {
+            if (material.userData.baseOpacity === undefined) {
+                material.userData.baseOpacity = material.opacity;
+                material.userData.baseTransparent = material.transparent;
+                material.userData.lastTransparent = material.transparent;
             }
-        });
+
+            material.opacity = material.userData.baseOpacity * clampedOpacity;
+
+            if (clampedOpacity < 1) {
+                material.transparent = true;
+            } else {
+                // Restore original transparency state when fully opaque
+                material.transparent = material.userData.baseTransparent;
+            }
+
+            // Update material needsUpdate if transparency changed
+            if (material.transparent !== material.userData.lastTransparent) {
+                material.needsUpdate = true;
+                material.userData.lastTransparent = material.transparent;
+            }
+        }
     }
 
     /**
@@ -363,15 +509,13 @@ export class ChapterEnvironmentManager {
      */
     updateGlobalEnvironment(progress) {
         // Find which chapters we are blending between
-        const positions = ODYSSEY_PATH_DATA.chapterPositions;
-
         let currentChapterId = 1;
         let nextChapterId = 1;
         let t = 0;
 
-        for (let i = 0; i < positions.length; i++) {
-            const start = positions[i];
-            const end = positions[i + 1] ?? 1;
+        for (let i = 0; i < CHAPTER_POSITIONS.length; i++) {
+            const start = CHAPTER_POSITIONS[i];
+            const end = CHAPTER_POSITIONS[i + 1] ?? 1;
 
             if (progress >= start && progress <= end) {
                 currentChapterId = i + 1;
@@ -386,7 +530,7 @@ export class ChapterEnvironmentManager {
                 const chapterDuration = end - start;
                 const localProgress = (progress - start) / chapterDuration;
 
-                if (localProgress > 0.8 && (i + 1) < positions.length) {
+                if (localProgress > 0.8 && (i + 1) < CHAPTER_POSITIONS.length) {
                     nextChapterId = currentChapterId + 1;
                     t = (localProgress - 0.8) / 0.2; // 0 to 1
                 } else {
@@ -412,52 +556,74 @@ export class ChapterEnvironmentManager {
             }
         }
 
-        const currentConfig = CHAPTER_CONFIGS.find((c) => c.id === currentChapterId)?.environment;
-        const nextConfig = CHAPTER_CONFIGS.find((c) => c.id === nextChapterId)?.environment;
+        const currentConfig = this.chapterEnvironmentById.get(currentChapterId);
+        const nextConfig = this.chapterEnvironmentById.get(nextChapterId);
 
         if (!currentConfig) return;
 
-        // Helper to lerp colors
-        const lerpColor = (c1, c2, alpha) => {
-            const r = new THREE.Color(c1).lerp(new THREE.Color(c2), alpha);
-            return r;
-        };
+        const {
+            skyColor: currentSkyColor,
+            fogColor: currentFogColor,
+            ambientLight: currentAmbientLight,
+            fogDensity: currentFogDensity,
+            ambientIntensity: currentAmbientIntensity,
+        } = currentConfig;
 
-        const targetEnv = nextConfig ? {
-            skyColor: lerpColor(currentConfig.skyColor, nextConfig.skyColor, t),
-            fogColor: lerpColor(currentConfig.fogColor, nextConfig.fogColor, t),
-            fogDensity: THREE.MathUtils.lerp(currentConfig.fogDensity, nextConfig.fogDensity, t),
-            ambientLight: lerpColor(currentConfig.ambientLight, nextConfig.ambientLight, t),
-            ambientIntensity: THREE.MathUtils.lerp(currentConfig.ambientIntensity, nextConfig.ambientIntensity, t),
-        } : {
-            skyColor: new THREE.Color(currentConfig.skyColor),
-            fogColor: new THREE.Color(currentConfig.fogColor),
-            fogDensity: currentConfig.fogDensity,
-            ambientLight: new THREE.Color(currentConfig.ambientLight),
-            ambientIntensity: currentConfig.ambientIntensity,
-        };
+        const skyColor = this._skyColorScratch.set(currentSkyColor);
+        const fogColor = this._fogColorScratch.set(currentFogColor);
+        const ambientLight = this._ambientColorScratch.set(currentAmbientLight);
+        let fogDensity = currentFogDensity;
+        let ambientIntensity = currentAmbientIntensity;
+
+        if (nextConfig && nextConfig !== currentConfig) {
+            const {
+                skyColor: nextSkyColor,
+                fogColor: nextFogColor,
+                ambientLight: nextAmbientLight,
+                fogDensity: nextFogDensity,
+                ambientIntensity: nextAmbientIntensity,
+            } = nextConfig;
+            const blend = THREE.MathUtils.clamp(t, 0, 1);
+
+            this._blendColorScratch.set(nextSkyColor);
+            skyColor.lerp(this._blendColorScratch, blend);
+
+            this._blendColorScratch.set(nextFogColor);
+            fogColor.lerp(this._blendColorScratch, blend);
+
+            this._blendColorScratch.set(nextAmbientLight);
+            ambientLight.lerp(this._blendColorScratch, blend);
+
+            fogDensity = THREE.MathUtils.lerp(currentFogDensity, nextFogDensity, blend);
+            ambientIntensity = THREE.MathUtils.lerp(
+                currentAmbientIntensity,
+                nextAmbientIntensity,
+                blend,
+            );
+        }
 
         // Apply to scene
         if (this.scene.fog instanceof THREE.FogExp2) {
-            this.scene.fog.color.copy(targetEnv.fogColor);
-            this.scene.fog.density = targetEnv.fogDensity;
+            this.scene.fog.color.copy(fogColor);
+            this.scene.fog.density = fogDensity;
         } else {
-            this.scene.fog = new THREE.FogExp2(targetEnv.fogColor, targetEnv.fogDensity);
+            this.scene.fog = new THREE.FogExp2(fogColor, fogDensity);
         }
 
         // Apply background color if renderer is available
         if (this.renderer) {
-            this.renderer.setClearColor(targetEnv.skyColor, 1);
+            this.renderer.setClearColor(skyColor, 1);
         }
 
-        // Apply to ambient light if found in scene (assumed to be the first one found or we search by type)
-        // We know we added one in OdysseyBoardController, but let's try to find it or modify all
-        this.scene.traverse((child) => {
-            if (child.isAmbientLight) {
-                child.color.copy(targetEnv.ambientLight);
-                child.intensity = targetEnv.ambientIntensity;
+        // Update cached ambient lights directly (avoid per-frame scene traversal).
+        for (const light of this.ambientLights) {
+            if (!light?.isAmbientLight || !light.parent) {
+                this.ambientLights.delete(light);
+                continue;
             }
-        });
+            light.color.copy(ambientLight);
+            light.intensity = ambientIntensity;
+        }
     }
 
     /**
@@ -479,6 +645,7 @@ export class ChapterEnvironmentManager {
         });
 
         this.environments.clear();
+        this.ambientLights.clear();
         this.scene.remove(this.environmentGroup);
 
         console.log('[ChapterEnvironmentManager] Disposed');
