@@ -432,26 +432,38 @@ export function createNebulaNodeMaterial(params = {}) {
 
     const uOpacity = uniform(params.opacity ?? 0.2);
     const uPulse = uniform(0);
+    const uTime = uniform(0);
 
     const uvCoord = uv();
-    const texNode = params.map ? texture(params.map) : null;
-    const texel = texNode ? texNode.sample(uvCoord) : vec4(1.0, 1.0, 1.0, 1.0);
+    const flowTime = uTime.mul(0.05);
+    const distortSeed = uvCoord.mul(2.0);
+    const distortX = tslFbm(
+        distortSeed.add(vec2(flowTime, flowTime)),
+        params.fbmOctaves ?? 5,
+    ).mul(0.1);
+    const distortY = tslFbm(
+        distortSeed.add(vec2(float(10.0), float(10.0))).add(vec2(flowTime, flowTime)),
+        params.fbmOctaves ?? 5,
+    ).mul(0.1);
+    const distortedUv = uvCoord.add(vec2(distortX, distortY));
 
-    const fadeX = smoothstep(float(0.0), float(0.4), uvCoord.x)
-        .mul(smoothstep(float(1.0), float(0.6), uvCoord.x));
-    const fadeY = smoothstep(float(0.0), float(0.4), uvCoord.y)
-        .mul(smoothstep(float(1.0), float(0.6), uvCoord.y));
+    const texNode = params.map ? texture(params.map) : null;
+    const texel = texNode ? texNode.sample(distortedUv) : vec4(1.0, 1.0, 1.0, 1.0);
+
+    const fadeX = smoothstep(float(0.0), float(0.4), distortedUv.x)
+        .mul(smoothstep(float(1.0), float(0.6), distortedUv.x));
+    const fadeY = smoothstep(float(0.0), float(0.4), distortedUv.y)
+        .mul(smoothstep(float(1.0), float(0.6), distortedUv.y));
     const edgeFade = pow(fadeX.mul(fadeY), 1.5);
 
     const gray = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
-    const pulseFactor = float(1.0).add(uPulse.mul(0.14));
+    const boostedGray = pow(clamp(gray.mul(1.25), 0.0, 1.0), 0.9);
+    const pulseFactor = float(1.0).add(uPulse.mul(0.3));
 
-    // Subtle cool blue tint
-    const tint = vec3(0.85, 0.9, 1.05);
-    const color = vec3(gray, gray, gray).mul(tint).mul(pulseFactor);
+    const tint = vec3(0.92, 0.96, 1.0);
+    const color = vec3(boostedGray, boostedGray, boostedGray).mul(tint).mul(pulseFactor);
 
-    // Alpha boost (2.0) + smooth fade
-    const alpha = texel.r.mul(uOpacity.add(uPulse.mul(0.014))).mul(edgeFade).mul(2.0);
+    const alpha = boostedGray.mul(uOpacity.add(uPulse.mul(0.1))).mul(edgeFade);
 
     material.colorNode = color;
     material.opacityNode = alpha;
@@ -459,7 +471,7 @@ export function createNebulaNodeMaterial(params = {}) {
 
     return finalizeNodeMaterial(
         material,
-        { uOpacity, uPulse },
+        { uOpacity, uPulse, uTime },
         { emitsBloom: false, mrtRole: 'nebula' },
     );
 }

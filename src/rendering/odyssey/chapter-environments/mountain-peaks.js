@@ -327,6 +327,37 @@ void main() {
 // ENVIRONMENT CREATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
+function collectUniformTargets(root, uniformName) {
+    if (!root) return [];
+
+    const targets = [];
+    const seen = new Set();
+
+    const collectFromMaterial = (material) => {
+        const uniform = material?.uniforms?.[uniformName];
+        if (!uniform || seen.has(uniform)) return;
+        if (typeof uniform.value !== 'number') return;
+
+        if (uniform.__odysseyBaseOpacity === undefined && uniformName === 'uOpacity') {
+            uniform.__odysseyBaseOpacity = uniform.value;
+        }
+
+        seen.add(uniform);
+        targets.push(uniform);
+    };
+
+    root.traverse((child) => {
+        if (!child.material) return;
+        if (Array.isArray(child.material)) {
+            child.material.forEach(collectFromMaterial);
+        } else {
+            collectFromMaterial(child.material);
+        }
+    });
+
+    return targets;
+}
+
 export function createMountainPeaksEnvironment(options = {}) {
     const group = new THREE.Group();
     group.name = 'mountain-peaks-environment';
@@ -397,14 +428,20 @@ export function createMountainPeaksEnvironment(options = {}) {
     const aurora = createAurora(uniforms, 4); // 4 layers
     group.add(aurora);
     group.userData.aurora = aurora;
+    group.userData.mountainTransitionUniformTargets = collectUniformTargets(mountains, 'uTransition');
+    group.userData.mountainOpacityUniformTargets = collectUniformTargets(mountains, 'uOpacity');
+    group.userData.auroraFadeUniformTargets = collectUniformTargets(aurora, 'uAuroraFade');
+    group.userData.auroraOpacityUniformTargets = collectUniformTargets(aurora, 'uOpacity');
 
     // 4. Falling Snow
     const snow = createSnow(uniforms, options.particleCount || 1000);
     group.add(snow);
+    group.userData.snow = snow;
 
     // 5. Stars
     const stars = createStars(uniforms, 1000);
     group.add(stars);
+    group.userData.stars = stars;
 
     // Lighting
     const ambient = new THREE.AmbientLight(0x445566, 0.4);
@@ -909,36 +946,50 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera) {
     const { sky } = group.userData;
     if (sky?.material?.uniforms) {
         if (sky.material.uniforms.uTransition) sky.material.uniforms.uTransition.value = transition;
-        if (sky.material.uniforms.uOpacity) sky.material.uniforms.uOpacity.value = exitFade;
+        if (sky.material.uniforms.uOpacity) {
+            const baseOpacity = typeof sky.material.uniforms.uOpacity.__odysseyBaseOpacity === 'number'
+                ? sky.material.uniforms.uOpacity.__odysseyBaseOpacity
+                : sky.material.uniforms.uOpacity.value;
+            sky.material.uniforms.uOpacity.value = baseOpacity * exitFade;
+        }
     }
 
-    // Apply transition/opacity to mountains (already have reference from scaling)
-    if (mountains) {
-        mountains.traverse((child) => {
-            if (child.material?.uniforms) {
-                if (child.material.uniforms.uTransition) child.material.uniforms.uTransition.value = transition;
-                if (child.material.uniforms.uOpacity) child.material.uniforms.uOpacity.value = exitFade;
-            }
-        });
-    }
+    const mountainTransitionUniformTargets = group.userData.mountainTransitionUniformTargets || [];
+    mountainTransitionUniformTargets.forEach((uniform) => {
+        uniform.value = transition;
+    });
+
+    const mountainOpacityUniformTargets = group.userData.mountainOpacityUniformTargets || [];
+    mountainOpacityUniformTargets.forEach((uniform) => {
+        const baseOpacity = typeof uniform.__odysseyBaseOpacity === 'number'
+            ? uniform.__odysseyBaseOpacity
+            : uniform.value;
+        uniform.value = baseOpacity * exitFade;
+    });
 
     // Apply opacity to snow floor (already have reference from scaling)
     if (snowFloor?.material?.uniforms?.uOpacity) {
-        snowFloor.material.uniforms.uOpacity.value = exitFade;
+        const baseOpacity = typeof snowFloor.material.uniforms.uOpacity.__odysseyBaseOpacity === 'number'
+            ? snowFloor.material.uniforms.uOpacity.__odysseyBaseOpacity
+            : snowFloor.material.uniforms.uOpacity.value;
+        snowFloor.material.uniforms.uOpacity.value = baseOpacity * exitFade;
     }
 
-    // Apply aurora fade and opacity (already have reference from scaling)
-    if (aurora) {
-        aurora.traverse((child) => {
-            if (child.material?.uniforms) {
-                if (child.material.uniforms.uAuroraFade) child.material.uniforms.uAuroraFade.value = auroraFade;
-                if (child.material.uniforms.uOpacity) child.material.uniforms.uOpacity.value = exitFade;
-            }
-        });
-    }
+    const auroraFadeUniformTargets = group.userData.auroraFadeUniformTargets || [];
+    auroraFadeUniformTargets.forEach((uniform) => {
+        uniform.value = auroraFade;
+    });
+
+    const auroraOpacityUniformTargets = group.userData.auroraOpacityUniformTargets || [];
+    auroraOpacityUniformTargets.forEach((uniform) => {
+        const baseOpacity = typeof uniform.__odysseyBaseOpacity === 'number'
+            ? uniform.__odysseyBaseOpacity
+            : uniform.value;
+        uniform.value = baseOpacity * exitFade;
+    });
 
     // Update Snow
-    const snow = group.children.find((c) => c.type === 'Points' && c.userData.velocities);
+    const snow = group.userData.snow;
     if (snow) {
         // Apply exit fade to snow particles
         if (snow.material) snow.material.opacity = 0.8 * exitFade;
@@ -960,10 +1011,7 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera) {
     }
 
     // Update Stars (Exit fade)
-    // Find stars by assumption (no velocities) or name?
-    // Usually standard stars, let's just traverse or find Points without velocity
-    // Or easier:
-    const stars = group.children.find((c) => c.type === 'Points' && !c.userData.velocities);
+    const stars = group.userData.stars;
     if (stars && stars.material) {
         stars.material.opacity = 0.8 * exitFade;
     }

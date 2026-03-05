@@ -730,78 +730,93 @@ export function createSoundSets(createTone, createRichTone) {
         },
         Wolfhour: {
             move: () => richTone({
-                oscillators: [{ type: 'sine', freq: 60, gain: 0.5 }], // Deep, quiet thud
-                noise: { type: 'pink', gain: 0.05 },
-                filter: { type: 'lowpass', frequency: 200 },
+                oscillators: [{ type: 'sine', freq: 800, gain: 0.15 }], // Icy bell
+                noise: { type: 'white', gain: 0.05 }, // Tiny crunch
+                filter: { type: 'highpass', frequency: 1500 },
                 envelope: { attack: 0.005, decay: 0.1, release: 0.05 },
-                volume: 0.3,
+                volume: 0.25,
             }),
             rotate: () => richTone({
-                oscillators: [{ type: 'triangle', freq: 100, gain: 0.15 }],
+                oscillators: [{ type: 'sine', freq: 300, gain: 0.1 }], // Wind resonance
+                noise: { type: 'pink', gain: 0.2 },
                 filter: {
-                    type: 'bandpass', frequency: 150, envAmount: 100, Q: 2,
-                }, // Muffled movement
-                envelope: { attack: 0.05, decay: 0.2, release: 0.1 },
-                volume: 0.25,
+                    type: 'bandpass', frequency: 400, envAmount: 300, Q: 2,
+                }, // Howling sweep
+                envelope: { attack: 0.1, decay: 0.3, release: 0.2 },
+                volume: 0.3,
             }),
             drop: () => richTone({
                 oscillators: [
-                    { type: 'sine', freq: 30, gain: 1.0 }, // Chest-vibrating sub
-                    { type: 'sine', freq: 60, gain: 0.4 },
+                    { type: 'sine', freq: 45, gain: 0.8 }, // Thud
+                    { type: 'triangle', freq: 150, gain: 0.25 }, // Crisp snap
                 ],
-                filter: { type: 'lowpass', frequency: 100, Q: 0.5 },
-                envelope: { attack: 0.01, decay: 0.8, release: 0.5 },
-                volume: 0.9,
+                noise: { type: 'white', gain: 0.15 }, // Icy crunch
+                filter: { type: 'lowpass', frequency: 300, Q: 1.5, envAmount: 200 },
+                envelope: { attack: 0.01, decay: 0.3, release: 0.15 }, // Tighter lock sound
+                volume: 0.85,
             }),
             lineClear: () => {
-                // Liminal Night Chord (Dm11: D2, G2, C3, E3) - Mysterious, suspended
-                [73.42, 98.00, 130.81, 164.81].forEach((f, i) => {
+                // Deep Healing Frequencies (Solfeggio Scale, octave down)
+                // 198Hz, 208Hz, 216Hz, 264Hz — warm, grounded resonance
+                [198, 208, 216, 264].forEach((f, i) => {
                     setTimeout(() => richTone({
                         oscillators: [
-                            { type: 'sine', freq: f, gain: 0.3 },
-                            { type: 'triangle', freq: f, gain: 0.1 },
+                            { type: 'sine', freq: f, gain: 0.5 }, // Deep healing tone
+                            { type: 'sine', freq: f * 0.5, gain: 0.2 }, // Sub-octave warmth
                         ],
-                        filter: { type: 'lowpass', frequency: 600, envAmount: 200 },
-                        envelope: { attack: 0.2, decay: 2.5, release: 2.0 },
-                        volume: 0.4,
-                    }), i * 80);
+                        filter: { type: 'lowpass', frequency: 500, envAmount: 100, Q: 1.5 },
+                        envelope: { attack: 0.25, decay: 3.0, release: 2.5 }, // Slow, deep Tibetan bowl
+                        volume: 0.55,
+                    }), i * 120); // Slow, meditative roll
                 });
-                // Night atmosphere texture
+
+                // Earth drone (87Hz — deep grounding sub)
                 setTimeout(() => richTone({
-                    noise: { type: 'pink', gain: 0.1 },
-                    filter: { type: 'bandpass', frequency: 1000, Q: 1 },
-                    envelope: { attack: 0.5, decay: 2.0, release: 1.0 },
-                    volume: 0.2,
-                }), 100);
+                    oscillators: [
+                        { type: 'sine', freq: 87, gain: 0.6 },
+                        { type: 'sine', freq: 88, gain: 0.6 }, // Slow beating/pulsing
+                    ],
+                    filter: { type: 'lowpass', frequency: 200, Q: 1 },
+                    envelope: { attack: 0.5, decay: 3.5, release: 2.5 },
+                    volume: 0.4,
+                }), 50);
             },
             levelUp: () => {
-                // Rising darkness
+                // Ethereal rising choir
                 richTone({
-                    oscillators: [{ type: 'sawtooth', freq: 50, gain: 0.3 }],
+                    oscillators: [
+                        { type: 'sine', freq: 150, gain: 0.3 },
+                        { type: 'sawtooth', freq: 151, gain: 0.1 },
+                    ],
+                    noise: { type: 'pink', gain: 0.1 }, // Peak wind
                     filter: {
-                        type: 'lowpass', frequency: 100, envAmount: 400, Q: 2,
-                    },
-                    envelope: { attack: 1.0, decay: 3.0, release: 2.0 },
-                    volume: 0.6,
+                        type: 'bandpass', frequency: 300, envAmount: 800, Q: 3,
+                    }, // Rising howl
+                    envelope: { attack: 1.5, decay: 4.0, release: 3.0 },
+                    volume: 0.65,
                 });
             },
             gameOver: () => {
-                // The void
+                // The Wolfhour Void
                 richTone({
-                    oscillators: [{ type: 'sine', freq: 35, gain: 0.8 }],
-                    filter: { type: 'lowpass', frequency: 80 },
-                    envelope: { attack: 0.5, decay: 5.0, release: 3.0 },
-                    volume: 0.8,
+                    oscillators: [
+                        { type: 'sine', freq: 40, gain: 0.7 }, // Deep earth groan
+                        { type: 'sine', freq: 42, gain: 0.7 }, // Pulsing unease
+                    ],
+                    noise: { type: 'pink', gain: 0.2 }, // Distant wind
+                    filter: { type: 'lowpass', frequency: 150, envAmount: -100 },
+                    envelope: { attack: 0.5, decay: 6.0, release: 4.0 }, // Very long fade into silence
+                    volume: 0.9,
                 });
             },
             garbageSend: () => {
-                // Heavy impact
+                // Shattering ice and rift rumble
                 richTone({
-                    oscillators: [{ type: 'square', freq: 50, gain: 0.2 }],
-                    noise: { type: 'pink', gain: 0.3 },
-                    filter: { type: 'lowpass', frequency: 150, envAmount: -50 },
-                    envelope: { attack: 0.01, decay: 0.4, release: 0.2 },
-                    volume: 0.5,
+                    oscillators: [{ type: 'square', freq: 80, gain: 0.2 }],
+                    noise: { type: 'white', gain: 0.4 }, // Sharp ice shatter
+                    filter: { type: 'bandpass', frequency: 1000, envAmount: -800, Q: 1.5 },
+                    envelope: { attack: 0.01, decay: 0.5, release: 0.3 },
+                    volume: 0.6,
                 });
             },
         },

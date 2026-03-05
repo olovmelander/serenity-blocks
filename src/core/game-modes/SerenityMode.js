@@ -485,29 +485,7 @@ export class SerenityMode extends BaseGameMode {
             return;
         }
 
-        // Get current settings dynamically
-        const settings = this.deps.settingsManager.get();
-        const keys = settings.keyBindings;
-
-        const { key } = event; // Don't lowerCase yet, compare with settings which store as is (mostly)
-        // Helper to compare keys (handling generic case insensitivity if needed, though settings usually match event.key)
-        const isKey = (binding) => binding && binding.toLowerCase() === key.toLowerCase();
-
-        // Check for specific keybindings
-        if (isKey(keys.nextTrack)) {
-            this._nextMusicTrack();
-            return;
-        }
-
-        if (isKey(keys.randomTheme)) {
-            this._randomTheme();
-            return;
-        }
-
-        if (isKey(keys.toggleFullscreen)) {
-            this._toggleFullscreen();
-            return;
-        }
+        const { key } = event;
 
         // Handle hardcoded Serenity-specific keys
         switch (key.toLowerCase()) {
@@ -540,6 +518,14 @@ export class SerenityMode extends BaseGameMode {
             case 't': // Cycle breathing technique
                 this._cycleBreathingTechnique();
                 event.preventDefault();
+                break;
+
+            case 'b': // Random theme
+                this._randomTheme();
+                break;
+
+            case 'f': // Toggle fullscreen
+                this._toggleFullscreen();
                 break;
         }
     }
@@ -583,18 +569,6 @@ export class SerenityMode extends BaseGameMode {
             // Hide cursor by adding the hidden class
             document.body.classList.add('cursor-hidden');
         }, 3000);
-    }
-
-    /**
-     * Next music track
-     * @private
-     */
-    _nextMusicTrack() {
-        const { soundManager } = this.deps;
-        if (soundManager && soundManager.nextTrack) {
-            soundManager.nextTrack();
-            this._showNotification('Next Track');
-        }
     }
 
     /**
@@ -651,7 +625,6 @@ export class SerenityMode extends BaseGameMode {
                     <h3>Serenity Mode Controls</h3>
                     <div class="shortcut"><kbd>Click/Tap</kbd> Trigger Theme Effects</div>
                     <div class="shortcut"><kbd>H</kbd> Open Serenity Hub</div>
-                    <div class="shortcut"><kbd>M</kbd> Next Music Track</div>
                     <div class="shortcut"><kbd>B</kbd> Random Theme</div>
                     <div class="shortcut"><kbd>Space</kbd> Toggle Breathing Guide</div>
                     <div class="shortcut"><kbd>I</kbd> Show Technique Info</div>

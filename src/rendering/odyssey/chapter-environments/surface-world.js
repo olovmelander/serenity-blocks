@@ -452,6 +452,43 @@ void main() {
 // ENVIRONMENT CREATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
+function collectUniformTargets(root, uniformName, targets, seen) {
+    if (!root) return;
+
+    const collectFromMaterial = (material) => {
+        const uniform = material?.uniforms?.[uniformName];
+        if (!uniform || seen.has(uniform)) return;
+        if (typeof uniform.value !== 'number') return;
+
+        if (uniform.__odysseyBaseOpacity === undefined && uniformName === 'uOpacity') {
+            uniform.__odysseyBaseOpacity = uniform.value;
+        }
+
+        seen.add(uniform);
+        targets.push(uniform);
+    };
+
+    root.traverse((child) => {
+        if (!child.material) return;
+        if (Array.isArray(child.material)) {
+            child.material.forEach(collectFromMaterial);
+        } else {
+            collectFromMaterial(child.material);
+        }
+    });
+}
+
+function collectUniformTargetsFromRoots(roots, uniformName) {
+    const targets = [];
+    const seen = new Set();
+
+    roots.filter(Boolean).forEach((root) => {
+        collectUniformTargets(root, uniformName, targets, seen);
+    });
+
+    return targets;
+}
+
 export function createSurfaceWorldEnvironment(options = {}) {
     const group = new THREE.Group();
     group.name = 'surface-world-environment';
@@ -544,6 +581,14 @@ export function createSurfaceWorldEnvironment(options = {}) {
     group.userData.surfaceElements = [ocean, landscape, distantMountains, rays, clouds, petals, butterflies];
     group.userData.skyElement = sky;
     group.userData.waterSurfaceY = surfaceWorldY;
+    group.userData.snowBlendUniformTargets = collectUniformTargetsFromRoots(
+        [landscape, distantMountains, group.userData.snowFloor],
+        'uSnowBlend',
+    );
+    group.userData.surfaceOpacityUniformTargets = collectUniformTargetsFromRoots(
+        group.userData.surfaceElements,
+        'uOpacity',
+    );
 
     group.position.y = chapterCenterY;
 
@@ -1324,28 +1369,10 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera) {
         )
         : 0;
 
-    const { landscape } = group.userData;
-    if (landscape?.material?.uniforms?.uSnowBlend) {
-        landscape.material.uniforms.uSnowBlend.value = snowBlend;
-    }
-
-    const { distantMountains } = group.userData;
-    if (distantMountains) {
-        distantMountains.traverse((child) => {
-            if (child.material?.uniforms?.uSnowBlend) {
-                child.material.uniforms.uSnowBlend.value = snowBlend;
-            }
-        });
-    }
-
-    const { snowFloor } = group.userData;
-    if (snowFloor) {
-        snowFloor.traverse((child) => {
-            if (child.material?.uniforms?.uSnowBlend) {
-                child.material.uniforms.uSnowBlend.value = snowBlend;
-            }
-        });
-    }
+    const snowBlendUniformTargets = group.userData.snowBlendUniformTargets || [];
+    snowBlendUniformTargets.forEach((uniform) => {
+        uniform.value = snowBlend;
+    });
 
     // Toggle visibility of surface-only elements
     const { surfaceElements } = group.userData;
@@ -1365,26 +1392,17 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera) {
             if (element) {
                 // Ensure visible if we have any opacity
                 element.visible = underwaterOpacity > 0;
-
-                // Apply opacity to shaders if supported
-                // We multiply with existing material opacity to respect global fade
-                if (element.material && element.material.uniforms?.uOpacity) {
-                    // Check if we have baseOpacity stored from ChapterEnvironmentManager
-                    // If not, we might be fighting with it, but since we are fading IN from bottom,
-                    // the global fade should be 1.0 (since we are in the chapter).
-                    // This local fade acts as a "below water" mask.
-
-                    // Note: ChapterEnvironmentManager sets uOpacity directly.
-                    // We need to apply this factor ON TOP of whatever the manager sets.
-                    // However, we don't know what the manager set exactly without reading it back or tracking it.
-                    // But since we run AFTER the manager update in the loop, we can read the current value.
-
-                    const currentOpacity = element.material.uniforms.uOpacity.value;
-                    element.material.uniforms.uOpacity.value = currentOpacity * underwaterOpacity;
-                }
             }
         });
     }
+
+    const opacityUniformTargets = group.userData.surfaceOpacityUniformTargets || [];
+    opacityUniformTargets.forEach((uniform) => {
+        const baseOpacity = typeof uniform.__odysseyBaseOpacity === 'number'
+            ? uniform.__odysseyBaseOpacity
+            : uniform.value;
+        uniform.value = baseOpacity * underwaterOpacity;
+    });
 
     // Sky visibility (hide sky sphere when underwater for ocean fade)
     const sky = group.userData.skyElement;

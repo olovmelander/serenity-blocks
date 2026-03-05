@@ -64,7 +64,7 @@ export class InfinityMode extends BaseGameMode {
 
         // Cooldown to prevent camera follow immediately after snapping
         this.snapCooldownFrames = 0;
-        this.snapCooldownDuration = 18;
+        this.snapCooldownDuration = 8;
 
         // Track whether the last drop action was a hard drop
         this.lastDropWasHard = false;
@@ -1302,7 +1302,7 @@ export class InfinityMode extends BaseGameMode {
      * @private
      */
     _snapCameraToTopArea() {
-        if (!this.boardScene || !this.boardScene.cameraSettings) return;
+        if (!this.boardScene?.cameraSettings) return;
 
         const { cameraSettings } = this.boardScene;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
@@ -1312,15 +1312,21 @@ export class InfinityMode extends BaseGameMode {
 
         if (highestBlockRow >= this.gameState.board.length) {
             targetTopRow = Math.max(0, this.gameState.board.length - visibleRows);
-            console.log(`[Infinity] Camera snapped to bottom: row ${targetTopRow}`);
         } else {
-            const preferredRow = highestBlockRow - Math.floor(visibleRows * 0.3);
+            const preferredRow = highestBlockRow - Math.floor(visibleRows * 0.2);
             const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
             targetTopRow = Math.max(0, Math.min(maxCameraRow, preferredRow));
-            console.log(`[Infinity] Camera snapped back to top area: row ${targetTopRow} (highest block: ${highestBlockRow})`);
         }
 
-        this.boardScene.updateCameraPosition(targetTopRow, true);
+        // Use fast lerp instead of instant jump for smoother feel
+        const originalLerpSpeed = cameraSettings.lerpSpeed || 0.08;
+        cameraSettings.lerpSpeed = 0.25;
+        this.boardScene.updateCameraPosition(targetTopRow);
+        setTimeout(() => {
+            if (this.boardScene?.cameraSettings) {
+                this.boardScene.cameraSettings.lerpSpeed = originalLerpSpeed;
+            }
+        }, 300);
     }
 
     /**
@@ -1360,19 +1366,20 @@ export class InfinityMode extends BaseGameMode {
         const totalRows = this.gameState?.board?.length || 1000;
         const maxCameraRow = Math.max(0, totalRows - visibleRows);
 
-        // If there's an active piece, center on it
+        // Use unified smart target: tower top at 20%, piece at 80%
+        const highestBlockRow = this._findHighestBlockRow();
+        let targetCameraRow = highestBlockRow < totalRows
+            ? highestBlockRow - Math.floor(visibleRows * 0.2)
+            : maxCameraRow;
+
         const { currentPiece } = this.gameState;
         if (currentPiece) {
             const pieceBottomRow = currentPiece.y + (currentPiece.shape?.length || 0);
-            // Position piece at roughly 50% of the viewport
-            const targetCameraRow = pieceBottomRow - Math.floor(visibleRows * 0.5);
-            return Math.max(0, Math.min(maxCameraRow, targetCameraRow));
+            const pieceTarget = pieceBottomRow - Math.floor(visibleRows * 0.8);
+            targetCameraRow = Math.max(targetCameraRow, pieceTarget);
         }
 
-        // Fallback: position to show highest blocks
-        const highestBlockRow = this._findHighestBlockRow();
-        if (highestBlockRow < totalRows) {
-            const targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.3);
+        if (targetCameraRow <= maxCameraRow) {
             return Math.max(0, Math.min(maxCameraRow, targetCameraRow));
         }
 
@@ -1387,118 +1394,66 @@ export class InfinityMode extends BaseGameMode {
      * @private
      */
     _updateCameraPosition() {
-        if (!this.boardScene || !this.boardScene.cameraSettings) return;
+        if (!this.boardScene?.cameraSettings) return;
 
-        const camera = this.boardScene.cameras.main;
         const { cameraSettings } = this.boardScene;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
-
-        // Get block size from board config
-        const blockSize = this.boardScene.boardConfig?.blockSize || 30;
-
-        // Calculate current viewport in row coordinates
-        const currentCameraRow = Math.floor(camera.scrollY / blockSize);
-        const viewportBottomRow = currentCameraRow + visibleRows;
-
-        // Check if we need to follow a falling piece
+        const board = this.gameState.board;
+        const maxCameraRow = Math.max(0, board.length - visibleRows);
         const { currentPiece } = this.gameState;
+
+        // Brief cooldown after snap to prevent jitter
         if (this.snapCooldownFrames > 0) {
             this.snapCooldownFrames--;
             return;
         }
 
-        if (currentPiece && !this.suppressFollowUntilLock) {
-            // Calculate the bottom of the current piece
-            const pieceBottomRow = currentPiece.y + currentPiece.shape.length;
-
-            // Define the threshold - when piece goes below 50% of viewport, follow it
-            const followThreshold = currentCameraRow + Math.floor(visibleRows * 0.5);
-
-            // If piece is below the follow threshold, smoothly follow it down
-            if (pieceBottomRow > followThreshold) {
-                // Calculate the maximum camera position (bottom of grid)
-                const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
-
-                // Target: keep piece at 50% position in viewport (center)
-                const targetCameraRow = pieceBottomRow - Math.floor(visibleRows * 0.5);
-
-                // Clamp to valid range
-                const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
-
-                // Update camera (lerp handles smooth transition)
-                this.boardScene.updateCameraPosition(clampedCameraRow);
-
-                // Store for minimap
-                this.gameState.cameraRow = clampedCameraRow;
-
-                // Mark that we're following a piece (and remember it for a few frames)
-                this.wasFollowingPiece = true;
-                this.followMemoryFrames = this.followMemoryDuration;
-
-                return; // Exit early - we're following the piece
-            }
-        }
-
-        if (this.followMemoryFrames > 0) {
-            this.followMemoryFrames--;
-            if (this.followMemoryFrames === 0) {
-                this.wasFollowingPiece = false;
-            }
-        } else {
-            this.wasFollowingPiece = false;
-        }
-
-        // Find highest block (smallest row number where blocks exist)
+        // Find tower top
         const highestBlockRow = this._findHighestBlockRow();
 
-        // If no blocks exist yet (highestBlockRow == board.length), don't move camera
-        // This prevents the camera from jumping at game start
-        if (highestBlockRow >= this.gameState.board.length) {
-            // No blocks placed yet, keep camera at initial position (bottom)
-            this.gameState.cameraRow = currentCameraRow;
+        // No blocks yet — stay at bottom
+        if (highestBlockRow >= board.length) return;
+
+        // --- Unified smart target ---
+        // Base target: tower top at 20% from viewport top (maximize placement area below)
+        let targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.2);
+
+        // If piece exists, ensure it stays visible (bottom at ~80% of viewport)
+        if (currentPiece && !this.suppressFollowUntilLock) {
+            const pieceBottomRow = currentPiece.y + currentPiece.shape.length;
+            const pieceTarget = pieceBottomRow - Math.floor(visibleRows * 0.8);
+            targetCameraRow = Math.max(targetCameraRow, pieceTarget);
+        }
+
+        // Clamp to valid range
+        targetCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
+
+        // Stay at bottom until tower actually needs scrolling
+        const currentCameraRow = cameraSettings.currentTopRow ?? 0;
+        if (currentCameraRow >= maxCameraRow - 1 && highestBlockRow >= currentCameraRow + Math.floor(visibleRows * 0.2)) {
             return;
         }
 
-        // CRITICAL: Camera should stay at bottom until blocks reach near the TOP of viewport
-        // Calculate the maximum bottom position (where camera should stay initially)
-        const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
+        // Smooth lerp to target
+        this.boardScene.updateCameraPosition(targetCameraRow);
+        this.gameState.cameraRow = targetCameraRow;
 
-        // Only start scrolling UP when blocks reach the top 30% of the viewport
-        // This keeps the bottom visible as long as possible
-        const scrollThreshold = currentCameraRow + Math.floor(visibleRows * 0.3);
-
-        // If we're at the bottom position and blocks haven't reached the scroll threshold yet,
-        // stay at the bottom to keep all placed blocks visible
-        if (currentCameraRow >= maxCameraRow - 1 && highestBlockRow >= scrollThreshold) {
-            // Still at bottom, blocks haven't filled enough of the viewport yet
-            this.gameState.cameraRow = currentCameraRow;
-            return;
-        }
-
-        // If blocks have built UP past the threshold (smaller row number than threshold)
-        // then scroll camera UP (decrease camera row)
-        if (highestBlockRow < scrollThreshold) {
-            // Target: keep highest blocks at 30% position in viewport (closer to top)
-            // This ensures bottom blocks remain visible longer
-            const targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.3);
-
-            // Clamp to valid range
-            // Min: 0 (can show rows 0-20 at the very top)
-            // Max: (totalRows - visibleRows) (can show bottom rows)
-            const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
-
-            // Update camera (lerp handles smooth transition)
-            this.boardScene.updateCameraPosition(clampedCameraRow);
-
-            // Store for minimap
-            this.gameState.cameraRow = clampedCameraRow;
-
-            if (highestBlockRow < currentCameraRow + 5) { // Only log when significantly changed
-                console.log(`[Infinity] Camera following: highest block at row ${highestBlockRow}, camera at row ${clampedCameraRow}`);
+        // Track piece following for snap-on-lock logic
+        if (currentPiece && !this.suppressFollowUntilLock) {
+            const pieceBottomRow = currentPiece.y + currentPiece.shape.length;
+            const pieceTarget = pieceBottomRow - Math.floor(visibleRows * 0.8);
+            if (pieceTarget > highestBlockRow - Math.floor(visibleRows * 0.2)) {
+                this.wasFollowingPiece = true;
+                this.followMemoryFrames = this.followMemoryDuration;
             }
+        }
+
+        // Decay follow memory
+        if (this.followMemoryFrames > 0) {
+            this.followMemoryFrames--;
+            if (this.followMemoryFrames === 0) this.wasFollowingPiece = false;
         } else {
-            // Not past threshold yet, keep current camera position
-            this.gameState.cameraRow = currentCameraRow;
+            this.wasFollowingPiece = false;
         }
     }
 
@@ -1598,22 +1553,22 @@ export class InfinityMode extends BaseGameMode {
         const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
 
         // When following cleared lines, center them at 50-60% from top
-        // When following highest block, use the existing 30%/70% thresholds
+        // When following highest block, use the unified 20%/80% thresholds
         let targetCameraRow;
         if (clearedLineCenter !== null) {
             // Position camera so cleared lines appear at 55% from top
             targetCameraRow = targetRow - Math.floor(visibleRows * 0.55);
         } else {
-            // Original logic for highest block tracking
-            const topThreshold = currentCameraRow + Math.floor(visibleRows * 0.25);
-            const bottomThreshold = currentCameraRow + Math.floor(visibleRows * 0.75);
+            // Unified logic for highest block tracking (matches _updateCameraPosition)
+            const topThreshold = currentCameraRow + Math.floor(visibleRows * 0.2);
+            const bottomThreshold = currentCameraRow + Math.floor(visibleRows * 0.8);
 
             if (targetRow < topThreshold) {
-                // Blocks moved upward - keep them at 30% from top
-                targetCameraRow = targetRow - Math.floor(visibleRows * 0.3);
+                // Blocks moved upward - keep them at 20% from top
+                targetCameraRow = targetRow - Math.floor(visibleRows * 0.2);
             } else if (targetRow > bottomThreshold) {
-                // Blocks cascaded downward - keep them at 70% from top
-                targetCameraRow = targetRow - Math.floor(visibleRows * 0.7);
+                // Blocks cascaded downward - keep them at 80% from top
+                targetCameraRow = targetRow - Math.floor(visibleRows * 0.8);
             } else {
                 // Within viewport, no adjustment needed
                 return;
@@ -1742,10 +1697,12 @@ export class InfinityMode extends BaseGameMode {
     _onWheelScroll(event) {
         if (!this.gameState || this.gameState.isGameOver || !this.boardScene) return;
 
-        event.preventDefault();
-
-        // Block if externally paused (not by our own exploration)
+        // Block if externally paused (not by our own exploration) — let the
+        // event propagate so settings/hub menus can still scroll normally
         if (!this.isInExplorationMode && !this.isScrollBuffering && this.gameState.isPaused) return;
+
+        // Only prevent default page scroll when we're handling the event
+        event.preventDefault();
 
         const PIXELS_PER_ROW = 30;
         const BUFFER_THRESHOLD_ROWS = 3;
