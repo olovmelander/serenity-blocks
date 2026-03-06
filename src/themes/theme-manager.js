@@ -12,7 +12,7 @@ import { audioManager } from '../utils/audio-manager.js';
  * ThemeManager handles theme loading, switching, and lifecycle
  */
 export class ThemeManager {
-    constructor(webglRenderer) {
+    constructor(webglRenderer, { assetManager: assetMgr = null, audioManager: audioMgr = null } = {}) {
         this.webglRenderer = webglRenderer;
         this.activeTheme = null;
         this.activeThemeName = 'forest';
@@ -32,8 +32,8 @@ export class ThemeManager {
         this.themeShuffleDeck = []; // Shuffled deck of themes
 
         // Asset and Audio managers (shared across all themes for efficient caching)
-        this.assetManager = assetManager;
-        this.audioManager = audioManager;
+        this.assetManager = assetMgr || assetManager;
+        this.audioManager = audioMgr;
 
         // Initialize theme registry
         this.initializeRegistry();
@@ -405,6 +405,32 @@ export class ThemeManager {
         }
     }
 
+    async waitForThemeReady(timeoutMs = 3000) {
+        if (this.activeTheme?.isActive) {
+            return true;
+        }
+
+        return new Promise((resolve) => {
+            let settled = false;
+            const timer = setTimeout(() => {
+                if (!settled) {
+                    settled = true;
+                    console.warn('[ThemeManager] Theme readiness timed out after', timeoutMs, 'ms');
+                    resolve(false);
+                }
+            }, timeoutMs);
+
+            const unsubscribe = eventBus.on(EVENTS.THEME_CHANGED, () => {
+                if (!settled) {
+                    settled = true;
+                    clearTimeout(timer);
+                    unsubscribe();
+                    requestAnimationFrame(() => resolve(true));
+                }
+            });
+        });
+    }
+
     /**
      * Get theme for a specific level (for level-based theme progression)
      * @param {number} level - Current game level
@@ -510,7 +536,7 @@ export class ThemeManager {
         }
 
         // Stop all audio before cleaning up
-        if (this.audioManager) {
+        if (this.audioManager?.stopAll) {
             console.log('[ThemeManager] Stopping all audio');
             this.audioManager.stopAll();
         }

@@ -48,10 +48,12 @@ export class SoundManager {
         this.trackRequestToken = 0;
         this.audioAnalyzer = null;
         this.trackSwitchPromise = Promise.resolve();
-        this.trackFadeOutMs = 48;
-        this.trackFadeInMs = 72;
+        this.trackFadeOutMs = 2500;
+        this.trackFadeInMs = 2000;
         this.volumeFadeFrame = null;
         this.volumeFadeToken = 0;
+        this.musicGainNode = null;
+        this.musicGainWired = false;
         this.lastAnalyzerBootstrapAtMs = 0;
         this.analyzerBootstrapCooldownMs = 800;
         this.lastAnalyzerBootstrapError = null;
@@ -85,6 +87,8 @@ export class SoundManager {
     resumeAudioContext() {
         if (!this.audioContext) {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            this.musicGainNode = this.audioContext.createGain();
+            this.musicGainNode.gain.value = this.getMusicVolume();
             this.soundSets = createSoundSets(this.createTone.bind(this), this.createRichTone.bind(this));
             this.sfxPlayer = new SoundEffectPlayer(this.soundSets, this.soundSet);
         }
@@ -102,6 +106,7 @@ export class SoundManager {
             }
         }
         this.audioAnalyzer = null;
+        this.musicGainWired = false;
         this.lastAudioAnalysis = {
             bassEnergy: 0,
             midEnergy: 0,
@@ -152,6 +157,20 @@ export class SoundManager {
             try {
                 this.audioAnalyzer = new AudioAnalyzer(this.audioContext, this.audioElement);
                 this.lastAnalyzerBootstrapError = null;
+
+                // Insert musicGainNode between analyser and destination for sample-accurate volume control.
+                // AudioAnalyzer wires: source -> analyser -> destination
+                // We rewire to:        source -> analyser -> musicGainNode -> destination
+                if (this.musicGainNode && !this.musicGainWired && this.audioAnalyzer.analyserNode) {
+                    try {
+                        this.audioAnalyzer.analyserNode.disconnect(this.audioContext.destination);
+                        this.audioAnalyzer.analyserNode.connect(this.musicGainNode);
+                        this.musicGainNode.connect(this.audioContext.destination);
+                        this.musicGainWired = true;
+                    } catch (e) {
+                        console.warn('[SoundManager] Could not wire musicGainNode:', e.message);
+                    }
+                }
             } catch (error) {
                 const message = error?.message || String(error);
                 if (this.lastAnalyzerBootstrapError !== message) {
@@ -478,7 +497,7 @@ export class SoundManager {
         this.lastRequestedTrackKey = selectedTrack;
 
         if (isPendingSelectedTrack) {
-            await this.trackSwitchPromise.catch(() => {});
+            await this.trackSwitchPromise.catch(() => { });
 
             actualTrack = this.getActualTrackKey();
             isPlaying = this.isMusicPlaying();
@@ -563,6 +582,16 @@ export class SoundManager {
 
         const isSourceSwitch = !isSameSource;
 
+        // Preload new audio source during fade-out to eliminate the silence gap.
+        // The browser caches the fetched data so the subsequent src swap is instant.
+        let preloadElement = null;
+        if (isSourceSwitch) {
+            preloadElement = new Audio();
+            preloadElement.preload = 'auto';
+            preloadElement.src = filename;
+            preloadElement.load();
+        }
+
         if (useFade && isSourceSwitch && isPlaying && !this.isMuted) {
             await this.fadeMusicVolume(0, this.trackFadeOutMs);
         } else {
@@ -575,6 +604,12 @@ export class SoundManager {
 
         if (isSourceSwitch) {
             this.audioElement.src = filename;
+        }
+
+        // Clean up preload element (browser keeps data cached)
+        if (preloadElement) {
+            preloadElement.src = '';
+            preloadElement = null;
         }
 
         const shouldFadeIn = useFade && isSourceSwitch && !this.isMuted;
@@ -780,8 +815,15 @@ export class SoundManager {
     cancelMusicVolumeFade() {
         this.volumeFadeToken += 1;
         if (this.volumeFadeFrame !== null) {
+            // Web Audio path uses setTimeout; rAF path uses requestAnimationFrame.
+            // Both accept numeric IDs safely, so call both to cover either case.
+            clearTimeout(this.volumeFadeFrame);
             cancelAnimationFrame(this.volumeFadeFrame);
             this.volumeFadeFrame = null;
+        }
+        // Cancel any in-progress Web Audio gain ramps
+        if (this.musicGainNode && this.musicGainWired && this.audioContext) {
+            this.musicGainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
         }
     }
 
@@ -796,8 +838,22 @@ export class SoundManager {
     }
 
     setAudioElementVolume(value) {
-        if (!this.audioElement) return;
-        this.audioElement.volume = clampUnitVolume(value, 1.0);
+        const clamped = clampUnitVolume(value, 1.0);
+        if (this.musicGainNode && this.musicGainWired) {
+            // Use Web Audio gain node — sample-accurate, no clicks
+            this.musicGainNode.gain.value = clamped;
+            // Keep audioElement.volume at 1 so the gain node has full dynamic range
+            if (this.audioElement) this.audioElement.volume = 1.0;
+        } else if (this.audioElement) {
+            this.audioElement.volume = clamped;
+        }
+    }
+
+    _getCurrentMusicVolume() {
+        if (this.musicGainNode && this.musicGainWired) {
+            return this.musicGainNode.gain.value;
+        }
+        return this.audioElement ? this.audioElement.volume : 0;
     }
 
     fadeMusicVolume(targetVolume, durationMs = 0) {
@@ -813,13 +869,46 @@ export class SoundManager {
 
         this.cancelMusicVolumeFade();
         const token = this.volumeFadeToken;
-        const startVolume = Number.isFinite(this.audioElement.volume) ? this.audioElement.volume : clampedTarget;
+        const startVolume = this._getCurrentMusicVolume();
 
         if (Math.abs(startVolume - clampedTarget) < 0.001) {
             this.setAudioElementVolume(clampedTarget);
             return Promise.resolve();
         }
 
+        // Prefer Web Audio API scheduling for sample-accurate, click-free fading
+        if (this.musicGainNode && this.musicGainWired && this.audioContext) {
+            const gain = this.musicGainNode.gain;
+            const now = this.audioContext.currentTime;
+            gain.cancelScheduledValues(now);
+
+            // Web Audio API exponentialRampToValueAtTime cannot start from or target exactly 0.
+            // If startVolume is 0, it causes a severe click/pop. Safe floor is 0.0001.
+            const safeStart = Math.max(startVolume, 0.0001);
+            const safeTarget = Math.max(clampedTarget, 0.0001);
+
+            gain.setValueAtTime(safeStart, now);
+            // Use exponentialRamp for perceptual smoothness (human hearing is logarithmic).
+            gain.exponentialRampToValueAtTime(safeTarget, now + durationMs / 1000);
+
+            // Keep audioElement.volume at 1 so gain node controls everything
+            this.audioElement.volume = 1.0;
+
+            return new Promise((resolve) => {
+                const checkInterval = setTimeout(() => {
+                    // Snap to exact target when done
+                    if (token === this.volumeFadeToken) {
+                        gain.cancelScheduledValues(this.audioContext.currentTime);
+                        gain.value = clampedTarget;
+                    }
+                    resolve();
+                }, durationMs + 50);
+                // Store so cancelMusicVolumeFade can clear it
+                this.volumeFadeFrame = checkInterval;
+            });
+        }
+
+        // Fallback: requestAnimationFrame with ease-out curve
         const startTime = performance.now();
         return new Promise((resolve) => {
             const tick = (now) => {
@@ -834,7 +923,8 @@ export class SoundManager {
                 }
 
                 const progress = Math.min(1, (now - startTime) / durationMs);
-                this.setAudioElementVolume(startVolume + ((clampedTarget - startVolume) * progress));
+                const eased = 1 - Math.pow(1 - progress, 2);
+                this.setAudioElementVolume(startVolume + ((clampedTarget - startVolume) * eased));
 
                 if (progress >= 1) {
                     this.volumeFadeFrame = null;
@@ -915,7 +1005,7 @@ export class SoundManager {
         const requestToken = ++this.trackRequestToken;
 
         this.trackSwitchPromise = this.trackSwitchPromise
-            .catch(() => {})
+            .catch(() => { })
             .then(async () => {
                 // Last-request-wins: only the newest queued request is allowed to apply.
                 if (requestToken !== this.trackRequestToken) {

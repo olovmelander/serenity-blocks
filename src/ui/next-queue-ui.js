@@ -128,35 +128,53 @@ export function drawPiece(canvas, pieceKey) {
     const ctx = canvas.getContext('2d');
     const shape = SHAPES[pieceKey];
     const styleConfig = resolveStyleConfig(pieceKey);
-    const effects = getEffectiveEffects(styleConfig);
 
     const rows = shape.length;
     const cols = shape[0].length;
 
-    const padding = Math.max(BASE_PADDING, (effects.glowRadius || 0) + (effects.outlineWidth || 0) + 4);
-    const blockSize = BASE_BLOCK_SIZE;
-    const logicalWidth = cols * blockSize + padding * 2;
-    const logicalHeight = rows * blockSize + padding * 2;
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    const renderWidth = Math.round(logicalWidth * dpr);
-    const renderHeight = Math.round(logicalHeight * dpr);
+
+    // Measure the container to fit the piece within it (like multiplayer does)
+    const slot = canvas.closest('.player-next-piece');
+    const displayWidth = slot ? slot.clientWidth : (canvas.clientWidth || BASE_BLOCK_SIZE * cols + BASE_PADDING * 2);
+    const displayHeight = slot ? slot.clientHeight : (canvas.clientHeight || BASE_BLOCK_SIZE * rows + BASE_PADDING * 2);
+
+    const renderWidth = Math.max(1, Math.round(displayWidth * dpr));
+    const renderHeight = Math.max(1, Math.round(displayHeight * dpr));
 
     if (canvas.width !== renderWidth || canvas.height !== renderHeight) {
         canvas.width = renderWidth;
         canvas.height = renderHeight;
     }
-    canvas.style.width = `${logicalWidth}px`;
-    canvas.style.height = `${logicalHeight}px`;
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
 
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, logicalWidth, logicalHeight);
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
 
     // Disable anti-aliasing for crisp pixel-perfect rendering
     ctx.imageSmoothingEnabled = false;
 
+    // Scale block size to fit within the container with padding
+    const isHighlight = slot && slot.classList.contains('highlight');
+    const paddingFactor = isHighlight ? 0.18 : 0.22;
+    const padding = Math.max(BASE_PADDING, Math.min(displayWidth, displayHeight) * paddingFactor);
+    const availableWidth = Math.max(1, displayWidth - padding * 2);
+    const availableHeight = Math.max(1, displayHeight - padding * 2);
+    const blockSize = Math.max(4, Math.floor(Math.min(
+        availableWidth / cols,
+        availableHeight / rows,
+    )));
+
+    // Center the piece within the container
+    const pieceWidth = cols * blockSize;
+    const pieceHeight = rows * blockSize;
+    const offsetX = Math.round((displayWidth - pieceWidth) / 2);
+    const offsetY = Math.round((displayHeight - pieceHeight) / 2);
+
     // Draw the entire piece as a solid unit (outer edges only)
-    drawPieceSolid(ctx, shape, padding, padding, blockSize, styleConfig);
+    drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleConfig);
 
     ctx.restore();
 }

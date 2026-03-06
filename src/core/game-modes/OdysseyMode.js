@@ -43,6 +43,7 @@ import { OdysseyStateManager } from '../odyssey/OdysseyStateManager.js';
 import { getLevelRegistry } from '../odyssey/LevelRegistry.js';
 import { GameplayHybridEngine } from '../odyssey/GameplayHybridEngine.js';
 import { ThemeTransitionManager } from '../odyssey/ThemeTransitionManager.js';
+import { OrbPortalTransitionDirector } from '../odyssey/OrbPortalTransitionDirector.js';
 import { OdysseyBoardController } from '../../rendering/odyssey/OdysseyBoardController.js';
 import { getLevelPathPosition } from '../../rendering/odyssey/path-data.js';
 import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
@@ -54,6 +55,7 @@ import {
     formatMilliseconds,
     formatNumber,
 } from '../../ui/components/steam-leaderboard-panel.js';
+import { showCinematicLoadingOverlay, dismissCinematicLoadingOverlay } from '../../ui/cinematic-loading-overlay.js';
 
 /**
  * OdysseyMode - Narrative-driven progression through themed levels
@@ -81,6 +83,8 @@ export class OdysseyMode extends BaseGameMode {
 
         // Phase 4: Theme Transition Manager
         this.transitionManager = null; // Initialized in onActivate when themeManager is available
+        this.transitionDirector = null;
+        this.odysseyPortalTransitionV2 = true;
 
         // UI state
         this.isInBoardView = true; // true = level select, false = playing level
@@ -115,6 +119,8 @@ export class OdysseyMode extends BaseGameMode {
         // Board-view audio state (restore menu track when returning from level gameplay)
         this.boardTrackKey = null;
         this.boardTrackWasPlaying = false;
+        this.transitionMusicPreDuckVolume = null;
+        this.transitionMusicDuckActive = false;
     }
 
     /**
@@ -223,6 +229,11 @@ export class OdysseyMode extends BaseGameMode {
         // Phase 4: Initialize theme transition manager
         if (this.deps?.themeManager && !this.transitionManager) {
             this.transitionManager = new ThemeTransitionManager(this.deps.themeManager);
+        }
+        if (this.transitionManager && !this.transitionDirector) {
+            this.transitionDirector = new OrbPortalTransitionDirector({
+                transitionManager: this.transitionManager,
+            });
         }
 
         // ═══════════════════════════════════════════════════════════════════
@@ -363,6 +374,8 @@ export class OdysseyMode extends BaseGameMode {
             this.levelTimerInterval = null;
         }
 
+        this._restoreTransitionMusicDuck(180);
+
         // Victory Lap System: Clean up
         this._hideGoalCompleteOverlay();
         this._removeVictoryLapInputs();
@@ -404,6 +417,10 @@ export class OdysseyMode extends BaseGameMode {
 
         // Dispose the 3D Odyssey Board and overlay
         this._disposeOdysseyBoard();
+
+        this.transitionDirector?.dispose?.();
+        this.transitionDirector = null;
+        this._restoreTransitionMusicDuck(180);
 
         // Clean up BoardJuice
         if (this.boardJuice) {
@@ -455,74 +472,138 @@ export class OdysseyMode extends BaseGameMode {
         // Create game state based on level config
         this._createGameStateForLevel(levelConfig);
 
-        // Phase 4: Cinematic transition with background loading
-        // Total duration: ~10.5 seconds
-        // 1. Camera zoom starts (7s)
-        // 2. Warp starts at 2.5s (halfway through zoom), runs for 8s
-        // 3. Theme + board load in BACKGROUND (start at 6.0s)
-        // 4. Gameplay reveals smoothly at 6.5s (4s overlap with warp end)
-        // 5. Level starts (pieces fall) at 9.5s (1s before warp fully ends)
+        const usePortalTransitionV2 = this._isPortalTransitionV2Enabled()
+            && !!this.transitionDirector;
 
-        console.log('[Odyssey] Starting 10-second cinematic transition...');
+        if (usePortalTransitionV2) {
+            const qualityPreset = window.settings?.effectQuality || 'High';
+            const soundManager = this.deps?.soundManager;
 
-        // Start camera zoom (non-blocking) -- ZOOM FOR 7 SECONDS
-        const zoomDuration = 7000;
+            const result = await this.transitionDirector.startLevelEntry({
+                levelId,
+                levelConfig,
+                boardController: this.boardController,
+                deps: {
+                    themeManager: this.deps?.themeManager,
+                    modeHooks: {
+                        onStateChange: (state) => console.log(`[Odyssey] Orb-portal state: ${state}`),
+                        pulseOrbNode: (targetLevelId) => this._pulseOrbNode(targetLevelId),
+                        startCameraZoom: (targetLevelId, duration) => this._startCameraZoom(targetLevelId, duration),
+                        hideGameUIForTransition: () => this._hideGameUIForTransition(),
+                        loadLevelInBackground: (config, options) => this._loadLevelInBackground(config, options),
+                        setBoardViewMode: (isBoard) => { this.isInBoardView = isBoard; },
+                        hideBoardBackdrop: () => this._hideBoardBackdropForTransition(),
+                        showGameplayView: (options) => this._showGameplayView(options),
+                        showLevelIntro: (config) => this._showLevelIntro(config),
+                        startLevel: () => this._startLevel(),
+                        waitForFirstGameplayFrame: (timeoutMs) => this._waitForFirstGameplayFrame(timeoutMs),
+                        scheduleBoardDispose: () => setTimeout(() => this._disposeOdysseyBoard(), 2000),
+                        playTransitionCue: (cue) => {
+                            if (!soundManager?.sfxPlayer) return;
+                            if (cue === 'orbCharge') soundManager.sfxPlayer.playMove?.();
+                            if (cue === 'breach') {
+                                soundManager.sfxPlayer.playRotate?.();
+                                this._setTransitionMusicDuck(0.42, 180);
+                            }
+                            if (cue === 'warpRush') {
+                                soundManager.sfxPlayer.playDrop?.();
+                                this._setTransitionMusicDuck(0.28, 120);
+                            }
+                            if (cue === 'arrivalHit') {
+                                soundManager.sfxPlayer.playLevelUp?.();
+                                this._restoreTransitionMusicDuck(650);
+                            }
+                        },
+                    },
+                },
+                qualityPreset,
+            });
+
+            if (result?.success) {
+                this._restoreTransitionMusicDuck(320);
+                if (result.degraded) {
+                    console.warn('[Odyssey] Orb-portal transition completed in degraded mode');
+                }
+                return true;
+            }
+
+            this._restoreTransitionMusicDuck(250);
+            console.warn('[Odyssey] Orb-portal transition v2 failed; falling back to legacy timeline');
+            this.boardController?.resumeRendering?.();
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // ORB-PORTAL CINEMATIC TRANSITION (AAA)
+        // ═══════════════════════════════════════════════════════════════
+        // The warp ends on a full-screen exit flash. All gameplay setup
+        // happens UNDER that flash, then we fade it away to reveal the
+        // board. Zero background gaps.
+        //
+        // T=0.0s: Orb glow pulse + camera zoom begins (5s)
+        // T=1.5s: Themed warp starts (6s) — iris, portal, warp, flash
+        // T=3.5s: Theme + board loading starts in background
+        // T=7.5s: Warp resolves — exit flash covers screen
+        //         → Gameplay UI revealed under flash
+        //         → Level starts
+        //         → Flash fades out to reveal gameplay
+        // ═══════════════════════════════════════════════════════════════
+
+        console.log('[Odyssey] Starting AAA orb-portal transition...');
+
+        // Build theme config from chapter data for the warp renderer
+        const chapterId = levelConfig.chapter || 1;
+        const chapterColor = this.boardController?.nodeManager?.getChapterColor?.(chapterId);
+        const themeConfig = chapterColor ? {
+            chapterColor: chapterColor.clone(),
+            accentColor: chapterColor.clone().offsetHSL(0.15, 0, 0.1),
+        } : null;
+
+        // T=0s: Pulse the selected orb node (pre-warp glow)
+        this._pulseOrbNode(levelId);
+
+        // T=0s: Start camera zoom into the orb (non-blocking)
+        const zoomDuration = 5000;
         this._startCameraZoom(levelId, zoomDuration);
 
-        // Wait 2.5s before starting warp (allow significant camera movement)
-        await new Promise((resolve) => setTimeout(resolve, 2500));
+        // Wait 1.5s — orb glow + camera zoom build momentum
+        await new Promise((resolve) => setTimeout(resolve, 1500));
 
-        // CRITICAL: Hide all game UI BEFORE warp starts (warp is transparent)
+        // CRITICAL: Hide all game UI BEFORE warp starts
         this._hideGameUIForTransition();
 
-        // Start warp animation
-        const warpDuration = 8000;
-        const warpPromise = this.transitionManager?.playWarp?.(warpDuration)
+        // T=1.5s: Start themed warp (6s — punchier than before)
+        const warpDuration = 6000;
+        const warpPromise = this.transitionManager?.playWarp?.(warpDuration, themeConfig)
             || new Promise((resolve) => setTimeout(resolve, warpDuration));
 
-        // Wait 3.5s for warp to fade in and cover the screen before hiding board
-        // Warp starts at 2.5s. Fully opaque at ~5.7s.
-        // We hide board at T = 2.5 + 3.5 = 6.0s.
-        await new Promise((resolve) => setTimeout(resolve, 3500));
-
-        // Load theme and prepare board IN BACKGROUND (now hidden behind opaque warp)
+        // T=3.5s: Start loading theme + board in background
+        // (2s into warp — iris is closed, portal ring covers everything)
+        await new Promise((resolve) => setTimeout(resolve, 2000));
         const loadingPromise = this._loadLevelInBackground(levelConfig);
 
-        // Wait for loading to complete (it should be fast)
-        await loadingPromise;
+        // T=7.5s: AWAIT both warp completion AND loading
+        // When warp resolves, the exit flash is covering the entire screen
+        await Promise.all([warpPromise, loadingPromise]);
 
-        // Reveal gameplay view EARLY (4s before warp ends) to blend with warp fade-out
-        // Warp duration is 8000ms. Warp start 2.5s. Warp ends 10.5s.
-        // Current time is T = 6.0s.
-        // We want to trigger reveal at 6.5s (4s before warp ends).
-        // So we wait another 500ms.
-        console.log('[Odyssey] Waiting to trigger early reveal...');
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // Switch to gameplay view (starts fade-in animation)
-        console.log('[Odyssey] Triggering early gameplay reveal (4s before warp ends)');
+        // ── Screen is now covered by exit flash ──
+        // Safely reveal gameplay underneath the opaque flash
+        console.log('[Odyssey] Exit flash holding — revealing gameplay underneath...');
         this.isInBoardView = false;
-        this._showGameplayView(); // Async, don't await full completion yet
+        this._showGameplayView();
 
-        // Warp finishes at T+10.5s. We are at T+6.5s.
-        // We want to start level at T+9.5s (1s before warp ends).
-        // Wait 3000ms.
-        console.log('[Odyssey] Waiting to start level...');
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-
-        // Start the level EARLY (1s before warp ends)
-        console.log('[Odyssey] Starting level early (1s before warp ends)');
+        // Start the level immediately
         this._showLevelIntro(levelConfig);
         this._startLevel();
 
-        // Wait remaining 1000ms for warp to finish completely
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        // Small delay to let gameplay UI mount, then fade the flash away
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        console.log('[Odyssey] Fading exit flash to reveal gameplay...');
+        this.transitionManager?.warpRenderer?.hideContainer?.();
 
-        // Ensure warp promise is settled nicely
-        warpPromise.catch((e) => console.error(e));
+        // Wait for the flash-fade to complete (~600ms)
+        await new Promise((resolve) => setTimeout(resolve, 700));
 
-        // Clean up the Odyssey Board now that transition is fully complete
-        // Doing this at the end prevents stutters during the animation
+        // Clean up the Odyssey Board after transition is fully complete
         setTimeout(() => this._disposeOdysseyBoard(), 2000);
 
         return true;
@@ -535,12 +616,86 @@ export class OdysseyMode extends BaseGameMode {
     _startCameraZoom(levelId, duration) {
         if (!this.boardController?.cameraController) return;
 
+        this.boardController.cameraController.triggerFovPulse?.('contract');
         const nodePosition = this.boardController.nodeManager?.getNodePosition?.(levelId);
 
         if (nodePosition) {
             this.boardController.cameraController.zoomToPosition(nodePosition, duration);
         } else {
             this.boardController.cameraController.zoomIn?.(5, duration);
+        }
+    }
+
+    /**
+     * Pulse the selected orb node to create "portal opening" effect
+     * Brightens inner material + glow before warp starts
+     * @private
+     */
+    _pulseOrbNode(levelId) {
+        const nodeManager = this.boardController?.nodeManager;
+        if (!nodeManager) return;
+
+        const node = nodeManager.nodes?.get(levelId);
+        if (!node) return;
+
+        console.log(`[Odyssey] Pulsing orb node ${levelId} for portal effect`);
+
+        // Animate the inner material to brighten (portal activation)
+        const innerMat = node.innerMesh?.material;
+        if (innerMat?.uniforms) {
+            // Boost hovered + selected for bright glow
+            const startTime = performance.now();
+            const pulseDuration = 900;
+            const pulseLoop = () => {
+                const elapsed = performance.now() - startTime;
+                const t = Math.min(elapsed / pulseDuration, 1);
+                const ease = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+                const ripple = 0.18 * Math.sin(t * Math.PI * 6);
+
+                if (innerMat.uniforms.uHovered) {
+                    innerMat.uniforms.uHovered.value = Math.min(1.2, (ease * 1.12) + ripple);
+                }
+                if (innerMat.uniforms.uSelected) {
+                    innerMat.uniforms.uSelected.value = Math.min(1.05, (ease * 0.95) + (ripple * 0.4));
+                }
+
+                if (t < 1) {
+                    requestAnimationFrame(pulseLoop);
+                }
+            };
+            requestAnimationFrame(pulseLoop);
+        }
+
+        // Also brighten the glow mesh
+        const glowMat = node.glowMaterial;
+        if (glowMat?.uniforms?.uHovered) {
+            const startTime = performance.now();
+            const glowDuration = 900;
+            const baseScale = node.group?.scale?.x || 1;
+            const baseZ = node.group?.position?.z || 0;
+            const glowLoop = () => {
+                const elapsed = performance.now() - startTime;
+                const t = Math.min(elapsed / glowDuration, 1);
+                const ease = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+                const overshoot = Math.sin(t * Math.PI) * 0.16;
+
+                glowMat.uniforms.uHovered.value = Math.min(1.25, ease * 1.2 + overshoot * 0.2);
+
+                // Scale glow mesh up and push orb slightly toward camera for a stronger pull-in.
+                if (node.glowMesh) {
+                    node.glowMesh.scale.setScalar(1.0 + ease * 1.15 + overshoot);
+                }
+
+                if (node.group) {
+                    node.group.scale.setScalar(baseScale * (1 + ease * 0.42 + overshoot * 0.3));
+                    node.group.position.z = baseZ + (ease * 0.45);
+                }
+
+                if (t < 1) {
+                    requestAnimationFrame(glowLoop);
+                }
+            };
+            requestAnimationFrame(glowLoop);
         }
     }
 
@@ -580,20 +735,56 @@ export class OdysseyMode extends BaseGameMode {
         }
     }
 
+    _hideBoardBackdropForTransition() {
+        const boardContainer = document.getElementById('odyssey-board-3d');
+        if (boardContainer) {
+            boardContainer.style.display = 'none';
+        }
+        this._hideLevelSelectUI();
+    }
+
+    _setTransitionMusicDuck(targetVolume = 0.35, fadeMs = 160) {
+        const soundManager = this.deps?.soundManager;
+        if (!soundManager?.fadeMusicVolume) return;
+
+        if (!this.transitionMusicDuckActive) {
+            this.transitionMusicPreDuckVolume = soundManager.getMusicVolume?.() ?? 1;
+            this.transitionMusicDuckActive = true;
+        }
+
+        soundManager.fadeMusicVolume(targetVolume, fadeMs).catch(() => {
+            // Best-effort audio ducking; visual flow must continue.
+        });
+    }
+
+    _restoreTransitionMusicDuck(fadeMs = 320) {
+        const soundManager = this.deps?.soundManager;
+        if (!soundManager?.fadeMusicVolume || !this.transitionMusicDuckActive) return;
+
+        const restoreVolume = this.transitionMusicPreDuckVolume ?? 1;
+        this.transitionMusicDuckActive = false;
+        this.transitionMusicPreDuckVolume = null;
+
+        soundManager.fadeMusicVolume(restoreVolume, fadeMs).catch(() => {
+            // Best-effort restore.
+        });
+    }
+
     /**
      * Load theme and prepare board in background during transition
      * @private
      */
-    async _loadLevelInBackground(levelConfig) {
+    async _loadLevelInBackground(levelConfig, options = {}) {
         console.log('[Odyssey] Loading theme and board in background...');
 
         const { theme } = levelConfig;
         const soundManager = this.deps?.soundManager;
+        const { hideBoard = true } = options;
 
         try {
             // Load theme silently in background
             if (this.deps.themeManager) {
-                // Check if we already started loading during the "Launching..." delay
+                // Check if we already started loading from selection-time prefetch.
                 if (this.currentThemeSwitchPromise) {
                     console.log('[Odyssey] Waiting for pre-loaded theme...');
                     await this.currentThemeSwitchPromise;
@@ -622,20 +813,60 @@ export class OdysseyMode extends BaseGameMode {
                 });
             }
 
-            // HIDE the odyssey board (don't dispose yet to avoid stutter)
-            const boardContainer = document.getElementById('odyssey-board-3d');
-            if (boardContainer) {
-                boardContainer.style.display = 'none';
+            if (hideBoard) {
+                // Hide board once portal compositor has full-screen ownership.
+                const boardContainer = document.getElementById('odyssey-board-3d');
+                if (boardContainer) {
+                    boardContainer.style.display = 'none';
+                }
+                this._hideLevelSelectUI();
             }
-            this._hideLevelSelectUI();
-
-            // Note: Game UI is already hidden by _hideGameUIForTransition
-            // so we don't need to redundantly hide everything here.
 
             console.log('[Odyssey] Background loading complete (hidden until warp ends)');
         } catch (error) {
             console.error('[Odyssey] Background loading failed:', error);
         }
+    }
+
+    _isPortalTransitionV2Enabled() {
+        // Default ON for Odyssey; optional override via URL/settings for rollback.
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('odysseyPortalTransitionV2')) {
+            return urlParams.get('odysseyPortalTransitionV2') !== '0';
+        }
+
+        const settingValue = window.settings?.odysseyPortalTransitionV2;
+        if (typeof settingValue === 'boolean') {
+            return settingValue;
+        }
+
+        return this.odysseyPortalTransitionV2 !== false;
+    }
+
+    async _waitForFirstGameplayFrame(timeoutMs = 1800) {
+        const boardScene = this._getBoardScene();
+        if (!boardScene?.events?.once) {
+            return false;
+        }
+
+        if (boardScene._firstRenderEmitted) {
+            return true;
+        }
+
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = (value) => {
+                if (settled) return;
+                settled = true;
+                resolve(value);
+            };
+
+            const timeoutId = setTimeout(() => finish(false), timeoutMs);
+            boardScene.events.once('first-render', () => {
+                clearTimeout(timeoutId);
+                finish(true);
+            });
+        });
     }
 
     /**
@@ -1540,180 +1771,8 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _showCinematicLoadingOverlay() {
-        // Record when the overlay was shown for minimum display time
-        this._overlayShownAt = Date.now();
-
-        // Remove any existing overlay
-        const existing = document.getElementById('odyssey-loading-overlay');
-        if (existing) existing.remove();
-
-        const overlay = document.createElement('div');
-        overlay.id = 'odyssey-loading-overlay';
-        Object.assign(overlay.style, {
-            position: 'fixed',
-            top: '0',
-            left: '0',
-            width: '100vw',
-            height: '100vh',
-            zIndex: '1100',
-            background: 'radial-gradient(ellipse at 50% 60%, #0a0a2e 0%, #050510 50%, #020208 100%)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: '0',
-            transition: 'opacity 0.4s ease-in',
-            overflow: 'hidden',
-        });
-
-        // Inject keyframes for animations
-        if (!document.getElementById('odyssey-loading-keyframes')) {
-            const style = document.createElement('style');
-            style.id = 'odyssey-loading-keyframes';
-            style.textContent = `
-                @keyframes odyssey-star-drift {
-                    0% { transform: translateY(0) translateX(0); opacity: 0; }
-                    10% { opacity: 1; }
-                    90% { opacity: 1; }
-                    100% { transform: translateY(-100vh) translateX(20px); opacity: 0; }
-                }
-                @keyframes odyssey-title-glow {
-                    0%, 100% { text-shadow: 0 0 30px rgba(100, 140, 255, 0.3), 0 0 60px rgba(100, 140, 255, 0.1); opacity: 0.9; }
-                    50% { text-shadow: 0 0 40px rgba(100, 140, 255, 0.5), 0 0 80px rgba(100, 140, 255, 0.2), 0 0 120px rgba(100, 140, 255, 0.1); opacity: 1; }
-                }
-                @keyframes odyssey-shimmer {
-                    0% { background-position: -200% center; }
-                    100% { background-position: 200% center; }
-                }
-                @keyframes odyssey-dot-bounce {
-                    0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-                    40% { transform: translateY(-10px); opacity: 1; }
-                }
-                @keyframes odyssey-ring-pulse {
-                    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.15; }
-                    50% { transform: translate(-50%, -50%) scale(1.05); opacity: 0.25; }
-                }
-            `;
-            document.head.appendChild(style);
-        }
-
-        // Animated star particles (CSS-based, no Three.js overhead)
-        const starField = document.createElement('div');
-        Object.assign(starField.style, {
-            position: 'absolute',
-            top: '0',
-            left: '0',
-            width: '100%',
-            height: '100%',
-            pointerEvents: 'none',
-        });
-
-        const starCount = 60;
-        for (let i = 0; i < starCount; i++) {
-            const star = document.createElement('div');
-            const size = 1 + Math.random() * 2.5;
-            const x = Math.random() * 100;
-            const startY = 100 + Math.random() * 20; // Start below bottom
-            const duration = 4 + Math.random() * 6;
-            const delay = Math.random() * 3;
-            const hue = 200 + Math.random() * 60; // Blue-purple range
-            const brightness = 0.5 + Math.random() * 0.5;
-
-            Object.assign(star.style, {
-                position: 'absolute',
-                left: `${x}%`,
-                top: `${startY}%`,
-                width: `${size}px`,
-                height: `${size}px`,
-                borderRadius: '50%',
-                background: `hsla(${hue}, 80%, 80%, ${brightness})`,
-                boxShadow: `0 0 ${size * 3}px hsla(${hue}, 80%, 70%, 0.5)`,
-                animation: `odyssey-star-drift ${duration}s linear ${delay}s infinite`,
-                pointerEvents: 'none',
-            });
-            starField.appendChild(star);
-        }
-        overlay.appendChild(starField);
-
-        // Decorative ring (subtle cosmic ring behind the title)
-        const ring = document.createElement('div');
-        Object.assign(ring.style, {
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: '350px',
-            height: '350px',
-            border: '1px solid rgba(100, 140, 255, 0.1)',
-            borderRadius: '50%',
-            animation: 'odyssey-ring-pulse 3s ease-in-out infinite',
-            pointerEvents: 'none',
-        });
-        overlay.appendChild(ring);
-
-        const ring2 = document.createElement('div');
-        Object.assign(ring2.style, {
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: '420px',
-            height: '420px',
-            border: '1px solid rgba(100, 140, 255, 0.05)',
-            borderRadius: '50%',
-            animation: 'odyssey-ring-pulse 4s ease-in-out 0.5s infinite',
-            pointerEvents: 'none',
-        });
-        overlay.appendChild(ring2);
-
-        // Title: "ODYSSEY"
-        const title = document.createElement('div');
-        title.textContent = 'ODYSSEY';
-        Object.assign(title.style, {
-            fontFamily: "'Inter', 'Segoe UI', sans-serif",
-            fontSize: '3.5rem',
-            fontWeight: '200',
-            letterSpacing: '1.2em',
-            paddingLeft: '1.2em', // Compensate for letter-spacing
-            color: 'rgba(200, 220, 255, 0.95)',
-            animation: 'odyssey-title-glow 3s ease-in-out infinite',
-            zIndex: '2',
-            userSelect: 'none',
-            position: 'relative',
-        });
-        overlay.appendChild(title);
-
-        // Animated bouncing dots
-        const dotsContainer = document.createElement('div');
-        Object.assign(dotsContainer.style, {
-            display: 'flex',
-            gap: '12px',
-            marginTop: '1.5rem',
-            zIndex: '2',
-        });
-
-        for (let d = 0; d < 3; d++) {
-            const dot = document.createElement('div');
-            Object.assign(dot.style, {
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: 'rgba(160, 190, 255, 0.7)',
-                boxShadow: '0 0 8px rgba(120, 160, 255, 0.4)',
-                animation: `odyssey-dot-bounce 1.4s ease-in-out ${d * 0.2}s infinite`,
-            });
-            dotsContainer.appendChild(dot);
-        }
-        overlay.appendChild(dotsContainer);
-
-        document.body.appendChild(overlay);
-
-        // Fade in quickly
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                overlay.style.opacity = '1';
-            });
-        });
+        const result = showCinematicLoadingOverlay('ODYSSEY');
+        this._overlayShownAt = result.shownAt;
     }
 
     /**
@@ -1721,15 +1780,7 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _dismissCinematicLoadingOverlay() {
-        const overlay = document.getElementById('odyssey-loading-overlay');
-        if (!overlay) return;
-
-        overlay.style.transition = 'opacity 0.8s ease-out';
-        overlay.style.opacity = '0';
-
-        setTimeout(() => {
-            overlay.remove();
-        }, 850);
+        dismissCinematicLoadingOverlay(800);
     }
 
     /**
@@ -2071,31 +2122,22 @@ export class OdysseyMode extends BaseGameMode {
 
         // Setup play button
         const playBtn = document.getElementById('level-panel-play-btn');
-        playBtn.addEventListener('click', async () => {
+        playBtn.addEventListener('click', () => {
             if (this.selectedLevelId) {
                 // Add click feedback animation
                 playBtn.classList.add('clicked');
                 playBtn.textContent = 'Launching...';
-
-                // Wait for animation and linger (3.5s total as requested)
-                console.log('[Odyssey] Play clicked. Waiting 3.5s...');
-
-                // Pre-load the theme NOW while the user waits
-                // This prevents lag during the actual cinematic transition
-                const levelConfig = this.levelRegistry.getLevel(this.selectedLevelId);
-                if (levelConfig && levelConfig.theme && this.deps.themeManager) {
-                    console.log(`[Odyssey] Pre-loading theme ${levelConfig.theme.primary} during delay...`);
-                    this.currentThemeSwitchPromise = this.deps.themeManager.switchTheme(levelConfig.theme.primary, true);
-                }
-
-                await new Promise((resolve) => setTimeout(resolve, 3500));
-
-                // Close the panel explicitly
                 const panel = document.getElementById('odyssey-level-panel');
                 if (panel) {
-                    panel.style.transition = 'opacity 0.5s ease';
+                    panel.style.transition = 'opacity 120ms ease-out, transform 120ms ease-out';
                     panel.style.opacity = '0';
-                    // We don't remove it yet, enterLevel will eventually call _hideLevelSelectUI
+                    panel.style.transform = 'translateY(16px) scale(0.98)';
+                }
+
+                const boardOverlay = document.getElementById('odyssey-board-overlay');
+                if (boardOverlay) {
+                    boardOverlay.style.transition = 'opacity 140ms ease-out';
+                    boardOverlay.style.opacity = '0';
                 }
 
                 this.enterLevel(this.selectedLevelId);
@@ -2154,6 +2196,11 @@ export class OdysseyMode extends BaseGameMode {
 
         // Store selected level
         this.selectedLevelId = levelId;
+
+        // Preload selected level theme while browsing to remove launch hitch.
+        if (this.transitionManager?.prefetchLevelTheme) {
+            this.currentThemeSwitchPromise = this.transitionManager.prefetchLevelTheme(level);
+        }
 
         // Check if level is unlocked
         const isUnlocked = this.odysseyState.isLevelUnlocked(levelId);
@@ -2236,9 +2283,14 @@ export class OdysseyMode extends BaseGameMode {
      * Show gameplay view with smooth reveal animation
      * @private
      */
-    async _showGameplayView() {
+    async _showGameplayView(options = {}) {
         console.log('[Odyssey] Showing gameplay view with reveal animation');
         this._hideLevelSelectUI();
+        const underPortalFlash = !!options.underPortalFlash;
+        const revealDurationMs = underPortalFlash ? 360 : 1200;
+        const revealDelayMs = underPortalFlash ? 16 : 50;
+        const revealScaleStart = underPortalFlash ? 1.02 : 1.05;
+        const statsDelayMs = underPortalFlash ? 80 : 300;
 
         // Note: We do NOT dispose the Odyssey Board here anymore.
         // It is disposed at the end of enterLevel() to prevent frame drops during the reveal.
@@ -2253,8 +2305,8 @@ export class OdysseyMode extends BaseGameMode {
         if (gameContainer) {
             gameContainer.style.visibility = 'visible';
             gameContainer.style.opacity = '0';
-            gameContainer.style.transform = 'scale(1.05)';
-            gameContainer.style.transition = 'opacity 1.2s ease-out, transform 1.2s ease-out';
+            gameContainer.style.transform = `scale(${revealScaleStart})`;
+            gameContainer.style.transition = `opacity ${revealDurationMs}ms ease-out, transform ${revealDurationMs}ms ease-out`;
         }
 
         // Also reveal Phaser container
@@ -2262,22 +2314,22 @@ export class OdysseyMode extends BaseGameMode {
         if (phaserContainer) {
             phaserContainer.style.visibility = 'visible';
             phaserContainer.style.opacity = '0';
-            phaserContainer.style.transition = 'opacity 1.2s ease-out';
+            phaserContainer.style.transition = `opacity ${revealDurationMs}ms ease-out`;
         }
 
         if (statsBar) {
             statsBar.style.visibility = 'visible';
             statsBar.style.opacity = '0';
             statsBar.style.setProperty('display', 'flex', 'important');
-            statsBar.style.transition = 'opacity 1s ease-out 0.3s';
+            statsBar.style.transition = `opacity ${Math.max(220, revealDurationMs - 80)}ms ease-out ${statsDelayMs}ms`;
         }
 
         if (bgContainer) {
-            bgContainer.style.transition = 'opacity 1.2s ease-out';
+            bgContainer.style.transition = `opacity ${revealDurationMs}ms ease-out`;
         }
 
         // Trigger the reveal after a tiny delay to ensure styles are applied
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, revealDelayMs));
 
         // Animate in - reveal everything together
         if (bgContainer) {
@@ -2298,7 +2350,7 @@ export class OdysseyMode extends BaseGameMode {
         }
 
         // Wait for animation to complete
-        await new Promise((resolve) => setTimeout(resolve, 1200));
+        await new Promise((resolve) => setTimeout(resolve, revealDurationMs + statsDelayMs));
 
         // Clean up transition styles
         if (gameContainer) {

@@ -221,9 +221,10 @@ export class InfinityMode extends BaseGameMode {
         this._refreshNextQueue();
         this._updateStats();
 
-        // Initialize minimap (scale height to match playfield)
+        // Initialize minimap (scaling height and width for responsive CSS layout)
+        // With scale transforms removed in CSS, the actual generated pixels need to be sharp
         this.minimap = new InfinityMinimap({
-            width: 180,
+            width: 140, // Base width, CSS will constrain/scale it with object-fit
             height: ROWS * BLOCK_SIZE + 20,
         });
         this.minimap.show();
