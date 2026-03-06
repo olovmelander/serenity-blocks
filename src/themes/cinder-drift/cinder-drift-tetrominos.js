@@ -15,7 +15,7 @@ export const CINDER_DRIFT_TETROMINOS = {
         T: '#800020', // Burgundy (cooling)
         S: '#cccc00', // Dull Sulfur
         Z: '#cc3300', // Red Clay
-        J: '#4a0404', // Dark Slag
+        J: '#9a2a18', // Smoldering Slag (brighter for contrast)
         L: '#ff8800', // Bright Ember
         GARBAGE: '#333333', // Basalt
     },

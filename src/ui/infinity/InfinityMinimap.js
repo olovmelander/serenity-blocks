@@ -108,13 +108,19 @@ export class InfinityMinimap {
             position: relative;
             width: ${this.options.width}px;
             height: ${this.options.height}px;
-            background: linear-gradient(180deg, rgba(6, 10, 24, 0.92), rgba(4, 6, 18, 0.92));
-            border: 2px solid rgba(100, 255, 200, 0.35);
-            border-radius: 16px;
+            background: linear-gradient(
+                165deg,
+                rgba(10, 25, 40, 0.92) 0%,
+                rgba(5, 15, 30, 0.95) 50%,
+                rgba(2, 8, 20, 0.98) 100%
+            );
+            border: 1px solid rgba(0, 229, 255, 0.25);
+            border-radius: 20px;
             padding: 12px 12px 16px 12px;
             box-shadow:
-                0 14px 40px rgba(10, 16, 30, 0.5),
-                inset 0 0 24px rgba(60, 255, 200, 0.2);
+                0 8px 32px rgba(0, 0, 0, 0.5),
+                inset 0 0 24px rgba(0, 229, 255, 0.05),
+                0 0 60px rgba(0, 229, 255, 0.08);
             cursor: pointer;
             margin-top: 0;
             display: none;
@@ -132,8 +138,8 @@ export class InfinityMinimap {
             display: block;
             image-rendering: pixelated;
             margin: 0 auto;
-            border-radius: 10px;
-            background: rgba(10, 18, 40, 0.85);
+            border-radius: 12px;
+            background: rgba(5, 10, 24, 0.85);
             transition: opacity 0.3s ease;
         `;
 
@@ -176,42 +182,42 @@ export class InfinityMinimap {
             @keyframes activationPulse {
                 0% {
                     box-shadow:
-                        0 14px 40px rgba(10, 16, 30, 0.5),
-                        inset 0 0 24px rgba(60, 255, 200, 0.2),
-                        0 0 0 0 rgba(100, 255, 200, 0.7);
+                        0 8px 32px rgba(0, 0, 0, 0.5),
+                        inset 0 0 24px rgba(0, 229, 255, 0.05),
+                        0 0 0 0 rgba(0, 229, 255, 0.7);
                 }
                 50% {
                     box-shadow:
-                        0 14px 40px rgba(10, 16, 30, 0.5),
-                        inset 0 0 40px rgba(60, 255, 200, 0.6),
-                        0 0 30px 15px rgba(100, 255, 200, 0);
+                        0 8px 32px rgba(0, 0, 0, 0.5),
+                        inset 0 0 40px rgba(0, 229, 255, 0.4),
+                        0 0 30px 15px rgba(0, 229, 255, 0);
                 }
                 100% {
                     box-shadow:
-                        0 14px 40px rgba(10, 16, 30, 0.5),
-                        inset 0 0 24px rgba(60, 255, 200, 0.2),
-                        0 0 0 0 rgba(100, 255, 200, 0);
+                        0 8px 32px rgba(0, 0, 0, 0.5),
+                        inset 0 0 24px rgba(0, 229, 255, 0.05),
+                        0 0 0 0 rgba(0, 229, 255, 0);
                 }
             }
 
             /* Enhanced border pulse for active state */
             @keyframes borderPulseActive {
                 0%, 100% {
-                    border-color: rgba(100, 255, 200, 0.5);
+                    border-color: rgba(0, 229, 255, 0.25);
                 }
                 50% {
-                    border-color: rgba(100, 255, 200, 0.8);
+                    border-color: rgba(0, 229, 255, 0.6);
                 }
             }
 
             .infinity-minimap:hover {
                 opacity: 1 !important;
                 transform: scale(1.02) !important;
-                border-color: rgba(100, 255, 200, 0.65) !important;
+                border-color: rgba(0, 229, 255, 0.5) !important;
                 box-shadow:
-                    0 18px 50px rgba(10, 16, 30, 0.7),
-                    inset 0 0 32px rgba(60, 255, 200, 0.35),
-                    0 0 40px rgba(100, 255, 200, 0.2) !important;
+                    0 12px 40px rgba(0, 0, 0, 0.6),
+                    inset 0 0 32px rgba(0, 229, 255, 0.2),
+                    0 0 40px rgba(0, 229, 255, 0.2) !important;
             }
 
             .infinity-minimap:active {
@@ -225,8 +231,8 @@ export class InfinityMinimap {
 
             /* Enhanced title glow when active */
             .infinity-minimap.active .minimap-title {
-                color: rgba(100, 255, 200, 0.9) !important;
-                text-shadow: 0 0 10px rgba(100, 255, 200, 0.5);
+                color: rgba(0, 229, 255, 0.9) !important;
+                text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
             }
         `;
             document.head.appendChild(hoverStyle);
@@ -242,7 +248,7 @@ export class InfinityMinimap {
             text-align: center;
             font-size: 10px;
             font-weight: 600;
-            color: rgba(255, 255, 255, 0.6);
+            color: rgba(0, 229, 255, 0.8);
             letter-spacing: 1px;
             margin-bottom: 12px;
             text-transform: uppercase;
@@ -261,7 +267,7 @@ export class InfinityMinimap {
             font-family: 'Orbitron', monospace;
             font-size: 9px;
             font-weight: 400;
-            color: rgba(100, 255, 200, 0.5);
+            color: rgba(0, 229, 255, 0.5);
             letter-spacing: 0.5px;
             margin-top: 8px;
             margin-bottom: 4px;
@@ -527,7 +533,7 @@ export class InfinityMinimap {
      * @param {number} height - Canvas height
      */
     _drawBackgroundTexture(ctx, width, height) {
-        ctx.fillStyle = 'rgba(100, 255, 200, 0.08)';
+        ctx.fillStyle = 'rgba(0, 229, 255, 0.08)';
         const dotSpacing = 12;
         const dotSize = 1;
 
@@ -555,11 +561,11 @@ export class InfinityMinimap {
 
         // Create gradient for the moving scanline
         const gradient = ctx.createLinearGradient(0, scanlineY - 40, 0, scanlineY + 40);
-        gradient.addColorStop(0, 'rgba(100, 255, 200, 0)');
-        gradient.addColorStop(0.4, 'rgba(100, 255, 200, 0.12)');
-        gradient.addColorStop(0.5, 'rgba(100, 255, 200, 0.18)');
-        gradient.addColorStop(0.6, 'rgba(100, 255, 200, 0.12)');
-        gradient.addColorStop(1, 'rgba(100, 255, 200, 0)');
+        gradient.addColorStop(0, 'rgba(0, 229, 255, 0)');
+        gradient.addColorStop(0.4, 'rgba(0, 229, 255, 0.12)');
+        gradient.addColorStop(0.5, 'rgba(0, 229, 255, 0.18)');
+        gradient.addColorStop(0.6, 'rgba(0, 229, 255, 0.12)');
+        gradient.addColorStop(1, 'rgba(0, 229, 255, 0)');
 
         ctx.fillStyle = gradient;
         ctx.fillRect(0, scanlineY - 40, width, 80);
@@ -583,13 +589,13 @@ export class InfinityMinimap {
         // Invert so higher achievement = higher value
         const progress = (normalizedMax - topRow) / normalizedMax; // 0.0 to 1.0
 
-        // Define color stops
+        // Define color stops (Cosmic Cyan progression)
         const colors = [
-            { pos: 0.00, color: [100, 255, 200] }, // Cyan-green (start)
-            { pos: 0.25, color: [50, 255, 150] }, // Green
-            { pos: 0.50, color: [200, 255, 100] }, // Yellow-green
-            { pos: 0.75, color: [255, 200, 50] }, // Orange-yellow
-            { pos: 1.00, color: [255, 150, 50] }, // Orange (near goal)
+            { pos: 0.00, color: [0, 229, 255] }, // Base Cyan
+            { pos: 0.25, color: [0, 200, 255] }, // Deep Cyan
+            { pos: 0.50, color: [100, 200, 255] }, // Light Cyan
+            { pos: 0.75, color: [150, 220, 255] }, // Bright Cyan
+            { pos: 1.00, color: [255, 255, 255] }, // White (Top)
         ];
 
         // Find surrounding color stops
@@ -612,7 +618,7 @@ export class InfinityMinimap {
         const g = Math.round(lower.color[1] + (upper.color[1] - lower.color[1]) * rangeProgress);
         const b = Math.round(lower.color[2] + (upper.color[2] - lower.color[2]) * rangeProgress);
 
-        return `rgba(${r}, ${g}, ${b}, 0.5)`;
+        return `rgba(${r}, ${g}, ${b}, 0.25)`;
     }
 
     /**
@@ -627,11 +633,11 @@ export class InfinityMinimap {
         const progress = (normalizedMax - topRow) / normalizedMax;
 
         const colors = [
-            { pos: 0.00, color: [100, 255, 200] },
-            { pos: 0.25, color: [50, 255, 150] },
-            { pos: 0.50, color: [200, 255, 100] },
-            { pos: 0.75, color: [255, 200, 50] },
-            { pos: 1.00, color: [255, 150, 50] },
+            { pos: 0.00, color: [0, 229, 255] }, // Base Cyan
+            { pos: 0.25, color: [0, 200, 255] }, // Deep Cyan
+            { pos: 0.50, color: [100, 200, 255] }, // Light Cyan
+            { pos: 0.75, color: [150, 220, 255] }, // Bright Cyan
+            { pos: 1.00, color: [255, 255, 255] }, // White (Top)
         ];
 
         let lower = colors[0];
@@ -652,7 +658,7 @@ export class InfinityMinimap {
         const g = Math.round(lower.color[1] + (upper.color[1] - lower.color[1]) * rangeProgress);
         const b = Math.round(lower.color[2] + (upper.color[2] - lower.color[2]) * rangeProgress);
 
-        return `rgba(${r}, ${g}, ${b}, 0.25)`;
+        return `rgba(${r}, ${g}, ${b}, 0.15)`;
     }
 
     /**
@@ -705,7 +711,7 @@ export class InfinityMinimap {
         const labels = uniqueRows.map((row) => ({
             row,
             text: row.toString(),
-            color: row === 0 ? '#ff0000' : row === normalizedMax ? '#00ff00' : '#ffff00',
+            color: row === 0 ? '#ffffff' : row === normalizedMax ? '#00e5ff' : '#60ccff',
         }));
 
         ctx.font = '10px monospace';
@@ -792,17 +798,17 @@ export class InfinityMinimap {
         }
 
         // Highlight viewport area
-        ctx.fillStyle = 'rgba(0, 255, 0, 0.15)'; // Subtle green tint
+        ctx.fillStyle = 'rgba(0, 229, 255, 0.15)'; // Subtle cyan tint
         ctx.fillRect(0, viewportY, width, viewportHeight);
 
         // Draw viewport border with pulsing glow effect
         const time = Date.now() / 1000;
         const pulse = Math.sin(time * Math.PI) * 0.3 + 0.7; // Oscillates 0.7-1.0
 
-        ctx.strokeStyle = `rgba(0, 255, 0, ${pulse})`;
+        ctx.strokeStyle = `rgba(0, 229, 255, ${0.8 * pulse})`;
         ctx.lineWidth = 2;
         ctx.shadowBlur = 8 + (pulse * 8); // 8-16px blur
-        ctx.shadowColor = `rgba(0, 255, 0, ${pulse * 0.8})`;
+        ctx.shadowColor = `rgba(0, 229, 255, ${pulse * 0.8})`;
         ctx.strokeRect(0, viewportY, width, viewportHeight);
 
         // Reset shadow for other drawing operations

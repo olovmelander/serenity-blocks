@@ -1,0 +1,56 @@
+{
+  "url": "http://127.0.0.1:4176/?skipIntro=1&odysseyPortalTransitionV2=1",
+  "captures": [
+    {
+      "filename": "frame-00-0ms.png",
+      "atMs": 0
+    },
+    {
+      "filename": "frame-01-350ms.png",
+      "atMs": 350
+    },
+    {
+      "filename": "frame-02-700ms.png",
+      "atMs": 700
+    },
+    {
+      "filename": "frame-03-1100ms.png",
+      "atMs": 1100
+    },
+    {
+      "filename": "frame-04-1500ms.png",
+      "atMs": 1500
+    },
+    {
+      "filename": "frame-05-2000ms.png",
+      "atMs": 2000
+    },
+    {
+      "filename": "frame-06-2500ms.png",
+      "atMs": 2500
+    },
+    {
+      "filename": "frame-07-3000ms.png",
+      "atMs": 3000
+    },
+    {
+      "filename": "frame-08-3600ms.png",
+      "atMs": 3600
+    },
+    {
+      "filename": "frame-09-4200ms.png",
+      "atMs": 4200
+    },
+    {
+      "filename": "frame-10-4800ms.png",
+      "atMs": 4800
+    },
+    {
+      "filename": "frame-11-5600ms.png",
+      "atMs": 5600
+    }
+  ],
+  "consoleErrorCount": 3,
+  "tooManyErrorsSeen": false,
+  "artifactDir": "/home/melolo/serenity-blocks/artifacts/odyssey/portal-transition/2026-03-06T10-47-46-279Z"
+}

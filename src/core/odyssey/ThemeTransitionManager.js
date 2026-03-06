@@ -8,6 +8,8 @@
  */
 
 import { WarpTransitionRenderer } from '../../rendering/transitions/WarpTransitionRenderer.js';
+import { resolveWarpQualityProfile } from '../../rendering/transitions/warp-quality-profiles.js';
+import { TRANSITION_LAYERS } from '../../rendering/transitions/transition-layer-constants.js';
 
 /**
  * ThemeTransitionManager - Handles smooth visual transitions between themes
@@ -25,9 +27,14 @@ export class ThemeTransitionManager {
 
         // DOM element
         this.overlay = document.getElementById('theme-transition-overlay');
+        if (this.overlay) {
+            this.overlay.style.zIndex = String(TRANSITION_LAYERS.THEME_OVERLAY);
+        }
 
         // Three.js warp transition renderer (lazy initialized)
         this.warpRenderer = null;
+        this.prefetchThemePromise = null;
+        this.prefetchThemeName = null;
 
         console.log('[ThemeTransition] Manager initialized');
     }
@@ -101,26 +108,26 @@ export class ThemeTransitionManager {
 
         try {
             switch (transitionType) {
-            case 'fade':
-                await this.fadeTransition(themeName, duration);
-                break;
+                case 'fade':
+                    await this.fadeTransition(themeName, duration);
+                    break;
 
-            case 'crossfade':
-                await this.crossfadeTransition(themeName, duration);
-                break;
+                case 'crossfade':
+                    await this.crossfadeTransition(themeName, duration);
+                    break;
 
-            case 'warp':
-                await this.warpTransition(themeName, duration);
-                break;
+                case 'warp':
+                    await this.warpTransition(themeName, duration);
+                    break;
 
-            case 'none':
-            case 'instant':
-                await this.themeManager?.switchTheme?.(themeName, true);
-                break;
+                case 'none':
+                case 'instant':
+                    await this.themeManager?.switchTheme?.(themeName, true);
+                    break;
 
-            default:
-                // Default to warp for the best experience
-                await this.warpTransition(themeName, duration);
+                default:
+                    // Default to warp for the best experience
+                    await this.warpTransition(themeName, duration);
             }
         } catch (error) {
             console.error('[ThemeTransition] Error during transition:', error);
@@ -198,9 +205,7 @@ export class ThemeTransitionManager {
      */
     async warpTransition(themeName, duration) {
         // Lazy initialize the warp renderer
-        if (!this.warpRenderer) {
-            this.warpRenderer = new WarpTransitionRenderer();
-        }
+        this.ensureWarpRenderer();
 
         // Start the warp animation
         const warpPromise = this.warpRenderer.play(duration);
@@ -219,15 +224,63 @@ export class ThemeTransitionManager {
     /**
      * Play just the warp animation (for use when loading happens separately)
      * @param {number} duration - Duration in ms
+     * @param {Object} [themeConfig] - Theme colors for the warp
+     * @param {THREE.Color|number} [themeConfig.chapterColor] - Primary chapter color
+     * @param {THREE.Color|number} [themeConfig.accentColor] - Accent color
      * @returns {Promise} Resolves when warp completes
      */
-    async playWarp(duration) {
-        // Lazy initialize the warp renderer
-        if (!this.warpRenderer) {
-            this.warpRenderer = new WarpTransitionRenderer();
-        }
+    async playWarp(duration, themeConfig = null) {
+        // Backward-compatible wrapper: keep legacy signature.
+        return this.playOrbPortal({ duration, themeConfig });
+    }
 
-        return this.warpRenderer.play(duration);
+    /**
+     * Play the Odyssey orb-portal transition with profile + anchor support.
+     * @param {Object} config
+     * @param {number} [config.duration=4000]
+     * @param {string|Object} [config.profile='High']
+     * @param {Object} [config.themeConfig]
+     * @param {Object} [config.portalAnchor]
+     * @param {Object} [config.compositor]
+     * @returns {Promise<{success: boolean, degraded: boolean, error?: Error}>}
+     */
+    async playOrbPortal(config = {}) {
+        const {
+            duration = 4000,
+            profile = 'High',
+            themeConfig = null,
+            portalAnchor = null,
+            compositor = null,
+        } = config;
+
+        this.ensureWarpRenderer();
+
+        const resolvedProfile = typeof profile === 'string'
+            ? resolveWarpQualityProfile(profile)
+            : profile;
+
+        try {
+            if (typeof this.warpRenderer.playProfile === 'function') {
+                await this.warpRenderer.playProfile({
+                    duration,
+                    qualityProfile: resolvedProfile,
+                    themeConfig,
+                    portalAnchor,
+                    compositor,
+                });
+                return { success: true, degraded: false };
+            }
+
+            // Legacy fallback path
+            if (portalAnchor && typeof this.warpRenderer.setPortalAnchor === 'function') {
+                this.warpRenderer.setPortalAnchor(portalAnchor);
+            }
+            await this.warpRenderer.play(duration, themeConfig);
+            return { success: true, degraded: false };
+        } catch (error) {
+            console.error('[ThemeTransition] Orb portal transition failed:', error);
+            return { success: false, degraded: true, error };
+        }
     }
 
     /**
@@ -235,11 +288,43 @@ export class ThemeTransitionManager {
      * Call this early (e.g., when board loads) so shaders are compiled in advance
      */
     preInitWarp() {
-        if (!this.warpRenderer) {
-            this.warpRenderer = new WarpTransitionRenderer();
-            this.warpRenderer.init();
-            console.log('[ThemeTransition] Warp renderer pre-initialized');
+        this.ensureWarpRenderer();
+        this.warpRenderer.init();
+        this.warpRenderer.prewarmFrame?.();
+        console.log('[ThemeTransition] Warp renderer pre-initialized');
+    }
+
+    /**
+     * Preload a level theme while still in board view.
+     * This is intentionally best-effort and non-blocking for UX responsiveness.
+     * @param {Object} levelConfig
+     * @returns {Promise<boolean>}
+     */
+    async prefetchLevelTheme(levelConfig) {
+        const themeName = levelConfig?.theme?.primary;
+        if (!themeName || !this.themeManager?.switchTheme) {
+            return false;
         }
+
+        if (this.prefetchThemePromise && this.prefetchThemeName === themeName) {
+            return this.prefetchThemePromise;
+        }
+
+        this.prefetchThemeName = themeName;
+        this.prefetchThemePromise = this.themeManager.switchTheme(themeName, true)
+            .then(() => true)
+            .catch((error) => {
+                console.warn('[ThemeTransition] Theme prefetch failed:', themeName, error);
+                return false;
+            })
+            .finally(() => {
+                if (this.prefetchThemeName === themeName) {
+                    this.prefetchThemePromise = null;
+                    this.prefetchThemeName = null;
+                }
+            });
+
+        return this.prefetchThemePromise;
     }
 
     // ========================================
@@ -333,6 +418,13 @@ export class ThemeTransitionManager {
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
+    ensureWarpRenderer() {
+        if (!this.warpRenderer) {
+            this.warpRenderer = new WarpTransitionRenderer();
+        }
+        return this.warpRenderer;
+    }
+
     /**
      * Dispose and cleanup
      */
@@ -340,6 +432,8 @@ export class ThemeTransitionManager {
         this.transitionQueue = [];
         this.overlays.forEach((o) => o.dispose?.());
         this.overlays = [];
+        this.prefetchThemePromise = null;
+        this.prefetchThemeName = null;
 
         if (this.warpRenderer) {
             this.warpRenderer.dispose();
