@@ -44,6 +44,7 @@ import {
     storage,
     uniform,
     uv,
+    varying,
     vec2,
     vec3,
     vec4,
@@ -798,7 +799,8 @@ export function createAccretionDiskNodeMaterial(params = {}) {
         uTime.mul(0.15)
     );
 
-    const plasma = tslFbm(noisePos, params.fbmOctaves ?? 5);
+    const plasmaRaw = tslFbm(noisePos, params.fbmOctaves ?? 5);
+    const plasma = varying(plasmaRaw, 'vPlasma');
     const bands = sin(radius.mul(30.0).add(plasma.mul(7.0))).mul(0.5).add(0.5);
 
     const edgeFade = smoothstep(float(0.0), float(0.15), radius)

@@ -139,14 +139,8 @@ export class SinglePlayerMode extends BaseGameMode {
             statsBar.style.setProperty('visibility', 'visible', 'important');
         }
 
-        // Hide intro animation container
-        const introAnimation = document.getElementById('intro-animation');
-        if (introAnimation) {
-            introAnimation.style.setProperty('display', 'none', 'important');
-            console.log('[SinglePlayer] Hid intro animation');
-        } else {
-            console.log('[SinglePlayer] Intro animation not found');
-        }
+        // Intro animation dismissal is handled by the game start transition in main.js.
+        // The transition overlay masks the visual handoff.
 
         // Hide any existing multiplayer Phaser scenes
         this._hideMultiplayerScenes();

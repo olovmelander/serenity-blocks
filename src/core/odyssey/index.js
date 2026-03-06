@@ -12,3 +12,4 @@ export { VictoryConditionEvaluator } from './VictoryConditionEvaluator.js';
 export { ModifierStack, MODIFIER_DEFINITIONS } from './ModifierStack.js';
 export { MechanicsMixer } from './MechanicsMixer.js';
 export { GameplayHybridEngine } from './GameplayHybridEngine.js';
+export { OrbPortalTransitionDirector, ORB_PORTAL_STATES } from './OrbPortalTransitionDirector.js';

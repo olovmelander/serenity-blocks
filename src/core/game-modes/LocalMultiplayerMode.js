@@ -14,6 +14,7 @@ import { seededRandom } from '../../utils/helpers.js';
 import { drawNextPieces } from '../../rendering/draw.js';
 import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { showCinematicLoadingOverlay, dismissCinematicLoadingOverlay } from '../../ui/cinematic-loading-overlay.js';
 
 /**
  * LocalMultiplayerMode - Local 2-4 player competitive mode
@@ -53,6 +54,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.matchConfig = null;
         this.configModal = null;
         this.configuredForStart = false; // Track if config modal has been shown
+        this.matchStartLoadingOverlay = null;
 
         // Round tracking (frags) - will be configured by modal
         this.roundWins = {
@@ -119,13 +121,24 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.matchConfig = config;
         this.configuredForStart = true;
 
-        // Now setup the UI for the configured number of players
-        await this._setupMultiplayerUI();
+        this.matchStartLoadingOverlay = showCinematicLoadingOverlay(this._getMatchStartLoadingTitle(config));
 
-        console.log('[LocalMultiplayer] UI setup complete, starting match...');
+        try {
+            // Let the overlay fully cover the screen before heavy UI/theme work.
+            await new Promise((resolve) => setTimeout(resolve, 500));
 
-        // Automatically start the match after configuration
-        await this.onStart();
+            // Now setup the UI for the configured number of players.
+            await this._setupMultiplayerUI();
+
+            console.log('[LocalMultiplayer] UI setup complete, starting match...');
+
+            // Automatically start the match after configuration.
+            await this.onStart();
+        } catch (error) {
+            console.error('[LocalMultiplayer] Failed to start configured match:', error);
+            await this._dismissMatchStartLoadingOverlay({ fadeOutMs: 300, minVisibleMs: 0 });
+            alert(`Failed to start local multiplayer match: ${error.message}`);
+        }
     }
 
     /**
@@ -218,6 +231,17 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this._pauseSinglePlayerScene();
 
         console.log('[LocalMultiplayer] UI setup complete');
+    }
+
+    _getMatchStartLoadingTitle(config = this.matchConfig) {
+        return config?.isInfinityLMS ? 'LAST STANDING' : 'FREE-FOR-ALL';
+    }
+
+    async _dismissMatchStartLoadingOverlay({ fadeOutMs = 800, minVisibleMs = 2000 } = {}) {
+        if (!this.matchStartLoadingOverlay) return;
+
+        await dismissCinematicLoadingOverlay({ fadeOutMs, minVisibleMs });
+        this.matchStartLoadingOverlay = null;
     }
 
     /**
@@ -321,6 +345,16 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
         if (this.deps.themeManager?.resumeThemes) {
             await this.deps.themeManager.resumeThemes();
+        }
+        if (this.deps.themeManager?.waitForThemeReady) {
+            const themeReady = await this.deps.themeManager.waitForThemeReady(3000);
+            console.log('[LocalMultiplayer] Theme ready:', themeReady);
+        }
+        if (this.deps.soundManager?.ensureTrackPlaybackSynced) {
+            await this.deps.soundManager.ensureTrackPlaybackSynced({
+                reason: 'local-multiplayer-start',
+                force: true,
+            });
         }
 
         const { introAnimation } = await import('../../ui/intro-animation.js');
@@ -435,6 +469,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Update stats display
         this._updateMultiplayerStats(0);
 
+        // Transition from cinematic loader into countdown/gameplay.
+        await this._dismissMatchStartLoadingOverlay();
+
         // Show countdown
         await this._showCountdown();
 
@@ -526,6 +563,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         await super.onDeactivate();
 
         console.log('[LocalMultiplayer] Deactivating...');
+        await this._dismissMatchStartLoadingOverlay({ fadeOutMs: 200, minVisibleMs: 0 });
 
         // Hide and destroy config modal
         if (this.configModal) {
@@ -713,7 +751,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
                     // Use proper multiplayer callbacks (from main.js) to handle garbage and spawning
                     const callbacks = this.deps.getMultiplayerPhysicsCallbacks?.(playerNum)
-                        || this._getPhysicsCallbacks();
+                        || this._getPhysicsCallbacks(playerNum);
 
                     processAutoDrop(
                         playerState,
@@ -751,15 +789,28 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Get physics callbacks for sound effects
+     * Get physics callbacks for sound effects and juice
      * @private
+     * @param {number} playerNum - 1-based player index (1-4)
      */
-    _getPhysicsCallbacks() {
+    _getPhysicsCallbacks(playerNum) {
         return {
-            onMove: () => this.deps.soundManager.sfxPlayer.playMove(),
-            onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
-            onLineClear: () => {
+            onMove: () => {
+                this.deps.soundManager.sfxPlayer.playMove();
+            },
+            onRotate: () => {
+                this.deps.soundManager.sfxPlayer.playRotate();
+            },
+            onLineClear: (lineCount) => {
                 this.deps.soundManager.sfxPlayer.playLineClear();
+                // Emit event for theme reactions (optional, but good for consistency with single player)
+                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount });
+            },
+            onPieceLock: (piece) => {
+                eventBus.emit(EVENTS.PIECE_LOCK, { piece });
+            },
+            onLineClearImpact: (lineCount, cascadeCount) => {
+                // Effects handled in main.js
             },
             onHardDrop: (dropData) => {
                 this.deps.soundManager.sfxPlayer.playHardDrop();
@@ -773,6 +824,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             onDrop: () => this.deps.soundManager.sfxPlayer.playDrop(),
             // Trigger combo visual effects
             triggerCombo: (comboCount) => {
+                eventBus.emit(EVENTS.COMBO, { comboCount });
                 const settings = this.deps.settingsManager.get();
                 // Show combo effects on all active board scenes
                 this.boardScenes.forEach((scene) => {

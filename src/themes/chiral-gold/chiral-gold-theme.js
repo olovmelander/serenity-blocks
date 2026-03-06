@@ -305,6 +305,11 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.cameraBasePosition = new THREE.Vector3(0, 0, 1520);
         this.cameraTarget = new THREE.Vector3(0, 0, 0);
         this.cameraShake = new THREE.Vector3();
+        this.cameraDrift = new THREE.Vector3();
+        this.cameraDriftVelocity = new THREE.Vector3();
+        this.cameraRoll = 0;
+        this.cameraRollTarget = 0;
+        this.cameraAudioSway = new THREE.Vector3();
         this.eventAnchors = [];
         this.heroBurstEnvelope = 0;
         this.peripheralBurstEnvelope = 0;
@@ -1417,9 +1422,9 @@ export default class ChiralGoldTheme extends BaseTheme {
             ampX[i] = 200 + this.rand() * 600;
             ampY[i] = 140 + this.rand() * 360;
             ampZ[i] = 200 + this.rand() * 600;
-            freqA[i] = 1 + Math.floor(this.rand() * 5) + this.rand() * 0.18;
-            freqB[i] = 1 + Math.floor(this.rand() * 5) + this.rand() * 0.18;
-            freqC[i] = 1 + Math.floor(this.rand() * 5) + this.rand() * 0.18;
+            freqA[i] = 0.6 + Math.floor(this.rand() * 3) * 0.5 + this.rand() * 0.15;
+            freqB[i] = 0.6 + Math.floor(this.rand() * 3) * 0.5 + this.rand() * 0.15;
+            freqC[i] = 0.6 + Math.floor(this.rand() * 3) * 0.5 + this.rand() * 0.15;
             phase[i] = this.rand() * Math.PI * 2;
             group[i] = this.rand();
         }
@@ -1921,18 +1926,18 @@ export default class ChiralGoldTheme extends BaseTheme {
 
         this.comboFlashIntensity = Math.max(0, this.comboFlashIntensity - delta * 1.7);
         this.dustEventBoost = Math.max(0, this.dustEventBoost - delta * 3.2);
-        this.beatPulse = Math.max(0, this.beatPulse - delta * 3.5);
-        this.wispJolt = Math.max(0, this.wispJolt - delta * 2.8);
+        this.beatPulse = Math.max(0, this.beatPulse - delta * 2.2);
+        this.wispJolt = Math.max(0, this.wispJolt - delta * 1.8);
         this.beamFlash = Math.max(0, this.beamFlash - delta * 2.4);
         this.colorTemperatureBoost = Math.max(0, this.colorTemperatureBoost - delta * 0.42);
         this.burstSparkBoost = Math.max(0, this.burstSparkBoost - delta * 3.8);
 
         if (analysis.beatDetected) {
-            this.beatPulse = Math.min(1.0, this.beatPulse + 0.85);
+            this.beatPulse = Math.min(1.0, this.beatPulse + 0.45);
         }
         // Bass-slam trigger: catch strong bass events the beat detector may miss
-        if ((analysis.bassEnergy ?? 0) > 0.55 && this.beatPulse < 0.3) {
-            this.beatPulse = Math.min(1.0, this.beatPulse + (analysis.bassEnergy ?? 0) * 0.5);
+        if ((analysis.bassEnergy ?? 0) > 0.6 && this.beatPulse < 0.25) {
+            this.beatPulse = Math.min(1.0, this.beatPulse + (analysis.bassEnergy ?? 0) * 0.28);
         }
 
         this.updateDust(delta, analysis);
@@ -1952,7 +1957,7 @@ export default class ChiralGoldTheme extends BaseTheme {
                 this.camera.position.y * parallax,
                 this.camera.position.z * parallax,
             );
-            this.backgroundEnvelope.rotation.y = this.time * 0.003;
+            this.backgroundEnvelope.rotation.y = this.time * 0.001;
         }
 
         // Continuous audio bloom boost — scene glows with the music
@@ -2038,34 +2043,34 @@ export default class ChiralGoldTheme extends BaseTheme {
             ? 0
             : (0.04 + ((Math.sin(this.time * 0.75) * 0.5 + 0.5) * 0.04));
 
-        const bassReactive = shape(analysis.bassEnergy, 2.35, 0.88);
-        const midReactive = shape(analysis.midEnergy, 2.0, 0.85);
-        const trebleReactive = shape(analysis.trebleEnergy, 2.45, 0.83);
-        const overallReactive = shape(analysis.overallEnergy, 1.9, 0.9);
+        const bassReactive = shape(analysis.bassEnergy, 1.4, 0.92);
+        const midReactive = shape(analysis.midEnergy, 1.2, 0.9);
+        const trebleReactive = shape(analysis.trebleEnergy, 1.5, 0.88);
+        const overallReactive = shape(analysis.overallEnergy, 1.1, 0.94);
 
         const pulseTarget = Math.max(bassReactive, noAudioBaseline * 0.95);
         const flowTarget = Math.max(midReactive, noAudioBaseline * 0.7);
         const sparkEnergy = Math.max(trebleReactive, noAudioBaseline * 0.45);
         const atmosphereTarget = Math.max(overallReactive, noAudioBaseline * 0.8);
 
-        this.audioChannels.pulse = smooth(this.audioChannels.pulse, pulseTarget, 11.0, 5.8);
-        this.audioChannels.flow = smooth(this.audioChannels.flow, flowTarget, 10.2, 5.1);
+        this.audioChannels.pulse = smooth(this.audioChannels.pulse, pulseTarget, 5.5, 2.8);
+        this.audioChannels.flow = smooth(this.audioChannels.flow, flowTarget, 4.8, 2.4);
 
-        const sparkTarget = clamp((analysis.beatDetected ? 1.0 : 0.0) * 0.82 + sparkEnergy * 0.58, 0, 1);
-        this.audioChannels.spark = smooth(this.audioChannels.spark, sparkTarget, 15.8, 6.5);
+        const sparkTarget = clamp((analysis.beatDetected ? 1.0 : 0.0) * 0.5 + sparkEnergy * 0.4, 0, 1);
+        this.audioChannels.spark = smooth(this.audioChannels.spark, sparkTarget, 7.0, 3.2);
 
-        this.audioChannels.atmosphere = smooth(this.audioChannels.atmosphere, atmosphereTarget, 8.0, 4.3);
+        this.audioChannels.atmosphere = smooth(this.audioChannels.atmosphere, atmosphereTarget, 3.5, 1.8);
     }
 
     updateReactiveEnvelope(delta) {
         const decay = {
-            pulse: 3.0,
-            bloom: 2.6,
-            spark: 3.4,
-            dust: 2.8,
-            strand: 2.2,
-            shake: 5.0,
-            chroma: 4.0,
+            pulse: 1.8,
+            bloom: 1.5,
+            spark: 2.0,
+            dust: 1.6,
+            strand: 1.4,
+            shake: 3.0,
+            chroma: 2.4,
         };
 
         Object.keys(this.reactiveEnvelope).forEach((key) => {
@@ -2101,10 +2106,10 @@ export default class ChiralGoldTheme extends BaseTheme {
             this.dustCompute.update({
                 delta,
                 time: this.time,
-                bass: clamp(pulseEnergy * 1.28, 0, 1.4),
-                mid: clamp(flowEnergy * 1.18, 0, 1.35),
-                energy: clamp(atmosphereEnergy * 1.18, 0, 1.45),
-                beatPulse: clamp(this.beatPulse + this.audioChannels.spark * 0.26, 0, 1.2),
+                bass: clamp(pulseEnergy * 0.85, 0, 1.0),
+                mid: clamp(flowEnergy * 0.8, 0, 1.0),
+                energy: clamp(atmosphereEnergy * 0.8, 0, 1.0),
+                beatPulse: clamp(this.beatPulse * 0.7 + this.audioChannels.spark * 0.15, 0, 0.85),
                 formationState: this.formationState,
                 formationProgress: this.formationProgress,
             });
@@ -2115,13 +2120,13 @@ export default class ChiralGoldTheme extends BaseTheme {
         const uniforms = this.dustPoints.userData?.uniforms || this.dustUniforms;
 
         if (uniforms?.uTime) uniforms.uTime.value = this.time;
-        if (uniforms?.uPulse) uniforms.uPulse.value = this.reactiveEnvelope.pulse + pulseEnergy * 1.2;
-        if (uniforms?.uBass) uniforms.uBass.value = clamp(pulseEnergy * 1.2, 0, 1.4);
+        if (uniforms?.uPulse) uniforms.uPulse.value = this.reactiveEnvelope.pulse + pulseEnergy * 0.7;
+        if (uniforms?.uBass) uniforms.uBass.value = clamp(pulseEnergy * 0.75, 0, 1.0);
         if (uniforms?.uEventBoost) {
             uniforms.uEventBoost.value = clamp(
-                this.dustEventBoost + this.reactiveEnvelope.dust + this.audioChannels.spark * 0.22,
+                this.dustEventBoost + this.reactiveEnvelope.dust + this.audioChannels.spark * 0.12,
                 0,
-                1.6,
+                1.2,
             );
         }
         if (uniforms?.uColorTemperature) {
@@ -2130,9 +2135,9 @@ export default class ChiralGoldTheme extends BaseTheme {
 
         if (this.isWebGL && uniforms?.uPulse) {
             uniforms.uPulse.value = clamp(
-                this.reactiveEnvelope.pulse + pulseEnergy * 0.9 + analysis.bassEnergy * 0.35,
+                this.reactiveEnvelope.pulse + pulseEnergy * 0.55 + analysis.bassEnergy * 0.2,
                 0,
-                1.4,
+                1.0,
             );
         }
     }
@@ -2245,7 +2250,7 @@ export default class ChiralGoldTheme extends BaseTheme {
 
             for (let i = 0; i < count; i += 1) {
                 const i3 = i * 3;
-                const t = this.time * (1 + this.audioChannels.spark * 0.95);
+                const t = this.time * 0.4 * (1 + this.audioChannels.spark * 0.3);
 
                 const lx = ampX[i] * Math.sin(t * freqA[i] + phase[i]);
                 const ly = ampY[i] * Math.sin(t * freqB[i] + phase[i] * 0.7);
@@ -2255,21 +2260,21 @@ export default class ChiralGoldTheme extends BaseTheme {
                 let ay = 0;
                 let az = 0;
                 if (group[i] < 0.25) {
-                    ax = Math.sin(t * 0.22) * 640;
-                    ay = Math.cos(t * 0.19) * 240;
-                    az = Math.cos(t * 0.25) * 520;
+                    ax = Math.sin(t * 0.14) * 640;
+                    ay = Math.cos(t * 0.12) * 240;
+                    az = Math.cos(t * 0.16) * 520;
                 } else if (group[i] < 0.5) {
-                    ax = Math.cos(t * 0.17) * 580;
-                    ay = Math.sin(t * 0.21) * 260;
-                    az = Math.sin(t * 0.27) * 600;
+                    ax = Math.cos(t * 0.11) * 580;
+                    ay = Math.sin(t * 0.13) * 260;
+                    az = Math.sin(t * 0.17) * 600;
                 } else if (group[i] < 0.75) {
-                    ax = Math.sin(t * 0.28 + 1.2) * 520;
-                    ay = Math.cos(t * 0.16 + 0.8) * 300;
-                    az = Math.cos(t * 0.24 + 2.0) * 560;
+                    ax = Math.sin(t * 0.18 + 1.2) * 520;
+                    ay = Math.cos(t * 0.10 + 0.8) * 300;
+                    az = Math.cos(t * 0.15 + 2.0) * 560;
                 } else {
-                    ax = Math.cos(t * 0.25 + 2.1) * 620;
-                    ay = Math.sin(t * 0.18 + 1.7) * 220;
-                    az = Math.sin(t * 0.23 + 0.5) * 500;
+                    ax = Math.cos(t * 0.16 + 2.1) * 620;
+                    ay = Math.sin(t * 0.11 + 1.7) * 220;
+                    az = Math.sin(t * 0.14 + 0.5) * 500;
                 }
 
                 const cohesion = 0.22 + this.audioChannels.flow * 0.4;
@@ -2277,7 +2282,7 @@ export default class ChiralGoldTheme extends BaseTheme {
                 let py = THREE.MathUtils.lerp(ly, ay, cohesion);
                 let pz = THREE.MathUtils.lerp(lz, az, cohesion);
 
-                const beatScale = 1 + this.beatPulse * 0.35 + this.wispJolt * 0.2;
+                const beatScale = 1 + this.beatPulse * 0.18 + this.wispJolt * 0.1;
                 px *= beatScale;
                 py *= beatScale;
                 pz *= beatScale;
@@ -2286,7 +2291,7 @@ export default class ChiralGoldTheme extends BaseTheme {
                 positions[i3 + 1] = py;
                 positions[i3 + 2] = pz;
 
-                pulse[i] = 1 + this.beatPulse * 0.45 + this.wispJolt * 0.25;
+                pulse[i] = 1 + this.beatPulse * 0.22 + this.wispJolt * 0.12;
             }
 
             this.wispPoints.geometry.attributes.position.needsUpdate = true;
@@ -2322,8 +2327,8 @@ export default class ChiralGoldTheme extends BaseTheme {
 
             if (!strand || !basePositions || !paramT) continue;
 
-            strand.rotation.y += delta * (strand.userData.spin + analysis.midEnergy * 0.5);
-            strand.position.addScaledVector(strand.userData.drift, delta * (0.3 + analysis.overallEnergy * 0.2));
+            strand.rotation.y += delta * (strand.userData.spin * 0.4 + analysis.midEnergy * 0.08);
+            strand.position.addScaledVector(strand.userData.drift, delta * (0.3 + analysis.overallEnergy * 0.1));
             const home = strand.userData.home;
             if (home) {
                 strand.position.lerp(home, clamp(delta * 0.08, 0, 0.2));
@@ -2344,25 +2349,25 @@ export default class ChiralGoldTheme extends BaseTheme {
             }
 
             const positions = strand.geometry.attributes.position.array;
-            const radiusScale = 1 + analysis.midEnergy * 0.3 + unwind * 0.5;
+            const radiusScale = 1 + analysis.midEnergy * 0.15 + unwind * 0.3;
             const scatter = unwind * 80;
 
             for (let p = 0; p < paramT.length; p += 1) {
                 const i3 = p * 3;
-                const t = paramT[p] + this.time * (0.1 + analysis.midEnergy * 0.4);
+                const t = paramT[p] + this.time * (0.04 + analysis.midEnergy * 0.06);
                 const baseX = basePositions[i3];
                 const baseY = basePositions[i3 + 1];
                 const baseZ = basePositions[i3 + 2];
 
                 const radial = Math.sqrt(baseX * baseX + baseZ * baseZ);
                 const angle = Math.atan2(baseZ, baseX);
-                const undulate = 1 + Math.sin(this.time * 0.7 + p * 0.015 + i * 0.9) * 0.12;
+                const undulate = 1 + Math.sin(this.time * 0.25 + p * 0.015 + i * 0.9) * 0.12;
 
-                positions[i3] = Math.cos(angle + this.time * 0.25) * radial * radiusScale * undulate
-                    + Math.sin(t * 0.5) * scatter;
-                positions[i3 + 1] = baseY + Math.sin(this.time * 0.55 + p * 0.02) * 12 + Math.cos(t * 0.4) * scatter * 0.35;
-                positions[i3 + 2] = Math.sin(angle + this.time * 0.25) * radial * radiusScale * undulate
-                    + Math.cos(t * 0.5) * scatter;
+                positions[i3] = Math.cos(angle + this.time * 0.09) * radial * radiusScale * undulate
+                    + Math.sin(t * 0.3) * scatter;
+                positions[i3 + 1] = baseY + Math.sin(this.time * 0.2 + p * 0.02) * 12 + Math.cos(t * 0.25) * scatter * 0.35;
+                positions[i3 + 2] = Math.sin(angle + this.time * 0.09) * radial * radiusScale * undulate
+                    + Math.cos(t * 0.3) * scatter;
             }
 
             strand.geometry.attributes.position.needsUpdate = true;
@@ -2404,19 +2409,19 @@ export default class ChiralGoldTheme extends BaseTheme {
             const pulse = 1.0 + this.audioChannels.flow * 0.35 + this.reactiveEnvelope.strand * 0.25;
             const driftScale = 0.55 + (1.0 - lifeNorm) * 0.9;
             segment.position.addScaledVector(segment.userData.drift, delta * driftScale);
-            segment.rotation.y += delta * segment.userData.spin;
+            segment.rotation.y += delta * segment.userData.spin * 0.4;
 
             for (let p = 0; p < paramT.length; p += 1) {
                 const i3 = p * 3;
-                const t = paramT[p] + this.time * (0.22 + this.audioChannels.flow * 0.42);
+                const t = paramT[p] + this.time * (0.08 + this.audioChannels.flow * 0.15);
                 const baseX = basePositions[i3];
                 const baseY = basePositions[i3 + 1];
                 const baseZ = basePositions[i3 + 2];
 
-                const wave = Math.sin(t * 0.8 + p * 0.01 + this.time * 0.6);
-                positions[i3] = baseX * pulse + Math.sin(t * 1.35) * scatter * 0.55;
-                positions[i3 + 1] = baseY + wave * scatter * 0.36 + Math.cos(t * 0.45) * 16;
-                positions[i3 + 2] = baseZ * pulse + Math.cos(t * 1.2) * scatter * 0.55;
+                const wave = Math.sin(t * 0.4 + p * 0.01 + this.time * 0.2);
+                positions[i3] = baseX * pulse + Math.sin(t * 0.5) * scatter * 0.55;
+                positions[i3 + 1] = baseY + wave * scatter * 0.36 + Math.cos(t * 0.2) * 16;
+                positions[i3 + 2] = baseZ * pulse + Math.cos(t * 0.45) * scatter * 0.55;
             }
 
             positionsAttr.needsUpdate = true;
@@ -2484,44 +2489,87 @@ export default class ChiralGoldTheme extends BaseTheme {
     updateCamera(delta, analysis) {
         if (!this.camera) return;
 
-        const ct = this.time * 0.07; // Slow cinematic orbit, ~90s period
+        // --- Cinematic time layers (overlapping periods prevent repetition) ---
+        const ct1 = this.time * 0.04;   // ~157s period — primary slow orbit
+        const ct2 = this.time * 0.027;  // ~233s period — secondary drift
+        const ct3 = this.time * 0.017;  // ~370s period — ultra-slow sweep
 
-        // Two-frequency Lissajous orbit — creates non-repeating parallax sweep
-        const orbitX = Math.sin(ct) * 280 + Math.cos(ct * 0.6) * 120;
-        const orbitY = Math.cos(ct * 0.8) * 180 + Math.sin(ct * 0.45) * 80;
+        // --- Lissajous orbit with three frequency layers ---
+        const orbitX = Math.sin(ct1) * 220
+            + Math.cos(ct2 * 1.3 + 0.8) * 140
+            + Math.sin(ct3 * 0.7) * 80;
+        const orbitY = Math.cos(ct1 * 0.85) * 150
+            + Math.sin(ct2 * 1.1 + 1.4) * 90
+            + Math.cos(ct3 * 0.5 + 2.1) * 55;
 
-        // Z-breathing: camera swoops from ~970 to ~2070 units from origin
+        // --- Z-breathing with long-period depth sweeps ---
         const breatheZ = this.cameraBasePosition.z
-            + Math.sin(ct * 0.4) * 400
-            + Math.sin(ct * 0.15 + 1.0) * 150;
+            + Math.sin(ct1 * 0.5) * 300
+            + Math.sin(ct2 * 0.35 + 1.0) * 180
+            + Math.sin(ct3 * 0.25) * 100;
 
-        // Audio-reactive depth: bass pulls camera closer into the particle field
-        const audioPush = (analysis.bassEnergy ?? 0) * 80 + (analysis.overallEnergy ?? 0) * 40;
+        // --- Smooth wandering drift (Brownian-like inertia) ---
+        const driftForce = 12;
+        const driftDamping = 0.92;
+        const driftLimit = 160;
+        this.cameraDriftVelocity.x += (Math.sin(ct2 * 2.1 + 0.3) * driftForce
+            + Math.cos(ct3 * 1.7) * driftForce * 0.6) * delta;
+        this.cameraDriftVelocity.y += (Math.cos(ct2 * 1.8 + 1.9) * driftForce * 0.7
+            + Math.sin(ct3 * 1.3 + 0.7) * driftForce * 0.4) * delta;
+        this.cameraDriftVelocity.z += (Math.sin(ct2 * 1.4 + 2.5) * driftForce * 0.5) * delta;
+        this.cameraDriftVelocity.multiplyScalar(Math.pow(driftDamping, delta * 60));
+        this.cameraDrift.add(this.cameraDriftVelocity.clone().multiplyScalar(delta));
+        this.cameraDrift.clampScalar(-driftLimit, driftLimit);
 
-        const shakeAmp = clamp(this.reactiveEnvelope.shake * 90, 0, 90);
+        // --- Smoothed audio sway (gentle, interpolated response to music) ---
+        const swayTargetX = (this.audioChannels.flow ?? 0) * 45 * Math.sin(ct1 * 1.6);
+        const swayTargetY = (this.audioChannels.pulse ?? 0) * 30 * Math.cos(ct1 * 1.2);
+        const swayTargetZ = (this.audioChannels.atmosphere ?? 0) * 25;
+        const swaySmooth = clamp(delta * 1.8, 0, 0.15);
+        this.cameraAudioSway.x += (swayTargetX - this.cameraAudioSway.x) * swaySmooth;
+        this.cameraAudioSway.y += (swayTargetY - this.cameraAudioSway.y) * swaySmooth;
+        this.cameraAudioSway.z += (swayTargetZ - this.cameraAudioSway.z) * swaySmooth;
+
+        // --- Audio-reactive depth pull (smoothed) ---
+        const audioPush = (analysis.bassEnergy ?? 0) * 35 + (analysis.overallEnergy ?? 0) * 18;
+
+        // --- Camera shake (event-driven only) ---
+        const shakeAmp = clamp(this.reactiveEnvelope.shake * 50, 0, 50);
         this.cameraShake.set(
             (Math.random() - 0.5) * shakeAmp,
             (Math.random() - 0.5) * shakeAmp,
-            (Math.random() - 0.5) * shakeAmp,
+            (Math.random() - 0.5) * shakeAmp * 0.5,
         );
 
+        // --- Compose final camera position ---
         this.camera.position.set(
-            this.cameraBasePosition.x + orbitX + this.cameraShake.x,
-            this.cameraBasePosition.y + orbitY + this.cameraShake.y,
-            breatheZ - audioPush + this.cameraShake.z,
+            this.cameraBasePosition.x + orbitX + this.cameraDrift.x
+                + this.cameraAudioSway.x + this.cameraShake.x,
+            this.cameraBasePosition.y + orbitY + this.cameraDrift.y
+                + this.cameraAudioSway.y + this.cameraShake.y,
+            breatheZ - audioPush + this.cameraDrift.z
+                + this.cameraAudioSway.z + this.cameraShake.z,
         );
 
-        // Gentle look-target drift for cinematic framing
-        const lookOffsetX = Math.sin(ct * 0.35) * 100;
-        const lookOffsetY = Math.cos(ct * 0.4) * 65
-            + (analysis.overallEnergy ?? 0) * 16
-            + this.comboFlashIntensity * 22;
+        // --- Look-target drift (parallax-offset, never stares at dead center) ---
+        const lookOffsetX = Math.sin(ct1 * 0.6) * 90 + Math.cos(ct2 * 0.8 + 1.5) * 50;
+        const lookOffsetY = Math.cos(ct1 * 0.5 + 0.7) * 55
+            + Math.sin(ct2 * 0.65) * 30
+            + (analysis.overallEnergy ?? 0) * 8
+            + this.comboFlashIntensity * 12;
 
         this.camera.lookAt(
             this.cameraTarget.x + lookOffsetX,
             this.cameraTarget.y + lookOffsetY,
             this.cameraTarget.z,
         );
+
+        // --- Cinematic roll tilt (banking into the orbit direction) ---
+        const orbitVelX = Math.cos(ct1) * 220 * 0.04
+            - Math.sin(ct2 * 1.3 + 0.8) * 140 * 0.027 * 1.3;
+        this.cameraRollTarget = clamp(orbitVelX * -0.0004, -0.035, 0.035);
+        this.cameraRoll += (this.cameraRollTarget - this.cameraRoll) * clamp(delta * 1.2, 0, 0.1);
+        this.camera.rotation.z += this.cameraRoll;
     }
 
     renderFrame() {

@@ -66,6 +66,7 @@ export class OdysseyBoardController {
 
         // State
         this.isActive = false;
+        this.isRenderingPaused = false;
         this.animationFrameId = null;
         this.time = 0;
         this.selectedLevelId = null;
@@ -763,6 +764,61 @@ export class OdysseyBoardController {
         }
     }
 
+    /**
+     * Capture the current board frame as a canvas snapshot.
+     * Used as a frozen underlay during the orb-portal transition.
+     * @returns {HTMLCanvasElement|null}
+     */
+    captureFrame() {
+        const sourceCanvas = this.renderer?.domElement;
+        if (!sourceCanvas) return null;
+
+        const canvas = document.createElement('canvas');
+        const width = Math.max(1, sourceCanvas.width || sourceCanvas.clientWidth || 1);
+        const height = Math.max(1, sourceCanvas.height || sourceCanvas.clientHeight || 1);
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+
+        try {
+            ctx.drawImage(sourceCanvas, 0, 0, width, height);
+            return canvas;
+        } catch (error) {
+            console.warn('[OdysseyBoard] Failed to capture frame snapshot:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Pause board rendering loop without disposing resources.
+     * Safe to call repeatedly.
+     */
+    pauseRendering() {
+        if (this.isRenderingPaused) return;
+        this.isRenderingPaused = true;
+        this.isActive = false;
+
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+    }
+
+    /**
+     * Resume board rendering loop after a pause.
+     */
+    resumeRendering() {
+        if (!this.isRenderingPaused) return;
+        if (!this.renderer || !this.scene || !this.camera) return;
+
+        this.isRenderingPaused = false;
+        this.isActive = true;
+        this.clock.getDelta(); // Reset delta to avoid a huge first frame step.
+        this.animate();
+    }
+
     // =============================
     // Public API
     // =============================
@@ -788,6 +844,7 @@ export class OdysseyBoardController {
      */
     dispose() {
         this.isActive = false;
+        this.isRenderingPaused = false;
 
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
