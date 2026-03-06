@@ -87,6 +87,7 @@ import { introAnimation } from './ui/intro-animation.js';
 import { SerenityHub } from './ui/serenity-hub/SerenityHub.js';
 import { DemoManager } from './core/demo/DemoManager.js';
 import { DemoBrowser } from './ui/demo-browser.js';
+import { showCinematicLoadingOverlay, dismissCinematicLoadingOverlay } from './ui/cinematic-loading-overlay.js';
 
 // Audio imports
 import { SoundManager } from './audio/sound-manager.js';
@@ -1255,7 +1256,9 @@ class SerenityBlocks {
         document.addEventListener('keydown', resumeAudio);
 
         // Theme manager
-        this.themeManager = new ThemeManager(this.webglRenderer);
+        this.themeManager = new ThemeManager(this.webglRenderer, {
+            audioManager: this.soundManager,
+        });
         if (typeof window !== 'undefined') {
             window.themeManager = this.themeManager;
         }
@@ -1524,6 +1527,11 @@ class SerenityBlocks {
         window.addEventListener('gameModeChanged', gameModeHandler);
 
         // Handle card-based mode selection (new UI)
+        const MODE_DISPLAY_NAMES = {
+            [GAME_MODES.SINGLE_PLAYER]: 'SINGLE PLAYER',
+            [GAME_MODES.INFINITY]: 'INFINITY',
+        };
+
         const startGameWithModeHandler = async (e) => {
             try {
                 const { mode } = e.detail;
@@ -1536,14 +1544,34 @@ class SerenityBlocks {
                     this.gamepadController.disableGameModeSelection();
                 }
 
-                // Hide start modal first
+                // --- Phase 1: Show cinematic loading overlay + fade out intro music ---
+                const displayName = MODE_DISPLAY_NAMES[mode];
+                if (displayName) {
+                    showCinematicLoadingOverlay(displayName);
+                }
+
+                // Music fade-out is handled by performTrackSwitch when the
+                // theme-linked track change triggers — no separate fade needed here.
+
+                // --- Phase 2: Wait for overlay to cover screen, then do heavy work ---
+                await new Promise((r) => setTimeout(r, 500));
+
+                // Now safe to hide modal (invisible behind overlay)
                 this.modalManager.hideAll();
 
-                // Activate the mode
+                // Activate the mode (sets up UI/DOM elements)
                 await this.gameModeManager.activateMode(mode);
 
-                // Start the game
+                // Start the game (includes theme resume)
                 await this.gameModeManager.startCurrentMode();
+
+                // --- Phase 3: Wait for theme to be ready ---
+                if (this.themeManager?.waitForThemeReady) {
+                    const themeReady = await this.themeManager.waitForThemeReady(3000);
+                    console.log('[Main] Theme ready:', themeReady);
+                }
+
+                // --- Phase 4: Sync music (theme music fades in via 1200ms fade) ---
                 if (this.soundManager?.ensureTrackPlaybackSynced) {
                     await this.soundManager.ensureTrackPlaybackSynced({
                         reason: 'card-start',
@@ -1551,21 +1579,21 @@ class SerenityBlocks {
                     });
                 }
 
+                // --- Phase 5: Dismiss cinematic overlay + dismiss intro ---
+                dismissCinematicLoadingOverlay(800);
+
                 const activeMode = this.gameModeManager.getCurrentMode();
                 const modeStarted = !!activeMode
                     && activeMode.getModeId() === mode
                     && activeMode.isRunning;
 
-                // Keep the intro background visible for pre-start flows (like local match config).
                 const shouldDismissIntroHere = modeStarted && mode !== GAME_MODES.LOCAL_MULTIPLAYER;
                 if (shouldDismissIntroHere && introAnimation) {
                     introAnimation.dismiss();
-                    await new Promise((resolve) => {
-                        setTimeout(resolve, 100);
-                    });
                 }
             } catch (error) {
                 console.error('[Main] Failed to start game from card selection:', error);
+                dismissCinematicLoadingOverlay(300);
                 alert(`Failed to start game: ${error.message}`);
             }
         };
@@ -2347,20 +2375,20 @@ class SerenityBlocks {
             toggleFullscreen: (...args) => window.toggleFullscreen?.(...args),
             showHighScores: (...args) => window.showHighScores?.(...args),
             // Player 2 actions
-            moveP2: window.moveP2,
-            rotateP2: window.rotateP2,
-            softDropP2: window.softDropP2,
-            hardDropP2: window.hardDropP2,
+            moveP2: (...args) => window.moveP2?.(...args),
+            rotateP2: (...args) => window.rotateP2?.(...args),
+            softDropP2: (...args) => window.softDropP2?.(...args),
+            hardDropP2: (...args) => window.hardDropP2?.(...args),
             // Player 3 actions (Gamepad only)
-            moveP3: window.moveP3,
-            rotateP3: window.rotateP3,
-            softDropP3: window.softDropP3,
-            hardDropP3: window.hardDropP3,
+            moveP3: (...args) => window.moveP3?.(...args),
+            rotateP3: (...args) => window.rotateP3?.(...args),
+            softDropP3: (...args) => window.softDropP3?.(...args),
+            hardDropP3: (...args) => window.hardDropP3?.(...args),
             // Player 4 actions (Gamepad only)
-            moveP4: window.moveP4,
-            rotateP4: window.rotateP4,
-            softDropP4: window.softDropP4,
-            hardDropP4: window.hardDropP4,
+            moveP4: (...args) => window.moveP4?.(...args),
+            rotateP4: (...args) => window.rotateP4?.(...args),
+            softDropP4: (...args) => window.softDropP4?.(...args),
+            hardDropP4: (...args) => window.hardDropP4?.(...args),
         };
 
         setupKeyboardControls(this.inputController, this.settingsManager.get(), gameActions);
@@ -3308,10 +3336,20 @@ class SerenityBlocks {
             onLineClearImpact: (lineCount) => {
                 const settings = this.settingsManager.get();
                 console.log(`[Multiplayer] Player ${playerNum} onLineClearImpact called for ${lineCount} lines, effects enabled:`, settings.lineClearEffects);
-                if (!settings.lineClearEffects) return;
-                const scene = sceneRef();
-                if (scene?.playLineClearImpact) {
-                    scene.playLineClearImpact(lineCount);
+                if (settings.lineClearEffects) {
+                    const scene = sceneRef();
+                    if (scene?.playLineClearImpact) {
+                        scene.playLineClearImpact(lineCount);
+                    }
+                }
+
+                // Trigger BoardJuice (pulse) for the player
+                if (currentMode && playerNum) {
+                    const juice = currentMode[`boardJuiceP${playerNum}`];
+                    if (juice && !juice.disabled) {
+                        const intensity = 1 + (Math.min(lineCount, 4) * 0.004);
+                        juice.pulse(intensity);
+                    }
                 }
             },
             triggerCombo: (comboCount) => {
@@ -3331,6 +3369,15 @@ class SerenityBlocks {
                 const scene = sceneRef();
                 if (settings.pieceLockRipple && scene?.createPieceLockRipple) {
                     scene.createPieceLockRipple(piece);
+                }
+
+                // Trigger BoardJuice (dip + bounce/pulse) for the player
+                if (currentMode && playerNum) {
+                    const juice = currentMode[`boardJuiceP${playerNum}`];
+                    if (juice && !juice.disabled) {
+                        juice.dip(1);
+                        juice.pulse(1.005);
+                    }
                 }
 
                 // Emit event for theme reactions

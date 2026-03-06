@@ -1721,7 +1721,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         const innerRadius = 210; // Starts right outside the singularity core
         const outerRadius = 1200; // Massive sweeping disk
         const diskSegments = this.qualityPreset.diskSegments ?? 128;
-        const geometry = new THREE.RingGeometry(innerRadius, outerRadius, diskSegments, 1);
+        const radialSegments = Math.max(24, Math.floor(diskSegments / 2));
+        const geometry = new THREE.RingGeometry(innerRadius, outerRadius, diskSegments, radialSegments);
 
         // Rewrite UVs so uv.x = angle (0..1) and uv.y = radius (0..1)
         const posAttribute = geometry.attributes.position;

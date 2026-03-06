@@ -92,6 +92,7 @@ export function createBaseBoardScene(
             this._lastBoardGridRef = null; // Track board grid reference for change detection
             this._lastBoardVersion = -1; // Track board version for more reliable change detection
             this._lastVisibleRowRange = null; // Track visible row band so camera scrolling redraws static layer
+            this._firstRenderEmitted = false;
 
             // Initialize Tetromino Style Manager for theme-based tetromino colors
             this.styleManager = new TetrominoStyleManager(
@@ -126,6 +127,7 @@ export function createBaseBoardScene(
                 this.createGraphicsLayers();
                 this.configureCamera();
                 this.registerResizeHandler();
+                this._firstRenderEmitted = false;
                 console.log(`[BaseBoardScene] Scene created: ${this.sceneKey}`);
             } catch (error) {
                 console.error('[BaseBoardScene] Failed to create scene:', error);
@@ -174,6 +176,10 @@ export function createBaseBoardScene(
 
                 // Render game state with dual-layer optimization
                 this.renderGameState();
+
+                if (!this._firstRenderEmitted) {
+                    this._emitFirstRender();
+                }
 
                 // Mark board as clean after rendering
                 if (this._boardDirty) {
@@ -1111,6 +1117,18 @@ export function createBaseBoardScene(
 
             // Final cleanup on shutdown
             this._performPeriodicCleanup();
+            this._firstRenderEmitted = false;
+        }
+
+        _emitFirstRender() {
+            this._firstRenderEmitted = true;
+            this.events?.emit?.('first-render', { sceneKey: this.sceneKey });
+
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('phaser-board-first-render', {
+                    detail: { sceneKey: this.sceneKey },
+                }));
+            }
         }
 
         /**

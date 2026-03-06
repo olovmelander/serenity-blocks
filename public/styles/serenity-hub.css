@@ -1601,6 +1601,17 @@
   transition: transform var(--hub-transition-fast);
 }
 
+/* Moonlit Greenhouse icon has baked-in framing/shadow that needs per-theme recentering */
+.theme-card[data-theme="moonlit-greenhouse"] .theme-icon-img {
+  width: 92px;
+  height: 92px;
+  position: relative;
+  left: 2px;
+  top: 1px;
+  filter: none;
+  clip-path: circle(45% at 47% 46%);
+}
+
 .theme-card:hover .theme-icon-img {
   transform: scale(1.08);
 }

@@ -713,27 +713,22 @@ void main() {
 // Accretion Disk Shader - High-energy swirling ring of matter
 // ─────────────────────────────────────────────────────────────────────────────
 export const accretionDiskVertexShader = `
-varying vec2 vUv;
-varying vec3 vPosition;
-
-void main() {
-    vUv = uv;
-    vPosition = position;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
-
-export const accretionDiskFragmentShader = `
 uniform float uTime;
 uniform float uPulseIntensity;
+
 varying vec2 vUv;
+varying vec3 vPosition;
+varying float vPlasma;
 
 ${noiseCommon}
 
 void main() {
+    vUv = uv;
+    vPosition = position;
+    
     // uv.x = angle (0 to 1), uv.y = radius (0 to 1) for a RingGeometry
-    float radius = vUv.y;
-    float angle = vUv.x * 6.2831853;
+    float radius = uv.y;
+    float angle = uv.x * 6.2831853;
     
     // Swirling dynamics
     float speed = 1.2 + uPulseIntensity * 3.0; // Spins much faster on combos
@@ -745,7 +740,24 @@ void main() {
     // Plasma noise lookup
     // Convert polar back to cartesian for continuous noise
     vec3 noisePos = vec3(cos(spin) * radius * 12.0, sin(spin) * radius * 12.0, uTime * 0.15);
-    float plasma = fbm(noisePos);
+    vPlasma = fbm(noisePos);
+
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+export const accretionDiskFragmentShader = `
+uniform float uTime;
+uniform float uPulseIntensity;
+varying vec2 vUv;
+varying float vPlasma;
+
+void main() {
+    // uv.x = angle (0 to 1), uv.y = radius (0 to 1) for a RingGeometry
+    float radius = vUv.y;
+    float angle = vUv.x * 6.2831853;
+    
+    float plasma = vPlasma;
     
     // Dense structural bands
     float bands = sin(radius * 30.0 + plasma * 7.0) * 0.5 + 0.5;

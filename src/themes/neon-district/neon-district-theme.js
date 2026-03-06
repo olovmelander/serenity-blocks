@@ -241,6 +241,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Animation
         this.clock = new THREE.Clock();
         this.time = 0;
+        this.musicSource = null;
 
         // State
         this.eventUnsubscribers = [];
@@ -830,28 +831,36 @@ export default class NeonDistrictTheme extends BaseTheme {
             this.isCreatingScene = false;
         }
 
-        // Music Playback - check for audioManager from BaseTheme
+        // Music playback: legacy themes may receive AudioManager (loadBuffer/playBuffer),
+        // but modern runtime injects SoundManager and handles global music flow.
         if (this.audioManager) {
             console.log('[NeonDistrict] Attempting to play music...');
-            // Use the path from songs.json (verified as ./assets/music/neon-district.mp3)
-            // Note: In development, path is relative to public/
-            const musicPath = './assets/music/neon-district.mp3';
+            const hasLegacyBufferApi = typeof this.audioManager?.loadBuffer === 'function'
+                && typeof this.audioManager?.playBuffer === 'function';
 
-            this.audioManager.loadBuffer(musicPath).then((buffer) => {
-                if (this.isActive) { // Only play if still active
-                    // Stop any existing music first just in case
-                    if (this.musicSource && this.musicSource.stop) {
-                        try { this.musicSource.stop(); } catch (e) { }
+            if (hasLegacyBufferApi) {
+                // Use the path from songs.json (verified as ./assets/music/neon-district.mp3)
+                // Note: In development, path is relative to public/
+                const musicPath = './assets/music/neon-district.mp3';
+
+                this.audioManager.loadBuffer(musicPath).then((buffer) => {
+                    if (!this.isActive) {
+                        return;
                     }
 
+                    this.stopLegacyMusicSource();
                     this.musicSource = this.audioManager.playBuffer(buffer, {
                         loop: true,
                         volume: 0.5, // Not too loud
-                        startTime: 0
+                        startTime: 0,
                     });
                     console.log('[NeonDistrict] Music playing:', musicPath);
-                }
-            }).catch(err => console.warn('[NeonDistrict] Music failed to load:', err));
+                }).catch((err) => {
+                    console.warn('[NeonDistrict] Music failed to load:', err);
+                });
+            } else {
+                console.info('[NeonDistrict] Skipping theme-local music; using global SoundManager playback flow.');
+            }
         }
     }
 
@@ -8708,6 +8717,17 @@ export default class NeonDistrictTheme extends BaseTheme {
     // Cleanup
     // ─────────────────────────────────────────────────────────────────────────
 
+    stopLegacyMusicSource() {
+        if (this.musicSource && typeof this.musicSource.stop === 'function') {
+            try {
+                this.musicSource.stop();
+            } catch {
+                // Source may already be stopped/disposed.
+            }
+        }
+        this.musicSource = null;
+    }
+
     stop() {
         console.log('[NeonDistrict] Stopping...');
 
@@ -8716,6 +8736,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.isAnimating = false;
         if (this.clock?.stop) this.clock.stop();
+        this.stopLegacyMusicSource();
 
         super.stop();
     }
@@ -8741,6 +8762,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
     cleanup() {
         console.log('[NeonDistrict] Cleaning up...');
+        this.stopLegacyMusicSource();
 
         // Dispose geometries and materials
         this.buildings.forEach((building) => {
