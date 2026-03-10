@@ -4519,4 +4519,20 @@ export default class IceTempleTheme extends BaseTheme {
 
         super.stop();
     }
+
+    /**
+     * Phase 2: Terminal disposal. Performs Ice Temple-specific cleanup
+     * then delegates to BaseTheme.cleanup() for shared teardown.
+     */
+    cleanup() {
+        this.clearEventSubscriptions();
+        this.removeResizeListener();
+        this.removeRendererResilienceListeners();
+        this.cancelAnimationLoop();
+        this.clearBaselinePlaybackTimers();
+        this.removeBaselineHelpers();
+        this.disposeRuntimeResources({ removeCanvas: true });
+
+        super.cleanup();
+    }
 }

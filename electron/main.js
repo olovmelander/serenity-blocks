@@ -1718,6 +1718,13 @@ if (!gotLock) {
       companyName: 'Serenity Blocks',
       uploadToServer: false,
       compress: true,
+      extra: {
+        appVersion: app.getVersion(),
+        buildChannel: app.isPackaged ? 'production' : 'development',
+        platform: process.platform,
+        arch: process.arch,
+        electronVersion: process.versions.electron,
+      },
     });
 
     const launchLobbyId = parseConnectLobbyArg(process.argv);

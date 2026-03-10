@@ -672,10 +672,22 @@ export default class SkyChildrenTheme extends BaseTheme {
                 cloudWGSL,
                 foliageWGSL,
             );
+            // Phase 1: Wrap shader compilation with error scopes for diagnostics
+            device.pushErrorScope('validation');
             const shaderModule = createSkyChildrenStylizedLightingModule(device, shaderSource);
             await this.validateShaderModule(shaderModule, SKY_CHILDREN_PHASE4_SHADER_LABELS.terrainCloudFoliageLighting);
+            const shaderScopeError = await device.popErrorScope();
+            if (shaderScopeError) {
+                console.error('[SkyChildren] Shader validation error:', shaderScopeError.message);
+            }
+
+            device.pushErrorScope('validation');
             const postShaderModule = createSkyChildrenPostProcessingModule(device, postWGSL);
             await this.validateShaderModule(postShaderModule, SKY_CHILDREN_PHASE5_SHADER_LABELS.postProcessing);
+            const postShaderScopeError = await device.popErrorScope();
+            if (postShaderScopeError) {
+                console.error('[SkyChildren] Post-processing shader validation error:', postShaderScopeError.message);
+            }
 
             const bindGroupLayout = device.createBindGroupLayout({
                 label: 'sky-children/phase4-bind-group-layout',
@@ -869,11 +881,16 @@ export default class SkyChildrenTheme extends BaseTheme {
                 usage: GPU_BUFFER_USAGE_UNIFORM + GPU_BUFFER_USAGE_COPY_DST,
             });
 
+            device.pushErrorScope('validation');
             const presentShaderModule = device.createShaderModule({
                 label: 'sky-children/phase5-present-shader',
                 code: SKY_CHILDREN_PRESENT_WGSL,
             });
             await this.validateShaderModule(presentShaderModule, 'sky-children/phase5-present-shader');
+            const presentScopeError = await device.popErrorScope();
+            if (presentScopeError) {
+                console.error('[SkyChildren] Present shader validation error:', presentScopeError.message);
+            }
             const presentBindGroupLayout = device.createBindGroupLayout({
                 label: 'sky-children/phase5-present-bind-group-layout',
                 entries: [
