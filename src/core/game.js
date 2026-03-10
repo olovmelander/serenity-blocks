@@ -772,6 +772,13 @@ export function updateGame(time, gameState, callbacks) {
         const delta = time - gameState.lastTime;
         gameState.lastTime = time;
 
+        // Phase 3: Advance input repeat (DAS/ARR) using the same authoritative
+        // delta as gravity, so input timing is frame-rate independent and unified
+        // under one simulation clock.
+        if (window.inputController) {
+            window.inputController.updateDAS(delta);
+        }
+
         // Auto drop (fixed-step accumulator for frame-rate independent gravity timing)
         processAutoDrop(gameState, delta, playDropCallback, physicsCallbacks);
 
@@ -900,6 +907,10 @@ export function startGame(gameState, callbacks, settings) {
 export function pauseGame(gameState) {
     if (gameState.isGameOver) return;
     gameState.isPaused = true;
+    // Phase 3: Clear input repeat timers to prevent burst moves on resume
+    if (window.inputController) {
+        window.inputController.clearTimers();
+    }
 }
 
 /**
@@ -910,6 +921,10 @@ export function resumeGame(gameState) {
     if (gameState.isGameOver) return;
     gameState.isPaused = false;
     gameState.lastTime = performance.now();
+    // Phase 3: Clear stale input repeat accumulators to prevent burst moves
+    if (window.inputController) {
+        window.inputController.clearTimers();
+    }
 }
 
 /**

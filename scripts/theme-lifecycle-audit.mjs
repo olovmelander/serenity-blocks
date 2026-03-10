@@ -28,10 +28,17 @@ function analyzeTheme(filePath) {
     const relativePath = toRelative(filePath);
     const issues = [];
 
+    const isBaseTheme = /class\s+BaseTheme/.test(source);
     const hasCleanup = /cleanup\s*\(/.test(source);
     const callsSuperCleanup = /super\.cleanup\s*\(/.test(source);
-    if (hasCleanup && !callsSuperCleanup) {
+    if (hasCleanup && !callsSuperCleanup && !isBaseTheme) {
         issues.push('cleanup() without super.cleanup()');
+    }
+
+    // Phase 2: Detect themes with stop() but no cleanup() override
+    const hasStop = /\bstop\s*\(\s*\)\s*\{/.test(source);
+    if (hasStop && !hasCleanup && !isBaseTheme) {
+        issues.push('has stop() but no cleanup() override');
     }
 
     if (/window\.addEventListener\([^\n]*\.bind\(this\)/.test(source)) {

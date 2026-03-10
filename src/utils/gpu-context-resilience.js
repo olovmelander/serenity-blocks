@@ -93,10 +93,26 @@ class GPUContextResilience {
             options.onDeviceLost?.(info);
         });
 
+        // Phase 1: Monitor uncaptured WebGPU errors for diagnostics
+        const onUncapturedError = (event) => {
+            if (!active) return;
+            const msg = event?.error?.message || 'unknown';
+            console.error(`[GPUResilience] WebGPU uncaptured error (${label}): ${msg}`);
+            eventBus.emit(EVENTS.CONTEXT_LOST, {
+                type: 'webgpu-error', device, label, message: msg,
+            });
+        };
+        if (typeof device.addEventListener === 'function') {
+            device.addEventListener('uncapturederror', onUncapturedError);
+        }
+
         this._webgpuDevices.set(device, true);
 
         return () => {
             active = false;
+            if (typeof device.removeEventListener === 'function') {
+                device.removeEventListener('uncapturederror', onUncapturedError);
+            }
             this._webgpuDevices.delete(device);
         };
     }

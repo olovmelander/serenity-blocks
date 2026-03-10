@@ -594,6 +594,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.isInMatch = true;
         this._registerNetworkHandlers();
         this._hookInputs();
+        this._setupVisibilityHandler();
 
         // Reset UI setup flag for next match
         this._uiSetupComplete = false;
@@ -2302,6 +2303,42 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         // Broadcast to others (handled by ffa game state listeners)
         this.ffaGameState.network.broadcastToAll('game:chat', payload);
+    }
+
+    /**
+     * Phase 3: Handle hidden-tab behavior for online multiplayer.
+     * Pauses local visual/input work when tab is hidden but keeps
+     * the network game loop alive so snapshots continue flowing.
+     */
+    _setupVisibilityHandler() {
+        if (this._visibilityHandler) return;
+
+        this._visibilityHandler = () => {
+            if (!this.isInMatch) return;
+
+            if (document.hidden) {
+                // Pause local input to prevent ghost key repeats
+                if (window.inputController) {
+                    window.inputController.clearTimers();
+                    window.inputController.keyMap = {};
+                }
+                console.log('[OnlineMultiplayer] Tab hidden - local input paused, network loop continues');
+            } else {
+                // Reset input timing on return to prevent burst moves
+                if (window.inputController) {
+                    window.inputController.clearTimers();
+                }
+                console.log('[OnlineMultiplayer] Tab visible - local input resumed');
+            }
+        };
+
+        document.addEventListener('visibilitychange', this._visibilityHandler);
+        this.cleanupHandlers.push(() => {
+            if (this._visibilityHandler) {
+                document.removeEventListener('visibilitychange', this._visibilityHandler);
+                this._visibilityHandler = null;
+            }
+        });
     }
 
     /**
