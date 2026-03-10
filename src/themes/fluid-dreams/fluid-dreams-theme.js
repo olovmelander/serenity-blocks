@@ -159,6 +159,7 @@ export default class FluidDreamsTheme extends BaseTheme {
 
         // Bind resize handler to keep reference for removal
         this.onWindowResize = this.onWindowResize.bind(this);
+        this.effectTimeouts = new Set();
 
         // Scene elements
         this.backgroundSphere = null;
@@ -191,6 +192,20 @@ export default class FluidDreamsTheme extends BaseTheme {
 
         // Post-processing
         this.bloomPass = null;
+    }
+
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -825,7 +840,7 @@ export default class FluidDreamsTheme extends BaseTheme {
             data.driftSpeed.z *= speedBoost;
 
             // Decay speed back to normal over time
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 if (data.driftSpeed) {
                     data.driftSpeed.x /= speedBoost;
                     data.driftSpeed.y /= speedBoost;
@@ -1450,6 +1465,8 @@ export default class FluidDreamsTheme extends BaseTheme {
 
     stop() {
         console.log('💧 Fluid Dreams 3D: Stopping...');
+
+        this.clearEffectTimeouts();
 
         // Cancel animation
         if (this.animationFrame) {

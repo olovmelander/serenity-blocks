@@ -13,6 +13,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
         this.starsContainer = null;
         this.cloudsContainer = null;
         this.shootingStarTimeout = null;
+        this.effectTimeouts = new Set();
         this.qualityChangeHandler = null;
         this.qualityPresets = {
             Minimal: {
@@ -259,6 +260,20 @@ export default class MoonriseSummitTheme extends BaseTheme {
         }
     }
 
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
+    }
+
     spawnShootingStar() {
         if (!this.isActive) return;
         const container = document.getElementById('moonrise-shooting-stars');
@@ -279,7 +294,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
 
         container.appendChild(star);
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             if (star.parentNode) {
                 star.parentNode.removeChild(star);
             }
@@ -385,7 +400,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
         moon.style.filter = `brightness(${1 + intensity * 0.15}) saturate(${100 + intensity * 10}%)`;
         moon.style.transform = `scale(${1 + intensity * 0.02})`;
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             moon.style.filter = originalFilter;
             moon.style.transform = '';
         }, 400);
@@ -401,7 +416,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
         const starCount = Math.min(count, 3);
 
         for (let i = 0; i < starCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const star = document.createElement('div');
                 star.className = 'moonrise-shooting-star';
 
@@ -417,7 +432,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
 
                 container.appendChild(star);
 
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     if (star.parentNode) {
                         star.parentNode.removeChild(star);
                     }
@@ -439,7 +454,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
                 star.style.transition = 'opacity 0.3s ease-out';
                 star.style.opacity = '1';
 
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     star.style.opacity = originalOpacity;
                 }, 300 + Math.random() * 200);
             }
@@ -452,11 +467,11 @@ export default class MoonriseSummitTheme extends BaseTheme {
     pulseMountainGlow(intensity) {
         const peaks = document.querySelectorAll('.moonrise-mountain-layer');
         peaks.forEach((peak, index) => {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 peak.style.transition = 'filter 0.5s ease-out';
                 peak.style.filter = `brightness(${1 + intensity * 0.2}) saturate(${100 + intensity * 15}%)`;
 
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     peak.style.filter = '';
                 }, 500);
             }, index * 100);
@@ -475,7 +490,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
 
         theme.style.filter = `brightness(${brightness}%) saturate(${saturation}%)`;
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             theme.style.filter = '';
         }, 1000 + comboCount * 100);
     }
@@ -496,7 +511,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
 
         auraContainer.appendChild(aura);
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             if (aura.parentNode) {
                 aura.parentNode.removeChild(aura);
             }
@@ -515,7 +530,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
         sky.style.transition = 'filter 0.8s ease-out';
         sky.style.filter = `hue-rotate(${hueShift}deg) saturate(110%)`;
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             sky.style.filter = '';
         }, 800 + comboCount * 100);
     }
@@ -532,7 +547,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
             star.style.transition = 'opacity 0.2s ease-in-out';
             star.style.opacity = '1';
 
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 star.style.opacity = originalOpacity;
             }, 200);
         }
@@ -558,7 +573,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
         const strokeWidth = 0.2 + (comboCount * 0.08); // In viewBox units (0-100)
 
         mountains.forEach((mountain, index) => {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 // Get the clip-path from the ::before pseudo-element
                 const beforeStyle = window.getComputedStyle(mountain, '::before');
                 const { clipPath } = beforeStyle;
@@ -678,11 +693,11 @@ export default class MoonriseSummitTheme extends BaseTheme {
 
                 // Reset after duration based on combo count
                 const duration = 1000 + (comboCount * 200);
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     svg.style.opacity = '0';
 
                     // Remove SVG after fade out
-                    setTimeout(() => {
+                    this.scheduleEffectTimeout(() => {
                         if (svg.parentNode) {
                             svg.parentNode.removeChild(svg);
                         }
@@ -693,6 +708,7 @@ export default class MoonriseSummitTheme extends BaseTheme {
     }
 
     stop() {
+        this.clearEffectTimeouts();
         if (this.qualityChangeHandler && typeof window !== 'undefined') {
             window.removeEventListener('settingsChanged', this.qualityChangeHandler);
             this.qualityChangeHandler = null;

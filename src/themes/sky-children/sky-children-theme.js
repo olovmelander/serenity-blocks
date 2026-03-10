@@ -303,6 +303,7 @@ export default class SkyChildrenTheme extends BaseTheme {
         this.lastFramePresentTime = 0;
         this.eventUnsubscribers = [];
         this.boundResizeHandler = () => this.resizeCanvas();
+        this.pendingAsyncTimeouts = new Set();
 
         this.runtime = {
             time: 0,
@@ -2070,8 +2071,17 @@ export default class SkyChildrenTheme extends BaseTheme {
     waitForMs(durationMs) {
         const delayMs = Number.isFinite(durationMs) ? Math.max(0, Math.floor(durationMs)) : 0;
         return new Promise((resolve) => {
-            setTimeout(resolve, delayMs);
+            const timeoutId = window.setTimeout(() => {
+                this.pendingAsyncTimeouts.delete(timeoutId);
+                resolve();
+            }, delayMs);
+            this.pendingAsyncTimeouts.add(timeoutId);
         });
+    }
+
+    clearPendingAsyncTimeouts() {
+        this.pendingAsyncTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.pendingAsyncTimeouts.clear();
     }
 
     recordRenderSample(durationMs) {
@@ -5085,6 +5095,7 @@ export default class SkyChildrenTheme extends BaseTheme {
     }
 
     stop() {
+        this.clearPendingAsyncTimeouts();
         this.removeEventListeners();
         this.removePhase1Helpers();
         this.removePhase2Helpers();
@@ -5102,6 +5113,7 @@ export default class SkyChildrenTheme extends BaseTheme {
     }
 
     cleanup() {
+        this.clearPendingAsyncTimeouts();
         this.removeEventListeners();
         this.removePhase1Helpers();
         this.removePhase2Helpers();

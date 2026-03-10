@@ -90,8 +90,8 @@ export function createBackgroundScene(
                     this.themeManager.webglRenderer = this.webglRenderer;
                 }
 
-                // Register cleanup on scene destruction
-                this.events.on('destroy', () => {
+                // Register cleanup on scene destruction (once to prevent listener stacking)
+                this.events.once('destroy', () => {
                     console.log('[BackgroundScene] Cleaning up WebGL renderer');
                     if (this.webglRenderer) {
                         this.webglRenderer.enableExternalRenderLoop(false);

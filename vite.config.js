@@ -28,7 +28,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: true,
+    sourcemap: process.env.VITE_BUILD_SOURCEMAP === 'true',
     // Optimize chunk size for Phaser 4
     rollupOptions: {
       output: {
@@ -38,10 +38,25 @@ export default defineConfig({
             return 'phaser';
           }
 
-          // Split themes into individual chunks for lazy loading
+          // Split Three.js into its own chunk (lazy-loaded by themes only)
+          if (id.includes('node_modules/three')) {
+            return 'three';
+          }
+
+          // Group theme runtime by implementation family to reduce chunk graph fragility
           if (id.includes('src/themes/') && id.includes('-theme.js')) {
-            const themeName = id.split('/').pop().replace('-theme.js', '');
-            return `theme-${themeName}`;
+            if (id.includes('/shared/')) {
+              return 'theme-shared';
+            }
+
+            const lowerId = id.toLowerCase();
+            if (lowerId.includes('wolfhour') || lowerId.includes('sky-children') || lowerId.includes('cosmic-noir') || lowerId.includes('black-hole') || lowerId.includes('neon-district')) {
+              return 'theme-premium';
+            }
+            if (lowerId.includes('fluid') || lowerId.includes('nebula') || lowerId.includes('chromatic') || lowerId.includes('aether')) {
+              return 'theme-sim';
+            }
+            return 'theme-core';
           }
 
           // Split game modes into individual chunks
@@ -71,6 +86,11 @@ export default defineConfig({
     assetsInlineLimit: 4096, // Inline assets smaller than 4kb
     minify: 'esbuild', // Use esbuild for faster builds (terser is slower but smaller)
     target: 'es2020', // Modern browsers for better optimization
+    // Strip console.log and debugger statements in production builds
+    esbuild: {
+      drop: ['debugger'],
+      pure: ['console.log', 'console.debug'],
+    },
   },
 
   // Optimize dependencies for faster dev server startup

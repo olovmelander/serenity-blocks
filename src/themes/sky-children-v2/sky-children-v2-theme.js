@@ -194,6 +194,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         };
 
         this._vegetationCallbackId = null;
+        this._asyncTimeouts = new Set();
 
         this.performance = {
             frameTimes: [],
@@ -213,6 +214,26 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
     async init() {
         // No preload assets required.
+    }
+
+    scheduleAsyncTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this._asyncTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this._asyncTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    waitForAsyncTurn(delayMs = 0) {
+        return new Promise((resolve) => {
+            this.scheduleAsyncTimeout(resolve, delayMs);
+        });
+    }
+
+    clearAsyncTimeouts() {
+        this._asyncTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this._asyncTimeouts.clear();
     }
 
     getTetrominoConfig() {
@@ -306,7 +327,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         if (this._vegetationCallbackId !== null) {
             clearTimeout(this._vegetationCallbackId);
         }
-        this._vegetationCallbackId = setTimeout(() => {
+        this._vegetationCallbackId = this.scheduleAsyncTimeout(() => {
             this._vegetationCallbackId = null;
             if (this.scene && this.terrainField) {
                 this.createVegetation();
@@ -439,16 +460,16 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
         this.createLighting();
         this.createSkyDome();
-        await new Promise((resolve) => { setTimeout(resolve, 0); });
+        await this.waitForAsyncTurn(0);
         
         await this.createTerrainField();
-        await new Promise((resolve) => { setTimeout(resolve, 0); });
+        await this.waitForAsyncTurn(0);
         
         await this.createTerrain();
-        await new Promise((resolve) => { setTimeout(resolve, 0); });
+        await this.waitForAsyncTurn(0);
         
         await this.createMountains();
-        await new Promise((resolve) => { setTimeout(resolve, 0); });
+        await this.waitForAsyncTurn(0);
         
         this.createClouds();
         // Vegetation is deferred — see createScene()
@@ -671,7 +692,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         const CHUNK_SIZE = 4000;
         for (let i = 0; i < position.count; i += 1) {
             if (i > 0 && i % CHUNK_SIZE === 0) {
-                await new Promise((resolve) => { setTimeout(resolve, 0); });
+                await this.waitForAsyncTurn(0);
             }
             const x = position.getX(i);
             const z = position.getZ(i);
@@ -862,7 +883,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
                 1.4 + Math.random() * 0.6,
             );
             group.add(mountain);
-            await new Promise((resolve) => { setTimeout(resolve, 0); });
+            await this.waitForAsyncTurn(0);
         }
 
         const heroGeometry = new THREE.ConeGeometry(460, 920, 110, 64, true); // Behemoth centerpiece
@@ -871,7 +892,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         heroPeak.position.set(0, -90, -850);
         heroPeak.scale.set(1.6, 1.4, 1.6);
         group.add(heroPeak);
-        await new Promise((resolve) => { setTimeout(resolve, 0); });
+        await this.waitForAsyncTurn(0);
 
         const wingConfigs = [
             {
@@ -890,7 +911,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             wing.rotation.y = config.rotY;
             wing.scale.set(1.5, 1.3, 1.5);
             group.add(wing);
-            await new Promise((resolve) => { setTimeout(resolve, 0); });
+            await this.waitForAsyncTurn(0);
         }
 
         this.mountainGroup = group;
@@ -1471,7 +1492,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
                 await this.createMountains();
                 this.createClouds();
                 
-                await new Promise((resolve) => { setTimeout(resolve, 0); });
+                await this.waitForAsyncTurn(0);
                 this.createVegetation();
                 this.syncPathDebug();
                 this.syncCarpetDebug();
@@ -2073,6 +2094,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
     }
 
     teardownRuntime() {
+        this.clearAsyncTimeouts();
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;

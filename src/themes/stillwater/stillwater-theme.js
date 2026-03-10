@@ -107,6 +107,7 @@ export default class StillwaterTheme extends BaseTheme {
         super('stillwater');
 
         this.eventUnsubscribers = [];
+        this.boundResizeHandler = this.onWindowResize.bind(this);
 
         // Three.js core
         this.scene = null;
@@ -257,7 +258,7 @@ export default class StillwaterTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
 
         this.setupEventListeners();
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         this.animate();
 
@@ -2753,7 +2754,7 @@ export default class StillwaterTheme extends BaseTheme {
         this.eventUnsubscribers.forEach((unsub) => unsub?.());
         this.eventUnsubscribers = [];
 
-        window.removeEventListener('resize', this.onWindowResize.bind(this));
+        window.removeEventListener('resize', this.boundResizeHandler);
 
         if (this.renderer) {
             this.renderer.dispose();

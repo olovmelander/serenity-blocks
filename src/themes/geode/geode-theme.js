@@ -168,6 +168,7 @@ export default class GeodeTheme extends BaseTheme {
     constructor() {
         super('geode');
         this.eventUnsubscribers = [];
+        this.boundResizeHandler = this.onWindowResize.bind(this);
 
         // Three.js components
         this.scene = null;
@@ -342,7 +343,7 @@ export default class GeodeTheme extends BaseTheme {
 
         // Event listeners
         this.setupEventListeners();
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         // Start animation
         this.clock.start();
@@ -1482,7 +1483,7 @@ export default class GeodeTheme extends BaseTheme {
         this.eventUnsubscribers = [];
 
         this.teardownQualityListener();
-        window.removeEventListener('resize', this.onWindowResize.bind(this));
+        window.removeEventListener('resize', this.boundResizeHandler);
 
         // Clean up effects
         this.shootingStars.forEach((star) => {

@@ -1016,7 +1016,11 @@ export default class FallTheme extends BaseTheme {
             eventBus.on(EVENTS.LINE_CLEAR, (d) => this.onLineClear(d)),
             eventBus.on(EVENTS.COMBO, (d) => this.onCombo(d)),
         ];
-        window.addEventListener('resize', () => this.resize(window.innerWidth, window.innerHeight));
+
+        if (!this.boundResizeHandler) {
+            this.boundResizeHandler = () => this.resize(window.innerWidth, window.innerHeight);
+        }
+        window.addEventListener('resize', this.boundResizeHandler);
     }
 
     onLineClear(data) {
@@ -1188,6 +1192,10 @@ export default class FallTheme extends BaseTheme {
 
     stop() {
         this.eventUnsubscribers.forEach((u) => u && u());
+        this.eventUnsubscribers = [];
+        if (this.boundResizeHandler) {
+            window.removeEventListener('resize', this.boundResizeHandler);
+        }
         super.stop();
     }
 

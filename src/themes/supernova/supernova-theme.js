@@ -10,6 +10,7 @@ export default class SupernovaTheme extends BaseTheme {
     constructor() {
         super('supernova');
         this.eventUnsubscribers = [];
+        this.boundResizeHandler = this.onWindowResize.bind(this);
 
         // Three.js components
         this.scene = null;
@@ -92,7 +93,7 @@ export default class SupernovaTheme extends BaseTheme {
 
         // -- Setup Listeners --
         this.setupEventListeners();
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         // -- Start Loop --
         this.animate();
@@ -483,7 +484,7 @@ export default class SupernovaTheme extends BaseTheme {
     dispose() {
         super.dispose();
 
-        window.removeEventListener('resize', this.onWindowResize.bind(this));
+        window.removeEventListener('resize', this.boundResizeHandler);
 
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);

@@ -23,6 +23,7 @@ import { NetworkQosHud } from '../../ui/network-qos.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { MessageTypes } from '../network/message-types.js';
 import { SnapshotInterpolator } from '../network/snapshot-interpolation.js';
+import { performanceMonitor } from '../../utils/performance-monitor.js';
 
 /**
  * OnlineMultiplayerMode - Online FFA multiplayer mode with lobby system
@@ -2308,9 +2309,10 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     _startOnlineGameLoop() {
         const SYNC_INTERVAL = 33; // ~30Hz
+        const TELEMETRY_INTERVAL = 1000;
         let lastTime = performance.now();
         let timeSinceSync = 0;
-        let frame = 0;
+        let timeSinceTelemetry = 0;
 
         const loop = (currentTime) => {
             if (!this.isInMatch) {
@@ -2321,7 +2323,15 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             const delta = currentTime - lastTime;
             lastTime = currentTime;
             timeSinceSync += delta;
-            frame++; // Increment frame counter
+            timeSinceTelemetry += delta;
+
+            if (timeSinceTelemetry >= TELEMETRY_INTERVAL) {
+                performanceMonitor.setNetworkStats({
+                    packet: this.steamNetworking?.getPacketStats?.() || null,
+                    backpressure: this.steamNetworking?.getBackpressureStats?.() || null,
+                });
+                timeSinceTelemetry = 0;
+            }
 
             // Host: Run game physics and broadcast state
             if (this.steamNetworking.isHost && this.ffaGameState) {
@@ -2344,10 +2354,10 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                     }
                 }
 
-                // Render loop updates
-                if (frame % 30 === 0) { // Broadcast state at 30Hz
+                // Broadcast state on elapsed time, not display refresh rate
+                if (timeSinceSync >= SYNC_INTERVAL) {
                     this._broadcastGameState();
-                    timeSinceSync = 0;
+                    timeSinceSync %= SYNC_INTERVAL;
                 }
 
                 // Update local UI for host matching the broadcast rate or higher (e.g. every frame or 30Hz)

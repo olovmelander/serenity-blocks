@@ -27,6 +27,7 @@ export default class LunaraTheme extends BaseTheme {
         this.comboAnimationRunning = false;
         this.eventUnsubscribers = [];
         this.pendingComboCount = 0;
+        this.effectTimeouts = new Set();
 
         // Particle systems
         this.comboParticleSystems = [];
@@ -142,6 +143,20 @@ export default class LunaraTheme extends BaseTheme {
 
         this.currentQuality = 'High';
         this.activePreset = this.qualityPresets.High;
+    }
+
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
     }
 
     getGraphicsQuality() {
@@ -751,7 +766,7 @@ export default class LunaraTheme extends BaseTheme {
             `;
 
             this.effectsContainer.appendChild(snowflake);
-            setTimeout(() => snowflake.remove(), 600);
+            this.scheduleEffectTimeout(() => snowflake.remove(), 600);
         }
     }
 
@@ -767,7 +782,7 @@ export default class LunaraTheme extends BaseTheme {
         randomAurora.style.opacity = '0.9';
         randomAurora.style.filter = 'blur(25px) drop-shadow(0 0 30px rgba(180, 255, 220, 0.5))';
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             randomAurora.style.opacity = originalOpacity;
             randomAurora.style.filter = '';
         }, 300);
@@ -787,7 +802,7 @@ export default class LunaraTheme extends BaseTheme {
             this.activePreset.maxShootingStars,
         );
         for (let i = 0; i < streaksToSpawn; i++) {
-            setTimeout(() => this.spawnShootingStar(normalizedCombo), i * 100);
+            this.scheduleEffectTimeout(() => this.spawnShootingStar(normalizedCombo), i * 100);
         }
 
         // Planet particle burst for combos
@@ -828,7 +843,7 @@ export default class LunaraTheme extends BaseTheme {
         `;
 
         this.effectsContainer.appendChild(wave);
-        setTimeout(() => wave.remove(), 1500);
+        this.scheduleEffectTimeout(() => wave.remove(), 1500);
     }
 
     triggerSnowstormBurst(comboCount) {
@@ -837,7 +852,7 @@ export default class LunaraTheme extends BaseTheme {
         const burstCount = Math.min(10 + comboCount * 2, 30);
 
         for (let i = 0; i < burstCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 if (!this.isActive) return;
 
                 const snowflake = document.createElement('div');
@@ -861,7 +876,7 @@ export default class LunaraTheme extends BaseTheme {
                 `;
 
                 this.effectsContainer.appendChild(snowflake);
-                setTimeout(() => snowflake.remove(), duration * 1000);
+                this.scheduleEffectTimeout(() => snowflake.remove(), duration * 1000);
             }, i * 30);
         }
     }
@@ -1037,7 +1052,7 @@ export default class LunaraTheme extends BaseTheme {
         shootingStar.style.setProperty('--angle', `${angle}deg`);
 
         targetLayer.appendChild(shootingStar);
-        setTimeout(() => shootingStar.remove(), 2500);
+        this.scheduleEffectTimeout(() => shootingStar.remove(), 2500);
     }
 
     stop() {
@@ -1052,6 +1067,7 @@ export default class LunaraTheme extends BaseTheme {
         this.comboIntensity = 0;
         this.comboTargetIntensity = 0;
         this.comboFlash = 0;
+        this.clearEffectTimeouts();
         this.snowflakes = [];
         this.lockEffects = [];
         this.disposeComboParticles();

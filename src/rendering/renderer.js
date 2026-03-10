@@ -5,16 +5,22 @@
 import { getQualityConfig, normalizeQuality } from '../utils/quality.js';
 import { throttle } from '../utils/performance-utils.js';
 import { TextureManager, BufferManager } from '../utils/texture-manager.js';
+import { gpuResilience } from '../utils/gpu-context-resilience.js';
+import { eventBus, EVENTS } from '../events/event-bus.js';
+import { getGlobalRenderScale } from '../themes/base-theme.js';
+
+// Cached default color to avoid per-frame array allocation in renderFrame()
+const DEFAULT_PARTICLE_COLOR = new Float32Array([1.0, 1.0, 1.0]);
 
 const TEXTURE_VERTEX_SHADER = `
-    attribute vec3 a_position;
+    attribute vec2 a_position;
     attribute vec2 a_texcoord;
 
+    uniform float u_zIndex;
     varying vec2 v_texcoord;
 
     void main() {
-       // x, y are clip space coords, z is depth
-       gl_Position = vec4(a_position.xy, a_position.z, 1.0);
+       gl_Position = vec4(a_position, u_zIndex, 1.0);
        v_texcoord = a_texcoord;
     }
 `;
@@ -38,39 +44,7 @@ class TexturedQuad {
         this.zIndex = zIndex;
         this.sourceWidth = sourceCanvas.width;
         this.sourceHeight = sourceCanvas.height;
-
-        // Create a buffer for the quad's positions.
-        this.positionBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-        const positions = [
-            -1,
-            -1,
-            zIndex,
-            1,
-            -1,
-            zIndex,
-            -1,
-            1,
-            zIndex,
-            -1,
-            1,
-            zIndex,
-            1,
-            -1,
-            zIndex,
-            1,
-            1,
-            zIndex,
-        ];
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-
-        this.texcoordBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.texcoordBuffer);
-        const texcoords = [0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0];
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texcoords), gl.STATIC_DRAW);
-
-        // Cache attribute locations (set during first bindBuffers call)
-        this.attribLocations = null;
+        this._dirty = true;
     }
 
     createTexture(source) {
@@ -90,37 +64,19 @@ class TexturedQuad {
         return texture;
     }
 
-    bindBuffers(program) {
-        const { gl } = this;
-
-        // Cache attribute locations on first call
-        if (!this.attribLocations) {
-            this.attribLocations = {
-                position: gl.getAttribLocation(program, 'a_position'),
-                texcoord: gl.getAttribLocation(program, 'a_texcoord'),
-            };
-        }
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-        gl.enableVertexAttribArray(this.attribLocations.position);
-        gl.vertexAttribPointer(this.attribLocations.position, 3, gl.FLOAT, false, 0, 0);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.texcoordBuffer);
-        gl.enableVertexAttribArray(this.attribLocations.texcoord);
-        gl.vertexAttribPointer(this.attribLocations.texcoord, 2, gl.FLOAT, false, 0, 0);
-    }
-
     draw() {
         const { gl } = this;
         this.updateTexture();
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
 
-        // Disable vertex attributes after drawing to prevent WebGL errors
-        if (this.attribLocations) {
-            gl.disableVertexAttribArray(this.attribLocations.position);
-            gl.disableVertexAttribArray(this.attribLocations.texcoord);
-        }
+    /**
+     * Mark the texture as needing re-upload on next draw.
+     * Source canvases should call this after drawing new content.
+     */
+    markDirty() {
+        this._dirty = true;
     }
 
     updateTexture() {
@@ -128,6 +84,14 @@ class TexturedQuad {
         if (!this.source) {
             return;
         }
+
+        // Skip GPU upload if source hasn't changed (dirty-flag optimization)
+        // Sources that use markDirty() skip unnecessary texSubImage2D calls.
+        // Sources without dirty tracking (legacy) always upload (dirty defaults to true).
+        if (!this._dirty) {
+            return;
+        }
+        this._dirty = false;
 
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
 
@@ -486,18 +450,18 @@ class ParticleSystem {
                 this.blinkInfo[blinkOffset + 1] = timer;
 
                 switch (blinkState) {
-                case 0: // FADE_IN
-                    this.alphas[i] = maxAlpha * (1.0 - timer / fadeInTime);
-                    break;
-                case 1: // GLOW
-                    this.alphas[i] = maxAlpha;
-                    break;
-                case 2: // FADE_OUT
-                    this.alphas[i] = maxAlpha * (timer / fadeOutTime);
-                    break;
-                case 3: // DARK
-                    this.alphas[i] = 0;
-                    break;
+                    case 0: // FADE_IN
+                        this.alphas[i] = maxAlpha * (1.0 - timer / fadeInTime);
+                        break;
+                    case 1: // GLOW
+                        this.alphas[i] = maxAlpha;
+                        break;
+                    case 2: // FADE_OUT
+                        this.alphas[i] = maxAlpha * (timer / fadeOutTime);
+                        break;
+                    case 3: // DARK
+                        this.alphas[i] = 0;
+                        break;
                 }
             } else if (this.behavior === 'ambient') {
                 this.positions[i * 2] += this.velocities[i * 2];
@@ -713,21 +677,7 @@ export class WebGLRenderer {
 
         console.log('[WebGLRenderer] WebGL context created successfully');
 
-        this.gl.enable(this.gl.DEPTH_TEST);
-        this.gl.enable(this.gl.BLEND);
-        this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
-
-        this.textureProgram = this.createProgram(TEXTURE_VERTEX_SHADER, TEXTURE_FRAGMENT_SHADER);
-        this.textureProgram.uniforms = {
-            u_texture: this.gl.getUniformLocation(this.textureProgram, 'u_texture'),
-        };
-
-        this.particleProgram = this.createProgram(PARTICLE_VERTEX_SHADER, PARTICLE_FRAGMENT_SHADER);
-        this.particleProgram.uniforms = {
-            u_resolution: this.gl.getUniformLocation(this.particleProgram, 'u_resolution'),
-            u_zIndex: this.gl.getUniformLocation(this.particleProgram, 'u_zIndex'),
-            u_color: this.gl.getUniformLocation(this.particleProgram, 'u_color'),
-        };
+        this._initializeProgramsAndState();
 
         this.resize();
 
@@ -735,6 +685,14 @@ export class WebGLRenderer {
         // Throttle resize to max once every 100ms to reduce CPU usage
         this.resizeHandler = throttle(this.resize.bind(this), 100);
         window.addEventListener('resize', this.resizeHandler);
+
+        // Listen to global layout/scale changes (for performance downscaling)
+        this._settingsUnsub = eventBus.on(EVENTS.SETTINGS_CHANGED, (e) => {
+            if (e && e.type === 'renderScale') {
+                this.resize();
+            }
+        });
+
         console.log('[WebGLRenderer] Resize handler throttled to 100ms');
 
         this.texturedQuads = [];
@@ -746,15 +704,118 @@ export class WebGLRenderer {
         this.qualityConfig = getQualityConfig(this.effectQuality);
         this._frameSkipCounter = 0;
 
-        // Initialize GPU resource managers for efficient memory management
-        this.textureManager = new TextureManager(this.gl, { maxTextures: 20 });
-        this.bufferManager = new BufferManager(this.gl);
-        console.log('[WebGLRenderer] GPU resource managers initialized');
+        this._initializeResourceManagers();
+
+        // Monitor WebGL context loss/restore centrally
+        this._unmonitorContext = gpuResilience.monitorWebGL(this.canvas, {
+            label: 'WebGLRenderer',
+            onLost: () => { this._contextLost = true; },
+            onRestored: () => {
+                this._contextLost = false;
+                this._rebuildAfterContextRestore();
+            },
+        });
+        this._contextLost = false;
+
+        this._initializeSharedBuffers();
 
         // Log GPU Info for debugging
         const info = this.getRendererInfo();
         console.log('%c[GPU] Active Renderer:', 'color: #00ff00; font-weight: bold;', info.full);
         window.activeGPURenderer = info.full; // Expose global for easy check
+    }
+
+    _initializeProgramsAndState() {
+        this.gl.enable(this.gl.DEPTH_TEST);
+        this.gl.enable(this.gl.BLEND);
+        this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+
+        this.textureProgram = this.createProgram(TEXTURE_VERTEX_SHADER, TEXTURE_FRAGMENT_SHADER);
+        this.textureProgram.uniforms = {
+            u_texture: this.gl.getUniformLocation(this.textureProgram, 'u_texture'),
+            u_zIndex: this.gl.getUniformLocation(this.textureProgram, 'u_zIndex'),
+        };
+
+        this.particleProgram = this.createProgram(PARTICLE_VERTEX_SHADER, PARTICLE_FRAGMENT_SHADER);
+        this.particleProgram.uniforms = {
+            u_resolution: this.gl.getUniformLocation(this.particleProgram, 'u_resolution'),
+            u_zIndex: this.gl.getUniformLocation(this.particleProgram, 'u_zIndex'),
+            u_color: this.gl.getUniformLocation(this.particleProgram, 'u_color'),
+        };
+    }
+
+    _initializeResourceManagers() {
+        if (this.textureManager) {
+            this.textureManager.cleanup();
+        }
+        if (this.bufferManager) {
+            this.bufferManager.cleanup();
+        }
+
+        this.textureManager = new TextureManager(this.gl, { maxTextures: 20 });
+        this.bufferManager = new BufferManager(this.gl);
+        console.log('[WebGLRenderer] GPU resource managers initialized');
+    }
+
+    _initializeSharedBuffers() {
+        if (this.sharedPositionBuffer) {
+            this.gl.deleteBuffer(this.sharedPositionBuffer);
+        }
+        if (this.sharedTexcoordBuffer) {
+            this.gl.deleteBuffer(this.sharedTexcoordBuffer);
+        }
+
+        this.sharedPositionBuffer = this.gl.createBuffer();
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.sharedPositionBuffer);
+        const positions = [-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1];
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(positions), this.gl.STATIC_DRAW);
+
+        this.sharedTexcoordBuffer = this.gl.createBuffer();
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.sharedTexcoordBuffer);
+        const texcoords = [0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0];
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(texcoords), this.gl.STATIC_DRAW);
+    }
+
+    _rebuildAfterContextRestore() {
+        this._initializeProgramsAndState();
+        this._initializeResourceManagers();
+        this._initializeSharedBuffers();
+        this.clearThemeResources();
+        this.resize();
+        console.log('[WebGLRenderer] Rebuilt shared state after context restore');
+    }
+
+    clearThemeResources() {
+        if (!this.gl) return;
+
+        this.stop();
+
+        this.texturedQuads.forEach((quad) => {
+            if (quad.texture) {
+                this.gl.deleteTexture(quad.texture);
+            }
+            if (quad.positionBuffer) {
+                this.gl.deleteBuffer(quad.positionBuffer);
+            }
+            if (quad.texcoordBuffer) {
+                this.gl.deleteBuffer(quad.texcoordBuffer);
+            }
+        });
+
+        this.particleSystems.forEach((ps) => {
+            if (ps.positionBuffer) {
+                this.gl.deleteBuffer(ps.positionBuffer);
+            }
+            if (ps.sizeBuffer) {
+                this.gl.deleteBuffer(ps.sizeBuffer);
+            }
+            if (ps.alphaBuffer) {
+                this.gl.deleteBuffer(ps.alphaBuffer);
+            }
+        });
+
+        this.texturedQuads = [];
+        this.particleSystems = [];
     }
 
     /**
@@ -777,12 +838,14 @@ export class WebGLRenderer {
     }
 
     resize() {
+        const scale = getGlobalRenderScale();
+
         if (this.resolutionMode === 'fixed' && this.targetResolution) {
-            this.canvas.width = this.targetResolution.width;
-            this.canvas.height = this.targetResolution.height;
+            this.canvas.width = Math.floor(this.targetResolution.width * scale);
+            this.canvas.height = Math.floor(this.targetResolution.height * scale);
         } else {
-            this.canvas.width = window.innerWidth;
-            this.canvas.height = window.innerHeight;
+            this.canvas.width = Math.floor(window.innerWidth * scale);
+            this.canvas.height = Math.floor(window.innerHeight * scale);
         }
 
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -880,11 +943,24 @@ export class WebGLRenderer {
         // Stop animation loop
         this.stop();
 
+        this.clearThemeResources();
+
         // Remove window resize listener
         if (this.resizeHandler) {
             window.removeEventListener('resize', this.resizeHandler);
             this.resizeHandler = null;
             console.log('[WebGLRenderer] Resize listener removed');
+        }
+
+        // Remove context loss monitoring
+        if (this._unmonitorContext) {
+            this._unmonitorContext();
+            this._unmonitorContext = null;
+        }
+
+        if (this._settingsUnsub) {
+            this._settingsUnsub();
+            this._settingsUnsub = null;
         }
 
         // Use resource managers for cleanup (more efficient and tracked)
@@ -898,36 +974,15 @@ export class WebGLRenderer {
             this.bufferManager.cleanup();
         }
 
-        // Also clean up any manually created resources not tracked by managers
-        // (legacy cleanup for backwards compatibility)
-        this.texturedQuads.forEach((quad) => {
-            if (quad.texture) {
-                this.gl.deleteTexture(quad.texture);
-            }
-            if (quad.positionBuffer) {
-                this.gl.deleteBuffer(quad.positionBuffer);
-            }
-            if (quad.texcoordBuffer) {
-                this.gl.deleteBuffer(quad.texcoordBuffer);
-            }
-        });
+        if (this.sharedPositionBuffer) {
+            this.gl.deleteBuffer(this.sharedPositionBuffer);
+            this.sharedPositionBuffer = null;
+        }
 
-        // Dispose particle system resources
-        this.particleSystems.forEach((ps) => {
-            if (ps.positionBuffer) {
-                this.gl.deleteBuffer(ps.positionBuffer);
-            }
-            if (ps.sizeBuffer) {
-                this.gl.deleteBuffer(ps.sizeBuffer);
-            }
-            if (ps.alphaBuffer) {
-                this.gl.deleteBuffer(ps.alphaBuffer);
-            }
-        });
-
-        // Clear arrays
-        this.texturedQuads = [];
-        this.particleSystems = [];
+        if (this.sharedTexcoordBuffer) {
+            this.gl.deleteBuffer(this.sharedTexcoordBuffer);
+            this.sharedTexcoordBuffer = null;
+        }
 
         // Null out managers
         this.textureManager = null;
@@ -938,10 +993,22 @@ export class WebGLRenderer {
 
     renderFrame() {
         const { gl } = this;
+        let currentFrameDrawCalls = 0;
+
+        // Skip rendering if WebGL context is lost
+        if (this._contextLost) {
+            if (!this.useExternalRenderLoop) {
+                this.animationFrameId = requestAnimationFrame(this.renderFrameBound);
+            }
+            return;
+        }
 
         if (this.qualityConfig?.renderFrameSkip > 0) {
             this._frameSkipCounter = (this._frameSkipCounter + 1) % (this.qualityConfig.renderFrameSkip + 1);
             if (this._frameSkipCounter !== 0) {
+                if (!this.useExternalRenderLoop) {
+                    this.animationFrameId = requestAnimationFrame(this.renderFrameBound);
+                }
                 return;
             }
         }
@@ -958,28 +1025,56 @@ export class WebGLRenderer {
         gl.useProgram(this.textureProgram);
         gl.uniform1i(this.textureProgram.uniforms.u_texture, 0);
 
-        this.texturedQuads.forEach((quad) => {
+        // Bind shared quad geometry ONCE for all quads
+        const posAttrib = gl.getAttribLocation(this.textureProgram, 'a_position');
+        const texAttrib = gl.getAttribLocation(this.textureProgram, 'a_texcoord');
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.sharedPositionBuffer);
+        if (posAttrib >= 0) {
+            gl.enableVertexAttribArray(posAttrib);
+            gl.vertexAttribPointer(posAttrib, 2, gl.FLOAT, false, 0, 0);
+        }
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.sharedTexcoordBuffer);
+        if (texAttrib >= 0) {
+            gl.enableVertexAttribArray(texAttrib);
+            gl.vertexAttribPointer(texAttrib, 2, gl.FLOAT, false, 0, 0);
+        }
+
+        for (let i = 0; i < this.texturedQuads.length; i++) {
+            const quad = this.texturedQuads[i];
             gl.activeTexture(gl.TEXTURE0);
-            quad.bindBuffers(this.textureProgram);
+
+            // Push zIndex separately instead of duplicating geometry
+            gl.uniform1f(this.textureProgram.uniforms.u_zIndex, quad.zIndex);
+
             quad.draw();
-        });
+            currentFrameDrawCalls++;
+        }
+
+        if (posAttrib >= 0) gl.disableVertexAttribArray(posAttrib);
+        if (texAttrib >= 0) gl.disableVertexAttribArray(texAttrib);
 
         // Draw particle systems
         gl.useProgram(this.particleProgram);
         gl.uniform2f(this.particleProgram.uniforms.u_resolution, gl.canvas.width, gl.canvas.height);
 
         if (this.qualityConfig?.particles !== false) {
-            this.particleSystems.forEach((ps) => {
+            for (let i = 0; i < this.particleSystems.length; i++) {
+                const ps = this.particleSystems[i];
                 gl.uniform1f(this.particleProgram.uniforms.u_zIndex, ps.zIndex);
                 gl.uniform3fv(
                     this.particleProgram.uniforms.u_color,
-                    ps.themeConfig.color || [1.0, 1.0, 1.0],
+                    ps.themeConfig.color || DEFAULT_PARTICLE_COLOR,
                 );
                 ps.update();
                 ps.bindBuffers(this.particleProgram);
                 ps.draw();
-            });
+                currentFrameDrawCalls++;
+            }
         }
+
+        window.activeDrawCalls = currentFrameDrawCalls;
 
         if (!this.useExternalRenderLoop) {
             this.animationFrameId = requestAnimationFrame(this.renderFrameBound);
@@ -1037,43 +1132,8 @@ export class WebGLRenderer {
     loadTheme(themeName, themeData = null) {
         console.log('[WebGLRenderer] loadTheme called:', themeName);
 
-        // IMPORTANT: Dispose GPU resources before clearing arrays
-        console.log('[WebGLRenderer] Disposing GPU resources from previous theme');
-
-        // Dispose textured quad resources (textures and buffers)
-        this.texturedQuads.forEach((quad) => {
-            if (quad.texture) {
-                this.gl.deleteTexture(quad.texture);
-                console.log('[WebGLRenderer] Deleted texture from textured quad');
-            }
-            if (quad.positionBuffer) {
-                this.gl.deleteBuffer(quad.positionBuffer);
-            }
-            if (quad.texcoordBuffer) {
-                this.gl.deleteBuffer(quad.texcoordBuffer);
-            }
-        });
-
-        // Dispose particle system resources (buffers)
-        this.particleSystems.forEach((ps) => {
-            if (ps.positionBuffer) {
-                this.gl.deleteBuffer(ps.positionBuffer);
-            }
-            if (ps.sizeBuffer) {
-                this.gl.deleteBuffer(ps.sizeBuffer);
-            }
-            if (ps.alphaBuffer) {
-                this.gl.deleteBuffer(ps.alphaBuffer);
-            }
-            console.log('[WebGLRenderer] Deleted buffers from particle system');
-        });
-
-        console.log(`[WebGLRenderer] Disposed ${this.texturedQuads.length} textured quads and ${this.particleSystems.length} particle systems`);
-
-        // Clear both texturedQuads and particle systems to prevent theme overlap
-        this.texturedQuads = [];
-        this.particleSystems = [];
-        this.stop();
+        console.log('[WebGLRenderer] Clearing theme-owned renderer resources');
+        this.clearThemeResources();
 
         if (themeName === 'himalayan-peak') {
             // Sparkling snow particles with golden highlights

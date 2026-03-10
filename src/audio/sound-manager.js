@@ -47,6 +47,9 @@ export class SoundManager {
         this.lastAppliedTrackKey = null;
         this.trackRequestToken = 0;
         this.audioAnalyzer = null;
+        this.analysisUpdateIntervalMs = 33;
+        this.hiddenAnalysisUpdateIntervalMs = 200;
+        this.lastAudioAnalysisAtMs = 0;
         this.trackSwitchPromise = Promise.resolve();
         this.trackFadeOutMs = 2500;
         this.trackFadeInMs = 2000;
@@ -71,6 +74,21 @@ export class SoundManager {
         this.onAudioEnded = () => {
             this.nextTrack();
         };
+        this.handleVisibilityChange = () => {
+            if (document.hidden) {
+                this.lastAudioAnalysisAtMs = 0;
+            } else {
+                this.resumeAudioContext();
+            }
+        };
+        this.handleAudioDeviceChange = () => {
+            console.log('[SoundManager] Audio device change detected; rebuilding analysis pipeline');
+            this.disposeAudioAnalysis();
+            if (this.isMusicPlaying()) {
+                this.ensureAudioAnalysisReady({ force: true });
+            }
+        };
+        this.runtimeHooksBound = false;
 
         // References to managers (set after initialization)
         this.settingsManager = null;
@@ -92,9 +110,36 @@ export class SoundManager {
             this.soundSets = createSoundSets(this.createTone.bind(this), this.createRichTone.bind(this));
             this.sfxPlayer = new SoundEffectPlayer(this.soundSets, this.soundSet);
         }
+        this.bindRuntimeAudioHooks();
         if (this.audioContext.state === 'suspended') {
             this.audioContext.resume();
         }
+    }
+
+    bindRuntimeAudioHooks() {
+        if (this.runtimeHooksBound || typeof document === 'undefined') {
+            return;
+        }
+
+        document.addEventListener('visibilitychange', this.handleVisibilityChange);
+        if (typeof navigator !== 'undefined' && navigator.mediaDevices?.addEventListener) {
+            navigator.mediaDevices.addEventListener('devicechange', this.handleAudioDeviceChange);
+        }
+
+        this.runtimeHooksBound = true;
+    }
+
+    unbindRuntimeAudioHooks() {
+        if (!this.runtimeHooksBound || typeof document === 'undefined') {
+            return;
+        }
+
+        document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+        if (typeof navigator !== 'undefined' && navigator.mediaDevices?.removeEventListener) {
+            navigator.mediaDevices.removeEventListener('devicechange', this.handleAudioDeviceChange);
+        }
+
+        this.runtimeHooksBound = false;
     }
 
     disposeAudioAnalysis() {
@@ -209,6 +254,15 @@ export class SoundManager {
      * Safe to call every frame from any theme.
      */
     getAudioAnalysis(deltaTime = 1 / 60) {
+        const nowMs = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+        const isHidden = typeof document !== 'undefined' ? document.hidden : false;
+        const minInterval = isHidden
+            ? this.hiddenAnalysisUpdateIntervalMs
+            : this.analysisUpdateIntervalMs;
+        if (this.lastAudioAnalysisAtMs && nowMs - this.lastAudioAnalysisAtMs < minInterval) {
+            return this.lastAudioAnalysis;
+        }
+
         let analyzer = this.getAnalyzer(false);
         if (!analyzer && this.isMusicPlaying()) {
             analyzer = this.ensureAudioAnalysisReady();
@@ -226,6 +280,7 @@ export class SoundManager {
         }
 
         const snapshot = analyzer.update(deltaTime);
+        this.lastAudioAnalysisAtMs = nowMs;
         this.lastAudioAnalysis = {
             bassEnergy: snapshot.bassEnergy,
             midEnergy: snapshot.midEnergy,
@@ -1122,6 +1177,7 @@ export class SoundManager {
     cleanup() {
         this.stopBackgroundMusic();
         this.disposeAudioAnalysis();
+        this.unbindRuntimeAudioHooks();
 
         if (this.audioElement) {
             this.audioElement.removeEventListener('ended', this.onAudioEnded);

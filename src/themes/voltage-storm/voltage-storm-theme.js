@@ -21,6 +21,7 @@ export default class VoltageStormTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.animationFrameId = null;
         this.lastTime = 0;
+        this.effectTimeouts = new Set();
 
         // Autonomous Emitters (Sparks)
         this.emitters = [];
@@ -129,6 +130,20 @@ export default class VoltageStormTheme extends BaseTheme {
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
     }
 
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
+    }
+
     // --- Effects ---
 
     getRandomElectricColor() {
@@ -149,7 +164,7 @@ export default class VoltageStormTheme extends BaseTheme {
         const intensity = 0.5 + (lineCount * 0.1);
 
         for (let i = 0; i < count; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const angle = (i / count) * Math.PI * 2;
                 const x = 0.5 + Math.cos(angle) * 0.1;
                 const y = 0.5 + Math.sin(angle) * 0.1;
@@ -172,7 +187,7 @@ export default class VoltageStormTheme extends BaseTheme {
         const strikes = Math.min(comboCount, 5);
 
         for (let i = 0; i < strikes; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 this.createLightningStrike();
             }, i * 100);
         }
@@ -230,7 +245,7 @@ export default class VoltageStormTheme extends BaseTheme {
                     const y = baseY + (row - 1.5) * blockSize;
 
                     // Delay each block slightly for a "charging" effect
-                    setTimeout(() => {
+                    this.scheduleEffectTimeout(() => {
                         this.createElectricBurst(x, y);
                     }, (row * piece.shape[row].length + col) * 30);
                 }
@@ -259,14 +274,14 @@ export default class VoltageStormTheme extends BaseTheme {
         }
 
         // White hot center flash
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             this.simulator.splat(x, y, 0, 0, { r: 1.0, g: 1.0, b: 1.0 });
         }, 40);
     }
 
     addInitialStorm() {
         for (let i = 0; i < 5; i++) {
-            setTimeout(() => this.createLightningStrike(), i * 200);
+            this.scheduleEffectTimeout(() => this.createLightningStrike(), i * 200);
         }
     }
 
@@ -297,7 +312,7 @@ export default class VoltageStormTheme extends BaseTheme {
         if (!this.simulator) return;
 
         for (let i = 0; i < count; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 // Random position across screen
                 const x = Math.random();
                 const y = Math.random();
@@ -342,6 +357,7 @@ export default class VoltageStormTheme extends BaseTheme {
 
     stop() {
         if (!this.isActive) return;
+        this.clearEffectTimeouts();
         this.eventUnsubscribers.forEach((u) => u());
         this.eventUnsubscribers = [];
         super.stop();

@@ -33,6 +33,7 @@ export default class AstralWeaveTheme extends BaseTheme {
     constructor() {
         super('astral-weave');
         this.eventUnsubscribers = [];
+        this.boundResizeHandler = this.onWindowResize.bind(this);
 
         // Three.js components
         this.scene = null;
@@ -146,7 +147,7 @@ export default class AstralWeaveTheme extends BaseTheme {
 
         // Event Listeners
         this.setupEventListeners();
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         // Start Animation
         this.animate();
@@ -682,7 +683,7 @@ export default class AstralWeaveTheme extends BaseTheme {
     dispose() {
         super.dispose();
 
-        window.removeEventListener('resize', this.onWindowResize.bind(this));
+        window.removeEventListener('resize', this.boundResizeHandler);
 
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);

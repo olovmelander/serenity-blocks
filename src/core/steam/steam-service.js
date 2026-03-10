@@ -32,21 +32,13 @@ const OFFLINE_QUEUE_BACKOFF = {
     JITTER_MS: 750,
 };
 
-// Check for Electron environment
-const isElectron = typeof window !== 'undefined' &&
-    (window.process?.type === 'renderer' ||
-        (typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron')));
-
-// Get ipcRenderer if in Electron
-let ipcRenderer = null;
-if (isElectron) {
-    try {
-        const electron = window.require('electron');
-        ipcRenderer = electron.ipcRenderer;
-    } catch (err) {
-        console.warn('[SteamService] Failed to load Electron IPC:', err.message);
+const electronApi = typeof window !== 'undefined' ? window.electronAPI : null;
+const ipcRenderer = electronApi
+    ? {
+        invoke: (...args) => electronApi.invoke(...args),
+        on: (channel, callback) => electronApi.on(channel, (payload) => callback(null, payload)),
     }
-}
+    : null;
 
 /**
  * SteamService Singleton
@@ -161,7 +153,7 @@ class SteamService {
      * Internal initialization with retry logic
      */
     async _doInitialize() {
-        if (!ipcRenderer) {
+        if (!electronApi) {
             console.log('[SteamService] No IPC available - running in offline mode');
             this._enterOfflineMode();
             this._updateConnectionState();
@@ -174,21 +166,21 @@ class SteamService {
 
         for (let attempt = 1; attempt <= STEAM_RETRY.MAX_ATTEMPTS; attempt++) {
             try {
-                const isInitialized = await ipcRenderer.invoke(STEAM_IPC.IS_INITIALIZED);
+                    const isInitialized = await electronApi.invoke(STEAM_IPC.IS_INITIALIZED);
 
                 if (isInitialized) {
                     let isConnected = true;
                     try {
-                        isConnected = await ipcRenderer.invoke(STEAM_IPC.CHECK_CONNECTION);
+                        isConnected = await electronApi.invoke(STEAM_IPC.CHECK_CONNECTION);
                     } catch (err) {
                         isConnected = true;
                     }
 
                     // Steam is ready - fetch player data
-                    this.steamId = await ipcRenderer.invoke(STEAM_IPC.GET_STEAM_ID);
-                    this.playerName = await ipcRenderer.invoke(STEAM_IPC.GET_PLAYER_NAME) || STEAM_DEFAULTS.PLAYER_NAME;
+                    this.steamId = await electronApi.invoke(STEAM_IPC.GET_STEAM_ID);
+                    this.playerName = await electronApi.invoke(STEAM_IPC.GET_PLAYER_NAME) || STEAM_DEFAULTS.PLAYER_NAME;
                     try {
-                        const appId = await ipcRenderer.invoke(STEAM_IPC.GET_APP_ID);
+                        const appId = await electronApi.invoke(STEAM_IPC.GET_APP_ID);
                         if (appId) {
                             this.appId = Number(appId);
                         }

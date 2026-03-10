@@ -28,14 +28,105 @@ export class InputController {
     constructor() {
         // Keyboard state
         this.keyMap = {};
-        this.dasTimer = null;
-        this.dasIntervalTimer = null;
-        this.softDropTimer = null;
+
+        // DAS timing state (high-precision delta accumulation)
+        this.dasState = {
+            moveLeft: { active: false, delayAccumulator: 0, intervalAccumulator: 0, isRepeating: false },
+            moveRight: { active: false, delayAccumulator: 0, intervalAccumulator: 0, isRepeating: false },
+            softDrop: { active: false, intervalAccumulator: 0 },
+
+            p2_moveLeft: { active: false, delayAccumulator: 0, intervalAccumulator: 0, isRepeating: false },
+            p2_moveRight: { active: false, delayAccumulator: 0, intervalAccumulator: 0, isRepeating: false },
+            p2_softDrop: { active: false, intervalAccumulator: 0 }
+        };
+
+        this.lastTime = performance.now();
+        this.gameActions = null; // Injected during setup
+        this.settings = null;    // Injected during setup
 
         // Sound initialization flag
         this.soundInitialized = false;
 
-        console.log('[InputController] Initialized');
+        console.log('[InputController] Initialized High-Precision DAS');
+    }
+
+    /**
+     * Advance keyboard DAS using the authoritative gameplay timing.
+     * @param {number} timestamp - Current frame timestamp
+     */
+    update(timestamp = performance.now()) {
+        const delta = Math.max(0, Math.min(100, timestamp - this.lastTime));
+        this.lastTime = timestamp;
+        this.updateDAS(delta);
+    }
+
+    /**
+     * Process high precision input repeating based on accumulated delta
+     * @param {number} delta - Milliseconds since last frame
+     */
+    updateDAS(delta) {
+        if (!this.gameActions || !this.settings) return;
+
+        const currentSettings = window.settings || this.settings;
+        const delay = currentSettings.dasDelay;
+        const interval = currentSettings.dasInterval;
+
+        // Process Player 1
+        this.processDasDirection(this.dasState.moveLeft, delay, interval, delta, () => {
+            if (this.gameActions.move) this.gameActions.move(-1);
+        });
+        this.processDasDirection(this.dasState.moveRight, delay, interval, delta, () => {
+            if (this.gameActions.move) this.gameActions.move(1);
+        });
+        this.processSoftDrop(this.dasState.softDrop, 50, delta, () => {
+            if (this.gameActions.softDrop) this.gameActions.softDrop();
+        });
+
+        // Process Player 2
+        this.processDasDirection(this.dasState.p2_moveLeft, delay, interval, delta, () => {
+            if (this.gameActions.moveP2) this.gameActions.moveP2(-1);
+        });
+        this.processDasDirection(this.dasState.p2_moveRight, delay, interval, delta, () => {
+            if (this.gameActions.moveP2) this.gameActions.moveP2(1);
+        });
+        this.processSoftDrop(this.dasState.p2_softDrop, 50, delta, () => {
+            if (this.gameActions.softDropP2) this.gameActions.softDropP2();
+        });
+    }
+
+    processDasDirection(state, dasDelay, dasInterval, delta, actionCallback) {
+        if (!state.active) return;
+
+        if (!state.isRepeating) {
+            state.delayAccumulator += delta;
+            if (state.delayAccumulator >= dasDelay) {
+                state.isRepeating = true;
+                // Execute first repeat exactly at the delay threshold
+                state.intervalAccumulator = state.delayAccumulator - dasDelay;
+                actionCallback();
+
+                // If the lag spike was massive, execute multiple times
+                while (state.intervalAccumulator >= dasInterval && dasInterval > 0) {
+                    state.intervalAccumulator -= dasInterval;
+                    actionCallback();
+                }
+            }
+        } else {
+            state.intervalAccumulator += delta;
+            while (state.intervalAccumulator >= dasInterval && dasInterval > 0) {
+                state.intervalAccumulator -= dasInterval;
+                actionCallback();
+            }
+        }
+    }
+
+    processSoftDrop(state, dropInterval, delta, actionCallback) {
+        if (!state.active) return;
+        state.intervalAccumulator += delta;
+        while (state.intervalAccumulator >= dropInterval) {
+            state.intervalAccumulator -= dropInterval;
+            actionCallback();
+        }
     }
 
     /**
@@ -43,12 +134,14 @@ export class InputController {
      * Call this when pausing or resetting the game
      */
     clearTimers() {
-        if (this.dasTimer) clearTimeout(this.dasTimer);
-        if (this.dasIntervalTimer) clearInterval(this.dasIntervalTimer);
-        if (this.softDropTimer) clearInterval(this.softDropTimer);
-        this.dasTimer = null;
-        this.dasIntervalTimer = null;
-        this.softDropTimer = null;
+        // Reset all DAS states
+        Object.keys(this.dasState).forEach(key => {
+            this.dasState[key].active = false;
+            this.dasState[key].delayAccumulator = 0;
+            this.dasState[key].intervalAccumulator = 0;
+            this.dasState[key].isRepeating = false;
+        });
+        this.lastTime = performance.now();
     }
 
     /**
@@ -69,60 +162,58 @@ export class InputController {
 function handlePlayer2Action(action, gameActions, inputController, settings) {
     const {
         moveP2, rotateP2, softDropP2, hardDropP2,
+        requestMoveP2, requestRotateP2, requestSoftDropP2, requestHardDropP2,
     } = gameActions;
 
     performanceMonitor.recordInputAction();
 
     switch (action) {
-    case 'moveLeft':
-        if (moveP2) {
-            moveP2(-1);
-            inputController.dasTimerP2 = setTimeout(() => {
-                inputController.dasIntervalTimerP2 = setInterval(
-                    () => moveP2(-1),
-                    settings.dasInterval,
-                );
-            }, settings.dasDelay);
-        }
-        break;
+        case 'moveLeft':
+            if (requestMoveP2 || moveP2) {
+                (requestMoveP2 || moveP2)(-1);
+                inputController.dasState.p2_moveLeft.active = true;
+                inputController.dasState.p2_moveLeft.delayAccumulator = 0;
+                inputController.dasState.p2_moveLeft.intervalAccumulator = 0;
+                inputController.dasState.p2_moveLeft.isRepeating = false;
+            }
+            break;
 
-    case 'moveRight':
-        if (moveP2) {
-            moveP2(1);
-            inputController.dasTimerP2 = setTimeout(() => {
-                inputController.dasIntervalTimerP2 = setInterval(
-                    () => moveP2(1),
-                    settings.dasInterval,
-                );
-            }, settings.dasDelay);
-        }
-        break;
+        case 'moveRight':
+            if (requestMoveP2 || moveP2) {
+                (requestMoveP2 || moveP2)(1);
+                inputController.dasState.p2_moveRight.active = true;
+                inputController.dasState.p2_moveRight.delayAccumulator = 0;
+                inputController.dasState.p2_moveRight.intervalAccumulator = 0;
+                inputController.dasState.p2_moveRight.isRepeating = false;
+            }
+            break;
 
-    case 'softDrop':
-        if (softDropP2) {
-            softDropP2();
-            inputController.softDropTimerP2 = setInterval(() => softDropP2(), 50);
-        }
-        break;
+        case 'softDrop':
+            if (requestSoftDropP2 || softDropP2) {
+                (requestSoftDropP2 || softDropP2)();
+                inputController.dasState.p2_softDrop.active = true;
+                inputController.dasState.p2_softDrop.intervalAccumulator = 0;
+            }
+            break;
 
-    case 'rotateRight':
-        if (rotateP2) rotateP2('right');
-        break;
+        case 'rotateRight':
+            if (requestRotateP2 || rotateP2) (requestRotateP2 || rotateP2)('right');
+            break;
 
-    case 'rotateLeft':
-        if (rotateP2) rotateP2('left');
-        break;
+        case 'rotateLeft':
+            if (requestRotateP2 || rotateP2) (requestRotateP2 || rotateP2)('left');
+            break;
 
-    case 'flip':
-        if (rotateP2) rotateP2('flip');
-        break;
+        case 'flip':
+            if (requestRotateP2 || rotateP2) (requestRotateP2 || rotateP2)('flip');
+            break;
 
-    case 'hardDrop':
-        if (hardDropP2) hardDropP2();
-        break;
+        case 'hardDrop':
+            if (requestHardDropP2 || hardDropP2) (requestHardDropP2 || hardDropP2)();
+            break;
 
-    default:
-        break;
+        default:
+            break;
     }
 }
 
@@ -153,7 +244,12 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
 
     const {
         move, rotate, softDrop, hardDrop, startGame, initSound,
+        requestMove, requestRotate, requestSoftDrop, requestHardDrop,
     } = gameActions;
+
+    // Inject dependencies for the update loop
+    inputController.gameActions = gameActions;
+    inputController.settings = settings;
 
     // Helper function to get current settings (reads from window.settings for live updates)
     const getCurrentSettings = () => window.settings || settings;
@@ -235,105 +331,71 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             if (!action || inputController.keyMap[action]) return;
             inputController.keyMap[action] = true;
 
-            // Handle input queue during physics processing
-            if (gameActions.isProcessingPhysics && gameActions.inputQueue !== undefined) {
-                if (
-                    !gameActions.inputQueue
-                    && (action === 'moveLeft'
-                        || action === 'moveRight'
-                        || action.startsWith('rotate')
-                        || action === 'flip')
-                ) {
-                    const isRotate = action.startsWith('rotate') || action === 'flip';
-                    let dir;
-                    if (action === 'moveLeft') {
-                        dir = -1;
-                    } else if (action === 'moveRight') {
-                        dir = 1;
-                    } else if (action === 'rotateLeft') {
-                        dir = 'left';
-                    } else if (action === 'flip') {
-                        dir = 'flip';
-                    } else {
-                        dir = 'right';
-                    }
-
-                    gameActions.inputQueue = {
-                        type: isRotate ? 'rotate' : 'move',
-                        dir,
-                    };
-                }
-                return;
-            }
-
             // Execute actions
             switch (action) {
-            case 'moveLeft':
-                if (move) {
-                    move(-1);
-                    performanceMonitor.recordInputAction();
-                    inputController.dasTimer = setTimeout(() => {
-                        inputController.dasIntervalTimer = setInterval(
-                            () => move(-1),
-                            currentSettings.dasInterval,
-                        );
-                    }, currentSettings.dasDelay);
-                }
-                break;
+                case 'moveLeft':
+                    if (requestMove || move) {
+                        (requestMove || move)(-1);
+                        performanceMonitor.recordInputAction();
+                        inputController.dasState.moveLeft.active = true;
+                        inputController.dasState.moveLeft.delayAccumulator = 0;
+                        inputController.dasState.moveLeft.intervalAccumulator = 0;
+                        inputController.dasState.moveLeft.isRepeating = false;
+                    }
+                    break;
 
-            case 'moveRight':
-                if (move) {
-                    move(1);
-                    performanceMonitor.recordInputAction();
-                    inputController.dasTimer = setTimeout(() => {
-                        inputController.dasIntervalTimer = setInterval(
-                            () => move(1),
-                            currentSettings.dasInterval,
-                        );
-                    }, currentSettings.dasDelay);
-                }
-                break;
+                case 'moveRight':
+                    if (requestMove || move) {
+                        (requestMove || move)(1);
+                        performanceMonitor.recordInputAction();
+                        inputController.dasState.moveRight.active = true;
+                        inputController.dasState.moveRight.delayAccumulator = 0;
+                        inputController.dasState.moveRight.intervalAccumulator = 0;
+                        inputController.dasState.moveRight.isRepeating = false;
+                    }
+                    break;
 
-            case 'softDrop':
-                if (softDrop) {
-                    softDrop();
-                    performanceMonitor.recordInputAction();
-                    inputController.softDropTimer = setInterval(() => softDrop(), 50);
-                }
-                break;
+                case 'softDrop':
+                    if (requestSoftDrop || softDrop) {
+                        (requestSoftDrop || softDrop)();
+                        performanceMonitor.recordInputAction();
+                        inputController.dasState.softDrop.active = true;
+                        inputController.dasState.softDrop.intervalAccumulator = 0;
+                    }
+                    break;
 
-            case 'rotateRight':
-                if (rotate) {
-                    rotate('right');
-                    performanceMonitor.recordInputAction();
-                }
-                break;
+                case 'rotateRight':
+                    if (requestRotate || rotate) {
+                        (requestRotate || rotate)('right');
+                        performanceMonitor.recordInputAction();
+                    }
+                    break;
 
-            case 'rotateLeft':
-                if (rotate) {
-                    rotate('left');
-                    performanceMonitor.recordInputAction();
-                }
-                break;
+                case 'rotateLeft':
+                    if (requestRotate || rotate) {
+                        (requestRotate || rotate)('left');
+                        performanceMonitor.recordInputAction();
+                    }
+                    break;
 
-            case 'flip':
-                if (rotate) {
-                    rotate('flip');
-                    performanceMonitor.recordInputAction();
-                }
-                break;
+                case 'flip':
+                    if (requestRotate || rotate) {
+                        (requestRotate || rotate)('flip');
+                        performanceMonitor.recordInputAction();
+                    }
+                    break;
 
-            case 'hardDrop':
-                e.preventDefault();
-                if (hardDrop) {
-                    hardDrop();
-                    performanceMonitor.recordInputAction();
-                }
-                break;
+                case 'hardDrop':
+                    e.preventDefault();
+                    if (requestHardDrop || hardDrop) {
+                        (requestHardDrop || hardDrop)();
+                        performanceMonitor.recordInputAction();
+                    }
+                    break;
 
-            default:
-                // No action for unrecognized key binding
-                break;
+                default:
+                    // No action for unrecognized key binding
+                    break;
             }
         } catch (error) {
             console.error('[Keyboard] Error in keydown handler:', error);
@@ -369,35 +431,39 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                 inputController.keyMap[`p2-${actionP2}`] = false;
             }
 
-            // Clear DAS timers for movement (Player 1)
-            if (action === 'moveLeft' || action === 'moveRight') {
-                clearTimeout(inputController.dasTimer);
-                clearInterval(inputController.dasIntervalTimer);
-                inputController.dasTimer = null;
-                inputController.dasIntervalTimer = null;
+            // Clear DAS states for movement (Player 1)
+            if (action === 'moveLeft') {
+                inputController.dasState.moveLeft.active = false;
+            } else if (action === 'moveRight') {
+                inputController.dasState.moveRight.active = false;
             }
 
-            // Clear DAS timers for movement (Player 2)
-            if (actionP2 === 'moveLeft' || actionP2 === 'moveRight') {
-                clearTimeout(inputController.dasTimerP2);
-                clearInterval(inputController.dasIntervalTimerP2);
-                inputController.dasTimerP2 = null;
-                inputController.dasIntervalTimerP2 = null;
+            // Clear DAS states for movement (Player 2)
+            if (actionP2 === 'moveLeft') {
+                inputController.dasState.p2_moveLeft.active = false;
+            } else if (actionP2 === 'moveRight') {
+                inputController.dasState.p2_moveRight.active = false;
             }
 
-            // Clear soft drop timer (Player 1)
+            // Clear soft drop state (Player 1)
             if (action === 'softDrop') {
-                clearInterval(inputController.softDropTimer);
-                inputController.softDropTimer = null;
+                inputController.dasState.softDrop.active = false;
             }
 
-            // Clear soft drop timer (Player 2)
+            // Clear soft drop state (Player 2)
             if (actionP2 === 'softDrop') {
-                clearInterval(inputController.softDropTimerP2);
-                inputController.softDropTimerP2 = null;
+                inputController.dasState.p2_softDrop.active = false;
             }
         } catch (error) {
             console.error('[Keyboard] Error in keyup handler:', error);
+        }
+    });
+
+    // Clear all DAS/soft-drop timers when tab loses focus (keyup won't fire)
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            inputController.clearTimers();
+            inputController.keyMap = {};
         }
     });
 

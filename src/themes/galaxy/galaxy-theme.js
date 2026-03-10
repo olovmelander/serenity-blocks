@@ -33,6 +33,8 @@ export default class GalaxyTheme extends BaseTheme {
     constructor() {
         super('galaxy');
         this.eventUnsubscribers = [];
+        this.boundResizeHandler = this.onWindowResize.bind(this);
+        this.effectTimeouts = new Set();
 
         // Three.js components
         this.scene = null;
@@ -76,6 +78,20 @@ export default class GalaxyTheme extends BaseTheme {
             new THREE.Color(0x66CCFF), // Cyan
             new THREE.Color(0xFFFFFF), // White
         ];
+    }
+
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
     }
 
     getRandomThemeColor() {
@@ -134,7 +150,7 @@ export default class GalaxyTheme extends BaseTheme {
 
         // -- Event Listeners --
         this.setupEventListeners();
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         // -- Start Animation --
         this.animate();
@@ -808,7 +824,7 @@ export default class GalaxyTheme extends BaseTheme {
             // Tetris - extra effects
             // this.createShockwave(count * 0.5);
             for (let i = 0; i < 3; i++) {
-                setTimeout(() => this.createSolarFlare(), i * 100);
+                this.scheduleEffectTimeout(() => this.createSolarFlare(), i * 100);
             }
         }
     }
@@ -851,8 +867,9 @@ export default class GalaxyTheme extends BaseTheme {
 
     dispose() {
         super.dispose();
+        this.clearEffectTimeouts();
 
-        window.removeEventListener('resize', this.onWindowResize.bind(this));
+        window.removeEventListener('resize', this.boundResizeHandler);
 
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);

@@ -31,6 +31,7 @@ export default class KoiPondTheme extends BaseTheme {
         this.lastRippleTime = 0;
         this.eventUnsubscribers = [];
         this.animationFrameId = null;
+        this.effectTimeouts = new Set();
 
         // Graphics quality presets
         this.qualityChangeHandler = null;
@@ -232,6 +233,20 @@ export default class KoiPondTheme extends BaseTheme {
 
         // Active preset reference
         this.activePreset = this.qualityPresets.High;
+    }
+
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
     }
 
     /**
@@ -640,7 +655,7 @@ export default class KoiPondTheme extends BaseTheme {
         ripple.style.top = `${pos.y}%`;
 
         container.appendChild(ripple);
-        setTimeout(() => ripple.remove(), 800);
+        this.scheduleEffectTimeout(() => ripple.remove(), 800);
     }
 
     /**
@@ -658,7 +673,7 @@ export default class KoiPondTheme extends BaseTheme {
         glint.style.top = `${pos.y}%`;
 
         container.appendChild(glint);
-        setTimeout(() => glint.remove(), 400);
+        this.scheduleEffectTimeout(() => glint.remove(), 400);
     }
 
     /**
@@ -678,7 +693,7 @@ export default class KoiPondTheme extends BaseTheme {
         petal.style.setProperty('--drift-y', `${(Math.random() - 0.5) * 40}px`);
 
         container.appendChild(petal);
-        setTimeout(() => petal.remove(), 1200);
+        this.scheduleEffectTimeout(() => petal.remove(), 1200);
     }
 
     // ===== TOP-DOWN COMBO EFFECTS =====
@@ -693,18 +708,18 @@ export default class KoiPondTheme extends BaseTheme {
         const actualCount = Math.min(count, this.activePreset.rippleImpactCount * 2);
 
         for (let i = 0; i < actualCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const pos = this.getEdgePosition('any');
 
                 // Create multiple concentric ripples
                 for (let r = 0; r < 3; r++) {
-                    setTimeout(() => {
+                    this.scheduleEffectTimeout(() => {
                         const ripple = document.createElement('div');
                         ripple.className = 'impact-ripple';
                         ripple.style.left = `${pos.x}%`;
                         ripple.style.top = `${pos.y}%`;
                         container.appendChild(ripple);
-                        setTimeout(() => ripple.remove(), 2000);
+                        this.scheduleEffectTimeout(() => ripple.remove(), 2000);
                     }, r * 100);
                 }
             }, i * 150);
@@ -722,7 +737,7 @@ export default class KoiPondTheme extends BaseTheme {
         const koiColors = ['#f08c28', '#fff', '#333', '#f2c94c', '#ff6b6b'];
 
         for (let i = 0; i < actualCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const dartKoi = document.createElement('div');
                 dartKoi.className = 'darting-koi';
 
@@ -743,7 +758,7 @@ export default class KoiPondTheme extends BaseTheme {
                 // Add ripple trail
                 this.addRippleAt(pos.x, pos.y);
 
-                setTimeout(() => dartKoi.remove(), 800);
+                this.scheduleEffectTimeout(() => dartKoi.remove(), 800);
             }, i * 200);
         }
     }
@@ -762,7 +777,7 @@ export default class KoiPondTheme extends BaseTheme {
         const centerPos = this.getEdgePosition('corner');
 
         for (let i = 0; i < frenzyCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const koi = document.createElement('div');
                 koi.className = 'frenzy-koi';
 
@@ -776,7 +791,7 @@ export default class KoiPondTheme extends BaseTheme {
                 koi.style.setProperty('--orbit-direction', Math.random() > 0.5 ? '1' : '-1');
 
                 container.appendChild(koi);
-                setTimeout(() => koi.remove(), 2000);
+                this.scheduleEffectTimeout(() => koi.remove(), 2000);
             }, i * 100);
         }
 
@@ -789,11 +804,11 @@ export default class KoiPondTheme extends BaseTheme {
      */
     wobbleLilyPads(intensity = 1.2) {
         this.lilyPadInstances.forEach((pad, index) => {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 pad.classList.add('lily-pad-wobble');
                 pad.style.setProperty('--wobble-intensity', intensity);
 
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     pad.classList.remove('lily-pad-wobble');
                 }, 800);
             }, index * 50);
@@ -810,7 +825,7 @@ export default class KoiPondTheme extends BaseTheme {
         const actualCount = Math.min(count, this.activePreset.petalScatterCount * 2);
 
         for (let i = 0; i < actualCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const petal = document.createElement('div');
                 petal.className = 'scatter-petal';
 
@@ -824,7 +839,7 @@ export default class KoiPondTheme extends BaseTheme {
                 petal.style.setProperty('--rotation', `${Math.random() * 360}deg`);
 
                 container.appendChild(petal);
-                setTimeout(() => petal.remove(), 2500);
+                this.scheduleEffectTimeout(() => petal.remove(), 2500);
             }, i * 50);
         }
     }
@@ -839,7 +854,7 @@ export default class KoiPondTheme extends BaseTheme {
         const actualCount = Math.min(count, this.activePreset.dropletRingCount);
 
         for (let i = 0; i < actualCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const droplet = document.createElement('div');
                 droplet.className = 'droplet-ring';
 
@@ -848,7 +863,7 @@ export default class KoiPondTheme extends BaseTheme {
                 droplet.style.top = `${pos.y}%`;
 
                 container.appendChild(droplet);
-                setTimeout(() => droplet.remove(), 1000);
+                this.scheduleEffectTimeout(() => droplet.remove(), 1000);
             }, i * 100);
         }
     }
@@ -863,7 +878,7 @@ export default class KoiPondTheme extends BaseTheme {
         const actualCount = Math.min(count, this.activePreset.lightGlintCount * 2);
 
         for (let i = 0; i < actualCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const glint = document.createElement('div');
                 glint.className = 'water-glint';
 
@@ -872,7 +887,7 @@ export default class KoiPondTheme extends BaseTheme {
                 glint.style.top = `${pos.y}%`;
 
                 container.appendChild(glint);
-                setTimeout(() => glint.remove(), 600);
+                this.scheduleEffectTimeout(() => glint.remove(), 600);
             }, i * 40);
         }
     }
@@ -887,7 +902,7 @@ export default class KoiPondTheme extends BaseTheme {
         const actualCount = Math.min(count, this.activePreset.waterSwirlCount);
 
         for (let i = 0; i < actualCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const swirl = document.createElement('div');
                 swirl.className = 'water-swirl';
 
@@ -897,7 +912,7 @@ export default class KoiPondTheme extends BaseTheme {
                 swirl.style.setProperty('--swirl-direction', Math.random() > 0.5 ? '1' : '-1');
 
                 container.appendChild(swirl);
-                setTimeout(() => swirl.remove(), 2000);
+                this.scheduleEffectTimeout(() => swirl.remove(), 2000);
             }, i * 300);
         }
     }
@@ -914,7 +929,7 @@ export default class KoiPondTheme extends BaseTheme {
         ripple.style.left = `${x}%`;
         ripple.style.top = `${y}%`;
         container.appendChild(ripple);
-        setTimeout(() => ripple.remove(), 1000);
+        this.scheduleEffectTimeout(() => ripple.remove(), 1000);
     }
 
     getTetrominoConfig() {
@@ -923,6 +938,7 @@ export default class KoiPondTheme extends BaseTheme {
 
     stop() {
         if (!this.isActive) return;
+        this.clearEffectTimeouts();
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
         this.teardownQualityListener();

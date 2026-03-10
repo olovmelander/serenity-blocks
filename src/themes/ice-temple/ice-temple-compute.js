@@ -200,10 +200,20 @@ export class IceTempleShardBurstCompute {
         this.spawnCursor = 0;
         this.pendingUpload = false;
 
+        // CPU writes configuration to spawn buffers (GPU Read-only)
+        this.spawnPosData = new Float32Array(capacity * 4);
+        this.spawnVelData = new Float32Array(capacity * 4);
+        this.spawnMiscData = new Float32Array(capacity * 4); // x: size, y: active, z: seed, w: lifeDecay
+
+        // GPU updates state tracking buffers (GPU Read-Write, Material reads)
         this.positionData = new Float32Array(capacity * 4);
         this.velocityData = new Float32Array(capacity * 4);
         this.lifeData = new Float32Array(capacity * 4);
         this.miscData = new Float32Array(capacity * 4);
+
+        this.spawnPosBuffer = new THREE.StorageBufferAttribute(this.spawnPosData, 4);
+        this.spawnVelBuffer = new THREE.StorageBufferAttribute(this.spawnVelData, 4);
+        this.spawnMiscBuffer = new THREE.StorageBufferAttribute(this.spawnMiscData, 4);
 
         this.positionBuffer = new THREE.StorageBufferAttribute(this.positionData, 4);
         this.velocityBuffer = new THREE.StorageBufferAttribute(this.velocityData, 4);
@@ -213,6 +223,7 @@ export class IceTempleShardBurstCompute {
         this.uDelta = uniform(0);
         this.uGravity = uniform(8.0);
         this.uDrag = uniform(0.985);
+        this.uTime = uniform(0);
 
         this.computeNode = null;
         this.resetState();
@@ -221,10 +232,27 @@ export class IceTempleShardBurstCompute {
     resetState() {
         for (let i = 0; i < this.count; i++) {
             const i4 = i * 4;
+
+            this.spawnPosData[i4] = 0;
+            this.spawnPosData[i4 + 1] = 0;
+            this.spawnPosData[i4 + 2] = -9999;
+            this.spawnPosData[i4 + 3] = -1000; // spawnTime
+
+            this.spawnVelData[i4] = 0;
+            this.spawnVelData[i4 + 1] = 0;
+            this.spawnVelData[i4 + 2] = 0;
+            this.spawnVelData[i4 + 3] = 0;
+
+            this.spawnMiscData[i4] = 1.0; // size
+            this.spawnMiscData[i4 + 1] = 0.0; // active
+            this.spawnMiscData[i4 + 2] = this.random(); // random seed
+            this.spawnMiscData[i4 + 3] = 1.0; // life decay multiplier
+
+            // Initial GPU state overrides
             this.positionData[i4] = 0;
             this.positionData[i4 + 1] = 0;
             this.positionData[i4 + 2] = -9999;
-            this.positionData[i4 + 3] = 1.0;
+            this.positionData[i4 + 3] = -9000; // pos.w holds initialization timestamp to prevent double-spawning
 
             this.velocityData[i4] = 0;
             this.velocityData[i4 + 1] = 0;
@@ -236,11 +264,15 @@ export class IceTempleShardBurstCompute {
             this.lifeData[i4 + 2] = 0;
             this.lifeData[i4 + 3] = 0;
 
-            this.miscData[i4] = 1.0; // size
-            this.miscData[i4 + 1] = 0.0; // active
-            this.miscData[i4 + 2] = this.random(); // random seed
-            this.miscData[i4 + 3] = 1.0; // life decay multiplier
+            this.miscData[i4] = 1.0;
+            this.miscData[i4 + 1] = 0.0;
+            this.miscData[i4 + 2] = this.spawnMiscData[i4 + 2];
+            this.miscData[i4 + 3] = 1.0;
         }
+
+        this.spawnPosBuffer.needsUpdate = true;
+        this.spawnVelBuffer.needsUpdate = true;
+        this.spawnMiscBuffer.needsUpdate = true;
 
         this.positionBuffer.needsUpdate = true;
         this.velocityBuffer.needsUpdate = true;
@@ -250,6 +282,10 @@ export class IceTempleShardBurstCompute {
     }
 
     createComputeNode() {
+        const spawnPosData = storage(this.spawnPosBuffer, 'vec4', this.count);
+        const spawnVelData = storage(this.spawnVelBuffer, 'vec4', this.count);
+        const spawnMiscData = storage(this.spawnMiscBuffer, 'vec4', this.count);
+
         const positions = storage(this.positionBuffer, 'vec4', this.count);
         const velocities = storage(this.velocityBuffer, 'vec4', this.count);
         const lifeData = storage(this.lifeBuffer, 'vec4', this.count);
@@ -261,10 +297,37 @@ export class IceTempleShardBurstCompute {
 
         const computeShardBurst = Fn(() => {
             const index = instanceIndex;
+
+            const spawnPos = spawnPosData.element(index).toVar();
+            const spawnVel = spawnVelData.element(index).toVar();
+            const spawnMisc = spawnMiscData.element(index).toVar();
+
             const pos = positions.element(index).toVar();
             const vel = velocities.element(index).toVar();
             const life = lifeData.element(index).toVar();
             const misc = miscData.element(index).toVar();
+
+            const spawnTime = spawnPos.w;
+            // A particle is initialized if its internal timestamp matches the spawn buffer timestamp
+            const isInitialized = pos.w.equals(spawnTime);
+            // We only want to initialize if the CPU told us to spawn (spawnMisc.y > 0.5) and we haven't yet
+            const justSpawned = spawnMisc.y.greaterThan(0.5).and(isInitialized.not());
+
+            If(justSpawned, () => {
+                pos.xyz.assign(spawnPos.xyz);
+                vel.xyz.assign(spawnVel.xyz);
+                pos.w.assign(spawnTime); // Timestamp prevents re-initialization
+
+                life.x.assign(1.0);
+                life.y.assign(0.0);
+                life.z.assign(0.0);
+                life.w.assign(0.0);
+
+                misc.x.assign(spawnMisc.x); // size
+                misc.y.assign(1.0); // active
+                misc.z.assign(spawnMisc.z); // random seed
+                misc.w.assign(spawnMisc.w); // life decay
+            });
 
             const active = misc.y.greaterThan(0.5);
             If(active, () => {
@@ -306,6 +369,7 @@ export class IceTempleShardBurstCompute {
         const directionLength = Math.hypot(directionX, directionZ);
         const dirX = directionLength > 1e-5 ? directionX / directionLength : 0;
         const dirZ = directionLength > 1e-5 ? directionZ / directionLength : 0;
+        const spawnTime = options.time || (performance.now() / 1000.0); // Provide a timestamp or generate one
 
         const styleDefaults = {
             radialSpeedMin: style === 'pillar-jet' ? 1.8 : (style === 'crack-front' ? 2.2 : 2.5),
@@ -350,10 +414,10 @@ export class IceTempleShardBurstCompute {
             const angle = this.random() * Math.PI * 2;
             const speed = radialSpeedMin + this.random() * (radialSpeedMax - radialSpeedMin);
 
-            this.positionData[i4] = originX + (this.random() - 0.5) * spread;
-            this.positionData[i4 + 1] = 0.4 + this.random() * 1.6;
-            this.positionData[i4 + 2] = originZ + (this.random() - 0.5) * spread;
-            this.positionData[i4 + 3] = 1.0;
+            this.spawnPosData[i4] = originX + (this.random() - 0.5) * spread;
+            this.spawnPosData[i4 + 1] = 0.4 + this.random() * 1.6;
+            this.spawnPosData[i4 + 2] = originZ + (this.random() - 0.5) * spread;
+            this.spawnPosData[i4 + 3] = spawnTime; // Unique timestamp forces re-init
 
             let velocityX = Math.cos(angle) * speed;
             let velocityY = upwardMin + this.random() * (upwardMax - upwardMin);
@@ -371,20 +435,15 @@ export class IceTempleShardBurstCompute {
                 velocityZ = dirZ * directionalSpeed + tangentZ * tangentJitter;
             }
 
-            this.velocityData[i4] = velocityX;
-            this.velocityData[i4 + 1] = velocityY;
-            this.velocityData[i4 + 2] = velocityZ;
-            this.velocityData[i4 + 3] = 0.0;
+            this.spawnVelData[i4] = velocityX;
+            this.spawnVelData[i4 + 1] = velocityY;
+            this.spawnVelData[i4 + 2] = velocityZ;
+            this.spawnVelData[i4 + 3] = 0.0;
 
-            this.lifeData[i4] = 1.0;
-            this.lifeData[i4 + 1] = 0.0;
-            this.lifeData[i4 + 2] = 0.0;
-            this.lifeData[i4 + 3] = 0.0;
-
-            this.miscData[i4] = sizeMin + this.random() * (sizeMax - sizeMin); // size multiplier
-            this.miscData[i4 + 1] = 1.0; // active
-            this.miscData[i4 + 2] = rand; // random seed
-            this.miscData[i4 + 3] = lifeDecayMin + this.random() * (lifeDecayMax - lifeDecayMin); // life decay
+            this.spawnMiscData[i4] = sizeMin + this.random() * (sizeMax - sizeMin); // size multiplier
+            this.spawnMiscData[i4 + 1] = 1.0; // active signal
+            this.spawnMiscData[i4 + 2] = rand; // random seed
+            this.spawnMiscData[i4 + 3] = lifeDecayMin + this.random() * (lifeDecayMax - lifeDecayMin); // life decay
 
             this.spawnCursor = (this.spawnCursor + 1) % this.count;
         }
@@ -397,20 +456,25 @@ export class IceTempleShardBurstCompute {
 
     commitSpawns() {
         if (!this.pendingUpload) return false;
-        if (!this.positionBuffer || !this.velocityBuffer || !this.lifeBuffer || !this.miscBuffer) {
+        if (!this.spawnPosBuffer || !this.spawnVelBuffer || !this.spawnMiscBuffer) {
             this.pendingUpload = false;
             return false;
         }
-        this.positionBuffer.needsUpdate = true;
-        this.velocityBuffer.needsUpdate = true;
-        this.lifeBuffer.needsUpdate = true;
-        this.miscBuffer.needsUpdate = true;
+
+        // Critical Fix: ONLY upload the spawn parameters via CPU. DO NOT overwrite state buffers!
+        this.spawnPosBuffer.needsUpdate = true;
+        this.spawnVelBuffer.needsUpdate = true;
+        this.spawnMiscBuffer.needsUpdate = true;
+
         this.pendingUpload = false;
         return true;
     }
 
-    update(delta) {
+    update(delta, time) {
         this.uDelta.value = delta;
+        if (time !== undefined) {
+            this.uTime.value = time;
+        }
     }
 
     getPositionBuffer() {
@@ -427,10 +491,17 @@ export class IceTempleShardBurstCompute {
 
     dispose() {
         this.computeNode = null;
+        this.spawnPosBuffer = null;
+        this.spawnVelBuffer = null;
+        this.spawnMiscBuffer = null;
         this.positionBuffer = null;
         this.velocityBuffer = null;
         this.lifeBuffer = null;
         this.miscBuffer = null;
+
+        this.spawnPosData = null;
+        this.spawnVelData = null;
+        this.spawnMiscData = null;
         this.positionData = null;
         this.velocityData = null;
         this.lifeData = null;

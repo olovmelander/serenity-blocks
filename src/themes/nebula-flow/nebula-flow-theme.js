@@ -32,6 +32,7 @@ export default class NebulaFlowTheme extends BaseTheme {
 
         // Autonomous animation timers
         this.colorCycleTimeout = null;
+        this.effectTimeouts = new Set();
 
         // Autonomous Emitters (will be scaled by quality in initEmitters)
         this.emitters = [];
@@ -56,6 +57,20 @@ export default class NebulaFlowTheme extends BaseTheme {
         this.RANDOM_SPLAT_INTERVAL = 8; // Random splat every 8 seconds (slower)
 
         console.log('[NebulaFlow] Constructor called');
+    }
+
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
     }
 
     async init() {
@@ -324,7 +339,7 @@ export default class NebulaFlowTheme extends BaseTheme {
         const q = this.currentQualityMultiplier || 0.65;
         const splatCount = Math.max(1, Math.round(6 * q)); // Increased from 4 for more puffs
         for (let i = 0; i < splatCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 this.addFlowingSplat(1.3 * q); // EXTREME force for massive puffs
             }, i * 100);
         }
@@ -342,7 +357,7 @@ export default class NebulaFlowTheme extends BaseTheme {
         const intensity = (1.6 + (lineCount * 0.12)) * q; // EXTREME intensity boost
 
         for (let i = 0; i < splatCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 // Create horizontal wave pattern
                 const x = (i / splatCount) + Math.random() * 0.2;
                 const y = 0.3 + Math.random() * 0.4;
@@ -370,7 +385,7 @@ export default class NebulaFlowTheme extends BaseTheme {
         const intensity = (2.0 + (lineCount * 0.2)) * q; // EXTREME intensity for legendary Tetris
 
         for (let i = 0; i < waveCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 // Create a flowing wave from left to right
                 const progress = i / waveCount;
                 const x = progress;
@@ -432,7 +447,7 @@ export default class NebulaFlowTheme extends BaseTheme {
 
         // Add central burst for combos 2+ (skip on lowest quality)
         if (comboCount >= 2 && q >= 0.5) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 this.createCentralBurst(comboCount, intensity);
             }, spiralCount * 40);
         }
@@ -447,7 +462,7 @@ export default class NebulaFlowTheme extends BaseTheme {
         const centerY = 0.5;
 
         for (let i = 0; i < spiralCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const angle = (i / spiralCount) * Math.PI * 2;
                 const radius = 0.25 + (comboCount * 0.02);
 
@@ -473,7 +488,7 @@ export default class NebulaFlowTheme extends BaseTheme {
         const centerY = 0.5;
 
         for (let i = 0; i < spiralCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const angle = (i / spiralCount) * Math.PI * 2;
                 const radius = 0.3 + (comboCount * 0.015);
 
@@ -512,7 +527,7 @@ export default class NebulaFlowTheme extends BaseTheme {
         const maxRings = q >= 0.85 ? 3 : 2;
 
         for (let i = 0; i < spiralCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const angle = (i / spiralCount) * Math.PI * 2;
 
                 // Spirals at different radii
@@ -542,7 +557,7 @@ export default class NebulaFlowTheme extends BaseTheme {
         const centerY = 0.5;
 
         for (let i = 0; i < burstCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const angle = (i / burstCount) * Math.PI * 2;
                 const force = intensity * 1600 * q; // Massively increased for epic burst
 
@@ -591,10 +606,10 @@ export default class NebulaFlowTheme extends BaseTheme {
         const q = this.currentQualityMultiplier || 0.65;
 
         // Add splats across the screen for initial presence (scaled by quality)
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             const numSplats = Math.max(2, Math.round(6 * q));
             for (let i = 0; i < numSplats; i++) {
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     // Distribute across screen
                     const x = 0.15 + Math.random() * 0.7;
                     const y = 0.15 + Math.random() * 0.7;
@@ -716,7 +731,7 @@ export default class NebulaFlowTheme extends BaseTheme {
         const puffCount = Math.max(2, Math.round(count * q));
 
         for (let i = 0; i < puffCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 // Random position across screen
                 const x = 0.2 + Math.random() * 0.6;
                 const y = 0.2 + Math.random() * 0.6;
@@ -818,6 +833,7 @@ export default class NebulaFlowTheme extends BaseTheme {
             clearTimeout(this.colorCycleTimeout);
             this.colorCycleTimeout = null;
         }
+        this.clearEffectTimeouts();
 
         // Unsubscribe from events
         this.eventUnsubscribers.forEach((unsub) => unsub());
@@ -957,10 +973,10 @@ export default class NebulaFlowTheme extends BaseTheme {
 
             // Schedule next cycle (20-35 seconds for faster color changes)
             const delay = 20000 + Math.random() * 15000;
-            this.colorCycleTimeout = setTimeout(cycleColors, delay);
+            this.colorCycleTimeout = window.setTimeout(cycleColors, delay);
         };
 
         // Start first cycle after 15 seconds
-        this.colorCycleTimeout = setTimeout(cycleColors, 15000);
+        this.colorCycleTimeout = window.setTimeout(cycleColors, 15000);
     }
 }

@@ -22,6 +22,7 @@ export default class AetherTidesTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.animationFrameId = null;
         this.lastTime = 0;
+        this.effectTimeouts = new Set();
 
         // State
         this.blackHoleActive = false;
@@ -29,6 +30,20 @@ export default class AetherTidesTheme extends BaseTheme {
         this.blackHoleStrength = 0;
 
         console.log('[AetherTides] Constructor called');
+    }
+
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
     }
 
     async init() {
@@ -165,7 +180,7 @@ export default class AetherTidesTheme extends BaseTheme {
         this.simulator.splat(0.5, 0.5, 0, 0, { r: 1.0, g: 0.9, b: 0.5 }); // Bright core
 
         for (let i = 0; i < count; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const angle = Math.random() * Math.PI * 2;
                 const dist = Math.random() * 0.2;
                 const x = 0.5 + Math.cos(angle) * dist;
@@ -219,7 +234,7 @@ export default class AetherTidesTheme extends BaseTheme {
                     const x = baseX + (col - 1.5) * blockSize;
                     const y = baseY + (row - 1.5) * blockSize;
 
-                    setTimeout(() => {
+                    this.scheduleEffectTimeout(() => {
                         this.createIrregularPuff(x, y, color);
                     }, (row * piece.shape[row].length + col) * 40);
                 }
@@ -255,7 +270,7 @@ export default class AetherTidesTheme extends BaseTheme {
             const dy = Math.sin(angle) * force;
 
             // Add slight timing variation
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 this.simulator.splat(x + offsetX, y + offsetY, dx, dy, color);
             }, i * 15);
         }
@@ -314,6 +329,7 @@ export default class AetherTidesTheme extends BaseTheme {
 
     stop() {
         if (!this.isActive) return;
+        this.clearEffectTimeouts();
         this.eventUnsubscribers.forEach((u) => u());
         this.eventUnsubscribers = [];
         super.stop();

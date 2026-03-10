@@ -223,6 +223,7 @@ class SerenityBlocks {
         this.frameRateController = new FrameRateController(); // Phase 2: FPS & VSync control
         this.cleanupHandlers = [];
         this.currentEffectQuality = normalizeQuality(DEFAULT_SETTINGS.effectQuality);
+        this._handledPreloadError = false;
 
         // Game loop (deprecated - will be managed by individual modes)
         this.lastTime = 0;
@@ -306,6 +307,8 @@ class SerenityBlocks {
 
             // 15. Setup background tab throttling for performance
             this.setupVisibilityThrottling();
+            this.setupBuildResilienceHandlers();
+            this.setupObservabilityHooks();
 
             this.isInitialized = true;
             console.log('✅ Serenity Blocks initialized successfully!');
@@ -316,6 +319,63 @@ class SerenityBlocks {
             console.error('Failed to initialize application:', error);
             throw error;
         }
+    }
+
+    setupBuildResilienceHandlers() {
+        if (typeof window === 'undefined') return;
+
+        const handlePreloadError = (event) => {
+            console.error('[BuildResilience] Dynamic preload failed:', event);
+            event.preventDefault?.();
+
+            if (this._handledPreloadError) return;
+            this._handledPreloadError = true;
+            window.location.reload();
+        };
+
+        window.addEventListener('vite:preloadError', handlePreloadError);
+        this.cleanupHandlers.push(() => {
+            window.removeEventListener('vite:preloadError', handlePreloadError);
+        });
+    }
+
+    setupObservabilityHooks() {
+        if (typeof window === 'undefined') return;
+
+        const runtimeUnsubscribe = window.electronAPI?.onRuntimeEvent?.((payload) => {
+            performanceMonitor.recordEvent(`desktop_${payload.type}`, payload);
+        });
+
+        if (runtimeUnsubscribe) {
+            this.cleanupHandlers.push(runtimeUnsubscribe);
+        }
+
+        window.runtimeValidation = {
+            runThemeSwitchSoak: async ({
+                themes = null,
+                iterations = 20,
+                delayMs = 250,
+            } = {}) => {
+                const cycleThemes = themes || this.themeManager?.getAvailableThemes?.() || [];
+                const startedAt = performance.now();
+
+                for (let i = 0; i < iterations; i += 1) {
+                    const themeName = cycleThemes[i % cycleThemes.length];
+                    if (!themeName) break;
+                    await this.themeManager.switchTheme(themeName);
+                    await new Promise((resolve) => setTimeout(resolve, delayMs));
+                }
+
+                const summary = {
+                    iterations,
+                    elapsedMs: performance.now() - startedAt,
+                    releaseGates: performanceMonitor.getReleaseGateSnapshot(),
+                };
+                console.log('[RuntimeValidation] Theme switch soak complete', summary);
+                return summary;
+            },
+            getReleaseGates: () => performanceMonitor.getReleaseGateSnapshot(),
+        };
     }
 
     /**
@@ -346,8 +406,7 @@ class SerenityBlocks {
 
             if (this.displayManager?.isElectron) {
                 try {
-                    const { ipcRenderer } = window.require('electron');
-                    await ipcRenderer.invoke('set-vsync', !!vsyncEnabled);
+                    await window.electronDisplay?.setVSync?.(!!vsyncEnabled);
                 } catch (ipcError) {
                     console.warn('[FrameRate] Failed to sync VSync with Electron main process:', ipcError);
                 }
@@ -438,9 +497,9 @@ class SerenityBlocks {
     pauseAllRendering() {
         console.log('[Visibility] Pausing all rendering');
 
-        // Pause theme animations
-        if (this.themeManager?.currentTheme?.pause) {
-            this.themeManager.currentTheme.pause();
+        // Pause theme animations (stops Three.js RAF loops to save GPU)
+        if (this.themeManager?.activeTheme?.pause) {
+            this.themeManager.activeTheme.pause();
         }
 
         // Pause any active game loops
@@ -459,6 +518,12 @@ class SerenityBlocks {
     reduceRenderingFrameRate() {
         console.log('[Visibility] Reducing rendering to 10 FPS');
 
+        // Pause theme RAF loops (Three.js scenes) — they check shouldRenderFrame() anyway,
+        // but stopping their RAF chains fully prevents GPU work in background tabs
+        if (this.themeManager?.activeTheme?.pause) {
+            this.themeManager.activeTheme.pause();
+        }
+
         // Set a flag that animation loops can check
         window.isRenderingReduced = true;
         window.reducedFrameInterval = this.reducedFrameInterval;
@@ -475,9 +540,17 @@ class SerenityBlocks {
         window.isRenderingPaused = false;
         window.isRenderingReduced = false;
 
-        // Resume theme animations
-        if (this.themeManager?.currentTheme?.resume) {
-            this.themeManager.currentTheme.resume();
+        // Resume theme animations (restarts Three.js RAF loops)
+        if (this.themeManager?.activeTheme) {
+            const theme = this.themeManager.activeTheme;
+            if (typeof theme.resume === 'function') {
+                theme.resume();
+            }
+            // Restart the animation loop if the theme has one
+            if (typeof theme.animate === 'function' && theme._wasPaused) {
+                theme._wasPaused = false;
+                theme.animate();
+            }
         }
 
         // Resume any paused game loops
@@ -1248,6 +1321,16 @@ class SerenityBlocks {
 
         const resumeAudio = () => {
             this.soundManager.resumeAudioContext();
+            if (this.soundManager?.ensureTrackPlaybackSynced) {
+                this.soundManager.ensureTrackPlaybackSynced({
+                    reason: 'user-gesture-audio-unlock',
+                    force: true,
+                }).catch((error) => {
+                    console.warn('[Audio] Failed to resync background music after user gesture:', error);
+                });
+            } else if (this.soundManager?.startBackgroundMusic) {
+                this.soundManager.startBackgroundMusic();
+            }
             document.removeEventListener('click', resumeAudio);
             document.removeEventListener('keydown', resumeAudio);
         };
@@ -2359,6 +2442,51 @@ class SerenityBlocks {
             );
         };
 
+        this.gameplayInputQueue = [];
+
+        const enqueueGameplayCommand = (command) => {
+            if (typeof command === 'function') {
+                this.gameplayInputQueue.push(command);
+            }
+        };
+
+        const runGameplayCommand = (command) => {
+            if (typeof command !== 'function') return;
+            try {
+                command();
+            } catch (error) {
+                console.error('[Main] Gameplay command failed:', error);
+            }
+        };
+
+        const enqueueSinglePlayerCommand = (command) => {
+            const execute = () => {
+                if (this.gameState?.isProcessingPhysics) {
+                    if (!this.gameState.inputQueue && (command.type === 'move' || command.type === 'rotate')) {
+                        this.gameState.inputQueue = {
+                            type: command.type,
+                            dir: command.value,
+                        };
+                    }
+                    return;
+                }
+
+                if (command.type === 'move') {
+                    window.move?.(command.value);
+                } else if (command.type === 'rotate') {
+                    window.rotate?.(command.value);
+                } else if (command.type === 'softDrop') {
+                    window.softDrop?.();
+                } else if (command.type === 'hardDrop') {
+                    window.hardDrop?.();
+                }
+            };
+
+            // Execute immediately so input works across mode-specific loops.
+            // Only the physics-busy branch above defers by writing to gameState.inputQueue.
+            runGameplayCommand(execute);
+        };
+
         // Setup keyboard and touch controls with the exposed gameActions
         // Use arrow functions to ensure we always call the CURRENT window functions (allows modes to hook them)
         const gameActions = {
@@ -2366,6 +2494,10 @@ class SerenityBlocks {
             rotate: (...args) => window.rotate?.(...args),
             softDrop: (...args) => window.softDrop?.(...args),
             hardDrop: (...args) => window.hardDrop?.(...args),
+            requestMove: (dir) => enqueueSinglePlayerCommand({ type: 'move', value: dir }),
+            requestRotate: (dir) => enqueueSinglePlayerCommand({ type: 'rotate', value: dir }),
+            requestSoftDrop: () => enqueueSinglePlayerCommand({ type: 'softDrop' }),
+            requestHardDrop: () => enqueueSinglePlayerCommand({ type: 'hardDrop' }),
             togglePause: (...args) => window.togglePause?.(...args),
             openSettingsMenu: (...args) => window.openSettingsMenu?.(...args),
             startGame: (...args) => window.startGame?.(...args),
@@ -2379,16 +2511,41 @@ class SerenityBlocks {
             rotateP2: (...args) => window.rotateP2?.(...args),
             softDropP2: (...args) => window.softDropP2?.(...args),
             hardDropP2: (...args) => window.hardDropP2?.(...args),
+            requestMoveP2: (dir) => runGameplayCommand(() => window.moveP2?.(dir)),
+            requestRotateP2: (dir) => runGameplayCommand(() => window.rotateP2?.(dir)),
+            requestSoftDropP2: () => runGameplayCommand(() => window.softDropP2?.()),
+            requestHardDropP2: () => runGameplayCommand(() => window.hardDropP2?.()),
             // Player 3 actions (Gamepad only)
             moveP3: (...args) => window.moveP3?.(...args),
             rotateP3: (...args) => window.rotateP3?.(...args),
             softDropP3: (...args) => window.softDropP3?.(...args),
             hardDropP3: (...args) => window.hardDropP3?.(...args),
+            requestMoveP3: (dir) => runGameplayCommand(() => window.moveP3?.(dir)),
+            requestRotateP3: (dir) => runGameplayCommand(() => window.rotateP3?.(dir)),
+            requestSoftDropP3: () => runGameplayCommand(() => window.softDropP3?.()),
+            requestHardDropP3: () => runGameplayCommand(() => window.hardDropP3?.()),
             // Player 4 actions (Gamepad only)
             moveP4: (...args) => window.moveP4?.(...args),
             rotateP4: (...args) => window.rotateP4?.(...args),
             softDropP4: (...args) => window.softDropP4?.(...args),
             hardDropP4: (...args) => window.hardDropP4?.(...args),
+            requestMoveP4: (dir) => runGameplayCommand(() => window.moveP4?.(dir)),
+            requestRotateP4: (dir) => runGameplayCommand(() => window.rotateP4?.(dir)),
+            requestSoftDropP4: () => runGameplayCommand(() => window.softDropP4?.()),
+            requestHardDropP4: () => runGameplayCommand(() => window.hardDropP4?.()),
+        };
+
+        this.flushGameplayInputQueue = () => {
+            if (!this.gameplayInputQueue?.length) return;
+
+            const queue = this.gameplayInputQueue.splice(0, this.gameplayInputQueue.length);
+            queue.forEach((command) => {
+                try {
+                    command();
+                } catch (error) {
+                    console.error('[Main] Gameplay input command failed:', error);
+                }
+            });
         };
 
         setupKeyboardControls(this.inputController, this.settingsManager.get(), gameActions);
@@ -2647,11 +2804,18 @@ class SerenityBlocks {
             return;
         }
 
+        this.gameplayInputQueue = [];
+        this.inputController?.clearTimers?.();
+        this.gamepadController?.clearAllDasTimers?.();
+
         // Hide modals
         this.modalManager.hideAll();
 
         // Resume audio context without emitting a synthetic click sound.
         this.soundManager?.resumeAudioContext?.();
+        this.soundManager?.startBackgroundMusic?.({
+            reason: 'start-game-bootstrap',
+        });
 
         // Check game mode
         const currentMode = this.gameModeUI.getMode();
@@ -2927,6 +3091,9 @@ class SerenityBlocks {
      */
     pauseGameOnly() {
         console.log('[Main] Pausing game only (no settings modal)');
+        this.gameplayInputQueue = [];
+        this.inputController?.clearTimers?.();
+        this.gamepadController?.clearAllDasTimers?.();
 
         // Check if GameModeManager has a running mode
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
@@ -3023,6 +3190,10 @@ class SerenityBlocks {
      * Pause the game
      */
     pauseGame() {
+        this.gameplayInputQueue = [];
+        this.inputController?.clearTimers?.();
+        this.gamepadController?.clearAllDasTimers?.();
+
         // Check if settings modal is already open to avoid double-show
         if (this.modalManager.isVisible('settings')) {
             console.log('[Main] Settings already open, just pausing game');
@@ -3075,6 +3246,10 @@ class SerenityBlocks {
      */
     openSettingsMenu() {
         if (this.gameState.isGameOver) return;
+
+        this.gameplayInputQueue = [];
+        this.inputController?.clearTimers?.();
+        this.gamepadController?.clearAllDasTimers?.();
 
         // Pause the game if not already paused
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
@@ -3137,6 +3312,9 @@ class SerenityBlocks {
         if (this.gameState.isGameOver || !this.gameState.isPaused) return;
 
         this.gameState.isPaused = false;
+        this.gameplayInputQueue = [];
+        this.inputController?.clearTimers?.();
+        this.gamepadController?.clearAllDasTimers?.();
         this.modalManager.hideAll();
         this.lastTime = performance.now();
     }
@@ -3147,6 +3325,12 @@ class SerenityBlocks {
     gameLoop(currentTime) {
         // Update FPS counter
         this.updateFPSCounter(currentTime);
+
+        if (!this.gameState.isPaused && !this.gameState.isGameOver) {
+            this.inputController?.update(currentTime);
+            this.gamepadController?.advanceGameplayInput(currentTime);
+            this.flushGameplayInputQueue?.();
+        }
 
         // Sync game state to Phaser scene
         if (this.boardScene) {
@@ -3191,6 +3375,12 @@ class SerenityBlocks {
         this.updateFPSCounter(currentTime);
 
         if (this.multiplayerState.isGameOver) return;
+
+        if (!this.multiplayerState.isPaused) {
+            this.inputController?.update(currentTime);
+            this.gamepadController?.advanceGameplayInput(currentTime);
+            this.flushGameplayInputQueue?.();
+        }
 
         if (this.multiplayerState.isPaused) {
             this.multiplayerState.animationId = requestAnimationFrame((t) => this.multiplayerGameLoop(t));
