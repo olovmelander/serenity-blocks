@@ -3,6 +3,8 @@
  * Tracks FPS, frame time, input latency, memory usage, and other metrics
  */
 
+import { eventBus, EVENTS } from '../events/event-bus.js';
+
 const FRAME_BUDGET_MS = 16.67; // 60fps target
 const SAMPLE_SIZE = 60; // 1 second worth of samples at 60fps
 const MEMORY_CHECK_INTERVAL = 1000; // Check memory every second
@@ -34,7 +36,12 @@ export class PerformanceMonitor {
             memoryUsed: 0,
             frameDrops: 0,
             totalFrames: 0,
+            contextRestoreCount: 0,
+            themeSwitchCount: 0,
         };
+
+        this._consecutiveDrops = 0;
+        this._hasEmittedDownscale = false;
 
         // Sample buffers
         this.frameTimes = [];
@@ -72,6 +79,11 @@ export class PerformanceMonitor {
         // Display update throttling
         this.lastDisplayUpdate = 0;
         this.displayMetricsCache = null;
+        this.collectionMode = 'disabled';
+        this.runtimeEvents = [];
+        this.themeSwitches = [];
+        this.latestNetworkStats = null;
+        this.eventUnsubscribers = [];
 
         console.log('[PerformanceMonitor] Initialized');
     }
@@ -83,6 +95,7 @@ export class PerformanceMonitor {
         if (this.enabled) return;
 
         this.enabled = true;
+        this.collectionMode = this.showOverlay ? 'collecting_with_overlay' : 'collecting';
 
         // Reset metrics
         this.reset();
@@ -97,6 +110,7 @@ export class PerformanceMonitor {
         // Setup F3 toggle hotkey
         this.setupKeyboardToggle();
         this.startFrameListener();
+        this.bindRuntimeEvents();
 
         console.log('[PerformanceMonitor] Enabled');
     }
@@ -108,6 +122,7 @@ export class PerformanceMonitor {
         if (!this.enabled) return;
 
         this.enabled = false;
+        this.collectionMode = 'disabled';
 
         // Stop memory monitoring
         if (this.memoryInterval) {
@@ -119,6 +134,7 @@ export class PerformanceMonitor {
         this.removeKeyboardToggle();
         this.stopFrameListener();
         this.stopOverlayUpdates();
+        this.unbindRuntimeEvents();
 
         console.log('[PerformanceMonitor] Disabled');
     }
@@ -144,12 +160,20 @@ export class PerformanceMonitor {
             memoryUsed: 0,
             frameDrops: 0,
             totalFrames: 0,
+            contextRestoreCount: 0,
+            themeSwitchCount: 0,
         };
+
+        this._consecutiveDrops = 0;
+        this._hasEmittedDownscale = false;
 
         this.frameTimes = [];
         this.fpsHistory = [];
         this.inputLatencyHistory = [];
         this.memoryHistory = [];
+        this.runtimeEvents = [];
+        this.themeSwitches = [];
+        this.latestNetworkStats = null;
         this.sectionTimers.clear();
         this.sectionMetrics.clear();
 
@@ -247,6 +271,17 @@ export class PerformanceMonitor {
         // Track frame drops (frames taking longer than budget)
         if (frameTime > FRAME_BUDGET_MS * 1.5) {
             this.metrics.frameDrops++;
+            this._consecutiveDrops++;
+
+            // Adaptive downscaling for heavy themes dropping below ~40 FPS for a sustained second
+            if (this._consecutiveDrops > 30 && !this._hasEmittedDownscale) {
+                console.warn(`[PerformanceMonitor] Sustained frame drops detected (${this._consecutiveDrops} consecutive). Requesting global resolution downscale.`);
+                this._hasEmittedDownscale = true;
+                eventBus.emit(EVENTS.PERFORMANCE_DOWNSCALE);
+            }
+        } else if (frameTime <= FRAME_BUDGET_MS * 1.2) {
+            // Recover drops if we stabilize
+            this._consecutiveDrops = Math.max(0, this._consecutiveDrops - 1);
         }
 
         // Update min/max FPS
@@ -315,6 +350,90 @@ export class PerformanceMonitor {
 
         this.metrics.inputLatency = this.calculateAverage(this.inputLatencyHistory);
         this.inputTimestamp = 0;
+    }
+
+    bindRuntimeEvents() {
+        if (this.eventUnsubscribers.length > 0) return;
+
+        this.eventUnsubscribers.push(
+            eventBus.on(EVENTS.CONTEXT_RESTORED, (payload) => {
+                this.metrics.contextRestoreCount += 1;
+                this.recordEvent('context_restored', payload);
+            }),
+            eventBus.on(EVENTS.THEME_CHANGED, ({ themeName }) => {
+                this.recordEvent('theme_changed', { themeName });
+            }),
+        );
+    }
+
+    unbindRuntimeEvents() {
+        this.eventUnsubscribers.forEach((unsubscribe) => unsubscribe?.());
+        this.eventUnsubscribers = [];
+    }
+
+    recordEvent(type, payload = {}) {
+        const entry = {
+            type,
+            timestamp: Date.now(),
+            payload,
+        };
+
+        this.runtimeEvents.push(entry);
+        if (this.runtimeEvents.length > 200) {
+            this.runtimeEvents.shift();
+        }
+    }
+
+    recordThemeSwitch({ fromTheme = null, toTheme = null, durationMs = 0 } = {}) {
+        this.metrics.themeSwitchCount += 1;
+        this.themeSwitches.push({
+            fromTheme,
+            toTheme,
+            durationMs,
+            timestamp: Date.now(),
+        });
+        if (this.themeSwitches.length > 100) {
+            this.themeSwitches.shift();
+        }
+        this.recordEvent('theme_switch', { fromTheme, toTheme, durationMs });
+    }
+
+    setNetworkStats(stats) {
+        this.latestNetworkStats = stats;
+    }
+
+    calculatePercentile(values, percentile) {
+        if (!values.length) return 0;
+        const sorted = [...values].sort((a, b) => a - b);
+        const index = Math.min(sorted.length - 1, Math.max(0, Math.floor((percentile / 100) * sorted.length)));
+        return sorted[index];
+    }
+
+    getReleaseGateSnapshot() {
+        return {
+            frameTime: {
+                p50: this.calculatePercentile(this.frameTimes, 50),
+                p95: this.calculatePercentile(this.frameTimes, 95),
+                p99: this.calculatePercentile(this.frameTimes, 99),
+            },
+            fps: {
+                p50: this.calculatePercentile(this.fpsHistory, 50),
+                p05: this.calculatePercentile(this.fpsHistory, 5),
+            },
+            memory: {
+                currentMb: this.metrics.memoryUsed,
+                peakMb: this.memoryHistory.length ? Math.max(...this.memoryHistory) : this.metrics.memoryUsed,
+            },
+            themeSwitches: {
+                count: this.themeSwitches.length,
+                maxDurationMs: this.themeSwitches.length ? Math.max(...this.themeSwitches.map((entry) => entry.durationMs || 0)) : 0,
+            },
+            runtime: {
+                contextRestoreCount: this.metrics.contextRestoreCount,
+                recentEvents: this.runtimeEvents.slice(-10),
+            },
+            network: this.latestNetworkStats,
+        };
     }
 
     /**
@@ -538,6 +657,7 @@ export class PerformanceMonitor {
      */
     showPerformanceOverlay() {
         this.showOverlay = true;
+        this.collectionMode = this.enabled ? 'collecting_with_overlay' : 'disabled';
         this.createOverlay();
         if (this.overlayElement) {
             this.overlayElement.style.display = 'block';
@@ -551,6 +671,7 @@ export class PerformanceMonitor {
      */
     hidePerformanceOverlay() {
         this.showOverlay = false;
+        this.collectionMode = this.enabled ? 'collecting' : 'disabled';
         this.stopOverlayUpdates();
         if (this.overlayElement) {
             this.overlayElement.style.display = 'none';
@@ -705,7 +826,11 @@ export class PerformanceMonitor {
             memoryUsed,
             memoryLimit,
             frameDrops: Number.isFinite(this.metrics.frameDrops) ? this.metrics.frameDrops : 0,
+            drawCalls: typeof window !== 'undefined' ? window.activeDrawCalls || 0 : 0,
             hotSections,
+            collectionMode: this.collectionMode,
+            themeSwitchCount: this.metrics.themeSwitchCount,
+            contextRestoreCount: this.metrics.contextRestoreCount,
         };
 
         this.renderOverlay(this.displayMetricsCache);
@@ -730,11 +855,14 @@ export class PerformanceMonitor {
             <div style="color: #888; font-size: 11px; margin-bottom: 8px;">
                 Quality: <span style="color: #0ff; font-weight: bold;">${this.qualityMode}</span>
             </div>
+            <div style="color: #888; font-size: 11px; margin-bottom: 8px;">
+                Mode: <span style="color: #0ff; font-weight: bold;">${displayMetrics.collectionMode}</span>
+            </div>
             ${typeof window !== 'undefined' && window.activeGPURenderer ? `
             <div style="color: #888; font-size: 11px; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px;" title="${window.activeGPURenderer}">
                 GPU: <span style="color: #0f0;">${window.activeGPURenderer.replace(/ANGLE \((.+)\)/, '$1').split(',')[1]?.trim()
                 || window.activeGPURenderer.replace(/ANGLE \((.+)\)/, '$1').split(',')[0]
-}</span>
+                }</span>
             </div>` : ''}
 
             <div style="color: ${displayMetrics.fpsColor}; font-weight: bold; font-size: 24px; margin: 8px 0;">
@@ -764,7 +892,10 @@ export class PerformanceMonitor {
             ` : ''}
             <div style="margin-top: 10px; color: #888; font-size: 11px; padding-top: 8px; border-top: 1px solid rgba(0,255,0,0.1);">
                 Drops: <span style="color: ${displayMetrics.frameDrops > 0 ? '#f00' : '#0f0'}">${displayMetrics.frameDrops}</span>
+                · Draws: <span style="color: #0ff">${displayMetrics.drawCalls}</span>
                 · Uptime: ${displayMetrics.uptime}s
+                <br />Themes: <span style="color: #0ff">${displayMetrics.themeSwitchCount}</span>
+                · Restores: <span style="color: #0ff">${displayMetrics.contextRestoreCount}</span>
             </div>
             <div style="margin-top: 8px; color: #888; font-size: 10px;">
                 Frame Time (60 frames)
@@ -773,13 +904,13 @@ export class PerformanceMonitor {
                 <div style="margin-top: 10px; color: #888; font-size: 10px; padding-top: 8px; border-top: 1px solid rgba(0,255,0,0.1);">
                     Hot Sections:
                     ${hotSections.map((section) => {
-        const color = section.avg >= 10 ? '#f00' : section.avg >= 6 ? '#ff0' : '#0f0';
-        return `
+                    const color = section.avg >= 10 ? '#f00' : section.avg >= 6 ? '#ff0' : '#0f0';
+                    return `
                             <div style="color: ${color}; margin-top: 2px;">
                                 ${section.name}: ${section.avg.toFixed(1)}ms avg (${section.last.toFixed(1)}ms last)
                             </div>
                         `;
-    }).join('')}
+                }).join('')}
                 </div>
             ` : ''}
         `;
@@ -806,6 +937,10 @@ export class PerformanceMonitor {
             fpsHistory: [...this.fpsHistory],
             inputLatencyHistory: [...this.inputLatencyHistory],
             memoryHistory: [...this.memoryHistory],
+            releaseGates: this.getReleaseGateSnapshot(),
+            runtimeEvents: [...this.runtimeEvents],
+            themeSwitches: [...this.themeSwitches],
+            network: this.latestNetworkStats,
         };
 
         const json = JSON.stringify(data, null, 2);
@@ -860,6 +995,8 @@ if (typeof window !== 'undefined') {
             performanceMonitor.exportMetrics();
         },
         getMetrics: () => performanceMonitor.getMetrics(),
+        gates: () => performanceMonitor.getReleaseGateSnapshot(),
+        event: (type, payload) => performanceMonitor.recordEvent(type, payload),
     };
 
     console.log('💡 Performance monitor available:');

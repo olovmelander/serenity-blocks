@@ -364,6 +364,7 @@ export default class CrystalCaveTheme extends BaseTheme {
     constructor() {
         super('crystal-cave');
         this.eventUnsubscribers = [];
+        this.boundResizeHandler = this.onWindowResize.bind(this);
 
         // Three.js components
         this.scene = null;
@@ -471,7 +472,7 @@ export default class CrystalCaveTheme extends BaseTheme {
 
         // Event listeners
         this.setupEventListeners();
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         // Start animation
         this.animate();
@@ -1524,7 +1525,7 @@ export default class CrystalCaveTheme extends BaseTheme {
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
-        window.removeEventListener('resize', this.onWindowResize.bind(this));
+        window.removeEventListener('resize', this.boundResizeHandler);
 
         // Cleanup Three.js
         if (this.renderer) {

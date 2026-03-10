@@ -81,6 +81,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
     constructor() {
         super('shifting-sands');
         this.eventUnsubscribers = [];
+        this.boundResizeHandler = this.onWindowResize.bind(this);
 
         // Three.js components
         this.scene = null;
@@ -458,7 +459,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.setupPostProcessing();
 
         this.setupEventListeners();
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         this.clock.start();
         this.animate();
@@ -1356,7 +1357,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
     dispose() {
         // super.dispose(); // BaseTheme does not have dispose
-        window.removeEventListener('resize', this.onWindowResize);
+        window.removeEventListener('resize', this.boundResizeHandler);
         this.teardownQualityListener();
 
         // Stop animation loop (WebGPU uses setAnimationLoop instead of requestAnimationFrame)

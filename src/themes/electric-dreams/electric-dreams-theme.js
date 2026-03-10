@@ -643,7 +643,10 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
         this.eventUnsubscribers.push(pieceLockUnsub, comboUnsub, lineClearUnsub);
 
-        window.addEventListener('resize', () => this.resize(window.innerWidth, window.innerHeight));
+        if (!this.boundResizeHandler) {
+            this.boundResizeHandler = () => this.resize(window.innerWidth, window.innerHeight);
+        }
+        window.addEventListener('resize', this.boundResizeHandler);
     }
 
     startAnimation() {
@@ -892,6 +895,10 @@ export default class ElectricDreamsTheme extends BaseTheme {
             if (typeof unsub === 'function') unsub();
         });
         this.eventUnsubscribers = [];
+
+        if (this.boundResizeHandler) {
+            window.removeEventListener('resize', this.boundResizeHandler);
+        }
     }
 
     cleanup() {

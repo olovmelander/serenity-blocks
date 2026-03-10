@@ -36,7 +36,22 @@ export default class MountainTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.lastComboEffectTime = 0;
         this.activeParticles = [];
+        this.effectTimeouts = new Set();
         this.qualityPreset = QUALITY_PRESETS.High;
+    }
+
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
     }
 
     getTetrominoConfig() {
@@ -279,7 +294,7 @@ export default class MountainTheme extends BaseTheme {
                 range.style.transition = 'filter 0.3s ease-out';
                 range.style.filter = `brightness(${brightness})`;
 
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     range.style.filter = 'brightness(1)';
                 }, 300 + (index * 100));
             }
@@ -296,7 +311,7 @@ export default class MountainTheme extends BaseTheme {
 
             canvas.style.animation = `slide-mountain ${newDuration}s linear infinite`;
 
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 canvas.style.animation = '';
             }, 1000);
         }
@@ -316,7 +331,7 @@ export default class MountainTheme extends BaseTheme {
                 star.style.transition = 'opacity 0.2s ease-out';
                 star.style.opacity = '1';
 
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     star.style.opacity = '';
                 }, 200 + Math.random() * 300);
             }
@@ -336,11 +351,11 @@ export default class MountainTheme extends BaseTheme {
         theme.style.transition = `transform ${duration}ms ease-out`;
         theme.style.transform = `translate(${shakeAmount}px, ${shakeAmount * 0.5}px)`;
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             theme.style.transform = `translate(-${shakeAmount * 0.5}px, 0)`;
         }, duration / 3);
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             theme.style.transform = 'translate(0, 0)';
         }, duration);
     }
@@ -356,7 +371,7 @@ export default class MountainTheme extends BaseTheme {
         sky.style.transition = 'filter 0.4s ease-out';
         sky.style.filter = `brightness(${brightness}) saturate(${saturate})`;
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             sky.style.filter = '';
         }, 400);
     }
@@ -369,7 +384,7 @@ export default class MountainTheme extends BaseTheme {
         const count = Math.min(particleCount, this.qualityPreset.maxParticles);
 
         for (let i = 0; i < count; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 this.createAvalancheParticle();
             }, i * 50);
         }
@@ -428,7 +443,7 @@ export default class MountainTheme extends BaseTheme {
         cloudContainer.style.transition = 'filter 0.3s ease-out';
         cloudContainer.style.filter = 'brightness(1.5)';
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             cloudContainer.style.filter = '';
         }, 300);
     }
@@ -441,7 +456,7 @@ export default class MountainTheme extends BaseTheme {
         starsContainer.style.transition = 'filter 0.3s ease-out';
         starsContainer.style.filter = 'brightness(2) drop-shadow(0 0 2px white)';
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             starsContainer.style.filter = '';
         }, 300);
     }
@@ -522,13 +537,14 @@ export default class MountainTheme extends BaseTheme {
         const originalOpacity = cloudContainer.style.opacity || '1';
         cloudContainer.style.opacity = '0.7';
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             cloudContainer.style.opacity = originalOpacity;
         }, 200);
     }
 
     stop() {
         // Clean up event listeners
+        this.clearEffectTimeouts();
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 

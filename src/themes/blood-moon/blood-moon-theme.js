@@ -185,10 +185,26 @@ export default class BloodMoonTheme extends BaseTheme {
 
         // State
         this.eventUnsubscribers = [];
+        this.boundResizeHandler = this.onWindowResize.bind(this);
+        this.effectTimeouts = new Set();
         this.qualityPreset = QUALITY_PRESETS.High;
         this.pendingComboCount = 0;
 
         console.log('[BloodMoon] Theme constructed');
+    }
+
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
     }
 
     getTetrominoConfig() {
@@ -273,7 +289,7 @@ export default class BloodMoonTheme extends BaseTheme {
         this.scene.add(ambientLight);
 
         // Resize handler
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         console.log('[BloodMoon] Renderer initialized');
     }
@@ -1032,14 +1048,14 @@ export default class BloodMoonTheme extends BaseTheme {
         // Create blood waves
         const waveCount = Math.min(lineCount + Math.floor(comboCount / 2), 4);
         for (let i = 0; i < waveCount; i++) {
-            setTimeout(() => this.createBloodWave(comboCount), i * 100);
+            this.scheduleEffectTimeout(() => this.createBloodWave(comboCount), i * 100);
         }
 
         // Create soul orbs for combos
         if (comboCount >= 2) {
             const orbCount = Math.min(comboCount * 2, 10);
             for (let i = 0; i < orbCount; i++) {
-                setTimeout(() => this.createSoulOrb(), i * 50);
+                this.scheduleEffectTimeout(() => this.createSoulOrb(), i * 50);
             }
         }
     }
@@ -1065,7 +1081,8 @@ export default class BloodMoonTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     stop() {
-        window.removeEventListener('resize', this.onWindowResize.bind(this));
+        this.clearEffectTimeouts();
+        window.removeEventListener('resize', this.boundResizeHandler);
 
         // Unsubscribe events
         this.eventUnsubscribers.forEach((unsub) => unsub());

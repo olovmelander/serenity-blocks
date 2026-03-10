@@ -22,6 +22,7 @@ export default class ChromaticImpastoTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.animationFrameId = null;
         this.lastTime = 0;
+        this.effectTimeouts = new Set();
 
         // State for expressionist effects
         this.paintSwirlActive = false;
@@ -29,6 +30,20 @@ export default class ChromaticImpastoTheme extends BaseTheme {
         this.paintSwirlIntensity = 0;
 
         console.log('[ChromaticImpasto] Constructor called');
+    }
+
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
     }
 
     async init() {
@@ -204,13 +219,13 @@ export default class ChromaticImpastoTheme extends BaseTheme {
 
         // Thick center splat
         this.simulator.splat(0.5, 0.5, 0, 0, centerColor);
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             this.simulator.splat(0.5, 0.5, 0, 0, contrastColor);
         }, 50);
 
         // Explosive radial bursts
         for (let i = 0; i < count; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
                 const dist = 0.1 + Math.random() * 0.3;
                 const x = 0.5 + Math.cos(angle) * dist;
@@ -225,7 +240,7 @@ export default class ChromaticImpastoTheme extends BaseTheme {
 
                 // Add secondary splats for thickness
                 if (Math.random() < 0.3) {
-                    setTimeout(() => {
+                    this.scheduleEffectTimeout(() => {
                         this.simulator.splat(x, y, dx * 0.5, dy * 0.5, color);
                     }, 30);
                 }
@@ -246,14 +261,14 @@ export default class ChromaticImpastoTheme extends BaseTheme {
         const secondaryColor = this.getContrastingColor(primaryColor);
 
         this.simulator.splat(0.5, 0.5, 0, 0, primaryColor);
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             this.simulator.splat(0.5, 0.5, 0, 0, secondaryColor);
         }, 100);
 
         // Add swirling paint strokes
         const numStrokes = Math.min(comboCount * 2, 10);
         for (let i = 0; i < numStrokes; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const angle = (i / numStrokes) * Math.PI * 2;
                 const x = 0.5 + Math.cos(angle) * 0.2;
                 const y = 0.5 + Math.sin(angle) * 0.2;
@@ -289,7 +304,7 @@ export default class ChromaticImpastoTheme extends BaseTheme {
                     const x = baseX + (col - 1.5) * blockSize;
                     const y = baseY + (row - 1.5) * blockSize;
 
-                    setTimeout(() => {
+                    this.scheduleEffectTimeout(() => {
                         // Use primary color for most blocks, accent for edges
                         const isEdge = row === 0 || col === 0
                                      || row === piece.shape.length - 1
@@ -331,12 +346,12 @@ export default class ChromaticImpastoTheme extends BaseTheme {
             // Use accent color occasionally for texture
             const strokeColor = (i === 0 && Math.random() < 0.3) ? accentColor : color;
 
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 this.simulator.splat(x + offsetX, y + offsetY, dx, dy, strokeColor);
 
                 // Add highlight on top layer
                 if (i === numLayers - 1 && Math.random() < 0.4) {
-                    setTimeout(() => {
+                    this.scheduleEffectTimeout(() => {
                         const highlight = { r: 1.0, g: 0.98, b: 0.85 };
                         this.simulator.splat(x, y, dx * 0.3, dy * 0.3, highlight);
                     }, 50);
@@ -348,7 +363,7 @@ export default class ChromaticImpastoTheme extends BaseTheme {
     addInitialPaintStrokes() {
         // Add initial bold, dramatic strokes across the canvas
         for (let i = 0; i < 16; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const x = 0.2 + Math.random() * 0.6;
                 const y = 0.2 + Math.random() * 0.6;
                 const color = this.getLindstromColor();
@@ -363,7 +378,7 @@ export default class ChromaticImpastoTheme extends BaseTheme {
                 this.simulator.splat(x, y, dx, dy, color);
 
                 // Add secondary layer for thickness
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     const offset = 0.02;
                     const contrastColor = this.getContrastingColor(color);
                     this.simulator.splat(
@@ -438,6 +453,7 @@ export default class ChromaticImpastoTheme extends BaseTheme {
 
     stop() {
         if (!this.isActive) return;
+        this.clearEffectTimeouts();
         this.eventUnsubscribers.forEach((u) => u());
         this.eventUnsubscribers = [];
         super.stop();

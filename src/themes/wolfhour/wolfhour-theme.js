@@ -497,6 +497,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.qualityChangeHandler = null;
         this.qualityRebuildPending = false;
+        this.runtimeRebuildTimeouts = new Set();
         this.lastCameraFrustum = null;
 
         // Quality
@@ -1062,13 +1063,30 @@ export default class WolfhourTheme extends BaseTheme {
             this.animationFrameId = null;
         }
 
-        setTimeout(() => {
+        this.scheduleRuntimeRebuild(() => {
             this.computeFallbackPending = false;
-            this.cleanup();
+            this.resetRuntimeScene();
             if (this.container) {
                 this.createScene();
             }
         }, 0);
+    }
+
+    scheduleRuntimeRebuild(callback, delayMs = 0) {
+        if (typeof window === 'undefined') return null;
+
+        const timeoutId = window.setTimeout(() => {
+            this.runtimeRebuildTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+
+        this.runtimeRebuildTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearRuntimeRebuildTimers() {
+        this.runtimeRebuildTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.runtimeRebuildTimeouts.clear();
     }
 
     updateComputeSystems(deltaTime) {
@@ -1354,10 +1372,11 @@ export default class WolfhourTheme extends BaseTheme {
                 this.handleDeviceLost(info);
             });
         }
-        this.renderer.domElement.addEventListener('webglcontextlost', (e) => {
+        this.webglContextLostHandler = (e) => {
             e.preventDefault();
             this.handleDeviceLost(e);
-        });
+        };
+        this.renderer.domElement.addEventListener('webglcontextlost', this.webglContextLostHandler);
 
         // Orthographic camera for 2D-style layered scene
         const aspect = width / height;
@@ -1396,9 +1415,9 @@ export default class WolfhourTheme extends BaseTheme {
         this.flags.useCompute = false;
         this.disposeComputeSystems();
 
-        setTimeout(() => {
+        this.scheduleRuntimeRebuild(() => {
             console.log('[Wolfhour] Rebuilding scene on fallback renderer after device loss...');
-            this.cleanup();
+            this.resetRuntimeScene();
             if (this.container) {
                 this.createScene();
             }
@@ -2142,9 +2161,9 @@ export default class WolfhourTheme extends BaseTheme {
         if (!this.isActive || this.qualityRebuildPending) return;
         this.qualityRebuildPending = true;
         console.log(`[Wolfhour] Rebuilding scene after quality update (${reason})`);
-        setTimeout(() => {
+        this.scheduleRuntimeRebuild(() => {
             this.qualityRebuildPending = false;
-            this.cleanup();
+            this.resetRuntimeScene();
             if (this.container) {
                 this.createScene();
             }
@@ -4081,7 +4100,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.disposeMaterialResources(object.material);
     }
 
-    cleanup() {
+    resetRuntimeScene() {
         this.stop();
 
         // Restore console.warn if we filtered the uv attribute warning
@@ -4096,12 +4115,18 @@ export default class WolfhourTheme extends BaseTheme {
 
         this.removeBaselineHelpers();
         this.clearBaselinePlaybackTimers();
+        this.clearRuntimeRebuildTimers();
         this.resetBaselineSamples();
         this.disposeComputeSystems();
 
         if (this.resizeHandler) {
             window.removeEventListener('resize', this.resizeHandler);
             this.resizeHandler = null;
+        }
+
+        if (this.webglContextLostHandler && this.renderer?.domElement) {
+            this.renderer.domElement.removeEventListener('webglcontextlost', this.webglContextLostHandler);
+            this.webglContextLostHandler = null;
         }
 
         this.mountains.forEach((m) => {
@@ -4205,6 +4230,13 @@ export default class WolfhourTheme extends BaseTheme {
         this.postProfile = null;
         this.starfieldNodeData = null;
         this.spiritNodeData = null;
+
+        console.log('[Wolfhour] Runtime scene reset complete');
+    }
+
+    cleanup() {
+        this.resetRuntimeScene();
+        super.cleanup();
 
         console.log('[Wolfhour] Theme cleaned up');
     }

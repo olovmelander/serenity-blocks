@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen, ipcMain } from 'electron';
+import { app, BrowserWindow, screen, ipcMain, crashReporter, powerMonitor } from 'electron';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { appendFileSync, existsSync, readFileSync } from 'fs';
@@ -335,6 +335,24 @@ if (isWSL && !app.isPackaged) {
 
 let mainWindow;
 let currentVSyncEnabled = null;
+
+const originalIpcHandle = ipcMain.handle.bind(ipcMain);
+ipcMain.handle = (channel, listener) => originalIpcHandle(channel, async (event, ...args) => {
+  if (mainWindow && event?.sender?.id !== mainWindow.webContents.id) {
+    throw new Error(`Unauthorized IPC sender for channel: ${channel}`);
+  }
+  return listener(event, ...args);
+});
+
+function emitRuntimeEvent(type, payload = {}) {
+  if (mainWindow?.webContents && !mainWindow.webContents.isDestroyed()) {
+    mainWindow.webContents.send('desktop:runtime-event', {
+      type,
+      timestamp: Date.now(),
+      ...payload,
+    });
+  }
+}
 
 function applyVSyncSettings(enabled) {
   const target = !!enabled;
@@ -1618,10 +1636,10 @@ function createWindow() {
     width: Math.min(1280, width),
     height: Math.min(720, height),
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      // Note: With nodeIntegration:true and contextIsolation:false,
-      // the renderer can use ipcRenderer directly via window.require('electron')
+      preload: join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false,
     },
     title: 'Serenity Blocks',
     backgroundColor: '#000000',
@@ -1641,6 +1659,20 @@ function createWindow() {
       });
       pendingLobbyJoins = [];
     }
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[Electron] Renderer process gone:', details);
+    emitRuntimeEvent('render-process-gone', { details });
+  });
+
+  mainWindow.webContents.on('unresponsive', () => {
+    console.warn('[Electron] Renderer unresponsive');
+    emitRuntimeEvent('renderer-unresponsive');
+  });
+
+  mainWindow.webContents.on('responsive', () => {
+    emitRuntimeEvent('renderer-responsive');
   });
 
   // Load Vite dev server (development mode) or built files (production)
@@ -1681,6 +1713,13 @@ if (!gotLock) {
   });
 
   app.whenReady().then(async () => {
+    crashReporter.start({
+      productName: 'Serenity Blocks',
+      companyName: 'Serenity Blocks',
+      uploadToServer: false,
+      compress: true,
+    });
+
     const launchLobbyId = parseConnectLobbyArg(process.argv);
     if (launchLobbyId) {
       queueLobbyJoin({ lobbyId: launchLobbyId, source: 'command_line' });
@@ -1691,8 +1730,24 @@ if (!gotLock) {
     // Initialize ez-steam-api for leaderboards (separate from steamworks.js)
     await initEzSteamApi();
     createWindow();
+
+    powerMonitor.on('suspend', () => emitRuntimeEvent('power-suspend'));
+    powerMonitor.on('resume', () => emitRuntimeEvent('power-resume'));
+    powerMonitor.on('on-battery', () => emitRuntimeEvent('power-on-battery'));
+    powerMonitor.on('on-ac', () => emitRuntimeEvent('power-on-ac'));
+    powerMonitor.on('speed-limit-change', (_event, limit) => emitRuntimeEvent('power-speed-limit-change', { limit }));
   });
 }
+
+app.on('render-process-gone', (_event, webContents, details) => {
+  console.error('[Electron] App render-process-gone:', details);
+  emitRuntimeEvent('app-render-process-gone', { details, url: webContents?.getURL?.() });
+});
+
+app.on('child-process-gone', (_event, details) => {
+  console.error('[Electron] Child process gone:', details);
+  emitRuntimeEvent('child-process-gone', { details });
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

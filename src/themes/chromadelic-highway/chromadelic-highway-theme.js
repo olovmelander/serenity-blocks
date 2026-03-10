@@ -4537,6 +4537,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.clock.stop();
         this.clearEventSubscriptions();
         this.removeResizeListener();
+        this.clearBaselinePlaybackTimers();
+        this.clearBaselineSoakWait();
         this.requestBaselineSoakStop();
         this.removeBaselineHelpers();
         this.disposeRuntimeResources({ removeCanvas: true });

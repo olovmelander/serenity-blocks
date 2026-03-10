@@ -265,11 +265,28 @@ export default class MistyLakeTheme extends BaseTheme {
 
         // Event handlers
         this.eventUnsubscribers = [];
+        this.boundMouseMoveHandler = this.onMouseMove.bind(this);
+        this.boundResizeHandler = this.onWindowResize.bind(this);
+        this.effectTimeouts = new Set();
 
         // Quality
         this.qualityPreset = QUALITY_PRESETS.High;
 
         console.log('[MistyLake] Constructor complete!');
+    }
+
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
     }
 
     getTetrominoConfig() {
@@ -331,9 +348,9 @@ export default class MistyLakeTheme extends BaseTheme {
         this.setupEventListeners();
 
         // Interactive ripples
-        window.addEventListener('mousemove', this.onMouseMove.bind(this));
+        window.addEventListener('mousemove', this.boundMouseMoveHandler);
 
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         this.animate();
 
@@ -1081,7 +1098,7 @@ export default class MistyLakeTheme extends BaseTheme {
 
         const rippleCount = Math.min(lineCount * 2 + 1, 8);
         for (let i = 0; i < rippleCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const x = (Math.random() - 0.5) * 40;
                 const z = -3 - Math.random() * 18;
                 this.createRipple(0.5 + lineCount * 0.15, x, z);
@@ -1098,7 +1115,7 @@ export default class MistyLakeTheme extends BaseTheme {
 
         const burstCount = Math.min(comboCount, 5);
         for (let i = 0; i < burstCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 this.createMistBurst(0.5 + comboCount * 0.2);
             }, i * 120);
         }
@@ -1170,6 +1187,8 @@ export default class MistyLakeTheme extends BaseTheme {
     stop() {
         console.log('[MistyLake] Stopping theme...');
 
+        this.clearEffectTimeouts();
+
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
@@ -1178,8 +1197,8 @@ export default class MistyLakeTheme extends BaseTheme {
             this.animationFrameId = null;
         }
 
-        window.removeEventListener('resize', this.onWindowResize.bind(this));
-        window.removeEventListener('mousemove', this.onMouseMove.bind(this));
+        window.removeEventListener('resize', this.boundResizeHandler);
+        window.removeEventListener('mousemove', this.boundMouseMoveHandler);
 
         if (this.scene) {
             this.scene.traverse((object) => {

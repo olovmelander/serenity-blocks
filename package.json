@@ -14,6 +14,8 @@
     "lint:fix": "eslint src --ext .js --fix",
     "format": "prettier --write \"src/**/*.js\"",
     "format:check": "prettier --check \"src/**/*.js\"",
+    "audit:theme-lifecycle": "node scripts/theme-lifecycle-audit.mjs",
+    "check:release-gates": "node scripts/release-gate-check.mjs",
     "build:gpu-launcher": "bash scripts/build-gpu-launcher.sh",
     "validate:cosmic-noir:phase6": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/cosmic-noir-phase6-validation.mjs",
     "validate:wolfhour:phase6": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/wolfhour-phase6-validation.mjs",
@@ -65,7 +67,7 @@
     "ez-steam-api": "^0.57.1",
     "google-auth-library": "^10.5.0",
     "node-fetch": "^3.3.2",
-    "phaser": "4.0.0-rc.5",
+    "phaser": "4.0.0-rc.6",
     "steamworks.js": "^0.4.0",
     "three": "^0.181.2"
   },

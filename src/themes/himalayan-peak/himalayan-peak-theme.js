@@ -26,6 +26,21 @@ export default class HimalayanPeakTheme extends BaseTheme {
         this.sunRays = [];
         this.clouds = [];
         this.qualityConfig = null;
+        this.effectTimeouts = new Set();
+    }
+
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
     }
 
     async init() {
@@ -590,7 +605,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
             const particlesForLayer = Math.ceil(intensity * 0.5);
 
             for (let i = 0; i < particlesForLayer; i++) {
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     const snow = document.createElement('div');
                     snow.className = 'blizzard-snow';
                     snow.style.position = 'absolute';
@@ -625,7 +640,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
                     theme.appendChild(snow);
 
-                    setTimeout(() => {
+                    this.scheduleEffectTimeout(() => {
                         if (snow.parentNode) {
                             snow.parentNode.removeChild(snow);
                         }
@@ -640,12 +655,12 @@ export default class HimalayanPeakTheme extends BaseTheme {
      */
     blessPrayerFlags(intensity) {
         this.prayerFlags.forEach((flag, index) => {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 flag.style.transition = 'filter 0.5s ease-out, transform 0.5s ease-out';
                 flag.style.filter = `brightness(${1.5 + intensity * 0.3}) drop-shadow(0 0 ${8 + intensity * 3}px currentColor)`;
                 flag.style.transform = `scale(${1 + intensity * 0.05}) rotateY(${intensity * 10}deg)`;
 
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     flag.style.filter = '';
                     flag.style.transform = '';
                 }, 500 + intensity * 50);
@@ -663,7 +678,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
         const crystalShapes = ['❄', '❅', '❆', '✦', '✧'];
 
         for (let i = 0; i < count; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const crystal = document.createElement('div');
                 crystal.className = 'ice-crystal';
                 crystal.style.position = 'absolute';
@@ -681,7 +696,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
                 theme.appendChild(crystal);
 
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     if (crystal.parentNode) {
                         crystal.parentNode.removeChild(crystal);
                     }
@@ -703,7 +718,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
                 ray.style.opacity = '0.8';
                 ray.style.filter = `brightness(${1.5 + intensity * 0.2})`;
 
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     ray.style.opacity = '';
                     ray.style.filter = '';
                 }, 600);
@@ -736,7 +751,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
         // Horizontal snow particles in wind
         for (let i = 0; i < intensity; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const snowParticle = document.createElement('div');
                 snowParticle.className = 'wind-snow';
                 snowParticle.style.position = 'absolute';
@@ -754,7 +769,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
                 theme.appendChild(snowParticle);
 
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     if (snowParticle.parentNode) {
                         snowParticle.parentNode.removeChild(snowParticle);
                     }
@@ -762,7 +777,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
             }, i * 20);
         }
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             if (windOverlay.parentNode) {
                 windOverlay.parentNode.removeChild(windOverlay);
             }
@@ -777,7 +792,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
         if (!theme) return;
 
         for (let i = 0; i < count; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const spirit = document.createElement('div');
                 spirit.className = 'mountain-spirit';
                 spirit.style.position = 'absolute';
@@ -797,7 +812,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
                 theme.appendChild(spirit);
 
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     if (spirit.parentNode) {
                         spirit.parentNode.removeChild(spirit);
                     }
@@ -816,7 +831,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
         const orbCount = Math.min(comboCount * 2, 6);
 
         for (let i = 0; i < orbCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const orb = document.createElement('div');
                 orb.className = 'sacred-light-orb';
                 orb.style.position = 'absolute';
@@ -834,7 +849,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
                 theme.appendChild(orb);
 
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     if (orb.parentNode) {
                         orb.parentNode.removeChild(orb);
                     }
@@ -853,7 +868,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
         const thunderCount = Math.min(comboCount - 2, 3);
 
         for (let i = 0; i < thunderCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const flash = document.createElement('div');
                 flash.className = 'mountain-thunder';
                 flash.style.position = 'absolute';
@@ -869,7 +884,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
                 theme.appendChild(flash);
 
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     if (flash.parentNode) {
                         flash.parentNode.removeChild(flash);
                     }
@@ -886,7 +901,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
         if (!theme) return;
 
         for (let i = 0; i < count; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const eagle = document.createElement('div');
                 eagle.className = 'mountain-eagle-minimal';
                 eagle.style.position = 'fixed';
@@ -910,7 +925,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
                 document.body.appendChild(eagle);
 
-                setTimeout(() => {
+                this.scheduleEffectTimeout(() => {
                     if (eagle.parentNode) {
                         eagle.parentNode.removeChild(eagle);
                     }
@@ -945,7 +960,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
         // Optimized snow particles (reduced from 150 to 50 for performance)
         const snowCount = 50;
         for (let i = 0; i < snowCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 const snow = document.createElement('div');
                 snow.style.position = 'absolute';
                 snow.style.width = '3px';
@@ -961,7 +976,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
             }, i * 40); // Increased delay between spawns
         }
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             if (blizzard.parentNode) {
                 blizzard.parentNode.removeChild(blizzard);
             }
@@ -980,7 +995,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
         theme.style.filter = `saturate(${saturation}%) brightness(${brightness}%)`;
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             theme.style.filter = '';
         }, 700 + comboCount * 100);
     }
@@ -1007,7 +1022,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
         theme.appendChild(snowflake);
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             if (snowflake.parentNode) {
                 snowflake.parentNode.removeChild(snowflake);
             }
@@ -1036,7 +1051,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
 
         theme.appendChild(breeze);
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             if (breeze.parentNode) {
                 breeze.parentNode.removeChild(breeze);
             }
@@ -1044,6 +1059,7 @@ export default class HimalayanPeakTheme extends BaseTheme {
     }
 
     stop() {
+        this.clearEffectTimeouts();
         // Unsubscribe from all events
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
