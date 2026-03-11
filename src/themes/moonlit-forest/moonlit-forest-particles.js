@@ -1,10 +1,7 @@
 import * as THREE from 'three';
 import { createMoonlitAmbientFireflyNodeMaterial } from './moonlit-forest-materials.js';
 import { MoonlitAmbientFireflyCompute } from './moonlit-forest-compute.js';
-
-function clamp01(value) {
-    return Math.max(0, Math.min(1, value));
-}
+import { clamp01 } from '@utils/helpers.js';
 
 export class MoonlitForestParticles {
     constructor({

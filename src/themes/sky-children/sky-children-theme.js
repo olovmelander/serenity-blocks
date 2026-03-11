@@ -21,6 +21,7 @@ import {
     createSkyChildrenPostProcessingModule,
     createSkyChildrenStylizedLightingModule,
 } from './sky-children-pipelines.js';
+import { clamp } from '@utils/helpers.js';
 
 const GPU_BUFFER_USAGE_UNIFORM = globalThis.GPUBufferUsage?.UNIFORM ?? 0x40;
 const GPU_BUFFER_USAGE_COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x08;
@@ -194,10 +195,6 @@ fn fs_present(input: VSOut) -> @location(0) vec4f {
     return vec4f(color, 1.0);
 }
 `;
-
-function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-}
 
 function lerp(a, b, t) {
     return a + (b - a) * t;

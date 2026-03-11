@@ -42,10 +42,7 @@ import {
     wispFragmentShader,
     wispVertexShader,
 } from './chiral-gold-shaders.js';
-
-function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-}
+import { clamp } from '@utils/helpers.js';
 
 function createSeededRandom(seed) {
     if (!Number.isFinite(seed)) return () => Math.random();

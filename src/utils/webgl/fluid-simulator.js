@@ -83,7 +83,7 @@ export default class FluidSimulator {
 
     getWebGLContext(canvas) {
         const params = {
-            alpha: false, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: true,
+            alpha: true, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: false,
         };
 
         let gl = canvas.getContext('webgl2', params);
@@ -181,7 +181,7 @@ export default class FluidSimulator {
         if (keywords == null) return source;
         let keywordsString = '';
         keywords.forEach((keyword) => {
-            keywordsString += `#define ${keyword}\\n`;
+            keywordsString += `#define ${keyword}\n`;
         });
         return keywordsString + source;
     }
@@ -1078,7 +1078,88 @@ export default class FluidSimulator {
     }
 
     cleanup() {
-        // TODO: Implement cleanup of GL resources
+        const { gl } = this;
+        if (!gl) return;
+
+        // Helper to delete a single FBO (texture + framebuffer)
+        const deleteFBO = (fbo) => {
+            if (!fbo) return;
+            if (fbo.texture) gl.deleteTexture(fbo.texture);
+            if (fbo.fbo) gl.deleteFramebuffer(fbo.fbo);
+        };
+
+        // Helper to delete a double FBO (read + write)
+        const deleteDoubleFBO = (doubleFbo) => {
+            if (!doubleFbo) return;
+            deleteFBO(doubleFbo.read);
+            deleteFBO(doubleFbo.write);
+        };
+
+        // Delete double FBOs
+        deleteDoubleFBO(this.dye);
+        deleteDoubleFBO(this.velocity);
+        deleteDoubleFBO(this.pressure);
+
+        // Delete single FBOs
+        deleteFBO(this.divergence);
+        deleteFBO(this.curl);
+        deleteFBO(this.bloom);
+        deleteFBO(this.sunrays);
+        deleteFBO(this.sunraysTemp);
+
+        // Delete bloom framebuffer chain
+        if (this.bloomFramebuffers) {
+            for (const fbo of this.bloomFramebuffers) {
+                deleteFBO(fbo);
+            }
+            this.bloomFramebuffers.length = 0;
+        }
+
+        // Delete dithering texture
+        if (this.ditheringTexture && this.ditheringTexture.texture) {
+            gl.deleteTexture(this.ditheringTexture.texture);
+        }
+
+        // Delete shader programs
+        for (const key in this.programs) {
+            const prog = this.programs[key];
+            if (prog && prog.program) {
+                gl.deleteProgram(prog.program);
+            }
+        }
+
+        // Delete material programs
+        for (const key in this.materials) {
+            const mat = this.materials[key];
+            if (mat && mat.programs) {
+                for (const hash in mat.programs) {
+                    if (mat.programs[hash]) {
+                        gl.deleteProgram(mat.programs[hash]);
+                    }
+                }
+            }
+        }
+
+        // Delete vertex/index buffers
+        if (this.blitBuffer) gl.deleteBuffer(this.blitBuffer);
+        if (this.blitElementBuffer) gl.deleteBuffer(this.blitElementBuffer);
+
+        // Nullify references
+        this.dye = null;
+        this.velocity = null;
+        this.divergence = null;
+        this.curl = null;
+        this.pressure = null;
+        this.bloom = null;
+        this.sunrays = null;
+        this.sunraysTemp = null;
+        this.ditheringTexture = null;
+        this.blitBuffer = null;
+        this.blitElementBuffer = null;
+        this.programs = {};
+        this.materials = {};
+        this.gl = null;
+        this.ext = null;
     }
 }
 
@@ -1176,7 +1257,7 @@ class Material {
         if (keywords == null) return source;
         let keywordsString = '';
         keywords.forEach((keyword) => {
-            keywordsString += `#define ${keyword}\\n`;
+            keywordsString += `#define ${keyword}\n`;
         });
         return keywordsString + source;
     }

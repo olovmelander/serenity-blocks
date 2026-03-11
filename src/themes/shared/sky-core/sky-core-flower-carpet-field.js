@@ -1,8 +1,5 @@
 import * as THREE from 'three';
-
-function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-}
+import { clamp } from '@utils/helpers.js';
 
 function smoothstep(edge0, edge1, x) {
     const t = clamp((x - edge0) / Math.max(1e-6, edge1 - edge0), 0, 1);

@@ -3,11 +3,13 @@
  * Ensures only one game mode runs at a time
  */
 
+import { GAME_MODES } from './constants.js';
+
 export const GAME_MODE = {
     NONE: 'none',
-    SINGLE_PLAYER: 'single-player',
-    LOCAL_MULTIPLAYER: 'local-multiplayer',
-    ONLINE_MULTIPLAYER: 'online-multiplayer',
+    SINGLE_PLAYER: GAME_MODES.SINGLE_PLAYER,
+    LOCAL_MULTIPLAYER: GAME_MODES.LOCAL_MULTIPLAYER,
+    ONLINE_MULTIPLAYER: GAME_MODES.ONLINE_MULTIPLAYER,
 };
 
 export class GameModeLifecycle {
