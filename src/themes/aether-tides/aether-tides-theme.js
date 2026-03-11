@@ -57,6 +57,18 @@ export default class AetherTidesTheme extends BaseTheme {
     async createScene() {
         console.log('[AetherTides] createScene() called');
 
+        // Clean up existing resources if being restarted
+        if (this.simulator) {
+            this.simulator.cleanup();
+            this.simulator = null;
+        }
+        if (this.canvas && this.canvas.parentNode) {
+            this.canvas.parentNode.removeChild(this.canvas);
+        }
+        this.canvas = null;
+        this.lastTime = 0;
+        this.blackHoleActive = false;
+
         try {
             this.canvas = document.createElement('canvas');
             this.canvas.id = 'aether-tides-canvas';
@@ -151,7 +163,7 @@ export default class AetherTidesTheme extends BaseTheme {
         });
 
         const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
-            if (this.isActive) this.onPieceLock();
+            if (this.isActive) this.onPieceLock(data);
         });
 
         this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);

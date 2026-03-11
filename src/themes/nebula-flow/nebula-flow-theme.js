@@ -88,6 +88,18 @@ export default class NebulaFlowTheme extends BaseTheme {
     async createScene() {
         console.log('[NebulaFlow] createScene() called');
 
+        // Clean up existing resources if being restarted
+        if (this.simulator) {
+            this.simulator.cleanup();
+            this.simulator = null;
+        }
+        if (this.canvas && this.canvas.parentNode) {
+            this.canvas.parentNode.removeChild(this.canvas);
+        }
+        this.canvas = null;
+        this.lastTime = 0;
+        this.emitters = [];
+
         try {
             // Create canvas for fluid simulation
             this.canvas = document.createElement('canvas');

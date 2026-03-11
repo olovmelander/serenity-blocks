@@ -45,6 +45,19 @@ export default class VoltageStormTheme extends BaseTheme {
     async createScene() {
         console.log('[VoltageStorm] createScene() called');
 
+        // Clean up existing resources if being restarted
+        if (this.simulator) {
+            this.simulator.cleanup();
+            this.simulator = null;
+        }
+        if (this.canvas && this.canvas.parentNode) {
+            this.canvas.parentNode.removeChild(this.canvas);
+        }
+        this.canvas = null;
+        this.lastTime = 0;
+        this.stormIntensity = 0;
+        this.stormTimer = 0;
+
         try {
             this.canvas = document.createElement('canvas');
             this.canvas.id = 'voltage-storm-canvas';

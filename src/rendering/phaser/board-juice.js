@@ -9,8 +9,7 @@
  * GPU-accelerated rendering without affecting the game coordinate space.
  */
 
-/** Clamp a value between min and max */
-const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+import { clamp } from '@utils/helpers.js';
 
 /**
  * Spring-damped value with velocity.

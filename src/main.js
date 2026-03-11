@@ -97,7 +97,7 @@ import { ThemeManager } from './themes/theme-manager.js';
 
 // Utility imports
 import { initGridCache, clearThemeCaches } from './utils/cache.js';
-import { seededRandom } from './utils/helpers.js';
+import { seededRandom, hexToRgb } from './utils/helpers.js';
 import { performanceMonitor } from './utils/performance-monitor.js';
 
 // Serenity Mode imports
@@ -134,38 +134,6 @@ async function ensureIntroMusicIsPlaying() {
         sharedSoundManager.musicTrack = INTRO_MUSIC_TRACK_KEY;
         sharedSoundManager.playAudioFile(INTRO_MUSIC_PATH);
     }
-}
-
-function hexToRgb(hex) {
-    if (!hex) {
-        return null;
-    }
-
-    let value = hex.trim();
-    if (value.startsWith('#')) {
-        value = value.slice(1);
-    }
-
-    if (value.length === 3) {
-        value = value
-            .split('')
-            .map((char) => char + char)
-            .join('');
-    }
-
-    if (value.length !== 6) {
-        return null;
-    }
-
-    const r = parseInt(value.substring(0, 2), 16);
-    const g = parseInt(value.substring(2, 4), 16);
-    const b = parseInt(value.substring(4, 6), 16);
-
-    if ([r, g, b].some((component) => Number.isNaN(component))) {
-        return null;
-    }
-
-    return { r, g, b };
 }
 
 function setPieceLockRippleCss(colorHex) {

@@ -27,6 +27,7 @@ import {
     normalizeSkyV2QualityTier,
     resolveSkyV2TierFromEffectQuality,
 } from '../shared/sky-core/sky-core-quality.js';
+import { clamp } from '@utils/helpers.js';
 
 const HERO_SHOTS = Object.freeze([
     'hero-sunset-ridge',
@@ -38,10 +39,6 @@ const HERO_SHOTS = Object.freeze([
     'hero-swedish-meadow-wide',
     'hero-swedish-meadow-haze',
 ]);
-
-function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-}
 
 function percentile(values, ratio = 0.95) {
     if (!Array.isArray(values) || values.length === 0) return 0;
