@@ -22,6 +22,9 @@ export default defineConfig({
     strictPort: true,  // Don't try another port if 5173 is in use
     open: false,  // Don't auto-open browser (we're using Electron)
     host: true,
+    watch: {
+      ignored: ['**/three_js_example_repo/**'],
+    },
   },
 
   // Build configuration
@@ -95,6 +98,9 @@ export default defineConfig({
 
   // Optimize dependencies for faster dev server startup
   optimizeDeps: {
+    // Keep dependency crawling scoped to the actual app entry. The vendored
+    // Three.js repo ships extra HTML pages that reference optional example deps.
+    entries: ['index.html'],
     include: ['phaser'],
     // Exclude Electron/Node.js modules from browser bundling
     exclude: ['steamworks.js', 'electron'],

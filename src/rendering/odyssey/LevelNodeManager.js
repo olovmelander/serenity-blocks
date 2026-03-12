@@ -746,6 +746,71 @@ export class LevelNodeManager {
     }
 
     /**
+     * Get projected screen-space metrics for a node's orb.
+     * Used by the portal transition so the breach opens from the actual orb radius.
+     * @param {number} levelId
+     * @param {THREE.Camera} camera
+     * @returns {{center: {x: number, y: number}, radius: number, onScreen: boolean, worldPosition: THREE.Vector3}|null}
+     */
+    getNodeCinematicMetrics(levelId, camera) {
+        const node = this.nodes.get(levelId);
+        if (!node?.group || !camera) {
+            return null;
+        }
+
+        const worldPosition = new THREE.Vector3();
+        const worldRight = new THREE.Vector3();
+        const worldUp = new THREE.Vector3();
+        const cameraQuaternion = new THREE.Quaternion();
+
+        node.group.getWorldPosition(worldPosition);
+        camera.getWorldQuaternion(cameraQuaternion);
+
+        const scale = Math.max(
+            Math.abs(node.group.scale.x || 1),
+            Math.abs(node.group.scale.y || 1),
+            Math.abs(node.group.scale.z || 1),
+        );
+        const orbRadiusWorld = GLASS_OUTER_RADIUS * scale;
+
+        worldRight.set(1, 0, 0).applyQuaternion(cameraQuaternion).multiplyScalar(orbRadiusWorld);
+        worldUp.set(0, 1, 0).applyQuaternion(cameraQuaternion).multiplyScalar(orbRadiusWorld);
+
+        const centerNdc = worldPosition.clone().project(camera);
+        const rightNdc = worldPosition.clone().add(worldRight).project(camera);
+        const upNdc = worldPosition.clone().add(worldUp).project(camera);
+
+        const center = {
+            x: (centerNdc.x + 1) * 0.5,
+            y: (1 - centerNdc.y) * 0.5,
+        };
+        const radiusX = Math.hypot(
+            ((rightNdc.x + 1) * 0.5) - center.x,
+            ((1 - rightNdc.y) * 0.5) - center.y,
+        );
+        const radiusY = Math.hypot(
+            ((upNdc.x + 1) * 0.5) - center.x,
+            ((1 - upNdc.y) * 0.5) - center.y,
+        );
+        const radius = Math.max(radiusX, radiusY);
+        const onScreen = centerNdc.z >= -1
+            && centerNdc.z <= 1
+            && center.x >= 0
+            && center.x <= 1
+            && center.y >= 0
+            && center.y <= 1
+            && Number.isFinite(radius)
+            && radius > 0;
+
+        return {
+            center,
+            radius: Number.isFinite(radius) ? radius : 0,
+            onScreen,
+            worldPosition,
+        };
+    }
+
+    /**
      * Raycast to find hovered node
      * @returns {number|null} Level ID or null
      */

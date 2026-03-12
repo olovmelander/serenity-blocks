@@ -801,10 +801,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
             onRotate: () => {
                 this.deps.soundManager.sfxPlayer.playRotate();
             },
-            onLineClear: (lineCount) => {
+            onLineClear: (lineCount, ...rest) => {
+                const clearedRows = Array.isArray(rest[2]) ? rest[2] : [];
                 this.deps.soundManager.sfxPlayer.playLineClear();
                 // Emit event for theme reactions (optional, but good for consistency with single player)
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount });
+                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount, clearedRows });
             },
             onPieceLock: (piece) => {
                 eventBus.emit(EVENTS.PIECE_LOCK, { piece });

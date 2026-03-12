@@ -35,6 +35,7 @@ export class OdysseyCameraController {
         this.animationEndPos = new THREE.Vector3();
         this.animationStartLookAt = new THREE.Vector3();
         this.animationEndLookAt = new THREE.Vector3();
+        this.portalApproach = null;
 
         // Configuration
         this.config = {
@@ -198,6 +199,7 @@ export class OdysseyCameraController {
      * @param {number} duration - Animation duration in ms
      */
     zoomToPosition(targetPosition, duration = 600) {
+        this.portalApproach = null;
         this.mode = 'focus';
         this.isAnimating = true;
         this.animationStartTime = performance.now();
@@ -213,6 +215,79 @@ export class OdysseyCameraController {
         this.animationEndLookAt.copy(targetPosition);
 
         console.log('[Camera] Zooming to position', targetPosition);
+    }
+
+    /**
+     * Dedicated portal-entry approach used during Odyssey orb lock.
+     * The motion is split into alignment, accelerating dolly, then suction into the orb.
+     * @param {Object} config
+     * @param {THREE.Vector3} config.targetPosition
+     * @param {number} [config.targetRadius]
+     * @param {number} [config.duration]
+     * @param {string} [config.motionPreset]
+     * @returns {boolean}
+     */
+    playPortalApproach({
+        targetPosition,
+        targetRadius = 0.14,
+        duration = 650,
+        motionPreset = 'default',
+    } = {}) {
+        if (!(targetPosition instanceof THREE.Vector3)) {
+            return false;
+        }
+
+        const startPosition = this.camera.position.clone();
+        const startLookAt = this.lookAtTarget.clone();
+        const startDistance = Math.max(startPosition.distanceTo(targetPosition), 1);
+        const approachDirection = startPosition.clone().sub(targetPosition);
+
+        if (approachDirection.lengthSq() < 1e-6) {
+            this.camera.getWorldDirection(approachDirection);
+            approachDirection.multiplyScalar(-1);
+        }
+        approachDirection.normalize();
+
+        const cameraQuaternion = this.camera.quaternion.clone();
+        const cameraRight = new THREE.Vector3(1, 0, 0).applyQuaternion(cameraQuaternion).normalize();
+        const cameraUp = new THREE.Vector3(0, 1, 0).applyQuaternion(cameraQuaternion).normalize();
+
+        const nearDistance = -0.05; // Plunge straight through the literal center
+        const midDistance = Math.max(1.5, startDistance * 0.42);
+        const lockDistance = Math.max(midDistance + 2.8, startDistance * 0.82);
+
+        const lockPosition = targetPosition.clone()
+            .addScaledVector(approachDirection, lockDistance)
+            .addScaledVector(cameraUp, 0.22);
+        const midPosition = targetPosition.clone()
+            .addScaledVector(approachDirection, midDistance)
+            .addScaledVector(cameraRight, 0.42)
+            .addScaledVector(cameraUp, 0.12);
+        const finalPosition = targetPosition.clone()
+            .addScaledVector(approachDirection, nearDistance);
+
+        this.mode = 'focus';
+        this.isAnimating = false;
+        this.fovPulseActive = false;
+        this.portalApproach = {
+            active: true,
+            startTime: performance.now(),
+            duration: Math.max(1, duration),
+            startPosition,
+            startLookAt,
+            targetPosition: targetPosition.clone(),
+            targetRadius: THREE.MathUtils.clamp(targetRadius, 0.04, 0.38),
+            motionPreset,
+            startFov: this.camera.fov,
+            lockPosition,
+            midPosition,
+            finalPosition,
+            approachDirection,
+            cameraRight,
+            cameraUp,
+        };
+
+        return true;
     }
 
     /**
@@ -244,7 +319,9 @@ export class OdysseyCameraController {
         // Update breathing time
         this.breatheTime += deltaTime;
 
-        if (this.isAnimating) {
+        if (this.portalApproach?.active) {
+            this.updatePortalApproach();
+        } else if (this.isAnimating) {
             this.updateAnimation();
         } else if (this.mode === 'follow') {
             this.updateFollow(deltaTime);
@@ -269,7 +346,7 @@ export class OdysseyCameraController {
         const t = this.breatheTime;
 
         // Don't apply during rapid animations (focus/zoom)
-        if (this.isAnimating && this.mode === 'focus') return;
+        if (this.portalApproach?.active || (this.isAnimating && this.mode === 'focus')) return;
 
         // Horizontal sway (dreamlike drift)
         if (cc.swayEnabled) {
@@ -296,7 +373,7 @@ export class OdysseyCameraController {
      */
     updateFovPulse(deltaTime) {
         const cc = this.cinematicConfig;
-        if (!cc.fovPulseEnabled || !this.fovPulseActive) return;
+        if (!cc.fovPulseEnabled || !this.fovPulseActive || this.portalApproach?.active) return;
 
         const elapsed = (performance.now() - this.fovPulseStartTime) / 1000;
         const t = Math.min(elapsed / cc.fovPulseDuration, 1);
@@ -425,12 +502,79 @@ export class OdysseyCameraController {
         }
     }
 
+    updatePortalApproach() {
+        const approach = this.portalApproach;
+        if (!approach?.active) return;
+
+        const elapsed = performance.now() - approach.startTime;
+        const t = Math.min(elapsed / approach.duration, 1);
+        const alignEnd = 220 / 650;
+        const dollyEnd = 520 / 650;
+        const tmpPosition = new THREE.Vector3();
+
+        let roll = 0;
+
+        if (t <= alignEnd) {
+            const local = THREE.MathUtils.smoothstep(t / alignEnd, 0, 1);
+            this.camera.position.lerpVectors(
+                approach.startPosition,
+                approach.lockPosition,
+                local,
+            );
+            this.lookAtTarget.lerpVectors(
+                approach.startLookAt,
+                approach.targetPosition,
+                0.55 + (local * 0.45),
+            );
+            this.camera.fov = THREE.MathUtils.lerp(approach.startFov, 56, local);
+            roll = 0.01 * local;
+        } else if (t <= dollyEnd) {
+            const local = (t - alignEnd) / (dollyEnd - alignEnd);
+            const accel = local ** 2.2;
+            tmpPosition.lerpVectors(approach.lockPosition, approach.midPosition, accel);
+            tmpPosition.addScaledVector(approach.cameraRight, Math.sin(local * Math.PI) * 0.22);
+            tmpPosition.addScaledVector(approach.cameraUp, Math.sin(local * Math.PI * 0.7) * 0.09);
+            this.camera.position.copy(tmpPosition);
+            this.lookAtTarget.lerpVectors(
+                approach.startLookAt,
+                approach.targetPosition,
+                THREE.MathUtils.clamp(0.82 + (local * 0.18), 0, 1),
+            );
+            this.camera.fov = THREE.MathUtils.lerp(56, 44, accel);
+            roll = 0.012 + (Math.sin(local * Math.PI) * 0.016);
+        } else {
+            const local = (t - dollyEnd) / (1 - dollyEnd);
+            const suction = 1 - ((1 - local) ** 3);
+            tmpPosition.lerpVectors(approach.midPosition, approach.finalPosition, suction);
+            tmpPosition.addScaledVector(
+                approach.approachDirection,
+                -0.18 * (1 - local) * (0.7 + approach.targetRadius),
+            );
+            this.camera.position.copy(tmpPosition);
+            this.lookAtTarget.copy(approach.targetPosition);
+            this.camera.fov = THREE.MathUtils.lerp(44, 34, suction);
+            roll = THREE.MathUtils.lerp(0.024, 0, suction);
+        }
+
+        this.camera.rotation.z = roll;
+        this.camera.updateProjectionMatrix();
+
+        if (elapsed >= approach.duration) {
+            this.camera.position.copy(approach.finalPosition);
+            this.lookAtTarget.copy(approach.targetPosition);
+            this.camera.fov = 34;
+            this.camera.updateProjectionMatrix();
+            this.portalApproach.active = false;
+        }
+    }
+
     /**
      * Set mode to follow
      */
     setFollowMode() {
         this.mode = 'follow';
         this.isAnimating = false;
+        this.portalApproach = null;
     }
 
     /**

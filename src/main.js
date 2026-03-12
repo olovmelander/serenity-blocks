@@ -1581,6 +1581,7 @@ class SerenityBlocks {
         const MODE_DISPLAY_NAMES = {
             [GAME_MODES.SINGLE_PLAYER]: 'SINGLE PLAYER',
             [GAME_MODES.INFINITY]: 'INFINITY',
+            [GAME_MODES.SERENITY]: 'SERENITY',
         };
 
         const startGameWithModeHandler = async (e) => {
@@ -1972,13 +1973,14 @@ class SerenityBlocks {
                 updateStats(gameState);
                 this.updatePhaserStats(gameState);
             },
-            onLineClear: (count, holeColumns) => {
+            onLineClear: (count, holeColumns, ...rest) => {
+                const clearedRows = Array.isArray(rest[1]) ? rest[1] : [];
                 // Visual feedback handled in draw
                 // holeColumns parameter not used in single-player mode
 
                 // Emit event for theme reactions
                 console.log('[Main] Emitting LINE_CLEAR event, count:', count);
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: count });
+                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: count, clearedRows });
             },
             updateBoard: (boardData) => {
                 // Board updates handled in draw
@@ -3436,7 +3438,8 @@ class SerenityBlocks {
                     currentMode._syncBoardScenes();
                 }
             },
-            onLineClear: (count, holeColumns, rowMasks = []) => {
+            onLineClear: (count, holeColumns, rowMasks = [], ...rest) => {
+                const clearedRows = Array.isArray(rest[0]) ? rest[0] : [];
                 const holes = Array.isArray(holeColumns) ? holeColumns : [];
                 const maskSummary = rowMasks
                     .map((mask, index) => `#${index + 1}[${mask.join(', ')}]`)
@@ -3446,7 +3449,7 @@ class SerenityBlocks {
                 );
 
                 // Emit event for theme reactions
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: count, player: playerNum });
+                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: count, player: playerNum, clearedRows });
             },
             onGarbageReady: (summary) => {
                 // Convert playerNum to appropriate format based on multiplayerState structure

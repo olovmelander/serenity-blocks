@@ -791,6 +791,11 @@ export class SoundManager {
         const settings = this.settingsManager.get();
         if (!settings.autoThemeChange || !settings.themeLinkedMode) return;
 
+        const sharedThemeLinkedTracks = new Set(['ElectricDreams']);
+        if (sharedThemeLinkedTracks.has(trackName)) {
+            return;
+        }
+
         // Import THEMES from constants
         import('../core/constants.js').then(({ THEMES }) => {
             const linkedTheme = getThemeForSong(trackName, THEMES);

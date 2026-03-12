@@ -177,19 +177,29 @@ async function captureTimeline(win) {
     const captures = [];
     const intervalsMs = [
         0,
-        100,
+        40,
+        80,
+        120,
+        160,
         220,
-        360,
-        500,
+        300,
+        380,
+        460,
+        540,
         650,
-        820,
-        1000,
+        760,
+        900,
         1200,
         1550,
         1900,
         2300,
+        2600,
         2750,
+        2800,
+        3000,
         3200,
+        3400,
+        3600,
         3700,
         4200,
         4800,
@@ -237,6 +247,19 @@ async function runValidation() {
     }
 
     const captures = await captureTimeline(win);
+    const motionScoreForWindow = (fromMs, toMs) => {
+        const windowFrames = captures.filter((frame) => frame.atMs >= fromMs && frame.atMs <= toMs);
+        if (windowFrames.length < 2) return 0;
+
+        let deltaSum = 0;
+        for (let i = 1; i < windowFrames.length; i++) {
+            deltaSum += Math.abs(windowFrames[i].meanLuma - windowFrames[i - 1].meanLuma);
+            deltaSum += Math.abs((windowFrames[i].blackCoverage - windowFrames[i - 1].blackCoverage) * 255);
+        }
+
+        return Number((deltaSum / (windowFrames.length - 1)).toFixed(3));
+    };
+
     const preBreachBlackSpike = captures.some(
         (frame) => frame.atMs <= 600 && frame.blackCoverage >= 0.96 && frame.meanLuma < 8,
     );
@@ -246,12 +269,19 @@ async function runValidation() {
             && frame.blackCoverage >= 0.98
             && frame.meanLuma < 6,
     );
+    const orbReadabilityMotionScore = motionScoreForWindow(0, 650);
+    const arrivalMotionScore = motionScoreForWindow(2600, 3600);
+    const staticArrivalDetected = arrivalMotionScore < 1.2
+        && captures.some((frame) => frame.atMs >= 2600 && frame.atMs <= 3600 && frame.meanLuma >= 200);
 
     const summary = {
         url: DEV_SERVER_URL,
         captures,
         preBreachBlackSpike,
         breachRevealGap,
+        orbReadabilityMotionScore,
+        arrivalMotionScore,
+        staticArrivalDetected,
         consoleErrorCount: consoleLines.filter((line) => line.includes('GL_INVALID_OPERATION')).length,
         tooManyErrorsSeen: consoleLines.some((line) => line.includes('too many errors')),
         artifactDir: ARTIFACT_DIR,
