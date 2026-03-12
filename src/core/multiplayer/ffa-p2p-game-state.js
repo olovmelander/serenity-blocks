@@ -173,6 +173,10 @@ export class FFAGameStateP2P {
         this.unifiedLoop = unifiedLoop;
         this.loopRunning = false;
         this.loopCallbacksConfigured = false;
+        this.localInputHooks = {
+            advance: null,
+            reset: null,
+        };
 
         // === PERFORMANCE OPTIMIZATIONS ===
         // Pre-allocated render payload - reused every frame (saves ~360 allocations/sec)
@@ -219,6 +223,13 @@ export class FFAGameStateP2P {
         if (this.debugGarbage) {
             console.log(...args);
         }
+    }
+
+    setLocalInputHooks(hooks = {}) {
+        this.localInputHooks = {
+            advance: typeof hooks.advance === 'function' ? hooks.advance : null,
+            reset: typeof hooks.reset === 'function' ? hooks.reset : null,
+        };
     }
 
     /**
@@ -2179,6 +2190,8 @@ export class FFAGameStateP2P {
                 return;
             }
 
+            this.localInputHooks.advance?.(currentTime, delta);
+
             // Phase 5: Flush batched inputs (Peers only)
             if (!this.isHost) {
                 this.flushInputBatch();
@@ -2511,6 +2524,7 @@ export class FFAGameStateP2P {
         }
 
         if (this.unifiedLoop && !this.loopRunning) {
+            this.localInputHooks.reset?.();
             this.unifiedLoop.start();
             this.loopRunning = true;
             console.log(`🎮 Unified game loop started (${this.isHost ? 'HOST' : 'PEER'} mode)`);
@@ -2554,6 +2568,8 @@ export class FFAGameStateP2P {
             this.loopRunning = false;
             console.log('🛑 Game loop stopped');
         }
+
+        this.localInputHooks.reset?.();
 
         if (this.unifiedLoop) {
             this.unifiedLoop.clearPlayers();
@@ -2907,6 +2923,7 @@ export class FFAGameStateP2P {
         this.players.clear();
         this.gamePhase = 'waiting';
         this.winner = null;
+        this.setLocalInputHooks();
 
         console.log('🧹 FFA game state cleaned up');
     }

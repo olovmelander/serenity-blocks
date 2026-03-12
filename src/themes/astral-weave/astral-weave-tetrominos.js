@@ -1,70 +1,58 @@
 /**
  * Astral Weave Theme - Tetromino Visual Configuration
  *
- * A mystical, ethereal palette inspired by the weaving of fate and starlight.
- * Crystalline structures with internal light.
- *
- * Color Palette:
- * - Ethereal cyans, magentas, and golds
- * - Deep indigo shadows
- * - Crystalline transparency
+ * Prismatic cosmic crystal treatment tuned to stay readable against the more
+ * luminous Astral Weave WebGPU background.
  */
 
 export const ASTRAL_WEAVE_TETROMINOS = {
     version: 1,
 
-    // Enhanced ethereal crystalline palette
     colors: {
-        I: '#00f5ff', // Brilliant Cyan Starlight
-        O: '#ffc800', // Radiant Golden Thread
-        T: '#f050ff', // Vivid Mystic Magenta
-        S: '#00ff90', // Bright Aurora Green
-        Z: '#ff5080', // Coral Nova Pink
-        J: '#40a0ff', // Electric Blue Void
-        L: '#ff8020', // Blazing Orange Comet
-        GARBAGE: '#6020a0', // Deep Cosmic Purple
+        I: '#7deeff',
+        O: '#ffd86e',
+        T: '#ee79ff',
+        S: '#6cf9d5',
+        Z: '#ff7ccf',
+        J: '#6ca8ff',
+        L: '#ffab63',
+        GARBAGE: '#3f3f72',
     },
 
-    // Crystal render mode
-    renderMode: 'crystal', // Assuming 'crystal' or similar exists, otherwise 'glow' or 'flat' with effects
+    renderMode: 'glow',
 
     effects: {
-        // Inner glow
-        glowRadius: 10,
-        glowIntensity: 0.6,
+        glowRadius: 16,
+        glowIntensity: 0.82,
         glowColor: 'auto',
 
-        // Sharp, crystalline edges
         outline: true,
-        outlineWidth: 1.5,
-        outlineColor: 'lighten', // Light edges for crystal look
+        outlineWidth: 2,
+        outlineColor: '#f4fbff',
 
-        // Gentle pulsing
         pulse: true,
-        pulseSpeed: 0.02,
-        pulseAmplitude: 0.15,
+        pulseSpeed: 0.034,
+        pulseAmplitude: 0.18,
 
-        // Shimmering surface
         shimmer: true,
-        shimmerSpeed: 0.08,
-        shimmerIntensity: 0.3,
+        shimmerSpeed: 0.055,
+        shimmerIntensity: 0.22,
 
-        // Star dust trails
         trails: true,
-        trailLength: 0.2,
-        trailOpacity: 0.4,
+        trailLength: 0.24,
+        trailOpacity: 0.34,
     },
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 8,
-            glowIntensity: 0.5,
-            outlineWidth: 1.5,
+            glowRadius: 13,
+            glowIntensity: 0.76,
+            outlineWidth: 1.8,
         },
         phaser: {
-            glowRadius: 12,
-            glowIntensity: 0.7,
-            outlineWidth: 2,
+            glowRadius: 18,
+            glowIntensity: 0.88,
+            outlineWidth: 2.2,
         },
     },
 };

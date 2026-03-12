@@ -538,7 +538,6 @@ function createStars(uniforms, count) {
         opacity: 0.8,
         depthWrite: false,
         sizeAttenuation: true,
-        bgPlane: false, // Custom flag if needed
     });
 
     return new THREE.Points(geometry, material);
@@ -685,7 +684,7 @@ function createSnowFloor(uniforms, offsetY = -123.75) {
 
     // Simple noise for subtle snow variation
     const noise = (x, z, scale) => Math.sin(x * scale) * Math.cos(z * scale * 0.8) * 0.5
-            + Math.sin(x * scale * 2.3) * Math.cos(z * scale * 1.7) * 0.25;
+        + Math.sin(x * scale * 2.3) * Math.cos(z * scale * 1.7) * 0.25;
 
     // Apply gentle height displacement
     for (let i = 0; i < positionAttr.count; i++) {

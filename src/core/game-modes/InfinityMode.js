@@ -861,13 +861,14 @@ export class InfinityMode extends BaseGameMode {
         this.physicsCallbacks = {
             onMove: () => this.deps.soundManager.sfxPlayer.playMove(),
             onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
-            onLineClear: (lineCount) => {
+            onLineClear: (lineCount, ...rest) => {
+                const clearedRows = Array.isArray(rest[2]) ? rest[2] : [];
                 // Play sound effects
                 this.deps.soundManager.sfxPlayer.playLineClear();
 
                 // Emit event for theme reactions
                 console.log('[Infinity] Emitting LINE_CLEAR event, count:', lineCount);
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount });
+                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount, clearedRows });
 
                 // Track combo stats for infinity mode
                 if (this.gameState.infinityStats && this.gameState.comboState) {

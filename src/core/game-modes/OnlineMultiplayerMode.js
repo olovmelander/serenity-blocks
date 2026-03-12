@@ -315,6 +315,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 this.steamNetworking,
                 this.steamNetworking.steamId,
             );
+            this._configureLocalInputHooks(this.ffaGameState);
 
             // Announce join to host
             this.ffaGameState.announceJoin();
@@ -391,6 +392,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 this.steamNetworking,
                 this.steamNetworking.steamId,
             );
+            this._configureLocalInputHooks(this.ffaGameState);
 
             // Set match configuration
             this.ffaGameState.matchConfig = {
@@ -1110,7 +1112,10 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 if (!this.mainBoardScene) return;
 
                 // Emit event for theme integration
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: detail.rows?.length || 0 });
+                eventBus.emit(EVENTS.LINE_CLEAR, {
+                    lineCount: detail.rows?.length || 0,
+                    clearedRows: detail.rows || [],
+                });
 
                 // Trigger flash effect on cleared rows
                 if (this.mainBoardScene.triggerLineClearFlash && detail.rows) {
@@ -2170,6 +2175,31 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         console.log('[OnlineMultiplayer] Input handlers set up');
     }
 
+    _configureLocalInputHooks(gameState) {
+        if (!gameState?.setLocalInputHooks) {
+            return;
+        }
+
+        gameState.setLocalInputHooks({
+            advance: (currentTime, delta) => this._advanceHeldGameplayInput(currentTime, delta),
+            reset: () => this._resetHeldGameplayInput(),
+        });
+    }
+
+    _advanceHeldGameplayInput(currentTime, delta) {
+        if (typeof window !== 'undefined') {
+            window.inputController?.updateDAS?.(delta);
+        }
+        this.deps.gamepadController?.advanceGameplayInput?.(currentTime);
+    }
+
+    _resetHeldGameplayInput() {
+        if (typeof window !== 'undefined') {
+            window.inputController?.clearTimers?.();
+        }
+        this.deps.gamepadController?.clearAllDasTimers?.();
+    }
+
     _setupScoreboardOverlayHotkey() {
         if (this.scoreboardToggleHandler) return;
 
@@ -2318,15 +2348,16 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             if (document.hidden) {
                 // Pause local input to prevent ghost key repeats
-                if (window.inputController) {
-                    window.inputController.clearTimers();
+                this._resetHeldGameplayInput();
+                if (typeof window !== 'undefined' && window.inputController) {
                     window.inputController.keyMap = {};
                 }
                 console.log('[OnlineMultiplayer] Tab hidden - local input paused, network loop continues');
             } else {
                 // Reset input timing on return to prevent burst moves
-                if (window.inputController) {
-                    window.inputController.clearTimers();
+                this._resetHeldGameplayInput();
+                if (typeof window !== 'undefined' && window.inputController) {
+                    window.inputController.keyMap = {};
                 }
                 console.log('[OnlineMultiplayer] Tab visible - local input resumed');
             }

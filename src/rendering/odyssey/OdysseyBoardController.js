@@ -720,6 +720,10 @@ export class OdysseyBoardController {
         this.animationFrameId = requestAnimationFrame(() => this.animate());
 
         const delta = this.clock.getDelta();
+        this.renderFrame(delta);
+    }
+
+    renderFrame(delta = 0) {
         this.time += delta;
 
         // Update components
@@ -762,6 +766,16 @@ export class OdysseyBoardController {
         } else {
             this.renderer.render(this.scene, this.camera);
         }
+    }
+
+    /**
+     * Force a single synchronous render without restarting the board loop.
+     * Used immediately before the portal breach snapshot.
+     * @param {number} delta
+     */
+    renderOnce(delta = 0) {
+        if (!this.renderer || !this.scene || !this.camera) return;
+        this.renderFrame(delta);
     }
 
     /**

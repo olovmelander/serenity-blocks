@@ -302,7 +302,7 @@ export class ThemeTransitionManager {
      */
     async prefetchLevelTheme(levelConfig) {
         const themeName = levelConfig?.theme?.primary;
-        if (!themeName || !this.themeManager?.switchTheme) {
+        if (!themeName || !this.themeManager?.loadTheme) {
             return false;
         }
 
@@ -311,7 +311,7 @@ export class ThemeTransitionManager {
         }
 
         this.prefetchThemeName = themeName;
-        this.prefetchThemePromise = this.themeManager.switchTheme(themeName, true)
+        this.prefetchThemePromise = this.themeManager.loadTheme(themeName, true)
             .then(() => true)
             .catch((error) => {
                 console.warn('[ThemeTransition] Theme prefetch failed:', themeName, error);
@@ -325,6 +325,38 @@ export class ThemeTransitionManager {
             });
 
         return this.prefetchThemePromise;
+    }
+
+    /**
+     * Activate a prefetched theme only when the transition is already covered.
+     * This avoids visual contention during ORB_LOCK while still keeping assets hot.
+     * @param {Object} levelConfig
+     * @returns {Promise<boolean>}
+     */
+    async activatePrefetchedLevelTheme(levelConfig) {
+        const themeName = levelConfig?.theme?.primary;
+        if (!themeName || !this.themeManager?.switchTheme) {
+            return false;
+        }
+
+        try {
+            if (this.prefetchThemePromise && this.prefetchThemeName === themeName) {
+                await this.prefetchThemePromise;
+            } else if (this.themeManager?.loadTheme) {
+                await this.themeManager.loadTheme(themeName, true);
+            }
+
+            await this.themeManager.switchTheme(themeName, true);
+
+            if (this.themeManager.themesSuspended) {
+                await this.themeManager.resumeThemes();
+            }
+
+            return true;
+        } catch (error) {
+            console.warn('[ThemeTransition] Theme activation failed:', themeName, error);
+            return false;
+        }
     }
 
     // ========================================

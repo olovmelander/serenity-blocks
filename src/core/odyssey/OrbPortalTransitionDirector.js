@@ -13,12 +13,16 @@ export const ORB_PORTAL_STATES = Object.freeze({
 });
 
 const BASE_TIMINGS = Object.freeze({
-    ORB_LOCK: 650,
-    PORTAL_BREACH: 850,
-    TUNNEL: 1800,
-    ARRIVAL_HOLD_BASE: 300,
-    ARRIVAL_HOLD_MAX_EXTRA: 1200,
-    REVEAL: 600,
+    // Phase 1: The Gathering (dolly zoom + squish)
+    ORB_LOCK: 800,
+    // Phase 2: Ignition & Fracture (flash + handover)
+    PORTAL_BREACH: 300,
+    // Phase 3: Hyperspace Glide (smooth transit)
+    TUNNEL: 1600,
+    // Phase 4 & 5: Atmospheric Re-entry & Landing
+    ARRIVAL_HOLD_BASE: 900,
+    ARRIVAL_HOLD_MAX_EXTRA: 500,
+    REVEAL: 0, // Merged into the arrival burn-away
 });
 
 function wait(ms) {
@@ -102,6 +106,7 @@ export class OrbPortalTransitionDirector {
 
         this.isRunning = true;
         let degraded = false;
+        let warpRushTimerId = null;
 
         const hooks = deps.modeHooks || {};
         const timings = {
@@ -135,36 +140,30 @@ export class OrbPortalTransitionDirector {
             const holdMaxExtraMs = timings.ARRIVAL_HOLD_MAX_EXTRA;
 
             this.compositor.setPortalAnchor(portalAnchor);
+            this.compositor.setArrivalPalette?.(themeConfig);
             this.compositor.setArrivalFlash(0);
+            this.compositor.setArrivalSilhouette?.(0);
             this.compositor.setRevealMask(0);
             this.compositor.setCoverageMode?.('live');
 
-            hooks.prepareGameplayContainers?.();
-
-            // Start readiness tasks immediately in PREPARE to minimize ARRIVAL_HOLD extension.
-            const loadingTask = Promise.resolve(
-                hooks.loadLevelInBackground?.(levelConfig, { hideBoard: false }),
+            const prepareContainersTask = Promise.resolve(
+                hooks.prepareGameplayContainers?.() ?? true,
             )
-                .then(() => true)
+                .then((ready) => ready !== false)
                 .catch((error) => {
-                    console.warn('[OrbPortalDirector] Background loading failed:', error);
+                    console.warn('[OrbPortalDirector] Gameplay container preparation failed:', error);
                     degraded = true;
                     return false;
                 });
 
-            const themeReadyTask = Promise.resolve(
-                deps.themeManager?.waitForThemeReady?.(
-                    timings.ORB_LOCK
-                    + timings.PORTAL_BREACH
-                    + timings.TUNNEL
-                    + holdBaseMs
-                    + holdMaxExtraMs
-                    + 200,
-                ) ?? true,
+            const prefetchTask = Promise.resolve(
+                hooks.prefetchLevelAssets?.(levelConfig)
+                ?? hooks.loadLevelInBackground?.(levelConfig, { hideBoard: false })
+                ?? true,
             )
-                .then((ready) => !!ready)
+                .then((ready) => ready !== false)
                 .catch((error) => {
-                    console.warn('[OrbPortalDirector] Theme readiness gate failed:', error);
+                    console.warn('[OrbPortalDirector] Asset prefetch failed:', error);
                     degraded = true;
                     return false;
                 });
@@ -172,8 +171,7 @@ export class OrbPortalTransitionDirector {
             setState(ORB_PORTAL_STATES.ORB_LOCK);
             this.compositor.showLiveOrbLock?.(portalAnchor);
             hooks.pulseOrbNode?.(levelId);
-            const zoomLeadDuration = Math.max(900, timings.ORB_LOCK + 320);
-            hooks.startCameraZoom?.(levelId, zoomLeadDuration);
+            hooks.startCameraZoom?.(levelId, timings.ORB_LOCK);
             hooks.playTransitionCue?.('orbCharge');
             let anchorTrackerId = null;
             const trackLiveAnchor = () => {
@@ -193,8 +191,8 @@ export class OrbPortalTransitionDirector {
 
             setState(ORB_PORTAL_STATES.PORTAL_BREACH);
             this.compositor.hideLiveOrbLock?.(90);
+            boardController?.renderOnce?.(1 / 60);
             const breachAnchor = this.computePortalAnchor(boardController, levelId);
-            this.compositor.setPortalAnchor(breachAnchor);
             const snapshotCanvas = boardController?.captureFrame?.();
             const shown = this.compositor.showWithSnapshot?.(snapshotCanvas, breachAnchor);
             if (shown === false) {
@@ -207,7 +205,22 @@ export class OrbPortalTransitionDirector {
             boardController?.pauseRendering?.();
             hooks.hideGameUIForTransition?.();
 
+            const themeVisualsTask = Promise.resolve(
+                hooks.activateThemeVisuals?.(levelConfig)
+                ?? deps.themeManager?.waitForThemeReady?.(
+                    timings.PORTAL_BREACH + timings.TUNNEL + holdBaseMs + holdMaxExtraMs,
+                )
+                ?? true,
+            )
+                .then((ready) => ready !== false)
+                .catch((error) => {
+                    console.warn('[OrbPortalDirector] Theme activation failed:', error);
+                    degraded = true;
+                    return false;
+                });
+
             const totalWarpDuration = timings.PORTAL_BREACH + timings.TUNNEL;
+            this.compositor.attachWarpContainer(this.transitionManager?.warpRenderer?.container);
             const warpPromise = this.transitionManager?.playOrbPortal?.({
                 duration: totalWarpDuration,
                 profile: qualityProfile,
@@ -217,16 +230,71 @@ export class OrbPortalTransitionDirector {
             }) || this.transitionManager?.playWarp?.(totalWarpDuration, themeConfig)
                 || wait(totalWarpDuration);
 
-            this.compositor.attachWarpContainer(this.transitionManager?.warpRenderer?.container);
-
             setState(ORB_PORTAL_STATES.TUNNEL);
             hooks.playTransitionCue?.('breach');
             const warpRushDelayMs = Math.floor(timings.PORTAL_BREACH + (timings.TUNNEL * 0.5));
-            setTimeout(() => {
+            warpRushTimerId = setTimeout(() => {
                 if (this.isRunning && this.currentState === ORB_PORTAL_STATES.TUNNEL) {
                     hooks.playTransitionCue?.('warpRush');
                 }
             }, warpRushDelayMs);
+
+            hooks.setBoardViewMode?.(false);
+            const gameplayPrepareTask = Promise.all([prepareContainersTask, prefetchTask])
+                .then(async ([containersReady]) => {
+                    if (!containersReady) {
+                        return false;
+                    }
+                    const prepared = await Promise.resolve(hooks.prepareGameplayReveal?.(levelConfig) ?? true);
+                    return prepared !== false;
+                })
+                .catch((error) => {
+                    console.warn('[OrbPortalDirector] Gameplay preparation failed:', error);
+                    degraded = true;
+                    return false;
+                });
+
+            const gameplayBootstrapTask = Promise.all([themeVisualsTask, gameplayPrepareTask])
+                .then(async ([themeReady, gameplayPrepared]) => {
+                    if (!themeReady || !gameplayPrepared) {
+                        return false;
+                    }
+
+                    const introTask = Promise.resolve(hooks.showLevelIntro?.(levelConfig))
+                        .catch((error) => {
+                            console.warn('[OrbPortalDirector] Level intro failed:', error);
+                            degraded = true;
+                            return false;
+                        });
+
+                    const levelStarted = await Promise.resolve(hooks.startLevel?.() ?? true)
+                        .then((value) => value !== false)
+                        .catch((error) => {
+                            console.warn('[OrbPortalDirector] Gameplay bootstrap failed:', error);
+                            degraded = true;
+                            return false;
+                        });
+
+                    await introTask;
+                    return levelStarted;
+                });
+
+            const firstGameplayCompositeTask = gameplayBootstrapTask.then((bootstrapped) => {
+                if (!bootstrapped) {
+                    return false;
+                }
+                return Promise.resolve(
+                    hooks.confirmFirstGameplayComposite?.(holdBaseMs + holdMaxExtraMs)
+                    ?? hooks.waitForFirstGameplayFrame?.(holdBaseMs + holdMaxExtraMs)
+                    ?? true,
+                )
+                    .then((ready) => !!ready)
+                    .catch((error) => {
+                        console.warn('[OrbPortalDirector] First gameplay composite gate failed:', error);
+                        degraded = true;
+                        return false;
+                    });
+            });
 
             const warpResult = await warpPromise;
             if (warpResult && warpResult.success === false) {
@@ -235,22 +303,16 @@ export class OrbPortalTransitionDirector {
 
             setState(ORB_PORTAL_STATES.ARRIVAL_HOLD);
             hooks.playTransitionCue?.('arrivalHit');
-            this.compositor.setArrivalFlash(0.84);
-            this.compositor.setRevealMask(0.2);
+            this.compositor.setArrivalFlash(0.76);
+            this.compositor.setArrivalSilhouette?.(0.42);
+            this.compositor.setRevealMask(0.14);
             this.compositor.startArrivalHoldAnimation?.();
-
-            hooks.setBoardViewMode?.(false);
-            hooks.hideBoardBackdrop?.();
-            await hooks.showGameplayView?.({ underPortalFlash: true });
-            await hooks.showLevelIntro?.(levelConfig);
-            await hooks.startLevel?.();
-
-            const firstGameplayFrameGate = Promise.resolve(
-                hooks.waitForFirstGameplayFrame?.(holdBaseMs + holdMaxExtraMs) ?? true,
+            const gameplayViewTask = Promise.resolve(
+                hooks.showGameplayView?.({ underPortalFlash: true }) ?? true,
             )
-                .then((ready) => !!ready)
+                .then((ready) => ready !== false)
                 .catch((error) => {
-                    console.warn('[OrbPortalDirector] First gameplay frame gate failed:', error);
+                    console.warn('[OrbPortalDirector] Gameplay view reveal failed:', error);
                     degraded = true;
                     return false;
                 });
@@ -259,25 +321,35 @@ export class OrbPortalTransitionDirector {
             await wait(holdBaseMs);
 
             const gateResults = await withTimeout(
-                Promise.all([loadingTask, themeReadyTask, firstGameplayFrameGate]),
+                Promise.all([
+                    prefetchTask,
+                    themeVisualsTask,
+                    gameplayViewTask,
+                    firstGameplayCompositeTask,
+                ]),
                 holdMaxExtraMs,
-                [false, false, false],
+                [false, false, false, false],
             );
 
-            const [boardReady, themeReady, firstGameplayFrame] = gateResults;
-            if (!boardReady || !themeReady || !firstGameplayFrame) {
+            const [
+                assetsPrefetched,
+                themeVisualsStable,
+                gameplayContainersReady,
+                firstGameplayFrame,
+            ] = gateResults;
+            if (!assetsPrefetched || !themeVisualsStable || !gameplayContainersReady || !firstGameplayFrame) {
                 degraded = true;
                 console.warn('[OrbPortalDirector] Readiness gate timeout/degradation', {
-                    boardReady,
-                    themeReady,
+                    assetsPrefetched,
+                    themeVisualsStable,
+                    gameplayContainersReady,
                     firstGameplayFrame,
                 });
             }
 
             setState(ORB_PORTAL_STATES.REVEAL);
             this.transitionManager?.warpRenderer?.hideContainer?.();
-            await this.compositor.playReveal(timings.REVEAL);
-            await this.compositor.hide(140);
+            this.compositor?.playReveal?.(0); // instant cleanup
 
             setState(ORB_PORTAL_STATES.CLEANUP);
             this.compositor.clear();
@@ -290,8 +362,12 @@ export class OrbPortalTransitionDirector {
             this.compositor.clear();
             await this.compositor.hide(120);
             boardController?.resumeRendering?.();
+            hooks.restoreUIAfterAbort?.();
             return { success: false, degraded, error };
         } finally {
+            if (warpRushTimerId) {
+                clearTimeout(warpRushTimerId);
+            }
             this.currentState = null;
             this.isRunning = false;
         }
@@ -305,18 +381,34 @@ export class OrbPortalTransitionDirector {
             return {
                 chapterColor: chapterColor.clone(),
                 accentColor: chapterColor.clone().offsetHSL(0.13, 0.05, 0.08),
+                shadowColor: chapterColor.clone().offsetHSL(0.02, 0.08, -0.26),
             };
         }
 
         return {
             chapterColor: new THREE.Color(0x00ccff),
             accentColor: new THREE.Color(0xff55aa),
+            shadowColor: new THREE.Color(0x113355),
         };
     }
 
     computePortalAnchor(boardController, levelId) {
         if (!boardController?.nodeManager || !boardController?.camera) {
             return { x: 0.5, y: 0.5, radius: 0.16 };
+        }
+
+        const cinematicMetrics = boardController.nodeManager.getNodeCinematicMetrics?.(
+            levelId,
+            boardController.camera,
+        );
+        if (cinematicMetrics) {
+            return {
+                x: Math.max(0.05, Math.min(0.95, cinematicMetrics.center.x)),
+                y: Math.max(0.05, Math.min(0.95, cinematicMetrics.center.y)),
+                radius: cinematicMetrics.onScreen
+                    ? Math.max(0.06, Math.min(0.28, cinematicMetrics.radius * 1.08))
+                    : 0.16,
+            };
         }
 
         const nodePos = boardController.nodeManager.getNodePosition?.(levelId);

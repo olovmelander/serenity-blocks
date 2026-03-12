@@ -31,6 +31,7 @@ import {
     createStellarPlanetMaterial,
     createStellarPlanetRingMaterial,
     createStellarGlowPlaneMaterial,
+    createStellarBloodMoonNebulaMaterial,
     createStellarNebulaMaterial,
     createStellarDustRingMaterial,
     createStellarAmbientParticlesMaterial,
@@ -105,6 +106,35 @@ function createSeededRandom(seed) {
         return (state - 1) / 2147483646;
     };
 }
+
+const STELLAR_BLOOD_MOON_NEBULA_SCALE = 1.8;
+const STELLAR_BLOOD_MOON_NEBULA_WRAP = 6000 * STELLAR_BLOOD_MOON_NEBULA_SCALE;
+const STELLAR_BLOOD_MOON_PALETTES = [
+    {
+        name: 'gold-cream',
+        shadow: '#3b1f00',
+        body: '#d99c1e',
+        glow: '#f8f2c9',
+    },
+    {
+        name: 'teal-mint',
+        shadow: '#062730',
+        body: '#25c4c2',
+        glow: '#d5fff5',
+    },
+    {
+        name: 'violet-lilac',
+        shadow: '#1c123c',
+        body: '#8256ff',
+        glow: '#efe1ff',
+    },
+    {
+        name: 'magenta-rose',
+        shadow: '#2c0f24',
+        body: '#d8489a',
+        glow: '#ffd8f4',
+    },
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Presets (matching Andromeda scale)
@@ -396,6 +426,44 @@ const RadialSpeedLinesShader = {
     `,
 };
 
+const ColorGradeShader = {
+    uniforms: {
+        tDiffuse: { value: null },
+        exposure: { value: 0.99 },
+        contrast: { value: 1.08 },
+        saturation: { value: 1.06 },
+        ditherStrength: { value: 0.0016 },
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float exposure;
+        uniform float contrast;
+        uniform float saturation;
+        uniform float ditherStrength;
+        varying vec2 vUv;
+
+        void main() {
+            vec3 color = texture2D(tDiffuse, vUv).rgb * exposure;
+
+            float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+            color = mix(vec3(luma), color, saturation);
+            color = (color - 0.5) * contrast + 0.5;
+
+            float noise = fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453);
+            color += (noise - 0.5) * ditherStrength;
+
+            gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+        }
+    `,
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Theme Class
 // ─────────────────────────────────────────────────────────────────────────────
@@ -418,6 +486,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.vignettePass = null;
         this.chromaticPass = null;
         this.radialSpeedPass = null;
+        this.colorGradePass = null;
         this.animationFrameId = null;
         this.resizeHandler = null;
         this.webglContextLostHandler = null;
@@ -450,6 +519,8 @@ export default class StellarDriftTheme extends BaseTheme {
         this.meteorMatrixDummy = new THREE.Object3D();
         this.nebulaClouds = [];
         this.nebulaMeshes = [];
+        this.nebulaStacks = [];
+        this.nebulaPalette = null;
         this.secondaryBodies = [];
         this.depthHazeLayers = [];
         this.ambientParticles = null;
@@ -650,6 +721,19 @@ export default class StellarDriftTheme extends BaseTheme {
 
     getNebulaBurstCapacity() {
         return this.qualityPreset?.nebulaBurstCapacity ?? 16000;
+    }
+
+    getNebulaBackdropLayerCount() {
+        switch (this.activeQualityLevel) {
+        case 'Extreme':
+        case 'Ultra':
+        case 'High':
+            return 3;
+        case 'Medium':
+            return 2;
+        default:
+            return 1;
+        }
     }
 
     getBurstParticlesPerNebulaBudget() {
@@ -900,17 +984,27 @@ export default class StellarDriftTheme extends BaseTheme {
         const height = 780 + this.rand() * 420;
         const baseOpacity = 0.05 + intensity * 0.08;
         const hue = 168 + this.rand() * 130;
+        const tintColor = new THREE.Color().setHSL((hue % 360) / 360, 0.78, 0.58);
         const texture = this.createDepthHazeTexture({
             hue,
             saturation: 84,
             lightness: 50,
             alpha: 0.2 + intensity * 0.16,
+            vivid: true,
         });
         const geometry = new THREE.PlaneGeometry(width, height);
         const materialData = createStellarNebulaMaterial({
             isWebGPU: this.isWebGPU,
+            variant: 'haze',
             nebulaTexture: texture,
             opacity: baseOpacity,
+            tintColor,
+            flowStrength: 0.05 + intensity * 0.02,
+            detailStrength: 0.92 + intensity * 0.16,
+            densityThreshold: 0.32,
+            emissiveGain: 0.12 + intensity * 0.1,
+            edgeSoftness: 1.46,
+            phaseSeed: this.rand() * 100,
         });
 
         const aurora = new THREE.Mesh(geometry, materialData.material);
@@ -1059,10 +1153,14 @@ export default class StellarDriftTheme extends BaseTheme {
             }
 
             if (this.nebulaBurstCompute?.computeNode) {
-                const drag = Math.max(0.988, 0.995 - this.warpSpeed * 0.003);
+                const drag = THREE.MathUtils.clamp(
+                    0.9962 + this.nebulaPulse * 0.0007 - this.warpSpeed * 0.0014,
+                    0.992,
+                    0.9972,
+                );
                 this.nebulaBurstCompute.update(deltaSeconds, {
                     drag,
-                    turbulence: 0.25 + this.nebulaPulse * 0.45,
+                    turbulence: 0.32 + this.nebulaPulse * 0.62 + this.nebulaBoostIntensity * 0.18,
                 });
                 this.renderer.compute(this.nebulaBurstCompute.computeNode);
             }
@@ -1378,6 +1476,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.vignettePass = null;
         this.chromaticPass = null;
         this.radialSpeedPass = null;
+        this.colorGradePass = null;
     }
 
     disposeMaterialTextures(material, disposedTextures) {
@@ -1484,6 +1583,8 @@ export default class StellarDriftTheme extends BaseTheme {
         this.meteorMatrixDummy = null;
         this.nebulaClouds = [];
         this.nebulaMeshes = [];
+        this.nebulaStacks = [];
+        this.nebulaPalette = null;
         this.secondaryBodies = [];
         this.depthHazeLayers = [];
         this.ambientParticles = null;
@@ -2059,10 +2160,9 @@ export default class StellarDriftTheme extends BaseTheme {
         this.createStarfield(); // 3D point stars
         // this.createNebulaClouds();   // REMOVED: Replaced by volumetric backdrop
         // this.createOrbitingParticles(); // REMOVED: User request
-        this.createNebulaBackdrop(); // NEW: High-def majestic nebula
+        this.createNebulaBackdrop(); // Blood Moon-style hero nebula masses
         this.createPlanet();
         this.createSecondaryBodies();
-        this.createDepthHazeLayers();
         this.createDustRing(); // Dust ring around planet
         this.createAmbientParticles(); // Floating ambient sparkles
         this.createMeteorField();
@@ -2260,6 +2360,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.starfieldMaterialData = materialData;
 
         this.starfield = new THREE.Points(geometry, materialData.material);
+        this.starfield.renderOrder = -3200;
         this.scene.add(this.starfield);
         console.log('[StellarDrift] Starfield created with', starCount, this.isWebGPU ? 'TSL stars' : 'shader stars');
     }
@@ -2396,129 +2497,196 @@ export default class StellarDriftTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Drifting Nebula Clouds - Separate planes that scroll left-to-right
+    // Hero Nebula Backdrop - Direct Blood Moon nebula port with fixed palette ramps
     // ─────────────────────────────────────────────────────────────────────────
 
     createNebulaBackdrop() {
         const textureLoader = new THREE.TextureLoader();
-
-        // Load 9 distinct nebula textures (Starless)
-        // Attach exact colors to each texture so they stay linked after shuffle
-        const texturePath = './textures/stellar-drift/';
+        const texturePath = './textures/blood-moon/';
         const textures = [
-            textureLoader.load(`${texturePath}stellar_drift_nebula.png`), // 1: Emerald/Violet
-            textureLoader.load(`${texturePath}stellar_drift_nebula_2.png`), // 2: Gold/Orange
-            textureLoader.load(`${texturePath}stellar_drift_nebula_3.png`), // 3: Blue/Purple
-            textureLoader.load(`${texturePath}stellar_drift_nebula_4.png`), // 4: Red/Magenta
-            textureLoader.load(`${texturePath}stellar_drift_nebula_5.png`), // 5: Cyan/Teal
-            textureLoader.load(`${texturePath}stellar_drift_nebula_6.png`), // 6: Deep Indigo
-            textureLoader.load(`${texturePath}stellar_drift_nebula_7.png`), // 7: Crimson/Black
-            textureLoader.load(`${texturePath}stellar_drift_nebula_8.png`), // 8: Amber/Gold
-            textureLoader.load(`${texturePath}stellar_drift_nebula_9.png`), // 9: Silver/Ghost
+            textureLoader.load(`${texturePath}nebula-red-1.png`),
+            textureLoader.load(`${texturePath}nebula-red-2.png`),
+            textureLoader.load(`${texturePath}nebula-red-3.png`),
         ];
 
-        // Assign colors to textures
-        // These MUST match the visual look of the texture files
-        textures[0].userData = { color: new THREE.Color(0x00FF88) }; // Emerald
-        textures[1].userData = { color: new THREE.Color(0xFFAA00) }; // Gold
-        textures[2].userData = { color: new THREE.Color(0x6633FF) }; // Purple
-        textures[3].userData = { color: new THREE.Color(0xFF3366) }; // Red
-        textures[4].userData = { color: new THREE.Color(0x00FFFF) }; // Cyan
-        textures[5].userData = { color: new THREE.Color(0x3344FF) }; // Indigo
-        textures[6].userData = { color: new THREE.Color(0xFF0044) }; // Crimson
-        textures[7].userData = { color: new THREE.Color(0xFFCC00) }; // Amber
-        textures[8].userData = { color: new THREE.Color(0xCCCCFF) }; // Silver
-
-        textures.forEach((t) => {
-            t.wrapS = THREE.ClampToEdgeWrapping;
-            t.wrapT = THREE.ClampToEdgeWrapping;
+        textures.forEach((texture) => {
+            texture.wrapS = THREE.ClampToEdgeWrapping;
+            texture.wrapT = THREE.ClampToEdgeWrapping;
         });
 
-        // Randomize order so it's different every time
-        for (let i = textures.length - 1; i > 0; i--) {
-            const j = Math.floor(this.rand() * (i + 1));
-            [textures[i], textures[j]] = [textures[j], textures[i]];
-        }
+        const paletteStartIndex = Math.floor(this.rand() * STELLAR_BLOOD_MOON_PALETTES.length);
+        const selectedPalettes = Array.from({ length: 3 }, (_, index) => {
+            const palettePreset = STELLAR_BLOOD_MOON_PALETTES[
+                (paletteStartIndex + index) % STELLAR_BLOOD_MOON_PALETTES.length
+            ] || STELLAR_BLOOD_MOON_PALETTES[0];
 
-        // Configuration for 9 nebula clouds - "Smart Loop" System
-        // Total Cycle Width: 450,000 units
-        // Spacing: 50,000 units (Ensures max 2-3 visible at once in 100k view)
-        // Range: -200,000 to +200,000
+            return {
+                name: palettePreset.name,
+                shadow: new THREE.Color(palettePreset.shadow),
+                body: new THREE.Color(palettePreset.body),
+                glow: new THREE.Color(palettePreset.glow),
+            };
+        });
 
-        const nebulaConfigs = [
-            // Center Group (Visible Now)
-            {
-                texture: textures[0], x: 0, y: 8000, z: -35000, size: 75000, speed: 0.4, vRange: 2000,
-            }, // Center
-            {
-                texture: textures[1], x: 50000, y: -10000, z: -32000, size: 72000, speed: 0.6, vRange: 1500,
-            }, // Right 1
-            {
-                texture: textures[2], x: 100000, y: 0, z: -40000, size: 80000, speed: 0.3, vRange: 1000,
-            }, // Right 2
-            {
-                texture: textures[8], x: -50000, y: -5000, z: -36000, size: 70000, speed: 0.35, vRange: 2200,
-            }, // Left 1 (Silver)
+        this.nebulaPalette = {
+            families: selectedPalettes.map((palette) => palette.name),
+            warm: selectedPalettes[0].body.clone(),
+            cool: selectedPalettes[1].body.clone(),
+            accent: selectedPalettes[2].body.clone(),
+            shadow: selectedPalettes[0].shadow.clone(),
+            body: selectedPalettes[0].body.clone(),
+            glow: selectedPalettes[0].glow.clone(),
+        };
 
-            // Outer Wings (Incoming/Outgoing)
+        const planeConfigs = [
             {
-                texture: textures[3], x: 150000, y: 5000, z: -38000, size: 78000, speed: 0.5, vRange: 1800,
-            }, // Right 3
+                texture: textures[0],
+                size: 6000 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                z: -4500 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                opacity: 0.30,
+                speed: 0.00010 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                layerRole: 'body',
+                driftOffset: 0,
+                offsetY: 0,
+                rotation: 0.12,
+            },
             {
-                texture: textures[4], x: 200000, y: -8000, z: -39000, size: 76000, speed: 0.55, vRange: 1600,
-            }, // Right 4 (Edge)
-
+                texture: textures[1],
+                size: 7000 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                z: -4000 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                opacity: 0.25,
+                speed: 0.00015 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                layerRole: 'body',
+                driftOffset: 150 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                offsetY: 60 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                rotation: -0.28,
+            },
             {
-                texture: textures[5], x: -100000, y: 8000, z: -35000, size: 74000, speed: 0.45, vRange: 2000,
-            }, // Left 2
+                texture: textures[2],
+                size: 5000 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                z: -3000 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                opacity: 0.20,
+                speed: 0.00020 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                layerRole: 'filament',
+                driftOffset: -110 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                offsetY: -80 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                rotation: 0.52,
+            },
             {
-                texture: textures[6], x: -150000, y: 2000, z: -34000, size: 77000, speed: 0.3, vRange: 2500,
-            }, // Left 3
-            {
-                texture: textures[7], x: -200000, y: -2000, z: -37000, size: 75000, speed: 0.4, vRange: 1900,
-            }, // Left 4 (Deep Edge)
+                texture: textures[0],
+                size: 5500 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                z: -2500 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                opacity: 0.15,
+                speed: 0.00025 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                layerRole: 'glow',
+                driftOffset: 220 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                offsetY: 110 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                rotation: -0.08,
+            },
         ];
+        const massConfigs = [
+            {
+                clusterRole: 'hero-left',
+                palette: selectedPalettes[0],
+                paletteGroup: selectedPalettes[0].name,
+                offsetX: -5800,
+                offsetY: 560,
+                scale: 0.56,
+                depthOffset: -900,
+                opacityMultiplier: 0.78,
+                renderOrderBase: -2140,
+            },
+            {
+                clusterRole: 'hero-center',
+                palette: selectedPalettes[1],
+                paletteGroup: selectedPalettes[1].name,
+                offsetX: 0,
+                offsetY: 1240,
+                scale: 0.78,
+                depthOffset: -2200,
+                opacityMultiplier: 0.94,
+                renderOrderBase: -2240,
+            },
+            {
+                clusterRole: 'hero-right',
+                palette: selectedPalettes[2],
+                paletteGroup: selectedPalettes[2].name,
+                offsetX: 6000,
+                offsetY: 600,
+                scale: 0.58,
+                depthOffset: -950,
+                opacityMultiplier: 0.78,
+                renderOrderBase: -2340,
+            },
+        ];
+        const cameraX = this.camera?.position?.x ?? this.cameraBasePosition.x;
+        const cameraY = this.camera?.position?.y ?? this.cameraBasePosition.y;
 
-        // Store nebula meshes for animation
+        this.nebulaClouds = [];
         this.nebulaMeshes = [];
+        this.nebulaStacks = [];
+        this.depthHazeLayers = [];
 
-        nebulaConfigs.forEach((config, index) => {
-            const geometry = new THREE.PlaneGeometry(config.size, config.size * 0.6);
-            const materialData = createStellarNebulaMaterial({
-                isWebGPU: this.isWebGPU,
-                nebulaTexture: config.texture,
-                opacity: 0.4,
+        massConfigs.forEach((massConfig, massIndex) => {
+            planeConfigs.forEach((config, layerIndex) => {
+                const geometry = new THREE.PlaneGeometry(
+                    config.size * massConfig.scale,
+                    config.size * massConfig.scale,
+                );
+                const materialData = createStellarBloodMoonNebulaMaterial({
+                    isWebGPU: this.isWebGPU,
+                    nebulaTexture: config.texture,
+                    opacity: config.opacity * massConfig.opacityMultiplier,
+                    palette: massConfig.palette,
+                });
+
+                const mesh = new THREE.Mesh(geometry, materialData.material);
+                const driftOffset = config.driftOffset * massConfig.scale;
+                const baseZ = config.z + massConfig.depthOffset;
+                const offsetY = massConfig.offsetY + config.offsetY * massConfig.scale;
+
+                mesh.position.set(
+                    cameraX * 0.3 + driftOffset + massConfig.offsetX,
+                    cameraY * 0.2 + offsetY,
+                    baseZ,
+                );
+                mesh.rotation.z = config.rotation;
+                mesh.renderOrder = massConfig.renderOrderBase + layerIndex;
+                mesh.userData.materialData = materialData;
+                mesh.userData.color = massConfig.palette.body.clone();
+                mesh.userData.baseOpacity = config.opacity * massConfig.opacityMultiplier;
+                mesh.userData.driftSpeed = config.speed;
+                mesh.userData.driftOffset = driftOffset;
+                mesh.userData.pulsePhase = this.rand() * Math.PI * 2;
+                mesh.userData.pulseScale = 1.0;
+                mesh.userData.stackId = massIndex;
+                mesh.userData.layerRole = config.layerRole;
+                mesh.userData.clusterRole = massConfig.clusterRole;
+                mesh.userData.paletteGroup = massConfig.paletteGroup;
+                mesh.userData.baseAnchor = new THREE.Vector3(massConfig.offsetX, offsetY, baseZ);
+                mesh.userData.parallaxFactor = 0.0;
+                mesh.userData.flowSeed = this.rand() * 100 + massIndex * 17.3 + layerIndex * 5.1;
+                mesh.userData.massOffsetX = massConfig.offsetX;
+                mesh.userData.massOffsetY = offsetY;
+                mesh.userData.baseZ = baseZ;
+                mesh.userData.wrapBoundary = STELLAR_BLOOD_MOON_NEBULA_WRAP;
+                mesh.userData.totalWidth = STELLAR_BLOOD_MOON_NEBULA_WRAP * 2;
+                mesh.userData.isBurstAnchor = layerIndex === 0;
+
+                this.nebulaClouds.push(mesh);
+                this.nebulaMeshes.push(mesh);
+                this.scene.add(mesh);
             });
-
-            const mesh = new THREE.Mesh(geometry, materialData.material);
-            mesh.position.set(config.x, config.y, config.z);
-            mesh.renderOrder = -2000 - index;
-            mesh.userData.materialData = materialData;
-
-            mesh.userData.speed = config.speed;
-            mesh.userData.startX = config.x;
-            mesh.userData.startY = config.y; // Base Y position
-            mesh.userData.verticalRange = config.vRange; // How much it bobs up/down
-            mesh.userData.driftPhase = this.rand() * Math.PI * 2; // Random starting phase
-
-            // Store color from texture (for particle bursts)
-            if (config.texture.userData && config.texture.userData.color) {
-                mesh.userData.color = config.texture.userData.color;
-            } else {
-                mesh.userData.color = new THREE.Color(0xFFFFFF); // Fallback
-            }
-
-            // "Smart Loop" Setup
-            // Wrap boundary: 225,000 (Half of 450k width)
-            // When x > 225,000, we subtract 450,000 to move it to -225,000
-            mesh.userData.wrapBoundary = 225000;
-            mesh.userData.totalWidth = 450000;
-
-            this.nebulaMeshes.push(mesh);
-            this.scene.add(mesh);
         });
 
-        console.log('[StellarDrift] Drifting nebula backdrop created with modular material factories');
+        console.log(
+            '[StellarDrift] Blood Moon nebula port created',
+            {
+                palettes: selectedPalettes.map((palette) => palette.name),
+                masses: massConfigs.length,
+                planesPerMass: planeConfigs.length,
+            },
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2603,14 +2771,17 @@ export default class StellarDriftTheme extends BaseTheme {
 
     createNebulaBurst(nebulaMesh, particleCount = 30) {
         // Get nebula's current world position and scale
-        const pos = nebulaMesh.position.clone();
-        const scale = nebulaMesh.geometry.parameters?.width || 50000; // Nebula size
+        const pos = new THREE.Vector3();
+        nebulaMesh.getWorldPosition(pos);
+        const scale = (nebulaMesh.geometry.parameters?.width || 50000) * (nebulaMesh.scale?.x || 1);
 
         // Use color directly from mesh (synced to texture)
-        const color = nebulaMesh.userData.color || new THREE.Color(0xFFFFFF);
+        const color = nebulaMesh.userData.color
+            || nebulaMesh.parent?.userData?.color
+            || new THREE.Color(0xFFFFFF);
 
         if (this.nebulaBurstCompute?.computeNode && this.nebulaBurstPool) {
-            this.nebulaBurstCompute.spawnBurst(particleCount, pos, color, scale, 6.7);
+            this.nebulaBurstCompute.spawnBurst(particleCount, pos, color, scale, 7.2);
             return;
         }
 
@@ -2666,9 +2837,8 @@ export default class StellarDriftTheme extends BaseTheme {
     }
 
     burstAllVisibleNebulas(particlesPerNebula) {
-        // Burst from ALL nebulas
         this.nebulaMeshes.forEach((nebula) => {
-            // No need to look up color array anymore - it's on the mesh
+            if (!nebula.userData?.isBurstAnchor) return;
             this.createNebulaBurst(nebula, particlesPerNebula);
         });
     }
@@ -2792,24 +2962,95 @@ export default class StellarDriftTheme extends BaseTheme {
             return new THREE.CanvasTexture(canvas);
         }
 
-        const hue = config.hue ?? (180 + this.rand() * 160);
-        const saturation = config.saturation ?? 78;
-        const lightness = config.lightness ?? 42;
-        const alpha = config.alpha ?? 0.2;
-        const cx = 220 + this.rand() * 72;
-        const cy = 220 + this.rand() * 72;
+        const centerX = 256 + (this.rand() - 0.5) * 44;
+        const centerY = 256 + (this.rand() - 0.5) * 44;
+        const vivid = config.vivid === true;
+        const alpha = config.alpha ?? (vivid ? 0.2 : 0.11);
 
-        const gradient = ctx.createRadialGradient(cx, cy, 0, 256, 256, 256);
-        gradient.addColorStop(0, `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`);
-        gradient.addColorStop(0.45, `hsla(${hue}, ${Math.max(10, saturation - 10)}%, ${Math.max(10, lightness - 6)}%, ${alpha * 0.45})`);
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.clearRect(0, 0, 512, 512);
+        ctx.globalCompositeOperation = 'lighter';
 
-        ctx.fillStyle = gradient;
+        const drawBlob = (x, y, radius, innerAlpha, hueOffset = 0) => {
+            const gradient = ctx.createRadialGradient(x, y, radius * 0.06, x, y, radius);
+            if (vivid) {
+                const hue = config.hue ?? (180 + this.rand() * 160);
+                const saturation = config.saturation ?? 78;
+                const lightness = config.lightness ?? 42;
+                gradient.addColorStop(
+                    0,
+                    `hsla(${hue + hueOffset}, ${Math.min(100, saturation + 8)}%, ${Math.min(72, lightness + 10)}%, ${innerAlpha})`,
+                );
+                gradient.addColorStop(
+                    0.42,
+                    `hsla(${hue + hueOffset * 0.5}, ${Math.max(18, saturation - 6)}%, ${Math.max(12, lightness - 2)}%, ${innerAlpha * 0.48})`,
+                );
+                gradient.addColorStop(
+                    0.8,
+                    `hsla(${hue + hueOffset}, ${Math.max(12, saturation - 16)}%, ${Math.max(8, lightness - 12)}%, ${innerAlpha * 0.12})`,
+                );
+            } else {
+                gradient.addColorStop(0, `rgba(255, 255, 255, ${innerAlpha})`);
+                gradient.addColorStop(0.34, `rgba(198, 204, 226, ${innerAlpha * 0.46})`);
+                gradient.addColorStop(0.72, `rgba(62, 70, 92, ${innerAlpha * 0.08})`);
+            }
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+        };
+
+        const lobeCount = vivid ? 5 + Math.floor(this.rand() * 3) : 4 + Math.floor(this.rand() * 2);
+        for (let i = 0; i < lobeCount; i += 1) {
+            const angle = (i / lobeCount) * Math.PI * 2 + this.rand() * 0.65;
+            const distance = vivid ? 18 + this.rand() * 92 : 26 + this.rand() * 72;
+            const radius = vivid ? 130 + this.rand() * 120 : 118 + this.rand() * 90;
+            const x = centerX + Math.cos(angle) * distance;
+            const y = centerY + Math.sin(angle) * distance;
+            const hueOffset = vivid ? (this.rand() - 0.5) * 26 : 0;
+            drawBlob(x, y, radius, alpha * (vivid ? (0.72 + this.rand() * 0.42) : (0.62 + this.rand() * 0.22)), hueOffset);
+        }
+
+        const wispCount = vivid ? 8 + Math.floor(this.rand() * 5) : 5 + Math.floor(this.rand() * 3);
+        for (let i = 0; i < wispCount; i += 1) {
+            const angle = this.rand() * Math.PI * 2;
+            const distance = vivid ? 70 + this.rand() * 150 : 58 + this.rand() * 96;
+            const radius = vivid ? 54 + this.rand() * 84 : 42 + this.rand() * 58;
+            drawBlob(
+                centerX + Math.cos(angle) * distance,
+                centerY + Math.sin(angle) * distance,
+                radius,
+                alpha * (vivid ? (0.18 + this.rand() * 0.14) : (0.1 + this.rand() * 0.08)),
+                vivid ? (this.rand() - 0.5) * 38 : 0,
+            );
+        }
+
+        ctx.globalCompositeOperation = 'destination-out';
+        const voidCount = vivid ? 3 + Math.floor(this.rand() * 3) : 4 + Math.floor(this.rand() * 2);
+        for (let i = 0; i < voidCount; i += 1) {
+            const angle = this.rand() * Math.PI * 2;
+            const distance = this.rand() * 110;
+            const radius = vivid ? 52 + this.rand() * 92 : 46 + this.rand() * 66;
+            const x = centerX + Math.cos(angle) * distance;
+            const y = centerY + Math.sin(angle) * distance;
+            const carve = ctx.createRadialGradient(x, y, radius * 0.08, x, y, radius);
+            carve.addColorStop(0, `rgba(0, 0, 0, ${vivid ? (0.34 + this.rand() * 0.2) : (0.42 + this.rand() * 0.16)})`);
+            carve.addColorStop(0.72, vivid ? 'rgba(0, 0, 0, 0.1)' : 'rgba(0, 0, 0, 0.08)');
+            carve.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = carve;
+            ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+        }
+
+        ctx.globalCompositeOperation = 'destination-in';
+        const edgeFade = ctx.createRadialGradient(256, 256, vivid ? 36 : 48, 256, 256, vivid ? 244 : 228);
+        edgeFade.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        edgeFade.addColorStop(vivid ? 0.58 : 0.52, vivid ? 'rgba(255, 255, 255, 0.82)' : 'rgba(255, 255, 255, 0.76)');
+        edgeFade.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = edgeFade;
         ctx.fillRect(0, 0, 512, 512);
 
         const texture = new THREE.CanvasTexture(canvas);
         texture.wrapS = THREE.ClampToEdgeWrapping;
         texture.wrapT = THREE.ClampToEdgeWrapping;
+        texture.colorSpace = THREE.SRGBColorSpace;
         return texture;
     }
 
@@ -2951,50 +3192,113 @@ export default class StellarDriftTheme extends BaseTheme {
 
     createDepthHazeLayers() {
         this.depthHazeLayers = [];
+        const palette = this.nebulaPalette || {
+            warm: new THREE.Color(0xff8855),
+            cool: new THREE.Color(0x7ea0ff),
+            accent: new THREE.Color(0x86739e),
+        };
+        const muteSupportColor = (sourceColor, saturationScale = 0.26, lightness = 0.3) => {
+            const hsl = { h: 0, s: 0, l: 0 };
+            sourceColor.getHSL(hsl);
+            return new THREE.Color().setHSL(
+                hsl.h,
+                THREE.MathUtils.clamp(hsl.s * saturationScale, 0.05, 0.36),
+                lightness,
+            );
+        };
 
         const hazeConfigs = [
             {
-                x: -2600, y: 820, z: -43000, size: 98000, opacity: 0.16, hue: 204, sat: 80, light: 46, drift: 2600,
+                basePosition: new THREE.Vector3(-3320, 940, -17600),
+                size: 11200,
+                opacity: 0.062,
+                tintColor: muteSupportColor(palette.warm, 0.24, 0.28),
+                driftRange: 160,
+                parallaxFactor: 0.06,
+                detailStrength: 0.74,
+                densityThreshold: 0.58,
+                flowStrength: 0.024,
+                emissiveGain: 0.018,
+                rotation: -0.18,
             },
             {
-                x: 2550, y: -620, z: -39500, size: 92000, opacity: 0.15, hue: 306, sat: 76, light: 44, drift: 2200,
+                basePosition: new THREE.Vector3(2720, 1680, -22200),
+                size: 12400,
+                opacity: 0.042,
+                tintColor: muteSupportColor(palette.cool, 0.22, 0.31),
+                driftRange: 130,
+                parallaxFactor: 0.038,
+                detailStrength: 0.82,
+                densityThreshold: 0.6,
+                flowStrength: 0.022,
+                emissiveGain: 0.016,
+                rotation: 0.26,
             },
             {
-                x: -1750, y: -880, z: -31000, size: 76000, opacity: 0.12, hue: 178, sat: 72, light: 42, drift: 1800,
+                basePosition: new THREE.Vector3(3180, -1120, -24800),
+                size: 9600,
+                opacity: 0.036,
+                tintColor: muteSupportColor(palette.accent, 0.2, 0.29),
+                driftRange: 110,
+                parallaxFactor: 0.03,
+                detailStrength: 0.78,
+                densityThreshold: 0.62,
+                flowStrength: 0.02,
+                emissiveGain: 0.014,
+                rotation: -0.08,
             },
         ];
 
         hazeConfigs.forEach((config, index) => {
+            const phaseSeed = this.rand() * 100 + index * 19.4;
             const texture = this.createDepthHazeTexture({
-                hue: config.hue,
-                saturation: config.sat,
-                lightness: config.light,
                 alpha: config.opacity,
             });
-            const geometry = new THREE.PlaneGeometry(config.size, config.size * 0.58);
+            const geometry = new THREE.PlaneGeometry(config.size, config.size * 0.56);
             const materialData = createStellarNebulaMaterial({
                 isWebGPU: this.isWebGPU,
+                variant: 'haze',
                 nebulaTexture: texture,
                 opacity: config.opacity,
+                tintColor: config.tintColor,
+                flowStrength: config.flowStrength,
+                detailStrength: config.detailStrength,
+                densityThreshold: config.densityThreshold,
+                emissiveGain: config.emissiveGain,
+                edgeSoftness: 1.44,
+                phaseSeed,
             });
 
             const mesh = new THREE.Mesh(geometry, materialData.material);
             mesh.userData.materialData = materialData;
-            mesh.position.set(config.x, config.y, config.z);
+            mesh.position.copy(config.basePosition);
+            mesh.rotation.z = config.rotation;
             mesh.renderOrder = -2600 - index;
+            mesh.userData.color = config.tintColor;
+            mesh.userData.baseOpacity = config.opacity;
+            mesh.userData.baseEmissiveGain = config.emissiveGain;
+            mesh.userData.baseFlowStrength = config.flowStrength;
+            mesh.userData.baseDetailStrength = config.detailStrength;
+            mesh.userData.baseDensityThreshold = config.densityThreshold;
+            mesh.userData.pulseScale = 0.12 + index * 0.05;
+            mesh.userData.flowSeed = phaseSeed;
+            mesh.userData.baseRotation = config.rotation;
+            mesh.userData.rotationSpeed = 0.11 + index * 0.03;
+            mesh.userData.rotationAmplitude = 0.014 + index * 0.004;
             this.scene.add(mesh);
 
             this.depthHazeLayers.push({
                 mesh,
-                basePosition: new THREE.Vector3(config.x, config.y, config.z),
-                driftRange: config.drift,
+                basePosition: config.basePosition.clone(),
+                driftRange: config.driftRange,
+                parallaxFactor: config.parallaxFactor,
                 driftPhase: this.rand() * Math.PI * 2,
-                driftSpeed: 0.022 + this.rand() * 0.018,
-                focalSide: Math.sign(config.x) || 1,
+                driftSpeed: 0.018 + this.rand() * 0.012,
+                focalSide: Math.sign(config.basePosition.x) || 1,
             });
         });
 
-        console.log('[StellarDrift] Depth haze layers created');
+        console.log('[StellarDrift] Depth haze layers created as dark support veils');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -3268,14 +3572,14 @@ export default class StellarDriftTheme extends BaseTheme {
                         useMRT,
                         bloomStrength: this.qualityPreset.bloomStrength,
                         bloomRadius: this.qualityPreset.bloomRadius,
-                        bloomThreshold: 0.65,
+                        bloomThreshold: 0.66,
                         chromaticStrength: 0.0,
                         vignetteOffset: 1.1,
                         vignetteDarkness: 0.2,
                         speedLineIntensity: 0.0,
-                        exposure: 1.05,
-                        contrast: 1.04,
-                        saturation: 1.08,
+                        exposure: 0.96,
+                        contrast: 1.12,
+                        saturation: 1.02,
                         bloomDownsample: THREE.MathUtils.clamp(0.6 + effectScale * 0.22, 0.58, 0.86),
                     },
                 );
@@ -3301,7 +3605,7 @@ export default class StellarDriftTheme extends BaseTheme {
                 new THREE.Vector2(width, height),
                 this.qualityPreset.bloomStrength,
                 this.qualityPreset.bloomRadius,
-                0.65,
+                0.66,
             );
             this.composer.addPass(this.bloomPass);
 
@@ -3321,6 +3625,12 @@ export default class StellarDriftTheme extends BaseTheme {
             this.radialSpeedPass.uniforms.intensity.value = 0;
             this.radialSpeedPass.uniforms.time.value = 0;
             this.composer.addPass(this.radialSpeedPass);
+
+            this.colorGradePass = new ShaderPass(ColorGradeShader);
+            this.colorGradePass.uniforms.exposure.value = 0.96;
+            this.colorGradePass.uniforms.contrast.value = 1.12;
+            this.colorGradePass.uniforms.saturation.value = 1.02;
+            this.composer.addPass(this.colorGradePass);
         } catch (error) {
             console.warn('[StellarDrift] Post-processing setup failed. Falling back to direct rendering:', error);
             this.capabilities.post = false;
@@ -4941,8 +5251,9 @@ export default class StellarDriftTheme extends BaseTheme {
 
             this.updateCinematicCamera(rawDelta, planetX, planetY);
             this.updateCinematicLighting(planetX, planetY);
-
-            // Nebula drift is handled above
+            const cameraX = this.camera?.position?.x ?? this.cameraBasePosition.x;
+            const cameraY = this.camera?.position?.y ?? this.cameraBasePosition.y;
+            const cameraZ = this.camera?.position?.z ?? this.cameraBasePosition.z;
 
             // Keep secondary composition anchored away from the hero-planet corridor.
             this.secondaryBodies.forEach((bodyData) => {
@@ -4959,20 +5270,55 @@ export default class StellarDriftTheme extends BaseTheme {
 
             this.depthHazeLayers.forEach((haze) => {
                 const phase = this.time * haze.driftSpeed + haze.driftPhase;
-                let nextX = haze.basePosition.x + Math.sin(phase) * haze.driftRange;
+                const parallaxX = (cameraX - this.cameraBasePosition.x) * haze.parallaxFactor;
+                const parallaxY = (cameraY - this.cameraBasePosition.y) * haze.parallaxFactor * 0.8;
+                const parallaxZ = (cameraZ - this.cameraBasePosition.z) * haze.parallaxFactor * 0.3;
+                let nextX = haze.basePosition.x + parallaxX + Math.sin(phase) * haze.driftRange;
                 nextX = this.enforceFocalCorridor(nextX, planetX, haze.focalSide);
-                const nextY = haze.basePosition.y + Math.cos(phase * 0.8) * (haze.driftRange * 0.18);
+                const nextY = haze.basePosition.y
+                    + parallaxY
+                    + Math.cos(phase * 0.8) * (haze.driftRange * 0.18);
+                const nextZ = haze.basePosition.z
+                    + parallaxZ
+                    + Math.sin(phase * 0.55) * (haze.driftRange * 0.22);
 
                 haze.mesh.position.x = nextX;
                 haze.mesh.position.y = nextY;
-                haze.mesh.rotation.z += 0.00004;
+                haze.mesh.position.z = nextZ;
+                haze.mesh.rotation.z = haze.mesh.userData.baseRotation
+                    + Math.sin(this.time * haze.mesh.userData.rotationSpeed + haze.mesh.userData.flowSeed)
+                        * haze.mesh.userData.rotationAmplitude;
 
                 const hazeUniforms = haze.mesh.userData?.materialData?.uniforms || haze.mesh.material?.uniforms;
                 if (hazeUniforms?.uTime) {
                     hazeUniforms.uTime.value = this.time * 0.7;
                 }
                 if (hazeUniforms?.uPulse) {
-                    hazeUniforms.uPulse.value = this.nebulaPulse * 0.25;
+                    const hazePulse = Math.sin(this.time * 0.22 + haze.mesh.userData.flowSeed) * 0.04;
+                    hazeUniforms.uPulse.value = this.nebulaPulse * haze.mesh.userData.pulseScale * 0.45 + hazePulse;
+                }
+                if (hazeUniforms?.uEmissiveGain) {
+                    hazeUniforms.uEmissiveGain.value = haze.mesh.userData.baseEmissiveGain
+                        * (1 + this.nebulaBoostIntensity * 0.18);
+                }
+                if (hazeUniforms?.uFlowStrength) {
+                    hazeUniforms.uFlowStrength.value = haze.mesh.userData.baseFlowStrength
+                        * (1 + this.nebulaPulse * 0.18 + this.nebulaBoostIntensity * 0.08);
+                }
+                if (hazeUniforms?.uDetailStrength) {
+                    hazeUniforms.uDetailStrength.value = haze.mesh.userData.baseDetailStrength
+                        * (1 + this.nebulaPulse * 0.06);
+                }
+                if (hazeUniforms?.uDensityThreshold) {
+                    hazeUniforms.uDensityThreshold.value = THREE.MathUtils.clamp(
+                        haze.mesh.userData.baseDensityThreshold - this.nebulaPulse * 0.01,
+                        0.36,
+                        0.78,
+                    );
+                }
+                if (hazeUniforms?.uOpacity) {
+                    hazeUniforms.uOpacity.value = haze.mesh.userData.baseOpacity
+                        * (0.98 + this.nebulaBoostIntensity * 0.03);
                 }
             });
 
@@ -5032,11 +5378,6 @@ export default class StellarDriftTheme extends BaseTheme {
                 }
             }
 
-            // Animate nebula clouds (very subtle drift and rotation)
-            this.nebulaClouds.forEach((cloud) => {
-                cloud.rotation.z += 0.0001; // Very slow rotation
-            });
-
             // Starfield twinkling
             const starfieldUniforms = this.starfieldMaterialData?.uniforms || this.starfield?.material?.uniforms;
             if (this.starfield && starfieldUniforms) {
@@ -5054,7 +5395,6 @@ export default class StellarDriftTheme extends BaseTheme {
                     );
                 }
 
-                const cameraX = this.camera?.position?.x ?? 0;
                 this.starfield.rotation.y = Math.sin(this.time * 0.02 + this.cameraDriftSeed) * 0.08
                     + cameraX * 0.00006;
                 this.starfield.rotation.x = Math.cos(this.time * 0.015 + this.cameraDriftSeed * 0.5) * 0.045;
@@ -5086,12 +5426,24 @@ export default class StellarDriftTheme extends BaseTheme {
             // SMOOTH BLOOM PULSE - Gradual bloom decay (boosted during warp)
             const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
             const warpBloomBoost = this.warpSpeed * 0.1 + this.reactiveState.comet * 0.06;
+            const nebulaBloomBoost = this.nebulaBoostIntensity * 0.05;
             const dynamicBloomStrength = this.qualityPreset.bloomStrength
-                * (1 + this.bloomPulseIntensity + warpBloomBoost)
+                * (1 + this.bloomPulseIntensity + warpBloomBoost + nebulaBloomBoost)
                 * effectScale;
+            const bloomThreshold = THREE.MathUtils.clamp(
+                0.67 - this.nebulaBoostIntensity * 0.015,
+                0.63,
+                0.67,
+            );
 
             if (this.bloomPass) {
                 this.bloomPass.strength = dynamicBloomStrength;
+                this.bloomPass.threshold = bloomThreshold;
+            }
+            if (this.colorGradePass) {
+                this.colorGradePass.uniforms.exposure.value = 0.96;
+                this.colorGradePass.uniforms.contrast.value = 1.12;
+                this.colorGradePass.uniforms.saturation.value = 1.02;
             }
 
             // ═══════════════════════════════════════════════════════════════════════
@@ -5132,38 +5484,41 @@ export default class StellarDriftTheme extends BaseTheme {
                 this.postProcessing.update({
                     bloomStrength: dynamicBloomStrength,
                     bloomRadius: this.qualityPreset.bloomRadius,
+                    bloomThreshold,
                     chromaticStrength,
                     vignetteDarkness: baseDarkness + warpDarkness,
                     vignetteOffset: baseOffset - warpOffset,
                     speedLineIntensity,
                     time: this.time * 50,
+                    exposure: 0.96,
+                    contrast: 1.12,
+                    saturation: 1.02,
                 });
             }
 
             // Update Nebula Uniforms (Pulse + Time)
-            this.nebulaMeshes.forEach((mesh) => {
-                // 1. Horizontal Drift (Left to Right)
-                mesh.position.x += mesh.userData.speed;
-
-                // 2. Vertical Bobbing
-                const verticalOffset = Math.sin(this.time * 0.2 + mesh.userData.driftPhase) * mesh.userData.verticalRange;
-                mesh.position.y = mesh.userData.startY + verticalOffset;
-
-                // 3. Smart Loop
-                if (mesh.position.x > mesh.userData.wrapBoundary) {
-                    mesh.position.x -= mesh.userData.totalWidth;
-                    const variance = (this.rand() - 0.5) * 4000;
-                    mesh.userData.startY += variance;
+            this.nebulaClouds.forEach((cloud) => {
+                cloud.userData.driftOffset += cloud.userData.driftSpeed * 50;
+                if (cloud.userData.driftOffset > cloud.userData.wrapBoundary) {
+                    cloud.userData.driftOffset = -cloud.userData.wrapBoundary;
                 }
 
-                const nebulaUniforms = mesh.userData?.materialData?.uniforms || mesh.material?.uniforms;
-                if (nebulaUniforms) {
-                    if (nebulaUniforms.uTime) {
-                        nebulaUniforms.uTime.value = this.time;
-                    }
-                    if (nebulaUniforms.uPulse) {
-                        nebulaUniforms.uPulse.value = this.nebulaPulse;
-                    }
+                cloud.position.x = cameraX * 0.3
+                    + cloud.userData.driftOffset
+                    + cloud.userData.massOffsetX;
+                cloud.position.y = cameraY * 0.2 + cloud.userData.massOffsetY;
+                cloud.position.z = cloud.userData.baseZ;
+                cloud.userData.pulsePhase += 0.005;
+
+                const nebulaUniforms = cloud.userData?.materialData?.uniforms || cloud.material?.uniforms;
+                if (!nebulaUniforms) return;
+
+                if (nebulaUniforms.uTime) {
+                    nebulaUniforms.uTime.value = this.time;
+                }
+                if (nebulaUniforms.uPulse) {
+                    nebulaUniforms.uPulse.value = Math.sin(cloud.userData.pulsePhase)
+                        + this.nebulaPulse * 2.0 * cloud.userData.pulseScale;
                 }
             });
 

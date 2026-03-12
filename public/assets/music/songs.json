@@ -52,7 +52,10 @@
   {
     "name": "Electric Dreams",
     "file": "electric-dreams.mp3",
-    "path": "./assets/music/electric-dreams.mp3"
+    "path": "./assets/music/electric-dreams.mp3",
+    "bpm": 96,
+    "phraseBeats": 16,
+    "energyCurve": [0.24, 0.58, 0.92]
   },
   {
     "name": "Ethereal Echoes",

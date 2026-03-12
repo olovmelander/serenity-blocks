@@ -108,7 +108,6 @@ export class WarpTransitionRenderer {
         this.createPortalRing();
         this.createCentralGlow();
         this.createIrisVignette();
-        this.createExitFlash();
         this.applyPortalAnchorToMeshes();
 
         // Handle resize
@@ -179,6 +178,7 @@ export class WarpTransitionRenderer {
 
                 varying float vColorMix;
                 varying float vAlpha;
+                varying float vZ;
 
                 uniform float uTime;
                 uniform float uProgress;
@@ -188,10 +188,15 @@ export class WarpTransitionRenderer {
                     vColorMix = color.r;
 
                     vec3 pos = position;
-                    float speed = aSpeed * (0.5 + uProgress * 2.5);
-                    pos.z = mod(pos.z + uTime * speed * 30.0 + aOffset, 100.0) - 100.0;
+                    float speed = aSpeed * (0.5 + uProgress * 4.5); // Faster stars
+                    pos.z = mod(pos.z + uTime * speed * 40.0 + aOffset, 100.0) - 100.0;
+                    vZ = pos.z;
 
-                    float stretch = 1.0 + uStretch * uProgress * 10.0;
+                    // Gravitational Lensing: Parabolic outward bend as they get closer (z -> 0)
+                    float lensFactor = smoothstep(-80.0, 0.0, pos.z) * uProgress * 2.5;
+                    pos.xy *= (1.0 + lensFactor * 0.8);
+
+                    float stretch = 1.0 + uStretch * uProgress * 12.0; // Extreme stretching
                     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
                     float dist = -mvPosition.z;
                     gl_PointSize = size * (400.0 / dist) * stretch;
@@ -203,20 +208,26 @@ export class WarpTransitionRenderer {
             fragmentShader: `
                 varying float vColorMix;
                 varying float vAlpha;
+                varying float vZ;
                 uniform float uProgress;
+                uniform float uTime;
                 uniform vec3 uColorPrimary;
                 uniform vec3 uColorSecondary;
                 uniform vec3 uColorWhite;
 
                 void main() {
                     vec2 center = gl_PointCoord - 0.5;
-                    float stretch = 1.0 + uProgress * 3.0;
+                    float stretch = 1.0 + uProgress * 5.0;
                     center.x *= stretch;
                     float dist = length(center);
                     if (dist > 0.5) discard;
 
                     float alpha = (1.0 - dist * 2.0) * vAlpha;
                     alpha = pow(alpha, 0.7);
+                    
+                    // Add high-speed flickering
+                    float flicker = 0.65 + 0.35 * sin(uTime * 60.0 + vColorMix * 100.0);
+                    alpha *= (0.5 + uProgress * 0.5 * flicker);
 
                     // Blend theme colors based on stored mix factor
                     vec3 color;
@@ -225,7 +236,13 @@ export class WarpTransitionRenderer {
                     } else {
                         color = mix(uColorPrimary, uColorSecondary, (vColorMix - 0.5) * 2.0);
                     }
-                    color *= (1.0 + uProgress * 0.5);
+                    
+                    // Relativistic Blueshift: Shift color towards pure white at max velocity
+                    // and when the star is close (vZ > -20.0)
+                    float blueshift = smoothstep(-30.0, 0.0, vZ) * uProgress;
+                    color = mix(color, uColorWhite, blueshift * 0.85);
+                    
+                    color *= (1.0 + uProgress * 1.5); // Brighten under speed
 
                     gl_FragColor = vec4(color, alpha);
                 }
@@ -240,37 +257,22 @@ export class WarpTransitionRenderer {
     }
 
     /**
-     * Create energy spiral with theme gradient
+     * Create continuous Volumetric FBM Wormhole
+     * AAA UPGRADE: Replaces 15k overlapping points with a dense mathematical plasma shader
      */
     createEnergySpiral() {
-        const count = this.config.spiralCount;
-        const geometry = new THREE.BufferGeometry();
-
-        const positions = new Float32Array(count * 3);
-        const tValues = new Float32Array(count);
-        const sizes = new Float32Array(count);
-        const phases = new Float32Array(count);
-
-        for (let i = 0; i < count; i++) {
-            const i3 = i * 3;
-            const t = i / count;
-            const z = -t * this.config.tunnelLength;
-            const spiralAngle = t * Math.PI * 20 + Math.random() * 0.5;
-            const radius = 2 + t * 8 + Math.random() * 2;
-
-            positions[i3] = Math.cos(spiralAngle) * radius;
-            positions[i3 + 1] = Math.sin(spiralAngle) * radius;
-            positions[i3 + 2] = z;
-
-            tValues[i] = t;
-            sizes[i] = 2 + Math.random() * 4;
-            phases[i] = Math.random() * Math.PI * 2;
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aT', new THREE.BufferAttribute(tValues, 1));
-        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        // Massive cylinder enveloping the camera
+        const geometry = new THREE.CylinderGeometry(
+            this.config.tunnelRadius * 1.5, // radius top
+            this.config.tunnelRadius * 0.8, // radius bottom
+            this.config.tunnelLength,       // height
+            32,                             // radial segments
+            1                               // height segments
+        );
+        // Rotate so it extends along the Z axis
+        geometry.rotateX(Math.PI / 2);
+        // Translate so camera starts inside it
+        geometry.translate(0, 0, -this.config.tunnelLength / 2);
 
         const material = new THREE.ShaderMaterial({
             uniforms: {
@@ -280,60 +282,159 @@ export class WarpTransitionRenderer {
                 uColorSecondary: { value: this.colors.secondary.clone() },
             },
             vertexShader: `
-                attribute float size;
-                attribute float aT;
-                attribute float aPhase;
-
-                varying float vT;
-                varying float vAlpha;
-
-                uniform float uTime;
-                uniform float uProgress;
-
+                varying vec2 vUv;
+                varying vec3 vWorldPos;
+                
                 void main() {
-                    vT = aT;
-
-                    vec3 pos = position;
-                    float angle = atan(pos.y, pos.x) + uTime * 2.5 + aPhase;
-                    float radius = length(pos.xy);
-
-                    pos.x = cos(angle) * radius;
-                    pos.y = sin(angle) * radius;
-                    pos.z = mod(pos.z + uTime * 18.0, 100.0) - 100.0;
-
-                    float pulse = 1.0 + sin(uTime * 4.0 + aPhase) * 0.25;
-                    pos.xy *= pulse;
-
-                    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-                    gl_PointSize = size * (300.0 / -mvPosition.z) * (0.5 + uProgress);
-                    vAlpha = smoothstep(100.0, 5.0, -mvPosition.z) * uProgress;
-
-                    gl_Position = projectionMatrix * mvPosition;
+                    vUv = uv;
+                    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                    vWorldPos = worldPosition.xyz;
+                    gl_Position = projectionMatrix * viewMatrix * worldPosition;
                 }
             `,
             fragmentShader: `
-                varying float vT;
-                varying float vAlpha;
+                uniform float uTime;
+                uniform float uProgress;
                 uniform vec3 uColorPrimary;
                 uniform vec3 uColorSecondary;
 
+                varying vec2 vUv;
+                varying vec3 vWorldPos;
+
+                // 3D Noise function (Simplex/Perlin derivative)
+                vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+                vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+                float snoise(vec3 v) {
+                    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+                    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+
+                    // First corner
+                    vec3 i  = floor(v + dot(v, C.yyy));
+                    vec3 x0 = v - i + dot(i, C.xxx);
+
+                    // Other corners
+                    vec3 g = step(x0.yzx, x0.xyz);
+                    vec3 l = 1.0 - g;
+                    vec3 i1 = min(g.xyz, l.zxy);
+                    vec3 i2 = max(g.xyz, l.zxy);
+
+                    vec3 x1 = x0 - i1 + C.xxx;
+                    vec3 x2 = x0 - i2 + C.yyy;
+                    vec3 x3 = x0 - D.yyy;
+
+                    // Permutations
+                    i = mod289(i);
+                    vec4 p = permute(permute(permute(
+                                i.z + vec4(0.0, i1.z, i2.z, 1.0))
+                              + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+                              + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+
+                    // Gradients: 7x7 points over a square, mapped onto an octahedron.
+                    // The ring size 17*17 = 289 is close to a multiple of 49 (49*6 = 294)
+                    float n_ = 0.142857142857; // 1.0/7.0
+                    vec3  ns = n_ * D.wyz - D.xzx;
+
+                    vec4 j = p - 49.0 * floor(p * ns.z * ns.z); // mod(p,7*7)
+
+                    vec4 x_ = floor(j * ns.z);
+                    vec4 y_ = floor(j - 7.0 * x_); // mod(j,N)
+
+                    vec4 x = x_ *ns.x + ns.yyyy;
+                    vec4 y = y_ *ns.x + ns.yyyy;
+                    vec4 h = 1.0 - abs(x) - abs(y);
+
+                    vec4 b0 = vec4(x.xy, y.xy);
+                    vec4 b1 = vec4(x.zw, y.zw);
+
+                    vec4 s0 = floor(b0)*2.0 + 1.0;
+                    vec4 s1 = floor(b1)*2.0 + 1.0;
+                    vec4 sh = -step(h, vec4(0.0));
+
+                    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+                    vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+
+                    vec3 p0 = vec3(a0.xy, h.x);
+                    vec3 p1 = vec3(a0.zw, h.y);
+                    vec3 p2 = vec3(a1.xy, h.z);
+                    vec3 p3 = vec3(a1.zw, h.w);
+
+                    // Normalise gradients
+                    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+                    p0 *= norm.x;
+                    p1 *= norm.y;
+                    p2 *= norm.z;
+                    p3 *= norm.w;
+
+                    // Mix final noise value
+                    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                    m = m * m;
+                    return 42.0 * dot( m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+                }
+
+                // Fractal Brownian Motion
+                float fbm(vec3 x) {
+                    float v = 0.0;
+                    float a = 0.5;
+                    vec3 shift = vec3(100);
+                    for (int i = 0; i < 4; ++i) { // 4 octaves for balance of detail and performance
+                        v += a * snoise(x);
+                        x = x * 2.0 + shift;
+                        a *= 0.5;
+                    }
+                    return v;
+                }
+
                 void main() {
-                    vec2 center = gl_PointCoord - 0.5;
-                    float dist = length(center);
-                    if (dist > 0.5) discard;
+                    // Map cylinder UVs into a continuous polar flow
+                    float rho = vUv.x * 6.2831853; // angle around cylinder
+                    float z = vUv.y * 10.0;      // length down cylinder
+                    
+                    // Domain warping: animate the sampling coordinates
+                    // Twisting the tunnel based on speed and time
+                    float speed = 1.0 + uProgress * 25.0; // Enormous speed ramp
+                    vec3 coord = vec3(
+                        cos(rho) * 1.2 + sin(z * 0.5 + uTime) * 0.5,
+                        sin(rho) * 1.2 + cos(z * 0.5 - uTime) * 0.5,
+                        z - uTime * speed
+                    );
 
-                    float alpha = (1.0 - dist * 2.0) * vAlpha;
-                    vec3 color = mix(uColorPrimary, uColorSecondary, vT) * 1.5;
+                    // Dual layer FBM for rich, folding plasma
+                    float q = fbm(coord * 0.8);
+                    float r = fbm(coord * 1.5 + vec3(q, uTime * 2.0, -uTime * speed * 1.2));
+                    float noiseBlock = fbm(coord + vec3(r));
 
-                    gl_FragColor = vec4(color, alpha * 0.8);
+                    // Carve out the dark structural veins
+                    float plasma = smoothstep(0.2, 0.8, noiseBlock);
+                    
+                    // Add secondary high-frequency highlight
+                    float highlight = smoothstep(0.6, 1.0, r) * 1.5;
+
+                    // Map themes: Primary for base gas, Secondary for hot veins
+                    vec3 color = mix(uColorPrimary * 0.3, uColorPrimary * 1.2, plasma);
+                    color = mix(color, vec3(1.0, 0.9, 0.8), highlight * plasma); // White-hot core
+
+                    // Alpha masking: deep black voids
+                    float alpha = smoothstep(0.1, 0.5, noiseBlock) * uProgress * (0.4 + plasma * 0.6);
+                    
+                    // Depth fade (clip far away to avoid harsh edge)
+                    float depthFade = smoothstep(-150.0, -20.0, vWorldPos.z);
+                    alpha *= depthFade;
+
+                    gl_FragColor = vec4(color, alpha);
                 }
             `,
             transparent: true,
             blending: THREE.AdditiveBlending,
             depthWrite: false,
+            side: THREE.BackSide, // View from inside
         });
 
-        this.energySpiral = new THREE.Points(geometry, material);
+        this.energySpiral = new THREE.Mesh(geometry, material);
+        // Ensure it always renders behind closer VFX
+        this.energySpiral.renderOrder = 10;
         this.scene.add(this.energySpiral);
     }
 
@@ -435,28 +536,97 @@ export class WarpTransitionRenderer {
             },
             vertexShader: `
                 varying vec3 vNormal;
+                varying vec3 vPosition;
                 void main() {
                     vNormal = normalize(normalMatrix * normal);
+                    vPosition = position;
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                 }
             `,
             fragmentShader: `
                 varying vec3 vNormal;
+                varying vec3 vPosition;
                 uniform float uTime;
                 uniform float uProgress;
                 uniform vec3 uColorPrimary;
 
+                // Simple 3D noise for the flare
+                vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+                vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+                float snoise(vec3 v) {
+                    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+                    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+                    vec3 i  = floor(v + dot(v, C.yyy));
+                    vec3 x0 = v - i + dot(i, C.xxx);
+                    vec3 g = step(x0.yzx, x0.xyz);
+                    vec3 l = 1.0 - g;
+                    vec3 i1 = min(g.xyz, l.zxy);
+                    vec3 i2 = max(g.xyz, l.zxy);
+                    vec3 x1 = x0 - i1 + C.xxx;
+                    vec3 x2 = x0 - i2 + C.yyy;
+                    vec3 x3 = x0 - D.yyy;
+                    i = mod289(i);
+                    vec4 p = permute(permute(permute(
+                                i.z + vec4(0.0, i1.z, i2.z, 1.0))
+                              + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+                              + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+                    float n_ = 0.142857142857;
+                    vec3  ns = n_ * D.wyz - D.xzx;
+                    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+                    vec4 x_ = floor(j * ns.z);
+                    vec4 y_ = floor(j - 7.0 * x_);
+                    vec4 x = x_ *ns.x + ns.yyyy;
+                    vec4 y = y_ *ns.x + ns.yyyy;
+                    vec4 h = 1.0 - abs(x) - abs(y);
+                    vec4 b0 = vec4(x.xy, y.xy);
+                    vec4 b1 = vec4(x.zw, y.zw);
+                    vec4 s0 = floor(b0)*2.0 + 1.0;
+                    vec4 s1 = floor(b1)*2.0 + 1.0;
+                    vec4 sh = -step(h, vec4(0.0));
+                    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+                    vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+                    vec3 p0 = vec3(a0.xy, h.x);
+                    vec3 p1 = vec3(a0.zw, h.y);
+                    vec3 p2 = vec3(a1.xy, h.z);
+                    vec3 p3 = vec3(a1.zw, h.w);
+                    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+                    p0 *= norm.x;
+                    p1 *= norm.y;
+                    p2 *= norm.z;
+                    p3 *= norm.w;
+                    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                    m = m * m;
+                    return 42.0 * dot( m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+                }
+
                 void main() {
-                    float rim = 1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
-                    rim = pow(rim, 2.0);
+                    // Calculate view direction relative to the sphere surface
+                    vec3 viewDir = normalize(vec3(0.0, 0.0, 1.0));
+                    float ndotv = dot(vNormal, viewDir);
+                    
+                    // Inverse rim lighting (black center, glowing edge)
+                    float rim = 1.0 - abs(ndotv);
+                    
+                    // Radial noise for the corona flare
+                    float noise = snoise(normalize(vPosition) * 4.0 + vec3(0.0, 0.0, uTime * -2.0));
+                    float flare = smoothstep(0.2, 0.8, noise) * rim;
+                    
+                    // Core bloom (whites out the center as camera approaches)
+                    float coreBloom = smoothstep(0.7, 1.0, uProgress) * 2.0;
+                    float exposure = max(0.0, coreBloom - abs(ndotv));
+                    
+                    // Plasma color mapping
+                    vec3 color = mix(uColorPrimary * 0.2, uColorPrimary * 2.0, flare);
+                    color += vec3(1.0) * pow(rim, 4.0); // Hot sharp edge
+                    color = mix(color, vec3(1.0), exposure); // Bloom to white
 
-                    // White core blending to chapter color at edges
-                    vec3 color = mix(vec3(1.0), uColorPrimary, rim);
+                    // Alpha composition
+                    float alpha = (pow(rim, 2.0) + flare * 0.5 + exposure) * uProgress * 2.0;
 
-                    float pulse = 0.8 + sin(uTime * 5.0) * 0.2;
-                    float alpha = rim * pulse * uProgress * 2.5;
-
-                    gl_FragColor = vec4(color * 2.0, alpha);
+                    gl_FragColor = vec4(color, min(alpha, 1.0));
                 }
             `,
             transparent: true,
@@ -489,6 +659,7 @@ export class WarpTransitionRenderer {
                 uEdgeRefraction: { value: 0 },
                 uChromaticSplit: { value: 0 },
                 uIntakeStreaks: { value: 0 },
+                uExposure: { value: 0 },
             },
             vertexShader: `
                 varying vec2 vUv;
@@ -509,6 +680,7 @@ export class WarpTransitionRenderer {
                 uniform float uEdgeRefraction;
                 uniform float uChromaticSplit;
                 uniform float uIntakeStreaks;
+                uniform float uExposure;
 
                 void main() {
                     vec2 center = vUv - uCenter;
@@ -519,9 +691,12 @@ export class WarpTransitionRenderer {
                     float lensWarp = sin((dist * 16.0 - uTime * 5.0) + angle * 4.0) * 0.035 * uLensDistortion;
                     float warpedDist = max(0.0, dist + lensWarp);
 
-                    // Iris circular mask
+                    // Radial tearing at the edge for violent breach
+                    float tear = sin(angle * 22.0 + uTime * 18.0) * sin(angle * 9.0 - uTime * 12.0) * 0.06 * uProgress * uLensDistortion;
+
+                    // Iris circular mask with tearing
                     float edgeWidth = 0.08 + uIrisRadius * 0.05;
-                    float iris = smoothstep(uIrisRadius - edgeWidth, uIrisRadius + edgeWidth, warpedDist);
+                    float iris = smoothstep(uIrisRadius - edgeWidth + tear, uIrisRadius + edgeWidth + tear, warpedDist);
 
                     // Glow at the iris edge (the orb rim)
                     float edgeGlow = smoothstep(uIrisRadius + edgeWidth * 2.0, uIrisRadius, warpedDist)
@@ -531,31 +706,38 @@ export class WarpTransitionRenderer {
                     // Subtle energy shimmer on the edge
                     float shimmer = sin(angle * 12.0 + uTime * 4.0) * 0.3 + 0.7;
 
-                    // Portal-edge refraction/chromatic split around the aperture
-                    float edgeDist = abs(warpedDist - uIrisRadius);
-                    float edgeBand = 1.0 - smoothstep(0.0, edgeWidth * 1.7, edgeDist);
-                    float refraction = edgeBand * uEdgeRefraction * uProgress;
+                    // Speed Lines (High frequency radial noise stretched backwards)
+                    float speedLineNoise = fract(sin(dot(vec2(angle, angle), vec2(12.9898, 78.233))) * 43758.5453);
+                    float speedLineTaper = smoothstep(0.2, 1.0, warpedDist) * uProgress;
+                    float speedLines = step(0.95, speedLineNoise + sin(uTime * 50.0 + angle * 100.0) * 0.1) * speedLineTaper * uIntakeStreaks;
 
-                    vec3 chroma = vec3(
-                        sin((warpedDist + uTime * 0.9) * 26.0 + angle * 1.3),
-                        sin((warpedDist + uTime * 1.1) * 24.0 + angle * 1.7 + 2.1),
-                        sin((warpedDist + uTime * 1.3) * 22.0 + angle * 1.9 + 4.2)
-                    ) * 0.5 + 0.5;
+                    // Chromatic Aberration (R/B channel split based on velocity)
+                    float chromaOffset = uChromaticSplit * uProgress * warpedDist * 0.05;
+                    float rDist = warpedDist - chromaOffset;
+                    float bDist = warpedDist + chromaOffset;
+                    
+                    // Sample the "iris" mask for each channel to create RGB trailing fringes
+                    float rIris = smoothstep(uIrisRadius - edgeWidth, uIrisRadius + edgeWidth, rDist);
+                    float bIris = smoothstep(uIrisRadius - edgeWidth, uIrisRadius + edgeWidth, bDist);
 
-                    // Inward debris streaks toward the orb center
-                    float debrisWave = sin(angle * 42.0 + uTime * 14.0 - warpedDist * 120.0);
-                    float debrisMask = smoothstep(0.72, 1.0, debrisWave) * exp(-warpedDist * 9.0);
-                    float debris = debrisMask * uIntakeStreaks * uProgress;
-
-                    // Dark vignette outside the iris
+                    // Base color compilation
                     vec3 color = vec3(0.0);
                     color += uColorPrimary * edgeGlow * shimmer * 2.0;
-                    color += chroma * refraction * uChromaticSplit * 0.45;
-                    color += mix(uColorPrimary, vec3(1.0), 0.45) * debris * 2.3;
+                    
+                    // Add the chromatic fringe natively to the color
+                    color.r += rIris * 0.5 * uProgress;
+                    color.b += bIris * 0.5 * uProgress;
+                    
+                    color += mix(uColorPrimary, vec3(1.0), 0.8) * speedLines * 2.0; // Hot white speed lines
 
+                    // Final alpha composition
                     float alpha = iris * uProgress;
                     alpha = max(alpha, edgeGlow * shimmer * uProgress * 0.5);
-                    alpha = max(alpha, debris * 0.45);
+                    alpha = max(alpha, speedLines * uProgress); // Speed lines burn through
+
+                    // Apply exposure blow-out from the orb flash
+                    color = mix(color, vec3(1.0), uExposure);
+                    alpha = max(alpha, uExposure);
 
                     gl_FragColor = vec4(color, alpha);
                 }
@@ -570,65 +752,6 @@ export class WarpTransitionRenderer {
         this.irisVignette.renderOrder = 999;
         this.irisVignette.frustumCulled = false;
         this.scene.add(this.irisVignette);
-    }
-
-    /**
-     * Create exit flash — fullscreen quad that whites-out at end of warp.
-     * This ensures zero gap between warp and gameplay reveal.
-     */
-    createExitFlash() {
-        const geometry = new THREE.PlaneGeometry(2, 2);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uFlashIntensity: { value: 0 },
-                uColorPrimary: { value: this.colors.primary.clone() },
-            },
-            vertexShader: `
-                void main() {
-                    gl_Position = vec4(position.xy, 0.0, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform float uFlashIntensity;
-                uniform vec3 uColorPrimary;
-
-                void main() {
-                    // Blend from chapter color to white as intensity increases
-                    vec3 flashColor = mix(uColorPrimary * 1.5, vec3(1.0), uFlashIntensity * 0.6);
-                    gl_FragColor = vec4(flashColor, uFlashIntensity);
-                }
-            `,
-            transparent: true,
-            depthTest: false,
-            depthWrite: false,
-        });
-
-        this.exitFlash = new THREE.Mesh(geometry, material);
-        this.exitFlash.renderOrder = 1000; // Render on top of everything
-        this.exitFlash.frustumCulled = false;
-        this.scene.add(this.exitFlash);
-    }
-
-    /**
-     * Update exit flash — ramps to full white at end of warp
-     */
-    updateExitFlash(rawProgress) {
-        if (!this.exitFlash) return;
-
-        let intensity;
-        if (rawProgress < 0.75) {
-            // No flash yet
-            intensity = 0;
-        } else if (rawProgress < 0.92) {
-            // Ramp up aggressively
-            const ramp = (rawProgress - 0.75) / 0.17;
-            intensity = ramp ** (this.qualityProfile.flashGamma || 2.5); // Aggressive power curve
-        } else {
-            // Hold at full white
-            intensity = 1;
-        }
-
-        this.exitFlash.material.uniforms.uFlashIntensity.value = intensity;
     }
 
     /**
@@ -879,22 +1002,22 @@ export class WarpTransitionRenderer {
         this.updateIrisVignette(time, rawProgress, phase1);
         this.updatePortalRing(time, rawProgress, phase2);
         this.updateStarTrails(time, progress, phase3);
-        this.updateEnergySpiral(time, progress, phase2, phase3);
+        this.updateEnergySpiral(time, rawProgress);
         this.updateCentralGlow(time, progress, phase3);
-        this.updateExitFlash(rawProgress);
         this.updateCamera(rawProgress, progress);
 
-        // ── Container opacity ──
-        // Quick fade in at start, then HOLD at full opacity throughout.
-        // No fade-out! The exit flash covers the screen at the end,
-        // and OdysseyMode handles the crossfade to gameplay.
+        // ── Container opacity (Entrance + Dispersion Exit) ──
         let opacity;
         if (rawProgress < 0.12) {
             opacity = (rawProgress / 0.12) ** 1.5;
-        } else {
+        } else if (rawProgress < 0.82) {
             opacity = 1;
+        } else {
+            // Smooth cinematic dispersion fade out to reveal the board cleanly
+            const fadeOut = (rawProgress - 0.82) / 0.18;
+            opacity = 1 - (fadeOut * fadeOut);
         }
-        this.container.style.opacity = String(opacity);
+        this.container.style.opacity = String(Math.max(0, opacity));
 
         this.renderer.render(this.scene, this.camera);
 
@@ -955,12 +1078,15 @@ export class WarpTransitionRenderer {
 
         // Orb intake controls: strongest in early phase, easing out before full tunnel.
         const intakeFalloff = Math.max(0, 1 - (phase1 * 1.1));
-        mat.uniforms.uLensDistortion.value = intakeFalloff * 1.05 * intakeStrength;
-        mat.uniforms.uEdgeRefraction.value = intakeFalloff * 0.95 * intakeStrength;
-        mat.uniforms.uChromaticSplit.value = intakeFalloff * 0.75 * chromaScale;
+        mat.uniforms.uLensDistortion.value = intakeFalloff * 1.35 * intakeStrength; // Intensify distortion
+        mat.uniforms.uEdgeRefraction.value = intakeFalloff * 1.25 * intakeStrength; // Intensify refraction
+        mat.uniforms.uChromaticSplit.value = intakeFalloff * 1.15 * chromaScale;    // Intensify split
         mat.uniforms.uIntakeStreaks.value = streakEnabled
-            ? ((intakeFalloff ** 0.7) * intakeStrength)
+            ? ((intakeFalloff ** 0.6) * intakeStrength * 1.6) // More violent intake
             : 0;
+
+        // Start with a massive exposure blowout to seamlessly emerge from the bright orb
+        mat.uniforms.uExposure.value = rawProgress < 0.15 ? Math.pow(1.0 - (rawProgress / 0.15), 3.0) : 0.0;
     }
 
     updatePortalRing(time, rawProgress, phase2) {
@@ -994,14 +1120,12 @@ export class WarpTransitionRenderer {
         this.starTrails.material.uniforms.uStretch.value = 1 + starProgress * 2.5 * stretchMultiplier;
     }
 
-    updateEnergySpiral(time, progress, phase2, phase3) {
+    updateEnergySpiral(time, rawProgress) {
         if (!this.energySpiral) return;
 
-        // Spiral starts during portal phase, intensifies during warp
-        const spiralProgress = Math.max(phase2 * 0.5, phase3);
-
+        // The FBM shader handles acceleration and depth fading internally
         this.energySpiral.material.uniforms.uTime.value = time;
-        this.energySpiral.material.uniforms.uProgress.value = Math.min(spiralProgress * 1.2, 1);
+        this.energySpiral.material.uniforms.uProgress.value = rawProgress;
     }
 
     updateCentralGlow(time, progress, phase3) {
@@ -1017,79 +1141,67 @@ export class WarpTransitionRenderer {
     }
 
     updateCamera(rawProgress, progress) {
-        // Phase 1: Subtle pull forward (looking through orb)
-        // Phase 2: Accelerate into tunnel (portal crossing)
-        // Phase 3: Full speed warp + deceleration at end
+        // Continuous Cinematic Shot
+        // Phase 1: Ignition flash hands over to max speed (0 -> 0.18 is hidden by flash)
+        // Phase 2: Frictionless high velocity glide
+        // Phase 3: Deceleration and dispersion
 
+        // ── Forward Velocity (Z) ──
         let zPos;
-        if (rawProgress < 0.30) {
-            // Slow creep forward
-            zPos = rawProgress / 0.30 * 5;
+        if (rawProgress < 0.18) {
+            zPos = 5; // Hold at entrance
         } else if (rawProgress < 0.85) {
-            // Accelerating warp
-            const warpProgress = (rawProgress - 0.30) / 0.55;
-            zPos = 5 + warpProgress ** 1.5 * 35;
+            // Instantaneous high-velocity entry, sustained linear glide (no ramp)
+            const warpProgress = (rawProgress - 0.18) / 0.67;
+            zPos = 5 + warpProgress * 65; // Much faster glide
         } else {
-            // Decelerate as we arrive (exit flash takes over)
+            // Decelerating arrival dispersion
             const arriveProgress = (rawProgress - 0.85) / 0.15;
-            zPos = 5 + 35 + arriveProgress * 5;
+            // Smooth braking
+            const easeOut = arriveProgress * (2 - arriveProgress);
+            zPos = 5 + 65 + easeOut * 12;
         }
 
-        // Camera shake — builds during warp, fades near end
-        let shakeIntensity;
-        if (rawProgress < 0.25) {
-            shakeIntensity = rawProgress * 0.15;
-        } else if (rawProgress < 0.80) {
-            shakeIntensity = Math.sin((rawProgress - 0.25) / 0.55 * Math.PI) * 0.5;
-        } else {
-            // Shake dies off as we arrive
-            shakeIntensity = Math.max(0, (1 - (rawProgress - 0.80) / 0.20) * 0.3);
-        }
-        shakeIntensity *= this.qualityProfile.shakeMultiplier ?? 1;
-        const shakeX = Math.sin(rawProgress * Math.PI * 14) * shakeIntensity;
-        const shakeY = Math.cos(rawProgress * Math.PI * 11) * shakeIntensity * 0.6;
-
-        this.camera.position.x = shakeX;
-        this.camera.position.y = shakeY;
+        // NO camera shake! True speed is frictionless.
+        this.camera.position.x = 0;
+        this.camera.position.y = 0;
         this.camera.position.z = zPos;
 
         // ── Camera Roll (Z-rotation) ──
-        // Twist into the vortex during Phase 2, unwind during Phase 3
+        // Single, deep continuous banking motion
         let roll;
-        if (rawProgress < 0.20) {
-            // No roll during iris focus
+        if (rawProgress < 0.18) {
             roll = 0;
-        } else if (rawProgress < 0.55) {
-            // Twist into vortex as portal opens
-            const rollIn = (rawProgress - 0.20) / 0.35;
-            roll = this.easeInOutCubic(rollIn) * 0.15; // ~8.5 degrees max
-        } else if (rawProgress < 0.85) {
-            // Slowly unwind during warp
-            const rollOut = (rawProgress - 0.55) / 0.30;
-            roll = 0.15 * (1 - this.easeInOutCubic(rollOut));
+        } else if (rawProgress < 0.50) {
+            // Bank deep into the glide
+            const rollIn = (rawProgress - 0.18) / 0.32;
+            roll = this.easeInOutCubic(rollIn) * 0.45; // Very deep, smooth roll
         } else {
-            roll = 0;
+            // Unwind slowly towards arrival frame
+            const rollOut = (rawProgress - 0.50) / 0.50;
+            // Slow ease out
+            roll = 0.45 * (1 - (rollOut * (2 - rollOut)));
         }
         this.camera.rotation.z = roll;
 
         // ── FOV ──
-        // Narrow start (orb focus), sharp kick at portal crossing, then widens for speed
         let fov;
         if (rawProgress < 0.18) {
-            // Narrow — focused through orb
-            fov = 55 + rawProgress / 0.18 * 10;
-        } else if (rawProgress < 0.35) {
-            // SHARP kick as portal ring crosses camera
-            const kick = (rawProgress - 0.18) / 0.17;
-            fov = 65 + this.easeInOutCubic(kick) * 35;
+            fov = 55;
         } else if (rawProgress < 0.85) {
-            // Warp speed — wide FOV with subtle breath
-            const breath = Math.sin((rawProgress - 0.35) * Math.PI * 3) * 3;
-            fov = 100 + ((rawProgress - 0.35) / 0.50) * 15 + breath;
+            // Sharp kick upon clearing the flash, sustaining wide angle for speed
+            const kickProgress = Math.min(1, (rawProgress - 0.18) / 0.10);
+            const wideOpen = 55 + this.easeInOutCubic(kickProgress) * 48; // Peak at 103
+
+            // Soft breathe at high speed
+            const breath = Math.sin((rawProgress - 0.28) * Math.PI * 2) * 2;
+            fov = wideOpen + breath;
         } else {
-            // Slight narrow as we arrive (compression before flash)
-            const compress = (rawProgress - 0.85) / 0.15;
-            fov = 115 - compress * 20;
+            // Hard deceleration brake (FOV contracts) to hit perfectly flat for board handover
+            const brakeProgress = (rawProgress - 0.85) / 0.15;
+            const easeIn = brakeProgress * brakeProgress;
+            // Target roughly 60 degrees for a clean orthographic-like board handover
+            fov = 103 - easeIn * 43;
         }
         this.camera.fov = fov;
         this.camera.updateProjectionMatrix();
