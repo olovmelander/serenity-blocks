@@ -33,9 +33,9 @@ import {
 const QUALITY_PRESETS = {
     Extreme: {
         blobCount: 16,
-        particleCount: 560,
-        boardHaloEmberCount: 256,
-        microGlintCount: 120,
+        particleCount: 1100,
+        boardHaloEmberCount: 400,
+        microGlintCount: 200,
         tierCounts: { hero: 2, support: 6, ghost: 8 },
         bloomStrength: 0.54,
         enablePost: true,
@@ -48,9 +48,9 @@ const QUALITY_PRESETS = {
     },
     Ultra: {
         blobCount: 14,
-        particleCount: 420,
-        boardHaloEmberCount: 192,
-        microGlintCount: 72,
+        particleCount: 850,
+        boardHaloEmberCount: 320,
+        microGlintCount: 130,
         tierCounts: { hero: 2, support: 5, ghost: 7 },
         bloomStrength: 0.46,
         enablePost: true,
@@ -63,9 +63,9 @@ const QUALITY_PRESETS = {
     },
     High: {
         blobCount: 12,
-        particleCount: 300,
-        boardHaloEmberCount: 128,
-        microGlintCount: 24,
+        particleCount: 600,
+        boardHaloEmberCount: 220,
+        microGlintCount: 56,
         tierCounts: { hero: 2, support: 4, ghost: 6 },
         bloomStrength: 0.38,
         enablePost: true,
@@ -78,8 +78,8 @@ const QUALITY_PRESETS = {
     },
     Medium: {
         blobCount: 8,
-        particleCount: 180,
-        boardHaloEmberCount: 84,
+        particleCount: 360,
+        boardHaloEmberCount: 140,
         microGlintCount: 0,
         tierCounts: { hero: 1, support: 3, ghost: 4 },
         bloomStrength: 0.3,
@@ -93,7 +93,7 @@ const QUALITY_PRESETS = {
     },
     Low: {
         blobCount: 5,
-        particleCount: 100,
+        particleCount: 180,
         boardHaloEmberCount: 24,
         microGlintCount: 0,
         tierCounts: { hero: 1, support: 2, ghost: 2 },
@@ -108,7 +108,7 @@ const QUALITY_PRESETS = {
     },
     Minimal: {
         blobCount: 3,
-        particleCount: 80,
+        particleCount: 100,
         boardHaloEmberCount: 0,
         microGlintCount: 0,
         tierCounts: { hero: 1, support: 1, ghost: 1 },
@@ -124,7 +124,7 @@ const QUALITY_PRESETS = {
 };
 
 const ADAPTIVE_BUDGET = Object.freeze({
-    dynamicResolutionEnabled: false,
+    dynamicResolutionEnabled: true,
     targetFrameMs: 16.7,
     adaptiveMinScale: 0.65,
     adaptiveMaxScale: 1.0,
@@ -152,7 +152,7 @@ const PERF_METRIC_KEYS = Object.freeze([
 const BLOB_LAYER_SCALES = Object.freeze({
     interior: 0.85,
     main: 1.0,
-    glow: 1.3,
+    glow: 1.5,
 });
 
 const BURST_BLOB_CONFIG = Object.freeze({
@@ -170,21 +170,21 @@ const BURST_BLOB_CONFIG = Object.freeze({
 
 const GAMEPLAY_SPARK_CONFIG = Object.freeze({
     poolSize: 10,
-    maxParticlesPerBurst: 320,
-    lockMin: 24,
-    lockMax: 36,
-    lineSingleMin: 56,
-    lineSingleMax: 84,
-    lineMultiMin: 88,
-    lineMultiMax: 136,
-    tetrisMin: 180,
-    tetrisMax: 256,
-    comboChargeMin: 48,
-    comboChargeMax: 84,
-    comboRuptureMin: 120,
-    comboRuptureMax: 184,
-    comboSurgeMin: 220,
-    comboSurgeMax: 320,
+    maxParticlesPerBurst: 480,
+    lockMin: 36,
+    lockMax: 52,
+    lineSingleMin: 80,
+    lineSingleMax: 120,
+    lineMultiMin: 130,
+    lineMultiMax: 200,
+    tetrisMin: 280,
+    tetrisMax: 400,
+    comboChargeMin: 72,
+    comboChargeMax: 120,
+    comboRuptureMin: 180,
+    comboRuptureMax: 280,
+    comboSurgeMin: 340,
+    comboSurgeMax: 480,
     drag: 0.925,
     zAcceleration: 9.4,
 });
@@ -197,8 +197,8 @@ const LINE_WAKE_CONFIG = Object.freeze({
 });
 
 const MICRO_GLINT_CONFIG = Object.freeze({
-    sizeMin: 0.22,
-    sizeMax: 0.65,
+    sizeMin: 0.35,
+    sizeMax: 1.1,
 });
 
 const AMBIENT_PARTICLE_MODES = Object.freeze({
@@ -211,134 +211,152 @@ const AMBIENT_PARTICLE_MODES = Object.freeze({
 const BLOB_STAGE_LAYOUTS = Object.freeze({
     hero: Object.freeze([
         Object.freeze({
-            x: -0.22, y: 0.02, z: -3.2, scaleMin: 7.4, scaleMax: 8.8, drift: 0.78, heatScale: 1.18, invasionX: -0.08, invasionY: -0.02, invasionZ: 3.2,
+            x: -0.18, y: 0.04, z: -4.2, scaleMin: 7.2, scaleMax: 8.4, drift: 0.58, heatScale: 1.14, invasionX: -0.05, invasionY: -0.01, invasionZ: 2.8,
         }),
         Object.freeze({
-            x: 0.25, y: -0.06, z: -2.5, scaleMin: 7.2, scaleMax: 8.7, drift: 0.8, heatScale: 1.16, invasionX: 0.06, invasionY: -0.04, invasionZ: 3.8,
+            x: 0.2, y: -0.05, z: -3.6, scaleMin: 7.0, scaleMax: 8.3, drift: 0.6, heatScale: 1.14, invasionX: 0.05, invasionY: -0.03, invasionZ: 3.0,
         }),
     ]),
     support: Object.freeze([
         Object.freeze({
-            x: -0.9, y: 0.28, z: -7.2, scaleMin: 5.4, scaleMax: 6.6, drift: 0.7, heatScale: 1.14, invasionX: 0.12, invasionY: -0.04, invasionZ: 2.8,
+            x: -0.74, y: 0.24, z: -8.8, scaleMin: 5.0, scaleMax: 6.2, drift: 0.58, heatScale: 1.1, invasionX: 0.08, invasionY: -0.03, invasionZ: 2.1,
         }),
         Object.freeze({
-            x: 0.92, y: -0.14, z: -6.8, scaleMin: 5.6, scaleMax: 6.9, drift: 0.72, heatScale: 1.14, invasionX: -0.1, invasionY: 0.03, invasionZ: 2.6,
+            x: 0.76, y: -0.12, z: -8.4, scaleMin: 5.0, scaleMax: 6.3, drift: 0.58, heatScale: 1.1, invasionX: -0.08, invasionY: 0.03, invasionZ: 2.0,
         }),
         Object.freeze({
-            x: -0.66, y: -0.5, z: -9.5, scaleMin: 4.8, scaleMax: 5.8, drift: 0.64, heatScale: 1.1, invasionX: 0.08, invasionY: 0.1, invasionZ: 2.2,
+            x: -0.56, y: -0.42, z: -11.4, scaleMin: 4.5, scaleMax: 5.6, drift: 0.52, heatScale: 1.08, invasionX: 0.06, invasionY: 0.07, invasionZ: 1.8,
         }),
         Object.freeze({
-            x: 0.72, y: 0.48, z: -10.1, scaleMin: 4.6, scaleMax: 5.8, drift: 0.62, heatScale: 1.1, invasionX: -0.06, invasionY: -0.08, invasionZ: 2.4,
+            x: 0.58, y: 0.42, z: -10.8, scaleMin: 4.4, scaleMax: 5.5, drift: 0.52, heatScale: 1.08, invasionX: -0.05, invasionY: -0.06, invasionZ: 1.8,
         }),
         Object.freeze({
-            x: 0.02, y: 0.76, z: -12.2, scaleMin: 4.0, scaleMax: 5.3, drift: 0.58, heatScale: 1.08, invasionX: 0.0, invasionY: -0.14, invasionZ: 1.8,
+            x: 0.04, y: 0.62, z: -13.8, scaleMin: 3.8, scaleMax: 5.0, drift: 0.48, heatScale: 1.06, invasionX: 0.0, invasionY: -0.1, invasionZ: 1.5,
         }),
         Object.freeze({
-            x: -0.06, y: -0.82, z: -12.8, scaleMin: 4.0, scaleMax: 5.2, drift: 0.58, heatScale: 1.08, invasionX: 0.0, invasionY: 0.12, invasionZ: 1.8,
+            x: -0.04, y: -0.66, z: -14.4, scaleMin: 3.8, scaleMax: 5.0, drift: 0.48, heatScale: 1.06, invasionX: 0.0, invasionY: 0.09, invasionZ: 1.5,
         }),
     ]),
     ghost: Object.freeze([
         Object.freeze({
-            x: -1.02, y: 0.58, z: -15.6, scaleMin: 2.8, scaleMax: 4.0, drift: 0.42, heatScale: 1.06, invasionX: 0.1, invasionY: -0.05, invasionZ: 1.4,
+            x: -0.82, y: 0.54, z: -18.8, scaleMin: 2.7, scaleMax: 3.7, drift: 0.28, heatScale: 1.04, invasionX: 0.06, invasionY: -0.04, invasionZ: 0.9,
         }),
         Object.freeze({
-            x: 1.04, y: -0.52, z: -16.8, scaleMin: 2.8, scaleMax: 4.0, drift: 0.4, heatScale: 1.06, invasionX: -0.1, invasionY: 0.04, invasionZ: 1.4,
+            x: 0.84, y: -0.48, z: -19.8, scaleMin: 2.7, scaleMax: 3.7, drift: 0.28, heatScale: 1.04, invasionX: -0.06, invasionY: 0.04, invasionZ: 0.9,
         }),
         Object.freeze({
-            x: -0.42, y: 0.86, z: -17.8, scaleMin: 2.9, scaleMax: 4.1, drift: 0.38, heatScale: 1.05, invasionX: 0.05, invasionY: -0.1, invasionZ: 1.2,
+            x: -0.36, y: 0.76, z: -21.4, scaleMin: 2.7, scaleMax: 3.8, drift: 0.25, heatScale: 1.03, invasionX: 0.04, invasionY: -0.06, invasionZ: 0.8,
         }),
         Object.freeze({
-            x: 0.48, y: -0.9, z: -18.6, scaleMin: 2.9, scaleMax: 4.2, drift: 0.38, heatScale: 1.05, invasionX: -0.04, invasionY: 0.12, invasionZ: 1.2,
+            x: 0.42, y: -0.8, z: -22.0, scaleMin: 2.7, scaleMax: 3.9, drift: 0.25, heatScale: 1.03, invasionX: -0.04, invasionY: 0.08, invasionZ: 0.8,
         }),
         Object.freeze({
-            x: -0.18, y: -1.02, z: -20.2, scaleMin: 2.7, scaleMax: 3.8, drift: 0.34, heatScale: 1.04, invasionX: 0.02, invasionY: 0.08, invasionZ: 1.0,
+            x: -0.14, y: -0.92, z: -23.4, scaleMin: 2.5, scaleMax: 3.6, drift: 0.22, heatScale: 1.02, invasionX: 0.02, invasionY: 0.05, invasionZ: 0.7,
         }),
         Object.freeze({
-            x: 0.18, y: 1.02, z: -20.8, scaleMin: 2.7, scaleMax: 3.8, drift: 0.34, heatScale: 1.04, invasionX: -0.02, invasionY: -0.08, invasionZ: 1.0,
+            x: 0.16, y: 0.88, z: -24.2, scaleMin: 2.5, scaleMax: 3.6, drift: 0.22, heatScale: 1.02, invasionX: -0.02, invasionY: -0.05, invasionZ: 0.7,
         }),
         Object.freeze({
-            x: -0.86, y: -0.1, z: -21.4, scaleMin: 2.6, scaleMax: 3.7, drift: 0.32, heatScale: 1.03, invasionX: 0.07, invasionY: 0.0, invasionZ: 1.0,
+            x: -0.7, y: -0.08, z: -25.2, scaleMin: 2.4, scaleMax: 3.5, drift: 0.2, heatScale: 1.02, invasionX: 0.04, invasionY: 0.0, invasionZ: 0.6,
         }),
         Object.freeze({
-            x: 0.86, y: 0.12, z: -22.0, scaleMin: 2.6, scaleMax: 3.7, drift: 0.32, heatScale: 1.03, invasionX: -0.07, invasionY: 0.0, invasionZ: 1.0,
+            x: 0.72, y: 0.1, z: -25.8, scaleMin: 2.4, scaleMax: 3.5, drift: 0.2, heatScale: 1.02, invasionX: -0.04, invasionY: 0.0, invasionZ: 0.6,
         }),
     ]),
 });
 
 const BLOB_MOTION_PROFILES = Object.freeze({
     hero: Object.freeze({
-        xyDriftMult: 2.2,
-        zDriftMult: 3.0,
-        baseSpeed: 0.82,
-        breathMin: 0.86,
-        breathMax: 1.30,
-        finalMin: 0.82,
-        finalMax: 1.38,
-        anchorStiffness: 0.018,
-        positionalDamping: 0.90,
-        scaleDamping: 0.84,
+        xyDriftMult: 1.55,
+        zDriftMult: 2.1,
+        baseSpeed: 0.62,
+        breathMin: 0.92,
+        breathMax: 1.18,
+        finalMin: 0.88,
+        finalMax: 1.24,
+        anchorStiffness: 0.012,
+        positionalDamping: 0.936,
+        scaleDamping: 0.89,
         presenceScale: 0.16,
         depthTravel: 3.2,
-        approachPull: 0.01,
-        contactRepel: 0.024,
-        scaleShare: 0.45,
+        approachPull: 0.011,
+        contactRepel: 0.018,
+        scaleShare: 0.26,
         frontClamp: 8.8,
         backClamp: -24.5,
+        idleWindowStrength: 0.28,
+        settleStrength: 0.06,
+        rotationBase: 0.42,
+        rotationResponse: 0.00012,
+        morphCeiling: 1.1,
     }),
     support: Object.freeze({
-        xyDriftMult: 1.8,
-        zDriftMult: 2.3,
-        baseSpeed: 0.94,
-        breathMin: 0.84,
-        breathMax: 1.22,
-        finalMin: 0.82,
-        finalMax: 1.28,
-        anchorStiffness: 0.014,
-        positionalDamping: 0.88,
-        scaleDamping: 0.80,
+        xyDriftMult: 1.34,
+        zDriftMult: 1.8,
+        baseSpeed: 0.74,
+        breathMin: 0.9,
+        breathMax: 1.14,
+        finalMin: 0.86,
+        finalMax: 1.2,
+        anchorStiffness: 0.011,
+        positionalDamping: 0.928,
+        scaleDamping: 0.86,
         presenceScale: 0.12,
-        depthTravel: 2.2,
-        approachPull: 0.008,
-        contactRepel: 0.021,
-        scaleShare: 0.34,
+        depthTravel: 2.4,
+        approachPull: 0.01,
+        contactRepel: 0.017,
+        scaleShare: 0.22,
         frontClamp: 2.4,
         backClamp: -27.5,
+        idleWindowStrength: 0.38,
+        settleStrength: 0.074,
+        rotationBase: 0.34,
+        rotationResponse: 0.0001,
+        morphCeiling: 0.94,
     }),
     ghost: Object.freeze({
-        xyDriftMult: 1.35,
-        zDriftMult: 1.8,
-        baseSpeed: 1.06,
-        breathMin: 0.80,
-        breathMax: 1.14,
-        finalMin: 0.78,
-        finalMax: 1.18,
-        anchorStiffness: 0.011,
-        positionalDamping: 0.86,
-        scaleDamping: 0.78,
+        xyDriftMult: 0.98,
+        zDriftMult: 1.28,
+        baseSpeed: 0.58,
+        breathMin: 0.94,
+        breathMax: 1.08,
+        finalMin: 0.9,
+        finalMax: 1.12,
+        anchorStiffness: 0.008,
+        positionalDamping: 0.944,
+        scaleDamping: 0.88,
         presenceScale: 0.08,
-        depthTravel: 1.55,
+        depthTravel: 1.6,
         approachPull: 0.006,
-        contactRepel: 0.018,
-        scaleShare: 0.25,
+        contactRepel: 0.014,
+        scaleShare: 0.16,
         frontClamp: -0.4,
         backClamp: -30.5,
+        idleWindowStrength: 0.52,
+        settleStrength: 0.082,
+        rotationBase: 0.22,
+        rotationResponse: 0.00006,
+        morphCeiling: 0.72,
     }),
 });
 
 const STAGE_HEAT_DECAY = 0.5 ** (1 / 360);
 
 const FX_DECAY = Object.freeze({
-    lockImpact: 0.86,
-    lineSurge: 0.9,
+    lockImpact: 0.82,
+    lineSurge: 0.86,
     comboCharge: 0.965,
-    comboPeak: 0.925,
-    surgeState: 0.945,
+    comboPeak: 0.91,
+    surgeState: 0.93,
     stageHeat: STAGE_HEAT_DECAY,
-    bloomBoost: 0.89,
-    chromaPulse: 0.88,
-    vignettePulse: 0.91,
-    shockwaveStrength: 0.84,
+    bloomBoost: 0.84,
+    chromaPulse: 0.83,
+    vignettePulse: 0.87,
+    shockwaveStrength: 0.80,
     exposureDip: 0.9,
+    dangerLevel: 0.94,
+    rewardPulse: 0.89,
+    overdrivePulse: 0.92,
 });
 
 function createFxState() {
@@ -369,6 +387,9 @@ function createFxState() {
         vignettePulse: 0,
         shockwaveStrength: 0,
         exposureDip: 0,
+        dangerLevel: 0,
+        rewardPulse: 0,
+        overdrivePulse: 0,
         lineBandY: 0,
         lineBandHeight: 0.18,
         lastComboCount: 0,
@@ -384,14 +405,14 @@ function createMetricBucket() {
 // Color Palette - Premium Lava Lamp Colors
 // ─────────────────────────────────────────────────────────────────────────────
 const BLOB_COLORS = [
-    new THREE.Color(0x00ffcc), // Electric Cyan
-    new THREE.Color(0xff00ff), // Neon Magenta
-    new THREE.Color(0x00ff88), // Acid Green
-    new THREE.Color(0xff6600), // Hot Orange
-    new THREE.Color(0x0088ff), // Electric Blue
-    new THREE.Color(0xffcc00), // Amber Gold
-    new THREE.Color(0xff0066), // Hot Pink
-    new THREE.Color(0x8800ff), // Electric Purple
+    new THREE.Color(0x4de8c2), // Soft Teal
+    new THREE.Color(0xd46af0), // Orchid Purple
+    new THREE.Color(0x56e89a), // Mint Green
+    new THREE.Color(0xf09848), // Warm Amber
+    new THREE.Color(0x5c9cf5), // Periwinkle Blue
+    new THREE.Color(0xf0c850), // Soft Gold
+    new THREE.Color(0xf04878), // Rose Pink
+    new THREE.Color(0x9c5cf5), // Lavender
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -640,6 +661,27 @@ export default class ElectricDreamsTheme extends BaseTheme {
         this.boundVisibilityHandler = null;
         this.deferredEffectsScheduled = false;
         this.deferredEffectsPromise = null;
+        this.postSetupRetryScheduled = false;
+
+        // Progressive blob loading
+        this.pendingBlobQueue = [];
+        this.blobLoadingComplete = false;
+
+        // Tiered deferred loading
+        this.frameCount = 0;
+        this.deferredTier1Done = false;
+        this.deferredTier2Done = false;
+        this.deferredTier3Done = false;
+
+        // Deferred background upgrade
+        this.backgroundNeedsUpgrade = false;
+
+        // Pre-allocated scratch objects to avoid GC pressure in event handlers
+        this._scratchColors = Array.from({ length: 8 }, () => new THREE.Color());
+        this._scratchPalette = [new THREE.Color(), new THREE.Color(), new THREE.Color()];
+        this._scratchOriginVec = new THREE.Vector3();
+        this._blobDistances = new Float64Array(24); // max blobs for applyBlobReaction
+
         this.modulePreloads = {
             webgpu: null,
             webgpuMaterials: null,
@@ -691,13 +733,6 @@ export default class ElectricDreamsTheme extends BaseTheme {
         this.ensureStageSystems();
         this.stageConductor?.syncTrackMeta?.(true);
         this.primeModuleImports();
-
-        const preloadPromises = Object.values(this.modulePreloads)
-            .filter((promise) => promise && typeof promise.then === 'function');
-
-        if (preloadPromises.length > 0) {
-            await Promise.allSettled(preloadPromises);
-        }
     }
 
     getCurrentQualityLevel() {
@@ -1080,7 +1115,11 @@ export default class ElectricDreamsTheme extends BaseTheme {
         if (!this.sparks?.geometry) return;
         const totalCount = this.sparks.count || this.qualityPreset.particleCount || 0;
         if (!Number.isFinite(totalCount) || totalCount <= 0) return;
-        const visibleCount = Math.max(12, Math.round(totalCount * this.getAmbientDensityMultiplier()));
+        const densityBoost = 1
+            + (this.fxState?.rewardPulse || 0) * 0.06
+            + (this.fxState?.overdrivePulse || 0) * 0.08
+            + (this.fxState?.dangerLevel || 0) * 0.04;
+        const visibleCount = Math.max(12, Math.round(totalCount * this.getAmbientDensityMultiplier() * densityBoost));
         this.sparks.geometry.setDrawRange(0, Math.min(totalCount, visibleCount));
     }
 
@@ -1448,101 +1487,109 @@ export default class ElectricDreamsTheme extends BaseTheme {
         }
     }
 
-    initializeBurstPool() {
-        if (!this.scene || this.burstBlobs.length > 0) return;
+    createSingleBurstBlob() {
+        if (!this.scene) return null;
 
         const burstDetail = Math.max(1, Math.min(2, (this.qualityPreset.blobDetail || 2) - 1));
         const geometry = this.getSharedBlobGeometry(burstDetail);
+        const color = BLOB_COLORS[this.burstBlobs.length % BLOB_COLORS.length].clone();
 
-        for (let i = 0; i < BURST_BLOB_CONFIG.maxActive; i += 1) {
-            const color = BLOB_COLORS[i % BLOB_COLORS.length].clone();
-            const burstBlob = {
-                active: false,
-                age: 0,
-                life: 1,
-                strength: 0,
-                phase: Math.random() * Math.PI * 2,
-                baseScale: 1,
-                position: new THREE.Vector3(),
-                velocity: new THREE.Vector3(),
-                angularVelocity: new THREE.Vector3(),
+        const burstBlob = {
+            active: false,
+            age: 0,
+            life: 1,
+            strength: 0,
+            phase: Math.random() * Math.PI * 2,
+            baseScale: 1,
+            position: new THREE.Vector3(),
+            velocity: new THREE.Vector3(),
+            angularVelocity: new THREE.Vector3(),
+            color,
+            meshes: [],
+            mainMesh: null,
+            glowMesh: null,
+            mainUniforms: null,
+            glowUniforms: null,
+        };
+
+        if (this.isWebGPU && this.webgpuMaterials) {
+            const { material: mainMaterial, uniforms: mainUniforms } = this.webgpuMaterials.createBlobNodeMaterial({
                 color,
-                meshes: [],
-                mainMesh: null,
-                glowMesh: null,
-                mainUniforms: null,
-                glowUniforms: null,
-            };
+                opacity: 0,
+            });
+            this.applyMrtPatchToMaterial(mainMaterial);
 
-            if (this.isWebGPU && this.webgpuMaterials) {
-                const { material: mainMaterial, uniforms: mainUniforms } = this.webgpuMaterials.createBlobNodeMaterial({
-                    color,
-                    opacity: 0,
-                });
-                this.applyMrtPatchToMaterial(mainMaterial);
+            const {
+                material: glowMaterial,
+                uniforms: glowUniforms,
+            } = this.webgpuMaterials.createBlobGlowNodeMaterial({
+                color,
+                glowIntensity: 0,
+                opacity: 0,
+            });
+            this.applyMrtPatchToMaterial(glowMaterial);
 
-                const {
-                    material: glowMaterial,
-                    uniforms: glowUniforms,
-                } = this.webgpuMaterials.createBlobGlowNodeMaterial({
-                    color,
-                    glowIntensity: 0,
-                    opacity: 0,
-                });
-                this.applyMrtPatchToMaterial(glowMaterial);
+            const mainMesh = new THREE.Mesh(geometry, mainMaterial);
+            mainMesh.renderOrder = 2;
+            mainMesh.userData.baseScaleMultiplier = 1;
+            mainMesh.frustumCulled = false;
 
-                const mainMesh = new THREE.Mesh(geometry, mainMaterial);
-                mainMesh.renderOrder = 2;
-                mainMesh.userData.baseScaleMultiplier = 1;
-                mainMesh.frustumCulled = false;
+            const glowMesh = new THREE.Mesh(geometry, glowMaterial);
+            glowMesh.renderOrder = 1;
+            glowMesh.userData.baseScaleMultiplier = 1.16;
+            glowMesh.frustumCulled = false;
 
-                const glowMesh = new THREE.Mesh(geometry, glowMaterial);
-                glowMesh.renderOrder = 1;
-                glowMesh.userData.baseScaleMultiplier = 1.16;
-                glowMesh.frustumCulled = false;
+            this.scene.add(mainMesh);
+            this.scene.add(glowMesh);
 
-                this.scene.add(mainMesh);
-                this.scene.add(glowMesh);
+            burstBlob.mainMesh = mainMesh;
+            burstBlob.glowMesh = glowMesh;
+            burstBlob.mainUniforms = mainUniforms;
+            burstBlob.glowUniforms = glowUniforms;
+            burstBlob.meshes.push(mainMesh, glowMesh);
+        } else {
+            const mainMaterial = new THREE.MeshBasicMaterial({
+                color,
+                transparent: true,
+                opacity: 0,
+                depthWrite: false,
+            });
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color,
+                transparent: true,
+                opacity: 0,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.BackSide,
+            });
 
-                burstBlob.mainMesh = mainMesh;
-                burstBlob.glowMesh = glowMesh;
-                burstBlob.mainUniforms = mainUniforms;
-                burstBlob.glowUniforms = glowUniforms;
-                burstBlob.meshes.push(mainMesh, glowMesh);
-            } else {
-                const mainMaterial = new THREE.MeshBasicMaterial({
-                    color,
-                    transparent: true,
-                    opacity: 0,
-                    depthWrite: false,
-                });
-                const glowMaterial = new THREE.MeshBasicMaterial({
-                    color,
-                    transparent: true,
-                    opacity: 0,
-                    blending: THREE.AdditiveBlending,
-                    depthWrite: false,
-                    side: THREE.BackSide,
-                });
+            const mainMesh = new THREE.Mesh(geometry, mainMaterial);
+            mainMesh.userData.baseScaleMultiplier = 1;
+            mainMesh.frustumCulled = false;
 
-                const mainMesh = new THREE.Mesh(geometry, mainMaterial);
-                mainMesh.userData.baseScaleMultiplier = 1;
-                mainMesh.frustumCulled = false;
+            const glowMesh = new THREE.Mesh(geometry, glowMaterial);
+            glowMesh.userData.baseScaleMultiplier = 1.14;
+            glowMesh.frustumCulled = false;
 
-                const glowMesh = new THREE.Mesh(geometry, glowMaterial);
-                glowMesh.userData.baseScaleMultiplier = 1.14;
-                glowMesh.frustumCulled = false;
+            this.scene.add(mainMesh);
+            this.scene.add(glowMesh);
 
-                this.scene.add(mainMesh);
-                this.scene.add(glowMesh);
+            burstBlob.mainMesh = mainMesh;
+            burstBlob.glowMesh = glowMesh;
+            burstBlob.meshes.push(mainMesh, glowMesh);
+        }
 
-                burstBlob.mainMesh = mainMesh;
-                burstBlob.glowMesh = glowMesh;
-                burstBlob.meshes.push(mainMesh, glowMesh);
-            }
+        this.deactivateBurstBlob(burstBlob);
+        this.burstBlobs.push(burstBlob);
+        return burstBlob;
+    }
 
-            this.deactivateBurstBlob(burstBlob);
-            this.burstBlobs.push(burstBlob);
+    initializeBurstPool() {
+        if (!this.scene || this.burstBlobs.length > 0) return;
+
+        const initialPoolSize = Math.min(4, BURST_BLOB_CONFIG.maxActive);
+        for (let i = 0; i < initialPoolSize; i += 1) {
+            this.createSingleBurstBlob();
         }
     }
 
@@ -1685,72 +1732,125 @@ export default class ElectricDreamsTheme extends BaseTheme {
         return this.burstPoolPrewarmPromise;
     }
 
-    scheduleDeferredEffects(delayMs = 40) {
-        if (
-            this.deferredEffectsScheduled
-            || this.deferredEffectsPromise
-            || !this.isActive
-        ) {
-            return;
-        }
-
-        if (typeof document !== 'undefined' && document.hidden) {
-            return;
-        }
-
-        this.deferredEffectsScheduled = true;
+    queueBackgroundTask(task, delayMs = 0, options = {}) {
+        const { idle = true, timeout = 1200 } = options;
         this.registerTimeout(() => {
-            this.deferredEffectsScheduled = false;
-            this.initializeDeferredEffectsInBackground();
-        }, delayMs);
+            if (!this.isActive) return;
+
+            const runTask = () => {
+                Promise.resolve()
+                    .then(() => task())
+                    .catch((error) => {
+                        console.warn('[ElectricDreams] Background task failed:', error);
+                    });
+            };
+
+            if (idle && typeof requestIdleCallback === 'function') {
+                requestIdleCallback(() => runTask(), { timeout });
+                return;
+            }
+
+            runTask();
+        }, Math.max(0, delayMs));
     }
 
-    async initializeDeferredEffectsInBackground() {
-        if (this.deferredEffectsPromise || !this.isActive || !this.scene || !this.camera || !this.renderer) {
-            return this.deferredEffectsPromise;
-        }
+    chainDeferredBackgroundTask(task, delayMs = 0, options = {}) {
+        const previous = this.deferredEffectsPromise || Promise.resolve();
+        this.deferredEffectsPromise = previous.then(() => new Promise((resolve) => {
+            this.queueBackgroundTask(async () => {
+                try {
+                    await task();
+                } finally {
+                    resolve();
+                }
+            }, delayMs, options);
+        }));
+        return this.deferredEffectsPromise;
+    }
 
-        if (typeof document !== 'undefined' && document.hidden) {
-            return null;
-        }
+    scheduleDeferredEffects(delayMs = 40) {
+        if (!this.isActive) return;
 
-        this.deferredEffectsPromise = (async () => {
+        this.deferredTier1Done = false;
+        this.deferredTier2Done = false;
+        this.deferredTier3Done = false;
+        this.frameCount = 0;
+
+        if (this.deferredEffectsScheduled) return;
+
+        this.deferredEffectsScheduled = true;
+        this.deferredEffectsPromise = Promise.resolve();
+
+        this.chainDeferredBackgroundTask(() => {
+            if (this.deferredTier1Done) return;
+            this.deferredTier1Done = true;
+            this.executeDeferredTier1();
+        }, delayMs, { idle: false });
+
+        this.chainDeferredBackgroundTask(async () => {
+            if (this.deferredTier2Done) return;
+            this.deferredTier2Done = true;
+            await this.executeDeferredTier2();
+        }, delayMs + 90, { idle: true, timeout: 800 });
+
+        this.chainDeferredBackgroundTask(async () => {
+            if (this.deferredTier3Done) return;
+            this.deferredTier3Done = true;
+            await this.executeDeferredTier3();
+        }, delayMs + 220, { idle: true, timeout: 1400 });
+
+        this.deferredEffectsPromise = this.deferredEffectsPromise.finally(() => {
+            this.deferredEffectsScheduled = false;
+            this.deferredEffectsPromise = null;
+        });
+    }
+
+    // ── Tiered deferred loading (replaces monolithic initializeDeferredEffectsInBackground) ──
+
+    executeDeferredTier1() {
+        try {
             if (this.isWebGPU) {
                 this.attachDeferredBlobLayers();
-
                 if (this.qualityPreset.useGlassOverlay && !this.glassMesh) {
                     this.createGlassOverlay();
                 }
             }
+            this.upgradeBackground();
+        } catch (err) {
+            console.warn('[ElectricDreams] Deferred tier 1 failed:', err);
+        }
+    }
 
+    async executeDeferredTier2() {
+        try {
             if (!this.sparks) {
                 await this.createSparkSystem();
             }
-
             if ((this.qualityPreset.microGlintCount ?? 0) > 0 && !this.microGlints) {
                 this.createMicroGlints();
             }
-
             if ((this.qualityPreset.boardHaloEmberCount ?? 0) > 0 && !this.boardHaloEmbers) {
                 this.createBoardHaloEmbers();
             }
-
-            if (this.shouldUseHeroParticles() && !this.heroParticles) {
-                await this.initializeHeroParticles();
-            }
-
             if (this.gameplaySparkBursts.length === 0) {
                 this.initializeGameplaySparkPools();
             }
-
             if (this.lineWakes.length === 0) {
                 this.initializeLineWakePool();
             }
+        } catch (err) {
+            console.warn('[ElectricDreams] Deferred tier 2 failed:', err);
+        }
+    }
 
+    async executeDeferredTier3() {
+        try {
+            if (this.shouldUseHeroParticles() && !this.heroParticles) {
+                await this.initializeHeroParticles();
+            }
             if (this.burstBlobs.length === 0) {
                 this.initializeBurstPool();
             }
-
             if (
                 this.flags.usePost
                 && !this.postPipeline
@@ -1758,31 +1858,36 @@ export default class ElectricDreamsTheme extends BaseTheme {
             ) {
                 await this.setupPostProcessing();
             }
-
             if (this.isWebGPU) {
                 this.scheduleBurstPoolPrewarm(180);
             }
-        })()
-            .catch((error) => {
-                console.warn('[ElectricDreams] Deferred effect initialization failed:', error);
-            })
-            .finally(() => {
-                this.deferredEffectsPromise = null;
-            });
-
-        return this.deferredEffectsPromise;
+        } catch (err) {
+            console.warn('[ElectricDreams] Deferred tier 3 failed:', err);
+        }
     }
 
     acquireBurstBlob() {
-        const inactive = this.burstBlobs.find((burstBlob) => burstBlob.active !== true);
-        if (inactive) return inactive;
+        // Find first inactive burst blob (indexed loop, no closure)
+        for (let i = 0; i < this.burstBlobs.length; i++) {
+            if (this.burstBlobs[i].active !== true) return this.burstBlobs[i];
+        }
 
-        return this.burstBlobs.reduce((oldest, candidate) => {
-            if (!oldest) return candidate;
-            const oldestProgress = oldest.age / Math.max(oldest.life, 0.0001);
-            const candidateProgress = candidate.age / Math.max(candidate.life, 0.0001);
-            return candidateProgress > oldestProgress ? candidate : oldest;
-        }, null);
+        // Grow pool on demand if under max capacity
+        if (this.burstBlobs.length < BURST_BLOB_CONFIG.maxActive) {
+            return this.createSingleBurstBlob();
+        }
+
+        // Recycle the oldest active burst blob (indexed loop, no closure)
+        let oldest = null;
+        let oldestProgress = -1;
+        for (let i = 0; i < this.burstBlobs.length; i++) {
+            const progress = this.burstBlobs[i].age / Math.max(this.burstBlobs[i].life, 0.0001);
+            if (progress > oldestProgress) {
+                oldestProgress = progress;
+                oldest = this.burstBlobs[i];
+            }
+        }
+        return oldest;
     }
 
     spawnBurstBlob(sourceBlob, strength = 0.45, eventOrigin = null) {
@@ -1973,10 +2078,16 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
         const modeRandom = Math.random();
         let mode = preserveMode ? state.modes[index] : AMBIENT_PARTICLE_MODES.surface;
+        const danger = this.fxState?.dangerLevel || 0;
+        const overdrive = this.fxState?.stageState === 'overdrive';
         if (!preserveMode) {
-            if (modeRandom < 0.55) {
+            if (overdrive && modeRandom < 0.18) {
+                mode = AMBIENT_PARTICLE_MODES.hero;
+            } else if (danger > 0.55 && modeRandom < 0.26) {
+                mode = AMBIENT_PARTICLE_MODES.hero;
+            } else if (modeRandom < 0.44) {
                 mode = AMBIENT_PARTICLE_MODES.surface;
-            } else if (modeRandom < 0.8) {
+            } else if (modeRandom < 0.64) {
                 mode = AMBIENT_PARTICLE_MODES.ambient;
             } else {
                 mode = AMBIENT_PARTICLE_MODES.bridge;
@@ -1994,6 +2105,8 @@ export default class ElectricDreamsTheme extends BaseTheme {
             state.adhesion[index] = 0.35 + Math.random() * 0.55;
         } else if (mode === AMBIENT_PARTICLE_MODES.bridge) {
             state.adhesion[index] = 0.2 + Math.random() * 0.4;
+        } else if (mode === AMBIENT_PARTICLE_MODES.hero) {
+            state.adhesion[index] = 0.08 + Math.random() * 0.24;
         } else {
             state.adhesion[index] = 0;
         }
@@ -2039,39 +2152,50 @@ export default class ElectricDreamsTheme extends BaseTheme {
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
         geometry.setDrawRange(0, count);
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uHeat: { value: 0 },
-            },
-            vertexShader: `
-                attribute vec3 color;
-                attribute float size;
-                varying vec3 vColor;
-                uniform float uTime;
-                uniform float uHeat;
-                void main() {
-                    vColor = color;
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    gl_PointSize = size * (160.0 / -mvPosition.z) * (0.9 + uHeat * 0.45);
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-            fragmentShader: `
-                varying vec3 vColor;
-                void main() {
-                    vec2 coord = gl_PointCoord - 0.5;
-                    float dist = length(coord);
-                    if (dist > 0.5) discard;
-                    float glow = pow(1.0 - smoothstep(0.0, 0.5, dist), 4.0);
-                    gl_FragColor = vec4(vColor * glow * 1.25, glow * 0.68);
-                }
-            `,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            vertexColors: true,
-        });
+        let material;
+        let uniforms;
+
+        if (this.isWebGPU && this.webgpuMaterials?.createMicroGlintsNodeMaterial) {
+            const result = this.webgpuMaterials.createMicroGlintsNodeMaterial();
+            material = result.material;
+            uniforms = result.uniforms;
+            this.applyMrtPatchToMaterial(material);
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uHeat: { value: 0 },
+                },
+                vertexShader: `
+                    attribute vec3 color;
+                    attribute float size;
+                    varying vec3 vColor;
+                    uniform float uTime;
+                    uniform float uHeat;
+                    void main() {
+                        vColor = color;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = size * (160.0 / -mvPosition.z) * (0.9 + uHeat * 0.45);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vColor;
+                    void main() {
+                        vec2 coord = gl_PointCoord - 0.5;
+                        float dist = length(coord);
+                        if (dist > 0.5) discard;
+                        float glow = pow(1.0 - smoothstep(0.0, 0.5, dist), 4.0);
+                        gl_FragColor = vec4(vColor * glow * 1.25, glow * 0.68);
+                    }
+                `,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                vertexColors: true,
+            });
+            uniforms = material.uniforms;
+        }
 
         this.microGlints = new THREE.Points(geometry, material);
         this.microGlints.visible = true;
@@ -2088,6 +2212,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
             progress,
             positionAttr,
             colorAttr,
+            uniforms,
         };
         this.applyMicroGlintVisibility();
     }
@@ -2130,8 +2255,8 @@ export default class ElectricDreamsTheme extends BaseTheme {
             state.colors[idx + 2] = THREE.MathUtils.clamp(BLOB_COLORS[i % BLOB_COLORS.length].b + accentColor.b * colorMix, 0, 1);
         }
 
-        this.microGlints.material.uniforms.uTime.value = this.time;
-        this.microGlints.material.uniforms.uHeat.value = heat;
+        state.uniforms.uTime.value = this.time;
+        state.uniforms.uHeat.value = heat;
         state.positionAttr.needsUpdate = true;
         state.colorAttr.needsUpdate = true;
     }
@@ -2338,6 +2463,27 @@ export default class ElectricDreamsTheme extends BaseTheme {
         return out;
     }
 
+    sampleAmbientHeroPoint(state, index, out, tangentOut) {
+        const corridor = this.getStageCorridorBounds();
+        const progress = state.progress[index];
+        const phase = state.phases[index];
+        const lateral = state.laterals[index];
+        const depth = state.depths[index];
+        const orbitAngle = progress * Math.PI * 2 + phase;
+        const orbitRadiusX = corridor.width * (0.16 + depth * 0.08);
+        const orbitRadiusY = corridor.height * (0.1 + depth * 0.05);
+        const focusY = this.fxState.lineBandY || 0;
+        const dangerLift = this.fxState.dangerLevel || 0;
+
+        out.set(
+            Math.sin(orbitAngle * 1.18) * orbitRadiusX + lateral * corridor.width * 0.05,
+            focusY * 0.68 + Math.cos(orbitAngle * 1.42 + lateral * 2.4) * orbitRadiusY + dangerLift * corridor.height * 0.18,
+            -6.8 - depth * 3.4 + Math.sin(orbitAngle * 2.4) * 0.72,
+        );
+        tangentOut.set(Math.cos(orbitAngle * 1.18), -Math.sin(orbitAngle * 1.42), 0.3).normalize();
+        return out;
+    }
+
     getAmbientLanePoint(laneIndex, progress, lateral, depth, out) {
         const corridor = this.getStageCorridorBounds();
         const stageHeat = this.fxState?.stageHeat ?? 0;
@@ -2391,69 +2537,86 @@ export default class ElectricDreamsTheme extends BaseTheme {
         return out;
     }
 
+    createGameplaySparkBurstResource(poolIndex = 0) {
+        if (!this.scene) return null;
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(GAMEPLAY_SPARK_CONFIG.maxParticlesPerBurst * 3);
+        const colors = new Float32Array(GAMEPLAY_SPARK_CONFIG.maxParticlesPerBurst * 3);
+        const velocities = new Float32Array(GAMEPLAY_SPARK_CONFIG.maxParticlesPerBurst * 3);
+        const baseColor = BLOB_COLORS[poolIndex % BLOB_COLORS.length];
+
+        for (let j = 0; j < GAMEPLAY_SPARK_CONFIG.maxParticlesPerBurst; j += 1) {
+            colors[j * 3] = baseColor.r;
+            colors[j * 3 + 1] = baseColor.g;
+            colors[j * 3 + 2] = baseColor.b;
+        }
+
+        const positionAttr = new THREE.BufferAttribute(positions, 3);
+        positionAttr.setUsage(THREE.DynamicDrawUsage);
+        const colorAttr = new THREE.BufferAttribute(colors, 3);
+        colorAttr.setUsage(THREE.DynamicDrawUsage);
+        geometry.setAttribute('position', positionAttr);
+        geometry.setAttribute('color', colorAttr);
+        geometry.setDrawRange(0, 0);
+
+        const material = new THREE.PointsMaterial({
+            size: 0.5,
+            transparent: true,
+            opacity: 0,
+            vertexColors: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            sizeAttenuation: true,
+        });
+        const points = new THREE.Points(geometry, material);
+        points.visible = false;
+        points.frustumCulled = false;
+        points.renderOrder = 3;
+        this.scene.add(points);
+
+        return {
+            active: false,
+            age: 0,
+            life: 0.6,
+            intensity: 1,
+            count: 0,
+            baseSize: 0.5,
+            opacity: 1,
+            pattern: 'lock',
+            origin: new THREE.Vector3(),
+            positions,
+            colors,
+            velocities,
+            geometry,
+            positionAttr,
+            colorAttr,
+            material,
+            points,
+        };
+    }
+
     initializeGameplaySparkPools() {
         if (!this.scene || this.gameplaySparkBursts.length > 0) return;
 
-        for (let i = 0; i < GAMEPLAY_SPARK_CONFIG.poolSize; i += 1) {
-            const geometry = new THREE.BufferGeometry();
-            const positions = new Float32Array(GAMEPLAY_SPARK_CONFIG.maxParticlesPerBurst * 3);
-            const colors = new Float32Array(GAMEPLAY_SPARK_CONFIG.maxParticlesPerBurst * 3);
-            const velocities = new Float32Array(GAMEPLAY_SPARK_CONFIG.maxParticlesPerBurst * 3);
-            const baseColor = BLOB_COLORS[i % BLOB_COLORS.length];
-
-            for (let j = 0; j < GAMEPLAY_SPARK_CONFIG.maxParticlesPerBurst; j += 1) {
-                colors[j * 3] = baseColor.r;
-                colors[j * 3 + 1] = baseColor.g;
-                colors[j * 3 + 2] = baseColor.b;
-            }
-
-            const positionAttr = new THREE.BufferAttribute(positions, 3);
-            positionAttr.setUsage(THREE.DynamicDrawUsage);
-            const colorAttr = new THREE.BufferAttribute(colors, 3);
-            colorAttr.setUsage(THREE.DynamicDrawUsage);
-            geometry.setAttribute('position', positionAttr);
-            geometry.setAttribute('color', colorAttr);
-            geometry.setDrawRange(0, 0);
-
-            const material = new THREE.PointsMaterial({
-                size: 0.5,
-                transparent: true,
-                opacity: 0,
-                vertexColors: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                sizeAttenuation: true,
-            });
-            const points = new THREE.Points(geometry, material);
-            points.visible = false;
-            points.frustumCulled = false;
-            points.renderOrder = 3;
-            this.scene.add(points);
-
-            this.gameplaySparkBursts.push({
-                active: false,
-                age: 0,
-                life: 0.6,
-                count: 0,
-                baseSize: 0.5,
-                opacity: 1,
-                pattern: 'lock',
-                origin: new THREE.Vector3(),
-                positions,
-                colors,
-                velocities,
-                geometry,
-                positionAttr,
-                colorAttr,
-                material,
-                points,
-            });
+        const initialPoolSize = Math.min(3, GAMEPLAY_SPARK_CONFIG.poolSize);
+        for (let i = 0; i < initialPoolSize; i += 1) {
+            const burst = this.createGameplaySparkBurstResource(i);
+            if (burst) this.gameplaySparkBursts.push(burst);
         }
     }
 
     acquireGameplaySparkBurst() {
         const inactive = this.gameplaySparkBursts.find((burst) => burst.active !== true);
         if (inactive) return inactive;
+
+        if (this.gameplaySparkBursts.length < GAMEPLAY_SPARK_CONFIG.poolSize) {
+            const burst = this.createGameplaySparkBurstResource(this.gameplaySparkBursts.length);
+            if (burst) {
+                this.gameplaySparkBursts.push(burst);
+                return burst;
+            }
+        }
 
         return this.gameplaySparkBursts.reduce((oldest, candidate) => {
             if (!oldest) return candidate;
@@ -2481,6 +2644,14 @@ export default class ElectricDreamsTheme extends BaseTheme {
     spawnGameplaySparkBurst(options = {}) {
         if (!this.scene || !this.gameplaySparkBursts.length) return;
 
+        // Global concurrent spark particle budget — skip if over limit
+        let activeSparkCount = 0;
+        for (let b = 0; b < this.gameplaySparkBursts.length; b++) {
+            if (this.gameplaySparkBursts[b].active) activeSparkCount += this.gameplaySparkBursts[b].count;
+        }
+        const sparkBudgetRemaining = Math.max(0, 600 - activeSparkCount);
+        if (sparkBudgetRemaining <= 0) return;
+
         const burst = this.acquireGameplaySparkBurst();
         if (!burst) return;
 
@@ -2496,7 +2667,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
         } = options;
 
         const resolvedOrigin = origin || this.getComboOrigin();
-        const clampedCount = Math.max(4, Math.min(GAMEPLAY_SPARK_CONFIG.maxParticlesPerBurst, Math.round(count)));
+        const clampedCount = Math.max(4, Math.min(sparkBudgetRemaining, Math.min(GAMEPLAY_SPARK_CONFIG.maxParticlesPerBurst, Math.round(count))));
         const primaryDirection = direction
             ? this.tmpVec3A.copy(direction).normalize()
             : this.tmpVec3A.copy(this.fxState.impactDirection).normalize();
@@ -2508,6 +2679,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
         burst.baseSize = size;
         burst.opacity = THREE.MathUtils.clamp(0.82 + intensity * 0.2, 0.78, 1);
         burst.pattern = pattern;
+        if (!burst.origin) burst.origin = new THREE.Vector3();
         burst.origin.copy(resolvedOrigin);
 
         for (let i = 0; i < clampedCount; i += 1) {
@@ -2587,7 +2759,8 @@ export default class ElectricDreamsTheme extends BaseTheme {
         if (!this.scene || this.lineWakes.length > 0) return;
 
         const geometry = new THREE.PlaneGeometry(1, 1, 1, 1);
-        for (let i = 0; i < LINE_WAKE_CONFIG.poolSize; i += 1) {
+        const initialPoolSize = Math.min(4, LINE_WAKE_CONFIG.poolSize);
+        for (let i = 0; i < initialPoolSize; i += 1) {
             const material = new THREE.MeshBasicMaterial({
                 color: 0xffffff,
                 transparent: true,
@@ -2620,6 +2793,37 @@ export default class ElectricDreamsTheme extends BaseTheme {
     acquireLineWake() {
         const inactive = this.lineWakes.find((wake) => wake.active !== true);
         if (inactive) return inactive;
+
+        if (this.lineWakes.length < LINE_WAKE_CONFIG.poolSize && this.scene) {
+            const material = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+            });
+            const mesh = new THREE.Mesh(this.lineWakes[0]?.mesh?.geometry || new THREE.PlaneGeometry(1, 1, 1, 1), material);
+            mesh.visible = false;
+            mesh.frustumCulled = false;
+            mesh.renderOrder = 2;
+            mesh.position.z = 1.4;
+            this.scene.add(mesh);
+            const wake = {
+                active: false,
+                age: 0,
+                life: LINE_WAKE_CONFIG.baseLife,
+                intensity: 1,
+                y: 0,
+                height: 0.2,
+                baseColor: new THREE.Color(0xffffff),
+                mesh,
+                material,
+            };
+            this.lineWakes.push(wake);
+            return wake;
+        }
+
         return this.lineWakes.reduce((oldest, candidate) => {
             if (!oldest) return candidate;
             return candidate.age > oldest.age ? candidate : oldest;
@@ -2656,6 +2860,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
         wake.y = options.y ?? 0;
         wake.height = options.height ?? 0.2;
         wake.baseColor.copy(options.color || this.getColorFromValue('#8a8dff', 0x8a8dff));
+        wake.waveBias = options.waveBias ?? (this.fxState.rewardPulse || 0);
         wake.mesh.visible = true;
         wake.mesh.position.set(0, wake.y, 1.4);
         wake.mesh.scale.set(this.getStageCorridorBounds().width * 0.72, wake.height * 2.4, 1);
@@ -2679,15 +2884,18 @@ export default class ElectricDreamsTheme extends BaseTheme {
             }
 
             const fade = 1 - lifeT;
+            const dangerLevel = this.fxState.dangerLevel || 0;
             wake.mesh.position.y = wake.y;
             wake.mesh.position.z = 1.4 + lifeT * 5.4;
             wake.mesh.scale.set(
-                corridor.width * (0.72 + lifeT * 1.18),
-                wake.height * (2.4 + lifeT * 6.8),
+                corridor.width * (0.72 + lifeT * (1.08 + wake.waveBias * 0.34)),
+                wake.height * (2.4 + lifeT * (6.0 + wake.waveBias * 1.2 + dangerLevel * 0.8)),
                 1,
             );
             wake.material.opacity = LINE_WAKE_CONFIG.baseOpacity * wake.intensity * fade * fade;
-            wake.material.color.copy(wake.baseColor).lerp(this.tmpColorA.set(0xffffff), 0.03 + lifeT * 0.06);
+            wake.material.color.copy(wake.baseColor)
+                .lerp(this.tmpColorA.set(0xffffff), 0.03 + lifeT * 0.06 + wake.waveBias * 0.05)
+                .lerp(this.tmpColorB.set(0xff8450), dangerLevel * 0.08);
         }
     }
 
@@ -2716,14 +2924,16 @@ export default class ElectricDreamsTheme extends BaseTheme {
                 * (1 + lifeT * 0.48)
                 * (0.94 + Math.sin((this.time * 6) + burstBlob.phase) * 0.04);
 
-            burstBlob.meshes.forEach((mesh) => {
+            const deltaMul60 = delta * 60;
+            for (let m = 0; m < burstBlob.meshes.length; m++) {
+                const mesh = burstBlob.meshes[m];
                 mesh.position.copy(burstBlob.position);
                 const scaleMultiplier = mesh.userData?.baseScaleMultiplier ?? 1;
                 mesh.scale.setScalar(burstScale * scaleMultiplier);
-                mesh.rotation.x += burstBlob.angularVelocity.x * delta * 60;
-                mesh.rotation.y += burstBlob.angularVelocity.y * delta * 60;
-                mesh.rotation.z += burstBlob.angularVelocity.z * delta * 60;
-            });
+                mesh.rotation.x += burstBlob.angularVelocity.x * deltaMul60;
+                mesh.rotation.y += burstBlob.angularVelocity.y * deltaMul60;
+                mesh.rotation.z += burstBlob.angularVelocity.z * deltaMul60;
+            }
 
             if (burstBlob.mainUniforms) {
                 burstBlob.mainUniforms.uTime.value = this.time + burstBlob.phase;
@@ -2766,6 +2976,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
         this.burstPoolPrewarmPromise = null;
         this.deferredEffectsScheduled = false;
         this.deferredEffectsPromise = null;
+        this.postSetupRetryScheduled = false;
         this.pendingBurstRequest = null;
         this.gameplaySparkBursts = [];
         this.lineWakes = [];
@@ -2780,6 +2991,16 @@ export default class ElectricDreamsTheme extends BaseTheme {
             ghost: 0,
         };
         this.resetFxController();
+
+        // Reset progressive & tiered deferred loading state
+        this.pendingBlobQueue = [];
+        this.blobLoadingComplete = false;
+        this.frameCount = 0;
+        this.deferredTier1Done = false;
+        this.deferredTier2Done = false;
+        this.deferredTier3Done = false;
+        this.backgroundNeedsUpgrade = false;
+
         this.primeModuleImports();
 
         const container = document.getElementById('electric-dreams-theme');
@@ -2793,17 +3014,40 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
         this.createBackground();
         this.createBoardHalo();
-        this.createBlobs();
+        this.createInitialBlobs();
         this.setupLighting();
         this.setupEventListeners();
         this.registerDebugHelpers();
 
         console.log(
-            `[ElectricDreams] Scene created (${this.isWebGPU ? 'WebGPU' : 'WebGL'}) with ${this.blobs.length} blobs`,
+            `[ElectricDreams] Scene created (${this.isWebGPU ? 'WebGPU' : 'WebGL'}) with ${this.blobs.length} blobs (+${this.pendingBlobQueue.length} queued)`,
         );
         this.startAnimation();
-        this.scheduleDeferredEffects();
+        this.scheduleDeferredEffects(0);
+        this.queueBackgroundTask(() => this.precompileScene(), 140, { idle: true, timeout: 1600 });
         this.scheduleBurstPoolPrewarm();
+    }
+
+    async precompileScene() {
+        if (!this.renderer || !this.scene || !this.camera) return;
+        if (typeof this.renderer.compileAsync !== 'function') return;
+
+        // Temporarily hide background mesh — it starts as a WebGL ShaderMaterial
+        // (upgraded to TSL node material in deferred tier 1) and is incompatible
+        // with WebGPU compileAsync before that upgrade happens.
+        const bgWasVisible = this.backgroundMesh?.visible;
+        if (this.backgroundMesh) this.backgroundMesh.visible = false;
+
+        try {
+            await Promise.race([
+                this.renderer.compileAsync(this.scene, this.camera),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('compile timeout')), 1200)),
+            ]);
+        } catch (err) {
+            console.warn('[ElectricDreams] Scene precompile skipped:', err.message);
+        }
+
+        if (this.backgroundMesh && bgWasVisible !== undefined) this.backgroundMesh.visible = bgWasVisible;
     }
 
     async initRenderer(container) {
@@ -2830,7 +3074,10 @@ export default class ElectricDreamsTheme extends BaseTheme {
                     antialias: this.getAntialiasEnabled(),
                     alpha: false,
                 });
-                await renderer.init();
+                await Promise.race([
+                    renderer.init(),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('WebGPU init timeout')), 1800)),
+                ]);
                 if (renderer.backend?.isWebGPUBackend === true) {
                     this.renderer = renderer;
                     this.isWebGPU = true;
@@ -2994,6 +3241,49 @@ export default class ElectricDreamsTheme extends BaseTheme {
         return true;
     }
 
+    auditScenePostReadiness() {
+        if (!this.isWebGPU || !this.scene) return { ready: true, offenders: [] };
+
+        if (this.backgroundNeedsUpgrade) {
+            return { ready: false, offenders: ['background-upgrade-pending'] };
+        }
+
+        const visited = new Set();
+        const offenders = [];
+
+        this.scene.traverse((child) => {
+            if (!child.material) return;
+            const materials = Array.isArray(child.material) ? child.material : [child.material];
+            materials.forEach((material) => {
+                if (!material || visited.has(material)) return;
+                visited.add(material);
+                if (!this.isNodeMaterial(material)) {
+                    offenders.push(material.type || material.constructor?.name || 'UnknownMaterial');
+                }
+            });
+        });
+
+        return {
+            ready: offenders.length === 0,
+            offenders,
+        };
+    }
+
+    deferPostSetupRetry(reason = 'scene-not-ready', delayMs = 120) {
+        if (!this.isActive || !this.flags.usePost || this.postPipeline || this.composer || this.postSetupRetryScheduled) return;
+
+        this.postSetupRetryScheduled = true;
+        this.queueBackgroundTask(async () => {
+            this.postSetupRetryScheduled = false;
+            if (!this.isActive || !this.flags.usePost || this.postPipeline || this.composer) return;
+            try {
+                await this.setupPostProcessing();
+            } catch (error) {
+                console.warn(`[ElectricDreams] Deferred post retry failed: ${reason}`, error);
+            }
+        }, delayMs, { idle: true, timeout: 1200 });
+    }
+
     disableMrtRuntime(reason, details = null) {
         if (!this.isWebGPU || this.flags.useMRT !== true) return false;
 
@@ -3094,15 +3384,17 @@ export default class ElectricDreamsTheme extends BaseTheme {
     buildBlobAnchor(index, tier, tierIndex) {
         const layout = this.getBlobTierLayout(tier, tierIndex);
         const corridor = this.getStageCorridorBounds();
-        let jitterScale = 0.06;
+        let jitterScale = 0.038;
         if (tier === 'hero') {
-            jitterScale = 0.03;
+            jitterScale = 0.018;
         } else if (tier === 'support') {
-            jitterScale = 0.045;
+            jitterScale = 0.028;
+        } else if (tier === 'ghost') {
+            jitterScale = 0.024;
         }
         const jitterX = (Math.random() - 0.5) * this.screenBounds.width * jitterScale;
         const jitterY = (Math.random() - 0.5) * this.screenBounds.height * jitterScale;
-        const jitterZ = (Math.random() - 0.5) * (tier === 'ghost' ? 3.6 : 2.0);
+        const jitterZ = (Math.random() - 0.5) * (tier === 'ghost' ? 2.4 : 1.2);
         const scale = THREE.MathUtils.lerp(layout.scaleMin, layout.scaleMax, Math.random());
         let heroWeight = 0.72;
         if (tier === 'hero') {
@@ -3245,30 +3537,25 @@ export default class ElectricDreamsTheme extends BaseTheme {
         this.updateImpactScreenFromWorld(worldPosition);
     }
 
-    getColorFromValue(value, fallback = 0x00ffcc) {
-        if (value?.isColor) {
-            return value.clone();
-        }
-        if (typeof value === 'string') {
-            return new THREE.Color(value);
-        }
-        if (typeof value === 'number') {
-            return new THREE.Color(value);
-        }
-        return new THREE.Color(fallback);
+    getColorFromValue(value, fallback = 0x00ffcc, target = null) {
+        const out = target || new THREE.Color();
+        if (value?.isColor) return out.copy(value);
+        if (typeof value === 'string' || typeof value === 'number') return out.set(value);
+        return out.set(fallback);
     }
 
     getEventColorFromPiece(piece) {
+        const out = this._scratchColors[0];
         if (piece?.color) {
-            return this.getColorFromValue(piece.color, 0x00ffcc);
+            return this.getColorFromValue(piece.color, 0x00ffcc, out);
         }
 
         const fallback = ELECTRIC_DREAMS_TETROMINOS.colors?.[piece?.type];
         if (fallback) {
-            return new THREE.Color(fallback);
+            return out.set(fallback);
         }
 
-        return BLOB_COLORS[Math.floor((this.time * 3) % BLOB_COLORS.length)].clone();
+        return out.copy(BLOB_COLORS[Math.floor((this.time * 3) % BLOB_COLORS.length)]);
     }
 
     applyBlobReaction(origin, options = {}) {
@@ -3283,19 +3570,37 @@ export default class ElectricDreamsTheme extends BaseTheme {
             direction = null,
         } = options;
 
-        const ranked = this.blobs
-            .map((blob) => ({
-                blob,
-                distance: blob.mainMesh?.position?.distanceTo(origin) ?? Number.MAX_SAFE_INTEGER,
-            }))
-            .sort((a, b) => a.distance - b.distance);
+        // Compute distances in pre-allocated array (no .map/.sort allocation)
+        const blobs = this.blobs;
+        const count = blobs.length;
+        const dists = this._blobDistances;
+        for (let i = 0; i < count; i++) {
+            dists[i] = blobs[i].mainMesh?.position?.distanceTo(origin) ?? Number.MAX_SAFE_INTEGER;
+        }
 
-        ranked.forEach(({ blob, distance }, index) => {
+        // Find the N nearest blobs via N linear scans (faster than sort for affectedCount <= 4)
+        const nearestFlags = new Uint8Array(count); // 0 = not selected
+        for (let n = 0; n < Math.min(affectedCount, count); n++) {
+            let minDist = Number.MAX_SAFE_INTEGER;
+            let minIdx = -1;
+            for (let i = 0; i < count; i++) {
+                if (!nearestFlags[i] && dists[i] < minDist) {
+                    minDist = dists[i];
+                    minIdx = i;
+                }
+            }
+            if (minIdx >= 0) nearestFlags[minIdx] = 1;
+        }
+
+        const screenWidth = this.screenBounds.width * 0.95;
+        for (let i = 0; i < count; i++) {
+            const blob = blobs[i];
+            const distance = dists[i];
             const tierWeight = blob.heroWeight ?? 1;
-            const nearWeight = THREE.MathUtils.clamp(1 - (distance / (this.screenBounds.width * 0.95)), 0.18, 1);
-            const echoWeight = index < affectedCount ? 1 : echoStrength;
+            const nearWeight = THREE.MathUtils.clamp(1 - (distance / screenWidth), 0.18, 1);
+            const echoWeight = nearestFlags[i] ? 1 : echoStrength;
             const reaction = strength * nearWeight * echoWeight * tierWeight;
-            if (reaction <= 0.01) return;
+            if (reaction <= 0.01) continue;
 
             blob.reactionTarget = Math.max(blob.reactionTarget, reaction);
             blob.flowTarget = Math.max(blob.flowTarget, reaction * flowStrength * 1.6);
@@ -3307,22 +3612,24 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
             const baseDirection = this.tmpVec3C.copy(blob.homePosition).sub(origin);
             if (baseDirection.lengthSq() < 0.0001) {
-                baseDirection.set((index % 2 === 0 ? -1 : 1) * 0.1, 0.15, 0.8);
+                baseDirection.set((i % 2 === 0 ? -1 : 1) * 0.1, 0.15, 0.8);
             }
             baseDirection.normalize();
             if (direction) {
                 baseDirection.lerp(direction, 0.45).normalize();
             }
             blob.reactionVectorTarget.copy(baseDirection);
-        });
+        }
     }
 
     getComboOrigin() {
         if (this.fxState.hasImpactOrigin) {
-            return this.fxState.impactOrigin.clone();
+            return this._scratchOriginVec.copy(this.fxState.impactOrigin);
         }
         const heroBlob = this.blobs.find((blob) => blob.tier === 'hero') || this.blobs[0];
-        return heroBlob?.homePosition?.clone() || new THREE.Vector3(0, 0, -1.5);
+        return heroBlob?.homePosition
+            ? this._scratchOriginVec.copy(heroBlob.homePosition)
+            : this._scratchOriginVec.set(0, 0, -1.5);
     }
 
     createDebugPiecePayload(type = 'T', x = 4, y = 15) {
@@ -3450,45 +3757,56 @@ export default class ElectricDreamsTheme extends BaseTheme {
     createBackground() {
         const bgGeo = new THREE.SphereGeometry(200, 32, 24);
 
-        if (this.isWebGPU && this.webgpuMaterials) {
-            const { material, uniforms } = this.webgpuMaterials.createBackgroundNodeMaterial();
-            this.applyMrtPatchToMaterial(material);
-            this.backgroundMesh = new THREE.Mesh(bgGeo, material);
-            this.backgroundUniforms = uniforms;
-        } else {
-            const bgMat = new THREE.ShaderMaterial({
-                uniforms: { uTime: { value: 0 } },
-                vertexShader: `
-                    varying vec3 vWorldPos;
-                    void main() {
-                        vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
-                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                    }
-                `,
-                fragmentShader: `
-                    uniform float uTime;
-                    varying vec3 vWorldPos;
-                    void main() {
-                        float y = normalize(vWorldPos).y;
-                        vec3 deepPurple = vec3(0.01, 0.0, 0.02);
-                        vec3 darkBlue = vec3(0.0, 0.005, 0.02);
-                        vec3 pureBlack = vec3(0.005, 0.002, 0.01);
-                        vec3 color = mix(pureBlack, deepPurple, smoothstep(-1.0, 0.0, y) * 0.3);
-                        color = mix(color, darkBlue, smoothstep(0.0, 1.0, y) * 0.2);
-                        float nebula = sin(y * 5.0 + uTime * 0.08) * cos(normalize(vWorldPos).x * 3.0 + uTime * 0.1);
-                        nebula = pow(max(0.0, nebula), 10.0) * 0.02;
-                        color += vec3(0.05, 0.0, 0.08) * nebula;
-                        gl_FragColor = vec4(color, 1.0);
-                    }
-                `,
-                side: THREE.BackSide,
-                fog: false,
-            });
-            this.backgroundMesh = new THREE.Mesh(bgGeo, bgMat);
-            this.backgroundUniforms = null;
-        }
+        // Always start with the lightweight WebGL shader for fast first frame.
+        // The TSL FBM material is upgraded in via upgradeBackground() in deferred tier 1.
+        const bgMat = new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 } },
+            vertexShader: `
+                varying vec3 vWorldPos;
+                void main() {
+                    vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                varying vec3 vWorldPos;
+                void main() {
+                    float y = normalize(vWorldPos).y;
+                    vec3 deepPurple = vec3(0.04, 0.01, 0.07);
+                    vec3 darkBlue = vec3(0.01, 0.02, 0.06);
+                    vec3 pureBlack = vec3(0.012, 0.007, 0.025);
+                    vec3 color = mix(pureBlack, deepPurple, smoothstep(-1.0, 0.0, y) * 0.5);
+                    color = mix(color, darkBlue, smoothstep(0.0, 1.0, y) * 0.4);
+                    float nebula = sin(y * 5.0 + uTime * 0.08) * cos(normalize(vWorldPos).x * 3.0 + uTime * 0.1);
+                    nebula = pow(max(0.0, nebula), 6.0) * 0.06;
+                    color += vec3(0.08, 0.01, 0.12) * nebula;
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `,
+            side: THREE.BackSide,
+            fog: false,
+        });
+        this.backgroundMesh = new THREE.Mesh(bgGeo, bgMat);
+        this.backgroundUniforms = null;
+        this.backgroundNeedsUpgrade = this.isWebGPU && !!this.webgpuMaterials;
 
         this.scene.add(this.backgroundMesh);
+    }
+
+    upgradeBackground() {
+        if (!this.backgroundNeedsUpgrade || !this.webgpuMaterials || !this.backgroundMesh) return;
+        this.backgroundNeedsUpgrade = false;
+
+        const oldMat = this.backgroundMesh.material;
+        const { material, uniforms } = this.webgpuMaterials.createBackgroundNodeMaterial();
+        this.applyMrtPatchToMaterial(material);
+        this.backgroundMesh.material = material;
+        this.backgroundUniforms = uniforms;
+        if (uniforms.uTime) {
+            uniforms.uTime.value = this.time;
+        }
+        oldMat.dispose();
     }
 
     getBoardHaloRect() {
@@ -3644,44 +3962,55 @@ export default class ElectricDreamsTheme extends BaseTheme {
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
         geometry.setDrawRange(0, count);
 
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uEnergy: { value: 0 },
-            },
-            vertexShader: `
-                attribute vec3 color;
-                attribute float size;
-                varying vec3 vColor;
-                varying float vEnergy;
-                uniform float uTime;
-                uniform float uEnergy;
-                void main() {
-                    vColor = color;
-                    vEnergy = uEnergy;
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    gl_PointSize = size * (186.0 / -mvPosition.z) * (0.9 + uEnergy * 0.58);
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-            fragmentShader: `
-                varying vec3 vColor;
-                varying float vEnergy;
-                void main() {
-                    vec2 coord = gl_PointCoord - 0.5;
-                    float dist = length(coord);
-                    if (dist > 0.5) discard;
-                    float glow = pow(1.0 - smoothstep(0.0, 0.5, dist), 4.0);
-                    float ring = smoothstep(0.46, 0.18, dist) * smoothstep(0.06, 0.24, dist);
-                    vec3 color = vColor * (glow * (1.14 + vEnergy * 0.42) + ring * 0.32);
-                    gl_FragColor = vec4(color, glow * (0.76 + vEnergy * 0.16));
-                }
-            `,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-            vertexColors: true,
-        });
+        let material;
+        let uniforms;
+
+        if (this.isWebGPU && this.webgpuMaterials?.createBoardHaloEmbersNodeMaterial) {
+            const result = this.webgpuMaterials.createBoardHaloEmbersNodeMaterial();
+            material = result.material;
+            uniforms = result.uniforms;
+            this.applyMrtPatchToMaterial(material);
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uEnergy: { value: 0 },
+                },
+                vertexShader: `
+                    attribute vec3 color;
+                    attribute float size;
+                    varying vec3 vColor;
+                    varying float vEnergy;
+                    uniform float uTime;
+                    uniform float uEnergy;
+                    void main() {
+                        vColor = color;
+                        vEnergy = uEnergy;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = size * (186.0 / -mvPosition.z) * (0.9 + uEnergy * 0.58);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vColor;
+                    varying float vEnergy;
+                    void main() {
+                        vec2 coord = gl_PointCoord - 0.5;
+                        float dist = length(coord);
+                        if (dist > 0.5) discard;
+                        float glow = pow(1.0 - smoothstep(0.0, 0.5, dist), 4.0);
+                        float ring = smoothstep(0.46, 0.18, dist) * smoothstep(0.06, 0.24, dist);
+                        vec3 color = vColor * (glow * (1.14 + vEnergy * 0.42) + ring * 0.32);
+                        gl_FragColor = vec4(color, glow * (0.76 + vEnergy * 0.16));
+                    }
+                `,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                vertexColors: true,
+            });
+            uniforms = material.uniforms;
+        }
 
         this.boardHaloEmbers = new THREE.Points(geometry, material);
         this.boardHaloEmbers.frustumCulled = false;
@@ -3699,6 +4028,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
             speeds,
             positionAttr,
             colorAttr,
+            uniforms,
         };
     }
 
@@ -3788,8 +4118,8 @@ export default class ElectricDreamsTheme extends BaseTheme {
             emberState.colors[idx + 2] = THREE.MathUtils.lerp(accentA.b, accentB.b, mix);
         }
 
-        this.boardHaloEmbers.material.uniforms.uTime.value = this.time;
-        this.boardHaloEmbers.material.uniforms.uEnergy.value = energy;
+        emberState.uniforms.uTime.value = this.time;
+        emberState.uniforms.uEnergy.value = energy;
         emberState.positionAttr.needsUpdate = true;
         emberState.colorAttr.needsUpdate = true;
         this.boardHaloEmbers.geometry.setDrawRange(0, visibleCount);
@@ -3798,15 +4128,41 @@ export default class ElectricDreamsTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
     // Blobs (multi-layer in WebGPU, single mesh in WebGL)
     // ─────────────────────────────────────────────────────────────────────────
-    createBlobs() {
-        this.blobTierCounts = {
-            hero: 0,
-            support: 0,
-            ghost: 0,
-        };
+    createInitialBlobs() {
+        this.blobTierCounts = { hero: 0, support: 0, ghost: 0 };
+        this.pendingBlobQueue = [];
+        this.blobLoadingComplete = false;
+
         const count = this.qualityPreset.blobCount;
-        for (let i = 0; i < count; i++) {
+        const heroCount = this.qualityPreset.tierCounts?.hero || 1;
+        const immediateCount = Math.min(count, Math.max(heroCount, Math.min(heroCount + 2, 4)));
+
+        // Create hero blobs and a couple of supporting forms immediately for a fuller first frame.
+        for (let i = 0; i < immediateCount; i++) {
             this.createBlob(i);
+        }
+
+        // Queue remaining blobs for progressive loading across frames
+        for (let i = immediateCount; i < count; i++) {
+            this.pendingBlobQueue.push(i);
+        }
+
+        if (this.pendingBlobQueue.length === 0) {
+            this.blobLoadingComplete = true;
+        }
+    }
+
+    loadNextBlobBatch(batchSize = 2) {
+        if (this.blobLoadingComplete || !this.pendingBlobQueue.length) return;
+
+        const toCreate = Math.min(batchSize, this.pendingBlobQueue.length);
+        for (let i = 0; i < toCreate; i++) {
+            const blobIndex = this.pendingBlobQueue.shift();
+            this.createBlob(blobIndex);
+        }
+
+        if (this.pendingBlobQueue.length === 0) {
+            this.blobLoadingComplete = true;
         }
     }
 
@@ -3817,6 +4173,9 @@ export default class ElectricDreamsTheme extends BaseTheme {
         const anchor = this.buildBlobAnchor(index, tier, tierIndex);
         const { scale } = anchor;
         const detail = this.qualityPreset.blobDetail || 5;
+        const resolvedDetail = tier === 'hero'
+            ? detail + 1
+            : (tier === 'ghost' ? Math.max(2, detail - 1) : detail);
         const color = BLOB_COLORS[index % BLOB_COLORS.length].clone();
         const position = anchor.position.clone();
 
@@ -3835,7 +4194,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
         const blobData = {
             scale,
-            detail,
+            detail: resolvedDetail,
             tier,
             tierIndex,
             motionProfile: BLOB_MOTION_PROFILES[tier] || BLOB_MOTION_PROFILES.support,
@@ -3855,12 +4214,13 @@ export default class ElectricDreamsTheme extends BaseTheme {
             phaseX: Math.random() * Math.PI * 2,
             phaseY: Math.random() * Math.PI * 2,
             phaseZ: Math.random() * Math.PI * 2,
-            freqX: 0.15 + Math.random() * 0.2,
-            freqY: 0.12 + Math.random() * 0.18,
-            freqZ: 0.1 + Math.random() * 0.15,
-            ampX: 0.5 + Math.random() * 0.6,
-            ampY: 0.4 + Math.random() * 0.5,
-            ampZ: 0.25 + Math.random() * 0.35,
+            restPhase: Math.random() * Math.PI * 2,
+            freqX: 0.20 + Math.random() * 0.25,
+            freqY: 0.16 + Math.random() * 0.22,
+            freqZ: 0.14 + Math.random() * 0.20,
+            ampX: 0.7 + Math.random() * 0.9,
+            ampY: 0.6 + Math.random() * 0.75,
+            ampZ: 0.4 + Math.random() * 0.55,
             freq2X: 0.05 + Math.random() * 0.08,
             freq2Y: 0.04 + Math.random() * 0.06,
             rotSpeedX: (Math.random() - 0.5) * 0.002,
@@ -3885,8 +4245,10 @@ export default class ElectricDreamsTheme extends BaseTheme {
             depthBias: (Math.random() - 0.5) * depthBiasRange,
             depthOffset: 0,
             depthVelocity: 0,
+            motionActivity: tier === 'hero' ? 0.92 : (tier === 'support' ? 0.82 : 0.7),
+            motionBias: 0.88 + Math.random() * 0.18,
             convectionPhase: Math.random() * Math.PI * 2,
-            convectionSpeed: 0.12 + Math.random() * 0.08,
+            convectionSpeed: 0.18 + Math.random() * 0.14,
             convectionValue: 0,
             clusterWeight: 0,
             mergeAffinity: 0,
@@ -3908,13 +4270,14 @@ export default class ElectricDreamsTheme extends BaseTheme {
             flowTarget: 0,
             reactionVector: new THREE.Vector3(0, 0.15, 1).normalize(),
             reactionVectorTarget: new THREE.Vector3(0, 0.15, 1).normalize(),
+            rotationVelocity: new THREE.Vector3(),
             corridorBias,
         };
 
         if (this.isWebGPU && this.webgpuMaterials) {
-            this.createWebGPUBlob(blobData, scale, detail, color, position);
+            this.createWebGPUBlob(blobData, scale, resolvedDetail, color, position);
         } else {
-            this.createWebGLBlob(blobData, scale, detail, color, position);
+            this.createWebGLBlob(blobData, scale, resolvedDetail, color, position);
         }
 
         this.blobs.push(blobData);
@@ -4241,6 +4604,13 @@ export default class ElectricDreamsTheme extends BaseTheme {
         if (!this.flags.usePost) return;
 
         if (this.isWebGPU) {
+            const postReadiness = this.auditScenePostReadiness();
+            if (!postReadiness.ready) {
+                console.warn('[ElectricDreams] Deferring WebGPU post until scene materials are node-ready:', postReadiness.offenders);
+                this.deferPostSetupRetry('scene-materials-not-ready');
+                return;
+            }
+
             if (!this.auditSceneMrtReadiness()) {
                 this.disableMrtRuntime('scene-mrt-audit-failed');
             }
@@ -4304,10 +4674,14 @@ export default class ElectricDreamsTheme extends BaseTheme {
     }
 
     createAccentPalette(baseColor, extraColor = null) {
-        const primary = this.getColorFromValue(baseColor, 0x00ffcc);
-        const secondary = extraColor ? this.getColorFromValue(extraColor, 0xff00ff) : primary.clone().offsetHSL(0.08, 0.05, 0.02);
-        const tertiary = primary.clone().offsetHSL(-0.06, 0.08, 0.03);
-        return [primary, secondary, tertiary];
+        this.getColorFromValue(baseColor, 0x00ffcc, this._scratchPalette[0]);
+        if (extraColor) {
+            this.getColorFromValue(extraColor, 0xff00ff, this._scratchPalette[1]);
+        } else {
+            this._scratchPalette[1].copy(this._scratchPalette[0]).offsetHSL(0.08, 0.05, 0.02);
+        }
+        this._scratchPalette[2].copy(this._scratchPalette[0]).offsetHSL(-0.06, 0.08, 0.03);
+        return this._scratchPalette;
     }
 
     addStageHeat(amount) {
@@ -4325,6 +4699,25 @@ export default class ElectricDreamsTheme extends BaseTheme {
         } else {
             this.fxState.stageState = 'calm';
         }
+    }
+
+    getDangerFromOriginY(y) {
+        const corridor = this.getStageCorridorBounds();
+        const normalizedTop = THREE.MathUtils.inverseLerp(corridor.bottom, corridor.top, y ?? 0);
+        return THREE.MathUtils.clamp(THREE.MathUtils.smootherstep(normalizedTop, 0.68, 0.96), 0, 1);
+    }
+
+    addDanger(amount, originY = null) {
+        const positionalBias = originY == null ? 1 : (0.45 + this.getDangerFromOriginY(originY) * 0.9);
+        this.fxState.dangerLevel = THREE.MathUtils.clamp(
+            Math.max(this.fxState.dangerLevel, 0) + amount * positionalBias,
+            0,
+            1,
+        );
+    }
+
+    relieveDanger(amount) {
+        this.fxState.dangerLevel = THREE.MathUtils.clamp((this.fxState.dangerLevel || 0) - amount, 0, 1);
     }
 
     getEventDensityScale() {
@@ -4627,7 +5020,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
             const counts = this.getHeroParticleCounts(26, 20, 0.86);
             this.emitHeroParticles({
                 origin,
-                palette: [palette[0], palette[0].clone().lerp(palette[1], 0.22)],
+                palette: [palette[0], this._scratchColors[2].copy(palette[0]).lerp(palette[1], 0.22)],
                 direction,
                 sourceAnchors: bridgeAnchors,
                 ribbonCount: counts.ribbons,
@@ -4669,7 +5062,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
         this.emitHeroParticles({
             origin,
             palette: isSurge
-                ? [palette[0], palette[1], palette[0].clone().lerp(palette[2], 0.24)]
+                ? [palette[0], palette[1], this._scratchColors[3].copy(palette[0]).lerp(palette[2], 0.24)]
                 : [palette[0], palette[1], palette[2]],
             direction,
             sourceAnchors: isSurge ? [...surfaceAnchors, ...bridgeAnchors] : [...bridgeAnchors, ...surfaceAnchors],
@@ -4703,12 +5096,17 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
         if (!isSurge) return;
 
+        // Snapshot palette for deferred callbacks (scratch palette will be reused)
+        const deferredPalette0 = palette[0].clone();
+        const deferredPalette1 = palette[1].clone();
+        const deferredPalette2 = palette[2].clone();
+
         this.registerTimeout(() => {
             if (!this.isActive || !this.heroParticles) return;
             const secondCounts = this.getHeroParticleCounts(98, 82, 0.96);
             this.emitHeroParticles({
                 origin,
-                palette: [palette[1], palette[0], palette[1].clone().lerp(palette[2], 0.2)],
+                palette: [deferredPalette1, deferredPalette0, this._scratchColors[4].copy(deferredPalette1).lerp(deferredPalette2, 0.2)],
                 direction: this.tmpVec3C.copy(direction).multiplyScalar(0.72)
                     .add(this.tmpVec3D.set(0.12, 0.04, 0.26))
                     .normalize(),
@@ -4747,7 +5145,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
             const thirdCounts = this.getHeroParticleCounts(72, 58, 0.72);
             this.emitHeroParticles({
                 origin,
-                palette: [palette[0], palette[2], palette[1]],
+                palette: [deferredPalette0, deferredPalette2, deferredPalette1],
                 direction: this.tmpVec3A.copy(direction).multiplyScalar(0.6)
                     .add(this.tmpVec3B.set(-0.1, 0.06, 0.3))
                     .normalize(),
@@ -4795,6 +5193,9 @@ export default class ElectricDreamsTheme extends BaseTheme {
         );
         const beatPulse = this.fxState.beatPulse || 0;
         const actProgress = this.fxState.actProgress || 0;
+        const dangerLevel = this.fxState.dangerLevel || 0;
+        const rewardPulse = this.fxState.rewardPulse || 0;
+        const overdrivePulse = this.fxState.overdrivePulse || 0;
         const targetX = this.fxState.hasImpactOrigin
             ? THREE.MathUtils.clamp(this.fxState.impactOrigin.x / Math.max(this.screenBounds.width, 1), -1, 1)
             : 0;
@@ -4804,11 +5205,20 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
         this.tmpVec3E.set(
             this.baseCameraPosition.x + targetX * (-0.9 - heroMoment * 0.6) + Math.sin(this.time * 0.22) * beatPulse * 0.08,
-            this.baseCameraPosition.y + targetY * (-0.55 - heroMoment * 0.3) + Math.cos(this.time * 0.18) * beatPulse * 0.06,
-            this.baseCameraPosition.z - heat * 1.4 - heroMoment * 2.1 - actProgress * 0.6,
+            this.baseCameraPosition.y + targetY * (-0.55 - heroMoment * 0.3) + Math.cos(this.time * 0.18) * beatPulse * 0.06 + dangerLevel * 0.16,
+            this.baseCameraPosition.z - heat * 2.2 - heroMoment * 3.2 - actProgress * 0.6 - rewardPulse * 0.6 - overdrivePulse * 0.8 + dangerLevel * 0.5,
         );
         this.camera.position.lerp(this.tmpVec3E, 0.06);
-        this.camera.fov += ((this.baseCameraFov - heat * 0.45 - heroMoment * 1.1 - beatPulse * 0.18 - actProgress * 0.15) - this.camera.fov) * 0.05;
+        this.camera.fov += ((
+            this.baseCameraFov
+            - heat * 0.72
+            - heroMoment * 1.8
+            - beatPulse * 0.28
+            - actProgress * 0.15
+            + dangerLevel * 0.82
+            - rewardPulse * 0.22
+            - overdrivePulse * 0.34
+        ) - this.camera.fov) * 0.05;
         this.camera.updateProjectionMatrix();
         this.camera.lookAt(this.baseCameraLookAt);
     }
@@ -4827,11 +5237,13 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
         this.setImpactOrigin(origin, direction);
         this.addStageHeat(0.1);
+        this.addDanger(0.11, origin.y);
         this.fxState.lockImpact = Math.max(this.fxState.lockImpact, 0.92);
-        this.fxState.bloomBoost = Math.max(this.fxState.bloomBoost, 0.1);
-        this.fxState.chromaPulse = Math.max(this.fxState.chromaPulse, 0.04);
+        this.fxState.bloomBoost = Math.max(this.fxState.bloomBoost, 0.18);
+        this.fxState.chromaPulse = Math.max(this.fxState.chromaPulse, 0.08);
         this.fxState.vignettePulse = Math.max(this.fxState.vignettePulse, 0.025);
-        this.fxState.shockwaveStrength = Math.max(this.fxState.shockwaveStrength, 0.14);
+        this.fxState.shockwaveStrength = Math.max(this.fxState.shockwaveStrength, 0.22);
+        this.fxState.rewardPulse = Math.max(this.fxState.rewardPulse, 0.12);
         this.updateStageState();
 
         this.targetPulse = Math.min(this.targetPulse + 0.12, 0.72);
@@ -4863,7 +5275,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
         this.emitHeroLockParticles(origin, palette, direction);
 
         this.queueBlobBurst({
-            fragments: Math.round(THREE.MathUtils.lerp(8, 12, this.getDropletMultiplier())),
+            fragments: Math.round(THREE.MathUtils.lerp(12, 18, this.getDropletMultiplier())),
             strength: 0.4,
             sourceCount: 1,
             origin,
@@ -4879,10 +5291,10 @@ export default class ElectricDreamsTheme extends BaseTheme {
         const isTetris = lineCount >= 4;
         const isBackToBack = Boolean(data?.backToBack || data?.isBackToBack);
         const band = this.getLineBandData(data);
-        const origin = this.getStageOriginFromScreenPosition(data?.position) || new THREE.Vector3(0, band.y, -0.9);
+        const origin = this.getStageOriginFromScreenPosition(data?.position) || this._scratchOriginVec.set(0, band.y, -0.9);
         const accentColor = isTetris
-            ? this.getColorFromValue('#ff66f0', 0xff66f0)
-            : BLOB_COLORS[(lineCount + Math.floor(this.time * 1.5)) % BLOB_COLORS.length].clone();
+            ? this.getColorFromValue('#ff66f0', 0xff66f0, this._scratchColors[1])
+            : this._scratchColors[1].copy(BLOB_COLORS[(lineCount + Math.floor(this.time * 1.5)) % BLOB_COLORS.length]);
         const direction = this.tmpVec3A.set(0, 0.03 + lineCount * 0.015, 1).normalize();
         const palette = this.createAccentPalette(accentColor, BLOB_COLORS[(lineCount + 3) % BLOB_COLORS.length]);
         this.stageConductor?.noteAccent?.(palette[0], isTetris ? 0.52 : 0.34);
@@ -4903,13 +5315,16 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
         this.setImpactOrigin(origin, direction);
         this.addStageHeat(isTetris ? 0.3 : 0.13 + lineCount * 0.04);
-        this.fxState.lineSurge = Math.max(this.fxState.lineSurge, isTetris ? 1 : 0.42 + lineCount * 0.12);
+        this.relieveDanger(isTetris ? 0.32 : 0.1 + lineCount * 0.05);
+        this.fxState.lineSurge = Math.max(this.fxState.lineSurge, isTetris ? 1.2 : 0.55 + lineCount * 0.14);
         this.fxState.comboPeak = Math.max(this.fxState.comboPeak, 0.18 + lineCount * 0.12);
-        this.fxState.bloomBoost = Math.max(this.fxState.bloomBoost, isTetris ? 0.22 : 0.12 + lineCount * 0.024);
-        this.fxState.chromaPulse = Math.max(this.fxState.chromaPulse, isTetris ? 0.12 : 0.05 + lineCount * 0.014);
+        this.fxState.bloomBoost = Math.max(this.fxState.bloomBoost, isTetris ? 0.38 : 0.20 + lineCount * 0.04);
+        this.fxState.chromaPulse = Math.max(this.fxState.chromaPulse, isTetris ? 0.22 : 0.10 + lineCount * 0.025);
         this.fxState.vignettePulse = Math.max(this.fxState.vignettePulse, 0.035 + lineCount * 0.018);
-        this.fxState.shockwaveStrength = Math.max(this.fxState.shockwaveStrength, isTetris ? 0.5 : 0.2 + lineCount * 0.07);
-        this.fxState.exposureDip = Math.max(this.fxState.exposureDip, isTetris ? 0.18 : 0.09 + lineCount * 0.022);
+        this.fxState.shockwaveStrength = Math.max(this.fxState.shockwaveStrength, isTetris ? 0.70 : 0.32 + lineCount * 0.10);
+        this.fxState.exposureDip = Math.max(this.fxState.exposureDip, isTetris ? 0.28 : 0.14 + lineCount * 0.03);
+        this.fxState.rewardPulse = Math.max(this.fxState.rewardPulse, isTetris ? 0.78 : 0.36 + lineCount * 0.08);
+        this.fxState.overdrivePulse = Math.max(this.fxState.overdrivePulse, isTetris ? 0.34 : 0.1 + lineCount * 0.04);
         this.fxState.lineBandY = band.y;
         this.fxState.lineBandHeight = band.height;
         this.fxState.lastLineCount = lineCount;
@@ -4962,6 +5377,12 @@ export default class ElectricDreamsTheme extends BaseTheme {
         });
         this.emitHeroLineClearParticles(origin, band, palette, lineCount, isTetris, isBackToBack);
 
+        // Snapshot palette/accent for deferred callbacks (scratch objects will be reused)
+        const deferredAccent = accentColor.clone();
+        const deferredP0 = palette[0].clone();
+        const deferredP1 = palette[1].clone();
+        const deferredP2 = palette[2].clone();
+
         this.spawnLineWake({
             y: band.y,
             height: band.height,
@@ -4978,7 +5399,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
                     height: band.height * (isTetris ? 0.92 : 0.8),
                     intensity: isTetris ? 0.84 : 0.6,
                     life: isTetris ? LINE_WAKE_CONFIG.baseLife : LINE_WAKE_CONFIG.baseLife * 0.92,
-                    color: palette[1] || accentColor,
+                    color: deferredP1 || deferredAccent,
                 });
             }, isTetris ? 90 : 72);
         }
@@ -4991,7 +5412,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
                     height: band.height * 0.74,
                     intensity: isBackToBack ? 1.02 : 0.72,
                     life: LINE_WAKE_CONFIG.baseLife,
-                    color: isBackToBack ? accentColor : palette[2],
+                    color: isBackToBack ? deferredAccent : deferredP2,
                 });
             }, 170);
         }
@@ -5007,7 +5428,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
                     life: isTetris ? 0.76 : 0.64,
                     intensity: isTetris ? 1.08 : 0.92,
                     size: isTetris ? 0.64 : 0.5,
-                    palette: [palette[1], palette[0], palette[2]],
+                    palette: [deferredP1, deferredP0, deferredP2],
                     direction: this.tmpVec3B.set((Math.random() - 0.5) * 0.16, 0.08, 1).normalize(),
                     pattern: 'line',
                 });
@@ -5016,7 +5437,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
         let dropletFragments = 7;
         if (isTetris) {
-            dropletFragments = 16;
+            dropletFragments = 24;
         } else if (lineCount >= 3) {
             dropletFragments = 10;
         }
@@ -5036,7 +5457,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
         this.ensureStageSystems();
         const comboCount = Math.max(1, data?.comboCount || 1);
         const origin = this.getStageOriginFromScreenPosition(data?.position) || this.getComboOrigin();
-        const accentColor = BLOB_COLORS[(comboCount + Math.floor(this.time * 2.3)) % BLOB_COLORS.length].clone();
+        const accentColor = this._scratchColors[1].copy(BLOB_COLORS[(comboCount + Math.floor(this.time * 2.3)) % BLOB_COLORS.length]);
         const direction = this.tmpVec3A.set(origin.x * 0.02, origin.y * 0.01 + 0.1, 1).normalize();
         const palette = this.createAccentPalette(accentColor, BLOB_COLORS[(comboCount + 1) % BLOB_COLORS.length]);
         this.stageConductor?.noteAccent?.(palette[0], comboCount >= 7 ? 0.6 : 0.34);
@@ -5052,6 +5473,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
             comboHeat = 0.18;
         }
         this.addStageHeat(comboHeat);
+        this.relieveDanger(comboCount >= 7 ? 0.18 : (comboCount >= 4 ? 0.1 : 0.04));
 
         this.comboIntensity = Math.max(this.comboIntensity, Math.min(0.18 + comboCount * 0.1, 1.1));
         this.comboColorFlash = Math.max(this.comboColorFlash, Math.min(0.08 + comboCount * 0.04, 0.44));
@@ -5059,6 +5481,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
         this.comboSpeedBoost = Math.max(this.comboSpeedBoost, Math.min(1.04 + comboCount * 0.08, 1.85));
         this.targetPulse = Math.min(this.targetPulse + 0.08 + comboCount * 0.03, 1.1);
         this.glowFlash = Math.max(this.glowFlash, Math.min(0.12 + comboCount * 0.05, 0.8));
+        this.fxState.rewardPulse = Math.max(this.fxState.rewardPulse, Math.min(0.18 + comboCount * 0.08, 0.92));
         this.updateStageState();
 
         if (comboCount <= 3) {
@@ -5101,6 +5524,9 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
         if (comboCount >= 7) {
             this.fxState.surgeState = Math.max(this.fxState.surgeState, 0.78);
+            this.fxState.overdrivePulse = Math.max(this.fxState.overdrivePulse, 0.72);
+        } else if (comboCount >= 4) {
+            this.fxState.overdrivePulse = Math.max(this.fxState.overdrivePulse, 0.28);
         }
 
         this.applyBlobReaction(origin, {
@@ -5134,6 +5560,11 @@ export default class ElectricDreamsTheme extends BaseTheme {
             color: accentColor,
         });
 
+        // Snapshot palette for deferred callbacks (scratch objects will be reused)
+        const comboDeferP0 = palette[0].clone();
+        const comboDeferP1 = palette[1].clone();
+        const comboDeferP2 = palette[2].clone();
+
         if (comboCount >= 4 && this.shouldAllowSecondaryWakes()) {
             this.registerTimeout(() => {
                 if (!this.isActive) return;
@@ -5145,7 +5576,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
                     life: comboCount >= 7 ? 0.8 : 0.66,
                     intensity: comboCount >= 7 ? 1.12 : 0.92,
                     size: comboCount >= 7 ? 0.68 : 0.52,
-                    palette: [palette[1], palette[0], palette[2]],
+                    palette: [comboDeferP1, comboDeferP0, comboDeferP2],
                     direction: this.tmpVec3C.copy(direction).multiplyScalar(0.7).add(this.tmpVec3D.set(0.08, 0.05, 0.3)).normalize(),
                     pattern: 'combo',
                 });
@@ -5161,7 +5592,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
                     life: 0.92,
                     intensity: 1.16,
                     size: 0.72,
-                    palette: [palette[1], palette[2], palette[0]],
+                    palette: [comboDeferP1, comboDeferP2, comboDeferP0],
                     direction: this.tmpVec3B.set(heroTarget.homePosition.x * -0.03, 0.16, 1).normalize(),
                     pattern: 'combo',
                 });
@@ -5176,7 +5607,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
                         life: 0.76,
                         intensity: 1.08,
                         size: 0.64,
-                        palette: [palette[2], palette[0], palette[1]],
+                        palette: [comboDeferP2, comboDeferP0, comboDeferP1],
                         direction: this.tmpVec3A.copy(direction).multiplyScalar(0.58)
                             .add(this.tmpVec3B.set(-0.14, 0.08, 0.32))
                             .normalize(),
@@ -5231,18 +5662,24 @@ export default class ElectricDreamsTheme extends BaseTheme {
     }
 
     decayFxState(delta) {
-        const frameScale = Math.max(0.35, delta * 60);
-        this.fxState.lockImpact *= FX_DECAY.lockImpact ** frameScale;
-        this.fxState.lineSurge *= FX_DECAY.lineSurge ** frameScale;
-        this.fxState.comboCharge *= FX_DECAY.comboCharge ** frameScale;
-        this.fxState.comboPeak *= FX_DECAY.comboPeak ** frameScale;
-        this.fxState.surgeState *= FX_DECAY.surgeState ** frameScale;
-        this.fxState.stageHeat *= FX_DECAY.stageHeat ** frameScale;
-        this.fxState.bloomBoost *= FX_DECAY.bloomBoost ** frameScale;
-        this.fxState.chromaPulse *= FX_DECAY.chromaPulse ** frameScale;
-        this.fxState.vignettePulse *= FX_DECAY.vignettePulse ** frameScale;
-        this.fxState.shockwaveStrength *= FX_DECAY.shockwaveStrength ** frameScale;
-        this.fxState.exposureDip *= FX_DECAY.exposureDip ** frameScale;
+        // Linear approximation: x * decay^fs ≈ x * (1 - (1-decay)*fs) — avoids 11 Math.pow calls
+        // Clamped to >= 0 to prevent sign-flip during frame spikes (fs > 1/(1-decay))
+        const fs = Math.max(0.35, delta * 60);
+        const d = (decay) => Math.max(0, 1 - (1 - decay) * fs);
+        this.fxState.lockImpact *= d(FX_DECAY.lockImpact);
+        this.fxState.lineSurge *= d(FX_DECAY.lineSurge);
+        this.fxState.comboCharge *= d(FX_DECAY.comboCharge);
+        this.fxState.comboPeak *= d(FX_DECAY.comboPeak);
+        this.fxState.surgeState *= d(FX_DECAY.surgeState);
+        this.fxState.stageHeat *= d(FX_DECAY.stageHeat);
+        this.fxState.bloomBoost *= d(FX_DECAY.bloomBoost);
+        this.fxState.chromaPulse *= d(FX_DECAY.chromaPulse);
+        this.fxState.vignettePulse *= d(FX_DECAY.vignettePulse);
+        this.fxState.shockwaveStrength *= d(FX_DECAY.shockwaveStrength);
+        this.fxState.exposureDip *= d(FX_DECAY.exposureDip);
+        this.fxState.dangerLevel *= d(FX_DECAY.dangerLevel);
+        this.fxState.rewardPulse *= d(FX_DECAY.rewardPulse);
+        this.fxState.overdrivePulse *= d(FX_DECAY.overdrivePulse);
         this.fxState.lineBandHeight += (0.18 - this.fxState.lineBandHeight) * 0.06;
         this.updateStageState();
 
@@ -5346,6 +5783,14 @@ export default class ElectricDreamsTheme extends BaseTheme {
                 const rawDelta = this.clock.getDelta();
                 const delta = Number.isFinite(rawDelta) ? Math.min(rawDelta, 0.05) : 0.016;
                 this.time += delta;
+
+                // ── Progressive blob loading (Step 1) ──
+                if (!this.blobLoadingComplete) {
+                    this.loadNextBlobBatch(4);
+                }
+
+                this.frameCount += 1;
+
                 const heroParticleActivity = this.heroParticles?.getActivity?.() || 0;
 
                 // Decay effects
@@ -5362,48 +5807,60 @@ export default class ElectricDreamsTheme extends BaseTheme {
                 // Dynamic bloom
                 if (this.flags.usePost && this.postPipeline) {
                     const adaptivePost = this.getAdaptivePostParams();
-                    const comboBloomBoost = this.comboIntensity * 0.08
-                        + this.fxState.comboCharge * 0.05
-                        + this.fxState.comboPeak * 0.12
-                        + this.fxState.surgeState * 0.16
-                        + this.fxState.lineSurge * 0.05
+                    const dangerLevel = this.fxState.dangerLevel || 0;
+                    const rewardPulse = this.fxState.rewardPulse || 0;
+                    const overdrivePulse = this.fxState.overdrivePulse || 0;
+                    const comboBloomBoost = this.comboIntensity * 0.14
+                        + this.fxState.comboCharge * 0.10
+                        + this.fxState.comboPeak * 0.22
+                        + this.fxState.surgeState * 0.28
+                        + this.fxState.lineSurge * 0.10
                         + this.fxState.stageHeat * 0.04
                         + this.fxState.beatPulse * 0.03
-                        + heroParticleActivity * 0.18
-                        + this.fxState.bloomBoost;
+                        + heroParticleActivity * 0.28
+                        + this.fxState.bloomBoost
+                        + rewardPulse * 0.12
+                        + overdrivePulse * 0.18;
                     const targetStrength = this.baseBloomStrength + this.glowFlash * 0.08 + comboBloomBoost;
                     this.postPipeline.updateDynamic({
                         time: this.time,
                         bloomStrength: targetStrength,
                         godRayStrength: (adaptivePost?.godRayStrength ?? this.postProfile?.godRayStrength ?? 0)
-                            + (this.comboIntensity * 0.015)
-                            + (this.fxState.lineSurge * 0.025)
-                            + (this.fxState.surgeState * 0.045)
-                            + (this.fxState.stageHeat * 0.014),
+                            + (this.comboIntensity * 0.032)
+                            + (this.fxState.lineSurge * 0.048)
+                            + (this.fxState.surgeState * 0.08)
+                            + (this.fxState.stageHeat * 0.014)
+                            + (overdrivePulse * 0.032),
                         chromaticStrength: (adaptivePost?.chromaticStrength ?? this.postProfile?.chromaticStrength ?? 0)
-                            + (this.fxState.chromaPulse * 0.006)
-                            + (this.fxState.beatPulse * 0.0012)
-                            + (heroParticleActivity * 0.004)
-                            + (this.fxState.stageHeat * 0.0012),
+                            + (this.fxState.chromaPulse * 0.012)
+                            + (this.fxState.beatPulse * 0.003)
+                            + (heroParticleActivity * 0.008)
+                            + (this.fxState.stageHeat * 0.0012)
+                            + (dangerLevel * 0.004),
                         vignetteDarkness: (this.postProfile?.vignetteDarkness ?? 0.42)
                             + (this.fxState.actProgress * 0.02)
-                            + (this.fxState.vignettePulse * 0.08)
+                            + (this.fxState.vignettePulse * 0.14)
                             + (heroParticleActivity * 0.02)
-                            + (this.fxState.stageHeat * 0.025),
-                        shockwaveStrength: this.fxState.shockwaveStrength * 0.055,
+                            + (this.fxState.stageHeat * 0.025)
+                            + (dangerLevel * 0.16),
+                        shockwaveStrength: this.fxState.shockwaveStrength * 0.09,
                         shockwaveCenter: this.fxState.impactScreen,
                         exposure: (this.postProfile?.exposure ?? 0.93)
                             - (this.fxState.exposureDip * 0.06)
                             + (this.fxState.beatPulse * 0.005)
                             - (heroParticleActivity * 0.014)
-                            + (this.fxState.surgeState * 0.01),
+                            + (this.fxState.surgeState * 0.01)
+                            - (dangerLevel * 0.026)
+                            + (rewardPulse * 0.01),
                     });
                 } else if (this.flags.usePost && this.bloomPass) {
+                    const rewardPulse = this.fxState.rewardPulse || 0;
                     const comboBloomBoost = this.comboIntensity * 0.1
                         + this.fxState.comboPeak * 0.12
                         + heroParticleActivity * 0.12
                         + this.fxState.bloomBoost
-                        + this.fxState.lineSurge * 0.04;
+                        + this.fxState.lineSurge * 0.04
+                        + rewardPulse * 0.08;
                     const targetBloom = this.baseBloomStrength + this.glowFlash * 0.08 + comboBloomBoost;
                     this.bloomPass.strength += (targetBloom - this.bloomPass.strength) * 0.08;
                     this.targetBloom += (this.baseBloomStrength - this.targetBloom) * 0.02;
@@ -5502,16 +5959,21 @@ export default class ElectricDreamsTheme extends BaseTheme {
         if (!state) return;
 
         const stageHeat = this.fxState.stageHeat || 0;
+        const dangerLevel = this.fxState.dangerLevel || 0;
+        const rewardPulse = this.fxState.rewardPulse || 0;
+        const overdrivePulse = this.fxState.overdrivePulse || 0;
         const openness = this.getAmbientCenterOpenFactor();
         const flowBias = stageHeat * 0.26
             + this.fxState.comboCharge * 0.28
             + this.fxState.comboPeak * 0.44
             + this.fxState.surgeState * 0.7
             + this.fxState.lineSurge * 0.24
-            + this.fxState.lockImpact * 0.18;
+            + this.fxState.lockImpact * 0.18
+            + rewardPulse * 0.18
+            + overdrivePulse * 0.26;
         const activeCount = Math.min(
             state.count,
-            Math.max(12, Math.round(state.count * this.getAmbientDensityMultiplier())),
+            Math.max(12, Math.round(state.count * this.getAmbientDensityMultiplier() * (0.88 + rewardPulse * 0.08 + dangerLevel * 0.06 + overdrivePulse * 0.12))),
         );
 
         for (let i = 0; i < activeCount; i += 1) {
@@ -5535,6 +5997,8 @@ export default class ElectricDreamsTheme extends BaseTheme {
                 this.sampleAmbientSurfacePoint(state, i, primaryBlob, this.tmpVec3A, this.tmpVec3B);
             } else if (mode === AMBIENT_PARTICLE_MODES.bridge) {
                 this.sampleAmbientBridgePoint(state, i, primaryBlob, secondaryBlob, this.tmpVec3A, this.tmpVec3B);
+            } else if (mode === AMBIENT_PARTICLE_MODES.hero) {
+                this.sampleAmbientHeroPoint(state, i, this.tmpVec3A, this.tmpVec3B);
             } else {
                 this.sampleAmbientBackgroundPoint(state, i, this.tmpVec3A, this.tmpVec3B);
             }
@@ -5542,7 +6006,8 @@ export default class ElectricDreamsTheme extends BaseTheme {
             const tangentialDrift = 0.06
                 + stageHeat * 0.1
                 + state.adhesion[i] * 0.08
-                + (mode === AMBIENT_PARTICLE_MODES.bridge ? 0.04 : 0);
+                + (mode === AMBIENT_PARTICLE_MODES.bridge ? 0.04 : 0)
+                + (mode === AMBIENT_PARTICLE_MODES.hero ? 0.08 + rewardPulse * 0.05 : 0);
             this.tmpVec3A.addScaledVector(this.tmpVec3B, tangentialDrift);
 
             const curlInfluence = this.applyAmbientImpactCurl(this.tmpVec3A, flowBias, openness, band);
@@ -5557,13 +6022,19 @@ export default class ElectricDreamsTheme extends BaseTheme {
             this.tmpColorA.copy(primaryBlob?.currentColor || this.fxState.dominantAccent || BLOB_COLORS[0]);
             if (mode === AMBIENT_PARTICLE_MODES.bridge && secondaryBlob?.currentColor) {
                 this.tmpColorA.lerp(secondaryBlob.currentColor, 0.45);
+            } else if (mode === AMBIENT_PARTICLE_MODES.hero) {
+                this.tmpColorA.copy(this.fxState.dominantAccent || BLOB_COLORS[0])
+                    .lerp(this.fxState.supportAccent || BLOB_COLORS[1], 0.38 + rewardPulse * 0.12);
             } else if (mode === AMBIENT_PARTICLE_MODES.ambient) {
                 this.tmpColorA.lerp(this.fxState.supportAccent || BLOB_COLORS[1], 0.24 + state.depths[i] * 0.12);
             }
+            if (dangerLevel > 0.15) {
+                this.tmpColorA.lerp(this.tmpColorB.set(0xff7a48), dangerLevel * 0.22);
+            }
             const accentMix = THREE.MathUtils.clamp(
-                influence * 0.28 + flowBias * 0.08 + state.adhesion[i] * 0.06,
+                influence * 0.28 + flowBias * 0.08 + state.adhesion[i] * 0.06 + rewardPulse * 0.06,
                 0,
-                0.26,
+                0.34,
             );
             this.tmpColorB.copy(this.fxState.dominantAccent || BLOB_COLORS[0]);
             this.tmpColorA.lerp(this.tmpColorB, accentMix);
@@ -5573,6 +6044,8 @@ export default class ElectricDreamsTheme extends BaseTheme {
                 colorEnergy = 0.62;
             } else if (mode === AMBIENT_PARTICLE_MODES.bridge) {
                 colorEnergy = 0.72;
+            } else if (mode === AMBIENT_PARTICLE_MODES.hero) {
+                colorEnergy = 0.86 + rewardPulse * 0.08 + overdrivePulse * 0.08;
             }
             state.colors[idx] = THREE.MathUtils.clamp(this.tmpColorA.r * colorEnergy, 0, 1);
             state.colors[idx + 1] = THREE.MathUtils.clamp(this.tmpColorA.g * colorEnergy, 0, 1);
@@ -5584,11 +6057,14 @@ export default class ElectricDreamsTheme extends BaseTheme {
                     modeScale = 0.68;
                 } else if (mode === AMBIENT_PARTICLE_MODES.bridge) {
                     modeScale = 0.74;
+                } else if (mode === AMBIENT_PARTICLE_MODES.hero) {
+                    modeScale = 0.86 + rewardPulse * 0.06 + overdrivePulse * 0.08;
                 }
                 state.sizes[i] = state.baseSizes[i] * (
                     modeScale
                     + flowBias * 0.08
                     + influence * 0.06
+                    + dangerLevel * 0.04
                 );
             }
         }
@@ -5642,6 +6118,9 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
     updateBackground() {
         if (this.backgroundUniforms) {
+            const dangerLevel = this.fxState.dangerLevel || 0;
+            const rewardPulse = this.fxState.rewardPulse || 0;
+            const overdrivePulse = this.fxState.overdrivePulse || 0;
             // WebGPU path
             this.backgroundUniforms.uTime.value = this.time;
             this.backgroundUniforms.uPulse.value = this.comboIntensity * 0.28
@@ -5649,7 +6128,9 @@ export default class ElectricDreamsTheme extends BaseTheme {
                 + this.fxState.comboCharge * 0.22
                 + this.fxState.comboPeak * 0.34
                 + this.fxState.lineSurge * 0.3
-                + this.fxState.surgeState * 0.44;
+                + this.fxState.surgeState * 0.44
+                + rewardPulse * 0.18
+                + overdrivePulse * 0.22;
             if (this.backgroundUniforms.uHeat) {
                 this.backgroundUniforms.uHeat.value = this.fxState.stageHeat;
             }
@@ -5669,10 +6150,12 @@ export default class ElectricDreamsTheme extends BaseTheme {
                 this.backgroundUniforms.uFarPodMix.value = farPodsVisible ? 1 : 0;
             }
             if (this.backgroundUniforms.uAccentA) {
-                this.backgroundUniforms.uAccentA.value.copy(this.fxState.dominantAccent);
+                this.backgroundUniforms.uAccentA.value.copy(this.fxState.dominantAccent)
+                    .lerp(this.tmpColorA.set(0xff8f5a), dangerLevel * 0.24);
             }
             if (this.backgroundUniforms.uAccentB) {
-                this.backgroundUniforms.uAccentB.value.copy(this.fxState.supportAccent);
+                this.backgroundUniforms.uAccentB.value.copy(this.fxState.supportAccent)
+                    .lerp(this.tmpColorB.set(0xff4fd8), overdrivePulse * 0.16);
             }
         } else if (this.backgroundMesh) {
             // WebGL path
@@ -5682,16 +6165,21 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
     updateCoreLight() {
         if (!this.coreLight) return;
+        const dangerLevel = this.fxState.dangerLevel || 0;
+        const rewardPulse = this.fxState.rewardPulse || 0;
+        const overdrivePulse = this.fxState.overdrivePulse || 0;
         const lightColor = this.tmpColorA.copy(this.fxState.dominantAccent)
             .lerp(this.fxState.supportAccent, 0.28 + this.fxState.beatPulse * 0.12)
-            .offsetHSL((this.fxState.barPhase - 0.5) * 0.02, 0.02, this.fxState.heroWindow * 0.02);
+            .lerp(this.tmpColorB.set(0xff8450), dangerLevel * 0.24)
+            .offsetHSL((this.fxState.barPhase - 0.5) * 0.02, 0.02, this.fxState.heroWindow * 0.02 + rewardPulse * 0.01);
         const lightness = 0.24
             + this.glowFlash * 0.12
             + this.comboColorFlash * 0.08
             + this.fxState.lineSurge * 0.06
             + this.fxState.surgeState * 0.08
             + this.fxState.stageHeat * 0.04
-            + this.fxState.beatPulse * 0.05;
+            + this.fxState.beatPulse * 0.05
+            + rewardPulse * 0.05;
         lightColor.multiplyScalar(0.62 + lightness);
         this.coreLight.color.copy(lightColor);
         this.coreLight.intensity = 0.42 + this.pulseIntensity * 0.28
@@ -5700,7 +6188,10 @@ export default class ElectricDreamsTheme extends BaseTheme {
             + this.fxState.lineSurge * 0.18
             + this.fxState.surgeState * 0.26
             + this.fxState.stageHeat * 0.18
-            + this.fxState.beatPulse * 0.08;
+            + this.fxState.beatPulse * 0.08
+            + rewardPulse * 0.12
+            - dangerLevel * 0.08
+            + overdrivePulse * 0.1;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -5711,6 +6202,9 @@ export default class ElectricDreamsTheme extends BaseTheme {
         const t = this.time;
         const frameScale = Math.max(0.55, delta * 60);
         const stageHeat = this.fxState.stageHeat || 0;
+        const beatPulse = this.fxState.beatPulse || 0;
+        const phrasePhase = this.fxState.phrasePhase || 0;
+        const heroWindow = this.fxState.heroWindow || 0;
         const comboMotionBoost = this.comboIntensity * 0.22
             + this.fxState.comboPeak * 0.28
             + this.fxState.surgeState * 0.35
@@ -5735,18 +6229,36 @@ export default class ElectricDreamsTheme extends BaseTheme {
                 0,
                 1,
             );
+            const phraseCadence = Math.sin((phrasePhase * Math.PI * 2) + blob.restPhase) * 0.5 + 0.5;
+            const stillnessWindow = THREE.MathUtils.smootherstep(phraseCadence, 0.32, 0.98);
+            const eventLift = THREE.MathUtils.clamp(
+                heroWindow * 0.28 + beatPulse * 0.12 + targetInvasion * 0.42 + comboMotionBoost * 0.35,
+                0,
+                0.7,
+            );
+            const targetActivity = THREE.MathUtils.clamp(
+                1 - (stillnessWindow * profile.idleWindowStrength) + eventLift,
+                blob.tier === 'ghost' ? 0.34 : 0.48,
+                1.16,
+            );
+            blob.motionActivity += (targetActivity - blob.motionActivity) * (0.035 + heroWindow * 0.02);
+            const activityScale = blob.motionActivity * blob.motionBias;
+            const stillnessDamping = 1 - ((1 - blob.motionActivity) * profile.settleStrength);
 
-            blob.proximityBoost = 0;
-            blob.nearestDir.set(0, 0, 0);
-            blob.clusterWeight = 0;
-            blob.mergeAffinity = 0;
-            blob.contactBlend = 0;
-            blob.clusterScaleBlend = 0;
-            blob.clusterCenter.set(0, 0, 0);
-            blob.clusterVector.set(0, 0, 0);
-            blob.clusterFlowDirection.set(0, 0, 0);
-            blob.mergeColor.copy(blob.baseColor);
-            blob.mergeColorStrength = 0;
+            // Only reset proximity on frames where we'll recompute (avoids zero-flicker shaking)
+            if (this.frameCount % 3 === 0) {
+                blob.proximityBoost = 0;
+                blob.nearestDir.set(0, 0, 0);
+                blob.clusterWeight = 0;
+                blob.mergeAffinity = 0;
+                blob.contactBlend = 0;
+                blob.clusterScaleBlend = 0;
+                blob.clusterCenter.set(0, 0, 0);
+                blob.clusterVector.set(0, 0, 0);
+                blob.clusterFlowDirection.set(0, 0, 0);
+                blob.mergeColor.copy(blob.baseColor);
+                blob.mergeColorStrength = 0;
+            }
 
             blob.reaction += (blob.reactionTarget - blob.reaction) * 0.14;
             blob.reactionTarget *= 0.92;
@@ -5771,31 +6283,33 @@ export default class ElectricDreamsTheme extends BaseTheme {
                 Math.sin(motionTime * blob.freqX + blob.phaseX) * blob.ampX
                 + Math.sin(motionTime * (blob.freq2X + 0.02) + blob.phaseX * 1.7) * blob.ampX * 0.72
                 + Math.cos(motionTime * 0.12 + blob.phaseZ) * 0.46
-            ) * profile.xyDriftMult * driftScale * 0.46;
+            ) * profile.xyDriftMult * driftScale * 0.28 * activityScale;
             const yTarget = (
                 Math.sin(motionTime * blob.freqY + blob.phaseY) * blob.ampY
                 + Math.cos(motionTime * (blob.freq2Y + 0.015) + blob.phaseY * 1.3) * blob.ampY * 0.64
-            ) * profile.xyDriftMult * driftScale * 0.42
-                + convection * (0.34 + blob.baseScale * 0.12) * profile.xyDriftMult
-                + convectionSecondary * 0.42;
+            ) * profile.xyDriftMult * driftScale * 0.24 * activityScale
+                + convection * (0.18 + blob.baseScale * 0.055) * profile.xyDriftMult * activityScale
+                + convectionSecondary * 0.2 * activityScale;
             const zTarget = (
                 Math.sin(motionTime * blob.freqZ + blob.phaseZ) * blob.ampZ
                 + Math.cos(motionTime * (blob.freqZ * 0.7 + 0.02) + blob.phaseZ * 2.1) * blob.ampZ * 0.7
-            ) * profile.zDriftMult * driftScale * 0.55;
+            ) * profile.zDriftMult * driftScale * 0.22 * activityScale;
 
             blob.anchorVelocity.x += (xTarget - blob.anchorOffset.x) * profile.anchorStiffness * frameScale;
             blob.anchorVelocity.y += (yTarget - blob.anchorOffset.y) * profile.anchorStiffness * frameScale;
             blob.anchorVelocity.z += (zTarget - blob.anchorOffset.z) * profile.anchorStiffness * frameScale;
             blob.anchorVelocity.multiplyScalar(profile.positionalDamping ** frameScale);
+            blob.anchorVelocity.multiplyScalar(stillnessDamping);
             blob.anchorOffset.add(blob.anchorVelocity);
 
             const desiredDepth = convection * profile.depthTravel
                 + convectionSecondary * profile.depthTravel * 0.24
                 + blob.depthBias
                 + targetInvasion * profile.depthTravel * 0.4
-                + comboMotionBoost * profile.depthTravel * 0.22 * blob.corridorBias;
+                + comboMotionBoost * profile.depthTravel * 0.18 * blob.corridorBias * blob.motionActivity;
             blob.depthVelocity += (desiredDepth - blob.depthOffset) * (profile.anchorStiffness * 0.72) * frameScale;
             blob.depthVelocity *= profile.positionalDamping ** frameScale;
+            blob.depthVelocity *= stillnessDamping;
             blob.depthOffset += blob.depthVelocity;
 
             blob.dynamicAnchor.x += blob.anchorOffset.x;
@@ -5806,25 +6320,49 @@ export default class ElectricDreamsTheme extends BaseTheme {
             blob.dynamicAnchor.z = THREE.MathUtils.clamp(blob.dynamicAnchor.z, profile.backClamp, profile.frontClamp);
         }
 
+        // Run full proximity detection every 3rd frame (visual blending is gradual)
+        // Hard contact separation always runs with cheap distSq pre-check
+        const doFullProximity = this.frameCount % 3 === 0;
+
         for (let i = 0; i < this.blobs.length; i += 1) {
             for (let j = i + 1; j < this.blobs.length; j += 1) {
                 const blobA = this.blobs[i];
                 const blobB = this.blobs[j];
                 const posA = blobA.mainMesh.position;
                 const posB = blobB.mainMesh.position;
-                const profileA = blobA.motionProfile || BLOB_MOTION_PROFILES.support;
-                const profileB = blobB.motionProfile || BLOB_MOTION_PROFILES.support;
 
                 const dx = posB.x - posA.x;
                 const dy = posB.y - posA.y;
                 const dz = posB.z - posA.z;
-                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                if (!Number.isFinite(dist) || dist <= 0.0001) continue;
+                const distSq = dx * dx + dy * dy + dz * dz;
 
-                const combinedRadii = Math.max(0.1, (blobA.scale + blobB.scale) * 1.48);
-                const awarenessDist = combinedRadii * 2.35;
-                if (dist >= awarenessDist) continue;
+                const radiusA = this.getBlobRenderRadius(blobA);
+                const radiusB = this.getBlobRenderRadius(blobB);
+                const combinedRadii = Math.max(0.1, radiusA + radiusB);
 
+                // Always run hard contact separation (cheap distSq check avoids sqrt)
+                const hardContactDist = combinedRadii * 0.58;
+                if (distSq < hardContactDist * hardContactDist && distSq > 0.0001) {
+                    const dist = Math.sqrt(distSq);
+                    const profileA = blobA.motionProfile || BLOB_MOTION_PROFILES.support;
+                    const profileB = blobB.motionProfile || BLOB_MOTION_PROFILES.support;
+                    this.tmpVec3C.set(dx, dy, dz).multiplyScalar(-1 / dist);
+                    const separation = THREE.MathUtils.clamp(1 - (dist / hardContactDist), 0, 1);
+                    const impulse = separation * separation;
+                    blobA.velocity.addScaledVector(this.tmpVec3C, profileA.contactRepel * impulse * frameScale * 0.55);
+                    blobB.velocity.addScaledVector(this.tmpVec3C, -profileB.contactRepel * impulse * frameScale * 0.55);
+                    blobA.velocity.multiplyScalar(0.992);
+                    blobB.velocity.multiplyScalar(0.992);
+                }
+
+                // Skip expensive proximity blending on non-proximity frames
+                if (!doFullProximity) continue;
+
+                const awarenessDist = combinedRadii * 1.65;
+                const awarenessDistSq = awarenessDist * awarenessDist;
+                if (distSq >= awarenessDistSq || distSq <= 0.0001) continue;
+
+                const dist = Math.sqrt(distSq);
                 this.tmpVec3A.set(dx, dy, dz).multiplyScalar(1 / dist);
                 this.tmpVec3B.copy(posA).add(posB).multiplyScalar(0.5);
 
@@ -5835,7 +6373,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
                 blobA.nearestDir.addScaledVector(this.tmpVec3A, awarenessBlend * 0.42);
                 blobB.nearestDir.addScaledVector(this.tmpVec3A, -awarenessBlend * 0.42);
 
-                const approachDist = combinedRadii * 1.45;
+                const approachDist = combinedRadii * 1.08;
                 if (dist < approachDist) {
                     const approach = THREE.MathUtils.clamp(1 - (dist / approachDist), 0, 1);
                     const approachBlend = approach * approach * (3 - (2 * approach));
@@ -5845,7 +6383,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
                     blobB.clusterCenter.addScaledVector(this.tmpVec3B, approachBlend);
                 }
 
-                const sharedFlowDist = combinedRadii * 1.2;
+                const sharedFlowDist = combinedRadii * 0.92;
                 if (dist < sharedFlowDist) {
                     const sharedFlow = THREE.MathUtils.clamp(1 - (dist / sharedFlowDist), 0, 1);
                     blobA.mergeAffinity = Math.max(blobA.mergeAffinity, sharedFlow);
@@ -5858,7 +6396,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
                     blobB.clusterFlowDirection.addScaledVector(this.tmpVec3A, -sharedFlow * 0.8);
                 }
 
-                const contactDist = combinedRadii * 0.9;
+                const contactDist = combinedRadii * 0.68;
                 if (dist < contactDist) {
                     const contact = THREE.MathUtils.clamp(1 - (dist / contactDist), 0, 1);
                     blobA.contactBlend = Math.max(blobA.contactBlend, contact);
@@ -5871,13 +6409,6 @@ export default class ElectricDreamsTheme extends BaseTheme {
                     this.tmpVec3C.normalize();
                     blobA.clusterVector.addScaledVector(this.tmpVec3C, contact);
                     blobB.clusterVector.addScaledVector(this.tmpVec3C, -contact);
-
-                    const hardContactDist = combinedRadii * 0.78;
-                    if (dist < hardContactDist) {
-                        const separation = THREE.MathUtils.clamp(1 - (dist / hardContactDist), 0, 1);
-                        blobA.velocity.addScaledVector(this.tmpVec3C, profileA.contactRepel * separation * frameScale);
-                        blobB.velocity.addScaledVector(this.tmpVec3C, -profileB.contactRepel * separation * frameScale);
-                    }
                 }
             }
         }
@@ -5891,6 +6422,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
                 0,
                 1,
             );
+            const stillnessDamping = 1 - ((1 - blob.motionActivity) * profile.settleStrength);
 
             if (blob.clusterWeight > 0.0001) {
                 blob.clusterCenter.multiplyScalar(1 / blob.clusterWeight);
@@ -5932,14 +6464,18 @@ export default class ElectricDreamsTheme extends BaseTheme {
             }
 
             if (blob.contactBlend > 0.001 && blob.clusterVector.lengthSq() > 0.0001) {
-                blob.velocity.addScaledVector(blob.clusterVector, profile.contactRepel * blob.contactBlend * frameScale);
+                const contactPush = blob.contactBlend * blob.contactBlend;
+                blob.velocity.addScaledVector(blob.clusterVector, profile.contactRepel * contactPush * frameScale * 0.5);
+                blob.velocity.multiplyScalar(1 - Math.min(contactPush * 0.025, 0.04));
+                blob.anchorVelocity.multiplyScalar(1 - Math.min(contactPush * 0.02, 0.035));
             }
 
             if (blob.reaction > 0.01) {
-                blob.velocity.addScaledVector(blob.reactionVector, blob.reaction * 0.024 * frameScale);
+                blob.velocity.addScaledVector(blob.reactionVector, blob.reaction * 0.018 * frameScale);
             }
 
             blob.velocity.multiplyScalar(profile.positionalDamping ** frameScale);
+            blob.velocity.multiplyScalar(stillnessDamping);
             pos.add(blob.velocity);
 
             const maxX = bounds.width * (blob.tier === 'hero' ? 1.02 : 1.1);
@@ -5980,19 +6516,20 @@ export default class ElectricDreamsTheme extends BaseTheme {
             const sharedScale = 1 + sharedScalePhase * blob.clusterScaleBlend * 0.1;
             const mergeScale = 1 + blob.mergeAffinity * 0.08 + blob.clusterWeight * 0.035;
             const eventScale = 1
-                + this.comboScaleBoost * 0.3
-                + this.fxState.comboPeak * 0.11
-                + this.fxState.surgeState * 0.13
-                + blob.reaction * 0.07
-                + stageHeat * 0.05 * blob.corridorBias;
+                + this.comboScaleBoost * 0.18
+                + this.fxState.comboPeak * 0.08
+                + this.fxState.surgeState * 0.09
+                + blob.reaction * 0.05
+                + stageHeat * 0.04 * blob.corridorBias;
             const tierPresenceScale = 1 + targetInvasion * profile.presenceScale;
             const targetScaleFactor = THREE.MathUtils.clamp(
-                convectionScale * sharedScale * mergeScale * eventScale * tierPresenceScale,
+                THREE.MathUtils.lerp(1, convectionScale, 0.72 * blob.motionActivity)
+                    * sharedScale * mergeScale * eventScale * tierPresenceScale,
                 profile.finalMin,
                 profile.finalMax,
             );
             blob.targetScale = blob.baseScale * targetScaleFactor;
-            blob.scaleVelocity += (blob.targetScale - blob.scale) * (0.028 + clusterInfluence * 0.01) * frameScale;
+            blob.scaleVelocity += (blob.targetScale - blob.scale) * (0.022 + clusterInfluence * 0.008) * frameScale;
             blob.scaleVelocity *= profile.scaleDamping ** frameScale;
             blob.scale += blob.scaleVelocity;
             blob.scale = THREE.MathUtils.clamp(
@@ -6012,22 +6549,25 @@ export default class ElectricDreamsTheme extends BaseTheme {
             const proximityMorph = Math.min(blob.proximityBoost * 0.7 + blob.mergeAffinity * 0.24, 0.95);
             const comboMorph = this.comboIntensity * 0.22 + this.fxState.comboPeak * 0.2 + this.fxState.surgeState * 0.1;
             const flowMorph = blob.flowStrength * 0.54 + this.fxState.lineSurge * 0.14 + blob.mergeAffinity * 0.22;
-            const morphIntensity = baseMorph + proximityMorph + comboMorph + flowMorph;
+            const morphIntensity = Math.min(
+                profile.morphCeiling,
+                (baseMorph + proximityMorph + comboMorph + flowMorph) * (0.82 + blob.motionActivity * 0.16),
+            );
 
             const totalGlow = Math.min(
-                this.pulseIntensity * 0.18
-                + blob.proximityBoost * 0.1
-                + this.glowFlash * 0.16
-                + this.comboColorFlash * 0.1
-                + this.comboIntensity * 0.08
-                + blob.rimBoost * 0.3
-                + blob.mergeAffinity * 0.12
-                + clusterInfluence * 0.16
-                + blob.contactBlend * 0.08
-                + this.fxState.lineSurge * 0.1
-                + this.fxState.surgeState * 0.14
-                + stageHeat * 0.12 * blob.corridorBias,
-                0.96,
+                this.pulseIntensity * 0.12
+                + blob.proximityBoost * 0.08
+                + this.glowFlash * 0.1
+                + this.comboColorFlash * 0.07
+                + this.comboIntensity * 0.05
+                + blob.rimBoost * 0.22
+                + blob.mergeAffinity * 0.08
+                + clusterInfluence * 0.1
+                + blob.contactBlend * 0.06
+                + this.fxState.lineSurge * 0.08
+                + this.fxState.surgeState * 0.1
+                + stageHeat * 0.08 * blob.corridorBias,
+                0.72,
             );
 
             const hueShift = Math.sin((t * 0.14) + blob.phaseX) * 0.01 * (0.55 + blob.proximityBoost * 0.22);
@@ -6047,7 +6587,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
             if (blob.eventColorStrength > 0.01) {
                 blob.currentColor.lerp(blob.eventColor, Math.min(blob.eventColorStrength * 0.26, 0.34));
             }
-            blob.currentColor.multiplyScalar(0.93 + stageHeat * 0.06 - blob.contactBlend * 0.03);
+            blob.currentColor.multiplyScalar(0.88 + stageHeat * 0.05 - blob.contactBlend * 0.025);
 
             const directionalAxis = this.tmpVec3A;
             if (blob.contactBlend > 0.02 && blob.clusterVector.lengthSq() > 0.0001) {
@@ -6064,12 +6604,22 @@ export default class ElectricDreamsTheme extends BaseTheme {
             directionalAxis.normalize();
 
             const reactionStretch = 1
-                + blob.reaction * 0.18
-                + this.fxState.surgeState * 0.04
-                + blob.contactBlend * 0.18
-                + clusterInfluence * 0.08;
-            const reactionSquash = Math.max(0.8, 1 - blob.reaction * 0.06 - blob.contactBlend * 0.1);
-            const rotBoost = 1.0 + this.comboIntensity * 0.85 + this.fxState.comboPeak * 0.65 + clusterInfluence * 0.2;
+                + blob.reaction * 0.1
+                + this.fxState.surgeState * 0.025
+                + blob.contactBlend * 0.08
+                + clusterInfluence * 0.04;
+            const reactionSquash = Math.max(0.88, 1 - blob.reaction * 0.035 - blob.contactBlend * 0.05);
+            const rotBoost = 1.0 + this.comboIntensity * 0.22 + this.fxState.comboPeak * 0.18 + clusterInfluence * 0.08;
+            blob.rotationVelocity.x += (
+                (blob.rotSpeedX * profile.rotationBase) + blob.velocity.y * profile.rotationResponse - blob.rotationVelocity.x
+            ) * 0.08 * frameScale;
+            blob.rotationVelocity.y += (
+                (blob.rotSpeedY * profile.rotationBase) + blob.velocity.x * (profile.rotationResponse * 1.12) - blob.rotationVelocity.y
+            ) * 0.08 * frameScale;
+            blob.rotationVelocity.z += (
+                (blob.rotSpeedZ * profile.rotationBase) + blob.velocity.z * (profile.rotationResponse * 0.68) - blob.rotationVelocity.z
+            ) * 0.08 * frameScale;
+            blob.rotationVelocity.multiplyScalar(0.94 ** frameScale);
             for (let j = 0; j < blob.meshes.length; j += 1) {
                 const mesh = blob.meshes[j];
                 mesh.position.copy(pos);
@@ -6080,9 +6630,9 @@ export default class ElectricDreamsTheme extends BaseTheme {
                     baseScale * (reactionSquash + Math.abs(directionalAxis.y) * (reactionStretch - reactionSquash)),
                     baseScale * (reactionSquash + Math.abs(directionalAxis.z) * (reactionStretch - reactionSquash)),
                 );
-                mesh.rotation.x += (blob.rotSpeedX + blob.velocity.y * 0.0004) * rotBoost;
-                mesh.rotation.y += (blob.rotSpeedY + blob.velocity.x * 0.00045) * rotBoost;
-                mesh.rotation.z += (blob.rotSpeedZ + blob.velocity.z * 0.0002) * rotBoost;
+                mesh.rotation.x += blob.rotationVelocity.x * rotBoost;
+                mesh.rotation.y += blob.rotationVelocity.y * rotBoost;
+                mesh.rotation.z += blob.rotationVelocity.z * rotBoost;
             }
 
             if (this.isWebGPU) {
@@ -6091,10 +6641,10 @@ export default class ElectricDreamsTheme extends BaseTheme {
                     blob.mainUniforms.uColor.value.copy(blob.currentColor);
                     blob.mainUniforms.uPulseIntensity.value = totalGlow;
                     blob.mainUniforms.uMorphFactor.value = morphIntensity
-                        + (this.pulseIntensity * 0.04)
-                        + (this.glowFlash * 0.06)
-                        + (stageHeat * 0.06)
-                        + (blob.mergeAffinity * 0.14);
+                        + (this.pulseIntensity * 0.025)
+                        + (this.glowFlash * 0.045)
+                        + (stageHeat * 0.045)
+                        + (blob.mergeAffinity * 0.1);
                     if (blob.mainUniforms.uFlowDirection) {
                         blob.mainUniforms.uFlowDirection.value.copy(directionalAxis);
                     }
@@ -6123,12 +6673,12 @@ export default class ElectricDreamsTheme extends BaseTheme {
                 if (blob.glowUniforms) {
                     blob.glowUniforms.uTime.value = t + blob.phaseX;
                     blob.glowUniforms.uColor.value.copy(blob.currentColor);
-                    blob.glowUniforms.uGlowIntensity.value = 0.1
-                        + totalGlow * 0.18
-                        + blob.rimBoost * 0.16
-                        + stageHeat * 0.06
-                        + clusterInfluence * 0.12
-                        + blob.contactBlend * 0.08;
+                    blob.glowUniforms.uGlowIntensity.value = 0.06
+                        + totalGlow * 0.12
+                        + blob.rimBoost * 0.12
+                        + stageHeat * 0.04
+                        + clusterInfluence * 0.07
+                        + blob.contactBlend * 0.04;
                 }
             } else {
                 const mat = blob.mainMesh.material;
@@ -6136,9 +6686,9 @@ export default class ElectricDreamsTheme extends BaseTheme {
                 mat.uniforms.uColor.value.copy(blob.currentColor);
                 mat.uniforms.uPulseIntensity.value = totalGlow;
                 mat.uniforms.uMorphFactor.value = morphIntensity
-                    + (this.pulseIntensity * 0.1)
-                    + (this.glowFlash * 0.12)
-                    + (blob.mergeAffinity * 0.12);
+                    + (this.pulseIntensity * 0.06)
+                    + (this.glowFlash * 0.08)
+                    + (blob.mergeAffinity * 0.08);
             }
         }
     }

@@ -159,14 +159,14 @@ const NEBULA_VARIANT_DEFAULTS = {
         flowStrength: 0.065,
         detailStrength: 1.18,
         densityThreshold: 0.42,
-        emissiveGain: 0.12,
+        emissiveGain: 0.15,
         edgeSoftness: 0.84,
         driftAngle: 0.24,
         driftSkew: 0.42,
         pulseResponse: 1.0,
-        highlightStrength: 1.0,
-        colorInfluence: 0.2,
-        alphaGain: 1.0,
+        highlightStrength: 1.18,
+        colorInfluence: 0.28,
+        alphaGain: 1.06,
         densityPower: 1.2,
     },
     support: {
@@ -174,14 +174,14 @@ const NEBULA_VARIANT_DEFAULTS = {
         flowStrength: 0.046,
         detailStrength: 0.96,
         densityThreshold: 0.38,
-        emissiveGain: 0.07,
+        emissiveGain: 0.085,
         edgeSoftness: 1.02,
         driftAngle: 1.12,
         driftSkew: 0.34,
         pulseResponse: 0.58,
-        highlightStrength: 0.72,
-        colorInfluence: 0.16,
-        alphaGain: 0.82,
+        highlightStrength: 0.82,
+        colorInfluence: 0.22,
+        alphaGain: 0.9,
         densityPower: 1.34,
     },
     haze: {
@@ -189,14 +189,14 @@ const NEBULA_VARIANT_DEFAULTS = {
         flowStrength: 0.028,
         detailStrength: 0.78,
         densityThreshold: 0.48,
-        emissiveGain: 0.028,
+        emissiveGain: 0.036,
         edgeSoftness: 1.36,
         driftAngle: -0.44,
         driftSkew: 0.22,
         pulseResponse: 0.28,
-        highlightStrength: 0.34,
-        colorInfluence: 0.1,
-        alphaGain: 0.64,
+        highlightStrength: 0.46,
+        colorInfluence: 0.16,
+        alphaGain: 0.72,
         densityPower: 1.56,
     },
 };
@@ -385,26 +385,42 @@ function createStellarStarfieldNodeMaterial() {
     const aColor = attribute('color', 'vec3');
     const aSize = attribute('aSize', 'float');
     const aTwinkle = attribute('aTwinkle', 'vec2');
+    const aBrightness = attribute('aBrightness', 'float');
 
-    const twinkle = sin(uTime.mul(aTwinkle.y).add(aTwinkle.x)).mul(0.2).add(0.8);
-    const brightness = twinkle
-        .mul(float(1.0).add(uEventBoost.mul(0.3)))
-        .mul(float(1.0).add(uWarpSpeed.mul(0.5)));
+    // Blood Moon style: aBrightness modulates twinkle range (tighter: 0.7 + twinkle * 0.3)
+    const twinkle = sin(uTime.mul(aTwinkle.y).add(aTwinkle.x));
+    const baseBrightness = aBrightness.mul(float(0.7).add(twinkle.mul(0.3)));
+    const brightness = baseBrightness
+        .mul(float(1.0).add(uEventBoost.mul(0.56)))
+        .mul(float(1.0).add(uWarpSpeed.mul(0.56)));
 
-    const center = uv().sub(vec2(0.5, 0.5));
-    const dist = length(center);
-    const softCircle = smoothstep(float(0.55), float(0.0), dist);
-
-    const coreColor = aColor.mul(brightness).mul(1.8);
-    const warpCore = vec3(1.0).mul(uWarpSpeed).mul(softCircle).mul(0.35);
+    // Size-based brightness factor (no point-coordinate builtins - WGSL-safe)
+    const sizeFactor = clamp(aSize.div(float(44.0)), float(0.36), float(1.46));
+    const haloFactor = sizeFactor.mul(sizeFactor);
+    const softHalo = aColor.mul(brightness).mul(sizeFactor.mul(0.22));
+    const coreColor = aColor
+        .mul(brightness.mul(1.96))
+        .add(vec3(0.09, 0.1, 0.14).mul(sizeFactor.mul(0.72)))
+        .add(softHalo)
+        .add(vec3(1.0, 0.98, 0.96).mul(haloFactor).mul(brightness).mul(0.1));
+    const warpCore = vec3(1.0).mul(uWarpSpeed).mul(sizeFactor).mul(0.38);
+    const alpha = clamp(
+        brightness.mul(0.78).mul(sizeFactor).add(0.1),
+        float(0.08),
+        float(0.92),
+    );
 
     material.colorNode = coreColor.add(warpCore);
-    material.opacityNode = softCircle.mul(brightness.add(0.3));
-    material.sizeNode = aSize.mul(float(1.0).add(uWarpSpeed.mul(1.5)));
-    material.emissiveNode = vec3(0.0);
+    material.opacityNode = alpha;
+    material.sizeNode = clamp(
+        aSize.mul(float(1.16).add(uWarpSpeed.mul(1.66))),
+        float(4.0),
+        float(112.0),
+    );
+    material.emissiveNode = coreColor.mul(alpha).mul(0.52);
     material.userData = {
         ...(material.userData || {}),
-        emitsBloom: false,
+        emitsBloom: true,
         mrtRole: 'starfield',
     };
 
@@ -415,7 +431,7 @@ function createStellarStarfieldNodeMaterial() {
             uEventBoost,
             uWarpSpeed,
         },
-        { emitsBloom: false, mrtRole: 'starfield' },
+        { emitsBloom: true, mrtRole: 'starfield' },
     );
 }
 
@@ -431,6 +447,7 @@ function createStellarStarfieldShaderMaterial({ pixelRatio = 1, starTexture = nu
         vertexShader: `
             attribute float aSize;
             attribute vec2 aTwinkle;
+            attribute float aBrightness;
 
             uniform float uTime;
             uniform float uPixelRatio;
@@ -440,24 +457,27 @@ function createStellarStarfieldShaderMaterial({ pixelRatio = 1, starTexture = nu
             varying vec3 vColor;
             varying float vBrightness;
             varying float vWarpSpeed;
+            varying float vSizeFactor;
             varying vec2 vScreenDir;
 
             void main() {
                 vColor = color;
                 vWarpSpeed = uWarpSpeed;
 
+                // Blood Moon style: aBrightness modulates twinkle (tighter range)
                 float twinkle = sin(uTime * aTwinkle.y + aTwinkle.x);
-                vBrightness = 0.8 + twinkle * 0.2;
-                vBrightness *= (1.0 + uEventBoost * 0.3);
-                vBrightness *= (1.0 + uWarpSpeed * 0.5);
+                vBrightness = aBrightness * (0.7 + twinkle * 0.3);
+                vBrightness *= (1.0 + uEventBoost * 0.56);
+                vBrightness *= (1.0 + uWarpSpeed * 0.56);
+                vSizeFactor = clamp(aSize / 44.0, 0.36, 1.46);
 
                 vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                 vec4 projected = projectionMatrix * mvPosition;
                 vScreenDir = normalize(projected.xy / projected.w);
 
-                float warpSizeBoost = 1.0 + uWarpSpeed * 1.5;
-                gl_PointSize = aSize * uPixelRatio * warpSizeBoost * (400.0 / -mvPosition.z);
-                gl_PointSize = clamp(gl_PointSize, 3.0, 120.0);
+                float warpSizeBoost = 1.16 + uWarpSpeed * 1.66;
+                gl_PointSize = aSize * uPixelRatio * warpSizeBoost * (450.0 / -mvPosition.z);
+                gl_PointSize = clamp(gl_PointSize, 4.0, 144.0);
 
                 gl_Position = projected;
             }
@@ -469,10 +489,12 @@ function createStellarStarfieldShaderMaterial({ pixelRatio = 1, starTexture = nu
             varying vec3 vColor;
             varying float vBrightness;
             varying float vWarpSpeed;
+            varying float vSizeFactor;
             varying vec2 vScreenDir;
 
             void main() {
                 vec2 center = gl_PointCoord - 0.5;
+                vec2 sampleCenter = center;
                 float dist = length(center) * 2.0;
                 float trailFactor = 1.0;
 
@@ -489,18 +511,32 @@ function createStellarStarfieldShaderMaterial({ pixelRatio = 1, starTexture = nu
 
                     float stretch = 1.0 + vWarpSpeed * 4.0;
                     rotatedCenter.x /= stretch;
+                    sampleCenter = rotatedCenter;
                     dist = length(rotatedCenter) * 2.0;
                     trailFactor = stretch * 0.5 + 0.5;
                 }
 
+                // Atmospheric glow with wider halo (pow 0.8)
                 float softCircle = 1.0 - smoothstep(0.0, 1.0, dist);
+                softCircle = pow(softCircle, 0.8);
 
-                vec3 coreColor = vColor * vBrightness * 1.8;
-                vec3 trailColor = vColor * (1.0 + vWarpSpeed * 0.5);
+                // Bright white core hotspot
+                vec2 sampleUv = clamp(sampleCenter + 0.5, 0.0, 1.0);
+                vec4 starSample = texture2D(uTexture, sampleUv);
+
+                float core = 1.0 - smoothstep(0.0, 0.28, dist);
+                
+                float haloFactor = vSizeFactor * vSizeFactor;
+                vec3 haloColor = vColor * (vBrightness * 1.14 + haloFactor * 0.16);
+                vec3 coreColor = haloColor
+                    + vec3(1.0, 0.98, 0.96) * core * (0.12 + haloFactor * 0.08);
+                vec3 trailColor = vColor * (1.08 + vWarpSpeed * 0.55);
                 vec3 finalColor = mix(coreColor, trailColor, vWarpSpeed * 0.3);
-                finalColor += vec3(1.0) * vWarpSpeed * softCircle * 0.4;
+                finalColor = mix(haloColor, finalColor, starSample.r * 0.92 + 0.08);
+                finalColor += vColor * starSample.rgb * (0.34 + haloFactor * 0.18);
+                finalColor += vec3(1.0) * vWarpSpeed * softCircle * 0.46;
 
-                float alpha = softCircle * (vBrightness + 0.3) * trailFactor;
+                float alpha = starSample.a * softCircle * (vBrightness * 0.82 + 0.22) * trailFactor;
                 gl_FragColor = vec4(finalColor, alpha);
             }
         `,
@@ -537,13 +573,14 @@ function createStellarPlanetNodeMaterial(planetTexture) {
     const uBandIntensity = uniform(0.42);
     const uScatterIntensity = uniform(0.4);
     const uLightningFlash = uniform(0);
+    const uLightDirection = uniform(new THREE.Vector3(0.7, 0.3, 0.6).normalize());
 
     const uvCoord = uv();
     const localPos = positionLocal;
     const radialCoord = length(vec2(localPos.x, localPos.z));
     const nrm = normalWorld;
     const viewDir = normalize(cameraPosition.sub(positionWorld));
-    const lightDir = normalize(vec3(0.7, 0.3, 0.6));
+    const lightDir = normalize(uLightDirection);
 
     const texColor = texture(planetTexture, uvCoord).rgb;
     const latBand = sin(
@@ -553,35 +590,41 @@ function createStellarPlanetNodeMaterial(planetTexture) {
     ).mul(0.5).add(0.5);
     const broadBand = sin(uvCoord.y.mul(22.0).sub(uTime.mul(0.22))).mul(0.5).add(0.5);
     const bandMask = mix(latBand, broadBand, 0.35).mul(uBandIntensity);
-    // Natural Jupiter colors: preserve texture, boost contrast
-    // Washed out fix: Don't tint with light colors. Instead, slightly boost saturation/contrast.
-    const baseColor = texColor.pow(1.2); // Increase contrast (gamma correction-ish)
+    const baseColor = texColor.pow(1.15).mul(float(0.94).add(bandMask.mul(0.1)));
 
     const ndotl = dot(nrm, lightDir);
-    const shadow = smoothstep(float(-0.1), float(0.3), ndotl);
+    const shadow = smoothstep(float(-0.16), float(0.22), ndotl);
+    const nightMask = pow(
+        clamp(float(1.0).sub(shadow), float(0.0), float(1.0)),
+        float(1.28),
+    );
 
-    // Warmer shadow tones, but deeper to keep contrast
-    const shadowColor = baseColor.mul(vec3(0.2, 0.15, 0.1));
-    const litColor = mix(shadowColor, baseColor, shadow);
+    const shadowColor = baseColor.mul(vec3(0.11, 0.08, 0.06));
+    const twilightColor = baseColor.mul(vec3(0.16, 0.11, 0.08)).mul(nightMask.mul(0.38));
+    const litColor = mix(shadowColor, baseColor, shadow).add(twilightColor);
 
-    // Subtle ambient - don't wash out the darks
-    const ambientColor = vec3(0.15, 0.1, 0.05);
-    const ambient = baseColor.mul(ambientColor).mul(float(1.0).sub(shadow));
+    const ambientColor = vec3(0.08, 0.055, 0.04);
+    const ambient = baseColor.mul(ambientColor).mul(nightMask.mul(0.72).add(0.08));
 
-    // Subtle warm rim light
-    const rimLight = pow(float(1.0).sub(abs(dot(nrm, viewDir))), float(3.0))
-        .mul(float(1.0).sub(shadow))
-        .mul(0.5);
-    const rimColor = vec3(0.95, 0.75, 0.5).mul(rimLight);
+    const rimBase = float(1.0).sub(abs(dot(nrm, viewDir)));
+    const rimLight = pow(rimBase, float(2.1))
+        .mul(clamp(float(0.18).add(nightMask.mul(1.2)).sub(shadow.mul(0.18)), float(0.0), float(1.4)))
+        .mul(float(0.4).add(uScatterIntensity.mul(0.55)));
+    const rimColor = vec3(1.0, 0.76, 0.46).mul(rimLight);
 
     const halfDir = normalize(lightDir.add(viewDir));
-    const spec = pow(max(dot(nrm, halfDir), float(0.0)), float(20.0)).mul(shadow).mul(0.12);
+    const spec = pow(max(dot(nrm, halfDir), float(0.0)), float(24.0)).mul(shadow).mul(0.18);
     const specColor = vec3(1.0, 0.95, 0.85).mul(spec);
 
-    // Subtle warm atmosphere scatter - less purple, more natural
-    const fresnel = pow(float(1.0).sub(abs(dot(nrm, viewDir))), float(2.5));
-    const scatter = fresnel.mul(float(0.2).add(uScatterIntensity.mul(0.3)));
-    const atmosphereColor = vec3(0.85, 0.65, 0.45).mul(scatter);
+    const fresnel = pow(rimBase, float(2.0));
+    const warmScatter = fresnel.mul(float(0.06).add(shadow.mul(0.09))).mul(float(0.8).add(uScatterIntensity.mul(0.35)));
+    const backScatter = fresnel.mul(float(0.18).add(uScatterIntensity.mul(0.5))).mul(nightMask);
+    const atmosphereColor = vec3(0.96, 0.68, 0.42).mul(warmScatter)
+        .add(vec3(0.36, 0.53, 0.92).mul(backScatter));
+    const terminatorGlow = pow(clamp(float(0.35).sub(ndotl), float(0.0), float(1.0)), float(1.5))
+        .mul(fresnel)
+        .mul(float(0.16).add(uScatterIntensity.mul(0.24)));
+    const terminatorColor = vec3(0.92, 0.56, 0.34).mul(terminatorGlow);
 
     const lightningWave = sin(
         uvCoord.x.mul(48.0)
@@ -592,22 +635,22 @@ function createStellarPlanetNodeMaterial(planetTexture) {
     const lightningMask = smoothstep(float(0.86), float(0.98), lightningWave);
     const lightningColor = vec3(1.0, 0.94, 0.84).mul(lightningMask).mul(uLightningFlash);
 
-    const pulseMul = float(1.0).add(uPulse.mul(0.15));
-    // Preserve natural texture darkness and contrast
+    const pulseMul = float(1.0).add(uPulse.mul(0.18));
     const finalColor = litColor
         .add(ambient)
-        .add(rimColor.mul(0.25))
+        .add(rimColor.mul(0.42))
         .add(specColor)
-        .add(atmosphereColor.mul(0.3))
+        .add(atmosphereColor.mul(0.72))
+        .add(terminatorColor)
         .add(lightningColor)
         .mul(pulseMul)
-        .mul(0.48);
+        .mul(0.62);
 
     material.colorNode = finalColor;
-    // Minimal emissive to avoid bloom washing out the surface
-    material.emissiveNode = rimColor.mul(0.1)
-        .add(atmosphereColor.mul(0.15))
-        .add(lightningColor.mul(1.2));
+    material.emissiveNode = rimColor.mul(0.18)
+        .add(atmosphereColor.mul(0.55))
+        .add(terminatorColor.mul(0.45))
+        .add(lightningColor.mul(1.35));
 
     return finalizeStellarMaterial(
         material,
@@ -617,6 +660,7 @@ function createStellarPlanetNodeMaterial(planetTexture) {
             uBandIntensity,
             uScatterIntensity,
             uLightningFlash,
+            uLightDirection,
         },
         { emitsBloom: true, mrtRole: 'planet' },
     );
@@ -630,6 +674,7 @@ function createStellarPlanetShaderMaterial(planetTexture) {
             uBandIntensity: { value: 0.42 },
             uScatterIntensity: { value: 0.4 },
             uLightningFlash: { value: 0.0 },
+            uLightDirection: { value: new THREE.Vector3(0.7, 0.3, 0.6).normalize() },
             uMap: { value: planetTexture },
         },
         vertexShader: `
@@ -653,6 +698,7 @@ function createStellarPlanetShaderMaterial(planetTexture) {
             uniform float uBandIntensity;
             uniform float uScatterIntensity;
             uniform float uLightningFlash;
+            uniform vec3 uLightDirection;
             uniform sampler2D uMap;
             
             varying vec2 vUv;
@@ -674,37 +720,43 @@ function createStellarPlanetShaderMaterial(planetTexture) {
                 ) * 0.5 + 0.5;
                 float broadBand = sin(vUv.y * 22.0 - uTime * 0.22) * 0.5 + 0.5;
                 float bandMask = mix(latBand, broadBand, 0.35) * uBandIntensity;
-                // Natural Jupiter colors: preserve texture, boost contrast
-                // Washed out fix: Don't tint with light colors. Instead, slightly boost saturation/contrast.
-                baseColor = pow(baseColor, vec3(1.2)); // Increase contrast (gamma correction-ish)
+                baseColor = pow(baseColor, vec3(1.15));
+                baseColor *= 0.94 + bandMask * 0.1;
 
-                vec3 lightDir = normalize(vec3(0.7, 0.3, 0.6));
+                vec3 lightDir = normalize(uLightDirection);
                 float NdotL = dot(vNormal, lightDir);
-                float shadow = smoothstep(-0.1, 0.3, NdotL);
+                float shadow = smoothstep(-0.16, 0.22, NdotL);
+                float nightMask = pow(clamp(1.0 - shadow, 0.0, 1.0), 1.28);
 
-                // Warmer shadow tones, but deeper to keep contrast
-                vec3 shadowColor = baseColor * vec3(0.2, 0.15, 0.1);
-                vec3 litColor = baseColor;
-                vec3 finalColor = mix(shadowColor, litColor, shadow);
+                vec3 shadowColor = baseColor * vec3(0.11, 0.08, 0.06);
+                vec3 twilightColor = baseColor * vec3(0.16, 0.11, 0.08) * (nightMask * 0.38);
+                vec3 finalColor = mix(shadowColor, baseColor, shadow) + twilightColor;
                 
-                // Subtle ambient - don't wash out the darks
-                vec3 ambientColor = vec3(0.15, 0.1, 0.05);
-                finalColor += baseColor * ambientColor * (1.0 - shadow);
+                vec3 ambientColor = vec3(0.08, 0.055, 0.04);
+                finalColor += baseColor * ambientColor * (nightMask * 0.72 + 0.08);
                 
-                // Subtle warm rim light
-                float rimLight = pow(1.0 - abs(dot(vNormal, viewDir)), 3.0);
-                rimLight *= (1.0 - shadow) * 0.5;
-                finalColor += vec3(0.95, 0.75, 0.5) * rimLight * 0.25;
+                float rimBase = 1.0 - abs(dot(vNormal, viewDir));
+                float rimLight = pow(rimBase, 2.1)
+                    * clamp(0.18 + nightMask * 1.2 - shadow * 0.18, 0.0, 1.4)
+                    * (0.4 + uScatterIntensity * 0.55);
+                vec3 rimColor = vec3(1.0, 0.76, 0.46) * rimLight;
+                finalColor += rimColor * 0.42;
                 
                 vec3 halfDir = normalize(lightDir + viewDir);
-                float spec = pow(max(dot(vNormal, halfDir), 0.0), 20.0) * shadow;
-                finalColor += vec3(1.0, 0.95, 0.85) * spec * 0.12;
+                float spec = pow(max(dot(vNormal, halfDir), 0.0), 24.0) * shadow;
+                finalColor += vec3(1.0, 0.95, 0.85) * spec * 0.18;
                 
-                // Subtle warm atmosphere scatter - less purple, more natural
-                float fresnel = pow(1.0 - abs(dot(vNormal, viewDir)), 2.5);
-                float scatter = fresnel * (0.2 + uScatterIntensity * 0.3);
-                vec3 atmosphereColor = vec3(0.85, 0.65, 0.45);
-                finalColor += atmosphereColor * scatter * 0.3;
+                float fresnel = pow(rimBase, 2.0);
+                float warmScatter = fresnel * (0.06 + shadow * 0.09) * (0.8 + uScatterIntensity * 0.35);
+                float backScatter = fresnel * (0.18 + uScatterIntensity * 0.5) * nightMask;
+                vec3 atmosphereColor = vec3(0.96, 0.68, 0.42) * warmScatter
+                    + vec3(0.36, 0.53, 0.92) * backScatter;
+                float terminatorGlow = pow(clamp(0.35 - NdotL, 0.0, 1.0), 1.5)
+                    * fresnel
+                    * (0.16 + uScatterIntensity * 0.24);
+                vec3 terminatorColor = vec3(0.92, 0.56, 0.34) * terminatorGlow;
+                finalColor += atmosphereColor * 0.72;
+                finalColor += terminatorColor;
 
                 float lightningWave = sin(
                     vUv.x * 48.0
@@ -716,8 +768,7 @@ function createStellarPlanetShaderMaterial(planetTexture) {
                 vec3 lightningColor = vec3(1.0, 0.94, 0.84) * lightningMask * uLightningFlash;
                 finalColor += lightningColor;
 
-                // Preserve natural texture darkness and contrast
-                finalColor *= (1.0 + uPulse * 0.15) * 0.48;
+                finalColor *= (1.0 + uPulse * 0.18) * 0.62;
                 
                 gl_FragColor = vec4(finalColor, 1.0);
             }
@@ -774,14 +825,20 @@ function createStellarPlanetRingNodeMaterial(params = {}) {
         .mul(smoothstep(float(0.56), float(0.34), radial01));
     const outerBand = smoothstep(float(0.62), float(0.72), radial01)
         .mul(smoothstep(float(1.0), float(0.86), radial01));
-    const ringMask = innerBand.add(outerBand);
-
     const angle = atan(local.y, local.x);
+    const sweep = sin(angle.mul(0.85).sub(uTime.mul(0.12))).mul(0.5).add(0.5);
+    const sweepMask = smoothstep(float(0.04), float(0.92), sweep).mul(0.52).add(0.48);
+    const breakWave = sin(angle.mul(5.4).add(radial01.mul(18.0)).add(uTime.mul(0.35))).mul(0.5).add(0.5);
+    const breakMask = smoothstep(float(0.12), float(0.94), breakWave).mul(0.38).add(0.62);
+    const ringMask = innerBand.add(outerBand).mul(sweepMask).mul(breakMask);
     const streak = sin(angle.mul(36.0).add(radial.mul(0.02)).add(uTime.mul(1.8))).mul(0.5).add(0.5);
     const glitterMask = smoothstep(float(0.91), float(0.995), streak);
     const glitter = glitterMask.mul(uGlitter).mul(0.78);
 
-    const baseColor = mix(uColorInner, uColorOuter, radial01).mul(ringMask);
+    const frontBias = smoothstep(float(0.18), float(0.9), sin(angle.add(0.9)).mul(0.5).add(0.5));
+    const baseColor = mix(uColorInner, uColorOuter, radial01)
+        .mul(ringMask)
+        .mul(frontBias.mul(0.28).add(0.72));
     const finalColor = baseColor.add(vec3(1.0, 0.95, 0.88).mul(glitter));
     const alpha = ringMask.mul(uOpacity).mul(float(0.68).add(glitter.mul(0.82)));
 
@@ -849,14 +906,18 @@ function createStellarPlanetRingFallbackMaterial(params = {}) {
 
                 float innerBand = smoothstep(0.02, 0.22, radial01) * smoothstep(0.56, 0.34, radial01);
                 float outerBand = smoothstep(0.62, 0.72, radial01) * smoothstep(1.0, 0.86, radial01);
-                float ringMask = innerBand + outerBand;
-
                 float angle = atan(vLocalPos.y, vLocalPos.x);
+                float sweep = sin(angle * 0.85 - uTime * 0.12) * 0.5 + 0.5;
+                float sweepMask = smoothstep(0.04, 0.92, sweep) * 0.52 + 0.48;
+                float breakWave = sin(angle * 5.4 + radial01 * 18.0 + uTime * 0.35) * 0.5 + 0.5;
+                float breakMask = smoothstep(0.12, 0.94, breakWave) * 0.38 + 0.62;
+                float ringMask = (innerBand + outerBand) * sweepMask * breakMask;
                 float streak = sin(angle * 36.0 + radial * 0.02 + uTime * 1.8) * 0.5 + 0.5;
                 float glitterMask = smoothstep(0.91, 0.995, streak);
                 float glitter = glitterMask * uGlitter * 0.78;
 
-                vec3 baseColor = mix(uColorInner, uColorOuter, radial01) * ringMask;
+                float frontBias = smoothstep(0.18, 0.9, sin(angle + 0.9) * 0.5 + 0.5);
+                vec3 baseColor = mix(uColorInner, uColorOuter, radial01) * ringMask * (frontBias * 0.28 + 0.72);
                 vec3 finalColor = baseColor + vec3(1.0, 0.95, 0.88) * glitter;
                 float alpha = ringMask * uOpacity * (0.68 + glitter * 0.82);
 
@@ -942,6 +1003,64 @@ export function createStellarGlowPlaneMaterial(params = {}) {
     });
 }
 
+function createStellarForegroundVeilNodeMaterial({ veilTexture, color, opacity }) {
+    const material = new MeshBasicNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        depthTest: true,
+    });
+
+    const uColor = uniform(color.clone ? color.clone() : new THREE.Color(color));
+    const uOpacity = uniform(opacity);
+
+    const veilSample = texture(veilTexture, uv());
+    const veilColor = veilSample.rgb.mul(uColor).mul(0.8).add(uColor.mul(0.2));
+    const alpha = veilSample.a.mul(uOpacity);
+
+    material.colorNode = veilColor;
+    material.opacityNode = alpha;
+
+    return finalizeStellarMaterial(
+        material,
+        { uColor, uOpacity },
+        { emitsBloom: false, mrtRole: 'foreground-veil' },
+    );
+}
+
+function createStellarForegroundVeilFallbackMaterial({ veilTexture, color, opacity }) {
+    const material = new THREE.MeshBasicMaterial({
+        map: veilTexture,
+        color,
+        transparent: true,
+        opacity,
+        depthWrite: false,
+        depthTest: true,
+        blending: THREE.NormalBlending,
+    });
+
+    return finalizeStellarMaterial(
+        material,
+        material.uniforms || {},
+        { emitsBloom: false, mrtRole: 'foreground-veil' },
+    );
+}
+
+export function createStellarForegroundVeilMaterial(params = {}) {
+    if (params.isWebGPU === true) {
+        return createStellarForegroundVeilNodeMaterial({
+            veilTexture: params.veilTexture,
+            color: params.color,
+            opacity: params.opacity,
+        });
+    }
+
+    return createStellarForegroundVeilFallbackMaterial({
+        veilTexture: params.veilTexture,
+        color: params.color,
+        opacity: params.opacity,
+    });
+}
+
 function createStellarBloodMoonNebulaNodeMaterial(params = {}) {
     const palette = resolveStellarBloodMoonPalette(params.palette);
     const material = new MeshBasicNodeMaterial({
@@ -976,7 +1095,7 @@ function createStellarBloodMoonNebulaNodeMaterial(params = {}) {
     const rampInput = clamp(texColor.r.mul(0.8).add(luminance.mul(0.2)), float(0.0), float(1.0));
     const bodyBlend = smoothstep(float(0.08), float(0.58), rampInput);
     const glowBlend = smoothstep(float(0.52), float(0.95), rampInput);
-    const densityLift = float(0.78).add(rampInput.mul(0.42));
+    const densityLift = float(0.86).add(rampInput.mul(0.56));
     const recolored = mix(
         mix(uColorShadow, uColorBody, bodyBlend),
         uColorGlow,
@@ -984,13 +1103,13 @@ function createStellarBloodMoonNebulaNodeMaterial(params = {}) {
     ).mul(densityLift);
 
     const volHi = smoothstep(float(0.0), float(0.05), distortX).mul(0.5).mul(texColor.r);
-    const highlightColor = mix(uColorBody, uColorGlow, float(0.72)).mul(volHi.mul(1.2));
-    const finalColor = recolored.mul(float(1.0).add(uPulse.mul(0.3))).add(highlightColor);
-    const emissiveMask = smoothstep(float(0.16), float(0.82), rampInput).mul(alpha);
+    const highlightColor = mix(uColorBody, uColorGlow, float(0.78)).mul(volHi.mul(1.5));
+    const finalColor = recolored.mul(float(1.04).add(uPulse.mul(0.38))).add(highlightColor);
+    const emissiveMask = smoothstep(float(0.12), float(0.8), rampInput).mul(alpha);
 
     material.colorNode = finalColor;
     material.opacityNode = clamp(alpha, float(0.0), float(1.0));
-    material.emissiveNode = finalColor.mul(emissiveMask);
+    material.emissiveNode = finalColor.mul(emissiveMask).mul(1.12);
 
     return finalizeStellarMaterial(
         material,
@@ -1056,7 +1175,7 @@ function createStellarBloodMoonNebulaShaderMaterial(params = {}) {
                 float rampInput = clamp(texColor.r * 0.8 + luminance * 0.2, 0.0, 1.0);
                 float bodyBlend = smoothstep(0.08, 0.58, rampInput);
                 float glowBlend = smoothstep(0.52, 0.95, rampInput);
-                float densityLift = 0.78 + rampInput * 0.42;
+                float densityLift = 0.86 + rampInput * 0.56;
                 vec3 recolored = mix(
                     mix(uColorShadow, uColorBody, bodyBlend),
                     uColorGlow,
@@ -1064,8 +1183,8 @@ function createStellarBloodMoonNebulaShaderMaterial(params = {}) {
                 ) * densityLift;
 
                 float volHi = smoothstep(0.0, 0.05, distortX) * 0.5 * texColor.r;
-                vec3 highlightColor = mix(uColorBody, uColorGlow, 0.72) * (volHi * 1.2);
-                vec3 color = recolored * (1.0 + uPulse * 0.3) + highlightColor;
+                vec3 highlightColor = mix(uColorBody, uColorGlow, 0.78) * (volHi * 1.5);
+                vec3 color = recolored * (1.04 + uPulse * 0.38) + highlightColor;
 
                 gl_FragColor = vec4(color, alpha);
             }

@@ -339,21 +339,21 @@ export const nebulaFragmentShader = `
         float fadeX = smoothstep(0.0, 0.4, distortedUv.x) * smoothstep(1.0, 0.6, distortedUv.x);
         float fadeY = smoothstep(0.0, 0.4, distortedUv.y) * smoothstep(1.0, 0.6, distortedUv.y);
         float fade = fadeX * fadeY;
-        fade = pow(clamp(fade, 0.0, 1.0), 1.5);
+        fade = pow(clamp(fade, 0.0, 1.0), 0.9);
 
         // Desaturate so Blood Moon texture structure renders as noir-white gas.
         float gray = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
-        gray = pow(clamp(gray * 1.25, 0.0, 1.0), 0.9);
+        gray = pow(clamp(gray * 1.55, 0.0, 1.0), 0.82);
 
         // Cool silver-white tint for depth without color bleed.
         vec3 color = vec3(gray) * vec3(0.92, 0.96, 1.0);
 
         // Pulse effect boosts brightness
-        float pulseFactor = 1.0 + uPulse * 0.3;
+        float pulseFactor = 1.0 + uPulse * 0.35;
         color *= pulseFactor;
 
         // Luminance-driven alpha keeps shape detail from reused colored textures.
-        float alpha = gray * (uOpacity + uPulse * 0.1) * fade;
+        float alpha = clamp(gray * (uOpacity + uPulse * 0.14 + 0.08) * fade * 1.25, 0.0, 0.9);
 
         gl_FragColor = vec4(color, alpha);
     }
