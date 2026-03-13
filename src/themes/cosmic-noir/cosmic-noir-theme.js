@@ -1436,12 +1436,12 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     createNebulaClouds() {
         const textureLoader = new THREE.TextureLoader();
-        const texturePath = './textures/blood-moon/';
+        const texturePath = './textures/cosmic-noir/';
 
         const textures = [
-            textureLoader.load(`${texturePath}nebula-red-1.png`),
-            textureLoader.load(`${texturePath}nebula-red-2.png`),
-            textureLoader.load(`${texturePath}nebula-red-3.png`),
+            textureLoader.load(`${texturePath}nebula-noir-1.png`),
+            textureLoader.load(`${texturePath}nebula-noir-2.png`),
+            textureLoader.load(`${texturePath}nebula-noir-3.png`),
         ];
 
         textures.forEach((t) => {
@@ -1453,17 +1453,17 @@ export default class CosmicNoirTheme extends BaseTheme {
         const nebulaConfigs = [
             // Deep background layer
             {
-                texture: textures[0], size: 6000, z: -4500, opacity: 0.3, speed: 0.0001, parallaxX: 0.1, parallaxY: 0.1, rotationSpeed: 0.0,
+                texture: textures[0], size: 14000, z: -4500, opacity: 0.5, speed: 0.0001, parallaxX: 0.08, parallaxY: 0.08, rotationSpeed: 0.0,
             },
             {
-                texture: textures[1], size: 7000, z: -4000, opacity: 0.25, speed: 0.00015, parallaxX: 0.1, parallaxY: 0.1, rotationSpeed: 0.0,
+                texture: textures[1], size: 16000, z: -4000, opacity: 0.42, speed: 0.00015, parallaxX: 0.08, parallaxY: 0.08, rotationSpeed: 0.0,
             },
             // Mid layer
             {
-                texture: textures[2], size: 5000, z: -3000, opacity: 0.2, speed: 0.0002, parallaxX: 0.3, parallaxY: 0.2, rotationSpeed: 0.0,
+                texture: textures[2], size: 11000, z: -3000, opacity: 0.34, speed: 0.0002, parallaxX: 0.2, parallaxY: 0.15, rotationSpeed: 0.0,
             },
             {
-                texture: textures[0], size: 5500, z: -2500, opacity: 0.15, speed: 0.00025, parallaxX: 0.3, parallaxY: 0.2, rotationSpeed: 0.0,
+                texture: textures[0], size: 12500, z: -2500, opacity: 0.28, speed: 0.00025, parallaxX: 0.2, parallaxY: 0.15, rotationSpeed: 0.0,
             },
         ];
 
@@ -1497,13 +1497,14 @@ export default class CosmicNoirTheme extends BaseTheme {
 
             const mesh = new THREE.Mesh(geometry, material);
             // Random position spread
-            mesh.position.x = (this.rand() - 0.5) * 2000;
-            mesh.position.y = (this.rand() - 0.5) * 1000;
+            mesh.position.x = (this.rand() - 0.5) * (config.size * 0.35);
+            mesh.position.y = (this.rand() - 0.5) * (config.size * 0.18);
             mesh.position.z = config.z;
             mesh.rotation.z = this.rand() * Math.PI * 2;
 
             mesh.userData = {
                 driftSpeed: config.speed,
+                driftRange: config.size * 0.75,
                 baseOpacity: config.opacity,
                 pulsePhase: this.rand() * Math.PI * 2,
                 parallaxX: config.parallaxX ?? 0.3,
@@ -2761,8 +2762,9 @@ export default class CosmicNoirTheme extends BaseTheme {
         for (const cloud of this.nebulaClouds) {
             // Move nebulas with camera so they always cover the view
             // Plus gentle drift for atmosphere
+            const driftRange = cloud.userData.driftRange ?? 6000;
             cloud.userData.driftOffset = (cloud.userData.driftOffset || 0) + cloud.userData.driftSpeed * 50;
-            if (cloud.userData.driftOffset > 6000) cloud.userData.driftOffset = -6000;
+            if (cloud.userData.driftOffset > driftRange) cloud.userData.driftOffset = -driftRange;
 
             // Sync base position with camera, add drift offset
             const parallaxX = cloud.userData.parallaxX ?? 0.3;

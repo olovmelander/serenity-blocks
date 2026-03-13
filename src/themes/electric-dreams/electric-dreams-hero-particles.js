@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 
 const HERO_PARTICLE_BUDGETS = Object.freeze({
-    High: Object.freeze({ ribbons: 168, beads: 224 }),
-    Ultra: Object.freeze({ ribbons: 256, beads: 336 }),
-    Extreme: Object.freeze({ ribbons: 352, beads: 448 }),
+    High: Object.freeze({ ribbons: 240, beads: 330 }),
+    Ultra: Object.freeze({ ribbons: 370, beads: 470 }),
+    Extreme: Object.freeze({ ribbons: 480, beads: 620 }),
 });
 
 function getHeroBudgets(qualityName) {
@@ -396,14 +396,11 @@ export class ElectricDreamsHeroParticles {
 
     updateRibbons(delta, time, stageHeat) {
         const colorArray = this.ribbonMesh.instanceColor.array;
+        let highestActiveIdx = -1;
 
         for (let i = 0; i < this.ribbonStates.length; i += 1) {
             const state = this.ribbonStates[i];
             if (!state.active) {
-                hideInstance(this.ribbonMesh, i, this.tempMatrix);
-                colorArray[i * 3] = 0;
-                colorArray[i * 3 + 1] = 0;
-                colorArray[i * 3 + 2] = 0;
                 continue;
             }
 
@@ -417,6 +414,7 @@ export class ElectricDreamsHeroParticles {
                 colorArray[i * 3 + 2] = 0;
                 continue;
             }
+            highestActiveIdx = i;
 
             const fade = 1 - lifeT;
             state.velocity.multiplyScalar(state.drag ** (delta * 60));
@@ -460,20 +458,21 @@ export class ElectricDreamsHeroParticles {
 
         this.ribbonUniforms.uTime.value = time;
         this.ribbonUniforms.uIntensity.value = 0.92 + stageHeat * 0.3;
-        this.ribbonMesh.instanceMatrix.needsUpdate = true;
-        this.ribbonMesh.instanceColor.needsUpdate = true;
+        // Only draw up to the highest active instance (avoid uploading/drawing dead tail)
+        this.ribbonMesh.count = highestActiveIdx + 1;
+        if (this.ribbonMesh.count > 0) {
+            this.ribbonMesh.instanceMatrix.needsUpdate = true;
+            this.ribbonMesh.instanceColor.needsUpdate = true;
+        }
     }
 
     updateBeads(delta, time, stageHeat) {
         const colorArray = this.beadMesh.instanceColor.array;
+        let highestActiveIdx = -1;
 
         for (let i = 0; i < this.beadStates.length; i += 1) {
             const state = this.beadStates[i];
             if (!state.active) {
-                hideInstance(this.beadMesh, i, this.tempMatrix2);
-                colorArray[i * 3] = 0;
-                colorArray[i * 3 + 1] = 0;
-                colorArray[i * 3 + 2] = 0;
                 continue;
             }
 
@@ -503,6 +502,7 @@ export class ElectricDreamsHeroParticles {
             this.tempMatrix2.compose(state.position, this.tempQuat, this.tempScale);
             this.beadMesh.setMatrixAt(i, this.tempMatrix2);
 
+            highestActiveIdx = i;
             const brightness = fade * fade * state.brightness;
             colorArray[i * 3] = state.color.r * brightness;
             colorArray[i * 3 + 1] = state.color.g * brightness;
@@ -512,8 +512,11 @@ export class ElectricDreamsHeroParticles {
 
         this.beadUniforms.uTime.value = time;
         this.beadUniforms.uIntensity.value = 0.96 + stageHeat * 0.22;
-        this.beadMesh.instanceMatrix.needsUpdate = true;
-        this.beadMesh.instanceColor.needsUpdate = true;
+        this.beadMesh.count = highestActiveIdx + 1;
+        if (this.beadMesh.count > 0) {
+            this.beadMesh.instanceMatrix.needsUpdate = true;
+            this.beadMesh.instanceColor.needsUpdate = true;
+        }
     }
 
     getActivity() {
