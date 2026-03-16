@@ -10,7 +10,10 @@
  */
 
 import * as THREE from 'three';
-import { CHAPTER_CONFIGS } from '../../core/odyssey/data/chapters.js';
+import {
+    CHAPTER_CONFIGS,
+    DEFAULT_BOARD_TRANSITION,
+} from '../../core/odyssey/data/chapters.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 
 /**
@@ -25,6 +28,8 @@ const CHAPTER_MODULE_LOADERS = {
     4: () => import('./chapter-environments/mountain-peaks.js'),
     5: () => import('./chapter-environments/sky-drift.js'),
     6: () => import('./chapter-environments/cosmic-expanse.js'),
+    7: () => import('./chapter-environments/black-hole-transcendence.js'),
+    8: () => import('./chapter-environments/urban-dreams.js'),
 };
 
 /**
@@ -32,12 +37,46 @@ const CHAPTER_MODULE_LOADERS = {
  * Pattern: CONFIG_NAME, CREATE_FN_NAME, UPDATE_FN_NAME
  */
 const CHAPTER_EXPORT_NAMES = {
-    1: { config: 'EARTH_CORE_CONFIG', create: 'createEarthCoreEnvironment', update: 'updateEarthCoreEnvironment' },
-    2: { config: 'DEEP_OCEAN_CONFIG', create: 'createDeepOceanEnvironment', update: 'updateDeepOceanEnvironment' },
-    3: { config: 'SURFACE_WORLD_CONFIG', create: 'createSurfaceWorldEnvironment', update: 'updateSurfaceWorldEnvironment' },
-    4: { config: 'MOUNTAIN_PEAKS_CONFIG', create: 'createMountainPeaksEnvironment', update: 'updateMountainPeaksEnvironment' },
-    5: { config: 'SKY_DRIFT_CONFIG', create: 'createSkyDriftEnvironment', update: 'updateSkyDriftEnvironment' },
-    6: { config: 'COSMIC_EXPANSE_CONFIG', create: 'createCosmicExpanseEnvironment', update: 'updateCosmicExpanseEnvironment' },
+    1: {
+        config: 'EARTH_CORE_CONFIG',
+        create: 'createEarthCoreEnvironment',
+        update: 'updateEarthCoreEnvironment',
+    },
+    2: {
+        config: 'DEEP_OCEAN_CONFIG',
+        create: 'createDeepOceanEnvironment',
+        update: 'updateDeepOceanEnvironment',
+    },
+    3: {
+        config: 'SURFACE_WORLD_CONFIG',
+        create: 'createSurfaceWorldEnvironment',
+        update: 'updateSurfaceWorldEnvironment',
+    },
+    4: {
+        config: 'MOUNTAIN_PEAKS_CONFIG',
+        create: 'createMountainPeaksEnvironment',
+        update: 'updateMountainPeaksEnvironment',
+    },
+    5: {
+        config: 'SKY_DRIFT_CONFIG',
+        create: 'createSkyDriftEnvironment',
+        update: 'updateSkyDriftEnvironment',
+    },
+    6: {
+        config: 'COSMIC_EXPANSE_CONFIG',
+        create: 'createCosmicExpanseEnvironment',
+        update: 'updateCosmicExpanseEnvironment',
+    },
+    7: {
+        config: 'BLACK_HOLE_TRANSCENDENCE_CONFIG',
+        create: 'createBlackHoleTranscendenceEnvironment',
+        update: 'updateBlackHoleTranscendenceEnvironment',
+    },
+    8: {
+        config: 'URBAN_DREAMS_CONFIG',
+        create: 'createUrbanDreamsEnvironment',
+        update: 'updateUrbanDreamsEnvironment',
+    },
 };
 
 const CHAPTER_POSITIONS = ODYSSEY_PATH_DATA.chapterPositions || [];
@@ -76,14 +115,90 @@ async function loadChapterModule(chapterId) {
     return result;
 }
 
-const DEFAULT_PATH_TRANSITION_ZONE = 0.02;
 const OPACITY_APPLY_EPSILON = 0.01;
 
-function getChapterPathRange(chapterId) {
-    const start = CHAPTER_POSITIONS[chapterId - 1];
-    if (start === undefined) return null;
-    const end = CHAPTER_POSITIONS[chapterId] ?? 1;
-    return { start, end };
+function smootherstep01(value) {
+    const t = THREE.MathUtils.clamp(value, 0, 1);
+    return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+export function getChapterBoardTransition(chapterId, chapterConfigs = CHAPTER_CONFIGS) {
+    const chapter = chapterConfigs.find((entry) => entry.id === chapterId);
+    return {
+        ...DEFAULT_BOARD_TRANSITION,
+        ...(chapter?.boardTransition || {}),
+    };
+}
+
+export function resolveChapterBlendState(
+    progress,
+    chapterConfigs = CHAPTER_CONFIGS,
+    chapterPositions = CHAPTER_POSITIONS,
+) {
+    const clampedProgress = THREE.MathUtils.clamp(progress ?? 0, 0, 1);
+    const weights = {};
+    const chapterCount = chapterConfigs.length;
+
+    for (let chapterId = 1; chapterId <= chapterCount; chapterId += 1) {
+        weights[chapterId] = 0;
+    }
+
+    for (let chapterId = 1; chapterId < chapterCount; chapterId += 1) {
+        const boundaryPosition = chapterPositions[chapterId];
+        if (!Number.isFinite(boundaryPosition)) continue;
+
+        const transition = getChapterBoardTransition(chapterId, chapterConfigs);
+        const seamWidth = Math.max(0.001, transition.seamWidth || DEFAULT_BOARD_TRANSITION.seamWidth);
+        const seamStart = boundaryPosition - seamWidth;
+        const seamEnd = boundaryPosition + seamWidth;
+
+        if (clampedProgress < seamStart || clampedProgress > seamEnd) {
+            continue;
+        }
+
+        const seamProgress = smootherstep01((clampedProgress - seamStart) / (seamEnd - seamStart));
+        weights[chapterId] = 1 - seamProgress;
+        weights[chapterId + 1] = seamProgress;
+
+        return {
+            activeChapter: seamProgress >= 0.5 ? chapterId + 1 : chapterId,
+            sourceChapter: chapterId,
+            targetChapter: chapterId + 1,
+            seamProgress,
+            inSeam: true,
+            boundaryId: `${chapterId}-${chapterId + 1}`,
+            boundaryPosition,
+            seamStart,
+            seamEnd,
+            transition,
+            weights,
+        };
+    }
+
+    let activeChapter = 1;
+    for (let chapterId = 1; chapterId <= chapterCount; chapterId += 1) {
+        const start = chapterPositions[chapterId - 1];
+        const end = chapterPositions[chapterId] ?? 1;
+        if (clampedProgress >= start && clampedProgress <= end) {
+            activeChapter = chapterId;
+            break;
+        }
+    }
+
+    weights[activeChapter] = 1;
+    return {
+        activeChapter,
+        sourceChapter: activeChapter,
+        targetChapter: activeChapter,
+        seamProgress: 0,
+        inSeam: false,
+        boundaryId: null,
+        boundaryPosition: null,
+        seamStart: null,
+        seamEnd: null,
+        transition: getChapterBoardTransition(activeChapter, chapterConfigs),
+        weights,
+    };
 }
 
 /**
@@ -97,9 +212,12 @@ export class ChapterEnvironmentManager {
      * @param {THREE.Scene} scene - The main Three.js scene
      * @param {THREE.WebGLRenderer} renderer - The renderer (for background color)
      */
-    constructor(scene, renderer = null) {
+    constructor(scene, renderer = null, options = {}) {
         this.scene = scene;
         this.renderer = renderer;
+        this.chapterPositions = Array.isArray(options.chapterPositions) && options.chapterPositions.length >= 2
+            ? [...options.chapterPositions]
+            : [...CHAPTER_POSITIONS];
 
         // Container for all chapter environments
         this.environmentGroup = new THREE.Group();
@@ -137,6 +255,7 @@ export class ChapterEnvironmentManager {
         this._fogColorScratch = new THREE.Color();
         this._ambientColorScratch = new THREE.Color();
         this._blendColorScratch = new THREE.Color();
+        this._resolvedBlendState = resolveChapterBlendState(0, CHAPTER_CONFIGS, this.chapterPositions);
 
         console.log('[ChapterEnvironmentManager] Created');
     }
@@ -219,9 +338,7 @@ export class ChapterEnvironmentManager {
 
         console.log('[ChapterEnvironmentManager] Initializing chapters:', chapterIds);
 
-        for (const chapterId of chapterIds) {
-            await this.createChapterEnvironment(chapterId);
-        }
+        await Promise.all(chapterIds.map((chapterId) => this.createChapterEnvironment(chapterId)));
 
         // Set initial visibility
         this.updateVisibility(this.cameraProgress, { mode: 'progress' });
@@ -331,53 +448,26 @@ export class ChapterEnvironmentManager {
      */
     updateVisibility(position, options = {}) {
         const mode = options.mode || 'y';
-        const transitionZone = options.transitionZone
-            ?? (mode === 'progress' ? DEFAULT_PATH_TRANSITION_ZONE : 5);
 
         if (mode === 'progress') {
             this.cameraProgress = THREE.MathUtils.clamp(position ?? 0, 0, 1);
+            this._resolvedBlendState = resolveChapterBlendState(
+                this.cameraProgress,
+                CHAPTER_CONFIGS,
+                this.chapterPositions,
+            );
         } else {
             this.cameraY = position ?? 0;
         }
 
         this.environments.forEach((env, chapterId) => {
-            const range = mode === 'progress'
-                ? getChapterPathRange(chapterId)
-                : { start: env.config.yStart, end: env.config.yEnd };
-
-            if (!range) {
-                env.group.visible = false;
-                return;
-            }
-
-            // Allow extending the environment beyond the standard chapter end
-            // This is useful for environments that should persist into the next chapter (like Aurora)
-            if (mode === 'progress' && env.config.endProgress) {
-                range.end = env.config.endProgress;
-            }
-
-            const { start, end } = range;
-            const value = mode === 'progress' ? this.cameraProgress : this.cameraY;
-            const envTransitionZone = env.config.transitionZone ?? transitionZone;
-
-            let opacity = 0;
-
-            if (value >= start - envTransitionZone && value <= end + envTransitionZone) {
-                if (value < start) {
-                    // Fading in from below
-                    opacity = 1 - (start - value) / envTransitionZone;
-                } else if (value > end) {
-                    // Fading out above
-                    opacity = 1 - (value - end) / envTransitionZone;
-                } else {
-                    // Fully visible
-                    opacity = 1;
-                }
-            }
-
-            opacity = THREE.MathUtils.clamp(opacity, 0, 1);
-
-            // Show/hide based on opacity
+            const opacity = mode === 'progress'
+                ? THREE.MathUtils.clamp(this._resolvedBlendState.weights?.[chapterId] || 0, 0, 1)
+                : THREE.MathUtils.clamp(
+                    env.group.position.y >= (this.cameraY ?? 0) ? 1 : 0,
+                    0,
+                    1,
+                );
             const isVisible = opacity > 0;
             env.group.visible = isVisible;
 
@@ -397,6 +487,31 @@ export class ChapterEnvironmentManager {
             env.lastOpacity = opacity;
             env.lastVisible = isVisible;
         });
+    }
+
+    getBlendState(progress = this.cameraProgress) {
+        return resolveChapterBlendState(progress, CHAPTER_CONFIGS, this.chapterPositions);
+    }
+
+    setChapterPositions(chapterPositions = []) {
+        if (!Array.isArray(chapterPositions) || chapterPositions.length < 2) {
+            return;
+        }
+
+        this.chapterPositions = chapterPositions.filter((position) => Number.isFinite(position));
+        this._resolvedBlendState = resolveChapterBlendState(
+            this.cameraProgress,
+            CHAPTER_CONFIGS,
+            this.chapterPositions,
+        );
+    }
+
+    getBoundaryTransition(boundaryIdOrChapterId) {
+        if (typeof boundaryIdOrChapterId === 'string') {
+            const sourceChapter = Number.parseInt(boundaryIdOrChapterId.split('-')[0], 10);
+            return getChapterBoardTransition(sourceChapter);
+        }
+        return getChapterBoardTransition(boundaryIdOrChapterId);
     }
 
     /**
@@ -479,14 +594,15 @@ export class ChapterEnvironmentManager {
      * Update all environment animations
      * @param {number} delta - Delta time in seconds
      * @param {THREE.Camera} camera - Camera for position-based effects
+     * @param {number|null} cameraProgress - Current Odyssey progress for path-anchored effects
      */
-    update(delta, camera = null) {
+    update(delta, camera = null, cameraProgress = null) {
         this.time += delta;
 
         // Update each visible environment
         this.environments.forEach((env) => {
             if (env.group.visible && env.update) {
-                env.update(env.group, delta, this.time, camera);
+                env.update(env.group, delta, this.time, camera, cameraProgress);
             }
         });
 
@@ -508,51 +624,23 @@ export class ChapterEnvironmentManager {
      * @param {number} progress - Camera progress (0-1)
      */
     updateGlobalEnvironment(progress) {
-        // Find which chapters we are blending between
-        let currentChapterId = 1;
-        let nextChapterId = 1;
-        let t = 0;
-
-        for (let i = 0; i < CHAPTER_POSITIONS.length; i++) {
-            const start = CHAPTER_POSITIONS[i];
-            const end = CHAPTER_POSITIONS[i + 1] ?? 1;
-
-            if (progress >= start && progress <= end) {
-                currentChapterId = i + 1;
-
-                // Check if we are in a transition zone to next chapter
-                // Transition starts at end - transitionZone
-                // Or maybe we just interpolate completely between chapter centers?
-                // Let's stick to the config environment settings
-
-                // Simple interpolation:
-                // If we are in the last 20% of the chapter, blend to next
-                const chapterDuration = end - start;
-                const localProgress = (progress - start) / chapterDuration;
-
-                if (localProgress > 0.8 && (i + 1) < CHAPTER_POSITIONS.length) {
-                    nextChapterId = currentChapterId + 1;
-                    t = (localProgress - 0.8) / 0.2; // 0 to 1
-                } else {
-                    nextChapterId = currentChapterId;
-                    t = 0;
-                }
-                break;
-            }
-        }
+        const blendState = resolveChapterBlendState(progress, CHAPTER_CONFIGS, this.chapterPositions);
+        const currentChapterId = blendState.sourceChapter;
+        const nextChapterId = blendState.targetChapter;
+        const t = blendState.seamProgress;
 
         // ═══════════════════════════════════════════════════════════════════
         // Chapter Change Detection - Trigger callback for FOV pulse
         // ═══════════════════════════════════════════════════════════════════
-        if (currentChapterId !== this.currentChapter) {
+        if (blendState.activeChapter !== this.currentChapter) {
             const previousChapter = this.currentChapter;
-            this.currentChapter = currentChapterId;
+            this.currentChapter = blendState.activeChapter;
 
-            console.log(`[ChapterEnvironmentManager] Chapter changed: ${previousChapter} → ${currentChapterId}`);
+            console.log(`[ChapterEnvironmentManager] Chapter changed: ${previousChapter} → ${this.currentChapter}`);
 
             // Notify camera controller (for FOV pulse and other effects)
             if (this.onChapterChangeCallback) {
-                this.onChapterChangeCallback(currentChapterId, previousChapter);
+                this.onChapterChangeCallback(this.currentChapter, previousChapter);
             }
         }
 

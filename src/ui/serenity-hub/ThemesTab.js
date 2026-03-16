@@ -6,6 +6,8 @@
 import { THEME_REGISTRY } from '../../themes/theme-registry.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { TORNADO_PARAM_DEFAULTS, TORNADO_PARAM_RANGES } from '../../themes/tornado/params.ts';
+import { performanceMonitor } from '../../utils/performance-monitor.js';
+import { resolveHubThemeThumbnailUrl } from './theme-thumbnail-manifest.js';
 
 export class ThemesTab {
     constructor(hubInstance, themeManager, settingsManager) {
@@ -25,6 +27,10 @@ export class ThemesTab {
         this.tabContainer = null;
         this.tabClickHandler = null;
         this.searchInputHandler = null;
+        this.iconObserver = null;
+        this.iconLoadHandler = null;
+        this.iconErrorHandler = null;
+        this.hubIconsReadyRecorded = false;
 
         this.init();
     }
@@ -39,6 +45,7 @@ export class ThemesTab {
         this.render();
         this.attachEventListeners();
         this.listenForThemeChanges();
+        this.hydrateVisibleThemeCardIcons();
         console.log('[ThemesTab] Initialized with', this.themes.length, 'themes, current theme:', this.currentTheme);
     }
 
@@ -108,19 +115,7 @@ export class ThemesTab {
      * @param {Object} theme - Theme object with id and displayName
      * @returns {string} HTML string for icon (img tag or emoji div)
      */
-    getThemeIcon(theme) {
-        // Check if theme has custom PNG icon
-        const themeMeta = THEME_REGISTRY.find((t) => t.id === theme.id);
-        if (themeMeta?.icon) {
-            // Extract just the filename from the icon path
-            // themeMeta.icon is like './ice-temple/ice-temple-theme-icon.png'
-            const iconFilename = themeMeta.icon.split('/').pop();
-            // Reference from public/assets/themes folder
-            const iconPath = `assets/themes/${iconFilename}`;
-            return `<img src="${iconPath}" alt="${theme.displayName}" class="theme-icon-img" />`;
-        }
-
-        // Fallback to emoji icons
+    getThemeFallbackEmoji(theme) {
         const icons = {
             Forest: '🌲',
             'Himalayan Peak': '🏔️',
@@ -167,8 +162,29 @@ export class ThemesTab {
             'Neon Dusk': '🌆',
             Stillwater: '💧',
         };
-        const emoji = icons[theme.displayName] || '🎨';
-        return `<div class="theme-icon-emoji">${emoji}</div>`;
+        return icons[theme.displayName] || '🎨';
+    }
+
+    getThemeIcon(theme) {
+        const iconUrl = resolveHubThemeThumbnailUrl(theme.id);
+        const fallbackEmoji = this.getThemeFallbackEmoji(theme);
+
+        if (!iconUrl) {
+            return `<div class="theme-icon-emoji">${fallbackEmoji}</div>`;
+        }
+
+        return `
+            <img
+                alt=""
+                aria-hidden="true"
+                class="theme-icon-img"
+                data-theme-icon-src="${iconUrl}"
+                data-theme-icon-fallback="${fallbackEmoji}"
+                loading="lazy"
+                decoding="async"
+                fetchpriority="low"
+            />
+        `;
     }
 
     /**
@@ -441,16 +457,41 @@ export class ThemesTab {
         };
 
         this.tabContainer.addEventListener('click', this.tabClickHandler);
+        this.iconLoadHandler = (event) => {
+            const icon = event.target;
+            if (!icon?.matches?.('.theme-icon-img[data-theme-icon-src]')) {
+                return;
+            }
+
+            icon.classList.add('is-ready');
+            if (!this.hubIconsReadyRecorded) {
+                this.hubIconsReadyRecorded = true;
+                performanceMonitor.recordEvent('startup_hub_icons_ready', {
+                    tab: 'themes',
+                    themeId: icon.closest('.theme-card')?.dataset?.theme || null,
+                });
+            }
+        };
+        this.iconErrorHandler = (event) => {
+            const icon = event.target;
+            if (!icon?.matches?.('.theme-icon-img[data-theme-icon-src]')) {
+                return;
+            }
+
+            const fallbackEmoji = icon.dataset.themeIconFallback || '🎨';
+            const fallback = document.createElement('div');
+            fallback.className = 'theme-icon-emoji';
+            fallback.textContent = fallbackEmoji;
+            icon.replaceWith(fallback);
+            console.warn('[ThemesTab] Theme icon failed to load:', icon.dataset.themeIconSrc);
+        };
 
         // Wire up search input
         const searchInput = this.tabContainer.querySelector('#themes-search-input');
         if (searchInput) {
             this.searchInputHandler = (e) => {
                 this.searchQuery = e.target.value;
-                const grid = this.tabContainer.querySelector('#themes-grid');
-                if (grid) {
-                    grid.innerHTML = this.renderThemeCards();
-                }
+                this.refreshThemeGrid();
             };
             searchInput.addEventListener('input', this.searchInputHandler);
         }
@@ -493,6 +534,79 @@ export class ThemesTab {
         this.attachThemeParamListeners();
     }
 
+    refreshThemeGrid() {
+        const grid = this.tabContainer?.querySelector('#themes-grid') || document.getElementById('themes-grid');
+        if (!grid) {
+            return;
+        }
+
+        grid.innerHTML = this.renderThemeCards();
+        this.hydrateVisibleThemeCardIcons();
+    }
+
+    hydrateVisibleThemeCardIcons() {
+        const grid = this.tabContainer?.querySelector('#themes-grid') || document.getElementById('themes-grid');
+        if (!grid) {
+            return;
+        }
+
+        const icons = Array.from(grid.querySelectorAll('.theme-icon-img[data-theme-icon-src]'))
+            .filter((icon) => !icon.dataset.iconLoaded);
+
+        if (this.iconObserver) {
+            this.iconObserver.disconnect();
+            this.iconObserver = null;
+        }
+
+        if (icons.length === 0) {
+            return;
+        }
+
+        const loadIcon = (icon) => {
+            if (!icon || icon.dataset.iconLoaded === 'true') {
+                return;
+            }
+
+            const src = icon.dataset.themeIconSrc;
+            if (!src) {
+                return;
+            }
+
+            icon.dataset.iconLoaded = 'true';
+            icon.addEventListener('load', this.iconLoadHandler, { once: true });
+            icon.addEventListener('error', this.iconErrorHandler, { once: true });
+            icon.src = src;
+        };
+
+        if (typeof IntersectionObserver !== 'function') {
+            icons.slice(0, 16).forEach(loadIcon);
+            return;
+        }
+
+        this.iconObserver = new IntersectionObserver((entries, observer) => {
+            entries.forEach((entry) => {
+                if (!entry.isIntersecting) {
+                    return;
+                }
+
+                loadIcon(entry.target);
+                observer.unobserve(entry.target);
+            });
+        }, {
+            rootMargin: '180px 0px',
+            threshold: 0.01,
+        });
+
+        icons.forEach((icon, index) => {
+            if (index < 8) {
+                loadIcon(icon);
+                return;
+            }
+
+            this.iconObserver.observe(icon);
+        });
+    }
+
     /**
      * Select a category filter
      * @param {string} category - Category ID
@@ -509,10 +623,7 @@ export class ThemesTab {
         });
 
         // Update themes grid
-        const grid = this.tabContainer?.querySelector('#themes-grid') || document.getElementById('themes-grid');
-        if (grid) {
-            grid.innerHTML = this.renderThemeCards();
-        }
+        this.refreshThemeGrid();
     }
 
     /**
@@ -662,6 +773,12 @@ export class ThemesTab {
         if (searchInput && this.searchInputHandler) {
             searchInput.removeEventListener('input', this.searchInputHandler);
             this.searchInputHandler = null;
+        }
+        this.iconLoadHandler = null;
+        this.iconErrorHandler = null;
+        if (this.iconObserver) {
+            this.iconObserver.disconnect();
+            this.iconObserver = null;
         }
 
         this.tabContainer = null;

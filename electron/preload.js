@@ -10,13 +10,18 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const allowedInvokeChannels = new Set([
     'get-displays',
+    'get-gpu-diagnostics',
     'set-fullscreen',
     'set-borderless',
     'set-windowed',
     'set-resolution',
     'get-window-bounds',
     'is-fullscreen',
+    'set-active-gpu-renderer',
     'set-vsync',
+    'desktop:get-runtime-config',
+    'desktop:store-performance-report',
+    'desktop:startup-mark',
     'steam:isInitialized',
     'steam:getSteamId',
     'steam:getPlayerName',
@@ -134,6 +139,10 @@ contextBridge.exposeInMainWorld('electronDisplay', {
 
 contextBridge.exposeInMainWorld('electronAPI', {
     invoke,
+    getDesktopRuntimeConfig: () => invoke('desktop:get-runtime-config'),
+    storeDesktopPerformanceReport: (payload) => invoke('desktop:store-performance-report', payload),
+    getGPUDiagnostics: () => invoke('get-gpu-diagnostics'),
     on,
     onRuntimeEvent: (callback) => on('desktop:runtime-event', callback),
+    reportActiveGPURenderer: (renderer) => invoke('set-active-gpu-renderer', renderer),
 });

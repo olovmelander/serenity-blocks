@@ -4,8 +4,8 @@
  * Uses WebGPU renderer with TSL shaders when available, falls back to WebGL
  */
 
-import ThreeJSIntroRenderer from './threejs-intro-renderer.js';
 import { INTRO_PHASES } from './intro-visual-config.js';
+import { performanceMonitor } from '../utils/performance-monitor.js';
 
 export class IntroAnimation {
     constructor() {
@@ -21,6 +21,7 @@ export class IntroAnimation {
         this.loadingPromise = null;
         this.loadingPromiseLabel = 'LOADING ASSETS';
         this.smoothedAudioPulse = 0;
+        this.dismissPromise = null;
 
         // Three.js Renderer
         this.threeCanvas = null;
@@ -222,8 +223,17 @@ export class IntroAnimation {
      * Initialize the 3D renderer. Tries WebGPU first, falls back to WebGL.
      */
     async initRenderer(canvas) {
+        const initStartedAt = typeof performance !== 'undefined' && performance.now
+            ? performance.now()
+            : Date.now();
+        const hasWebGPU = typeof navigator !== 'undefined' && Boolean(navigator.gpu);
+        performanceMonitor.recordEvent('startup_intro_renderer_init_started', {
+            introV2: this.flags.introV2,
+            hasWebGPU,
+        });
+
         // Keep a fallback path for rollout / regression checks.
-        if (this.flags.introV2 && navigator.gpu) {
+        if (this.flags.introV2 && hasWebGPU) {
             try {
                 const { default: WebGPURenderer } = await import('./threejs-intro-renderer-webgpu.js');
                 const webgpuRenderer = new WebGPURenderer(canvas);
@@ -232,6 +242,12 @@ export class IntroAnimation {
                     this.threeRenderer = webgpuRenderer;
                     this.isWebGPU = true;
                     this.threeRenderer.setVisualProfile?.('cinematic_clean');
+                    performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
+                        backend: 'webgpu',
+                        durationMs: (typeof performance !== 'undefined' && performance.now
+                            ? performance.now()
+                            : Date.now()) - initStartedAt,
+                    });
                     console.log('[IntroAnimation] WebGPU renderer initialized');
                     return;
                 }
@@ -243,10 +259,24 @@ export class IntroAnimation {
         }
 
         // Fallback: WebGL renderer
+        const { default: ThreeJSIntroRenderer } = await import('./threejs-intro-renderer.js');
         this.threeRenderer = new ThreeJSIntroRenderer(canvas);
         if (this.threeRenderer.init()) {
             this.isWebGPU = false;
+            performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
+                backend: 'webgl',
+                durationMs: (typeof performance !== 'undefined' && performance.now
+                    ? performance.now()
+                    : Date.now()) - initStartedAt,
+            });
             console.log('[IntroAnimation] WebGL renderer initialized (fallback)');
+        } else {
+            performanceMonitor.recordEvent('startup_intro_renderer_init_completed', {
+                backend: 'failed',
+                durationMs: (typeof performance !== 'undefined' && performance.now
+                    ? performance.now()
+                    : Date.now()) - initStartedAt,
+            });
         }
     }
 
@@ -602,8 +632,14 @@ export class IntroAnimation {
      * Dismiss the intro animation completely
      */
     dismiss() {
+        if (this.dismissPromise) {
+            return this.dismissPromise;
+        }
+
         // Allow dismissal even if not active anymore
-        if (!this.container) return;
+        if (!this.container) {
+            return Promise.resolve();
+        }
 
         this.clearPhaseTimers();
         this.isActive = false;
@@ -627,31 +663,39 @@ export class IntroAnimation {
             this.container.classList.add('fade-out');
         }
 
-        // Remove from DOM after fade
-        setTimeout(() => {
-            // Cleanup Three.js
-            if (this.animationFrameId) {
-                cancelAnimationFrame(this.animationFrameId);
-                this.animationFrameId = null;
-            }
-            if (this.threeRenderer) {
-                this.threeRenderer.destroy();
-                this.threeRenderer = null;
-            }
+        this.dismissPromise = new Promise((resolve) => {
+            // Remove from DOM after fade
+            setTimeout(() => {
+                // Cleanup Three.js
+                if (this.animationFrameId) {
+                    cancelAnimationFrame(this.animationFrameId);
+                    this.animationFrameId = null;
+                }
+                if (this.threeRenderer) {
+                    this.threeRenderer.destroy();
+                    this.threeRenderer = null;
+                }
 
-            if (this.container && this.container.parentNode) {
-                this.container.parentNode.removeChild(this.container);
-            }
-            this.container = null;
-            this.loadingIndicator = null;
-            this.loadingPromise = null;
-            this.smoothedAudioPulse = 0;
+                if (this.container && this.container.parentNode) {
+                    this.container.parentNode.removeChild(this.container);
+                }
+                this.container = null;
+                this.loadingIndicator = null;
+                this.loadingPromise = null;
+                this.smoothedAudioPulse = 0;
 
-            // Resolve the promise if not already resolved
-            if (this.onComplete) {
-                this.onComplete();
-            }
-        }, 1000);
+                // Resolve the promise if not already resolved
+                if (this.onComplete) {
+                    this.onComplete();
+                    this.onComplete = null;
+                }
+
+                this.dismissPromise = null;
+                resolve();
+            }, 1000);
+        });
+
+        return this.dismissPromise;
     }
 
     /**
@@ -675,8 +719,10 @@ export class IntroAnimation {
 
         this.hasCompleted = true;
         this.isAnimating = false;
+        this.dismissPromise = null;
         if (this.onComplete) {
             this.onComplete();
+            this.onComplete = null;
         }
     }
 
@@ -706,6 +752,7 @@ export class IntroAnimation {
         this.loadingIndicator = null;
         this.loadingPromise = null;
         this.smoothedAudioPulse = 0;
+        this.dismissPromise = null;
     }
 
     /**

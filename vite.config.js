@@ -32,6 +32,11 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: process.env.VITE_BUILD_SOURCEMAP === 'true',
+    // Electron loads the packaged app from file://, so Vite's module-preload
+    // rewrites add startup indirection without providing browser-network wins.
+    // Disabling them also prevents the generated preload helper from being
+    // stranded inside an arbitrary lazy mode chunk.
+    modulePreload: false,
     // Optimize chunk size for Phaser 4
     rollupOptions: {
       output: {
@@ -46,20 +51,36 @@ export default defineConfig({
             return 'three';
           }
 
+          // Keep cross-cutting app/runtime infrastructure out of mode/theme chunks.
+          // These modules are consumed by both game modes and themes; if Rollup
+          // places them inside a mode chunk, lazy theme imports can form TDZ cycles
+          // against packaged Electron builds.
+          if (id.includes('src/events/')) {
+            return 'app-events';
+          }
+
+          if (
+            id.includes('src/utils/quality.js')
+            || id.includes('src/utils/gpu-context-resilience.js')
+            || id.includes('src/utils/helpers.js')
+          ) {
+            return 'app-runtime';
+          }
+
+          if (id.includes('src/themes/base-theme.js')) {
+            return 'theme-shared';
+          }
+
           // Group theme runtime by implementation family to reduce chunk graph fragility
-          if (id.includes('src/themes/') && id.includes('-theme.js')) {
+          if (id.includes('src/themes/')) {
             if (id.includes('/shared/')) {
               return 'theme-shared';
             }
 
-            const lowerId = id.toLowerCase();
-            if (lowerId.includes('wolfhour') || lowerId.includes('sky-children') || lowerId.includes('cosmic-noir') || lowerId.includes('black-hole') || lowerId.includes('neon-district')) {
-              return 'theme-premium';
+            const themeMatch = id.match(/src\/themes\/([^/]+)\//);
+            if (themeMatch?.[1] && themeMatch[1] !== 'shared') {
+              return `theme-${themeMatch[1]}`;
             }
-            if (lowerId.includes('fluid') || lowerId.includes('nebula') || lowerId.includes('chromatic') || lowerId.includes('aether')) {
-              return 'theme-sim';
-            }
-            return 'theme-core';
           }
 
           // Split game modes into individual chunks

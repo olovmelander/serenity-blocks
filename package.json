@@ -16,10 +16,10 @@
     "format:check": "prettier --check \"src/**/*.js\"",
     "audit:theme-lifecycle": "node scripts/theme-lifecycle-audit.mjs",
     "check:release-gates": "node scripts/release-gate-check.mjs",
-    "build:gpu-launcher": "bash scripts/build-gpu-launcher.sh",
     "validate:cosmic-noir:phase6": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/cosmic-noir-phase6-validation.mjs",
     "validate:wolfhour:phase6": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/wolfhour-phase6-validation.mjs",
-    "build:win": "vite build && electron-builder --win --x64",
+    "build:win": "node scripts/build-win.mjs",
+    "build:win:wsl": "SERENITY_ALLOW_WSL_WIN_BUILD=1 node scripts/build-win.mjs",
     "build:linux": "vite build && electron-builder --linux",
     "capture:themes": "npx electron scripts/capture-theme-screenshots.mjs"
   },
@@ -27,7 +27,8 @@
     "appId": "com.serenityblocks.game",
     "productName": "Serenity Blocks",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
@@ -44,9 +45,9 @@
         "to": "."
       }
     ],
-    "afterPack": "./scripts/afterPack.cjs",
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.ico"
     },
     "linux": {
       "target": "AppImage",

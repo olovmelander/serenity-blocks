@@ -6,6 +6,7 @@
  */
 
 import * as THREE from 'three';
+import * as THREE_WEBGPU from 'three/webgpu';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -51,7 +52,12 @@ import {
     crashMeteorHeadFragmentShader,
     crashMeteorTrailVertexShader,
     crashMeteorTrailFragmentShader,
+    fogVertexShader,
+    fogFragmentShader,
 } from './wolfhour-shaders.js';
+import * as WolfhourMaterialFactories from './wolfhour-materials.js';
+import * as WolfhourComputeFactories from './wolfhour-compute.js';
+import * as WolfhourPostFactories from './wolfhour-post.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Presets
@@ -429,6 +435,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         // Scene elements
         this.mountains = [];
+        this.mountainBaseFill = null;
         this.starfield = null;
         this.nebulaPlanes = [];
         this.groundFog = null;
@@ -1195,39 +1202,17 @@ export default class WolfhourTheme extends BaseTheme {
 
         // WebGPU path: dynamically import node material factories + compute module
         if (this.isWebGPU) {
-            try {
-                const materialsModule = await import('./wolfhour-materials.js');
-                this.materialFactories = materialsModule;
-                console.log('[Wolfhour] TSL node material factories loaded');
-            } catch (err) {
-                console.warn('[Wolfhour] Failed to load node materials, using legacy:', err);
-                this.materialFactories = null;
-            }
+            this.materialFactories = WolfhourMaterialFactories;
+            console.log('[Wolfhour] TSL node material factories loaded');
 
             if (this.materialFactories) {
-                try {
-                    const computeModule = await import('./wolfhour-compute.js');
-                    this.computeFactories = computeModule;
-                } catch (err) {
-                    console.warn('[Wolfhour] Failed to load compute module; keeping non-compute WebGPU path:', err);
-                    this.flags.noCompute = true;
-                    this.flags.useCompute = false;
-                    this.computeFactories = null;
-                }
+                this.computeFactories = WolfhourComputeFactories;
             } else {
                 this.computeFactories = null;
                 this.flags.noCompute = true;
             }
 
-            try {
-                const postModule = await import('./wolfhour-post.js');
-                this.postFactories = postModule;
-            } catch (err) {
-                console.warn('[Wolfhour] Failed to load post module; disabling WebGPU post path:', err);
-                this.flags.noPost = true;
-                this.flags.usePost = false;
-                this.postFactories = null;
-            }
+            this.postFactories = WolfhourPostFactories;
         }
 
         this.setupComputeSystems();
@@ -1298,7 +1283,6 @@ export default class WolfhourTheme extends BaseTheme {
 
         if (useWebGPU) {
             try {
-                const THREE_WEBGPU = await import('three/webgpu');
                 const renderer = new THREE_WEBGPU.WebGPURenderer({
                     antialias: this.getAntialiasEnabled(),
                     alpha: false,
@@ -1756,6 +1740,11 @@ export default class WolfhourTheme extends BaseTheme {
                 height: 520,
                 layer: 0.0,
                 seed: 11111,
+                peakRadius: 0.45,
+                coverageRadius: 0.86,
+                frontCoverageBias: 0.32,
+                skirtFloor: -120,
+                skirtNoiseStrength: 0.16,
             },
             // Right side mid peak
             {
@@ -1765,6 +1754,11 @@ export default class WolfhourTheme extends BaseTheme {
                 height: 380,
                 layer: 0.1,
                 seed: 44444,
+                peakRadius: 0.44,
+                coverageRadius: 0.84,
+                frontCoverageBias: 0.3,
+                skirtFloor: -110,
+                skirtNoiseStrength: 0.15,
             },
             // Left side mid peak
             {
@@ -1774,6 +1768,11 @@ export default class WolfhourTheme extends BaseTheme {
                 height: 380,
                 layer: 0.15,
                 seed: 55555,
+                peakRadius: 0.44,
+                coverageRadius: 0.84,
+                frontCoverageBias: 0.3,
+                skirtFloor: -110,
+                skirtNoiseStrength: 0.15,
             },
 
             // === MID LAYER (Z -800 to -1200) - Medium gray ===
@@ -1785,6 +1784,11 @@ export default class WolfhourTheme extends BaseTheme {
                 height: 450,
                 layer: 0.4,
                 seed: 66666,
+                peakRadius: 0.45,
+                coverageRadius: 0.79,
+                frontCoverageBias: 0.22,
+                skirtFloor: -150,
+                skirtNoiseStrength: 0.1,
             },
             // Far right peak
             {
@@ -1794,6 +1798,11 @@ export default class WolfhourTheme extends BaseTheme {
                 height: 420,
                 layer: 0.45,
                 seed: 77777,
+                peakRadius: 0.45,
+                coverageRadius: 0.79,
+                frontCoverageBias: 0.22,
+                skirtFloor: -145,
+                skirtNoiseStrength: 0.1,
             },
 
             // === BACKGROUND LAYER (Z -1200 to -1600) - Lightest/haziest ===
@@ -1805,6 +1814,11 @@ export default class WolfhourTheme extends BaseTheme {
                 height: 400,
                 layer: 0.7,
                 seed: 22222,
+                peakRadius: 0.46,
+                coverageRadius: 0.72,
+                frontCoverageBias: 0.14,
+                skirtFloor: -175,
+                skirtNoiseStrength: 0.08,
             },
             // Distant right
             {
@@ -1814,6 +1828,11 @@ export default class WolfhourTheme extends BaseTheme {
                 height: 380,
                 layer: 0.75,
                 seed: 88888,
+                peakRadius: 0.46,
+                coverageRadius: 0.72,
+                frontCoverageBias: 0.14,
+                skirtFloor: -175,
+                skirtNoiseStrength: 0.08,
             },
             // Far background center-right
             {
@@ -1823,6 +1842,11 @@ export default class WolfhourTheme extends BaseTheme {
                 height: 520,
                 layer: 0.95,
                 seed: 33333,
+                peakRadius: 0.46,
+                coverageRadius: 0.74,
+                frontCoverageBias: 0.12,
+                skirtFloor: -185,
+                skirtNoiseStrength: 0.07,
             },
         ];
 
@@ -1831,6 +1855,8 @@ export default class WolfhourTheme extends BaseTheme {
             this.mountains.push(mountain);
             this.scene.add(mountain);
         });
+
+        this.createMountainBaseFill();
     }
 
     createFBMMountain(config) {
@@ -1841,10 +1867,22 @@ export default class WolfhourTheme extends BaseTheme {
         // CPU-side FBM displacement
         const posAttribute = geometry.attributes.position;
         const heights = [];
+        const baseMasks = [];
         const { seed } = config;
+        const peakRadius = config.size * (config.peakRadius ?? 0.45);
+        const coverageRadius = config.size * (config.coverageRadius ?? 0.8);
+        const frontCoverageBias = config.frontCoverageBias ?? 0.22;
+        const skirtFloor = config.skirtFloor ?? -150;
+        const skirtNoiseStrength = config.skirtNoiseStrength ?? 0.12;
+        const hardFalloffFloor = config.hardFalloffFloor ?? (skirtFloor - 1800);
 
         const fract = (n) => n - Math.floor(n);
         const mix = (a, b, t) => a * (1 - t) + b * t;
+        const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+        const smoothstep = (edge0, edge1, value) => {
+            const t = clamp((value - edge0) / Math.max(edge1 - edge0, 0.0001), 0, 1);
+            return t * t * (3 - 2 * t);
+        };
         const rand = (x, y) => Math.sin(x * 12.9898 + y * 78.233 + seed) * 43758.5453;
 
         const noise = (x, y) => {
@@ -1862,12 +1900,14 @@ export default class WolfhourTheme extends BaseTheme {
         };
 
         const fbm = (x, y) => {
+            let xCoord = x;
+            let yCoord = y;
             let v = 0.0;
             let a = 0.5;
             for (let i = 0; i < 5; i++) {
-                v += a * noise(x, y);
-                x *= 2.0;
-                y *= 2.0;
+                v += a * noise(xCoord, yCoord);
+                xCoord *= 2.0;
+                yCoord *= 2.0;
                 a *= 0.5;
             }
             return v;
@@ -1877,35 +1917,67 @@ export default class WolfhourTheme extends BaseTheme {
             const x = posAttribute.getX(i);
             const z = posAttribute.getZ(i);
 
-            // Cone shape mask
             const dist = Math.sqrt(x * x + z * z);
-            const maxDist = config.size * 0.45;
+            const frontness = clamp((z / Math.max(coverageRadius, 1)) * 0.5 + 0.5, 0, 1);
+            const biasedCoverageRadius = Math.max(
+                peakRadius + 1,
+                coverageRadius * (1 + frontCoverageBias * ((frontness - 0.5) * 2.0)),
+            );
+            const baseMask = dist >= peakRadius
+                ? smoothstep(peakRadius * 0.82, biasedCoverageRadius, dist)
+                : 0;
 
-            if (dist > maxDist) {
-                posAttribute.setY(i, -2000); // Drop edges deep down to cover stars
-                heights.push(-2000);
+            if (dist > biasedCoverageRadius) {
+                posAttribute.setY(i, hardFalloffFloor);
+                heights.push(hardFalloffFloor);
+                baseMasks.push(1);
                 continue;
             }
 
-            const normDist = dist / maxDist;
-            const cone = (1.0 - normDist) ** 1.5 * config.height;
+            let h = 0;
 
-            const n = fbm(x * 0.01, z * 0.01);
-            const n2 = fbm(x * 0.04, z * 0.04);
-            const detail = (n * 0.7 + n2 * 0.3) * config.height * 0.4 * (1.0 - normDist);
+            if (dist <= peakRadius) {
+                const normDist = dist / peakRadius;
+                const cone = (1.0 - normDist) ** 1.5 * config.height;
 
-            const h = cone + detail;
+                const n = fbm(x * 0.01, z * 0.01);
+                const n2 = fbm(x * 0.04, z * 0.04);
+                const detail = (n * 0.7 + n2 * 0.3) * config.height * 0.4 * (1.0 - normDist);
+                h = cone + detail;
+            } else {
+                const skirtT = clamp(
+                    (dist - peakRadius) / Math.max(biasedCoverageRadius - peakRadius, 1),
+                    0,
+                    1,
+                );
+                const shoulderFade = (1.0 - skirtT);
+                const frontLift = frontness * config.height * frontCoverageBias * 0.42;
+                const skirtBase = skirtFloor + frontLift;
+                const shoulder = config.height * 0.16 * (shoulderFade ** 1.8);
+                const terrace = config.height * 0.08 * shoulderFade;
+                const skirtNoise = (
+                    fbm((x + seed * 0.17) * 0.0035, (z - seed * 0.13) * 0.0035) - 0.5
+                ) * config.height * skirtNoiseStrength * (0.35 + shoulderFade * 0.65);
+
+                h = Math.max(skirtBase - config.height * 0.05, skirtBase + shoulder + terrace + skirtNoise);
+            }
+
             posAttribute.setY(i, h);
             heights.push(h);
+            baseMasks.push(baseMask);
         }
 
+        posAttribute.needsUpdate = true;
         geometry.computeVertexNormals();
 
         const heightAttr = new Float32Array(posAttribute.count);
+        const baseMaskAttr = new Float32Array(posAttribute.count);
         for (let i = 0; i < posAttribute.count; i++) {
             heightAttr[i] = heights[i] / config.height;
+            baseMaskAttr[i] = baseMasks[i];
         }
         geometry.setAttribute('aHeight', new THREE.BufferAttribute(heightAttr, 1));
+        geometry.setAttribute('aBaseMask', new THREE.BufferAttribute(baseMaskAttr, 1));
 
         let material;
         let nodeData = null;
@@ -1915,7 +1987,7 @@ export default class WolfhourTheme extends BaseTheme {
                 ridgeStrength: 0.18 + (1.0 - config.layer) * 0.28,
                 snowAmount: 0.2 + config.layer * 0.15,
             });
-            material = result.material;
+            ({ material } = result);
             nodeData = result;
         } else {
             material = new THREE.ShaderMaterial({
@@ -1946,22 +2018,73 @@ export default class WolfhourTheme extends BaseTheme {
         return mesh;
     }
 
+    createMountainBaseFill() {
+        let material;
+        let nodeData = null;
+
+        if (this.isWebGPU && this.materialFactories?.createMountainBaseFillNodeMaterial) {
+            const result = this.materialFactories.createMountainBaseFillNodeMaterial({
+                color: new THREE.Color(0x03040a),
+            });
+            ({ material } = result);
+            nodeData = result;
+        } else {
+            material = new THREE.MeshBasicMaterial({
+                color: new THREE.Color(0x03040a),
+            });
+        }
+
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(7600, 3200), material);
+        mesh.position.set(0, -1840, -1825);
+        mesh.renderOrder = -120;
+        mesh.frustumCulled = false;
+        if (nodeData) {
+            mesh.userData.nodeData = nodeData;
+        }
+
+        this.mountainBaseFill = mesh;
+        this.scene.add(mesh);
+    }
+
     createGroundFog() {
-        const shouldCreateFog = this.isWebGPU
+        if (this.qualityPreset.enableGroundFog !== true) return;
+
+        const geometry = new THREE.PlaneGeometry(6200, 2200);
+        let material;
+        let fogResult = null;
+
+        if (
+            this.isWebGPU
             && this.materialFactories
-            && this.qualityPreset.enableGroundFog === true
-            && typeof this.materialFactories.createGroundFogNodeMaterial === 'function';
-        if (!shouldCreateFog) return;
+            && typeof this.materialFactories.createGroundFogNodeMaterial === 'function'
+        ) {
+            fogResult = this.materialFactories.createGroundFogNodeMaterial({
+                opacity: 0.18,
+            });
+            material = fogResult.material;
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uOpacity: { value: 0.18 },
+                    uPulse: { value: 0 },
+                    uSwirl: { value: 0 },
+                },
+                vertexShader: fogVertexShader,
+                fragmentShader: fogFragmentShader,
+                transparent: true,
+                blending: THREE.NormalBlending,
+                depthWrite: false,
+            });
+        }
 
-        const geometry = new THREE.PlaneGeometry(5600, 1800);
-        const fogResult = this.materialFactories.createGroundFogNodeMaterial({
-            opacity: 0.2,
-        });
-
-        const fog = new THREE.Mesh(geometry, fogResult.material);
-        fog.position.set(0, -260, -780);
+        const fog = new THREE.Mesh(geometry, material);
+        fog.position.set(0, -340, -840);
         fog.renderOrder = -55;
-        fog.userData.nodeData = fogResult;
+        fog.frustumCulled = false;
+        if (fogResult) {
+            fog.userData.nodeData = fogResult;
+        }
 
         this.groundFog = fog;
         this.scene.add(fog);
@@ -2880,6 +3003,15 @@ export default class WolfhourTheme extends BaseTheme {
             this.nebulaPlanes.forEach((n) => {
                 n.material.uniforms.uPulse.value = this.effectState.nebulaBoost;
             });
+            if (this.groundFog?.material?.uniforms) {
+                const fogUniforms = this.groundFog.material.uniforms;
+                if (fogUniforms.uPulse) {
+                    fogUniforms.uPulse.value = this.effectState.nebulaDefinition;
+                }
+                if (fogUniforms.uSwirl) {
+                    fogUniforms.uSwirl.value = this.effectState.ambientSwirl;
+                }
+            }
         }
 
         const dynamicBloomStrength = this.qualityPreset.bloomStrength + this.effectState.bloomBoost * 0.5;
@@ -3823,6 +3955,9 @@ export default class WolfhourTheme extends BaseTheme {
                 this.mountains.forEach((m) => {
                     m.material.uniforms.uTime.value = this.time;
                 });
+                if (this.groundFog?.material?.uniforms?.uTime) {
+                    this.groundFog.material.uniforms.uTime.value = this.time;
+                }
             }
 
             this.updateNebulas(deltaTime);
@@ -4134,6 +4269,12 @@ export default class WolfhourTheme extends BaseTheme {
             this.disposeMaterialResources(m.material);
         });
         this.mountains = [];
+
+        if (this.mountainBaseFill) {
+            this.mountainBaseFill.geometry.dispose();
+            this.disposeMaterialResources(this.mountainBaseFill.material);
+            this.mountainBaseFill = null;
+        }
 
         if (this.starfield) {
             this.starfield.geometry.dispose();

@@ -1,0 +1,98 @@
+{
+  "scenario": "webgpu_high",
+  "url": "http://127.0.0.1:4174/?cosmicNoirBaseline=1&cosmicNoirSeed=12345",
+  "idle": null,
+  "combat": null,
+  "soak": null,
+  "consoleSummary": {
+    "entryCount": 131,
+    "warningCount": 10,
+    "errorCount": 1,
+    "shaderFailureCount": 0,
+    "shaderFailureTypes": [],
+    "shaderFailures": [],
+    "warningSamples": [
+      {
+        "ts": "2026-03-14T09:38:18.090Z",
+        "level": 2,
+        "message": "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security\n  Policy set or a policy with \"unsafe-eval\" enabled. This exposes users of\n  this app to unnecessary security risks.\n\nFor more information and help, consult\nhttps://electronjs.org/docs/tutorial/security.\nThis warning will not show up\nonce the app is packaged.",
+        "line": 2,
+        "sourceId": "node:electron/js2c/sandbox_bundle"
+      },
+      {
+        "ts": "2026-03-14T09:38:18.340Z",
+        "level": 2,
+        "message": "Failed to create WebGPU Context Provider",
+        "line": 41578,
+        "sourceId": "http://127.0.0.1:4174/node_modules/.vite/deps/chunk-GRRXWVXR.js?v=d281c72a"
+      },
+      {
+        "ts": "2026-03-14T09:38:18.342Z",
+        "level": 2,
+        "message": "THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.",
+        "line": 265,
+        "sourceId": "http://127.0.0.1:4174/node_modules/.vite/deps/chunk-ANUDAY57.js?v=d281c72a"
+      },
+      {
+        "ts": "2026-03-14T09:38:18.365Z",
+        "level": 2,
+        "message": "[IntroWebGPU] WebGPU backend not available",
+        "line": 142,
+        "sourceId": "http://127.0.0.1:4174/src/ui/threejs-intro-renderer-webgpu.js"
+      },
+      {
+        "ts": "2026-03-14T09:38:18.367Z",
+        "level": 2,
+        "message": "WebGL: INVALID_OPERATION: loseContext: context already lost",
+        "line": 36910,
+        "sourceId": "http://127.0.0.1:4174/node_modules/.vite/deps/chunk-GRRXWVXR.js?v=d281c72a"
+      },
+      {
+        "ts": "2026-03-14T09:38:18.368Z",
+        "level": 3,
+        "message": "[ThreeJSIntroRenderer] Initialization failed: TypeError: Cannot read properties of null (reading 'precision')",
+        "line": 135,
+        "sourceId": "http://127.0.0.1:4174/src/ui/threejs-intro-renderer.js"
+      },
+      {
+        "ts": "2026-03-14T09:38:18.460Z",
+        "level": 2,
+        "message": "[.WebGL-0x2ba40506a300]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "line": 0,
+        "sourceId": "http://127.0.0.1:4174/?cosmicNoirBaseline=1&cosmicNoirSeed=12345"
+      },
+      {
+        "ts": "2026-03-14T09:38:20.396Z",
+        "level": 2,
+        "message": "[.WebGL-0x2ba40506a300]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "line": 0,
+        "sourceId": "http://127.0.0.1:4174/?cosmicNoirBaseline=1&cosmicNoirSeed=12345"
+      },
+      {
+        "ts": "2026-03-14T09:38:22.380Z",
+        "level": 2,
+        "message": "[.WebGL-0x2ba40506a300]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "line": 0,
+        "sourceId": "http://127.0.0.1:4174/?cosmicNoirBaseline=1&cosmicNoirSeed=12345"
+      },
+      {
+        "ts": "2026-03-14T09:38:24.380Z",
+        "level": 2,
+        "message": "[.WebGL-0x2ba40506a300]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+        "line": 0,
+        "sourceId": "http://127.0.0.1:4174/?cosmicNoirBaseline=1&cosmicNoirSeed=12345"
+      }
+    ],
+    "errorSamples": [
+      {
+        "ts": "2026-03-14T09:38:18.368Z",
+        "level": 3,
+        "message": "[ThreeJSIntroRenderer] Initialization failed: TypeError: Cannot read properties of null (reading 'precision')",
+        "line": 135,
+        "sourceId": "http://127.0.0.1:4174/src/ui/threejs-intro-renderer.js"
+      }
+    ]
+  },
+  "consoleLogPath": "artifacts/cosmic-noir/phase6/2026-03-14T09-38-15-634Z/webgpu_high/console.log",
+  "error": "bootstrapCosmicNoirScene timed out after 60000ms"
+}

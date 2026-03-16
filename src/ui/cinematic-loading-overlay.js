@@ -6,6 +6,15 @@
 const OVERLAY_ID = 'cinematic-loading-overlay';
 const KEYFRAMES_ID = 'cinematic-loading-keyframes';
 const GLOBAL_MIN_VISIBLE_MS = 2000;
+const ROLE_BACKDROP = 'backdrop';
+const ROLE_STARS = 'stars';
+const ROLE_RING = 'ring';
+const ROLE_CONTENT = 'content';
+const ROLE_TITLE = 'title';
+const ROLE_DOTS = 'dots';
+const ROLE_COUNTDOWN_LAYER = 'countdown-layer';
+const ROLE_COUNTDOWN_PLATE = 'countdown-plate';
+const ROLE_COUNTDOWN_TEXT = 'countdown-text';
 
 /**
  * Show a cinematic loading overlay with the given title text.
@@ -16,103 +25,7 @@ export function showCinematicLoadingOverlay(title) {
     const existing = document.getElementById(OVERLAY_ID);
     if (existing) existing.remove();
 
-    _injectKeyframes();
-
-    const overlay = document.createElement('div');
-    overlay.id = OVERLAY_ID;
-    Object.assign(overlay.style, {
-        position: 'fixed',
-        top: '0',
-        left: '0',
-        width: '100vw',
-        height: '100vh',
-        zIndex: '10002',
-        background: 'radial-gradient(ellipse at 50% 60%, #0a0a2e 0%, #050510 50%, #020208 100%)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: '0',
-        transition: 'opacity 0.4s ease-in',
-        overflow: 'hidden',
-    });
-
-    // Star field
-    const starField = document.createElement('div');
-    Object.assign(starField.style, {
-        position: 'absolute',
-        top: '0',
-        left: '0',
-        width: '100%',
-        height: '100%',
-        pointerEvents: 'none',
-    });
-
-    for (let i = 0; i < 60; i++) {
-        const star = document.createElement('div');
-        const size = 1 + Math.random() * 2.5;
-        const hue = 200 + Math.random() * 60;
-        const brightness = 0.5 + Math.random() * 0.5;
-
-        Object.assign(star.style, {
-            position: 'absolute',
-            left: `${Math.random() * 100}%`,
-            top: `${100 + Math.random() * 20}%`,
-            width: `${size}px`,
-            height: `${size}px`,
-            borderRadius: '50%',
-            background: `hsla(${hue}, 80%, 80%, ${brightness})`,
-            boxShadow: `0 0 ${size * 3}px hsla(${hue}, 80%, 70%, 0.5)`,
-            animation: `cinematic-star-drift ${4 + Math.random() * 6}s linear ${Math.random() * 3}s infinite`,
-            pointerEvents: 'none',
-        });
-        starField.appendChild(star);
-    }
-    overlay.appendChild(starField);
-
-    // Decorative rings
-    overlay.appendChild(_createRing(350, 0.1, 3, 0));
-    overlay.appendChild(_createRing(420, 0.05, 4, 0.5));
-
-    // Title
-    const titleEl = document.createElement('div');
-    titleEl.textContent = title;
-    Object.assign(titleEl.style, {
-        fontFamily: "'Inter', 'Segoe UI', sans-serif",
-        fontSize: '3.5rem',
-        fontWeight: '200',
-        letterSpacing: '1.2em',
-        paddingLeft: '1.2em',
-        color: 'rgba(200, 220, 255, 0.95)',
-        animation: 'cinematic-title-glow 3s ease-in-out infinite',
-        zIndex: '2',
-        userSelect: 'none',
-        position: 'relative',
-    });
-    overlay.appendChild(titleEl);
-
-    // Bouncing dots
-    const dotsContainer = document.createElement('div');
-    Object.assign(dotsContainer.style, {
-        display: 'flex',
-        gap: '12px',
-        marginTop: '1.5rem',
-        zIndex: '2',
-    });
-
-    for (let d = 0; d < 3; d++) {
-        const dot = document.createElement('div');
-        Object.assign(dot.style, {
-            width: '6px',
-            height: '6px',
-            borderRadius: '50%',
-            background: 'rgba(160, 190, 255, 0.7)',
-            boxShadow: '0 0 8px rgba(120, 160, 255, 0.4)',
-            animation: `cinematic-dot-bounce 1.4s ease-in-out ${d * 0.2}s infinite`,
-        });
-        dotsContainer.appendChild(dot);
-    }
-    overlay.appendChild(dotsContainer);
+    const overlay = _createOverlayElement(title);
 
     document.body.appendChild(overlay);
 
@@ -126,6 +39,160 @@ export function showCinematicLoadingOverlay(title) {
     });
 
     return { shownAt };
+}
+
+/**
+ * Morph the existing cinematic loading overlay into an in-place countdown.
+ * @param {{
+ *   startCount?: number,
+ *   countIntervalMs?: number,
+ *   goHoldMs?: number,
+ *   overlayFadeMs?: number,
+ *   onFirstCountVisible?: Function|null,
+ *   onCount?: Function|null,
+ *   onGo?: Function|null
+ * }} [options]
+ * @returns {Promise<void>}
+ */
+export function transitionCinematicLoadingOverlayToCountdown(options = {}) {
+    const {
+        startCount = 5,
+        countIntervalMs = 1000,
+        goHoldMs = 700,
+        overlayFadeMs = 260,
+        onFirstCountVisible = null,
+        onCount = null,
+        onGo = null,
+    } = options;
+
+    let overlay = document.getElementById(OVERLAY_ID);
+    if (!overlay) {
+        overlay = _createOverlayElement('');
+        overlay.dataset.shownAt = String(Date.now());
+        overlay.style.opacity = '1';
+        document.body.appendChild(overlay);
+    }
+
+    const backdrop = overlay.querySelector(`[data-cinematic-role="${ROLE_BACKDROP}"]`);
+    const stars = overlay.querySelector(`[data-cinematic-role="${ROLE_STARS}"]`);
+    const rings = Array.from(overlay.querySelectorAll(`[data-cinematic-role="${ROLE_RING}"]`));
+    const content = overlay.querySelector(`[data-cinematic-role="${ROLE_CONTENT}"]`);
+    const { layer, plate, text } = _ensureCountdownLayer(overlay);
+
+    let currentCount = startCount;
+    let firstCountCallbackTriggered = false;
+
+    const notifyFirstCountVisible = () => {
+        if (firstCountCallbackTriggered || typeof onFirstCountVisible !== 'function') {
+            return;
+        }
+        firstCountCallbackTriggered = true;
+        Promise.resolve(onFirstCountVisible()).catch((error) => {
+            console.warn('[CinematicOverlay] First-count callback failed:', error);
+        });
+    };
+
+    const renderCount = (value) => {
+        const visuals = _getCountdownVisualState(value);
+
+        text.textContent = String(value);
+        _applyCountdownVisualState({
+            visuals,
+            backdrop,
+            stars,
+            rings,
+            plate,
+            text,
+        });
+
+        if (typeof onCount === 'function') {
+            onCount(value);
+        }
+    };
+
+    const renderGo = () => {
+        const visuals = _getCountdownVisualState('GO');
+
+        text.textContent = 'GO!';
+        _applyCountdownVisualState({
+            visuals,
+            backdrop,
+            stars,
+            rings,
+            plate,
+            text,
+        });
+
+        if (typeof onGo === 'function') {
+            onGo();
+        }
+    };
+
+    return new Promise((resolve) => {
+        const removeOverlay = () => {
+            if (!overlay.isConnected) {
+                resolve();
+                return;
+            }
+
+            overlay.style.transition = `opacity ${overlayFadeMs}ms ease-out`;
+            overlay.style.opacity = '0';
+
+            setTimeout(() => {
+                if (overlay.isConnected) {
+                    overlay.remove();
+                }
+                resolve();
+            }, overlayFadeMs + 50);
+        };
+
+        const continueCountdown = () => {
+            currentCount -= 1;
+
+            if (currentCount > 0) {
+                renderCount(currentCount);
+                setTimeout(continueCountdown, countIntervalMs);
+                return;
+            }
+
+            renderGo();
+            setTimeout(removeOverlay, goHoldMs);
+        };
+
+        if (content) {
+            content.style.transition = 'opacity 220ms ease-out, transform 220ms ease-out';
+            content.style.opacity = '0';
+            content.style.transform = 'translateY(-16px) scale(0.98)';
+        }
+        if (backdrop) {
+            backdrop.style.transition = 'opacity 260ms ease-out';
+            backdrop.style.opacity = '0.84';
+        }
+        if (stars) {
+            stars.style.transition = 'opacity 260ms ease-out';
+            stars.style.opacity = '0.48';
+        }
+        rings.forEach((ring) => {
+            ring.style.transition = 'opacity 260ms ease-out, transform 260ms ease-out';
+            ring.style.opacity = '0.34';
+            ring.style.transform = 'translate(-50%, -50%) scale(0.98)';
+        });
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                layer.style.opacity = '1';
+                layer.style.transform = 'scale(1)';
+                renderCount(currentCount);
+
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        notifyFirstCountVisible();
+                        setTimeout(continueCountdown, countIntervalMs);
+                    });
+                });
+            });
+        });
+    });
 }
 
 /**
@@ -177,6 +244,7 @@ export function dismissCinematicLoadingOverlay(options = 800) {
 
 function _createRing(size, opacity, duration, delay) {
     const ring = document.createElement('div');
+    ring.dataset.cinematicRole = ROLE_RING;
     Object.assign(ring.style, {
         position: 'absolute',
         top: '50%',
@@ -188,8 +256,339 @@ function _createRing(size, opacity, duration, delay) {
         borderRadius: '50%',
         animation: `cinematic-ring-pulse ${duration}s ease-in-out ${delay}s infinite`,
         pointerEvents: 'none',
+        zIndex: '1',
     });
     return ring;
+}
+
+function _getCountdownVisualState(value) {
+    if (value === 'GO') {
+        return {
+            textColor: '#fbbf24',
+            textShadow: `
+                0 0 18px rgba(251, 191, 36, 0.95),
+                0 0 42px rgba(251, 191, 36, 0.72),
+                0 14px 34px rgba(2, 6, 23, 0.9)
+            `,
+            plateBackground: [
+                'radial-gradient(circle at 50% 28%, rgba(120, 53, 15, 0.9) 0%, ',
+                'rgba(30, 18, 5, 0.88) 54%, rgba(2, 6, 23, 0.92) 100%)',
+            ].join(''),
+            plateBorder: '1px solid rgba(251, 191, 36, 0.44)',
+            plateShadow: [
+                '0 26px 72px rgba(2, 6, 23, 0.7)',
+                'inset 0 1px 0 rgba(255, 255, 255, 0.16)',
+                '0 0 36px rgba(251, 191, 36, 0.18)',
+            ].join(', '),
+            backdropOpacity: '0.78',
+            starsOpacity: '0.56',
+            ringOpacity: '0.4',
+        };
+    }
+
+    if (value >= 3) {
+        return {
+            textColor: '#ef4444',
+            textShadow: `
+                0 0 16px rgba(239, 68, 68, 0.92),
+                0 0 38px rgba(239, 68, 68, 0.58),
+                0 14px 34px rgba(2, 6, 23, 0.9)
+            `,
+            plateBackground: [
+                'radial-gradient(circle at 50% 28%, rgba(127, 29, 29, 0.92) 0%, ',
+                'rgba(38, 10, 10, 0.9) 54%, rgba(2, 6, 23, 0.94) 100%)',
+            ].join(''),
+            plateBorder: '1px solid rgba(248, 113, 113, 0.38)',
+            plateShadow: [
+                '0 26px 68px rgba(2, 6, 23, 0.72)',
+                'inset 0 1px 0 rgba(255, 255, 255, 0.14)',
+                '0 0 26px rgba(239, 68, 68, 0.16)',
+            ].join(', '),
+            backdropOpacity: '0.84',
+            starsOpacity: '0.48',
+            ringOpacity: '0.34',
+        };
+    }
+
+    if (value === 2) {
+        return {
+            textColor: '#f59e0b',
+            textShadow: `
+                0 0 16px rgba(245, 158, 11, 0.94),
+                0 0 38px rgba(245, 158, 11, 0.6),
+                0 14px 34px rgba(2, 6, 23, 0.9)
+            `,
+            plateBackground: [
+                'radial-gradient(circle at 50% 28%, rgba(120, 53, 15, 0.9) 0%, ',
+                'rgba(42, 23, 8, 0.9) 54%, rgba(2, 6, 23, 0.94) 100%)',
+            ].join(''),
+            plateBorder: '1px solid rgba(251, 191, 36, 0.38)',
+            plateShadow: [
+                '0 26px 68px rgba(2, 6, 23, 0.72)',
+                'inset 0 1px 0 rgba(255, 255, 255, 0.14)',
+                '0 0 28px rgba(245, 158, 11, 0.14)',
+            ].join(', '),
+            backdropOpacity: '0.82',
+            starsOpacity: '0.5',
+            ringOpacity: '0.36',
+        };
+    }
+
+    return {
+        textColor: '#10b981',
+        textShadow: `
+            0 0 16px rgba(16, 185, 129, 0.96),
+            0 0 38px rgba(16, 185, 129, 0.58),
+            0 14px 34px rgba(2, 6, 23, 0.9)
+        `,
+        plateBackground: [
+            'radial-gradient(circle at 50% 28%, rgba(6, 95, 70, 0.92) 0%, ',
+            'rgba(6, 40, 31, 0.9) 54%, rgba(2, 6, 23, 0.94) 100%)',
+        ].join(''),
+        plateBorder: '1px solid rgba(52, 211, 153, 0.38)',
+        plateShadow: [
+            '0 26px 68px rgba(2, 6, 23, 0.72)',
+            'inset 0 1px 0 rgba(255, 255, 255, 0.14)',
+            '0 0 26px rgba(16, 185, 129, 0.14)',
+        ].join(', '),
+        backdropOpacity: '0.8',
+        starsOpacity: '0.54',
+        ringOpacity: '0.38',
+    };
+}
+
+function _applyCountdownVisualState({
+    visuals,
+    backdrop,
+    stars,
+    rings,
+    plate,
+    text,
+}) {
+    if (backdrop) {
+        backdrop.style.opacity = visuals.backdropOpacity;
+    }
+    if (stars) {
+        stars.style.opacity = visuals.starsOpacity;
+    }
+    rings.forEach((ring) => {
+        ring.style.opacity = visuals.ringOpacity;
+    });
+
+    plate.style.background = visuals.plateBackground;
+    plate.style.border = visuals.plateBorder;
+    plate.style.boxShadow = visuals.plateShadow;
+
+    text.style.color = visuals.textColor;
+    text.style.textShadow = visuals.textShadow;
+    text.style.webkitTextStroke = '2.5px rgba(2, 6, 23, 0.92)';
+    text.style.paintOrder = 'stroke fill';
+}
+
+function _createOverlayElement(title) {
+    _injectKeyframes();
+
+    const overlay = document.createElement('div');
+    overlay.id = OVERLAY_ID;
+    overlay.dataset.odysseyWheelLock = 'true';
+    Object.assign(overlay.style, {
+        position: 'fixed',
+        top: '0',
+        left: '0',
+        width: '100vw',
+        height: '100vh',
+        zIndex: '10002',
+        background: 'transparent',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: '0',
+        transition: 'opacity 0.4s ease-in',
+        overflow: 'hidden',
+        pointerEvents: 'none',
+    });
+
+    const backdrop = document.createElement('div');
+    backdrop.dataset.cinematicRole = ROLE_BACKDROP;
+    Object.assign(backdrop.style, {
+        position: 'absolute',
+        inset: '0',
+        background: 'radial-gradient(ellipse at 50% 60%, #0a0a2e 0%, #050510 50%, #020208 100%)',
+        zIndex: '0',
+    });
+    overlay.appendChild(backdrop);
+
+    const starField = document.createElement('div');
+    starField.dataset.cinematicRole = ROLE_STARS;
+    Object.assign(starField.style, {
+        position: 'absolute',
+        top: '0',
+        left: '0',
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        zIndex: '1',
+    });
+
+    for (let i = 0; i < 60; i++) {
+        const star = document.createElement('div');
+        const size = 1 + Math.random() * 2.5;
+        const hue = 200 + Math.random() * 60;
+        const brightness = 0.5 + Math.random() * 0.5;
+
+        Object.assign(star.style, {
+            position: 'absolute',
+            left: `${Math.random() * 100}%`,
+            top: `${100 + Math.random() * 20}%`,
+            width: `${size}px`,
+            height: `${size}px`,
+            borderRadius: '50%',
+            background: `hsla(${hue}, 80%, 80%, ${brightness})`,
+            boxShadow: `0 0 ${size * 3}px hsla(${hue}, 80%, 70%, 0.5)`,
+            animation: `cinematic-star-drift ${4 + Math.random() * 6}s linear ${Math.random() * 3}s infinite`,
+            pointerEvents: 'none',
+        });
+        starField.appendChild(star);
+    }
+    overlay.appendChild(starField);
+
+    overlay.appendChild(_createRing(350, 0.1, 3, 0));
+    overlay.appendChild(_createRing(420, 0.05, 4, 0.5));
+
+    const content = document.createElement('div');
+    content.dataset.cinematicRole = ROLE_CONTENT;
+    Object.assign(content.style, {
+        position: 'relative',
+        zIndex: '2',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+    });
+
+    const titleEl = document.createElement('div');
+    titleEl.dataset.cinematicRole = ROLE_TITLE;
+    titleEl.textContent = title;
+    Object.assign(titleEl.style, {
+        fontFamily: "'Inter', 'Segoe UI', sans-serif",
+        fontSize: '3.5rem',
+        fontWeight: '200',
+        letterSpacing: '1.2em',
+        paddingLeft: '1.2em',
+        color: 'rgba(200, 220, 255, 0.95)',
+        animation: 'cinematic-title-glow 3s ease-in-out infinite',
+        zIndex: '2',
+        userSelect: 'none',
+        position: 'relative',
+    });
+    content.appendChild(titleEl);
+
+    const dotsContainer = document.createElement('div');
+    dotsContainer.dataset.cinematicRole = ROLE_DOTS;
+    Object.assign(dotsContainer.style, {
+        display: 'flex',
+        gap: '12px',
+        marginTop: '1.5rem',
+        zIndex: '2',
+    });
+
+    for (let d = 0; d < 3; d++) {
+        const dot = document.createElement('div');
+        Object.assign(dot.style, {
+            width: '6px',
+            height: '6px',
+            borderRadius: '50%',
+            background: 'rgba(160, 190, 255, 0.7)',
+            boxShadow: '0 0 8px rgba(120, 160, 255, 0.4)',
+            animation: `cinematic-dot-bounce 1.4s ease-in-out ${d * 0.2}s infinite`,
+        });
+        dotsContainer.appendChild(dot);
+    }
+    content.appendChild(dotsContainer);
+    overlay.appendChild(content);
+
+    return overlay;
+}
+
+function _ensureCountdownLayer(overlay) {
+    let layer = overlay.querySelector(`[data-cinematic-role="${ROLE_COUNTDOWN_LAYER}"]`);
+    if (!layer) {
+        layer = document.createElement('div');
+        layer.dataset.cinematicRole = ROLE_COUNTDOWN_LAYER;
+        Object.assign(layer.style, {
+            position: 'absolute',
+            inset: '0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: '0',
+            transform: 'scale(0.96)',
+            transition: 'opacity 180ms ease-out, transform 180ms ease-out',
+            zIndex: '3',
+            pointerEvents: 'none',
+            overflow: 'visible',
+        });
+        overlay.appendChild(layer);
+    }
+
+    let plate = layer.querySelector(`[data-cinematic-role="${ROLE_COUNTDOWN_PLATE}"]`);
+    if (!plate) {
+        plate = document.createElement('div');
+        plate.dataset.cinematicRole = ROLE_COUNTDOWN_PLATE;
+        Object.assign(plate.style, {
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 'min(84vw, 460px)',
+            minWidth: '280px',
+            height: 'min(34vh, 280px)',
+            minHeight: '210px',
+            borderRadius: '34px',
+            background: [
+                'radial-gradient(circle at 50% 28%, rgba(127, 29, 29, 0.92) 0%, ',
+                'rgba(38, 10, 10, 0.9) 54%, rgba(2, 6, 23, 0.94) 100%)',
+            ].join(''),
+            border: '1px solid rgba(248, 113, 113, 0.38)',
+            boxShadow: [
+                '0 26px 68px rgba(2, 6, 23, 0.72)',
+                'inset 0 1px 0 rgba(255, 255, 255, 0.14)',
+                '0 0 26px rgba(239, 68, 68, 0.16)',
+            ].join(', '),
+            backdropFilter: 'blur(24px) saturate(115%)',
+            WebkitBackdropFilter: 'blur(24px) saturate(115%)',
+            pointerEvents: 'none',
+        });
+        layer.appendChild(plate);
+    }
+
+    let text = layer.querySelector(`[data-cinematic-role="${ROLE_COUNTDOWN_TEXT}"]`);
+    if (!text) {
+        text = document.createElement('div');
+        text.dataset.cinematicRole = ROLE_COUNTDOWN_TEXT;
+        Object.assign(text.style, {
+            position: 'relative',
+            zIndex: '1',
+            fontFamily: "'Orbitron', 'Arial', sans-serif",
+            fontSize: 'clamp(120px, 16vw, 170px)',
+            fontWeight: '900',
+            lineHeight: '1',
+            letterSpacing: '0.08em',
+            paddingLeft: '0.08em',
+            userSelect: 'none',
+            textAlign: 'center',
+        });
+        layer.appendChild(text);
+    }
+
+    plate = layer.querySelector(`[data-cinematic-role="${ROLE_COUNTDOWN_PLATE}"]`);
+    text = layer.querySelector(`[data-cinematic-role="${ROLE_COUNTDOWN_TEXT}"]`);
+
+    return {
+        layer,
+        plate,
+        text,
+    };
 }
 
 function _injectKeyframes() {
@@ -205,8 +604,17 @@ function _injectKeyframes() {
             100% { transform: translateY(-100vh) translateX(20px); opacity: 0; }
         }
         @keyframes cinematic-title-glow {
-            0%, 100% { text-shadow: 0 0 30px rgba(100, 140, 255, 0.3), 0 0 60px rgba(100, 140, 255, 0.1); opacity: 0.9; }
-            50% { text-shadow: 0 0 40px rgba(100, 140, 255, 0.5), 0 0 80px rgba(100, 140, 255, 0.2), 0 0 120px rgba(100, 140, 255, 0.1); opacity: 1; }
+            0%, 100% {
+                text-shadow: 0 0 30px rgba(100, 140, 255, 0.3), 0 0 60px rgba(100, 140, 255, 0.1);
+                opacity: 0.9;
+            }
+            50% {
+                text-shadow:
+                    0 0 40px rgba(100, 140, 255, 0.5),
+                    0 0 80px rgba(100, 140, 255, 0.2),
+                    0 0 120px rgba(100, 140, 255, 0.1);
+                opacity: 1;
+            }
         }
         @keyframes cinematic-dot-bounce {
             0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }

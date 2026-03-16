@@ -34,6 +34,8 @@
   --music-secondary: #764ba2;
   --music-accent: #f093fb;
   --music-vinyl: linear-gradient(135deg, #434343 0%, #000000 100%);
+
+  --odyssey-navigator-visual-offset-x: -3px;
 }
 
 /* ===========================
@@ -1596,9 +1598,14 @@
   height: 80px;
   object-fit: cover;
   border-radius: 50%;
+  opacity: 0;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
   animation: float 3s ease-in-out infinite;
-  transition: transform var(--hub-transition-fast);
+  transition: transform var(--hub-transition-fast), opacity 0.18s ease;
+}
+
+.theme-icon-img.is-ready {
+  opacity: 1;
 }
 
 /* Moonlit Greenhouse icon has baked-in framing/shadow that needs per-theme recentering */
@@ -2212,6 +2219,85 @@
 }
 
 /* Replays mobile breakpoints removed — desktop-only */
+
+/* ===========================
+   Odyssey Navigator Icon (Floating Button above Serenity Hub)
+   =========================== */
+.odyssey-navigator-icon {
+  position: fixed;
+  bottom: 162px;
+  right: 14px;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1003;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: all var(--hub-transition-normal);
+  pointer-events: none;
+}
+
+.odyssey-navigator-icon.visible {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: all;
+}
+
+.odyssey-navigator-icon:hover {
+  transform: scale(1.05);
+}
+
+.odyssey-navigator-icon:active {
+  transform: scale(0.95);
+}
+
+.odyssey-navigator-icon.active {
+  opacity: 1;
+  transform: scale(1.03);
+}
+
+.odyssey-navigator-icon-svg {
+  width: 24px;
+  height: 24px;
+  color: #14f1e2;
+  filter: drop-shadow(0 4px 12px rgba(20, 241, 226, 0.35));
+  transition: all var(--hub-transition-fast);
+}
+
+.odyssey-navigator-icon:hover .odyssey-navigator-icon-svg,
+.odyssey-navigator-icon.active .odyssey-navigator-icon-svg {
+  color: #7bfff4;
+  filter: drop-shadow(0 6px 18px rgba(20, 241, 226, 0.55));
+}
+
+.odyssey-navigator-icon-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(20, 241, 226, 0.34), transparent);
+  filter: blur(10px);
+  animation: gentle-glow 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.odyssey-navigator-icon:focus-visible {
+  outline: 3px solid #14f1e2;
+  outline-offset: 4px;
+  border-radius: 50%;
+}
+
+.odyssey-navigator-icon-svg {
+  transform: translateX(var(--odyssey-navigator-visual-offset-x));
+}
+
+/* Odyssey navigator mobile breakpoints removed — desktop-only */
 
 /* ===========================
    High Scores Icon (Floating Button above Serenity Hub)
@@ -3138,15 +3224,6 @@
 
 
 /* Scroll Performance Optimizations */
-.serenity-hub-panel.is-scrolling {
-  pointer-events: none;
-}
-
-.serenity-hub-backdrop.is-scrolling {
-  pointer-events: none;
-}
-
 .serenity-hub-panel.is-scrolling .hub-tab-content {
-  pointer-events: auto;
   will-change: scroll-position;
 }

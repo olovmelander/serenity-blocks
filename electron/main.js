@@ -1,16 +1,68 @@
-import { app, BrowserWindow, screen, ipcMain, crashReporter, powerMonitor } from 'electron';
+import { app, BrowserWindow, screen, ipcMain, crashReporter, powerMonitor, dialog } from 'electron';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { appendFileSync, existsSync, readFileSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import * as net from 'net';
 
 // ES module compatibility
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Steam overlay in Electron needs these switches set before app ready.
-app.commandLine.appendSwitch('in-process-gpu');
-app.commandLine.appendSwitch('disable-direct-composition');
+const ENABLE_LEGACY_WINDOWS_GPU_WORKAROUNDS = process.platform === 'win32'
+  && process.env.SERENITY_ENABLE_LEGACY_WINDOWS_GPU_WORKAROUNDS === '1';
+
+const VALID_WINDOWS_RUNTIME_PROFILES = new Set(['baseline', 'current', 'aggressive']);
+
+function readArgValue(flagName) {
+  const prefix = `--${flagName}=`;
+  const match = process.argv.find((arg) => typeof arg === 'string' && arg.startsWith(prefix));
+  return match ? match.slice(prefix.length) : null;
+}
+
+function hasArgSwitch(flagName) {
+  return process.argv.includes(`--${flagName}`);
+}
+
+function normalizeWindowsRuntimeProfile(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return VALID_WINDOWS_RUNTIME_PROFILES.has(normalized) ? normalized : null;
+}
+
+const requestedWindowsRuntimeProfile = normalizeWindowsRuntimeProfile(
+  process.env.SERENITY_WINDOWS_PROFILE || readArgValue('serenity-windows-profile')
+);
+const windowsSafeMode = process.platform === 'win32'
+  && (process.env.SERENITY_WINDOWS_SAFE_MODE === '1' || hasArgSwitch('serenity-safe-mode'));
+const isPackagedWindowsApp = process.platform === 'win32' && app.isPackaged;
+const windowsRuntimeProfile = requestedWindowsRuntimeProfile || (isPackagedWindowsApp ? 'baseline' : 'current');
+const preferDiscreteGpu = process.platform === 'win32'
+  && (process.env.SERENITY_FORCE_HIGH_PERFORMANCE_GPU === '1' || windowsRuntimeProfile === 'aggressive');
+
+const TRACKED_GPU_SWITCHES = [
+  'force-high-performance-gpu',
+  'use-angle',
+  'enable-gpu-rasterization',
+  'enable-zero-copy',
+  'in-process-gpu',
+  'disable-direct-composition',
+  'ignore-gpu-blocklist',
+  'enable-webgl',
+  'disable-gpu-sandbox',
+  'no-sandbox',
+  'disable-frame-rate-limit',
+  'disable-gpu-vsync',
+  'enable-features',
+];
+
+if (ENABLE_LEGACY_WINDOWS_GPU_WORKAROUNDS) {
+  console.log('[Electron] Enabling legacy Windows GPU workarounds for Steam overlay validation');
+  app.commandLine.appendSwitch('in-process-gpu');
+  app.commandLine.appendSwitch('disable-direct-composition');
+}
 
 // Steamworks.js integration (for lobbies, P2P, friends, rich presence)
 let steamworksClient = null;
@@ -26,11 +78,52 @@ let steamAppId = null;
 let steamCallbackHandles = [];
 let pendingLobbyJoins = [];
 let rendererReady = false;
+let hardwareAccelerationDisabled = false;
+let steamBootstrapPromise = null;
+const gpuDiagnosticsState = {
+  activeWebGLRenderer: null,
+  gpuFeatureStatus: null,
+  adapters: [],
+  auxAttributes: {},
+  updatedAt: null,
+};
+
+const desktopRuntimeConfig = {
+  isElectron: true,
+  platform: process.platform,
+  arch: process.arch,
+  isPackaged: app.isPackaged,
+  appMode: app.isPackaged ? 'packaged' : 'electron-dev',
+  windowsProfile: windowsRuntimeProfile,
+  safeMode: windowsSafeMode,
+  discreteGpuPreference: preferDiscreteGpu,
+  legacyWindowsGpuWorkarounds: ENABLE_LEGACY_WINDOWS_GPU_WORKAROUNDS,
+  useStartupRevealGate: isPackagedWindowsApp && windowsRuntimeProfile !== 'baseline',
+};
+
+const packagedPerformanceReportState = {
+  config: { ...desktopRuntimeConfig },
+  createdAt: new Date().toISOString(),
+  lastUpdatedAt: null,
+  gpuDiagnostics: null,
+  gpuSwitches: {},
+  startupMarks: [],
+  runtimeEvents: [],
+  rendererReports: {},
+};
 
 // ez-steam-api integration (for leaderboards - steamworks.js doesn't expose leaderboard API)
 let ezSteamApi = null;
 let ezSteamInitialized = false;
 const ezSteamLeaderboardCache = new Map(); // Cache leaderboard handles
+
+process.on('uncaughtException', (error) => {
+  console.error('[Electron] Uncaught exception:', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Electron] Unhandled rejection:', reason);
+});
 
 function resolveSteamworksModuleSpecifier() {
   const override = process.env.STEAMWORKS_MODULE;
@@ -321,12 +414,25 @@ if (isWSL && !app.isPackaged) {
   app.commandLine.appendSwitch('use-angle', 'default');
   app.commandLine.appendSwitch('enable-webgl');
 } else if (process.platform === 'win32') {
-  // Native Windows - prefer discrete GPU (NVIDIA/AMD dedicated)
-  console.log('[Electron] Windows native mode - preferring discrete GPU');
-  app.commandLine.appendSwitch('enable-gpu-rasterization');
-  app.commandLine.appendSwitch('enable-zero-copy');
-  app.commandLine.appendSwitch('use-angle', 'd3d11');  // D3D11 often prefers discrete GPU
-  app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,VaapiVideoEncoder');
+  if (windowsRuntimeProfile === 'baseline') {
+    console.log('[Electron] Windows packaged baseline profile - using conservative GPU settings');
+    app.commandLine.appendSwitch('enable-gpu-rasterization');
+    app.commandLine.appendSwitch('enable-webgl');
+    if (preferDiscreteGpu) {
+      app.commandLine.appendSwitch('force-high-performance-gpu');
+    }
+  } else {
+    console.log(`[Electron] Windows ${windowsRuntimeProfile} profile - applying comparison GPU settings`);
+    if (preferDiscreteGpu) {
+      app.commandLine.appendSwitch('force-high-performance-gpu');
+    }
+    app.commandLine.appendSwitch('ignore-gpu-blocklist');
+    app.commandLine.appendSwitch('enable-gpu-rasterization');
+    app.commandLine.appendSwitch('enable-zero-copy');
+    app.commandLine.appendSwitch('enable-webgl');
+    app.commandLine.appendSwitch('use-angle', 'd3d11');
+    app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,VaapiVideoEncoder');
+  }
 } else {
   // Linux/Mac native - minimal flags
   console.log('[Electron] Native mode - using minimal GPU settings');
@@ -335,6 +441,11 @@ if (isWSL && !app.isPackaged) {
 
 let mainWindow;
 let currentVSyncEnabled = null;
+const startupRevealState = {
+  gated: false,
+  browserReady: false,
+  rendererShellReady: false,
+};
 
 const originalIpcHandle = ipcMain.handle.bind(ipcMain);
 ipcMain.handle = (channel, listener) => originalIpcHandle(channel, async (event, ...args) => {
@@ -345,6 +456,15 @@ ipcMain.handle = (channel, listener) => originalIpcHandle(channel, async (event,
 });
 
 function emitRuntimeEvent(type, payload = {}) {
+  packagedPerformanceReportState.runtimeEvents.push({
+    type,
+    timestamp: Date.now(),
+    payload,
+  });
+  if (packagedPerformanceReportState.runtimeEvents.length > 120) {
+    packagedPerformanceReportState.runtimeEvents.shift();
+  }
+
   if (mainWindow?.webContents && !mainWindow.webContents.isDestroyed()) {
     mainWindow.webContents.send('desktop:runtime-event', {
       type,
@@ -352,6 +472,240 @@ function emitRuntimeEvent(type, payload = {}) {
       ...payload,
     });
   }
+}
+
+function showAndFocusMainWindow(reason = 'unknown') {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  if (!mainWindow.isVisible()) {
+    console.log(`[Electron] Revealing main window (${reason})`);
+    mainWindow.show();
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+
+  mainWindow.focus();
+}
+
+function resetStartupRevealState(gated = false) {
+  startupRevealState.gated = gated;
+  startupRevealState.browserReady = false;
+  startupRevealState.rendererShellReady = false;
+}
+
+function attemptStartupReveal(reason = 'unknown') {
+  if (!startupRevealState.gated) {
+    showAndFocusMainWindow(reason);
+    return true;
+  }
+
+  if (!startupRevealState.browserReady || !startupRevealState.rendererShellReady) {
+    return false;
+  }
+
+  showAndFocusMainWindow(reason);
+  return true;
+}
+
+function getGpuSwitchesSnapshot() {
+  const snapshot = {};
+
+  TRACKED_GPU_SWITCHES.forEach((switchName) => {
+    if (!app.commandLine.hasSwitch(switchName)) {
+      return;
+    }
+
+    const value = app.commandLine.getSwitchValue(switchName);
+    snapshot[switchName] = value || true;
+  });
+
+  return snapshot;
+}
+
+function shouldWritePackagedPerformanceReport() {
+  return process.platform === 'win32' && app.isPackaged && app.isReady();
+}
+
+function getPackagedPerformanceReportPath() {
+  if (!shouldWritePackagedPerformanceReport()) {
+    return null;
+  }
+
+  const diagnosticsDir = join(app.getPath('userData'), 'diagnostics');
+  mkdirSync(diagnosticsDir, { recursive: true });
+  return join(diagnosticsDir, 'windows-packaged-performance-latest.json');
+}
+
+function buildPackagedPerformanceReportPayload() {
+  return {
+    ...packagedPerformanceReportState,
+    config: {
+      ...desktopRuntimeConfig,
+      gpuSwitches: getGpuSwitchesSnapshot(),
+    },
+    gpuDiagnostics: safeBuildGpuDiagnosticsPayload('packaged-report'),
+    gpuSwitches: getGpuSwitchesSnapshot(),
+  };
+}
+
+function writePackagedPerformanceReport(reason = 'update') {
+  const reportPath = getPackagedPerformanceReportPath();
+  if (!reportPath) {
+    return null;
+  }
+
+  packagedPerformanceReportState.lastUpdatedAt = new Date().toISOString();
+  const payload = {
+    reason,
+    ...buildPackagedPerformanceReportPayload(),
+  };
+
+  writeFileSync(reportPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  return reportPath;
+}
+
+function normalizeGpuAdapters(gpuInfo) {
+  const devices = Array.isArray(gpuInfo?.gpuDevice) ? gpuInfo.gpuDevice : [];
+
+  return devices.map((device, index) => ({
+    index,
+    active: device?.active === true,
+    vendor: device?.vendorString || device?.vendor || 'Unknown vendor',
+    name: device?.deviceString || device?.deviceName || device?.name || 'Unknown GPU',
+    vendorId: device?.vendorId ?? null,
+    deviceId: device?.deviceId ?? null,
+    driverVendor: device?.driverVendor || null,
+    driverVersion: device?.driverVersion || null,
+  }));
+}
+
+function buildGpuDiagnosticsPayload() {
+  return {
+    activeWebGLRenderer: gpuDiagnosticsState.activeWebGLRenderer,
+    gpuFeatureStatus: gpuDiagnosticsState.gpuFeatureStatus,
+    adapters: gpuDiagnosticsState.adapters,
+    gpuSwitches: getGpuSwitchesSnapshot(),
+    hardwareAccelerationDisabled,
+    auxAttributes: gpuDiagnosticsState.auxAttributes,
+    updatedAt: gpuDiagnosticsState.updatedAt,
+  };
+}
+
+function safeBuildGpuDiagnosticsPayload(source = 'unknown') {
+  try {
+    return buildGpuDiagnosticsPayload();
+  } catch (error) {
+    console.warn(`[Electron] Failed to build GPU diagnostics payload (${source}):`, error.message);
+    return {
+      activeWebGLRenderer: gpuDiagnosticsState.activeWebGLRenderer,
+      gpuFeatureStatus: gpuDiagnosticsState.gpuFeatureStatus,
+      adapters: gpuDiagnosticsState.adapters,
+      gpuSwitches: {},
+      hardwareAccelerationDisabled,
+      auxAttributes: gpuDiagnosticsState.auxAttributes,
+      updatedAt: gpuDiagnosticsState.updatedAt,
+      error: error.message,
+    };
+  }
+}
+
+function emitGpuDiagnostics(source, extra = {}) {
+  emitRuntimeEvent('gpu-info-updated', {
+    source,
+    diagnostics: safeBuildGpuDiagnosticsPayload(`emit:${source}`),
+    ...extra,
+  });
+}
+
+async function refreshGpuDiagnostics(source = 'manual') {
+  let refreshError = null;
+
+  try {
+    const infoType = source === 'gpu-info-update' ? 'complete' : 'basic';
+    const gpuInfo = await app.getGPUInfo(infoType);
+    gpuDiagnosticsState.gpuFeatureStatus = app.getGPUFeatureStatus();
+    gpuDiagnosticsState.adapters = normalizeGpuAdapters(gpuInfo);
+    gpuDiagnosticsState.auxAttributes = gpuInfo?.auxAttributes || {};
+    gpuDiagnosticsState.updatedAt = Date.now();
+
+    const adapterSummary = gpuDiagnosticsState.adapters
+      .map((adapter) => `${adapter.active ? '*' : ''}${adapter.name}`)
+      .join(' | ');
+    console.log(`[Electron] GPU diagnostics refreshed (${source}): ${adapterSummary || 'no adapters reported'}`);
+
+    if (rendererReady) {
+      emitGpuDiagnostics(source);
+    }
+  } catch (error) {
+    refreshError = error;
+    gpuDiagnosticsState.gpuFeatureStatus = app.getGPUFeatureStatus();
+    gpuDiagnosticsState.updatedAt = Date.now();
+    console.warn(`[Electron] Failed to refresh GPU diagnostics (${source}):`, error.message);
+
+    if (rendererReady) {
+      emitGpuDiagnostics(source, { error: error.message });
+    }
+  }
+
+  packagedPerformanceReportState.gpuDiagnostics = safeBuildGpuDiagnosticsPayload(`refresh:${source}`);
+  packagedPerformanceReportState.gpuSwitches = getGpuSwitchesSnapshot();
+  writePackagedPerformanceReport(`gpu-refresh:${source}`);
+
+  return safeBuildGpuDiagnosticsPayload(`refresh:${source}${refreshError ? ':error' : ''}`);
+}
+
+async function bootstrapSteamServices() {
+  console.log('[Electron] Steam bootstrap begin');
+
+  let steamReady = false;
+  try {
+    console.log('[Electron] initSteamworks start');
+    steamReady = await initSteamworks();
+    console.log(`[Electron] initSteamworks complete (${steamReady ? 'online' : 'offline'})`);
+  } catch (error) {
+    console.error('[Electron] initSteamworks crashed:', error);
+    emitRuntimeEvent('steam-init-failed', { error: error.message });
+    return false;
+  }
+
+  if (!steamReady) {
+    emitRuntimeEvent('steam-init-failed', { error: 'Steam unavailable - running in offline mode' });
+    return false;
+  }
+
+  try {
+    console.log('[Electron] initEzSteamApi start');
+    const leaderboardReady = await initEzSteamApi();
+    console.log(`[Electron] initEzSteamApi complete (${leaderboardReady ? 'enabled' : 'disabled'})`);
+    if (!leaderboardReady) {
+      emitRuntimeEvent('leaderboard-init-failed', { error: 'Leaderboard API unavailable' });
+    }
+    return leaderboardReady;
+  } catch (error) {
+    console.error('[Electron] initEzSteamApi crashed:', error);
+    emitRuntimeEvent('leaderboard-init-failed', { error: error.message });
+    return false;
+  }
+}
+
+function scheduleSteamBootstrap(reason = 'unknown') {
+  if (steamBootstrapPromise || process.env.SERENITY_DISABLE_STEAM_BOOTSTRAP === '1') {
+    return steamBootstrapPromise;
+  }
+
+  console.log(`[Electron] Scheduling Steam bootstrap (${reason})`);
+  steamBootstrapPromise = Promise.resolve()
+    .then(() => bootstrapSteamServices())
+    .catch((error) => {
+      console.error('[Electron] Deferred Steam bootstrap failed:', error);
+      return false;
+    });
+
+  return steamBootstrapPromise;
 }
 
 function applyVSyncSettings(enabled) {
@@ -484,18 +838,98 @@ ipcMain.handle('set-vsync', (event, enable) => {
   }
 
   if (mainWindow?.webContents?.setFrameRate) {
-    // When VSync is disabled, Electron will honor manual frame rate caps.
-    const fallbackFPS = 240;
     try {
-      const target = currentVSyncEnabled ? 60 : fallbackFPS;
-      mainWindow.webContents.setFrameRate(target);
-      console.log(`[Electron] webContents frame rate hint set to ${target} FPS`);
+      if (currentVSyncEnabled) {
+        console.log('[Electron] VSync enabled - leaving webContents frame pacing at platform default');
+      } else {
+        const fallbackFPS = 240;
+        mainWindow.webContents.setFrameRate(fallbackFPS);
+        console.log(`[Electron] webContents frame rate hint set to ${fallbackFPS} FPS`);
+      }
     } catch (error) {
       console.warn('[Electron] Failed to set webContents frame rate hint:', error);
     }
   }
 
   return currentVSyncEnabled;
+});
+
+ipcMain.handle('desktop:get-runtime-config', async () => ({
+  ...desktopRuntimeConfig,
+  gpuSwitches: getGpuSwitchesSnapshot(),
+}));
+
+ipcMain.handle('get-gpu-diagnostics', async () => {
+  if (!gpuDiagnosticsState.updatedAt || gpuDiagnosticsState.adapters.length === 0) {
+    return refreshGpuDiagnostics('ipc-bootstrap');
+  }
+
+  return buildGpuDiagnosticsPayload();
+});
+
+ipcMain.handle('set-active-gpu-renderer', async (event, rendererInfo) => {
+  gpuDiagnosticsState.activeWebGLRenderer = typeof rendererInfo === 'string' && rendererInfo.trim()
+    ? rendererInfo.trim()
+    : null;
+
+  if (!gpuDiagnosticsState.updatedAt || gpuDiagnosticsState.adapters.length === 0) {
+    await refreshGpuDiagnostics('renderer-bootstrap');
+  }
+
+  if (rendererReady) {
+    emitGpuDiagnostics('renderer-report');
+  }
+
+  return buildGpuDiagnosticsPayload();
+});
+
+ipcMain.handle('desktop:startup-mark', async (_event, payload = {}) => {
+  const phase = typeof payload?.phase === 'string' ? payload.phase : 'unknown';
+  emitRuntimeEvent('startup-mark', { phase, payload: payload?.payload || null });
+  packagedPerformanceReportState.startupMarks.push({
+    phase,
+    timestamp: Date.now(),
+    payload: payload?.payload || null,
+  });
+  if (packagedPerformanceReportState.startupMarks.length > 60) {
+    packagedPerformanceReportState.startupMarks.shift();
+  }
+  writePackagedPerformanceReport(`startup-mark:${phase}`);
+
+  if (phase === 'startup-shell-ready' || phase === 'first-usable-frame') {
+    startupRevealState.rendererShellReady = true;
+    attemptStartupReveal(`renderer:${phase}`);
+  }
+
+  if (phase === 'first-usable-frame') {
+    scheduleSteamBootstrap('renderer-first-usable-frame');
+  }
+
+  return {
+    ok: true,
+    phase,
+  };
+});
+
+ipcMain.handle('desktop:store-performance-report', async (_event, payload = {}) => {
+  const stage = typeof payload?.stage === 'string' && payload.stage.trim()
+    ? payload.stage.trim()
+    : 'unknown';
+  const snapshot = payload?.snapshot && typeof payload.snapshot === 'object'
+    ? payload.snapshot
+    : null;
+
+  packagedPerformanceReportState.rendererReports[stage] = {
+    receivedAt: new Date().toISOString(),
+    snapshot,
+  };
+
+  const reportPath = writePackagedPerformanceReport(`renderer-report:${stage}`);
+  return {
+    ok: true,
+    stage,
+    reportPath,
+  };
 });
 
 // ============================================================================
@@ -1629,8 +2063,13 @@ ipcMain.handle('steam:closeP2PSession', (event, steamId) => {
 // ============================================================================
 
 function createWindow() {
+  console.log('[Electron] createWindow() start');
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workArea;
+  const useStartupRevealGate = desktopRuntimeConfig.useStartupRevealGate;
+  const showOnReadyToShow = isPackagedWindowsApp && !useStartupRevealGate;
+  const showImmediately = !useStartupRevealGate && !showOnReadyToShow;
+  resetStartupRevealState(useStartupRevealGate);
 
   mainWindow = new BrowserWindow({
     width: Math.min(1280, width),
@@ -1643,15 +2082,35 @@ function createWindow() {
     },
     title: 'Serenity Blocks',
     backgroundColor: '#000000',
-    show: false, // Don't show until ready to prevent flicker
+    show: showImmediately,
   });
+
+  console.log('[Electron] BrowserWindow created');
+  if (useStartupRevealGate) {
+    console.log('[Electron] Packaged Windows build detected - waiting for renderer startup shell before reveal');
+  } else if (showOnReadyToShow) {
+    console.log('[Electron] Packaged Windows baseline profile - revealing window on ready-to-show');
+  }
+  emitRuntimeEvent('startup-window-created', {
+    showImmediately,
+    showOnReadyToShow,
+    useStartupRevealGate,
+    windowsProfile: desktopRuntimeConfig.windowsProfile,
+  });
+
+  let revealWindowTimeout = null;
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+    startupRevealState.browserReady = true;
+    attemptStartupReveal('ready-to-show');
   });
 
-  mainWindow.webContents.on('did-finish-load', () => {
+  mainWindow.webContents.on('did-finish-load', async () => {
+    console.log('[Electron] Main window did-finish-load');
+    if (!useStartupRevealGate) {
+      showAndFocusMainWindow('did-finish-load');
+    }
     rendererReady = true;
     if (pendingLobbyJoins.length > 0) {
       pendingLobbyJoins.forEach((invite) => {
@@ -1659,11 +2118,39 @@ function createWindow() {
       });
       pendingLobbyJoins = [];
     }
+
+    if (gpuDiagnosticsState.updatedAt && gpuDiagnosticsState.adapters.length > 0) {
+      emitGpuDiagnostics('renderer-ready');
+    } else {
+      await refreshGpuDiagnostics('renderer-ready');
+    }
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    console.error('[Electron] did-fail-load:', {
+      errorCode,
+      errorDescription,
+      validatedURL,
+      isMainFrame,
+    });
+    emitRuntimeEvent('did-fail-load', {
+      errorCode,
+      errorDescription,
+      validatedURL,
+      isMainFrame,
+    });
+    if (isMainFrame) {
+      showAndFocusMainWindow('did-fail-load');
+    }
   });
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     console.error('[Electron] Renderer process gone:', details);
     emitRuntimeEvent('render-process-gone', { details });
+    dialog.showErrorBox(
+      'Serenity Blocks renderer crashed',
+      `Reason: ${details?.reason || 'unknown'}\nExit code: ${details?.exitCode ?? 'unknown'}\n\nThe main renderer process exited during startup or runtime.`,
+    );
   });
 
   mainWindow.webContents.on('unresponsive', () => {
@@ -1680,16 +2167,38 @@ function createWindow() {
     // Production mode - load built files from dist folder
     const indexPath = join(app.getAppPath(), 'dist', 'index.html');
     console.log('[Electron] Loading production build from:', indexPath);
-    mainWindow.loadFile(indexPath);
+    mainWindow.loadFile(indexPath).catch((error) => {
+      console.error('[Electron] Failed to load production build:', error);
+      emitRuntimeEvent('did-fail-load', {
+        errorCode: 'LOAD_FILE_FAILED',
+        errorDescription: error.message,
+        validatedURL: indexPath,
+        isMainFrame: true,
+      });
+      showAndFocusMainWindow('load-file-error');
+    });
   } else {
     // Development mode - load from Vite dev server
-    mainWindow.loadURL('http://localhost:5173');
+    console.log('[Electron] Loading development server: http://localhost:5173');
+    mainWindow.loadURL('http://localhost:5173').catch((error) => {
+      console.error('[Electron] Failed to load development server:', error);
+      showAndFocusMainWindow('load-url-error');
+    });
     mainWindow.webContents.openDevTools();
   }
 
+  revealWindowTimeout = setTimeout(() => {
+    showAndFocusMainWindow('startup-timeout');
+  }, useStartupRevealGate ? 5000 : 3000);
+
   mainWindow.on('closed', () => {
+    if (revealWindowTimeout) {
+      clearTimeout(revealWindowTimeout);
+      revealWindowTimeout = null;
+    }
     mainWindow = null;
     rendererReady = false;
+    resetStartupRevealState(false);
   });
 }
 
@@ -1705,14 +2214,12 @@ if (!gotLock) {
     }
 
     if (mainWindow) {
-      if (mainWindow.isMinimized()) {
-        mainWindow.restore();
-      }
-      mainWindow.focus();
+      showAndFocusMainWindow('second-instance');
     }
   });
 
-  app.whenReady().then(async () => {
+  app.whenReady().then(() => {
+    console.log('[Electron] app.whenReady() resolved');
     crashReporter.start({
       productName: 'Serenity Blocks',
       companyName: 'Serenity Blocks',
@@ -1732,17 +2239,19 @@ if (!gotLock) {
       queueLobbyJoin({ lobbyId: launchLobbyId, source: 'command_line' });
     }
 
-    // Initialize Steam before creating window
-    await initSteamworks();
-    // Initialize ez-steam-api for leaderboards (separate from steamworks.js)
-    await initEzSteamApi();
+    console.log('[Electron] Creating main window');
     createWindow();
+    writePackagedPerformanceReport('app-when-ready');
+    void refreshGpuDiagnostics('startup');
 
+    console.log('[Electron] Registering powerMonitor listeners');
     powerMonitor.on('suspend', () => emitRuntimeEvent('power-suspend'));
     powerMonitor.on('resume', () => emitRuntimeEvent('power-resume'));
     powerMonitor.on('on-battery', () => emitRuntimeEvent('power-on-battery'));
     powerMonitor.on('on-ac', () => emitRuntimeEvent('power-on-ac'));
     powerMonitor.on('speed-limit-change', (_event, limit) => emitRuntimeEvent('power-speed-limit-change', { limit }));
+  }).catch((error) => {
+    console.error('[Electron] app.whenReady() failed:', error);
   });
 }
 
@@ -1751,9 +2260,16 @@ app.on('render-process-gone', (_event, webContents, details) => {
   emitRuntimeEvent('app-render-process-gone', { details, url: webContents?.getURL?.() });
 });
 
+app.on('gpu-info-update', () => {
+  void refreshGpuDiagnostics('gpu-info-update');
+});
+
 app.on('child-process-gone', (_event, details) => {
   console.error('[Electron] Child process gone:', details);
   emitRuntimeEvent('child-process-gone', { details });
+  if (/gpu/i.test(details?.type || '')) {
+    emitRuntimeEvent('gpu-process-gone', { details });
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -1765,5 +2281,8 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
+    return;
   }
+
+  showAndFocusMainWindow('activate');
 });

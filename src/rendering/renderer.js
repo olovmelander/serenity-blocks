@@ -723,6 +723,8 @@ export class WebGLRenderer {
         const info = this.getRendererInfo();
         console.log('%c[GPU] Active Renderer:', 'color: #00ff00; font-weight: bold;', info.full);
         window.activeGPURenderer = info.full; // Expose global for easy check
+        const reportPromise = window.electronAPI?.reportActiveGPURenderer?.(info.full);
+        reportPromise?.catch((error) => console.warn('[GPU] Failed to report active renderer to Electron:', error?.message || error));
     }
 
     _initializeProgramsAndState() {

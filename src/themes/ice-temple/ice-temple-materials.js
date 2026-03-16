@@ -4,6 +4,8 @@
  */
 
 import * as THREE from 'three';
+import * as WEBGPU from 'three/webgpu';
+import * as TSL from 'three/tsl';
 import {
     auroraVertexShader,
     auroraFragmentShader,
@@ -30,17 +32,9 @@ function setMaterialUniforms(material, uniforms = {}, extra = {}) {
 export async function initIceTempleMaterialRuntime() {
     if (materialRuntime) return materialRuntime;
     if (!materialRuntimePromise) {
-        materialRuntimePromise = Promise.all([
-            // eslint-disable-next-line import/no-unresolved
-            import('three/webgpu'),
-            // eslint-disable-next-line import/no-unresolved
-            import('three/tsl'),
-        ]).then(([WEBGPU, TSL]) => {
+        materialRuntimePromise = Promise.resolve().then(() => {
             materialRuntime = { WEBGPU, TSL };
             return materialRuntime;
-        }).catch((error) => {
-            materialRuntimePromise = null;
-            throw error;
         });
     }
     return materialRuntimePromise;

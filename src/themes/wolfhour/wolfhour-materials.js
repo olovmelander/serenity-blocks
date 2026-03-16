@@ -222,6 +222,7 @@ export function createMountainNodeMaterial(params = {}) {
     const uSnowAmount = uniform(snowAmount);
 
     const aHeight = attribute('aHeight');
+    const aBaseMask = attribute('aBaseMask');
 
     // Vertex: shockwave displacement
     const positionNode = Fn(() => {
@@ -236,6 +237,8 @@ export function createMountainNodeMaterial(params = {}) {
 
     // Fragment: rock color + lighting + rim + fog
     const colorNode = Fn(() => {
+        const baseMask = clamp(aBaseMask, 0.0, 1.0).toVar();
+        const skirtFade = smoothstep(0.18, 1.0, baseMask).toVar();
         const rockBase = mix(uRockColorDark, uRockColorLight, uMountainLayer).toVar();
 
         // Rock texture noise
@@ -250,17 +253,18 @@ export function createMountainNodeMaterial(params = {}) {
         // Rim lighting
         const viewDir = normalize(cameraPosition.sub(positionWorld));
         const rim = pow(max(float(1.0).sub(max(dot(normalWorld, viewDir), 0.0)), 0.0), 3.0);
-        col.addAssign(vec3(0.1, 0.1, 0.12).mul(rim));
+        col.addAssign(vec3(0.1, 0.1, 0.12).mul(rim).mul(float(1.0).sub(skirtFade.mul(0.92))));
 
         // Subsurface-like silver bleed on sharp back-lit edges
         const lightDirBack = lightDir.mul(-1.0);
         const backScatter = pow(max(dot(normalWorld, lightDirBack), 0.0), 2.0);
-        const scatterMask = smoothstep(0.55, 0.95, aHeight).mul(backScatter);
+        const scatterMask = smoothstep(0.55, 0.95, aHeight).mul(backScatter).mul(float(1.0).sub(skirtFade));
         col.addAssign(vec3(0.2, 0.22, 0.26).mul(scatterMask).mul(0.18));
 
         // Animated ridge highlight crawl
         const ridgeMask = smoothstep(0.58, 1.0, aHeight)
-            .mul(pow(max(float(1.0).sub(abs(normalWorld.y)), 0.0), 1.7));
+            .mul(pow(max(float(1.0).sub(abs(normalWorld.y)), 0.0), 1.7))
+            .mul(float(1.0).sub(skirtFade));
         const ridgeFlow = sin(
             positionWorld.x.mul(0.015)
                 .add(positionWorld.z.mul(0.009))
@@ -274,13 +278,16 @@ export function createMountainNodeMaterial(params = {}) {
         // Procedural snow dusting on high, sloped ridges - darkened for background mountains
         const snowHeight = smoothstep(0.72, 1.0, aHeight);
         const slopeMask = smoothstep(0.25, 0.72, float(1.0).sub(abs(normalWorld.y)));
-        const snowMask = snowHeight.mul(slopeMask).mul(uSnowAmount);
+        const snowMask = snowHeight.mul(slopeMask).mul(uSnowAmount).mul(float(1.0).sub(skirtFade.mul(0.96)));
         const snowColor = mix(vec3(0.4, 0.42, 0.48), vec3(0.15, 0.16, 0.22), clamp(uMountainLayer, 0.0, 1.0)); // Visible snow on back mountains
         col.assign(mix(col, snowColor, snowMask));
 
         // Peak glow on pulse
-        const peakGlow = smoothstep(0.6, 1.0, aHeight).mul(uPulseIntensity);
+        const peakGlow = smoothstep(0.6, 1.0, aHeight).mul(uPulseIntensity).mul(float(1.0).sub(skirtFade));
         col.addAssign(vec3(0.8, 0.8, 0.9).mul(peakGlow).mul(0.3));
+
+        const baseShadow = mix(rockBase.mul(0.4), vec3(0.02, 0.022, 0.03), skirtFade);
+        col.assign(mix(col, baseShadow, skirtFade));
 
         // Atmospheric fog - reduced fade to prevent background mountains from becoming invisible
         const fogColor = vec3(0.0);
@@ -300,11 +307,13 @@ export function createMountainNodeMaterial(params = {}) {
     const ridgeEmissive = smoothstep(0.62, 1.0, aHeight)
         .mul(pow(max(float(1.0).sub(abs(normalWorld.y)), 0.0), 1.4))
         .mul(uRidgeStrength)
-        .mul(float(0.25).add(uPulseIntensity.mul(0.7)));
+        .mul(float(0.25).add(uPulseIntensity.mul(0.7)))
+        .mul(float(1.0).sub(smoothstep(0.12, 0.85, aBaseMask)));
     const emissiveFade = clamp(float(1.0).sub(uMountainLayer), 0.0, 1.0); // Dim emissive largely on background layers
     const emissive = vec3(0.8, 0.8, 0.9).mul(smoothstep(0.6, 1.0, aHeight).mul(uPulseIntensity).mul(0.15))
         .add(vec3(0.2, 0.22, 0.26).mul(ridgeEmissive))
-        .mul(emissiveFade);
+        .mul(emissiveFade)
+        .mul(float(1.0).sub(smoothstep(0.12, 0.85, aBaseMask)));
     material.emissiveNode = emissive;
 
     return {
@@ -320,6 +329,25 @@ export function createMountainNodeMaterial(params = {}) {
             uRidgeStrength,
             uSnowAmount,
         },
+        meta: { emitsBloom: false },
+    };
+}
+
+export function createMountainBaseFillNodeMaterial(params = {}) {
+    const color = params.color instanceof THREE.Color
+        ? params.color.clone()
+        : new THREE.Color(params.color ?? 0x03040a);
+    const uColor = uniform(color);
+
+    const material = new MeshBasicNodeMaterial({
+        transparent: false,
+    });
+
+    material.colorNode = uColor;
+
+    return {
+        material,
+        uniforms: { uColor },
         meta: { emitsBloom: false },
     };
 }

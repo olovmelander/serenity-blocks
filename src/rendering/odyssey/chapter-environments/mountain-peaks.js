@@ -9,7 +9,11 @@
  */
 
 import * as THREE from 'three';
-import { getChapterPathRange } from '../path-utils.js';
+import {
+    getActiveOdysseyChapterPositions,
+    getChapterPathRange,
+} from '../path-utils.js';
+import { createMountainAuroraBackdrop } from './shared/mountain-aurora.js';
 
 /**
  * Mountain Peaks environment configuration
@@ -19,7 +23,6 @@ export const MOUNTAIN_PEAKS_CONFIG = {
     name: 'mountain-peaks',
     yStart: 97.5,
     yEnd: 900,
-    endProgress: 0.82, // Extend deep into Chapter 5 (which ends at 0.82)
     transitionZone: 0.1, // Increased transition zone for smoother fade out
     colors: {
         primary: 0x2d3436,
@@ -30,151 +33,36 @@ export const MOUNTAIN_PEAKS_CONFIG = {
     },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// GLSL SHARED NOISE
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const noiseGLSL = `
-vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
-vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
-
-float snoise(vec3 v) {
-    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-
-    vec3 i = floor(v + dot(v, C.yyy));
-    vec3 x0 = v - i + dot(i, C.xxx);
-
-    vec3 g = step(x0.yzx, x0.xyz);
-    vec3 l = 1.0 - g;
-    vec3 i1 = min(g.xyz, l.zxy);
-    vec3 i2 = max(g.xyz, l.zxy);
-
-    vec3 x1 = x0 - i1 + C.xxx;
-    vec3 x2 = x0 - i2 + C.yyy;
-    vec3 x3 = x0 - D.yyy;
-
-    i = mod289(i);
-    vec4 p = permute(permute(permute(
-                i.z + vec4(0.0, i1.z, i2.z, 1.0))
-            + i.y + vec4(0.0, i1.y, i2.y, 1.0))
-            + i.x + vec4(0.0, i1.x, i2.x, 1.0));
-
-    float n_ = 0.142857142857;
-    vec3 ns = n_ * D.wyz - D.xzx;
-
-    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-
-    vec4 x_ = floor(j * ns.z);
-    vec4 y_ = floor(j - 7.0 * x_);
-
-    vec4 x = x_ * ns.x + ns.yyyy;
-    vec4 y = y_ * ns.x + ns.yyyy;
-    vec4 h = 1.0 - abs(x) - abs(y);
-
-    vec4 b0 = vec4(x.xy, y.xy);
-    vec4 b1 = vec4(x.zw, y.zw);
-
-    vec4 s0 = floor(b0) * 2.0 + 1.0;
-    vec4 s1 = floor(b1) * 2.0 + 1.0;
-    vec4 sh = -step(h, vec4(0.0));
-
-    vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
-    vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
-
-    vec3 p0 = vec3(a0.xy, h.x);
-    vec3 p1 = vec3(a0.zw, h.y);
-    vec3 p2 = vec3(a1.xy, h.z);
-    vec3 p3 = vec3(a1.zw, h.w);
-
-    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-    p0 *= norm.x;
-    p1 *= norm.y;
-    p2 *= norm.z;
-    p3 *= norm.w;
-
-    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-    m = m * m;
-    return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
-}
-`;
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// AURORA SHADERS
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const auroraVertexShader = `
-uniform float uTime;
-uniform float layerOffset;
-
-varying vec2 vUv;
-varying float vDisplacement;
-
-${noiseGLSL}
-
-void main() {
-    vUv = uv;
-    
-    // Wave animation
-    float t = uTime * 0.2 + layerOffset;
-    
-    // Multiple noise octaves for organic movement
-    float noise1 = snoise(vec3(position.x * 0.05, position.y * 0.05, t * 0.5));
-    float noise2 = snoise(vec3(position.x * 0.1, position.y * 0.1, t * 0.8)) * 0.5;
-    
-    vDisplacement = noise1 + noise2;
-    
-    vec3 transformed = position;
-    // Add z displacement for waving curtain effect
-    transformed.z += vDisplacement * 10.0;
-    // Slight x sway
-    transformed.x += sin(position.y * 0.05 + t) * 5.0;
-    
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
-}
-`;
-
-const auroraFragmentShader = `
-uniform float uTime;
-uniform vec3 uColor1;
-uniform vec3 uColor2;
-uniform vec3 uColor3;
-uniform float uOpacity;
-uniform float uAuroraFade;
-uniform float uLayerOpacity;
-
-varying vec2 vUv;
-varying float vDisplacement;
-
-${noiseGLSL}
-
-void main() {
-    // Vertical fade (bottom to top)
-    float alpha = smoothstep(0.0, 0.4, vUv.y) * (1.0 - smoothstep(0.7, 1.0, vUv.y));
-    
-    // Horizontal fade (left to right) - Strong fade to prevent rectangular look
-    float xFade = smoothstep(0.0, 0.2, vUv.x) * (1.0 - smoothstep(0.8, 1.0, vUv.x));
-    alpha *= xFade;
-    
-    // Color mixing based on noise and height
-    float noiseVal = snoise(vec3(vUv.x * 2.0, vUv.y * 1.0, uTime * 0.1));
-    
-    vec3 color = mix(uColor1, uColor2, vUv.y);
-    color = mix(color, uColor3, smoothstep(0.4, 0.6, noiseVal));
-    
-    // Add glow bands
-    float bands = sin(vUv.y * 20.0 + vDisplacement * 2.0) * 0.5 + 0.5;
-    alpha *= 0.5 + bands * 0.5;
-    
-    // Boost brightness (Reduced from 1.5 to 1.1 for softer look)
-    color *= 1.1;
-    
-    // Final alpha (Reduced from 0.6 to 0.45)
-    gl_FragColor = vec4(color, alpha * 0.45 * uLayerOpacity * uAuroraFade * uOpacity);
-}
-`;
+const MOUNTAIN_TRANSITION_START = 0.08;
+const MOUNTAIN_TRANSITION_END = 0.28;
+const MAIN_PEAK_MATERIAL_PROFILE = Object.freeze({
+    snowColor: 0xc7d6e0,
+    snowColorWarm: 0xbfc9d3,
+    rockColor: 0x465463,
+    rockColorWarm: 0x667789,
+    fogColor: 0x314252,
+    fogColorWarm: 0x91adc2,
+    snowLine: 0.5,
+    rimColor: 0x5f8098,
+    rimPower: 4.8,
+    baseMistStrength: 0.45,
+    baseFadeStart: 0.02,
+    baseFadeEnd: 0.1,
+});
+const FOOTHILL_APRON_MATERIAL_PROFILE = Object.freeze({
+    snowColor: 0xbcc8d1,
+    snowColorWarm: 0xb3bec7,
+    rockColor: 0x56626d,
+    rockColorWarm: 0x746c64,
+    fogColor: 0x4f6271,
+    fogColorWarm: 0xa8bdca,
+    snowLine: 0.7,
+    rimColor: 0x5f8098,
+    rimPower: 4.8,
+    baseMistStrength: 0.22,
+    baseFadeStart: 0.08,
+    baseFadeEnd: 0.22,
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MOUNTAIN SHADERS
@@ -211,6 +99,9 @@ uniform float uRimPower;
 uniform float uTransition;
 uniform float uOpacity;
 uniform float uSnowLine;
+uniform float uBaseMistStrength;
+uniform float uBaseFadeStart;
+uniform float uBaseFadeEnd;
 
 varying vec3 vNormal;
 varying vec3 vWorldPosition;
@@ -271,21 +162,21 @@ void main() {
     vec3 color = mix(rock, snow, snowMix);
     vec3 viewDir = normalize(cameraPosition - vWorldPosition);
     float rim = pow(1.0 - max(dot(vNormal, viewDir), 0.0), uRimPower);
-    color += uRimColor * rim * (0.1 + 0.25 * (1.0 - uTransition));
+    color += uRimColor * rim * (0.03 + 0.09 * (1.0 - uTransition));
     
     // Fog (Height and Distance based)
     float dist = length(vWorldPosition - cameraPosition);
     float fogFactor = smoothstep(200.0, 600.0, dist);
     
     // Base mist
-    float baseMist = smoothstep(0.2, 0.0, vHeight) * 0.8;
+    float baseMist = smoothstep(0.2, 0.0, vHeight) * uBaseMistStrength;
     
     color = mix(color, fogColor, max(fogFactor, baseMist));
     
     // BASE FADE: Fade out at low heights to hide the hard edge of the plane
     // vHeight is 0 at base, 1 at peak
-    // Fade in from 0.0 to 0.15 height (completely transparent at very base)
-    float baseFade = smoothstep(0.0, 0.15, vHeight);
+    // Fade in from the tuned range so foothills stay grounded.
+    float baseFade = smoothstep(uBaseFadeStart, uBaseFadeEnd, vHeight);
     
     gl_FragColor = vec4(color, uOpacity * baseFade);
 }
@@ -379,15 +270,27 @@ export function createMountainPeaksEnvironment(options = {}) {
         // Use the MAX of logical end and config end to allow visual extension into next chapter
         group.userData.yEnd = Math.max(chapterRange.end.y, MOUNTAIN_PEAKS_CONFIG.yEnd);
     }
+    const progressWindow = getMountainChapterProgressWindow();
+    group.userData.progressStart = progressWindow.start;
+    group.userData.progressEnd = progressWindow.end;
 
     // 1. High Quality Sky Sphere (Boxiness fix)
-    const sky = createSkyBackground(uniforms);
+    const sky = createSkyBackground();
     group.add(sky);
     group.userData.sky = sky;
 
-    // 2. FBM Displacement Mountains (Sakura style)
-    // Align with Chapter 3 distant mountains for a seamless transition
+    // 2. FBM foothills + mountains (aligned to Chapter 3 distant terrain)
+    const massif = new THREE.Group();
+    massif.name = 'mountain-massif';
+
+    const chapter4StartY = chapterRange?.start.y ?? chapterCenterY;
+    const foothillBaseY = (chapter4StartY - chapterCenterY) - 74;
+    const foothillApron = createFoothillApron(uniforms, foothillBaseY);
+    massif.add(foothillApron);
+    group.userData.foothillApron = foothillApron;
+
     const mountains = new THREE.Group();
+    mountains.name = 'main-peaks';
 
     const ch3MountainOffsets = [-10, -20, -30];
     const leftMountainY = chapter3CenterY + ch3MountainOffsets[0];
@@ -400,6 +303,7 @@ export function createMountainPeaksEnvironment(options = {}) {
         height: 300,
         position: new THREE.Vector3(-250, leftMountainY - chapterCenterY, -650),
         seed: 12.34,
+        materialProfile: MAIN_PEAK_MATERIAL_PROFILE,
     });
     mountains.add(mountain1);
 
@@ -409,6 +313,7 @@ export function createMountainPeaksEnvironment(options = {}) {
         height: 280,
         position: new THREE.Vector3(250, rightMountainY - chapterCenterY, -700),
         seed: 45.67,
+        materialProfile: MAIN_PEAK_MATERIAL_PROFILE,
     });
     mountains.add(mountain2);
 
@@ -418,18 +323,23 @@ export function createMountainPeaksEnvironment(options = {}) {
         height: 500,
         position: new THREE.Vector3(0, centerMountainY - chapterCenterY, -900),
         seed: 89.12,
+        materialProfile: MAIN_PEAK_MATERIAL_PROFILE,
     });
     mountains.add(mountain3);
 
-    group.add(mountains);
-    group.userData.mountains = mountains;
+    massif.add(mountains);
+    group.add(massif);
+    group.userData.mountains = massif;
+    group.userData.mainPeaks = mountains;
 
     // 3. Shader Aurora Curtains
-    const aurora = createAurora(uniforms, 4); // 4 layers
+    const aurora = createMountainAuroraBackdrop(uniforms, {
+        name: 'mountain-aurora',
+    });
     group.add(aurora);
     group.userData.aurora = aurora;
-    group.userData.mountainTransitionUniformTargets = collectUniformTargets(mountains, 'uTransition');
-    group.userData.mountainOpacityUniformTargets = collectUniformTargets(mountains, 'uOpacity');
+    group.userData.mountainTransitionUniformTargets = collectUniformTargets(massif, 'uTransition');
+    group.userData.mountainOpacityUniformTargets = collectUniformTargets(massif, 'uOpacity');
     group.userData.auroraFadeUniformTargets = collectUniformTargets(aurora, 'uAuroraFade');
     group.userData.auroraOpacityUniformTargets = collectUniformTargets(aurora, 'uOpacity');
 
@@ -457,7 +367,7 @@ export function createMountainPeaksEnvironment(options = {}) {
     return group;
 }
 
-function createSkyBackground(uniforms) {
+function createSkyBackground() {
     const vertexShader = skyVertexShader;
     const fragmentShader = skyFragmentShader;
     const uniformsSky = {
@@ -543,16 +453,14 @@ function createStars(uniforms, count) {
     return new THREE.Points(geometry, material);
 }
 
-// ... createFBMMountain ... (UNCHANGED, skipping for brevity in replacement if possible, but I must replace the block containing createStars to link it properly. I will replace createStars and add the helper before it)
-
-// Actually, I can just append the helper and update the functions separately or in one large block.
-// I'll update createStars first.
-
 /**
  * Creates a mountain using PlaneGeometry and heightmap displacement
  * (Adapted from SakuraTwilightTheme)
  */
 function createFBMMountain(uniforms, config) {
+    const {
+        materialProfile = MAIN_PEAK_MATERIAL_PROFILE,
+    } = config;
     const segments = 128;
     const geometry = new THREE.PlaneGeometry(config.size, config.size, segments, segments);
     geometry.rotateX(-Math.PI / 2);
@@ -588,19 +496,20 @@ function createFBMMountain(uniforms, config) {
     };
 
     const fbm = (x, y) => {
+        let sampleX = x;
+        let sampleY = y;
         let v = 0.0;
         let a = 0.5;
         for (let i = 0; i < 5; i++) {
-            v += a * noise(x, y);
-            x *= 2.0;
-            y *= 2.0;
+            v += a * noise(sampleX, sampleY);
+            sampleX *= 2.0;
+            sampleY *= 2.0;
             a *= 0.5;
         }
         return v;
     };
 
     // Apply displacement
-    const center = new THREE.Vector2(0, 0);
     for (let i = 0; i < posAttribute.count; i++) {
         vertex.fromBufferAttribute(posAttribute, i);
 
@@ -642,15 +551,18 @@ function createFBMMountain(uniforms, config) {
 
     const material = new THREE.ShaderMaterial({
         uniforms: {
-            uSnowColor: { value: new THREE.Color(0xdceef5) }, // Darkened from pure white to prevent blowout
-            uSnowColorWarm: { value: new THREE.Color(0xe0e6ee) },
-            uRockColor: { value: new THREE.Color(0x3a4555) },
-            uRockColorWarm: { value: new THREE.Color(0x556577) },
-            uFogColor: { value: new THREE.Color(0x1a2a3a) },
-            uFogColorWarm: { value: new THREE.Color(0x7fa0c2) },
-            uSnowLine: { value: 0.4 },
-            uRimColor: { value: new THREE.Color(0x88bbff) }, // Reduced intensity
-            uRimPower: { value: 3.5 }, // Increased power for tighter/smaller rim
+            uSnowColor: { value: new THREE.Color(materialProfile.snowColor) },
+            uSnowColorWarm: { value: new THREE.Color(materialProfile.snowColorWarm) },
+            uRockColor: { value: new THREE.Color(materialProfile.rockColor) },
+            uRockColorWarm: { value: new THREE.Color(materialProfile.rockColorWarm) },
+            uFogColor: { value: new THREE.Color(materialProfile.fogColor) },
+            uFogColorWarm: { value: new THREE.Color(materialProfile.fogColorWarm) },
+            uSnowLine: { value: materialProfile.snowLine },
+            uRimColor: { value: new THREE.Color(materialProfile.rimColor) },
+            uRimPower: { value: materialProfile.rimPower },
+            uBaseMistStrength: { value: materialProfile.baseMistStrength },
+            uBaseFadeStart: { value: materialProfile.baseFadeStart },
+            uBaseFadeEnd: { value: materialProfile.baseFadeEnd },
             uTransition: { value: 0 },
             uOpacity: { value: 1 },
         },
@@ -665,12 +577,47 @@ function createFBMMountain(uniforms, config) {
     return mesh;
 }
 
+function createFoothillApron(uniforms, baseY) {
+    const group = new THREE.Group();
+    group.name = 'foothill-apron';
+
+    [
+        {
+            size: 1100,
+            height: 72,
+            position: new THREE.Vector3(-330, baseY - 12, -600),
+            seed: 21.17,
+        },
+        {
+            size: 1250,
+            height: 92,
+            position: new THREE.Vector3(30, baseY - 20, -860),
+            seed: 33.71,
+        },
+        {
+            size: 1100,
+            height: 78,
+            position: new THREE.Vector3(330, baseY - 10, -710),
+            seed: 58.42,
+        },
+    ].forEach((config) => {
+        const foothill = createFBMMountain(uniforms, {
+            ...config,
+            materialProfile: FOOTHILL_APRON_MATERIAL_PROFILE,
+        });
+        foothill.renderOrder = -2;
+        group.add(foothill);
+    });
+
+    return group;
+}
+
 /**
  * Creates a soft, muted snowy terrain
  * Positioned to match Chapter 3 ground level for seamless transition
  * Uses softer colors to prevent glowing/brightness issues
  */
-function createSnowFloor(uniforms, offsetY = -123.75) {
+export function createSnowFloor(uniforms, offsetY = -123.75) {
     const group = new THREE.Group();
     group.name = 'snow-floor';
 
@@ -795,63 +742,6 @@ function createSnowFloor(uniforms, offsetY = -123.75) {
     return group;
 }
 
-function createAurora(uniforms, layers) {
-    const group = new THREE.Group();
-
-    // Aurora configurations for each layer
-    // Positioned BEHIND mountains (approx z=-900) but closer than before
-    const auroraConfigs = [
-        // Main central aurora - Behind center peak, moved closer
-        {
-            x: 0, y: 600, z: -1500, width: 4000, height: 1500, rotY: 0, opacity: 1.0,
-        },
-        // Left aurora curtain - Behind left mountain
-        {
-            x: -500, y: 500, z: -1300, width: 2500, height: 1200, rotY: 0.1, opacity: 0.8,
-        },
-        // Right aurora curtain - Behind right mountain
-        {
-            x: 500, y: 550, z: -1350, width: 2500, height: 1200, rotY: -0.1, opacity: 0.8,
-        },
-        // Far back aurora - Creates depth
-        {
-            x: 0, y: 800, z: -2000, width: 5000, height: 1800, rotY: 0, opacity: 0.6,
-        },
-    ];
-
-    for (let i = 0; i < Math.min(layers, auroraConfigs.length); i++) {
-        const config = auroraConfigs[i];
-        const geometry = new THREE.PlaneGeometry(config.width, config.height, 64, 16);
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: uniforms.uTime,
-                layerOffset: { value: i * 2.0 },
-                uColor1: { value: new THREE.Color(0x00ffaa) }, // Green
-                uColor2: { value: new THREE.Color(0x00aaff) }, // Cyan
-                uColor3: { value: new THREE.Color(0xaa00ff) }, // Purple
-                uOpacity: { value: 1 },
-                uAuroraFade: { value: 0 },
-                uLayerOpacity: { value: config.opacity },
-            },
-            vertexShader: auroraVertexShader,
-            fragmentShader: auroraFragmentShader,
-            transparent: true,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        const curtain = new THREE.Mesh(geometry, material);
-        curtain.position.set(config.x, config.y, config.z);
-        curtain.rotation.y = config.rotY;
-        curtain.renderOrder = -50; // Ensure it renders behind mountains (0) but in front of sky (-100)
-        group.add(curtain);
-    }
-
-    return group;
-}
-
 function createSnow(uniforms, count) {
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(count * 3);
@@ -889,7 +779,7 @@ function createSnow(uniforms, count) {
     return snow;
 }
 
-export function updateMountainPeaksEnvironment(group, delta, time, camera) {
+export function updateMountainPeaksEnvironment(group, delta, time, camera, cameraProgress = null) {
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
@@ -898,58 +788,37 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera) {
     const cameraY = camera?.position?.y ?? group.position.y;
     const yStart = group.userData.yStart ?? MOUNTAIN_PEAKS_CONFIG.yStart;
     const yEnd = group.userData.yEnd ?? MOUNTAIN_PEAKS_CONFIG.yEnd;
-    const progress = yEnd > yStart
-        ? THREE.MathUtils.clamp((cameraY - yStart) / (yEnd - yStart), 0, 1)
-        : 0;
+    const progressWindow = getMountainChapterProgressWindow();
+    const progressStart = progressWindow.start;
+    const progressEnd = progressWindow.end;
+    let progress = 0;
 
-    // Calculate progress (already exists above)
-    // const progress = ...
-
-    // ACCELERATED TRANSITIONS due to extended yEnd (1000)
-    // Make sky turn dark INSTANTLY (fully night by 1% progress)
-    const transition = THREE.MathUtils.smoothstep(progress, 0.0, 0.01);
-    // Make aurora appear INSTANTLY (fully visible by 1% progress)
-    const auroraFade = THREE.MathUtils.smoothstep(progress, 0.0, 0.01);
-
-    // SCALING: Mountains shrink as camera ascends into space (starts at 60% progress)
-    // At 60% progress: scale = 1.0 (full size)
-    // At 100% progress: scale = 0.3 (shrunk down as if drifting away)
-    const scaleProgress = THREE.MathUtils.smoothstep(progress, 0.6, 1.0);
-    const mountainScale = THREE.MathUtils.lerp(1.0, 0.3, scaleProgress);
-
-    // Apply scale to entire environment group (mountains, aurora, snow floor)
-    // But NOT to sky (it should stay full size)
-    const { mountains } = group.userData;
-    if (mountains) {
-        mountains.scale.setScalar(mountainScale);
-        // Also move mountains down slightly as they shrink to enhance "flying away" effect
-        mountains.position.y = -scaleProgress * 50;
+    if (Number.isFinite(cameraProgress) && progressEnd > progressStart) {
+        progress = THREE.MathUtils.clamp(
+            (cameraProgress - progressStart) / (progressEnd - progressStart),
+            0,
+            1,
+        );
+    } else if (yEnd > yStart) {
+        progress = THREE.MathUtils.clamp((cameraY - yStart) / (yEnd - yStart), 0, 1);
     }
 
-    const { aurora } = group.userData;
-    if (aurora) {
-        aurora.scale.setScalar(mountainScale);
-        aurora.position.y = -scaleProgress * 30;
-    }
-
-    const { snowFloor } = group.userData;
-    if (snowFloor) {
-        snowFloor.scale.setScalar(mountainScale);
-        snowFloor.position.y = -scaleProgress * 50;
-    }
-
-    // EXIT FADE: Very late fade out (from 95% to 100%)
-    // This ensures mountains are visible for a long time while shrinking
-    const exitFade = 1.0 - THREE.MathUtils.smoothstep(progress, 0.95, 1.0);
+    const transition = THREE.MathUtils.smoothstep(
+        progress,
+        MOUNTAIN_TRANSITION_START,
+        MOUNTAIN_TRANSITION_END,
+    );
 
     const { sky } = group.userData;
     if (sky?.material?.uniforms) {
-        if (sky.material.uniforms.uTransition) sky.material.uniforms.uTransition.value = transition;
+        if (sky.material.uniforms.uTransition) {
+            sky.material.uniforms.uTransition.value = transition;
+        }
         if (sky.material.uniforms.uOpacity) {
             const baseOpacity = typeof sky.material.uniforms.uOpacity.__odysseyBaseOpacity === 'number'
                 ? sky.material.uniforms.uOpacity.__odysseyBaseOpacity
                 : sky.material.uniforms.uOpacity.value;
-            sky.material.uniforms.uOpacity.value = baseOpacity * exitFade;
+            sky.material.uniforms.uOpacity.value = baseOpacity;
         }
     }
 
@@ -963,20 +832,12 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera) {
         const baseOpacity = typeof uniform.__odysseyBaseOpacity === 'number'
             ? uniform.__odysseyBaseOpacity
             : uniform.value;
-        uniform.value = baseOpacity * exitFade;
+        uniform.value = baseOpacity;
     });
-
-    // Apply opacity to snow floor (already have reference from scaling)
-    if (snowFloor?.material?.uniforms?.uOpacity) {
-        const baseOpacity = typeof snowFloor.material.uniforms.uOpacity.__odysseyBaseOpacity === 'number'
-            ? snowFloor.material.uniforms.uOpacity.__odysseyBaseOpacity
-            : snowFloor.material.uniforms.uOpacity.value;
-        snowFloor.material.uniforms.uOpacity.value = baseOpacity * exitFade;
-    }
 
     const auroraFadeUniformTargets = group.userData.auroraFadeUniformTargets || [];
     auroraFadeUniformTargets.forEach((uniform) => {
-        uniform.value = auroraFade;
+        uniform.value = 1;
     });
 
     const auroraOpacityUniformTargets = group.userData.auroraOpacityUniformTargets || [];
@@ -984,15 +845,11 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera) {
         const baseOpacity = typeof uniform.__odysseyBaseOpacity === 'number'
             ? uniform.__odysseyBaseOpacity
             : uniform.value;
-        uniform.value = baseOpacity * exitFade;
+        uniform.value = baseOpacity;
     });
 
-    // Update Snow
-    const snow = group.userData.snow;
+    const { snow } = group.userData;
     if (snow) {
-        // Apply exit fade to snow particles
-        if (snow.material) snow.material.opacity = 0.8 * exitFade;
-
         const positions = snow.geometry.attributes.position.array;
         const vels = snow.userData.velocities;
 
@@ -1001,18 +858,11 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera) {
             positions[i * 3 + 1] += vels[i].y;
             positions[i * 3 + 2] += vels[i].z;
 
-            // Loop height
             if (positions[i * 3 + 1] < -10) {
                 positions[i * 3 + 1] = 100;
             }
         }
         snow.geometry.attributes.position.needsUpdate = true;
-    }
-
-    // Update Stars (Exit fade)
-    const stars = group.userData.stars;
-    if (stars && stars.material) {
-        stars.material.opacity = 0.8 * exitFade;
     }
 }
 
@@ -1021,3 +871,10 @@ export default {
     create: createMountainPeaksEnvironment,
     update: updateMountainPeaksEnvironment,
 };
+function getMountainChapterProgressWindow() {
+    const chapterPositions = getActiveOdysseyChapterPositions();
+    return {
+        start: chapterPositions?.[3] ?? 0.352,
+        end: chapterPositions?.[4] ?? 0.5,
+    };
+}

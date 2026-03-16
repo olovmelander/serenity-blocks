@@ -33,7 +33,11 @@ function withTimeout(promise, ms, label) {
  * ThemeManager handles theme loading, switching, and lifecycle
  */
 export class ThemeManager {
-    constructor(webglRenderer, { assetManager: assetMgr = null, audioManager: audioMgr = null } = {}) {
+    constructor(webglRenderer, {
+        assetManager: assetMgr = null,
+        audioManager: audioMgr = null,
+        runtimeConfig = null,
+    } = {}) {
         this.webglRenderer = webglRenderer;
         this.activeTheme = null;
         this.activeThemeName = 'forest';
@@ -44,9 +48,18 @@ export class ThemeManager {
         this.themesSuspended = true;
         this.pendingThemeName = null;
         this.pendingThemeInstance = null;
+        this.deferAdjacentThemePreload = true;
+        this.pendingAdjacentThemePreload = false;
+        this.adjacentThemePreloadTimer = null;
+        this.adjacentThemePreloadIdleId = null;
+        this.runtimeConfig = runtimeConfig;
+
+        const isPackagedWindows = this.runtimeConfig?.platform === 'win32' && this.runtimeConfig?.isPackaged;
+        const isBaselineProfile = isPackagedWindows && this.runtimeConfig?.windowsProfile === 'baseline';
+        const isSafeMode = isPackagedWindows && this.runtimeConfig?.safeMode;
 
         // LRU cache management
-        this.maxCachedThemes = 5; // Limit cache size to prevent memory growth
+        this.maxCachedThemes = isSafeMode ? 1 : (isBaselineProfile ? 2 : 5);
         this.themeLRU = []; // Track theme access order (oldest to newest)
 
         // Theme shuffle deck for better random distribution
@@ -60,6 +73,18 @@ export class ThemeManager {
         this.initializeRegistry();
 
         console.log('[ThemeManager] Initialized with asset and audio managers');
+    }
+
+    isPackagedWindowsBaselineProfile() {
+        return this.runtimeConfig?.platform === 'win32'
+            && this.runtimeConfig?.isPackaged
+            && this.runtimeConfig?.windowsProfile === 'baseline';
+    }
+
+    isPackagedWindowsSafeMode() {
+        return this.runtimeConfig?.platform === 'win32'
+            && this.runtimeConfig?.isPackaged
+            && this.runtimeConfig?.safeMode === true;
     }
 
     /**
@@ -260,6 +285,59 @@ export class ThemeManager {
         }
     }
 
+    queueAdjacentThemePreload(delayMs = 350) {
+        this.clearAdjacentThemePreloadQueue();
+        if (this.isPackagedWindowsSafeMode()) {
+            return;
+        }
+        if (this.deferAdjacentThemePreload) {
+            this.pendingAdjacentThemePreload = true;
+            return;
+        }
+
+        const runPreload = () => {
+            this.adjacentThemePreloadTimer = null;
+            this.adjacentThemePreloadIdleId = null;
+            this.pendingAdjacentThemePreload = false;
+            this.preloadNextTheme().catch((error) => {
+                console.warn('[ThemeManager] Failed to preload next theme:', error);
+            });
+        };
+
+        if (typeof requestIdleCallback === 'function') {
+            this.adjacentThemePreloadIdleId = requestIdleCallback(runPreload, { timeout: 1500 });
+            return;
+        }
+
+        this.adjacentThemePreloadTimer = setTimeout(runPreload, delayMs);
+    }
+
+    clearAdjacentThemePreloadQueue() {
+        if (this.adjacentThemePreloadTimer) {
+            clearTimeout(this.adjacentThemePreloadTimer);
+            this.adjacentThemePreloadTimer = null;
+        }
+        if (typeof cancelIdleCallback === 'function' && this.adjacentThemePreloadIdleId !== null) {
+            cancelIdleCallback(this.adjacentThemePreloadIdleId);
+            this.adjacentThemePreloadIdleId = null;
+        }
+    }
+
+    releaseStartupPreload(delayMs = 650) {
+        if (this.isPackagedWindowsSafeMode()) {
+            return;
+        }
+
+        this.deferAdjacentThemePreload = false;
+        const effectiveDelayMs = this.isPackagedWindowsBaselineProfile()
+            ? Math.max(delayMs, 2200)
+            : delayMs;
+
+        if (this.pendingAdjacentThemePreload) {
+            this.queueAdjacentThemePreload(effectiveDelayMs);
+        }
+    }
+
     /**
      * Switch to a new theme
      * @param {string} themeName - Name of theme to switch to
@@ -384,9 +462,7 @@ export class ThemeManager {
         eventBus.emit(EVENTS.THEME_CHANGED, { themeName });
         console.log('[ThemeManager] Theme activation complete:', themeName);
 
-        this.preloadNextTheme().catch((error) => {
-            console.warn('[ThemeManager] Failed to preload next theme:', error);
-        });
+        this.queueAdjacentThemePreload();
     }
 
     suspendThemes() {
@@ -607,6 +683,9 @@ export class ThemeManager {
         console.log('[ThemeManager] Starting full cleanup...');
 
         this.stopRandomThemeInterval();
+        this.clearAdjacentThemePreloadQueue();
+        this.deferAdjacentThemePreload = false;
+        this.pendingAdjacentThemePreload = false;
 
         if (this.activeTheme) {
             this.activeTheme.stop();

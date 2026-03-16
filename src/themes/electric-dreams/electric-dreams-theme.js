@@ -13,6 +13,7 @@
  */
 
 import * as THREE from 'three';
+import * as THREE_WEBGPU from 'three/webgpu';
 import { mrt, vec3 } from 'three/tsl';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -26,6 +27,10 @@ import {
     ParticleOrchestrator,
     StageConductor,
 } from './electric-dreams-stage-systems.js';
+import * as ElectricDreamsMaterials from './electric-dreams-materials.js';
+import * as ElectricDreamsPostModule from './electric-dreams-post.js';
+import * as ElectricDreamsHeroParticlesModule from './electric-dreams-hero-particles.js';
+import * as ElectricDreamsComputeModule from './electric-dreams-compute.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Presets
@@ -804,30 +809,15 @@ export default class ElectricDreamsTheme extends BaseTheme {
 
     primeModuleImports() {
         if (this.modulePreloads.webgpu === null && typeof navigator !== 'undefined' && navigator.gpu) {
-            this.modulePreloads.webgpu = import('three/webgpu')
-                .catch((error) => {
-                    console.warn('[ElectricDreams] Failed to preload WebGPU module:', error);
-                    this.modulePreloads.webgpu = null;
-                    return null;
-                });
+            this.modulePreloads.webgpu = Promise.resolve(THREE_WEBGPU);
         }
 
         if (this.modulePreloads.webgpuMaterials === null && typeof navigator !== 'undefined' && navigator.gpu) {
-            this.modulePreloads.webgpuMaterials = import('./electric-dreams-materials.js')
-                .catch((error) => {
-                    console.warn('[ElectricDreams] Failed to preload WebGPU materials:', error);
-                    this.modulePreloads.webgpuMaterials = null;
-                    return null;
-                });
+            this.modulePreloads.webgpuMaterials = Promise.resolve(ElectricDreamsMaterials);
         }
 
         if (this.modulePreloads.post === null && this.qualityPreset.enablePost === true) {
-            this.modulePreloads.post = import('./electric-dreams-post.js')
-                .catch((error) => {
-                    console.warn('[ElectricDreams] Failed to preload post pipeline:', error);
-                    this.modulePreloads.post = null;
-                    return null;
-                });
+            this.modulePreloads.post = Promise.resolve(ElectricDreamsPostModule);
         }
 
         if (
@@ -836,12 +826,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
             && navigator.gpu
             && ['High', 'Ultra', 'Extreme'].includes(this.activeQualityLevel)
         ) {
-            this.modulePreloads.heroParticles = import('./electric-dreams-hero-particles.js')
-                .catch((error) => {
-                    console.warn('[ElectricDreams] Failed to preload hero particle controller:', error);
-                    this.modulePreloads.heroParticles = null;
-                    return null;
-                });
+            this.modulePreloads.heroParticles = Promise.resolve(ElectricDreamsHeroParticlesModule);
         }
     }
 
@@ -1145,7 +1130,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
         try {
             const heroModule = this.modulePreloads.heroParticles
                 ? await this.modulePreloads.heroParticles
-                : await import('./electric-dreams-hero-particles.js');
+                : ElectricDreamsHeroParticlesModule;
             const { ElectricDreamsHeroParticles } = heroModule;
             this.heroParticles = new ElectricDreamsHeroParticles({
                 scene: this.scene,
@@ -3069,7 +3054,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
             try {
                 const THREE_WEBGPU = this.modulePreloads.webgpu
                     ? await this.modulePreloads.webgpu
-                    : await import('three/webgpu');
+                    : THREE_WEBGPU;
                 const renderer = new THREE_WEBGPU.WebGPURenderer({
                     antialias: this.getAntialiasEnabled(),
                     alpha: false,
@@ -3151,7 +3136,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
             try {
                 const materialsModule = this.modulePreloads.webgpuMaterials
                     ? await this.modulePreloads.webgpuMaterials
-                    : await import('./electric-dreams-materials.js');
+                    : ElectricDreamsMaterials;
                 this.webgpuMaterials = materialsModule;
             } catch (error) {
                 console.warn('[ElectricDreams] Failed to load WebGPU materials:', error);
@@ -4446,7 +4431,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
         let sparkCompute = null;
         try {
             if (useCompute) {
-                const { ElectricDreamsSparkCompute } = await import('./electric-dreams-compute.js');
+                const { ElectricDreamsSparkCompute } = ElectricDreamsComputeModule;
                 sparkCompute = new ElectricDreamsSparkCompute(count, {
                     boundsWidth: bounds.width,
                     boundsHeight: bounds.height,
@@ -4618,7 +4603,7 @@ export default class ElectricDreamsTheme extends BaseTheme {
             try {
                 const postModule = this.modulePreloads.post
                     ? await this.modulePreloads.post
-                    : await import('./electric-dreams-post.js');
+                    : ElectricDreamsPostModule;
                 const { ElectricDreamsPost, getElectricDreamsPostProfile } = postModule;
                 const profile = getElectricDreamsPostProfile(this.activeQualityLevel);
                 this.postProfile = profile;

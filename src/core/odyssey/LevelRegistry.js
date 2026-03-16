@@ -7,12 +7,26 @@
 
 import { LEVEL_CONFIGS } from './data/levels.js';
 import { CHAPTER_CONFIGS } from './data/chapters.js';
+import {
+    applyOdysseyLayoutToLevels,
+    buildOdysseyPresentationLayout,
+    cloneOdysseyLayoutData,
+    normalizeOdysseyLayoutData,
+    ODYSSEY_LAYOUT_DATA,
+} from './data/odyssey-layout.js';
+import {
+    hasOdysseyThemePresentationPalette,
+} from './theme-presentation.js';
 
 export class LevelRegistry {
-    constructor() {
+    constructor(options = {}) {
         this.levels = new Map();
         this.chapters = new Map();
         this.levelsByChapter = new Map();
+        this.sortedLevels = [];
+        this.presentationByLevel = new Map();
+        this.presentationLayout = null;
+        this.layoutData = normalizeOdysseyLayoutData(options.layoutData || ODYSSEY_LAYOUT_DATA);
 
         this.loadLevelData();
     }
@@ -21,8 +35,10 @@ export class LevelRegistry {
      * Load and index all level and chapter data
      */
     loadLevelData() {
+        const resolvedLevels = applyOdysseyLayoutToLevels(LEVEL_CONFIGS, this.layoutData);
+
         // Index levels by ID
-        for (const level of LEVEL_CONFIGS) {
+        for (const level of resolvedLevels) {
             this.levels.set(level.id, level);
 
             // Index by chapter
@@ -37,7 +53,59 @@ export class LevelRegistry {
             this.chapters.set(chapter.id, chapter);
         }
 
+        this.rebuildDerivedData();
+
         console.log(`[LevelRegistry] Loaded ${this.levels.size} levels in ${this.chapters.size} chapters`);
+    }
+
+    rebuildDerivedData() {
+        this.sortedLevels = Array.from(this.levels.values())
+            .sort((left, right) => left.id - right.id);
+
+        this.levelsByChapter.forEach((levels, chapterId) => {
+            this.levelsByChapter.set(
+                chapterId,
+                [...levels].sort(
+                    (left, right) => (left.chapterLevel || left.id) - (right.chapterLevel || right.id),
+                ),
+            );
+        });
+
+        this.presentationByLevel.clear();
+        this.sortedLevels.forEach((level) => {
+            this.presentationByLevel.set(level.id, this._createResolvedLevelPresentation(level));
+        });
+
+        this.presentationLayout = buildOdysseyPresentationLayout(this.sortedLevels, this.layoutData);
+    }
+
+    _createResolvedLevelPresentation(level) {
+        if (!level) {
+            return null;
+        }
+
+        const theme = {
+            ...(level.theme || {}),
+        };
+        const metadata = {
+            ...(level.metadata || {}),
+        };
+        const pathLabel = metadata.pathLabel || level.name;
+        const iconThemeId = theme.pathIcon || theme.primary || null;
+        const transitionPaletteThemeId = theme.transitionPalette || theme.primary || null;
+
+        theme.pathIcon = iconThemeId;
+        theme.transitionPalette = transitionPaletteThemeId;
+
+        return {
+            ...level,
+            theme,
+            metadata,
+            description: metadata.description || '',
+            iconThemeId,
+            transitionPaletteThemeId,
+            pathLabel,
+        };
     }
 
     // =============================
@@ -58,7 +126,7 @@ export class LevelRegistry {
      * @returns {Object[]}
      */
     getAllLevels() {
-        return Array.from(this.levels.values());
+        return [...this.sortedLevels];
     }
 
     /**
@@ -67,7 +135,7 @@ export class LevelRegistry {
      * @returns {Object[]}
      */
     getLevelsInChapter(chapterId) {
-        return this.levelsByChapter.get(chapterId) || [];
+        return [...(this.levelsByChapter.get(chapterId) || [])];
     }
 
     /**
@@ -108,7 +176,7 @@ export class LevelRegistry {
      * @returns {Object[]}
      */
     getAllChapters() {
-        return Array.from(this.chapters.values());
+        return Array.from(this.chapters.values()).sort((left, right) => left.id - right.id);
     }
 
     /**
@@ -120,6 +188,48 @@ export class LevelRegistry {
         const level = this.getLevel(levelId);
         if (!level) return null;
         return this.getChapter(level.chapter);
+    }
+
+    getChapterName(chapterId) {
+        return this.getChapter(chapterId)?.name || 'Unknown';
+    }
+
+    resolveLevelPresentation(levelOrId) {
+        const levelId = typeof levelOrId === 'object' ? levelOrId?.id : levelOrId;
+        if (!Number.isFinite(levelId)) {
+            return null;
+        }
+        const presentation = this.presentationByLevel.get(levelId);
+        if (!presentation) {
+            return null;
+        }
+
+        return {
+            ...presentation,
+            theme: { ...(presentation.theme || {}) },
+            metadata: { ...(presentation.metadata || {}) },
+        };
+    }
+
+    getAllLevelPresentations() {
+        return this.sortedLevels
+            .map((level) => this.resolveLevelPresentation(level.id))
+            .filter(Boolean);
+    }
+
+    getPresentationLayout() {
+        return {
+            controlPoints: this.presentationLayout?.controlPoints?.map((point) => ({ ...point })) || [],
+            levelPositionsById: { ...(this.presentationLayout?.levelPositionsById || {}) },
+            levelPositions: [...(this.presentationLayout?.levelPositions || [])],
+            chapterPositions: [...(this.presentationLayout?.chapterPositions || [])],
+            totalLevels: this.presentationLayout?.totalLevels || this.sortedLevels.length,
+            chapterRanges: (this.presentationLayout?.chapterRanges || []).map((range) => ({ ...range })),
+        };
+    }
+
+    getLayoutData() {
+        return cloneOdysseyLayoutData(this.layoutData);
     }
 
     // =============================
@@ -304,14 +414,32 @@ export class LevelRegistry {
         const report = {
             valid: true,
             levelErrors: new Map(),
+            presentationErrors: [],
+            chapterErrors: [],
             warnings: [],
         };
 
-        for (const level of this.levels.values()) {
+        let previousPathPosition = -Infinity;
+        for (const level of this.sortedLevels) {
             const result = this.validateLevel(level);
             if (!result.valid) {
                 report.valid = false;
                 report.levelErrors.set(level.id, result.errors);
+            }
+
+            if (!Number.isFinite(level.pathPosition) || level.pathPosition < 0 || level.pathPosition > 1) {
+                report.valid = false;
+                report.presentationErrors.push(`Level ${level.id} has invalid pathPosition ${level.pathPosition}`);
+            } else if (level.pathPosition <= previousPathPosition) {
+                report.valid = false;
+                report.presentationErrors.push(`Level ${level.id} pathPosition ${level.pathPosition} is not strictly increasing`);
+            }
+            previousPathPosition = level.pathPosition;
+
+            const themeId = level.theme?.transitionPalette || level.theme?.primary;
+            if (!hasOdysseyThemePresentationPalette(themeId)) {
+                report.valid = false;
+                report.presentationErrors.push(`Level ${level.id} is missing Odyssey theme presentation palette for "${themeId}"`);
             }
         }
 
@@ -320,6 +448,24 @@ export class LevelRegistry {
         for (let i = 1; i <= maxId; i++) {
             if (!this.levels.has(i)) {
                 report.warnings.push(`Missing level ID: ${i}`);
+            }
+        }
+
+        for (const chapter of this.getAllChapters()) {
+            const levels = this.getLevelsInChapter(chapter.id);
+            if (levels.length === 0) {
+                report.valid = false;
+                report.chapterErrors.push(`Chapter ${chapter.id} has no levels`);
+                continue;
+            }
+
+            const actualRange = [levels[0].id, levels[levels.length - 1].id];
+            const configuredRange = chapter.levelRange || [];
+            if (configuredRange[0] !== actualRange[0] || configuredRange[1] !== actualRange[1]) {
+                report.valid = false;
+                report.chapterErrors.push(
+                    `Chapter ${chapter.id} levelRange mismatch: expected ${actualRange.join('-')} got ${configuredRange.join('-')}`,
+                );
             }
         }
 
@@ -343,9 +489,10 @@ export class LevelRegistry {
             const timestamp = Date.now();
             const levelsModule = await import(`./data/levels.js?t=${timestamp}`);
             const chaptersModule = await import(`./data/chapters.js?t=${timestamp}`);
+            const resolvedLevels = applyOdysseyLayoutToLevels(levelsModule.LEVEL_CONFIGS, this.layoutData);
 
             // Re-index
-            for (const level of levelsModule.LEVEL_CONFIGS) {
+            for (const level of resolvedLevels) {
                 this.levels.set(level.id, level);
                 if (!this.levelsByChapter.has(level.chapter)) {
                     this.levelsByChapter.set(level.chapter, []);
@@ -356,6 +503,8 @@ export class LevelRegistry {
             for (const chapter of chaptersModule.CHAPTER_CONFIGS) {
                 this.chapters.set(chapter.id, chapter);
             }
+
+            this.rebuildDerivedData();
 
             console.log('[LevelRegistry] Level data reloaded');
             return true;
