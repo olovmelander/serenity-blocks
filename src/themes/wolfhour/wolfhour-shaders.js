@@ -69,6 +69,7 @@ export const SilverTintShader = {
 // ─────────────────────────────────────────────────────────────────────────────
 export const mountainVertexShader = `
     attribute float aHeight;
+    attribute float aBaseMask;
 
     uniform float uTime;
     uniform float uShockwave; // New: For piece lock displacement
@@ -76,12 +77,14 @@ export const mountainVertexShader = `
     varying vec3 vNormal;
     varying vec3 vWorldPosition;
     varying float vHeight;
+    varying float vBaseMask;
     varying vec2 vUv;
 
     void main() {
         vNormal = normalize(normalMatrix * normal);
         vUv = uv;
         vHeight = aHeight;
+        vBaseMask = aBaseMask;
 
         vec4 worldPos = modelMatrix * vec4(position, 1.0);
         vWorldPosition = worldPos.xyz;
@@ -109,6 +112,7 @@ export const mountainFragmentShader = `
     varying vec3 vNormal;
     varying vec3 vWorldPosition;
     varying float vHeight;
+    varying float vBaseMask;
     varying vec2 vUv;
 
     // FBM noise for rock texture
@@ -139,6 +143,8 @@ export const mountainFragmentShader = `
     }
 
     void main() {
+        float skirtFade = smoothstep(0.18, 1.0, vBaseMask);
+
         // Base rock color based on layer (closer = darker)
         vec3 rockColor = mix(uRockColorDark, uRockColorLight, uMountainLayer);
 
@@ -154,11 +160,15 @@ export const mountainFragmentShader = `
         // Rim lighting for silhouette definition
         vec3 viewDir = normalize(cameraPosition - vWorldPosition);
         float rim = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 3.0);
-        color += vec3(0.1, 0.1, 0.12) * rim;
+        color += vec3(0.1, 0.1, 0.12) * rim * (1.0 - skirtFade * 0.92);
 
         // Gameplay pulse effect (silver glow on peaks)
-        float peakGlow = smoothstep(0.6, 1.0, vHeight) * uPulseIntensity;
+        float peakGlow = smoothstep(0.6, 1.0, vHeight) * uPulseIntensity * (1.0 - skirtFade);
         color += vec3(0.8, 0.8, 0.9) * peakGlow * 0.3;
+
+        // Darken the outer skirt into a stable silhouette mass so zoom-out doesn't show glossy stretch.
+        vec3 baseShadow = mix(rockColor * 0.4, vec3(0.02, 0.022, 0.03), skirtFade);
+        color = mix(color, baseShadow, skirtFade);
 
         // === ATMOSPHERIC FOG ===
         // Distant mountains fade toward a darker misty color (keeping them dark)
@@ -453,6 +463,8 @@ export const fogVertexShader = `
 export const fogFragmentShader = `
     uniform float uTime;
     uniform float uOpacity;
+    uniform float uPulse;
+    uniform float uSwirl;
     varying vec2 vUv;
     
     float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -468,13 +480,23 @@ export const fogFragmentShader = `
         return v;
     }
     void main() {
-        vec2 uv = vUv;
-        uv.x += uTime * 0.01;
-        float fog = fbm(uv * 3.0 + uTime * 0.02) + fbm(uv * 6.0 - uTime * 0.015) * 0.5;
-        fog = fog * 0.5 + 0.5;
-        float vertFade = 1.0 - smoothstep(0.0, 0.8, vUv.y);
-        float horizFade = smoothstep(0.0, 0.15, vUv.x) * smoothstep(1.0, 0.85, vUv.x);
-        gl_FragColor = vec4(vec3(0.4, 0.42, 0.45), fog * vertFade * horizFade * uOpacity);
+        vec2 centered = vUv - 0.5;
+        vec2 driftUv = vec2(
+            vUv.x * 3.2 + uTime * 0.032 + centered.y * 0.25,
+            vUv.y * 2.6 + uTime * 0.018
+        );
+        vec2 swirlUv = vec2(
+            vUv.x * 5.1 - uTime * 0.025,
+            vUv.y * 3.7 + uTime * 0.021
+        );
+        float densityA = fbm(driftUv);
+        float densityB = fbm(swirlUv);
+        float density = mix(densityA, densityB, clamp(uSwirl, 0.0, 1.0));
+        float verticalFade = 1.0 - smoothstep(0.15, 1.0, vUv.y);
+        float edgeFade = smoothstep(0.02, 0.22, vUv.x) * (1.0 - smoothstep(0.78, 0.98, vUv.x));
+        float fogAlpha = density * verticalFade * edgeFade * uOpacity * (0.8 + uPulse * 0.35) * 0.75;
+        vec3 fogColor = mix(vec3(0.14, 0.15, 0.18), vec3(0.2, 0.22, 0.28), density);
+        gl_FragColor = vec4(fogColor, fogAlpha);
     }
 `;
 

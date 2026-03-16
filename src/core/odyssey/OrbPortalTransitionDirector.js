@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbPortalCompositor } from '../../rendering/transitions/OrbPortalCompositor.js';
 import { resolveWarpQualityProfile } from '../../rendering/transitions/warp-quality-profiles.js';
+import { getOdysseyThemePresentationPalette } from './theme-presentation.js';
 
 export const ORB_PORTAL_STATES = Object.freeze({
     PREPARE: 'PREPARE',
@@ -374,6 +375,19 @@ export class OrbPortalTransitionDirector {
     }
 
     buildThemeConfig(levelConfig, boardController) {
+        const themeId = levelConfig?.transitionPaletteThemeId
+            || levelConfig?.theme?.transitionPalette
+            || levelConfig?.theme?.primary
+            || null;
+        const themePalette = getOdysseyThemePresentationPalette(themeId);
+        if (themePalette) {
+            return {
+                chapterColor: new THREE.Color(themePalette.primary),
+                accentColor: new THREE.Color(themePalette.accent),
+                shadowColor: new THREE.Color(themePalette.shadow),
+            };
+        }
+
         const chapterId = levelConfig?.chapter || 1;
         const chapterColor = boardController?.nodeManager?.getChapterColor?.(chapterId);
 

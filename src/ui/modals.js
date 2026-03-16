@@ -736,6 +736,10 @@ function setupSettingsScrollPerformanceMode(modalManager) {
     const scrollContainer = settingsModal?.querySelector('.settings-scroll-container');
     if (!settingsModal || !scrollContainer) return;
 
+    settingsModal.dataset.wheelLock = 'true';
+    settingsModal.querySelector('.modal-content')?.setAttribute('data-wheel-lock', 'true');
+    scrollContainer.dataset.wheelLock = 'true';
+
     // Guard against duplicate setup if this initializer is called again.
     if (scrollContainer.dataset.scrollPerfSetup === 'true') return;
     scrollContainer.dataset.scrollPerfSetup = 'true';

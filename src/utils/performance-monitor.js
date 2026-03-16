@@ -13,6 +13,31 @@ const GRAPH_WIDTH = 240; // Width of frame time graph in pixels
 const GRAPH_HEIGHT = 50; // Height of frame time graph in pixels
 const SECTION_SAMPLE_SIZE = 90;
 
+function simplifyGPUName(raw = '') {
+    if (!raw) return '';
+
+    let label = String(raw);
+    const angleMatch = label.match(/ANGLE \((.+)\)/);
+    if (angleMatch) {
+        label = angleMatch[1];
+    }
+
+    const parts = label.split(',').map((part) => part.trim()).filter(Boolean);
+    if (parts.length > 1) {
+        return parts[1];
+    }
+
+    return parts[0] || label;
+}
+
+function escapeAttribute(value = '') {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
 /**
  * Performance Monitor - tracks game performance metrics in real-time
  */
@@ -84,6 +109,8 @@ export class PerformanceMonitor {
         this.themeSwitches = [];
         this.latestNetworkStats = null;
         this.eventUnsubscribers = [];
+        this.desktopGpuDiagnostics = null;
+        this.desktopGpuRefreshPromise = null;
 
         console.log('[PerformanceMonitor] Initialized');
     }
@@ -111,6 +138,7 @@ export class PerformanceMonitor {
         this.setupKeyboardToggle();
         this.startFrameListener();
         this.bindRuntimeEvents();
+        this.refreshDesktopGpuDiagnostics();
 
         console.log('[PerformanceMonitor] Enabled');
     }
@@ -402,6 +430,85 @@ export class PerformanceMonitor {
         this.latestNetworkStats = stats;
     }
 
+    setDesktopGpuDiagnostics(diagnostics) {
+        if (!diagnostics || typeof diagnostics !== 'object') {
+            return;
+        }
+
+        this.desktopGpuDiagnostics = {
+            activeWebGLRenderer: diagnostics.activeWebGLRenderer || null,
+            gpuFeatureStatus: diagnostics.gpuFeatureStatus || null,
+            adapters: Array.isArray(diagnostics.adapters) ? diagnostics.adapters : [],
+            gpuSwitches: diagnostics.gpuSwitches || {},
+            auxAttributes: diagnostics.auxAttributes || {},
+            updatedAt: diagnostics.updatedAt || null,
+        };
+    }
+
+    async refreshDesktopGpuDiagnostics() {
+        if (this.desktopGpuRefreshPromise || typeof window === 'undefined' || !window.electronAPI?.getGPUDiagnostics) {
+            return this.desktopGpuRefreshPromise;
+        }
+
+        this.desktopGpuRefreshPromise = window.electronAPI.getGPUDiagnostics()
+            .then((diagnostics) => {
+                this.setDesktopGpuDiagnostics(diagnostics);
+                return diagnostics;
+            })
+            .catch((error) => {
+                console.warn('[PerformanceMonitor] Failed to fetch desktop GPU diagnostics:', error?.message || error);
+                return null;
+            })
+            .finally(() => {
+                this.desktopGpuRefreshPromise = null;
+            });
+
+        return this.desktopGpuRefreshPromise;
+    }
+
+    getDesktopGpuOverlayInfo() {
+        if (!this.desktopGpuDiagnostics) {
+            return null;
+        }
+
+        const adapters = Array.isArray(this.desktopGpuDiagnostics.adapters)
+            ? this.desktopGpuDiagnostics.adapters
+            : [];
+        const adapterLabel = adapters
+            .map((adapter) => `${adapter.active ? '* ' : ''}${adapter.name || adapter.vendor || 'Unknown GPU'}`)
+            .join(' | ');
+        const adapterTitle = adapters
+            .map((adapter) => {
+                const details = [
+                    adapter.active ? 'active' : 'inactive',
+                    adapter.vendor,
+                    adapter.name,
+                    adapter.driverVersion ? `driver ${adapter.driverVersion}` : null,
+                ].filter(Boolean);
+                return details.join(' · ');
+            })
+            .join('\n');
+
+        const featureStatus = this.desktopGpuDiagnostics.gpuFeatureStatus || {};
+        const featureSummary = [
+            featureStatus.gpu_compositing ? `compositing: ${featureStatus.gpu_compositing}` : null,
+            featureStatus.webgl ? `webgl: ${featureStatus.webgl}` : null,
+            featureStatus.webgl2 ? `webgl2: ${featureStatus.webgl2}` : null,
+        ].filter(Boolean).join(' · ');
+
+        const gpuSwitches = this.desktopGpuDiagnostics.gpuSwitches || {};
+        const switchSummary = Object.entries(gpuSwitches)
+            .map(([name, value]) => (value === true ? name : `${name}=${value}`))
+            .join(', ');
+
+        return {
+            adapterLabel,
+            adapterTitle,
+            featureSummary,
+            switchSummary,
+        };
+    }
+
     calculatePercentile(values, percentile) {
         if (!values.length) return 0;
         const sorted = [...values].sort((a, b) => a - b);
@@ -433,6 +540,86 @@ export class PerformanceMonitor {
                 recentEvents: this.runtimeEvents.slice(-10),
             },
             network: this.latestNetworkStats,
+        };
+    }
+
+    getRecentRuntimeEvents(limit = 40) {
+        if (!Number.isFinite(limit) || limit <= 0) {
+            return [];
+        }
+        return this.runtimeEvents.slice(-limit);
+    }
+
+    findRuntimeEvent(types = [], { fromEnd = false } = {}) {
+        if (!Array.isArray(types) || types.length === 0) {
+            return null;
+        }
+
+        const entries = fromEnd ? [...this.runtimeEvents].reverse() : this.runtimeEvents;
+        return entries.find((entry) => types.includes(entry.type)) || null;
+    }
+
+    getRuntimeDuration(startTypes = [], endTypes = []) {
+        const startEntry = this.findRuntimeEvent(startTypes);
+        const endEntry = this.findRuntimeEvent(endTypes, { fromEnd: true });
+        if (!startEntry || !endEntry) {
+            return null;
+        }
+
+        const durationMs = endEntry.timestamp - startEntry.timestamp;
+        return Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : null;
+    }
+
+    getEventPayloadDuration(types = []) {
+        const eventEntry = this.findRuntimeEvent(types, { fromEnd: true });
+        const durationMs = eventEntry?.payload?.durationMs;
+        return Number.isFinite(durationMs) ? durationMs : null;
+    }
+
+    getStartupDurations() {
+        return {
+            introRendererInitMs: this.getEventPayloadDuration(['startup_intro_renderer_init_completed'])
+                ?? this.getRuntimeDuration(['startup_intro_renderer_init_started'], ['startup_intro_renderer_init_completed']),
+            audioTrackInitMs: this.getEventPayloadDuration(['startup_intro_music_init_completed'])
+                ?? this.getRuntimeDuration(['startup_intro_music_init_started'], ['startup_intro_music_init_completed']),
+            serenityBlocksInitMs: this.getEventPayloadDuration(['startup_app_init_completed'])
+                ?? this.getRuntimeDuration(['startup_app_init_started'], ['startup_app_init_completed']),
+            initialThemeReadyMs: this.getEventPayloadDuration(['startup_initial_theme_ready'])
+                ?? this.getRuntimeDuration(['startup_initial_theme_started'], ['startup_initial_theme_ready']),
+            serenityHubFirstIconReadyMs: this.getEventPayloadDuration(['startup_hub_icons_ready'])
+                ?? this.getRuntimeDuration(['startup_bootstrap_begin'], ['startup_hub_icons_ready']),
+            firstUsableFrameMs: this.getRuntimeDuration(['startup_bootstrap_begin'], ['startup_first-usable-frame']),
+        };
+    }
+
+    createDesktopInvestigationSnapshot({
+        stage = 'unknown',
+        appMode = 'browser-dev',
+        settingsSnapshot = null,
+        runtimeConfig = null,
+        extra = {},
+    } = {}) {
+        return {
+            generatedAt: new Date().toISOString(),
+            stage,
+            appMode,
+            runtimeConfig,
+            settingsSnapshot,
+            metrics: this.getMetrics(),
+            qualityMode: this.qualityMode,
+            startupDurations: this.getStartupDurations(),
+            startupMarks: this.runtimeEvents.filter((entry) => entry.type.startsWith('startup_')).slice(-80),
+            topSections: this.getTopSections(5),
+            releaseGates: this.getReleaseGateSnapshot(),
+            runtimeEvents: this.getRecentRuntimeEvents(60),
+            themeSwitches: this.themeSwitches.slice(-20),
+            gpu: {
+                webglRenderer: (typeof window !== 'undefined' && window.activeGPURenderer)
+                    || this.desktopGpuDiagnostics?.activeWebGLRenderer
+                    || 'Unavailable',
+                desktopDiagnostics: this.desktopGpuDiagnostics,
+            },
+            extra,
         };
     }
 
@@ -595,6 +782,12 @@ export class PerformanceMonitor {
                     ? `${Math.min(...this.memoryHistory).toFixed(2)}MB - ${Math.max(...this.memoryHistory).toFixed(2)}MB`
                     : 'N/A',
             },
+            gpu: {
+                webglRenderer: (typeof window !== 'undefined' && window.activeGPURenderer)
+                    || this.desktopGpuDiagnostics?.activeWebGLRenderer
+                    || 'Unavailable',
+                desktopDiagnostics: this.desktopGpuDiagnostics,
+            },
         };
 
         console.group('📊 Performance Report');
@@ -603,6 +796,7 @@ export class PerformanceMonitor {
         console.log('Frame Time:', report.frameTime);
         console.log('Performance:', report.performance);
         console.log('Memory:', report.memory);
+        console.log('GPU:', report.gpu);
         console.groupEnd();
 
         return report;
@@ -662,6 +856,7 @@ export class PerformanceMonitor {
         if (this.overlayElement) {
             this.overlayElement.style.display = 'block';
         }
+        this.refreshDesktopGpuDiagnostics();
         this.startOverlayUpdates();
         this.updateOverlay();
     }
@@ -844,6 +1039,10 @@ export class PerformanceMonitor {
         if (!this.overlayElement) return;
 
         this.overlayElement.style.display = 'block';
+        const webglRenderer = (typeof window !== 'undefined' && window.activeGPURenderer)
+            || this.desktopGpuDiagnostics?.activeWebGLRenderer
+            || '';
+        const desktopGpuInfo = this.getDesktopGpuOverlayInfo();
 
         // Build HTML content with larger, more readable fonts
         const hotSections = displayMetrics.hotSections || [];
@@ -858,11 +1057,17 @@ export class PerformanceMonitor {
             <div style="color: #888; font-size: 11px; margin-bottom: 8px;">
                 Mode: <span style="color: #0ff; font-weight: bold;">${displayMetrics.collectionMode}</span>
             </div>
-            ${typeof window !== 'undefined' && window.activeGPURenderer ? `
-            <div style="color: #888; font-size: 11px; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px;" title="${window.activeGPURenderer}">
-                GPU: <span style="color: #0f0;">${window.activeGPURenderer.replace(/ANGLE \((.+)\)/, '$1').split(',')[1]?.trim()
-                || window.activeGPURenderer.replace(/ANGLE \((.+)\)/, '$1').split(',')[0]
-                }</span>
+            ${webglRenderer ? `
+            <div style="color: #888; font-size: 11px; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px;" title="${escapeAttribute(webglRenderer)}">
+                WebGL: <span style="color: #0f0;">${simplifyGPUName(webglRenderer)}</span>
+            </div>` : ''}
+            ${desktopGpuInfo?.adapterLabel ? `
+            <div style="color: #888; font-size: 11px; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px;" title="${escapeAttribute(desktopGpuInfo.adapterTitle)}">
+                Desktop: <span style="color: #0ff;">${desktopGpuInfo.adapterLabel}</span>
+            </div>` : ''}
+            ${desktopGpuInfo?.featureSummary ? `
+            <div style="color: #888; font-size: 10px; margin-bottom: 8px; line-height: 1.4;" title="${escapeAttribute(desktopGpuInfo.switchSummary)}">
+                GPU Status: <span style="color: #8ff;">${desktopGpuInfo.featureSummary}</span>
             </div>` : ''}
 
             <div style="color: ${displayMetrics.fpsColor}; font-weight: bold; font-size: 24px; margin: 8px 0;">
@@ -941,6 +1146,12 @@ export class PerformanceMonitor {
             runtimeEvents: [...this.runtimeEvents],
             themeSwitches: [...this.themeSwitches],
             network: this.latestNetworkStats,
+            gpu: {
+                webglRenderer: (typeof window !== 'undefined' && window.activeGPURenderer)
+                    || this.desktopGpuDiagnostics?.activeWebGLRenderer
+                    || null,
+                desktopDiagnostics: this.desktopGpuDiagnostics,
+            },
         };
 
         const json = JSON.stringify(data, null, 2);

@@ -12,7 +12,16 @@
  */
 
 import * as THREE from 'three';
-import { getChapterPathRange } from '../path-utils.js';
+import {
+    getChapterPathRange,
+    getOdysseyPathPointAt,
+    ODYSSEY_SURFACE_BREAKOUT_Y_OFFSET,
+} from '../path-utils.js';
+import {
+    createMountainAuroraBackdrop,
+    resolveMountainAuroraPreviewOpacity,
+    SURFACE_WORLD_AURORA_PREVIEW_LAYER_OPACITIES,
+} from './shared/mountain-aurora.js';
 
 /**
  * Surface World environment configuration
@@ -31,6 +40,8 @@ export const SURFACE_WORLD_CONFIG = {
         background: 0xc8e6c9, // Soft green fog
     },
 };
+
+const SURFACE_WORLD_TERRAIN_DEPTH_OFFSET = 8;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SHARED UTILS
@@ -221,43 +232,6 @@ void main() {
     float alpha = 1.0 - smoothstep(0.8, 1.0, dist);
     
     gl_FragColor = vec4(color, alpha * 0.9);
-}
-`;
-
-const terrainVertexShader = `
-varying vec3 vNormal;
-varying vec3 vPosition;
-void main() {
-    vNormal = normalize(normalMatrix * normal);
-    vPosition = (modelMatrix * vec4(position, 1.0)).xyz;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
-
-const terrainFragmentShader = `
-uniform vec3 uColorLow;
-uniform vec3 uColorHigh;
-varying vec3 vNormal;
-varying vec3 vPosition;
-
-void main() {
-    // Height based gradient
-    float h = smoothstep(-10.0, 30.0, vPosition.y);
-    vec3 color = mix(uColorLow, uColorHigh, h);
-    
-    // Lighting - more ambient, less diffuse to preserve saturation
-    vec3 lightDir = normalize(vec3(0.5, 1.0, 0.5));
-    float diff = max(dot(vNormal, lightDir), 0.0);
-    // Reduced diffuse contribution to prevent washout
-    color *= (0.6 + diff * 0.4);
-    
-    // Distance fog (simple)
-    float dist = length(vPosition.xz);
-    // Push fog start back to keep foreground vibrant
-    float fog = smoothstep(150.0, 300.0, dist);
-    color = mix(color, vec3(0.72, 0.88, 1.0), fog); // Fade to sky (matches new bottomColor 0xb8e2ff)
-    
-    gl_FragColor = vec4(color, 1.0);
 }
 `;
 
@@ -489,7 +463,38 @@ function collectUniformTargetsFromRoots(roots, uniformName) {
     return targets;
 }
 
-export function createSurfaceWorldEnvironment(options = {}) {
+export function resolveSurfaceWorldVisibilityState({
+    waterSurfaceY,
+    surfaceProbeY,
+    cameraY,
+}) {
+    const fallbackProbeY = Number.isFinite(cameraY) ? cameraY : waterSurfaceY;
+    const resolvedProbeY = Number.isFinite(surfaceProbeY) ? surfaceProbeY : fallbackProbeY;
+    const isUnderwater = resolvedProbeY < (waterSurfaceY - 2);
+    const surfaceOpacity = THREE.MathUtils.smoothstep(
+        resolvedProbeY,
+        waterSurfaceY - 12,
+        waterSurfaceY + 2,
+    );
+
+    return {
+        surfaceProbeY: resolvedProbeY,
+        cameraY: fallbackProbeY,
+        isUnderwater,
+        surfaceOpacity,
+    };
+}
+
+export function resolveSurfaceWorldAuroraPreviewState(progress) {
+    const previewOpacity = resolveMountainAuroraPreviewOpacity(progress);
+
+    return {
+        previewOpacity,
+        previewVisible: previewOpacity > 0,
+    };
+}
+
+export function createSurfaceWorldEnvironment() {
     const group = new THREE.Group();
     group.name = 'surface-world-environment';
     group.userData.chapterId = 3;
@@ -503,10 +508,12 @@ export function createSurfaceWorldEnvironment(options = {}) {
     const chapter4Range = getChapterPathRange(4);
     const fallbackCenterY = (SURFACE_WORLD_CONFIG.yStart + SURFACE_WORLD_CONFIG.yEnd) / 2;
     const chapterCenterY = chapterRange?.center.y ?? fallbackCenterY;
-    const surfaceOffsetY = chapterRange
-        ? chapterRange.start.y - chapterCenterY
-        : -15;
+    const waterSurfaceY = chapterRange
+        ? chapterRange.start.y - ODYSSEY_SURFACE_BREAKOUT_Y_OFFSET
+        : chapterCenterY - 15;
+    const surfaceOffsetY = waterSurfaceY - chapterCenterY;
     const surfaceWorldY = chapterCenterY + surfaceOffsetY;
+    const terrainOffsetY = surfaceOffsetY + (15 - SURFACE_WORLD_TERRAIN_DEPTH_OFFSET);
 
     if (chapterRange) {
         group.userData.yStart = chapterRange.start.y;
@@ -535,15 +542,32 @@ export function createSurfaceWorldEnvironment(options = {}) {
     // 3. Distant Landscape/Islands - only visible above water
     const landscape = createLandscape(uniforms, surfaceWorldY);
     landscape.name = 'landscape';
+    landscape.position.y = terrainOffsetY;
     group.add(landscape);
     group.userData.landscape = landscape;
 
-    // 3.5 Distant Mountains on horizon (same style as Chapter 4)
+    // 3.5 Foothill terrain bridge into Chapter 4
+    const foothillBridge = createFoothillBridge();
+    foothillBridge.name = 'foothill-bridge';
+    foothillBridge.position.y = terrainOffsetY;
+    group.add(foothillBridge);
+    group.userData.foothillBridge = foothillBridge;
+    group.userData.snowFloor = foothillBridge;
+
+    // 3.75 Distant Mountains on horizon (same style as Chapter 4)
     const distantMountains = createDistantMountains(uniforms);
     distantMountains.name = 'distant-mountains';
     group.add(distantMountains);
     group.userData.distantMountains = distantMountains;
-    group.userData.snowFloor = distantMountains.userData.snowFloor;
+    group.userData.foothillMist = distantMountains.userData.foothillMist;
+
+    const auroraPreview = createMountainAuroraBackdrop(uniforms, {
+        name: 'mountain-aurora-preview',
+        layerCount: 3,
+        layerOpacities: SURFACE_WORLD_AURORA_PREVIEW_LAYER_OPACITIES,
+    });
+    group.add(auroraPreview);
+    group.userData.auroraPreview = auroraPreview;
 
     // 4. High Quality Fluffy Grass (Removed per user request due to floating artifacts)
     // const grass = createFluffyGrass(uniforms, 1000);
@@ -578,15 +602,38 @@ export function createSurfaceWorldEnvironment(options = {}) {
 
     // Store references to surface-only elements for visibility toggling
     // Include ocean surface and mountains - only visible from above
-    group.userData.surfaceElements = [ocean, landscape, distantMountains, rays, clouds, petals, butterflies];
+    group.userData.surfaceElements = [
+        ocean,
+        landscape,
+        foothillBridge,
+        distantMountains,
+        auroraPreview,
+        rays,
+        clouds,
+        petals,
+        butterflies,
+    ];
     group.userData.skyElement = sky;
     group.userData.waterSurfaceY = surfaceWorldY;
     group.userData.snowBlendUniformTargets = collectUniformTargetsFromRoots(
-        [landscape, distantMountains, group.userData.snowFloor],
+        [landscape, foothillBridge, distantMountains],
         'uSnowBlend',
     );
     group.userData.surfaceOpacityUniformTargets = collectUniformTargetsFromRoots(
-        group.userData.surfaceElements,
+        [
+            ocean,
+            landscape,
+            foothillBridge,
+            distantMountains,
+            rays,
+            clouds,
+            petals,
+            butterflies,
+        ],
+        'uOpacity',
+    );
+    group.userData.auroraPreviewOpacityUniformTargets = collectUniformTargetsFromRoots(
+        [auroraPreview],
         'uOpacity',
     );
 
@@ -805,6 +852,145 @@ function createLandscape(uniforms, waterLevel = 60.0) {
     return mesh;
 }
 
+function createFoothillBridge() {
+    const bridgeWidth = 920;
+    const bridgeDepth = 680;
+    const bridgeCenterZ = -500;
+    const frontZ = -180;
+    const backZ = -820;
+    const geometry = new THREE.PlaneGeometry(bridgeWidth, bridgeDepth, 104, 112);
+    geometry.rotateX(-Math.PI / 2);
+
+    const positionAttribute = geometry.attributes.position;
+    for (let i = 0; i < positionAttribute.count; i++) {
+        const x = positionAttribute.getX(i);
+        const worldZ = positionAttribute.getZ(i) + bridgeCenterZ;
+        const climb = THREE.MathUtils.clamp((-worldZ - 180) / (Math.abs(backZ - frontZ)), 0, 1);
+        const easedClimb = climb * climb * (3 - (2 * climb));
+        const centerShelf = 1 - THREE.MathUtils.clamp(Math.abs(x) / 170, 0, 1);
+        const pathCorridor = 1 - THREE.MathUtils.clamp(Math.abs(x + 18) / 140, 0, 1);
+        const shoulderMask = smoothstep(70, 360, Math.abs(x));
+        const noise = (
+            Math.sin(x * 0.022) * Math.cos(worldZ * 0.013) * 0.55
+            + Math.sin((x + worldZ) * 0.009) * 0.3
+            + Math.cos((x * 0.018) - (worldZ * 0.01)) * 0.22
+        );
+
+        const base = -18 + (easedClimb * 26);
+        const centerLift = centerShelf * (4.5 + (easedClimb * 6.5));
+        const shoulderLift = shoulderMask * ((6 + (easedClimb * 22)) * 0.75);
+        const ridgeLift = noise * (4 + (easedClimb * 6));
+        const backRise = THREE.MathUtils.smoothstep(easedClimb, 0.55, 1.0) * 11.5;
+        const corridorCarve = pathCorridor * (10 + (easedClimb * 8));
+        const frontFeather = (1 - THREE.MathUtils.smoothstep(easedClimb, 0.0, 0.12)) * 2.5;
+        const height = base
+            + centerLift
+            + shoulderLift
+            + ridgeLift
+            + backRise
+            - corridorCarve
+            - frontFeather;
+
+        positionAttribute.setY(i, height);
+    }
+
+    geometry.computeVertexNormals();
+
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            uGrassColor: { value: new THREE.Color(0x5f8a58) },
+            uTundraColor: { value: new THREE.Color(0x7b7468) },
+            uSnowColor: { value: new THREE.Color(0xdce5ea) },
+            uShadowColor: { value: new THREE.Color(0x5d6670) },
+            uFogColor: { value: new THREE.Color(0xd9e3e7) },
+            uSnowBlend: { value: 0 },
+            uOpacity: { value: 1 },
+        },
+        vertexShader: `
+            varying vec3 vNormal;
+            varying vec3 vWorldPosition;
+            varying vec3 vLocalPosition;
+
+            void main() {
+                vNormal = normalize(normalMatrix * normal);
+                vLocalPosition = position;
+                vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                vWorldPosition = worldPosition.xyz;
+                gl_Position = projectionMatrix * viewMatrix * worldPosition;
+            }
+        `,
+        fragmentShader: `
+            uniform vec3 uGrassColor;
+            uniform vec3 uTundraColor;
+            uniform vec3 uSnowColor;
+            uniform vec3 uShadowColor;
+            uniform vec3 uFogColor;
+            uniform float uSnowBlend;
+            uniform float uOpacity;
+
+            varying vec3 vNormal;
+            varying vec3 vWorldPosition;
+            varying vec3 vLocalPosition;
+
+            float hash(vec2 p) {
+                return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+            }
+
+            float noise(vec2 p) {
+                vec2 i = floor(p);
+                vec2 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                float a = hash(i);
+                float b = hash(i + vec2(1.0, 0.0));
+                float c = hash(i + vec2(0.0, 1.0));
+                float d = hash(i + vec2(1.0, 1.0));
+                return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+            }
+
+            void main() {
+                float slope = 1.0 - max(dot(normalize(vNormal), vec3(0.0, 1.0, 0.0)), 0.0);
+                float terrainNoise = noise(vWorldPosition.xz * 0.018);
+                float seamDepthFactor = smoothstep(-280.0, -740.0, vWorldPosition.z);
+                float rockMask = smoothstep(-4.0, 26.0, vLocalPosition.y + (terrainNoise * 10.0) + (slope * 10.0));
+                float tundraMask = max(rockMask, seamDepthFactor * 0.75);
+                float snowBlendRamp = smoothstep(0.45, 1.0, uSnowBlend);
+                float snowMask = smoothstep(
+                    18.0,
+                    58.0,
+                    vLocalPosition.y + (terrainNoise * 14.0) + (slope * 6.0) - ((1.0 - snowBlendRamp) * 16.0)
+                );
+                snowMask *= 0.12 + (0.88 * snowBlendRamp);
+                float depth = -vWorldPosition.z;
+                float farFade = 1.0 - smoothstep(360.0, 780.0, depth - (terrainNoise * 80.0));
+                float seamFade = mix(1.0, farFade, snowBlendRamp);
+
+                vec3 baseColor = mix(uGrassColor, uTundraColor, tundraMask);
+                vec3 color = mix(baseColor, uSnowColor, clamp(snowMask, 0.0, 1.0));
+
+                vec3 lightDir = normalize(vec3(0.35, 0.9, 0.25));
+                float light = 0.55 + (0.45 * max(dot(normalize(vNormal), lightDir), 0.0));
+                color = mix(uShadowColor, color, light);
+
+                float dist = length(vWorldPosition - cameraPosition);
+                float fog = smoothstep(280.0, 1300.0, dist);
+                color = mix(color, uFogColor, fog * 0.6);
+
+                gl_FragColor = vec4(color, uOpacity * seamFade);
+            }
+        `,
+        transparent: true,
+        depthWrite: true,
+        depthTest: true,
+        side: THREE.FrontSide,
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(0, 0, bridgeCenterZ);
+    mesh.renderOrder = -2;
+
+    return mesh;
+}
+
 function createGrassTexture() {
     if (typeof document === 'undefined') return null;
     const canvas = document.createElement('canvas');
@@ -833,7 +1019,7 @@ function createGrassTexture() {
     return new THREE.CanvasTexture(canvas);
 }
 
-function createFluffyGrass(uniforms, count) {
+export function createFluffyGrass(uniforms, count) {
     const grassTexture = createGrassTexture();
     if (!grassTexture) return new THREE.Group();
 
@@ -963,12 +1149,14 @@ function createDistantMountains(uniforms) {
         );
     };
     const fbm = (x, y, seed) => {
+        let sampleX = x;
+        let sampleY = y;
         let v = 0.0;
         let a = 0.5;
         for (let i = 0; i < 5; i++) {
-            v += a * noise(x, y, seed);
-            x *= 2.0;
-            y *= 2.0;
+            v += a * noise(sampleX, sampleY, seed);
+            sampleX *= 2.0;
+            sampleY *= 2.0;
             a *= 0.5;
         }
         return v;
@@ -1075,7 +1263,7 @@ function createDistantMountains(uniforms) {
     // Add mist at the base to hide "floating" and simulate winter transition
     const mist = createMountainMist(uniforms);
     group.add(mist);
-    group.userData.snowFloor = mist;
+    group.userData.foothillMist = mist;
 
     return group;
 }
@@ -1176,113 +1364,34 @@ function createButterflies(count) {
     return group;
 }
 
-/**
- * Creates mist/fog at the base of distant mountains to hide their bottom edge
- * and create a smooth transition to winter.
- */
-function createMountainMist_Old(uniforms) {
-    const group = new THREE.Group();
-    group.name = 'mountain-mist';
-
-    // Simple cloud puffs
-    const geometry = new THREE.PlaneGeometry(300, 150);
-
-    // Custom shader for soft edges
-    const mistMaterial = new THREE.ShaderMaterial({
-        uniforms: {
-            uTime: uniforms.uTime,
-            uColor: { value: new THREE.Color(0xeef2f5) }, // Snowy mist color
-        },
-        vertexShader: `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: `
-            uniform vec3 uColor;
-            varying vec2 vUv;
-            void main() {
-                // Circular soft gradient
-                vec2 center = vUv - 0.5;
-                float dist = length(center) * 2.0;
-                float alpha = smoothstep(1.0, 0.0, dist);
-                
-                // Bottom fade for grounding
-                alpha *= smoothstep(0.0, 0.2, vUv.y);
-                
-                gl_FragColor = vec4(uColor, alpha * 0.6);
-            }
-        `,
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        blending: THREE.NormalBlending,
-    });
-
-    // Create a bank of mist at the base of the mountains
-    const positions = [
-        { x: -250, z: -550 },
-        { x: 0, z: -800 },
-        { x: 250, z: -600 },
-        { x: -100, z: -700 }, // Filler
-        { x: 100, z: -650 }, // Filler
-    ];
-
-    positions.forEach((pos) => {
-        const mesh = new THREE.Mesh(geometry, mistMaterial);
-        mesh.position.set(pos.x, 20, pos.z); // Base height
-        mesh.rotation.x = -Math.PI * 0.1; // Slight tilt back
-
-        // Randomize
-        mesh.position.x += (Math.random() - 0.5) * 50;
-        mesh.position.y += (Math.random() - 0.5) * 10;
-        mesh.scale.setScalar(1.5 + Math.random());
-
-        group.add(mesh);
-    });
-
-    return group;
-}
-
-/**
- * Creates a "Snow Floor" at the base of the mountains to transition from green to white
- */
 function createMountainMist(uniforms) {
     const group = new THREE.Group();
-    group.name = 'mountain-snow-floor';
+    group.name = 'foothill-valley-mist';
 
-    // Large horizontal planes for "ground"
-    const geometry = new THREE.PlaneGeometry(800, 400);
-
-    // Custom shader for ground fog/snow
+    const geometry = new THREE.PlaneGeometry(520, 240);
     const mistMaterial = new THREE.ShaderMaterial({
         uniforms: {
             uTime: uniforms.uTime,
-            uColor: { value: new THREE.Color(0xffffff) }, // Pure white snow
-            uSnowBlend: { value: 0 },
+            uColor: { value: new THREE.Color(0xf2f6f8) },
             uOpacity: { value: 1 },
         },
         vertexShader: `
             varying vec2 vUv;
-            varying float vDist;
+            varying vec3 vWorldPosition;
             void main() {
                 vUv = uv;
-                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                vDist = -mvPosition.z;
-                gl_Position = projectionMatrix * mvPosition;
+                vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                vWorldPosition = worldPosition.xyz;
+                gl_Position = projectionMatrix * viewMatrix * worldPosition;
             }
         `,
         fragmentShader: `
             uniform vec3 uColor;
-            uniform float uSnowBlend;
             uniform float uOpacity;
             uniform float uTime;
             varying vec2 vUv;
-            varying float vDist;
+            varying vec3 vWorldPosition;
 
-            // Simple noise function
             float rand(vec2 n) { 
                 return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
             }
@@ -1298,67 +1407,73 @@ function createMountainMist(uniforms) {
             }
 
             void main() {
-                // Soft radial gradient from center
                 vec2 center = vUv - 0.5;
-                float dist = length(center) * 2.0;
-                
-                // Edges fade out
-                float alpha = smoothstep(1.0, 0.2, dist);
-                
-                // Noise texturing for "drifts"
-                float n = noise(vUv * 10.0 + uTime * 0.05);
-                alpha *= (0.6 + n * 0.4);
+                float dist = length(center);
+                float alpha = smoothstep(0.62, 0.08, dist);
+                alpha *= smoothstep(0.02, 0.28, vUv.y);
+                alpha *= 1.0 - smoothstep(0.74, 1.0, vUv.y);
+                float n = noise((vWorldPosition.xz * 0.02) + vec2(0.0, uTime * 0.04));
+                alpha *= 0.65 + (n * 0.35);
 
-                gl_FragColor = vec4(uColor, alpha * 0.8 * uSnowBlend * uOpacity);
+                gl_FragColor = vec4(uColor, alpha * 0.26 * uOpacity);
             }
         `,
         transparent: true,
         depthWrite: false,
         side: THREE.DoubleSide,
+        depthTest: true,
         blending: THREE.NormalBlending,
     });
 
-    // Create overlapping snow layers - Pushed back to reveal grass
     const positions = [
-        // Scaling 1.5 => size 600. Center at -500 => Extends -200 to -800.
-        // This touches the landscape end (-200) without covering the grass.
         {
-            x: 0, y: -10, z: -500, scale: 1.5, rot: 0,
+            x: -190, y: 34, z: -380, scale: 1.12, rotY: 0.14,
         },
         {
-            x: -250, y: -5, z: -550, scale: 1.2, rot: 0.1,
+            x: 35, y: 40, z: -520, scale: 1.26, rotY: -0.1,
         },
         {
-            x: 250, y: -5, z: -550, scale: 1.2, rot: -0.1,
+            x: 225, y: 46, z: -680, scale: 1.18, rotY: 0.08,
         },
         {
-            x: 0, y: 0, z: -800, scale: 2.0, rot: 0,
-        }, // Back filler near mountains
+            x: -50, y: 52, z: -810, scale: 1.38, rotY: -0.06,
+        },
     ];
 
     positions.forEach((pos) => {
         const mesh = new THREE.Mesh(geometry, mistMaterial);
         mesh.position.set(pos.x, pos.y, pos.z);
-        mesh.rotation.x = -Math.PI / 2; // Horizontal ground plane
-        mesh.rotation.z = pos.rot;
+        mesh.rotation.x = -0.08;
+        mesh.rotation.y = pos.rotY;
         mesh.scale.setScalar(pos.scale);
+        mesh.renderOrder = -1;
         group.add(mesh);
     });
 
     return group;
 }
 
-export function updateSurfaceWorldEnvironment(group, delta, time, camera) {
+export function updateSurfaceWorldEnvironment(group, delta, time, camera, cameraProgress = null) {
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
     }
 
-    // Camera-based visibility toggle for underwater transition
-    // When camera is below water surface, hide surface-only elements
     const waterSurfaceY = group.userData.waterSurfaceY || 35;
     const cameraY = camera?.position?.y ?? 100; // Default to above water
-    const isUnderwater = cameraY < waterSurfaceY;
+    const surfaceProbeY = Number.isFinite(cameraProgress)
+        ? getOdysseyPathPointAt(cameraProgress).y
+        : cameraY;
+    const visibilityState = resolveSurfaceWorldVisibilityState({
+        waterSurfaceY,
+        surfaceProbeY,
+        cameraY,
+    });
+    const {
+        isUnderwater,
+        surfaceOpacity,
+    } = visibilityState;
+    const auroraPreviewState = resolveSurfaceWorldAuroraPreviewState(cameraProgress);
 
     const { snowTransition } = group.userData;
     const snowBlend = snowTransition
@@ -1377,21 +1492,10 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera) {
     // Toggle visibility of surface-only elements
     const { surfaceElements } = group.userData;
 
-    // Smooth fade for underwater transition
-    // Fade in from 3 units below surface to 10 units above (ghostly entry)
-    const fadeStart = waterSurfaceY - 3;
-    const fadeEnd = waterSurfaceY + 10;
-
-    let underwaterOpacity = 1.0;
-    if (cameraY < fadeEnd) {
-        underwaterOpacity = THREE.MathUtils.smoothstep(cameraY, fadeStart, fadeEnd);
-    }
-
     if (surfaceElements) {
         surfaceElements.forEach((element) => {
             if (element) {
-                // Ensure visible if we have any opacity
-                element.visible = underwaterOpacity > 0;
+                element.visible = surfaceOpacity > 0;
             }
         });
     }
@@ -1401,8 +1505,31 @@ export function updateSurfaceWorldEnvironment(group, delta, time, camera) {
         const baseOpacity = typeof uniform.__odysseyBaseOpacity === 'number'
             ? uniform.__odysseyBaseOpacity
             : uniform.value;
-        uniform.value = baseOpacity * underwaterOpacity;
+        uniform.value = baseOpacity * surfaceOpacity;
     });
+
+    const { auroraPreview } = group.userData;
+    if (auroraPreview) {
+        auroraPreview.visible = surfaceOpacity > 0 && auroraPreviewState.previewVisible;
+    }
+
+    const auroraPreviewOpacityUniformTargets = group.userData.auroraPreviewOpacityUniformTargets || [];
+    auroraPreviewOpacityUniformTargets.forEach((uniform) => {
+        const baseOpacity = typeof uniform.__odysseyBaseOpacity === 'number'
+            ? uniform.__odysseyBaseOpacity
+            : uniform.value;
+        uniform.value = baseOpacity * surfaceOpacity * auroraPreviewState.previewOpacity;
+    });
+
+    const bridgeMaterial = group.userData.foothillBridge?.material;
+    if (bridgeMaterial?.uniforms?.uOpacity) {
+        const { value: bridgeOpacity } = bridgeMaterial.uniforms.uOpacity;
+        const shouldWriteDepth = bridgeOpacity >= 0.98 && surfaceOpacity >= 0.98;
+        if (bridgeMaterial.depthWrite !== shouldWriteDepth) {
+            bridgeMaterial.depthWrite = shouldWriteDepth;
+            bridgeMaterial.needsUpdate = true;
+        }
+    }
 
     // Sky visibility (hide sky sphere when underwater for ocean fade)
     const sky = group.userData.skyElement;

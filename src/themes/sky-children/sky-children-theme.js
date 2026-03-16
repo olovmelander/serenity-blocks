@@ -22,6 +22,11 @@ import {
     createSkyChildrenStylizedLightingModule,
 } from './sky-children-pipelines.js';
 import { clamp } from '@utils/helpers.js';
+import stylizedLightingWGSL from './wgsl/stylized_lighting.wgsl?raw';
+import terrainWGSL from './wgsl/terrain.wgsl?raw';
+import cloudWGSL from './wgsl/cloud.wgsl?raw';
+import foliageWGSL from './wgsl/foliage.wgsl?raw';
+import postProcessingWGSL from './wgsl/post_processing.wgsl?raw';
 
 const GPU_BUFFER_USAGE_UNIFORM = globalThis.GPUBufferUsage?.UNIFORM ?? 0x40;
 const GPU_BUFFER_USAGE_COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x08;
@@ -516,13 +521,7 @@ export default class SkyChildrenTheme extends BaseTheme {
             return this.phase1WgslSource;
         }
 
-        const shaderUrl = new URL('./wgsl/stylized_lighting.wgsl', import.meta.url);
-        const response = await fetch(shaderUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to load stylized_lighting.wgsl (${response.status})`);
-        }
-
-        this.phase1WgslSource = await response.text();
+        this.phase1WgslSource = stylizedLightingWGSL;
         return this.phase1WgslSource;
     }
 
@@ -531,13 +530,7 @@ export default class SkyChildrenTheme extends BaseTheme {
             return this.phase2TerrainWgslSource;
         }
 
-        const shaderUrl = new URL('./wgsl/terrain.wgsl', import.meta.url);
-        const response = await fetch(shaderUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to load terrain.wgsl (${response.status})`);
-        }
-
-        this.phase2TerrainWgslSource = await response.text();
+        this.phase2TerrainWgslSource = terrainWGSL;
         return this.phase2TerrainWgslSource;
     }
 
@@ -546,13 +539,7 @@ export default class SkyChildrenTheme extends BaseTheme {
             return this.phase3CloudWgslSource;
         }
 
-        const shaderUrl = new URL('./wgsl/cloud.wgsl', import.meta.url);
-        const response = await fetch(shaderUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to load cloud.wgsl (${response.status})`);
-        }
-
-        this.phase3CloudWgslSource = await response.text();
+        this.phase3CloudWgslSource = cloudWGSL;
         return this.phase3CloudWgslSource;
     }
 
@@ -561,13 +548,7 @@ export default class SkyChildrenTheme extends BaseTheme {
             return this.phase4FoliageWgslSource;
         }
 
-        const shaderUrl = new URL('./wgsl/foliage.wgsl', import.meta.url);
-        const response = await fetch(shaderUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to load foliage.wgsl (${response.status})`);
-        }
-
-        this.phase4FoliageWgslSource = await response.text();
+        this.phase4FoliageWgslSource = foliageWGSL;
         return this.phase4FoliageWgslSource;
     }
 
@@ -576,13 +557,7 @@ export default class SkyChildrenTheme extends BaseTheme {
             return this.phase5PostWgslSource;
         }
 
-        const shaderUrl = new URL('./wgsl/post_processing.wgsl', import.meta.url);
-        const response = await fetch(shaderUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to load post_processing.wgsl (${response.status})`);
-        }
-
-        this.phase5PostWgslSource = await response.text();
+        this.phase5PostWgslSource = postProcessingWGSL;
         return this.phase5PostWgslSource;
     }
 

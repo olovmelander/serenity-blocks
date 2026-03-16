@@ -9,6 +9,7 @@
  */
 
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { getLevelRegistry } from './LevelRegistry.js';
 
 const STORAGE_KEY = 'serenityBlocks_odysseyProgress';
 const SAVE_VERSION = 1;
@@ -35,7 +36,9 @@ const SAVE_VERSION = 1;
  */
 
 export class OdysseyStateManager {
-    constructor() {
+    constructor({ levelRegistry = getLevelRegistry() } = {}) {
+        this.levelRegistry = levelRegistry;
+
         // Current position in odyssey
         this.currentChapter = 1;
         this.currentLevel = 1;
@@ -122,6 +125,7 @@ export class OdysseyStateManager {
             this.unlockedLevels = new Set(data.unlockedLevels || [1]);
             this.completedLevels = new Map(Object.entries(data.completedLevels || {}));
             this.statistics = { ...this.statistics, ...data.statistics };
+            this._normalizeProgressState();
 
             console.log('[OdysseyState] Progress loaded successfully');
             console.log(`[OdysseyState] Current: Chapter ${this.currentChapter}, Level ${this.currentLevel}`);
@@ -143,6 +147,36 @@ export class OdysseyStateManager {
         // Add migration logic as save format evolves
         // For now, just log the migration
         console.log('[OdysseyState] Migration complete');
+    }
+
+    _normalizeProgressState() {
+        const totalLevels = this.levelRegistry.getTotalLevels();
+
+        this.unlockedLevels = new Set(
+            [...this.unlockedLevels]
+                .map((levelId) => Number(levelId))
+                .filter((levelId) => Number.isFinite(levelId) && levelId >= 1 && levelId <= totalLevels),
+        );
+        if (this.unlockedLevels.size === 0) {
+            this.unlockedLevels.add(1);
+        }
+
+        this.completedLevels = new Map(
+            [...this.completedLevels.entries()]
+                .filter(([levelId]) => {
+                    const numericId = Number(levelId);
+                    return Number.isFinite(numericId) && numericId >= 1 && numericId <= totalLevels;
+                }),
+        );
+
+        const furthestUnlocked = Math.max(...this.unlockedLevels);
+        this.currentLevel = Math.min(
+            totalLevels,
+            Math.max(1, Number(this.currentLevel) || 1, furthestUnlocked),
+        );
+        this.currentChapter = this.levelRegistry.getLevel(this.currentLevel)?.chapter || 1;
+        this.statistics.totalStars = this.getTotalStars();
+        this.statistics.chaptersCompleted = this.getCompletedChapterCount();
     }
 
     /**
@@ -261,15 +295,17 @@ export class OdysseyStateManager {
         this.updateStatistics(results);
 
         // Unlock next level
-        const nextLevelId = levelId + 1;
-        if (nextLevelId <= 56) { // Max 56 levels
-            this.unlockLevel(nextLevelId);
+        const nextLevel = this.levelRegistry.getNextLevel(levelId);
+        if (nextLevel) {
+            this.unlockLevel(nextLevel.id);
         }
 
         // Update current position
         if (levelId >= this.currentLevel) {
-            this.currentLevel = nextLevelId;
-            this.currentChapter = Math.ceil(nextLevelId / 8); // 8 levels per chapter
+            this.currentLevel = nextLevel?.id || levelId;
+            this.currentChapter = nextLevel?.chapter
+                || this.levelRegistry.getLevel(levelId)?.chapter
+                || this.currentChapter;
         }
 
         console.log(`[OdysseyState] Level ${levelId} completed with ${completion.stars} stars`);
@@ -358,20 +394,9 @@ export class OdysseyStateManager {
     getCompletedChapterCount() {
         let completedChapters = 0;
 
-        // Check each chapter (7 total, 8 levels each)
-        for (let chapter = 1; chapter <= 7; chapter++) {
-            const startLevel = (chapter - 1) * 8 + 1;
-            const endLevel = chapter * 8;
-
-            let chapterComplete = true;
-            for (let level = startLevel; level <= endLevel; level++) {
-                if (!this.isLevelCompleted(level)) {
-                    chapterComplete = false;
-                    break;
-                }
-            }
-
-            if (chapterComplete) {
+        for (const chapter of this.levelRegistry.getAllChapters()) {
+            const chapterLevels = this.levelRegistry.getLevelsInChapter(chapter.id);
+            if (chapterLevels.length > 0 && chapterLevels.every((level) => this.isLevelCompleted(level.id))) {
                 completedChapters++;
             }
         }
@@ -381,17 +406,14 @@ export class OdysseyStateManager {
 
     /**
      * Get stars earned in a specific chapter
-     * @param {number} chapterId - 1-7
+     * @param {number} chapterId
      * @returns {number}
      */
     getStarsForChapter(chapterId) {
-        const startLevel = (chapterId - 1) * 8 + 1;
-        const endLevel = chapterId * 8;
-
         let stars = 0;
-        for (let level = startLevel; level <= endLevel; level++) {
-            stars += this.getLevelStars(level);
-        }
+        this.levelRegistry.getLevelsInChapter(chapterId).forEach((level) => {
+            stars += this.getLevelStars(level.id);
+        });
 
         return stars;
     }
@@ -402,8 +424,7 @@ export class OdysseyStateManager {
      * @returns {number}
      */
     getMaxStarsForChapter(chapterId) {
-        // 8 levels per chapter, 3 stars max per level
-        return 8 * 3;
+        return this.levelRegistry.getLevelsInChapter(chapterId).length * 3;
     }
 
     // =============================
@@ -448,7 +469,7 @@ export class OdysseyStateManager {
      * @returns {number} 0-100
      */
     getOverallProgress() {
-        const totalLevels = 56;
+        const totalLevels = this.levelRegistry.getTotalLevels();
         const completed = this.completedLevels.size;
         return Math.round((completed / totalLevels) * 100);
     }
@@ -458,15 +479,17 @@ export class OdysseyStateManager {
      * @returns {Object}
      */
     getProgressSummary() {
+        const totalLevels = this.levelRegistry.getTotalLevels();
+        const totalChapters = this.levelRegistry.getTotalChapters();
         return {
             currentChapter: this.currentChapter,
             currentLevel: this.currentLevel,
             completedLevels: this.completedLevels.size,
-            totalLevels: 56,
+            totalLevels,
             totalStars: this.statistics.totalStars,
-            maxStars: 56 * 3,
+            maxStars: totalLevels * 3,
             chaptersCompleted: this.statistics.chaptersCompleted,
-            totalChapters: 7,
+            totalChapters,
             overallProgress: this.getOverallProgress(),
         };
     }
@@ -477,26 +500,25 @@ export class OdysseyStateManager {
      * @returns {Object}
      */
     getChapterProgress(chapterId) {
-        const startLevel = (chapterId - 1) * 8 + 1;
-        const endLevel = chapterId * 8;
+        const chapterLevels = this.levelRegistry.getLevelsInChapter(chapterId);
 
         let completed = 0;
         let stars = 0;
 
-        for (let level = startLevel; level <= endLevel; level++) {
-            if (this.isLevelCompleted(level)) {
+        for (const level of chapterLevels) {
+            if (this.isLevelCompleted(level.id)) {
                 completed++;
             }
-            stars += this.getLevelStars(level);
+            stars += this.getLevelStars(level.id);
         }
 
         return {
             chapterId,
             completedLevels: completed,
-            totalLevels: 8,
+            totalLevels: chapterLevels.length,
             stars,
-            maxStars: 24,
-            isComplete: completed === 8,
+            maxStars: chapterLevels.length * 3,
+            isComplete: chapterLevels.length > 0 && completed === chapterLevels.length,
         };
     }
 }

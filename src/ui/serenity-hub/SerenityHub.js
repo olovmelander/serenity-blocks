@@ -197,6 +197,7 @@ export class SerenityHub {
         // Create backdrop
         this.backdrop = document.createElement('div');
         this.backdrop.className = 'serenity-hub-backdrop';
+        this.backdrop.dataset.wheelLock = 'true';
 
         // Store handler reference
         this.backdropClickHandler = () => this.hide();
@@ -209,6 +210,7 @@ export class SerenityHub {
         this.panel.setAttribute('role', 'dialog');
         this.panel.setAttribute('aria-modal', 'true');
         this.panel.setAttribute('aria-labelledby', 'hub-title');
+        this.panel.dataset.wheelLock = 'true';
 
         this.panel.innerHTML = `
       <div class="hub-panel-header">
@@ -270,7 +272,7 @@ export class SerenityHub {
         </button>
       </nav>
 
-      <div class="hub-tab-content">
+      <div class="hub-tab-content" data-wheel-lock="true">
         <div id="tab-themes" class="tab-panel active" role="tabpanel" aria-labelledby="tab-themes">
           <div class="tab-loading">Loading themes...</div>
         </div>
@@ -615,6 +617,7 @@ export class SerenityHub {
         // Show backdrop and panel
         this.backdrop.classList.add('visible');
         this.panel.classList.add('open');
+        document.body.classList.add('serenity-hub-open');
 
         // Keep icon visible
         this.showIcon();
@@ -653,6 +656,7 @@ export class SerenityHub {
         // Hide backdrop and panel
         this.backdrop.classList.remove('visible');
         this.panel.classList.remove('open');
+        document.body.classList.remove('serenity-hub-open');
 
         // Update icon state
         this.hubIcon.classList.remove('active');
@@ -960,6 +964,7 @@ export class SerenityHub {
             this.backdrop.remove();
             this.backdrop = null;
         }
+        document.body.classList.remove('serenity-hub-open');
 
         // Clean up tab instances
         if (this.breathingTab) {

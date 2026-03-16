@@ -1,10 +1,14 @@
 /* eslint-disable import/no-unresolved, prefer-destructuring, no-nested-ternary */
 import * as THREE from 'three';
+import * as THREE_WEBGPU from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { ASTRAL_WEAVE_TETROMINOS } from './astral-weave-tetrominos.js';
 import { AstralWeaveFXController } from './astral-weave-fx-controller.js';
+import * as AstralWeaveMaterialFactories from './astral-weave-materials.js';
+import * as AstralWeaveComputeFactories from './astral-weave-compute.js';
+import * as AstralWeavePostFactories from './astral-weave-post.js';
 import {
     ribbonVertexShader,
     ribbonFragmentShader,
@@ -534,8 +538,6 @@ export default class AstralWeaveTheme extends BaseTheme {
                 themeContainer.classList.remove('active');
             });
             container.classList.add('active');
-            container.style.visibility = 'visible';
-            container.style.opacity = '1';
         }
         container.style.background = 'radial-gradient(circle at 50% 42%, rgba(35,44,78,0.18), rgba(3,6,17,0.9) 45%, rgba(1,2,8,1) 100%)';
         this.container = container;
@@ -612,7 +614,6 @@ export default class AstralWeaveTheme extends BaseTheme {
 
         if (!this.flags.forceWebGL && navigator.gpu) {
             try {
-                const THREE_WEBGPU = await import('three/webgpu');
                 const renderer = new THREE_WEBGPU.WebGPURenderer({
                     antialias: this.getAntialiasEnabled(),
                     alpha: false,
@@ -702,30 +703,14 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.postFactories = null;
 
         if (this.isWebGPU) {
-            try {
-                this.materialFactories = await import('./astral-weave-materials.js');
-            } catch (error) {
-                console.warn('[AstralWeave] Failed to load WebGPU materials, keeping fallback path:', error);
-            }
+            this.materialFactories = AstralWeaveMaterialFactories;
 
             if (this.materialFactories && this.flags.useCompute) {
-                try {
-                    this.computeFactories = await import('./astral-weave-compute.js');
-                } catch (error) {
-                    console.warn('[AstralWeave] Failed to load compute module, disabling compute:', error);
-                    this.computeFactories = null;
-                    this.flags.useCompute = false;
-                }
+                this.computeFactories = AstralWeaveComputeFactories;
             }
         }
 
-        try {
-            this.postFactories = await import('./astral-weave-post.js');
-        } catch (error) {
-            console.warn('[AstralWeave] Failed to load post module, disabling post:', error);
-            this.postFactories = null;
-            this.flags.usePost = false;
-        }
+        this.postFactories = AstralWeavePostFactories;
     }
 
     createGeneratedTextures() {

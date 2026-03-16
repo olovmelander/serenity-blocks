@@ -45,6 +45,18 @@
         <span class="demo-text">Watching Replay</span>
     </div>
 
+    <div id="startup-shell" class="startup-shell" role="status" aria-live="polite">
+        <div class="startup-shell__panel">
+            <div class="startup-shell__eyebrow">Serenity Blocks</div>
+            <div class="startup-shell__title">Preparing desktop renderer</div>
+            <div id="startup-shell-status" class="startup-shell__status">Loading systems...</div>
+            <div id="startup-shell-detail" class="startup-shell__detail"></div>
+            <div class="startup-shell__meter">
+                <span class="startup-shell__meter-fill"></span>
+            </div>
+        </div>
+    </div>
+
     <div class="background-container">
         <canvas id="background-canvas"></canvas>
         <div id="stars"></div>
@@ -2355,8 +2367,97 @@
     <!-- FPS Counter -->
     <div id="fps-counter" class="hidden">-- FPS</div>
 
-    <!-- Phaser 4 Framework entrypoint (handled by Vite during build) -->
-    <script type="module" src="/src/main.js"></script>
+    <script>
+        (() => {
+            const detailLimit = 220;
+            const startupState = {
+                bundleStarted: false,
+                bootstrapStarted: false,
+                failed: false,
+            };
+
+            const setShellText = (statusText, detailText = '') => {
+                const statusEl = document.getElementById('startup-shell-status');
+                const detailEl = document.getElementById('startup-shell-detail');
+                if (statusEl && statusText) {
+                    statusEl.textContent = statusText;
+                }
+                if (detailEl) {
+                    detailEl.textContent = detailText || '';
+                }
+            };
+
+            const clipDetail = (value) => {
+                const text = String(value || '').trim();
+                if (!text) {
+                    return '';
+                }
+                return text.length > detailLimit ? `${text.slice(0, detailLimit)}...` : text;
+            };
+
+            const reportPhase = (phase, payload = {}) => {
+                try {
+                    window.electronAPI?.invoke?.('desktop:startup-mark', { phase, payload });
+                } catch (error) {
+                    console.warn('[StartupShell] Failed to report phase:', phase, error);
+                }
+            };
+
+            window.__serenityStartupShell = {
+                markBundleStarted(statusText = 'Renderer bundle started') {
+                    startupState.bundleStarted = true;
+                    setShellText(statusText);
+                    reportPhase('renderer-bundle-started');
+                },
+                markBootstrapStarted(statusText = 'Bootstrapping application') {
+                    startupState.bootstrapStarted = true;
+                    setShellText(statusText);
+                    reportPhase('renderer-bootstrap-started');
+                },
+                fail(statusText, detailText = '') {
+                    startupState.failed = true;
+                    setShellText(statusText, clipDetail(detailText));
+                    reportPhase('startup-error', {
+                        statusText,
+                        detailText: clipDetail(detailText),
+                    });
+                },
+                set(statusText, detailText = '') {
+                    setShellText(statusText, clipDetail(detailText));
+                },
+            };
+
+            window.addEventListener('error', (event) => {
+                const message = event?.error?.message || event?.message || 'Unknown renderer error';
+                window.__serenityStartupShell.fail('Renderer crashed during startup', message);
+            });
+
+            window.addEventListener('unhandledrejection', (event) => {
+                const reason = event?.reason;
+                const message = reason?.message || reason?.stack || String(reason || 'Unhandled rejection');
+                window.__serenityStartupShell.fail('Startup promise rejected', message);
+            });
+
+            window.addEventListener('DOMContentLoaded', () => {
+                setShellText('Loading renderer bundle');
+                reportPhase('renderer-html-ready');
+            });
+
+            setTimeout(() => {
+                if (startupState.failed || startupState.bundleStarted) {
+                    return;
+                }
+                window.__serenityStartupShell.fail(
+                    'Renderer bundle did not start',
+                    'The packaged app loaded the shell, but the main renderer module never reached startup.',
+                );
+            }, 8000);
+        })();
+    </script>
+
+    <!-- Desktop renderer entrypoint wrapper. This catches packaged module-load failures
+         before the main application graph starts executing. -->
+    <script type="module" src="/src/entry-desktop.js"></script>
 
     <!-- Legacy scripts (for backward compatibility during migration) -->
     <!-- <script src="renderer.js"></script> -->

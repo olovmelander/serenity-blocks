@@ -3,8 +3,7 @@
  * Displays detailed level information before starting gameplay
  */
 
-import { getLevelById } from '../../core/odyssey/data/levels.js';
-import { CHAPTER_CONFIGS } from '../../core/odyssey/data/chapters.js';
+import { getLevelRegistry } from '../../core/odyssey/LevelRegistry.js';
 
 /**
  * LevelPreviewPanel - Shows detailed level info before playing
@@ -32,6 +31,7 @@ export class LevelPreviewPanel {
         this.currentLevelId = null;
         this.levelConfig = null;
         this.completionData = null;
+        this.levelRegistry = getLevelRegistry();
 
         // DOM elements
         this.container = null;
@@ -50,6 +50,7 @@ export class LevelPreviewPanel {
         // Create overlay
         this.overlay = document.createElement('div');
         this.overlay.className = 'level-preview-overlay';
+        this.overlay.dataset.odysseyWheelLock = 'true';
         this.overlay.style.cssText = `
             position: fixed;
             top: 0;
@@ -131,7 +132,7 @@ export class LevelPreviewPanel {
      */
     show(levelId, completionData = null) {
         this.currentLevelId = levelId;
-        this.levelConfig = getLevelById(levelId);
+        this.levelConfig = this.levelRegistry.resolveLevelPresentation(levelId);
         this.completionData = completionData;
 
         if (!this.levelConfig) {
@@ -159,7 +160,6 @@ export class LevelPreviewPanel {
      */
     _buildContent() {
         const level = this.levelConfig;
-        const chapter = CHAPTER_CONFIGS.find((c) => c.id === level.chapter);
 
         this.panel.innerHTML = `
             <!-- Header -->
@@ -169,7 +169,7 @@ export class LevelPreviewPanel {
                         Chapter ${level.chapter} • Level ${level.chapterLevel}
                     </div>
                     <h2 style="font-size: 28px; font-weight: 700; color: #fff; margin: 0; text-shadow: 0 0 30px rgba(180, 130, 255, 0.5);">
-                        ${level.name}
+                        ${level.pathLabel || level.name}
                     </h2>
                 </div>
                 <button class="preview-close-btn" style="
@@ -198,7 +198,7 @@ export class LevelPreviewPanel {
                 color: rgba(255, 255, 255, 0.7);
                 line-height: 1.6;
             ">
-                ${level.metadata.description}
+                ${level.description}
             </div>
 
             <!-- Objective Section -->

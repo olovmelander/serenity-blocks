@@ -6,6 +6,7 @@
  */
 
 import * as THREE from 'three';
+import { buildOdysseyPathCurve } from './path-utils.js';
 
 /**
  * OdysseyPathRenderer - Renders the cosmic ascent path
@@ -20,6 +21,8 @@ export class OdysseyPathRenderer {
         this.chapterMarkers = [];
         this.progress = 0;
         this.time = 0;
+        this.chapterTransition = null;
+        this.transitionResetColor = new THREE.Color(0xffffff);
     }
 
     /**
@@ -27,13 +30,7 @@ export class OdysseyPathRenderer {
      * @param {Object} pathData - Path configuration data
      */
     async buildPath(pathData) {
-        // Create CatmullRom spline from control points
-        const points = pathData.controlPoints.map(
-            (p) => new THREE.Vector3(p.x, p.y, p.z),
-        );
-        this.pathCurve = new THREE.CatmullRomCurve3(points);
-        this.pathCurve.curveType = 'catmullrom';
-        this.pathCurve.tension = 0.3; // Reduced from 0.5 for smoother curves
+        this.pathCurve = buildOdysseyPathCurve(pathData);
 
         // Create tube geometry along path
         this.createPathTube(pathData);
@@ -44,7 +41,14 @@ export class OdysseyPathRenderer {
         // Add chapter transition markers
         this.createChapterMarkers(pathData.chapterPositions);
 
-        console.log('[OdysseyPath] Path built with', points.length, 'control points');
+        console.log('[OdysseyPath] Path built with', pathData.controlPoints.length, 'control points');
+    }
+
+    async rebuildPath(pathData) {
+        const { progress } = this;
+        this.dispose();
+        await this.buildPath(pathData);
+        this.setProgress(progress);
     }
 
     createPathTube(pathData) {
@@ -68,6 +72,10 @@ export class OdysseyPathRenderer {
                 uColorStart: { value: new THREE.Color(0xff6600) }, // Earth Core
                 uColorEnd: { value: new THREE.Color(0x6600ff) }, // Black Hole
                 uEmission: { value: 1.8 }, // Increased from 1.2
+                uTransitionColor: { value: new THREE.Color(0xffffff) },
+                uTransitionMix: { value: 0 },
+                uTransitionHead: { value: 0.5 },
+                uTransitionWidth: { value: 0.08 },
             },
             vertexShader: `
                 varying vec2 vUv;
@@ -85,6 +93,10 @@ export class OdysseyPathRenderer {
                 uniform vec3 uColorStart;
                 uniform vec3 uColorEnd;
                 uniform float uEmission;
+                uniform vec3 uTransitionColor;
+                uniform float uTransitionMix;
+                uniform float uTransitionHead;
+                uniform float uTransitionWidth;
 
                 varying vec2 vUv;
                 varying vec3 vNormal;
@@ -108,6 +120,13 @@ export class OdysseyPathRenderer {
                     float baseGlow = 0.5; // Minimum brightness for unlit (was 0.2)
                     float intensity = (lit * pulse + edgeGlow * 2.0 + rim * 0.6) * uEmission;
                     vec3 finalColor = color * intensity;
+
+                    float transitionBand = 1.0 - smoothstep(0.0, uTransitionWidth, abs(vUv.x - uTransitionHead));
+                    finalColor = mix(
+                        finalColor,
+                        mix(finalColor, uTransitionColor * (intensity + 0.65), 0.8),
+                        transitionBand * uTransitionMix
+                    );
 
                     // Brighter unlit portion
                     finalColor = mix(color * baseGlow, finalColor, max(lit, edgeGlow * 0.5 + 0.5));
@@ -139,6 +158,10 @@ export class OdysseyPathRenderer {
                 uProgress: { value: 0 },
                 uColorStart: { value: new THREE.Color(0xffaa44) }, // Brighter orange
                 uColorEnd: { value: new THREE.Color(0xaa66ff) }, // Brighter purple
+                uTransitionColor: { value: new THREE.Color(0xffffff) },
+                uTransitionMix: { value: 0 },
+                uTransitionHead: { value: 0.5 },
+                uTransitionWidth: { value: 0.06 },
             },
             vertexShader: `
                 varying vec2 vUv;
@@ -152,16 +175,23 @@ export class OdysseyPathRenderer {
                 uniform float uProgress;
                 uniform vec3 uColorStart;
                 uniform vec3 uColorEnd;
+                uniform vec3 uTransitionColor;
+                uniform float uTransitionMix;
+                uniform float uTransitionHead;
+                uniform float uTransitionWidth;
                 varying vec2 vUv;
 
                 void main() {
                     vec3 color = mix(uColorStart, uColorEnd, vUv.x);
                     float lit = step(vUv.x, uProgress);
                     float pulse = sin(vUv.x * 30.0 - uTime * 4.0) * 0.2 + 0.8;
+                    float transitionBand = 1.0 - smoothstep(0.0, uTransitionWidth, abs(vUv.x - uTransitionHead));
                     
                     // Core is always bright, even brighter when lit
                     float intensity = 0.8 + lit * pulse * 0.5;
-                    gl_FragColor = vec4(color * intensity * 2.0, 1.0);
+                    vec3 finalColor = color * intensity * 2.0;
+                    finalColor = mix(finalColor, uTransitionColor * (2.2 + pulse), transitionBand * uTransitionMix);
+                    gl_FragColor = vec4(finalColor, 1.0);
                 }
             `,
             transparent: false,
@@ -185,6 +215,10 @@ export class OdysseyPathRenderer {
                 uTime: { value: 0 },
                 uProgress: { value: 0 },
                 uColor: { value: new THREE.Color(0x4488ff) },
+                uTransitionColor: { value: new THREE.Color(0xffffff) },
+                uTransitionMix: { value: 0 },
+                uTransitionHead: { value: 0.5 },
+                uTransitionWidth: { value: 0.1 },
             },
             vertexShader: `
                 varying vec2 vUv;
@@ -197,13 +231,19 @@ export class OdysseyPathRenderer {
                 uniform float uTime;
                 uniform float uProgress;
                 uniform vec3 uColor;
+                uniform vec3 uTransitionColor;
+                uniform float uTransitionMix;
+                uniform float uTransitionHead;
+                uniform float uTransitionWidth;
                 varying vec2 vUv;
 
                 void main() {
                     float lit = step(vUv.x, uProgress);
                     float pulse = sin(vUv.x * 30.0 - uTime * 3.0) * 0.3 + 0.7;
-                    float alpha = lit * pulse * 0.15;
-                    gl_FragColor = vec4(uColor, alpha);
+                    float transitionBand = 1.0 - smoothstep(0.0, uTransitionWidth, abs(vUv.x - uTransitionHead));
+                    float alpha = lit * pulse * 0.15 + (transitionBand * uTransitionMix * 0.25);
+                    vec3 color = mix(uColor, uTransitionColor, transitionBand * uTransitionMix);
+                    gl_FragColor = vec4(color, alpha);
                 }
             `,
             transparent: true,
@@ -229,6 +269,10 @@ export class OdysseyPathRenderer {
         ];
 
         chapterPositions.forEach((pos, index) => {
+            if (index >= chapterColors.length) {
+                return;
+            }
+
             const point = this.pathCurve.getPointAt(pos);
 
             // Create ring marker
@@ -257,6 +301,39 @@ export class OdysseyPathRenderer {
      */
     setProgress(normalizedProgress) {
         this.progress = THREE.MathUtils.clamp(normalizedProgress, 0, 1);
+    }
+
+    getChapterColor(chapterId) {
+        const palette = [
+            0xff6600,
+            0x0066ff,
+            0x00ff66,
+            0xffffff,
+            0xffff66,
+            0x6600ff,
+            0xff33cc,
+            0x00ffff,
+        ];
+        return new THREE.Color(palette[(chapterId - 1) % palette.length]);
+    }
+
+    triggerChapterTransition({
+        fromChapter,
+        toChapter,
+        direction = 1,
+        boundaryPosition = 0.5,
+        durationMs = 850,
+    } = {}) {
+        this.chapterTransition = {
+            active: true,
+            startTime: performance.now(),
+            duration: Math.max(1, durationMs),
+            direction: Math.sign(direction) || 1,
+            fromChapter,
+            toChapter,
+            boundaryPosition: THREE.MathUtils.clamp(boundaryPosition ?? 0.5, 0, 1),
+            incomingColor: this.getChapterColor(toChapter || fromChapter || 1),
+        };
     }
 
     /**
@@ -291,9 +368,78 @@ export class OdysseyPathRenderer {
             this.pathGlowMesh.material.uniforms.uProgress.value = this.progress;
         }
 
+        this.updateChapterTransition();
+
         // Rotate chapter markers subtly
         this.chapterMarkers.forEach((ring, i) => {
             ring.rotation.z += deltaTime * 0.2 * (i % 2 === 0 ? 1 : -1);
+        });
+    }
+
+    updateChapterTransition() {
+        if (!this.chapterTransition?.active) {
+            this.applyTransitionUniforms(0, 0.5, 0.08, this.transitionResetColor);
+            this.chapterMarkers.forEach((ring, index) => {
+                const { material } = ring;
+                const chapterColor = this.getChapterColor(index + 1);
+                material.emissive.copy(chapterColor);
+                material.emissiveIntensity = 0.5;
+                ring.scale.setScalar(1);
+            });
+            return;
+        }
+
+        const elapsed = performance.now() - this.chapterTransition.startTime;
+        const rawProgress = THREE.MathUtils.clamp(elapsed / this.chapterTransition.duration, 0, 1);
+        const envelope = Math.sin(rawProgress * Math.PI);
+        const head = THREE.MathUtils.clamp(
+            this.chapterTransition.boundaryPosition
+                + (rawProgress - 0.35) * 0.18 * this.chapterTransition.direction,
+            0,
+            1,
+        );
+        this.applyTransitionUniforms(
+            envelope,
+            head,
+            0.08 + ((1 - rawProgress) * 0.04),
+            this.chapterTransition.incomingColor,
+        );
+
+        this.chapterMarkers.forEach((ring, index) => {
+            const chapterId = index + 1;
+            const { material } = ring;
+            const chapterColor = this.getChapterColor(chapterId);
+            material.emissive.copy(chapterColor);
+            if (chapterId === this.chapterTransition.toChapter) {
+                material.emissive.lerp(this.chapterTransition.incomingColor, 0.35);
+                material.emissiveIntensity = 0.5 + (envelope * 1.1);
+                ring.scale.setScalar(1 + (envelope * 0.25));
+            } else if (chapterId === this.chapterTransition.fromChapter) {
+                material.emissiveIntensity = 0.5 + (envelope * 0.45);
+                ring.scale.setScalar(1 + (envelope * 0.12));
+            } else {
+                material.emissiveIntensity = 0.5;
+                ring.scale.setScalar(1);
+            }
+        });
+
+        if (rawProgress >= 1) {
+            this.chapterTransition.active = false;
+        }
+    }
+
+    applyTransitionUniforms(transitionMix, head, width, color) {
+        const targets = [
+            this.pathMesh?.material?.uniforms,
+            this.pathCoreMesh?.material?.uniforms,
+            this.pathGlowMesh?.material?.uniforms,
+        ].filter(Boolean);
+
+        targets.forEach((uniforms) => {
+            uniforms.uTransitionMix.value = transitionMix;
+            uniforms.uTransitionHead.value = head;
+            uniforms.uTransitionWidth.value = width;
+            uniforms.uTransitionColor.value.copy(color);
         });
     }
 
@@ -305,18 +451,21 @@ export class OdysseyPathRenderer {
             this.pathMesh.geometry.dispose();
             this.pathMesh.material.dispose();
             this.scene.remove(this.pathMesh);
+            this.pathMesh = null;
         }
 
         if (this.pathCoreMesh) {
             this.pathCoreMesh.geometry.dispose();
             this.pathCoreMesh.material.dispose();
             this.scene.remove(this.pathCoreMesh);
+            this.pathCoreMesh = null;
         }
 
         if (this.pathGlowMesh) {
             this.pathGlowMesh.geometry.dispose();
             this.pathGlowMesh.material.dispose();
             this.scene.remove(this.pathGlowMesh);
+            this.pathGlowMesh = null;
         }
 
         this.chapterMarkers.forEach((ring) => {
@@ -324,6 +473,8 @@ export class OdysseyPathRenderer {
             ring.material.dispose();
             this.scene.remove(ring);
         });
+        this.chapterMarkers = [];
+        this.pathCurve = null;
     }
 }
 

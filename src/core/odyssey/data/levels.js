@@ -23,10 +23,12 @@
  * See ODYSSEY_MODE_IMPLEMENTATION_PLAN.md for full schema
  */
 
-export const LEVEL_CONFIGS = [
+// Phase 2 keeps the original authored list intact and composes the shipped campaign
+// from the base data plus the tuning overrides defined below.
+const BASE_LEVEL_CONFIGS = [
     // =============================
     // CHAPTER 1: EARTH CORE & SUBTERRANEAN ORIGINS
-    // Levels 1-7
+    // Levels 1-5
     // Theme: Deep underground, crystals, magma, pressure
     // =============================
 
@@ -4026,6 +4028,779 @@ export const LEVEL_CONFIGS = [
         },
     },
 ];
+
+const LEVEL_PHASE2_TAGS = Object.freeze({
+    1: { role: 'arrival', mechanicFocus: 'lines', emotionalBeat: 'wonder', victoryLapPolicy: 'none' },
+    2: { role: 'teach', mechanicFocus: 'cascade', emotionalBeat: 'wonder', victoryLapPolicy: 'none' },
+    3: { role: 'reinforce', mechanicFocus: 'cascade', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    4: { role: 'test', mechanicFocus: 'sprint', emotionalBeat: 'tension', victoryLapPolicy: 'none' },
+    5: { role: 'boss', mechanicFocus: 'hybrid', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
+    6: { role: 'arrival', mechanicFocus: 'dig', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    7: { role: 'teach', mechanicFocus: 'cascade', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    8: { role: 'reinforce', mechanicFocus: 'lines', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    9: { role: 'reinforce', mechanicFocus: 'score', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    10: { role: 'release', mechanicFocus: 'lines', emotionalBeat: 'release', victoryLapPolicy: 'none' },
+    11: { role: 'boss', mechanicFocus: 'cascade', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
+    12: { role: 'arrival', mechanicFocus: 'lines', emotionalBeat: 'wonder', victoryLapPolicy: 'none' },
+    13: { role: 'teach', mechanicFocus: 'lines', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    14: { role: 'reinforce', mechanicFocus: 'score', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    15: { role: 'teach', mechanicFocus: 'cascade', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    16: { role: 'test', mechanicFocus: 'sprint', emotionalBeat: 'tension', victoryLapPolicy: 'none' },
+    17: { role: 'test', mechanicFocus: 'hybrid', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
+    18: { role: 'release', mechanicFocus: 'lines', emotionalBeat: 'release', victoryLapPolicy: 'none' },
+    19: { role: 'boss', mechanicFocus: 'cascade', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
+    20: { role: 'arrival', mechanicFocus: 'hybrid', emotionalBeat: 'wonder', victoryLapPolicy: 'none' },
+    21: { role: 'teach', mechanicFocus: 'cascade', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
+    22: { role: 'reinforce', mechanicFocus: 'score', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    23: { role: 'reinforce', mechanicFocus: 'cascade', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    24: { role: 'test', mechanicFocus: 'sprint', emotionalBeat: 'tension', victoryLapPolicy: 'none' },
+    25: { role: 'release', mechanicFocus: 'score', emotionalBeat: 'release', victoryLapPolicy: 'none' },
+    26: { role: 'test', mechanicFocus: 'dig', emotionalBeat: 'tension', victoryLapPolicy: 'none' },
+    27: { role: 'boss', mechanicFocus: 'cascade', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
+    28: { role: 'arrival', mechanicFocus: 'hybrid', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
+    29: { role: 'release', mechanicFocus: 'lines', emotionalBeat: 'release', victoryLapPolicy: 'none' },
+    30: { role: 'reinforce', mechanicFocus: 'score', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    31: { role: 'reinforce', mechanicFocus: 'cascade', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    32: { role: 'test', mechanicFocus: 'sprint', emotionalBeat: 'tension', victoryLapPolicy: 'none' },
+    33: { role: 'reinforce', mechanicFocus: 'hybrid', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
+    34: { role: 'boss', mechanicFocus: 'cascade', emotionalBeat: 'transcendence', victoryLapPolicy: 'showcase' },
+    35: { role: 'boss', mechanicFocus: 'hybrid', emotionalBeat: 'transcendence', victoryLapPolicy: 'none' },
+    36: { role: 'arrival', mechanicFocus: 'score', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
+    37: { role: 'teach', mechanicFocus: 'cascade', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    38: { role: 'reinforce', mechanicFocus: 'dig', emotionalBeat: 'tension', victoryLapPolicy: 'none' },
+    39: { role: 'test', mechanicFocus: 'hybrid', emotionalBeat: 'tension', victoryLapPolicy: 'none' },
+    40: { role: 'test', mechanicFocus: 'score', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
+    41: { role: 'test', mechanicFocus: 'sprint', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
+    42: { role: 'boss', mechanicFocus: 'hybrid', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
+    43: { role: 'test', mechanicFocus: 'lines', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
+    44: { role: 'boss', mechanicFocus: 'cascade', emotionalBeat: 'transcendence', victoryLapPolicy: 'showcase' },
+    45: { role: 'arrival', mechanicFocus: 'score', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
+    46: { role: 'reinforce', mechanicFocus: 'hybrid', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    47: { role: 'test', mechanicFocus: 'sprint', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
+    48: { role: 'boss', mechanicFocus: 'cascade', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
+    49: { role: 'test', mechanicFocus: 'sprint', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
+    50: { role: 'release', mechanicFocus: 'lines', emotionalBeat: 'release', victoryLapPolicy: 'none' },
+    51: { role: 'boss', mechanicFocus: 'hybrid', emotionalBeat: 'transcendence', victoryLapPolicy: 'showcase' },
+    52: { role: 'encore', mechanicFocus: 'lines', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    53: { role: 'encore', mechanicFocus: 'score', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
+    54: { role: 'encore', mechanicFocus: 'hybrid', emotionalBeat: 'tension', victoryLapPolicy: 'none' },
+    55: { role: 'encore', mechanicFocus: 'hybrid', emotionalBeat: 'transcendence', victoryLapPolicy: 'showcase' },
+});
+
+const LEVEL_PHASE2_OVERRIDES = Object.freeze({
+    1: {
+        stars: {
+            three: { lines: 20, time: 120, bonuses: 1 },
+        },
+        metadata: {
+            description: 'Clear 20 lines to begin the odyssey. A gentle opening that teaches calm stacking.',
+            tip: 'Build flat stacks and favor doubles and triples. Clean structure matters more than speed here.',
+        },
+    },
+    2: {
+        stars: {
+            two: { cascades: 3, maxCascadeDepth: 2 },
+            three: { cascades: 4, maxCascadeDepth: 3 },
+        },
+        metadata: {
+            tip: 'Build towers with gaps so each clear drops into the next. Consistent small chains matter more than one huge gamble.',
+        },
+    },
+    3: {
+        stars: {
+            three: { cascades: 4, maxCascadeDepth: 3 },
+        },
+        metadata: {
+            tip: 'Build layered shelves rather than one narrow tower. Reliable chain starts are the goal here.',
+        },
+    },
+    5: {
+        isChapterEnd: true,
+        stars: {
+            three: { lines: 40, cascades: 3, bonuses: 1 },
+        },
+        metadata: {
+            tip: 'Use the starting rows to seed controlled cascades, then finish on clean line clears. Mastery here should happen in one composed run.',
+        },
+    },
+    6: {
+        mechanics: {
+            board: {
+                startingRows: 5,
+            },
+            speed: {
+                startLevel: 4,
+                fixedDropInterval: 800,
+            },
+            pieces: {
+                previewCount: 4,
+            },
+        },
+        victory: {
+            bonuses: [
+                { type: 'tetris-count', target: 2, description: 'Clear 2 Tetrises' },
+            ],
+        },
+        stars: {
+            one: { lines: 20 },
+            two: { lines: 20, tetrises: 1 },
+            three: { lines: 20, tetrises: 2, time: 150 },
+        },
+        metadata: {
+            description: 'Pressure builds slowly as you enter the deeper water. Dig a clean route through the opening stack, then settle in.',
+            difficulty: 3,
+            estimatedTime: 140,
+            tip: 'Use your first clears to make breathing room, then stabilize before you chase big clears.',
+        },
+    },
+    7: {
+        mechanics: {
+            board: {
+                rows: 28,
+                startingRows: 8,
+            },
+            speed: {
+                fixedDropInterval: 800,
+            },
+        },
+        victory: {
+            primary: {
+                target: 7,
+            },
+            bonuses: [
+                { type: 'max-cascade-depth', target: 3, description: 'Trigger a 3+ chain cascade' },
+            ],
+        },
+        modifiers: {
+            active: ['gravity-cascade'],
+        },
+        stars: {
+            one: { cascades: 7 },
+            two: { cascades: 7, maxCascadeDepth: 3 },
+            three: { cascades: 9, maxCascadeDepth: 4 },
+        },
+        metadata: {
+            description: 'Build layered reef structures and let the current pull them apart in cascading waves.',
+            difficulty: 4,
+            estimatedTime: 210,
+            tip: 'Create staggered shelves instead of tall spikes. Reliable two- and three-step chains beat risky mega-builds.',
+        },
+    },
+    8: {
+        victory: {
+            primary: {
+                target: 35,
+            },
+        },
+        stars: {
+            one: { lines: 35 },
+            two: { lines: 35, time: 190 },
+            three: { lines: 35, time: 135, bonuses: 1 },
+        },
+        metadata: {
+            description: 'The ocean opens into a calm, luminous lane. Use the slower rhythm to rebuild precision.',
+            difficulty: 4,
+            estimatedTime: 160,
+            tip: 'Treat this as a reset level. Look ahead, flatten the stack, and win through efficiency.',
+        },
+    },
+    9: {
+        victory: {
+            primary: {
+                target: 14000,
+            },
+        },
+        stars: {
+            one: { score: 14000 },
+            two: { score: 20000, tetrises: 2 },
+            three: { score: 28000, tetrises: 4, combo: 4 },
+        },
+        metadata: {
+            difficulty: 5,
+            description: 'Still water rewards smooth rhythm. Chain clean clears together and let the score climb naturally.',
+            tip: 'Use consecutive efficient clears to keep momentum alive. This is a flow score level, not a survival test.',
+        },
+    },
+    10: {
+        victory: {
+            primary: {
+                target: 36,
+            },
+        },
+        stars: {
+            one: { lines: 36 },
+            two: { lines: 36, bonuses: 1 },
+            three: { lines: 36, bonuses: 2 },
+        },
+        metadata: {
+            difficulty: 4,
+            estimatedTime: 210,
+            description: 'A still pocket in the deep. Slow speed and a long preview let you shape deliberate, elegant clears.',
+            tip: 'Do not force speed here. Use the long preview to set up the exact board you want.',
+        },
+    },
+    11: {
+        metadata: {
+            difficulty: 6,
+            description: 'The chapter closes in a graceful rush. Build tall, flowing chains and finish the ocean on confident cascade control.',
+        },
+    },
+    12: {
+        mechanics: {
+            speed: {
+                startLevel: 5,
+            },
+            pieces: {
+                previewCount: 5,
+            },
+        },
+        victory: {
+            primary: {
+                target: 40,
+            },
+            failure: {
+                type: 'top-out',
+                value: null,
+            },
+            bonuses: [
+                { type: 'no-singles', description: 'Clear no single lines' },
+            ],
+        },
+        modifiers: {
+            active: [],
+        },
+        stars: {
+            one: { lines: 40 },
+            two: { lines: 40, time: 180 },
+            three: { lines: 40, time: 135, bonuses: 1 },
+        },
+        metadata: {
+            description: 'You break into daylight at the forest edge. This is a reset: breathe, stack cleanly, and enjoy the wider horizon.',
+            difficulty: 4,
+            estimatedTime: 170,
+            tip: 'Use the gentler opener to rebuild rhythm before the chapter starts mixing mechanics again.',
+        },
+    },
+    14: {
+        victory: {
+            primary: {
+                target: 15000,
+            },
+        },
+        stars: {
+            one: { score: 15000 },
+            two: { score: 22000, tetrises: 3 },
+            three: { score: 30000, tetrises: 5, combo: 5 },
+        },
+        metadata: {
+            difficulty: 5,
+            description: 'Wildflowers sway across a bright meadow. Keep your rhythm alive and let the score build naturally.',
+        },
+    },
+    16: {
+        victory: {
+            primary: {
+                target: 42,
+            },
+        },
+        stars: {
+            one: { lines: 42 },
+            two: { lines: 42, time: 150 },
+            three: { lines: 42, time: 105 },
+        },
+        metadata: {
+            description: 'Autumn winds gather into a fast-moving storm. Clear efficiently before the harvest is blown away.',
+            difficulty: 6,
+            tip: 'Speed matters, but panic kills more runs than the timer. Stay compact and keep the well playable.',
+        },
+    },
+    17: {
+        victory: {
+            primary: {
+                target: 22000,
+            },
+        },
+        stars: {
+            one: { score: 22000 },
+            two: { score: 32000, cascades: 4 },
+            three: { score: 42000, cascades: 6, tetrises: 6 },
+        },
+        metadata: {
+            description: 'Warm twilight settles over the grove. Blend cascades and Tetrises into one graceful summer performance.',
+            tip: 'The starting rows are material, not clutter. Convert them into score before they ever become danger.',
+        },
+    },
+    18: {
+        victory: {
+            primary: {
+                target: 45,
+            },
+            bonuses: [
+                { type: 'no-singles', description: 'No single line clears' },
+                { type: 'tetris-count', target: 6, description: 'Clear 6 Tetrises' },
+            ],
+        },
+        stars: {
+            one: { lines: 45 },
+            two: { lines: 45, tetrises: 4 },
+            three: { lines: 45, tetrises: 6, bonuses: 2 },
+        },
+        metadata: {
+            description: 'Golden leaves drift across open hills. End the season with patience, clean structure, and graceful lines.',
+            difficulty: 5,
+            estimatedTime: 190,
+            tip: 'This is a release beat. Let the pace settle and win with clean board management.',
+        },
+    },
+    19: {
+        isChapterEnd: true,
+    },
+    20: {
+        chapter: 4,
+        chapterLevel: 1,
+        isChapterStart: true,
+        isChapterEnd: false,
+        mechanics: {
+            board: {
+                startingRows: 4,
+            },
+            speed: {
+                startLevel: 7,
+            },
+        },
+        victory: {
+            primary: {
+                target: 25000,
+            },
+            failure: {
+                type: 'top-out',
+                value: null,
+            },
+            bonuses: [
+                { type: 'cascade', target: 6, description: 'Trigger 6 cascades' },
+                { type: 'tetris-count', target: 4, description: 'Clear 4 Tetrises' },
+            ],
+        },
+        modifiers: {
+            active: ['combo-multiplier'],
+        },
+        stars: {
+            one: { score: 25000 },
+            two: { score: 35000, cascades: 4 },
+            three: { score: 50000, cascades: 6, tetrises: 6 },
+        },
+        metadata: {
+            description: 'The foothills rise ahead, still touched by evening color. Build momentum before the real climb begins.',
+            difficulty: 6,
+            estimatedTime: 190,
+            tip: 'Treat the opening stack as scaffolding. Clear it cleanly, then turn the board into safe score routes.',
+        },
+    },
+    21: {
+        chapter: 4,
+        chapterLevel: 2,
+        isChapterStart: false,
+        isChapterEnd: false,
+        mechanics: {
+            board: {
+                rows: 36,
+                startingRows: 8,
+            },
+            speed: {
+                fixedDropInterval: 700,
+            },
+        },
+        victory: {
+            primary: {
+                target: 9,
+            },
+        },
+        stars: {
+            one: { cascades: 9 },
+            two: { cascades: 9, maxCascadeDepth: 3 },
+            three: { cascades: 10, maxCascadeDepth: 4 },
+        },
+        metadata: {
+            description: 'The ridge opens into a vast vertical canvas. Use the extra height to stage elegant chain reactions.',
+            difficulty: 6,
+            estimatedTime: 190,
+            tip: 'Tall boards reward patience. Build shelves, not spikes, so every clear feeds the next.',
+        },
+    },
+    22: {
+        chapterLevel: 3,
+        isChapterStart: false,
+        metadata: {
+            description: 'Aurora light washes across the peaks. Build score in the thin air before the climb steepens again.',
+        },
+    },
+    23: {
+        chapterLevel: 4,
+        metadata: {
+            description: 'Moonlight settles over the ridge. Frozen ledges turn every clean clear into a potential avalanche.',
+            tip: 'Work from the lower shelves first so the upper layers always have somewhere safe to fall.',
+        },
+    },
+    24: {
+        chapterLevel: 5,
+    },
+    25: {
+        chapterLevel: 6,
+        metadata: {
+            description: 'A quiet traverse beneath the cliffs. Score matters here, but the mountain rewards restraint over panic.',
+            difficulty: 6,
+            tip: 'Use the calmer pace to stack for back-to-back clears instead of forcing risky rescues.',
+        },
+    },
+    26: {
+        chapterLevel: 7,
+        metadata: {
+            difficulty: 7,
+            description: 'Thin air and a crowded field make every placement expensive. Dig quickly, then stabilize before you sprint.',
+            tip: 'Half the board is already spoken for. Clear escape routes first, then decide where your Tetris lane will live.',
+        },
+    },
+    27: {
+        chapterLevel: 8,
+        isChapterEnd: true,
+    },
+    28: {
+        chapter: 5,
+        chapterLevel: 1,
+        isChapterStart: true,
+        isChapterEnd: false,
+        mechanics: {
+            speed: {
+                startLevel: 9,
+            },
+        },
+        victory: {
+            primary: {
+                target: 38000,
+            },
+            failure: {
+                type: 'top-out',
+                value: null,
+            },
+            bonuses: [
+                { type: 'cascade', target: 10, description: 'Trigger 10 cascades' },
+                { type: 'tetris-count', target: 8, description: 'Clear 8 Tetrises' },
+            ],
+        },
+        modifiers: {
+            active: ['gravity-cascade', 'combo-multiplier'],
+        },
+        stars: {
+            one: { score: 38000 },
+            two: { score: 52000, cascades: 8 },
+            three: { score: 70000, cascades: 10, tetrises: 8 },
+        },
+        metadata: {
+            description: 'The mountain finally falls away beneath you. Glide into open sky and learn the new floating rhythm.',
+            difficulty: 7,
+            estimatedTime: 220,
+            tip: 'Use the extra height to smooth the board before you cash in on big score turns.',
+        },
+    },
+    29: {
+        chapter: 5,
+        chapterLevel: 2,
+        isChapterStart: false,
+        isChapterEnd: false,
+        victory: {
+            primary: {
+                target: 42,
+            },
+        },
+        stars: {
+            one: { lines: 42 },
+            two: { lines: 42, time: 190 },
+            three: { lines: 42, time: 135, bonuses: 1 },
+        },
+        metadata: {
+            difficulty: 6,
+            description: 'Cool night air carries you through scattered lights and distant cloud banks. Stay light on the board.',
+            tip: 'This chapter exhales here. Let the board stay low and take efficient clears as they come.',
+        },
+    },
+    30: {
+        chapter: 5,
+        chapterLevel: 3,
+        isChapterStart: false,
+        isChapterEnd: false,
+        theme: {
+            primary: 'aurora',
+        },
+        victory: {
+            primary: {
+                target: 20000,
+            },
+        },
+        stars: {
+            one: { score: 20000 },
+            two: { score: 30000, tetrises: 4 },
+            three: { score: 40000, tetrises: 7, combo: 6 },
+        },
+        metadata: {
+            difficulty: 6,
+            description: 'A ribbon of aurora becomes your path through the upper atmosphere. Precision matters more than aggression.',
+            tip: 'This is a flow score level. Take clean doubles and triples until a stronger scoring window opens naturally.',
+        },
+    },
+    31: {
+        chapterLevel: 4,
+        isChapterStart: false,
+        victory: {
+            primary: {
+                target: 10,
+            },
+        },
+        stars: {
+            one: { cascades: 10 },
+            two: { cascades: 10, maxCascadeDepth: 4 },
+            three: { cascades: 12, maxCascadeDepth: 5 },
+        },
+        metadata: {
+            description: 'Rain streaks across the glass as the world below softens into light. Build measured cascades inside the storm.',
+            difficulty: 6,
+            estimatedTime: 190,
+            tip: 'Think in layers. Gentle, repeatable cascades are better than one overbuilt tower.',
+        },
+    },
+    32: {
+        chapterLevel: 5,
+    },
+    33: {
+        chapterLevel: 6,
+        victory: {
+            primary: {
+                target: 32000,
+            },
+        },
+        stars: {
+            one: { score: 32000 },
+            two: { score: 45000, cascades: 8 },
+            three: { score: 65000, cascades: 12, tetrises: 10 },
+        },
+        metadata: {
+            difficulty: 7,
+            description: 'Thin light and drifting mist turn the board into a luminous balancing act. Stabilize first, then score hard.',
+            tip: 'Alternate between cleanup and scoring turns. This level rewards controlled tempo changes.',
+        },
+    },
+    34: {
+        chapterLevel: 7,
+        metadata: {
+            description: 'The atmosphere thins into eclipse light. This is a showcase board built for spectacular chain reactions.',
+            tip: 'Finish the clear first. If the structure still breathes after that, push for the extra cascade depth.',
+        },
+    },
+    35: {
+        chapterLevel: 8,
+        isChapterEnd: true,
+    },
+    36: {
+        victory: {
+            primary: {
+                target: 28000,
+            },
+        },
+        stars: {
+            one: { score: 28000 },
+            two: { score: 42000, tetrises: 5 },
+            three: { score: 60000, tetrises: 9, combo: 8 },
+        },
+        metadata: {
+            description: 'Outer space opens with room to breathe. Let the score build before the void starts asking harder questions.',
+            difficulty: 8,
+        },
+    },
+    40: {
+        victory: {
+            primary: {
+                target: 70000,
+            },
+        },
+        stars: {
+            one: { score: 70000 },
+            two: { score: 110000, tetrises: 9 },
+            three: { score: 160000, tetrises: 14, combo: 10 },
+        },
+    },
+    41: {
+        victory: {
+            primary: {
+                target: 52,
+            },
+        },
+        stars: {
+            one: { lines: 52 },
+            two: { lines: 52, tetrises: 8 },
+            three: { lines: 60, tetrises: 12, time: 120 },
+        },
+        metadata: {
+            description: 'Race the expanding shockwave. Efficiency matters more than perfection once the speed spikes.',
+            tip: 'Use Tetrises to compress the workload. The fastest path through this level is almost always the cleanest one.',
+        },
+    },
+    43: {
+        mechanics: {
+            speed: {
+                startLevel: 11,
+            },
+            pieces: {
+                previewCount: 4,
+            },
+        },
+        victory: {
+            primary: {
+                target: 60,
+            },
+        },
+        stars: {
+            one: { lines: 60 },
+            two: { lines: 60, time: 170 },
+            three: { lines: 60, time: 120, bonuses: 1 },
+        },
+        metadata: {
+            difficulty: 9,
+            description: 'The gate to singularity strips the journey down to pure control. There is nowhere to hide sloppy play.',
+            tip: 'This level is cleaner, not easier. Every wasted move compounds by the end.',
+        },
+    },
+    44: {
+        metadata: {
+            difficulty: 10,
+            description: 'Chapter 6 finale. Trigger massive cascades at the lip of the singularity and hold your nerve in the void.',
+            tip: 'Focus on completing the chapter clear first. If the board still holds together, chase the showcase chains afterward.',
+        },
+    },
+    45: {
+        victory: {
+            primary: {
+                target: 36000,
+            },
+        },
+        stars: {
+            one: { score: 36000 },
+            two: { score: 52000, tetrises: 8 },
+            three: { score: 72000, tetrises: 12, combo: 8 },
+        },
+        metadata: {
+            difficulty: 8,
+            description: 'Reality softens into fluid motion. Let the first abstract chapter beat feel strange, but not yet hostile.',
+            tip: 'Trust the score game you already know. The visuals change first; the discipline stays the same.',
+        },
+    },
+    48: {
+        metadata: {
+            tip: 'Use the full height, but do not overbuild. The best storm boards are structured, not chaotic.',
+        },
+    },
+    50: {
+        mechanics: {
+            board: {
+                startingRows: 6,
+            },
+            speed: {
+                startLevel: 11,
+                fixedDropInterval: 500,
+            },
+            pieces: {
+                previewCount: 4,
+            },
+        },
+        victory: {
+            primary: {
+                target: 36,
+            },
+            bonuses: [
+                { type: 'time', target: 100, description: 'Complete in under 100 seconds' },
+            ],
+        },
+        modifiers: {
+            active: ['gravity-cascade'],
+        },
+        stars: {
+            one: { lines: 36 },
+            two: { lines: 36, time: 130 },
+            three: { lines: 36, time: 100 },
+        },
+        metadata: {
+            description: 'The dream slows just enough for one deep breath. Use the cascades to glide into the final void.',
+            difficulty: 8,
+            estimatedTime: 130,
+            tip: 'Do not race the board. Let each cascade finish before you commit to the next shape.',
+        },
+    },
+    52: {
+        metadata: {
+            difficulty: 7,
+            description: 'Neon-lit dunes shimmer like a mirage. This bonus chapter opens with a stylish but manageable push.',
+            tip: 'Use the starting rows to set your pace. The encore wants confidence, not panic.',
+        },
+    },
+    53: {
+        metadata: {
+            difficulty: 8,
+        },
+    },
+    54: {
+        metadata: {
+            difficulty: 9,
+        },
+    },
+    55: {
+        metadata: {
+            difficulty: 10,
+            description: 'The bonus chapter finale turns the city into a high-voltage arena. Push for one last spectacular score run.',
+            tip: 'Treat the opening stack like fuel. Convert it into momentum fast, then keep the combo engine alive as long as you can.',
+        },
+        victory: {
+            primary: {
+                target: 160000,
+            },
+        },
+        stars: {
+            one: { score: 160000 },
+            two: { score: 200000, cascades: 20, combo: 10 },
+            three: { score: 260000, cascades: 25, maxCascadeDepth: 7, combo: 12 },
+        },
+    },
+});
+
+function mergeConfig(baseConfig, overrideConfig) {
+    if (!overrideConfig) {
+        return baseConfig;
+    }
+
+    const replaceObjectKeys = new Set(['one', 'two', 'three']);
+    const merged = { ...baseConfig };
+    Object.entries(overrideConfig).forEach(([key, value]) => {
+        const baseValue = baseConfig?.[key];
+        if (
+            value
+            && typeof value === 'object'
+            && !Array.isArray(value)
+            && !replaceObjectKeys.has(key)
+            && baseValue
+            && typeof baseValue === 'object'
+            && !Array.isArray(baseValue)
+        ) {
+            merged[key] = mergeConfig(baseValue, value);
+            return;
+        }
+
+        merged[key] = value;
+    });
+
+    return merged;
+}
+
+export const LEVEL_CONFIGS = BASE_LEVEL_CONFIGS.map((level) => {
+    const taggedLevel = mergeConfig(level, LEVEL_PHASE2_TAGS[level.id]);
+    return mergeConfig(taggedLevel, LEVEL_PHASE2_OVERRIDES[level.id]);
+});
 
 // Helper functions for level access
 export function getLevelById(id) {

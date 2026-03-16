@@ -56,9 +56,16 @@ export const BLOOM_CLASS_WEIGHTS = {
     starfield: 0.15,
     voidSpark: 0.8,
     cosmicWave: 0.45,
+    effects: 0.45,
     planetGlow: 0.3,
     nebula: 0.0,
 };
+
+function resolveBloomWeight(key, fallback = 0.0) {
+    const safeFallback = Number.isFinite(fallback) ? fallback : 0.0;
+    const weight = BLOOM_CLASS_WEIGHTS[key];
+    return Number.isFinite(weight) ? weight : safeFallback;
+}
 
 function finalizeNodeMaterial(material, uniforms = {}, meta = {}) {
     const normalizedMeta = {
@@ -155,7 +162,7 @@ export function createPlanetNodeMaterial(params = {}) {
     material.colorNode = finalColor;
     material.roughnessNode = float(1.0);
     material.metalnessNode = float(0.0);
-    material.emissiveNode = finalColor.mul(BLOOM_CLASS_WEIGHTS.planet);
+    material.emissiveNode = finalColor.mul(resolveBloomWeight('planet'));
 
     return finalizeNodeMaterial(
         material,
@@ -227,7 +234,7 @@ export function createStarfieldNodeMaterial(params = {}) {
 
     material.colorNode = coreColor;
     material.opacityNode = alpha;
-    material.emissiveNode = coreColor.mul(alpha).mul(BLOOM_CLASS_WEIGHTS.starfield);
+    material.emissiveNode = coreColor.mul(alpha).mul(resolveBloomWeight('starfield'));
 
     return finalizeNodeMaterial(
         material,
@@ -300,14 +307,7 @@ export function createAtmosphereNodeMaterial(params = {}) {
     const uPulseIntensity = uniform(0);
     const uExplosionTimer = uniform(-10.0);
     const uExplosionIntensity = uniform(0);
-
-    const useFlowCompute = Boolean(
-        params.isWebGPU
-        && params.atmosphereFlowCompute?.getFlowBuffer,
-    );
-    const flowState = useFlowCompute
-        ? storage(params.atmosphereFlowCompute.getFlowBuffer(), 'vec4', 2)
-        : null;
+    const noiseNode = params.noiseMap ? texture(params.noiseMap) : null;
 
     const pos = normalize(positionLocal);
     const nrm = normalize(normalWorld);
@@ -315,45 +315,39 @@ export function createAtmosphereNodeMaterial(params = {}) {
     const fresnel = pow(float(1.0).sub(abs(dot(nrm, viewDir))), 2.0);
 
     const flowTime = uTime.mul(0.8);
-    const flowA = useFlowCompute ? flowState.element(0) : null;
-    const flowB = useFlowCompute ? flowState.element(1) : null;
-    const baseFlowA = vec2(flowTime.mul(0.35), flowTime.mul(-0.25));
-    const baseFlowB = vec2(flowTime.mul(-0.2), flowTime.mul(0.3));
-    const flowOffsetA = useFlowCompute ? vec2(flowA.x, flowA.y) : vec2(0.0, 0.0);
-    const flowOffsetB = useFlowCompute ? vec2(flowA.z, flowA.w) : vec2(0.0, 0.0);
-    const warpOffset = useFlowCompute
-        ? vec2(flowB.x, flowB.y).mul(0.22)
-        : vec2(0.0, 0.0);
-    const flowDensityPulse = useFlowCompute ? flowB.z : float(1.0);
-    const flowTurbulence = useFlowCompute ? flowB.w : float(1.0);
-
-    const atmFbmOctaves = params.fbmOctaves ?? 5;
-    const atmFbmOctavesSub1 = Math.max(2, atmFbmOctaves - 1);
-    const gasA = tslFbm(
-        vec2(pos.x, pos.y)
-            .mul(2.0)
-            .add(baseFlowA)
-            .add(flowOffsetA)
-            .add(warpOffset),
-        atmFbmOctaves,
-    );
-    const gasB = tslFbm(
-        vec2(pos.z, pos.x)
-            .mul(3.5)
-            .add(baseFlowB)
-            .add(flowOffsetB)
-            .sub(warpOffset),
-        atmFbmOctavesSub1,
-    );
+    const baseFlowA = vec2(flowTime.mul(0.12), flowTime.mul(-0.09));
+    const baseFlowB = vec2(flowTime.mul(-0.08), flowTime.mul(0.11));
+    const flowSampleA = noiseNode
+        ? noiseNode.sample(
+            vec2(pos.x, pos.y)
+                .mul(0.34)
+                .add(baseFlowA)
+                .add(vec2(pos.z, pos.x).mul(0.08)),
+        )
+        : vec4(0.5, 0.5, 0.5, 1.0);
+    const warpOffset = vec2(flowSampleA.x, flowSampleA.y).sub(0.5).mul(0.18);
+    const flowSampleB = noiseNode
+        ? noiseNode.sample(
+            vec2(pos.z, pos.x)
+                .mul(0.46)
+                .add(baseFlowB)
+                .add(warpOffset),
+        )
+        : vec4(0.5, 0.5, 0.5, 1.0);
+    const tendrilSample = noiseNode
+        ? noiseNode.sample(
+            vec2(pos.y, pos.z)
+                .mul(0.72)
+                .add(vec2(flowTime.mul(0.18), flowTime.mul(-0.15)))
+                .add(warpOffset.mul(1.15)),
+        )
+        : vec4(0.5, 0.5, 0.5, 1.0);
+    const flowDensityPulse = flowSampleB.z.mul(0.45).add(0.78);
+    const flowTurbulence = flowSampleA.z.mul(0.6).add(0.55);
+    const gasA = flowSampleA.z.mul(0.7).add(flowSampleB.x.mul(0.3));
+    const gasB = flowSampleB.y.mul(0.62).add(flowSampleA.y.mul(0.38));
     const breath = sin(uTime.mul(0.55)).mul(0.08).add(1.0);
-    const tendrilField = tslFbm(
-        vec2(pos.y, pos.z)
-            .mul(5.2)
-            .add(vec2(flowTime.mul(0.9), flowTime.mul(-0.7)))
-            .add(flowOffsetB.mul(0.7))
-            .add(warpOffset.mul(1.2)),
-        atmFbmOctavesSub1,
-    );
+    const tendrilField = tendrilSample.x.mul(0.6).add(tendrilSample.y.mul(0.4));
     const tendrilMask = smoothstep(float(0.42), float(0.85), tendrilField).mul(flowTurbulence);
     const gas = mix(gasA, gasB, 0.4)
         .mul(flowDensityPulse)
@@ -405,7 +399,7 @@ export function createAtmosphereNodeMaterial(params = {}) {
                 .add(tendrilMask.mul(0.12))
                 .add(pulseWave.mul(0.18)),
         )
-        .mul(BLOOM_CLASS_WEIGHTS.atmosphere * 0.52);
+        .mul(resolveBloomWeight('atmosphere') * 0.52);
 
     material.colorNode = color;
     material.opacityNode = alpha;
@@ -434,22 +428,44 @@ export function createNebulaNodeMaterial(params = {}) {
     const uOpacity = uniform(params.opacity ?? 0.2);
     const uPulse = uniform(0);
     const uTime = uniform(0);
+    const noiseNode = params.noiseMap ? texture(params.noiseMap) : null;
 
     const uvCoord = uv();
-    const flowTime = uTime.mul(0.05);
-    const distortSeed = uvCoord.mul(2.0);
-    const distortX = tslFbm(
-        distortSeed.add(vec2(flowTime, flowTime)),
-        params.fbmOctaves ?? 5,
-    ).mul(0.1);
-    const distortY = tslFbm(
-        distortSeed.add(vec2(float(10.0), float(10.0))).add(vec2(flowTime, flowTime)),
-        params.fbmOctaves ?? 5,
-    ).mul(0.1);
-    const distortedUv = uvCoord.add(vec2(distortX, distortY));
+    const flowTime = uTime.mul(0.03);
+    const noiseSampleA = noiseNode
+        ? noiseNode.sample(
+            uvCoord
+                .mul(0.42)
+                .add(vec2(flowTime, flowTime.mul(-0.5))),
+        )
+        : vec4(0.5, 0.5, 0.5, 1.0);
+    const noiseSampleB = noiseNode
+        ? noiseNode.sample(
+            uvCoord
+                .mul(0.78)
+                .add(vec2(flowTime.mul(-0.35), flowTime.mul(0.42)))
+                .add(vec2(0.17, 0.39)),
+        )
+        : vec4(0.5, 0.5, 0.5, 1.0);
+    const veilSample = noiseNode
+        ? noiseNode.sample(
+            uvCoord
+                .mul(0.24)
+                .add(vec2(flowTime.mul(0.18), flowTime.mul(-0.14)))
+                .add(vec2(0.61, 0.11)),
+        )
+        : vec4(0.5, 0.5, 0.5, 1.0);
+    const primaryDistortion = vec2(
+        noiseSampleA.x.add(noiseSampleB.z).mul(0.5),
+        noiseSampleA.y.add(noiseSampleB.x).mul(0.5),
+    ).sub(0.5).mul(0.05);
+    const secondaryDistortion = vec2(noiseSampleB.y, noiseSampleA.z).sub(0.5).mul(0.014);
+    const distortedUv = uvCoord.add(primaryDistortion).add(secondaryDistortion);
+    const softUv = uvCoord.add(primaryDistortion.mul(0.35));
 
     const texNode = params.map ? texture(params.map) : null;
     const texel = texNode ? texNode.sample(distortedUv) : vec4(1.0, 1.0, 1.0, 1.0);
+    const softTexel = texNode ? texNode.sample(softUv) : vec4(1.0, 1.0, 1.0, 1.0);
 
     const fadeX = smoothstep(float(0.0), float(0.4), distortedUv.x)
         .mul(smoothstep(float(1.0), float(0.6), distortedUv.x));
@@ -458,14 +474,23 @@ export function createNebulaNodeMaterial(params = {}) {
     const edgeFade = pow(fadeX.mul(fadeY), 0.9);
 
     const gray = dot(texel.rgb, vec3(0.299, 0.587, 0.114));
-    const boostedGray = pow(clamp(gray.mul(1.55), 0.0, 1.0), 0.82);
+    const softGray = dot(softTexel.rgb, vec3(0.299, 0.587, 0.114));
+    const mergedGray = mix(gray, softGray, 0.42);
+    const veil = smoothstep(float(0.28), float(0.78), veilSample.x.mul(0.55).add(veilSample.y.mul(0.45)));
+    const boostedGray = pow(clamp(mergedGray.mul(1.75).add(veil.mul(0.12)), 0.0, 1.0), 0.68);
+    const whiteLift = smoothstep(float(0.34), float(0.96), boostedGray);
     const pulseFactor = float(1.0).add(uPulse.mul(0.35));
 
-    const tint = vec3(0.92, 0.96, 1.0);
-    const color = vec3(boostedGray, boostedGray, boostedGray).mul(tint).mul(pulseFactor);
+    const tint = vec3(0.94, 0.97, 1.0);
+    const billowBase = vec3(boostedGray, boostedGray, boostedGray).mul(tint);
+    const color = mix(billowBase, vec3(1.0, 1.0, 1.0), whiteLift.mul(0.22)).mul(pulseFactor);
 
     const alpha = clamp(
-        boostedGray.mul(uOpacity.add(uPulse.mul(0.14)).add(0.08)).mul(edgeFade).mul(1.25),
+        boostedGray
+            .mul(veil.mul(0.35).add(0.78))
+            .mul(uOpacity.add(uPulse.mul(0.14)).add(0.08))
+            .mul(edgeFade)
+            .mul(1.22),
         0.0,
         0.9,
     );
@@ -651,7 +676,7 @@ export function createVoidSparkNodeMaterial(params = {}) {
     material.colorNode = color.mul(glow);
     material.opacityNode = alpha;
     // Boosted emissive for stronger bloom contribution
-    material.emissiveNode = color.mul(alpha).mul(BLOOM_CLASS_WEIGHTS.voidSpark * 1.8);
+    material.emissiveNode = color.mul(alpha).mul(resolveBloomWeight('voidSpark') * 1.8);
 
     const uniforms = useGPU ? { time } : { time, uPulseTimer };
     return finalizeNodeMaterial(
@@ -682,7 +707,7 @@ export function createCosmicWaveNodeMaterial(params = {}) {
 
     material.colorNode = color;
     material.opacityNode = alpha;
-    material.emissiveNode = color.mul(alpha).mul(BLOOM_CLASS_WEIGHTS.cosmicWave);
+    material.emissiveNode = color.mul(alpha).mul(resolveBloomWeight('cosmicWave'));
 
     return finalizeNodeMaterial(
         material,
@@ -726,7 +751,7 @@ export function createGasSwirlNodeMaterial(params = {}) {
     material.colorNode = finalColor;
     material.opacityNode = alpha;
     // Boosted emissive for stronger bloom contribution on combo swirl
-    material.emissiveNode = finalColor.mul(alpha).mul(BLOOM_CLASS_WEIGHTS.voidSpark * 1.5);
+    material.emissiveNode = finalColor.mul(alpha).mul(resolveBloomWeight('voidSpark') * 1.5);
 
     return finalizeNodeMaterial(
         material,
@@ -763,7 +788,7 @@ export function createAnamorphicFlareNodeMaterial(params = {}) {
 
     material.colorNode = flareColor.mul(intensity).mul(3.0);
     material.opacityNode = intensity;
-    material.emissiveNode = material.colorNode.mul(BLOOM_CLASS_WEIGHTS.effects);
+    material.emissiveNode = material.colorNode.mul(resolveBloomWeight('effects'));
 
     return finalizeNodeMaterial(
         material,
@@ -784,6 +809,7 @@ export function createAccretionDiskNodeMaterial(params = {}) {
 
     const uTime = uniform(0);
     const uPulseIntensity = uniform(0);
+    const noiseNode = params.noiseMap ? texture(params.noiseMap) : null;
 
     const uvCoord = uv();
 
@@ -796,16 +822,24 @@ export function createAccretionDiskNodeMaterial(params = {}) {
 
     // Differential rotation
     const spin = angle.add(rTime.mul(float(1.1).sub(radius)).mul(2.0));
-
-    const noisePos = vec3(
-        cos(spin).mul(radius).mul(12.0),
-        sin(spin).mul(radius).mul(12.0),
-        uTime.mul(0.15)
+    const orbitUv = vec2(
+        cos(spin).mul(radius).mul(0.95).add(rTime.mul(0.08)),
+        sin(spin).mul(radius).mul(0.95).add(radius.mul(0.45)),
     );
+    const bandUv = vec2(
+        uvCoord.x.mul(1.6).add(rTime.mul(0.05)),
+        radius.mul(4.2).sub(rTime.mul(0.03)),
+    );
+    const noiseSampleA = noiseNode ? noiseNode.sample(orbitUv) : vec4(0.5, 0.5, 0.5, 1.0);
+    const noiseSampleB = noiseNode ? noiseNode.sample(bandUv) : vec4(0.5, 0.5, 0.5, 1.0);
 
-    const plasmaRaw = tslFbm(noisePos, params.fbmOctaves ?? 5);
+    const plasmaRaw = noiseSampleA.x.mul(0.55)
+        .add(noiseSampleA.y.mul(0.2))
+        .add(noiseSampleB.z.mul(0.25));
     const plasma = varying(plasmaRaw, 'vPlasma');
-    const bands = sin(radius.mul(30.0).add(plasma.mul(7.0))).mul(0.5).add(0.5);
+    const bands = sin(radius.mul(30.0).add(plasma.mul(7.0)).add(noiseSampleB.x.mul(3.0)))
+        .mul(0.5)
+        .add(0.5);
 
     const edgeFade = smoothstep(float(0.0), float(0.15), radius)
         .mul(smoothstep(float(1.0), float(0.6), radius));
@@ -825,7 +859,7 @@ export function createAccretionDiskNodeMaterial(params = {}) {
 
     material.colorNode = diskColor.mul(finalIntensity).mul(2.5);
     material.opacityNode = finalIntensity.mul(edgeFade).mul(2.0);
-    material.emissiveNode = material.colorNode.mul(material.opacityNode).mul(BLOOM_CLASS_WEIGHTS.planet);
+    material.emissiveNode = material.colorNode.mul(material.opacityNode).mul(resolveBloomWeight('planet'));
 
     return finalizeNodeMaterial(
         material,

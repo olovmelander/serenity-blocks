@@ -130,6 +130,8 @@ export class BaseTheme {
             document.querySelectorAll('.theme-container').forEach((container) => {
                 container.classList.remove('active');
             });
+            themeContainer.style.removeProperty('opacity');
+            themeContainer.style.removeProperty('visibility');
             // Add active class to this theme's container
             themeContainer.classList.add('active');
         } else {
@@ -186,6 +188,24 @@ export class BaseTheme {
     }
 
     /**
+     * Resolve when the theme is safe for the first visible gameplay frame.
+     * Themes with staged startup can override this to block until critical visuals are ready.
+     * @returns {Promise<boolean>}
+     */
+    async whenCriticalReady() {
+        return true;
+    }
+
+    /**
+     * Resolve when non-critical startup polish has fully settled.
+     * Odyssey does not block reveal on this hook.
+     * @returns {Promise<boolean>}
+     */
+    async whenFullReady() {
+        return true;
+    }
+
+    /**
      * Stop theme animations and effects
      * Called when switching away from this theme
      */
@@ -204,6 +224,8 @@ export class BaseTheme {
         const themeContainer = document.getElementById(`${this.name}-theme`);
         if (themeContainer) {
             themeContainer.classList.remove('active');
+            themeContainer.style.removeProperty('opacity');
+            themeContainer.style.removeProperty('visibility');
         }
 
         // Cancel all animation frames

@@ -77,7 +77,9 @@ export class LevelNodeManager {
         group.position.z += 1.0;
 
         // 1. Inner "Theme" Sphere (Solid textured sphere inside)
-        const themeId = levelConfig.theme?.primary;
+        const themeId = levelConfig.iconThemeId
+            || levelConfig.theme?.pathIcon
+            || levelConfig.theme?.primary;
         const themeTex = this.getOrLoadThemeTexture(themeId);
 
         // Inner sphere acts as the solid core, hiding the path line that passes through
@@ -743,6 +745,32 @@ export class LevelNodeManager {
     getNodePosition(levelId) {
         const node = this.nodes.get(levelId);
         return node?.group.position.clone();
+    }
+
+    updateLayout(levelData = [], pathCurve = null) {
+        if (pathCurve) {
+            this.pathCurve = pathCurve;
+        }
+
+        levelData.forEach((level) => {
+            const node = this.nodes.get(level.id);
+            if (!node) return;
+
+            node.config = {
+                ...node.config,
+                pathPosition: level.pathPosition,
+            };
+            node.pathPosition = level.pathPosition;
+            this.updateNodePathPlacement(node);
+        });
+    }
+
+    updateNodePathPlacement(node) {
+        if (!node || !this.pathCurve) return;
+
+        const point = this.pathCurve.getPointAt(THREE.MathUtils.clamp(node.pathPosition, 0, 1));
+        node.group.position.copy(point);
+        node.group.position.z += 1.0;
     }
 
     /**
