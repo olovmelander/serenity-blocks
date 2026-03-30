@@ -31,6 +31,8 @@ import {
     createStellarPlanetMaterial,
     createStellarPlanetRingMaterial,
     createStellarGlowPlaneMaterial,
+    createStellarForegroundVeilMaterial,
+    createStellarBloodMoonNebulaMaterial,
     createStellarNebulaMaterial,
     createStellarDustRingMaterial,
     createStellarAmbientParticlesMaterial,
@@ -105,6 +107,42 @@ function createSeededRandom(seed) {
         return (state - 1) / 2147483646;
     };
 }
+
+const STELLAR_BLOOD_MOON_NEBULA_SCALE = 1.8;
+const STELLAR_BLOOD_MOON_NEBULA_VISUAL_SCALE = 2.02;
+const STELLAR_BLOOD_MOON_NEBULA_CLUSTER_SPREAD = 1.34;
+const STELLAR_BLOOD_MOON_NEBULA_VERTICAL_SPREAD = 1.28;
+const STELLAR_BLOOD_MOON_NEBULA_DEPTH_STAGGER = 1.22;
+const STELLAR_BLOOD_MOON_NEBULA_WRAP = 6000
+    * STELLAR_BLOOD_MOON_NEBULA_SCALE
+    * STELLAR_BLOOD_MOON_NEBULA_VISUAL_SCALE
+    * 1.26;
+const STELLAR_BLOOD_MOON_PALETTES = [
+    {
+        name: 'gold-cream',
+        shadow: '#2a1100',
+        body: '#ffb223',
+        glow: '#fff2cf',
+    },
+    {
+        name: 'teal-mint',
+        shadow: '#031d2a',
+        body: '#22e5da',
+        glow: '#d9fffb',
+    },
+    {
+        name: 'violet-lilac',
+        shadow: '#150a36',
+        body: '#6e58ff',
+        glow: '#f3e2ff',
+    },
+    {
+        name: 'magenta-rose',
+        shadow: '#24061d',
+        body: '#ff4fa8',
+        glow: '#ffd8f6',
+    },
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Presets (matching Andromeda scale)
@@ -396,6 +434,44 @@ const RadialSpeedLinesShader = {
     `,
 };
 
+const ColorGradeShader = {
+    uniforms: {
+        tDiffuse: { value: null },
+        exposure: { value: 0.99 },
+        contrast: { value: 1.08 },
+        saturation: { value: 1.06 },
+        ditherStrength: { value: 0.0016 },
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float exposure;
+        uniform float contrast;
+        uniform float saturation;
+        uniform float ditherStrength;
+        varying vec2 vUv;
+
+        void main() {
+            vec3 color = texture2D(tDiffuse, vUv).rgb * exposure;
+
+            float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+            color = mix(vec3(luma), color, saturation);
+            color = (color - 0.5) * contrast + 0.5;
+
+            float noise = fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453);
+            color += (noise - 0.5) * ditherStrength;
+
+            gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+        }
+    `,
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Theme Class
 // ─────────────────────────────────────────────────────────────────────────────
@@ -418,6 +494,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.vignettePass = null;
         this.chromaticPass = null;
         this.radialSpeedPass = null;
+        this.colorGradePass = null;
         this.animationFrameId = null;
         this.resizeHandler = null;
         this.webglContextLostHandler = null;
@@ -450,8 +527,11 @@ export default class StellarDriftTheme extends BaseTheme {
         this.meteorMatrixDummy = new THREE.Object3D();
         this.nebulaClouds = [];
         this.nebulaMeshes = [];
+        this.nebulaStacks = [];
+        this.nebulaPalette = null;
         this.secondaryBodies = [];
         this.depthHazeLayers = [];
+        this.foregroundVeilLayers = [];
         this.ambientParticles = null;
         this.dustRing = null;
         this.ambientParticleCompute = null;
@@ -489,12 +569,22 @@ export default class StellarDriftTheme extends BaseTheme {
         this.heroRingGlitterIntensity = 0;
         this.planetLightningIntensity = 0;
         this.cameraSway = new THREE.Vector3(0, 0, 0); // Gentle camera motion
-        this.cameraBasePosition = new THREE.Vector3(0, 100, 1450);
+        this.cameraDrift = new THREE.Vector3(0, 0, 0);
+        this.cameraDriftVelocity = new THREE.Vector3(0, 0, 0);
+        this.cameraBasePosition = new THREE.Vector3(0, 86, 1370);
         this.cameraLookTarget = new THREE.Vector3(0, 0, 0);
         this.cameraCurrentLookTarget = new THREE.Vector3(0, 0, 0);
         this.cameraLookOffset = new THREE.Vector3(0, 0, 0);
+        this.planetLightDirection = new THREE.Vector3(0.7, 0.3, 0.6).normalize();
         this.cameraRollOffset = 0;
         this.cameraDriftSeed = this.rand() * Math.PI * 2;
+        this.heroCompositionSeed = this.rand() * Math.PI * 2;
+        this.heroCompositionOffset = new THREE.Vector3(0, 0, 0);
+        this.heroCompositionOffsetTarget = new THREE.Vector3(0, 0, 0);
+        this.heroCameraBias = new THREE.Vector3(0, 0, 0);
+        this.heroCameraBiasTarget = new THREE.Vector3(0, 0, 0);
+        this.heroLookBias = new THREE.Vector3(0, 0, 0);
+        this.heroLookBiasTarget = new THREE.Vector3(0, 0, 0);
         this.focalCorridorHalfWidth = 1050;
         this.lightningFlashCap = 0.88;
         this.auroraPulse = 0;
@@ -540,9 +630,9 @@ export default class StellarDriftTheme extends BaseTheme {
         };
 
         // WARP SPEED EFFECTS - Tunnel Vision & Motion Trails
-        this.baseFOV = 75;
-        this.currentFOV = 75;
-        this.targetFOV = 75;
+        this.baseFOV = 72;
+        this.currentFOV = 72;
+        this.targetFOV = 72;
         this.cameraShake = new THREE.Vector3(0, 0, 0);
         this.chromaticIntensity = 0; // Chromatic aberration strength
         this.radialBlurIntensity = 0; // Radial motion blur strength
@@ -602,6 +692,28 @@ export default class StellarDriftTheme extends BaseTheme {
         console.log('[StellarDrift] Theme constructed');
     }
 
+    resetCameraRigState({ resetComposition = false } = {}) {
+        this.cameraSway.set(0, 0, 0);
+        this.cameraShake.set(0, 0, 0);
+        this.cameraDrift.set(0, 0, 0);
+        this.cameraDriftVelocity.set(0, 0, 0);
+        this.cameraLookTarget.set(0, 0, 0);
+        this.cameraCurrentLookTarget.set(0, 0, 0);
+        this.cameraLookOffset.set(0, 0, 0);
+        this.cameraRollOffset = 0;
+        this.cameraDriftSeed = this.rand() * Math.PI * 2;
+        this.heroCompositionSeed = this.rand() * Math.PI * 2;
+
+        if (resetComposition) {
+            this.heroCompositionOffset.set(0, 0, 0);
+            this.heroCompositionOffsetTarget.set(0, 0, 0);
+            this.heroCameraBias.set(0, 0, 0);
+            this.heroCameraBiasTarget.set(0, 0, 0);
+            this.heroLookBias.set(0, 0, 0);
+            this.heroLookBiasTarget.set(0, 0, 0);
+        }
+    }
+
     getTetrominoConfig() {
         return STELLAR_DRIFT_TETROMINOS;
     }
@@ -652,10 +764,98 @@ export default class StellarDriftTheme extends BaseTheme {
         return this.qualityPreset?.nebulaBurstCapacity ?? 16000;
     }
 
+    getNebulaBackdropLayerCount() {
+        switch (this.activeQualityLevel) {
+        case 'Extreme':
+        case 'Ultra':
+        case 'High':
+            return 3;
+        case 'Medium':
+            return 2;
+        default:
+            return 1;
+        }
+    }
+
     getBurstParticlesPerNebulaBudget() {
         const baseCap = this.qualityPreset?.maxBurstParticlesPerNebula ?? 900;
         const fallbackScale = this.shouldUseCompute() ? 1.0 : 0.72;
         return Math.max(120, Math.floor(baseCap * fallbackScale));
+    }
+
+    updateHeroCompositionTargets(width = null, height = null, immediate = false) {
+        const fallbackWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
+        const fallbackHeight = typeof window !== 'undefined' ? window.innerHeight : 720;
+        const safeWidth = Math.max(1, Number.isFinite(width) ? width : fallbackWidth);
+        const safeHeight = Math.max(1, Number.isFinite(height) ? height : fallbackHeight);
+        const aspect = safeWidth / safeHeight;
+        const widthFactor = THREE.MathUtils.clamp((safeWidth - 720) / 1440, 0, 1);
+        const heightFactor = THREE.MathUtils.clamp((safeHeight - 640) / 520, 0, 1);
+        const landscapeFactor = THREE.MathUtils.clamp((aspect - 0.82) / 0.96, 0, 1);
+
+        let dominantSideX = safeWidth >= safeHeight ? -1 : 0;
+        let dominantSideY = safeWidth >= safeHeight ? -1 : 0;
+        let horizontalGapRatio = THREE.MathUtils.clamp(0.22 + landscapeFactor * 0.12 + widthFactor * 0.08, 0.2, 0.42);
+        let verticalGapRatio = THREE.MathUtils.clamp(0.12 + heightFactor * 0.08, 0.09, 0.28);
+        let corridorHalfWidth = THREE.MathUtils.lerp(960, 1180, landscapeFactor * 0.55 + widthFactor * 0.45);
+
+        if (typeof document !== 'undefined') {
+            const boardRect = document.getElementById('phaser-game-container')?.getBoundingClientRect?.();
+            if (boardRect?.width > 0 && boardRect?.height > 0) {
+                const leftGap = Math.max(0, boardRect.left);
+                const rightGap = Math.max(0, safeWidth - boardRect.right);
+                const topGap = Math.max(0, boardRect.top);
+                const bottomGap = Math.max(0, safeHeight - boardRect.bottom);
+
+                if (Math.abs(leftGap - rightGap) > safeWidth * 0.02) {
+                    dominantSideX = leftGap >= rightGap ? -1 : 1;
+                }
+                if (Math.abs(topGap - bottomGap) > safeHeight * 0.02) {
+                    dominantSideY = topGap >= bottomGap ? -1 : 1;
+                }
+
+                horizontalGapRatio = THREE.MathUtils.clamp(Math.max(leftGap, rightGap) / safeWidth, 0.16, 0.42);
+                verticalGapRatio = THREE.MathUtils.clamp(Math.max(topGap, bottomGap) / safeHeight, 0.08, 0.28);
+
+                const boardCoverage = THREE.MathUtils.clamp(boardRect.width / safeWidth, 0.18, 0.46);
+                corridorHalfWidth = 780 + boardCoverage * 740;
+            }
+        }
+
+        const compositionX = dominantSideX * (280 + horizontalGapRatio * 1240);
+        const compositionY = dominantSideY === 0
+            ? -(64 + heightFactor * 52)
+            : dominantSideY * (104 + verticalGapRatio * 230);
+        const cameraBiasX = dominantSideX === 0 ? 0 : -dominantSideX * (118 + horizontalGapRatio * 470);
+        const cameraBiasY = dominantSideY === 0
+            ? 42 + verticalGapRatio * 74
+            : -dominantSideY * (42 + verticalGapRatio * 118);
+        const cameraBiasZ = 24 + widthFactor * 26 + landscapeFactor * 16;
+        const lookBiasX = dominantSideX === 0 ? 0 : -dominantSideX * (220 + horizontalGapRatio * 690);
+        const lookBiasY = dominantSideY === 0
+            ? 58 + verticalGapRatio * 98
+            : -dominantSideY * (70 + verticalGapRatio * 168);
+        const lookBiasZ = -(12 + widthFactor * 16 + landscapeFactor * 12);
+
+        this.heroCompositionOffsetTarget.set(compositionX, compositionY, 0);
+        this.heroCameraBiasTarget.set(cameraBiasX, cameraBiasY, cameraBiasZ);
+        this.heroLookBiasTarget.set(lookBiasX, lookBiasY, lookBiasZ);
+        this.focalCorridorHalfWidth = corridorHalfWidth;
+
+        if (immediate) {
+            this.heroCompositionOffset.copy(this.heroCompositionOffsetTarget);
+            this.heroCameraBias.copy(this.heroCameraBiasTarget);
+            this.heroLookBias.copy(this.heroLookBiasTarget);
+        }
+    }
+
+    updateHeroCompositionRig(deltaSeconds) {
+        const dt = Number.isFinite(deltaSeconds) ? Math.max(0.001, deltaSeconds) : (1 / 60);
+        const compositionLerp = THREE.MathUtils.clamp(dt * 2.1, 0.03, 0.16);
+
+        this.heroCompositionOffset.lerp(this.heroCompositionOffsetTarget, compositionLerp);
+        this.heroCameraBias.lerp(this.heroCameraBiasTarget, compositionLerp * 0.9);
+        this.heroLookBias.lerp(this.heroLookBiasTarget, compositionLerp * 0.82);
     }
 
     enforceFocalCorridor(xValue, focalX = 0, preferredSide = 1) {
@@ -900,17 +1100,27 @@ export default class StellarDriftTheme extends BaseTheme {
         const height = 780 + this.rand() * 420;
         const baseOpacity = 0.05 + intensity * 0.08;
         const hue = 168 + this.rand() * 130;
+        const tintColor = new THREE.Color().setHSL((hue % 360) / 360, 0.78, 0.58);
         const texture = this.createDepthHazeTexture({
             hue,
             saturation: 84,
             lightness: 50,
             alpha: 0.2 + intensity * 0.16,
+            vivid: true,
         });
         const geometry = new THREE.PlaneGeometry(width, height);
         const materialData = createStellarNebulaMaterial({
             isWebGPU: this.isWebGPU,
+            variant: 'haze',
             nebulaTexture: texture,
             opacity: baseOpacity,
+            tintColor,
+            flowStrength: 0.05 + intensity * 0.02,
+            detailStrength: 0.92 + intensity * 0.16,
+            densityThreshold: 0.32,
+            emissiveGain: 0.12 + intensity * 0.1,
+            edgeSoftness: 1.46,
+            phaseSeed: this.rand() * 100,
         });
 
         const aurora = new THREE.Mesh(geometry, materialData.material);
@@ -1000,6 +1210,7 @@ export default class StellarDriftTheme extends BaseTheme {
             this.nebulaBurstPool = null;
         }
         this.nebulaBurstMaterialData = null;
+        this.resetCameraRigState({ resetComposition: true });
     }
 
     setupNebulaBurstComputePool() {
@@ -1059,10 +1270,14 @@ export default class StellarDriftTheme extends BaseTheme {
             }
 
             if (this.nebulaBurstCompute?.computeNode) {
-                const drag = Math.max(0.988, 0.995 - this.warpSpeed * 0.003);
+                const drag = THREE.MathUtils.clamp(
+                    0.9962 + this.nebulaPulse * 0.0007 - this.warpSpeed * 0.0014,
+                    0.992,
+                    0.9972,
+                );
                 this.nebulaBurstCompute.update(deltaSeconds, {
                     drag,
-                    turbulence: 0.25 + this.nebulaPulse * 0.45,
+                    turbulence: 0.32 + this.nebulaPulse * 0.62 + this.nebulaBoostIntensity * 0.18,
                 });
                 this.renderer.compute(this.nebulaBurstCompute.computeNode);
             }
@@ -1378,6 +1593,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.vignettePass = null;
         this.chromaticPass = null;
         this.radialSpeedPass = null;
+        this.colorGradePass = null;
     }
 
     disposeMaterialTextures(material, disposedTextures) {
@@ -1484,8 +1700,11 @@ export default class StellarDriftTheme extends BaseTheme {
         this.meteorMatrixDummy = null;
         this.nebulaClouds = [];
         this.nebulaMeshes = [];
+        this.nebulaStacks = [];
+        this.nebulaPalette = null;
         this.secondaryBodies = [];
         this.depthHazeLayers = [];
+        this.foregroundVeilLayers = [];
         this.ambientParticles = null;
         this.dustRing = null;
         this.ambientParticleCompute = null;
@@ -1515,13 +1734,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.heroRingGlitterIntensity = 0;
         this.planetLightningIntensity = 0;
         this.auroraPulse = 0;
-        this.cameraSway.set(0, 0, 0);
-        this.cameraShake.set(0, 0, 0);
-        this.cameraLookTarget.set(0, 0, 0);
-        this.cameraCurrentLookTarget.set(0, 0, 0);
-        this.cameraLookOffset.set(0, 0, 0);
-        this.cameraRollOffset = 0;
-        this.cameraDriftSeed = this.rand() * Math.PI * 2;
+        this.resetCameraRigState({ resetComposition: true });
         this.animationFrameId = null;
         this.time = 0;
         this.fixedElapsed = 0;
@@ -2056,15 +2269,17 @@ export default class StellarDriftTheme extends BaseTheme {
 
         this.resetReactiveEnvelope();
 
+        this.selectNebulaPalette(); // Must run before starfield so stars can use nebula colors
         this.createStarfield(); // 3D point stars
         // this.createNebulaClouds();   // REMOVED: Replaced by volumetric backdrop
         // this.createOrbitingParticles(); // REMOVED: User request
-        this.createNebulaBackdrop(); // NEW: High-def majestic nebula
+        this.createNebulaBackdrop(); // Blood Moon-style hero nebula masses
+        this.createDepthHazeLayers(); // Distant atmospheric depth layers
         this.createPlanet();
         this.createSecondaryBodies();
-        this.createDepthHazeLayers();
         this.createDustRing(); // Dust ring around planet
         this.createAmbientParticles(); // Floating ambient sparkles
+        this.createForegroundVeils(); // Near-camera framing veils for depth
         this.createMeteorField();
         this.getCrashMeteorGeometryCache(); // Prebuild crash-meteor geometry templates to avoid spawn hitching.
         this.setupNebulaBurstComputePool();
@@ -2169,19 +2384,16 @@ export default class StellarDriftTheme extends BaseTheme {
         this.scene = new THREE.Scene();
 
         // ANDROMEDA CAMERA: z=1450, y=100, looking at origin
-        this.camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000000);
-        this.camera.position.copy(this.cameraBasePosition);
-        this.camera.lookAt(0, 0, 0);
-        this.cameraSway.set(0, 0, 0);
-        this.cameraShake.set(0, 0, 0);
-        this.cameraLookOffset.set(0, 0, 0);
-        this.cameraLookTarget.set(0, 0, 0);
-        this.cameraCurrentLookTarget.set(0, 0, 0);
-        this.cameraRollOffset = 0;
-        this.cameraDriftSeed = this.rand() * Math.PI * 2;
+        this.camera = new THREE.PerspectiveCamera(this.baseFOV, width / height, 0.1, 1000000);
+        this.updateHeroCompositionTargets(width, height, true);
+        this.resetCameraRigState();
+        this.camera.position.copy(this.cameraBasePosition).add(this.heroCameraBias);
+        this.cameraLookTarget.copy(this.heroLookBias);
+        this.cameraCurrentLookTarget.copy(this.heroLookBias);
+        this.camera.lookAt(this.cameraCurrentLookTarget);
 
         // Spotlight for meteors (reduced intensity)
-        this.meteorLight = new THREE.SpotLight(0xffffff, 2, 3000);
+        this.meteorLight = new THREE.SpotLight(0xb8d5ff, 2.15, 3000);
         this.meteorLightTarget = new THREE.Object3D();
         this.meteorLight.position.set(0, 300, 200);
         this.meteorLightTarget.position.set(0, 0, 0);
@@ -2190,13 +2402,20 @@ export default class StellarDriftTheme extends BaseTheme {
         this.scene.add(this.meteorLightTarget);
 
         // Ambient light
-        this.ambientLight = new THREE.AmbientLight(0x404060, 0.5);
+        this.ambientLight = new THREE.AmbientLight(0x11182c, 0.32);
         this.scene.add(this.ambientLight);
 
         // Directional light
-        this.keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+        this.keyLight = new THREE.DirectionalLight(0xffe4bf, 1.02);
         this.keyLight.position.set(0, 100, 500);
         this.scene.add(this.keyLight);
+
+        this.rimLight = new THREE.DirectionalLight(0x79d6ff, 0.62);
+        this.rimLight.position.set(420, 210, -720);
+        this.scene.add(this.rimLight);
+
+        this.hemisphereLight = new THREE.HemisphereLight(0x16345e, 0x09060d, 0.18);
+        this.scene.add(this.hemisphereLight);
 
         console.log('[StellarDrift] Camera at z=1450, y=100 with improved lighting');
         console.log(`[StellarDrift] Renderer initialized (${this.getBackendLabel()})`);
@@ -2204,52 +2423,142 @@ export default class StellarDriftTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Nebula Palette Selection - Run before starfield so stars inherit colors
+    // ─────────────────────────────────────────────────────────────────────────
+
+    selectNebulaPalette() {
+        const paletteStartIndex = Math.floor(this.rand() * STELLAR_BLOOD_MOON_PALETTES.length);
+        this._selectedPalettes = Array.from({ length: 3 }, (_, index) => {
+            const palettePreset = STELLAR_BLOOD_MOON_PALETTES[
+                (paletteStartIndex + index) % STELLAR_BLOOD_MOON_PALETTES.length
+            ] || STELLAR_BLOOD_MOON_PALETTES[0];
+
+            return {
+                name: palettePreset.name,
+                shadow: new THREE.Color(palettePreset.shadow),
+                body: new THREE.Color(palettePreset.body),
+                glow: new THREE.Color(palettePreset.glow),
+            };
+        });
+
+        this.nebulaPalette = {
+            families: this._selectedPalettes.map((palette) => palette.name),
+            warm: this._selectedPalettes[0].body.clone(),
+            cool: this._selectedPalettes[1].body.clone(),
+            accent: this._selectedPalettes[2].body.clone(),
+            shadow: this._selectedPalettes[0].shadow.clone(),
+            body: this._selectedPalettes[0].body.clone(),
+            glow: this._selectedPalettes[0].glow.clone(),
+        };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Starfield - Thousands of 3D point stars
     // ─────────────────────────────────────────────────────────────────────────
 
     createStarfield() {
-        const starCount = 3000;
+        const starCount = 9800;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(starCount * 3);
         const colors = new Float32Array(starCount * 3);
         const sizes = new Float32Array(starCount);
         const twinkleData = new Float32Array(starCount * 2);
+        const brightness = new Float32Array(starCount);
 
-        const starColors = [
-            new THREE.Color(0xffffff),
-            new THREE.Color(0xfff8f0),
-            new THREE.Color(0xf0f0ff),
-            new THREE.Color(0xfff0f0),
-            new THREE.Color(0xc8e0ff),
-            new THREE.Color(0xfffff0),
+        // Nebula-tinted star colors derived from the 3 selected palettes
+        const warm = this.nebulaPalette.warm;
+        const cool = this.nebulaPalette.cool;
+        const accent = this.nebulaPalette.accent;
+
+        // Keep more of the palette color in the stars so the sky feels richer.
+        const warmStar = warm.clone().lerp(new THREE.Color(0xffffff), 0.2);
+        const coolStar = cool.clone().lerp(new THREE.Color(0xffffff), 0.2);
+        const accentStar = accent.clone().lerp(new THREE.Color(0xffffff), 0.2);
+
+        // Glow colors from palettes (already pastel/bright)
+        const warmGlow = this._selectedPalettes[0].glow.clone();
+        const coolGlow = this._selectedPalettes[1].glow.clone();
+        const accentGlow = this._selectedPalettes[2].glow.clone();
+
+        const nebulaStarColors = [
+            warmStar,
+            coolStar,
+            accentStar,
+            warmGlow,
+            coolGlow,
+            accentGlow,
+            warm.clone().lerp(accentGlow, 0.34),
+            cool.clone().lerp(accentGlow, 0.22),
+            accent.clone().lerp(coolGlow, 0.24),
+            warmGlow.clone().lerp(coolGlow, 0.18),
+        ];
+        const neutralColors = [new THREE.Color(0xffffff), new THREE.Color(0xfff8f0)];
+        const pureWhite = new THREE.Color(0xffffff);
+        const anchorStarColors = [
+            warmGlow.clone().lerp(pureWhite, 0.12),
+            coolGlow.clone().lerp(pureWhite, 0.1),
+            accentGlow.clone().lerp(pureWhite, 0.12),
+            warm.clone().lerp(coolGlow, 0.42),
+            accent.clone().lerp(coolGlow, 0.35),
+            warmGlow.clone().lerp(accentGlow, 0.26),
         ];
 
         for (let i = 0; i < starCount; i++) {
             const i3 = i * 3;
             const i2 = i * 2;
+
+            // Camera-anchored sky sphere: stars wrap the visible sky, but remain far away.
+            const shell = this.rand();
+            const radius = shell > 0.9
+                ? (9000 + this.rand() * 4500)
+                : (shell > 0.42 ? (14500 + this.rand() * 8500) : (24000 + this.rand() * 18000));
             const theta = this.rand() * Math.PI * 2;
             const phi = Math.acos(2 * this.rand() - 1);
-            const radius = 3000 + this.rand() * 3000;
+            const dirX = Math.sin(phi) * Math.cos(theta);
+            const dirY = Math.sin(phi) * Math.sin(theta);
+            const dirZ = Math.cos(phi);
 
-            positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
-            positions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
-            positions[i3 + 2] = (radius * Math.cos(phi)) - 6000;
+            positions[i3] = dirX * radius;
+            positions[i3 + 1] = dirY * radius;
+            positions[i3 + 2] = dirZ * radius;
 
-            const color = starColors[Math.floor(this.rand() * starColors.length)];
+            const isAnchorStar = this.rand() > 0.944;
+            const color = (isAnchorStar
+                ? anchorStarColors[Math.floor(this.rand() * anchorStarColors.length)]
+                : (this.rand() > 0.08
+                    ? nebulaStarColors[Math.floor(this.rand() * nebulaStarColors.length)]
+                    : neutralColors[Math.floor(this.rand() * neutralColors.length)]))
+                .clone();
+            if (isAnchorStar) {
+                color.lerp(pureWhite, 0.1 + this.rand() * 0.08);
+            }
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
-            // Larger, more visible stars
-            sizes[i] = 35 + this.rand() * 50;
+            let starSize = shell > 0.9
+                ? (70 + this.rand() * 92)
+                : (shell > 0.42 ? (33 + this.rand() * 56) : (15 + this.rand() * 30));
+            let starBrightness = shell > 0.9
+                ? (0.56 + this.rand() * 0.78)
+                : (shell > 0.42 ? (0.34 + this.rand() * 0.62) : (0.22 + this.rand() * 0.46));
+            if (isAnchorStar) {
+                starSize *= shell > 0.9 ? 1.22 : 1.32;
+                starBrightness *= 1.28 + this.rand() * 0.18;
+            }
+            sizes[i] = starSize;
+            brightness[i] = starBrightness;
             // Gentle twinkle - cycles every 8-20 seconds
             twinkleData[i2] = this.rand() * Math.PI * 2;
-            twinkleData[i2 + 1] = 1.5 + this.rand() * 2.5; // Balanced speed
+            twinkleData[i2 + 1] = isAnchorStar
+                ? (0.42 + this.rand() * 0.88)
+                : (0.8 + this.rand() * 1.7);
         }
 
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
         geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
 
         const materialData = createStellarStarfieldMaterial({
@@ -2260,6 +2569,11 @@ export default class StellarDriftTheme extends BaseTheme {
         this.starfieldMaterialData = materialData;
 
         this.starfield = new THREE.Points(geometry, materialData.material);
+        if (this.camera) {
+            this.starfield.position.copy(this.camera.position);
+        }
+        this.starfield.renderOrder = -3200;
+        this.starfield.frustumCulled = false;
         this.scene.add(this.starfield);
         console.log('[StellarDrift] Starfield created with', starCount, this.isWebGPU ? 'TSL stars' : 'shader stars');
     }
@@ -2396,129 +2710,183 @@ export default class StellarDriftTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Drifting Nebula Clouds - Separate planes that scroll left-to-right
+    // Hero Nebula Backdrop - Direct Blood Moon nebula port with fixed palette ramps
     // ─────────────────────────────────────────────────────────────────────────
 
     createNebulaBackdrop() {
         const textureLoader = new THREE.TextureLoader();
-
-        // Load 9 distinct nebula textures (Starless)
-        // Attach exact colors to each texture so they stay linked after shuffle
-        const texturePath = './textures/stellar-drift/';
+        const texturePath = './textures/blood-moon/';
         const textures = [
-            textureLoader.load(`${texturePath}stellar_drift_nebula.png`), // 1: Emerald/Violet
-            textureLoader.load(`${texturePath}stellar_drift_nebula_2.png`), // 2: Gold/Orange
-            textureLoader.load(`${texturePath}stellar_drift_nebula_3.png`), // 3: Blue/Purple
-            textureLoader.load(`${texturePath}stellar_drift_nebula_4.png`), // 4: Red/Magenta
-            textureLoader.load(`${texturePath}stellar_drift_nebula_5.png`), // 5: Cyan/Teal
-            textureLoader.load(`${texturePath}stellar_drift_nebula_6.png`), // 6: Deep Indigo
-            textureLoader.load(`${texturePath}stellar_drift_nebula_7.png`), // 7: Crimson/Black
-            textureLoader.load(`${texturePath}stellar_drift_nebula_8.png`), // 8: Amber/Gold
-            textureLoader.load(`${texturePath}stellar_drift_nebula_9.png`), // 9: Silver/Ghost
+            textureLoader.load(`${texturePath}nebula-red-1.png`),
+            textureLoader.load(`${texturePath}nebula-red-2.png`),
+            textureLoader.load(`${texturePath}nebula-red-3.png`),
         ];
 
-        // Assign colors to textures
-        // These MUST match the visual look of the texture files
-        textures[0].userData = { color: new THREE.Color(0x00FF88) }; // Emerald
-        textures[1].userData = { color: new THREE.Color(0xFFAA00) }; // Gold
-        textures[2].userData = { color: new THREE.Color(0x6633FF) }; // Purple
-        textures[3].userData = { color: new THREE.Color(0xFF3366) }; // Red
-        textures[4].userData = { color: new THREE.Color(0x00FFFF) }; // Cyan
-        textures[5].userData = { color: new THREE.Color(0x3344FF) }; // Indigo
-        textures[6].userData = { color: new THREE.Color(0xFF0044) }; // Crimson
-        textures[7].userData = { color: new THREE.Color(0xFFCC00) }; // Amber
-        textures[8].userData = { color: new THREE.Color(0xCCCCFF) }; // Silver
-
-        textures.forEach((t) => {
-            t.wrapS = THREE.ClampToEdgeWrapping;
-            t.wrapT = THREE.ClampToEdgeWrapping;
+        textures.forEach((texture) => {
+            texture.wrapS = THREE.ClampToEdgeWrapping;
+            texture.wrapT = THREE.ClampToEdgeWrapping;
         });
 
-        // Randomize order so it's different every time
-        for (let i = textures.length - 1; i > 0; i--) {
-            const j = Math.floor(this.rand() * (i + 1));
-            [textures[i], textures[j]] = [textures[j], textures[i]];
-        }
+        // Palette already selected by selectNebulaPalette() — reuse it
+        const selectedPalettes = this._selectedPalettes;
 
-        // Configuration for 9 nebula clouds - "Smart Loop" System
-        // Total Cycle Width: 450,000 units
-        // Spacing: 50,000 units (Ensures max 2-3 visible at once in 100k view)
-        // Range: -200,000 to +200,000
-
-        const nebulaConfigs = [
-            // Center Group (Visible Now)
+        const planeConfigs = [
             {
-                texture: textures[0], x: 0, y: 8000, z: -35000, size: 75000, speed: 0.4, vRange: 2000,
-            }, // Center
+                texture: textures[0],
+                size: 6800 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                z: -5200 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                opacity: 0.3,
+                speed: 0.00010 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                layerRole: 'body',
+                driftOffset: 0,
+                offsetY: 0,
+                rotation: 0.18,
+            },
             {
-                texture: textures[1], x: 50000, y: -10000, z: -32000, size: 72000, speed: 0.6, vRange: 1500,
-            }, // Right 1
+                texture: textures[1],
+                size: 8200 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                z: -4600 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                opacity: 0.25,
+                speed: 0.00015 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                layerRole: 'body',
+                driftOffset: 150 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                offsetY: 90 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                rotation: -0.34,
+            },
             {
-                texture: textures[2], x: 100000, y: 0, z: -40000, size: 80000, speed: 0.3, vRange: 1000,
-            }, // Right 2
+                texture: textures[2],
+                size: 6200 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                z: -3600 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                opacity: 0.2,
+                speed: 0.00020 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                layerRole: 'filament',
+                driftOffset: -180 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                offsetY: -120 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                rotation: 0.62,
+            },
             {
-                texture: textures[8], x: -50000, y: -5000, z: -36000, size: 70000, speed: 0.35, vRange: 2200,
-            }, // Left 1 (Silver)
-
-            // Outer Wings (Incoming/Outgoing)
-            {
-                texture: textures[3], x: 150000, y: 5000, z: -38000, size: 78000, speed: 0.5, vRange: 1800,
-            }, // Right 3
-            {
-                texture: textures[4], x: 200000, y: -8000, z: -39000, size: 76000, speed: 0.55, vRange: 1600,
-            }, // Right 4 (Edge)
-
-            {
-                texture: textures[5], x: -100000, y: 8000, z: -35000, size: 74000, speed: 0.45, vRange: 2000,
-            }, // Left 2
-            {
-                texture: textures[6], x: -150000, y: 2000, z: -34000, size: 77000, speed: 0.3, vRange: 2500,
-            }, // Left 3
-            {
-                texture: textures[7], x: -200000, y: -2000, z: -37000, size: 75000, speed: 0.4, vRange: 1900,
-            }, // Left 4 (Deep Edge)
+                texture: textures[0],
+                size: 6600 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                z: -3000 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                opacity: 0.15,
+                speed: 0.00025 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                layerRole: 'glow',
+                driftOffset: 220 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                offsetY: 150 * STELLAR_BLOOD_MOON_NEBULA_SCALE,
+                rotation: -0.14,
+            },
         ];
+        const massConfigs = [
+            {
+                clusterRole: 'hero-left',
+                palette: selectedPalettes[0],
+                paletteGroup: selectedPalettes[0].name,
+                offsetX: -8400,
+                offsetY: -120,
+                scale: 0.9,
+                depthOffset: -1600,
+                opacityMultiplier: 0.84,
+                renderOrderBase: -2140,
+            },
+            {
+                clusterRole: 'hero-center',
+                palette: selectedPalettes[1],
+                paletteGroup: selectedPalettes[1].name,
+                offsetX: 0,
+                offsetY: 2480,
+                scale: 1.34,
+                depthOffset: -3600,
+                opacityMultiplier: 1.04,
+                renderOrderBase: -2240,
+            },
+            {
+                clusterRole: 'hero-right',
+                palette: selectedPalettes[2],
+                paletteGroup: selectedPalettes[2].name,
+                offsetX: 9800,
+                offsetY: 1680,
+                scale: 1.02,
+                depthOffset: -2500,
+                opacityMultiplier: 0.9,
+                renderOrderBase: -2340,
+            },
+        ];
+        const cameraX = this.camera?.position?.x ?? this.cameraBasePosition.x;
+        const cameraY = this.camera?.position?.y ?? this.cameraBasePosition.y;
 
-        // Store nebula meshes for animation
+        this.nebulaClouds = [];
         this.nebulaMeshes = [];
+        this.nebulaStacks = [];
+        this.depthHazeLayers = [];
 
-        nebulaConfigs.forEach((config, index) => {
-            const geometry = new THREE.PlaneGeometry(config.size, config.size * 0.6);
-            const materialData = createStellarNebulaMaterial({
-                isWebGPU: this.isWebGPU,
-                nebulaTexture: config.texture,
-                opacity: 0.4,
+        massConfigs.forEach((massConfig, massIndex) => {
+            planeConfigs.forEach((config, layerIndex) => {
+                const clusterOffsetX = massConfig.offsetX * STELLAR_BLOOD_MOON_NEBULA_CLUSTER_SPREAD;
+                const clusterOffsetY = massConfig.offsetY * STELLAR_BLOOD_MOON_NEBULA_VERTICAL_SPREAD;
+                const geometry = new THREE.PlaneGeometry(
+                    config.size * massConfig.scale * STELLAR_BLOOD_MOON_NEBULA_VISUAL_SCALE,
+                    config.size * massConfig.scale * STELLAR_BLOOD_MOON_NEBULA_VISUAL_SCALE,
+                );
+                const materialData = createStellarBloodMoonNebulaMaterial({
+                    isWebGPU: this.isWebGPU,
+                    nebulaTexture: config.texture,
+                    opacity: config.opacity * massConfig.opacityMultiplier,
+                    palette: massConfig.palette,
+                });
+
+                const mesh = new THREE.Mesh(geometry, materialData.material);
+                const driftOffset = config.driftOffset
+                    * massConfig.scale
+                    * STELLAR_BLOOD_MOON_NEBULA_VISUAL_SCALE;
+                const baseZ = config.z + massConfig.depthOffset * STELLAR_BLOOD_MOON_NEBULA_DEPTH_STAGGER;
+                const offsetY = clusterOffsetY
+                    + config.offsetY
+                        * massConfig.scale
+                        * STELLAR_BLOOD_MOON_NEBULA_VISUAL_SCALE
+                        * STELLAR_BLOOD_MOON_NEBULA_VERTICAL_SPREAD;
+
+                mesh.position.set(
+                    cameraX * 0.3 + driftOffset + clusterOffsetX,
+                    cameraY * 0.2 + offsetY,
+                    baseZ,
+                );
+                mesh.rotation.z = config.rotation;
+                mesh.renderOrder = massConfig.renderOrderBase + layerIndex;
+                mesh.userData.materialData = materialData;
+                mesh.userData.color = massConfig.palette.body.clone();
+                mesh.userData.baseOpacity = config.opacity * massConfig.opacityMultiplier;
+                mesh.userData.driftSpeed = config.speed;
+                mesh.userData.driftOffset = driftOffset;
+                mesh.userData.pulsePhase = this.rand() * Math.PI * 2;
+                mesh.userData.pulseScale = 1.0;
+                mesh.userData.stackId = massIndex;
+                mesh.userData.layerRole = config.layerRole;
+                mesh.userData.clusterRole = massConfig.clusterRole;
+                mesh.userData.paletteGroup = massConfig.paletteGroup;
+                mesh.userData.baseAnchor = new THREE.Vector3(clusterOffsetX, offsetY, baseZ);
+                mesh.userData.parallaxFactor = 0.0;
+                mesh.userData.flowSeed = this.rand() * 100 + massIndex * 17.3 + layerIndex * 5.1;
+                mesh.userData.massOffsetX = clusterOffsetX;
+                mesh.userData.massOffsetY = offsetY;
+                mesh.userData.baseZ = baseZ;
+                mesh.userData.wrapBoundary = STELLAR_BLOOD_MOON_NEBULA_WRAP;
+                mesh.userData.totalWidth = STELLAR_BLOOD_MOON_NEBULA_WRAP * 2;
+                mesh.userData.isBurstAnchor = layerIndex === 0;
+
+                this.nebulaClouds.push(mesh);
+                this.nebulaMeshes.push(mesh);
+                this.scene.add(mesh);
             });
-
-            const mesh = new THREE.Mesh(geometry, materialData.material);
-            mesh.position.set(config.x, config.y, config.z);
-            mesh.renderOrder = -2000 - index;
-            mesh.userData.materialData = materialData;
-
-            mesh.userData.speed = config.speed;
-            mesh.userData.startX = config.x;
-            mesh.userData.startY = config.y; // Base Y position
-            mesh.userData.verticalRange = config.vRange; // How much it bobs up/down
-            mesh.userData.driftPhase = this.rand() * Math.PI * 2; // Random starting phase
-
-            // Store color from texture (for particle bursts)
-            if (config.texture.userData && config.texture.userData.color) {
-                mesh.userData.color = config.texture.userData.color;
-            } else {
-                mesh.userData.color = new THREE.Color(0xFFFFFF); // Fallback
-            }
-
-            // "Smart Loop" Setup
-            // Wrap boundary: 225,000 (Half of 450k width)
-            // When x > 225,000, we subtract 450,000 to move it to -225,000
-            mesh.userData.wrapBoundary = 225000;
-            mesh.userData.totalWidth = 450000;
-
-            this.nebulaMeshes.push(mesh);
-            this.scene.add(mesh);
         });
 
-        console.log('[StellarDrift] Drifting nebula backdrop created with modular material factories');
+        console.log(
+            '[StellarDrift] Blood Moon nebula port created',
+            {
+                palettes: selectedPalettes.map((palette) => palette.name),
+                masses: massConfigs.length,
+                planesPerMass: planeConfigs.length,
+            },
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2549,35 +2917,53 @@ export default class StellarDriftTheme extends BaseTheme {
         if (this._starTexture) return this._starTexture;
 
         const canvas = document.createElement('canvas');
-        canvas.width = 128;
-        canvas.height = 128;
+        canvas.width = 256;
+        canvas.height = 256;
         const ctx = canvas.getContext('2d');
-        const center = 64;
+        const center = 128;
 
         // Clear canvas
-        ctx.clearRect(0, 0, 128, 128);
+        ctx.clearRect(0, 0, 256, 256);
 
-        // Outer soft glow halo - smooth circular falloff
-        const outerGlow = ctx.createRadialGradient(center, center, 0, center, center, 64);
-        outerGlow.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
-        outerGlow.addColorStop(0.15, 'rgba(255, 255, 255, 0.15)');
-        outerGlow.addColorStop(0.35, 'rgba(255, 255, 255, 0.06)');
-        outerGlow.addColorStop(0.6, 'rgba(255, 255, 255, 0.02)');
+        // Outer soft halo - larger, smoother falloff to avoid crunchy point edges.
+        const outerGlow = ctx.createRadialGradient(center, center, 0, center, center, 126);
+        outerGlow.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
+        outerGlow.addColorStop(0.12, 'rgba(255, 255, 255, 0.14)');
+        outerGlow.addColorStop(0.3, 'rgba(255, 255, 255, 0.08)');
+        outerGlow.addColorStop(0.56, 'rgba(255, 255, 255, 0.03)');
+        outerGlow.addColorStop(0.82, 'rgba(255, 255, 255, 0.01)');
         outerGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
         ctx.fillStyle = outerGlow;
-        ctx.fillRect(0, 0, 128, 128);
+        ctx.fillRect(0, 0, 256, 256);
 
-        // Bright core - circular with soft edges
-        const coreGlow = ctx.createRadialGradient(center, center, 0, center, center, 20);
+        // Secondary airy halo for a softer cinematic bloom-friendly edge.
+        const airyHalo = ctx.createRadialGradient(center, center, 0, center, center, 98);
+        airyHalo.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
+        airyHalo.addColorStop(0.42, 'rgba(255, 255, 255, 0.06)');
+        airyHalo.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = airyHalo;
+        ctx.fillRect(0, 0, 256, 256);
+
+        // Bright core - keep it present, but with feathered edges.
+        const coreGlow = ctx.createRadialGradient(center, center, 0, center, center, 34);
         coreGlow.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        coreGlow.addColorStop(0.2, 'rgba(255, 255, 255, 0.9)');
-        coreGlow.addColorStop(0.5, 'rgba(255, 255, 255, 0.4)');
-        coreGlow.addColorStop(0.8, 'rgba(255, 255, 255, 0.1)');
+        coreGlow.addColorStop(0.12, 'rgba(255, 255, 255, 0.92)');
+        coreGlow.addColorStop(0.34, 'rgba(255, 255, 255, 0.58)');
+        coreGlow.addColorStop(0.62, 'rgba(255, 255, 255, 0.18)');
+        coreGlow.addColorStop(0.84, 'rgba(255, 255, 255, 0.04)');
         coreGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
         ctx.fillStyle = coreGlow;
-        ctx.fillRect(0, 0, 128, 128);
+        ctx.fillRect(0, 0, 256, 256);
 
         this._starTexture = new THREE.CanvasTexture(canvas);
+        this._starTexture.colorSpace = THREE.SRGBColorSpace;
+        this._starTexture.wrapS = THREE.ClampToEdgeWrapping;
+        this._starTexture.wrapT = THREE.ClampToEdgeWrapping;
+        this._starTexture.minFilter = THREE.LinearMipmapLinearFilter;
+        this._starTexture.magFilter = THREE.LinearFilter;
+        this._starTexture.generateMipmaps = true;
+        this._starTexture.premultiplyAlpha = true;
+        this._starTexture.needsUpdate = true;
         return this._starTexture;
     }
 
@@ -2603,14 +2989,17 @@ export default class StellarDriftTheme extends BaseTheme {
 
     createNebulaBurst(nebulaMesh, particleCount = 30) {
         // Get nebula's current world position and scale
-        const pos = nebulaMesh.position.clone();
-        const scale = nebulaMesh.geometry.parameters?.width || 50000; // Nebula size
+        const pos = new THREE.Vector3();
+        nebulaMesh.getWorldPosition(pos);
+        const scale = (nebulaMesh.geometry.parameters?.width || 50000) * (nebulaMesh.scale?.x || 1);
 
         // Use color directly from mesh (synced to texture)
-        const color = nebulaMesh.userData.color || new THREE.Color(0xFFFFFF);
+        const color = nebulaMesh.userData.color
+            || nebulaMesh.parent?.userData?.color
+            || new THREE.Color(0xFFFFFF);
 
         if (this.nebulaBurstCompute?.computeNode && this.nebulaBurstPool) {
-            this.nebulaBurstCompute.spawnBurst(particleCount, pos, color, scale, 6.7);
+            this.nebulaBurstCompute.spawnBurst(particleCount, pos, color, scale, 7.2);
             return;
         }
 
@@ -2666,9 +3055,8 @@ export default class StellarDriftTheme extends BaseTheme {
     }
 
     burstAllVisibleNebulas(particlesPerNebula) {
-        // Burst from ALL nebulas
         this.nebulaMeshes.forEach((nebula) => {
-            // No need to look up color array anymore - it's on the mesh
+            if (!nebula.userData?.isBurstAnchor) return;
             this.createNebulaBurst(nebula, particlesPerNebula);
         });
     }
@@ -2690,7 +3078,7 @@ export default class StellarDriftTheme extends BaseTheme {
     }
 
     createPlanet() {
-        const planetSize = 500;
+        const planetSize = 560;
 
         const geometry = new THREE.SphereGeometry(planetSize, this.qualityPreset.planetDetail, this.qualityPreset.planetDetail);
 
@@ -2707,10 +3095,10 @@ export default class StellarDriftTheme extends BaseTheme {
         this.scene.add(this.planet);
 
         // Inner pink glow (tight around planet)
-        this.createGlowPlane(planetSize * 2.3, 0xff88aa, 0.35, -10, 0, 'small');
+        this.createGlowPlane(planetSize * 2.55, 0xffa4c8, 0.4, -10, 0, 'small');
 
         // Outer atmospheric glow (larger, softer)
-        this.createGlowPlane(planetSize * 3.5, 0xff6699, 0.25, -20, 0, 'big');
+        this.createGlowPlane(planetSize * 4.1, 0x8ea2ff, 0.28, -20, 0, 'big');
 
         this.createHeroRingSystem(planetSize);
 
@@ -2720,17 +3108,18 @@ export default class StellarDriftTheme extends BaseTheme {
     createHeroRingSystem(planetSize = 500) {
         const ringGroup = new THREE.Group();
         ringGroup.position.set(0, 0, 0);
-        ringGroup.rotation.x = Math.PI * 0.5;
-        ringGroup.rotation.z = 0.24;
+        ringGroup.rotation.x = Math.PI * 0.37;
+        ringGroup.rotation.y = 0.2;
+        ringGroup.rotation.z = -0.18;
 
-        const primaryInner = planetSize * 1.28;
-        const primaryOuter = planetSize * 2.52;
+        const primaryInner = planetSize * 1.46;
+        const primaryOuter = planetSize * 3.14;
         const primaryGeometry = new THREE.RingGeometry(primaryInner, primaryOuter, 164, 1);
         const primaryMaterialData = createStellarPlanetRingMaterial({
             isWebGPU: this.isWebGPU,
-            colorInner: 0xe9ddff,
-            colorOuter: 0xaf95dc,
-            opacity: 0.19,
+            colorInner: 0xf5e7ff,
+            colorOuter: 0xbd8cff,
+            opacity: 0.24,
             innerRadius: primaryInner,
             outerRadius: primaryOuter,
             mrtRole: 'hero-planet-ring-primary',
@@ -2740,14 +3129,14 @@ export default class StellarDriftTheme extends BaseTheme {
         primaryRing.renderOrder = 362;
         ringGroup.add(primaryRing);
 
-        const outerInner = planetSize * 1.72;
-        const outerOuter = planetSize * 3.08;
+        const outerInner = planetSize * 2.08;
+        const outerOuter = planetSize * 3.82;
         const outerGeometry = new THREE.RingGeometry(outerInner, outerOuter, 160, 1);
         const outerMaterialData = createStellarPlanetRingMaterial({
             isWebGPU: this.isWebGPU,
-            colorInner: 0xbcc9ff,
-            colorOuter: 0x728fd0,
-            opacity: 0.12,
+            colorInner: 0xa8f3ff,
+            colorOuter: 0x4460eb,
+            opacity: 0.16,
             innerRadius: outerInner,
             outerRadius: outerOuter,
             mrtRole: 'hero-planet-ring-outer',
@@ -2792,24 +3181,164 @@ export default class StellarDriftTheme extends BaseTheme {
             return new THREE.CanvasTexture(canvas);
         }
 
-        const hue = config.hue ?? (180 + this.rand() * 160);
-        const saturation = config.saturation ?? 78;
-        const lightness = config.lightness ?? 42;
-        const alpha = config.alpha ?? 0.2;
-        const cx = 220 + this.rand() * 72;
-        const cy = 220 + this.rand() * 72;
+        const centerX = 256 + (this.rand() - 0.5) * 44;
+        const centerY = 256 + (this.rand() - 0.5) * 44;
+        const vivid = config.vivid === true;
+        const alpha = config.alpha ?? (vivid ? 0.2 : 0.11);
 
-        const gradient = ctx.createRadialGradient(cx, cy, 0, 256, 256, 256);
-        gradient.addColorStop(0, `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`);
-        gradient.addColorStop(0.45, `hsla(${hue}, ${Math.max(10, saturation - 10)}%, ${Math.max(10, lightness - 6)}%, ${alpha * 0.45})`);
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.clearRect(0, 0, 512, 512);
+        ctx.globalCompositeOperation = 'lighter';
 
-        ctx.fillStyle = gradient;
+        const drawBlob = (x, y, radius, innerAlpha, hueOffset = 0) => {
+            const gradient = ctx.createRadialGradient(x, y, radius * 0.06, x, y, radius);
+            if (vivid) {
+                const hue = config.hue ?? (180 + this.rand() * 160);
+                const saturation = config.saturation ?? 86;
+                const lightness = config.lightness ?? 44;
+                gradient.addColorStop(
+                    0,
+                    `hsla(${hue + hueOffset}, ${Math.min(100, saturation + 8)}%, ${Math.min(72, lightness + 10)}%, ${innerAlpha})`,
+                );
+                gradient.addColorStop(
+                    0.42,
+                    `hsla(${hue + hueOffset * 0.5}, ${Math.max(18, saturation - 6)}%, ${Math.max(12, lightness - 2)}%, ${innerAlpha * 0.58})`,
+                );
+                gradient.addColorStop(
+                    0.8,
+                    `hsla(${hue + hueOffset}, ${Math.max(12, saturation - 16)}%, ${Math.max(8, lightness - 12)}%, ${innerAlpha * 0.18})`,
+                );
+            } else {
+                gradient.addColorStop(0, `rgba(255, 255, 255, ${innerAlpha})`);
+                gradient.addColorStop(0.34, `rgba(198, 204, 226, ${innerAlpha * 0.46})`);
+                gradient.addColorStop(0.72, `rgba(62, 70, 92, ${innerAlpha * 0.08})`);
+            }
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+        };
+
+        const drawRibbon = (x, y, length, thickness, rotation, innerAlpha, hueOffset = 0) => {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rotation);
+            const gradient = ctx.createLinearGradient(-length, 0, length, 0);
+            if (vivid) {
+                const hue = config.hue ?? (180 + this.rand() * 160);
+                const saturation = config.saturation ?? 86;
+                const lightness = config.lightness ?? 44;
+                gradient.addColorStop(0, `hsla(${hue + hueOffset}, ${Math.max(14, saturation - 26)}%, ${Math.max(8, lightness - 18)}%, 0)`);
+                gradient.addColorStop(0.2, `hsla(${hue + hueOffset * 0.45}, ${Math.max(18, saturation - 12)}%, ${Math.max(12, lightness - 10)}%, ${innerAlpha * 0.3})`);
+                gradient.addColorStop(0.52, `hsla(${hue + hueOffset}, ${Math.min(100, saturation + 6)}%, ${Math.min(78, lightness + 16)}%, ${innerAlpha})`);
+                gradient.addColorStop(0.8, `hsla(${hue + hueOffset * 0.35}, ${Math.max(16, saturation - 10)}%, ${Math.max(10, lightness - 8)}%, ${innerAlpha * 0.26})`);
+            } else {
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
+                gradient.addColorStop(0.22, `rgba(188, 196, 216, ${innerAlpha * 0.22})`);
+                gradient.addColorStop(0.52, `rgba(255, 255, 255, ${innerAlpha})`);
+                gradient.addColorStop(0.78, `rgba(172, 182, 205, ${innerAlpha * 0.18})`);
+            }
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(-length, -thickness, length * 2, thickness * 2);
+            ctx.restore();
+        };
+
+        const carveRibbon = (x, y, length, thickness, rotation, alphaScale) => {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rotation);
+            const gradient = ctx.createLinearGradient(-length, 0, length, 0);
+            gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            gradient.addColorStop(0.2, `rgba(0, 0, 0, ${alphaScale * 0.2})`);
+            gradient.addColorStop(0.5, `rgba(0, 0, 0, ${alphaScale})`);
+            gradient.addColorStop(0.82, `rgba(0, 0, 0, ${alphaScale * 0.14})`);
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(-length, -thickness, length * 2, thickness * 2);
+            ctx.restore();
+        };
+
+        const lobeCount = vivid ? 6 + Math.floor(this.rand() * 4) : 4 + Math.floor(this.rand() * 2);
+        for (let i = 0; i < lobeCount; i += 1) {
+            const angle = (i / lobeCount) * Math.PI * 2 + this.rand() * 0.65;
+            const distance = vivid ? 16 + this.rand() * 118 : 26 + this.rand() * 72;
+            const radius = vivid ? 142 + this.rand() * 136 : 118 + this.rand() * 90;
+            const x = centerX + Math.cos(angle) * distance;
+            const y = centerY + Math.sin(angle) * distance;
+            const hueOffset = vivid ? (this.rand() - 0.5) * 26 : 0;
+            drawBlob(x, y, radius, alpha * (vivid ? (0.72 + this.rand() * 0.42) : (0.62 + this.rand() * 0.22)), hueOffset);
+        }
+
+        const wispCount = vivid ? 10 + Math.floor(this.rand() * 6) : 5 + Math.floor(this.rand() * 3);
+        for (let i = 0; i < wispCount; i += 1) {
+            const angle = this.rand() * Math.PI * 2;
+            const distance = vivid ? 82 + this.rand() * 176 : 58 + this.rand() * 96;
+            const radius = vivid ? 62 + this.rand() * 96 : 42 + this.rand() * 58;
+            drawBlob(
+                centerX + Math.cos(angle) * distance,
+                centerY + Math.sin(angle) * distance,
+                radius,
+                alpha * (vivid ? (0.18 + this.rand() * 0.14) : (0.1 + this.rand() * 0.08)),
+                vivid ? (this.rand() - 0.5) * 38 : 0,
+            );
+        }
+
+        const ribbonCount = vivid ? 3 + Math.floor(this.rand() * 3) : 1 + Math.floor(this.rand() * 2);
+        for (let i = 0; i < ribbonCount; i += 1) {
+            const angle = this.rand() * Math.PI * 2;
+            const distance = vivid ? 18 + this.rand() * 128 : 34 + this.rand() * 84;
+            drawRibbon(
+                centerX + Math.cos(angle) * distance,
+                centerY + Math.sin(angle) * distance,
+                vivid ? (180 + this.rand() * 120) : (120 + this.rand() * 90),
+                vivid ? (18 + this.rand() * 24) : (14 + this.rand() * 16),
+                angle + (this.rand() - 0.5) * 0.9,
+                alpha * (vivid ? (0.2 + this.rand() * 0.22) : (0.1 + this.rand() * 0.08)),
+                vivid ? (this.rand() - 0.5) * 30 : 0,
+            );
+        }
+
+        ctx.globalCompositeOperation = 'destination-out';
+        const voidCount = vivid ? 3 + Math.floor(this.rand() * 3) : 4 + Math.floor(this.rand() * 2);
+        for (let i = 0; i < voidCount; i += 1) {
+            const angle = this.rand() * Math.PI * 2;
+            const distance = this.rand() * 110;
+            const radius = vivid ? 52 + this.rand() * 92 : 46 + this.rand() * 66;
+            const x = centerX + Math.cos(angle) * distance;
+            const y = centerY + Math.sin(angle) * distance;
+            const carve = ctx.createRadialGradient(x, y, radius * 0.08, x, y, radius);
+            carve.addColorStop(0, `rgba(0, 0, 0, ${vivid ? (0.34 + this.rand() * 0.2) : (0.42 + this.rand() * 0.16)})`);
+            carve.addColorStop(0.72, vivid ? 'rgba(0, 0, 0, 0.1)' : 'rgba(0, 0, 0, 0.08)');
+            carve.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = carve;
+            ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+        }
+
+        const tearCount = vivid ? 2 + Math.floor(this.rand() * 3) : 1 + Math.floor(this.rand() * 2);
+        for (let i = 0; i < tearCount; i += 1) {
+            const angle = (this.rand() - 0.5) * Math.PI;
+            const distance = this.rand() * 140;
+            carveRibbon(
+                centerX + Math.cos(angle) * distance,
+                centerY + Math.sin(angle) * distance,
+                vivid ? (120 + this.rand() * 110) : (80 + this.rand() * 70),
+                vivid ? (22 + this.rand() * 24) : (16 + this.rand() * 18),
+                angle + (this.rand() - 0.5) * 0.5,
+                vivid ? (0.34 + this.rand() * 0.18) : (0.28 + this.rand() * 0.14),
+            );
+        }
+
+        ctx.globalCompositeOperation = 'destination-in';
+        const edgeFade = ctx.createRadialGradient(256, 256, vivid ? 36 : 48, 256, 256, vivid ? 244 : 228);
+        edgeFade.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        edgeFade.addColorStop(vivid ? 0.58 : 0.52, vivid ? 'rgba(255, 255, 255, 0.82)' : 'rgba(255, 255, 255, 0.76)');
+        edgeFade.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = edgeFade;
         ctx.fillRect(0, 0, 512, 512);
 
         const texture = new THREE.CanvasTexture(canvas);
         texture.wrapS = THREE.ClampToEdgeWrapping;
         texture.wrapT = THREE.ClampToEdgeWrapping;
+        texture.colorSpace = THREE.SRGBColorSpace;
         return texture;
     }
 
@@ -2856,12 +3385,12 @@ export default class StellarDriftTheme extends BaseTheme {
             });
         };
 
-        const ringedPlanetPosition = new THREE.Vector3(1780, 460, -2800);
+        const ringedPlanetPosition = new THREE.Vector3(3260, 1420, -4380);
         const ringedGroup = new THREE.Group();
         ringedGroup.position.copy(ringedPlanetPosition);
 
         const ringedPlanetGeometry = new THREE.SphereGeometry(
-            250,
+            292,
             Math.max(18, this.qualityPreset.planetDetail / 1.4),
             Math.max(14, this.qualityPreset.planetDetail / 1.4),
         );
@@ -2880,20 +3409,21 @@ export default class StellarDriftTheme extends BaseTheme {
         ringedPlanet.renderOrder = 355;
         ringedGroup.add(ringedPlanet);
 
-        const ringGeometry = new THREE.RingGeometry(320, 520, 96);
+        const ringGeometry = new THREE.RingGeometry(396, 660, 96);
         const ringMaterialData = createStellarPlanetRingMaterial({
             isWebGPU: this.isWebGPU,
             colorInner: 0xf2dfb0,
             colorOuter: 0xb89c72,
-            opacity: 0.18,
-            innerRadius: 320,
-            outerRadius: 520,
+            opacity: 0.2,
+            innerRadius: 396,
+            outerRadius: 660,
             mrtRole: 'secondary-ringed-planet-ring',
         });
         const ringMesh = new THREE.Mesh(ringGeometry, ringMaterialData.material);
         ringMesh.userData.materialData = ringMaterialData;
-        ringMesh.rotation.x = Math.PI * 0.42;
-        ringMesh.rotation.z = 0.22;
+        ringMesh.rotation.x = Math.PI * 0.36;
+        ringMesh.rotation.y = 0.18;
+        ringMesh.rotation.z = -0.16;
         ringMesh.renderOrder = 356;
         ringedGroup.add(ringMesh);
 
@@ -2901,10 +3431,10 @@ export default class StellarDriftTheme extends BaseTheme {
         this.secondaryBodies.push({
             mesh: ringedGroup,
             basePosition: ringedPlanetPosition.clone(),
-            driftX: 65,
-            driftY: 40,
-            driftZ: 30,
-            driftSpeed: 0.06,
+            driftX: 68,
+            driftY: 44,
+            driftZ: 54,
+            driftSpeed: 0.036,
             driftPhase: this.rand() * Math.PI * 2,
             rotationSpeed: 0.00024,
             focalSide: 1,
@@ -2918,11 +3448,11 @@ export default class StellarDriftTheme extends BaseTheme {
             roughness: 0.34,
             metalness: 0.14,
             surfaceTexture: moonTexture,
-            position: new THREE.Vector3(-1700, -300, -2300),
+            position: new THREE.Vector3(-2480, -720, -3380),
             driftX: 54,
             driftY: 34,
-            driftZ: 20,
-            driftSpeed: 0.085,
+            driftZ: 28,
+            driftSpeed: 0.06,
             rotationSpeed: 0.00042,
             mrtRole: 'secondary-ice-moon',
             renderOrder: 354,
@@ -2936,11 +3466,11 @@ export default class StellarDriftTheme extends BaseTheme {
             roughness: 0.9,
             metalness: 0.04,
             surfaceTexture: marsTexture,
-            position: new THREE.Vector3(2140, -530, -4200),
-            driftX: 44,
-            driftY: 26,
-            driftZ: 32,
-            driftSpeed: 0.05,
+            position: new THREE.Vector3(2440, -420, -5480),
+            driftX: 42,
+            driftY: 24,
+            driftZ: 34,
+            driftSpeed: 0.04,
             rotationSpeed: 0.0003,
             mrtRole: 'secondary-rocky-body',
             renderOrder: 352,
@@ -2951,50 +3481,391 @@ export default class StellarDriftTheme extends BaseTheme {
 
     createDepthHazeLayers() {
         this.depthHazeLayers = [];
+        const palette = this.nebulaPalette || {
+            warm: new THREE.Color(0xff8855),
+            cool: new THREE.Color(0x7ea0ff),
+            accent: new THREE.Color(0x86739e),
+        };
+        const shadowAnchor = new THREE.Color(0x04070d);
+        const muteSupportColor = (sourceColor, saturationScale = 0.26, lightness = 0.3) => {
+            const hsl = { h: 0, s: 0, l: 0 };
+            sourceColor.getHSL(hsl);
+            return new THREE.Color().setHSL(
+                hsl.h,
+                THREE.MathUtils.clamp(hsl.s * saturationScale, 0.05, 0.36),
+                lightness,
+            );
+        };
+        const shapeHazeColor = (sourceColor, saturationScale, lightness, shadowMix) => {
+            const color = muteSupportColor(sourceColor, saturationScale, lightness);
+            return color.lerp(shadowAnchor.clone(), shadowMix);
+        };
+        const getTextureColorProfile = (sourceColor, saturationBoost = 1.18, lightness = 44) => {
+            const hsl = { h: 0, s: 0, l: 0 };
+            sourceColor.getHSL(hsl);
+            return {
+                vivid: true,
+                hue: Math.round(hsl.h * 360),
+                saturation: Math.round(THREE.MathUtils.clamp(hsl.s * 100 * saturationBoost, 74, 98)),
+                lightness: Math.round(THREE.MathUtils.clamp(lightness, 34, 58)),
+            };
+        };
 
         const hazeConfigs = [
             {
-                x: -2600, y: 820, z: -43000, size: 98000, opacity: 0.16, hue: 204, sat: 80, light: 46, drift: 2600,
+                basePosition: new THREE.Vector3(-6200, 1480, -22800),
+                size: 19600,
+                opacity: 0.078,
+                tintColor: shapeHazeColor(palette.warm, 0.22, 0.26, 0.36),
+                driftRange: 280,
+                parallaxFactor: 0.062,
+                detailStrength: 0.86,
+                densityThreshold: 0.56,
+                flowStrength: 0.026,
+                emissiveGain: 0.02,
+                rotation: -0.28,
+                textureAlpha: 0.15,
+                driftSpeed: 0.015,
             },
             {
-                x: 2550, y: -620, z: -39500, size: 92000, opacity: 0.15, hue: 306, sat: 76, light: 44, drift: 2200,
+                basePosition: new THREE.Vector3(5640, 2460, -26200),
+                size: 18400,
+                opacity: 0.056,
+                tintColor: shapeHazeColor(palette.cool, 0.2, 0.3, 0.28),
+                driftRange: 224,
+                parallaxFactor: 0.038,
+                detailStrength: 0.88,
+                densityThreshold: 0.6,
+                flowStrength: 0.022,
+                emissiveGain: 0.018,
+                rotation: 0.18,
+                textureAlpha: 0.12,
+                driftSpeed: 0.013,
             },
             {
-                x: -1750, y: -880, z: -31000, size: 76000, opacity: 0.12, hue: 178, sat: 72, light: 42, drift: 1800,
+                basePosition: new THREE.Vector3(7820, -1820, -30400),
+                size: 14200,
+                opacity: 0.046,
+                tintColor: shapeHazeColor(palette.accent, 0.18, 0.28, 0.34),
+                driftRange: 170,
+                parallaxFactor: 0.028,
+                detailStrength: 0.8,
+                densityThreshold: 0.62,
+                flowStrength: 0.018,
+                emissiveGain: 0.015,
+                rotation: -0.16,
+                textureAlpha: 0.1,
+                driftSpeed: 0.011,
+            },
+            {
+                basePosition: new THREE.Vector3(-1820, -2140, -20400),
+                size: 16800,
+                opacity: 0.05,
+                tintColor: shapeHazeColor(palette.accent, 0.16, 0.24, 0.46),
+                driftRange: 188,
+                parallaxFactor: 0.046,
+                detailStrength: 0.74,
+                densityThreshold: 0.6,
+                flowStrength: 0.018,
+                emissiveGain: 0.01,
+                rotation: 0.08,
+                textureAlpha: 0.1,
+                driftSpeed: 0.012,
+            },
+            {
+                basePosition: new THREE.Vector3(1480, 3320, -28600),
+                size: 18200,
+                opacity: 0.04,
+                tintColor: shapeHazeColor(palette.cool, 0.14, 0.27, 0.5),
+                driftRange: 160,
+                parallaxFactor: 0.032,
+                detailStrength: 0.7,
+                densityThreshold: 0.64,
+                flowStrength: 0.015,
+                emissiveGain: 0.012,
+                rotation: -0.08,
+                textureAlpha: 0.085,
+                driftSpeed: 0.01,
+            },
+            {
+                basePosition: new THREE.Vector3(-11800, 3680, -36200),
+                size: 28200,
+                opacity: 0.028,
+                tintColor: shapeHazeColor(palette.cool, 0.12, 0.25, 0.56),
+                driftRange: 132,
+                parallaxFactor: 0.014,
+                detailStrength: 0.62,
+                densityThreshold: 0.66,
+                flowStrength: 0.011,
+                emissiveGain: 0.008,
+                rotation: -0.12,
+                textureAlpha: 0.07,
+                driftSpeed: 0.007,
+                rotationSpeed: 0.04,
+                rotationAmplitude: 0.006,
+            },
+            {
+                basePosition: new THREE.Vector3(12400, -2240, -42800),
+                size: 34400,
+                opacity: 0.024,
+                tintColor: shapeHazeColor(palette.accent, 0.1, 0.22, 0.62),
+                driftRange: 112,
+                parallaxFactor: 0.01,
+                detailStrength: 0.56,
+                densityThreshold: 0.68,
+                flowStrength: 0.009,
+                emissiveGain: 0.006,
+                rotation: 0.06,
+                textureAlpha: 0.055,
+                driftSpeed: 0.005,
+                rotationSpeed: 0.03,
+                rotationAmplitude: 0.004,
+            },
+            {
+                basePosition: new THREE.Vector3(720, 4860, -31800),
+                size: 26400,
+                opacity: 0.03,
+                tintColor: shapeHazeColor(palette.warm, 0.1, 0.24, 0.58),
+                driftRange: 120,
+                parallaxFactor: 0.012,
+                detailStrength: 0.6,
+                densityThreshold: 0.66,
+                flowStrength: 0.01,
+                emissiveGain: 0.007,
+                rotation: -0.06,
+                textureAlpha: 0.06,
+                driftSpeed: 0.006,
+                rotationSpeed: 0.035,
+                rotationAmplitude: 0.005,
             },
         ];
 
         hazeConfigs.forEach((config, index) => {
+            const phaseSeed = this.rand() * 100 + index * 19.4;
+            const textureProfile = getTextureColorProfile(
+                config.tintColor,
+                1.2 + index * 0.05,
+                46 - index * 2,
+            );
             const texture = this.createDepthHazeTexture({
-                hue: config.hue,
-                saturation: config.sat,
-                lightness: config.light,
-                alpha: config.opacity,
+                alpha: config.textureAlpha ?? config.opacity,
+                ...textureProfile,
             });
-            const geometry = new THREE.PlaneGeometry(config.size, config.size * 0.58);
+            const geometry = new THREE.PlaneGeometry(config.size, config.size * 0.56);
             const materialData = createStellarNebulaMaterial({
                 isWebGPU: this.isWebGPU,
+                variant: config.variant ?? 'haze',
                 nebulaTexture: texture,
                 opacity: config.opacity,
+                tintColor: config.tintColor,
+                flowStrength: config.flowStrength,
+                detailStrength: config.detailStrength,
+                densityThreshold: config.densityThreshold,
+                emissiveGain: config.emissiveGain,
+                edgeSoftness: config.edgeSoftness ?? 1.52,
+                phaseSeed,
             });
 
             const mesh = new THREE.Mesh(geometry, materialData.material);
             mesh.userData.materialData = materialData;
-            mesh.position.set(config.x, config.y, config.z);
-            mesh.renderOrder = -2600 - index;
+            mesh.position.copy(config.basePosition);
+            mesh.rotation.z = config.rotation;
+            mesh.renderOrder = (config.renderOrderBase ?? -2600) - index;
+            mesh.frustumCulled = false;
+            mesh.userData.color = config.tintColor;
+            mesh.userData.baseOpacity = config.opacity;
+            mesh.userData.baseEmissiveGain = config.emissiveGain;
+            mesh.userData.baseFlowStrength = config.flowStrength;
+            mesh.userData.baseDetailStrength = config.detailStrength;
+            mesh.userData.baseDensityThreshold = config.densityThreshold;
+            mesh.userData.pulseScale = 0.12 + index * 0.05;
+            mesh.userData.flowSeed = phaseSeed;
+            mesh.userData.baseRotation = config.rotation;
+            mesh.userData.rotationSpeed = config.rotationSpeed ?? (0.11 + index * 0.03);
+            mesh.userData.rotationAmplitude = config.rotationAmplitude ?? (0.014 + index * 0.004);
             this.scene.add(mesh);
 
             this.depthHazeLayers.push({
                 mesh,
-                basePosition: new THREE.Vector3(config.x, config.y, config.z),
-                driftRange: config.drift,
+                basePosition: config.basePosition.clone(),
+                driftRange: config.driftRange,
+                parallaxFactor: config.parallaxFactor,
                 driftPhase: this.rand() * Math.PI * 2,
-                driftSpeed: 0.022 + this.rand() * 0.018,
-                focalSide: Math.sign(config.x) || 1,
+                driftSpeed: config.driftSpeed ?? (0.018 + this.rand() * 0.012),
+                focalSide: Math.sign(config.basePosition.x) || 1,
             });
         });
 
-        console.log('[StellarDrift] Depth haze layers created');
+        console.log('[StellarDrift] Depth haze layers created as dark support veils');
+    }
+
+    createForegroundVeils() {
+        this.foregroundVeilLayers = [];
+
+        const palette = this.nebulaPalette || {
+            warm: new THREE.Color(0xff8855),
+            cool: new THREE.Color(0x7ea0ff),
+            accent: new THREE.Color(0x86739e),
+        };
+        const shadowAnchor = new THREE.Color(0x02040a);
+        const buildVeilColor = (sourceColor, saturationScale = 0.16, lightness = 0.1, shadowMix = 0.78) => {
+            const hsl = { h: 0, s: 0, l: 0 };
+            sourceColor.getHSL(hsl);
+            const veilColor = new THREE.Color().setHSL(
+                hsl.h,
+                THREE.MathUtils.clamp(hsl.s * saturationScale, 0.04, 0.18),
+                lightness,
+            );
+            return veilColor.lerp(shadowAnchor.clone(), shadowMix);
+        };
+        const getVeilTextureProfile = (sourceColor, saturationBoost = 1.02, lightness = 34) => {
+            const hsl = { h: 0, s: 0, l: 0 };
+            sourceColor.getHSL(hsl);
+            return {
+                vivid: true,
+                hue: Math.round(hsl.h * 360),
+                saturation: Math.round(THREE.MathUtils.clamp(hsl.s * 100 * saturationBoost, 54, 82)),
+                lightness: Math.round(THREE.MathUtils.clamp(lightness, 24, 42)),
+            };
+        };
+
+        const configs = [
+            {
+                basePosition: new THREE.Vector3(-4520, 1680, 1180),
+                width: 5600,
+                height: 3200,
+                opacity: 0.064,
+                tintColor: buildVeilColor(palette.warm, 0.12, 0.09, 0.82),
+                textureSource: palette.warm,
+                driftRange: 34,
+                verticalRange: 18,
+                depthRange: 42,
+                parallaxFactor: 0.54,
+                rotation: -0.24,
+                rotationSpeed: 0.05,
+                rotationAmplitude: 0.012,
+                textureAlpha: 0.14,
+                focalSide: -1,
+                renderOrder: 638,
+            },
+            {
+                basePosition: new THREE.Vector3(-2620, 920, 760),
+                width: 4200,
+                height: 2900,
+                opacity: 0.09,
+                tintColor: buildVeilColor(palette.warm, 0.14, 0.12, 0.78),
+                textureSource: palette.warm,
+                driftRange: 54,
+                verticalRange: 28,
+                depthRange: 52,
+                parallaxFactor: 0.48,
+                rotation: -0.32,
+                rotationSpeed: 0.07,
+                rotationAmplitude: 0.02,
+                textureAlpha: 0.2,
+                focalSide: -1,
+                renderOrder: 640,
+            },
+            {
+                basePosition: new THREE.Vector3(2460, -980, 680),
+                width: 3600,
+                height: 2480,
+                opacity: 0.08,
+                tintColor: buildVeilColor(palette.cool, 0.16, 0.11, 0.8),
+                textureSource: palette.cool,
+                driftRange: 48,
+                verticalRange: 24,
+                depthRange: 46,
+                parallaxFactor: 0.44,
+                rotation: 0.28,
+                rotationSpeed: 0.06,
+                rotationAmplitude: 0.018,
+                textureAlpha: 0.18,
+                focalSide: 1,
+                renderOrder: 641,
+            },
+            {
+                basePosition: new THREE.Vector3(1880, 1380, 980),
+                width: 2800,
+                height: 1900,
+                opacity: 0.052,
+                tintColor: buildVeilColor(palette.accent, 0.12, 0.1, 0.84),
+                textureSource: palette.accent,
+                driftRange: 38,
+                verticalRange: 18,
+                depthRange: 34,
+                parallaxFactor: 0.38,
+                rotation: 0.18,
+                rotationSpeed: 0.05,
+                rotationAmplitude: 0.014,
+                textureAlpha: 0.16,
+                focalSide: 1,
+                renderOrder: 642,
+            },
+            {
+                basePosition: new THREE.Vector3(620, -2140, 1320),
+                width: 6200,
+                height: 2600,
+                opacity: 0.046,
+                tintColor: buildVeilColor(palette.cool, 0.1, 0.08, 0.88),
+                textureSource: palette.cool,
+                driftRange: 26,
+                verticalRange: 16,
+                depthRange: 30,
+                parallaxFactor: 0.3,
+                rotation: 0.06,
+                rotationSpeed: 0.04,
+                rotationAmplitude: 0.01,
+                textureAlpha: 0.11,
+                focalSide: 1,
+                renderOrder: 643,
+            },
+        ];
+
+        configs.forEach((config, index) => {
+            const textureProfile = getVeilTextureProfile(
+                config.textureSource || palette.cool,
+                1.0 + index * 0.03,
+                32 - index,
+            );
+            const texture = this.createDepthHazeTexture({
+                alpha: config.textureAlpha,
+                ...textureProfile,
+            });
+            const geometry = new THREE.PlaneGeometry(config.width, config.height);
+            const materialData = createStellarForegroundVeilMaterial({
+                isWebGPU: this.isWebGPU,
+                veilTexture: texture,
+                color: config.tintColor,
+                opacity: config.opacity,
+            });
+            const mesh = new THREE.Mesh(geometry, materialData.material);
+            mesh.userData.materialData = materialData;
+            mesh.position.copy(config.basePosition);
+            mesh.rotation.z = config.rotation;
+            mesh.renderOrder = config.renderOrder;
+            mesh.frustumCulled = false;
+            mesh.userData.baseOpacity = config.opacity;
+            mesh.userData.baseRotation = config.rotation;
+            mesh.userData.rotationSpeed = config.rotationSpeed;
+            mesh.userData.rotationAmplitude = config.rotationAmplitude;
+            mesh.userData.flowSeed = this.rand() * 100 + index * 23.6;
+            this.scene.add(mesh);
+
+            this.foregroundVeilLayers.push({
+                mesh,
+                basePosition: config.basePosition.clone(),
+                driftRange: config.driftRange,
+                verticalRange: config.verticalRange,
+                depthRange: config.depthRange,
+                parallaxFactor: config.parallaxFactor,
+                driftPhase: this.rand() * Math.PI * 2,
+                driftSpeed: 0.02 + this.rand() * 0.012,
+                focalSide: config.focalSide,
+            });
+        });
+
+        console.log('[StellarDrift] Foreground parallax veils created');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -3012,8 +3883,8 @@ export default class StellarDriftTheme extends BaseTheme {
         const yBases = new Float32Array(particleCount);
         const angularSpeeds = new Float32Array(particleCount);
 
-        const ringColor = new THREE.Color(0xffaaee); // Pinkish
-        const ringColorOuter = new THREE.Color(0xaa88cc); // Purpleish
+        const ringColor = this._selectedPalettes?.[1]?.glow?.clone?.() || new THREE.Color(0xd7fdff);
+        const ringColorOuter = this._selectedPalettes?.[2]?.body?.clone?.() || new THREE.Color(0x6e58ff);
 
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
@@ -3021,24 +3892,31 @@ export default class StellarDriftTheme extends BaseTheme {
 
             // Ring distribution
             const angle = this.rand() * Math.PI * 2;
-            // Radius: Planet is 500. Ring from 600 to 1200
-            const radius = 600 + this.rand() ** 2 * 600;
+            const radius = 760 + this.rand() ** 2 * 1040;
 
             // Flattened ring
             const x = Math.cos(angle) * radius;
-            const z = (Math.sin(angle) * radius) * 0.2; // Tilt/flatten
-            const y = (this.rand() - 0.5) * 40; // Thin layer vertical variation
+            const z = (Math.sin(angle) * radius) * 0.34;
+            const y = (this.rand() - 0.5) * 84;
 
             positions[i3] = x;
-            positions[i3 + 1] = y + z * 0.5; // Tilt
-            positions[i3 + 2] = z * 2.0;
+            positions[i3 + 1] = y + z * 0.42;
+            positions[i3 + 2] = z * 1.74;
             radii[i] = radius;
             angles[i] = angle;
             yBases[i] = y;
-            angularSpeeds[i] = 0.16 + this.rand() * 0.24;
+            angularSpeeds[i] = 0.1 + this.rand() * 0.18;
 
-            // Color variation based on radius
-            const color = radius < 800 ? ringColor : ringColorOuter;
+            const arcPresence = THREE.MathUtils.clamp(
+                (Math.sin(angle * 0.82 + 0.6) * 0.5 + 0.5)
+                    * (0.48 + (Math.sin(angle * 3.1 + radius * 0.0046) * 0.5 + 0.5) * 0.52),
+                0,
+                1,
+            );
+            const color = radius < 1080
+                ? ringColor.clone().lerp(ringColorOuter, 0.16 + this.rand() * 0.12)
+                : ringColorOuter.clone().lerp(ringColor, 0.08 + this.rand() * 0.1);
+            color.multiplyScalar(0.08 + arcPresence * 0.92);
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
@@ -3062,17 +3940,17 @@ export default class StellarDriftTheme extends BaseTheme {
 
         const materialData = createStellarDustRingMaterial({
             isWebGPU: this.isWebGPU,
-            size: 2,
-            opacity: 0.6,
+            size: 2.35,
+            opacity: 0.46,
             dustCompute: this.dustRingCompute,
         });
         this.dustRingMaterialData = materialData;
 
         this.dustRing = new THREE.Points(geometry, materialData.material);
         this.dustRing.userData.materialData = materialData;
-        // Tilt the whole ring slightly
-        this.dustRing.rotation.z = 0.2;
-        this.dustRing.rotation.x = 0.3;
+        this.dustRing.rotation.z = -0.12;
+        this.dustRing.rotation.y = 0.18;
+        this.dustRing.rotation.x = Math.PI * 0.37;
 
         this.scene.add(this.dustRing);
         console.log(`[StellarDrift] Dust ring created (${particleCount} particles)`);
@@ -3083,12 +3961,17 @@ export default class StellarDriftTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createAmbientParticles() {
-        const particleCount = this.qualityPreset.ambientParticleCount || 500;
+        const particleCount = Math.max(
+            120,
+            Math.floor((this.qualityPreset.ambientParticleCount || 500) * 0.5),
+        );
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         const colors = new Float32Array(particleCount * 3);
         const sizes = new Float32Array(particleCount);
         const randoms = new Float32Array(particleCount);
+        const centerExclusionX = 1100;
+        const centerExclusionY = 760;
 
         const particleColors = [
             new THREE.Color(0xffffff), // White
@@ -3100,17 +3983,30 @@ export default class StellarDriftTheme extends BaseTheme {
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
 
-            // Spread across entire visible area
-            positions[i3] = (this.rand() - 0.5) * 4000;
-            positions[i3 + 1] = (this.rand() - 0.5) * 2000;
-            positions[i3 + 2] = (this.rand() - 0.5) * 2000 - 500;
+            // Keep ambient sparkles subtle, distant, and mostly out of the center sightline.
+            let x = 0;
+            let y = 0;
+            let attempts = 0;
+            do {
+                x = (this.rand() - 0.5) * 6800;
+                y = (this.rand() - 0.5) * 3600;
+                attempts += 1;
+            } while (
+                (((x * x) / (centerExclusionX * centerExclusionX))
+                    + ((y * y) / (centerExclusionY * centerExclusionY)) < 1.0)
+                && attempts < 8
+            );
+
+            positions[i3] = x;
+            positions[i3 + 1] = y;
+            positions[i3 + 2] = -2200 - this.rand() * 4200;
 
             const color = particleColors[Math.floor(this.rand() * particleColors.length)];
             colors[i3] = color.r;
             colors[i3 + 1] = color.g;
             colors[i3 + 2] = color.b;
 
-            sizes[i] = 1 + this.rand() * 2;
+            sizes[i] = 0.8 + this.rand() * 1.25;
             randoms[i] = this.rand();
         }
 
@@ -3124,12 +4020,12 @@ export default class StellarDriftTheme extends BaseTheme {
                 this.ambientParticleCompute = new StellarAmbientParticleCompute(
                     particleCount,
                     {
-                        xMin: -2000,
-                        xMax: 2000,
-                        yMin: -1000,
-                        yMax: 1000,
-                        zMin: -1500,
-                        zMax: 600,
+                        xMin: -2600,
+                        xMax: 2600,
+                        yMin: -1300,
+                        yMax: 1300,
+                        zMin: -6400,
+                        zMax: -2200,
                     },
                     () => this.rand(),
                 );
@@ -3144,8 +4040,8 @@ export default class StellarDriftTheme extends BaseTheme {
 
         const materialData = createStellarAmbientParticlesMaterial({
             isWebGPU: this.isWebGPU,
-            size: 2,
-            opacity: 0.6,
+            size: 1.35,
+            opacity: 0.24,
             ambientCompute: this.ambientParticleCompute,
         });
         this.ambientParticlesMaterialData = materialData;
@@ -3268,13 +4164,13 @@ export default class StellarDriftTheme extends BaseTheme {
                         useMRT,
                         bloomStrength: this.qualityPreset.bloomStrength,
                         bloomRadius: this.qualityPreset.bloomRadius,
-                        bloomThreshold: 0.65,
+                        bloomThreshold: 0.71,
                         chromaticStrength: 0.0,
-                        vignetteOffset: 1.1,
-                        vignetteDarkness: 0.2,
+                        vignetteOffset: 1.04,
+                        vignetteDarkness: 0.5,
                         speedLineIntensity: 0.0,
-                        exposure: 1.05,
-                        contrast: 1.04,
+                        exposure: 0.92,
+                        contrast: 1.22,
                         saturation: 1.08,
                         bloomDownsample: THREE.MathUtils.clamp(0.6 + effectScale * 0.22, 0.58, 0.86),
                     },
@@ -3301,14 +4197,14 @@ export default class StellarDriftTheme extends BaseTheme {
                 new THREE.Vector2(width, height),
                 this.qualityPreset.bloomStrength,
                 this.qualityPreset.bloomRadius,
-                0.65,
+                0.71,
             );
             this.composer.addPass(this.bloomPass);
 
             // Vignette Pass (dynamic darkness for tunnel vision)
             this.vignettePass = new ShaderPass(VignetteShader);
-            this.vignettePass.uniforms.darkness.value = 0.2;
-            this.vignettePass.uniforms.offset.value = 1.1;
+            this.vignettePass.uniforms.darkness.value = 0.5;
+            this.vignettePass.uniforms.offset.value = 1.04;
             this.composer.addPass(this.vignettePass);
 
             // WARP EFFECTS: Chromatic Aberration (color fringing at edges during warp)
@@ -3321,6 +4217,12 @@ export default class StellarDriftTheme extends BaseTheme {
             this.radialSpeedPass.uniforms.intensity.value = 0;
             this.radialSpeedPass.uniforms.time.value = 0;
             this.composer.addPass(this.radialSpeedPass);
+
+            this.colorGradePass = new ShaderPass(ColorGradeShader);
+            this.colorGradePass.uniforms.exposure.value = 0.92;
+            this.colorGradePass.uniforms.contrast.value = 1.22;
+            this.colorGradePass.uniforms.saturation.value = 1.08;
+            this.composer.addPass(this.colorGradePass);
         } catch (error) {
             console.warn('[StellarDrift] Post-processing setup failed. Falling back to direct rendering:', error);
             this.capabilities.post = false;
@@ -3390,68 +4292,155 @@ export default class StellarDriftTheme extends BaseTheme {
         const dt = Number.isFinite(deltaSeconds) ? Math.max(0.001, deltaSeconds) : (1 / 60);
         const dt60 = THREE.MathUtils.clamp(dt * 60, 0.25, 2.2);
 
-        this.cameraShake.multiplyScalar(0.88 ** dt60);
-        this.cameraLookOffset.multiplyScalar(0.9 ** dt60);
-        this.cameraRollOffset *= 0.86 ** dt60;
+        this.cameraShake.multiplyScalar(0.89 ** dt60);
+        this.cameraLookOffset.multiplyScalar(0.92 ** dt60);
+        this.cameraRollOffset *= 0.88 ** dt60;
 
         const warp = THREE.MathUtils.clamp(this.warpSpeed, 0, 1);
-        const cinematicTime = this.time * 8.5 + this.cameraDriftSeed;
-        const reactiveLift = this.auroraPulse * 0.45 + this.reactiveState.comet * 0.35;
+        const reactiveLift = this.auroraPulse * 0.52
+            + this.reactiveState.comet * 0.38
+            + this.nebulaBoostIntensity * 0.2;
+        const timeA = this.time * 7.2 + this.cameraDriftSeed;
+        const timeB = this.time * 4.1 + this.cameraDriftSeed * 1.37;
+        const timeC = this.time * 2.05 + this.cameraDriftSeed * 0.73;
+        const timeD = this.time * 0.9 + this.cameraDriftSeed * 1.81;
+        const statementTime = this.time * 0.34 + this.cameraDriftSeed * 0.27;
+        const lingerSignal = Math.sin(statementTime * 0.58 + 0.9) * 0.5 + 0.5;
+        const lingerHold = THREE.MathUtils.smoothstep(lingerSignal, 0.68, 0.98);
+
+        const driftForce = 9.5 + warp * 7.5 + reactiveLift * 6.0;
+        const driftDamping = 0.925 ** dt60;
+        this.cameraDriftVelocity.x += (
+            Math.sin(timeB * 0.86 + 0.3) * driftForce
+            + Math.cos(timeD * 0.58 + 1.0) * driftForce * 0.65
+        ) * dt;
+        this.cameraDriftVelocity.y += (
+            Math.cos(timeB * 0.72 + 1.7) * driftForce * 0.8
+            + Math.sin(timeD * 0.47 + 0.4) * driftForce * 0.5
+        ) * dt;
+        this.cameraDriftVelocity.z += (
+            Math.sin(timeC * 0.44 + 0.8) * driftForce * 0.82
+            + Math.cos(timeD * 0.31 + 1.1) * driftForce * 0.55
+        ) * dt;
+        this.cameraDriftVelocity.multiplyScalar(driftDamping);
+        this.cameraDrift.addScaledVector(this.cameraDriftVelocity, dt);
+        this.cameraDrift.x = THREE.MathUtils.clamp(this.cameraDrift.x, -220 - warp * 80, 220 + warp * 80);
+        this.cameraDrift.y = THREE.MathUtils.clamp(this.cameraDrift.y, -160 - reactiveLift * 70, 160 + reactiveLift * 70);
+        this.cameraDrift.z = THREE.MathUtils.clamp(this.cameraDrift.z, -260 - warp * 120, 260 + warp * 120);
 
         this.cameraSway.set(
-            Math.sin(cinematicTime * 1.2) * (7 + warp * 10),
-            Math.cos(cinematicTime * 0.95 + 0.7) * (5 + reactiveLift * 12),
-            Math.sin(cinematicTime * 0.72 + 1.1) * (11 + warp * 16),
+            Math.sin(timeA * 0.58) * (16 + warp * 20)
+                + Math.cos(timeB * 0.44 + 0.7) * (11 + reactiveLift * 16)
+                + Math.sin(timeD * 0.19 + 0.2) * (24 + warp * 10),
+            Math.cos(timeA * 0.53 + 0.4) * (12 + reactiveLift * 18)
+                + Math.sin(timeB * 0.37) * (9 + warp * 9)
+                + Math.cos(timeD * 0.17 + 1.1) * (26 + reactiveLift * 10),
+            Math.sin(timeA * 0.34 + 1.1) * (24 + warp * 36)
+                + Math.cos(timeB * 0.28 + 0.2) * (15 + reactiveLift * 18)
+                + Math.sin(timeD * 0.11 + 0.5) * (42 + warp * 18),
         );
 
-        const followX = planetX * (0.2 + warp * 0.12);
-        const followY = planetY * (0.16 + warp * 0.08);
+        const followX = planetX * (0.045 + warp * 0.03) * (1.0 - lingerHold * 0.08);
+        const followY = planetY * (0.07 + warp * 0.034) * (1.0 - lingerHold * 0.08);
 
-        const orbitX = Math.sin(cinematicTime * 0.28) * (92 + warp * 90)
-            + Math.sin(cinematicTime * 0.61 + 1.2) * (58 + reactiveLift * 42);
-        const orbitY = Math.cos(cinematicTime * 0.23 + 0.6) * (52 + reactiveLift * 28)
-            + Math.sin(cinematicTime * 0.47) * 24;
-        const dollyWave = Math.sin(cinematicTime * 0.17 + 0.4) * 44
-            + Math.cos(cinematicTime * 0.33) * 21;
-        const warpDolly = -warp * (220 + this.radialBlurIntensity * 58);
+        const grandeurScale = 1.0 - lingerHold * 0.16;
+        const orbitX = (
+            Math.sin(timeD * 0.24) * (150 + warp * 120)
+            + Math.cos(timeC * 0.35 + 1.2) * (92 + reactiveLift * 54)
+        ) * grandeurScale;
+        const orbitY = (
+            Math.cos(timeD * 0.19 + 0.7) * (86 + reactiveLift * 52)
+            + Math.sin(timeB * 0.31) * (38 + warp * 18)
+        ) * grandeurScale;
+        const dollyWave = (
+            Math.sin(timeD * 0.14 + 0.3) * (72 + reactiveLift * 28)
+            + Math.cos(timeC * 0.22 + 0.9) * (48 + warp * 26)
+            + Math.sin(timeB * 0.09 + 0.2) * 38
+        ) * (1.0 - lingerHold * 0.12);
+        const statementLift = Math.cos(statementTime * 0.82 + 0.4) * (18 + reactiveLift * 10)
+            + Math.sin(statementTime * 0.46 + 1.2) * 9;
+        const statementDolly = -Math.sin(statementTime + 0.7) * (44 + reactiveLift * 18)
+            - Math.sin(statementTime * 0.52 + 1.4) * (20 + warp * 10);
+        const warpDolly = -warp * (250 + this.radialBlurIntensity * 70);
 
-        const targetX = this.cameraBasePosition.x + followX + orbitX + this.cameraSway.x + this.cameraShake.x;
-        const targetY = this.cameraBasePosition.y + followY + orbitY + this.cameraSway.y + this.cameraShake.y;
-        const targetZ = this.cameraBasePosition.z + dollyWave + warpDolly + this.cameraSway.z + this.cameraShake.z;
+        const targetX = this.cameraBasePosition.x
+            + this.heroCameraBias.x
+            + followX
+            + orbitX
+            + this.cameraSway.x
+            + this.cameraDrift.x
+            + this.cameraShake.x;
+        const targetY = this.cameraBasePosition.y
+            + this.heroCameraBias.y
+            + followY
+            + orbitY
+            + statementLift
+            + this.cameraSway.y
+            + this.cameraDrift.y
+            + this.cameraShake.y;
+        const targetZ = this.cameraBasePosition.z
+            + this.heroCameraBias.z
+            + dollyWave
+            + statementDolly
+            + warpDolly
+            + this.cameraSway.z
+            + this.cameraDrift.z
+            + this.cameraShake.z;
 
-        const positionLerp = THREE.MathUtils.clamp(dt * (2.3 + warp * 2.5), 0.05, 0.34);
+        const positionLerp = THREE.MathUtils.clamp(dt * (1.82 + warp * 2.06 - lingerHold * 0.28), 0.035, 0.26);
         this.camera.position.x = THREE.MathUtils.lerp(this.camera.position.x, targetX, positionLerp);
         this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, targetY, positionLerp);
         this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, targetZ, positionLerp);
 
-        const lookTargetX = planetX * (0.78 + warp * 0.14)
-            + Math.sin(cinematicTime * 0.34) * 96
+        const lookTargetX = planetX * (0.54 + warp * 0.06)
+            + this.heroLookBias.x
+            + Math.sin(timeD * 0.27 + 0.2) * 142
+            + Math.cos(timeB * 0.33 + 0.6) * 74
+            + this.cameraDrift.x * 0.24
             + this.cameraLookOffset.x;
-        const lookTargetY = planetY * (0.74 + warp * 0.1)
-            + Math.cos(cinematicTime * 0.27 + 0.4) * 38
+        const lookTargetY = planetY * (0.58 + warp * 0.05)
+            + this.heroLookBias.y
+            + Math.cos(timeD * 0.21 + 0.5) * 68
+            + Math.sin(timeC * 0.28 + 0.8) * 34
+            + statementLift * 0.22
+            + this.cameraDrift.y * 0.18
             + this.cameraLookOffset.y;
-        const lookTargetZ = Math.sin(cinematicTime * 0.21) * 24 + this.cameraLookOffset.z;
+        const lookTargetZ = this.heroLookBias.z
+            + Math.sin(timeC * 0.18 + 0.4) * 34
+            + statementDolly * 0.12
+            + this.cameraDrift.z * 0.14
+            + this.cameraLookOffset.z;
 
         this.cameraLookTarget.set(lookTargetX, lookTargetY, lookTargetZ);
-        const lookLerp = THREE.MathUtils.clamp(dt * (2.8 + warp * 2.8), 0.06, 0.38);
+        const lookLerp = THREE.MathUtils.clamp(dt * (2.18 + warp * 2.24 - lingerHold * 0.24), 0.045, 0.3);
         this.cameraCurrentLookTarget.lerp(this.cameraLookTarget, lookLerp);
         this.camera.lookAt(this.cameraCurrentLookTarget);
 
+        const driftBank = THREE.MathUtils.clamp(this.cameraDriftVelocity.x * 0.0024, -0.028, 0.028);
         const targetRoll = THREE.MathUtils.clamp(
             this.cameraRollOffset
-            + this.cameraShake.x * 0.0016
-            + Math.sin(cinematicTime * 0.4) * 0.012
-            + warp * 0.02,
-            -0.18,
-            0.18,
+            + this.cameraShake.x * 0.0015
+            + driftBank
+            + Math.sin(timeB * 0.23 + 0.2) * 0.014
+            + Math.cos(timeD * 0.18 + 0.4) * 0.01
+            + warp * 0.026,
+            -0.22,
+            0.22,
         );
-        const rollLerp = THREE.MathUtils.clamp(dt * (3.0 + warp * 1.8), 0.08, 0.42);
+        const rollLerp = THREE.MathUtils.clamp(dt * (2.6 + warp * 1.8), 0.06, 0.34);
         this.camera.rotation.z = THREE.MathUtils.lerp(this.camera.rotation.z, targetRoll, rollLerp);
     }
 
     updateCinematicLighting(planetX = 0, planetY = 0) {
         const lightTime = this.time * 7.0;
         const pulse = this.bloomPulseIntensity * 0.7 + this.auroraPulse * 0.35 + this.warpSpeed * 0.25;
+        const planetUniforms = this.planetMaterialData?.uniforms || this.planet?.material?.uniforms;
+        const paletteWarmGlow = this._selectedPalettes?.[0]?.glow?.clone?.() || new THREE.Color(0xffd9c7);
+        const paletteCoolGlow = this._selectedPalettes?.[1]?.glow?.clone?.() || new THREE.Color(0xd8ffff);
+        const paletteAccentGlow = this._selectedPalettes?.[2]?.glow?.clone?.() || new THREE.Color(0xf1dcff);
+        const paletteWarmBody = this._selectedPalettes?.[0]?.body?.clone?.() || new THREE.Color(0xffb223);
+        const paletteCoolBody = this._selectedPalettes?.[1]?.body?.clone?.() || new THREE.Color(0x22e5da);
+        const paletteAccentBody = this._selectedPalettes?.[2]?.body?.clone?.() || new THREE.Color(0x6e58ff);
 
         if (this.meteorLight) {
             this.meteorLight.position.set(
@@ -3459,7 +4448,8 @@ export default class StellarDriftTheme extends BaseTheme {
                 320 + Math.cos(lightTime * 0.71) * 120 + planetY * 0.18,
                 280 + Math.sin(lightTime * 0.33 + 1.3) * 260,
             );
-            this.meteorLight.intensity = 1.55 + pulse * 1.25;
+            this.meteorLight.color.copy(paletteCoolGlow.clone().lerp(paletteAccentGlow, 0.34));
+            this.meteorLight.intensity = 2.0 + pulse * 1.45;
             this.meteorLight.angle = THREE.MathUtils.lerp(
                 this.meteorLight.angle,
                 0.36 - this.warpSpeed * 0.08,
@@ -3478,15 +4468,48 @@ export default class StellarDriftTheme extends BaseTheme {
                 120 + Math.cos(lightTime * 0.41) * 90,
                 420 + Math.sin(lightTime * 0.22 + 0.6) * 180,
             );
-            this.keyLight.intensity = 0.82 + pulse * 0.38;
+            this.keyLight.color.copy(paletteWarmGlow.clone().lerp(paletteWarmBody, 0.28));
+            this.keyLight.intensity = 1.08 + pulse * 0.52;
+        }
+
+        if (this.rimLight) {
+            this.rimLight.position.set(
+                460 + Math.cos(lightTime * 0.19 + 0.6) * 240,
+                240 + Math.sin(lightTime * 0.24 + 1.1) * 120,
+                -760 + Math.cos(lightTime * 0.16 + 0.2) * 280,
+            );
+            this.rimLight.color.copy(paletteCoolBody.clone().lerp(paletteAccentGlow, 0.42));
+            this.rimLight.intensity = 0.78 + this.auroraPulse * 0.24 + this.warpSpeed * 0.12;
+        }
+
+        if (this.hemisphereLight) {
+            this.hemisphereLight.color.copy(paletteCoolGlow.clone().lerp(paletteAccentGlow, 0.18));
+            this.hemisphereLight.groundColor.copy(paletteWarmBody.clone().lerp(new THREE.Color(0x08050a), 0.84));
+            this.hemisphereLight.intensity = 0.18 + this.auroraPulse * 0.08 + this.nebulaBoostIntensity * 0.04;
         }
 
         if (this.ambientLight) {
+            this.ambientLight.color.copy(paletteAccentBody.clone().lerp(new THREE.Color(0x090814), 0.82));
             this.ambientLight.intensity = THREE.MathUtils.clamp(
-                0.44 + pulse * 0.18 - this.warpSpeed * 0.08,
-                0.28,
-                0.72,
+                0.2 + pulse * 0.11 - this.warpSpeed * 0.09,
+                0.12,
+                0.34,
             );
+        }
+
+        if (planetUniforms?.uLightDirection?.value?.copy) {
+            const keyPosition = this.keyLight?.position;
+            const meteorPosition = this.meteorLight?.position;
+            this.planetLightDirection.set(
+                ((keyPosition?.x ?? -260) * 0.72 + (meteorPosition?.x ?? 240) * 0.28) - planetX,
+                ((keyPosition?.y ?? 120) * 0.68 + (meteorPosition?.y ?? 320) * 0.32) - planetY,
+                ((keyPosition?.z ?? 420) * 0.7 + (meteorPosition?.z ?? 280) * 0.3),
+            );
+            if (this.planetLightDirection.lengthSq() < 0.0001) {
+                this.planetLightDirection.set(0.7, 0.3, 0.6);
+            }
+            this.planetLightDirection.normalize();
+            planetUniforms.uLightDirection.value.copy(this.planetLightDirection);
         }
     }
     // ─────────────────────────────────────────────────────────────────────────
@@ -4824,13 +5847,18 @@ export default class StellarDriftTheme extends BaseTheme {
         // Sound set activation handled by theme-linked settings
 
         this.planetPhaseOffset = this.rand() * Math.PI * 2;
-        this.cameraDriftSeed = this.rand() * Math.PI * 2;
-        this.cameraSway.set(0, 0, 0);
-        this.cameraShake.set(0, 0, 0);
-        this.cameraLookOffset.set(0, 0, 0);
-        this.cameraLookTarget.set(0, 0, 0);
-        this.cameraCurrentLookTarget.set(0, 0, 0);
-        this.cameraRollOffset = 0;
+        this.updateHeroCompositionTargets(
+            typeof window !== 'undefined' ? window.innerWidth : null,
+            typeof window !== 'undefined' ? window.innerHeight : null,
+            true,
+        );
+        this.resetCameraRigState();
+        if (this.camera) {
+            this.camera.position.copy(this.cameraBasePosition).add(this.heroCameraBias);
+            this.cameraLookTarget.copy(this.heroLookBias);
+            this.cameraCurrentLookTarget.copy(this.heroLookBias);
+            this.camera.lookAt(this.cameraCurrentLookTarget);
+        }
 
         const animate = () => {
             if (!this.isActive) return;
@@ -4859,10 +5887,12 @@ export default class StellarDriftTheme extends BaseTheme {
                 planetUniforms.uTime.value = this.time;
             }
             if (planetUniforms?.uBandIntensity) {
-                planetUniforms.uBandIntensity.value = 0.38 + this.nebulaPulse * 0.24;
+                planetUniforms.uBandIntensity.value = 0.44 + this.nebulaPulse * 0.28;
             }
             if (planetUniforms?.uScatterIntensity) {
-                planetUniforms.uScatterIntensity.value = 0.34 + this.auroraPulse * 0.36;
+                planetUniforms.uScatterIntensity.value = 0.46
+                    + this.auroraPulse * 0.34
+                    + this.nebulaBoostIntensity * 0.14;
             }
             if (planetUniforms?.uLightningFlash) {
                 planetUniforms.uLightningFlash.value = this.planetLightningIntensity;
@@ -4910,16 +5940,28 @@ export default class StellarDriftTheme extends BaseTheme {
             if (this.radialBlurIntensity < 0.01) this.radialBlurIntensity = 0;
             if (this.starTrailIntensity < 0.01) this.starTrailIntensity = 0;
 
+            this.updateHeroCompositionRig(rawDelta);
+
             // PLANET DRIFT: Move planet to different screen positions
             let planetX = 0;
             let planetY = 0;
             if (this.planet) {
                 this.planet.rotation.y += 0.001; // Visible spin
 
-                // Large orbit so planet appears on different sides of the screen
-                // Use phase offset for random starting position
-                planetX = Math.sin(this.time * 0.03 + this.planetPhaseOffset) * 600;
-                planetY = Math.cos(this.time * 0.025 + this.planetPhaseOffset) * 350;
+                const compositionTime = this.time + this.heroCompositionSeed;
+                const orbitCenterX = this.heroCompositionOffset.x
+                    + Math.sin(compositionTime * 0.17) * (52 + this.warpSpeed * 28)
+                    + Math.cos(compositionTime * 0.07 + 0.8) * 26;
+                const orbitCenterY = this.heroCompositionOffset.y
+                    + Math.cos(compositionTime * 0.13 + 0.6) * (34 + this.auroraPulse * 18)
+                    + Math.sin(compositionTime * 0.05 + 1.3) * 18;
+
+                planetX = orbitCenterX
+                    + Math.sin(this.time * 0.028 + this.planetPhaseOffset) * (340 + this.warpSpeed * 68)
+                    + Math.sin(this.time * 0.053 + this.planetPhaseOffset * 0.7) * 84;
+                planetY = orbitCenterY
+                    + Math.cos(this.time * 0.023 + this.planetPhaseOffset) * (208 + this.auroraPulse * 28)
+                    + Math.sin(this.time * 0.041 + this.planetPhaseOffset * 0.5) * 52;
                 this.planet.position.x = planetX;
                 this.planet.position.y = planetY;
 
@@ -4941,8 +5983,9 @@ export default class StellarDriftTheme extends BaseTheme {
 
             this.updateCinematicCamera(rawDelta, planetX, planetY);
             this.updateCinematicLighting(planetX, planetY);
-
-            // Nebula drift is handled above
+            const cameraX = this.camera?.position?.x ?? this.cameraBasePosition.x;
+            const cameraY = this.camera?.position?.y ?? this.cameraBasePosition.y;
+            const cameraZ = this.camera?.position?.z ?? this.cameraBasePosition.z;
 
             // Keep secondary composition anchored away from the hero-planet corridor.
             this.secondaryBodies.forEach((bodyData) => {
@@ -4959,20 +6002,86 @@ export default class StellarDriftTheme extends BaseTheme {
 
             this.depthHazeLayers.forEach((haze) => {
                 const phase = this.time * haze.driftSpeed + haze.driftPhase;
-                let nextX = haze.basePosition.x + Math.sin(phase) * haze.driftRange;
+                const parallaxX = (cameraX - this.cameraBasePosition.x) * haze.parallaxFactor;
+                const parallaxY = (cameraY - this.cameraBasePosition.y) * haze.parallaxFactor * 0.8;
+                const parallaxZ = (cameraZ - this.cameraBasePosition.z) * haze.parallaxFactor * 0.3;
+                let nextX = haze.basePosition.x + parallaxX + Math.sin(phase) * haze.driftRange;
                 nextX = this.enforceFocalCorridor(nextX, planetX, haze.focalSide);
-                const nextY = haze.basePosition.y + Math.cos(phase * 0.8) * (haze.driftRange * 0.18);
+                const nextY = haze.basePosition.y
+                    + parallaxY
+                    + Math.cos(phase * 0.8) * (haze.driftRange * 0.18);
+                const nextZ = haze.basePosition.z
+                    + parallaxZ
+                    + Math.sin(phase * 0.55) * (haze.driftRange * 0.22);
 
                 haze.mesh.position.x = nextX;
                 haze.mesh.position.y = nextY;
-                haze.mesh.rotation.z += 0.00004;
+                haze.mesh.position.z = nextZ;
+                haze.mesh.rotation.z = haze.mesh.userData.baseRotation
+                    + Math.sin(this.time * haze.mesh.userData.rotationSpeed + haze.mesh.userData.flowSeed)
+                        * haze.mesh.userData.rotationAmplitude;
 
                 const hazeUniforms = haze.mesh.userData?.materialData?.uniforms || haze.mesh.material?.uniforms;
                 if (hazeUniforms?.uTime) {
                     hazeUniforms.uTime.value = this.time * 0.7;
                 }
                 if (hazeUniforms?.uPulse) {
-                    hazeUniforms.uPulse.value = this.nebulaPulse * 0.25;
+                    const hazePulse = Math.sin(this.time * 0.22 + haze.mesh.userData.flowSeed) * 0.04;
+                    hazeUniforms.uPulse.value = this.nebulaPulse * haze.mesh.userData.pulseScale * 0.45 + hazePulse;
+                }
+                if (hazeUniforms?.uEmissiveGain) {
+                    hazeUniforms.uEmissiveGain.value = haze.mesh.userData.baseEmissiveGain
+                        * (1 + this.nebulaBoostIntensity * 0.18);
+                }
+                if (hazeUniforms?.uFlowStrength) {
+                    hazeUniforms.uFlowStrength.value = haze.mesh.userData.baseFlowStrength
+                        * (1 + this.nebulaPulse * 0.18 + this.nebulaBoostIntensity * 0.08);
+                }
+                if (hazeUniforms?.uDetailStrength) {
+                    hazeUniforms.uDetailStrength.value = haze.mesh.userData.baseDetailStrength
+                        * (1 + this.nebulaPulse * 0.06);
+                }
+                if (hazeUniforms?.uDensityThreshold) {
+                    hazeUniforms.uDensityThreshold.value = THREE.MathUtils.clamp(
+                        haze.mesh.userData.baseDensityThreshold - this.nebulaPulse * 0.01,
+                        0.36,
+                        0.78,
+                    );
+                }
+                if (hazeUniforms?.uOpacity) {
+                    hazeUniforms.uOpacity.value = haze.mesh.userData.baseOpacity
+                        * (0.98 + this.nebulaBoostIntensity * 0.03);
+                }
+            });
+
+            this.foregroundVeilLayers.forEach((veil) => {
+                const phase = this.time * veil.driftSpeed + veil.driftPhase;
+                const parallaxX = (cameraX - this.cameraBasePosition.x) * veil.parallaxFactor;
+                const parallaxY = (cameraY - this.cameraBasePosition.y) * veil.parallaxFactor * 0.9;
+                const parallaxZ = (cameraZ - this.cameraBasePosition.z) * veil.parallaxFactor * 0.22;
+                let nextX = veil.basePosition.x + parallaxX + Math.sin(phase) * veil.driftRange;
+                nextX = this.enforceFocalCorridor(nextX, planetX, veil.focalSide);
+                const nextY = veil.basePosition.y
+                    + parallaxY
+                    + Math.cos(phase * 0.83) * veil.verticalRange;
+                const nextZ = veil.basePosition.z
+                    + parallaxZ
+                    + Math.sin(phase * 0.57 + 0.9) * veil.depthRange;
+
+                veil.mesh.position.x = nextX;
+                veil.mesh.position.y = nextY;
+                veil.mesh.position.z = nextZ;
+                veil.mesh.rotation.z = veil.mesh.userData.baseRotation
+                    + Math.sin(this.time * veil.mesh.userData.rotationSpeed + veil.mesh.userData.flowSeed)
+                        * veil.mesh.userData.rotationAmplitude;
+
+                const veilUniforms = veil.mesh.userData?.materialData?.uniforms || veil.mesh.material?.uniforms;
+                const veilOpacity = veil.mesh.userData.baseOpacity
+                    * (0.94 + this.nebulaBoostIntensity * 0.04 + this.glowSurgeIntensity * 0.05);
+                if (veilUniforms?.uOpacity) {
+                    veilUniforms.uOpacity.value = veilOpacity;
+                } else if (veil.mesh.material && 'opacity' in veil.mesh.material) {
+                    veil.mesh.material.opacity = veilOpacity;
                 }
             });
 
@@ -5032,11 +6141,6 @@ export default class StellarDriftTheme extends BaseTheme {
                 }
             }
 
-            // Animate nebula clouds (very subtle drift and rotation)
-            this.nebulaClouds.forEach((cloud) => {
-                cloud.rotation.z += 0.0001; // Very slow rotation
-            });
-
             // Starfield twinkling
             const starfieldUniforms = this.starfieldMaterialData?.uniforms || this.starfield?.material?.uniforms;
             if (this.starfield && starfieldUniforms) {
@@ -5054,7 +6158,7 @@ export default class StellarDriftTheme extends BaseTheme {
                     );
                 }
 
-                const cameraX = this.camera?.position?.x ?? 0;
+                this.starfield.position.copy(this.camera.position);
                 this.starfield.rotation.y = Math.sin(this.time * 0.02 + this.cameraDriftSeed) * 0.08
                     + cameraX * 0.00006;
                 this.starfield.rotation.x = Math.cos(this.time * 0.015 + this.cameraDriftSeed * 0.5) * 0.045;
@@ -5083,15 +6187,51 @@ export default class StellarDriftTheme extends BaseTheme {
                 }
             });
 
+            const paletteWarmGlow = this._selectedPalettes?.[0]?.glow?.clone?.() || new THREE.Color(0xffd9c7);
+            const paletteCoolGlow = this._selectedPalettes?.[1]?.glow?.clone?.() || new THREE.Color(0xcfffff);
+            const paletteAccentGlow = this._selectedPalettes?.[2]?.glow?.clone?.() || new THREE.Color(0xf1dcff);
+            const paletteWarmBody = this._selectedPalettes?.[0]?.body?.clone?.() || new THREE.Color(0xffb223);
+            const paletteCoolBody = this._selectedPalettes?.[1]?.body?.clone?.() || new THREE.Color(0x22e5da);
+            const paletteAccentBody = this._selectedPalettes?.[2]?.body?.clone?.() || new THREE.Color(0x6e58ff);
+            const glowBlendPhase = Math.sin(this.time * 0.18) * 0.5 + 0.5;
+
+            if (this.heroRingMaterialData[0]?.uniforms?.uColorInner?.value?.copy) {
+                const primaryInnerColor = paletteAccentGlow.clone().lerp(paletteWarmGlow, 0.28 + glowBlendPhase * 0.22);
+                const primaryOuterColor = paletteAccentBody.clone().lerp(paletteWarmBody, 0.18 + glowBlendPhase * 0.18);
+                this.heroRingMaterialData[0].uniforms.uColorInner.value.copy(primaryInnerColor);
+                this.heroRingMaterialData[0].uniforms.uColorOuter.value.copy(primaryOuterColor);
+            }
+            if (this.heroRingMaterialData[1]?.uniforms?.uColorInner?.value?.copy) {
+                const outerInnerColor = paletteCoolGlow.clone().lerp(paletteAccentGlow, 0.18 + (1 - glowBlendPhase) * 0.28);
+                const outerOuterColor = paletteCoolBody.clone().lerp(paletteAccentBody, 0.14 + glowBlendPhase * 0.18);
+                this.heroRingMaterialData[1].uniforms.uColorInner.value.copy(outerInnerColor);
+                this.heroRingMaterialData[1].uniforms.uColorOuter.value.copy(outerOuterColor);
+            }
+
             // SMOOTH BLOOM PULSE - Gradual bloom decay (boosted during warp)
             const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
             const warpBloomBoost = this.warpSpeed * 0.1 + this.reactiveState.comet * 0.06;
+            const nebulaBloomBoost = this.nebulaBoostIntensity * 0.05;
             const dynamicBloomStrength = this.qualityPreset.bloomStrength
-                * (1 + this.bloomPulseIntensity + warpBloomBoost)
+                * (1 + this.bloomPulseIntensity + warpBloomBoost + nebulaBloomBoost)
                 * effectScale;
+            const bloomThreshold = THREE.MathUtils.clamp(
+                0.71 - this.nebulaBoostIntensity * 0.016 - this.glowSurgeIntensity * 0.01,
+                0.67,
+                0.72,
+            );
+            const gradeExposure = 0.92 - this.warpSpeed * 0.014 + this.glowSurgeIntensity * 0.006;
+            const gradeContrast = 1.22 + this.warpSpeed * 0.04 + this.nebulaBoostIntensity * 0.03;
+            const gradeSaturation = 1.08 + this.nebulaPulse * 0.024 + this.auroraPulse * 0.028;
 
             if (this.bloomPass) {
                 this.bloomPass.strength = dynamicBloomStrength;
+                this.bloomPass.threshold = bloomThreshold;
+            }
+            if (this.colorGradePass) {
+                this.colorGradePass.uniforms.exposure.value = gradeExposure;
+                this.colorGradePass.uniforms.contrast.value = gradeContrast;
+                this.colorGradePass.uniforms.saturation.value = gradeSaturation;
             }
 
             // ═══════════════════════════════════════════════════════════════════════
@@ -5100,13 +6240,13 @@ export default class StellarDriftTheme extends BaseTheme {
 
             // Dynamic Vignette (tunnel vision - darker edges during warp)
             if (this.vignettePass) {
-                const baseDarkness = 0.4;
-                const warpDarkness = this.warpSpeed * 0.5; // Up to 0.9 total at max warp
+                const baseDarkness = 0.5;
+                const warpDarkness = this.warpSpeed * 0.44;
                 this.vignettePass.uniforms.darkness.value = baseDarkness + warpDarkness;
 
                 // Tighten the vignette offset for more tunnel effect
-                const baseOffset = 1.1;
-                const warpOffset = this.warpSpeed * 0.3; // Smaller offset = tighter tunnel
+                const baseOffset = 1.04;
+                const warpOffset = this.warpSpeed * 0.24;
                 this.vignettePass.uniforms.offset.value = baseOffset - warpOffset;
             }
 
@@ -5122,75 +6262,81 @@ export default class StellarDriftTheme extends BaseTheme {
             }
 
             if (this.isWebGPU && this.postProcessing?.update) {
-                const baseDarkness = 0.4;
-                const warpDarkness = this.warpSpeed * 0.5;
-                const baseOffset = 1.1;
-                const warpOffset = this.warpSpeed * 0.3;
+                const baseDarkness = 0.5;
+                const warpDarkness = this.warpSpeed * 0.44;
+                const baseOffset = 1.04;
+                const warpOffset = this.warpSpeed * 0.24;
                 const chromaticStrength = Math.min(this.chromaticIntensity * 0.0035 * effectScale, 0.01);
                 const speedLineIntensity = Math.min(this.radialBlurIntensity * 0.35 * effectScale, 0.75);
 
                 this.postProcessing.update({
                     bloomStrength: dynamicBloomStrength,
                     bloomRadius: this.qualityPreset.bloomRadius,
+                    bloomThreshold,
                     chromaticStrength,
                     vignetteDarkness: baseDarkness + warpDarkness,
                     vignetteOffset: baseOffset - warpOffset,
                     speedLineIntensity,
                     time: this.time * 50,
+                    exposure: gradeExposure,
+                    contrast: gradeContrast,
+                    saturation: gradeSaturation,
                 });
             }
 
             // Update Nebula Uniforms (Pulse + Time)
-            this.nebulaMeshes.forEach((mesh) => {
-                // 1. Horizontal Drift (Left to Right)
-                mesh.position.x += mesh.userData.speed;
-
-                // 2. Vertical Bobbing
-                const verticalOffset = Math.sin(this.time * 0.2 + mesh.userData.driftPhase) * mesh.userData.verticalRange;
-                mesh.position.y = mesh.userData.startY + verticalOffset;
-
-                // 3. Smart Loop
-                if (mesh.position.x > mesh.userData.wrapBoundary) {
-                    mesh.position.x -= mesh.userData.totalWidth;
-                    const variance = (this.rand() - 0.5) * 4000;
-                    mesh.userData.startY += variance;
+            this.nebulaClouds.forEach((cloud) => {
+                cloud.userData.driftOffset += cloud.userData.driftSpeed * 50;
+                if (cloud.userData.driftOffset > cloud.userData.wrapBoundary) {
+                    cloud.userData.driftOffset = -cloud.userData.wrapBoundary;
                 }
 
-                const nebulaUniforms = mesh.userData?.materialData?.uniforms || mesh.material?.uniforms;
-                if (nebulaUniforms) {
-                    if (nebulaUniforms.uTime) {
-                        nebulaUniforms.uTime.value = this.time;
-                    }
-                    if (nebulaUniforms.uPulse) {
-                        nebulaUniforms.uPulse.value = this.nebulaPulse;
-                    }
+                cloud.position.x = cameraX * 0.3
+                    + cloud.userData.driftOffset
+                    + cloud.userData.massOffsetX;
+                cloud.position.y = cameraY * 0.2 + cloud.userData.massOffsetY;
+                cloud.position.z = cloud.userData.baseZ;
+                cloud.userData.pulsePhase += 0.005;
+
+                const nebulaUniforms = cloud.userData?.materialData?.uniforms || cloud.material?.uniforms;
+                if (!nebulaUniforms) return;
+
+                if (nebulaUniforms.uTime) {
+                    nebulaUniforms.uTime.value = this.time;
+                }
+                if (nebulaUniforms.uPulse) {
+                    nebulaUniforms.uPulse.value = Math.sin(cloud.userData.pulsePhase)
+                        + this.nebulaPulse * 2.0 * cloud.userData.pulseScale;
                 }
             });
 
-            // DYNAMIC PLANET GLOW COLOR
-            // Matches the shader's hue shift (speed 0.05)
-            // Base Mars Hue: ~20 degrees (0.05 turn)
-            const hueShift = (this.time * 0.05) / (Math.PI * 2); // Convert rad to turns
-            const currentHue = (0.05 + hueShift) % 1.0;
+            const smallGlowColor = paletteWarmGlow.clone().lerp(
+                paletteAccentGlow,
+                0.28 + glowBlendPhase * 0.28,
+            ).offsetHSL(0, 0.08, 0.04);
+            const bigGlowColor = paletteCoolGlow.clone().lerp(
+                paletteAccentBody,
+                0.18 + (1 - glowBlendPhase) * 0.24,
+            ).offsetHSL(0, 0.12, 0.02);
 
             if (this.smallGlow) {
-                const glowScale = 1 + this.glowSurgeIntensity;
+                const glowScale = 1 + this.glowSurgeIntensity * 1.15;
                 this.smallGlow.scale.set(glowScale, glowScale, 1);
                 const glowMaterialData = this.smallGlow.userData?.materialData;
-                if (glowMaterialData?.uniforms?.uColor?.value?.setHSL) {
-                    glowMaterialData.uniforms.uColor.value.setHSL(currentHue, 0.9, 0.6);
-                } else if (this.smallGlow.material?.color?.setHSL) {
-                    this.smallGlow.material.color.setHSL(currentHue, 0.9, 0.6);
+                if (glowMaterialData?.uniforms?.uColor?.value?.copy) {
+                    glowMaterialData.uniforms.uColor.value.copy(smallGlowColor);
+                } else if (this.smallGlow.material?.color?.copy) {
+                    this.smallGlow.material.color.copy(smallGlowColor);
                 }
             }
             if (this.bigGlow) {
-                const bigScale = 1 + this.glowSurgeIntensity * 0.5;
+                const bigScale = 1 + this.glowSurgeIntensity * 0.72;
                 this.bigGlow.scale.set(bigScale, bigScale, 1);
                 const glowMaterialData = this.bigGlow.userData?.materialData;
-                if (glowMaterialData?.uniforms?.uColor?.value?.setHSL) {
-                    glowMaterialData.uniforms.uColor.value.setHSL(currentHue, 0.8, 0.5);
-                } else if (this.bigGlow.material?.color?.setHSL) {
-                    this.bigGlow.material.color.setHSL(currentHue, 0.8, 0.5);
+                if (glowMaterialData?.uniforms?.uColor?.value?.copy) {
+                    glowMaterialData.uniforms.uColor.value.copy(bigGlowColor);
+                } else if (this.bigGlow.material?.color?.copy) {
+                    this.bigGlow.material.color.copy(bigGlowColor);
                 }
             }
 
@@ -5795,6 +6941,7 @@ export default class StellarDriftTheme extends BaseTheme {
     }
 
     resize(width, height) {
+        this.updateHeroCompositionTargets(width, height);
         if (this.camera) {
             this.camera.aspect = width / height;
             this.camera.updateProjectionMatrix();
@@ -5819,6 +6966,30 @@ export default class StellarDriftTheme extends BaseTheme {
         if (this.bloomPass?.resolution) {
             this.bloomPass.resolution.set(width, height);
         }
+    }
+
+    pause() {
+        const paused = super.pause();
+        if (!paused) return false;
+
+        this.cancelAnimationLoop();
+        this.clock.stop();
+        return true;
+    }
+
+    resume() {
+        const resumed = super.resume();
+        if (!resumed) return false;
+
+        this.clock.start();
+        this.clock.getDelta();
+
+        if (this._wasPaused) {
+            this._wasPaused = false;
+            this.startAnimation();
+        }
+
+        return true;
     }
 
     stop() {

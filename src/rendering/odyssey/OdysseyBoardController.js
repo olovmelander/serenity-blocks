@@ -2,7 +2,7 @@
  * @fileoverview OdysseyBoardController - Three.js Odyssey Board Scene
  *
  * Main controller for the Odyssey Mode level selection board.
- * Renders a 3D ascending path through 7 chapters with level nodes.
+ * Renders the 3D Odyssey path with themed level nodes.
  */
 
 import * as THREE from 'three';
@@ -15,6 +15,20 @@ import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import { PostProcessingStack } from './effects/PostProcessingStack.js';
+import { resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
+import {
+    applyOdysseyLayoutToLevels,
+    buildOdysseyPresentationLayout,
+    normalizeOdysseyLayoutData,
+    ODYSSEY_LAYOUT_DATA,
+} from '../../core/odyssey/data/odyssey-layout.js';
+import {
+    findScrollableWheelTarget as findSharedScrollableWheelTarget,
+    findWheelLockTarget as findSharedWheelLockTarget,
+    normalizeWheelDeltaToPixels,
+    shouldCaptureWheelEvent,
+} from '../../utils/wheel-routing.js';
+import { computeScenePixelRatio } from '../../utils/desktop-performance-policy.js';
 
 /**
  * Quality presets for the Odyssey Board
@@ -40,12 +54,121 @@ const QUALITY_PRESETS = {
     },
 };
 
+const ODYSSEY_WHEEL_LOCK_ATTRIBUTE = 'data-odyssey-wheel-lock';
+const ODYSSEY_WHEEL_CAPTURE_OPTIONS = { capture: true, passive: false };
+const ODYSSEY_WHEEL_LOCK_ATTRIBUTES = [ODYSSEY_WHEEL_LOCK_ATTRIBUTE, 'data-wheel-lock'];
+
+function derivePresentationLayout(levelData = [], presentationLayout = null, layoutOverride = null) {
+    const fallbackLevelPositionsById = Object.fromEntries(
+        levelData
+            .filter((level) => Number.isFinite(level?.id) && Number.isFinite(level?.pathPosition))
+            .map((level) => [level.id, level.pathPosition]),
+    );
+    const fallbackLayout = {
+        controlPoints: presentationLayout?.controlPoints
+            || layoutOverride?.controlPoints
+            || ODYSSEY_LAYOUT_DATA.controlPoints,
+        levelPositionsById: {
+            ...ODYSSEY_LAYOUT_DATA.levelPositionsById,
+            ...fallbackLevelPositionsById,
+        },
+    };
+    const sourceLayout = {
+        controlPoints: layoutOverride?.controlPoints
+            || presentationLayout?.controlPoints
+            || fallbackLayout.controlPoints,
+        levelPositionsById: {
+            ...fallbackLayout.levelPositionsById,
+            ...(presentationLayout?.levelPositionsById || {}),
+            ...(layoutOverride?.levelPositionsById || {}),
+        },
+    };
+
+    return buildOdysseyPresentationLayout(
+        levelData,
+        normalizeOdysseyLayoutData(sourceLayout, fallbackLayout, levelData),
+    );
+}
+
+function resolveStyleForElement(element) {
+    if (typeof getComputedStyle !== 'function' || !element) {
+        return null;
+    }
+
+    try {
+        return getComputedStyle(element);
+    } catch {
+        return null;
+    }
+}
+
+export function findWheelLockTarget(target) {
+    return findSharedWheelLockTarget(target, ODYSSEY_WHEEL_LOCK_ATTRIBUTES);
+}
+
+export function findScrollableWheelTarget(target, styleResolver = resolveStyleForElement) {
+    return findSharedScrollableWheelTarget(target, styleResolver);
+}
+
+export function normalizeOdysseyWheelDelta(event, viewportHeight = null) {
+    return normalizeWheelDeltaToPixels(event, {
+        lineHeight: 16,
+        pageHeight: viewportHeight,
+        clampPx: 240,
+    }) * 0.001;
+}
+
+function isPointInsideRect(x, y, rect) {
+    if (!rect || !Number.isFinite(x) || !Number.isFinite(y)) {
+        return false;
+    }
+
+    return x >= rect.left
+        && x <= rect.right
+        && y >= rect.top
+        && y <= rect.bottom;
+}
+
+export function shouldRouteOdysseyWheel({
+    isActive,
+    isRenderingPaused,
+    containerRect,
+    target,
+    clientX,
+    clientY,
+    styleResolver = resolveStyleForElement,
+}) {
+    if (!isActive || isRenderingPaused || !containerRect) {
+        return false;
+    }
+
+    if (!isPointInsideRect(clientX, clientY, containerRect)) {
+        return false;
+    }
+
+    if (!shouldCaptureWheelEvent({
+        event: {
+            target,
+            clientX,
+            clientY,
+        },
+        styleResolver,
+        attributeNames: ODYSSEY_WHEEL_LOCK_ATTRIBUTES,
+    })) {
+        return false;
+    }
+
+    return true;
+}
+
 /**
  * OdysseyBoardController - Main Three.js scene for level selection
  */
 export class OdysseyBoardController {
-    constructor(container) {
+    constructor(container, options = {}) {
         this.container = container;
+        this.editorMode = !!options.editorMode;
+        this.layoutOverride = options.layoutOverride || null;
 
         // Three.js core
         this.scene = null;
@@ -102,6 +225,30 @@ export class OdysseyBoardController {
         this.queuedPrewarmChapters = new Set();
         this.isPrewarming = false;
         this.prewarmDrainTimer = null;
+        this.pendingChapterLoads = new Set();
+        this.selectionSequence = 0;
+        this.activeSeamBoundaryId = null;
+        this.lastCameraProgress = 0;
+        this.levelData = [];
+        this.progressData = null;
+        this.layoutEditor = null;
+        this.presentationLayout = derivePresentationLayout();
+        this.interactionAttached = false;
+        // Debounce resize to prevent F11/fullscreen freeze from sync GPU ops
+        let resizeTimer;
+        const debouncedResize = () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => this.onResize(), 150);
+        };
+        this.boundHandlers = {
+            mousemove: this.onMouseMove.bind(this),
+            click: this.onClick.bind(this),
+            wheel: this.onWheel.bind(this),
+            touchstart: this.onTouchStart.bind(this),
+            touchmove: this.onTouchMove.bind(this),
+            touchend: this.onTouchEnd.bind(this),
+            resize: debouncedResize,
+        };
 
         console.log('[OdysseyBoard] Controller created');
     }
@@ -118,8 +265,12 @@ export class OdysseyBoardController {
      * @param {Object} levelData - Level configurations
      * @param {Object} progressData - Player progress data
      */
-    async initialize(levelData, progressData) {
+    async initialize(levelData, progressData, presentationLayout = null) {
         console.log('[OdysseyBoard] Initializing...');
+        this.presentationLayout = derivePresentationLayout(levelData, presentationLayout, this.layoutOverride);
+        this.levelData = applyOdysseyLayoutToLevels(levelData, this.presentationLayout);
+        this.progressData = progressData;
+        setOdysseyPathLayout(this.presentationLayout);
 
         // Get quality settings
         const quality = window.settings?.effectQuality || 'High';
@@ -136,28 +287,40 @@ export class OdysseyBoardController {
         await this._yieldToMain();
 
         // ─── Step 2: Load chapter 1 environment ───
-        this.environmentManager = new ChapterEnvironmentManager(this.scene, this.renderer);
+        this.environmentManager = new ChapterEnvironmentManager(this.scene, this.renderer, {
+            chapterPositions: this.presentationLayout.chapterPositions,
+        });
         await this.environmentManager.initialize([1], {
             particleCount: this.qualityPreset.particleCount,
         });
+        await this._prewarmChapterEnvironment(1);
 
         await this._yieldToMain();
 
-        // ─── Step 3: Load chapter 2 environment ───
-        await this.environmentManager.createChapterEnvironment(2);
-
-        await this._yieldToMain();
+        // ─── Step 3: Eagerly load all chapter environments ───
+        // Trading longer init for smoother scrolling (no on-demand chapter loads during scroll)
+        const totalChapters = this.presentationLayout.chapterPositions?.length || 8;
+        for (let ch = 2; ch <= totalChapters; ch++) {
+            await this.environmentManager.createChapterEnvironment(ch);
+            await this._prewarmChapterEnvironment(ch);
+            await this._yieldToMain();
+        }
 
         // ─── Step 4: Build path ───
         this.pathRenderer = new OdysseyPathRenderer(this.scene);
-        await this.pathRenderer.buildPath(ODYSSEY_PATH_DATA);
+        await this.pathRenderer.buildPath({
+            ...ODYSSEY_PATH_DATA,
+            controlPoints: this.presentationLayout.controlPoints,
+            chapterPositions: this.presentationLayout.chapterPositions,
+        });
 
         await this._yieldToMain();
 
         // ─── Step 5: Create level nodes (55 nodes) ───
         this.nodeManager = new LevelNodeManager(this.scene, this.pathRenderer.pathCurve);
-        await this.nodeManager.createNodes(levelData);
-        this.nodeManager.updateFromProgress(progressData);
+        this.nodeManager.setCamera(this.camera);
+        await this.nodeManager.createNodes(this.levelData, this._yieldToMain.bind(this));
+        this.nodeManager.updateFromProgress(this.progressData);
 
         await this._yieldToMain();
 
@@ -165,13 +328,25 @@ export class OdysseyBoardController {
         this.cameraController = new OdysseyCameraController(
             this.camera,
             this.pathRenderer.pathCurve,
+            {
+                levelPositions: this.presentationLayout.levelPositions,
+                chapterPositions: this.presentationLayout.chapterPositions,
+                startPosition: this.presentationLayout.levelPositions[0] ?? 0,
+            },
         );
+
+        // Optimization: Link camera LUT evaluator to node manager to avoid redundant spline calls
+        if (this.nodeManager && this.cameraController) {
+            this.nodeManager.setPathEvaluator((t, pos) => {
+                const { position } = this.cameraController.getPathDataAt(t, pos);
+                return position;
+            });
+        }
 
         // Connect chapter change events to camera for FOV pulse and post-processing effects
         if (this.environmentManager && this.cameraController) {
             this.environmentManager.setOnChapterChange((chapterId, previousChapter) => {
                 this.cameraController.onChapterChange(chapterId);
-                this.postProcessingStack?.triggerTransitionEffect();
                 console.log(`[OdysseyBoard] Chapter transition: ${previousChapter} → ${chapterId}`);
             });
         }
@@ -187,6 +362,10 @@ export class OdysseyBoardController {
         this.setupLighting();
 
         await this._yieldToMain();
+
+        if (this.editorMode) {
+            await this.initializeLayoutEditor();
+        }
 
         // ─── Step 7: Interaction + start render loop ───
         this.setupInteraction();
@@ -204,6 +383,12 @@ export class OdysseyBoardController {
         });
 
         console.log('[OdysseyBoard] Initialized successfully');
+    }
+
+    async initializeLayoutEditor() {
+        const { OdysseyLayoutEditor } = await import('./OdysseyLayoutEditor.js');
+        this.layoutEditor = new OdysseyLayoutEditor(this);
+        this.layoutEditor.initialize();
     }
 
     /**
@@ -334,15 +519,19 @@ export class OdysseyBoardController {
     }
 
     initRenderer() {
+        const pixelRatio = computeScenePixelRatio({
+            renderScale: 1,
+            devicePixelRatio: window.devicePixelRatio || 1,
+            maxPixelRatio: 1.5,
+            sceneType: 'odyssey',
+        });
         this.renderer = new THREE.WebGLRenderer({
             antialias: true,
             alpha: true,
             powerPreference: 'high-performance',
         });
         this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
-        // Cap pixel ratio to 1.5 for performance — the Odyssey board doesn't
-        // need 2x DPR since it's mostly particles, paths, and glowing orbs
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        this.renderer.setPixelRatio(pixelRatio);
         this.renderer.setClearColor(0x050510, 1);
         this.container.appendChild(this.renderer.domElement);
     }
@@ -556,22 +745,51 @@ export class OdysseyBoardController {
     // =============================
 
     setupInteraction() {
+        if (this.interactionAttached || !this.renderer?.domElement) {
+            return;
+        }
+
         const canvas = this.renderer.domElement;
 
-        canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
-        canvas.addEventListener('click', this.onClick.bind(this));
-        canvas.addEventListener('wheel', this.onWheel.bind(this));
+        canvas.addEventListener('mousemove', this.boundHandlers.mousemove);
+        canvas.addEventListener('click', this.boundHandlers.click);
 
         // Touch support
-        canvas.addEventListener('touchstart', this.onTouchStart.bind(this));
-        canvas.addEventListener('touchmove', this.onTouchMove.bind(this));
-        canvas.addEventListener('touchend', this.onTouchEnd.bind(this));
+        canvas.addEventListener('touchstart', this.boundHandlers.touchstart);
+        canvas.addEventListener('touchmove', this.boundHandlers.touchmove);
+        canvas.addEventListener('touchend', this.boundHandlers.touchend);
 
         // Resize
-        window.addEventListener('resize', this.onResize.bind(this));
+        document.addEventListener('wheel', this.boundHandlers.wheel, ODYSSEY_WHEEL_CAPTURE_OPTIONS);
+        window.addEventListener('resize', this.boundHandlers.resize);
+
+        this.interactionAttached = true;
+    }
+
+    teardownInteraction() {
+        if (!this.interactionAttached) {
+            return;
+        }
+
+        const canvas = this.renderer?.domElement;
+        if (canvas) {
+            canvas.removeEventListener('mousemove', this.boundHandlers.mousemove);
+            canvas.removeEventListener('click', this.boundHandlers.click);
+            canvas.removeEventListener('touchstart', this.boundHandlers.touchstart);
+            canvas.removeEventListener('touchmove', this.boundHandlers.touchmove);
+            canvas.removeEventListener('touchend', this.boundHandlers.touchend);
+        }
+
+        document.removeEventListener('wheel', this.boundHandlers.wheel, ODYSSEY_WHEEL_CAPTURE_OPTIONS);
+        window.removeEventListener('resize', this.boundHandlers.resize);
+        this.interactionAttached = false;
     }
 
     onMouseMove(event) {
+        if (this.layoutEditor?.isBoardInteractionBlocked?.()) {
+            return;
+        }
+
         const rect = this.renderer.domElement.getBoundingClientRect();
         this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -581,6 +799,10 @@ export class OdysseyBoardController {
     }
 
     onClick() {
+        if (this.layoutEditor?.isBoardInteractionBlocked?.()) {
+            return;
+        }
+
         if (this.hoveredLevelId !== null) {
             this.selectLevel(this.hoveredLevelId);
         } else {
@@ -594,10 +816,33 @@ export class OdysseyBoardController {
     }
 
     onWheel(event) {
+        if (!this.shouldHandleWheelEvent(event)) {
+            return;
+        }
+
+        const delta = normalizeOdysseyWheelDelta(
+            event,
+            this.container?.clientHeight || globalThis.window?.innerHeight || 900,
+        );
+        if (!delta) {
+            return;
+        }
+
         event.preventDefault();
         this._markInteraction();
-        const delta = event.deltaY * 0.001;
         this.cameraController?.scroll(delta);
+    }
+
+    shouldHandleWheelEvent(event) {
+        const containerRect = this.container?.getBoundingClientRect?.();
+        return shouldRouteOdysseyWheel({
+            isActive: this.isActive,
+            isRenderingPaused: this.isRenderingPaused,
+            containerRect,
+            target: event?.target ?? null,
+            clientX: event?.clientX,
+            clientY: event?.clientY,
+        });
     }
 
     onTouchStart(event) {
@@ -632,11 +877,18 @@ export class OdysseyBoardController {
     onResize() {
         const width = this.container.clientWidth;
         const height = this.container.clientHeight;
+        const pixelRatio = computeScenePixelRatio({
+            renderScale: 1,
+            devicePixelRatio: window.devicePixelRatio || 1,
+            maxPixelRatio: 1.5,
+            sceneType: 'odyssey',
+        });
 
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
 
         this.renderer.setSize(width, height);
+        this.renderer.setPixelRatio(pixelRatio);
 
         // Resize post-processing stack
         if (this.postProcessingStack) {
@@ -672,20 +924,65 @@ export class OdysseyBoardController {
     }
 
     selectLevel(levelId) {
+        this.travelToLevel(levelId).catch((error) => {
+            console.warn('[OdysseyBoard] Level travel failed:', error);
+        });
+    }
+
+    async travelToLevel(levelId, options = {}) {
+        if (!this.nodeManager || !this.cameraController) return false;
+
         if (this.selectedLevelId !== null) {
             this.nodeManager.setNodeSelected(this.selectedLevelId, false);
         }
 
         this.selectedLevelId = levelId;
         this.nodeManager.setNodeSelected(levelId, true);
+        this._markInteraction();
 
-        // Focus camera on level
+        const node = this.nodeManager.nodes.get(levelId);
         const nodePosition = this.nodeManager.getNodePosition(levelId);
-        if (nodePosition) {
-            this.cameraController.focusOnNode(nodePosition, 800);
+        if (!node || !nodePosition) {
+            this.onLevelSelect?.(levelId, { settled: false, traveled: false });
+            return false;
         }
 
-        this.onLevelSelect?.(levelId);
+        const selectionId = ++this.selectionSequence;
+        const targetChapter = node.config?.chapter ?? 1;
+        const targetProgress = node.pathPosition ?? this.cameraController.getCurrentPosition();
+        const currentProgress = this.cameraController.getCurrentPosition();
+        const currentBlendState = this.environmentManager?.getBlendState(currentProgress);
+        const currentChapter = currentBlendState?.activeChapter ?? targetChapter;
+        const traveled = currentChapter !== targetChapter;
+
+        if (traveled) {
+            await this._requestChapterEnvironment(targetChapter);
+            await this.cameraController.travelToPosition(
+                targetProgress,
+                options.travelDuration ?? this.computeTravelDuration(currentProgress, targetProgress),
+            );
+        }
+
+        if (selectionId !== this.selectionSequence) {
+            return false;
+        }
+
+        this.cameraController.setCurrentPosition(targetProgress);
+        await this.cameraController.focusOnNode(
+            nodePosition,
+            traveled ? (options.focusDuration ?? 520) : (options.focusDuration ?? 800),
+        );
+
+        if (selectionId !== this.selectionSequence) {
+            return false;
+        }
+
+        this.onLevelSelect?.(levelId, {
+            chapterId: targetChapter,
+            settled: true,
+            traveled,
+        });
+        return true;
     }
 
     // =============================
@@ -697,9 +994,10 @@ export class OdysseyBoardController {
      * @param {number} chapterId
      * @param {number} duration - Animation duration in ms
      */
-    panToChapter(chapterId, duration = 1500) {
-        const chapterPosition = ODYSSEY_PATH_DATA.chapterPositions[chapterId - 1] || 0;
-        this.cameraController?.panToPosition(chapterPosition, duration);
+    async panToChapter(chapterId, duration = 1500) {
+        const chapterPosition = this.presentationLayout.chapterPositions?.[chapterId - 1] || 0;
+        await this._requestChapterEnvironment(chapterId);
+        return this.cameraController?.panToPosition(chapterPosition, duration);
     }
 
     /**
@@ -707,7 +1005,9 @@ export class OdysseyBoardController {
      * @param {number} levelId
      */
     focusOnLevel(levelId) {
-        this.selectLevel(levelId);
+        this.travelToLevel(levelId).catch((error) => {
+            console.warn('[OdysseyBoard] Focus-on-level failed:', error);
+        });
     }
 
     // =============================
@@ -720,16 +1020,28 @@ export class OdysseyBoardController {
         this.animationFrameId = requestAnimationFrame(() => this.animate());
 
         const delta = this.clock.getDelta();
+        this.renderFrame(delta);
+    }
+
+    renderFrame(delta = 0) {
         this.time += delta;
 
         // Update components
         this.pathRenderer?.update(delta);
-        this.nodeManager?.update(delta);
         this.cameraController?.update(delta);
+
+        // Pass camera progress to node manager for distance-based culling
+        if (this.nodeManager && this.cameraController) {
+            this.nodeManager.setCameraProgress(this.cameraController.getCurrentPosition());
+        }
+        this.nodeManager?.update(delta);
+        this.layoutEditor?.update(delta);
 
         // Update chapter environments based on camera position
         if (this.environmentManager && this.camera) {
             const cameraProgress = this.cameraController?.getCurrentPosition() ?? 0;
+            this._ensureBoundaryAssets(cameraProgress);
+            this._handleChapterSeam(cameraProgress);
             this.environmentManager.updateVisibility(cameraProgress, { mode: 'progress' });
 
             const nowMs = performance.now();
@@ -745,7 +1057,7 @@ export class OdysseyBoardController {
                 this.lastGlobalEnvUpdateProgress = cameraProgress;
             }
 
-            this.environmentManager.update(delta, this.camera);
+            this.environmentManager.update(delta, this.camera, cameraProgress);
         }
 
         // Rotate stars slowly
@@ -762,6 +1074,16 @@ export class OdysseyBoardController {
         } else {
             this.renderer.render(this.scene, this.camera);
         }
+    }
+
+    /**
+     * Force a single synchronous render without restarting the board loop.
+     * Used immediately before the portal breach snapshot.
+     * @param {number} delta
+     */
+    renderOnce(delta = 0) {
+        if (!this.renderer || !this.scene || !this.camera) return;
+        this.renderFrame(delta);
     }
 
     /**
@@ -828,8 +1150,158 @@ export class OdysseyBoardController {
      * @param {Object} progressData
      */
     updateProgress(progressData) {
+        this.progressData = progressData;
         this.nodeManager?.updateFromProgress(progressData);
         this.pathRenderer?.setProgress(progressData.furthestLevel / 56);
+    }
+
+    getLayoutData() {
+        return {
+            controlPoints: this.presentationLayout.controlPoints.map((point) => ({ ...point })),
+            levelPositionsById: { ...(this.presentationLayout.levelPositionsById || {}) },
+        };
+    }
+
+    async applyLayoutOverride(layoutOverride) {
+        if (!this.pathRenderer || !this.nodeManager || !this.cameraController || !this.environmentManager) {
+            return false;
+        }
+
+        const currentPosition = this.cameraController.getCurrentPosition();
+        const nextPresentationLayout = derivePresentationLayout(
+            this.levelData,
+            this.presentationLayout,
+            layoutOverride,
+        );
+
+        this.presentationLayout = nextPresentationLayout;
+        this.layoutOverride = {
+            controlPoints: nextPresentationLayout.controlPoints,
+            levelPositionsById: { ...nextPresentationLayout.levelPositionsById },
+        };
+        this.levelData = applyOdysseyLayoutToLevels(this.levelData, nextPresentationLayout);
+
+        setOdysseyPathLayout(this.presentationLayout);
+        await this.pathRenderer.rebuildPath({
+            ...ODYSSEY_PATH_DATA,
+            controlPoints: this.presentationLayout.controlPoints,
+            chapterPositions: this.presentationLayout.chapterPositions,
+        });
+
+        this.nodeManager.updateLayout(this.levelData, this.pathRenderer.pathCurve);
+        if (this.progressData) {
+            this.nodeManager.updateFromProgress(this.progressData);
+        }
+
+        this.cameraController.applyLayout(this.pathRenderer.pathCurve, {
+            levelPositions: this.presentationLayout.levelPositions,
+            chapterPositions: this.presentationLayout.chapterPositions,
+            startPosition: this.presentationLayout.levelPositions[0] ?? 0,
+            preservePosition: currentPosition,
+        });
+
+        this.environmentManager.setChapterPositions(this.presentationLayout.chapterPositions);
+        this.environmentManager.updateVisibility(currentPosition, { mode: 'progress' });
+        this.environmentManager.updateGlobalEnvironment(currentPosition);
+        return true;
+    }
+
+    computeTravelDuration(fromPosition, toPosition) {
+        const distance = Math.abs((toPosition ?? 0) - (fromPosition ?? 0));
+        return Math.round(900 + (distance * 2600));
+    }
+
+    _handleChapterSeam(cameraProgress) {
+        const blendState = this.environmentManager?.getBlendState(cameraProgress);
+        const boundaryId = blendState?.inSeam ? blendState.boundaryId : null;
+        const direction = this._resolveTravelDirection(cameraProgress);
+
+        if (boundaryId && this.activeSeamBoundaryId !== boundaryId) {
+            this.activeSeamBoundaryId = boundaryId;
+            const { transition } = blendState;
+            let seamIntensity = 0.9;
+            if (transition.fxPreset === 'heavy') {
+                seamIntensity = 1.15;
+            } else if (transition.fxPreset === 'neon') {
+                seamIntensity = 1.0;
+            }
+
+            this.cameraController?.triggerChapterSeam({
+                durationMs: transition.beatDurationMs,
+                intensity: seamIntensity,
+                direction,
+            });
+            this.postProcessingStack?.triggerChapterSeam({
+                preset: transition.fxPreset,
+                intensity: seamIntensity,
+            });
+            this.pathRenderer?.triggerChapterTransition({
+                fromChapter: blendState.sourceChapter,
+                toChapter: blendState.targetChapter,
+                direction,
+                boundaryPosition: blendState.boundaryPosition,
+                durationMs: transition.beatDurationMs,
+            });
+        } else if (!boundaryId) {
+            this.activeSeamBoundaryId = null;
+        }
+
+        this.lastCameraProgress = cameraProgress;
+    }
+
+    _resolveTravelDirection(cameraProgress) {
+        const travelDirection = this.cameraController?.getTravelState?.().direction;
+        if (travelDirection) {
+            return Math.sign(travelDirection) || 1;
+        }
+        return Math.sign(cameraProgress - this.lastCameraProgress) || 1;
+    }
+
+    _ensureBoundaryAssets(cameraProgress) {
+        const chapterPositions = this.presentationLayout.chapterPositions || [];
+        for (let sourceChapter = 1; sourceChapter < (chapterPositions.length - 1); sourceChapter += 1) {
+            const boundaryPosition = chapterPositions[sourceChapter];
+            const transition = this.environmentManager?.getBoundaryTransition(sourceChapter);
+            if (!Number.isFinite(boundaryPosition) || !transition) continue;
+
+            if (Math.abs(cameraProgress - boundaryPosition) <= transition.preloadDistance) {
+                this._requestChapterEnvironment(sourceChapter).catch((error) => {
+                    console.warn(`[OdysseyBoard] Boundary preload failed for chapter ${sourceChapter}:`, error);
+                });
+                this._requestChapterEnvironment(sourceChapter + 1).catch((error) => {
+                    console.warn(`[OdysseyBoard] Boundary preload failed for chapter ${sourceChapter + 1}:`, error);
+                });
+            }
+        }
+    }
+
+    async _requestChapterEnvironment(chapterId) {
+        if (!Number.isFinite(chapterId) || !this.environmentManager) return false;
+
+        const existing = this.environmentManager.environments.get(chapterId);
+        if (existing) {
+            this._queueChapterPrewarm(chapterId);
+            return true;
+        }
+
+        if (this.pendingChapterLoads.has(chapterId)) {
+            return false;
+        }
+
+        this.pendingChapterLoads.add(chapterId);
+        try {
+            await this.environmentManager.createChapterEnvironment(chapterId);
+            this.environmentManager.updateVisibility(this.cameraController?.getCurrentPosition?.() ?? 0, {
+                mode: 'progress',
+            });
+            this._queueChapterPrewarm(chapterId);
+            return true;
+        } catch (error) {
+            console.warn(`[OdysseyBoard] Failed to prepare chapter ${chapterId}:`, error);
+            return false;
+        } finally {
+            this.pendingChapterLoads.delete(chapterId);
+        }
     }
 
     /**
@@ -845,6 +1317,10 @@ export class OdysseyBoardController {
     dispose() {
         this.isActive = false;
         this.isRenderingPaused = false;
+        this.teardownInteraction();
+        resetOdysseyPathLayout();
+        this.layoutEditor?.dispose?.();
+        this.layoutEditor = null;
 
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
@@ -856,6 +1332,8 @@ export class OdysseyBoardController {
         this.prewarmQueue.length = 0;
         this.queuedPrewarmChapters.clear();
         this.isPrewarming = false;
+        this.pendingChapterLoads.clear();
+        this.activeSeamBoundaryId = null;
 
         // Dispose sub-controllers
         this.environmentManager?.dispose();

@@ -1,0 +1,444 @@
+{
+  "generatedAt": "2026-03-17T11:59:34.582Z",
+  "stage": "startup-begin",
+  "appMode": "electron-validation",
+  "runtimeConfig": {
+    "isElectron": true,
+    "appMode": "electron-validation",
+    "platform": "linux",
+    "isPackaged": false,
+    "windowsProfile": "validation",
+    "safeMode": false,
+    "useStartupRevealGate": false,
+    "gpuSwitches": {},
+    "windowBounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1599,
+      "height": 899
+    },
+    "displayScaleFactor": 1,
+    "arch": "x64",
+    "contentBounds": {
+      "x": 0,
+      "y": 27,
+      "width": 1599,
+      "height": 872
+    },
+    "display": {
+      "id": 33,
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 1600,
+        "height": 900
+      },
+      "workArea": {
+        "x": 0,
+        "y": 0,
+        "width": 1600,
+        "height": 900
+      },
+      "scaleFactor": 1,
+      "rotation": 0,
+      "internal": false
+    },
+    "isFullscreen": false,
+    "isMaximized": false
+  },
+  "runtimeProfile": "validation",
+  "settingsSnapshot": {
+    "resolution": {
+      "width": 1599,
+      "height": 872,
+      "devicePixelRatio": 1
+    },
+    "displayMode": "windowed",
+    "vsyncEnabled": true,
+    "targetFrameRate": 60,
+    "effectQuality": null,
+    "renderScale": 1,
+    "backgroundTabBehavior": null,
+    "enableAntialiasing": true,
+    "enableBloom": true,
+    "enableShadows": true,
+    "particleQuality": null,
+    "textureQuality": null
+  },
+  "processMetrics": {
+    "generatedAt": "2026-03-17T11:59:34.471Z",
+    "processMetrics": [
+      {
+        "pid": 304508,
+        "type": "Browser",
+        "serviceName": null,
+        "name": null,
+        "creationTime": 1773748770410,
+        "sandboxed": null,
+        "cpu": {
+          "cumulativeCPUUsage": 0.85,
+          "percentCPUUsage": 0,
+          "idleWakeupsPerSecond": 0
+        },
+        "memory": {
+          "workingSetSize": 203912,
+          "peakWorkingSetSize": 205276
+        }
+      },
+      {
+        "pid": 304567,
+        "type": "Utility",
+        "serviceName": "network.mojom.NetworkService",
+        "name": "Network Service",
+        "creationTime": 1773748771360,
+        "sandboxed": null,
+        "cpu": {
+          "cumulativeCPUUsage": 0.06,
+          "percentCPUUsage": 0,
+          "idleWakeupsPerSecond": 0
+        },
+        "memory": {
+          "workingSetSize": 77824,
+          "peakWorkingSetSize": 77824
+        }
+      },
+      {
+        "pid": 304578,
+        "type": "Tab",
+        "serviceName": null,
+        "name": null,
+        "creationTime": 1773748771420,
+        "sandboxed": null,
+        "cpu": {
+          "cumulativeCPUUsage": 0.96,
+          "percentCPUUsage": 0,
+          "idleWakeupsPerSecond": 0
+        },
+        "memory": {
+          "workingSetSize": 208036,
+          "peakWorkingSetSize": 219924
+        }
+      },
+      {
+        "pid": 304626,
+        "type": "GPU",
+        "serviceName": "GPU",
+        "name": null,
+        "creationTime": 1773748771540,
+        "sandboxed": null,
+        "cpu": {
+          "cumulativeCPUUsage": 0.12,
+          "percentCPUUsage": 0,
+          "idleWakeupsPerSecond": 0
+        },
+        "memory": {
+          "workingSetSize": 114960,
+          "peakWorkingSetSize": 114960
+        }
+      }
+    ],
+    "runtimeProfile": "validation",
+    "safeMode": false,
+    "windowBounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1599,
+      "height": 899
+    },
+    "contentBounds": {
+      "x": 0,
+      "y": 27,
+      "width": 1599,
+      "height": 872
+    },
+    "display": {
+      "id": 33,
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 1600,
+        "height": 900
+      },
+      "workArea": {
+        "x": 0,
+        "y": 0,
+        "width": 1600,
+        "height": 900
+      },
+      "scaleFactor": 1,
+      "rotation": 0,
+      "internal": false
+    },
+    "displayScaleFactor": 1,
+    "isFullscreen": false,
+    "isMaximized": false
+  },
+  "windowBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 1599,
+    "height": 899
+  },
+  "displayScaleFactor": 1,
+  "devicePixelRatio": 1,
+  "metrics": {
+    "fps": 0,
+    "avgFPS": 0,
+    "minFPS": null,
+    "maxFPS": 0,
+    "frameTime": 0,
+    "avgFrameTime": 0,
+    "maxFrameTime": 0,
+    "updateTime": 0,
+    "renderTime": 0,
+    "inputLatency": 0,
+    "memoryUsed": 0,
+    "frameDrops": 0,
+    "totalFrames": 0,
+    "contextRestoreCount": 0,
+    "themeSwitchCount": 0
+  },
+  "qualityMode": "Unknown",
+  "startupDurations": {
+    "introRendererInitMs": null,
+    "audioTrackInitMs": 0.5,
+    "serenityBlocksInitMs": null,
+    "initialThemeReadyMs": null,
+    "serenityHubFirstIconReadyMs": null,
+    "firstUsableFrameMs": null
+  },
+  "startupMarks": [
+    {
+      "type": "startup_bootstrap_begin",
+      "timestamp": 1773748772696,
+      "payload": {
+        "appMode": "electron-validation",
+        "windowsProfile": "validation",
+        "safeMode": false
+      }
+    },
+    {
+      "type": "startup_startup-shell-ready",
+      "timestamp": 1773748774467,
+      "payload": {}
+    },
+    {
+      "type": "startup_intro_music_init_started",
+      "timestamp": 1773748774471,
+      "payload": {}
+    },
+    {
+      "type": "startup_intro_music_init_completed",
+      "timestamp": 1773748774472,
+      "payload": {
+        "durationMs": 0.5
+      }
+    },
+    {
+      "type": "startup_app_init_started",
+      "timestamp": 1773748774472,
+      "payload": {
+        "windowsProfile": "validation",
+        "safeMode": false
+      }
+    }
+  ],
+  "topSections": [],
+  "releaseGates": {
+    "frameTime": {
+      "p50": 0,
+      "p95": 0,
+      "p99": 0
+    },
+    "fps": {
+      "p50": 0,
+      "p05": 0
+    },
+    "memory": {
+      "currentMb": 0,
+      "peakMb": 0
+    },
+    "themeSwitches": {
+      "count": 0,
+      "maxDurationMs": 0
+    },
+    "runtime": {
+      "contextRestoreCount": 0,
+      "recentEvents": [
+        {
+          "type": "desktop_runtime_config",
+          "timestamp": 1773748772696,
+          "payload": {
+            "isElectron": true,
+            "appMode": "electron-validation",
+            "platform": "linux",
+            "isPackaged": false,
+            "windowsProfile": "validation",
+            "safeMode": false,
+            "useStartupRevealGate": false,
+            "gpuSwitches": {},
+            "windowBounds": {
+              "x": 0,
+              "y": 0,
+              "width": 1599,
+              "height": 899
+            },
+            "displayScaleFactor": 1,
+            "arch": "x64",
+            "contentBounds": {
+              "x": 0,
+              "y": 27,
+              "width": 1599,
+              "height": 872
+            },
+            "display": {
+              "id": 33,
+              "bounds": {
+                "x": 0,
+                "y": 0,
+                "width": 1600,
+                "height": 900
+              },
+              "workArea": {
+                "x": 0,
+                "y": 0,
+                "width": 1600,
+                "height": 900
+              },
+              "scaleFactor": 1,
+              "rotation": 0,
+              "internal": false
+            },
+            "isFullscreen": false,
+            "isMaximized": false
+          }
+        },
+        {
+          "type": "startup_bootstrap_begin",
+          "timestamp": 1773748772696,
+          "payload": {
+            "appMode": "electron-validation",
+            "windowsProfile": "validation",
+            "safeMode": false
+          }
+        },
+        {
+          "type": "startup_startup-shell-ready",
+          "timestamp": 1773748774467,
+          "payload": {}
+        },
+        {
+          "type": "startup_intro_music_init_started",
+          "timestamp": 1773748774471,
+          "payload": {}
+        },
+        {
+          "type": "startup_intro_music_init_completed",
+          "timestamp": 1773748774472,
+          "payload": {
+            "durationMs": 0.5
+          }
+        },
+        {
+          "type": "startup_app_init_started",
+          "timestamp": 1773748774472,
+          "payload": {
+            "windowsProfile": "validation",
+            "safeMode": false
+          }
+        }
+      ]
+    },
+    "network": null
+  },
+  "runtimeEvents": [
+    {
+      "type": "desktop_runtime_config",
+      "timestamp": 1773748772696,
+      "payload": {
+        "isElectron": true,
+        "appMode": "electron-validation",
+        "platform": "linux",
+        "isPackaged": false,
+        "windowsProfile": "validation",
+        "safeMode": false,
+        "useStartupRevealGate": false,
+        "gpuSwitches": {},
+        "windowBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1599,
+          "height": 899
+        },
+        "displayScaleFactor": 1,
+        "arch": "x64",
+        "contentBounds": {
+          "x": 0,
+          "y": 27,
+          "width": 1599,
+          "height": 872
+        },
+        "display": {
+          "id": 33,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1600,
+            "height": 900
+          },
+          "workArea": {
+            "x": 0,
+            "y": 0,
+            "width": 1600,
+            "height": 900
+          },
+          "scaleFactor": 1,
+          "rotation": 0,
+          "internal": false
+        },
+        "isFullscreen": false,
+        "isMaximized": false
+      }
+    },
+    {
+      "type": "startup_bootstrap_begin",
+      "timestamp": 1773748772696,
+      "payload": {
+        "appMode": "electron-validation",
+        "windowsProfile": "validation",
+        "safeMode": false
+      }
+    },
+    {
+      "type": "startup_startup-shell-ready",
+      "timestamp": 1773748774467,
+      "payload": {}
+    },
+    {
+      "type": "startup_intro_music_init_started",
+      "timestamp": 1773748774471,
+      "payload": {}
+    },
+    {
+      "type": "startup_intro_music_init_completed",
+      "timestamp": 1773748774472,
+      "payload": {
+        "durationMs": 0.5
+      }
+    },
+    {
+      "type": "startup_app_init_started",
+      "timestamp": 1773748774472,
+      "payload": {
+        "windowsProfile": "validation",
+        "safeMode": false
+      }
+    }
+  ],
+  "themeSwitches": [],
+  "gpu": {
+    "webglRenderer": "Google Inc. (Google) - ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "desktopDiagnostics": null
+  },
+  "extra": {}
+}

@@ -32,6 +32,8 @@ export class CosmicNoirPost {
         this.renderer = renderer;
         this.useMRT = params.useMRT ?? true;
         this.bloomDownsample = params.bloomDownsample ?? 0.8;
+        this.resolutionScale = params.resolutionScale ?? 1.0;
+        this.chromaticEnabled = params.chromaticEnabled ?? true;
         this.size = { width: 0, height: 0 };
         this.postProcessing = new THREE.PostProcessing(renderer);
 
@@ -55,12 +57,16 @@ export class CosmicNoirPost {
 
         this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.8);
         this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.2);
-        this.uChromaticStrength = uniform(params.chromaticStrength ?? 0.004);
+        this.baseChromaticStrength = params.chromaticStrength ?? 0.004;
+        this.uChromaticStrength = uniform(
+            this.chromaticEnabled ? this.baseChromaticStrength : 0.0,
+        );
         this.uExposure = uniform(params.exposure ?? 1.05);
         this.uContrast = uniform(params.contrast ?? 1.03);
         this.uSaturation = uniform(params.saturation ?? 0.95);
         this.uBlackFloor = uniform(params.blackFloor ?? 0.06);
         this.uDitherStrength = uniform(params.ditherStrength ?? 0.004);
+        this.uLensingStrength = uniform(params.lensingStrength ?? 1.0);
 
         this.uBhScreenPos = uniform(params.bhScreenPos ?? new THREE.Vector2(0.5, 0.5));
         this.uScreenAspect = uniform(1.0);
@@ -73,7 +79,7 @@ export class CosmicNoirPost {
         const distToBh = length(dirAspect);
 
         const lensingRadius = float(0.35); // Radius of maximal bending
-        const lensPower = float(0.045); // Strength of the bend
+        const lensPower = float(0.045).mul(this.uLensingStrength); // Strength of the bend
         const lensingAmount = lensPower.mul(smoothstep(float(0.0), lensingRadius, distToBh)).div(max(distToBh, 0.01));
         const lensedUV = clamp(uv.sub(dir.mul(lensingAmount)), vec2(0.0), vec2(1.0));
 
@@ -125,7 +131,12 @@ export class CosmicNoirPost {
             this.bloomNode.threshold.value = params.bloomThreshold;
         }
         if (params.chromaticStrength !== undefined) {
-            this.uChromaticStrength.value = params.chromaticStrength;
+            this.baseChromaticStrength = params.chromaticStrength;
+            this.uChromaticStrength.value = this.chromaticEnabled ? this.baseChromaticStrength : 0.0;
+        }
+        if (params.chromaticEnabled !== undefined) {
+            this.chromaticEnabled = Boolean(params.chromaticEnabled);
+            this.uChromaticStrength.value = this.chromaticEnabled ? this.baseChromaticStrength : 0.0;
         }
         if (params.vignetteOffset !== undefined) {
             this.uVignetteOffset.value = params.vignetteOffset;
@@ -151,6 +162,9 @@ export class CosmicNoirPost {
         if (params.bhScreenPos !== undefined) {
             this.uBhScreenPos.value.copy(params.bhScreenPos);
         }
+        if (params.lensingStrength !== undefined) {
+            this.uLensingStrength.value = params.lensingStrength;
+        }
         if (params.bloomDownsample !== undefined) {
             this.bloomDownsample = params.bloomDownsample;
             if (
@@ -159,6 +173,12 @@ export class CosmicNoirPost {
                 && this.bloomNode?._separableBlurMaterials?.length
             ) {
                 this.bloomNode.setSize(this.size.width, this.size.height);
+            }
+        }
+        if (params.resolutionScale !== undefined) {
+            this.resolutionScale = params.resolutionScale;
+            if (this.size.width > 0 && this.size.height > 0) {
+                this.setSize(this.size.width, this.size.height);
             }
         }
     }
@@ -173,9 +193,11 @@ export class CosmicNoirPost {
         if (this.uScreenAspect) {
             this.uScreenAspect.value = width / height;
         }
-        this.scenePass.setSize(width, height);
+        const scaledWidth = Math.max(1, Math.round(width * this.resolutionScale));
+        const scaledHeight = Math.max(1, Math.round(height * this.resolutionScale));
+        this.scenePass.setSize(scaledWidth, scaledHeight);
         if (this.bloomNode?._separableBlurMaterials?.length) {
-            this.bloomNode.setSize(width, height);
+            this.bloomNode.setSize(scaledWidth, scaledHeight);
         }
     }
 

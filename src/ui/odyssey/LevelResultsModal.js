@@ -50,6 +50,7 @@ export class LevelResultsModal {
         // Create overlay
         this.overlay = document.createElement('div');
         this.overlay.className = 'level-results-overlay';
+        this.overlay.dataset.odysseyWheelLock = 'true';
         this.overlay.style.cssText = `
             position: fixed;
             top: 0;

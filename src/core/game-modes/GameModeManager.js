@@ -1,9 +1,3 @@
-import { SinglePlayerMode } from './SinglePlayerMode.js';
-import { LocalMultiplayerMode } from './LocalMultiplayerMode.js';
-import { OnlineMultiplayerMode } from './OnlineMultiplayerMode.js';
-import { SerenityMode } from './SerenityMode.js';
-import { InfinityMode } from './InfinityMode.js';
-import { OdysseyMode } from './OdysseyMode.js';
 import { GAME_MODES } from '../constants.js';
 
 /**
@@ -57,12 +51,51 @@ export class GameModeManager {
      * @private
      */
     _registerModes() {
-        this.registerMode(new SinglePlayerMode(this.deps));
-        this.registerMode(new LocalMultiplayerMode(this.deps));
-        this.registerMode(new OnlineMultiplayerMode(this.deps));
-        this.registerMode(new SerenityMode(this.deps));
-        this.registerMode(new InfinityMode(this.deps));
-        this.registerMode(new OdysseyMode(this.deps));
+        this.registerModeFactory(
+            GAME_MODES.SINGLE_PLAYER,
+            'Single Player',
+            async () => (await import('./SinglePlayerMode.js')).SinglePlayerMode,
+        );
+        this.registerModeFactory(
+            GAME_MODES.LOCAL_MULTIPLAYER,
+            'Local Multiplayer',
+            async () => (await import('./LocalMultiplayerMode.js')).LocalMultiplayerMode,
+        );
+        this.registerModeFactory(
+            GAME_MODES.ONLINE_MULTIPLAYER,
+            'Online Multiplayer',
+            async () => (await import('./OnlineMultiplayerMode.js')).OnlineMultiplayerMode,
+        );
+        this.registerModeFactory(
+            GAME_MODES.SERENITY,
+            'Serenity',
+            async () => (await import('./SerenityMode.js')).SerenityMode,
+        );
+        this.registerModeFactory(
+            GAME_MODES.INFINITY,
+            'Infinity',
+            async () => (await import('./InfinityMode.js')).InfinityMode,
+        );
+        this.registerModeFactory(
+            GAME_MODES.ODYSSEY,
+            'Odyssey',
+            async () => (await import('./OdysseyMode.js')).OdysseyMode,
+        );
+    }
+
+    registerModeFactory(modeId, displayName, loader) {
+        if (!modeId || typeof loader !== 'function') {
+            throw new Error('[GameModeManager] Invalid lazy mode registration');
+        }
+
+        this.modes.set(modeId, {
+            modeId,
+            displayName,
+            loader,
+            instance: null,
+            loadingPromise: null,
+        });
+        console.log(`[GameModeManager] Registered lazy mode: ${modeId} (${displayName})`);
     }
 
     /**
@@ -76,8 +109,44 @@ export class GameModeManager {
             console.warn(`[GameModeManager] Mode ${modeId} already registered, replacing...`);
         }
 
-        this.modes.set(modeId, mode);
+        this.modes.set(modeId, {
+            modeId,
+            displayName: mode.getDisplayName(),
+            loader: null,
+            instance: mode,
+            loadingPromise: null,
+        });
         console.log(`[GameModeManager] Registered mode: ${modeId} (${mode.getDisplayName()})`);
+    }
+
+    async _ensureMode(modeId) {
+        const entry = this.modes.get(modeId);
+        if (!entry) {
+            throw new Error(`[GameModeManager] Unknown mode: ${modeId}`);
+        }
+
+        if (entry.instance) {
+            return entry.instance;
+        }
+
+        if (!entry.loader) {
+            throw new Error(`[GameModeManager] Mode ${modeId} has no loader`);
+        }
+
+        if (!entry.loadingPromise) {
+            entry.loadingPromise = (async () => {
+                const ModeClass = await entry.loader();
+                const modeInstance = new ModeClass(this.deps);
+                entry.instance = modeInstance;
+                entry.displayName = modeInstance.getDisplayName?.() || entry.displayName;
+                console.log(`[GameModeManager] Loaded mode: ${modeId} (${entry.displayName})`);
+                return modeInstance;
+            })().finally(() => {
+                entry.loadingPromise = null;
+            });
+        }
+
+        return entry.loadingPromise;
     }
 
     /**
@@ -86,7 +155,7 @@ export class GameModeManager {
      * @returns {BaseGameMode|null}
      */
     getMode(modeId) {
-        return this.modes.get(modeId) || null;
+        return this.modes.get(modeId)?.instance || null;
     }
 
     /**
@@ -94,7 +163,9 @@ export class GameModeManager {
      * @returns {Array<BaseGameMode>}
      */
     getAllModes() {
-        return Array.from(this.modes.values());
+        return Array.from(this.modes.values())
+            .map((entry) => entry.instance)
+            .filter(Boolean);
     }
 
     /**
@@ -128,11 +199,7 @@ export class GameModeManager {
      * @returns {Promise<void>}
      */
     async activateMode(modeId) {
-        const mode = this.modes.get(modeId);
-
-        if (!mode) {
-            throw new Error(`[GameModeManager] Unknown mode: ${modeId}`);
-        }
+        const mode = await this._ensureMode(modeId);
 
         // If this mode is already active, do nothing
         if (this.currentModeId === modeId && this.currentMode?.isActive) {
@@ -356,14 +423,25 @@ export class GameModeManager {
     getState() {
         const modesState = {};
 
-        this.modes.forEach((mode, modeId) => {
-            modesState[modeId] = mode.getState();
+        this.modes.forEach((entry, modeId) => {
+            modesState[modeId] = entry.instance
+                ? entry.instance.getState()
+                : {
+                    isLoaded: false,
+                    isActive: this.currentModeId === modeId,
+                    isRunning: false,
+                    displayName: entry.displayName,
+                };
         });
 
         return {
             currentModeId: this.currentModeId,
             modes: modesState,
         };
+    }
+
+    async preloadMode(modeId) {
+        await this._ensureMode(modeId);
     }
 
     /**

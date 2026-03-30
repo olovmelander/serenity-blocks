@@ -359,6 +359,7 @@ export class StellarNebulaBurstCompute {
         const originY = origin?.y ?? 0;
         const originZ = origin?.z ?? 0;
         const burstColor = color?.isColor ? color : new THREE.Color(color ?? 0xffffff);
+        const luminance = (burstColor.r * 0.2126) + (burstColor.g * 0.7152) + (burstColor.b * 0.0722);
 
         for (let i = 0; i < spawnCount; i += 1) {
             const index = this.spawnCursor;
@@ -366,7 +367,9 @@ export class StellarNebulaBurstCompute {
 
             const spreadX = (this.random() - 0.5) * spread * 0.8;
             const spreadY = (this.random() - 0.5) * spread * 0.5;
-            const speed = 4800 + this.random() * 4800;
+            const speed = (4800 + this.random() * 4800) * (0.92 + burstColor.b * 0.18 + burstColor.r * 0.08);
+            const particleSize = (180 + this.random() * 170) * (0.82 + luminance * 0.46);
+            const lifeDecay = 1 / Math.max(0.9, lifeSeconds * (0.94 + luminance * 0.42));
 
             this.positionData[i4] = originX + spreadX;
             this.positionData[i4 + 1] = originY + spreadY;
@@ -386,12 +389,12 @@ export class StellarNebulaBurstCompute {
             this.colorData[i4] = burstColor.r;
             this.colorData[i4 + 1] = burstColor.g;
             this.colorData[i4 + 2] = burstColor.b;
-            this.colorData[i4 + 3] = 200 + this.random() * 150;
+            this.colorData[i4 + 3] = particleSize;
 
-            this.miscData[i4] = this.colorData[i4 + 3];
+            this.miscData[i4] = particleSize;
             this.miscData[i4 + 1] = 1.0;
             this.miscData[i4 + 2] = this.random();
-            this.miscData[i4 + 3] = 1 / Math.max(0.8, lifeSeconds);
+            this.miscData[i4 + 3] = lifeDecay;
 
             this.spawnCursor = (this.spawnCursor + 1) % this.count;
         }

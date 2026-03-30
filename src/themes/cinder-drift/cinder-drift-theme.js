@@ -26,6 +26,7 @@ export default class CinderDriftTheme extends BaseTheme {
     constructor() {
         super('cinder-drift');
         this.eventUnsubscribers = [];
+        this.boundResizeHandler = this.onWindowResize.bind(this);
 
         // Three.js components
         this.scene = null;
@@ -107,7 +108,7 @@ export default class CinderDriftTheme extends BaseTheme {
 
         // 4. Events
         this.setupEventListeners();
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         // 5. Start Loop
         this.animate();
@@ -855,6 +856,7 @@ export default class CinderDriftTheme extends BaseTheme {
         super.stop();
         this.eventUnsubscribers.forEach((u) => u());
         this.eventUnsubscribers = [];
+        window.removeEventListener('resize', this.boundResizeHandler);
     }
 
     cleanup() {
@@ -879,6 +881,7 @@ export default class CinderDriftTheme extends BaseTheme {
 
         this.scene = null;
         this.renderer = null;
+        super.cleanup();
         console.log('[CinderDrift] Cleanup complete');
     }
 }

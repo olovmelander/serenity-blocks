@@ -9,7 +9,10 @@
  */
 
 import * as THREE from 'three';
-import { getChapterPathRange } from '../path-utils.js';
+import {
+    getChapterPathRange,
+    ODYSSEY_SURFACE_BREAKOUT_Y_OFFSET,
+} from '../path-utils.js';
 
 /**
  * Deep Ocean environment configuration
@@ -257,9 +260,10 @@ export function createDeepOceanEnvironment(options = {}) {
     const chapterRange = getChapterPathRange(2);
     const fallbackCenterY = (DEEP_OCEAN_CONFIG.yStart + DEEP_OCEAN_CONFIG.yEnd) / 2;
     const chapterCenterY = chapterRange?.center.y ?? fallbackCenterY;
-    const surfaceOffsetY = chapterRange
-        ? chapterRange.end.y - chapterCenterY
-        : 20;
+    const waterSurfaceY = chapterRange
+        ? chapterRange.end.y - ODYSSEY_SURFACE_BREAKOUT_Y_OFFSET
+        : chapterCenterY + 20;
+    const surfaceOffsetY = waterSurfaceY - chapterCenterY;
 
     if (chapterRange) {
         group.userData.yStart = chapterRange.start.y;
@@ -293,7 +297,7 @@ export function createDeepOceanEnvironment(options = {}) {
 
     // Position group center
     group.position.y = chapterCenterY;
-    group.userData.waterSurfaceY = chapterCenterY + surfaceOffsetY;
+    group.userData.waterSurfaceY = waterSurfaceY;
 
     return group;
 }

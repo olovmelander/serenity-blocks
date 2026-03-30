@@ -5,12 +5,21 @@
  * of cosmic ascent from Earth's core to abstract transcendence and urban dreams.
  */
 
+export const DEFAULT_BOARD_TRANSITION = Object.freeze({
+    seamWidth: 0.018,
+    beatDurationMs: 850,
+    preloadDistance: 0.05,
+    fxPreset: 'standard',
+});
+
 export const CHAPTER_CONFIGS = [
     {
         id: 1,
         name: 'Earth Core & Subterranean Origins',
-        subtitle: 'Begin your ascent',
+        subtitle: 'Find your first rhythm',
         levelRange: [1, 5],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'test', 'boss'],
+        targetDifficultyCurve: [1, 2, 2, 3, 4],
 
         themes: {
             primary: ['crystal-cave', 'cinder-drift', 'geode', 'pyrestorm', 'bioluminescence'],
@@ -34,6 +43,7 @@ export const CHAPTER_CONFIGS = [
             intro: 'The journey begins deep within the Earth\'s core. Pressure surrounds you, but crystal light shows the way.',
             outro: 'You emerge from the molten depths. Above, you sense the vast liquid worlds waiting...',
         },
+        boardTransition: { ...DEFAULT_BOARD_TRANSITION },
 
         unlockRequirement: null, // First chapter always unlocked
     },
@@ -41,11 +51,13 @@ export const CHAPTER_CONFIGS = [
     {
         id: 2,
         name: 'Deep Ocean & Liquid Worlds',
-        subtitle: 'Descend into the deep',
+        subtitle: 'Drift, dive, recover',
         levelRange: [6, 11],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'reinforce', 'release', 'boss'],
+        targetDifficultyCurve: [3, 4, 4, 5, 4, 6],
 
         themes: {
-            primary: ['ocean', 'luminous-tides', 'stillwater', 'koi-pond', 'waves', 'misty-lake'],
+            primary: ['ocean', 'luminous-tides', 'koi-pond', 'waves', 'misty-lake', 'stillwater'],
             supporting: [],
         },
 
@@ -63,9 +75,10 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'Rock dissolves into water as you descend into the deep ocean. Bioluminescent life pulses gently around you.',
-            outro: 'Light breaks through above. The surface world awaits, full of life and color...',
+            intro: 'Stone gives way to water and pressure eases into flow. The ocean teaches patience before it asks for command.',
+            outro: 'Light spills down from above. The sea lifts you toward land, color, and changing seasons...',
         },
+        boardTransition: { ...DEFAULT_BOARD_TRANSITION },
 
         unlockRequirement: {
             type: 'complete-chapter',
@@ -76,11 +89,13 @@ export const CHAPTER_CONFIGS = [
     {
         id: 3,
         name: 'Surface World & Living Landscapes',
-        subtitle: 'Embrace the light',
-        levelRange: [12, 21],
+        subtitle: 'Learn the seasons',
+        levelRange: [12, 19],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'teach', 'test', 'test', 'release', 'boss'],
+        targetDifficultyCurve: [4, 4, 5, 5, 6, 6, 5, 7],
 
         themes: {
-            primary: ['forest', 'moonlit-forest', 'swedish-forest', 'moonlit-greenhouse', 'tornado', 'summer', 'fall', 'meadow', 'sakura-twilight', 'verdant-hills'],
+            primary: ['forest', 'moonlit-forest', 'swedish-forest', 'moonlit-greenhouse', 'tornado', 'summer', 'fall', 'meadow'],
             supporting: [],
         },
 
@@ -98,8 +113,13 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'You break the surface into open, breathable natural environments. Light, wind, and life surround you.',
-            outro: 'The horizon calls upward. Mountains pierce the sky, challenging you to climb higher...',
+            intro: 'You break into daylight and living air. Forests, fields, heat, and wind teach rhythm through contrast instead of pressure.',
+            outro: 'The earth begins to rise beneath your feet. Foothills harden into a climb toward colder air and sharper edges...',
+        },
+        boardTransition: {
+            ...DEFAULT_BOARD_TRANSITION,
+            seamWidth: 0.03,
+            preloadDistance: 0.06,
         },
 
         unlockRequirement: {
@@ -111,11 +131,13 @@ export const CHAPTER_CONFIGS = [
     {
         id: 4,
         name: 'Mountains & Thin-Air Ascension',
-        subtitle: 'Scale the heights',
-        levelRange: [22, 30],
+        subtitle: 'Climb the ridgeline',
+        levelRange: [20, 27],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'reinforce', 'test', 'release', 'test', 'boss'],
+        targetDifficultyCurve: [6, 6, 6, 6, 7, 6, 7, 8],
 
         themes: {
-            primary: ['aurora', 'wolfhour', 'himalayan-peak', 'mountain', 'winter', 'moonrise-summit', 'sunset', 'starlight', 'ice-temple'],
+            primary: ['sakura-twilight', 'verdant-hills', 'aurora', 'wolfhour', 'himalayan-peak', 'mountain', 'winter', 'moonrise-summit'],
             supporting: [],
         },
 
@@ -133,8 +155,12 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'Elevation becomes the focus. The air grows thin as you ascend through towering peaks and icy ridges.',
-            outro: 'The summit passes beneath you. Above, only sky remains. Gravity begins to loosen its grip...',
+            intro: 'Foothills turn to ridgelines and the climb becomes deliberate. Every gain in altitude asks for cleaner decisions.',
+            outro: 'At the summit, stone gives way to light. The next step is no longer upward through land, but outward into sky...',
+        },
+        boardTransition: {
+            ...DEFAULT_BOARD_TRANSITION,
+            seamWidth: 0.06,
         },
 
         unlockRequirement: {
@@ -146,11 +172,13 @@ export const CHAPTER_CONFIGS = [
     {
         id: 5,
         name: 'Sky & Atmospheric Drift',
-        subtitle: 'Float among clouds',
-        levelRange: [31, 35],
+        subtitle: 'Cross the last air',
+        levelRange: [28, 35],
+        arcBeats: ['arrival', 'release', 'reinforce', 'reinforce', 'test', 'reinforce', 'boss', 'boss'],
+        targetDifficultyCurve: [7, 6, 6, 6, 8, 7, 9, 9],
 
         themes: {
-            primary: ['nimbus-veil', 'rainy-window', 'aether-tides', 'solar-eclipse', 'lunara'],
+            primary: ['sunset', 'starlight', 'aurora', 'nimbus-veil', 'rainy-window', 'aether-tides', 'solar-eclipse', 'lunara'],
             supporting: [],
         },
 
@@ -168,9 +196,10 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'Gravity loosens as you float into the sky. Clouds, mist, and auroras surround the path.',
-            outro: 'The atmosphere thins to nothing. Stars beckon from the cosmic expanse beyond...',
+            intro: 'The mountain drops away beneath you. Clouds, rain, aurora, and eclipse light become the new terrain.',
+            outro: 'The last breath of atmosphere fades. What remains ahead is pure distance and the cold logic of space...',
         },
+        boardTransition: { ...DEFAULT_BOARD_TRANSITION },
 
         unlockRequirement: {
             type: 'complete-chapter',
@@ -181,11 +210,13 @@ export const CHAPTER_CONFIGS = [
     {
         id: 6,
         name: 'Space & Cosmic Expanse',
-        subtitle: 'Journey through stars',
+        subtitle: 'Push into the void',
         levelRange: [36, 44],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'test', 'test', 'test', 'boss', 'test', 'boss'],
+        targetDifficultyCurve: [8, 8, 8, 9, 10, 9, 10, 9, 10],
 
         themes: {
-            primary: ['galaxy', 'cosmic-noir', 'supernova', 'blood-moon', 'astral-weave', 'stellar-drift', 'stellar-velocity', 'cosmic-chimes', 'black-hole'],
+            primary: ['galaxy', 'cosmic-noir', 'supernova', 'blood-moon', 'astral-weave', 'stellar-velocity', 'cosmic-chimes', 'black-hole'],
             supporting: [],
         },
 
@@ -206,6 +237,13 @@ export const CHAPTER_CONFIGS = [
             intro: 'You exit the atmosphere into outer space. Vastness replaces familiarity. Stars, planets, and nebulae surround you.',
             outro: 'A darkness grows ahead. Not empty void, but something denser. The event horizon awaits...',
         },
+        boardTransition: {
+            ...DEFAULT_BOARD_TRANSITION,
+            seamWidth: 0.03,
+            beatDurationMs: 1100,
+            preloadDistance: 0.07,
+            fxPreset: 'heavy',
+        },
 
         unlockRequirement: {
             type: 'complete-chapter',
@@ -216,8 +254,10 @@ export const CHAPTER_CONFIGS = [
     {
         id: 7,
         name: 'Black Hole & Abstract Transcendence',
-        subtitle: 'Beyond reality',
+        subtitle: 'Surrender to abstraction',
         levelRange: [45, 51],
+        arcBeats: ['arrival', 'reinforce', 'test', 'boss', 'test', 'release', 'boss'],
+        targetDifficultyCurve: [8, 9, 9, 10, 10, 8, 10],
 
         themes: {
             primary: ['fluid-dreams', 'nebula-flow', 'chromadelic-highway', 'voltage-storm', 'chromatic-impasto', 'electric-dreams', 'singing-bowl'],
@@ -239,7 +279,14 @@ export const CHAPTER_CONFIGS = [
 
         narrative: {
             intro: 'The journey collapses inward toward a black hole. Space, geometry, and light begin to distort.',
-            outro: 'Beyond the singularity, physical reality dissolves. You have transcended. The journey is complete.',
+            outro: 'Beyond the singularity, physical reality dissolves. The core journey ends here, in pure abstraction.',
+        },
+        boardTransition: {
+            ...DEFAULT_BOARD_TRANSITION,
+            seamWidth: 0.022,
+            beatDurationMs: 900,
+            preloadDistance: 0.06,
+            fxPreset: 'neon',
         },
 
         unlockRequirement: {
@@ -250,9 +297,11 @@ export const CHAPTER_CONFIGS = [
 
     {
         id: 8,
-        name: 'Urban Dreams',
-        subtitle: 'Neon reflections',
+        name: 'Urban Dreams Encore',
+        subtitle: 'Bonus chapter',
         levelRange: [52, 55],
+        arcBeats: ['encore', 'encore', 'encore', 'encore'],
+        targetDifficultyCurve: [7, 8, 9, 10],
 
         themes: {
             primary: ['shifting-sands', 'neon-dusk', 'synthwave-sunset', 'neon-district'],
@@ -273,9 +322,10 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'A detour through neon-lit cityscapes. Rain reflects the glow of countless signs as you drift through urban dreams.',
-            outro: 'The city fades into memory. The cosmic journey continues, but these electric nights remain with you.',
+            intro: 'A bonus coda unfolds in neon-lit cityscapes. This is an encore: a harder, flashier dream after the true finale.',
+            outro: 'The city fades like an afterimage. What remains is the memory of the journey and the pulse of these electric nights.',
         },
+        boardTransition: { ...DEFAULT_BOARD_TRANSITION },
 
         unlockRequirement: {
             type: 'complete-chapter',

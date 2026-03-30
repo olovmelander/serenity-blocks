@@ -731,12 +731,13 @@ export class SinglePlayerMode extends BaseGameMode {
         return {
             onMove: () => this.deps.soundManager.sfxPlayer.playMove(),
             onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
-            onLineClear: (lineCount) => {
+            onLineClear: (lineCount, ...rest) => {
+                const clearedRows = Array.isArray(rest[2]) ? rest[2] : [];
                 this.deps.soundManager.sfxPlayer.playLineClear();
 
                 // Emit event for theme reactions
                 console.log('[SinglePlayer] Emitting LINE_CLEAR event, count:', lineCount);
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount });
+                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount, clearedRows });
             },
             onLevelUp: () => this.deps.soundManager.sfxPlayer.playLevelUp(),
             onHardDrop: (dropData) => {

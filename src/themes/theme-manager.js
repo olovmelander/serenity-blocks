@@ -7,12 +7,66 @@ import { THEME_REGISTRY, getThemeMeta } from './theme-registry.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { assetManager } from '../utils/asset-manager.js';
 import { audioManager } from '../utils/audio-manager.js';
+import { performanceMonitor } from '../utils/performance-monitor.js';
+
+/** Timeout in ms for theme init() and start() — prevents game freeze from hanging themes */
+const THEME_LIFECYCLE_TIMEOUT = 10000;
+
+/**
+ * Race a promise against a timeout. Rejects if the promise doesn't resolve in time.
+ * @param {Promise} promise - The promise to race
+ * @param {number} ms - Timeout in milliseconds
+ * @param {string} label - Description for the error message
+ * @returns {Promise}
+ */
+function withTimeout(promise, ms, label) {
+    let timer;
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+        }),
+    ]).finally(() => clearTimeout(timer));
+}
+
+export function resolveThemeStartupPolicy(runtimeConfig = null, {
+    startupComplete = false,
+} = {}) {
+    const isPackagedWindows = runtimeConfig?.platform === 'win32' && runtimeConfig?.isPackaged;
+    const isSafeMode = isPackagedWindows && runtimeConfig?.safeMode === true;
+
+    if (isSafeMode) {
+        return {
+            maxCachedThemes: 1,
+            deferAdjacentThemePreload: true,
+            preserveSuspendedRuntime: false,
+        };
+    }
+
+    if (isPackagedWindows && !startupComplete) {
+        return {
+            maxCachedThemes: 1,
+            deferAdjacentThemePreload: true,
+            preserveSuspendedRuntime: false,
+        };
+    }
+
+    return {
+        maxCachedThemes: 2,
+        deferAdjacentThemePreload: !startupComplete,
+        preserveSuspendedRuntime: true,
+    };
+}
 
 /**
  * ThemeManager handles theme loading, switching, and lifecycle
  */
 export class ThemeManager {
-    constructor(webglRenderer, { assetManager: assetMgr = null, audioManager: audioMgr = null } = {}) {
+    constructor(webglRenderer, {
+        assetManager: assetMgr = null,
+        audioManager: audioMgr = null,
+        runtimeConfig = null,
+    } = {}) {
         this.webglRenderer = webglRenderer;
         this.activeTheme = null;
         this.activeThemeName = 'forest';
@@ -23,9 +77,21 @@ export class ThemeManager {
         this.themesSuspended = true;
         this.pendingThemeName = null;
         this.pendingThemeInstance = null;
+        this.startupPhaseComplete = false;
+        this.deferAdjacentThemePreload = true;
+        this.pendingAdjacentThemePreload = false;
+        this.adjacentThemePreloadTimer = null;
+        this.adjacentThemePreloadIdleId = null;
+        this.runtimeConfig = runtimeConfig;
+        this.allowSuspendedRuntimeReuse = true;
 
         // LRU cache management
-        this.maxCachedThemes = 5; // Limit cache size to prevent memory growth
+        const startupPolicy = resolveThemeStartupPolicy(this.runtimeConfig, {
+            startupComplete: false,
+        });
+        this.maxCachedThemes = startupPolicy.maxCachedThemes;
+        this.deferAdjacentThemePreload = startupPolicy.deferAdjacentThemePreload;
+        this.allowSuspendedRuntimeReuse = startupPolicy.preserveSuspendedRuntime;
         this.themeLRU = []; // Track theme access order (oldest to newest)
 
         // Theme shuffle deck for better random distribution
@@ -39,6 +105,18 @@ export class ThemeManager {
         this.initializeRegistry();
 
         console.log('[ThemeManager] Initialized with asset and audio managers');
+    }
+
+    isPackagedWindowsBaselineProfile() {
+        return this.runtimeConfig?.platform === 'win32'
+            && this.runtimeConfig?.isPackaged
+            && this.runtimeConfig?.windowsProfile === 'baseline';
+    }
+
+    isPackagedWindowsSafeMode() {
+        return this.runtimeConfig?.platform === 'win32'
+            && this.runtimeConfig?.isPackaged
+            && this.runtimeConfig?.safeMode === true;
     }
 
     /**
@@ -58,6 +136,23 @@ export class ThemeManager {
         });
     }
 
+    async resolveThemeImporter(themeName, importer) {
+        try {
+            return await importer();
+        } catch (error) {
+            const message = error?.message || String(error);
+            const looksLikeChunkFailure = /Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError|preload/i.test(message);
+
+            if (!looksLikeChunkFailure) {
+                throw error;
+            }
+
+            console.warn(`[ThemeManager] Dynamic import failed for "${themeName}", retrying once`, error);
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            return importer();
+        }
+    }
+
     /**
      * Update LRU order - mark theme as most recently used
      * @param {string} themeName - Theme to mark as accessed
@@ -70,6 +165,31 @@ export class ThemeManager {
         }
         // Add to end (most recent)
         this.themeLRU.push(themeName);
+    }
+
+    isHeavyGpuTheme(themeName) {
+        return getThemeMeta(themeName)?.performanceClass === 'heavy';
+    }
+
+    isStartupEligibleTheme(themeName) {
+        return getThemeMeta(themeName)?.startupEligible !== false;
+    }
+
+    deactivateThemeRuntime(themeInstance, themeName) {
+        if (!themeInstance) {
+            return;
+        }
+
+        if (this.isHeavyGpuTheme(themeName) && typeof themeInstance.releaseInactiveResources === 'function') {
+            themeInstance.releaseInactiveResources();
+        } else {
+            themeInstance.stop();
+        }
+
+        if (this.webglRenderer && typeof this.webglRenderer.clearThemeResources === 'function') {
+            console.log('[ThemeManager] Clearing renderer theme resources');
+            this.webglRenderer.clearThemeResources();
+        }
     }
 
     /**
@@ -126,8 +246,10 @@ export class ThemeManager {
         // Get module path
         const importer = this.themeRegistry.get(themeName);
         if (!importer) {
-            console.error(`Theme "${themeName}" not found in registry`);
-            // Fallback to forest theme
+            if (themeName === 'forest') {
+                throw new Error('Forest theme not found in registry — cannot fallback');
+            }
+            console.error(`Theme "${themeName}" not found in registry, falling back to forest`);
             return this.loadTheme('forest', silent);
         }
 
@@ -137,14 +259,15 @@ export class ThemeManager {
             }
 
             // Dynamically import the theme module
-            const module = await importer();
+            const module = await this.resolveThemeImporter(themeName, importer);
             const ThemeClass = module.default;
 
             // Instantiate the theme
             const themeInstance = new ThemeClass();
+            themeInstance.resourceProfile = getThemeMeta(themeName)?.resourceProfile || 'light';
 
-            // Initialize the theme
-            await themeInstance.init();
+            // Initialize the theme (with timeout to prevent game freeze)
+            await withTimeout(themeInstance.init(), THEME_LIFECYCLE_TIMEOUT, `Theme "${themeName}" init`);
 
             // Cache the instance
             this.themeInstances.set(themeName, themeInstance);
@@ -214,9 +337,73 @@ export class ThemeManager {
         const nextIndex = (currentIndex + 1) % THEMES.length;
         const nextTheme = THEMES[nextIndex];
 
+        if (this.isHeavyGpuTheme(nextTheme)) {
+            console.log(`[ThemeManager] Skipping adjacent preload for heavy theme: ${nextTheme}`);
+            return;
+        }
+
         if (!this.themeInstances.has(nextTheme)) {
             console.log(`[ThemeManager] Preloading next theme: ${nextTheme}`);
             await this.loadTheme(nextTheme, true);
+        }
+    }
+
+    queueAdjacentThemePreload(delayMs = 350) {
+        this.clearAdjacentThemePreloadQueue();
+        if (this.isPackagedWindowsSafeMode()) {
+            return;
+        }
+        if (this.deferAdjacentThemePreload) {
+            this.pendingAdjacentThemePreload = true;
+            return;
+        }
+
+        const runPreload = () => {
+            this.adjacentThemePreloadTimer = null;
+            this.adjacentThemePreloadIdleId = null;
+            this.pendingAdjacentThemePreload = false;
+            this.preloadNextTheme().catch((error) => {
+                console.warn('[ThemeManager] Failed to preload next theme:', error);
+            });
+        };
+
+        if (typeof requestIdleCallback === 'function') {
+            this.adjacentThemePreloadIdleId = requestIdleCallback(runPreload, { timeout: 1500 });
+            return;
+        }
+
+        this.adjacentThemePreloadTimer = setTimeout(runPreload, delayMs);
+    }
+
+    clearAdjacentThemePreloadQueue() {
+        if (this.adjacentThemePreloadTimer) {
+            clearTimeout(this.adjacentThemePreloadTimer);
+            this.adjacentThemePreloadTimer = null;
+        }
+        if (typeof cancelIdleCallback === 'function' && this.adjacentThemePreloadIdleId !== null) {
+            cancelIdleCallback(this.adjacentThemePreloadIdleId);
+            this.adjacentThemePreloadIdleId = null;
+        }
+    }
+
+    releaseStartupPreload(delayMs = 650) {
+        if (this.isPackagedWindowsSafeMode()) {
+            return;
+        }
+
+        this.startupPhaseComplete = true;
+        const nextPolicy = resolveThemeStartupPolicy(this.runtimeConfig, {
+            startupComplete: true,
+        });
+        this.maxCachedThemes = nextPolicy.maxCachedThemes;
+        this.deferAdjacentThemePreload = nextPolicy.deferAdjacentThemePreload;
+        this.allowSuspendedRuntimeReuse = nextPolicy.preserveSuspendedRuntime;
+        const effectiveDelayMs = this.isPackagedWindowsBaselineProfile()
+            ? Math.max(delayMs, 2200)
+            : delayMs;
+
+        if (this.pendingAdjacentThemePreload) {
+            this.queueAdjacentThemePreload(effectiveDelayMs);
         }
     }
 
@@ -228,6 +415,8 @@ export class ThemeManager {
      */
     async switchTheme(themeName, immediate = false) {
         console.log('[ThemeManager] switchTheme called:', themeName);
+        const switchStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        const previousTheme = this.activeThemeName;
 
         if (this.isTransitioning) {
             console.log('[ThemeManager] Theme transition already in progress');
@@ -256,13 +445,7 @@ export class ThemeManager {
             // Stop and cleanup current theme if any
             if (this.activeTheme) {
                 console.log('[ThemeManager] Stopping current theme:', this.activeThemeName);
-                this.activeTheme.stop();
-
-                // IMPORTANT: Clean up renderer resources before loading new theme
-                if (this.webglRenderer && typeof this.webglRenderer.cleanup === 'function') {
-                    console.log('[ThemeManager] Cleaning up renderer resources');
-                    this.webglRenderer.cleanup();
-                }
+                this.deactivateThemeRuntime(this.activeTheme, this.activeThemeName);
             }
 
             this.pendingThemeInstance = newTheme;
@@ -278,6 +461,12 @@ export class ThemeManager {
         } catch (error) {
             console.error('[ThemeManager] Failed to switch theme:', error);
         } finally {
+            const endedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+            performanceMonitor.recordThemeSwitch({
+                fromTheme: previousTheme,
+                toTheme: themeName,
+                durationMs: endedAt - switchStartedAt,
+            });
             this.isTransitioning = false;
         }
     }
@@ -293,21 +482,32 @@ export class ThemeManager {
         // Stop current active theme if different from the one we're activating
         if (this.activeTheme && this.activeTheme !== themeInstance) {
             console.log('[ThemeManager] Stopping current theme:', this.activeThemeName);
-            this.activeTheme.stop();
-
-            // Clean up renderer resources when switching between different themes
-            if (this.webglRenderer && typeof this.webglRenderer.cleanup === 'function') {
-                console.log('[ThemeManager] Cleaning up renderer resources for theme switch');
-                this.webglRenderer.cleanup();
-            }
+            this.deactivateThemeRuntime(this.activeTheme, this.activeThemeName);
         }
 
         // Start the theme (this calls createScene and initializes everything)
         console.log('[ThemeManager] Starting theme:', themeName);
-        await themeInstance.start(this.webglRenderer, {
-            assetManager: this.assetManager,
-            audioManager: this.audioManager,
-        });
+        try {
+            await withTimeout(
+                themeInstance.start(this.webglRenderer, {
+                    assetManager: this.assetManager,
+                    audioManager: this.audioManager,
+                }),
+                THEME_LIFECYCLE_TIMEOUT,
+                `Theme "${themeName}" start`,
+            );
+        } catch (error) {
+            console.error(`[ThemeManager] Theme "${themeName}" failed to start:`, error);
+            // Attempt fallback to forest if this wasn't already forest
+            if (themeName !== 'forest') {
+                console.warn('[ThemeManager] Falling back to forest theme');
+                const forestTheme = await this.loadTheme('forest');
+                await this.activateThemeInstance(forestTheme, 'forest');
+                return;
+            }
+            // Forest itself failed — no further fallback possible
+            throw error;
+        }
 
         this.activeTheme = themeInstance;
         this.activeThemeName = themeName;
@@ -319,24 +519,34 @@ export class ThemeManager {
         eventBus.emit(EVENTS.THEME_CHANGED, { themeName });
         console.log('[ThemeManager] Theme activation complete:', themeName);
 
-        this.preloadNextTheme().catch((error) => {
-            console.warn('[ThemeManager] Failed to preload next theme:', error);
-        });
+        this.queueAdjacentThemePreload();
     }
 
     suspendThemes() {
         if (this.activeTheme) {
             console.log('[ThemeManager] Suspending active theme:', this.activeThemeName);
-            this.activeTheme.stop();
+            const paused = this.allowSuspendedRuntimeReuse
+                && typeof this.activeTheme.pause === 'function'
+                ? this.activeTheme.pause()
+                : false;
+
+            if (!paused) {
+                this.activeTheme.stop();
+            }
+
             this.pendingThemeInstance = this.activeTheme;
             this.pendingThemeName = this.activeThemeName;
             this.activeTheme = null;
         }
 
-        // Don't cleanup the renderer when suspending - we'll likely resume with the same theme
-        // Only cleanup when actually switching themes or shutting down
-        // This preserves canvas contexts and GPU resources for quick resume
-        console.log('[ThemeManager] Theme suspended, renderer preserved for quick resume');
+        if (!this.allowSuspendedRuntimeReuse
+            && this.webglRenderer
+            && typeof this.webglRenderer.clearThemeResources === 'function') {
+            this.webglRenderer.clearThemeResources();
+            console.log('[ThemeManager] Theme suspended, renderer resources released');
+        } else {
+            console.log('[ThemeManager] Theme suspended, renderer preserved for quick resume');
+        }
 
         this.themesSuspended = true;
     }
@@ -360,7 +570,7 @@ export class ThemeManager {
 
         // Check if theme was ever started (has isActive been true before)
         // If the theme was loaded but never started, we need to do full activation
-        const wasNeverStarted = !themeInstance.isActive && this.pendingThemeInstance === themeInstance;
+        const wasNeverStarted = !themeInstance.hasStarted && this.pendingThemeInstance === themeInstance;
 
         if (wasNeverStarted) {
             console.log('[ThemeManager] Theme was never started, performing full activation');
@@ -415,6 +625,7 @@ export class ThemeManager {
             const timer = setTimeout(() => {
                 if (!settled) {
                     settled = true;
+                    unsubscribe();
                     console.warn('[ThemeManager] Theme readiness timed out after', timeoutMs, 'ms');
                     resolve(false);
                 }
@@ -440,6 +651,10 @@ export class ThemeManager {
         // Map levels to themes with a progression
         const themeIndex = Math.floor((level - 1) / 3) % THEMES.length;
         return THEMES[themeIndex];
+    }
+
+    getAvailableThemes() {
+        return [...THEMES];
     }
 
     /**
@@ -530,6 +745,9 @@ export class ThemeManager {
         console.log('[ThemeManager] Starting full cleanup...');
 
         this.stopRandomThemeInterval();
+        this.clearAdjacentThemePreloadQueue();
+        this.deferAdjacentThemePreload = false;
+        this.pendingAdjacentThemePreload = false;
 
         if (this.activeTheme) {
             this.activeTheme.stop();
@@ -541,12 +759,6 @@ export class ThemeManager {
             this.audioManager.stopAll();
         }
 
-        // Clean up renderer resources
-        if (this.webglRenderer && typeof this.webglRenderer.cleanup === 'function') {
-            console.log('[ThemeManager] Cleaning up renderer');
-            this.webglRenderer.cleanup();
-        }
-
         // Cleanup all cached theme instances
         console.log(`[ThemeManager] Cleaning up ${this.themeInstances.size} cached themes`);
         for (const [themeName, theme] of this.themeInstances.entries()) {
@@ -556,6 +768,12 @@ export class ThemeManager {
             }
         }
         this.themeInstances.clear();
+
+        // Clean up renderer resources after themes release their references
+        if (this.webglRenderer && typeof this.webglRenderer.cleanup === 'function') {
+            console.log('[ThemeManager] Cleaning up renderer');
+            this.webglRenderer.cleanup();
+        }
 
         // Clear LRU tracking
         this.themeLRU = [];

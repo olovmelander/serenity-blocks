@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildThemeIconLookup, resolveThemeIconUrl } from './theme-icon-resolver.js';
+import {
+    buildThemeIconLookup,
+    resolveThemeIconAssetUrl,
+    resolveThemeIconUrl,
+} from './theme-icon-resolver.js';
 
 describe('theme-icon-resolver', () => {
     it('maps a valid theme icon path to bundled icon URL', () => {
@@ -55,5 +59,21 @@ describe('theme-icon-resolver', () => {
         const lookup = buildThemeIconLookup(registry, iconModules);
 
         expect(resolveThemeIconUrl('missing-theme', lookup, 'forest')).toBe(null);
+    });
+
+    it('supports lazy import.meta.glob loaders without eager theme imports', async () => {
+        const registry = [
+            { id: 'forest', icon: './forest/forest-theme-icon.png' },
+            { id: 'aether-tides', icon: './aether-tides/aether-tides-theme-icon.png' },
+        ];
+        const iconModules = {
+            '../../themes/forest/forest-theme-icon.png': () => Promise.resolve({ default: '/assets/forest.hash.png' }),
+            '../../themes/aether-tides/aether-tides-theme-icon.png': () => Promise.resolve({ default: '/assets/aether.hash.png' }),
+        };
+
+        const lookup = buildThemeIconLookup(registry, iconModules);
+
+        expect(resolveThemeIconUrl('aether-tides', lookup)).toBe(null);
+        await expect(resolveThemeIconAssetUrl('aether-tides', lookup)).resolves.toBe('/assets/aether.hash.png');
     });
 });

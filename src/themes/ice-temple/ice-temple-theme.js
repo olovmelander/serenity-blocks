@@ -6,6 +6,7 @@
  */
 
 import * as THREE from 'three';
+import * as THREE_WEBGPU from 'three/webgpu';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
@@ -175,7 +176,7 @@ const RESONANCE_QUALITY_SCALE = {
 
 const BASELINE_PRESET_ORDER = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
 
-let WEBGPU_MODULE = null;
+const WEBGPU_MODULE = THREE_WEBGPU;
 
 function parseIceTempleFlags() {
     if (typeof window === 'undefined') {
@@ -2476,10 +2477,6 @@ export default class IceTempleTheme extends BaseTheme {
 
         if (!this.flags.forceWebGL) {
             try {
-                if (!WEBGPU_MODULE) {
-                    // eslint-disable-next-line import/no-unresolved
-                    WEBGPU_MODULE = await import('three/webgpu');
-                }
                 webgpuRenderer = new WEBGPU_MODULE.WebGPURenderer({
                     antialias: this.getAntialiasEnabled(),
                     alpha: true,
@@ -4518,5 +4515,21 @@ export default class IceTempleTheme extends BaseTheme {
         this.renderFallbackInProgress = false;
 
         super.stop();
+    }
+
+    /**
+     * Phase 2: Terminal disposal. Performs Ice Temple-specific cleanup
+     * then delegates to BaseTheme.cleanup() for shared teardown.
+     */
+    cleanup() {
+        this.clearEventSubscriptions();
+        this.removeResizeListener();
+        this.removeRendererResilienceListeners();
+        this.cancelAnimationLoop();
+        this.clearBaselinePlaybackTimers();
+        this.removeBaselineHelpers();
+        this.disposeRuntimeResources({ removeCanvas: true });
+
+        super.cleanup();
     }
 }

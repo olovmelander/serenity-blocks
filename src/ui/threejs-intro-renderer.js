@@ -29,6 +29,7 @@ export default class ThreeJSIntroRenderer {
         this.sparkleLayer = null;
         this.nebulaClouds = [];
         this.lastShootingStarTime = 0;
+        this.boundResizeHandler = this.onResize.bind(this);
 
         // Animation state
         this.clock = new THREE.Clock();
@@ -128,7 +129,7 @@ export default class ThreeJSIntroRenderer {
             // Setup post-processing (bloom for crystal glow)
             this.setupPostProcessing();
 
-            window.addEventListener('resize', this.onResize.bind(this));
+            window.addEventListener('resize', this.boundResizeHandler);
 
             return true;
         } catch (e) {
@@ -1206,7 +1207,7 @@ export default class ThreeJSIntroRenderer {
     }
 
     destroy() {
-        window.removeEventListener('resize', this.onResize.bind(this));
+        window.removeEventListener('resize', this.boundResizeHandler);
 
         // Clean up geometries and materials
         // (Simplified cleanup for intro duration)

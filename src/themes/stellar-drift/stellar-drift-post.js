@@ -44,7 +44,7 @@ export class StellarDriftPost {
 
         const bloomStrength = params.bloomStrength ?? 0.2;
         const bloomRadius = params.bloomRadius ?? 0.4;
-        const bloomThreshold = params.bloomThreshold ?? 0.65;
+        const bloomThreshold = params.bloomThreshold ?? 0.66;
         this.bloomNode = bloom(bloomSource, bloomStrength, bloomRadius, bloomThreshold);
 
         const originalBloomSetSize = this.bloomNode.setSize.bind(this.bloomNode);
@@ -57,10 +57,10 @@ export class StellarDriftPost {
         this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.2);
         this.uSpeedLineIntensity = uniform(params.speedLineIntensity ?? 0.0);
         this.uTime = uniform(params.time ?? 0.0);
-        this.uExposure = uniform(params.exposure ?? 1.05);
-        this.uContrast = uniform(params.contrast ?? 1.04);
-        this.uSaturation = uniform(params.saturation ?? 1.08);
-        this.uDitherStrength = uniform(params.ditherStrength ?? 0.0018);
+        this.uExposure = uniform(params.exposure ?? 0.96);
+        this.uContrast = uniform(params.contrast ?? 1.12);
+        this.uSaturation = uniform(params.saturation ?? 1.02);
+        this.uDitherStrength = uniform(params.ditherStrength ?? 0.0016);
 
         const uv = viewportUV;
         const centered = uv.sub(0.5).mul(2.0);

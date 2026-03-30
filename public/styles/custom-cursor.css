@@ -1,0 +1,322 @@
+.custom-cursor-container {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 100000;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 220ms ease;
+    --cursor-size: 24px;
+    --cursor-beam-height: 28px;
+    --cursor-primary-rgb: 92, 125, 255;
+    --cursor-accent-rgb: 142, 165, 255;
+    --cursor-highlight-rgb: 215, 224, 255;
+    --cursor-shadow-rgb: 17, 24, 47;
+    --cursor-hotspot-rgb: 245, 248, 255;
+}
+
+.custom-cursor-container.is-visible[data-pointer-activity="active"] {
+    opacity: 1;
+}
+
+.custom-cursor-container.is-visible[data-pointer-activity="inactive"] {
+    opacity: 0;
+}
+
+.cursor-trail-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    opacity: 0.94;
+}
+
+.custom-cursor-core {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    will-change: transform;
+}
+
+.custom-cursor-motion-shell {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    transform: translate(-50%, -50%);
+    transform-origin: center;
+    will-change: transform;
+}
+
+.custom-cursor-aura,
+.custom-cursor-lens {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 999px;
+}
+
+.custom-cursor-aura {
+    width: calc(var(--cursor-size) * 5);
+    height: calc(var(--cursor-size) * 5);
+    background:
+        radial-gradient(circle,
+            rgba(var(--cursor-highlight-rgb), 0.18) 0%,
+            rgba(var(--cursor-primary-rgb), 0.12) 20%,
+            rgba(var(--cursor-accent-rgb), 0.06) 40%,
+            rgba(var(--cursor-shadow-rgb), 0) 60%);
+    opacity: 0.9;
+    transition:
+        opacity 220ms ease,
+        transform 220ms ease;
+}
+
+.custom-cursor-lens {
+    width: calc(var(--cursor-size) * 1.08);
+    height: calc(var(--cursor-size) * 1.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background:
+        radial-gradient(circle at 34% 30%,
+            rgba(255, 255, 255, 0.72) 0%,
+            rgba(255, 255, 255, 0.16) 17%,
+            rgba(255, 255, 255, 0) 42%),
+        radial-gradient(circle at 62% 62%,
+            rgba(var(--cursor-primary-rgb), 0.42) 0%,
+            rgba(var(--cursor-accent-rgb), 0.16) 42%,
+            rgba(var(--cursor-shadow-rgb), 0.12) 70%,
+            rgba(var(--cursor-shadow-rgb), 0) 100%);
+    box-shadow:
+        0 0 22px rgba(var(--cursor-primary-rgb), 0.28),
+        0 0 44px rgba(var(--cursor-accent-rgb), 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.24),
+        inset 0 -10px 18px rgba(var(--cursor-shadow-rgb), 0.22);
+    backdrop-filter: none;
+    transition:
+        width 220ms ease,
+        height 220ms ease,
+        opacity 220ms ease,
+        transform 220ms ease,
+        border-color 220ms ease,
+        box-shadow 220ms ease,
+        background 220ms ease;
+}
+
+.custom-cursor-ring {
+    position: absolute;
+    inset: -7px;
+    border: 1px solid rgba(var(--cursor-highlight-rgb), 0.28);
+    border-radius: inherit;
+    box-shadow:
+        0 0 12px rgba(var(--cursor-highlight-rgb), 0.18),
+        inset 0 0 12px rgba(var(--cursor-primary-rgb), 0.12);
+    opacity: 0.95;
+    transition:
+        transform 220ms ease,
+        opacity 220ms ease,
+        border-color 220ms ease,
+        box-shadow 220ms ease;
+}
+
+.custom-cursor-nucleus {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: calc(var(--cursor-size) * 0.24);
+    height: calc(var(--cursor-size) * 0.24);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background:
+        radial-gradient(circle,
+            rgba(var(--cursor-hotspot-rgb), 1) 0%,
+            rgba(var(--cursor-highlight-rgb), 0.92) 44%,
+            rgba(var(--cursor-primary-rgb), 0.52) 78%,
+            rgba(var(--cursor-primary-rgb), 0) 100%);
+    box-shadow:
+        0 0 10px rgba(var(--cursor-highlight-rgb), 0.7),
+        0 0 20px rgba(var(--cursor-primary-rgb), 0.38);
+    transition:
+        opacity 220ms ease,
+        transform 220ms ease,
+        box-shadow 220ms ease;
+}
+
+.custom-cursor-beam {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2px;
+    height: var(--cursor-beam-height);
+    transform: translate(-50%, -50%) scaleY(0.35);
+    border-radius: 999px;
+    background:
+        linear-gradient(180deg,
+            rgba(var(--cursor-highlight-rgb), 0.06) 0%,
+            rgba(var(--cursor-highlight-rgb), 0.9) 28%,
+            rgba(var(--cursor-primary-rgb), 0.88) 50%,
+            rgba(var(--cursor-highlight-rgb), 0.9) 72%,
+            rgba(var(--cursor-highlight-rgb), 0.06) 100%);
+    box-shadow:
+        0 0 14px rgba(var(--cursor-primary-rgb), 0.5),
+        0 0 28px rgba(var(--cursor-highlight-rgb), 0.16);
+    opacity: 0;
+    transition:
+        opacity 220ms ease,
+        transform 220ms ease;
+}
+
+.custom-cursor-container[data-render-state="interactive"] .custom-cursor-aura,
+.custom-cursor-container[data-render-state="grab"] .custom-cursor-aura,
+.custom-cursor-container[data-render-state="grabbing"] .custom-cursor-aura {
+    transform: translate(-50%, -50%) scale(1.18);
+    opacity: 1;
+}
+
+.custom-cursor-container[data-render-state="interactive"] .custom-cursor-lens,
+.custom-cursor-container[data-render-state="grab"] .custom-cursor-lens,
+.custom-cursor-container[data-render-state="grabbing"] .custom-cursor-lens {
+    width: calc(var(--cursor-size) * 1.22);
+    height: calc(var(--cursor-size) * 1.22);
+    border-color: rgba(var(--cursor-highlight-rgb), 0.36);
+    box-shadow:
+        0 0 28px rgba(var(--cursor-primary-rgb), 0.36),
+        0 0 64px rgba(var(--cursor-accent-rgb), 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 0.28),
+        inset 0 -12px 22px rgba(var(--cursor-shadow-rgb), 0.26);
+}
+
+.custom-cursor-container[data-render-state="interactive"] .custom-cursor-ring {
+    transform: scale(1.08);
+    border-color: rgba(var(--cursor-highlight-rgb), 0.42);
+    box-shadow:
+        0 0 18px rgba(var(--cursor-highlight-rgb), 0.22),
+        inset 0 0 14px rgba(var(--cursor-primary-rgb), 0.16);
+}
+
+.custom-cursor-container[data-render-state="pressed"] .custom-cursor-aura {
+    transform: translate(-50%, -50%) scale(0.86);
+    opacity: 0.72;
+}
+
+.custom-cursor-container[data-render-state="pressed"] .custom-cursor-lens {
+    transform: translate(-50%, -50%) scale(0.82);
+    border-color: rgba(var(--cursor-primary-rgb), 0.42);
+}
+
+.custom-cursor-container[data-render-state="pressed"] .custom-cursor-nucleus {
+    transform: translate(-50%, -50%) scale(0.9);
+    box-shadow:
+        0 0 10px rgba(var(--cursor-highlight-rgb), 0.85),
+        0 0 24px rgba(var(--cursor-primary-rgb), 0.48);
+}
+
+.custom-cursor-container[data-render-state="grab"] .custom-cursor-ring {
+    transform: scale(1.05) rotate(12deg);
+}
+
+.custom-cursor-container[data-render-state="grabbing"] .custom-cursor-aura {
+    transform: translate(-50%, -50%) scale(0.96);
+    opacity: 0.85;
+}
+
+.custom-cursor-container[data-render-state="grabbing"] .custom-cursor-lens {
+    width: calc(var(--cursor-size) * 0.96);
+    height: calc(var(--cursor-size) * 0.96);
+    box-shadow:
+        0 0 18px rgba(var(--cursor-primary-rgb), 0.3),
+        0 0 48px rgba(var(--cursor-accent-rgb), 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        inset 0 -8px 16px rgba(var(--cursor-shadow-rgb), 0.22);
+}
+
+.custom-cursor-container[data-render-state="grabbing"] .custom-cursor-ring {
+    transform: scale(0.92) rotate(18deg);
+    opacity: 0.8;
+}
+
+.custom-cursor-container[data-render-state="disabled"] .custom-cursor-aura {
+    opacity: 0.32;
+}
+
+.custom-cursor-container[data-render-state="disabled"] .custom-cursor-lens {
+    border-color: rgba(255, 255, 255, 0.16);
+    box-shadow:
+        0 0 16px rgba(var(--cursor-shadow-rgb), 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        inset 0 -8px 14px rgba(var(--cursor-shadow-rgb), 0.24);
+}
+
+.custom-cursor-container[data-render-state="disabled"] .custom-cursor-ring,
+.custom-cursor-container[data-render-state="disabled"] .custom-cursor-nucleus {
+    opacity: 0.65;
+}
+
+.custom-cursor-container[data-render-state="text"] .custom-cursor-aura {
+    transform: translate(-50%, -50%) scale(0.82, 1.22);
+    opacity: 0.7;
+}
+
+.custom-cursor-container[data-render-state="text"] .custom-cursor-lens {
+    width: 10px;
+    height: calc(var(--cursor-beam-height) * 0.8);
+    border-radius: 999px;
+    border-color: rgba(var(--cursor-highlight-rgb), 0.26);
+    box-shadow:
+        0 0 18px rgba(var(--cursor-primary-rgb), 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.custom-cursor-container[data-render-state="text"] .custom-cursor-ring,
+.custom-cursor-container[data-render-state="text"] .custom-cursor-nucleus {
+    opacity: 0;
+}
+
+.custom-cursor-container[data-render-state="text"] .custom-cursor-beam {
+    opacity: 1;
+    transform: translate(-50%, -50%) scaleY(1);
+}
+
+.custom-cursor-container[data-render-state="modal"] .custom-cursor-aura {
+    opacity: 0.5;
+}
+
+.custom-cursor-container[data-render-state="modal"] .custom-cursor-lens {
+    box-shadow:
+        0 0 16px rgba(var(--cursor-primary-rgb), 0.2),
+        0 0 34px rgba(var(--cursor-accent-rgb), 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2),
+        inset 0 -10px 18px rgba(var(--cursor-shadow-rgb), 0.24);
+}
+
+.custom-cursor-container[data-modal-active="true"] .cursor-trail-canvas {
+    opacity: 0.7;
+}
+
+.custom-cursor-container[data-visibility-preset="high-visibility"] .custom-cursor-aura {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.2);
+}
+
+.custom-cursor-container[data-visibility-preset="high-visibility"] .custom-cursor-ring {
+    border-width: 1.5px;
+}
+
+.custom-cursor-container[data-reduced-motion="true"] .custom-cursor-aura,
+.custom-cursor-container[data-reduced-motion="true"] .custom-cursor-lens,
+.custom-cursor-container[data-reduced-motion="true"] .custom-cursor-ring,
+.custom-cursor-container[data-reduced-motion="true"] .custom-cursor-nucleus,
+.custom-cursor-container[data-reduced-motion="true"] .custom-cursor-beam {
+    transition-duration: 120ms;
+}
+
+body.custom-cursor-active,
+body.custom-cursor-active *,
+body.custom-cursor-active *::before,
+body.custom-cursor-active *::after {
+    cursor: none !important;
+}

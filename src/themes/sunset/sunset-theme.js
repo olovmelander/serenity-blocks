@@ -173,6 +173,7 @@ export default class SunsetTheme extends BaseTheme {
     constructor() {
         super('sunset');
         this.eventUnsubscribers = [];
+        this.boundResizeHandler = this.onWindowResize.bind(this);
 
         // Three.js core components
         this.scene = null;
@@ -316,7 +317,7 @@ export default class SunsetTheme extends BaseTheme {
 
         // Event listeners
         this.setupEventListeners();
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         // Start animation
         this.clock.start();
@@ -1424,7 +1425,7 @@ export default class SunsetTheme extends BaseTheme {
         super.stop();
 
         this.teardownQualityListener();
-        window.removeEventListener('resize', this.onWindowResize.bind(this));
+        window.removeEventListener('resize', this.boundResizeHandler);
 
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);

@@ -24,17 +24,17 @@ export class ThemeTransitionManager {
         this.overlays = [];
         this.transitionQueue = [];
         this.isTransitioning = false;
+        this.prefetchRecords = new Map();
 
         // DOM element
         this.overlay = document.getElementById('theme-transition-overlay');
         if (this.overlay) {
             this.overlay.style.zIndex = String(TRANSITION_LAYERS.THEME_OVERLAY);
+            this.overlay.dataset.odysseyWheelLock = 'true';
         }
 
         // Three.js warp transition renderer (lazy initialized)
         this.warpRenderer = null;
-        this.prefetchThemePromise = null;
-        this.prefetchThemeName = null;
 
         console.log('[ThemeTransition] Manager initialized');
     }
@@ -108,26 +108,26 @@ export class ThemeTransitionManager {
 
         try {
             switch (transitionType) {
-                case 'fade':
-                    await this.fadeTransition(themeName, duration);
-                    break;
+            case 'fade':
+                await this.fadeTransition(themeName, duration);
+                break;
 
-                case 'crossfade':
-                    await this.crossfadeTransition(themeName, duration);
-                    break;
+            case 'crossfade':
+                await this.crossfadeTransition(themeName, duration);
+                break;
 
-                case 'warp':
-                    await this.warpTransition(themeName, duration);
-                    break;
+            case 'warp':
+                await this.warpTransition(themeName, duration);
+                break;
 
-                case 'none':
-                case 'instant':
-                    await this.themeManager?.switchTheme?.(themeName, true);
-                    break;
+            case 'none':
+            case 'instant':
+                await this.themeManager?.switchTheme?.(themeName, true);
+                break;
 
-                default:
-                    // Default to warp for the best experience
-                    await this.warpTransition(themeName, duration);
+            default:
+                // Default to warp for the best experience
+                await this.warpTransition(themeName, duration);
             }
         } catch (error) {
             console.error('[ThemeTransition] Error during transition:', error);
@@ -143,6 +143,8 @@ export class ThemeTransitionManager {
             await this.transition(next.themeName, next.transitionType, next.duration);
             next.resolve?.();
         }
+
+        return undefined;
     }
 
     // ========================================
@@ -196,6 +198,7 @@ export class ThemeTransitionManager {
 
         // Remove screenshot
         screenshot.remove();
+        return undefined;
     }
 
     /**
@@ -300,31 +303,134 @@ export class ThemeTransitionManager {
      * @param {Object} levelConfig
      * @returns {Promise<boolean>}
      */
-    async prefetchLevelTheme(levelConfig) {
+    async prefetchLevelTheme(levelConfig, options = {}) {
+        const themeName = levelConfig?.theme?.primary;
+        const priority = options.priority === 'high' ? 'high' : 'low';
+        if (!themeName || !this.themeManager?.loadTheme) {
+            return false;
+        }
+
+        if (this.themeManager?.themeInstances?.has?.(themeName)) {
+            return true;
+        }
+
+        const existingRecord = this.prefetchRecords.get(themeName);
+        if (existingRecord) {
+            if (priority === 'high' && existingRecord.priority !== 'high') {
+                existingRecord.priority = 'high';
+                this.startPrefetchRecord(existingRecord);
+            }
+            return existingRecord.promise;
+        }
+
+        const record = this.createPrefetchRecord(themeName, priority);
+        this.prefetchRecords.set(themeName, record);
+
+        if (priority === 'high') {
+            this.startPrefetchRecord(record);
+        } else {
+            this.schedulePrefetchRecord(record);
+        }
+
+        return record.promise;
+    }
+
+    /**
+     * Activate a prefetched theme only when the transition is already covered.
+     * This avoids visual contention during ORB_LOCK while still keeping assets hot.
+     * @param {Object} levelConfig
+     * @returns {Promise<boolean>}
+     */
+    async activatePrefetchedLevelTheme(levelConfig) {
         const themeName = levelConfig?.theme?.primary;
         if (!themeName || !this.themeManager?.switchTheme) {
             return false;
         }
 
-        if (this.prefetchThemePromise && this.prefetchThemeName === themeName) {
-            return this.prefetchThemePromise;
+        try {
+            const record = this.prefetchRecords.get(themeName);
+
+            if (record) {
+                this.startPrefetchRecord(record);
+                await record.promise;
+            } else if (this.themeManager?.loadTheme) {
+                await this.themeManager.loadTheme(themeName, true);
+            }
+
+            await this.themeManager.switchTheme(themeName, true);
+
+            if (this.themeManager.themesSuspended) {
+                await this.themeManager.resumeThemes();
+            }
+
+            return true;
+        } catch (error) {
+            console.warn('[ThemeTransition] Theme activation failed:', themeName, error);
+            return false;
+        }
+    }
+
+    /**
+     * Wait until the active theme is safe to reveal for gameplay.
+     * @param {Object} levelConfig
+     * @param {number} timeoutMs
+     * @returns {Promise<boolean>}
+     */
+    async waitForThemeCriticalReady(levelConfig, timeoutMs = 1800) {
+        const themeName = levelConfig?.theme?.primary;
+        if (!themeName || !this.themeManager) {
+            return false;
         }
 
-        this.prefetchThemeName = themeName;
-        this.prefetchThemePromise = this.themeManager.switchTheme(themeName, true)
-            .then(() => true)
-            .catch((error) => {
-                console.warn('[ThemeTransition] Theme prefetch failed:', themeName, error);
-                return false;
-            })
-            .finally(() => {
-                if (this.prefetchThemeName === themeName) {
-                    this.prefetchThemePromise = null;
-                    this.prefetchThemeName = null;
-                }
-            });
+        const deadline = Date.now() + Math.max(0, timeoutMs);
+        const activated = await this.ensureThemeActivated(themeName, this.getRemainingTime(deadline));
+        if (!activated) {
+            return false;
+        }
 
-        return this.prefetchThemePromise;
+        const containerReady = await this.waitForCondition(() => {
+            const container = document.getElementById(`${themeName}-theme`);
+            return !!container && container.classList?.contains('active');
+        }, this.getRemainingTime(deadline));
+
+        if (!containerReady) {
+            return false;
+        }
+
+        const frameReady = await this.waitForAnimationFrames(2, this.getRemainingTime(deadline));
+        if (!frameReady) {
+            return false;
+        }
+
+        const { activeTheme } = this.themeManager;
+        return this.invokeThemeHook(activeTheme, 'whenCriticalReady', this.getRemainingTime(deadline));
+    }
+
+    /**
+     * Wait until optional non-critical theme polish is fully ready.
+     * Odyssey reveal does not block on this path.
+     * @param {Object} levelConfig
+     * @param {number} timeoutMs
+     * @returns {Promise<boolean>}
+     */
+    async waitForThemeFullReady(levelConfig, timeoutMs = 5000) {
+        const themeName = levelConfig?.theme?.primary;
+        if (!themeName || !this.themeManager) {
+            return false;
+        }
+
+        const deadline = Date.now() + Math.max(0, timeoutMs);
+        const criticalReady = await this.waitForThemeCriticalReady(levelConfig, this.getRemainingTime(deadline));
+        if (!criticalReady) {
+            return false;
+        }
+
+        const { activeTheme } = this.themeManager;
+        if (!activeTheme || this.themeManager.activeThemeName !== themeName) {
+            return false;
+        }
+
+        return this.invokeThemeHook(activeTheme, 'whenFullReady', this.getRemainingTime(deadline));
     }
 
     // ========================================
@@ -415,7 +521,207 @@ export class ThemeTransitionManager {
      * @param {number} ms - Milliseconds to wait
      */
     wait(ms) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
+        return new Promise((resolve) => {
+            setTimeout(resolve, ms);
+        });
+    }
+
+    createPrefetchRecord(themeName, priority) {
+        const record = {
+            themeName,
+            priority,
+            started: false,
+            idleId: null,
+            timeoutId: null,
+            promise: null,
+        };
+
+        record.promise = new Promise((resolve) => {
+            record.resolve = resolve;
+        });
+
+        return record;
+    }
+
+    schedulePrefetchRecord(record) {
+        if (!record || record.started) {
+            return;
+        }
+
+        if (typeof globalThis.requestIdleCallback === 'function') {
+            record.idleId = globalThis.requestIdleCallback(() => {
+                record.idleId = null;
+                this.startPrefetchRecord(record);
+            }, { timeout: 450 });
+            return;
+        }
+
+        record.timeoutId = setTimeout(() => {
+            record.timeoutId = null;
+            this.startPrefetchRecord(record);
+        }, 180);
+    }
+
+    cancelPrefetchRecordScheduling(record) {
+        if (!record) {
+            return;
+        }
+
+        if (record.idleId !== null && typeof globalThis.cancelIdleCallback === 'function') {
+            globalThis.cancelIdleCallback(record.idleId);
+        }
+        if (record.timeoutId !== null) {
+            clearTimeout(record.timeoutId);
+        }
+        record.idleId = null;
+        record.timeoutId = null;
+    }
+
+    startPrefetchRecord(record) {
+        if (!record || record.started) {
+            return;
+        }
+
+        record.started = true;
+        this.cancelPrefetchRecordScheduling(record);
+
+        this.themeManager.loadTheme(record.themeName, true)
+            .then(() => true)
+            .catch((error) => {
+                console.warn('[ThemeTransition] Theme prefetch failed:', record.themeName, error);
+                return false;
+            })
+            .finally(() => {
+                this.prefetchRecords.delete(record.themeName);
+            })
+            .then((result) => {
+                record.resolve?.(result);
+            });
+    }
+
+    getRemainingTime(deadlineMs) {
+        return Math.max(0, deadlineMs - Date.now());
+    }
+
+    async ensureThemeActivated(themeName, timeoutMs) {
+        if (this.themeManager.activeThemeName === themeName && this.themeManager.activeTheme?.isActive) {
+            return true;
+        }
+
+        const remainingMs = Math.max(0, timeoutMs);
+        if (remainingMs <= 0) {
+            return false;
+        }
+
+        const ready = await this.themeManager.waitForThemeReady?.(remainingMs);
+        return !!ready
+            && this.themeManager.activeThemeName === themeName
+            && this.themeManager.activeTheme?.isActive === true;
+    }
+
+    async waitForCondition(check, timeoutMs) {
+        if (typeof check !== 'function') {
+            return false;
+        }
+
+        if (check()) {
+            return true;
+        }
+
+        const deadline = Date.now() + Math.max(0, timeoutMs);
+        const poll = async () => {
+            if (check()) {
+                return true;
+            }
+
+            if (Date.now() >= deadline) {
+                return check();
+            }
+
+            const advanced = await this.waitForAnimationFrames(1, this.getRemainingTime(deadline));
+            if (!advanced) {
+                return false;
+            }
+
+            return poll();
+        };
+
+        return poll();
+    }
+
+    async waitForAnimationFrames(frameCount = 1, timeoutMs = 200) {
+        if (frameCount <= 0) {
+            return true;
+        }
+
+        const remainingMs = Math.max(0, timeoutMs);
+        if (remainingMs <= 0) {
+            return false;
+        }
+
+        const raf = globalThis.requestAnimationFrame?.bind(globalThis);
+        if (typeof raf !== 'function') {
+            await this.wait(Math.min(remainingMs, frameCount * 16));
+            return true;
+        }
+
+        return new Promise((resolve) => {
+            let framesLeft = frameCount;
+            let settled = false;
+            const timeoutId = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                resolve(false);
+            }, remainingMs);
+
+            const step = () => {
+                if (settled) return;
+                framesLeft -= 1;
+                if (framesLeft <= 0) {
+                    settled = true;
+                    clearTimeout(timeoutId);
+                    resolve(true);
+                    return;
+                }
+                raf(step);
+            };
+
+            raf(step);
+        });
+    }
+
+    async invokeThemeHook(themeInstance, hookName, timeoutMs) {
+        if (!themeInstance) {
+            return false;
+        }
+
+        if (typeof themeInstance[hookName] !== 'function') {
+            return true;
+        }
+
+        const remainingMs = Math.max(0, timeoutMs);
+        if (remainingMs <= 0) {
+            return false;
+        }
+
+        let timeoutId = null;
+        try {
+            const result = await Promise.race([
+                Promise.resolve(themeInstance[hookName]()),
+                new Promise((resolve) => {
+                    timeoutId = setTimeout(() => resolve(false), remainingMs);
+                }),
+            ]);
+
+            return result !== false;
+        } catch (error) {
+            console.warn(`[ThemeTransition] Theme readiness hook failed: ${hookName}`, error);
+            return false;
+        } finally {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+            }
+        }
     }
 
     ensureWarpRenderer() {
@@ -432,8 +738,8 @@ export class ThemeTransitionManager {
         this.transitionQueue = [];
         this.overlays.forEach((o) => o.dispose?.());
         this.overlays = [];
-        this.prefetchThemePromise = null;
-        this.prefetchThemeName = null;
+        this.prefetchRecords.forEach((record) => this.cancelPrefetchRecordScheduling(record));
+        this.prefetchRecords.clear();
 
         if (this.warpRenderer) {
             this.warpRenderer.dispose();

@@ -632,9 +632,9 @@ Each level is defined by a configuration object that controls all aspects of gam
  * Level Configuration Schema
  *
  * @typedef {Object} LevelConfig
- * @property {number} id - Unique level identifier (1-56)
+ * @property {number} id - Unique level identifier (1-55)
  * @property {string} name - Display name for the level
- * @property {number} chapter - Chapter number (1-7)
+ * @property {number} chapter - Chapter number (1-8)
  * @property {number} chapterLevel - Position within chapter (1-8)
  * @property {boolean} isChapterStart - First level in chapter
  * @property {boolean} isChapterEnd - Last level in chapter
@@ -811,7 +811,7 @@ export const LEVEL_CONFIGS = [
         },
     },
 
-    // ... Continue for all 56 levels
+    // ... Continue for all 55 levels
 
     // Example: Level 50 (Black Hole Chapter - Abstract)
     {
@@ -965,7 +965,7 @@ export const CHAPTER_CONFIGS = [
         },
     },
 
-    // ... Continue for all 7 chapters
+    // ... Continue for all 8 chapters
 ];
 
 export default CHAPTER_CONFIGS;
@@ -1802,10 +1802,10 @@ export const SAVE_SCHEMA = {
 
 ### Phase 5: Content Creation (Week 6-8)
 
-**Goal**: Full 56 levels configured
+**Goal**: Full 55 levels configured
 
 **Tasks**:
-1. Design all 56 level configurations
+1. Design all 55 level configurations
 2. Balance difficulty curve
 3. Configure all chapter themes
 4. Add music track assignments
@@ -1813,7 +1813,7 @@ export const SAVE_SCHEMA = {
 6. Test and tune star thresholds
 
 **Deliverables**:
-- [ ] All 56 levels playable
+- [ ] All 55 levels playable
 - [ ] Difficulty curve feels right
 - [ ] Star ratings achievable but challenging
 - [ ] All themes integrated
@@ -1998,7 +1998,7 @@ EVENTS.JOURNEY_BOARD_NAVIGATE = 'journeyBoardNavigate'
 ### Memory Management
 
 1. **Theme Caching**: Reuse existing `ThemeManager` LRU cache (5 themes max)
-2. **Level Data**: Lazy-load chapter data, not all 56 levels at once
+2. **Level Data**: Lazy-load chapter data, not all 55 levels at once
 3. **3D Assets**: LOD system for distant nodes, dispose unused geometries
 4. **Textures**: Compressed textures, resolution based on quality setting
 

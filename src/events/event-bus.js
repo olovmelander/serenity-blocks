@@ -46,6 +46,11 @@ export const EVENTS = {
     LINE_CLEAR: 'lineClear',
     COMBO: 'combo',
     PIECE_LOCK: 'pieceLock',
+    PIECE_MOVE: 'pieceMove',
+    PIECE_ROTATE: 'pieceRotate',
+    HARD_DROP: 'hardDrop',
+    HOLD: 'hold',
+    LEVEL_UP: 'levelUp',
     SETTINGS_CHANGED: 'settingsChanged',
     ODYSSEY_SAVED: 'odysseySaved',
     HIGH_SCORE_SAVED: 'highScoreSaved',
@@ -55,4 +60,10 @@ export const EVENTS = {
     // Demo System
     OPEN_DEMO_BROWSER: 'openDemoBrowser',
     EXIT_TO_MAIN_MENU: 'exitToMainMenu',
+    // GPU Context Resilience
+    CONTEXT_LOST: 'contextLost',
+    CONTEXT_RESTORED: 'contextRestored',
+
+    // Performance Adapters
+    PERFORMANCE_DOWNSCALE: 'performanceDownscale'
 };

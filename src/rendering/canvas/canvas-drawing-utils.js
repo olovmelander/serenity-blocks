@@ -6,6 +6,7 @@
 
 import { COLS, ROWS, HIDDEN_ROWS } from '../../core/constants.js';
 import { calculateGhostY as calculateGhostYCore } from '../../core/pieces.js';
+import { hexToRgb } from '../../utils/helpers.js';
 
 /**
  * Calculate optimal block size based on available space
@@ -307,31 +308,6 @@ function computeStopColor(baseColor, stopColorMode, opacity = 1) {
     }
 
     return finalColor;
-}
-
-/**
- * Convert hex color to RGB
- * @private
- * @param {string} hex - Hex color string
- * @returns {Object|null} { r, g, b } or null if invalid
- */
-function hexToRgb(hex) {
-    // Remove # if present
-    hex = hex.replace('#', '');
-
-    // Handle 3-digit hex
-    if (hex.length === 3) {
-        hex = hex.split('').map((char) => char + char).join('');
-    }
-
-    if (hex.length !== 6) return null;
-
-    const num = parseInt(hex, 16);
-    return {
-        r: (num >> 16) & 255,
-        g: (num >> 8) & 255,
-        b: num & 255,
-    };
 }
 
 /**

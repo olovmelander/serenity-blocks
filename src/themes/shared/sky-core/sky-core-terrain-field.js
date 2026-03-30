@@ -1,8 +1,5 @@
 import * as THREE from 'three';
-
-function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-}
+import { clamp } from '@utils/helpers.js';
 
 function lerp(a, b, t) {
     return a + ((b - a) * t);

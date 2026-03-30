@@ -21,6 +21,7 @@ import { SAKURA_TWILIGHT_TETROMINOS } from './sakura-twilight-tetrominos.js';
 export default class SakuraTwilightTheme extends BaseTheme {
     constructor() {
         super('sakura-twilight');
+        this.boundResizeHandler = this.onWindowResize.bind(this);
 
         // Three.js components
         this.renderer = null;
@@ -167,7 +168,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         // 6. Listeners & Loop
         // 6. Listeners & Loop
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         // Listen for resolution changes
         this.handleDisplaySettingsChange = (e) => {
@@ -3204,7 +3205,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.isActive = false;
         this.isActive = false;
         if (this.animationId) cancelAnimationFrame(this.animationId);
-        window.removeEventListener('resize', this.onWindowResize);
+        window.removeEventListener('resize', this.boundResizeHandler);
         window.removeEventListener('displaySettingsChanged', this.handleDisplaySettingsChange);
 
         // Remove event subscriptions

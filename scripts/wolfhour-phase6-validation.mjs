@@ -53,6 +53,13 @@ const CAPTURE_CONFIG = {
     comboCount: parsePositiveInt(process.env.WOLFHOUR_COMBO_COUNT, 8),
     lineCount: parsePositiveInt(process.env.WOLFHOUR_LINE_COUNT, 4),
 };
+const ZOOMED_OUT_CAPTURE = {
+    timeoutMs: 20000,
+    minZoomFactor: 1.01,
+    minObserveMs: 4000,
+    settleMs: 900,
+    releaseEpsilon: 0.0025,
+};
 
 const PHASE6_BUDGETS = {
     targetFps: 60,
@@ -348,6 +355,89 @@ async function runTimedCapture(win, options = {}) {
     return win.webContents.executeJavaScript(script, true);
 }
 
+async function waitForZoomedOutCamera(win, options = {}) {
+    const payload = {
+        timeoutMs: parseDuration(options.timeoutMs, ZOOMED_OUT_CAPTURE.timeoutMs),
+        minZoomFactor: Number.isFinite(options.minZoomFactor)
+            ? options.minZoomFactor
+            : ZOOMED_OUT_CAPTURE.minZoomFactor,
+        minObserveMs: parseDuration(options.minObserveMs, ZOOMED_OUT_CAPTURE.minObserveMs),
+        settleMs: parseDuration(options.settleMs, ZOOMED_OUT_CAPTURE.settleMs),
+        releaseEpsilon: Number.isFinite(options.releaseEpsilon)
+            ? options.releaseEpsilon
+            : ZOOMED_OUT_CAPTURE.releaseEpsilon,
+    };
+
+    const script = `
+        (async (payload) => {
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const theme = window.themeManager?.activeTheme;
+            if (!theme?.camera) {
+                return { ok: false, reason: 'Theme camera is not active.' };
+            }
+
+            const getSample = () => {
+                const camera = theme.camera;
+                const frustumSize = Math.abs((camera.top ?? 0) - (camera.bottom ?? 0));
+                const zoomFactor = frustumSize / 1000;
+                return {
+                    zoomFactor: Number(zoomFactor.toFixed(4)),
+                    cameraY: Number((camera.position?.y ?? 0).toFixed(3)),
+                    bankTilt: Number((camera.rotation?.z ?? 0).toFixed(5)),
+                    frustumSize: Number(frustumSize.toFixed(3)),
+                    themeTime: Number((theme.time ?? 0).toFixed(3)),
+                };
+            };
+
+            let bestSample = null;
+            const startedAt = performance.now();
+            let lastImprovedAt = startedAt;
+            while (performance.now() - startedAt < payload.timeoutMs) {
+                const now = performance.now();
+                const sample = getSample();
+                if (
+                    !bestSample
+                    || sample.zoomFactor > bestSample.zoomFactor + payload.releaseEpsilon
+                    || (
+                        Math.abs(sample.zoomFactor - bestSample.zoomFactor) <= payload.releaseEpsilon
+                        && sample.cameraY < bestSample.cameraY
+                    )
+                ) {
+                    bestSample = sample;
+                    lastImprovedAt = now;
+                }
+
+                if (
+                    now - startedAt >= payload.minObserveMs
+                    && bestSample.zoomFactor >= payload.minZoomFactor
+                    && now - lastImprovedAt >= payload.settleMs
+                    && sample.zoomFactor <= bestSample.zoomFactor - payload.releaseEpsilon
+                ) {
+                    return {
+                        ok: true,
+                        matchedThreshold: true,
+                        waitedMs: Math.round(now - startedAt),
+                        sample: bestSample,
+                        currentSample: sample,
+                    };
+                }
+
+                await sleep(50);
+            }
+
+            return {
+                ok: true,
+                matchedThreshold: false,
+                reason: 'Fell back to the best observed zoomed-out camera sample before timeout.',
+                waitedMs: Math.round(performance.now() - startedAt),
+                sample: bestSample,
+            };
+        })(${JSON.stringify(payload)});
+    `;
+
+    return win.webContents.executeJavaScript(script, true);
+}
+
 async function collectScenario(win, scenario) {
     const scenarioDir = path.join(ARTIFACT_DIR, scenario.name);
     await mkdir(scenarioDir, { recursive: true });
@@ -369,6 +459,10 @@ async function collectScenario(win, scenario) {
     if (!idle?.ok) {
         throw new Error(`[${scenario.name}] idle capture failed: ${idle?.reason || 'unknown error'}`);
     }
+
+    const zoomedOut = await waitForZoomedOutCamera(win, ZOOMED_OUT_CAPTURE);
+    const zoomedOutScreenshot = await win.webContents.capturePage();
+    await writeFile(path.join(scenarioDir, 'zoomed-out.png'), zoomedOutScreenshot.toPNG());
 
     const combat = await runTimedCapture(win, {
         mode: 'combat',
@@ -411,6 +505,7 @@ async function collectScenario(win, scenario) {
         scenario: scenario.name,
         url,
         idle,
+        zoomedOut,
         combat,
         cooldown,
         soak,
@@ -439,7 +534,12 @@ function estimateReactiveTokensPerTrigger(comboCount, lineCount) {
     const pieceLockBurst = 1;
     const comboRift = comboCount >= 3 ? 1 : 0;
     const comboMeteors = comboCount >= 3 ? Math.min(comboCount - 1, 4) : 0;
-    const comboCrashes = comboCount >= 5 ? (comboCount >= 10 ? 2 : 1) : 0;
+    let comboCrashes = 0;
+    if (comboCount >= 10) {
+        comboCrashes = 2;
+    } else if (comboCount >= 5) {
+        comboCrashes = 1;
+    }
     return pieceLockBurst + beams + wave + comboRift + comboMeteors + comboCrashes;
 }
 
@@ -651,7 +751,9 @@ function buildMarkdownSummary(summary) {
         lines.push(`  - backend: ${value?.idle?.report?.backend ?? 'n/a'}`);
         lines.push(`  - cooldown textures: ${value?.cooldown?.endMemory?.textures ?? 'n/a'}`);
         lines.push(`  - cooldown geometries: ${value?.cooldown?.endMemory?.geometries ?? 'n/a'}`);
-        lines.push(`  - reactive queue max depth: ${value?.combat?.report?.reactivePerformance?.queueMaxDepth ?? 'n/a'}`);
+        lines.push(
+            `  - reactive queue max depth: ${value?.combat?.report?.reactivePerformance?.queueMaxDepth ?? 'n/a'}`,
+        );
         lines.push(`  - reactive pool misses: ${value?.combat?.report?.reactivePerformance?.poolMisses ?? 'n/a'}`);
     });
     lines.push('');

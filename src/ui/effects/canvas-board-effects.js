@@ -1,5 +1,6 @@
 import { particlePool } from '../../utils/object-pool.js';
 import { COLS, ROWS, HIDDEN_ROWS } from '../../core/constants.js';
+import { clamp } from '../../utils/helpers.js';
 
 const MAX_PARTICLES_FOCUSED = 120;
 const MAX_PARTICLES_UNFOCUSED = 60;
@@ -34,10 +35,6 @@ function parseColor(color) {
 
 function toRGBA({ r, g, b }, alpha) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
 }
 
 export class CanvasBoardEffects {

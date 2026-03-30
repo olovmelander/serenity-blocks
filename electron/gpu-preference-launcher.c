@@ -8,6 +8,7 @@
  */
 
 #include <windows.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -16,6 +17,33 @@ __declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
 
 // AMD PowerXpress - request high-performance GPU
 __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+
+static const char* skipLauncherExecutable(const char* commandLine) {
+    const char* cursor = commandLine;
+    if (!cursor) {
+        return "";
+    }
+
+    if (*cursor == '"') {
+        cursor += 1;
+        while (*cursor && *cursor != '"') {
+            cursor += 1;
+        }
+        if (*cursor == '"') {
+            cursor += 1;
+        }
+    } else {
+        while (*cursor && *cursor != ' ' && *cursor != '\t') {
+            cursor += 1;
+        }
+    }
+
+    while (*cursor == ' ' || *cursor == '\t') {
+        cursor += 1;
+    }
+
+    return cursor;
+}
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
     // Get the directory where this launcher is located
@@ -32,6 +60,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     char electronPath[MAX_PATH];
     snprintf(electronPath, MAX_PATH, "%s\\SerenityBlocks-core.exe", exePath);
 
+    const char* originalCommandLine = GetCommandLineA();
+    const char* forwardedArgs = skipLauncherExecutable(originalCommandLine);
+    char processCommandLine[32768];
+
+    if (forwardedArgs && *forwardedArgs) {
+        snprintf(processCommandLine, sizeof(processCommandLine), "\"%s\" %s", electronPath, forwardedArgs);
+    } else {
+        snprintf(processCommandLine, sizeof(processCommandLine), "\"%s\"", electronPath);
+    }
+
     // Launch the Electron app
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
@@ -41,8 +79,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     // Create the process
     if (CreateProcessA(
-        electronPath,    // Application path
-        NULL,            // Command line (inherit from launcher)
+        electronPath,         // Application path
+        processCommandLine,   // Preserve diagnostic flags and other args
         NULL,            // Process security attributes
         NULL,            // Thread security attributes
         FALSE,           // Inherit handles

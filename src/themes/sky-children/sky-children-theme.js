@@ -21,6 +21,12 @@ import {
     createSkyChildrenPostProcessingModule,
     createSkyChildrenStylizedLightingModule,
 } from './sky-children-pipelines.js';
+import { clamp } from '@utils/helpers.js';
+import stylizedLightingWGSL from './wgsl/stylized_lighting.wgsl?raw';
+import terrainWGSL from './wgsl/terrain.wgsl?raw';
+import cloudWGSL from './wgsl/cloud.wgsl?raw';
+import foliageWGSL from './wgsl/foliage.wgsl?raw';
+import postProcessingWGSL from './wgsl/post_processing.wgsl?raw';
 
 const GPU_BUFFER_USAGE_UNIFORM = globalThis.GPUBufferUsage?.UNIFORM ?? 0x40;
 const GPU_BUFFER_USAGE_COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x08;
@@ -195,10 +201,6 @@ fn fs_present(input: VSOut) -> @location(0) vec4f {
 }
 `;
 
-function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-}
-
 function lerp(a, b, t) {
     return a + (b - a) * t;
 }
@@ -303,6 +305,7 @@ export default class SkyChildrenTheme extends BaseTheme {
         this.lastFramePresentTime = 0;
         this.eventUnsubscribers = [];
         this.boundResizeHandler = () => this.resizeCanvas();
+        this.pendingAsyncTimeouts = new Set();
 
         this.runtime = {
             time: 0,
@@ -518,13 +521,7 @@ export default class SkyChildrenTheme extends BaseTheme {
             return this.phase1WgslSource;
         }
 
-        const shaderUrl = new URL('./wgsl/stylized_lighting.wgsl', import.meta.url);
-        const response = await fetch(shaderUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to load stylized_lighting.wgsl (${response.status})`);
-        }
-
-        this.phase1WgslSource = await response.text();
+        this.phase1WgslSource = stylizedLightingWGSL;
         return this.phase1WgslSource;
     }
 
@@ -533,13 +530,7 @@ export default class SkyChildrenTheme extends BaseTheme {
             return this.phase2TerrainWgslSource;
         }
 
-        const shaderUrl = new URL('./wgsl/terrain.wgsl', import.meta.url);
-        const response = await fetch(shaderUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to load terrain.wgsl (${response.status})`);
-        }
-
-        this.phase2TerrainWgslSource = await response.text();
+        this.phase2TerrainWgslSource = terrainWGSL;
         return this.phase2TerrainWgslSource;
     }
 
@@ -548,13 +539,7 @@ export default class SkyChildrenTheme extends BaseTheme {
             return this.phase3CloudWgslSource;
         }
 
-        const shaderUrl = new URL('./wgsl/cloud.wgsl', import.meta.url);
-        const response = await fetch(shaderUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to load cloud.wgsl (${response.status})`);
-        }
-
-        this.phase3CloudWgslSource = await response.text();
+        this.phase3CloudWgslSource = cloudWGSL;
         return this.phase3CloudWgslSource;
     }
 
@@ -563,13 +548,7 @@ export default class SkyChildrenTheme extends BaseTheme {
             return this.phase4FoliageWgslSource;
         }
 
-        const shaderUrl = new URL('./wgsl/foliage.wgsl', import.meta.url);
-        const response = await fetch(shaderUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to load foliage.wgsl (${response.status})`);
-        }
-
-        this.phase4FoliageWgslSource = await response.text();
+        this.phase4FoliageWgslSource = foliageWGSL;
         return this.phase4FoliageWgslSource;
     }
 
@@ -578,13 +557,7 @@ export default class SkyChildrenTheme extends BaseTheme {
             return this.phase5PostWgslSource;
         }
 
-        const shaderUrl = new URL('./wgsl/post_processing.wgsl', import.meta.url);
-        const response = await fetch(shaderUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to load post_processing.wgsl (${response.status})`);
-        }
-
-        this.phase5PostWgslSource = await response.text();
+        this.phase5PostWgslSource = postProcessingWGSL;
         return this.phase5PostWgslSource;
     }
 
@@ -671,10 +644,22 @@ export default class SkyChildrenTheme extends BaseTheme {
                 cloudWGSL,
                 foliageWGSL,
             );
+            // Phase 1: Wrap shader compilation with error scopes for diagnostics
+            device.pushErrorScope('validation');
             const shaderModule = createSkyChildrenStylizedLightingModule(device, shaderSource);
             await this.validateShaderModule(shaderModule, SKY_CHILDREN_PHASE4_SHADER_LABELS.terrainCloudFoliageLighting);
+            const shaderScopeError = await device.popErrorScope();
+            if (shaderScopeError) {
+                console.error('[SkyChildren] Shader validation error:', shaderScopeError.message);
+            }
+
+            device.pushErrorScope('validation');
             const postShaderModule = createSkyChildrenPostProcessingModule(device, postWGSL);
             await this.validateShaderModule(postShaderModule, SKY_CHILDREN_PHASE5_SHADER_LABELS.postProcessing);
+            const postShaderScopeError = await device.popErrorScope();
+            if (postShaderScopeError) {
+                console.error('[SkyChildren] Post-processing shader validation error:', postShaderScopeError.message);
+            }
 
             const bindGroupLayout = device.createBindGroupLayout({
                 label: 'sky-children/phase4-bind-group-layout',
@@ -868,11 +853,16 @@ export default class SkyChildrenTheme extends BaseTheme {
                 usage: GPU_BUFFER_USAGE_UNIFORM + GPU_BUFFER_USAGE_COPY_DST,
             });
 
+            device.pushErrorScope('validation');
             const presentShaderModule = device.createShaderModule({
                 label: 'sky-children/phase5-present-shader',
                 code: SKY_CHILDREN_PRESENT_WGSL,
             });
             await this.validateShaderModule(presentShaderModule, 'sky-children/phase5-present-shader');
+            const presentScopeError = await device.popErrorScope();
+            if (presentScopeError) {
+                console.error('[SkyChildren] Present shader validation error:', presentScopeError.message);
+            }
             const presentBindGroupLayout = device.createBindGroupLayout({
                 label: 'sky-children/phase5-present-bind-group-layout',
                 entries: [
@@ -2070,8 +2060,17 @@ export default class SkyChildrenTheme extends BaseTheme {
     waitForMs(durationMs) {
         const delayMs = Number.isFinite(durationMs) ? Math.max(0, Math.floor(durationMs)) : 0;
         return new Promise((resolve) => {
-            setTimeout(resolve, delayMs);
+            const timeoutId = window.setTimeout(() => {
+                this.pendingAsyncTimeouts.delete(timeoutId);
+                resolve();
+            }, delayMs);
+            this.pendingAsyncTimeouts.add(timeoutId);
         });
+    }
+
+    clearPendingAsyncTimeouts() {
+        this.pendingAsyncTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.pendingAsyncTimeouts.clear();
     }
 
     recordRenderSample(durationMs) {
@@ -5085,6 +5084,7 @@ export default class SkyChildrenTheme extends BaseTheme {
     }
 
     stop() {
+        this.clearPendingAsyncTimeouts();
         this.removeEventListeners();
         this.removePhase1Helpers();
         this.removePhase2Helpers();
@@ -5102,6 +5102,7 @@ export default class SkyChildrenTheme extends BaseTheme {
     }
 
     cleanup() {
+        this.clearPendingAsyncTimeouts();
         this.removeEventListeners();
         this.removePhase1Helpers();
         this.removePhase2Helpers();

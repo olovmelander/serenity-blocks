@@ -71,7 +71,7 @@ Transform Odyssey Mode into an unforgettable journey where completing levels unl
   levelRewards: {
     1: { theme: 'cinder-drift' },  // Maps to music/SFX via theme
     2: { theme: 'crystal-cave' },
-    // ... all 56 levels
+    // ... all 55 levels
   },
 
   themeToMusic: {
