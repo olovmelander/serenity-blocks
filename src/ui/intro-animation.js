@@ -32,6 +32,12 @@ export class IntroAnimation {
         this.lastTitleBoundsSync = 0;
         this.currentPhase = INTRO_PHASES.BOOT;
         this.menuBgReady = false;
+        this.menuLayoutRaf = null;
+        this.menuLayoutTrackingInstalled = false;
+        this.menuLayoutResizeObserver = null;
+        this.menuLayoutObservedElement = null;
+        this.boundMenuLayoutUpdate = this.scheduleMenuLogoLayoutUpdate.bind(this);
+        this.boundMenuModalChange = this.handleMenuModalChange.bind(this);
         const params = typeof window !== 'undefined'
             ? new URLSearchParams(window.location.search)
             : new URLSearchParams();
@@ -92,7 +98,8 @@ export class IntroAnimation {
             const pulse = this.getMusicPulse();
             this.threeRenderer.setAudioPulse?.(pulse);
             this.threeRenderer.update();
-            if (this.isActive) {
+            const menuLogoActive = Boolean(this.container?.querySelector('.intro-title-container.shrink-to-logo'));
+            if (this.isActive || this.container?.classList?.contains('background-only') || menuLogoActive) {
                 this.syncTitleBounds(time);
             }
         }
@@ -103,6 +110,145 @@ export class IntroAnimation {
     startRenderLoop() {
         if (this.animationFrameId !== null) return;
         this.animationFrameId = requestAnimationFrame(this.boundAnimate);
+    }
+
+    handleMenuModalChange(event) {
+        if (event?.detail?.modalName === 'start') {
+            this.scheduleMenuLogoLayoutUpdate();
+        }
+    }
+
+    setupMenuLogoLayoutTracking() {
+        if (this.menuLayoutTrackingInstalled || typeof window === 'undefined') {
+            return;
+        }
+
+        window.addEventListener('resize', this.boundMenuLayoutUpdate, { passive: true });
+        window.addEventListener('modalShown', this.boundMenuModalChange);
+        window.addEventListener('modalHidden', this.boundMenuModalChange);
+        this.menuLayoutTrackingInstalled = true;
+        this.refreshMenuLogoLayoutObserver();
+        this.scheduleMenuLogoLayoutUpdate();
+    }
+
+    teardownMenuLogoLayoutTracking() {
+        if (this.menuLayoutRaf !== null && typeof cancelAnimationFrame === 'function') {
+            cancelAnimationFrame(this.menuLayoutRaf);
+            this.menuLayoutRaf = null;
+        }
+
+        if (this.menuLayoutResizeObserver) {
+            this.menuLayoutResizeObserver.disconnect();
+            this.menuLayoutResizeObserver = null;
+            this.menuLayoutObservedElement = null;
+        }
+
+        if (this.menuLayoutTrackingInstalled && typeof window !== 'undefined') {
+            window.removeEventListener('resize', this.boundMenuLayoutUpdate);
+            window.removeEventListener('modalShown', this.boundMenuModalChange);
+            window.removeEventListener('modalHidden', this.boundMenuModalChange);
+            this.menuLayoutTrackingInstalled = false;
+        }
+    }
+
+    refreshMenuLogoLayoutObserver() {
+        if (typeof ResizeObserver === 'undefined') {
+            return;
+        }
+
+        const cardsContainer = document.querySelector('.game-mode-cards-container');
+        if (this.menuLayoutObservedElement === cardsContainer) {
+            return;
+        }
+
+        if (this.menuLayoutResizeObserver) {
+            this.menuLayoutResizeObserver.disconnect();
+        }
+
+        this.menuLayoutObservedElement = cardsContainer;
+        if (!cardsContainer) {
+            this.menuLayoutResizeObserver = null;
+            return;
+        }
+
+        this.menuLayoutResizeObserver = new ResizeObserver(() => {
+            this.scheduleMenuLogoLayoutUpdate();
+        });
+        this.menuLayoutResizeObserver.observe(cardsContainer);
+    }
+
+    scheduleMenuLogoLayoutUpdate() {
+        if (typeof requestAnimationFrame !== 'function') {
+            this.updateMenuLogoLayout();
+            return;
+        }
+
+        if (this.menuLayoutRaf !== null) {
+            cancelAnimationFrame(this.menuLayoutRaf);
+        }
+
+        this.menuLayoutRaf = requestAnimationFrame(() => {
+            this.menuLayoutRaf = null;
+            this.updateMenuLogoLayout();
+        });
+    }
+
+    updateMenuLogoLayout() {
+        this.refreshMenuLogoLayoutObserver();
+
+        const titleContainer = this.container?.querySelector('.intro-title-container.shrink-to-logo');
+        if (!titleContainer) {
+            return;
+        }
+
+        if (!document.body.classList.contains('start-modal-open')) {
+            titleContainer.style.removeProperty('--menu-logo-top');
+            titleContainer.style.removeProperty('--menu-logo-scale');
+            return;
+        }
+
+        const cardsContainer = document.querySelector('.game-mode-cards-container');
+        const firstCard = cardsContainer?.querySelector('.game-mode-card');
+        if (!cardsContainer || !firstCard) {
+            return;
+        }
+
+        const naturalWidth = titleContainer.offsetWidth;
+        const naturalHeight = titleContainer.offsetHeight;
+        if (naturalWidth <= 0 || naturalHeight <= 0) {
+            return;
+        }
+
+        const viewportWidth = Math.max(window.innerWidth || 0, document.documentElement?.clientWidth || 0);
+        const viewportHeight = Math.max(window.innerHeight || 0, document.documentElement?.clientHeight || 0);
+        const firstCardTop = firstCard.getBoundingClientRect().top;
+
+        const sidePadding = Math.max(16, Math.round(viewportWidth * 0.02));
+        const topPadding = Math.max(6, Math.min(18, viewportHeight * 0.018));
+        const bottomGap = Math.max(6, Math.min(12, viewportHeight * 0.012));
+
+        const availableWidth = Math.max(120, viewportWidth - sidePadding * 2);
+        const availableHeight = Math.max(24, firstCardTop - topPadding - bottomGap);
+        const maxScale = 0.42;
+        const scale = Math.max(
+            0.12,
+            Math.min(
+                maxScale,
+                availableWidth / naturalWidth,
+                availableHeight / naturalHeight,
+            ),
+        );
+
+        const scaledHeight = naturalHeight * scale;
+        const preferredTop = topPadding + Math.max(0, (availableHeight - scaledHeight) * 0.5);
+        const maxTop = Math.max(topPadding, firstCardTop - scaledHeight - bottomGap);
+        const resolvedTop = Math.min(preferredTop, maxTop);
+
+        titleContainer.style.setProperty('--menu-logo-top', `${Math.round(resolvedTop)}px`);
+        titleContainer.style.setProperty('--menu-logo-scale', scale.toFixed(4));
+
+        this.lastTitleBoundsSync = 0;
+        this.syncTitleBounds(performance.now());
     }
 
     emitPhaseChanged(phase) {
@@ -387,6 +533,7 @@ export class IntroAnimation {
 
         // Add to body
         document.body.appendChild(this.container);
+        this.setupMenuLogoLayoutTracking();
         this.syncTitleBounds(performance.now());
     }
 
@@ -594,6 +741,7 @@ export class IntroAnimation {
         // Transition title to top as logo
         if (titleContainer) {
             titleContainer.classList.add('shrink-to-logo');
+            this.scheduleMenuLogoLayoutUpdate();
         }
 
         // Lower the z-index so modal cards can appear on top
@@ -679,6 +827,7 @@ export class IntroAnimation {
                 if (this.container && this.container.parentNode) {
                     this.container.parentNode.removeChild(this.container);
                 }
+                this.teardownMenuLogoLayoutTracking();
                 this.container = null;
                 this.loadingIndicator = null;
                 this.loadingPromise = null;
@@ -706,6 +855,7 @@ export class IntroAnimation {
         if (this.container) {
             this.container.classList.add('hidden');
         }
+        this.teardownMenuLogoLayoutTracking();
 
         // Cleanup Three.js
         if (this.animationFrameId) {
@@ -748,6 +898,7 @@ export class IntroAnimation {
         if (this.container && this.container.parentNode) {
             this.container.parentNode.removeChild(this.container);
         }
+        this.teardownMenuLogoLayoutTracking();
         this.container = null;
         this.loadingIndicator = null;
         this.loadingPromise = null;
@@ -776,6 +927,7 @@ export class IntroAnimation {
                 const titleContainer = this.container.querySelector('.intro-title-container');
                 if (titleContainer) {
                     titleContainer.classList.add('shrink-to-logo');
+                    this.scheduleMenuLogoLayoutUpdate();
                 }
 
                 // Hide prompt/chromatic if they exist (cleanup from full intro)
@@ -858,6 +1010,8 @@ export class IntroAnimation {
 
         // Add to DOM
         document.body.appendChild(this.container);
+        this.setupMenuLogoLayoutTracking();
+        this.scheduleMenuLogoLayoutUpdate();
         this.syncTitleBounds(performance.now());
 
         // Trigger animations

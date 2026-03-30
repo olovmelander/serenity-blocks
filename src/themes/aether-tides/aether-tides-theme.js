@@ -13,6 +13,19 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import AetherTidesSimulator from '../../utils/webgl/aether-tides-simulator.js';
 import { AETHER_TIDES_TETROMINOS } from './aether-tides-tetrominos.js';
 
+const AETHER_TIDES_VISUAL_BRIGHTNESS = 0.88;
+const AETHER_TIDES_COSMIC_PALETTE = [
+    { r: 0.5, g: 0.0, b: 1.0 }, // Purple
+    { r: 0.0, g: 1.0, b: 1.0 }, // Cyan
+    { r: 1.0, g: 0.0, b: 0.5 }, // Magenta
+    { r: 0.2, g: 0.0, b: 0.8 }, // Deep Blue
+];
+const AETHER_TIDES_STARFIELD_BACKGROUND = [
+    'radial-gradient(rgba(220, 235, 255, 0.9), rgba(220, 235, 255, 0.14) 2px, transparent 3px)',
+    'radial-gradient(rgba(220, 235, 255, 0.82), rgba(220, 235, 255, 0.1) 1px, transparent 2px)',
+    'radial-gradient(rgba(220, 235, 255, 0.72), rgba(220, 235, 255, 0.06) 2px, transparent 3px)',
+].join(', ');
+
 export default class AetherTidesTheme extends BaseTheme {
     constructor() {
         super('aether-tides');
@@ -97,7 +110,7 @@ export default class AetherTidesTheme extends BaseTheme {
                     stars.style.width = '100%';
                     stars.style.height = '100%';
                     stars.style.zIndex = '-1';
-                    stars.style.backgroundImage = 'radial-gradient(white, rgba(255,255,255,.2) 2px, transparent 3px), radial-gradient(white, rgba(255,255,255,.15) 1px, transparent 2px), radial-gradient(white, rgba(255,255,255,.1) 2px, transparent 3px)';
+                    stars.style.backgroundImage = AETHER_TIDES_STARFIELD_BACKGROUND;
                     stars.style.backgroundSize = '550px 550px, 350px 350px, 250px 250px';
                     stars.style.backgroundPosition = '0 0, 40px 60px, 130px 270px';
                     container.insertBefore(stars, this.canvas);
@@ -144,8 +157,8 @@ export default class AetherTidesTheme extends BaseTheme {
             BLOOM: true,
             BLOOM_ITERATIONS: 8,
             BLOOM_RESOLUTION: 256,
-            BLOOM_INTENSITY: 0.6,
-            BLOOM_THRESHOLD: 0.5,
+            BLOOM_INTENSITY: 0.45,
+            BLOOM_THRESHOLD: 0.62,
             BLOOM_SOFT_KNEE: 0.7,
             SUNRAYS: false, // Maybe too heavy?
             BACK_COLOR: { r: 0, g: 0, b: 0 },
@@ -171,14 +184,19 @@ export default class AetherTidesTheme extends BaseTheme {
 
     // --- Effects ---
 
+    scaleVisualColor(color, brightness = AETHER_TIDES_VISUAL_BRIGHTNESS) {
+        return {
+            r: color.r * brightness,
+            g: color.g * brightness,
+            b: color.b * brightness,
+        };
+    }
+
     getRandomCosmicColor() {
-        const palette = [
-            { r: 0.5, g: 0.0, b: 1.0 }, // Purple
-            { r: 0.0, g: 1.0, b: 1.0 }, // Cyan
-            { r: 1.0, g: 0.0, b: 0.5 }, // Magenta
-            { r: 0.2, g: 0.0, b: 0.8 }, // Deep Blue
+        const paletteColor = AETHER_TIDES_COSMIC_PALETTE[
+            Math.floor(Math.random() * AETHER_TIDES_COSMIC_PALETTE.length)
         ];
-        return palette[Math.floor(Math.random() * palette.length)];
+        return this.scaleVisualColor(paletteColor);
     }
 
     onLineClear(lineCount) {
@@ -189,7 +207,7 @@ export default class AetherTidesTheme extends BaseTheme {
         const intensity = 1.0 + (lineCount * 0.2);
 
         // Center explosion
-        this.simulator.splat(0.5, 0.5, 0, 0, { r: 1.0, g: 0.9, b: 0.5 }); // Bright core
+        this.simulator.splat(0.5, 0.5, 0, 0, this.scaleVisualColor({ r: 1.0, g: 0.9, b: 0.5 })); // Bright core
 
         for (let i = 0; i < count; i++) {
             this.scheduleEffectTimeout(() => {

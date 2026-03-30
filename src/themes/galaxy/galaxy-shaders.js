@@ -142,6 +142,8 @@ uniform float time;
 uniform float spiralTightness;
 uniform float uPulseTimers[8]; // Array of pulse timers for stacking effects
 uniform int uPulseCount;
+uniform float uLockGlow;
+uniform vec3 uLockDirection;
 
 attribute float aAngle;
 attribute float aRadius;
@@ -162,6 +164,13 @@ void main() {
     pos.x = cos(spiralAngle) * aRadius * (1.0 + wobble);
     pos.y = (aRandom - 0.5) * 0.8; // Flattened disk with some height variation
     pos.z = sin(spiralAngle) * aRadius * (1.0 + wobble);
+
+    vec2 lockVector = uLockDirection.xz;
+    float directionStrength = clamp(length(lockVector), 0.0, 1.0);
+    vec2 radialDir = normalize(pos.xz + vec2(0.0001));
+    vec2 normalizedLockDir = directionStrength > 0.001 ? normalize(lockVector) : vec2(0.0);
+    float sector = directionStrength > 0.001 ? max(dot(radialDir, normalizedLockDir), 0.0) : 1.0;
+    float lockBoost = uLockGlow * mix(1.0, 0.65 + 0.35 * sector, directionStrength);
     
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
@@ -190,17 +199,17 @@ void main() {
     // Pulse increases size significantly
     float baseSize = 3.0 + aRandom * 5.0;
     // Boost size most at the leading edge
-    float pulseSize = baseSize * (1.0 + pulseIntensity * 3.0);
+    float pulseSize = baseSize * (1.0 + pulseIntensity * 3.0 + lockBoost * 0.12);
     gl_PointSize = pulseSize * (15.0 / -mvPosition.z);
     
     // Color modulation
     // Pulse adds brightness/whiteness
     // Mix to white at high intensity, then fade back to original color
-    vec3 mixedColor = mix(aColor, vec3(1.0, 1.0, 1.0), pulseIntensity); 
-    vColor = mixedColor * (1.0 + pulseIntensity * 2.0); // Boost emission brightness
+    vec3 mixedColor = mix(aColor, vec3(1.0, 1.0, 1.0), min(1.0, pulseIntensity + lockBoost * 0.25));
+    vColor = mixedColor * (1.0 + pulseIntensity * 2.0 + lockBoost * 0.25);
     
     // Stars closer to center are brighter
-    vAlpha = 0.4 + 0.6 * (1.0 - aRadius / 15.0);
+    vAlpha = (0.4 + 0.6 * (1.0 - aRadius / 15.0)) * (1.0 + lockBoost * 0.12);
 }
 `;
 
@@ -228,9 +237,11 @@ void main() {
  */
 export const nebulaVertexShader = `
 varying vec2 vUv;
+varying vec3 vWorldCenter;
 
 void main() {
     vUv = uv;
+    vWorldCenter = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;
@@ -244,8 +255,11 @@ uniform float time;
 uniform float opacity;
 uniform vec3 colorA;
 uniform vec3 colorB;
+uniform float uLockNebulaBoost;
+uniform vec3 uLockDirection;
 
 varying vec2 vUv;
+varying vec3 vWorldCenter;
 
 // Simplified noise
 float hash(vec2 p) {
@@ -291,8 +305,17 @@ void main() {
     
     // Color mix
     vec3 color = mix(colorA, colorB, finalNoise);
+
+    vec2 lockVector = uLockDirection.xz;
+    float directionStrength = clamp(length(lockVector), 0.0, 1.0);
+    vec2 cloudDir = normalize(vWorldCenter.xz + vec2(0.0001));
+    vec2 normalizedLockDir = directionStrength > 0.001 ? normalize(lockVector) : vec2(0.0);
+    float sector = directionStrength > 0.001 ? max(dot(cloudDir, normalizedLockDir), 0.0) : 1.0;
+    float lockBoost = uLockNebulaBoost * mix(1.0, 0.72 + 0.28 * sector, directionStrength);
+    vec3 nebulaHighlight = mix(vec3(0.65, 0.85, 1.0), vec3(1.0), finalNoise * 0.4);
+    color = mix(color, nebulaHighlight, min(0.22, lockBoost * 0.18));
     
-    float alpha = finalNoise * falloff * opacity;
+    float alpha = finalNoise * falloff * opacity * (1.0 + lockBoost * 0.18);
     
     gl_FragColor = vec4(color, alpha);
 }
@@ -334,6 +357,8 @@ void main() {
  */
 export const dustVertexShader = `
 uniform float time;
+uniform float uLockDustBoost;
+uniform vec3 uLockDirection;
 attribute float aRandom;
 attribute float aSize;
 
@@ -350,13 +375,21 @@ void main() {
     
     // Gentle float
     rotatedPos.y += sin(time * 0.5 + aRandom * 10.0) * 0.3;
+
+    vec2 lockVector = uLockDirection.xz;
+    float directionStrength = clamp(length(lockVector), 0.0, 1.0);
+    vec2 dustDir = normalize(rotatedPos.xz + vec2(0.0001));
+    vec2 normalizedLockDir = directionStrength > 0.001 ? normalize(lockVector) : vec2(0.0);
+    float sector = directionStrength > 0.001 ? max(dot(dustDir, normalizedLockDir), 0.0) : 1.0;
+    float lockBoost = uLockDustBoost * mix(1.0, 0.72 + 0.28 * sector, directionStrength);
+    rotatedPos.xz += normalizedLockDir * lockBoost * (0.25 + aRandom * 0.25);
     
     vec4 mvPosition = modelViewMatrix * vec4(rotatedPos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     
-    gl_PointSize = aSize * (20.0 / -mvPosition.z);
+    gl_PointSize = aSize * (1.0 + lockBoost * 0.15) * (20.0 / -mvPosition.z);
     
-    vAlpha = 0.3 + 0.4 * sin(time * 1.5 + aRandom * 10.0);
+    vAlpha = (0.3 + 0.4 * sin(time * 1.5 + aRandom * 10.0)) * (1.0 + lockBoost * 0.15);
 }
 `;
 
@@ -384,6 +417,8 @@ void main() {
  */
 export const starsVertexShader = `
 uniform float time;
+uniform float uLockStarBoost;
+uniform vec3 uLockDirection;
 attribute float aRandom;
 attribute vec3 aColor;
 
@@ -393,14 +428,21 @@ varying float vAlpha;
 void main() {
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mvPosition;
+
+    vec2 lockVector = uLockDirection.xz;
+    float directionStrength = clamp(length(lockVector), 0.0, 1.0);
+    vec2 starDir = normalize(position.xz + vec2(0.0001));
+    vec2 normalizedLockDir = directionStrength > 0.001 ? normalize(lockVector) : vec2(0.0);
+    float sector = directionStrength > 0.001 ? max(dot(starDir, normalizedLockDir), 0.0) : 1.0;
+    float lockBoost = uLockStarBoost * mix(1.0, 0.78 + 0.22 * sector, directionStrength);
     
     // Size based on distance and randomness
     float baseSize = 1.5 + aRandom * 3.0;
-    gl_PointSize = baseSize * (30.0 / -mvPosition.z);
+    gl_PointSize = baseSize * (1.0 + lockBoost * 0.1) * (30.0 / -mvPosition.z);
     
-    vColor = aColor;
+    vColor = mix(aColor, vec3(1.0), min(0.22, lockBoost * 0.2));
     // Twinkling effect
-    vAlpha = 0.8 + 0.2 * sin(time * (1.0 + aRandom * 2.0) + aRandom * 6.28);
+    vAlpha = (0.8 + 0.2 * sin(time * (1.0 + aRandom * 2.0) + aRandom * 6.28)) * (1.0 + lockBoost * 0.1);
 }
 `;
 
@@ -432,6 +474,8 @@ uniform float time;
 uniform float spiralTightness;
 uniform float uPulseTimers[8]; // Array of pulse timers for stacking effects
 uniform int uPulseCount;
+uniform float uLockSparkle;
+uniform vec3 uLockDirection;
 
 attribute float aAngle;
 attribute float aRadius;
@@ -450,6 +494,13 @@ void main() {
     initialPos.x = cos(paramAngle) * aRadius;
     initialPos.y = (aRandom - 0.5) * 0.5;
     initialPos.z = sin(paramAngle) * aRadius;
+
+    vec2 lockVector = uLockDirection.xz;
+    float directionStrength = clamp(length(lockVector), 0.0, 1.0);
+    vec2 radialDir = normalize(initialPos.xz + vec2(0.0001));
+    vec2 normalizedLockDir = directionStrength > 0.001 ? normalize(lockVector) : vec2(0.0);
+    float sector = directionStrength > 0.001 ? max(dot(radialDir, normalizedLockDir), 0.0) : 1.0;
+    float sparkleSector = mix(1.0, 0.76 + 0.24 * sector, directionStrength);
     
     // Find the pulse that this spark should follow
     // Use the pulse with the largest valid age (i.e., the one that passed most recently)
@@ -470,7 +521,7 @@ void main() {
     if (age > 0.0 && age < maxLife) {
         bestAge = age; // This is the only age that matters for this particle
     }
-    
+
     vec3 animatedPos = initialPos;
     float alpha = 0.0;
     float size = 0.0;
@@ -494,6 +545,12 @@ void main() {
         alpha = pow(alpha, 0.5); // Stay visible longer
         
         size = (1.0 - (bestAge / maxLife)) * 5.0; // Start larger
+    } else if (uLockSparkle > 0.0) {
+        float sparkleMask = step(0.995, fract(aRandom * 91.137 + 0.17));
+        float sparklePulse = 0.72 + 0.28 * sin(time * 12.0 + aRandom * 40.0);
+        float sparkle = uLockSparkle * sparkleMask * sparkleSector * sparklePulse;
+        alpha = min(1.0, sparkle * 1.3);
+        size = sparkle * (1.8 + aRandom * 2.2);
     }
 
     vec4 mvPosition = modelViewMatrix * vec4(animatedPos, 1.0);
@@ -501,7 +558,7 @@ void main() {
     
     gl_PointSize = size * (20.0 / -mvPosition.z);
     
-    vColor = aColor; // Use theme colors (maybe mixed with white)
+    vColor = mix(aColor, vec3(1.0), min(0.7, uLockSparkle * 0.65));
     vAlpha = alpha;
 }
 `;
