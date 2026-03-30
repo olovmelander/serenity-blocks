@@ -2634,7 +2634,8 @@
                 // If the manifest is missing we're on the Vite dev server where
                 // raw source imports work directly.
                 const manifestResponse = await fetch('./.vite/manifest.json', { cache: 'no-store' }).catch(() => null);
-                if (!manifestResponse || !manifestResponse.ok) {
+                const contentType = manifestResponse?.headers?.get('content-type') || '';
+                if (!manifestResponse || !manifestResponse.ok || !contentType.includes('application/json')) {
                     // Dev server – import the raw source entry directly
                     return { entryUrl: '/src/entry-desktop.js', manifest: null };
                 }

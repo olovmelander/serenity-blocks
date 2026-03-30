@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { COLS } from '../../core/constants.js';
 import { GALAXY_TETROMINOS } from './galaxy-tetrominos.js';
 import {
     spiralVertexShader,
@@ -55,14 +56,15 @@ export default class GalaxyTheme extends BaseTheme {
         this.nebulaClouds = [];
         this.cosmicDust = null;
         this.shockwaves = [];
-        this.shockwaves = [];
         this.flares = [];
         this.spiralSparks = null;
+        this.coreLight = null;
 
         // Multiple stacking pulse waves
         this.MAX_PULSES = 8;
         this.pulseSlots = Array(this.MAX_PULSES).fill(null).map(() => ({ active: false, timer: -100.0 }));
         this.currentPulseSlot = 0;
+        this.lastAccentSide = 1;
 
         // Animation
         this.animationFrame = null;
@@ -75,7 +77,51 @@ export default class GalaxyTheme extends BaseTheme {
             coreColorPrimary: { value: new THREE.Color(0xFF33CC) }, // Magenta/Pink
             coreColorSecondary: { value: new THREE.Color(0x3399FF) }, // Bright Blue
             coreColorTertiary: { value: new THREE.Color(0x9933FF) }, // Purple
+            uLockGlow: { value: 0.0 },
+            uLockSparkle: { value: 0.0 },
+            uLockStarBoost: { value: 0.0 },
+            uLockDustBoost: { value: 0.0 },
+            uLockNebulaBoost: { value: 0.0 },
+            uLockDirection: { value: new THREE.Vector3(0, 0, 0) },
         };
+
+        this.lockFx = {
+            core: 0,
+            haloLight: 0,
+            arms: 0,
+            sparkle: 0,
+            stars: 0,
+            nebula: 0,
+            dust: 0,
+            parallax: 0,
+            accent: 0,
+            direction: new THREE.Vector3(0, 0, 0),
+        };
+        this.lockFxCaps = {
+            core: 1.0,
+            haloLight: 1.0,
+            arms: 1.0,
+            sparkle: 1.0,
+            stars: 1.0,
+            nebula: 1.0,
+            dust: 1.0,
+            parallax: 1.0,
+            accent: 1.0,
+        };
+        this.lockFxDecay = {
+            core: 6.5,
+            haloLight: 8.0,
+            arms: 5.5,
+            sparkle: 10.0,
+            stars: 7.0,
+            nebula: 5.2,
+            dust: 5.6,
+            parallax: 12.0,
+            accent: 9.5,
+        };
+        this.coreLightBaseIntensity = 2.0;
+        this.baseCoreOpacities = [0.95, 0.8, 0.5, 0.3];
+        this.baseCoreScales = [5, 10, 18, 25];
 
         // Theme palette for effects
         this.palette = [
@@ -188,6 +234,7 @@ export default class GalaxyTheme extends BaseTheme {
             depthWrite: false,
         }));
         innerGlow.scale.set(5, 5, 1);
+        innerGlow.userData = { baseScale: 5, baseOpacity: 0.95 };
         this.mainGroup.add(innerGlow);
         this.coreSprites.push(innerGlow);
 
@@ -201,6 +248,7 @@ export default class GalaxyTheme extends BaseTheme {
             depthWrite: false,
         }));
         midGlow.scale.set(10, 10, 1);
+        midGlow.userData = { baseScale: 10, baseOpacity: 0.8 };
         this.mainGroup.add(midGlow);
         this.coreSprites.push(midGlow);
 
@@ -214,6 +262,7 @@ export default class GalaxyTheme extends BaseTheme {
             depthWrite: false,
         }));
         outerGlow.scale.set(18, 18, 1);
+        outerGlow.userData = { baseScale: 18, baseOpacity: 0.5 };
         this.mainGroup.add(outerGlow);
         this.coreSprites.push(outerGlow);
 
@@ -227,6 +276,7 @@ export default class GalaxyTheme extends BaseTheme {
             depthWrite: false,
         }));
         haloGlow.scale.set(25, 25, 1);
+        haloGlow.userData = { baseScale: 25, baseOpacity: 0.3 };
         this.mainGroup.add(haloGlow);
         this.coreSprites.push(haloGlow);
 
@@ -345,6 +395,8 @@ export default class GalaxyTheme extends BaseTheme {
                 coreIntensity: this.uniforms.coreIntensity,
                 uPulseTimers: { value: pulseTimers },
                 uPulseCount: { value: this.MAX_PULSES },
+                uLockGlow: this.uniforms.uLockGlow,
+                uLockDirection: this.uniforms.uLockDirection,
             },
             vertexShader: spiralVertexShader,
             fragmentShader: spiralFragmentShader,
@@ -389,9 +441,9 @@ export default class GalaxyTheme extends BaseTheme {
             // We want mostly outward but with chaos
             const rTheta = Math.random() * Math.PI * 2;
             const rPhi = Math.random() * Math.PI;
-            randomDirs[i * 0] = Math.sin(rPhi) * Math.cos(rTheta);
-            randomDirs[i * 1] = Math.sin(rPhi) * Math.sin(rTheta);
-            randomDirs[i * 2] = Math.cos(rPhi);
+            randomDirs[i * 3] = Math.sin(rPhi) * Math.cos(rTheta);
+            randomDirs[i * 3 + 1] = Math.sin(rPhi) * Math.sin(rTheta);
+            randomDirs[i * 3 + 2] = Math.cos(rPhi);
 
             // Colors: mix of hot white, cyan, and pink
             const colorType = Math.random();
@@ -425,6 +477,8 @@ export default class GalaxyTheme extends BaseTheme {
                 spiralTightness: { value: 0.5 },
                 uPulseTimers: { value: pulseTimers },
                 uPulseCount: { value: this.MAX_PULSES },
+                uLockSparkle: this.uniforms.uLockSparkle,
+                uLockDirection: this.uniforms.uLockDirection,
             },
             vertexShader: sparkVertexShader,
             fragmentShader: sparkFragmentShader,
@@ -478,6 +532,8 @@ export default class GalaxyTheme extends BaseTheme {
         const material = new THREE.ShaderMaterial({
             uniforms: {
                 time: this.uniforms.time,
+                uLockStarBoost: this.uniforms.uLockStarBoost,
+                uLockDirection: this.uniforms.uLockDirection,
             },
             vertexShader: starsVertexShader,
             fragmentShader: starsFragmentShader,
@@ -514,6 +570,8 @@ export default class GalaxyTheme extends BaseTheme {
                     opacity: { value: config.opacity },
                     colorA: { value: new THREE.Color(config.colorA) },
                     colorB: { value: new THREE.Color(config.colorB) },
+                    uLockNebulaBoost: this.uniforms.uLockNebulaBoost,
+                    uLockDirection: this.uniforms.uLockDirection,
                 },
                 vertexShader: nebulaVertexShader,
                 fragmentShader: nebulaFragmentShader,
@@ -560,6 +618,8 @@ export default class GalaxyTheme extends BaseTheme {
             uniforms: {
                 time: this.uniforms.time,
                 color: { value: new THREE.Color(0x66CCFF) },
+                uLockDustBoost: this.uniforms.uLockDustBoost,
+                uLockDirection: this.uniforms.uLockDirection,
             },
             vertexShader: dustVertexShader,
             fragmentShader: dustFragmentShader,
@@ -576,9 +636,82 @@ export default class GalaxyTheme extends BaseTheme {
         const ambientLight = new THREE.AmbientLight(0x202040, 0.5);
         this.scene.add(ambientLight);
 
-        const pointLight = new THREE.PointLight(0xFF66CC, 2, 50);
+        const pointLight = new THREE.PointLight(0xFF66CC, this.coreLightBaseIntensity, 50);
         pointLight.position.set(0, 0, 0);
         this.mainGroup.add(pointLight);
+        this.coreLight = pointLight;
+    }
+
+    addLockFx(changes) {
+        Object.entries(changes).forEach(([key, amount]) => {
+            if (!(key in this.lockFx) || !Number.isFinite(amount)) return;
+            const cap = this.lockFxCaps[key] ?? 1.0;
+            this.lockFx[key] = Math.min(cap, this.lockFx[key] + amount);
+        });
+    }
+
+    updateLockFx(delta) {
+        Object.entries(this.lockFxDecay).forEach(([key, decay]) => {
+            const current = this.lockFx[key];
+            if (current <= 0.0001) {
+                this.lockFx[key] = 0;
+                return;
+            }
+
+            const eased = 1.0 - Math.exp(-decay * delta);
+            this.lockFx[key] = THREE.MathUtils.lerp(current, 0, eased);
+            if (this.lockFx[key] < 0.001) {
+                this.lockFx[key] = 0;
+            }
+        });
+    }
+
+    hasActiveComboPulse() {
+        return this.pulseSlots.some((slot) => slot.active && slot.timer >= 0.0 && slot.timer <= 120.0);
+    }
+
+    syncLockUniforms(comboScale = 1.0) {
+        this.uniforms.uLockGlow.value = Math.min(1.0, (this.lockFx.arms + this.lockFx.accent * 0.08) * comboScale);
+        this.uniforms.uLockSparkle.value = Math.min(1.0, this.lockFx.sparkle * comboScale);
+        this.uniforms.uLockStarBoost.value = Math.min(1.0, (this.lockFx.stars + this.lockFx.accent * 0.12) * comboScale);
+        this.uniforms.uLockDustBoost.value = Math.min(1.0, this.lockFx.dust * comboScale);
+        this.uniforms.uLockNebulaBoost.value = Math.min(1.0, this.lockFx.nebula * comboScale);
+        this.uniforms.uLockDirection.value.copy(this.lockFx.direction);
+    }
+
+    computeLockDirection(piece) {
+        if (!piece?.shape || !Array.isArray(piece.shape) || !Number.isFinite(piece.x)) {
+            return new THREE.Vector3(0, 0, 0);
+        }
+
+        let sumX = 0;
+        let count = 0;
+
+        for (let row = 0; row < piece.shape.length; row++) {
+            const shapeRow = piece.shape[row];
+            if (!Array.isArray(shapeRow)) continue;
+
+            for (let col = 0; col < shapeRow.length; col++) {
+                if (!shapeRow[col]) continue;
+                sumX += piece.x + col + 0.5;
+                count += 1;
+            }
+        }
+
+        if (count === 0) {
+            return new THREE.Vector3(0, 0, 0);
+        }
+
+        const centroidX = sumX / count;
+        const bias = THREE.MathUtils.clamp((centroidX / COLS) * 2.0 - 1.0, -1.0, 1.0);
+
+        if (Math.abs(bias) < 0.05) {
+            return new THREE.Vector3(0, 0, 0);
+        }
+
+        // Encode side and strength in the same vector so shaders can keep the response global
+        // while still biasing one side of the galaxy more strongly.
+        return new THREE.Vector3(bias, 0, 0);
     }
 
     animate() {
@@ -590,20 +723,58 @@ export default class GalaxyTheme extends BaseTheme {
         const elapsedTime = this.clock.getElapsedTime();
         this.uniforms.time.value = elapsedTime;
 
+        this.updateLockFx(delta);
+
+        // Update Multiple Pulse Waves before syncing lock uniforms so combo dominance is current.
+        if (this.spiralStars) {
+            const pulseTimers = this.spiralStars.material.uniforms.uPulseTimers.value;
+
+            for (let i = 0; i < this.MAX_PULSES; i++) {
+                const slot = this.pulseSlots[i];
+                if (slot.active) {
+                    slot.timer += delta * 8.0;
+
+                    if (slot.timer > 120.0) {
+                        slot.active = false;
+                        slot.timer = -100.0;
+                    }
+                }
+
+                pulseTimers[i] = slot.timer;
+            }
+
+            if (this.spiralSparks) {
+                const sparkTimers = this.spiralSparks.material.uniforms.uPulseTimers.value;
+                for (let i = 0; i < this.MAX_PULSES; i++) {
+                    sparkTimers[i] = pulseTimers[i];
+                }
+            }
+        }
+
+        const comboLockScale = this.hasActiveComboPulse() ? 0.6 : 1.0;
+        this.syncLockUniforms(comboLockScale);
+        const lockDirection = this.uniforms.uLockDirection.value;
+        const parallax = this.lockFx.parallax * comboLockScale;
+
         // Slow camera orbit/drift for immersive effect
         if (this.camera) {
             const cameraTime = elapsedTime * 0.08; // Very slow orbit
-
-            // Gentle orbit with a much closer fly-in toward the galaxy core
-            this.camera.position.x = Math.sin(cameraTime) * this.cameraMotion.horizontal;
-            this.camera.position.y = this.cameraBasePosition.y
+            const baseX = Math.sin(cameraTime) * this.cameraMotion.horizontal;
+            const baseY = this.cameraBasePosition.y
                 + Math.sin(cameraTime * 0.7) * this.cameraMotion.vertical;
-            this.camera.position.z = this.cameraBasePosition.z
+            const baseZ = this.cameraBasePosition.z
                 + Math.cos(cameraTime) * this.cameraMotion.depth;
 
-            // Keep looking at center (with slight offset for dynamic feel)
+            this.camera.position.x = baseX + lockDirection.x * 0.32 * parallax;
+            this.camera.position.y = baseY + Math.abs(lockDirection.x) * 0.05 * parallax;
+            this.camera.position.z = baseZ - 0.45 * parallax;
+
             const lookAtOffset = Math.sin(cameraTime * 0.5) * this.cameraMotion.lookAtX;
-            this.camera.lookAt(lookAtOffset, 0, 0);
+            this.camera.lookAt(
+                lookAtOffset + lockDirection.x * 0.28 * parallax,
+                0.03 * parallax,
+                0,
+            );
         }
 
         // Rotate background stars slowly
@@ -615,11 +786,23 @@ export default class GalaxyTheme extends BaseTheme {
         // Pulse core glow intensity based on coreIntensity uniform
         if (this.coreSprites && this.coreSprites.length > 0) {
             const pulseScale = 1.0 + (this.uniforms.coreIntensity.value - 1.0) * 0.3;
+            const haloBoost = this.lockFx.haloLight * comboLockScale;
+            const coreBoost = this.lockFx.core * comboLockScale;
             this.coreSprites.forEach((sprite, i) => {
-                // Each layer pulses slightly differently
-                const baseScale = [5, 10, 18, 25][i];
-                sprite.scale.setScalar(baseScale * pulseScale);
+                const baseScale = sprite.userData?.baseScale ?? this.baseCoreScales[i] ?? 1;
+                const baseOpacity = sprite.userData?.baseOpacity ?? this.baseCoreOpacities[i] ?? 0.5;
+                const layerBoost = i === 0
+                    ? 1.0 + coreBoost * 0.04
+                    : 1.0 + haloBoost * (0.025 + i * 0.015);
+                sprite.scale.setScalar(baseScale * pulseScale * layerBoost);
+                sprite.material.opacity = Math.min(1.0, baseOpacity + haloBoost * (0.03 + i * 0.015));
             });
+        }
+
+        if (this.coreLight) {
+            const haloBoost = this.lockFx.haloLight * comboLockScale;
+            const accentBoost = this.lockFx.accent * comboLockScale;
+            this.coreLight.intensity = this.coreLightBaseIntensity + haloBoost * 0.25 + accentBoost * 0.06;
         }
 
         // Main group drift (figure-8 pattern)
@@ -647,35 +830,6 @@ export default class GalaxyTheme extends BaseTheme {
         // Update effects
         this.updateShockwaves(delta);
         this.updateFlares(delta);
-
-        // Update Multiple Pulse Waves
-        if (this.spiralStars) {
-            const pulseTimers = this.spiralStars.material.uniforms.uPulseTimers.value;
-
-            // Update each slot
-            for (let i = 0; i < this.MAX_PULSES; i++) {
-                const slot = this.pulseSlots[i];
-                if (slot.active) {
-                    slot.timer += delta * 8.0;
-
-                    if (slot.timer > 120.0) {
-                        slot.active = false;
-                        slot.timer = -100.0;
-                    }
-                }
-
-                // Update uniform directly
-                pulseTimers[i] = slot.timer;
-            }
-
-            // Sync Sparks
-            if (this.spiralSparks) {
-                const sparkTimers = this.spiralSparks.material.uniforms.uPulseTimers.value;
-                for (let i = 0; i < this.MAX_PULSES; i++) {
-                    sparkTimers[i] = pulseTimers[i];
-                }
-            }
-        }
 
         this.renderer.render(this.scene, this.camera);
     }
@@ -776,6 +930,64 @@ export default class GalaxyTheme extends BaseTheme {
         this.flares.push(flare);
     }
 
+    createLockAccentFlare(direction) {
+        if (!this.mainGroup) return;
+
+        const particleCount = 8 + Math.floor(Math.random() * 5);
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const velocities = [];
+
+        let angle;
+        if (direction.lengthSq() > 0.0001) {
+            angle = direction.x >= 0 ? 0 : Math.PI;
+        } else {
+            this.lastAccentSide *= -1;
+            angle = this.lastAccentSide > 0 ? 0 : Math.PI;
+        }
+        angle += (Math.random() - 0.5) * 0.35;
+
+        const radius = 6 + Math.random() * 3;
+        const baseX = Math.cos(angle) * radius;
+        const baseZ = Math.sin(angle) * radius;
+        const baseY = (Math.random() - 0.5) * 0.45;
+
+        for (let i = 0; i < particleCount; i++) {
+            positions[i * 3] = baseX + (Math.random() - 0.5) * 0.35;
+            positions[i * 3 + 1] = baseY + (Math.random() - 0.5) * 0.2;
+            positions[i * 3 + 2] = baseZ + (Math.random() - 0.5) * 0.35;
+
+            const speed = 1.6 + Math.random() * 1.8;
+            velocities.push({
+                x: Math.cos(angle) * speed + (Math.random() - 0.5) * 1.2,
+                y: (Math.random() - 0.5) * 0.8,
+                z: Math.sin(angle) * speed + (Math.random() - 0.5) * 1.2,
+            });
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        const material = new THREE.PointsMaterial({
+            color: new THREE.Color(0xCCF4FF),
+            size: 0.18,
+            transparent: true,
+            opacity: 1.0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        const flare = new THREE.Points(geometry, material);
+        const life = 0.35 + Math.random() * 0.1;
+        flare.userData = {
+            velocities,
+            life,
+            maxLife: life,
+        };
+
+        this.mainGroup.add(flare);
+        this.flares.push(flare);
+    }
+
     updateFlares(delta) {
         for (let i = this.flares.length - 1; i >= 0; i--) {
             const flare = this.flares[i];
@@ -817,10 +1029,10 @@ export default class GalaxyTheme extends BaseTheme {
             }
         });
 
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
             const settings = typeof window !== 'undefined' ? window.settings : null;
             if (this.isActive && settings?.backgroundComboEffects !== false) {
-                this.onPieceLock();
+                this.onPieceLock(data);
             }
         });
 
@@ -861,11 +1073,28 @@ export default class GalaxyTheme extends BaseTheme {
         }
     }
 
-    onPieceLock() {
-        this.uniforms.coreIntensity.value += 0.15;
-        if (Math.random() < 0.3) {
-            this.createSolarFlare();
+    onPieceLock(data) {
+        const direction = this.computeLockDirection(data?.piece);
+        this.lockFx.direction.copy(direction);
+        this.uniforms.uLockDirection.value.copy(direction);
+
+        if (this.uniforms.coreIntensity.value < 1.35) {
+            this.uniforms.coreIntensity.value = Math.min(1.35, this.uniforms.coreIntensity.value + 0.1);
         }
+
+        this.addLockFx({
+            core: 0.8,
+            haloLight: 0.9,
+            arms: 1.0,
+            sparkle: 0.95,
+            stars: 0.9,
+            nebula: 0.85,
+            dust: 0.9,
+            parallax: 1.0,
+            accent: 1.0,
+        });
+
+        this.createLockAccentFlare(direction);
     }
 
     onWindowResize() {
@@ -916,6 +1145,7 @@ export default class GalaxyTheme extends BaseTheme {
         this.camera = null;
         this.renderer = null;
         this.mainGroup = null;
+        this.coreLight = null;
         this.coreSprites = [];
         this.spiralStars = null;
         this.backgroundStars = null;
@@ -923,6 +1153,11 @@ export default class GalaxyTheme extends BaseTheme {
         this.cosmicDust = null;
         this.shockwaves = [];
         this.flares = [];
+        Object.keys(this.lockFxDecay).forEach((key) => {
+            this.lockFx[key] = 0;
+        });
+        this.lockFx.direction.set(0, 0, 0);
+        this.syncLockUniforms(1.0);
     }
 
     getTetrominoConfig() {
