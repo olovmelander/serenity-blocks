@@ -1,5 +1,10 @@
 [
   {
+    "name": "Aether Tides",
+    "file": "aether-tides.mp3",
+    "path": "./assets/music/aether-tides.mp3"
+  },
+  {
     "name": "Aurora",
     "file": "aurora.mp3",
     "path": "./assets/music/aurora.mp3"
