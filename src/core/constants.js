@@ -239,6 +239,10 @@ export const DEFAULT_SETTINGS = {
     comboPopupEffect: true,
     lineClearEffects: true,
     backgroundComboEffects: true,
+    customCursorEnabled: true,
+    customCursorIntensity: 'standard',
+    customCursorVisibilityPreset: 'standard',
+    customCursorReducedMotion: 'system',
     tornadoThemeParams: {
         emissiveColor: '#ff8a3b',
         timeScale: 1.0,

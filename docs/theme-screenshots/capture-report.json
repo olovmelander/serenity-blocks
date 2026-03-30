@@ -1,0 +1,15 @@
+{
+  "generatedAt": "2026-03-11T21:09:06.572Z",
+  "totalThemes": 1,
+  "captured": 1,
+  "failed": 0,
+  "settleTimeMs": 25000,
+  "results": [
+    {
+      "theme": "stellar-drift",
+      "passed": true,
+      "screenshot": "docs/theme-screenshots/stellar-drift.png",
+      "error": null
+    }
+  ]
+}

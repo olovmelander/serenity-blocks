@@ -289,6 +289,7 @@ export default class SummerTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.qualityPreset = QUALITY_PRESETS.High;
         this.animationFrameId = null;
+        this.boundResizeHandler = this.handleResize.bind(this);
     }
 
     getTetrominoConfig() {
@@ -1145,7 +1146,7 @@ export default class SummerTheme extends BaseTheme {
             }),
         );
 
-        window.addEventListener('resize', this.handleResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
     }
 
     handleResize() {
@@ -1380,41 +1381,31 @@ export default class SummerTheme extends BaseTheme {
         }
     }
 
-    async stop() {
+    stop() {
         console.log('[SummerTheme] Stopping...');
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
         }
-        await super.stop();
+        window.removeEventListener('resize', this.boundResizeHandler);
+        super.stop();
     }
 
-    cleanup() {
-        console.log('[SummerTheme] Cleaning up...');
-
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
-        }
-
+    releaseInactiveResources() {
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
 
-        if (this.renderer) {
-            this.renderer.dispose();
-            this.renderer = null;
-        }
-
-        if (this.composer) {
-            this.composer.dispose();
-            this.composer = null;
-        }
+        super.releaseInactiveResources();
 
         this.sun = null;
         this.grass = null;
         this.pollen = null;
         this.butterflies = [];
         this.sunGlowLayers = [];
+    }
+
+    cleanup() {
+        console.log('[SummerTheme] Cleaning up...');
 
         super.cleanup();
     }

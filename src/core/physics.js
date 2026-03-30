@@ -791,6 +791,7 @@ export async function processPhysics(gameState, callbacks) {
                 fullLines.length,
                 holeColumns,
                 waveHoleMasks.map((mask) => mask.slice()),
+                fullLines.slice(),
             );
         }
         if (callbacks.onLineClearImpact) callbacks.onLineClearImpact(fullLines.length, cascadeCount);

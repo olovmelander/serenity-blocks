@@ -14,7 +14,13 @@ import { seededRandom } from '../../utils/helpers.js';
 import { drawNextPieces } from '../../rendering/draw.js';
 import { LocalMatchConfigModal } from '../../ui/local-match-config-modal.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import { showCinematicLoadingOverlay, dismissCinematicLoadingOverlay } from '../../ui/cinematic-loading-overlay.js';
+import {
+    showCinematicLoadingOverlay,
+    dismissCinematicLoadingOverlay,
+    transitionCinematicLoadingOverlayToCountdown,
+} from '../../ui/cinematic-loading-overlay.js';
+
+const MATCH_START_LOADING_MIN_VISIBLE_MS = 2000;
 
 /**
  * LocalMultiplayerMode - Local 2-4 player competitive mode
@@ -237,11 +243,30 @@ export class LocalMultiplayerMode extends BaseGameMode {
         return config?.isInfinityLMS ? 'LAST STANDING' : 'FREE-FOR-ALL';
     }
 
-    async _dismissMatchStartLoadingOverlay({ fadeOutMs = 800, minVisibleMs = 2000 } = {}) {
+    async _dismissMatchStartLoadingOverlay({
+        fadeOutMs = 800,
+        minVisibleMs = MATCH_START_LOADING_MIN_VISIBLE_MS,
+    } = {}) {
         if (!this.matchStartLoadingOverlay) return;
 
         await dismissCinematicLoadingOverlay({ fadeOutMs, minVisibleMs });
         this.matchStartLoadingOverlay = null;
+    }
+
+    async _waitForMatchStartLoadingOverlayMinVisible(
+        minVisibleMs = MATCH_START_LOADING_MIN_VISIBLE_MS,
+    ) {
+        if (!this.matchStartLoadingOverlay) return;
+
+        const shownAt = Number(this.matchStartLoadingOverlay.shownAt || Date.now());
+        const elapsedMs = Date.now() - shownAt;
+        const remainingVisibleMs = Math.max(0, minVisibleMs - elapsedMs);
+
+        if (remainingVisibleMs > 0) {
+            await new Promise((resolve) => {
+                setTimeout(resolve, remainingVisibleMs);
+            });
+        }
     }
 
     /**
@@ -358,12 +383,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         const { introAnimation } = await import('../../ui/intro-animation.js');
-        if (introAnimation) {
-            introAnimation.dismiss();
-            await new Promise((resolve) => {
-                setTimeout(resolve, 100);
-            });
-        }
+        const introDismissPromise = Promise.resolve(
+            introAnimation?.dismiss?.(),
+        );
 
         // Hide start modal immediately
         this.deps.modalManager.hideAll();
@@ -400,6 +422,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Activate Phaser multiplayer UI
         this._activatePhaserMultiplayerUI();
+        this._hideMultiplayerBoardsForCountdown();
 
         // Get references to the board scenes (created in _createSeparatePhaserGames)
         if (!this.boardScenes || this.boardScenes.length === 0) {
@@ -469,11 +492,18 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Update stats display
         this._updateMultiplayerStats(0);
 
-        // Transition from cinematic loader into countdown/gameplay.
-        await this._dismissMatchStartLoadingOverlay();
-
-        // Show countdown
-        await this._showCountdown();
+        // Keep the cinematic loader up until it morphs directly into the countdown.
+        await this._waitForMatchStartLoadingOverlayMinVisible();
+        await introDismissPromise;
+        await transitionCinematicLoadingOverlayToCountdown({
+            startCount: 5,
+            onCount: () => this.deps.soundManager.sfxPlayer.playMove?.(),
+            onGo: () => this.deps.soundManager.sfxPlayer.playDrop?.(),
+            onFirstCountVisible: () => {
+                this._revealMultiplayerBoardsForCountdown();
+            },
+        });
+        this.matchStartLoadingOverlay = null;
 
         // Spawn first pieces for all players
         this.multiplayerState.lastTime = performance.now();
@@ -702,6 +732,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const delta = currentTime - this.multiplayerState.lastTime;
             this.multiplayerState.lastTime = currentTime;
 
+            // Update DAS (Delayed Auto Shift) for continuous movement
+            if (window.inputController) {
+                window.inputController.updateDAS(delta);
+            }
+
             // Debug log every 60 frames (once per second at 60fps)
             frameCount++;
             if (frameCount % 60 === 0) {
@@ -801,10 +836,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
             onRotate: () => {
                 this.deps.soundManager.sfxPlayer.playRotate();
             },
-            onLineClear: (lineCount) => {
+            onLineClear: (lineCount, ...rest) => {
+                const clearedRows = Array.isArray(rest[2]) ? rest[2] : [];
                 this.deps.soundManager.sfxPlayer.playLineClear();
                 // Emit event for theme reactions (optional, but good for consistency with single player)
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount });
+                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount, clearedRows });
             },
             onPieceLock: (piece) => {
                 eventBus.emit(EVENTS.PIECE_LOCK, { piece });
@@ -1649,121 +1685,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Show countdown before game starts
-     * @private
-     */
-    async _showCountdown() {
-        console.log('[LocalMultiplayer] Starting countdown...');
-        return new Promise((resolve) => {
-            const count = 5;
-
-            // Create overlay background
-            const overlay = document.createElement('div');
-            overlay.id = 'countdown-overlay';
-            // ... (rest of function - ensuring I don't cut it off, but I need to jump to handleRoundEnd)
-            // Wait, I am replacing a huge chunk including _handleGameOver.
-            // I need to make sure I don't delete _showCountdown or handleRoundEnd if I don't include them in replacement.
-            // The tool `replace_file_content` replaces a contiguous block.
-            // My previous `view_file` showed `_showCountdown` starting at 1393.
-            // `_handleGameOver` starts at 1241 and ends around 1387.
-            // `handleRoundEnd` is way down at 2260.
-            // I should use `multi_replace_file_content` because I'm editing two separate functions that are far apart.
-            // I cannot use `replace_file_content` for both effectively without reading the whole file in between.
-            // I will ABORT this `replace_file_content` and use `multi_replace_file_content`.
-        });
-    }
-
-    // Placeholder to make valid JS for thought process - I will return error to myself to switch tools.
-
-    /**
-     * Show countdown before game starts
-     * @private
-     */
-    async _showCountdown() {
-        console.log('[LocalMultiplayer] Starting countdown...');
-        return new Promise((resolve) => {
-            let count = 5;
-
-            // Create overlay background
-            const overlay = document.createElement('div');
-            overlay.id = 'countdown-overlay';
-            overlay.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0, 0, 0, 0.85);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                z-index: 99999;
-                pointer-events: none;
-            `;
-
-            const countdownElement = document.createElement('div');
-            countdownElement.id = 'countdown-text';
-            countdownElement.style.cssText = `
-                font-family: Arial, sans-serif;
-                font-size: 150px;
-                font-weight: 900;
-                color: #10b981;
-                text-shadow: 
-                    0 0 20px rgba(16, 185, 129, 1),
-                    0 0 40px rgba(16, 185, 129, 0.8),
-                    0 0 60px rgba(16, 185, 129, 0.6),
-                    0 0 80px rgba(16, 185, 129, 0.4);
-                line-height: 1;
-                user-select: none;
-            `;
-
-            overlay.appendChild(countdownElement);
-            document.body.appendChild(overlay);
-
-            console.log('[LocalMultiplayer] Countdown overlay created');
-
-            const countdown = () => {
-                if (count > 0) {
-                    console.log(`[LocalMultiplayer] Countdown: ${count}`);
-                    countdownElement.textContent = count;
-                    countdownElement.style.opacity = '1';
-                    countdownElement.style.transform = 'scale(1)';
-
-                    this.deps.soundManager.sfxPlayer.playMove?.();
-                    count--;
-                    setTimeout(countdown, 1000);
-                } else {
-                    console.log('[LocalMultiplayer] Countdown: GO!');
-                    countdownElement.textContent = 'GO!';
-                    countdownElement.style.color = '#f59e0b';
-                    countdownElement.style.textShadow = `
-                        0 0 20px rgba(245, 158, 11, 1),
-                        0 0 40px rgba(245, 158, 11, 0.8),
-                        0 0 60px rgba(245, 158, 11, 0.6),
-                        0 0 80px rgba(245, 158, 11, 0.4)
-                    `;
-                    countdownElement.style.opacity = '1';
-                    countdownElement.style.transform = 'scale(1)';
-
-                    this.deps.soundManager.sfxPlayer.playDrop?.();
-                    setTimeout(() => {
-                        console.log('[LocalMultiplayer] Countdown complete, removing overlay');
-                        overlay.style.transition = 'opacity 0.3s';
-                        overlay.style.opacity = '0';
-                        setTimeout(() => {
-                            overlay.remove();
-                            resolve();
-                        }, 300);
-                    }, 700);
-                }
-            };
-
-            // Start countdown after a brief delay to ensure overlay is rendered
-            setTimeout(countdown, 100);
-        });
-    }
-
-    /**
      * Calculate dynamic block size based on window height
      * @private
      */
@@ -2356,6 +2277,31 @@ export class LocalMultiplayerMode extends BaseGameMode {
             gameArea.style.transform = 'none';
             gameArea.style.margin = '0 auto';
         }
+    }
+
+    _hideMultiplayerBoardsForCountdown() {
+        const container = document.getElementById('multiplayer-container');
+        if (!container) return;
+
+        container.style.transition = 'none';
+        container.style.opacity = '0';
+    }
+
+    _revealMultiplayerBoardsForCountdown({ fadeMs = 260 } = {}) {
+        const container = document.getElementById('multiplayer-container');
+        if (!container) return;
+
+        container.style.transition = `opacity ${fadeMs}ms ease-out`;
+
+        requestAnimationFrame(() => {
+            container.style.opacity = '1';
+        });
+
+        setTimeout(() => {
+            if (container.isConnected) {
+                container.style.transition = '';
+            }
+        }, fadeMs + 60);
     }
 
     /**

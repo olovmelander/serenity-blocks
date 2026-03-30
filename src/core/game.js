@@ -50,6 +50,10 @@ function createComboState() {
     };
 }
 
+// Pre-allocated buffers for piece lock hot path (avoids per-lock GC pressure)
+let _pieceIdCounter = 0;
+const _columnFlags = new Uint8Array(COLS); // boolean flags for occupied columns
+
 function ensureBoardCache(gameState) {
     if (!gameState) return null;
 
@@ -658,7 +662,7 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     const lockedPieceSnapshot = {
         ...lockedPiece,
         shape: lockedPiece.shape.map((row) => row.slice()),
-        pieceId: Date.now() + Math.random(),
+        pieceId: ++_pieceIdCounter,
         color: themedColor,
     };
 
@@ -666,31 +670,40 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
         physicsCallbacks.onPieceLock(lockedPieceSnapshot);
     }
 
-    // Calculate and store the occupied columns of the piece (for Quadra-style garbage)
-    // We track ALL columns where the piece has blocks for accurate garbage holes
-    const occupiedColumns = new Set();
+    // Calculate occupied columns and lock footprint with minimal allocations
+    // Uses pre-allocated _columnFlags instead of new Set() + Array.from().sort()
+    _columnFlags.fill(0);
     const lockFootprint = [];
     const boardHeight = gameState.boardGrid?.length || (ROWS + HIDDEN_ROWS);
-    gameState.currentPiece.shape.forEach((row, localY) => {
-        row.forEach((cell, localX) => {
-            if (cell > 0) {
-                const boardX = gameState.currentPiece.x + localX;
-                const boardY = gameState.currentPiece.y + localY;
+    const shape = gameState.currentPiece.shape;
+    const pieceX = gameState.currentPiece.x;
+    const pieceY = gameState.currentPiece.y;
+    for (let localY = 0; localY < shape.length; localY++) {
+        const row = shape[localY];
+        for (let localX = 0; localX < row.length; localX++) {
+            if (row[localX] > 0) {
+                const boardX = pieceX + localX;
+                const boardY = pieceY + localY;
                 if (boardX >= 0 && boardX < COLS) {
-                    occupiedColumns.add(boardX);
+                    _columnFlags[boardX] = 1;
                 }
                 if (boardY >= 0 && boardY < boardHeight && boardX >= 0 && boardX < COLS) {
                     lockFootprint.push({ x: boardX, y: boardY });
                 }
             }
-        });
-    });
-    gameState.lastPlacedPieceX = Array.from(occupiedColumns).sort((a, b) => a - b);
+        }
+    }
+    // Build sorted column array from flags (already in order, no sort needed)
+    const sortedColumns = [];
+    for (let c = 0; c < COLS; c++) {
+        if (_columnFlags[c]) sortedColumns.push(c);
+    }
+    gameState.lastPlacedPieceX = sortedColumns;
 
     // Reset combo tracking for the upcoming physics resolution
     const comboState = createComboState();
     comboState.lockFootprint = lockFootprint;
-    comboState.manualColumns = [...gameState.lastPlacedPieceX];
+    comboState.manualColumns = sortedColumns;
     comboState.sourceColor = themedColor;
     comboState.sourcePiece = lockedPieceSnapshot.shapeKey;
     comboState.sequence = gameState.garbageAttackSequence++;
@@ -758,6 +771,13 @@ export function updateGame(time, gameState, callbacks) {
     if (!gameState.isPaused) {
         const delta = time - gameState.lastTime;
         gameState.lastTime = time;
+
+        // Phase 3: Advance input repeat (DAS/ARR) using the same authoritative
+        // delta as gravity, so input timing is frame-rate independent and unified
+        // under one simulation clock.
+        if (window.inputController) {
+            window.inputController.updateDAS(delta);
+        }
 
         // Auto drop (fixed-step accumulator for frame-rate independent gravity timing)
         processAutoDrop(gameState, delta, playDropCallback, physicsCallbacks);
@@ -887,6 +907,10 @@ export function startGame(gameState, callbacks, settings) {
 export function pauseGame(gameState) {
     if (gameState.isGameOver) return;
     gameState.isPaused = true;
+    // Phase 3: Clear input repeat timers to prevent burst moves on resume
+    if (window.inputController) {
+        window.inputController.clearTimers();
+    }
 }
 
 /**
@@ -897,6 +921,10 @@ export function resumeGame(gameState) {
     if (gameState.isGameOver) return;
     gameState.isPaused = false;
     gameState.lastTime = performance.now();
+    // Phase 3: Clear stale input repeat accumulators to prevent burst moves
+    if (window.inputController) {
+        window.inputController.clearTimers();
+    }
 }
 
 /**

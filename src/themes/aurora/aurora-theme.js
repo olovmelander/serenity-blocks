@@ -31,6 +31,7 @@ export default class AuroraTheme extends BaseTheme {
     constructor() {
         super('aurora');
         this.eventUnsubscribers = [];
+        this.boundResizeHandler = this.onWindowResize.bind(this);
 
         // Three.js components
         this.scene = null;
@@ -144,7 +145,7 @@ export default class AuroraTheme extends BaseTheme {
 
         // Event listeners
         this.setupEventListeners();
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         // Start animation
         this.animate();
@@ -699,7 +700,7 @@ export default class AuroraTheme extends BaseTheme {
     dispose() {
         super.dispose();
 
-        window.removeEventListener('resize', this.onWindowResize.bind(this));
+        window.removeEventListener('resize', this.boundResizeHandler);
 
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);

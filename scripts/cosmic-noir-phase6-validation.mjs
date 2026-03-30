@@ -61,6 +61,34 @@ const PHASE6_BUDGETS = {
     soakMemoryGrowthLimit: 0.1,
 };
 
+const SHADER_FAILURE_PATTERNS = [
+    {
+        id: 'wgsl_parse_error',
+        label: 'THREE.Error while parsing WGSL',
+        pattern: 'THREE.Error while parsing WGSL',
+    },
+    {
+        id: 'invalid_shader_module',
+        label: 'Invalid ShaderModule',
+        pattern: 'Invalid ShaderModule',
+    },
+    {
+        id: 'invalid_render_pipeline',
+        label: 'Invalid RenderPipeline',
+        pattern: 'Invalid RenderPipeline',
+    },
+    {
+        id: 'invalid_command_buffer',
+        label: 'Invalid CommandBuffer',
+        pattern: 'Invalid CommandBuffer',
+    },
+    {
+        id: 'webgpu_uncaptured_error',
+        label: 'WebGPU uncaptured error',
+        pattern: '[GPUResilience] WebGPU uncaptured error',
+    },
+];
+
 const WEBGL_REFERENCE_PATH = process.env.COSMIC_NOIR_WEBGL_REFERENCE || null;
 
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -83,6 +111,50 @@ function parsePositiveInt(value, fallback) {
 
 function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function serializeConsoleEntry(entry) {
+    return {
+        ts: new Date(entry.ts).toISOString(),
+        level: entry.level,
+        message: entry.message,
+        line: entry.line,
+        sourceId: entry.sourceId,
+    };
+}
+
+function buildConsoleLog(entries) {
+    return entries
+        .map((entry) => `[${new Date(entry.ts).toISOString()}][L${entry.level}] ${entry.message}`)
+        .join('\n');
+}
+
+function summarizeConsoleEntries(entries) {
+    const warningEntries = entries.filter((entry) => entry.level >= 2);
+    const errorEntries = entries.filter((entry) => entry.level >= 3);
+    const shaderFailures = SHADER_FAILURE_PATTERNS.map((rule) => {
+        const matches = entries
+            .filter((entry) => entry.message.includes(rule.pattern))
+            .map(serializeConsoleEntry);
+
+        return {
+            id: rule.id,
+            label: rule.label,
+            count: matches.length,
+            samples: matches.slice(0, 5),
+        };
+    }).filter((entry) => entry.count > 0);
+
+    return {
+        entryCount: entries.length,
+        warningCount: warningEntries.length,
+        errorCount: errorEntries.length,
+        shaderFailureCount: shaderFailures.reduce((sum, entry) => sum + entry.count, 0),
+        shaderFailureTypes: shaderFailures.map((entry) => entry.id),
+        shaderFailures,
+        warningSamples: warningEntries.slice(0, 10).map(serializeConsoleEntry),
+        errorSamples: errorEntries.slice(0, 10).map(serializeConsoleEntry),
+    };
 }
 
 function makeScenarioUrl(params = {}) {
@@ -172,6 +244,18 @@ function createWindow() {
     });
 }
 
+function executeJavaScriptWithTimeout(win, script, timeoutMs, label) {
+    return Promise.race([
+        win.webContents.executeJavaScript(script, true),
+        new Promise((_, reject) => {
+            setTimeout(
+                () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+                timeoutMs,
+            );
+        }),
+    ]);
+}
+
 async function bootstrapCosmicNoirScene(win) {
     const script = `
         (async () => {
@@ -184,6 +268,12 @@ async function bootstrapCosmicNoirScene(win) {
                 }
                 return false;
             };
+            const withTimeout = async (promise, timeoutMs, label) => Promise.race([
+                promise,
+                new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error(label + ' timed out')), timeoutMs);
+                }),
+            ]);
 
             const managersReady = await waitFor(
                 () => !!(window.serenityBlocks?.gameModeManager && window.serenityBlocks?.themeManager),
@@ -228,7 +318,11 @@ async function bootstrapCosmicNoirScene(win) {
             }
 
             try {
-                await app.themeManager.switchTheme('cosmic-noir', true);
+                await withTimeout(
+                    app.themeManager.switchTheme('cosmic-noir', true),
+                    45000,
+                    'switchTheme(cosmic-noir)',
+                );
             } catch (error) {
                 return {
                     ok: false,
@@ -254,7 +348,7 @@ async function bootstrapCosmicNoirScene(win) {
         })();
     `;
 
-    return win.webContents.executeJavaScript(script, true);
+    return executeJavaScriptWithTimeout(win, script, 60000, 'bootstrapCosmicNoirScene');
 }
 
 async function runTimedCapture(win, options = {}) {
@@ -364,57 +458,76 @@ async function runTimedCapture(win, options = {}) {
         })(${JSON.stringify(payload)});
     `;
 
-    return win.webContents.executeJavaScript(script, true);
+    return executeJavaScriptWithTimeout(
+        win,
+        script,
+        payload.durationMs + 30000,
+        `runTimedCapture(${payload.mode})`,
+    );
 }
 
-async function collectScenario(win, scenario) {
+async function collectScenario(win, scenario, consoleEntries) {
     const scenarioDir = path.join(ARTIFACT_DIR, scenario.name);
     await mkdir(scenarioDir, { recursive: true });
 
     const url = makeScenarioUrl(scenario.params);
-    await win.loadURL(url);
-    const boot = await bootstrapCosmicNoirScene(win);
-    if (!boot?.ok) {
-        throw new Error(`[${scenario.name}] bootstrap failed: ${boot?.reason || 'unknown error'}`);
-    }
-
-    await delay(2000);
-
-    const idle = await runTimedCapture(win, {
-        mode: 'idle',
-        durationMs: CAPTURE_CONFIG.idleMs,
-    });
-    if (!idle?.ok) {
-        throw new Error(`[${scenario.name}] idle capture failed: ${idle?.reason || 'unknown error'}`);
-    }
-
-    const combat = await runTimedCapture(win, {
-        mode: 'combat',
-        durationMs: CAPTURE_CONFIG.combatMs,
-        comboEveryMs: CAPTURE_CONFIG.comboEveryMs,
-        comboCount: CAPTURE_CONFIG.comboCount,
-        lineCount: CAPTURE_CONFIG.lineCount,
-    });
-    if (!combat?.ok) {
-        throw new Error(`[${scenario.name}] combat capture failed: ${combat?.reason || 'unknown error'}`);
-    }
-
+    const consoleStartIndex = consoleEntries.length;
+    let idle = null;
+    let combat = null;
     let soak = null;
-    if (CAPTURE_CONFIG.runSoak) {
-        soak = await runTimedCapture(win, {
+    let error = null;
+
+    try {
+        await win.loadURL(url);
+        const boot = await bootstrapCosmicNoirScene(win);
+        if (!boot?.ok) {
+            throw new Error(`[${scenario.name}] bootstrap failed: ${boot?.reason || 'unknown error'}`);
+        }
+
+        await delay(2000);
+
+        idle = await runTimedCapture(win, {
+            mode: 'idle',
+            durationMs: CAPTURE_CONFIG.idleMs,
+        });
+        if (!idle?.ok) {
+            throw new Error(`[${scenario.name}] idle capture failed: ${idle?.reason || 'unknown error'}`);
+        }
+
+        combat = await runTimedCapture(win, {
             mode: 'combat',
-            durationMs: CAPTURE_CONFIG.soakMs,
+            durationMs: CAPTURE_CONFIG.combatMs,
             comboEveryMs: CAPTURE_CONFIG.comboEveryMs,
             comboCount: CAPTURE_CONFIG.comboCount,
             lineCount: CAPTURE_CONFIG.lineCount,
         });
-        if (!soak?.ok) {
-            throw new Error(`[${scenario.name}] soak capture failed: ${soak?.reason || 'unknown error'}`);
+        if (!combat?.ok) {
+            throw new Error(`[${scenario.name}] combat capture failed: ${combat?.reason || 'unknown error'}`);
         }
+
+        if (CAPTURE_CONFIG.runSoak) {
+            soak = await runTimedCapture(win, {
+                mode: 'combat',
+                durationMs: CAPTURE_CONFIG.soakMs,
+                comboEveryMs: CAPTURE_CONFIG.comboEveryMs,
+                comboCount: CAPTURE_CONFIG.comboCount,
+                lineCount: CAPTURE_CONFIG.lineCount,
+            });
+            if (!soak?.ok) {
+                throw new Error(`[${scenario.name}] soak capture failed: ${soak?.reason || 'unknown error'}`);
+            }
+        }
+
+        const screenshot = await win.webContents.capturePage();
+        await writeFile(path.join(scenarioDir, 'combat.png'), screenshot.toPNG());
+    } catch (scenarioError) {
+        error = scenarioError?.message || String(scenarioError);
     }
 
-    const screenshot = await win.webContents.capturePage();
-    await writeFile(path.join(scenarioDir, 'combat.png'), screenshot.toPNG());
+    const scenarioConsoleEntries = consoleEntries.slice(consoleStartIndex);
+    const consoleSummary = summarizeConsoleEntries(scenarioConsoleEntries);
+    const consoleLogPath = path.join(scenarioDir, 'console.log');
+    await writeFile(consoleLogPath, buildConsoleLog(scenarioConsoleEntries), 'utf8');
 
     const payload = {
         scenario: scenario.name,
@@ -422,6 +535,9 @@ async function collectScenario(win, scenario) {
         idle,
         combat,
         soak,
+        consoleSummary,
+        consoleLogPath: path.relative(ROOT, consoleLogPath),
+        error,
     };
 
     await writeFile(
@@ -429,6 +545,10 @@ async function collectScenario(win, scenario) {
         JSON.stringify(payload, null, 2),
         'utf8',
     );
+
+    if (error) {
+        throw new Error(error);
+    }
 
     return payload;
 }
@@ -540,6 +660,26 @@ function evaluatePhase6(results, webglReference = null) {
         ));
     }
 
+    const consoleShaderDetails = Object.fromEntries(
+        Object.entries(results).map(([name, value]) => [
+            name,
+            {
+                shaderFailureCount: value?.consoleSummary?.shaderFailureCount ?? 0,
+                shaderFailureTypes: value?.consoleSummary?.shaderFailureTypes ?? [],
+                warningCount: value?.consoleSummary?.warningCount ?? 0,
+                errorCount: value?.consoleSummary?.errorCount ?? 0,
+                consoleLogPath: value?.consoleLogPath ?? null,
+            },
+        ]),
+    );
+    const consoleShaderCleanPass = Object.values(consoleShaderDetails)
+        .every((entry) => entry.shaderFailureCount === 0);
+    checks.push(makeCheck(
+        'console_shader_pipeline_cleanliness',
+        consoleShaderCleanPass ? 'pass' : 'fail',
+        consoleShaderDetails,
+    ));
+
     const overallPass = checks.every((check) => check.status === 'pass' || check.status === 'skip');
     return { overallPass, checks };
 }
@@ -564,6 +704,9 @@ function buildMarkdownSummary(summary) {
         lines.push(`  - idle p95: ${value?.idle?.report?.p95FrameMs ?? 'n/a'}`);
         lines.push(`  - combat avg draw calls: ${value?.combat?.report?.avgDrawCalls ?? 'n/a'}`);
         lines.push(`  - backend: ${value?.idle?.report?.backend ?? 'n/a'}`);
+        lines.push(`  - console shader failures: ${value?.consoleSummary?.shaderFailureCount ?? 'n/a'}`);
+        lines.push(`  - console errors: ${value?.consoleSummary?.errorCount ?? 'n/a'}`);
+        lines.push(`  - console log: ${value?.consoleLogPath ?? 'n/a'}`);
     });
     lines.push('');
     return `${lines.join('\n')}\n`;
@@ -585,11 +728,22 @@ async function run() {
     await waitForServer(DEV_SERVER_URL, 120000);
 
     const win = createWindow();
+    const consoleEntries = [];
     const results = {};
+
+    win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+        consoleEntries.push({
+            ts: Date.now(),
+            level,
+            message,
+            line,
+            sourceId,
+        });
+    });
 
     for (const scenario of SCENARIOS) {
         console.log(`[Phase6Validation] Running scenario: ${scenario.name}`);
-        results[scenario.name] = await collectScenario(win, scenario);
+        results[scenario.name] = await collectScenario(win, scenario, consoleEntries);
     }
 
     const webglReference = await loadWebglReference();

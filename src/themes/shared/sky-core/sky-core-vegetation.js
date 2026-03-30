@@ -6,12 +6,9 @@ import {
     createGrassMaterial,
 } from './sky-core-materials.js';
 import { createFlowerCarpetField } from './sky-core-flower-carpet-field.js';
+import { clamp } from '@utils/helpers.js';
 
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
-
-function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-}
 
 function smoothstep(edge0, edge1, x) {
     const t = clamp((x - edge0) / Math.max(1e-6, edge1 - edge0), 0, 1);

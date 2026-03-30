@@ -158,11 +158,27 @@ export default class NimbusVeilTheme extends BaseTheme {
 
         // Event handlers
         this.eventUnsubscribers = [];
+        this.boundResizeHandler = this.onWindowResize.bind(this);
+        this.effectTimeouts = new Set();
 
         // Quality
         this.qualityPreset = QUALITY_PRESETS.High;
 
         console.log('[NimbusVeil] Theme constructed');
+    }
+
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -216,7 +232,7 @@ export default class NimbusVeilTheme extends BaseTheme {
 
         // Event listeners
         this.setupEventListeners();
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         // Start animation
         this.animate();
@@ -825,7 +841,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         // Create pulse waves (reduced opacity)
         const waveCount = Math.min(lineCount, 3);
         for (let i = 0; i < waveCount; i++) {
-            setTimeout(() => this.createPulseWave(0.35), i * 150);
+            this.scheduleEffectTimeout(() => this.createPulseWave(0.35), i * 150);
         }
 
         // Bloom boost (reduced)
@@ -843,7 +859,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         // Multiple ethereal pulse waves (reduced opacity)
         const waveCount = Math.min(Math.floor(comboCount / 2) + 1, 4);
         for (let i = 0; i < waveCount; i++) {
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 this.createPulseWave(0.25 + comboCount * 0.05);
             }, i * 100);
         }
@@ -892,7 +908,8 @@ export default class NimbusVeilTheme extends BaseTheme {
     stop() {
         super.stop();
 
-        window.removeEventListener('resize', this.onWindowResize.bind(this));
+        this.clearEffectTimeouts();
+        window.removeEventListener('resize', this.boundResizeHandler);
 
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);

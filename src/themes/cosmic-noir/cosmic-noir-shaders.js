@@ -320,40 +320,49 @@ export const nebulaVertexShader = `
 
 export const nebulaFragmentShader = `
     uniform sampler2D tDiffuse;
+    uniform sampler2D uNoiseMap;
     uniform float uOpacity;
     uniform float uPulse;
     uniform float uTime;
     varying vec2 vUv;
 
-    ${noiseCommon}
-
     void main() {
-        // Match Blood Moon's gas billow behavior.
-        float distortX = fbm(vec3(vUv * 2.0, uTime * 0.05)) * 0.1;
-        float distortY = fbm(vec3(vUv * 2.0 + 10.0, uTime * 0.05)) * 0.1;
-        vec2 distortedUv = vUv + vec2(distortX, distortY);
+        float flowTime = uTime * 0.03;
+        vec4 noiseA = texture2D(uNoiseMap, vUv * 0.42 + vec2(flowTime, -flowTime * 0.5));
+        vec4 noiseB = texture2D(uNoiseMap, vUv * 0.78 + vec2(-flowTime * 0.35, flowTime * 0.42) + vec2(0.17, 0.39));
+        vec4 veilNoise = texture2D(uNoiseMap, vUv * 0.24 + vec2(flowTime * 0.18, -flowTime * 0.14) + vec2(0.61, 0.11));
+        vec2 primaryDistortion = ((vec2(noiseA.r + noiseB.b, noiseA.g + noiseB.r) * 0.5) - 0.5) * 0.05;
+        vec2 secondaryDistortion = (vec2(noiseB.g, noiseA.b) - 0.5) * 0.014;
+        vec2 distortedUv = vUv + primaryDistortion + secondaryDistortion;
+        vec2 softUv = vUv + primaryDistortion * 0.35;
 
         vec4 texColor = texture2D(tDiffuse, distortedUv);
+        vec4 softTexColor = texture2D(tDiffuse, softUv);
 
         // Aggressive edge fade to hide plane boundaries and blend properly
         float fadeX = smoothstep(0.0, 0.4, distortedUv.x) * smoothstep(1.0, 0.6, distortedUv.x);
         float fadeY = smoothstep(0.0, 0.4, distortedUv.y) * smoothstep(1.0, 0.6, distortedUv.y);
         float fade = fadeX * fadeY;
-        fade = pow(clamp(fade, 0.0, 1.0), 1.5);
+        fade = pow(clamp(fade, 0.0, 1.0), 0.9);
 
         // Desaturate so Blood Moon texture structure renders as noir-white gas.
         float gray = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
-        gray = pow(clamp(gray * 1.25, 0.0, 1.0), 0.9);
+        float softGray = dot(softTexColor.rgb, vec3(0.299, 0.587, 0.114));
+        float mergedGray = mix(gray, softGray, 0.42);
+        float veil = smoothstep(0.28, 0.78, veilNoise.r * 0.55 + veilNoise.g * 0.45);
+        gray = pow(clamp(mergedGray * 1.75 + veil * 0.12, 0.0, 1.0), 0.68);
+        float whiteLift = smoothstep(0.34, 0.96, gray);
 
         // Cool silver-white tint for depth without color bleed.
-        vec3 color = vec3(gray) * vec3(0.92, 0.96, 1.0);
+        vec3 billowBase = vec3(gray) * vec3(0.94, 0.97, 1.0);
+        vec3 color = mix(billowBase, vec3(1.0), whiteLift * 0.22);
 
         // Pulse effect boosts brightness
-        float pulseFactor = 1.0 + uPulse * 0.3;
+        float pulseFactor = 1.0 + uPulse * 0.35;
         color *= pulseFactor;
 
         // Luminance-driven alpha keeps shape detail from reused colored textures.
-        float alpha = gray * (uOpacity + uPulse * 0.1) * fade;
+        float alpha = clamp(gray * (veil * 0.35 + 0.78) * (uOpacity + uPulse * 0.14 + 0.08) * fade * 1.22, 0.0, 0.9);
 
         gl_FragColor = vec4(color, alpha);
     }
@@ -381,176 +390,70 @@ uniform float uTime;
 uniform float uPulseIntensity;
 uniform float uExplosionTimer;
 uniform float uExplosionIntensity;
+uniform sampler2D uNoiseMap;
 
 varying vec3 vNormal;
 varying vec3 vPosition;
 varying vec3 vViewPosition;
 
-${noiseCommon}
-
 void main() {
     vec3 viewDir = normalize(vViewPosition);
-    vec3 pos = normalize(vPosition) * 4.0;
+    vec3 pos = normalize(vPosition);
 
     // View dependency for rim softness
     float fresnel = 1.0 - abs(dot(vNormal, viewDir));
     fresnel = pow(fresnel, 2.0);
 
-    // === EPIC GAS EXPLOSION EFFECT ===
-    float explosionAge = uExplosionTimer;
-    float explosionFactor = 0.0;
-    float explosionTurbulence = 0.0;
-    float explosionGlow = 0.0;
-    float shockwaveRing = 0.0;
-    float gasTendrils = 0.0;
-    float energyPulse = 0.0;
-    
-    if (explosionAge > 0.0 && explosionAge < 4.0) {
-        // Explosion phases with smoother transitions
-        float ignition = smoothstep(0.0, 0.15, explosionAge) * smoothstep(0.5, 0.2, explosionAge);
-        float expansion = smoothstep(0.2, 0.8, explosionAge) * smoothstep(2.5, 1.0, explosionAge);
-        float dissipation = smoothstep(2.0, 4.0, explosionAge);
-        
-        explosionFactor = ignition * 1.5 + expansion;
-        explosionTurbulence = (1.0 - dissipation) * uExplosionIntensity * 1.5;
-        explosionGlow = ignition * 3.0 + expansion * 1.5;
-        
-        // === EXPANDING SHOCKWAVE RINGS ===
-        // Multiple concentric rings that expand outward
-        float ringRadius1 = explosionAge * 2.5;
-        float ringRadius2 = max(0.0, explosionAge - 0.3) * 2.8;
-        float ringRadius3 = max(0.0, explosionAge - 0.6) * 3.2;
-        
-        // Distance from center in spherical space
-        float distFromCenter = length(pos.xy); 
-        
-        // Create ring shapes with thickness
-        float ring1 = smoothstep(ringRadius1 - 0.4, ringRadius1, distFromCenter) * 
-                      smoothstep(ringRadius1 + 0.4, ringRadius1, distFromCenter);
-        float ring2 = smoothstep(ringRadius2 - 0.3, ringRadius2, distFromCenter) * 
-                      smoothstep(ringRadius2 + 0.3, ringRadius2, distFromCenter);
-        float ring3 = smoothstep(ringRadius3 - 0.25, ringRadius3, distFromCenter) * 
-                      smoothstep(ringRadius3 + 0.25, ringRadius3, distFromCenter);
-        
-        // Fade rings as they expand
-        ring1 *= smoothstep(8.0, 0.0, ringRadius1);
-        ring2 *= smoothstep(10.0, 0.0, ringRadius2) * 0.7;
-        ring3 *= smoothstep(12.0, 0.0, ringRadius3) * 0.5;
-        
-        shockwaveRing = (ring1 + ring2 + ring3) * uExplosionIntensity;
-        
-        // === GAS TENDRILS SHOOTING OUTWARD ===
-        // Create directional wisps that burst from center
-        float tendrilAngle = atan(pos.y, pos.x);
-        float tendrilNoise = snoise(vec3(tendrilAngle * 4.0, explosionAge * 3.0, 0.0));
-        float tendrilShape = pow(abs(sin(tendrilAngle * 8.0 + tendrilNoise * 2.0)), 4.0);
-        
-        // Tendrils expand outward
-        float tendrilLength = explosionAge * 3.0;
-        float tendrilDist = smoothstep(0.0, tendrilLength, distFromCenter) * 
-                           smoothstep(tendrilLength + 1.0, tendrilLength * 0.5, distFromCenter);
-        
-        gasTendrils = tendrilShape * tendrilDist * (1.0 - dissipation) * uExplosionIntensity;
-        
-        // === PULSATING ENERGY WAVES ===
-        float pulseWave = sin(explosionAge * 15.0 - distFromCenter * 2.0) * 0.5 + 0.5;
-        energyPulse = pulseWave * explosionFactor * 0.4 * (1.0 - dissipation);
-    }
+    float flowTime = uTime * 0.8;
+    vec4 flowA = texture2D(
+        uNoiseMap,
+        vec2(pos.x, pos.y) * 0.34 + vec2(flowTime * 0.12, -flowTime * 0.09) + vec2(pos.z, pos.x) * 0.08
+    );
+    vec2 warpOffset = (flowA.xy - 0.5) * 0.18;
+    vec4 flowB = texture2D(
+        uNoiseMap,
+        vec2(pos.z, pos.x) * 0.46 + vec2(-flowTime * 0.08, flowTime * 0.11) + warpOffset
+    );
+    vec4 tendrilTex = texture2D(
+        uNoiseMap,
+        vec2(pos.y, pos.z) * 0.72 + vec2(flowTime * 0.18, -flowTime * 0.15) + warpOffset * 1.15
+    );
 
-    // === LIVING ATMOSPHERE SIMULATION ===
-    // We displace the coordinate system over time to create swirling flow
-    // ACCELERATED MOVEMENT: Increased speeds significantly to ensure visibility
-    float t = uTime * 0.8; 
-    float turbulenceSpeed = 1.0 + explosionTurbulence * 8.0;
-    float turbulenceScale = 1.0 + explosionTurbulence * 0.5;
+    float flowDensityPulse = flowB.z * 0.45 + 0.78;
+    float flowTurbulence = flowA.z * 0.6 + 0.55;
+    float gasA = flowA.z * 0.7 + flowB.x * 0.3;
+    float gasB = flowB.y * 0.62 + flowA.y * 0.38;
+    float breath = sin(uTime * 0.55) * 0.08 + 1.0;
+    float tendrilField = tendrilTex.x * 0.6 + tendrilTex.y * 0.4;
+    float tendrilMask = smoothstep(0.42, 0.85, tendrilField) * flowTurbulence;
+    float gas = mix(gasA, gasB, 0.4) * flowDensityPulse * breath + tendrilMask * 0.2;
 
-    // 1. ROTATIONAL FLOW (Planetary Spin)
-    // Rotate coordinates around Y axis - faster spin
-    float sinT = sin(t * 0.5);
-    float cosT = cos(t * 0.5);
-    mat2 rot = mat2(cosT, -sinT, sinT, cosT);
-    
-    vec3 flowPos = pos;
-    flowPos.xz = rot * flowPos.xz; 
+    float explosionAge = max(0.0, uExplosionTimer);
+    float explosionIn = smoothstep(0.0, 0.15, explosionAge);
+    float explosionOut = 1.0 - smoothstep(2.5, 4.0, explosionAge);
+    float explosionWindow = explosionIn * explosionOut;
 
-    // 2. MULTI-LAYERED FLUID NOISE
-    
-    // Layer 1: Deep currents (Slow, large scale) - increased scroll speed
-    // Moves with the rotation
-    float gasDeep = fbm(flowPos * 1.6 * turbulenceScale + vec3(0.0, t * 0.4, explosionAge * 3.0));
-    
-    // Layer 2: Surface Turbulence (Medium scale, counter-movement)
-    // We add a counter-flow vector to create shearing/eddies
-    vec3 counterFlow = vec3(sin(t * 0.8), cos(t * 0.6), 0.0) * 0.5;
-    float gasSurface = snoise(pos * 3.5 * turbulenceScale + counterFlow + vec3(0.0, -t * 0.7 * turbulenceSpeed, explosionAge * 2.0));
-    
-    // Layer 3: Ethereal Wisps (High frequency, vertical drift) - fast drift
-    float gasWisps = snoise(pos * 7.0 + vec3(t * 0.5, -t * 1.5, explosionAge * 5.0));
-    
-    // 3. COMPOSITION
-    // Combine layers: Deep structure + Surface detail + Wisps
-    // Use the surface layer to distort the deep layer slightly (domain warping)
-    float gasCombined = gasDeep + gasSurface * 0.35 + gasWisps * 0.15;
-    
-    // 4. BREATHING EFFECT
-    // More noticeable density pulse
-    float breath = 1.0 + sin(uTime * 1.2) * 0.12; 
-    gasCombined *= breath;
-    
-    // Explosion shockwave distortion (preserved)
-    float shockwaveNoise = snoise(pos * 6.0 + vec3(explosionAge * 12.0));
-    float burstNoise = snoise(pos * 3.0 - vec3(explosionAge * 5.0, 0.0, explosionAge * 3.0));
-    
-    // Mix it all
-    gasCombined += (shockwaveNoise + burstNoise) * explosionFactor * 0.6;
-    gasCombined += (gasWisps * 0.5) * explosionTurbulence; // Add grit during explosion
+    float radialDist = length(vec2(pos.x, pos.y));
+    float pulseWave = (sin(uTime * 4.0 - radialDist * 8.0) * 0.5 + 0.5) * uPulseIntensity * 0.35;
+    float shockPhase = sin(explosionAge * 12.0 - radialDist * 6.0) * 0.5 + 0.5;
+    float shockwave = shockPhase * explosionWindow * uExplosionIntensity * flowTurbulence;
 
-    float gas = gasCombined;
+    vec3 tendrilGlow = vec3(0.22, 0.22, 0.3) * (tendrilMask * 0.1 + pulseWave * 0.5);
+    vec3 finalColor = mix(vec3(0.03, 0.03, 0.045), vec3(0.11, 0.11, 0.16), gas) * (1.0 + uPulseIntensity * 0.5);
+    finalColor += tendrilGlow;
+    finalColor += vec3(0.32, 0.32, 0.4) * (shockwave * 0.35);
 
-    // === DRAMATIC COLOR PALETTE ===
-    vec3 colorDense = vec3(0.12, 0.12, 0.15);      // Dark noir base
-    vec3 colorWispy = vec3(0.35, 0.35, 0.42);      // Silver mist
-    
-    // Explosion color gradient: hot white → bright silver → cool cyan tint
-    vec3 colorHotCore = vec3(1.0, 1.0, 1.0);       // Pure white (hottest)
-    vec3 colorExplosion = vec3(0.95, 0.95, 1.0);   // Bright silver-white
-    vec3 colorEnergy = vec3(0.7, 0.8, 0.95);       // Cool silver-cyan
-    vec3 colorTendril = vec3(0.5, 0.55, 0.7);      // Blue-gray tendril
-    vec3 colorRing = vec3(0.9, 0.92, 1.0);         // Shockwave ring color
-    
-    vec3 finalColor = mix(colorDense, colorWispy, gas);
-    
-    // Add explosion glow (hot core)
-    finalColor = mix(finalColor, colorHotCore, explosionGlow * 0.35);
-    finalColor = mix(finalColor, colorExplosion, explosionFactor * 0.4);
-    
-    // Add shockwave rings with bright color
-    finalColor = mix(finalColor, colorRing, shockwaveRing * 0.7);
-    
-    // Add gas tendrils
-    finalColor = mix(finalColor, colorTendril, gasTendrils * 0.5);
-    
-    // Add energy pulse with cyan tint
-    finalColor = mix(finalColor, colorEnergy, energyPulse * 0.3);
-    
-    // Boost brightness during peak explosion
-    finalColor *= 1.0 + explosionGlow * 0.3;
-
-    // Pulse effect
-    finalColor *= (1.0 + uPulseIntensity * 0.5);
-
-    // Opacity logic - transparent in middle, opaque at edges (gas atmosphere feel)
     float density = smoothstep(0.2, 0.8, gas);
-    float alpha = density * 0.4 + fresnel * 0.5;
-    
-    // Explosion dramatically boosts opacity (atmosphere "ignites")
-    alpha += explosionFactor * 0.65 * uExplosionIntensity;
-    alpha += shockwaveRing * 0.5;  // Shockwave rings are visible
-    alpha += gasTendrils * 0.4;    // Tendrils are visible
-    alpha = min(alpha, 0.98);
-
-    // Soften occlusion
-    alpha *= smoothstep(0.0, 0.2, fresnel + 0.1);
+    float alpha = clamp(
+        density * 0.16
+        + fresnel * 0.23
+        + shockwave * 0.28
+        + tendrilMask * 0.085
+        + pulseWave * 0.065
+        + 0.035,
+        0.0,
+        0.46
+    );
 
     gl_FragColor = vec4(finalColor, alpha);
 }
@@ -713,35 +616,10 @@ void main() {
 // Accretion Disk Shader - High-energy swirling ring of matter
 // ─────────────────────────────────────────────────────────────────────────────
 export const accretionDiskVertexShader = `
-uniform float uTime;
-uniform float uPulseIntensity;
-
 varying vec2 vUv;
-varying vec3 vPosition;
-varying float vPlasma;
-
-${noiseCommon}
 
 void main() {
     vUv = uv;
-    vPosition = position;
-    
-    // uv.x = angle (0 to 1), uv.y = radius (0 to 1) for a RingGeometry
-    float radius = uv.y;
-    float angle = uv.x * 6.2831853;
-    
-    // Swirling dynamics
-    float speed = 1.2 + uPulseIntensity * 3.0; // Spins much faster on combos
-    float rTime = uTime * speed;
-    
-    // Differential rotation: inner edge spins faster
-    float spin = angle + rTime * (1.1 - radius) * 2.0; 
-    
-    // Plasma noise lookup
-    // Convert polar back to cartesian for continuous noise
-    vec3 noisePos = vec3(cos(spin) * radius * 12.0, sin(spin) * radius * 12.0, uTime * 0.15);
-    vPlasma = fbm(noisePos);
-
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;
@@ -749,18 +627,26 @@ void main() {
 export const accretionDiskFragmentShader = `
 uniform float uTime;
 uniform float uPulseIntensity;
+uniform sampler2D uNoiseMap;
 varying vec2 vUv;
-varying float vPlasma;
 
 void main() {
     // uv.x = angle (0 to 1), uv.y = radius (0 to 1) for a RingGeometry
     float radius = vUv.y;
     float angle = vUv.x * 6.2831853;
-    
-    float plasma = vPlasma;
-    
-    // Dense structural bands
-    float bands = sin(radius * 30.0 + plasma * 7.0) * 0.5 + 0.5;
+
+    float speed = 1.2 + uPulseIntensity * 3.0;
+    float rTime = uTime * speed;
+    float spin = angle + rTime * (1.1 - radius) * 2.0;
+    vec2 orbitUv = vec2(
+        cos(spin) * radius * 0.95 + rTime * 0.08,
+        sin(spin) * radius * 0.95 + radius * 0.45
+    );
+    vec2 bandUv = vec2(vUv.x * 1.6 + rTime * 0.05, radius * 4.2 - rTime * 0.03);
+    vec4 noiseA = texture2D(uNoiseMap, orbitUv);
+    vec4 noiseB = texture2D(uNoiseMap, bandUv);
+    float plasma = noiseA.x * 0.55 + noiseA.y * 0.2 + noiseB.z * 0.25;
+    float bands = sin(radius * 30.0 + plasma * 7.0 + noiseB.x * 3.0) * 0.5 + 0.5;
     
     // Edge falloff (soft inner and outer)
     float edgeFade = smoothstep(0.0, 0.15, radius) * smoothstep(1.0, 0.6, radius);

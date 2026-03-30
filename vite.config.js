@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import replace from '@rollup/plugin-replace';
 import path from 'path';
+import { createThemeThumbnailAssetPlugin } from './scripts/theme-thumbnail-assets.js';
 
 export default defineConfig({
   // Base public path for assets
@@ -14,6 +15,9 @@ export default defineConfig({
         'typeof WEBGL_RENDERER': 'true',
       },
     }),
+    createThemeThumbnailAssetPlugin({
+      projectRoot: __dirname,
+    }),
   ],
 
   // Server configuration
@@ -22,15 +26,28 @@ export default defineConfig({
     strictPort: true,  // Don't try another port if 5173 is in use
     open: false,  // Don't auto-open browser (we're using Electron)
     host: true,
+    watch: {
+      ignored: ['**/three_js_example_repo/**'],
+    },
   },
 
   // Build configuration
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: true,
+    manifest: true,
+    sourcemap: process.env.VITE_BUILD_SOURCEMAP === 'true',
+    // Electron loads the packaged app from file://, so Vite's module-preload
+    // rewrites add startup indirection without providing browser-network wins.
+    // Disabling them also prevents the generated preload helper from being
+    // stranded inside an arbitrary lazy mode chunk.
+    modulePreload: false,
     // Optimize chunk size for Phaser 4
     rollupOptions: {
+      input: {
+        app: path.resolve(__dirname, 'index.html'),
+        'entry-desktop': path.resolve(__dirname, 'src/entry-desktop.js'),
+      },
       output: {
         manualChunks(id) {
           // Split Phaser into its own chunk
@@ -38,10 +55,41 @@ export default defineConfig({
             return 'phaser';
           }
 
-          // Split themes into individual chunks for lazy loading
-          if (id.includes('src/themes/') && id.includes('-theme.js')) {
-            const themeName = id.split('/').pop().replace('-theme.js', '');
-            return `theme-${themeName}`;
+          // Split Three.js into its own chunk (lazy-loaded by themes only)
+          if (id.includes('node_modules/three')) {
+            return 'three';
+          }
+
+          // Keep cross-cutting app/runtime infrastructure out of mode/theme chunks.
+          // These modules are consumed by both game modes and themes; if Rollup
+          // places them inside a mode chunk, lazy theme imports can form TDZ cycles
+          // against packaged Electron builds.
+          if (id.includes('src/events/')) {
+            return 'app-events';
+          }
+
+          if (
+            id.includes('src/utils/quality.js')
+            || id.includes('src/utils/gpu-context-resilience.js')
+            || id.includes('src/utils/helpers.js')
+          ) {
+            return 'app-runtime';
+          }
+
+          if (id.includes('src/themes/base-theme.js')) {
+            return 'theme-shared';
+          }
+
+          // Group theme runtime by implementation family to reduce chunk graph fragility
+          if (id.includes('src/themes/')) {
+            if (id.includes('/shared/')) {
+              return 'theme-shared';
+            }
+
+            const themeMatch = id.match(/src\/themes\/([^/]+)\//);
+            if (themeMatch?.[1] && themeMatch[1] !== 'shared') {
+              return `theme-${themeMatch[1]}`;
+            }
           }
 
           // Split game modes into individual chunks
@@ -66,15 +114,23 @@ export default defineConfig({
       },
     },
     // Increase chunk size warning limit (we know about the large chunks)
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1700,
     // Compress assets
     assetsInlineLimit: 4096, // Inline assets smaller than 4kb
     minify: 'esbuild', // Use esbuild for faster builds (terser is slower but smaller)
     target: 'es2020', // Modern browsers for better optimization
+    // Strip console.log and debugger statements in production builds
+    esbuild: {
+      drop: ['debugger'],
+      pure: ['console.debug'],
+    },
   },
 
   // Optimize dependencies for faster dev server startup
   optimizeDeps: {
+    // Keep dependency crawling scoped to the actual app entry. The vendored
+    // Three.js repo ships extra HTML pages that reference optional example deps.
+    entries: ['index.html'],
     include: ['phaser'],
     // Exclude Electron/Node.js modules from browser bundling
     exclude: ['steamworks.js', 'electron'],

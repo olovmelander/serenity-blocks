@@ -27,11 +27,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { COSMIC_NOIR_TETROMINOS } from './cosmic-noir-tetrominos.js';
 import { CosmicNoirPost } from './cosmic-noir-post.js';
-import {
-    CosmicNoirAtmosphereFlowCompute,
-    CosmicNoirSparkCompute,
-    CosmicNoirStarTwinkleCompute,
-} from './cosmic-noir-compute.js';
+import { CosmicNoirSparkCompute } from './cosmic-noir-compute.js';
 import {
     createAmbientDustNodeMaterial,
     createAtmosphereNodeMaterial,
@@ -77,10 +73,12 @@ function parseCosmicNoirFlags() {
         noCompute: false,
         noMRT: false,
         noPost: false,
+        noAdaptiveScale: false,
         mrtAudit: false,
         baseline: false,
         seed: null,
         fixedDeltaMs: null,
+        fixedPixelRatio: null,
         usePost: false,
         useMRT: false,
         useCompute: false,
@@ -117,6 +115,7 @@ function parseCosmicNoirFlags() {
         'fixedDeltaMs',
         'fixedDt',
     );
+    const fixedPixelRatio = readNumber('cosmicNoirFixedPixelRatio', 'fixedPixelRatio');
 
     return {
         ...defaults,
@@ -124,10 +123,14 @@ function parseCosmicNoirFlags() {
         noCompute: readBool('cosmicNoirNoCompute', 'noCompute'),
         noMRT: readBool('cosmicNoirNoMRT', 'noMRT'),
         noPost: readBool('cosmicNoirNoPost', 'noPost'),
+        noAdaptiveScale: readBool('cosmicNoirNoAdaptiveScale'),
         mrtAudit: readBool('cosmicNoirMrtAudit'),
         baseline: readBool('cosmicNoirBaseline', 'baseline'),
         seed: Number.isFinite(seed) ? seed : null,
         fixedDeltaMs: Number.isFinite(fixedDeltaMs) && fixedDeltaMs > 0 ? fixedDeltaMs : null,
+        fixedPixelRatio: Number.isFinite(fixedPixelRatio) && fixedPixelRatio > 0
+            ? fixedPixelRatio
+            : null,
     };
 }
 
@@ -139,6 +142,26 @@ function createSeededRandom(seed) {
         state = (state * 16807) % 2147483647;
         return (state - 1) / 2147483646;
     };
+}
+
+function createCosmicNoirNoiseTexture(randomFn = Math.random, size = 64) {
+    const data = new Uint8Array(size * size * 4);
+    for (let i = 0; i < data.length; i += 4) {
+        data[i] = Math.floor(randomFn() * 255);
+        data[i + 1] = Math.floor(randomFn() * 255);
+        data[i + 2] = Math.floor(randomFn() * 255);
+        data[i + 3] = 255;
+    }
+
+    const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
+    texture.colorSpace = THREE.NoColorSpace;
+    texture.needsUpdate = true;
+    return texture;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -275,6 +298,15 @@ const QUALITY_PRESETS = {
     },
 };
 
+const ADAPTIVE_PIXEL_RATIO_CAPS = {
+    Extreme: 1.5,
+    Ultra: 1.5,
+    High: 1.35,
+    Medium: 1.2,
+    Low: 1.2,
+    Minimal: 1.2,
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Vignette Shader
 // ─────────────────────────────────────────────────────────────────────────────
@@ -328,6 +360,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             supportsPost: false,
         };
         this.deviceLossRecoveryInProgress = false;
+        this.renderFallbackInProgress = false;
         this.animationFrameId = null;
         this.resizeHandler = null;
         this.deferredTimeouts = new Set();
@@ -338,6 +371,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.composer = null;
         this.postProcessing = null;
         this.bloomPass = null;
+        this.chromaticPass = null;
 
         // Scene elements
         this.planet = null;
@@ -362,9 +396,11 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.atmosphereInnerUniforms = null;
         this.atmosphereFlowCompute = null;
         this.cosmicWaves = [];
+        this.cosmicWavePool = [];
         this.voidSparks = []; // Fallback pool, or single compute-backed points system
         this.voidSparkIndex = 0; // Cycle index for pooled fallback
         this.sparkCompute = null;
+        this.sharedNoiseTexture = null;
 
         // Effect states
         this.planetPulseIntensity = 0;
@@ -411,6 +447,11 @@ export default class CosmicNoirTheme extends BaseTheme {
         };
         this.lastMrtDowngrade = null;
         this.loggedMrtPlatformGuard = false;
+        this.adaptiveBudgetState = null;
+        this.lastRendererWidth = 0;
+        this.lastRendererHeight = 0;
+        this.lastRendererPixelRatio = 0;
+        this.lastAppliedPostResolutionScale = 1;
 
         console.log('[CosmicNoir] Hybrid WebGPU/WebGL theme constructed');
     }
@@ -430,6 +471,190 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
     }
 
+    getBasePixelRatioCap() {
+        const quality = this.getCurrentQualityLevel();
+        return ADAPTIVE_PIXEL_RATIO_CAPS[quality] ?? 1.35;
+    }
+
+    initializeAdaptiveBudgetState() {
+        const baseCap = this.getBasePixelRatioCap();
+        this.adaptiveBudgetState = {
+            basePixelRatioCap: baseCap,
+            pixelRatioScale: 1.0,
+            minPixelRatioScale: 0.85,
+            frameTimeEmaMs: 0,
+            overBudgetMs: 0,
+            underBudgetMs: 0,
+            postResolutionScale: 1.0,
+            bloomDownsample: this.qualityPreset.bloomDownsample ?? 0.8,
+            chromaticEnabled: true,
+            lensingStrength: 1.0,
+        };
+        this.lastRendererWidth = 0;
+        this.lastRendererHeight = 0;
+        this.lastRendererPixelRatio = 0;
+        this.lastAppliedPostResolutionScale = 1;
+    }
+
+    getRendererPixelRatio() {
+        const budget = this.adaptiveBudgetState;
+        const baseCap = budget?.basePixelRatioCap ?? this.getBasePixelRatioCap();
+        const baseRatio = this.flags.fixedPixelRatio ?? this.getEffectivePixelRatio(baseCap);
+        if (!budget || this.flags.noAdaptiveScale || Number.isFinite(this.flags.fixedPixelRatio)) {
+            return Number(baseRatio.toFixed(2));
+        }
+
+        const pixelRatio = THREE.MathUtils.clamp(
+            baseRatio * (budget.pixelRatioScale ?? 1.0),
+            0.35,
+            baseCap,
+        );
+        return Number(pixelRatio.toFixed(2));
+    }
+
+    getAdaptivePostParams() {
+        const budget = this.adaptiveBudgetState;
+        return {
+            resolutionScale: budget?.postResolutionScale ?? 1.0,
+            bloomDownsample: budget?.bloomDownsample ?? this.qualityPreset.bloomDownsample ?? 0.8,
+            chromaticEnabled: budget?.chromaticEnabled ?? true,
+            lensingStrength: budget?.lensingStrength ?? 1.0,
+        };
+    }
+
+    applyAdaptiveBudgetState(force = false) {
+        if (!this.renderer || typeof window === 'undefined') return;
+
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const pixelRatio = this.getRendererPixelRatio();
+        const postResolutionScale = this.adaptiveBudgetState?.postResolutionScale ?? 1.0;
+
+        const sizeChanged = force
+            || width !== this.lastRendererWidth
+            || height !== this.lastRendererHeight;
+        const pixelRatioChanged = force
+            || Math.abs(pixelRatio - this.lastRendererPixelRatio) >= 0.02;
+        const postResolutionChanged = force
+            || Math.abs(postResolutionScale - this.lastAppliedPostResolutionScale) >= 0.01;
+
+        if (pixelRatioChanged) {
+            this.renderer.setPixelRatio(pixelRatio);
+            this.lastRendererPixelRatio = pixelRatio;
+        }
+
+        if (sizeChanged || pixelRatioChanged) {
+            this.renderer.setSize(width, height, false);
+            this.lastRendererWidth = width;
+            this.lastRendererHeight = height;
+        }
+
+        if (this.postProcessing?.setSize && (sizeChanged || pixelRatioChanged || postResolutionChanged)) {
+            this.postProcessing.setSize(width, height);
+        }
+
+        if (this.composer && (sizeChanged || pixelRatioChanged)) {
+            this.composer.setSize(width, height);
+        }
+
+        if (postResolutionChanged) {
+            this.lastAppliedPostResolutionScale = postResolutionScale;
+        }
+
+        if (Array.isArray(this.starfieldUniforms)) {
+            this.starfieldUniforms.forEach((uniforms) => {
+                if (uniforms?.uPixelRatio) {
+                    uniforms.uPixelRatio.value = pixelRatio;
+                }
+            });
+        }
+
+        if (this.ambientDustUniforms?.uPixelRatio) {
+            this.ambientDustUniforms.uPixelRatio.value = pixelRatio;
+        }
+    }
+
+    updateAdaptiveBudgetState(frameMs) {
+        const budget = this.adaptiveBudgetState;
+        if (
+            !budget
+            || this.flags.noAdaptiveScale
+            || !Number.isFinite(frameMs)
+            || frameMs <= 0
+        ) {
+            return;
+        }
+
+        budget.frameTimeEmaMs = budget.frameTimeEmaMs <= 0
+            ? frameMs
+            : (budget.frameTimeEmaMs * 0.88) + (frameMs * 0.12);
+
+        const ema = budget.frameTimeEmaMs;
+        const baseBloomDownsample = this.qualityPreset.bloomDownsample ?? 0.8;
+
+        budget.postResolutionScale = 1.0;
+        budget.bloomDownsample = baseBloomDownsample;
+        budget.chromaticEnabled = true;
+        budget.lensingStrength = 1.0;
+
+        if (ema > 14.4) {
+            budget.postResolutionScale = 0.94;
+            budget.bloomDownsample = Math.min(baseBloomDownsample, 0.75);
+            budget.lensingStrength = 0.88;
+        }
+        if (ema > 15.5) {
+            budget.postResolutionScale = 0.9;
+            budget.bloomDownsample = Math.min(baseBloomDownsample, 0.7);
+            budget.lensingStrength = 0.76;
+        }
+        if (ema > 16.7) {
+            budget.postResolutionScale = 0.85;
+            budget.bloomDownsample = Math.min(baseBloomDownsample, 0.65);
+            budget.chromaticEnabled = false;
+            budget.lensingStrength = 0.62;
+        }
+        if (ema > 18.0) {
+            budget.postResolutionScale = 0.8;
+            budget.bloomDownsample = Math.min(baseBloomDownsample, 0.6);
+            budget.chromaticEnabled = false;
+            budget.lensingStrength = 0.5;
+        }
+
+        if (!Number.isFinite(this.flags.fixedPixelRatio)) {
+            if (ema > 16.7) {
+                budget.overBudgetMs += frameMs;
+                budget.underBudgetMs = 0;
+            } else if (ema < 13.0) {
+                budget.underBudgetMs += frameMs;
+                budget.overBudgetMs = 0;
+            } else {
+                budget.overBudgetMs = 0;
+                budget.underBudgetMs = 0;
+            }
+
+            if (budget.overBudgetMs >= 500) {
+                budget.pixelRatioScale = Math.max(
+                    budget.minPixelRatioScale,
+                    Number((budget.pixelRatioScale - 0.05).toFixed(2)),
+                );
+                budget.overBudgetMs = 0;
+            } else if (budget.underBudgetMs >= 2000) {
+                budget.pixelRatioScale = Math.min(
+                    1.0,
+                    Number((budget.pixelRatioScale + 0.05).toFixed(2)),
+                );
+                budget.underBudgetMs = 0;
+            }
+        }
+    }
+
+    ensureSharedNoiseTexture() {
+        if (!this.sharedNoiseTexture) {
+            this.sharedNoiseTexture = createCosmicNoirNoiseTexture(() => this.rand());
+        }
+        return this.sharedNoiseTexture;
+    }
+
     rand() {
         return this.random ? this.random() : Math.random();
     }
@@ -441,6 +666,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         parsed.noCompute = parsed.noCompute || previous.noCompute === true;
         parsed.noMRT = parsed.noMRT || previous.noMRT === true;
         parsed.noPost = parsed.noPost || previous.noPost === true;
+        parsed.noAdaptiveScale = parsed.noAdaptiveScale || previous.noAdaptiveScale === true;
         parsed.mrtAudit = parsed.mrtAudit || previous.mrtAudit === true;
         parsed.baseline = parsed.baseline || previous.baseline === true;
         if (!Number.isFinite(parsed.seed) && Number.isFinite(previous.seed)) {
@@ -448,6 +674,9 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
         if (!Number.isFinite(parsed.fixedDeltaMs) && Number.isFinite(previous.fixedDeltaMs)) {
             parsed.fixedDeltaMs = previous.fixedDeltaMs;
+        }
+        if (!Number.isFinite(parsed.fixedPixelRatio) && Number.isFinite(previous.fixedPixelRatio)) {
+            parsed.fixedPixelRatio = previous.fixedPixelRatio;
         }
         this.flags = parsed;
     }
@@ -576,6 +805,8 @@ export default class CosmicNoirTheme extends BaseTheme {
                 sparkMode: this.sparkCompute?.computeNode ? 'compute' : 'fallback-pool',
                 atmosphereLayers: this.qualityPreset?.atmosphereLayers ?? 1,
                 dustParticles: this.qualityPreset?.dustParticles ?? 0,
+                pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
+                postResolutionScale: this.adaptiveBudgetState?.postResolutionScale ?? 1.0,
             },
             mrtDowngrade: this.lastMrtDowngrade ? { ...this.lastMrtDowngrade } : null,
             flags: {
@@ -583,6 +814,8 @@ export default class CosmicNoirTheme extends BaseTheme {
                 noPost: this.flags.noPost,
                 noMRT: this.flags.noMRT,
                 noCompute: this.flags.noCompute,
+                noAdaptiveScale: this.flags.noAdaptiveScale,
+                fixedPixelRatio: this.flags.fixedPixelRatio,
             },
             capturedAt: new Date().toISOString(),
         };
@@ -1042,6 +1275,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.clearDeferredTimeouts();
         this.clearEventSubscriptions();
         this.removeResizeListener();
+        this.removeRendererResilience();
         this.removeBaselineHelpers();
         this.disposeRuntimeResources({ removeCanvas: true });
 
@@ -1052,6 +1286,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         const quality = this.getCurrentQualityLevel();
         this.applyQualityPreset(quality);
+        this.initializeAdaptiveBudgetState();
 
         let container = document.getElementById('cosmic-noir-theme');
         if (!container) {
@@ -1087,6 +1322,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         this.probeCapabilities();
         this.updateCapabilityFlags();
+        this.ensureSharedNoiseTexture();
 
         this.createStarfield();
         this.createNebulaClouds();
@@ -1136,6 +1372,8 @@ export default class CosmicNoirTheme extends BaseTheme {
                 noPost: this.flags.noPost,
                 noMRT: this.flags.noMRT,
                 noCompute: this.flags.noCompute,
+                noAdaptiveScale: this.flags.noAdaptiveScale,
+                fixedPixelRatio: this.flags.fixedPixelRatio,
             },
         });
         console.log('[CosmicNoir] Scene created successfully');
@@ -1182,9 +1420,6 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.renderer = webgpuRenderer;
             this.isWebGPU = true;
             this.isWebGL = false;
-            this.renderer.onDeviceLost = (info) => {
-                this.handleDeviceLoss(info);
-            };
         } else {
             if (webgpuRenderer) {
                 webgpuRenderer.dispose();
@@ -1204,8 +1439,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         if (!this.renderer) return;
 
         this.renderer.setClearColor(0x000000, 1); // Pure black background
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        this.renderer.setSize(width, height);
+        this.renderer.setPixelRatio(this.getRendererPixelRatio());
+        this.renderer.setSize(width, height, false);
         this.renderer.sortObjects = true;
         this.renderer.autoClear = false;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1213,6 +1448,13 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         this.renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
         container.appendChild(this.renderer.domElement);
+
+        this.setupRendererResilience(this.renderer, {
+            webgpuDevice: this.isWebGPU ? this.renderer?.backend?.device : null,
+            onDeviceLost: (info) => {
+                this.handleDeviceLoss(info);
+            },
+        });
         this.registerContainer(container);
 
         this.scene = new THREE.Scene();
@@ -1321,12 +1563,6 @@ export default class CosmicNoirTheme extends BaseTheme {
         const assigned = layerCounts.reduce((sum, count) => sum + count, 0);
         layerCounts[layerCounts.length - 1] = Math.max(0, starCount - assigned);
 
-        const canUseStarCompute = Boolean(
-            this.isWebGPU
-            && this.flags.useCompute
-            && this.renderer?.compute,
-        );
-
         this.starfield = new THREE.Group();
 
         layerConfigs.forEach((config, layerIndex) => {
@@ -1372,27 +1608,12 @@ export default class CosmicNoirTheme extends BaseTheme {
             geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkleData, 2));
             geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightness, 1));
 
-            let starCompute = null;
-            if (canUseStarCompute) {
-                try {
-                    starCompute = new CosmicNoirStarTwinkleCompute(layerCount);
-                    starCompute.setInitialData(twinkleData, brightness, sizes);
-                    starCompute.createComputeNode();
-                    this.starTwinkleComputes.push(starCompute);
-                } catch (error) {
-                    console.warn(`[CosmicNoir] ${config.id} star twinkle compute init failed:`, error);
-                    starCompute?.dispose?.();
-                    starCompute = null;
-                }
-            }
-
             let material;
             let uniforms;
             if (this.isWebGPU) {
                 ({ material, uniforms } = createStarfieldNodeMaterial({
                     pixelRatio: this.renderer.getPixelRatio(),
                     isWebGPU: this.isWebGPU,
-                    starCompute,
                 }));
             } else {
                 material = new THREE.ShaderMaterial({
@@ -1419,7 +1640,6 @@ export default class CosmicNoirTheme extends BaseTheme {
                 spinY: config.spinY,
                 spinZ: config.spinZ,
                 uniforms,
-                starCompute,
             };
             this.starfieldLayers.push(points);
             this.starfield.add(points);
@@ -1436,13 +1656,14 @@ export default class CosmicNoirTheme extends BaseTheme {
 
     createNebulaClouds() {
         const textureLoader = new THREE.TextureLoader();
-        const texturePath = './textures/blood-moon/';
+        const texturePath = './textures/cosmic-noir/';
 
         const textures = [
-            textureLoader.load(`${texturePath}nebula-red-1.png`),
-            textureLoader.load(`${texturePath}nebula-red-2.png`),
-            textureLoader.load(`${texturePath}nebula-red-3.png`),
+            textureLoader.load(`${texturePath}nebula-noir-1.png`),
+            textureLoader.load(`${texturePath}nebula-noir-2.png`),
+            textureLoader.load(`${texturePath}nebula-noir-3.png`),
         ];
+        const noiseMap = this.ensureSharedNoiseTexture();
 
         textures.forEach((t) => {
             t.wrapS = THREE.ClampToEdgeWrapping;
@@ -1453,17 +1674,17 @@ export default class CosmicNoirTheme extends BaseTheme {
         const nebulaConfigs = [
             // Deep background layer
             {
-                texture: textures[0], size: 6000, z: -4500, opacity: 0.3, speed: 0.0001, parallaxX: 0.1, parallaxY: 0.1, rotationSpeed: 0.0,
+                texture: textures[0], size: 14000, z: -4500, opacity: 0.5, speed: 0.0001, parallaxX: 0.08, parallaxY: 0.08, rotationSpeed: 0.0,
             },
             {
-                texture: textures[1], size: 7000, z: -4000, opacity: 0.25, speed: 0.00015, parallaxX: 0.1, parallaxY: 0.1, rotationSpeed: 0.0,
+                texture: textures[1], size: 16000, z: -4000, opacity: 0.42, speed: 0.00015, parallaxX: 0.08, parallaxY: 0.08, rotationSpeed: 0.0,
             },
             // Mid layer
             {
-                texture: textures[2], size: 5000, z: -3000, opacity: 0.2, speed: 0.0002, parallaxX: 0.3, parallaxY: 0.2, rotationSpeed: 0.0,
+                texture: textures[2], size: 11000, z: -3000, opacity: 0.34, speed: 0.0002, parallaxX: 0.2, parallaxY: 0.15, rotationSpeed: 0.0,
             },
             {
-                texture: textures[0], size: 5500, z: -2500, opacity: 0.15, speed: 0.00025, parallaxX: 0.3, parallaxY: 0.2, rotationSpeed: 0.0,
+                texture: textures[0], size: 12500, z: -2500, opacity: 0.28, speed: 0.00025, parallaxX: 0.2, parallaxY: 0.15, rotationSpeed: 0.0,
             },
         ];
 
@@ -1476,12 +1697,14 @@ export default class CosmicNoirTheme extends BaseTheme {
             if (this.isWebGPU) {
                 ({ material, uniforms } = createNebulaNodeMaterial({
                     map: config.texture,
+                    noiseMap,
                     opacity: config.opacity,
                 }));
             } else {
                 material = new THREE.ShaderMaterial({
                     uniforms: {
                         tDiffuse: { value: config.texture },
+                        uNoiseMap: { value: noiseMap },
                         uOpacity: { value: config.opacity },
                         uPulse: { value: 0 },
                         uTime: { value: 0 },
@@ -1497,13 +1720,14 @@ export default class CosmicNoirTheme extends BaseTheme {
 
             const mesh = new THREE.Mesh(geometry, material);
             // Random position spread
-            mesh.position.x = (this.rand() - 0.5) * 2000;
-            mesh.position.y = (this.rand() - 0.5) * 1000;
+            mesh.position.x = (this.rand() - 0.5) * (config.size * 0.35);
+            mesh.position.y = (this.rand() - 0.5) * (config.size * 0.18);
             mesh.position.z = config.z;
             mesh.rotation.z = this.rand() * Math.PI * 2;
 
             mesh.userData = {
                 driftSpeed: config.speed,
+                driftRange: config.size * 0.75,
                 baseOpacity: config.opacity,
                 pulsePhase: this.rand() * Math.PI * 2,
                 parallaxX: config.parallaxX ?? 0.3,
@@ -1582,74 +1806,59 @@ export default class CosmicNoirTheme extends BaseTheme {
     }
 
     createPlanetGlowLayers(planetSize) {
-        const glowConfigs = [];
-        const layerCount = this.qualityPreset.glowLayers;
+        const config = {
+            size: planetSize * 2.45,
+            color: 0x1a1a22,
+            opacity: 0.16,
+            z: -12,
+        };
 
-        for (let i = 0; i < layerCount; i++) {
-            const sizeMult = 1.18 + i * 0.2;
-            const opacity = 0.09 - i * 0.012;
-            let color = 0x101016;
-            if (i < 2) {
-                color = 0x24242c;
-            } else if (i < 4) {
-                color = 0x1a1a22;
-            }
-            glowConfigs.push({
-                size: planetSize * sizeMult,
-                color, // Grayscale glow
-                opacity: Math.max(0.012, opacity),
-                z: -5 * (i + 1),
+        const geometry = this.isWebGPU ? null : new THREE.PlaneGeometry(config.size, config.size);
+        let material;
+        let uniforms = null;
+        if (this.isWebGPU) {
+            ({ material, uniforms } = createPlanetGlowSpriteNodeMaterial({
+                color: new THREE.Color(config.color),
+                opacity: config.opacity,
+            }));
+        } else {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+            gradient.addColorStop(0.0, 'rgba(255, 255, 255, 0.7)');
+            gradient.addColorStop(0.18, 'rgba(220, 220, 230, 0.42)');
+            gradient.addColorStop(0.46, 'rgba(150, 150, 165, 0.22)');
+            gradient.addColorStop(0.74, 'rgba(80, 80, 95, 0.08)');
+            gradient.addColorStop(1.0, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 256, 256);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            material = new THREE.MeshBasicMaterial({
+                map: texture,
+                color: config.color,
+                transparent: true,
+                opacity: config.opacity,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
             });
         }
 
-        for (const config of glowConfigs) {
-            const geometry = this.isWebGPU ? null : new THREE.PlaneGeometry(config.size, config.size);
-            let material;
-            let uniforms = null;
-            if (this.isWebGPU) {
-                ({ material, uniforms } = createPlanetGlowSpriteNodeMaterial({
-                    color: new THREE.Color(config.color),
-                    opacity: config.opacity,
-                }));
-            } else {
-                const canvas = document.createElement('canvas');
-                canvas.width = 256;
-                canvas.height = 256;
-                const ctx = canvas.getContext('2d');
-
-                const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
-                gradient.addColorStop(0.15, 'rgba(220, 220, 230, 0.5)');
-                gradient.addColorStop(0.4, 'rgba(150, 150, 160, 0.25)');
-                gradient.addColorStop(0.7, 'rgba(80, 80, 90, 0.1)');
-                gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-                ctx.fillStyle = gradient;
-                ctx.fillRect(0, 0, 256, 256);
-
-                const texture = new THREE.CanvasTexture(canvas);
-                material = new THREE.MeshBasicMaterial({
-                    map: texture,
-                    color: config.color,
-                    transparent: true,
-                    opacity: config.opacity,
-                    blending: THREE.AdditiveBlending,
-                    depthWrite: false,
-                });
-            }
-
-            const glow = this.isWebGPU
-                ? new THREE.Sprite(material)
-                : new THREE.Mesh(geometry, material);
-            if (this.isWebGPU) {
-                glow.scale.set(config.size, config.size, 1.0);
-            }
-            glow.position.set(0, 0, config.z);
-            glow.renderOrder = 50;
-            glow.userData.baseOpacity = config.opacity;
-            glow.userData.uniforms = uniforms;
-            this.planetGlowLayers.push(glow);
-            this.planetGroup.add(glow);
+        const glow = this.isWebGPU
+            ? new THREE.Sprite(material)
+            : new THREE.Mesh(geometry, material);
+        if (this.isWebGPU) {
+            glow.scale.set(config.size, config.size, 1.0);
         }
+        glow.position.set(0, 0, config.z);
+        glow.renderOrder = 50;
+        glow.userData.baseOpacity = config.opacity;
+        glow.userData.uniforms = uniforms;
+        this.planetGlowLayers.push(glow);
+        this.planetGroup.add(glow);
     }
 
     createComboFlashLayer(planetSize) {
@@ -1705,6 +1914,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         mesh.position.set(0, 0, 15);
         mesh.renderOrder = 170;
         mesh.frustumCulled = false;
+        mesh.visible = false;
         mesh.userData.uniforms = uniforms;
         this.comboFlash = mesh;
         this.comboFlashUniforms = uniforms;
@@ -1742,16 +1952,18 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         let material;
         let uniforms;
+        const noiseMap = this.ensureSharedNoiseTexture();
 
         if (this.isWebGPU) {
             ({ material, uniforms } = createAccretionDiskNodeMaterial({
-                fbmOctaves: this.qualityPreset.diskFbmOctaves ?? 5,
+                noiseMap,
             }));
         } else {
             material = new THREE.ShaderMaterial({
                 uniforms: {
                     uTime: { value: 0 },
                     uPulseIntensity: { value: 0 },
+                    uNoiseMap: { value: noiseMap },
                 },
                 vertexShader: accretionDiskVertexShader,
                 fragmentShader: accretionDiskFragmentShader,
@@ -1830,6 +2042,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         const flare = new THREE.Mesh(geometry, material);
         flare.renderOrder = 2000;
         flare.frustumCulled = false;
+        flare.visible = false;
         flare.userData.uniforms = uniforms;
         this.comboLensFlare = flare;
         this.comboLensFlareUniforms = uniforms;
@@ -1916,34 +2129,12 @@ export default class CosmicNoirTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createAtmosphere() {
-        if (this.atmosphereFlowCompute) {
-            this.atmosphereFlowCompute.dispose();
-            this.atmosphereFlowCompute = null;
-        }
-
         // Create an atmosphere slightly larger than the planet
         const planetSize = 280;
         const atmosphereSize = planetSize * 1.25;
         const innerAtmosphereSize = planetSize * 1.12;
         const atmosphereLayerCount = Math.max(1, this.qualityPreset.atmosphereLayers ?? 2);
-
-        const canUseFlowCompute = Boolean(
-            this.isWebGPU
-            && this.flags.useCompute
-            && this.renderer?.compute,
-        );
-        if (canUseFlowCompute) {
-            try {
-                this.atmosphereFlowCompute = new CosmicNoirAtmosphereFlowCompute();
-                this.atmosphereFlowCompute.createComputeNode();
-            } catch (error) {
-                console.warn('[CosmicNoir] Atmosphere flow compute init failed, using direct flow:', error);
-                if (this.atmosphereFlowCompute) {
-                    this.atmosphereFlowCompute.dispose();
-                    this.atmosphereFlowCompute = null;
-                }
-            }
-        }
+        const noiseMap = this.ensureSharedNoiseTexture();
 
         const atmosphereDetail = this.qualityPreset.atmosphereDetail ?? 64;
         const createAtmosphereLayer = (radius, opacity, renderOrder) => {
@@ -1953,9 +2144,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
             if (this.isWebGPU) {
                 ({ material, uniforms } = createAtmosphereNodeMaterial({
-                    isWebGPU: this.isWebGPU,
-                    atmosphereFlowCompute: this.atmosphereFlowCompute,
-                    fbmOctaves: this.qualityPreset.atmosphereFbmOctaves ?? 5,
+                    noiseMap,
                 }));
             } else {
                 material = new THREE.ShaderMaterial({
@@ -1964,6 +2153,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                         uPulseIntensity: { value: 0 },
                         uExplosionTimer: { value: -10.0 },
                         uExplosionIntensity: { value: 0 },
+                        uNoiseMap: { value: noiseMap },
                     },
                     vertexShader: atmosphereVertexShader,
                     fragmentShader: atmosphereFragmentShader,
@@ -2015,28 +2205,38 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.gasSwirl = null;
         this.gasSwirlData = null;
 
-        const count = 65000;
+        const count = 24000;
         const geometry = new THREE.BufferGeometry();
 
         const positions = new Float32Array(count * 3);
         const alphas = new Float32Array(count);
         const sizes = new Float32Array(count);
-        // Per-particle velocity (x, y, z) + life remaining
         const velocities = new Float32Array(count * 4);
+        const noiseSeeds = new Float32Array(count * 3);
 
-        // All particles start dormant
         for (let i = 0; i < count; i++) {
             positions[i * 3] = 0;
             positions[i * 3 + 1] = 0;
             positions[i * 3 + 2] = -9999;
             alphas[i] = 0;
             sizes[i] = 55 + this.rand() * 105;
-            velocities[i * 4 + 3] = 0; // life = 0 means dormant
+            velocities[i * 4 + 3] = 0;
+            noiseSeeds[i * 3] = this.rand();
+            noiseSeeds[i * 3 + 1] = this.rand();
+            noiseSeeds[i * 3 + 2] = this.rand();
         }
 
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aAlpha', new THREE.BufferAttribute(alphas, 1));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        const positionAttr = new THREE.BufferAttribute(positions, 3);
+        positionAttr.setUsage(THREE.DynamicDrawUsage);
+        const alphaAttr = new THREE.BufferAttribute(alphas, 1);
+        alphaAttr.setUsage(THREE.DynamicDrawUsage);
+        const sizeAttr = new THREE.BufferAttribute(sizes, 1);
+        sizeAttr.setUsage(THREE.DynamicDrawUsage);
+
+        geometry.setAttribute('position', positionAttr);
+        geometry.setAttribute('aAlpha', alphaAttr);
+        geometry.setAttribute('aSize', sizeAttr);
+        geometry.setDrawRange(0, 0);
 
         let material;
         if (this.isWebGPU) {
@@ -2056,6 +2256,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         const points = new THREE.Points(geometry, material);
         points.frustumCulled = false;
         points.renderOrder = 102;
+        points.visible = false;
 
         this.gasSwirl = points;
         this.gasSwirlData = {
@@ -2064,7 +2265,8 @@ export default class CosmicNoirTheme extends BaseTheme {
             alphas,
             sizes,
             velocities,
-            nextIndex: 0,
+            noiseSeeds,
+            activeCount: 0,
         };
         this.planetGroup.add(points);
 
@@ -2075,22 +2277,17 @@ export default class CosmicNoirTheme extends BaseTheme {
         if (!this.gasSwirl || !this.gasSwirlData) return;
 
         const d = this.gasSwirlData;
-        // Scale batch size with combo — large burst for strong combo feedback
-        const batchSize = Math.min(d.count, Math.floor(2200 + comboCount * 450));
+        const available = Math.max(0, d.count - d.activeCount);
+        const batchSize = Math.min(available, Math.floor(2200 + comboCount * 450));
+        if (batchSize <= 0) return;
 
-        // Current gas flow rotation speed (matches atmosphere shader: t = uTime * 0.8, rot = t * 0.5)
-        const flowSpeed = this.time * 0.8 * 0.5;
         const shellRadius = 350; // atmosphere outer shell radius
-
-        // Target for screen-shooting: approximate camera position or slightly in front
-        // Camera is usually around z=800-1400. Let's aim for z=1200.
         const screenTargetZ = 1200;
 
         for (let b = 0; b < batchSize; b++) {
-            const idx = d.nextIndex;
-            d.nextIndex = (d.nextIndex + 1) % d.count;
+            const idx = d.activeCount;
+            d.activeCount += 1;
 
-            // Random point on sphere surface
             const theta = this.rand() * Math.PI * 2;
             const phi = Math.acos(2 * this.rand() - 1);
             const sinPhi = Math.sin(phi);
@@ -2102,17 +2299,17 @@ export default class CosmicNoirTheme extends BaseTheme {
             d.positions[idx * 3] = px;
             d.positions[idx * 3 + 1] = py;
             d.positions[idx * 3 + 2] = pz;
+            d.sizes[idx] = 55 + this.rand() * 105;
+            d.noiseSeeds[idx * 3] = this.rand();
+            d.noiseSeeds[idx * 3 + 1] = this.rand();
+            d.noiseSeeds[idx * 3 + 2] = this.rand();
 
-            // Determine if particle is a "Screen Shooter" (25% chance)
-            // Or if combo is high, more shooters
             const isShooter = this.rand() < (0.2 + comboCount * 0.05);
 
             if (isShooter) {
-                // Shoot towards camera / screen
-                // Vector from particle to screen plane
                 const dx = (this.rand() - 0.5) * 800; // Spread across screen width
                 const dy = (this.rand() - 0.5) * 600; // Spread across screen height
-                const dz = screenTargetZ; // Target depth
+                const dz = screenTargetZ;
 
                 const vx = dx - px;
                 const vy = dy - py;
@@ -2124,106 +2321,125 @@ export default class CosmicNoirTheme extends BaseTheme {
                 d.velocities[idx * 4] = (vx / len) * speed;
                 d.velocities[idx * 4 + 1] = (vy / len) * speed;
                 d.velocities[idx * 4 + 2] = (vz / len) * speed;
-                d.velocities[idx * 4 + 3] = 10.0; // Shorter life, just needs to pass camera
+                d.velocities[idx * 4 + 3] = 10.0;
             } else {
-                // Swirling Spiral Logic — logarithmic spiral arms expanding into space
-                // Tangential velocity: cross(position, Y-axis) gives the rotational tangent
                 const radialLen = Math.sqrt(px * px + pz * pz) || 1;
                 const tangX = -pz / radialLen;
                 const tangZ = px / radialLen;
 
-                // Strong tangential (arc) component so particles spiral before escaping.
-                // Outward speed is intentionally lower to preserve the spiral shape.
                 const tangSpeed = (160 + comboCount * 22) * (0.85 + this.rand() * 0.5);
                 const outwardSpeed = (30 + comboCount * 10) * (0.5 + this.rand() * 0.8);
-                // Small helical lift to add depth to the spiral arm
                 const helixPhase = Math.atan2(pz, px);
                 const upDrift = Math.sin(helixPhase * 2.0) * 35.0 * (this.rand() * 0.6 + 0.7);
 
                 d.velocities[idx * 4] = tangX * tangSpeed + (px / shellRadius) * outwardSpeed;
                 d.velocities[idx * 4 + 1] = py / shellRadius * outwardSpeed + upDrift;
                 d.velocities[idx * 4 + 2] = tangZ * tangSpeed + (pz / shellRadius) * outwardSpeed;
-                // Longer life so spiral arms reach deep into space
                 d.velocities[idx * 4 + 3] = 20.0 + this.rand() * 16.0;
             }
 
             d.alphas[idx] = 0.75 + this.rand() * 0.25;
         }
 
-        // Mark all attributes dirty
+        this.gasSwirl.visible = d.activeCount > 0;
+        this.gasSwirl.geometry.setDrawRange(0, d.activeCount);
         this.gasSwirl.geometry.attributes.position.needsUpdate = true;
         this.gasSwirl.geometry.attributes.aAlpha.needsUpdate = true;
+        this.gasSwirl.geometry.attributes.aSize.needsUpdate = true;
     }
 
     updateGasSwirlParticles(delta) {
         if (!this.gasSwirl || !this.gasSwirlData) return;
 
         const d = this.gasSwirlData;
-        let anyActive = false;
+        if (d.activeCount <= 0) {
+            this.gasSwirl.visible = false;
+            this.gasSwirl.geometry.setDrawRange(0, 0);
+            return;
+        }
 
-        for (let i = 0; i < d.count; i++) {
-            const life = d.velocities[i * 4 + 3];
-            if (life <= 0) continue;
-
-            anyActive = true;
-
-            // Advance position with complex forces
+        let attributesDirty = false;
+        for (let i = d.activeCount - 1; i >= 0; i--) {
             const x = d.positions[i * 3];
             const y = d.positions[i * 3 + 1];
             const z = d.positions[i * 3 + 2];
             const dist = Math.sqrt(x * x + z * z) || 1;
+            const seedIndex = i * 3;
+            const seedA = d.noiseSeeds[seedIndex];
+            const seedB = d.noiseSeeds[seedIndex + 1];
+            const seedC = d.noiseSeeds[seedIndex + 2];
 
-            // 1. Radial Acceleration (OUTWARD) — gentle, so the spiral stays tight
             const radialAccel = 14.0 * delta;
             d.velocities[i * 4] += (x / dist) * radialAccel;
             d.velocities[i * 4 + 2] += (z / dist) * radialAccel;
 
-            // 2. Tangential Acceleration (SPIN) — strong persistent vortex
             const spinForce = 55.0 * delta;
             d.velocities[i * 4] += (-z / dist) * spinForce;
             d.velocities[i * 4 + 2] += (x / dist) * spinForce;
 
-            // 3. Double-Helix Twist
-            // Two interfering waves create a "DNA-like" or complex tornado structure
             const twistAmp = 80.0 * delta;
             const angle = Math.atan2(z, x);
-
-            // Primary wave (slow, large) + Secondary wave (fast, tight)
             const wave1 = Math.sin(dist * 0.008 - this.time * 2.5 + angle * 2.0);
             const wave2 = Math.sin(dist * 0.02 + this.time * 1.5 - angle);
 
             const verticalForce = (wave1 + wave2 * 0.5) * twistAmp;
             d.velocities[i * 4 + 1] += verticalForce;
 
-            // 4. Turbulence / Noise
-            // Simple random walk to break ease
             const noise = 15.0 * delta;
-            d.velocities[i * 4] += (Math.random() - 0.5) * noise;
-            d.velocities[i * 4 + 1] += (Math.random() - 0.5) * noise;
-            d.velocities[i * 4 + 2] += (Math.random() - 0.5) * noise;
+            d.velocities[i * 4] += Math.sin((this.time * 3.4) + seedA * 21.1 + angle) * noise;
+            d.velocities[i * 4 + 1] += Math.cos((this.time * 2.8) + seedB * 17.3 + dist * 0.01) * noise;
+            d.velocities[i * 4 + 2] += Math.sin((this.time * 3.1) + seedC * 19.7 - angle) * noise;
 
-            // Integrate velocity
             d.positions[i * 3] += d.velocities[i * 4] * delta;
             d.positions[i * 3 + 1] += d.velocities[i * 4 + 1] * delta;
             d.positions[i * 3 + 2] += d.velocities[i * 4 + 2] * delta;
 
-            // Decay life and alpha
             d.velocities[i * 4 + 3] -= delta;
-            const maxLife = 36.0; // max possible life from init (20 + 16)
+            const maxLife = 36.0;
             const lifeRatio = Math.max(0, d.velocities[i * 4 + 3]) / (maxLife * 0.5);
             d.alphas[i] = Math.pow(lifeRatio, 0.3) * 0.95;
+            attributesDirty = true;
 
             if (d.velocities[i * 4 + 3] <= 0) {
-                // Park dormant particle out of view
-                d.positions[i * 3 + 2] = -9999;
-                d.alphas[i] = 0;
-                d.velocities[i * 4 + 3] = 0;
+                const lastIndex = d.activeCount - 1;
+                if (i !== lastIndex) {
+                    const src3 = lastIndex * 3;
+                    const dst3 = i * 3;
+                    d.positions[dst3] = d.positions[src3];
+                    d.positions[dst3 + 1] = d.positions[src3 + 1];
+                    d.positions[dst3 + 2] = d.positions[src3 + 2];
+                    d.alphas[i] = d.alphas[lastIndex];
+                    d.sizes[i] = d.sizes[lastIndex];
+
+                    const src4 = lastIndex * 4;
+                    const dst4 = i * 4;
+                    d.velocities[dst4] = d.velocities[src4];
+                    d.velocities[dst4 + 1] = d.velocities[src4 + 1];
+                    d.velocities[dst4 + 2] = d.velocities[src4 + 2];
+                    d.velocities[dst4 + 3] = d.velocities[src4 + 3];
+
+                    const srcSeed = lastIndex * 3;
+                    d.noiseSeeds[dst3] = d.noiseSeeds[srcSeed];
+                    d.noiseSeeds[dst3 + 1] = d.noiseSeeds[srcSeed + 1];
+                    d.noiseSeeds[dst3 + 2] = d.noiseSeeds[srcSeed + 2];
+                }
+
+                const last3 = lastIndex * 3;
+                d.positions[last3] = 0;
+                d.positions[last3 + 1] = 0;
+                d.positions[last3 + 2] = -9999;
+                d.alphas[lastIndex] = 0;
+                d.velocities[lastIndex * 4 + 3] = 0;
+                d.activeCount -= 1;
             }
         }
 
-        if (anyActive) {
+        this.gasSwirl.visible = d.activeCount > 0;
+        this.gasSwirl.geometry.setDrawRange(0, d.activeCount);
+        if (attributesDirty) {
             this.gasSwirl.geometry.attributes.position.needsUpdate = true;
             this.gasSwirl.geometry.attributes.aAlpha.needsUpdate = true;
+            this.gasSwirl.geometry.attributes.aSize.needsUpdate = true;
         }
     }
 
@@ -2381,6 +2597,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
             const sparks = new THREE.Points(geometry, material);
             sparks.userData.uniforms = uniforms;
+            sparks.visible = false;
             this.planetGroup.add(sparks);
             this.voidSparks.push(sparks);
         }
@@ -2416,6 +2633,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
             const width = window.innerWidth;
             const height = window.innerHeight;
+            const adaptivePost = this.getAdaptivePostParams();
 
             try {
                 this.postProcessing = new CosmicNoirPost(
@@ -2429,8 +2647,11 @@ export default class CosmicNoirTheme extends BaseTheme {
                             : this.qualityPreset.bloomStrength * 0.42,
                         bloomRadius: this.qualityPreset.bloomRadius,
                         bloomThreshold: this.flags.useMRT ? 0.0 : 0.88,
-                        bloomDownsample: this.qualityPreset.bloomDownsample ?? 0.8,
+                        bloomDownsample: adaptivePost.bloomDownsample,
+                        resolutionScale: adaptivePost.resolutionScale,
+                        chromaticEnabled: adaptivePost.chromaticEnabled,
                         chromaticStrength: this.flags.useMRT ? 0.004 : 0.0022,
+                        lensingStrength: adaptivePost.lensingStrength,
                         vignetteOffset: 1.2,
                         vignetteDarkness: this.flags.useMRT ? 0.82 : 0.86,
                         exposure: this.flags.useMRT ? 1.0 : 1.04,
@@ -2466,13 +2687,60 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         // Chromatic Aberration for cinematic effect
         const chromaticPass = new ShaderPass(ChromaticAberrationShader);
-        chromaticPass.uniforms.uIntensity.value = 0.004;
+        chromaticPass.uniforms.uIntensity.value = this.getAdaptivePostParams().chromaticEnabled
+            ? 0.004
+            : 0.0;
         this.composer.addPass(chromaticPass);
+        this.chromaticPass = chromaticPass;
 
         const vignettePass = new ShaderPass(VignetteShader);
         this.composer.addPass(vignettePass);
 
         console.log('[CosmicNoir] Post-processing configured (with chromatic aberration)');
+    }
+
+    disablePostRuntime(reason = 'runtime-post-disable', error = null) {
+        const wasUsingMrt = this.flags.useMRT === true;
+        console.warn(`[CosmicNoir] Disabling WebGPU post path (${reason})`, error || '');
+
+        if (this.postProcessing?.dispose) {
+            try {
+                this.postProcessing.dispose();
+            } catch (disposeError) {
+                console.warn('[CosmicNoir] postProcessing dispose failed during runtime disable:', disposeError);
+            }
+        }
+
+        this.postProcessing = null;
+        this.flags.noPost = true;
+        this.flags.usePost = false;
+        this.flags.useMRT = false;
+
+        if (wasUsingMrt) {
+            this.clearSceneMrtNodes();
+        }
+
+        this.configureRendererColorPipeline();
+    }
+
+    async requestWebGLFallback(reason = 'runtime-fallback', error = null) {
+        if (this.renderFallbackInProgress || !this.isActive || !this.isWebGPU) return;
+
+        this.renderFallbackInProgress = true;
+        console.warn(`[CosmicNoir] Switching to WebGL fallback (${reason})`, error || '');
+
+        try {
+            this.flags.forceWebGL = true;
+            this.flags.noCompute = true;
+            this.flags.noMRT = true;
+            await this.createScene();
+            console.log('[CosmicNoir] Recovery complete: running on WebGL fallback.');
+        } catch (fallbackError) {
+            console.error('[CosmicNoir] Runtime fallback failed:', fallbackError);
+            this.isActive = false;
+        } finally {
+            this.renderFallbackInProgress = false;
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2608,23 +2876,6 @@ export default class CosmicNoirTheme extends BaseTheme {
             && this.flags.useCompute
             && this.renderer?.compute
         ) {
-            if (Array.isArray(this.starTwinkleComputes)) {
-                this.starTwinkleComputes.forEach((compute) => {
-                    if (!compute?.computeNode) return;
-                    compute.update(delta);
-                    this.renderer.compute(compute.computeNode);
-                });
-            }
-
-            if (this.atmosphereFlowCompute?.computeNode) {
-                this.atmosphereFlowCompute.update({
-                    time: this.time,
-                    pulseIntensity: this.planetPulseIntensity,
-                    explosionIntensity: this.gasExplosionIntensity,
-                });
-                this.renderer.compute(this.atmosphereFlowCompute.computeNode);
-            }
-
             if (this.sparkCompute?.computeNode) {
                 this.sparkCompute.update(delta, this.time);
                 this.renderer.compute(this.sparkCompute.computeNode);
@@ -2645,13 +2896,17 @@ export default class CosmicNoirTheme extends BaseTheme {
 
                 // Update pulse wave
                 if (sparkUniforms.uPulseTimer?.value > -50.0) {
+                    sparks.visible = true;
                     // Move wave outwards - speed increased for more explosive look
                     sparkUniforms.uPulseTimer.value += delta * 18.0;
 
                     // Turn off when wave completes
                     if (sparkUniforms.uPulseTimer.value > 85.0) {
                         sparkUniforms.uPulseTimer.value = -100.0;
+                        sparks.visible = false;
                     }
+                } else {
+                    sparks.visible = false;
                 }
             }
         }
@@ -2719,6 +2974,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
             const flarePulse = 1.0 + Math.sin(this.time * 18.0) * 0.08;
             const flareOpacity = this.comboLensFlareIntensity * 0.42 * flarePulse;
+            this.comboLensFlare.visible = flareOpacity > 0.001;
             if (this.comboLensFlareUniforms?.uOpacity) {
                 this.comboLensFlareUniforms.uOpacity.value = flareOpacity;
             } else if (this.comboLensFlare.material) {
@@ -2733,6 +2989,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         if (this.comboFlash && this.camera) {
             const flashPulse = 1.0 + Math.sin(this.time * 24.0) * 0.06;
             const flashOpacity = this.comboFlashIntensity * 0.75 * flashPulse;
+            this.comboFlash.visible = flashOpacity > 0.001;
             if (this.comboFlashUniforms?.uOpacity) {
                 this.comboFlashUniforms.uOpacity.value = flashOpacity;
             } else if (this.comboFlash.material) {
@@ -2761,8 +3018,9 @@ export default class CosmicNoirTheme extends BaseTheme {
         for (const cloud of this.nebulaClouds) {
             // Move nebulas with camera so they always cover the view
             // Plus gentle drift for atmosphere
+            const driftRange = cloud.userData.driftRange ?? 6000;
             cloud.userData.driftOffset = (cloud.userData.driftOffset || 0) + cloud.userData.driftSpeed * 50;
-            if (cloud.userData.driftOffset > 6000) cloud.userData.driftOffset = -6000;
+            if (cloud.userData.driftOffset > driftRange) cloud.userData.driftOffset = -driftRange;
 
             // Sync base position with camera, add drift offset
             const parallaxX = cloud.userData.parallaxX ?? 0.3;
@@ -2854,12 +3112,17 @@ export default class CosmicNoirTheme extends BaseTheme {
             const bloomBaseStrength = this.flags.useMRT
                 ? this.qualityPreset.bloomStrength
                 : this.qualityPreset.bloomStrength * 0.42;
+            const adaptivePost = this.getAdaptivePostParams();
             this.postProcessing.update({
                 bhScreenPos: this.tempBhScreenPos,
                 bloomStrength: bloomBaseStrength * (1.0 + reactiveBloomBoost),
                 bloomRadius: this.qualityPreset.bloomRadius,
                 bloomThreshold: this.flags.useMRT ? 0.0 : 0.88,
                 chromaticStrength: (this.flags.useMRT ? 0.004 : 0.0022) + reactiveBloomBoost * 0.0012,
+                chromaticEnabled: adaptivePost.chromaticEnabled,
+                lensingStrength: adaptivePost.lensingStrength,
+                resolutionScale: adaptivePost.resolutionScale,
+                bloomDownsample: adaptivePost.bloomDownsample,
                 vignetteDarkness: (this.flags.useMRT ? 0.82 : 0.86) - reactiveBloomBoost * 0.03,
             });
         } else if (this.bloomPass) {
@@ -2869,13 +3132,22 @@ export default class CosmicNoirTheme extends BaseTheme {
                 + this.gasExplosionIntensity * 0.25
                 + this.reactiveEnvelope.bloom * 0.45,
             );
+            const adaptivePost = this.getAdaptivePostParams();
             this.bloomPass.strength = this.qualityPreset.bloomStrength * (1.0 + fallbackBloomBoost);
+            if (this.chromaticPass?.uniforms?.uIntensity) {
+                this.chromaticPass.uniforms.uIntensity.value = adaptivePost.chromaticEnabled
+                    ? 0.004 + fallbackBloomBoost * 0.0012
+                    : 0.0;
+            }
         }
 
         this.renderFrame();
 
         const frameEndMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
-        this.recordBaselineSample(frameEndMs - frameStartMs);
+        const frameMs = frameEndMs - frameStartMs;
+        this.updateAdaptiveBudgetState(frameMs);
+        this.applyAdaptiveBudgetState();
+        this.recordBaselineSample(frameMs);
     }
 
     renderFrame() {
@@ -2884,9 +3156,18 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         if (this.isWebGPU) {
             if (this.postProcessing && this.flags.usePost) {
-                this.postProcessing.render();
-            } else {
+                try {
+                    this.postProcessing.render();
+                    return;
+                } catch (error) {
+                    this.disablePostRuntime('webgpu-post-render-failure', error);
+                }
+            }
+
+            try {
                 this.renderer.render(this.scene, this.camera);
+            } catch (error) {
+                this.requestWebGLFallback('webgpu-render-failure', error);
             }
             return;
         }
@@ -2902,12 +3183,44 @@ export default class CosmicNoirTheme extends BaseTheme {
     // Cosmic Waves - Expanding silver/gray torus rings
     // ─────────────────────────────────────────────────────────────────────────
 
-    createCosmicWave(intensity, options = {}) {
+    getCosmicWavePoolKey(options = {}) {
         const radius = options.radius ?? 30;
         const tube = options.tube ?? 2;
         const radialSegments = options.radialSegments ?? 8;
         const tubularSegments = options.tubularSegments ?? 48;
-        const waveColor = options.color ?? new THREE.Color(0x888888);
+        const waveColor = options.color instanceof THREE.Color
+            ? options.color
+            : new THREE.Color(options.color ?? 0x888888);
+        return [
+            this.isWebGPU ? 'wgpu' : 'webgl',
+            radius.toFixed(2),
+            tube.toFixed(2),
+            radialSegments,
+            tubularSegments,
+            waveColor.getHexString(),
+        ].join(':');
+    }
+
+    acquireCosmicWave(options = {}) {
+        const poolKey = this.getCosmicWavePoolKey(options);
+        const pooledIndex = this.cosmicWavePool.findIndex((wave) => wave.userData?.poolKey === poolKey);
+        if (pooledIndex >= 0) {
+            const wave = this.cosmicWavePool.splice(pooledIndex, 1)[0];
+            wave.visible = true;
+            wave.scale.setScalar(1.0);
+            if (!wave.parent) {
+                this.planetGroup?.add(wave);
+            }
+            return wave;
+        }
+
+        const radius = options.radius ?? 30;
+        const tube = options.tube ?? 2;
+        const radialSegments = options.radialSegments ?? 8;
+        const tubularSegments = options.tubularSegments ?? 48;
+        const waveColor = options.color instanceof THREE.Color
+            ? options.color
+            : new THREE.Color(options.color ?? 0x888888);
         const geometry = new THREE.TorusGeometry(radius, tube, radialSegments, tubularSegments);
         let material;
         let uniforms = null;
@@ -2931,7 +3244,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                 uniforms: {
                     uTime: { value: this.time },
                     uOpacity: { value: 1.0 },
-                    uColor: { value: waveColor }, // Gray wave
+                    uColor: { value: waveColor },
                 },
                 vertexShader: waveVertexShader,
                 fragmentShader: waveFragmentShader,
@@ -2944,18 +3257,80 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
 
         const wave = new THREE.Mesh(geometry, material);
+        wave.userData = {
+            ...(wave.userData || {}),
+            poolKey,
+            uniforms,
+        };
+        this.planetGroup?.add(wave);
+        return wave;
+    }
+
+    releaseCosmicWave(wave) {
+        if (!wave) return;
+
+        this.planetGroup?.remove(wave);
+        wave.visible = false;
+        wave.scale.setScalar(1.0);
+
+        const waveUniforms = wave.userData?.uniforms || wave.material?.uniforms;
+        if (waveUniforms?.uOpacity) {
+            waveUniforms.uOpacity.value = 0.0;
+        }
+
+        if (this.cosmicWavePool.length >= 16) {
+            wave.geometry?.dispose?.();
+            wave.material?.dispose?.();
+            return;
+        }
+
+        this.cosmicWavePool.push(wave);
+    }
+
+    disposeCosmicWavePool() {
+        this.cosmicWavePool.forEach((wave) => {
+            wave.geometry?.dispose?.();
+            wave.material?.dispose?.();
+        });
+        this.cosmicWavePool = [];
+    }
+
+    disposeSharedNoiseTexture() {
+        if (this.sharedNoiseTexture?.dispose) {
+            try {
+                this.sharedNoiseTexture.dispose();
+            } catch (error) {
+                console.warn('[CosmicNoir] sharedNoiseTexture dispose failed:', error);
+            }
+        }
+        this.sharedNoiseTexture = null;
+    }
+
+    createCosmicWave(intensity, options = {}) {
+        const radius = options.radius ?? 30;
+        const tube = options.tube ?? 2;
+        const radialSegments = options.radialSegments ?? 8;
+        const tubularSegments = options.tubularSegments ?? 48;
+        const waveColor = options.color ?? new THREE.Color(0x888888);
+        const wave = this.acquireCosmicWave({
+            radius,
+            tube,
+            radialSegments,
+            tubularSegments,
+            color: waveColor,
+        });
         wave.rotation.x = this.rand() * Math.PI * 0.3;
         wave.rotation.y = this.rand() * Math.PI * 2;
 
         wave.userData = {
+            ...(wave.userData || {}),
             speed: (70 + intensity * 18) * (options.speedMultiplier ?? 1.0),
             life: 1.0,
             maxLife: 1.0,
             lifeDecay: 0.7 / (options.lifeMultiplier ?? 1.0),
-            uniforms,
+            uniforms: wave.userData?.uniforms || wave.material?.uniforms || null,
         };
 
-        this.planetGroup.add(wave);
         this.cosmicWaves.push(wave);
     }
 
@@ -2974,9 +3349,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             }
 
             if (wave.userData.life <= 0) {
-                this.planetGroup.remove(wave);
-                wave.geometry.dispose();
-                wave.material.dispose();
+                this.releaseCosmicWave(wave);
                 this.cosmicWaves.splice(i, 1);
             }
         }
@@ -3234,11 +3607,13 @@ export default class CosmicNoirTheme extends BaseTheme {
                     if (sparkUniforms?.uPulseTimer) {
                         if (s === 0) {
                             sparkUniforms.uPulseTimer.value = 0.0;
+                            sparkSystem.visible = true;
                         } else {
                             this.registerDeferredTimeout(() => {
                                 const deferredUniforms = getSparkUniforms(sparkSystem);
                                 if (deferredUniforms?.uPulseTimer) {
                                     deferredUniforms.uPulseTimer.value = 0.0;
+                                    sparkSystem.visible = true;
                                 }
                             }, s * 150);
                         }
@@ -3257,6 +3632,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                                 const timer = trailingUniforms.uPulseTimer.value;
                                 if (timer < -50.0 || timer > 85.0) {
                                     trailingUniforms.uPulseTimer.value = 0.0;
+                                    candidate.visible = true;
                                     this.voidSparkIndex = (idx + 1) % this.voidSparks.length;
                                     break;
                                 }
@@ -3319,27 +3695,7 @@ export default class CosmicNoirTheme extends BaseTheme {
 
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
-        this.renderer.setSize(width, height);
-
-        if (this.postProcessing?.setSize) {
-            this.postProcessing.setSize(width, height);
-        }
-
-        if (this.composer) {
-            this.composer.setSize(width, height);
-        }
-
-        if (Array.isArray(this.starfieldUniforms)) {
-            this.starfieldUniforms.forEach((uniforms) => {
-                if (uniforms?.uPixelRatio) {
-                    uniforms.uPixelRatio.value = this.renderer.getPixelRatio();
-                }
-            });
-        }
-
-        if (this.ambientDustUniforms?.uPixelRatio) {
-            this.ambientDustUniforms.uPixelRatio.value = this.renderer.getPixelRatio();
-        }
+        this.applyAdaptiveBudgetState(true);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -3384,6 +3740,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
         this.composer = null;
         this.bloomPass = null;
+        this.chromaticPass = null;
     }
 
     disposeMaterialTextures(material, disposedTextures) {
@@ -3506,6 +3863,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.composer = null;
         this.postProcessing = null;
         this.bloomPass = null;
+        this.chromaticPass = null;
         this.planet = null;
         this.planetUniforms = null;
         this.planetGroup = null;
@@ -3528,9 +3886,11 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.atmosphereInnerUniforms = null;
         this.atmosphereFlowCompute = null;
         this.cosmicWaves = [];
+        this.cosmicWavePool = [];
         this.voidSparks = [];
         this.voidSparkIndex = 0;
         this.sparkCompute = null;
+        this.sharedNoiseTexture = null;
         this.gasSwirl = null;
         this.gasSwirlData = null;
         this.pendingComboCount = 0;
@@ -3566,12 +3926,19 @@ export default class CosmicNoirTheme extends BaseTheme {
             message: null,
         };
         this.loggedMrtPlatformGuard = false;
+        this.adaptiveBudgetState = null;
+        this.lastRendererWidth = 0;
+        this.lastRendererHeight = 0;
+        this.lastRendererPixelRatio = 0;
+        this.lastAppliedPostResolutionScale = 1;
     }
 
     disposeRuntimeResources({ removeCanvas = true } = {}) {
         this.disposePostProcessingStack();
         this.disposeComputeResources();
+        this.disposeCosmicWavePool();
         this.disposeSceneResources();
+        this.disposeSharedNoiseTexture();
         this.disposeRendererResources(removeCanvas);
         this.resetRuntimeReferences();
     }
@@ -3583,19 +3950,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         console.error('[CosmicNoir] WebGPU device lost:', info);
 
         try {
-            this.cancelAnimationLoop();
-            this.clearDeferredTimeouts();
-            this.clearEventSubscriptions();
-            this.removeResizeListener();
-            this.disposeRuntimeResources({ removeCanvas: true });
-
-            // Force WebGL fallback after device loss.
-            this.flags.forceWebGL = true;
-            this.flags.noCompute = true;
-            this.flags.noMRT = true;
-
-            await this.createScene();
-            console.log('[CosmicNoir] Recovery complete: running on WebGL fallback.');
+            await this.requestWebGLFallback('device-loss', info);
         } catch (error) {
             console.error('[CosmicNoir] Device-loss recovery failed:', error);
             this.isActive = false;
@@ -3610,6 +3965,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.clearDeferredTimeouts();
         this.clearEventSubscriptions();
         this.removeResizeListener();
+        this.removeRendererResilience();
         this.removeBaselineHelpers();
         this.disposeRuntimeResources({ removeCanvas: true });
 

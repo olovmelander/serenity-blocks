@@ -16,6 +16,7 @@ export default class CosmicChimesTheme extends BaseTheme {
         super('cosmic-chimes');
         this.eventUnsubscribers = [];
         this.chimeInstances = [];
+        this.effectTimeouts = new Set();
 
         // Performance: Track active effects to limit DOM elements
         this.activeEffectCount = 0;
@@ -122,6 +123,20 @@ export default class CosmicChimesTheme extends BaseTheme {
         };
 
         this.activePreset = this.qualityPresets.High;
+    }
+
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
     }
 
     getGraphicsQuality() {
@@ -297,7 +312,7 @@ export default class CosmicChimesTheme extends BaseTheme {
     // Performance: Track effect lifecycle
     trackEffect(element, duration) {
         this.activeEffectCount++;
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             element.remove();
             this.activeEffectCount = Math.max(0, this.activeEffectCount - 1);
         }, duration);
@@ -423,7 +438,7 @@ export default class CosmicChimesTheme extends BaseTheme {
         for (let i = 0; i < actualCount; i++) {
             if (!this.canSpawnEffect()) continue;
 
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 if (!this.isActive) return;
 
                 const strike = document.createElement('div');
@@ -440,7 +455,7 @@ export default class CosmicChimesTheme extends BaseTheme {
                 if (this.chimeInstances.length > 0) {
                     const randomChime = this.chimeInstances[Math.floor(Math.random() * this.chimeInstances.length)];
                     randomChime.classList.add('chime-struck');
-                    setTimeout(() => randomChime.classList.remove('chime-struck'), 600);
+                    this.scheduleEffectTimeout(() => randomChime.classList.remove('chime-struck'), 600);
                 }
             }, i * 180);
         }
@@ -456,7 +471,7 @@ export default class CosmicChimesTheme extends BaseTheme {
         for (let i = 0; i < actualCount; i++) {
             if (!this.canSpawnEffect()) continue;
 
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 if (!this.isActive) return;
 
                 // Simplified: single ring instead of 3 nested
@@ -507,7 +522,7 @@ export default class CosmicChimesTheme extends BaseTheme {
         container.appendChild(fragment);
 
         // Batch cleanup
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             particles.forEach((p) => p.remove());
             this.activeEffectCount = Math.max(0, this.activeEffectCount - particles.length);
         }, 1200);
@@ -523,7 +538,7 @@ export default class CosmicChimesTheme extends BaseTheme {
         for (let i = 0; i < actualCount; i++) {
             if (!this.canSpawnEffect()) continue;
 
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 if (!this.isActive) return;
 
                 const aurora = document.createElement('div');
@@ -547,7 +562,7 @@ export default class CosmicChimesTheme extends BaseTheme {
         for (let i = 0; i < actualCount; i++) {
             if (!this.canSpawnEffect()) continue;
 
-            setTimeout(() => {
+            this.scheduleEffectTimeout(() => {
                 if (!this.isActive) return;
 
                 const pulse = document.createElement('div');
@@ -592,7 +607,7 @@ export default class CosmicChimesTheme extends BaseTheme {
 
         container.appendChild(fragment);
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             sparkles.forEach((s) => s.remove());
             this.activeEffectCount = Math.max(0, this.activeEffectCount - sparkles.length);
         }, 500);
@@ -606,7 +621,7 @@ export default class CosmicChimesTheme extends BaseTheme {
         nebula.style.setProperty('--pulse-intensity', intensity);
         nebula.classList.add('nebula-pulse');
 
-        setTimeout(() => {
+        this.scheduleEffectTimeout(() => {
             nebula.classList.remove('nebula-pulse');
         }, 400);
     }
@@ -653,6 +668,7 @@ export default class CosmicChimesTheme extends BaseTheme {
 
     stop() {
         if (!this.isActive) return;
+        this.clearEffectTimeouts();
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
         this.teardownQualityListener();

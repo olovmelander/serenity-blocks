@@ -20,6 +20,7 @@ import { InfinityHUD } from '../../ui/infinity/InfinityHUD.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import steamService from '../steam/steam-service.js';
 import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
+import { normalizeWheelDeltaToPixels, shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
 
 /**
  * InfinityMode - Endurance mode with 1000-row vertical playfield
@@ -861,13 +862,14 @@ export class InfinityMode extends BaseGameMode {
         this.physicsCallbacks = {
             onMove: () => this.deps.soundManager.sfxPlayer.playMove(),
             onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
-            onLineClear: (lineCount) => {
+            onLineClear: (lineCount, ...rest) => {
+                const clearedRows = Array.isArray(rest[2]) ? rest[2] : [];
                 // Play sound effects
                 this.deps.soundManager.sfxPlayer.playLineClear();
 
                 // Emit event for theme reactions
                 console.log('[Infinity] Emitting LINE_CLEAR event, count:', lineCount);
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount });
+                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount, clearedRows });
 
                 // Track combo stats for infinity mode
                 if (this.gameState.infinityStats && this.gameState.comboState) {
@@ -1684,10 +1686,11 @@ export class InfinityMode extends BaseGameMode {
      * @private
      */
     _normalizeWheelDelta(event) {
-        let deltaY = event.deltaY;
-        if (event.deltaMode === 1) deltaY *= 20;  // line mode
-        if (event.deltaMode === 2) deltaY *= 400; // page mode
-        return deltaY;
+        return normalizeWheelDeltaToPixels(event, {
+            lineHeight: 20,
+            pageHeight: 400,
+            clampPx: null,
+        });
     }
 
     /**
@@ -1697,6 +1700,10 @@ export class InfinityMode extends BaseGameMode {
      */
     _onWheelScroll(event) {
         if (!this.gameState || this.gameState.isGameOver || !this.boardScene) return;
+
+        if (!shouldCaptureWheelEvent({ event })) {
+            return;
+        }
 
         // Block if externally paused (not by our own exploration) — let the
         // event propagate so settings/hub menus can still scroll normally

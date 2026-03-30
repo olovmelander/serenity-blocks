@@ -91,8 +91,14 @@ export class GamepadController {
         this.serenityModeActive = false;
         this.serenityModeCallbacks = null;
 
-        // DAS (Delayed Auto Shift) timers for each gamepad
-        this.dasTimers = [
+        // DAS (Delayed Auto Shift) states for each gamepad
+        this.dasState = [
+            { left: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, right: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, down: { active: false, intervalAccumulators: 0 } },
+            { left: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, right: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, down: { active: false, intervalAccumulators: 0 } },
+            { left: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, right: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, down: { active: false, intervalAccumulators: 0 } },
+            { left: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, right: { active: false, delayAccumulators: 0, intervalAccumulators: 0, isRepeating: false }, down: { active: false, intervalAccumulators: 0 } },
+        ];
+        this.dasActions = [
             { left: null, right: null, down: null },
             { left: null, right: null, down: null },
             { left: null, right: null, down: null },
@@ -145,6 +151,13 @@ export class GamepadController {
         // Listen for gamepad connections
         window.addEventListener('gamepadconnected', (e) => this.onGamepadConnected(e));
         window.addEventListener('gamepaddisconnected', (e) => this.onGamepadDisconnected(e));
+
+        // Clear DAS timers when tab loses focus (gamepad polling stops but timers persist)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.clearAllDasTimers();
+            }
+        });
 
         // Check for already connected gamepads
         this.checkConnectedGamepads();
@@ -319,6 +332,7 @@ export class GamepadController {
         this.enabled = false;
         this.stopPolling();
         this.clearAllDasTimers();
+        this.lastGameplayTime = null;
     }
 
     /**
@@ -327,11 +341,16 @@ export class GamepadController {
     startPolling() {
         if (this.pollInterval) return;
 
-        this.pollInterval = setInterval(() => {
+        this.lastPollTime = performance.now();
+        const loop = (timestamp) => {
+            this.lastPollTime = timestamp;
             this.poll();
-        }, 16); // ~60 FPS
+            this.pollInterval = requestAnimationFrame(loop);
+        };
 
-        console.log('[Gamepad] Started polling');
+        this.pollInterval = requestAnimationFrame(loop);
+
+        console.log('[Gamepad] Started polling via requestAnimationFrame');
     }
 
     /**
@@ -339,7 +358,7 @@ export class GamepadController {
      */
     stopPolling() {
         if (this.pollInterval) {
-            clearInterval(this.pollInterval);
+            cancelAnimationFrame(this.pollInterval);
             this.pollInterval = null;
             console.log('[Gamepad] Stopped polling');
         }
@@ -381,6 +400,18 @@ export class GamepadController {
                 // Always check for Start button to open settings, even without gameActions
                 this.processGamepadInput(freshGamepad, slot);
             }
+        }
+    }
+
+    advanceGameplayInput(timestamp = performance.now()) {
+        const delta = Math.max(0, Math.min(100, timestamp - (this.lastGameplayTime ?? timestamp)));
+        this.lastGameplayTime = timestamp;
+
+        if (!this.enabled || !this.gameActions) return;
+
+        for (let slot = 0; slot < this.gamepads.length; slot++) {
+            if (!this.connected[slot]) continue;
+            this.processDasTimers(slot, delta);
         }
     }
 
@@ -1405,45 +1436,61 @@ export class GamepadController {
         // Get appropriate action functions based on player slot (0-3 = P1-P4)
         let actions;
         switch (slot) {
-        case 0: // Player 1
-            actions = {
-                move: this.gameActions.move,
-                rotate: this.gameActions.rotate,
-                softDrop: this.gameActions.softDrop,
-                hardDrop: this.gameActions.hardDrop,
-                pause: this.gameActions.togglePause,
-            };
-            break;
-        case 1: // Player 2
-            actions = {
-                move: this.gameActions.moveP2,
-                rotate: this.gameActions.rotateP2,
-                softDrop: this.gameActions.softDropP2,
-                hardDrop: this.gameActions.hardDropP2,
-                pause: this.gameActions.togglePause,
-            };
-            break;
-        case 2: // Player 3
-            actions = {
-                move: this.gameActions.moveP3,
-                rotate: this.gameActions.rotateP3,
-                softDrop: this.gameActions.softDropP3,
-                hardDrop: this.gameActions.hardDropP3,
-                pause: this.gameActions.togglePause,
-            };
-            break;
-        case 3: // Player 4
-            actions = {
-                move: this.gameActions.moveP4,
-                rotate: this.gameActions.rotateP4,
-                softDrop: this.gameActions.softDropP4,
-                hardDrop: this.gameActions.hardDropP4,
-                pause: this.gameActions.togglePause,
-            };
-            break;
-        default:
-            console.warn(`[Gamepad] Invalid player slot: ${slot}`);
-            return;
+            case 0: // Player 1
+                actions = {
+                    move: this.gameActions.move,
+                    rotate: this.gameActions.rotate,
+                    softDrop: this.gameActions.softDrop,
+                    hardDrop: this.gameActions.hardDrop,
+                    requestMove: this.gameActions.requestMove,
+                    requestRotate: this.gameActions.requestRotate,
+                    requestSoftDrop: this.gameActions.requestSoftDrop,
+                    requestHardDrop: this.gameActions.requestHardDrop,
+                    pause: this.gameActions.togglePause,
+                };
+                break;
+            case 1: // Player 2
+                actions = {
+                    move: this.gameActions.moveP2,
+                    rotate: this.gameActions.rotateP2,
+                    softDrop: this.gameActions.softDropP2,
+                    hardDrop: this.gameActions.hardDropP2,
+                    requestMove: this.gameActions.requestMoveP2,
+                    requestRotate: this.gameActions.requestRotateP2,
+                    requestSoftDrop: this.gameActions.requestSoftDropP2,
+                    requestHardDrop: this.gameActions.requestHardDropP2,
+                    pause: this.gameActions.togglePause,
+                };
+                break;
+            case 2: // Player 3
+                actions = {
+                    move: this.gameActions.moveP3,
+                    rotate: this.gameActions.rotateP3,
+                    softDrop: this.gameActions.softDropP3,
+                    hardDrop: this.gameActions.hardDropP3,
+                    requestMove: this.gameActions.requestMoveP3,
+                    requestRotate: this.gameActions.requestRotateP3,
+                    requestSoftDrop: this.gameActions.requestSoftDropP3,
+                    requestHardDrop: this.gameActions.requestHardDropP3,
+                    pause: this.gameActions.togglePause,
+                };
+                break;
+            case 3: // Player 4
+                actions = {
+                    move: this.gameActions.moveP4,
+                    rotate: this.gameActions.rotateP4,
+                    softDrop: this.gameActions.softDropP4,
+                    hardDrop: this.gameActions.hardDropP4,
+                    requestMove: this.gameActions.requestMoveP4,
+                    requestRotate: this.gameActions.requestRotateP4,
+                    requestSoftDrop: this.gameActions.requestSoftDropP4,
+                    requestHardDrop: this.gameActions.requestHardDropP4,
+                    pause: this.gameActions.togglePause,
+                };
+                break;
+            default:
+                console.warn(`[Gamepad] Invalid player slot: ${slot}`);
+                return;
         }
 
         // Process movement (D-pad left/right or left stick X)
@@ -1458,10 +1505,10 @@ export class GamepadController {
         // Handle left movement
         if (leftPressed && !prevLeft) {
             // Initial press
-            if (actions.move) {
-                actions.move(-1);
+            if (actions.requestMove || actions.move) {
+                (actions.requestMove || actions.move)(-1);
                 performanceMonitor.recordInputAction();
-                this.startDas(slot, 'left', () => actions.move(-1));
+                this.startDas(slot, 'left', () => (actions.requestMove || actions.move)?.(-1));
             }
         } else if (!leftPressed && prevLeft) {
             // Release
@@ -1471,10 +1518,10 @@ export class GamepadController {
         // Handle right movement
         if (rightPressed && !prevRight) {
             // Initial press
-            if (actions.move) {
-                actions.move(1);
+            if (actions.requestMove || actions.move) {
+                (actions.requestMove || actions.move)(1);
                 performanceMonitor.recordInputAction();
-                this.startDas(slot, 'right', () => actions.move(1));
+                this.startDas(slot, 'right', () => (actions.requestMove || actions.move)?.(1));
             }
         } else if (!rightPressed && prevRight) {
             // Release
@@ -1490,10 +1537,10 @@ export class GamepadController {
         const prevDown = prevState.softDrop || false;
 
         if (downPressed && !prevDown) {
-            if (actions.softDrop) {
-                actions.softDrop();
+            if (actions.requestSoftDrop || actions.softDrop) {
+                (actions.requestSoftDrop || actions.softDrop)();
                 performanceMonitor.recordInputAction();
-                this.startDas(slot, 'down', () => actions.softDrop(), 50);
+                this.startDas(slot, 'down', () => (actions.requestSoftDrop || actions.softDrop)?.(), 50);
             }
         } else if (!downPressed && prevDown) {
             this.stopDas(slot, 'down');
@@ -1503,30 +1550,30 @@ export class GamepadController {
 
         // Process rotation buttons (edge-triggered)
         if (this.isButtonJustPressed(gamepad, config.rotateRight, prevState, 'rotateRight')) {
-            if (actions.rotate) {
-                actions.rotate('right');
+            if (actions.requestRotate || actions.rotate) {
+                (actions.requestRotate || actions.rotate)('right');
                 performanceMonitor.recordInputAction();
             }
         }
 
         if (this.isButtonJustPressed(gamepad, config.rotateLeft, prevState, 'rotateLeft')) {
-            if (actions.rotate) {
-                actions.rotate('left');
+            if (actions.requestRotate || actions.rotate) {
+                (actions.requestRotate || actions.rotate)('left');
                 performanceMonitor.recordInputAction();
             }
         }
 
         if (this.isButtonJustPressed(gamepad, config.flip, prevState, 'flip')) {
-            if (actions.rotate) {
-                actions.rotate('flip');
+            if (actions.requestRotate || actions.rotate) {
+                (actions.requestRotate || actions.rotate)('flip');
                 performanceMonitor.recordInputAction();
             }
         }
 
         // Process hard drop (edge-triggered)
         if (this.isButtonJustPressed(gamepad, config.hardDrop, prevState, 'hardDrop')) {
-            if (actions.hardDrop) {
-                actions.hardDrop();
+            if (actions.requestHardDrop || actions.hardDrop) {
+                (actions.requestHardDrop || actions.hardDrop)();
                 performanceMonitor.recordInputAction();
             }
         }
@@ -1583,25 +1630,71 @@ export class GamepadController {
      * Start DAS (Delayed Auto Shift) for continuous movement
      */
     startDas(slot, direction, action, interval = null) {
-        const timers = this.dasTimers[slot];
-        if (timers[direction]) return; // Already running
+        this.dasActions[slot][direction] = action;
+        const state = this.dasState[slot][direction];
+        state.active = true;
+        state.delayAccumulator = 0;
+        state.intervalAccumulator = 0;
+        state.isRepeating = false;
+        // Interval is currently stored globally in this.dasInterval, but we could store it on state if needed.
+    }
 
-        const dasInterval = interval || this.dasInterval;
+    /**
+     * Process high-precision DAS timers on the poll loop
+     */
+    processDasTimers(slot, delta) {
+        if (!this.gameActions || !this.enabled) return;
 
-        timers[direction] = setTimeout(() => {
-            timers[direction] = setInterval(action, dasInterval);
-        }, this.dasDelay);
+        const processDirection = (dir, customInterval = false) => {
+            const state = this.dasState[slot][dir];
+            const action = this.dasActions[slot][dir];
+            if (!state.active || !action) return;
+
+            // For downward movement map to continuous softDrop, custom interval or 50ms default
+            if (dir === 'down') {
+                const interval = 50;
+                state.intervalAccumulator += delta;
+                while (state.intervalAccumulator >= interval) {
+                    state.intervalAccumulator -= interval;
+                    action();
+                }
+                return;
+            }
+
+            // For left/right movement
+            if (!state.isRepeating) {
+                state.delayAccumulator += delta;
+                if (state.delayAccumulator >= this.dasDelay) {
+                    state.isRepeating = true;
+                    state.intervalAccumulator = state.delayAccumulator - this.dasDelay;
+                    action();
+
+                    while (state.intervalAccumulator >= this.dasInterval && this.dasInterval > 0) {
+                        state.intervalAccumulator -= this.dasInterval;
+                        action();
+                    }
+                }
+            } else {
+                state.intervalAccumulator += delta;
+                while (state.intervalAccumulator >= this.dasInterval && this.dasInterval > 0) {
+                    state.intervalAccumulator -= this.dasInterval;
+                    action();
+                }
+            }
+        };
+
+        processDirection('left');
+        processDirection('right');
+        processDirection('down', true);
     }
 
     /**
      * Stop DAS for a specific direction
      */
     stopDas(slot, direction) {
-        const timers = this.dasTimers[slot];
-        if (timers[direction]) {
-            clearTimeout(timers[direction]);
-            clearInterval(timers[direction]);
-            timers[direction] = null;
+        const state = this.dasState[slot][direction];
+        if (state) {
+            state.active = false;
         }
     }
 

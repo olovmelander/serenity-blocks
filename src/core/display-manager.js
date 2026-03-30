@@ -17,10 +17,8 @@ export class DisplayManager {
      * @returns {boolean}
      */
     detectElectron() {
-        // Check for Electron renderer process
         return typeof window !== 'undefined'
-            && typeof window.process !== 'undefined'
-            && window.process.type === 'renderer';
+            && !!window.electronDisplay;
     }
 
     /**
@@ -51,9 +49,7 @@ export class DisplayManager {
         }
 
         try {
-            // Electron environment - use IPC to get display info from main process
-            const { ipcRenderer } = window.require('electron');
-            const displays = await ipcRenderer.invoke('get-displays');
+            const displays = await window.electronDisplay?.getDisplays?.();
             return displays;
         } catch (error) {
             console.error('[DisplayManager] Failed to get displays:', error);
@@ -107,20 +103,18 @@ export class DisplayManager {
         }
 
         try {
-            const { ipcRenderer } = window.require('electron');
-
             switch (mode) {
             case 'fullscreen':
-                await ipcRenderer.invoke('set-fullscreen', true);
+                await window.electronDisplay?.setFullscreen?.(true);
                 break;
 
             case 'borderless':
-                await ipcRenderer.invoke('set-borderless', resolution);
+                await window.electronDisplay?.setBorderless?.(resolution);
                 break;
 
             case 'windowed':
             default:
-                await ipcRenderer.invoke('set-windowed', resolution);
+                await window.electronDisplay?.setWindowed?.(resolution);
                 break;
             }
 
@@ -145,8 +139,7 @@ export class DisplayManager {
         }
 
         try {
-            const { ipcRenderer } = window.require('electron');
-            await ipcRenderer.invoke('set-resolution', { width, height });
+            await window.electronDisplay?.setResolution?.(width, height);
             console.log(`[DisplayManager] Resolution set to: ${width}×${height}`);
             return true;
         } catch (error) {
@@ -275,8 +268,7 @@ export class DisplayManager {
         }
 
         try {
-            const { ipcRenderer } = window.require('electron');
-            return await ipcRenderer.invoke('get-window-bounds');
+            return await window.electronDisplay?.getWindowBounds?.();
         } catch (error) {
             console.error('[DisplayManager] Failed to get window bounds:', error);
             return null;
@@ -293,8 +285,7 @@ export class DisplayManager {
         }
 
         try {
-            const { ipcRenderer } = window.require('electron');
-            return await ipcRenderer.invoke('is-fullscreen');
+            return await window.electronDisplay?.isFullscreen?.();
         } catch (error) {
             console.error('[DisplayManager] Failed to check fullscreen state:', error);
             return false;

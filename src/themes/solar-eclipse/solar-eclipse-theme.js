@@ -236,9 +236,24 @@ export default class SolarEclipseTheme extends BaseTheme {
 
         // State
         this.eventUnsubscribers = [];
+        this.effectTimeouts = new Set();
         this.qualityPreset = QUALITY_PRESETS.High;
 
         console.log('[SolarEclipse] Theme constructed');
+    }
+
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
     }
 
     getTetrominoConfig() {
@@ -313,7 +328,7 @@ export default class SolarEclipseTheme extends BaseTheme {
 
         // Camera positioned to view the eclipse with depth
         this.camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 100000);
-        this.camera.position.set(0, 0, 1400);
+        this.camera.position.set(0, 0, 850);
         this.camera.lookAt(0, 0, 0);
 
         // Dramatic lighting - main light from behind (creating the eclipse effect)
@@ -1570,7 +1585,7 @@ export default class SolarEclipseTheme extends BaseTheme {
 
         const starCount = Math.min(lineCount + 1, 5);
         for (let i = 0; i < starCount; i++) {
-            setTimeout(() => this.createShootingStar(), i * 100);
+            this.scheduleEffectTimeout(() => this.createShootingStar(), i * 100);
         }
 
         // Trigger eclipse spark burst on line clears
@@ -1602,7 +1617,7 @@ export default class SolarEclipseTheme extends BaseTheme {
             this.triggerEclipseSparkBurst();
             const extraStars = Math.min(comboCount - 1, 6);
             for (let i = 0; i < extraStars; i++) {
-                setTimeout(() => this.createShootingStar(), i * 120);
+                this.scheduleEffectTimeout(() => this.createShootingStar(), i * 120);
             }
         }
 
@@ -1700,16 +1715,16 @@ export default class SolarEclipseTheme extends BaseTheme {
             if (this.camera) {
                 // Increased speed and amplitude for visibility
                 const cameraTime = this.time * 0.08;
-                const orbitRadiusX = 400; // Wider horizontal sway
-                const orbitRadiusY = 250; // Taller vertical sway
-                const orbitRadiusZ = 200; // Deeper breathing
+                const orbitRadiusX = 250; // Adjusted for closer camera
+                const orbitRadiusY = 150; // Adjusted for closer camera
+                const orbitRadiusZ = 120; // Adjusted for closer camera
 
                 // Orbital sway with multiple frequencies for organic feel
                 this.camera.position.x = Math.sin(cameraTime + this.cameraPhaseX) * orbitRadiusX
                     + Math.cos(cameraTime * 0.7 + this.cameraPhaseX2) * orbitRadiusX * 0.4;
                 this.camera.position.y = Math.cos(cameraTime * 0.8 + this.cameraPhaseY) * orbitRadiusY
                     + Math.sin(cameraTime * 0.5 + this.cameraPhaseY2) * orbitRadiusY * 0.3;
-                this.camera.position.z = 1400 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
+                this.camera.position.z = 850 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
 
                 // Dynamic look-at for extra parallax
                 const lookOffsetX = Math.sin(cameraTime * 0.4) * 150;
@@ -2048,6 +2063,7 @@ export default class SolarEclipseTheme extends BaseTheme {
     }
 
     stop() {
+        this.clearEffectTimeouts();
         this.eventUnsubscribers.forEach((unsub) => unsub());
         this.eventUnsubscribers = [];
         if (this.resizeHandler) {

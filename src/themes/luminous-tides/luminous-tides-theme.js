@@ -1125,12 +1125,8 @@ export default class LuminousTidesTheme extends BaseTheme {
         console.log('[LuminousTides] Stopped');
     }
 
-    cleanup() {
-        console.log('[LuminousTides] cleanup() called');
-
-        this.stop();
-
-        // Dispose of Three.js resources
+    releaseInactiveResources() {
+        // Dispose of theme-owned geometry/material references before the shared scene is released
         if (this.water) {
             this.water.geometry.dispose();
             this.waterMaterial.dispose();
@@ -1146,27 +1142,17 @@ export default class LuminousTidesTheme extends BaseTheme {
             this.ambientParticles.material.dispose();
         }
 
-        if (this.composer) {
-            this.composer.dispose();
-        }
-
-        if (this.renderer) {
-            this.renderer.dispose();
-            if (this.renderer.domElement && this.renderer.domElement.parentNode) {
-                this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
-            }
-        }
-
-        // Clear references
-        this.scene = null;
-        this.camera = null;
-        this.renderer = null;
-        this.composer = null;
         this.water = null;
         this.waterMaterial = null;
         this.plankton = null;
         this.planktonMaterial = null;
         this.ambientParticles = null;
+
+        super.releaseInactiveResources();
+    }
+
+    cleanup() {
+        console.log('[LuminousTides] cleanup() called');
 
         super.cleanup();
         console.log('[LuminousTides] Cleaned up');

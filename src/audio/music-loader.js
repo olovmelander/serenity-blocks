@@ -3,6 +3,8 @@
  * Handles loading music tracks from songs.json and managing track metadata
  */
 
+import songsManifest from '../../public/assets/music/songs.json';
+
 /**
  * Global storage for available songs
  * @type {Array<Object>}
@@ -15,8 +17,9 @@ let availableSongs = [];
  */
 export async function loadSongs() {
     try {
-        const response = await fetch('./assets/music/songs.json');
-        const songs = await response.json();
+        const songs = Array.isArray(songsManifest)
+            ? songsManifest.map((song) => ({ ...song }))
+            : [];
         availableSongs = songs;
         console.log(`✅ Loaded ${songs.length} songs from songs.json`);
         return songs;
@@ -70,6 +73,7 @@ export function getSongPath(trackName, songsData) {
  */
 export function getSongForTheme(themeName, songsData) {
     const explicitThemeSongMap = {
+        'electric-dreams': 'ElectricDreams',
         'chromadelic-highway': 'ElectricDreams',
         'black-hole': 'BlackHole',
     };
@@ -123,12 +127,6 @@ export function getThemeForSong(trackName, themes) {
     if (sharedSongs.includes(trackName)) {
         return null;
     }
-
-    // Normalize the track name
-    const normalizedTrack = trackName
-        .replace(/([A-Z])/g, '-$1')
-        .toLowerCase()
-        .replace(/^-/, '');
 
     // Try exact match first
     let theme = themes.find((t) => {

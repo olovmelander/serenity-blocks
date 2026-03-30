@@ -32,21 +32,13 @@ const OFFLINE_QUEUE_BACKOFF = {
     JITTER_MS: 750,
 };
 
-// Check for Electron environment
-const isElectron = typeof window !== 'undefined' &&
-    (window.process?.type === 'renderer' ||
-        (typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron')));
-
-// Get ipcRenderer if in Electron
-let ipcRenderer = null;
-if (isElectron) {
-    try {
-        const electron = window.require('electron');
-        ipcRenderer = electron.ipcRenderer;
-    } catch (err) {
-        console.warn('[SteamService] Failed to load Electron IPC:', err.message);
+const electronApi = typeof window !== 'undefined' ? window.electronAPI : null;
+const ipcRenderer = electronApi
+    ? {
+        invoke: (...args) => electronApi.invoke(...args),
+        on: (channel, callback) => electronApi.on(channel, (payload) => callback(null, payload)),
     }
-}
+    : null;
 
 /**
  * SteamService Singleton
@@ -69,7 +61,7 @@ class SteamService {
 
         // Offline queue
         this.offlineQueue = this._loadOfflineQueue();
-        this.connectionState = 'offline';
+        this.connectionState = electronApi ? 'offline' : 'no_steam';
         this.capabilities = {
             leaderboards: false,
             cloud: false,
@@ -85,6 +77,8 @@ class SteamService {
         // Initialization state
         this.initPromise = null;
         this.initComplete = false;
+        this.initPending = false;
+        this.readyEmitted = false;
 
         // Avatar cache (memory) - using LRU tracking
         this.avatarCache = new Map();
@@ -102,6 +96,10 @@ class SteamService {
         // Invite queue (for events that arrive before listeners attach)
         this.pendingInvites = [];
         this._ipcListenersInitialized = false;
+
+        // Pending resolution poll (handles race between main-process bootstrap
+        // completion and renderer IPC listener registration)
+        this._pendingPollTimer = null;
 
         this._setupIpcListeners();
     }
@@ -153,15 +151,108 @@ class SteamService {
             return this.initPromise;
         }
 
+        this.initPending = !!electronApi;
+        this._updateConnectionState();
         this.initPromise = this._doInitialize();
         return this.initPromise;
+    }
+
+    async _syncFromMainProcessStatus(status = {}, {
+        emitInitFailed = false,
+        source = 'unknown',
+    } = {}) {
+        const nextInitialized = !!status?.initialized;
+        const nextPending = !!status?.pending;
+        const hasIdentity = Boolean(
+            status?.steamId
+            || this.steamId
+            || status?.playerName
+            || this.playerName
+        );
+        const nextConnected = !!(status?.connected ?? status?.isOnline)
+            || (nextInitialized && nextPending && hasIdentity);
+        const prevInitialized = this.initialized;
+        const prevOnline = this.isOnline;
+
+        if (!nextInitialized && !nextPending) {
+            this.initPending = false;
+            this._stopPendingResolutionPoll();
+            this._enterOfflineMode();
+            this.initComplete = true;
+            this._updateConnectionState();
+            if (emitInitFailed) {
+                this.emit(STEAM_EVENTS.INIT_FAILED, { source });
+            }
+            return false;
+        }
+
+        if (status?.steamId !== undefined) {
+            this.steamId = status.steamId;
+        }
+        if (status?.playerName) {
+            this.playerName = status.playerName;
+        }
+        if (status?.appId) {
+            this.appId = Number(status.appId);
+        }
+
+        this.initialized = nextInitialized;
+        this.initPending = nextPending && !nextConnected;
+        this.isOnline = nextConnected;
+        this.wasOnline = nextConnected;
+        this.initComplete = true;
+
+        // Stop pending poll once we have a definitive state
+        if (!this.initPending) {
+            this._stopPendingResolutionPoll();
+        }
+
+        if (nextInitialized) {
+            this._cachePlayerData();
+            this._startConnectionMonitoring();
+        }
+
+        if (nextConnected) {
+            await this._flushOfflineQueue();
+            await this.refreshStatsCache();
+            await this.refreshCapabilities();
+        } else if (!nextPending) {
+            await this.refreshCapabilities();
+        }
+
+        this._updateConnectionState();
+
+        // Allow re-emit of READY when sync comes from a fallback or post-listener
+        // path — the earlier emission may have occurred while still in a partial
+        // state, leaving the UI unaware that Steam is fully ready.
+        const isFallbackSync = typeof source === 'string'
+            && (source.includes('fallback') || source.includes('post-listener'));
+        if (nextInitialized && (!this.readyEmitted || isFallbackSync)) {
+            this.readyEmitted = true;
+            this.emit(STEAM_EVENTS.READY, {
+                steamId: this.steamId,
+                playerName: this.playerName,
+                source,
+            });
+        }
+
+        if (nextConnected && !prevOnline) {
+            if (prevInitialized) {
+                this.emit(STEAM_EVENTS.RECONNECTED, { source });
+            }
+            this.emit(STEAM_EVENTS.CONNECTED, { source });
+        } else if (!nextConnected && prevOnline) {
+            this.emit(STEAM_EVENTS.DISCONNECTED, { source });
+        }
+
+        return nextConnected;
     }
 
     /**
      * Internal initialization with retry logic
      */
     async _doInitialize() {
-        if (!ipcRenderer) {
+        if (!electronApi) {
             console.log('[SteamService] No IPC available - running in offline mode');
             this._enterOfflineMode();
             this._updateConnectionState();
@@ -174,67 +265,46 @@ class SteamService {
 
         for (let attempt = 1; attempt <= STEAM_RETRY.MAX_ATTEMPTS; attempt++) {
             try {
-                const isInitialized = await ipcRenderer.invoke(STEAM_IPC.IS_INITIALIZED);
+                const status = await electronApi.invoke(STEAM_IPC.GET_CONNECTION_STATUS);
+                if (status?.initialized || status?.pending) {
+                    const isConnected = await this._syncFromMainProcessStatus(status, {
+                        source: `initialize:attempt-${attempt}`,
+                    });
 
-                if (isInitialized) {
-                    let isConnected = true;
-                    try {
-                        isConnected = await ipcRenderer.invoke(STEAM_IPC.CHECK_CONNECTION);
-                    } catch (err) {
-                        isConnected = true;
-                    }
+                    if (status?.pending && !isConnected) {
+                        console.log('[SteamService] ⏳ Waiting for Steam connection...');
+                        this._startPendingResolutionPoll();
 
-                    // Steam is ready - fetch player data
-                    this.steamId = await ipcRenderer.invoke(STEAM_IPC.GET_STEAM_ID);
-                    this.playerName = await ipcRenderer.invoke(STEAM_IPC.GET_PLAYER_NAME) || STEAM_DEFAULTS.PLAYER_NAME;
-                    try {
-                        const appId = await ipcRenderer.invoke(STEAM_IPC.GET_APP_ID);
-                        if (appId) {
-                            this.appId = Number(appId);
-                        }
-                    } catch (err) {
-                        this.appId = STEAM_APP_ID;
-                    }
-
-                    this.initialized = true;
-                    this.isOnline = !!isConnected;
-                    this.wasOnline = !!isConnected;
-
-                    if (isConnected) {
+                        // Hard fallback: if still pending after 20s, force a fresh
+                        // sync then fail gracefully to offline mode.
+                        this._pendingHardFallbackTimer = setTimeout(async () => {
+                            if (!this.initPending) return;
+                            try {
+                                const freshStatus = await electronApi.invoke(STEAM_IPC.GET_CONNECTION_STATUS);
+                                if (freshStatus) {
+                                    await this._syncFromMainProcessStatus(freshStatus, {
+                                        source: 'pending-hard-fallback-20s',
+                                    });
+                                }
+                            } catch (_) { /* best-effort */ }
+                            if (this.initPending) {
+                                console.log('[SteamService] Hard fallback: giving up after 20s');
+                                this.initPending = false;
+                                this._stopPendingResolutionPoll();
+                                this._enterOfflineMode();
+                                this._updateConnectionState();
+                                this.emit(STEAM_EVENTS.INIT_FAILED, { source: 'hard-fallback-timeout' });
+                            }
+                        }, 20000);
+                    } else if (status?.pending) {
+                        console.log('[SteamService] ✅ Steam client ready while startup verification finishes');
+                    } else if (isConnected) {
                         console.log(`[SteamService] ✅ Connected: ${this.playerName} (${this.steamId})`);
                     } else {
                         console.log(`[SteamService] ⚠️ Steam available but offline: ${this.playerName} (${this.steamId})`);
                     }
 
-                    // Cache player data for offline
-                    this._cachePlayerData();
-
-                    // Start connection monitoring
-                    this._startConnectionMonitoring();
-
-                    // Flush any queued offline actions
-                    await this._flushOfflineQueue();
-
-                    // Refresh stats cache for leaderboards
-                    await this.refreshStatsCache();
-
-                    // Refresh capabilities for feature gating
-                    await this.refreshCapabilities();
-                    this._updateConnectionState();
-
-                    // Emit ready event
-                    this.emit(STEAM_EVENTS.READY, {
-                        steamId: this.steamId,
-                        playerName: this.playerName,
-                    });
-                    if (isConnected) {
-                        this.emit(STEAM_EVENTS.CONNECTED);
-                    } else {
-                        this.emit(STEAM_EVENTS.DISCONNECTED);
-                    }
-
-                    this.initComplete = true;
-                    return true;
+                    return isConnected;
                 }
             } catch (err) {
                 console.warn(`[SteamService] Init attempt ${attempt}/${STEAM_RETRY.MAX_ATTEMPTS} failed:`, err.message);
@@ -250,10 +320,11 @@ class SteamService {
 
         // All retries failed
         console.log('[SteamService] ⚠️ Steam unavailable after retries - entering offline mode');
+        this.initPending = false;
         this._enterOfflineMode();
-        this.emit(STEAM_EVENTS.INIT_FAILED);
         this.initComplete = true;
         this._updateConnectionState();
+        this.emit(STEAM_EVENTS.INIT_FAILED, { source: 'initialize:retries-exhausted' });
         return false;
     }
 
@@ -266,6 +337,22 @@ class SteamService {
         }
 
         this._ipcListenersInitialized = true;
+
+        // Immediately query current status after listeners are registered.
+        // Handles the race where steam:status fires before renderer ES modules
+        // finish loading and register these listeners.
+        queueMicrotask(async () => {
+            try {
+                const status = await electronApi.invoke(STEAM_IPC.GET_CONNECTION_STATUS);
+                if (status && (status.initialized || status.pending)) {
+                    await this._syncFromMainProcessStatus(status, {
+                        source: 'post-listener-registration-sync',
+                    });
+                }
+            } catch (err) {
+                console.warn('[SteamService] Post-listener sync failed:', err.message);
+            }
+        });
 
         ipcRenderer.on('steam:lobbyJoinRequested', (event, payload) => {
             const invite = {
@@ -283,29 +370,31 @@ class SteamService {
             this.emit(STEAM_EVENTS.INVITE_RECEIVED, invite);
         });
 
-        ipcRenderer.on('steam:serverConnection', async (event, payload) => {
-            const connected = !!payload?.connected;
+        ipcRenderer.on('steam:status', async (event, payload) => {
+            const shouldEmitInitFailed = this.initPending
+                && !payload?.pending
+                && !payload?.initialized;
+            await this._syncFromMainProcessStatus(payload, {
+                emitInitFailed: shouldEmitInitFailed,
+                source: payload?.source || 'status-event',
+            });
+        });
 
-            if (connected && !this.wasOnline) {
-                console.log('[SteamService] ✅ Steam server connected');
-                this.isOnline = true;
-                this.wasOnline = true;
-                this.emit(STEAM_EVENTS.RECONNECTED);
-                this.emit(STEAM_EVENTS.CONNECTED);
-                await this._flushOfflineQueue();
-                await this.refreshStatsCache();
-                await this.refreshCapabilities();
-                this._updateConnectionState();
+        ipcRenderer.on('steam:serverConnection', async (event, payload) => {
+            if (!this.initialized && !this.initPending) {
                 return;
             }
 
-            if (!connected && this.wasOnline) {
-                console.log('[SteamService] ⚠️ Steam server disconnected');
-                this.isOnline = false;
-                this.wasOnline = false;
-                this.emit(STEAM_EVENTS.DISCONNECTED);
-                this._updateConnectionState();
-            }
+            await this._syncFromMainProcessStatus({
+                initialized: this.initialized,
+                connected: !!payload?.connected,
+                pending: false,
+                steamId: this.steamId,
+                playerName: this.playerName,
+                appId: this.appId,
+            }, {
+                source: `server-connection:${payload?.source || 'unknown'}`,
+            });
         });
     }
 
@@ -315,6 +404,7 @@ class SteamService {
     _enterOfflineMode() {
         this.initialized = false;
         this.isOnline = false;
+        this.initPending = false;
 
         // Load cached player data if available
         const cached = this._loadCachedPlayerData();
@@ -443,6 +533,73 @@ class SteamService {
         }
     }
 
+    /**
+     * Poll main process for definitive Steam status when initial query
+     * returned a pending state. Handles the race condition where push
+     * events from main are missed because renderer IPC listeners weren't
+     * registered yet (ES modules load asynchronously after did-finish-load).
+     */
+    _startPendingResolutionPoll() {
+        if (this._pendingPollTimer) {
+            return;
+        }
+
+        const POLL_INTERVAL_MS = 1500;
+        const MAX_POLLS = 10; // 15 seconds max
+        let pollCount = 0;
+
+        this._pendingPollTimer = setInterval(async () => {
+            pollCount++;
+
+            if (!this.initPending || this.isOnline || pollCount > MAX_POLLS) {
+                clearInterval(this._pendingPollTimer);
+                this._pendingPollTimer = null;
+
+                if (pollCount > MAX_POLLS && this.initPending) {
+                    console.log('[SteamService] Pending resolution timed out after polling');
+                    this.initPending = false;
+                    this._updateConnectionState();
+                    this.emit(STEAM_EVENTS.INIT_FAILED, { source: 'pending-poll-timeout' });
+                }
+                return;
+            }
+
+            try {
+                const status = await electronApi.invoke(STEAM_IPC.GET_CONNECTION_STATUS);
+
+                if (status?.initialized && !status?.pending) {
+                    // Main process has a definitive answer
+                    await this._syncFromMainProcessStatus(status, {
+                        source: `pending-poll:${pollCount}`,
+                    });
+                    clearInterval(this._pendingPollTimer);
+                    this._pendingPollTimer = null;
+                } else if (!status?.initialized && !status?.pending) {
+                    // Steam init failed on main process side
+                    this.initPending = false;
+                    this._enterOfflineMode();
+                    this._updateConnectionState();
+                    this.emit(STEAM_EVENTS.INIT_FAILED, { source: 'pending-poll-failed' });
+                    clearInterval(this._pendingPollTimer);
+                    this._pendingPollTimer = null;
+                }
+            } catch (err) {
+                console.warn('[SteamService] Pending poll error:', err.message);
+            }
+        }, POLL_INTERVAL_MS);
+    }
+
+    _stopPendingResolutionPoll() {
+        if (this._pendingPollTimer) {
+            clearInterval(this._pendingPollTimer);
+            this._pendingPollTimer = null;
+        }
+        if (this._pendingHardFallbackTimer) {
+            clearTimeout(this._pendingHardFallbackTimer);
+            this._pendingHardFallbackTimer = null;
+        }
+    }
+
     // ============================================================
     // Capability & State Model
     // ============================================================
@@ -457,6 +614,16 @@ class SteamService {
 
     _updateConnectionState() {
         if (!ipcRenderer) {
+            this._setConnectionState('no_steam');
+            return;
+        }
+
+        if (this.initPending) {
+            this._setConnectionState('connecting');
+            return;
+        }
+
+        if (!this.initialized) {
             this._setConnectionState('no_steam');
             return;
         }
@@ -536,36 +703,19 @@ class SteamService {
         }
 
         try {
-            const isInitialized = await ipcRenderer.invoke(STEAM_IPC.IS_INITIALIZED);
-            if (isInitialized) {
-                let isConnected = true;
-                try {
-                    isConnected = await ipcRenderer.invoke(STEAM_IPC.CHECK_CONNECTION);
-                } catch (err) {
-                    isConnected = true;
-                }
-
-                this.steamId = await ipcRenderer.invoke(STEAM_IPC.GET_STEAM_ID);
-                this.playerName = await ipcRenderer.invoke(STEAM_IPC.GET_PLAYER_NAME) || STEAM_DEFAULTS.PLAYER_NAME;
-                this.initialized = true;
-                this.isOnline = !!isConnected;
-                this.wasOnline = !!isConnected;
-                this._cachePlayerData();
-                this._startConnectionMonitoring();
-                await this.refreshCapabilities();
-                if (isConnected) {
-                    this.emit(STEAM_EVENTS.RECONNECTED);
-                    this.emit(STEAM_EVENTS.CONNECTED);
-                } else {
-                    this.emit(STEAM_EVENTS.DISCONNECTED);
-                }
-                this._updateConnectionState();
-                return isConnected;
+            this.initPending = true;
+            this._updateConnectionState();
+            const status = await ipcRenderer.invoke(STEAM_IPC.GET_CONNECTION_STATUS);
+            if (status?.initialized || status?.pending) {
+                return this._syncFromMainProcessStatus(status, {
+                    source: 'retry-connection',
+                });
             }
         } catch (err) {
             console.warn('[SteamService] Retry connection failed:', err.message);
         }
 
+        this.initPending = false;
         this._enterOfflineMode();
         this._updateConnectionState();
         return false;
@@ -972,6 +1122,7 @@ class SteamService {
         return {
             initialized: this.initialized,
             isOnline: this.isOnline,
+            pending: this.initPending,
             steamId: this.steamId,
             playerName: this.playerName,
             queuedActions: this.offlineQueue.length,

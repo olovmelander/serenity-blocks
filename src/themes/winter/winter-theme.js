@@ -3658,17 +3658,17 @@ export default class WinterTheme extends BaseTheme {
     stop() {
         if (this.resizeHandler) window.removeEventListener('resize', this.resizeHandler);
         this.eventUnsubscribers.forEach((u) => u());
+        this.eventUnsubscribers = [];
         super.stop();
     }
 
-    cleanup() {
-        this.stop();
+    releaseInactiveResources() {
         if (typeof window !== 'undefined' && window.winterBaseline) {
             delete window.winterBaseline;
         }
         if (this.snowflakeTexture) this.snowflakeTexture.dispose();
         if (this.closeSnowflakes) {
-            this.scene.remove(this.closeSnowflakes);
+            this.scene?.remove?.(this.closeSnowflakes);
             if (this.closeSnowflakes.geometry) this.closeSnowflakes.geometry.dispose();
             if (this.closeSnowflakes.material) this.closeSnowflakes.material.dispose();
             this.closeSnowflakes = null;
@@ -3676,14 +3676,14 @@ export default class WinterTheme extends BaseTheme {
             this.closeSnowflakeUniforms = null;
         }
         if (this.skyDome) {
-            this.scene.remove(this.skyDome);
+            this.scene?.remove?.(this.skyDome);
             if (this.skyDome.geometry) this.skyDome.geometry.dispose();
             if (this.skyDome.material) this.skyDome.material.dispose();
             this.skyDome = null;
             this.skyUniforms = null;
         }
         if (this.moonLight) {
-            this.scene.remove(this.moonLight);
+            this.scene?.remove?.(this.moonLight);
             this.moonLight = null;
         }
         if (this.snowCompute) {
@@ -3699,11 +3699,12 @@ export default class WinterTheme extends BaseTheme {
             this.composer.dispose();
             this.composer = null;
         }
-        // ... (standard dispose)
-        if (this.renderer) {
-            this.renderer.dispose();
-            if (this.renderer.domElement.parentNode) this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
-        }
+        this.snowflakeTexture = null;
+
+        super.releaseInactiveResources();
+    }
+
+    cleanup() {
         super.cleanup();
     }
 }

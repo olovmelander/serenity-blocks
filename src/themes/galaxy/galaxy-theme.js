@@ -33,6 +33,16 @@ export default class GalaxyTheme extends BaseTheme {
     constructor() {
         super('galaxy');
         this.eventUnsubscribers = [];
+        this.boundResizeHandler = this.onWindowResize.bind(this);
+        this.effectTimeouts = new Set();
+
+        this.cameraBasePosition = { x: 0, y: 4, z: 17 };
+        this.cameraMotion = {
+            horizontal: 4.5,
+            vertical: 1.8,
+            depth: 8.5,
+            lookAtX: 1.5,
+        };
 
         // Three.js components
         this.scene = null;
@@ -78,6 +88,20 @@ export default class GalaxyTheme extends BaseTheme {
         ];
     }
 
+    scheduleEffectTimeout(callback, delayMs = 0) {
+        const timeoutId = window.setTimeout(() => {
+            this.effectTimeouts.delete(timeoutId);
+            callback();
+        }, delayMs);
+        this.effectTimeouts.add(timeoutId);
+        return timeoutId;
+    }
+
+    clearEffectTimeouts() {
+        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        this.effectTimeouts.clear();
+    }
+
     getRandomThemeColor() {
         return this.palette[Math.floor(Math.random() * this.palette.length)];
     }
@@ -105,8 +129,11 @@ export default class GalaxyTheme extends BaseTheme {
             0.1,
             1000,
         );
-        this.camera.position.z = 25;
-        this.camera.position.y = 5;
+        this.camera.position.set(
+            this.cameraBasePosition.x,
+            this.cameraBasePosition.y,
+            this.cameraBasePosition.z,
+        );
         this.camera.lookAt(0, 0, 0);
 
         // -- Setup Renderer --
@@ -134,7 +161,7 @@ export default class GalaxyTheme extends BaseTheme {
 
         // -- Event Listeners --
         this.setupEventListeners();
-        window.addEventListener('resize', this.onWindowResize.bind(this));
+        window.addEventListener('resize', this.boundResizeHandler);
 
         // -- Start Animation --
         this.animate();
@@ -566,16 +593,16 @@ export default class GalaxyTheme extends BaseTheme {
         // Slow camera orbit/drift for immersive effect
         if (this.camera) {
             const cameraTime = elapsedTime * 0.08; // Very slow orbit
-            const orbitRadius = 25;
-            const orbitHeight = 8;
 
-            // Gentle orbit around the galaxy
-            this.camera.position.x = Math.sin(cameraTime) * orbitRadius * 0.3;
-            this.camera.position.y = 5 + Math.sin(cameraTime * 0.7) * orbitHeight * 0.2;
-            this.camera.position.z = 25 + Math.cos(cameraTime) * 5;
+            // Gentle orbit with a much closer fly-in toward the galaxy core
+            this.camera.position.x = Math.sin(cameraTime) * this.cameraMotion.horizontal;
+            this.camera.position.y = this.cameraBasePosition.y
+                + Math.sin(cameraTime * 0.7) * this.cameraMotion.vertical;
+            this.camera.position.z = this.cameraBasePosition.z
+                + Math.cos(cameraTime) * this.cameraMotion.depth;
 
             // Keep looking at center (with slight offset for dynamic feel)
-            const lookAtOffset = Math.sin(cameraTime * 0.5) * 2;
+            const lookAtOffset = Math.sin(cameraTime * 0.5) * this.cameraMotion.lookAtX;
             this.camera.lookAt(lookAtOffset, 0, 0);
         }
 
@@ -808,7 +835,7 @@ export default class GalaxyTheme extends BaseTheme {
             // Tetris - extra effects
             // this.createShockwave(count * 0.5);
             for (let i = 0; i < 3; i++) {
-                setTimeout(() => this.createSolarFlare(), i * 100);
+                this.scheduleEffectTimeout(() => this.createSolarFlare(), i * 100);
             }
         }
     }
@@ -851,8 +878,9 @@ export default class GalaxyTheme extends BaseTheme {
 
     dispose() {
         super.dispose();
+        this.clearEffectTimeouts();
 
-        window.removeEventListener('resize', this.onWindowResize.bind(this));
+        window.removeEventListener('resize', this.boundResizeHandler);
 
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);

@@ -23,6 +23,7 @@ import { NetworkQosHud } from '../../ui/network-qos.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { MessageTypes } from '../network/message-types.js';
 import { SnapshotInterpolator } from '../network/snapshot-interpolation.js';
+import { performanceMonitor } from '../../utils/performance-monitor.js';
 
 /**
  * OnlineMultiplayerMode - Online FFA multiplayer mode with lobby system
@@ -314,6 +315,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 this.steamNetworking,
                 this.steamNetworking.steamId,
             );
+            this._configureLocalInputHooks(this.ffaGameState);
 
             // Announce join to host
             this.ffaGameState.announceJoin();
@@ -390,6 +392,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 this.steamNetworking,
                 this.steamNetworking.steamId,
             );
+            this._configureLocalInputHooks(this.ffaGameState);
 
             // Set match configuration
             this.ffaGameState.matchConfig = {
@@ -593,6 +596,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.isInMatch = true;
         this._registerNetworkHandlers();
         this._hookInputs();
+        this._setupVisibilityHandler();
 
         // Reset UI setup flag for next match
         this._uiSetupComplete = false;
@@ -1108,7 +1112,10 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 if (!this.mainBoardScene) return;
 
                 // Emit event for theme integration
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: detail.rows?.length || 0 });
+                eventBus.emit(EVENTS.LINE_CLEAR, {
+                    lineCount: detail.rows?.length || 0,
+                    clearedRows: detail.rows || [],
+                });
 
                 // Trigger flash effect on cleared rows
                 if (this.mainBoardScene.triggerLineClearFlash && detail.rows) {
@@ -2168,6 +2175,31 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         console.log('[OnlineMultiplayer] Input handlers set up');
     }
 
+    _configureLocalInputHooks(gameState) {
+        if (!gameState?.setLocalInputHooks) {
+            return;
+        }
+
+        gameState.setLocalInputHooks({
+            advance: (currentTime, delta) => this._advanceHeldGameplayInput(currentTime, delta),
+            reset: () => this._resetHeldGameplayInput(),
+        });
+    }
+
+    _advanceHeldGameplayInput(currentTime, delta) {
+        if (typeof window !== 'undefined') {
+            window.inputController?.updateDAS?.(delta);
+        }
+        this.deps.gamepadController?.advanceGameplayInput?.(currentTime);
+    }
+
+    _resetHeldGameplayInput() {
+        if (typeof window !== 'undefined') {
+            window.inputController?.clearTimers?.();
+        }
+        this.deps.gamepadController?.clearAllDasTimers?.();
+    }
+
     _setupScoreboardOverlayHotkey() {
         if (this.scoreboardToggleHandler) return;
 
@@ -2304,13 +2336,51 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     /**
+     * Phase 3: Handle hidden-tab behavior for online multiplayer.
+     * Pauses local visual/input work when tab is hidden but keeps
+     * the network game loop alive so snapshots continue flowing.
+     */
+    _setupVisibilityHandler() {
+        if (this._visibilityHandler) return;
+
+        this._visibilityHandler = () => {
+            if (!this.isInMatch) return;
+
+            if (document.hidden) {
+                // Pause local input to prevent ghost key repeats
+                this._resetHeldGameplayInput();
+                if (typeof window !== 'undefined' && window.inputController) {
+                    window.inputController.keyMap = {};
+                }
+                console.log('[OnlineMultiplayer] Tab hidden - local input paused, network loop continues');
+            } else {
+                // Reset input timing on return to prevent burst moves
+                this._resetHeldGameplayInput();
+                if (typeof window !== 'undefined' && window.inputController) {
+                    window.inputController.keyMap = {};
+                }
+                console.log('[OnlineMultiplayer] Tab visible - local input resumed');
+            }
+        };
+
+        document.addEventListener('visibilitychange', this._visibilityHandler);
+        this.cleanupHandlers.push(() => {
+            if (this._visibilityHandler) {
+                document.removeEventListener('visibilitychange', this._visibilityHandler);
+                this._visibilityHandler = null;
+            }
+        });
+    }
+
+    /**
      * Start the online game loop
      */
     _startOnlineGameLoop() {
         const SYNC_INTERVAL = 33; // ~30Hz
+        const TELEMETRY_INTERVAL = 1000;
         let lastTime = performance.now();
         let timeSinceSync = 0;
-        let frame = 0;
+        let timeSinceTelemetry = 0;
 
         const loop = (currentTime) => {
             if (!this.isInMatch) {
@@ -2321,7 +2391,15 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             const delta = currentTime - lastTime;
             lastTime = currentTime;
             timeSinceSync += delta;
-            frame++; // Increment frame counter
+            timeSinceTelemetry += delta;
+
+            if (timeSinceTelemetry >= TELEMETRY_INTERVAL) {
+                performanceMonitor.setNetworkStats({
+                    packet: this.steamNetworking?.getPacketStats?.() || null,
+                    backpressure: this.steamNetworking?.getBackpressureStats?.() || null,
+                });
+                timeSinceTelemetry = 0;
+            }
 
             // Host: Run game physics and broadcast state
             if (this.steamNetworking.isHost && this.ffaGameState) {
@@ -2344,10 +2422,10 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                     }
                 }
 
-                // Render loop updates
-                if (frame % 30 === 0) { // Broadcast state at 30Hz
+                // Broadcast state on elapsed time, not display refresh rate
+                if (timeSinceSync >= SYNC_INTERVAL) {
                     this._broadcastGameState();
-                    timeSinceSync = 0;
+                    timeSinceSync %= SYNC_INTERVAL;
                 }
 
                 // Update local UI for host matching the broadcast rate or higher (e.g. every frame or 30Hz)

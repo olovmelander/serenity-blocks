@@ -3,6 +3,10 @@
  * Provides common interface and lifecycle methods for theme implementations
  */
 
+import { gpuResilience } from '../utils/gpu-context-resilience.js';
+import { eventBus, EVENTS } from '../events/event-bus.js';
+import { computeScenePixelRatio } from '../utils/desktop-performance-policy.js';
+
 // Global render scale (set by settings system)
 let globalRenderScale = 1.0;
 
@@ -43,6 +47,17 @@ export function getGlobalAntialias() {
     return globalAntialiasEnabled;
 }
 
+// Automatically squash the render scale globally if performance drops
+eventBus.on(EVENTS.PERFORMANCE_DOWNSCALE, () => {
+    const currentScale = getGlobalRenderScale();
+    if (currentScale > 0.5) {
+        const newScale = Math.max(0.5, currentScale - 0.25);
+        console.warn(`[BaseTheme] Adaptive Downscaling: ${currentScale} -> ${newScale}`);
+        setGlobalRenderScale(newScale);
+        eventBus.emit(EVENTS.SETTINGS_CHANGED, { type: 'renderScale', value: newScale });
+    }
+});
+
 /**
  * Abstract base class for all themes
  * Each theme should extend this class and implement its methods
@@ -60,6 +75,10 @@ export class BaseTheme {
         this.name = name;
         this.options = options;
         this.isActive = false;
+        this.isPaused = false;
+        this.hasStarted = false;
+        this.lifecycleState = 'initialized';
+        this.resourceProfile = 'light';
         this.animationIds = [];
         this.containers = [];
         this.webglLayers = [];
@@ -82,24 +101,22 @@ export class BaseTheme {
      * @returns {Promise<void>}
      */
     async start(webglRenderer, managers = {}) {
-        console.warn('[BaseTheme] >>>>>> START METHOD CALLED <<<<<<', this.name);
-        console.log('[BaseTheme] start() called, isActive:', this.isActive, 'theme:', this.name);
+        console.log('[BaseTheme] start() called, state:', this.lifecycleState, 'theme:', this.name);
 
-        // If already active and running, stop first to ensure clean restart
-        if (this.isActive) {
-            console.warn('[BaseTheme] Theme already active, stopping before restart:', this.name);
+        if (this.isActive || this.isPaused) {
+            console.warn('[BaseTheme] Theme already active or paused, stopping before restart:', this.name);
             this.stop();
         }
 
-        // Set active state
+        this.lifecycleState = 'starting';
         this.isActive = true;
+        this.isPaused = false;
         this.webglRenderer = webglRenderer;
 
         // Store resource managers for efficient asset loading
         this.assetManager = managers.assetManager;
         this.audioManager = managers.audioManager;
 
-        console.warn('[BaseTheme] About to call loadTheme...');
         console.log('[BaseTheme] Starting theme:', this.name);
         console.log('[BaseTheme] WebGL Renderer:', this.webglRenderer);
         console.log(
@@ -115,6 +132,8 @@ export class BaseTheme {
             document.querySelectorAll('.theme-container').forEach((container) => {
                 container.classList.remove('active');
             });
+            themeContainer.style.removeProperty('opacity');
+            themeContainer.style.removeProperty('visibility');
             // Add active class to this theme's container
             themeContainer.classList.add('active');
         } else {
@@ -129,8 +148,33 @@ export class BaseTheme {
             console.error('[BaseTheme] ERROR: No webglRenderer or loadTheme method!');
         }
 
+        // Setup global context recovery listener
+        if (!this._contextRestoreUnsub) {
+            this._contextRestoreUnsub = eventBus.on(EVENTS.CONTEXT_RESTORED, (payload) => {
+                const payloadMatchesSharedRenderer = payload?.type === 'webgl'
+                    && payload?.canvas
+                    && this.webglRenderer
+                    && payload.canvas === this.webglRenderer.canvas;
+                const payloadMatchesThemeRuntime = payload?.label === this.name;
+
+                if ((payloadMatchesSharedRenderer || payloadMatchesThemeRuntime)
+                    && this.isActive
+                    && typeof this.createScene === 'function') {
+                    console.warn(`[BaseTheme] Global Context Restore detected. Rebuilding: ${this.name}`, payload);
+                    this.stop();
+                    this.isActive = true; // Keep active flag
+                    this.createScene().catch((err) => {
+                        console.error('[BaseTheme] Context recovery failed:', err);
+                    });
+                }
+            });
+        }
+
         // Override in subclass to implement theme-specific logic
         await this.createScene();
+
+        this.hasStarted = true;
+        this.lifecycleState = 'running';
 
         console.log('[BaseTheme] Theme start complete:', this.name);
     }
@@ -146,32 +190,156 @@ export class BaseTheme {
     }
 
     /**
+     * Resolve when the theme is safe for the first visible gameplay frame.
+     * Themes with staged startup can override this to block until critical visuals are ready.
+     * @returns {Promise<boolean>}
+     */
+    async whenCriticalReady() {
+        return true;
+    }
+
+    /**
+     * Resolve when non-critical startup polish has fully settled.
+     * Odyssey does not block reveal on this hook.
+     * @returns {Promise<boolean>}
+     */
+    async whenFullReady() {
+        return true;
+    }
+
+    /**
      * Stop theme animations and effects
      * Called when switching away from this theme
      */
     stop() {
-        console.log('[BaseTheme] stop() called for theme:', this.name, 'isActive:', this.isActive);
-        if (!this.isActive) {
+        console.log('[BaseTheme] stop() called for theme:', this.name, 'state:', this.lifecycleState);
+        if (!this.isActive && !this.isPaused) {
             console.log('[BaseTheme] Theme already inactive, skipping stop');
             return;
         }
 
         this.isActive = false;
+        this.isPaused = false;
+        this.lifecycleState = 'stopped';
         console.log('[BaseTheme] Stopping theme:', this.name);
 
         const themeContainer = document.getElementById(`${this.name}-theme`);
         if (themeContainer) {
             themeContainer.classList.remove('active');
+            themeContainer.style.removeProperty('opacity');
+            themeContainer.style.removeProperty('visibility');
         }
 
         // Cancel all animation frames
         this.animationIds.forEach((id) => cancelAnimationFrame(id));
         this.animationIds = [];
 
+        // Clear tracked intervals, timeouts, and event listeners
+        this.clearTrackedResources();
+
         // Clear WebGL layers
         // Note: WebGL renderer clears layers when loadTheme() is called,
         // so we just reset our local tracking
         this.webglLayers = [];
+    }
+
+    /**
+     * Release restartable runtime resources when a theme becomes inactive.
+     * Heavy GPU themes opt into deeper disposal via resourceProfile metadata.
+     */
+    releaseInactiveResources() {
+        this.stop();
+
+        if (this.resourceProfile === 'heavy-gpu') {
+            this.releaseManagedGpuResources();
+        }
+    }
+
+    clearEventUnsubscribers() {
+        if (!Array.isArray(this.eventUnsubscribers) || this.eventUnsubscribers.length === 0) {
+            return;
+        }
+
+        this.eventUnsubscribers.forEach((unsubscribe) => {
+            if (typeof unsubscribe === 'function') {
+                try {
+                    unsubscribe();
+                } catch (error) {
+                    console.warn(`[BaseTheme] Failed to unsubscribe runtime event for ${this.name}:`, error);
+                }
+            }
+        });
+        this.eventUnsubscribers = [];
+    }
+
+    removeCommonResizeHandlers() {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const handlers = [
+            this.boundResizeHandler,
+            this.resizeHandler,
+            this._boundResizeHandler,
+        ].filter((handler, index, array) => typeof handler === 'function' && array.indexOf(handler) === index);
+
+        handlers.forEach((handler) => {
+            window.removeEventListener('resize', handler);
+        });
+    }
+
+    disposeRuntimeProperty(propName) {
+        const value = this[propName];
+        if (!value || value === this.webglRenderer) {
+            return;
+        }
+
+        if (typeof value.dispose === 'function') {
+            value.dispose();
+        }
+
+        this[propName] = null;
+    }
+
+    releaseManagedGpuResources() {
+        this.clearEventUnsubscribers();
+        this.removeCommonResizeHandlers();
+        this.removeRendererResilience();
+
+        if (this.particleSystem && typeof this.particleSystem.dispose === 'function') {
+            this.particleSystem.dispose();
+            this.particleSystem = null;
+        }
+
+        this.disposeRuntimeProperty('simulator');
+        this.disposeRuntimeProperty('snowCompute');
+        this.disposeRuntimeProperty('post');
+        this.disposeRuntimeProperty('postProcessing');
+        this.disposeRuntimeProperty('postComposer');
+        this.disposeRuntimeProperty('composer');
+
+        if (this.scene) {
+            this.disposeThreeJSGroup(this.scene);
+            if (typeof this.scene.clear === 'function') {
+                this.scene.clear();
+            }
+            this.scene = null;
+        }
+
+        if (this.renderer && this.renderer !== this.webglRenderer) {
+            const { domElement } = this.renderer;
+            if (typeof this.renderer.dispose === 'function') {
+                this.renderer.dispose();
+            }
+            if (domElement?.parentNode) {
+                domElement.parentNode.removeChild(domElement);
+            }
+            this.renderer = null;
+        }
+
+        if (this.camera) {
+            this.camera = null;
+        }
     }
 
     /**
@@ -183,7 +351,18 @@ export class BaseTheme {
     resume() {
         console.log('[BaseTheme] resume() called for theme:', this.name);
 
+        if (!this.hasStarted) {
+            return false;
+        }
+
+        if (!this.isPaused && this.isActive) {
+            return true;
+        }
+
         this.isActive = true;
+        this.isPaused = false;
+        this._wasPaused = false;
+        this.lifecycleState = 'running';
 
         // Reactivate the DOM container
         const themeContainer = document.getElementById(`${this.name}-theme`);
@@ -213,8 +392,16 @@ export class BaseTheme {
     cleanup() {
         console.log(`[BaseTheme] Cleaning up theme: ${this.name}`);
 
-        // Stop animations and remove theme from active state
-        this.stop();
+        // Release restartable runtime resources first, then continue terminal teardown
+        this.releaseInactiveResources();
+
+        // Remove GPU resilience listeners
+        this.removeRendererResilience();
+
+        if (this._contextRestoreUnsub) {
+            this._contextRestoreUnsub();
+            this._contextRestoreUnsub = null;
+        }
 
         // Verify animation frames were cleaned up
         if (this.animationIds.length > 0) {
@@ -243,10 +430,125 @@ export class BaseTheme {
         this.assetManager = null;
         this.audioManager = null;
 
+        // Auto-dispose standard Three.js structures if standard properties were used
+        if (this.scene) {
+            console.log(`[BaseTheme] deeply disposing Three.js scene`);
+            this.disposeThreeJSGroup(this.scene);
+            this.scene = null;
+        }
+
+        if (this.postComposer && typeof this.postComposer.dispose === 'function') {
+            console.log(`[BaseTheme] deeply disposing post-composer`);
+            this.postComposer.dispose();
+            this.postComposer = null;
+        }
+
         // Null out options to release any closures
         this.options = null;
 
         console.log(`✅ [BaseTheme] Cleanup complete for theme: ${this.name}`);
+    }
+
+    /**
+     * Register a setInterval for automatic cleanup on stop/cleanup.
+     * @param {Function} fn - Interval callback
+     * @param {number} ms - Interval in milliseconds
+     * @returns {number} The interval ID
+     */
+    registerInterval(fn, ms) {
+        if (!this._intervals) this._intervals = [];
+        const id = setInterval(fn, ms);
+        this._intervals.push(id);
+        return id;
+    }
+
+    /**
+     * Register a setTimeout for automatic cleanup on stop/cleanup.
+     * @param {Function} fn - Timeout callback
+     * @param {number} ms - Delay in milliseconds
+     * @returns {number} The timeout ID
+     */
+    registerTimeout(fn, ms) {
+        if (!this._timeouts) this._timeouts = [];
+        const id = setTimeout(fn, ms);
+        this._timeouts.push(id);
+        return id;
+    }
+
+    /**
+     * Register an event listener for automatic cleanup on stop/cleanup.
+     * @param {EventTarget} target - DOM element or other EventTarget
+     * @param {string} event - Event name
+     * @param {Function} handler - Event handler
+     * @param {Object} [options] - addEventListener options
+     */
+    registerEventListener(target, event, handler, options) {
+        if (!this._eventListeners) this._eventListeners = [];
+        target.addEventListener(event, handler, options);
+        this._eventListeners.push({ target, event, handler, options });
+    }
+
+    /**
+     * Clear all registered intervals, timeouts, and event listeners.
+     * Called automatically in stop() and cleanup().
+     */
+    clearTrackedResources() {
+        if (this._intervals) {
+            this._intervals.forEach((id) => clearInterval(id));
+            this._intervals = [];
+        }
+
+        if (this._timeouts) {
+            this._timeouts.forEach((id) => clearTimeout(id));
+            this._timeouts = [];
+        }
+
+        if (this._eventListeners) {
+            this._eventListeners.forEach(({ target, event, handler, options }) => {
+                target.removeEventListener(event, handler, options);
+            });
+            this._eventListeners = [];
+        }
+    }
+
+    /**
+     * Deeply disposes a Three.js Object3D/Scene protecting WebGL contexts from memory leaks.
+     * @param {Object} node - THREE.Object3D instance
+     */
+    disposeThreeJSGroup(node) {
+        if (!node || typeof node.traverse !== 'function') return;
+
+        node.traverse((child) => {
+            if (child.geometry && typeof child.geometry.dispose === 'function') {
+                child.geometry.dispose();
+            }
+            if (child.material) {
+                const materials = Array.isArray(child.material) ? child.material : [child.material];
+                materials.forEach((material) => {
+                    if (!material) return;
+                    // Dispose standard textures
+                    for (const key in material) {
+                        if (material[key] && material[key].isTexture && typeof material[key].dispose === 'function') {
+                            material[key].dispose();
+                        }
+                    }
+                    // Dispose uniform textures
+                    if (material.uniforms) {
+                        for (const key in material.uniforms) {
+                            const uni = material.uniforms[key];
+                            if (uni && uni.value && uni.value.isTexture && typeof uni.value.dispose === 'function') {
+                                uni.value.dispose();
+                            }
+                        }
+                    }
+                    if (typeof material.dispose === 'function') material.dispose();
+                });
+            }
+        });
+
+        if (node.parent && typeof node.parent.remove === 'function') {
+            node.parent.remove(node);
+        }
     }
 
     /**
@@ -341,11 +643,14 @@ export class BaseTheme {
      * @param {number} maxRatio - Maximum pixel ratio cap (default 2)
      * @returns {number} Effective pixel ratio for setPixelRatio()
      */
-    static getEffectivePixelRatio(maxRatio = 2) {
+    static getEffectivePixelRatio(maxRatio = 2, sceneType = 'theme') {
         const baseRatio = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
-        const cappedRatio = Math.min(baseRatio, maxRatio);
-        const effectiveRatio = cappedRatio * globalRenderScale;
-        return Math.round(effectiveRatio * 100) / 100; // Round to 2 decimal places
+        return computeScenePixelRatio({
+            renderScale: globalRenderScale,
+            devicePixelRatio: baseRatio,
+            maxPixelRatio: maxRatio,
+            sceneType,
+        });
     }
 
     /**
@@ -353,8 +658,8 @@ export class BaseTheme {
      * @param {number} maxRatio - Maximum pixel ratio cap (default 2)
      * @returns {number} Effective pixel ratio
      */
-    getEffectivePixelRatio(maxRatio = 2) {
-        return BaseTheme.getEffectivePixelRatio(maxRatio);
+    getEffectivePixelRatio(maxRatio = 2, sceneType = 'theme') {
+        return BaseTheme.getEffectivePixelRatio(maxRatio, sceneType);
     }
 
     /**
@@ -425,13 +730,110 @@ export class BaseTheme {
     }
 
     /**
+     * Create a safe animation loop wrapper.
+     * Catches errors per frame (so one bad frame doesn't kill the theme),
+     * respects shouldRenderFrame() for throttling, and auto-registers the
+     * animation frame ID for cleanup.
+     *
+     * Usage in theme subclass:
+     *   this.animate = this.safeAnimate((time) => {
+     *       // render logic here
+     *   });
+     *   this.animate(); // start the loop
+     *
+     * @param {Function} renderFn - Per-frame render function, receives timestamp
+     * @param {Object} [options]
+     * @param {number} [options.maxConsecutiveErrors=5] - Stop loop after this many consecutive errors
+     * @returns {Function} The wrapped animate function (call it to start/continue the loop)
+     */
+    safeAnimate(renderFn, options = {}) {
+        const maxErrors = options.maxConsecutiveErrors ?? 5;
+        let consecutiveErrors = 0;
+
+        const loop = (time) => {
+            if (!this.isActive) return;
+
+            const id = requestAnimationFrame(loop);
+            this.registerAnimation(id);
+
+            if (!this.shouldRenderFrame()) return;
+
+            try {
+                renderFn(time);
+                consecutiveErrors = 0;
+            } catch (err) {
+                consecutiveErrors++;
+                console.error(`[${this.name}] Animation error (${consecutiveErrors}/${maxErrors}):`, err);
+                if (consecutiveErrors >= maxErrors) {
+                    console.error(`[${this.name}] Too many consecutive animation errors, stopping loop`);
+                    cancelAnimationFrame(id);
+                }
+            }
+        };
+
+        return loop;
+    }
+
+    /**
+     * Set up GPU context resilience for a Three.js renderer.
+     * Monitors the renderer's canvas for WebGL context loss/restore and optionally
+     * a WebGPU device for device loss. Call removeRendererResilience() to clean up.
+     *
+     * @param {Object} renderer - Three.js WebGLRenderer or WebGPURenderer instance
+     * @param {Object} [options]
+     * @param {Function} [options.onContextLost] - Called on WebGL context loss
+     * @param {Function} [options.onContextRestored] - Called on WebGL context restore
+     * @param {GPUDevice} [options.webgpuDevice] - WebGPU device to monitor
+     * @param {Function} [options.onDeviceLost] - Called on WebGPU device loss
+     */
+    setupRendererResilience(renderer, options = {}) {
+        this._resilienceUnsubs = this._resilienceUnsubs || [];
+
+        if (renderer?.domElement) {
+            const unsub = gpuResilience.monitorWebGL(renderer.domElement, {
+                label: this.name,
+                onLost: options.onContextLost,
+                onRestored: options.onContextRestored,
+            });
+            this._resilienceUnsubs.push(unsub);
+        }
+
+        if (options.webgpuDevice) {
+            const unsub = gpuResilience.monitorWebGPU(options.webgpuDevice, {
+                label: this.name,
+                onDeviceLost: options.onDeviceLost,
+            });
+            this._resilienceUnsubs.push(unsub);
+        }
+    }
+
+    /**
+     * Remove all GPU context resilience listeners set up by setupRendererResilience().
+     */
+    removeRendererResilience() {
+        if (this._resilienceUnsubs) {
+            for (let i = 0; i < this._resilienceUnsubs.length; i++) {
+                this._resilienceUnsubs[i]();
+            }
+            this._resilienceUnsubs = null;
+        }
+    }
+
+    /**
      * Pause theme animations (called when tab is hidden with 'pause' mode)
      */
     pause() {
         console.log(`[BaseTheme] Pausing theme: ${this.name}`);
+        if (!this.isActive || this.isPaused) {
+            return false;
+        }
+
         // Cancel all animation frames to stop GPU work
         this.animationIds.forEach((id) => cancelAnimationFrame(id));
         // Keep the IDs so we know we need to restart when resume is called
         this._wasPaused = true;
+        this.isPaused = true;
+        this.lifecycleState = 'paused';
+        return true;
     }
 }

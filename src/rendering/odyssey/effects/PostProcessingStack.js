@@ -218,6 +218,35 @@ const POSTFX_QUALITY = {
     },
 };
 
+export function resolveChapterSeamFxProfile(preset = 'standard', intensity = 1) {
+    const clampedIntensity = THREE.MathUtils.clamp(intensity ?? 1, 0, 1.6);
+    const profiles = {
+        standard: {
+            chromaticBoost: 0.008,
+            vignetteBoost: 0.12,
+            bloomBoost: 0.12,
+            grainBoost: 0,
+        },
+        heavy: {
+            chromaticBoost: 0.012,
+            vignetteBoost: 0.22,
+            bloomBoost: 0.18,
+            grainBoost: 0.02,
+        },
+        neon: {
+            chromaticBoost: 0.01,
+            vignetteBoost: 0.10,
+            bloomBoost: 0.2,
+            grainBoost: 0.012,
+        },
+    };
+
+    const profile = profiles[preset] || profiles.standard;
+    return Object.fromEntries(
+        Object.entries(profile).map(([key, value]) => [key, value * clampedIntensity]),
+    );
+}
+
 /**
  * PostProcessingStack - Modular cinematic post-processing
  */
@@ -244,6 +273,8 @@ export class PostProcessingStack {
         this.dynamicState = {
             chromaticBoost: 0,
             vignetteBoost: 0,
+            bloomBoost: 0,
+            grainBoost: 0,
         };
 
         this.initialize();
@@ -309,22 +340,47 @@ export class PostProcessingStack {
     update(deltaTime) {
         this.time += deltaTime;
 
+        const baseBloomStrength = this.qualitySettings.bloomStrength || 0.5;
+        const baseChromaticStrength = this.qualitySettings.chromaticStrength || 0.003;
+        const baseVignetteIntensity = this.qualitySettings.vignetteIntensity || 0.4;
+        const baseGrainIntensity = this.qualitySettings.filmGrainIntensity || 0.08;
+
         // Update film grain time
         if (this.passes.grain) {
             this.passes.grain.uniforms.uTime.value = this.time;
         }
 
         // Apply dynamic boosts (decay over time)
-        if (this.passes.chromatic && this.dynamicState.chromaticBoost > 0) {
-            const baseStrength = this.qualitySettings.chromaticStrength || 0.003;
-            this.passes.chromatic.uniforms.uStrength.value = baseStrength + this.dynamicState.chromaticBoost;
-            this.dynamicState.chromaticBoost *= 0.95; // Decay
+        if (this.passes.chromatic) {
+            this.passes.chromatic.uniforms.uStrength.value = baseChromaticStrength + this.dynamicState.chromaticBoost;
+        }
+        this.dynamicState.chromaticBoost *= 0.92;
+        if (this.dynamicState.chromaticBoost < 1e-4) {
+            this.dynamicState.chromaticBoost = 0;
         }
 
-        if (this.passes.vignette && this.dynamicState.vignetteBoost > 0) {
-            const baseIntensity = this.qualitySettings.vignetteIntensity || 0.4;
-            this.passes.vignette.uniforms.uIntensity.value = baseIntensity + this.dynamicState.vignetteBoost;
-            this.dynamicState.vignetteBoost *= 0.95; // Decay
+        if (this.passes.vignette) {
+            this.passes.vignette.uniforms.uIntensity.value = baseVignetteIntensity + this.dynamicState.vignetteBoost;
+        }
+        this.dynamicState.vignetteBoost *= 0.92;
+        if (this.dynamicState.vignetteBoost < 1e-4) {
+            this.dynamicState.vignetteBoost = 0;
+        }
+
+        if (this.passes.bloom) {
+            this.passes.bloom.strength = baseBloomStrength + this.dynamicState.bloomBoost;
+        }
+        this.dynamicState.bloomBoost *= 0.92;
+        if (this.dynamicState.bloomBoost < 1e-4) {
+            this.dynamicState.bloomBoost = 0;
+        }
+
+        if (this.passes.grain) {
+            this.passes.grain.uniforms.uIntensity.value = baseGrainIntensity + this.dynamicState.grainBoost;
+        }
+        this.dynamicState.grainBoost *= 0.9;
+        if (this.dynamicState.grainBoost < 1e-4) {
+            this.dynamicState.grainBoost = 0;
         }
     }
 
@@ -339,8 +395,23 @@ export class PostProcessingStack {
      * Trigger transition effect (intensifies chromatic + vignette briefly)
      */
     triggerTransitionEffect() {
-        this.dynamicState.chromaticBoost = 0.01; // Extra chromatic split
-        this.dynamicState.vignetteBoost = 0.2; // Extra vignette darkness
+        this.triggerChapterSeam({ preset: 'standard', intensity: 1 });
+    }
+
+    triggerChapterSeam({ preset = 'standard', intensity = 1 } = {}) {
+        const profile = resolveChapterSeamFxProfile(preset, intensity);
+        this.dynamicState.chromaticBoost = Math.max(this.dynamicState.chromaticBoost, profile.chromaticBoost);
+        this.dynamicState.vignetteBoost = Math.max(this.dynamicState.vignetteBoost, profile.vignetteBoost);
+        this.dynamicState.bloomBoost = Math.max(this.dynamicState.bloomBoost, profile.bloomBoost);
+        this.dynamicState.grainBoost = Math.max(this.dynamicState.grainBoost, profile.grainBoost);
+    }
+
+    setChapterSeamState({ preset = 'standard', intensity = 0 } = {}) {
+        const profile = resolveChapterSeamFxProfile(preset, intensity);
+        this.dynamicState.chromaticBoost = profile.chromaticBoost;
+        this.dynamicState.vignetteBoost = profile.vignetteBoost;
+        this.dynamicState.bloomBoost = profile.bloomBoost;
+        this.dynamicState.grainBoost = profile.grainBoost;
     }
 
     /**

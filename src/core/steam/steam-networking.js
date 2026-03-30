@@ -9,27 +9,13 @@
 import { SteamConfig } from './config.js';
 import { getBinaryEncoder, getBinaryDecoder } from '../network/binary-encoding.js';
 
-// Detect if we're running in Electron
-const isElectron = typeof window !== 'undefined'
-    && typeof window.process !== 'undefined'
-    && window.process.type === 'renderer';
+const electronApi = typeof window !== 'undefined' ? window.electronAPI : null;
+const ipcRenderer = electronApi
+    ? { invoke: (...args) => electronApi.invoke(...args) }
+    : null;
+const hasSteamworks = Boolean(ipcRenderer);
 
-// Get ipcRenderer for communicating with main process (steamworks.js runs there)
-let ipcRenderer = null;
-let hasSteamworks = false;
-
-if (isElectron) {
-    try {
-        // With nodeIntegration: true, we can require electron directly
-        const electron = window.require('electron');
-        ipcRenderer = electron.ipcRenderer;
-        hasSteamworks = true;
-        console.log('✅ Electron IPC available for Steam communication');
-    } catch (err) {
-        console.warn('⚠️ Failed to load Electron IPC:', err.message);
-        hasSteamworks = false;
-    }
-} else {
+if (!hasSteamworks) {
     console.log('🌐 Running in browser mode - Steam features will use mock mode');
 }
 
@@ -46,11 +32,13 @@ export class SteamNetworking {
         this.connectedPeers = new Map(); // Map<steamId, { name, isAlive, ... }>
         this.messageHandlers = new Map();
         this.protocolVersion = '1.0.0';
+        this.envelopeVersion = 1;
         this.matchId = null;
         this.matchNonce = null;
         this.sendSeqByChannel = new Map();
         this.recvSeqByPeer = new Map();
-        this.snapshotQueues = new Map();
+        this.incomingSnapshotBaselines = new Map();
+        this.outgoingSnapshotState = new Map();
 
         // Phase 4: Binary encoding for snapshots (90% bandwidth reduction)
         this.useBinaryEncoding = true; // Enable by default for production
@@ -69,6 +57,13 @@ export class SteamNetworking {
 
         // Mock P2P communication channel (for cross-window messaging)
         this.broadcastChannel = null;
+        this.packetStats = {
+            sent: 0,
+            received: 0,
+            sendFailures: 0,
+            decodeFailures: 0,
+            validationFailures: 0,
+        };
     }
 
     /**
@@ -312,7 +307,15 @@ export class SteamNetworking {
             envelope,
             sendType,
             options.channel ?? 0,
-        );
+        ).then((sent) => {
+            if (sent) {
+                this.packetStats.sent += 1;
+            } else {
+                this.packetStats.sendFailures += 1;
+            }
+        }).catch(() => {
+            this.packetStats.sendFailures += 1;
+        });
     }
 
     /**
@@ -468,8 +471,11 @@ export class SteamNetworking {
             if (!envelope) return;
 
             if (!this._validateEnvelope(envelope, fromSteamId, channel)) {
+                this.packetStats.validationFailures += 1;
                 return;
             }
+
+            this.packetStats.received += 1;
 
             // Track peer connection
             if (!this.connectedPeers.has(fromSteamId)) {
@@ -490,7 +496,7 @@ export class SteamNetworking {
                         // Delta Packet: Need baseline
                         // We assume the PREVIOUS packet from this sender was the baseline.
                         // Since we use reliable delivery, lastReceivedSnapshot should be correct.
-                        const lastSnapshot = this.snapshotQueues.get(fromSteamId);
+                        const lastSnapshot = this.incomingSnapshotBaselines.get(fromSteamId);
 
                         if (lastSnapshot) {
                             payload = this.binaryDecoder.decodeDeltaSnapshot(binaryBuffer, lastSnapshot);
@@ -506,9 +512,10 @@ export class SteamNetworking {
                     }
 
                     // Store decoded snapshot as new baseline for this peer
-                    this.snapshotQueues.set(fromSteamId, payload);
+                    this.incomingSnapshotBaselines.set(fromSteamId, payload);
                 } catch (err) {
                     console.warn('Binary decoding failed, payload may be corrupted:', err);
+                    this.packetStats.decodeFailures += 1;
                     return; // Drop corrupted packet
                 }
             }
@@ -534,6 +541,7 @@ export class SteamNetworking {
             }
         } catch (err) {
             console.error('❌ Failed to parse P2P packet:', err);
+            this.packetStats.decodeFailures += 1;
         }
     }
 
@@ -615,6 +623,18 @@ export class SteamNetworking {
         if (this.pollInterval) {
             clearInterval(this.pollInterval);
         }
+        this.stopHeartbeat();
+        if (this._disconnectCheckInterval) {
+            clearInterval(this._disconnectCheckInterval);
+            this._disconnectCheckInterval = null;
+        }
+        this.incomingSnapshotBaselines.clear();
+        this.outgoingSnapshotState.forEach((state) => {
+            if (state?.timer) {
+                clearTimeout(state.timer);
+            }
+        });
+        this.outgoingSnapshotState.clear();
         this.leaveLobby();
     }
 
@@ -790,6 +810,7 @@ export class SteamNetworking {
         const channel = options.channel ?? 0;
         const seq = this._nextSeq(channel);
         return {
+            envelopeVersion: this.envelopeVersion,
             msgType: messageType,
             matchId: this.matchId,
             matchNonce: this.matchNonce,
@@ -809,6 +830,7 @@ export class SteamNetworking {
         if (message?.type) {
             return {
                 msgType: message.type,
+                envelopeVersion: message.envelopeVersion ?? 1,
                 matchId: message.matchId ?? null,
                 matchNonce: message.matchNonce ?? null,
                 hostSteamId: message.hostSteamId ?? null,
@@ -826,6 +848,10 @@ export class SteamNetworking {
     _validateEnvelope(envelope, fromSteamId, channel) {
         const isHello = envelope.msgType === 'net:hello';
         const isWelcome = envelope.msgType === 'net:welcome';
+        if (envelope.envelopeVersion !== this.envelopeVersion && !isHello && !isWelcome) {
+            this._sendNetError(fromSteamId, 'ENVELOPE_MISMATCH', envelope.msgType);
+            return false;
+        }
         if (!envelope.protocolVersion) {
             return false;
         }
@@ -901,7 +927,7 @@ export class SteamNetworking {
      * - Restore to 30Hz when queue stabilizes
      */
     _queueSnapshot(steamId, messageType, data, options = {}) {
-        const state = this.snapshotQueues.get(steamId) || {
+        const state = this.outgoingSnapshotState.get(steamId) || {
             pending: null,
             lastSendAt: 0,
             minInterval: 1000 / 30, // Start at 30Hz
@@ -997,7 +1023,7 @@ export class SteamNetworking {
             state.windowStart = now;
         }
 
-        this.snapshotQueues.set(steamId, state);
+        this.outgoingSnapshotState.set(steamId, state);
     }
 
     /**
@@ -1005,7 +1031,7 @@ export class SteamNetworking {
      */
     getBackpressureStats() {
         const stats = {};
-        for (const [steamId, state] of this.snapshotQueues) {
+        for (const [steamId, state] of this.outgoingSnapshotState) {
             stats[steamId] = {
                 currentRate: state.currentRate || 30,
                 totalSent: state.totalSent || 0,
@@ -1016,6 +1042,15 @@ export class SteamNetworking {
             };
         }
         return stats;
+    }
+
+    getPacketStats() {
+        return {
+            ...this.packetStats,
+            connectedPeers: this.connectedPeers.size,
+            pendingOutgoingSnapshots: Array.from(this.outgoingSnapshotState.values())
+                .filter((state) => state?.pending).length,
+        };
     }
 
     _generateMatchNonce() {
