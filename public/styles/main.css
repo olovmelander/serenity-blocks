@@ -14226,6 +14226,26 @@ body.phaser-multiplayer-active #p2-canvas {
     animation: fadeIn 0.3s ease;
 }
 
+/* Settings modal must appear above the Serenity Hub (z-index: 2000) */
+#settings-modal.visible {
+    z-index: 2100;
+}
+
+/* Electron: reduce expensive modal backdrop blur */
+body.electron-app .modal {
+    backdrop-filter: blur(4px);
+}
+
+body.electron-app #settings-modal .modal-content {
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+body.electron-app .modal:not(.visible) .modal-content,
+body.electron-app #settings-modal:not(.visible) .modal-content {
+    will-change: auto;
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -14302,6 +14322,11 @@ body.phaser-multiplayer-active #p2-canvas {
     100% {
         top: 100%;
     }
+}
+
+/* Pause scan line animation when modal is hidden to save compositor resources */
+.modal:not(.visible) .modal-content::after {
+    animation-play-state: paused;
 }
 
 @keyframes modalSlideIn {
@@ -14492,6 +14517,81 @@ body.settings-scroll-active #settings-modal .setting-select:hover {
 
 body.settings-scroll-active #settings-modal .modal-content::after {
     animation-play-state: paused;
+}
+
+/* Exempt interactive buttons from scroll transition suppression so
+   expandable sections and tab buttons remain responsive during scroll */
+body.settings-scroll-active #settings-modal .setting-button,
+body.settings-scroll-active #settings-modal .settings-tab,
+body.settings-scroll-active #settings-modal .setting-toggle,
+body.settings-scroll-active #settings-modal .setting-expand-btn {
+    transition: background 0.15s ease !important;
+    pointer-events: auto !important;
+}
+
+body.electron-app #settings-modal.is-scrolling .settings-scroll-container {
+    /* contain: strict removed — it changes the containing block and forces
+       layout recalculation on every scroll class toggle, causing visible
+       flickering and size changes in Electron's compositor. */
+    will-change: scroll-position;
+}
+
+.settings-scroll-container {
+    overscroll-behavior: contain;
+}
+
+.desktop-gpu-remediation {
+    position: fixed;
+    right: 20px;
+    bottom: 22px;
+    z-index: 2200;
+    width: min(420px, calc(100vw - 32px));
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(248, 113, 113, 0.35);
+    background: rgba(9, 13, 24, 0.94);
+    box-shadow: 0 22px 55px rgba(0, 0, 0, 0.42);
+    color: #e2e8f0;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.desktop-gpu-remediation--degraded {
+    border-color: rgba(250, 204, 21, 0.45);
+}
+
+.desktop-gpu-remediation--unsafe {
+    border-color: rgba(248, 113, 113, 0.5);
+}
+
+.desktop-gpu-remediation__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.desktop-gpu-remediation__dismiss {
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #f8fafc;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.desktop-gpu-remediation__status,
+.desktop-gpu-remediation__detail,
+.desktop-gpu-remediation__meta {
+    margin-top: 6px;
+}
+
+.desktop-gpu-remediation__steps {
+    margin: 10px 0 0 18px;
+    padding: 0;
 }
 
 #game-over-modal h1,
@@ -23026,6 +23126,29 @@ body.serenity-mode.cursor-hidden * {
     animation: cardsFloatIn 1s ease-out forwards;
 }
 
+body.start-modal-open .game-mode-cards-container {
+    padding-top: 28px;
+}
+
+.main-menu-logo {
+    grid-column: 1 / -1;
+    justify-self: center;
+    margin: 0 0 8px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(1.35rem, 2.6vw, 2.2rem);
+    font-weight: 900;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: #f7fbff;
+    text-align: center;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    text-shadow:
+        0 0 3px rgba(240, 249, 255, 0.85),
+        0 0 12px rgba(96, 165, 250, 0.28),
+        0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
 @keyframes cardsFloatIn {
     from {
         opacity: 0;
@@ -23052,6 +23175,28 @@ body.serenity-mode.cursor-hidden * {
         0 8px 32px rgba(0, 0, 0, 0.4),
         inset 0 1px 1px rgba(255, 255, 255, 0.1);
     animation: cardFloat 6s ease-in-out infinite;
+}
+
+/* Keep the main menu cards readable: no frosted blur and no idle 3D drift. */
+body.start-modal-open .game-mode-card {
+    background:
+        linear-gradient(180deg,
+            rgba(18, 22, 40, 0.94) 0%,
+            rgba(10, 14, 28, 0.9) 100%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    animation: none;
+    transform: none;
+    box-shadow:
+        0 10px 28px rgba(0, 0, 0, 0.36),
+        inset 0 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+body.start-modal-open .game-mode-card:hover,
+body.start-modal-open .game-mode-card:active,
+body.start-modal-open .game-mode-card.gamepad-focused,
+body.start-modal-open .game-mode-card:focus-visible {
+    transform: translateY(-6px) scale(1.01) !important;
 }
 
 .game-mode-card.steam-disabled {
@@ -23280,6 +23425,16 @@ body.serenity-mode.cursor-hidden * {
     .mode-card-desc {
         font-size: 0.7rem;
     }
+
+    body.start-modal-open .game-mode-cards-container {
+        padding-top: 20px;
+    }
+
+    .main-menu-logo {
+        font-size: clamp(1.2rem, 2.8vw, 1.8rem);
+        letter-spacing: 0.2em;
+        margin-bottom: 6px;
+    }
 }
 
 @media (max-width: 768px) {
@@ -23292,6 +23447,10 @@ body.serenity-mode.cursor-hidden * {
 
     .game-mode-card {
         padding: 20px 18px;
+    }
+
+    .main-menu-logo {
+        margin-bottom: 2px;
     }
 }
 
@@ -23309,6 +23468,15 @@ body.serenity-mode.cursor-hidden * {
     .mode-card-icon svg {
         width: 32px;
         height: 32px;
+    }
+
+    body.start-modal-open .game-mode-cards-container {
+        padding-top: 16px;
+    }
+
+    .main-menu-logo {
+        font-size: 1.05rem;
+        letter-spacing: 0.16em;
     }
 
     .mode-card-title {

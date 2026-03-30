@@ -94,8 +94,15 @@ import { ThemeManager } from './themes/theme-manager.js';
 import { initGridCache, clearThemeCaches } from './utils/cache.js';
 import { seededRandom, hexToRgb } from './utils/helpers.js';
 import { performanceMonitor } from './utils/performance-monitor.js';
+import {
+    createDesktopPerformancePolicy,
+    evaluateDynamicResolutionAdjustment,
+    getPackagedWindowsRecommendedSettings,
+    setActiveDesktopPerformancePolicy,
+} from './utils/desktop-performance-policy.js';
+import { createBootStageCoordinator } from './utils/boot-stage-coordinator.js';
 
-// Serenity Mode imports
+import { CustomCursor } from './ui/components/custom-cursor.js';
 import { initEnhancedBreathingIndicator } from './ui/effects/enhanced-breathing-indicator.js';
 
 const RIPPLE_BORDER_ALPHA = 0.8;
@@ -106,6 +113,7 @@ const INTRO_MUSIC_PATH = './assets/music/Cosmic Chimes.mp3';
 const sharedSoundManager = new SoundManager();
 let introMusicInitialized = false;
 let phaserModulePromise = null;
+let desktopBootCoordinator = null;
 let desktopRuntimeConfig = {
     isElectron: typeof window !== 'undefined' && Boolean(window.electronAPI),
     appMode: typeof window !== 'undefined' && window.electronAPI ? 'electron-dev' : 'browser-dev',
@@ -115,11 +123,31 @@ let desktopRuntimeConfig = {
     safeMode: false,
     useStartupRevealGate: false,
     gpuSwitches: {},
+    windowBounds: null,
+    displayScaleFactor: typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1,
+    gpuFallbackActive: false,
+    gpuHealth: {
+        status: 'healthy',
+        reasons: [],
+        remediation: [],
+    },
 };
 let firstInteractionReportInstalled = false;
+const desktopBenchmarkReportTimers = new Map();
+let desktopBenchmarkReportHooksInstalled = false;
+const GPU_REMEDIATION_PANEL_ID = 'desktop-gpu-remediation-panel';
+const FIRST_INTERACTION_EVENT_TYPES = ['pointerdown', 'mousedown', 'wheel', 'keydown', 'touchstart'];
+const GAMEPLAY_DYNAMIC_RESOLUTION_MODES = new Set([
+    GAME_MODES.SINGLE_PLAYER,
+    GAME_MODES.LOCAL_MULTIPLAYER,
+    GAME_MODES.ONLINE_MULTIPLAYER,
+    GAME_MODES.INFINITY,
+    GAME_MODES.ODYSSEY,
+]);
 
 if (typeof window !== 'undefined') {
-    window.__serenityStartupShell?.markBundleStarted?.('Renderer bundle started');
+    const startupShell = window.__serenityStartupShell || window.__serenityStartupBridge;
+    startupShell?.markBundleStarted?.('Renderer bundle started');
 }
 
 async function loadPhaserLibrary() {
@@ -182,6 +210,14 @@ async function resolveDesktopRuntimeConfig() {
         safeMode: false,
         useStartupRevealGate: false,
         gpuSwitches: {},
+        windowBounds: null,
+        displayScaleFactor: typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1,
+        gpuFallbackActive: false,
+        gpuHealth: {
+            status: 'healthy',
+            reasons: [],
+            remediation: [],
+        },
     };
 
     if (!window.electronAPI?.getDesktopRuntimeConfig) {
@@ -205,8 +241,95 @@ async function resolveDesktopRuntimeConfig() {
     if (typeof window !== 'undefined') {
         window.desktopRuntimeConfig = desktopRuntimeConfig;
     }
+
+    updateDesktopRuntimeBodyClasses(desktopRuntimeConfig);
+    updateDesktopGpuRemediationPanel(desktopRuntimeConfig.gpuHealth);
+
     performanceMonitor.recordEvent('desktop_runtime_config', desktopRuntimeConfig);
     return desktopRuntimeConfig;
+}
+
+function updateDesktopRuntimeBodyClasses(runtimeConfig = desktopRuntimeConfig, policy = null) {
+    if (typeof document === 'undefined') {
+        return;
+    }
+
+    const body = document.body;
+    if (!body) {
+        return;
+    }
+
+    body.classList.toggle('electron-app', runtimeConfig?.isElectron === true);
+    body.classList.toggle('desktop-gpu-fallback-active', runtimeConfig?.gpuFallbackActive === true);
+
+    ['healthy', 'degraded', 'unsafe'].forEach((status) => {
+        body.classList.toggle(`desktop-gpu-${status}`, runtimeConfig?.gpuHealth?.status === status);
+    });
+
+    if (policy?.qualityTier) {
+        body.dataset.desktopQualityTier = String(policy.qualityTier).toLowerCase();
+    } else {
+        delete body.dataset.desktopQualityTier;
+    }
+}
+
+function formatGpuRemediationHtml(gpuHealth = null) {
+    const renderer = gpuHealth?.renderer ? `<div class="desktop-gpu-remediation__meta">Renderer: ${gpuHealth.renderer}</div>` : '';
+    const adapter = gpuHealth?.activeAdapter?.name
+        ? `<div class="desktop-gpu-remediation__meta">Adapter: ${gpuHealth.activeAdapter.name}</div>`
+        : '';
+    const driver = gpuHealth?.driverVersion
+        ? `<div class="desktop-gpu-remediation__meta">Driver: ${gpuHealth.driverVendor || 'Unknown'} ${gpuHealth.driverVersion}</div>`
+        : '';
+    const reasons = Array.isArray(gpuHealth?.reasons) && gpuHealth.reasons.length > 0
+        ? `<div class="desktop-gpu-remediation__detail">Issue: ${gpuHealth.reasons.join(', ')}</div>`
+        : '';
+    const instructions = Array.isArray(gpuHealth?.remediation) && gpuHealth.remediation.length > 0
+        ? gpuHealth.remediation.map((step) => `<li>${step}</li>`).join('')
+        : '<li>Switch the app to High performance in Windows Graphics Settings and relaunch.</li>';
+
+    return `
+        <div class="desktop-gpu-remediation__header">
+            <strong>Desktop GPU Fallback Active</strong>
+            <button type="button" class="desktop-gpu-remediation__dismiss" aria-label="Dismiss GPU guidance">×</button>
+        </div>
+        <div class="desktop-gpu-remediation__body">
+            <div class="desktop-gpu-remediation__status">
+                The packaged app detected a ${gpuHealth?.status || 'degraded'} Windows GPU path and lowered desktop quality to protect stability.
+            </div>
+            ${renderer}
+            ${adapter}
+            ${driver}
+            ${reasons}
+            <ol class="desktop-gpu-remediation__steps">${instructions}</ol>
+        </div>
+    `;
+}
+
+function updateDesktopGpuRemediationPanel(gpuHealth = null) {
+    if (typeof document === 'undefined' || !isPackagedWindowsRuntime()) {
+        return;
+    }
+
+    const existingPanel = document.getElementById(GPU_REMEDIATION_PANEL_ID);
+    if (!gpuHealth || gpuHealth.status === 'healthy') {
+        existingPanel?.remove();
+        return;
+    }
+
+    const panel = existingPanel || document.createElement('section');
+    panel.id = GPU_REMEDIATION_PANEL_ID;
+    panel.className = `desktop-gpu-remediation desktop-gpu-remediation--${gpuHealth.status || 'degraded'}`;
+    panel.setAttribute('role', 'status');
+    panel.innerHTML = formatGpuRemediationHtml(gpuHealth);
+
+    panel.querySelector('.desktop-gpu-remediation__dismiss')?.addEventListener('click', () => {
+        panel.remove();
+    }, { once: true });
+
+    if (!existingPanel) {
+        document.body.appendChild(panel);
+    }
 }
 
 function isPackagedWindowsRuntime() {
@@ -215,6 +338,10 @@ function isPackagedWindowsRuntime() {
 
 function isPackagedWindowsBaselineProfile() {
     return isPackagedWindowsRuntime() && desktopRuntimeConfig.windowsProfile === 'baseline';
+}
+
+function isPackagedWindowsWebParityProfile() {
+    return isPackagedWindowsRuntime() && desktopRuntimeConfig.windowsProfile === 'webParity';
 }
 
 function isPackagedWindowsSafeMode() {
@@ -233,8 +360,14 @@ function shouldDeferInitialThemeLoad() {
     return shouldUseBaselinePackagedStartup();
 }
 
+function shouldUseDesktopPerformancePolicy() {
+    return desktopRuntimeConfig.isElectron
+        && !isPackagedWindowsWebParityProfile();
+}
+
 function getDesktopSettingsSnapshot(appInstance = null) {
     const settings = appInstance?.settingsManager?.get?.() || null;
+    const performancePolicy = appInstance?.desktopPerformancePolicy || globalThis.window?.desktopPerformancePolicy || null;
     return {
         resolution: typeof window !== 'undefined'
             ? {
@@ -243,10 +376,19 @@ function getDesktopSettingsSnapshot(appInstance = null) {
                 devicePixelRatio: window.devicePixelRatio || 1,
             }
             : null,
+        displayMode: settings?.displayMode ?? 'windowed',
         vsyncEnabled: settings?.vsyncEnabled ?? true,
         targetFrameRate: settings?.targetFrameRate ?? 60,
         effectQuality: settings?.effectQuality ?? null,
         renderScale: settings?.renderScale ?? 1,
+        backgroundTabBehavior: settings?.backgroundTabBehavior ?? null,
+        enableAntialiasing: settings?.enableAntialiasing ?? true,
+        enableBloom: settings?.enableBloom ?? true,
+        enableShadows: settings?.enableShadows ?? true,
+        particleQuality: settings?.particleQuality ?? null,
+        textureQuality: settings?.textureQuality ?? null,
+        qualityTier: performancePolicy?.qualityTier ?? settings?.effectQuality ?? null,
+        internalRenderResolution: performancePolicy?.internalRenderResolution ?? null,
     };
 }
 
@@ -255,11 +397,27 @@ async function storeDesktopPerformanceReport(stage, appInstance = null, extra = 
         return null;
     }
 
+    let processMetrics = null;
+    try {
+        processMetrics = await window.electronAPI.getProcessMetrics?.();
+    } catch (error) {
+        console.warn(`[DesktopRuntime] Failed to fetch process metrics (${stage}):`, error?.message || error);
+    }
+
     const snapshot = performanceMonitor.createDesktopInvestigationSnapshot({
         stage,
         appMode: desktopRuntimeConfig.appMode,
         runtimeConfig: desktopRuntimeConfig,
+        runtimeProfile: desktopRuntimeConfig.windowsProfile || desktopRuntimeConfig.appMode,
         settingsSnapshot: getDesktopSettingsSnapshot(appInstance),
+        processMetrics,
+        windowBounds: processMetrics?.windowBounds || desktopRuntimeConfig.windowBounds || null,
+        displayScaleFactor: processMetrics?.displayScaleFactor
+            ?? desktopRuntimeConfig.displayScaleFactor
+            ?? null,
+        devicePixelRatio: typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : null,
+        performancePolicy: appInstance?.desktopPerformancePolicy || globalThis.window?.desktopPerformancePolicy || null,
+        monitorRefreshRate: appInstance?.frameRateController?.monitorRefreshRate || null,
         extra,
     });
 
@@ -271,13 +429,91 @@ async function storeDesktopPerformanceReport(stage, appInstance = null, extra = 
     }
 }
 
-function installFirstInteractionPerformanceReport(appInstance = null) {
+function clearScheduledDesktopPerformanceReports() {
+    desktopBenchmarkReportTimers.forEach((timeoutId) => {
+        clearTimeout(timeoutId);
+    });
+    desktopBenchmarkReportTimers.clear();
+}
+
+function scheduleDesktopPerformanceReport(stage, appInstance = null, extra = {}, delayMs = 550) {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    const existingTimeout = desktopBenchmarkReportTimers.get(stage);
+    if (existingTimeout) {
+        clearTimeout(existingTimeout);
+    }
+
+    const timeoutId = window.setTimeout(() => {
+        desktopBenchmarkReportTimers.delete(stage);
+        void storeDesktopPerformanceReport(stage, appInstance, extra);
+    }, delayMs);
+    desktopBenchmarkReportTimers.set(stage, timeoutId);
+}
+
+function installDesktopBenchmarkReportHooks(appInstance) {
+    if (desktopBenchmarkReportHooksInstalled || typeof window === 'undefined') {
+        return;
+    }
+
+    desktopBenchmarkReportHooksInstalled = true;
+
+    const handleModalShown = (event) => {
+        const modalName = event?.detail?.modalName;
+        if (modalName === 'start') {
+            scheduleDesktopPerformanceReport('menu-idle', appInstance, {
+                modalName,
+            }, 700);
+            return;
+        }
+
+        if (modalName === 'settings') {
+            scheduleDesktopPerformanceReport('settings-open', appInstance, {
+                modalName,
+            }, 450);
+        }
+    };
+
+    const handleHubVisibilityChange = (event) => {
+        if (event?.detail?.visible) {
+            scheduleDesktopPerformanceReport('hub-open', appInstance, {
+                currentTab: event?.detail?.currentTab || null,
+            }, 450);
+        }
+    };
+
+    window.addEventListener('modalShown', handleModalShown);
+    window.addEventListener('serenityHubVisibilityChange', handleHubVisibilityChange);
+    appInstance.cleanupHandlers.push(() => {
+        window.removeEventListener('modalShown', handleModalShown);
+        window.removeEventListener('serenityHubVisibilityChange', handleHubVisibilityChange);
+        clearScheduledDesktopPerformanceReports();
+    });
+
+    const unsubscribeModeStarted = appInstance.gameModeManager?.on?.('modeStarted', ({ modeId }) => {
+        if (modeId === GAME_MODES.SINGLE_PLAYER) {
+            scheduleDesktopPerformanceReport('single-player-idle', appInstance, { modeId }, 1200);
+            return;
+        }
+
+        if (modeId === GAME_MODES.ODYSSEY) {
+            scheduleDesktopPerformanceReport('odyssey-idle', appInstance, { modeId }, 1200);
+        }
+    });
+
+    if (unsubscribeModeStarted) {
+        appInstance.cleanupHandlers.push(unsubscribeModeStarted);
+    }
+}
+
+function installFirstInteractionPerformanceReport(appInstance = null, onInteraction = null) {
     if (firstInteractionReportInstalled || typeof window === 'undefined') {
         return;
     }
 
     firstInteractionReportInstalled = true;
-    const eventTypes = ['pointerdown', 'mousedown', 'wheel', 'keydown', 'touchstart'];
     const teardown = [];
 
     const handleInteraction = (event) => {
@@ -287,12 +523,18 @@ function installFirstInteractionPerformanceReport(appInstance = null) {
         performanceMonitor.recordEvent('startup_first_interaction', {
             inputType: event?.type || 'unknown',
         });
-        void storeDesktopPerformanceReport('first-interaction', appInstance, {
-            inputType: event?.type || 'unknown',
-        });
+        Promise.resolve(onInteraction?.(event))
+            .catch((error) => {
+                console.warn('[Startup] Failed to activate deferred desktop services:', error);
+            })
+            .finally(() => {
+                void storeDesktopPerformanceReport('first-interaction', appInstance, {
+                    inputType: event?.type || 'unknown',
+                });
+            });
     };
 
-    eventTypes.forEach((eventName) => {
+    FIRST_INTERACTION_EVENT_TYPES.forEach((eventName) => {
         const listener = (event) => handleInteraction(event);
         window.addEventListener(eventName, listener, { capture: true, passive: true, once: true });
         teardown.push(() => window.removeEventListener(eventName, listener, { capture: true }));
@@ -460,10 +702,30 @@ class SerenityBlocks {
         this.displayManager = null; // Phase 1: Display management
         this.cloudSyncManager = null;
         this.frameRateController = new FrameRateController(); // Phase 2: FPS & VSync control
+        this.customCursor = null;
         this.cleanupHandlers = [];
         this.currentEffectQuality = normalizeQuality(DEFAULT_SETTINGS.effectQuality);
         this._handledPreloadError = false;
         this.globalSerenityHubInitPromise = null;
+        this.desktopPerformancePolicy = null;
+        this.desktopPerformanceOverrides = {};
+        this.desktopPerformanceAdjustmentState = {
+            currentRenderScale: null,
+            baselineRenderScale: null,
+            lastScaleChangeAt: 0,
+            stableSince: 0,
+            lastPersistedRenderScale: null,
+            intervalId: null,
+        };
+        this.bootCoordinator = null;
+        this.postMenuRendererStarted = false;
+        this.essentialDesktopServicesStarted = false;
+        this.essentialDesktopServicesPromise = null;
+        this.deferredDesktopServicesStarted = false;
+        this.deferredDesktopServicesTimer = null;
+        this.steamInviteManager = null;
+        this.deferredStartupTasksEnabled = false;
+        this.deferredStartupTaskQueue = [];
 
         // Game loop (deprecated - will be managed by individual modes)
         this.lastTime = 0;
@@ -504,10 +766,12 @@ class SerenityBlocks {
             this.initializeCanvas();
 
             // 2. Initialize WebGL renderer for backgrounds (must be done before Phaser)
+            updateStartupShellStatus('Initializing renderer');
             const backgroundCanvas = document.getElementById('background-canvas');
             this.webglRenderer = new WebGLRenderer(backgroundCanvas);
 
             // 3. Initialize Phaser game instance
+            updateStartupShellStatus('Initializing game engine');
             await this.initializePhaserGame();
 
             // 4. Initialize caches
@@ -539,16 +803,10 @@ class SerenityBlocks {
             // 12. Expose game controls as globals for controls.js
             this.exposeGlobalControls();
 
-            // 13. Start background scene now that everything is ready
-            this.startBackgroundScene();
-
-            // 14. Initialize enhanced breathing indicator (for Serenity Mode)
-            window.breathingIndicator = initEnhancedBreathingIndicator();
-
-            // 15. Setup background tab throttling for performance
+            // Keep the intro as the only GPU-heavy surface until the first
+            // usable menu frame. Post-menu systems are activated later.
             this.setupVisibilityThrottling();
             this.setupBuildResilienceHandlers();
-            this.setupObservabilityHooks();
 
             this.isInitialized = true;
             console.log('✅ Serenity Blocks initialized successfully!');
@@ -559,6 +817,143 @@ class SerenityBlocks {
             console.error('Failed to initialize application:', error);
             throw error;
         }
+    }
+
+    setBootCoordinator(coordinator = null) {
+        this.bootCoordinator = coordinator;
+    }
+
+    markBootStage(stage, detail = null) {
+        return this.bootCoordinator?.mark?.(stage, detail) || null;
+    }
+
+    startPostMenuRenderer() {
+        if (this.postMenuRendererStarted) {
+            return;
+        }
+
+        this.postMenuRendererStarted = true;
+        updateStartupShellStatus('Preparing visual renderer');
+        this.startBackgroundScene();
+    }
+
+    initializeDeferredUiSystems() {
+        if (typeof window !== 'undefined' && !window.breathingIndicator) {
+            window.breathingIndicator = initEnhancedBreathingIndicator();
+        }
+
+        if (!this.customCursor) {
+            this.customCursor = new CustomCursor({
+                settingsManager: this.settingsManager,
+            });
+            this.customCursor.mount();
+            this.customCursor.applySettings(this.settingsManager.get());
+            this.cleanupHandlers.push(() => {
+                this.customCursor?.destroy?.();
+                this.customCursor = null;
+            });
+        }
+    }
+
+    enableDeferredStartupTasks() {
+        if (this.deferredStartupTasksEnabled) {
+            return;
+        }
+
+        this.deferredStartupTasksEnabled = true;
+        const queuedTasks = [...this.deferredStartupTaskQueue];
+        this.deferredStartupTaskQueue.length = 0;
+        queuedTasks.forEach((entry) => entry.start());
+    }
+
+    isDynamicResolutionEligible() {
+        const currentModeId = this.gameModeManager?.getCurrentModeId?.();
+        const currentMode = this.gameModeManager?.getCurrentMode?.();
+        return GAMEPLAY_DYNAMIC_RESOLUTION_MODES.has(currentModeId) && currentMode?.isRunning === true;
+    }
+
+    async startEssentialDesktopServices(reason = 'core-ready') {
+        if (this.essentialDesktopServicesStarted) {
+            return this.essentialDesktopServicesPromise;
+        }
+
+        this.essentialDesktopServicesStarted = true;
+        this.essentialDesktopServicesPromise = (async () => {
+            if (!desktopRuntimeConfig.isElectron) {
+                return false;
+            }
+
+            performanceMonitor.recordEvent('startup_essential_desktop_services_started', {
+                reason,
+            });
+
+            if (!this.steamInviteManager) {
+                this.steamInviteManager = new SteamInviteManager(this.gameModeManager);
+                if (typeof window !== 'undefined') {
+                    window.steamInviteManager = this.steamInviteManager;
+                }
+            }
+
+            const connected = await steamService.initialize();
+            performanceMonitor.recordEvent('startup_steam_service_initialized', {
+                reason,
+                connected,
+                connectionState: steamService.getConnectionState?.() || null,
+            });
+            return connected;
+        })().catch((error) => {
+            performanceMonitor.recordEvent('startup_essential_desktop_services_failed', {
+                reason,
+                message: error?.message || String(error),
+            });
+            throw error;
+        });
+
+        return this.essentialDesktopServicesPromise;
+    }
+
+    async startDeferredDesktopServices(reason = 'menu-idle') {
+        if (this.deferredDesktopServicesStarted) {
+            return;
+        }
+
+        this.deferredDesktopServicesStarted = true;
+        if (this.deferredDesktopServicesTimer) {
+            clearTimeout(this.deferredDesktopServicesTimer);
+            this.deferredDesktopServicesTimer = null;
+        }
+
+        this.initializeDeferredUiSystems();
+
+        if (desktopRuntimeConfig.isElectron) {
+            this.setupObservabilityHooks();
+            installDesktopBenchmarkReportHooks(this);
+        }
+
+        this.enableDeferredStartupTasks();
+
+        this.scheduleDeferredStartupTask('initial-theme-warmup', async () => {
+            if (this.themeManager?.activeTheme || this.themeManager?.pendingThemeInstance) {
+                return;
+            }
+
+            await this.loadInitialTheme();
+            await reportDesktopStartupPhase('initial-theme-ready');
+        }, {
+            delayMs: 120,
+            timeout: 2200,
+        });
+
+        this.scheduleDeferredStartupTask('main-menu-player-card', async () => {
+            await initializeMainMenuPlayerCard();
+        }, {
+            delayMs: 320,
+            timeout: 1800,
+        });
+
+        this.themeManager?.releaseStartupPreload?.(650);
+        this.markBootStage('deferred-services-ready', { reason });
+        await reportDesktopStartupPhase('deferred-services-ready', { reason });
     }
 
     setupBuildResilienceHandlers() {
@@ -586,6 +981,21 @@ class SerenityBlocks {
             if (payload?.type === 'gpu-info-updated' && payload?.diagnostics) {
                 performanceMonitor.setDesktopGpuDiagnostics(payload.diagnostics);
             }
+            if (payload?.type === 'gpu-health-updated' && payload?.gpuHealth) {
+                desktopRuntimeConfig = {
+                    ...desktopRuntimeConfig,
+                    gpuHealth: payload.gpuHealth,
+                    gpuFallbackActive: payload.gpuHealth.status !== 'healthy',
+                };
+                window.desktopRuntimeConfig = desktopRuntimeConfig;
+                updateDesktopRuntimeBodyClasses(desktopRuntimeConfig, this.desktopPerformancePolicy);
+                updateDesktopGpuRemediationPanel(payload.gpuHealth);
+                const nextPolicy = this.resolveDesktopPerformancePolicy();
+                void this.applyDesktopPerformancePolicy(nextPolicy, {
+                    persist: false,
+                    reason: 'gpu-health-update',
+                });
+            }
             performanceMonitor.recordEvent(`desktop_${payload.type}`, payload);
         });
 
@@ -600,6 +1010,24 @@ class SerenityBlocks {
             }
         }).catch((error) => {
             console.warn('[DesktopGPU] Failed to fetch bootstrap diagnostics:', error?.message || error);
+        });
+
+        const gpuHealthPromise = window.electronAPI?.getGPUHealth?.();
+        gpuHealthPromise?.then((gpuHealth) => {
+            if (!gpuHealth) {
+                return;
+            }
+
+            desktopRuntimeConfig = {
+                ...desktopRuntimeConfig,
+                gpuHealth,
+                gpuFallbackActive: gpuHealth.status !== 'healthy',
+            };
+            window.desktopRuntimeConfig = desktopRuntimeConfig;
+            updateDesktopRuntimeBodyClasses(desktopRuntimeConfig, this.desktopPerformancePolicy);
+            updateDesktopGpuRemediationPanel(gpuHealth);
+        }).catch((error) => {
+            console.warn('[DesktopGPU] Failed to fetch GPU health:', error?.message || error);
         });
 
         window.runtimeValidation = {
@@ -627,6 +1055,17 @@ class SerenityBlocks {
                 return summary;
             },
             getReleaseGates: () => performanceMonitor.getReleaseGateSnapshot(),
+            captureDesktopBenchmark: async (stage = 'manual-benchmark', extra = {}) => {
+                const normalizedStage = typeof stage === 'string' && stage.trim()
+                    ? stage.trim()
+                    : 'manual-benchmark';
+                const report = await storeDesktopPerformanceReport(normalizedStage, this, extra);
+                return {
+                    stage: normalizedStage,
+                    report,
+                    releaseGates: performanceMonitor.getReleaseGateSnapshot(),
+                };
+            },
         };
     }
 
@@ -639,10 +1078,11 @@ class SerenityBlocks {
             this.frameRateController = new FrameRateController();
         }
 
+        const resolvedSettings = this.getResolvedDesktopSettings(settings);
         const {
             vsyncEnabled = true,
             targetFrameRate = 60,
-        } = settings;
+        } = resolvedSettings;
 
         try {
             this.frameRateController.setVSync(vsyncEnabled);
@@ -655,6 +1095,8 @@ class SerenityBlocks {
                 this.phaserGame.loop.targetFps = actualTarget;
                 console.log(`[FrameRate] Updated Phaser FPS target to ${actualTarget}`);
             }
+
+            this.backgroundScene?.setTargetFrameRate?.(targetFrameRate || 60);
 
             if (this.displayManager?.isElectron) {
                 try {
@@ -673,13 +1115,180 @@ class SerenityBlocks {
         }
     }
 
+    getResolvedDesktopSettings(baseSettings = this.settingsManager?.get?.() || {}) {
+        return {
+            ...baseSettings,
+            ...this.desktopPerformanceOverrides,
+        };
+    }
+
+    resolveDesktopPerformancePolicy() {
+        const settingsSnapshot = this.settingsManager?.get?.() || {};
+        const policy = createDesktopPerformancePolicy({
+            settingsSnapshot,
+            runtimeConfig: desktopRuntimeConfig,
+            gpuHealth: desktopRuntimeConfig.gpuHealth,
+            monitorRefreshRate: this.frameRateController?.monitorRefreshRate || 60,
+            windowSize: {
+                width: window.innerWidth,
+                height: window.innerHeight,
+            },
+            devicePixelRatio: window.devicePixelRatio || 1,
+        });
+
+        return policy;
+    }
+
+    async applyDesktopPerformancePolicy(policy, {
+        persist = false,
+        reason = 'manual',
+    } = {}) {
+        if (!policy) {
+            return null;
+        }
+
+        this.desktopPerformancePolicy = policy;
+        this.desktopPerformanceOverrides = {
+            renderScale: policy.renderScale,
+            effectQuality: policy.qualityTier,
+        };
+        setActiveDesktopPerformancePolicy(policy);
+        updateDesktopRuntimeBodyClasses(desktopRuntimeConfig, policy);
+        updateDesktopGpuRemediationPanel(desktopRuntimeConfig.gpuHealth);
+        performanceMonitor.setDesktopPerformancePolicy?.(policy);
+        performanceMonitor.setQualityMode(policy.qualityTier);
+        window.desktopPerformancePolicy = policy;
+        window.dispatchEvent(new CustomEvent('desktopPerformancePolicyChanged', {
+            detail: policy,
+        }));
+
+        setGlobalRenderScale(policy.renderScale);
+        this.applyEffectQuality(policy.qualityTier);
+        this.desktopPerformanceAdjustmentState.currentRenderScale = policy.renderScale;
+        this.desktopPerformanceAdjustmentState.baselineRenderScale = policy.baseRenderScale;
+        this.desktopPerformanceAdjustmentState.lastPersistedRenderScale = this.settingsManager?.get?.()?.renderScale ?? null;
+
+        if (this.webglRenderer?.resize) {
+            this.webglRenderer.resize();
+        }
+
+        if (this.gameModeManager?.getCurrentModeId?.() === GAME_MODES.ODYSSEY) {
+            this.gameModeManager.getCurrentMode()?.boardController?.onResize?.();
+        }
+
+        if (persist && this.settingsManager) {
+            this.settingsManager.update({
+                renderScale: policy.renderScale,
+                effectQuality: policy.qualityTier,
+                targetFrameRate: policy.targetFrameRate,
+            }, false);
+            this.settingsManager.save({ emitEvent: false });
+        }
+
+        performanceMonitor.recordEvent('desktop_performance_policy_applied', {
+            reason,
+            renderScale: policy.renderScale,
+            qualityTier: policy.qualityTier,
+            runtimeProfile: policy.runtimeProfile,
+            gpuHealthStatus: policy.gpuHealth?.status || null,
+        });
+
+        return policy;
+    }
+
+    startDynamicResolutionMonitoring() {
+        if (this.desktopPerformanceAdjustmentState.intervalId
+            || !desktopRuntimeConfig.isElectron
+            || !shouldUseDesktopPerformancePolicy()) {
+            return;
+        }
+
+        const tick = () => {
+            const policy = this.desktopPerformancePolicy;
+            if (!policy || !performanceMonitor.enabled || !this.isDynamicResolutionEligible()) {
+                return;
+            }
+
+            const now = Date.now();
+            const adjustment = evaluateDynamicResolutionAdjustment({
+                currentRenderScale: this.desktopPerformanceAdjustmentState.currentRenderScale ?? policy.renderScale,
+                baselineRenderScale: this.desktopPerformanceAdjustmentState.baselineRenderScale ?? policy.baseRenderScale,
+                releaseGates: performanceMonitor.getReleaseGateSnapshot(),
+                targetFrameRate: policy.targetFrameRate,
+                lastScaleChangeAt: this.desktopPerformanceAdjustmentState.lastScaleChangeAt,
+                stableSince: this.desktopPerformanceAdjustmentState.stableSince,
+                now,
+            });
+
+            if (adjustment.changed && adjustment.nextRenderScale !== this.desktopPerformanceAdjustmentState.currentRenderScale) {
+                this.desktopPerformanceAdjustmentState.currentRenderScale = adjustment.nextRenderScale;
+                this.desktopPerformanceAdjustmentState.lastScaleChangeAt = now;
+                this.desktopPerformanceAdjustmentState.stableSince = 0;
+                const nextPolicy = {
+                    ...policy,
+                    renderScale: adjustment.nextRenderScale,
+                    internalRenderResolution: createDesktopPerformancePolicy({
+                        settingsSnapshot: {
+                            ...this.settingsManager.get(),
+                            renderScale: adjustment.nextRenderScale,
+                            effectQuality: policy.qualityTier,
+                            targetFrameRate: policy.targetFrameRate,
+                        },
+                        runtimeConfig: desktopRuntimeConfig,
+                        gpuHealth: desktopRuntimeConfig.gpuHealth,
+                        monitorRefreshRate: this.frameRateController?.monitorRefreshRate || 60,
+                        windowSize: { width: window.innerWidth, height: window.innerHeight },
+                        devicePixelRatio: window.devicePixelRatio || 1,
+                    }).internalRenderResolution,
+                };
+                void this.applyDesktopPerformancePolicy(nextPolicy, {
+                    persist: false,
+                    reason: `dynamic:${adjustment.reason}`,
+                });
+                return;
+            }
+
+            if (adjustment.persistEligible) {
+                const activeScale = this.desktopPerformanceAdjustmentState.currentRenderScale ?? policy.renderScale;
+                if (this.desktopPerformanceAdjustmentState.lastPersistedRenderScale !== activeScale) {
+                    this.desktopPerformanceAdjustmentState.lastPersistedRenderScale = activeScale;
+                    void this.applyDesktopPerformancePolicy({
+                        ...policy,
+                        renderScale: activeScale,
+                    }, {
+                        persist: true,
+                        reason: 'dynamic:persist-stable',
+                    });
+                }
+                return;
+            }
+
+            if (adjustment.reason === 'stable' && this.desktopPerformanceAdjustmentState.stableSince === 0) {
+                this.desktopPerformanceAdjustmentState.stableSince = now;
+            }
+        };
+
+        this.desktopPerformanceAdjustmentState.intervalId = window.setInterval(tick, 5000);
+        this.cleanupHandlers.push(() => {
+            if (this.desktopPerformanceAdjustmentState.intervalId) {
+                window.clearInterval(this.desktopPerformanceAdjustmentState.intervalId);
+                this.desktopPerformanceAdjustmentState.intervalId = null;
+            }
+        });
+    }
+
     /**
      * Setup visibility change detection for background tab throttling
      */
     setupVisibilityThrottling() {
-        // Load behavior from settings
+        // Load behavior from settings.
+        // Electron packaged builds have Chromium anti-throttling flags and
+        // backgroundThrottling: false — default to 'continue' to prevent
+        // freeze when the user alt-tabs and returns.
         const settings = this.settingsManager.get();
-        this.backgroundTabBehavior = settings.backgroundTabBehavior || 'reduce';
+        const isPackagedElectron = desktopRuntimeConfig.isElectron && desktopRuntimeConfig.isPackaged;
+        const defaultBehavior = isPackagedElectron ? 'continue' : 'reduce';
+        this.backgroundTabBehavior = settings.backgroundTabBehavior || defaultBehavior;
 
         // Setup visibility change listener
         const handleVisibilityChange = () => {
@@ -693,6 +1302,23 @@ class SerenityBlocks {
         this.cleanupHandlers.push(() => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         });
+
+        // Listen for main-process window focus/blur events — more reliable than
+        // visibilitychange for alt-tab on Windows where focus changes may not
+        // trigger a visibility state update in Electron.
+        if (window.electronAPI?.onRuntimeEvent) {
+            window.electronAPI.onRuntimeEvent((payload) => {
+                if (payload?.type !== 'window-focus-changed') return;
+                const isFocused = !!payload.payload?.focused;
+                if (isFocused && !this.isTabVisible) {
+                    this.isTabVisible = true;
+                    this.handleVisibilityChange(true);
+                } else if (!isFocused && this.isTabVisible && this.backgroundTabBehavior !== 'continue') {
+                    this.isTabVisible = false;
+                    this.handleVisibilityChange(false);
+                }
+            });
+        }
 
         console.log('[Visibility] Background tab throttling initialized:', this.backgroundTabBehavior);
     }
@@ -798,10 +1424,11 @@ class SerenityBlocks {
             if (typeof theme.resume === 'function') {
                 theme.resume();
             }
-            // Restart the animation loop if the theme has one
-            if (typeof theme.animate === 'function' && theme._wasPaused) {
+            // Always force-restart the animation loop on resume to ensure
+            // the RAF chain is running, regardless of _wasPaused state.
+            if (typeof theme.animate === 'function') {
                 theme._wasPaused = false;
-                theme.animate();
+                requestAnimationFrame(() => theme.animate());
             }
         }
 
@@ -1107,11 +1734,12 @@ class SerenityBlocks {
      * @param {Object} settings - Settings object with display configuration
      */
     async applyDisplaySettings(settings) {
-        console.log('[Display] Applying display settings:', settings);
+        const resolvedSettings = this.getResolvedDesktopSettings(settings);
+        console.log('[Display] Applying display settings:', resolvedSettings);
 
         const {
             displayMode, showFPSCounter, renderScale, enableAntialiasing,
-        } = settings;
+        } = resolvedSettings;
 
         // Apply render scale for Three.js themes (affects GPU load significantly)
         if (renderScale !== undefined) {
@@ -1209,6 +1837,15 @@ class SerenityBlocks {
         }
     }
 
+    syncPerformanceMonitorSampling() {
+        if (!desktopRuntimeConfig.isElectron || !performanceMonitor.enabled) {
+            return;
+        }
+
+        const hasRunningMode = !!this.gameModeManager?.getCurrentMode()?.isRunning;
+        performanceMonitor.setSamplingReason('gameplay', hasRunningMode);
+    }
+
     /**
      * Update FPS counter
      */
@@ -1290,10 +1927,12 @@ class SerenityBlocks {
         }
 
         if (!this.phaserGame.scene.isActive('BackgroundScene')) {
+            const targetFrameRate = this.settingsManager?.get?.()?.targetFrameRate ?? 60;
             this.phaserGame.scene.start('BackgroundScene', {
                 webglRenderer: this.webglRenderer,
                 themeManager: this.themeManager,
                 effectQuality: this.currentEffectQuality,
+                targetFrameRate,
             });
         }
     }
@@ -1521,13 +2160,83 @@ class SerenityBlocks {
      * Initialize all manager systems
      */
     scheduleDeferredStartupTask(label, task, options = {}) {
-        const cancelTask = scheduleBrowserIdleTask(async () => {
-            performanceMonitor.recordEvent('startup_deferred_task_started', { label });
-            await task();
-            performanceMonitor.recordEvent('startup_deferred_task_completed', { label });
-        }, options);
-        this.cleanupHandlers.push(cancelTask);
-        return cancelTask;
+        let cancelTask = null;
+        let cancelled = false;
+        const queueEntry = {
+            start: () => {
+                if (cancelled || cancelTask) {
+                    return cancelTask;
+                }
+
+                cancelTask = scheduleBrowserIdleTask(async () => {
+                    performanceMonitor.recordEvent('startup_deferred_task_started', { label });
+                    await task();
+                    performanceMonitor.recordEvent('startup_deferred_task_completed', { label });
+                }, options);
+                return cancelTask;
+            },
+        };
+
+        if (this.deferredStartupTasksEnabled || !desktopRuntimeConfig.isElectron) {
+            queueEntry.start();
+        } else {
+            this.deferredStartupTaskQueue.push(queueEntry);
+        }
+
+        const cleanup = () => {
+            cancelled = true;
+            cancelTask?.();
+            this.deferredStartupTaskQueue = this.deferredStartupTaskQueue.filter((entry) => entry !== queueEntry);
+        };
+
+        this.cleanupHandlers.push(cleanup);
+        return cleanup;
+    }
+
+    applyPackagedWindowsFirstRunDisplayPolicy() {
+        if (!isPackagedWindowsRuntime() || !this.displayManager || !this.settingsManager) {
+            return;
+        }
+
+        if (isPackagedWindowsWebParityProfile()) {
+            return;
+        }
+
+        if (this.settingsManager.hasPersistedSettings?.()) {
+            return;
+        }
+
+        const currentSettings = this.settingsManager.get();
+        const recommendedSettings = getPackagedWindowsRecommendedSettings({
+            screenWidth: typeof window !== 'undefined' ? window.screen.width : 1920,
+            screenHeight: typeof window !== 'undefined' ? window.screen.height : 1080,
+            devicePixelRatio: typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1,
+            monitorRefreshRate: this.frameRateController?.monitorRefreshRate || 60,
+        });
+
+        if (!recommendedSettings) {
+            return;
+        }
+
+        const hasChanges = currentSettings.renderScale !== recommendedSettings.renderScale
+            || currentSettings.effectQuality !== recommendedSettings.qualityTier
+            || currentSettings.targetFrameRate !== recommendedSettings.targetFrameRate;
+        if (!hasChanges) return;
+
+        this.settingsManager.update({
+            renderScale: recommendedSettings.renderScale,
+            effectQuality: recommendedSettings.qualityTier,
+            targetFrameRate: recommendedSettings.targetFrameRate,
+        }, false);
+        this.settingsManager.save({ emitEvent: false });
+        performanceMonitor.recordEvent('desktop_first_run_display_policy_applied', {
+            renderScale: recommendedSettings.renderScale,
+            qualityTier: recommendedSettings.qualityTier,
+            targetFrameRate: recommendedSettings.targetFrameRate,
+            screenWidth: typeof window !== 'undefined' ? window.screen.width : null,
+            screenHeight: typeof window !== 'undefined' ? window.screen.height : null,
+            devicePixelRatio: typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : null,
+        });
     }
 
     /**
@@ -1545,7 +2254,7 @@ class SerenityBlocks {
         if (typeof window !== 'undefined') {
             window.settingsManager = this.settingsManager;
         }
-        const currentSettings = this.settingsManager.get();
+        let currentSettings = this.settingsManager.get();
         setPieceLockRippleCss(currentSettings.pieceLockRippleColor);
 
         // Display manager (Phase 1)
@@ -1553,13 +2262,33 @@ class SerenityBlocks {
         console.log('[DisplayManager] Initialized', {
             isElectron: this.displayManager.isElectron,
         });
+        this.applyPackagedWindowsFirstRunDisplayPolicy();
+        if (shouldUseDesktopPerformancePolicy()) {
+            const startupPerformancePolicy = this.resolveDesktopPerformancePolicy();
+            await this.applyDesktopPerformancePolicy(startupPerformancePolicy, {
+                persist: false,
+                reason: 'startup',
+            });
+        } else {
+            this.desktopPerformancePolicy = null;
+            this.desktopPerformanceOverrides = {};
+            setActiveDesktopPerformancePolicy(null);
+            if (typeof window !== 'undefined') {
+                window.desktopPerformancePolicy = null;
+            }
+        }
 
         // Initialize FPS counter element
         this.fpsCounter.element = document.getElementById('fps-counter');
 
         // Apply display/frame settings immediately
-        await this.applyDisplaySettings(currentSettings);
-        await this.applyFrameRateSettings(currentSettings);
+        const resolvedSettings = this.getResolvedDesktopSettings(this.settingsManager.get());
+        currentSettings = resolvedSettings;
+        await this.applyDisplaySettings(resolvedSettings);
+        await this.applyFrameRateSettings(resolvedSettings);
+        if (shouldUseDesktopPerformancePolicy()) {
+            this.startDynamicResolutionMonitoring();
+        }
 
         // Modal manager (gamepad controller will be set after it's created)
         this.modalManager = new ModalManager();
@@ -1707,11 +2436,17 @@ class SerenityBlocks {
         });
 
         if (!isSafeMode) {
+            const hubDelayMs = desktopRuntimeConfig.isElectron
+                ? (isBaselineProfile ? 1800 : 220)
+                : (isBaselineProfile ? 4800 : 1600);
+            const hubTimeoutMs = desktopRuntimeConfig.isElectron
+                ? (isBaselineProfile ? 2400 : 1800)
+                : (isBaselineProfile ? 5000 : 3000);
             this.scheduleDeferredStartupTask('global-serenity-hub', async () => {
                 await this.initializeGlobalSerenityHub();
             }, {
-                delayMs: isBaselineProfile ? 4800 : 1600,
-                timeout: isBaselineProfile ? 5000 : 3000,
+                delayMs: hubDelayMs,
+                timeout: hubTimeoutMs,
             });
         } else {
             performanceMonitor.recordEvent('startup_global_hub_deferred', {
@@ -1841,10 +2576,12 @@ class SerenityBlocks {
 
         this.gameModeManager.on('modeStarted', ({ modeId }) => {
             console.log(`[Main] Mode started: ${modeId}`);
+            this.syncPerformanceMonitorSampling();
         });
 
         this.gameModeManager.on('modeStopped', ({ modeId }) => {
             console.log(`[Main] Mode stopped: ${modeId}`);
+            this.syncPerformanceMonitorSampling();
         });
 
         // Setup start button click handler (for old button-based UI)
@@ -1856,6 +2593,7 @@ class SerenityBlocks {
                     const selectedMode = this.gameModeUI.getMode();
 
                     // Activate the mode (if not already active)
+                    this.startPostMenuRenderer();
                     await this.gameModeManager.activateMode(selectedMode);
 
                     // Start the game
@@ -1922,10 +2660,15 @@ class SerenityBlocks {
      * Setup event listeners
      */
     setupEventListeners() {
-        // Window resize
+        // Window resize — debounced to prevent F11/fullscreen freeze.
+        // Without debounce, 30+ theme/renderer resize listeners fire simultaneously
+        // doing sync GPU framebuffer reallocation (setSize, EffectComposer, bloom).
+        let resizeTimer;
         const resizeHandler = () => {
-            console.log('[Main] Window resized, notifying GameModeManager');
-            this.handleResize();
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                this.handleResize();
+            }, 150);
         };
         window.addEventListener('resize', resizeHandler);
 
@@ -1966,11 +2709,16 @@ class SerenityBlocks {
             [GAME_MODES.INFINITY]: 'INFINITY',
             [GAME_MODES.SERENITY]: 'SERENITY',
         };
+        const MODES_WITH_INTERNAL_STARTUP_OVERLAY = new Set([
+            GAME_MODES.LOCAL_MULTIPLAYER,
+            GAME_MODES.ODYSSEY,
+        ]);
 
         const startGameWithModeHandler = async (e) => {
             try {
                 const { mode } = e.detail;
                 console.log('[Main] Starting game with mode from card selection:', mode);
+                const modeHandlesStartupOverlay = MODES_WITH_INTERNAL_STARTUP_OVERLAY.has(mode);
 
                 this.soundManager?.resumeAudioContext?.();
 
@@ -1981,7 +2729,7 @@ class SerenityBlocks {
 
                 // --- Phase 1: Show cinematic loading overlay + fade out intro music ---
                 const displayName = MODE_DISPLAY_NAMES[mode];
-                if (displayName) {
+                if (!modeHandlesStartupOverlay && displayName) {
                     showCinematicLoadingOverlay(displayName);
                 }
 
@@ -1994,6 +2742,8 @@ class SerenityBlocks {
                 // Now safe to hide modal (invisible behind overlay)
                 this.modalManager.hideAll();
 
+                this.startPostMenuRenderer();
+
                 // Activate the mode (sets up UI/DOM elements)
                 await this.gameModeManager.activateMode(mode);
 
@@ -2001,7 +2751,7 @@ class SerenityBlocks {
                 await this.gameModeManager.startCurrentMode();
 
                 // --- Phase 3: Wait for theme to be ready ---
-                if (this.themeManager?.waitForThemeReady) {
+                if (!modeHandlesStartupOverlay && this.themeManager?.waitForThemeReady) {
                     const themeReady = await this.themeManager.waitForThemeReady(3000);
                     console.log('[Main] Theme ready:', themeReady);
                 }
@@ -2018,7 +2768,7 @@ class SerenityBlocks {
                 // Local multiplayer owns the cinematic overlay lifecycle once the
                 // match config modal is confirmed. Dismissing the shared overlay
                 // here races with the in-mode countdown and can hide it mid-count.
-                if (mode !== GAME_MODES.LOCAL_MULTIPLAYER) {
+                if (!modeHandlesStartupOverlay) {
                     dismissCinematicLoadingOverlay(800);
                 }
 
@@ -2027,7 +2777,7 @@ class SerenityBlocks {
                     && activeMode.getModeId() === mode
                     && activeMode.isRunning;
 
-                const shouldDismissIntroHere = modeStarted && mode !== GAME_MODES.LOCAL_MULTIPLAYER;
+                const shouldDismissIntroHere = modeStarted && !modeHandlesStartupOverlay;
                 if (shouldDismissIntroHere && introAnimation) {
                     introAnimation.dismiss();
                 }
@@ -3099,6 +3849,23 @@ class SerenityBlocks {
             this.applyEffectQuality(settings.effectQuality);
         }
 
+        if (
+            (
+                changes.effectQuality
+                || changes.renderScale
+                || changes.targetFrameRate
+                || changes.vsyncEnabled
+                || changes.displayMode
+            )
+            && shouldUseDesktopPerformancePolicy()
+        ) {
+            const nextPolicy = this.resolveDesktopPerformancePolicy();
+            void this.applyDesktopPerformancePolicy(nextPolicy, {
+                persist: false,
+                reason: 'settings-change',
+            });
+        }
+
         // Handle audio changes
         if (changes.musicVolume !== undefined) {
             this.soundManager.setMusicVolume(settings.musicVolume);
@@ -3115,6 +3882,18 @@ class SerenityBlocks {
 
         if (changes.pieceLockRippleColor) {
             setPieceLockRippleCss(settings.pieceLockRippleColor);
+        }
+
+        if (
+            this.customCursor
+            && (
+                changes.customCursorEnabled !== undefined
+                || changes.customCursorIntensity
+                || changes.customCursorVisibilityPreset
+                || changes.customCursorReducedMotion
+            )
+        ) {
+            this.customCursor.applySettings(settings);
         }
 
         // Handle gamepad binding changes
@@ -3202,6 +3981,7 @@ class SerenityBlocks {
             }
 
             // Activate and start the selected mode
+            this.startPostMenuRenderer();
             await this.gameModeManager.activateMode(currentMode);
             await this.gameModeManager.startCurrentMode();
             if (this.soundManager?.ensureTrackPlaybackSynced) {
@@ -4230,12 +5010,19 @@ async function bootstrap() {
     try {
         console.log('🚀 Bootstrapping Serenity Blocks...');
         await resolveDesktopRuntimeConfig();
+        if (typeof window !== 'undefined') {
+            desktopBootCoordinator = createBootStageCoordinator({
+                dispatchTarget: window,
+            });
+            window.desktopBootCoordinator = desktopBootCoordinator;
+        }
         performanceMonitor.recordEvent('startup_bootstrap_begin', {
             appMode: desktopRuntimeConfig.appMode,
             windowsProfile: desktopRuntimeConfig.windowsProfile,
             safeMode: desktopRuntimeConfig.safeMode,
         });
-        window.__serenityStartupShell?.markBootstrapStarted?.('Preparing desktop renderer');
+        const startupShell = window.__serenityStartupShell || window.__serenityStartupBridge;
+        startupShell?.markBootstrapStarted?.('Preparing desktop renderer');
         updateStartupShellStatus('Preparing desktop renderer');
 
         const earlyStartModal = document.getElementById('start-modal');
@@ -4244,27 +5031,6 @@ async function bootstrap() {
         }
         document.body.classList.remove('start-modal-open');
         await revealStartupShell();
-        void storeDesktopPerformanceReport('startup-begin');
-
-        // Initialize Steam service (non-blocking)
-        steamService.initialize().then(() => {
-            const status = steamService.getStatus();
-            if (status.isOnline) {
-                console.log(`🎮 SteamService ready: ${status.playerName} (${status.steamId})`);
-            } else {
-                console.log('🎮 SteamService: Running in offline mode');
-            }
-        }).catch(err => {
-            console.warn('🎮 SteamService init error:', err.message);
-        });
-
-        // Listen for Steam connection events
-        steamService.on('steam:disconnected', () => {
-            console.log('⚠️ Steam disconnected - playing offline');
-        });
-        steamService.on('steam:reconnected', () => {
-            console.log('✅ Steam reconnected');
-        });
 
         const deferStartupAudio = shouldDeferStartupAudio();
         const deferInitialThemeLoad = shouldDeferInitialThemeLoad();
@@ -4326,28 +5092,22 @@ async function bootstrap() {
         } else {
             // Show epic intro animation
             dismissStartupShell('intro-begin');
+            desktopBootCoordinator?.mark('intro-started', {
+                mode: 'interactive',
+            });
             console.log('✨ Playing intro animation...');
             await introAnimation.show(sharedSoundManager);
             console.log('✨ Intro animation complete!');
         }
 
         app = await appInitPromise;
-        let initialThemeLoadPromise = null;
+        app?.setBootCoordinator?.(desktopBootCoordinator);
+        app?.markBootStage?.('core-ready', {
+            appMode: desktopRuntimeConfig.appMode,
+        });
+        void app?.startEssentialDesktopServices?.('core-ready');
 
         if (!useMinimalPackagedStartup) {
-            // Tiny delay to allow local interaction animations (burst/shrink) to gain momentum
-            // before the main thread hitch of theme loading.
-            await new Promise(resolve => setTimeout(resolve, 150));
-
-            // Load initial theme now that intro is dismissing to avoid transition hitch.
-            // This hides the heavy initialization hitch behind the high-intensity animation.
-            if (app?.loadInitialTheme) {
-                updateStartupShellStatus('Preparing theme renderer');
-                initialThemeLoadPromise = app.loadInitialTheme()
-                    .then(() => reportDesktopStartupPhase('initial-theme-ready'))
-                    .catch(err => console.error('Failed to load initial theme:', err));
-            }
-
             await introAnimation.waitForMenuBgReady?.(2200);
         } else {
             performanceMonitor.recordEvent('startup_initial_theme_deferred', {
@@ -4368,17 +5128,29 @@ async function bootstrap() {
 
         await onNextPaint();
         dismissStartupShell(skipIntro || useMinimalPackagedStartup ? 'menu-ready' : 'intro-complete');
-        app?.themeManager?.releaseStartupPreload?.(useMinimalPackagedStartup ? 2400 : 650);
         await reportDesktopStartupPhase('first-usable-frame', {
             windowsProfile: desktopRuntimeConfig.windowsProfile,
             safeMode,
         });
-        await storeDesktopPerformanceReport('first-usable-frame', app);
-        installFirstInteractionPerformanceReport(app);
+        app?.markBootStage?.('menu-ready', {
+            safeMode,
+        });
+        installFirstInteractionPerformanceReport(app, (event) => {
+            void app?.startDeferredDesktopServices?.(`first-interaction:${event?.type || 'unknown'}`);
+        });
+        if (app && typeof window !== 'undefined') {
+            app.deferredDesktopServicesTimer = window.setTimeout(() => {
+                void app.startDeferredDesktopServices('menu-idle');
+            }, 2000);
+            app.cleanupHandlers.push(() => {
+                if (app.deferredDesktopServicesTimer) {
+                    clearTimeout(app.deferredDesktopServicesTimer);
+                    app.deferredDesktopServicesTimer = null;
+                }
+            });
+        }
 
-        if (initialThemeLoadPromise) {
-            void initialThemeLoadPromise;
-        } else if (!safeMode && deferInitialThemeLoad && app?.loadInitialTheme) {
+        if (!safeMode && deferInitialThemeLoad && app?.loadInitialTheme) {
             scheduleBrowserIdleTask(async () => {
                 await app.loadInitialTheme();
                 await reportDesktopStartupPhase('initial-theme-ready');
@@ -4395,25 +5167,19 @@ async function bootstrap() {
             }, { delayMs: 650, timeout: 2600 });
         }
 
-        // Initialize main menu player card (shows Steam avatar/name in top-right)
-        initializeMainMenuPlayerCard().catch(err => {
-            console.warn('Failed to initialize main menu player card:', err.message);
-        });
-
-        // Initialize Steam invite handling (Phase 3: Friends & Social)
-        const steamInviteManager = new SteamInviteManager(app.gameModeManager);
-
         // Enable gamepad navigation for game mode selection
         if (app.gamepadController) {
             app.gamepadController.enableGameModeSelection();
         }
+
+        performanceMonitor.setSamplingReason?.('startup', false);
+        app?.syncPerformanceMonitorSampling?.();
 
         // Expose to window for debugging (can be removed in production)
         if (typeof window !== 'undefined') {
             window.serenityBlocks = app;
             window.performanceMonitor = performanceMonitor;
             window.steamService = steamService;
-            window.steamInviteManager = steamInviteManager;
 
             console.log('💡 Steam service available: window.steamService.getStatus()');
 
@@ -4705,7 +5471,8 @@ async function bootstrap() {
         }
     } catch (error) {
         console.error('❌ Failed to bootstrap application:', error);
-        window.__serenityStartupShell?.fail?.('Failed to start Serenity Blocks', error?.message || error);
+        const startupShell = window.__serenityStartupShell || window.__serenityStartupBridge;
+        startupShell?.fail?.('Failed to start Serenity Blocks', error?.message || error);
         dismissStartupShell('bootstrap-error');
 
         // Show error to user

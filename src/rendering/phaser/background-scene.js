@@ -37,10 +37,8 @@ export function createBackgroundScene(
             this.webglRenderer = null;
             this.themeManager = null;
             this.effectQuality = 'High';
-
-            // Frame rate throttling for performance (30fps instead of 60fps)
-            this.targetFrameTime = 1000 / 30; // 33.33ms per frame
-            this.lastUpdateTime = 0;
+            this.targetFrameRate = 60;
+            this.targetFrameTime = 1000 / this.targetFrameRate;
             this.accumulatedTime = 0;
         }
 
@@ -53,12 +51,30 @@ export function createBackgroundScene(
             this.webglRenderer = data?.webglRenderer || null;
             this.themeManager = data?.themeManager || null;
             this.effectQuality = data?.effectQuality || 'High';
+            this.setTargetFrameRate(data?.targetFrameRate);
 
             console.log('[BackgroundScene] Initialized', {
                 hasRenderer: !!this.webglRenderer,
                 hasThemeManager: !!this.themeManager,
                 quality: this.effectQuality,
+                targetFrameRate: this.targetFrameRate,
             });
+        }
+
+        setTargetFrameRate(targetFrameRate) {
+            if (targetFrameRate === 0) {
+                this.targetFrameRate = 0;
+                this.targetFrameTime = 0;
+                this.accumulatedTime = 0;
+                return;
+            }
+
+            const nextTarget = Number.isFinite(targetFrameRate) && targetFrameRate > 0
+                ? targetFrameRate
+                : 60;
+            this.targetFrameRate = Math.max(30, nextTarget);
+            this.targetFrameTime = 1000 / this.targetFrameRate;
+            this.accumulatedTime = 0;
         }
 
         /**
@@ -108,20 +124,25 @@ export function createBackgroundScene(
         /**
          * Phaser 4 lifecycle: update loop
          * Called every frame, drives WebGL renderer
-         * Throttled to 30fps for performance (backgrounds don't need 60fps)
+         * Throttled based on the active desktop frame-rate settings.
          */
         update(time, delta) {
             if (!this.webglRenderer) return;
 
-            // Throttle to 30fps - users won't notice background at half rate
-            const currentTime = performance.now();
+            if (this.targetFrameTime <= 0) {
+                try {
+                    this.webglRenderer.renderFrame();
+                } catch (error) {
+                    console.error('[BackgroundScene] Error in update loop:', error);
+                }
+                return;
+            }
+
             this.accumulatedTime += delta;
 
-            // Only update if enough time has passed (33.33ms for 30fps)
             if (this.accumulatedTime >= this.targetFrameTime) {
                 try {
                     this.webglRenderer.renderFrame();
-                    this.lastUpdateTime = currentTime;
                     this.accumulatedTime %= this.targetFrameTime; // Keep remainder
                 } catch (error) {
                     console.error('[BackgroundScene] Error in update loop:', error);

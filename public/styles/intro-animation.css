@@ -618,6 +618,31 @@
     }
 }
 
+/* Main menu override: hide the intro-derived logo once the crisp menu logo takes over. */
+body.start-modal-open .intro-title-container.shrink-to-logo {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+body.start-modal-open .intro-title-container.shrink-to-logo::before {
+    opacity: 0;
+    animation: none;
+}
+
+body.start-modal-open .intro-title-container.shrink-to-logo .intro-title {
+    animation: none !important;
+}
+
+body.start-modal-open .intro-title-container.shrink-to-logo .intro-letter {
+    filter: none;
+}
+
+body.start-modal-open .intro-title-container.shrink-to-logo .intro-shimmer {
+    opacity: 0.2 !important;
+    animation: none !important;
+}
+
 /* Responsive adjustments for logo */
 @media (max-width: 768px) {
     @keyframes shrinkToLogo {

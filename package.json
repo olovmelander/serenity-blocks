@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "electron": "electron electron/main.js",
     "dev:electron": "NODE_ENV=development electron electron/main.js",
+    "electron:minimal": "electron electron/main-minimal.js",
     "lint": "eslint src --ext .js",
     "lint:fix": "eslint src --ext .js --fix",
     "format": "prettier --write \"src/**/*.js\"",
@@ -17,7 +18,9 @@
     "audit:theme-lifecycle": "node scripts/theme-lifecycle-audit.mjs",
     "check:release-gates": "node scripts/release-gate-check.mjs",
     "validate:cosmic-noir:phase6": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/cosmic-noir-phase6-validation.mjs",
+    "validate:windows:devtools": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/windows-devtools-smoke.mjs",
     "validate:wolfhour:phase6": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/wolfhour-phase6-validation.mjs",
+    "validate:windows:parity": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/windows-electron-parity-validation.mjs",
     "build:win": "node scripts/build-win.mjs",
     "build:win:wsl": "SERENITY_ALLOW_WSL_WIN_BUILD=1 node scripts/build-win.mjs",
     "build:linux": "vite build && electron-builder --linux",
@@ -26,6 +29,8 @@
   "build": {
     "appId": "com.serenityblocks.game",
     "productName": "Serenity Blocks",
+    "beforeBuild": "scripts/beforeBuild.cjs",
+    "afterPack": "scripts/afterPack.cjs",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -33,11 +38,24 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "package.json",
-      "node_modules/steamworks.js/**/*"
+      "package.json"
     ],
-    "asarUnpack": [
-      "node_modules/steamworks.js/**/*"
+    "extraResources": [
+      {
+        "from": "node_modules/steamworks.js",
+        "to": "native_modules/steamworks.js",
+        "filter": ["**/*", "!dist/linux64/**", "!dist/osx/**"]
+      },
+      {
+        "from": "node_modules/ez-steam-api",
+        "to": "native_modules/ez-steam-api",
+        "filter": ["**/*", "!bin/linux-x64/**"]
+      },
+      {
+        "from": "node_modules/koffi",
+        "to": "native_modules/ez-steam-api/node_modules/koffi",
+        "filter": ["package.json", "index.js", "build/koffi/win32_x64/**"]
+      }
     ],
     "extraFiles": [
       {
@@ -47,7 +65,22 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "signtoolOptions": {
+        "signingHashAlgorithms": [
+          "sha256"
+        ]
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Serenity Blocks"
     },
     "linux": {
       "target": "AppImage",
@@ -65,20 +98,20 @@
   "license": "MIT",
   "dependencies": {
     "ez-steam-api": "^0.57.1",
-    "phaser": "4.0.0-rc.6",
-    "steamworks.js": "^0.4.0",
-    "three": "^0.181.2"
+    "jimp": "^0.16.13",
+    "steamworks.js": "^0.4.0"
   },
   "devDependencies": {
     "@rollup/plugin-replace": "^6.0.2",
-    "node-fetch": "^3.3.2",
-    "electron": "^38.3.0",
+    "electron": "^38.8.6",
     "electron-builder": "^26.4.0",
-    "electron-rebuild": "^3.2.9",
     "eslint": "^8.57.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-plugin-import": "^2.29.1",
+    "node-fetch": "^3.3.2",
+    "phaser": "4.0.0-rc.5",
     "prettier": "^3.3.3",
+    "three": "^0.181.2",
     "vite": "^5.4.11",
     "vitest": "^3.2.4"
   }

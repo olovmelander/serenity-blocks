@@ -2,6 +2,18 @@
  * @fileoverview Theme icon URL resolver for Odyssey level node rendering.
  */
 
+function isNonEmptyString(value) {
+    return typeof value === 'string' && value.length > 0;
+}
+
+function isThemeIconModuleLoader(value) {
+    return typeof value === 'function';
+}
+
+function isThemeIconAssetReference(value) {
+    return isNonEmptyString(value) || isThemeIconModuleLoader(value);
+}
+
 function toThemesRelativePath(pathValue) {
     if (typeof pathValue !== 'string' || pathValue.length === 0) {
         return null;
@@ -32,8 +44,8 @@ function toFileName(pathValue) {
  * Build lookup of theme id to icon URL emitted by Vite.
  *
  * @param {Array<{id: string, icon?: string}>} registry
- * @param {Record<string, string>} iconModules - Result of import.meta.glob(..., { eager: true, import: 'default' })
- * @returns {Map<string, string>}
+ * @param {Record<string, string | Function>} iconModules - Result of import.meta.glob(...)
+ * @returns {Map<string, string | Function>}
  */
 export function buildThemeIconLookup(registry, iconModules) {
     const lookup = new Map();
@@ -45,7 +57,7 @@ export function buildThemeIconLookup(registry, iconModules) {
     const byFileName = new Map();
 
     Object.entries(iconModules || {}).forEach(([modulePath, iconUrl]) => {
-        if (typeof iconUrl !== 'string' || iconUrl.length === 0) {
+        if (!isThemeIconAssetReference(iconUrl)) {
             return;
         }
 
@@ -106,14 +118,14 @@ function getLookupValue(themeId, lookup) {
 }
 
 /**
- * Resolve the icon URL for a theme id with fallback support.
+ * Resolve the asset reference for a theme id with fallback support.
  *
  * @param {string} themeId
- * @param {Map<string, string> | Object} lookup
+ * @param {Map<string, string | Function> | Object} lookup
  * @param {string} fallbackThemeId
- * @returns {string|null}
+ * @returns {string | Function | null}
  */
-export function resolveThemeIconUrl(themeId, lookup, fallbackThemeId = 'forest') {
+export function resolveThemeIconValue(themeId, lookup, fallbackThemeId = 'forest') {
     const direct = getLookupValue(themeId, lookup);
     if (direct) {
         return direct;
@@ -124,4 +136,41 @@ export function resolveThemeIconUrl(themeId, lookup, fallbackThemeId = 'forest')
     }
 
     return getLookupValue(fallbackThemeId, lookup);
+}
+
+/**
+ * Resolve the icon URL for a theme id with fallback support.
+ *
+ * @param {string} themeId
+ * @param {Map<string, string | Function> | Object} lookup
+ * @param {string} fallbackThemeId
+ * @returns {string|null}
+ */
+export function resolveThemeIconUrl(themeId, lookup, fallbackThemeId = 'forest') {
+    const resolved = resolveThemeIconValue(themeId, lookup, fallbackThemeId);
+    return isNonEmptyString(resolved) ? resolved : null;
+}
+
+/**
+ * Resolve a theme icon asset reference to a URL, supporting lazy import.meta.glob loaders.
+ *
+ * @param {string} themeId
+ * @param {Map<string, string | Function> | Object} lookup
+ * @param {string} fallbackThemeId
+ * @returns {Promise<string|null>}
+ */
+export async function resolveThemeIconAssetUrl(themeId, lookup, fallbackThemeId = 'forest') {
+    const resolved = resolveThemeIconValue(themeId, lookup, fallbackThemeId);
+
+    if (isNonEmptyString(resolved)) {
+        return resolved;
+    }
+
+    if (!isThemeIconModuleLoader(resolved)) {
+        return null;
+    }
+
+    const moduleValue = await resolved();
+    const assetUrl = moduleValue?.default || moduleValue;
+    return isNonEmptyString(assetUrl) ? assetUrl : null;
 }

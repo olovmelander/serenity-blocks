@@ -7,7 +7,137 @@ import { THEME_REGISTRY } from '../../themes/theme-registry.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { TORNADO_PARAM_DEFAULTS, TORNADO_PARAM_RANGES } from '../../themes/tornado/params.ts';
 import { performanceMonitor } from '../../utils/performance-monitor.js';
-import { resolveHubThemeThumbnailUrl } from './theme-thumbnail-manifest.js';
+import { debounce } from '../../utils/performance-utils.js';
+import { scrollHubElementIntoView } from './hub-scroll-utils.js';
+import {
+    resolveDesktopHubThemeThumbnailUrl,
+    resolveHubThemeThumbnailUrl,
+} from './theme-thumbnail-manifest.js';
+
+export function getFilteredThemeIds(themes, selectedCategory = 'all', searchQuery = '') {
+    let filteredThemes = selectedCategory === 'all'
+        ? themes
+        : themes.filter((theme) => theme.group === selectedCategory);
+
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (normalizedQuery) {
+        filteredThemes = filteredThemes.filter((theme) => (
+            theme.displayName.toLowerCase().includes(normalizedQuery)
+            || (theme.group && theme.group.toLowerCase().includes(normalizedQuery))
+        ));
+    }
+
+    return [...filteredThemes]
+        .sort((left, right) => left.displayName.localeCompare(right.displayName))
+        .map((theme) => theme.id);
+}
+
+export function applyThemeCardFilter(cards, visibleThemeIds) {
+    const visibleIdSet = new Set(visibleThemeIds);
+    let visibleCount = 0;
+
+    cards.forEach((card) => {
+        const isVisible = visibleIdSet.has(card?.dataset?.theme);
+        card.hidden = !isVisible;
+        card.setAttribute?.('aria-hidden', isVisible ? 'false' : 'true');
+        if ('tabIndex' in card) {
+            card.tabIndex = isVisible ? 0 : -1;
+        }
+        card.classList?.toggle?.('is-filtered-out', !isVisible);
+        if (isVisible) {
+            visibleCount += 1;
+        }
+    });
+
+    return visibleCount;
+}
+
+export function createThemeIconObserverOptions(scrollContainer = null) {
+    return {
+        root: scrollContainer ?? null,
+        rootMargin: '180px 0px',
+        threshold: 0.01,
+    };
+}
+
+function getCardIcons(card) {
+    return Array.from(card?.querySelectorAll?.('.theme-icon-img[data-theme-icon-src]') || []);
+}
+
+function getViewportRect(scrollContainer = null) {
+    const fallbackHeight = globalThis.window?.innerHeight || 900;
+    if (!scrollContainer?.getBoundingClientRect) {
+        return {
+            top: 0,
+            bottom: fallbackHeight,
+        };
+    }
+
+    const rect = scrollContainer.getBoundingClientRect();
+    return {
+        top: rect.top,
+        bottom: rect.bottom,
+    };
+}
+
+export function getThemeIconHydrationPlan(cards, { scrollContainer = null } = {}) {
+    const visibleCards = cards.filter((card) => !card?.hidden);
+    if (visibleCards.length === 0) {
+        return {
+            immediateIcons: [],
+            deferredIcons: [],
+        };
+    }
+
+    const viewportRect = getViewportRect(scrollContainer);
+    const cardsWithRects = visibleCards.map((card) => ({
+        card,
+        rect: card?.getBoundingClientRect?.() || null,
+    }));
+
+    const visibleRowCards = cardsWithRects.filter(({ rect }) => (
+        rect
+        && rect.bottom > viewportRect.top
+        && rect.top < viewportRect.bottom
+    ));
+    const prioritizedCards = visibleRowCards.length > 0 ? visibleRowCards : cardsWithRects.slice(0, 6);
+    const firstRowTop = prioritizedCards[0]?.rect?.top ?? cardsWithRects[0]?.rect?.top ?? 0;
+    const immediateCards = prioritizedCards
+        .filter(({ rect }, index) => index === 0 || !rect || Math.abs(rect.top - firstRowTop) <= 24)
+        .map(({ card }) => card);
+    const immediateCardSet = new Set(immediateCards);
+
+    return {
+        immediateIcons: immediateCards.flatMap((card) => getCardIcons(card)),
+        deferredIcons: visibleCards
+            .filter((card) => !immediateCardSet.has(card))
+            .flatMap((card) => getCardIcons(card)),
+    };
+}
+
+export function shouldUseDesktopThemeThumbnails() {
+    // Always use bundled Vite-resolved icons. The desktop path constructs URLs
+    // via new URL() which produces malformed paths on file:// protocol in
+    // packaged Electron builds, causing cascading load failures and slow icon
+    // rendering. Bundled assets are already local files — no benefit to the
+    // desktop path.
+    return false;
+}
+
+export function resolveThemeIconHydrationSource(
+    icon,
+    runtimeConfig = globalThis.window?.desktopRuntimeConfig,
+) {
+    const bundledSrc = icon?.dataset?.themeIconSrc || null;
+    const desktopSrc = shouldUseDesktopThemeThumbnails(runtimeConfig)
+        ? (icon?.dataset?.themeDesktopIconSrc || null)
+        : null;
+
+    return {
+        src: desktopSrc || bundledSrc,
+        source: desktopSrc ? 'desktop' : 'bundled',
+    };
+}
 
 export class ThemesTab {
     constructor(hubInstance, themeManager, settingsManager) {
@@ -27,10 +157,14 @@ export class ThemesTab {
         this.tabContainer = null;
         this.tabClickHandler = null;
         this.searchInputHandler = null;
+        this.debouncedSearchHandler = null;
         this.iconObserver = null;
         this.iconLoadHandler = null;
         this.iconErrorHandler = null;
+        this.iconReadyRecorder = null;
         this.hubIconsReadyRecorded = false;
+        this.themeCardElements = new Map();
+        this.emptyStateElement = null;
 
         this.init();
     }
@@ -99,13 +233,27 @@ export class ThemesTab {
      */
     getThemeColorScheme(group) {
         const schemes = {
-            biomes: { primary: '#4CAF50', secondary: '#81C784', gradient: 'linear-gradient(135deg, #4CAF50, #81C784)' },
-            cosmic: { primary: '#9C27B0', secondary: '#CE93D8', gradient: 'linear-gradient(135deg, #9C27B0, #CE93D8)' },
-            meditation: { primary: '#FF9800', secondary: '#FFB74D', gradient: 'linear-gradient(135deg, #FF9800, #FFB74D)' },
-            urban: { primary: '#607D8B', secondary: '#90A4AE', gradient: 'linear-gradient(135deg, #607D8B, #90A4AE)' },
-            fantasy: { primary: '#E91E63', secondary: '#F48FB1', gradient: 'linear-gradient(135deg, #E91E63, #F48FB1)' },
-            abstract: { primary: '#00BCD4', secondary: '#80DEEA', gradient: 'linear-gradient(135deg, #00BCD4, #80DEEA)' },
-            sky: { primary: '#2196F3', secondary: '#64B5F6', gradient: 'linear-gradient(135deg, #2196F3, #64B5F6)' },
+            biomes: {
+                primary: '#4CAF50', secondary: '#81C784', gradient: 'linear-gradient(135deg, #4CAF50, #81C784)',
+            },
+            cosmic: {
+                primary: '#9C27B0', secondary: '#CE93D8', gradient: 'linear-gradient(135deg, #9C27B0, #CE93D8)',
+            },
+            meditation: {
+                primary: '#FF9800', secondary: '#FFB74D', gradient: 'linear-gradient(135deg, #FF9800, #FFB74D)',
+            },
+            urban: {
+                primary: '#607D8B', secondary: '#90A4AE', gradient: 'linear-gradient(135deg, #607D8B, #90A4AE)',
+            },
+            fantasy: {
+                primary: '#E91E63', secondary: '#F48FB1', gradient: 'linear-gradient(135deg, #E91E63, #F48FB1)',
+            },
+            abstract: {
+                primary: '#00BCD4', secondary: '#80DEEA', gradient: 'linear-gradient(135deg, #00BCD4, #80DEEA)',
+            },
+            sky: {
+                primary: '#2196F3', secondary: '#64B5F6', gradient: 'linear-gradient(135deg, #2196F3, #64B5F6)',
+            },
         };
         return schemes[group] || schemes.biomes;
     }
@@ -167,6 +315,7 @@ export class ThemesTab {
 
     getThemeIcon(theme) {
         const iconUrl = resolveHubThemeThumbnailUrl(theme.id);
+        const desktopIconUrl = resolveDesktopHubThemeThumbnailUrl(theme.id);
         const fallbackEmoji = this.getThemeFallbackEmoji(theme);
 
         if (!iconUrl) {
@@ -179,6 +328,7 @@ export class ThemesTab {
                 aria-hidden="true"
                 class="theme-icon-img"
                 data-theme-icon-src="${iconUrl}"
+                data-theme-desktop-icon-src="${desktopIconUrl || ''}"
                 data-theme-icon-fallback="${fallbackEmoji}"
                 loading="lazy"
                 decoding="async"
@@ -228,9 +378,7 @@ export class ThemesTab {
                 </div>
 
                 <!-- Themes Grid -->
-                <div class="themes-grid" id="themes-grid">
-                    ${this.renderThemeCards()}
-                </div>
+                <div class="themes-grid" id="themes-grid"></div>
 
                 <!-- Random Theme Button -->
                 <div class="theme-actions">
@@ -246,6 +394,8 @@ export class ThemesTab {
                 </div>
             </div>
         `;
+
+        this.populateThemeGrid();
     }
 
     /**
@@ -268,19 +418,10 @@ export class ThemesTab {
      * @returns {Array} Filtered theme array
      */
     filterThemes() {
-        let filtered = this.selectedCategory === 'all'
-            ? this.themes
-            : this.themes.filter((t) => t.group === this.selectedCategory);
-
-        if (this.searchQuery.trim()) {
-            const q = this.searchQuery.toLowerCase();
-            filtered = filtered.filter((t) =>
-                t.displayName.toLowerCase().includes(q)
-                || (t.group && t.group.toLowerCase().includes(q))
-            );
-        }
-
-        return filtered.sort((a, b) => a.displayName.localeCompare(b.displayName));
+        const visibleThemeIds = getFilteredThemeIds(this.themes, this.selectedCategory, this.searchQuery);
+        return this.themes
+            .filter((theme) => visibleThemeIds.includes(theme.id))
+            .sort((left, right) => left.displayName.localeCompare(right.displayName));
     }
 
     /**
@@ -288,11 +429,7 @@ export class ThemesTab {
      * @returns {string} HTML for theme cards
      */
     renderThemeCards() {
-        const sortedThemes = this.filterThemes();
-
-        if (sortedThemes.length === 0) {
-            return '<div class="no-themes">No themes found</div>';
-        }
+        const sortedThemes = [...this.themes].sort((left, right) => left.displayName.localeCompare(right.displayName));
 
         return sortedThemes.map((theme) => {
             const isActive = theme.id === this.currentTheme;
@@ -315,6 +452,27 @@ export class ThemesTab {
                 </div>
             `;
         }).join('');
+    }
+
+    populateThemeGrid() {
+        const grid = this.tabContainer?.querySelector('#themes-grid') || document.getElementById('themes-grid');
+        if (!grid) {
+            return;
+        }
+
+        grid.innerHTML = `
+            ${this.renderThemeCards()}
+            <div class="no-themes" id="themes-empty-state" hidden>No themes found</div>
+        `;
+        this.themeCardElements = new Map(
+            Array.from(grid.querySelectorAll('.theme-card')).map((card) => [card.dataset.theme, card]),
+        );
+        this.emptyStateElement = grid.querySelector('#themes-empty-state');
+        const visibleThemeIds = getFilteredThemeIds(this.themes, this.selectedCategory, this.searchQuery);
+        const visibleCount = applyThemeCardFilter(Array.from(this.themeCardElements.values()), visibleThemeIds);
+        if (this.emptyStateElement) {
+            this.emptyStateElement.hidden = visibleCount !== 0;
+        }
     }
 
     /**
@@ -459,22 +617,26 @@ export class ThemesTab {
         this.tabContainer.addEventListener('click', this.tabClickHandler);
         this.iconLoadHandler = (event) => {
             const icon = event.target;
-            if (!icon?.matches?.('.theme-icon-img[data-theme-icon-src]')) {
-                return;
-            }
-
-            icon.classList.add('is-ready');
-            if (!this.hubIconsReadyRecorded) {
-                this.hubIconsReadyRecorded = true;
-                performanceMonitor.recordEvent('startup_hub_icons_ready', {
-                    tab: 'themes',
-                    themeId: icon.closest('.theme-card')?.dataset?.theme || null,
-                });
-            }
+            this.markThemeIconReady(icon);
         };
         this.iconErrorHandler = (event) => {
             const icon = event.target;
             if (!icon?.matches?.('.theme-icon-img[data-theme-icon-src]')) {
+                return;
+            }
+
+            const preferredDesktopSrc = icon.dataset.themeDesktopIconSrc;
+            const bundledSrc = icon.dataset.themeIconSrc;
+            if (icon.dataset.iconLoadSource === 'desktop'
+                && preferredDesktopSrc
+                && bundledSrc
+                && icon.dataset.iconFallbackTried !== 'true') {
+                icon.dataset.iconFallbackTried = 'true';
+                icon.dataset.iconLoadSource = 'bundled';
+                icon.addEventListener('load', this.iconLoadHandler, { once: true });
+                icon.addEventListener('error', this.iconErrorHandler, { once: true });
+                icon.src = bundledSrc;
+                this.syncThemeIconReadyState(icon);
                 return;
             }
 
@@ -489,14 +651,57 @@ export class ThemesTab {
         // Wire up search input
         const searchInput = this.tabContainer.querySelector('#themes-search-input');
         if (searchInput) {
-            this.searchInputHandler = (e) => {
-                this.searchQuery = e.target.value;
+            this.debouncedSearchHandler = debounce((value) => {
+                this.searchQuery = value;
                 this.refreshThemeGrid();
+            }, 90);
+
+            this.searchInputHandler = (e) => {
+                this.debouncedSearchHandler(e.target.value);
             };
             searchInput.addEventListener('input', this.searchInputHandler);
         }
 
         this.attachThemeParamListeners();
+    }
+
+    markThemeIconReady(icon) {
+        if (!icon?.matches?.('.theme-icon-img[data-theme-icon-src]')) {
+            return false;
+        }
+
+        icon.classList.add('is-ready');
+        this.iconReadyRecorder?.(icon);
+        if (!this.hubIconsReadyRecorded) {
+            this.hubIconsReadyRecorded = true;
+            performanceMonitor.recordEvent('startup_hub_icons_ready', {
+                tab: 'themes',
+                themeId: icon.closest('.theme-card')?.dataset?.theme || null,
+            });
+        }
+
+        return true;
+    }
+
+    syncThemeIconReadyState(icon) {
+        if (!icon?.matches?.('.theme-icon-img[data-theme-icon-src]')) {
+            return;
+        }
+
+        if (icon.complete && (Number(icon.naturalWidth) || 0) > 0) {
+            this.markThemeIconReady(icon);
+            return;
+        }
+
+        if (typeof icon.decode === 'function') {
+            icon.decode()
+                .then(() => {
+                    if ((Number(icon.naturalWidth) || 0) > 0) {
+                        this.markThemeIconReady(icon);
+                    }
+                })
+                .catch(() => {});
+        }
     }
 
     attachThemeParamListeners() {
@@ -535,51 +740,119 @@ export class ThemesTab {
     }
 
     refreshThemeGrid() {
-        const grid = this.tabContainer?.querySelector('#themes-grid') || document.getElementById('themes-grid');
-        if (!grid) {
+        const cards = Array.from(this.themeCardElements.values());
+        if (cards.length === 0) {
             return;
         }
 
-        grid.innerHTML = this.renderThemeCards();
+        const visibleThemeIds = getFilteredThemeIds(this.themes, this.selectedCategory, this.searchQuery);
+        const visibleCount = applyThemeCardFilter(cards, visibleThemeIds);
+        if (this.emptyStateElement) {
+            this.emptyStateElement.hidden = visibleCount !== 0;
+        }
         this.hydrateVisibleThemeCardIcons();
     }
 
     hydrateVisibleThemeCardIcons() {
-        const grid = this.tabContainer?.querySelector('#themes-grid') || document.getElementById('themes-grid');
-        if (!grid) {
-            return;
-        }
-
-        const icons = Array.from(grid.querySelectorAll('.theme-icon-img[data-theme-icon-src]'))
-            .filter((icon) => !icon.dataset.iconLoaded);
-
         if (this.iconObserver) {
             this.iconObserver.disconnect();
             this.iconObserver = null;
         }
 
+        const cards = Array.from(this.themeCardElements.values()).filter((card) => !card.hidden);
+        if (cards.length === 0) {
+            return;
+        }
+
+        const icons = cards
+            .flatMap((card) => Array.from(card.querySelectorAll('.theme-icon-img[data-theme-icon-src]')))
+            .filter((icon) => !icon.dataset.iconLoaded);
+
         if (icons.length === 0) {
             return;
         }
 
-        const loadIcon = (icon) => {
+        const scrollContainer = this.hub.getScrollContainer?.() || null;
+        const hydrationPlan = getThemeIconHydrationPlan(cards, { scrollContainer });
+        const immediateIconSet = new Set(hydrationPlan.immediateIcons);
+        const orderedIcons = [
+            ...hydrationPlan.immediateIcons,
+            ...hydrationPlan.deferredIcons,
+        ].filter((icon, index, array) => array.indexOf(icon) === index && !icon.dataset.iconLoaded);
+        if (orderedIcons.length === 0) {
+            return;
+        }
+
+        const loadIcon = (icon, { highPriority = false } = {}) => {
             if (!icon || icon.dataset.iconLoaded === 'true') {
                 return;
             }
 
-            const src = icon.dataset.themeIconSrc;
+            const { src, source } = resolveThemeIconHydrationSource(icon);
             if (!src) {
                 return;
             }
 
             icon.dataset.iconLoaded = 'true';
+            icon.dataset.iconLoadSource = source;
+            icon.loading = highPriority ? 'eager' : 'lazy';
+            icon.decoding = highPriority ? 'sync' : 'async';
+            icon.setAttribute('fetchpriority', highPriority ? 'high' : 'low');
             icon.addEventListener('load', this.iconLoadHandler, { once: true });
             icon.addEventListener('error', this.iconErrorHandler, { once: true });
             icon.src = src;
+            this.syncThemeIconReadyState(icon);
         };
 
-        if (typeof IntersectionObserver !== 'function') {
-            icons.slice(0, 16).forEach(loadIcon);
+        // Track icon loading performance
+        const totalIcons = orderedIcons.length;
+        let loadedCount = 0;
+        const countedIcons = new WeakSet();
+        const markStart = `theme-icons-hydrate-start-${totalIcons}`;
+        if (typeof performance?.mark === 'function') {
+            performance.mark(markStart);
+        }
+        this.iconReadyRecorder = (icon) => {
+            if (!icon || countedIcons.has(icon)) {
+                return;
+            }
+
+            countedIcons.add(icon);
+            loadedCount += 1;
+            if (loadedCount === totalIcons && typeof performance?.measure === 'function') {
+                performance.measure(`theme-icons-all-loaded (${totalIcons})`, markStart);
+            }
+        };
+
+        // In Electron packaged builds, icons are local files — load them all eagerly
+        // in small rAF batches. No network bandwidth concern, and IntersectionObserver
+        // can miss icons during the hub open animation or when scroll was misdirected.
+        // Also fallback for environments without IntersectionObserver.
+        const isElectronPackaged = Boolean(
+            globalThis.window?.desktopRuntimeConfig?.isElectron
+            && globalThis.window?.desktopRuntimeConfig?.isPackaged,
+        );
+        if (isElectronPackaged || typeof IntersectionObserver !== 'function') {
+            // Load immediate icons first (high priority), then batch the rest
+            hydrationPlan.immediateIcons.forEach((icon) => {
+                loadIcon(icon, { highPriority: true });
+            });
+            const deferred = hydrationPlan.deferredIcons.filter((icon) => !icon.dataset.iconLoaded);
+            if (deferred.length > 0) {
+                const BATCH_SIZE = 8;
+                let idx = 0;
+                const loadBatch = () => {
+                    const end = Math.min(idx + BATCH_SIZE, deferred.length);
+                    for (let i = idx; i < end; i++) {
+                        loadIcon(deferred[i]);
+                    }
+                    idx = end;
+                    if (idx < deferred.length) {
+                        requestAnimationFrame(loadBatch);
+                    }
+                };
+                requestAnimationFrame(loadBatch);
+            }
             return;
         }
 
@@ -592,17 +865,12 @@ export class ThemesTab {
                 loadIcon(entry.target);
                 observer.unobserve(entry.target);
             });
-        }, {
-            rootMargin: '180px 0px',
-            threshold: 0.01,
+        }, createThemeIconObserverOptions(scrollContainer));
+
+        hydrationPlan.immediateIcons.forEach((icon) => {
+            loadIcon(icon, { highPriority: true });
         });
-
-        icons.forEach((icon, index) => {
-            if (index < 8) {
-                loadIcon(icon);
-                return;
-            }
-
+        hydrationPlan.deferredIcons.forEach((icon) => {
             this.iconObserver.observe(icon);
         });
     }
@@ -671,7 +939,7 @@ export class ThemesTab {
         const card = this.tabContainer?.querySelector(`.theme-card[data-theme="${randomTheme.id}"]`)
             || document.querySelector(`.theme-card[data-theme="${randomTheme.id}"]`);
         if (card) {
-            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            scrollHubElementIntoView(card, { block: 'center' });
         }
     }
 
@@ -776,10 +1044,14 @@ export class ThemesTab {
         }
         this.iconLoadHandler = null;
         this.iconErrorHandler = null;
+        this.iconReadyRecorder = null;
         if (this.iconObserver) {
             this.iconObserver.disconnect();
             this.iconObserver = null;
         }
+        this.debouncedSearchHandler = null;
+        this.themeCardElements.clear();
+        this.emptyStateElement = null;
 
         this.tabContainer = null;
 

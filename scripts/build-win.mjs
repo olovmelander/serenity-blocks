@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -13,6 +13,12 @@ const iconSourcePath = process.env.SERENITY_WINDOWS_ICON_SOURCE
     ? path.resolve(projectRoot, process.env.SERENITY_WINDOWS_ICON_SOURCE)
     : defaultIconSource;
 const allowNonWindowsBuild = process.platform === 'win32' || process.env.SERENITY_ALLOW_WSL_WIN_BUILD === '1';
+const isUnsupportedWslFallback = process.platform !== 'win32' && process.env.SERENITY_ALLOW_WSL_WIN_BUILD === '1';
+
+// Code signing: To enable Windows code signing, set these environment variables:
+//   CSC_LINK=path/to/certificate.pfx
+//   CSC_KEY_PASSWORD=your_certificate_password
+// electron-builder will automatically pick them up during the packaging step.
 
 function runCommand(command, args) {
     const result = spawnSync(command, args, {
@@ -25,6 +31,27 @@ function runCommand(command, args) {
     if (result.status !== 0) {
         process.exit(result.status ?? 1);
     }
+}
+
+function runCommandAsync(command, args) {
+    return new Promise((resolve, reject) => {
+        const child = spawn(command, args, {
+            cwd: projectRoot,
+            stdio: 'inherit',
+            shell: process.platform === 'win32',
+            env: process.env,
+        });
+
+        child.on('close', (code) => {
+            if (code === 0) {
+                resolve();
+            } else {
+                reject(new Error(`${command} ${args.join(' ')} exited with code ${code}`));
+            }
+        });
+
+        child.on('error', reject);
+    });
 }
 
 function readPngDimensions(buffer) {
@@ -83,6 +110,30 @@ if (process.platform !== 'win32') {
     console.warn('[build:win] Running unsupported WSL/Wine fallback packaging path.');
 }
 
-ensureWindowsIcon();
-runCommand('vite', ['build']);
-runCommand('electron-builder', ['--win', '--x64']);
+// GPU preference launcher removed — app.commandLine.appendSwitch('force-high-performance-gpu')
+// in main.js achieves the same effect without a custom C executable.
+
+async function build() {
+    ensureWindowsIcon();
+
+    const viteDone = runCommandAsync('vite', ['build']);
+    await viteDone;
+
+    const electronBuilderArgs = ['--win', '--x64'];
+    delete process.env.SERENITY_SKIP_ELECTRON_NODE_MODULE_SCAN;
+
+    if (isUnsupportedWslFallback) {
+        console.warn(
+            '[build:win] WSL fallback will output win-unpacked only and skip Windows executable resource editing. Use native Windows `npm run build:win` for the installer build.',
+        );
+        process.env.SERENITY_SKIP_ELECTRON_NODE_MODULE_SCAN = '1';
+        electronBuilderArgs.push('--dir', '--config.win.signAndEditExecutable=false');
+    }
+
+    runCommand('electron-builder', electronBuilderArgs);
+}
+
+build().catch((error) => {
+    console.error('[build:win] Build failed:', error.message);
+    process.exit(1);
+});

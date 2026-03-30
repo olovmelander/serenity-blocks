@@ -10,6 +10,7 @@ import {
     getKeyboardNudgeStep,
     insertControlPointAfterIndex,
     moveLevelAlongPath,
+    nudgeControlPointAtIndex,
     retimeChapterBoundary,
     spreadAllChapterLevelsEvenly,
     spreadChapterLevelsEvenly,
@@ -25,6 +26,26 @@ describe('odyssey layout editor utils', () => {
         expect(getKeyboardNudgeStep(
             { altKey: true, shiftKey: true },
         )).toBeCloseTo(0.01, 6);
+    });
+
+    it('nudges a selected path control point without mutating the original array', () => {
+        const controlPoints = [
+            { x: 0, y: 0, z: 0 },
+            { x: 10, y: 20, z: -10 },
+        ];
+
+        const nudged = nudgeControlPointAtIndex(controlPoints, 1, {
+            x: 0.5,
+            y: -2,
+            z: 1.25,
+        });
+
+        expect(controlPoints[1]).toEqual({ x: 10, y: 20, z: -10 });
+        expect(nudged[1]).toEqual({
+            x: 10.5,
+            y: 18,
+            z: -8.75,
+        });
     });
 
     it('inserts a new control point midway after the selected path point', () => {
@@ -163,12 +184,14 @@ describe('odyssey layout editor utils', () => {
         expect(retimed.levelPositionsById[3]).toBeCloseTo(0.55, 6);
         expect(retimed.levelPositionsById[4]).toBeCloseTo(0.5875, 6);
         expect(retimed.levelPositionsById[5]).toBeCloseTo(0.70, 6);
+        expect(retimed.levelPositionsById[6]).toBeCloseTo(0.85, 6);
+        expect(retimed.levelPositionsById[7]).toBeCloseTo(1.00, 6);
         expect(retimed.diagnostics.compressionUsed).toBe(true);
         expect(retimed.diagnostics.compressedChapterId).toBe(2);
-        expect(retimed.diagnostics.tailRetimeUsed).toBe(false);
+        expect(retimed.diagnostics.localClampUsed).toBe(false);
     });
 
-    it('retimes downstream levels when a later drag exhausts the local chapter slack', () => {
+    it('clamps a later chapter boundary move before it can retime later chapters', () => {
         const orderedLevelIds = [1, 2, 3, 4, 5, 6, 7];
         const currentPositions = {
             1: 0.00,
@@ -211,13 +234,13 @@ describe('odyssey layout editor utils', () => {
             0.62,
         );
 
-        expect(retimed.resolvedBoundaryPosition).toBeCloseTo(0.62, 6);
-        expect(retimed.levelPositionsById[4]).toBeCloseTo(0.655, 6);
-        expect(retimed.levelPositionsById[5]).toBeCloseTo(0.76, 6);
-        expect(retimed.levelPositionsById[6]).toBeCloseTo(0.88, 6);
+        expect(retimed.resolvedBoundaryPosition).toBeCloseTo(0.56, 6);
+        expect(retimed.levelPositionsById[4]).toBeCloseTo(0.595, 6);
+        expect(retimed.levelPositionsById[5]).toBeCloseTo(0.70, 6);
+        expect(retimed.levelPositionsById[6]).toBeCloseTo(0.85, 6);
         expect(retimed.levelPositionsById[7]).toBeCloseTo(1.0, 6);
-        expect(retimed.diagnostics.tailRetimeUsed).toBe(true);
-        expect(retimed.diagnostics.tailDirection).toBe('downstream');
+        expect(retimed.diagnostics.localClampUsed).toBe(true);
+        expect(retimed.diagnostics.localClampSide).toBe('current');
     });
 
     it('moves a chapter boundary earlier by compressing the previous chapter proportionally', () => {
@@ -268,11 +291,13 @@ describe('odyssey layout editor utils', () => {
         expect(retimed.levelPositionsById[3]).toBeCloseTo(0.186667, 6);
         expect(retimed.levelPositionsById[4]).toBeCloseTo(0.28, 6);
         expect(retimed.levelPositionsById[5]).toBeCloseTo(0.45, 6);
+        expect(retimed.levelPositionsById[6]).toBeCloseTo(0.70, 6);
+        expect(retimed.levelPositionsById[7]).toBeCloseTo(1.00, 6);
         expect(retimed.diagnostics.compressedChapterId).toBe(1);
-        expect(retimed.diagnostics.tailRetimeUsed).toBe(false);
+        expect(retimed.diagnostics.localClampUsed).toBe(false);
     });
 
-    it('retimes upstream levels when an earlier drag exceeds the previous chapter slack', () => {
+    it('clamps an earlier chapter boundary move before it can retime earlier chapters', () => {
         const orderedLevelIds = [1, 2, 3, 4, 5, 6, 7];
         const currentPositions = {
             1: 0.00,
@@ -315,15 +340,16 @@ describe('odyssey layout editor utils', () => {
             0.20,
         );
 
-        expect(retimed.resolvedBoundaryPosition).toBeCloseTo(0.20, 6);
+        expect(retimed.resolvedBoundaryPosition).toBeCloseTo(0.3875, 6);
         expect(retimed.levelPositionsById[1]).toBeCloseTo(0.0, 6);
-        expect(retimed.levelPositionsById[2]).toBeCloseTo(0.0375, 6);
-        expect(retimed.levelPositionsById[3]).toBeCloseTo(0.1125, 6);
-        expect(retimed.levelPositionsById[4]).toBeCloseTo(0.1545, 6);
-        expect(retimed.levelPositionsById[5]).toBeCloseTo(0.20, 6);
+        expect(retimed.levelPositionsById[2]).toBeCloseTo(0.10, 6);
+        expect(retimed.levelPositionsById[3]).toBeCloseTo(0.30, 6);
+        expect(retimed.levelPositionsById[4]).toBeCloseTo(0.342, 6);
+        expect(retimed.levelPositionsById[5]).toBeCloseTo(0.3875, 6);
+        expect(retimed.levelPositionsById[6]).toBeCloseTo(0.72, 6);
         expect(retimed.levelPositionsById[7]).toBeCloseTo(1.0, 6);
-        expect(retimed.diagnostics.tailRetimeUsed).toBe(true);
-        expect(retimed.diagnostics.tailDirection).toBe('upstream');
+        expect(retimed.diagnostics.localClampUsed).toBe(true);
+        expect(retimed.diagnostics.localClampSide).toBe('previous');
     });
 
     it('keeps the chapter one boundary fixed at level one', () => {

@@ -84,6 +84,7 @@ describe('OdysseyBoardController wheel routing', () => {
             removeEventListener: vi.fn(),
             body: {},
             documentElement: {},
+            elementFromPoint: vi.fn(() => null),
         });
         vi.stubGlobal('getComputedStyle', vi.fn((element) => element?.__style || {
             overflowY: 'visible',

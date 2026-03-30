@@ -39,6 +39,21 @@ export function getKeyboardNudgeStep(
     return defaultStep;
 }
 
+export function nudgeControlPointAtIndex(controlPoints, index, delta = {}) {
+    const result = cloneControlPoints(controlPoints);
+    if (!Array.isArray(controlPoints) || index < 0 || index >= controlPoints.length) {
+        return result;
+    }
+
+    result[index] = {
+        x: Number(result[index].x) + (Number(delta.x) || 0),
+        y: Number(result[index].y) + (Number(delta.y) || 0),
+        z: Number(result[index].z) + (Number(delta.z) || 0),
+    };
+
+    return result;
+}
+
 export function insertControlPointAfterIndex(controlPoints, index) {
     const result = cloneControlPoints(controlPoints);
     if (!Array.isArray(controlPoints) || index < 0 || index >= (controlPoints.length - 1)) {
@@ -268,6 +283,8 @@ function createBoundaryDiagnostics({
     compressionUsed = false,
     compressedChapterId = null,
     compressionRatio = 1,
+    localClampUsed = false,
+    localClampSide = null,
     tailRetimeUsed = false,
     tailDirection = null,
     boundaryFixed = false,
@@ -280,6 +297,8 @@ function createBoundaryDiagnostics({
         compressionUsed,
         compressedChapterId,
         compressionRatio,
+        localClampUsed,
+        localClampSide,
         tailRetimeUsed,
         tailDirection,
         boundaryFixed,
@@ -374,18 +393,35 @@ export function retimeChapterBoundary(
         isCurrentTerminalChapter,
     );
 
-    const levelsBeforePreviousChapter = previousStartIndex;
-    const downstreamLevelCount = orderedLevelIds.length - currentEndIndex - 1;
-    const minimumBoundaryPosition = (levelsBeforePreviousChapter * epsilon) + previousMinimumSpan;
-    const maximumBoundaryPosition = 1 - (
-        currentMinimumSpan
-        + (Math.max(downstreamLevelCount - 1, 0) * epsilon)
-    );
+    const previousStart = Number(previousRange.startPosition);
+    const currentEnd = Number(currentRange.endPosition);
+    const minimumBoundaryPosition = previousStart + previousMinimumSpan;
+    const maximumBoundaryPosition = currentEnd - currentMinimumSpan;
+
+    if (maximumBoundaryPosition < minimumBoundaryPosition) {
+        return {
+            levelPositionsById: result,
+            resolvedBoundaryPosition: currentStart,
+            diagnostics: createBoundaryDiagnostics({
+                chapterId,
+                requestedStartPosition,
+                resolvedBoundaryPosition: currentStart,
+                localClampUsed: true,
+                localClampSide: requestedStartPosition > currentStart ? 'current' : 'previous',
+            }),
+        };
+    }
+
     const resolvedBoundaryPosition = THREE.MathUtils.clamp(
         requestedStartPosition,
         minimumBoundaryPosition,
         maximumBoundaryPosition,
     );
+    const localClampUsed = Math.abs(requestedStartPosition - resolvedBoundaryPosition) > 1e-9;
+    let localClampSide = null;
+    if (localClampUsed) {
+        localClampSide = requestedStartPosition < minimumBoundaryPosition ? 'previous' : 'current';
+    }
 
     if (Math.abs(resolvedBoundaryPosition - currentStart) <= 1e-9) {
         return {
@@ -395,13 +431,16 @@ export function retimeChapterBoundary(
                 chapterId,
                 requestedStartPosition,
                 resolvedBoundaryPosition: currentStart,
+                localClampUsed,
+                localClampSide,
             }),
         };
     }
 
+    const currentChapterSpan = Math.max(currentEnd - currentStart, Number.EPSILON);
+    const previousChapterSpan = Math.max(currentStart - previousStart, Number.EPSILON);
+
     if (resolvedBoundaryPosition > currentStart) {
-        const currentEnd = Number(currentRange.endPosition);
-        const nextCurrentEnd = Math.max(currentEnd, resolvedBoundaryPosition + currentMinimumSpan);
         scalePositionsBetweenAnchors(
             result,
             levelPositionsById,
@@ -409,18 +448,7 @@ export function retimeChapterBoundary(
             currentStart,
             currentEnd,
             resolvedBoundaryPosition,
-            nextCurrentEnd,
-        );
-
-        const downstreamLevelIds = orderedLevelIds.slice(currentEndIndex + 1);
-        scalePositionsBetweenAnchors(
-            result,
-            levelPositionsById,
-            downstreamLevelIds,
             currentEnd,
-            1,
-            nextCurrentEnd,
-            1,
         );
 
         return {
@@ -432,32 +460,20 @@ export function retimeChapterBoundary(
                 resolvedBoundaryPosition,
                 compressionUsed: true,
                 compressedChapterId: currentRange.chapterId,
-                compressionRatio: (nextCurrentEnd - resolvedBoundaryPosition) / (currentEnd - currentStart),
-                tailRetimeUsed: nextCurrentEnd > (currentEnd + 1e-9),
-                tailDirection: nextCurrentEnd > (currentEnd + 1e-9) ? 'downstream' : null,
+                compressionRatio: (currentEnd - resolvedBoundaryPosition) / currentChapterSpan,
+                localClampUsed,
+                localClampSide,
             }),
         };
     }
 
-    const previousStart = Number(previousRange.startPosition);
-    const nextPreviousStart = Math.min(previousStart, resolvedBoundaryPosition - previousMinimumSpan);
-    const upstreamLevelIds = orderedLevelIds.slice(0, previousStartIndex);
-    scalePositionsBetweenAnchors(
-        result,
-        levelPositionsById,
-        upstreamLevelIds,
-        0,
-        previousStart,
-        0,
-        nextPreviousStart,
-    );
     scalePositionsBetweenAnchors(
         result,
         levelPositionsById,
         previousChapterLevelIds,
         previousStart,
         currentStart,
-        nextPreviousStart,
+        previousStart,
         resolvedBoundaryPosition,
     );
     result[currentRange.startLevelId] = resolvedBoundaryPosition;
@@ -471,9 +487,9 @@ export function retimeChapterBoundary(
             resolvedBoundaryPosition,
             compressionUsed: true,
             compressedChapterId: previousRange.chapterId,
-            compressionRatio: (resolvedBoundaryPosition - nextPreviousStart) / (currentStart - previousStart),
-            tailRetimeUsed: nextPreviousStart < (previousStart - 1e-9),
-            tailDirection: nextPreviousStart < (previousStart - 1e-9) ? 'upstream' : null,
+            compressionRatio: (resolvedBoundaryPosition - previousStart) / previousChapterSpan,
+            localClampUsed,
+            localClampSide,
         }),
     };
 }

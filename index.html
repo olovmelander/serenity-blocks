@@ -5,6 +5,69 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Serenity Blocks</title>
+    <script>
+        (() => {
+            const detailLimit = 500;
+            const clipDetail = (value) => {
+                const text = String(value || '').trim();
+                if (!text) {
+                    return '';
+                }
+                return text.length > detailLimit ? `${text.slice(0, detailLimit)}...` : text;
+            };
+
+            const startupState = window.__serenityStartupState = window.__serenityStartupState || {
+                entryStarted: false,
+                bundleStarted: false,
+                bootstrapStarted: false,
+                failed: false,
+                statusText: 'Loading systems...',
+                detailText: '',
+            };
+
+            const updateState = (nextState) => {
+                Object.assign(startupState, nextState);
+                return startupState;
+            };
+
+            window.__serenityStartupBridge = window.__serenityStartupBridge || {
+                markEntryStarted(statusText = 'Importing main application') {
+                    return updateState({
+                        entryStarted: true,
+                        statusText,
+                        detailText: '',
+                    });
+                },
+                markBundleStarted(statusText = 'Renderer bundle started') {
+                    return updateState({
+                        bundleStarted: true,
+                        statusText,
+                        detailText: '',
+                    });
+                },
+                markBootstrapStarted(statusText = 'Bootstrapping application') {
+                    return updateState({
+                        bootstrapStarted: true,
+                        statusText,
+                        detailText: '',
+                    });
+                },
+                fail(statusText, detailText = '') {
+                    return updateState({
+                        failed: true,
+                        statusText,
+                        detailText: clipDetail(detailText),
+                    });
+                },
+                set(statusText, detailText = '') {
+                    return updateState({
+                        statusText: statusText || startupState.statusText,
+                        detailText: clipDetail(detailText),
+                    });
+                },
+            };
+        })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link
         href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap"
@@ -16,6 +79,7 @@
     <link rel="stylesheet" href="/styles/lobby-styles.css">
     <link rel="stylesheet" href="/styles/match-config-styles.css">
     <link rel="stylesheet" href="/styles/serenity-hub.css">
+    <link rel="stylesheet" href="/styles/custom-cursor.css">
 </head>
 
 <body>
@@ -1267,6 +1331,7 @@
 
     <div id="start-modal" class="modal game-mode-selection">
         <div class="game-mode-cards-container">
+            <h1 class="main-menu-logo" aria-label="Serenity Blocks">Serenity Blocks</h1>
             <div class="game-mode-card" data-mode="single" id="single-player-card-btn" tabindex="0">
                 <div class="mode-card-icon">
                     <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"
@@ -1493,7 +1558,7 @@
         </div>
     </div>
 
-    <div id="settings-modal" class="modal">
+    <div id="settings-modal" class="modal" data-wheel-lock="true">
         <div class="modal-content">
             <div class="settings-header">
                 <h1>SETTINGS</h1>
@@ -1599,6 +1664,36 @@
                             </select>
                         </div>
                         <div class="setting">
+                            <label for="custom-cursor-enabled">Cosmic Cursor:</label>
+                            <select id="custom-cursor-enabled" class="setting-select">
+                                <option value="true">On</option>
+                                <option value="false">Off</option>
+                            </select>
+                        </div>
+                        <div class="setting">
+                            <label for="custom-cursor-intensity">Cursor Intensity:</label>
+                            <select id="custom-cursor-intensity" class="setting-select">
+                                <option value="low">Low</option>
+                                <option value="standard">Standard</option>
+                                <option value="high">High</option>
+                            </select>
+                        </div>
+                        <div class="setting">
+                            <label for="custom-cursor-visibility">Cursor Visibility:</label>
+                            <select id="custom-cursor-visibility" class="setting-select">
+                                <option value="standard">Standard</option>
+                                <option value="high-visibility">High Visibility</option>
+                            </select>
+                        </div>
+                        <div class="setting">
+                            <label for="custom-cursor-motion">Cursor Motion:</label>
+                            <select id="custom-cursor-motion" class="setting-select">
+                                <option value="system">Follow System</option>
+                                <option value="off">Full Motion</option>
+                                <option value="on">Reduced Motion</option>
+                            </select>
+                        </div>
+                        <div class="setting">
                             <label for="background-tab-behavior">Background Tab Behavior:</label>
                             <select id="background-tab-behavior" class="setting-select">
                                 <option value="pause">Pause (Maximum Battery Savings)</option>
@@ -1608,6 +1703,19 @@
                             <small
                                 style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
                                 Controls rendering when browser tab is hidden. "Pause" saves the most battery/CPU.
+                            </small>
+                        </div>
+                        <div class="setting" id="desktop-devtools-setting" hidden>
+                            <label>Developer Tools:</label>
+                            <div>
+                                <button id="open-devtools-btn" class="setting-button">Open DevTools</button>
+                                <small id="open-devtools-status"
+                                    style="color: rgba(255, 255, 255, 0.72); font-size: 11px; display: block; margin-top: 6px;"
+                                    hidden></small>
+                            </div>
+                            <small
+                                style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
+                                Electron desktop only. Opens DevTools docked inside the game window.
                             </small>
                         </div>
                     </div>
@@ -2369,12 +2477,16 @@
 
     <script>
         (() => {
-            const detailLimit = 220;
-            const startupState = {
+            const detailLimit = 500;
+            const startupState = window.__serenityStartupState = window.__serenityStartupState || {
+                entryStarted: false,
                 bundleStarted: false,
                 bootstrapStarted: false,
                 failed: false,
+                statusText: 'Loading systems...',
+                detailText: '',
             };
+            const startupBridge = window.__serenityStartupBridge;
 
             const setShellText = (statusText, detailText = '') => {
                 const statusEl = document.getElementById('startup-shell-status');
@@ -2385,6 +2497,8 @@
                 if (detailEl) {
                     detailEl.textContent = detailText || '';
                 }
+                startupState.statusText = statusText || startupState.statusText;
+                startupState.detailText = detailText || '';
             };
 
             const clipDetail = (value) => {
@@ -2404,28 +2518,59 @@
             };
 
             window.__serenityStartupShell = {
+                markEntryStarted(statusText = 'Importing main application') {
+                    if (startupBridge?.markEntryStarted) {
+                        startupBridge.markEntryStarted(statusText);
+                    } else {
+                        startupState.entryStarted = true;
+                    }
+                    setShellText(startupState.statusText || statusText, startupState.detailText || '');
+                    reportPhase('renderer-entry-requested');
+                },
                 markBundleStarted(statusText = 'Renderer bundle started') {
-                    startupState.bundleStarted = true;
-                    setShellText(statusText);
+                    if (startupBridge?.markBundleStarted) {
+                        startupBridge.markBundleStarted(statusText);
+                    } else {
+                        startupState.bundleStarted = true;
+                    }
+                    setShellText(startupState.statusText || statusText, startupState.detailText || '');
                     reportPhase('renderer-bundle-started');
                 },
                 markBootstrapStarted(statusText = 'Bootstrapping application') {
-                    startupState.bootstrapStarted = true;
-                    setShellText(statusText);
+                    if (startupBridge?.markBootstrapStarted) {
+                        startupBridge.markBootstrapStarted(statusText);
+                    } else {
+                        startupState.bootstrapStarted = true;
+                    }
+                    setShellText(startupState.statusText || statusText, startupState.detailText || '');
                     reportPhase('renderer-bootstrap-started');
                 },
                 fail(statusText, detailText = '') {
-                    startupState.failed = true;
-                    setShellText(statusText, clipDetail(detailText));
+                    if (startupBridge?.fail) {
+                        startupBridge.fail(statusText, detailText);
+                    } else {
+                        startupState.failed = true;
+                        startupState.statusText = statusText;
+                        startupState.detailText = clipDetail(detailText);
+                    }
+                    setShellText(startupState.statusText || statusText, startupState.detailText || '');
                     reportPhase('startup-error', {
-                        statusText,
-                        detailText: clipDetail(detailText),
+                        statusText: startupState.statusText || statusText,
+                        detailText: startupState.detailText || clipDetail(detailText),
                     });
                 },
                 set(statusText, detailText = '') {
-                    setShellText(statusText, clipDetail(detailText));
+                    if (startupBridge?.set) {
+                        startupBridge.set(statusText, detailText);
+                    }
+                    setShellText(
+                        startupState.statusText || statusText,
+                        startupState.detailText || clipDetail(detailText),
+                    );
                 },
             };
+
+            setShellText(startupState.statusText || 'Loading systems...', startupState.detailText || '');
 
             window.addEventListener('error', (event) => {
                 const message = event?.error?.message || event?.message || 'Unknown renderer error';
@@ -2439,7 +2584,9 @@
             });
 
             window.addEventListener('DOMContentLoaded', () => {
-                setShellText('Loading renderer bundle');
+                if (!startupState.entryStarted && !startupState.bundleStarted && !startupState.failed) {
+                    window.__serenityStartupShell.set('Loading renderer bundle');
+                }
                 reportPhase('renderer-html-ready');
             });
 
@@ -2447,17 +2594,117 @@
                 if (startupState.failed || startupState.bundleStarted) {
                     return;
                 }
-                window.__serenityStartupShell.fail(
-                    'Renderer bundle did not start',
-                    'The packaged app loaded the shell, but the main renderer module never reached startup.',
+                if (!startupState.entryStarted) {
+                    window.__serenityStartupShell.fail(
+                        'Renderer entry did not start',
+                        'The packaged app loaded the shell, but the renderer entry module never began loading.',
+                    );
+                    return;
+                }
+                window.__serenityStartupShell.set(
+                    'Loading game engine',
+                    'This may take a moment on first launch.',
                 );
-            }, 8000);
+                reportPhase('renderer-bundle-still-loading');
+            }, 15000);
+
+            setTimeout(() => {
+                if (startupState.failed || startupState.bundleStarted) {
+                    return;
+                }
+                window.__serenityStartupShell.fail(
+                    'Renderer bundle startup timed out',
+                    startupState.entryStarted
+                        ? 'The renderer entry started, but the main application did not finish initializing in time.'
+                        : 'The packaged app loaded the shell, but the renderer entry module never began loading.',
+                );
+            }, 45000);
         })();
     </script>
 
-    <!-- Desktop renderer entrypoint wrapper. This catches packaged module-load failures
-         before the main application graph starts executing. -->
-    <script type="module" src="/src/entry-desktop.js"></script>
+    <!-- Desktop renderer loader. In production, resolve the hashed entry from the
+         Vite manifest and import it dynamically so startup can surface real failures
+         from the entry module graph instead of timing out behind a hidden script tag. -->
+    <script type="module">
+        (async () => {
+            const startupShell = window.__serenityStartupShell || window.__serenityStartupBridge;
+
+            async function resolveDesktopEntryUrl() {
+                const isDevServer = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+                if (isDevServer) {
+                    return { entryUrl: '/src/entry-desktop.js', manifest: null };
+                }
+
+                const manifestResponse = await fetch('./.vite/manifest.json', { cache: 'no-store' });
+                if (!manifestResponse.ok) {
+                    throw new Error(`Failed to load renderer manifest (${manifestResponse.status})`);
+                }
+
+                const manifest = await manifestResponse.json();
+                const entryRecord = manifest?.['src/entry-desktop.js'];
+                const entryFile = entryRecord?.file;
+
+                if (typeof entryFile !== 'string' || entryFile.length === 0) {
+                    throw new Error('Renderer manifest missing src/entry-desktop.js entry');
+                }
+
+                return {
+                    entryUrl: new URL(entryFile, window.location.href).href,
+                    manifest,
+                };
+            }
+
+            function preloadCriticalChunks(manifest) {
+                if (!manifest) return;
+                const seen = new Set();
+                const queue = [];
+
+                function collectImports(chunkKey) {
+                    if (seen.has(chunkKey)) return;
+                    seen.add(chunkKey);
+                    const record = manifest[chunkKey];
+                    if (!record?.file) return;
+                    queue.push(record.file);
+                    if (Array.isArray(record.imports)) {
+                        record.imports.forEach(collectImports);
+                    }
+                }
+
+                // Preload entry-desktop's static imports
+                const entryRecord = manifest['src/entry-desktop.js'];
+                if (entryRecord?.imports) {
+                    entryRecord.imports.forEach(collectImports);
+                }
+
+                // Preload main.js chunk and its transitive static imports (the dynamic import target)
+                if (entryRecord?.dynamicImports) {
+                    entryRecord.dynamicImports.forEach(collectImports);
+                }
+
+                for (const file of queue) {
+                    const link = document.createElement('link');
+                    link.rel = 'modulepreload';
+                    link.href = new URL(file, window.location.href).href;
+                    document.head.appendChild(link);
+                }
+            }
+
+            startupShell?.markEntryStarted?.('Importing main application');
+
+            try {
+                const { entryUrl, manifest } = await resolveDesktopEntryUrl();
+                preloadCriticalChunks(manifest);
+                await import(
+                    /* @vite-ignore */
+                    entryUrl
+                );
+            } catch (error) {
+                const detail = error?.stack || error?.message || String(error);
+                console.error('[StartupShell] Failed to import desktop entry:', error);
+                startupShell?.fail?.('Renderer entry import failed', detail);
+            }
+        })();
+    </script>
 
     <!-- Legacy scripts (for backward compatibility during migration) -->
     <!-- <script src="renderer.js"></script> -->

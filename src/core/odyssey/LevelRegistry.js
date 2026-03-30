@@ -484,12 +484,8 @@ export class LevelRegistry {
         this.chapters.clear();
         this.levelsByChapter.clear();
 
-        // Re-import modules (with cache busting in dev)
         try {
-            const timestamp = Date.now();
-            const levelsModule = await import(`./data/levels.js?t=${timestamp}`);
-            const chaptersModule = await import(`./data/chapters.js?t=${timestamp}`);
-            const resolvedLevels = applyOdysseyLayoutToLevels(levelsModule.LEVEL_CONFIGS, this.layoutData);
+            const resolvedLevels = applyOdysseyLayoutToLevels(LEVEL_CONFIGS, this.layoutData);
 
             // Re-index
             for (const level of resolvedLevels) {
@@ -500,7 +496,7 @@ export class LevelRegistry {
                 this.levelsByChapter.get(level.chapter).push(level);
             }
 
-            for (const chapter of chaptersModule.CHAPTER_CONFIGS) {
+            for (const chapter of CHAPTER_CONFIGS) {
                 this.chapters.set(chapter.id, chapter);
             }
 
