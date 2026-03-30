@@ -1,0 +1,15 @@
+node_modules/
+.git/
+release/
+quadra/
+synthcity1/
+three_js_example_repo/
+dist/
+build/
+*.log
+debug_output.txt
+test_output.txt
+test_output_2.txt
+.claude/
+optimization-reports/
+theme-screenshots/

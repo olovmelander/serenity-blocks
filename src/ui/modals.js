@@ -9,6 +9,7 @@ import {
     formatNumber,
     formatSeconds,
 } from './components/steam-leaderboard-panel.js';
+import { normalizeWheelDeltaToPixels } from '../utils/wheel-routing.js';
 
 /**
  * Modal manager class
@@ -731,20 +732,8 @@ export function closeSettingsModal(modalManager) {
  * Reduces hover/pointer churn while the user is actively scrolling.
  * @param {ModalManager} modalManager - Modal manager instance
  */
-function setupSettingsScrollPerformanceMode(modalManager) {
-    const settingsModal = modalManager?.modals?.settings || document.getElementById('settings-modal');
-    const scrollContainer = settingsModal?.querySelector('.settings-scroll-container');
-    if (!settingsModal || !scrollContainer) return;
-
-    settingsModal.dataset.wheelLock = 'true';
-    settingsModal.querySelector('.modal-content')?.setAttribute('data-wheel-lock', 'true');
-    scrollContainer.dataset.wheelLock = 'true';
-
-    // Guard against duplicate setup if this initializer is called again.
-    if (scrollContainer.dataset.scrollPerfSetup === 'true') return;
-    scrollContainer.dataset.scrollPerfSetup = 'true';
-
-    const scrollIdleDelay = 120;
+export function createSettingsScrollPerformanceController(settingsModal) {
+    const scrollIdleDelay = 200;
     let scrollRafId = null;
     let scrollIdleTimeout = null;
 
@@ -796,9 +785,84 @@ function setupSettingsScrollPerformanceMode(modalManager) {
         }
     };
 
-    scrollContainer.addEventListener('scroll', onSettingsScroll, { passive: true });
-    window.addEventListener('modalHidden', onModalHidden);
-    window.addEventListener('modalShown', onModalShown);
+    return {
+        onSettingsScroll,
+        onModalHidden,
+        onModalShown,
+        clearScrollPerformanceMode,
+    };
+}
+
+export function setupSettingsScrollPerformanceMode(modalManager) {
+    const settingsModal = modalManager?.modals?.settings || document.getElementById('settings-modal');
+    const scrollContainer = settingsModal?.querySelector('.settings-scroll-container');
+    if (!settingsModal || !scrollContainer) return;
+
+    settingsModal.dataset.wheelLock = 'true';
+    settingsModal.querySelector('.modal-content')?.setAttribute('data-wheel-lock', 'true');
+    scrollContainer.dataset.wheelLock = 'true';
+
+    // Guard against duplicate setup if this initializer is called again.
+    if (scrollContainer.dataset.scrollPerfSetup === 'true') return;
+    scrollContainer.dataset.scrollPerfSetup = 'true';
+
+    const controller = createSettingsScrollPerformanceController(settingsModal);
+    scrollContainer.addEventListener('scroll', controller.onSettingsScroll, { passive: true });
+    window.addEventListener('modalHidden', controller.onModalHidden);
+    window.addEventListener('modalShown', controller.onModalShown);
+
+    // Document-level capture-phase wheel listener for Electron.
+    // In Electron's Chromium compositor, event.target can resolve to the canvas
+    // beneath the settings modal. Since the modal isn't in the canvas's ancestor
+    // chain, the scroll container's native scroll never fires. This capture listener
+    // uses elementFromPoint to detect when the cursor is over the settings modal
+    // and forwards the scroll delta to the settings-scroll-container.
+    //
+    // Store the handler reference on the modal element so it can be removed if
+    // the modal is destroyed and recreated, preventing listener accumulation.
+    if (settingsModal._wheelCaptureHandler) {
+        document.removeEventListener('wheel', settingsModal._wheelCaptureHandler, { capture: true });
+    }
+
+    const captureWheelHandler = (event) => {
+        if (!settingsModal.classList.contains('visible')) return;
+
+        // Don't intercept events on <select> elements — let native dropdowns work
+        if (event.target?.closest?.('select, option')) return;
+
+        const topElement = (Number.isFinite(event.clientX) && Number.isFinite(event.clientY))
+            ? document.elementFromPoint(event.clientX, event.clientY)
+            : null;
+        if (!topElement) return;
+
+        // Don't intercept when cursor is over a <select> dropdown
+        if (topElement.closest?.('select, option')) return;
+
+        // Check if cursor is over the settings modal
+        if (!settingsModal.contains(topElement) && topElement !== settingsModal) return;
+
+        // Already handled natively when event.target is inside the modal
+        if (event.target && settingsModal.contains(event.target)) return;
+
+        const delta = normalizeWheelDeltaToPixels(event, {
+            lineHeight: 20,
+            pageHeight: scrollContainer.clientHeight || 600,
+            clampPx: null,
+        });
+        if (!delta) return;
+
+        const currentTop = Number(scrollContainer.scrollTop) || 0;
+        const maxScroll = (scrollContainer.scrollHeight || 0) - (scrollContainer.clientHeight || 0);
+        const nextTop = Math.max(0, Math.min(maxScroll, currentTop + delta));
+        if (Math.abs(nextTop - currentTop) < 0.5) return;
+
+        scrollContainer.scrollTop = nextTop;
+        event.preventDefault();
+        event.stopPropagation();
+    };
+
+    settingsModal._wheelCaptureHandler = captureWheelHandler;
+    document.addEventListener('wheel', captureWheelHandler, { capture: true, passive: false });
 }
 
 /**

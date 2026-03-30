@@ -20,7 +20,7 @@ import { InfinityHUD } from '../../ui/infinity/InfinityHUD.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import steamService from '../steam/steam-service.js';
 import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
-import { normalizeWheelDeltaToPixels, shouldCaptureWheelInput } from '../../utils/wheel-routing.js';
+import { normalizeWheelDeltaToPixels, shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
 
 /**
  * InfinityMode - Endurance mode with 1000-row vertical playfield
@@ -1701,7 +1701,7 @@ export class InfinityMode extends BaseGameMode {
     _onWheelScroll(event) {
         if (!this.gameState || this.gameState.isGameOver || !this.boardScene) return;
 
-        if (!shouldCaptureWheelInput({ target: event.target })) {
+        if (!shouldCaptureWheelEvent({ event })) {
             return;
         }
 

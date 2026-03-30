@@ -26,8 +26,9 @@ import {
     findScrollableWheelTarget as findSharedScrollableWheelTarget,
     findWheelLockTarget as findSharedWheelLockTarget,
     normalizeWheelDeltaToPixels,
-    shouldCaptureWheelInput,
+    shouldCaptureWheelEvent,
 } from '../../utils/wheel-routing.js';
+import { computeScenePixelRatio } from '../../utils/desktop-performance-policy.js';
 
 /**
  * Quality presets for the Odyssey Board
@@ -64,14 +65,18 @@ function derivePresentationLayout(levelData = [], presentationLayout = null, lay
             .map((level) => [level.id, level.pathPosition]),
     );
     const fallbackLayout = {
-        controlPoints: presentationLayout?.controlPoints || layoutOverride?.controlPoints || ODYSSEY_LAYOUT_DATA.controlPoints,
+        controlPoints: presentationLayout?.controlPoints
+            || layoutOverride?.controlPoints
+            || ODYSSEY_LAYOUT_DATA.controlPoints,
         levelPositionsById: {
             ...ODYSSEY_LAYOUT_DATA.levelPositionsById,
             ...fallbackLevelPositionsById,
         },
     };
     const sourceLayout = {
-        controlPoints: layoutOverride?.controlPoints || presentationLayout?.controlPoints || fallbackLayout.controlPoints,
+        controlPoints: layoutOverride?.controlPoints
+            || presentationLayout?.controlPoints
+            || fallbackLayout.controlPoints,
         levelPositionsById: {
             ...fallbackLayout.levelPositionsById,
             ...(presentationLayout?.levelPositionsById || {}),
@@ -141,8 +146,12 @@ export function shouldRouteOdysseyWheel({
         return false;
     }
 
-    if (!shouldCaptureWheelInput({
-        target,
+    if (!shouldCaptureWheelEvent({
+        event: {
+            target,
+            clientX,
+            clientY,
+        },
         styleResolver,
         attributeNames: ODYSSEY_WHEEL_LOCK_ATTRIBUTES,
     })) {
@@ -225,6 +234,12 @@ export class OdysseyBoardController {
         this.layoutEditor = null;
         this.presentationLayout = derivePresentationLayout();
         this.interactionAttached = false;
+        // Debounce resize to prevent F11/fullscreen freeze from sync GPU ops
+        let resizeTimer;
+        const debouncedResize = () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => this.onResize(), 150);
+        };
         this.boundHandlers = {
             mousemove: this.onMouseMove.bind(this),
             click: this.onClick.bind(this),
@@ -232,7 +247,7 @@ export class OdysseyBoardController {
             touchstart: this.onTouchStart.bind(this),
             touchmove: this.onTouchMove.bind(this),
             touchend: this.onTouchEnd.bind(this),
-            resize: this.onResize.bind(this),
+            resize: debouncedResize,
         };
 
         console.log('[OdysseyBoard] Controller created');
@@ -278,13 +293,18 @@ export class OdysseyBoardController {
         await this.environmentManager.initialize([1], {
             particleCount: this.qualityPreset.particleCount,
         });
+        await this._prewarmChapterEnvironment(1);
 
         await this._yieldToMain();
 
-        // ─── Step 3: Load chapter 2 environment ───
-        await this.environmentManager.createChapterEnvironment(2);
-
-        await this._yieldToMain();
+        // ─── Step 3: Eagerly load all chapter environments ───
+        // Trading longer init for smoother scrolling (no on-demand chapter loads during scroll)
+        const totalChapters = this.presentationLayout.chapterPositions?.length || 8;
+        for (let ch = 2; ch <= totalChapters; ch++) {
+            await this.environmentManager.createChapterEnvironment(ch);
+            await this._prewarmChapterEnvironment(ch);
+            await this._yieldToMain();
+        }
 
         // ─── Step 4: Build path ───
         this.pathRenderer = new OdysseyPathRenderer(this.scene);
@@ -298,8 +318,9 @@ export class OdysseyBoardController {
 
         // ─── Step 5: Create level nodes (55 nodes) ───
         this.nodeManager = new LevelNodeManager(this.scene, this.pathRenderer.pathCurve);
-        await this.nodeManager.createNodes(this.levelData);
-        this.nodeManager.updateFromProgress(progressData);
+        this.nodeManager.setCamera(this.camera);
+        await this.nodeManager.createNodes(this.levelData, this._yieldToMain.bind(this));
+        this.nodeManager.updateFromProgress(this.progressData);
 
         await this._yieldToMain();
 
@@ -313,6 +334,14 @@ export class OdysseyBoardController {
                 startPosition: this.presentationLayout.levelPositions[0] ?? 0,
             },
         );
+
+        // Optimization: Link camera LUT evaluator to node manager to avoid redundant spline calls
+        if (this.nodeManager && this.cameraController) {
+            this.nodeManager.setPathEvaluator((t, pos) => {
+                const { position } = this.cameraController.getPathDataAt(t, pos);
+                return position;
+            });
+        }
 
         // Connect chapter change events to camera for FOV pulse and post-processing effects
         if (this.environmentManager && this.cameraController) {
@@ -490,15 +519,19 @@ export class OdysseyBoardController {
     }
 
     initRenderer() {
+        const pixelRatio = computeScenePixelRatio({
+            renderScale: 1,
+            devicePixelRatio: window.devicePixelRatio || 1,
+            maxPixelRatio: 1.5,
+            sceneType: 'odyssey',
+        });
         this.renderer = new THREE.WebGLRenderer({
             antialias: true,
             alpha: true,
             powerPreference: 'high-performance',
         });
         this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
-        // Cap pixel ratio to 1.5 for performance — the Odyssey board doesn't
-        // need 2x DPR since it's mostly particles, paths, and glowing orbs
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        this.renderer.setPixelRatio(pixelRatio);
         this.renderer.setClearColor(0x050510, 1);
         this.container.appendChild(this.renderer.domElement);
     }
@@ -753,6 +786,10 @@ export class OdysseyBoardController {
     }
 
     onMouseMove(event) {
+        if (this.layoutEditor?.isBoardInteractionBlocked?.()) {
+            return;
+        }
+
         const rect = this.renderer.domElement.getBoundingClientRect();
         this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -762,6 +799,10 @@ export class OdysseyBoardController {
     }
 
     onClick() {
+        if (this.layoutEditor?.isBoardInteractionBlocked?.()) {
+            return;
+        }
+
         if (this.hoveredLevelId !== null) {
             this.selectLevel(this.hoveredLevelId);
         } else {
@@ -836,11 +877,18 @@ export class OdysseyBoardController {
     onResize() {
         const width = this.container.clientWidth;
         const height = this.container.clientHeight;
+        const pixelRatio = computeScenePixelRatio({
+            renderScale: 1,
+            devicePixelRatio: window.devicePixelRatio || 1,
+            maxPixelRatio: 1.5,
+            sceneType: 'odyssey',
+        });
 
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
 
         this.renderer.setSize(width, height);
+        this.renderer.setPixelRatio(pixelRatio);
 
         // Resize post-processing stack
         if (this.postProcessingStack) {
@@ -980,8 +1028,13 @@ export class OdysseyBoardController {
 
         // Update components
         this.pathRenderer?.update(delta);
-        this.nodeManager?.update(delta);
         this.cameraController?.update(delta);
+
+        // Pass camera progress to node manager for distance-based culling
+        if (this.nodeManager && this.cameraController) {
+            this.nodeManager.setCameraProgress(this.cameraController.getCurrentPosition());
+        }
+        this.nodeManager?.update(delta);
         this.layoutEditor?.update(delta);
 
         // Update chapter environments based on camera position

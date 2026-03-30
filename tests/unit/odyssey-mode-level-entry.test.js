@@ -413,6 +413,65 @@ describe('OdysseyMode level entry bootstrap', () => {
         expect(mode._startGameLoop).not.toHaveBeenCalled();
     });
 
+    it('awaits board view readiness during activation', async () => {
+        const { mode } = createMode();
+        let resolveBoardView;
+        const boardViewPromise = new Promise((resolve) => {
+            resolveBoardView = resolve;
+        });
+
+        mode._captureBoardTrack = vi.fn();
+        mode._applyBoardAudioPolicy = vi.fn().mockResolvedValue();
+        mode._showOdysseyUI = vi.fn();
+        mode._showBoardView = vi.fn().mockReturnValue(boardViewPromise);
+        mode.odysseyState.load = vi.fn();
+        mode.odysseyState.startSession = vi.fn();
+        mode.journeyEntryTransition = {};
+        mode.journeyReturnTransition = {};
+
+        let settled = false;
+        const activationPromise = mode.onActivate().then(() => {
+            settled = true;
+        });
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(mode._showBoardView).toHaveBeenCalledTimes(1);
+        expect(mode.boardViewReadyPromise).toBe(boardViewPromise);
+        expect(settled).toBe(false);
+
+        resolveBoardView(true);
+        await activationPromise;
+
+        expect(settled).toBe(true);
+        expect(mode.boardViewReadyPromise).toBeNull();
+        expect(mode.isActive).toBe(true);
+    });
+
+    it('fails activation cleanly when the Odyssey board cannot initialize', async () => {
+        const { mode } = createMode();
+        const boardError = new Error('board init failed');
+
+        mode._captureBoardTrack = vi.fn();
+        mode._applyBoardAudioPolicy = vi.fn().mockResolvedValue();
+        mode._showOdysseyUI = vi.fn();
+        mode._showBoardView = vi.fn().mockRejectedValue(boardError);
+        mode._disposeOdysseyBoard = vi.fn();
+        mode._dismissCinematicLoadingOverlay = vi.fn().mockResolvedValue();
+        mode.odysseyState.load = vi.fn();
+        mode.odysseyState.startSession = vi.fn();
+        mode.journeyEntryTransition = {};
+        mode.journeyReturnTransition = {};
+
+        await expect(mode.onActivate()).rejects.toThrow('board init failed');
+
+        expect(mode._disposeOdysseyBoard).toHaveBeenCalledTimes(1);
+        expect(mode._dismissCinematicLoadingOverlay).toHaveBeenCalledTimes(1);
+        expect(mode.boardViewReadyPromise).toBeNull();
+        expect(mode.isActive).toBe(false);
+    });
+
     it('beginLevelRun starts inputs, timer, and loop only once after preparation', async () => {
         const { mode } = createMode();
         await mode.prepareLevelStart();

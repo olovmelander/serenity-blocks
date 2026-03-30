@@ -230,6 +230,17 @@ const MAIN_MENU_PLAYER_CARD_STYLES = `
     background: #6b7280;
 }
 
+.mmpc-status-dot.connecting {
+    background: #f59e0b;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.55);
+    animation: mmpc-pulse-connecting 1.35s ease-in-out infinite;
+}
+
+@keyframes mmpc-pulse-connecting {
+    0%, 100% { box-shadow: 0 0 5px rgba(245, 158, 11, 0.4); }
+    50% { box-shadow: 0 0 10px rgba(245, 158, 11, 0.7); }
+}
+
 .mmpc-steam-icon {
     width: 12px;
     height: 12px;
@@ -336,7 +347,6 @@ class MainMenuPlayerCard {
             await this.updateFromSteam();
             await this.updateConnectionState();
             await this.updateFriendsPlaying();
-            this.startFriendsPlayingPoll();
             this.show();
         }
 
@@ -411,37 +421,37 @@ class MainMenuPlayerCard {
                 this.updateFromSteam();
                 this.updateConnectionState();
                 this.updateFriendsPlaying();
-                this.startFriendsPlayingPoll();
                 this.show();
+                this.syncFriendsPlayingPoll();
             })
         );
 
         // Listen for connection changes
         this.unsubscribers.push(
             steamService.on(STEAM_EVENTS.CONNECTED, () => {
-                this.setOnlineStatus(true);
+                this.setConnectionVisualState('connected');
                 this.updateConnectionState();
                 this.updateFriendsPlaying();
-                this.startFriendsPlayingPoll();
+                this.syncFriendsPlayingPoll();
             })
         );
 
         this.unsubscribers.push(
             steamService.on(STEAM_EVENTS.DISCONNECTED, () => {
-                this.setOnlineStatus(false);
+                this.setConnectionVisualState('offline');
                 this.updateConnectionState();
                 this.setFriendsPlayingCount(0);
-                this.stopFriendsPlayingPoll();
+                this.syncFriendsPlayingPoll();
             })
         );
 
         this.unsubscribers.push(
             steamService.on(STEAM_EVENTS.RECONNECTED, () => {
                 this.updateFromSteam();
-                this.setOnlineStatus(true);
+                this.setConnectionVisualState('connected');
                 this.updateConnectionState();
                 this.updateFriendsPlaying();
-                this.startFriendsPlayingPoll();
+                this.syncFriendsPlayingPoll();
             })
         );
 
@@ -451,7 +461,7 @@ class MainMenuPlayerCard {
                 this.setOfflineMode();
                 this.updateConnectionState();
                 this.setFriendsPlayingCount(0);
-                this.stopFriendsPlayingPoll();
+                this.syncFriendsPlayingPoll();
                 this.show();
             })
         );
@@ -513,8 +523,11 @@ class MainMenuPlayerCard {
         // Update name
         this.nameElement.textContent = status.playerName || 'Player';
 
-        // Update online status
-        this.setOnlineStatus(status.isOnline);
+        this.setConnectionVisualState(
+            steamService.getConnectionState
+                ? steamService.getConnectionState()
+                : (status.isOnline ? 'connected' : 'offline')
+        );
 
         // Load avatar
         await this.loadAvatar(status.steamId, status.playerName);
@@ -534,6 +547,7 @@ class MainMenuPlayerCard {
         const queuedActions = Number(status?.queuedActions || 0);
         const queueNote = queuedActions > 0 ? ` • ${queuedActions} queued` : '';
 
+        this.setConnectionVisualState(state);
         this.statePill.classList.remove('visible', 'partial', 'offline');
         this.retryButton.classList.remove('visible');
 
@@ -548,6 +562,10 @@ class MainMenuPlayerCard {
             this.statePill.title = missing.length
                 ? `Steam API missing: ${missing.join(', ')}${queueNote}`
                 : `Steam API limited${queueNote}`;
+        } else if (state === 'connecting') {
+            this.statePill.textContent = 'Connecting';
+            this.statePill.classList.add('visible');
+            this.statePill.title = 'Connecting to Steam';
         } else if (state === 'offline' || state === 'no_steam') {
             this.statePill.textContent = 'Offline';
             this.statePill.classList.add('visible', 'offline');
@@ -605,6 +623,20 @@ class MainMenuPlayerCard {
         }, 60000);
     }
 
+    shouldPollFriendsPlaying() {
+        const capabilities = steamService.getCapabilities ? steamService.getCapabilities() : {};
+        return this.isVisible && steamService.isOnline && capabilities.friends !== false;
+    }
+
+    syncFriendsPlayingPoll() {
+        if (this.shouldPollFriendsPlaying()) {
+            this.startFriendsPlayingPoll();
+            return;
+        }
+
+        this.stopFriendsPlayingPoll();
+    }
+
     /**
      * Stop polling friends playing count
      */
@@ -654,9 +686,23 @@ class MainMenuPlayerCard {
      * Set online/offline status display
      */
     setOnlineStatus(isOnline) {
-        this.statusDot.classList.toggle('online', isOnline);
-        this.statusDot.classList.toggle('offline', !isOnline);
-        this.statusText.textContent = isOnline ? 'Online' : 'Offline';
+        this.setConnectionVisualState(isOnline ? 'connected' : 'offline');
+    }
+
+    setConnectionVisualState(state) {
+        const normalizedState = state || 'offline';
+        this.statusDot.classList.toggle('online', normalizedState === 'connected' || normalizedState === 'partial');
+        this.statusDot.classList.toggle('connecting', normalizedState === 'connecting');
+        this.statusDot.classList.toggle('offline', normalizedState === 'offline' || normalizedState === 'no_steam');
+
+        if (normalizedState === 'connecting') {
+            this.statusText.textContent = 'Connecting';
+            return;
+        }
+
+        this.statusText.textContent = normalizedState === 'connected' || normalizedState === 'partial'
+            ? 'Online'
+            : 'Offline';
     }
 
     /**
@@ -687,6 +733,8 @@ class MainMenuPlayerCard {
     show() {
         if (this.isVisible) return;
         this.isVisible = true;
+        void this.updateFriendsPlaying();
+        this.syncFriendsPlayingPoll();
         // Use requestAnimationFrame for smooth animation
         requestAnimationFrame(() => {
             this.element.classList.add('visible');
@@ -699,6 +747,7 @@ class MainMenuPlayerCard {
     hide() {
         if (!this.isVisible) return;
         this.isVisible = false;
+        this.syncFriendsPlayingPoll();
         this.element.classList.remove('visible');
     }
 

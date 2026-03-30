@@ -142,6 +142,53 @@ describe('OdysseyCameraController path travel', () => {
         expect(controller.isAnimating).toBe(false);
     });
 
+    it('supports free camera fly navigation and returns to the in-game path view', () => {
+        const controller = createController();
+        controller.setCurrentPosition(0.18);
+        controller.updateFollowPosition({ direct: true });
+
+        const followStart = controller.camera.position.clone();
+        const followProgress = controller.getCurrentPosition();
+
+        controller.setFreeMode(true);
+        expect(controller.isFreeMode()).toBe(true);
+
+        controller.applyFreeLookDelta(80, -40);
+        controller.moveFreeCamera(new THREE.Vector3(4, 8, 24));
+
+        expect(controller.camera.position.distanceTo(followStart)).toBeGreaterThan(10);
+        expect(controller.getCurrentPosition()).not.toBeCloseTo(followProgress, 4);
+
+        controller.setFollowMode();
+        const expectedFrame = controller.computeFollowFrame(controller.getCurrentPosition());
+
+        expect(controller.isFreeMode()).toBe(false);
+        expect(controller.camera.position.distanceTo(expectedFrame.camPos)).toBeLessThan(1e-6);
+        expect(controller.lookAtTarget.distanceTo(expectedFrame.lookTarget)).toBeLessThan(1e-6);
+    });
+
+    it('keeps keyboard yaw upright during repeated free camera turns', () => {
+        const controller = createController();
+        controller.setCurrentPosition(0.18);
+        controller.updateFollowPosition({ direct: true });
+        controller.setFreeMode(true);
+
+        controller.rotateFreeCamera(0, 0.55);
+        const positionBeforeYaw = controller.camera.position.clone();
+        const upBeforeYaw = controller.freeCameraUp.clone();
+        const worldUp = new THREE.Vector3(0, 1, 0);
+
+        for (let index = 0; index < 200; index += 1) {
+            controller.rotateFreeCamera(controller.config.freeCamera.keyboardRotateSpeed * 0.05, 0);
+        }
+        controller.update(1 / 60);
+
+        expect(controller.camera.position.distanceTo(positionBeforeYaw)).toBeLessThan(1e-6);
+        expect(controller.freeCameraUp.angleTo(upBeforeYaw)).toBeLessThan(1e-6);
+        expect(controller.camera.up.angleTo(worldUp)).toBeLessThan(1e-6);
+        expect(controller.camera.quaternion.angleTo(controller.freeCameraQuaternion)).toBeLessThan(1e-6);
+    });
+
     it('keeps the starting level in frame when the board first opens', () => {
         const { controller, registry, layout } = createRealPathController();
         controller.setCurrentPosition(layout.levelPositions[0] ?? 0);

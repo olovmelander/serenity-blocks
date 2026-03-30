@@ -5,6 +5,7 @@
 
 import { DEFAULT_SETTINGS } from '../core/constants.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
+import { normalizeCursorSettings } from './components/custom-cursor.js';
 
 const DEFAULT_CONFIG = {
     gameMode: 'single',
@@ -25,6 +26,10 @@ const DEFAULT_CONFIG = {
     comboPopupEffect: true,
     lineClearEffects: true,
     backgroundComboEffects: true,
+    customCursorEnabled: true,
+    customCursorIntensity: 'standard',
+    customCursorVisibilityPreset: 'standard',
+    customCursorReducedMotion: 'system',
     tornadoThemeParams: {
         emissiveColor: '#ff8a3b',
         timeScale: 1.0,
@@ -197,13 +202,21 @@ const SERENITY_KEYBOARD_DEFAULTS = [
     'Mouse / Click',
 ];
 
+function applyCursorSettingDefaults(settings) {
+    return {
+        ...settings,
+        ...normalizeCursorSettings(settings),
+    };
+}
+
 /**
  * Settings manager class
  */
 export class SettingsManager {
     constructor() {
-        this.settings = { ...DEFAULT_CONFIG };
+        this.settings = applyCursorSettingDefaults({ ...DEFAULT_CONFIG });
         this.STORAGE_KEY = 'serenityBlocksSettings';
+        this.didLoadFromStorage = false;
     }
 
     /**
@@ -241,6 +254,8 @@ export class SettingsManager {
         } else {
             this.settings.player2KeyBindings = sanitizePlayer2KeyBindings(this.settings.player2KeyBindings);
         }
+
+        this.settings = applyCursorSettingDefaults(this.settings);
 
         // Emit settings changed event
         if (emit && typeof window !== 'undefined') {
@@ -293,6 +308,7 @@ export class SettingsManager {
      * @returns {Object} Loaded settings
      */
     load() {
+        this.didLoadFromStorage = false;
         try {
             const saved = localStorage.getItem(this.STORAGE_KEY);
             if (saved) {
@@ -307,6 +323,7 @@ export class SettingsManager {
                     ...DEFAULT_CONFIG.player2KeyBindings,
                     ...loadedP2KeyBindings,
                 });
+                const sanitizedCursorSettings = normalizeCursorSettings(loaded);
 
                 this.settings = {
                     ...DEFAULT_CONFIG,
@@ -314,10 +331,18 @@ export class SettingsManager {
                     keyBindings: sanitizedKeyBindings,
                     player2KeyBindings: sanitizedP2KeyBindings,
                 };
+                this.settings = applyCursorSettingDefaults(this.settings);
+                this.didLoadFromStorage = true;
 
                 const keyBindingsChanged = JSON.stringify(loadedKeyBindings) !== JSON.stringify(sanitizedKeyBindings);
                 const player2BindingsChanged = JSON.stringify(loadedP2KeyBindings) !== JSON.stringify(sanitizedP2KeyBindings);
-                if (keyBindingsChanged || player2BindingsChanged) {
+                const cursorSettingsChanged = (
+                    loaded.customCursorEnabled !== sanitizedCursorSettings.customCursorEnabled
+                    || loaded.customCursorIntensity !== sanitizedCursorSettings.customCursorIntensity
+                    || loaded.customCursorVisibilityPreset !== sanitizedCursorSettings.customCursorVisibilityPreset
+                    || loaded.customCursorReducedMotion !== sanitizedCursorSettings.customCursorReducedMotion
+                );
+                if (keyBindingsChanged || player2BindingsChanged || cursorSettingsChanged) {
                     this.save({ emitEvent: false });
                 }
             }
@@ -328,10 +353,18 @@ export class SettingsManager {
     }
 
     /**
+     * Check whether a prior settings payload existed in storage during the most recent load.
+     * @returns {boolean}
+     */
+    hasPersistedSettings() {
+        return this.didLoadFromStorage;
+    }
+
+    /**
      * Resets settings to defaults
      */
     reset() {
-        this.settings = { ...DEFAULT_CONFIG };
+        this.settings = applyCursorSettingDefaults({ ...DEFAULT_CONFIG });
         this.save();
     }
 
@@ -573,6 +606,23 @@ export function updateGamepadControlsDisplay(settings) {
 /**
  * Sets up settings tab switching
  */
+export function activateSettingsTab(settingsModal, targetTab) {
+    if (!settingsModal || !targetTab) {
+        return false;
+    }
+
+    const tab = settingsModal.querySelector(`.settings-tab[data-tab="${targetTab}"]`);
+    if (!tab || tab.classList.contains('active')) {
+        return false;
+    }
+
+    settingsModal.querySelectorAll('.settings-tab').forEach((item) => item.classList.remove('active'));
+    settingsModal.querySelectorAll('.settings-tab-content').forEach((item) => item.classList.remove('active'));
+    tab.classList.add('active');
+    settingsModal.querySelector(`#settings-${targetTab}`)?.classList.add('active');
+    return true;
+}
+
 export function setupSettingsTabs() {
     const tabsContainer = document.querySelector('#settings-modal .settings-tabs');
     if (!tabsContainer) return;
@@ -587,20 +637,32 @@ export function setupSettingsTabs() {
 
         const targetTab = tab.getAttribute('data-tab');
         if (!targetTab) return;
-        if (tab.classList.contains('active')) return;
 
         const settingsModal = document.getElementById('settings-modal');
-        settingsModal?.querySelectorAll('.settings-tab').forEach((t) => t.classList.remove('active'));
-        settingsModal?.querySelectorAll('.settings-tab-content').forEach((c) => c.classList.remove('active'));
-
-        tab.classList.add('active');
-        settingsModal?.querySelector(`#settings-${targetTab}`)?.classList.add('active');
+        activateSettingsTab(settingsModal, targetTab);
     });
 }
 
 /**
  * Sets up controls sub-tab switching
  */
+export function activateControlsSubtab(controlsTab, targetSubtab) {
+    if (!controlsTab || !targetSubtab) {
+        return false;
+    }
+
+    const subtab = controlsTab.querySelector(`.controls-subtab[data-subtab="${targetSubtab}"]`);
+    if (!subtab || subtab.classList.contains('active')) {
+        return false;
+    }
+
+    controlsTab.querySelectorAll('.controls-subtab').forEach((item) => item.classList.remove('active'));
+    controlsTab.querySelectorAll('.controls-subtab-content').forEach((item) => item.classList.remove('active'));
+    subtab.classList.add('active');
+    controlsTab.querySelector(`#controls-${targetSubtab}`)?.classList.add('active');
+    return true;
+}
+
 export function setupControlsSubTabs() {
     const controlsNav = document.querySelector('#settings-modal .controls-nav');
     if (!controlsNav) return;
@@ -615,14 +677,9 @@ export function setupControlsSubTabs() {
 
         const targetSubtab = subtab.getAttribute('data-subtab');
         if (!targetSubtab) return;
-        if (subtab.classList.contains('active')) return;
 
         const controlsTab = document.getElementById('settings-controls');
-        controlsTab?.querySelectorAll('.controls-subtab').forEach((t) => t.classList.remove('active'));
-        controlsTab?.querySelectorAll('.controls-subtab-content').forEach((c) => c.classList.remove('active'));
-
-        subtab.classList.add('active');
-        controlsTab?.querySelector(`#controls-${targetSubtab}`)?.classList.add('active');
+        activateControlsSubtab(controlsTab, targetSubtab);
     });
 }
 
@@ -1079,6 +1136,54 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     }
 
+    const customCursorEnabledSelect = document.getElementById('custom-cursor-enabled');
+    const customCursorIntensitySelect = document.getElementById('custom-cursor-intensity');
+    const customCursorVisibilitySelect = document.getElementById('custom-cursor-visibility');
+    const customCursorMotionSelect = document.getElementById('custom-cursor-motion');
+
+    const syncCustomCursorControlAvailability = (enabled) => {
+        [customCursorIntensitySelect, customCursorVisibilitySelect, customCursorMotionSelect].forEach((control) => {
+            if (!control) return;
+            control.disabled = !enabled;
+        });
+    };
+
+    if (customCursorEnabledSelect) {
+        customCursorEnabledSelect.value = String(settings.customCursorEnabled ?? true);
+        syncCustomCursorControlAvailability(customCursorEnabledSelect.value === 'true');
+
+        customCursorEnabledSelect.addEventListener('change', (e) => {
+            const enabled = e.target.value === 'true';
+            settingsManager.update({ customCursorEnabled: enabled });
+            settingsManager.save();
+            syncCustomCursorControlAvailability(enabled);
+        });
+    }
+
+    if (customCursorIntensitySelect) {
+        customCursorIntensitySelect.value = settings.customCursorIntensity || 'standard';
+        customCursorIntensitySelect.addEventListener('change', (e) => {
+            settingsManager.update({ customCursorIntensity: e.target.value });
+            settingsManager.save();
+        });
+    }
+
+    if (customCursorVisibilitySelect) {
+        customCursorVisibilitySelect.value = settings.customCursorVisibilityPreset || 'standard';
+        customCursorVisibilitySelect.addEventListener('change', (e) => {
+            settingsManager.update({ customCursorVisibilityPreset: e.target.value });
+            settingsManager.save();
+        });
+    }
+
+    if (customCursorMotionSelect) {
+        customCursorMotionSelect.value = settings.customCursorReducedMotion || 'system';
+        customCursorMotionSelect.addEventListener('change', (e) => {
+            settingsManager.update({ customCursorReducedMotion: e.target.value });
+            settingsManager.save();
+        });
+    }
+
     // Render quality slider (controls background theme render resolution)
     const renderQualitySlider = document.getElementById('render-quality');
     const renderQualityValue = document.getElementById('render-quality-value');
@@ -1134,6 +1239,236 @@ export function initializeSettingsUI(settingsManager, callbacks) {
                 callbacks.onBackgroundTabBehaviorChange(behavior);
             }
         });
+    }
+
+    const desktopDevToolsSetting = document.getElementById('desktop-devtools-setting');
+    const openDevToolsBtn = document.getElementById('open-devtools-btn');
+    const openDevToolsStatus = document.getElementById('open-devtools-status');
+    const openDesktopDebugTool = window.electronAPI?.openRendererDebugger || window.electronAPI?.openDevTools;
+    if (desktopDevToolsSetting && openDevToolsBtn && openDesktopDebugTool) {
+        const DEVTOOLS_BUTTON_TIMEOUT_MS = 5000;
+        let pendingDevToolsRequestId = null;
+        let pendingDevToolsTimeoutId = null;
+        let remoteDebuggingUrl = null;
+        let usesExternalDebugger = false;
+
+        const getPrimaryButtonLabel = () => (
+            usesExternalDebugger ? 'Open Renderer Debugger' : 'Open DevTools'
+        );
+
+        const setStatus = (message, tone = 'info') => {
+            if (!openDevToolsStatus) {
+                return;
+            }
+
+            openDevToolsStatus.hidden = !message;
+            openDevToolsStatus.textContent = message || '';
+
+            if (tone === 'error') {
+                openDevToolsStatus.style.color = 'rgba(255, 120, 120, 0.92)';
+            } else if (tone === 'success') {
+                openDevToolsStatus.style.color = 'rgba(120, 255, 185, 0.92)';
+            } else {
+                openDevToolsStatus.style.color = 'rgba(255, 255, 255, 0.72)';
+            }
+        };
+
+        const clearPendingDevToolsRequest = () => {
+            if (pendingDevToolsTimeoutId !== null) {
+                clearTimeout(pendingDevToolsTimeoutId);
+                pendingDevToolsTimeoutId = null;
+            }
+            pendingDevToolsRequestId = null;
+        };
+
+        const queueButtonReset = (delayMs = 1800) => {
+            window.setTimeout(() => {
+                openDevToolsBtn.disabled = false;
+                openDevToolsBtn.textContent = getPrimaryButtonLabel();
+            }, delayMs);
+        };
+
+        const applyDiagnosticsSnapshot = (diagnostics) => {
+            if (diagnostics?.remoteDebuggingUrl) {
+                remoteDebuggingUrl = diagnostics.remoteDebuggingUrl;
+            }
+            if (diagnostics?.debugToolsStatus?.packagedExternalDebugger) {
+                usesExternalDebugger = true;
+                openDevToolsBtn.textContent = getPrimaryButtonLabel();
+            }
+            return diagnostics;
+        };
+
+        const formatFailureMessage = (payload = {}, diagnostics = null) => {
+            const logPath = payload.logPath || diagnostics?.logPath || null;
+            const failureKind = payload.failureKind || 'error';
+            let message = usesExternalDebugger
+                ? 'Renderer debugger open failed.'
+                : 'DevTools open failed.';
+
+            if (failureKind === 'timeout') {
+                message = usesExternalDebugger
+                    ? 'Renderer debugger did not report a successful launch before the timeout.'
+                    : 'DevTools did not report a successful open before the timeout.';
+            } else if (failureKind === 'closed-before-open') {
+                message = 'DevTools closed before the open request completed.';
+            } else if (payload.errorMessage) {
+                message = `${usesExternalDebugger ? 'Renderer debugger' : 'DevTools'} open failed: ${payload.errorMessage}`;
+            }
+
+            const lastEntry = diagnostics?.entries?.[diagnostics.entries.length - 1];
+            const lastEntryHint = lastEntry?.type ? ` Last event: ${lastEntry.type}.` : '';
+            const logHint = logPath ? ` See ${logPath}.` : '';
+            const remoteHint = remoteDebuggingUrl
+                ? ` Renderer debugger base URL: ${remoteDebuggingUrl}.`
+                : '';
+
+            return `${message}${lastEntryHint}${logHint}${remoteHint}`;
+        };
+
+        desktopDevToolsSetting.hidden = false;
+        Promise.all([
+            window.electronAPI.getDevToolsDiagnostics?.(),
+            window.electronAPI.getDebugToolsStatus?.(),
+        ]).then(([diagnostics, debugToolsStatus]) => {
+            applyDiagnosticsSnapshot({
+                ...diagnostics,
+                debugToolsStatus: debugToolsStatus || diagnostics?.debugToolsStatus,
+            });
+            if (debugToolsStatus?.packagedExternalDebugger) {
+                usesExternalDebugger = true;
+                openDevToolsBtn.textContent = getPrimaryButtonLabel();
+            }
+            if (remoteDebuggingUrl) {
+                setStatus(
+                    usesExternalDebugger
+                        ? `Renderer debugger available at ${remoteDebuggingUrl}.`
+                        : `Remote inspector available at ${remoteDebuggingUrl}.`,
+                    'info',
+                );
+            }
+        }).catch((error) => {
+            console.warn('[Settings] Failed to load DevTools diagnostics:', error);
+        });
+
+        if (!openDevToolsBtn.dataset.devtoolsBound) {
+            openDevToolsBtn.dataset.devtoolsBound = 'true';
+
+            window.electronAPI.onRuntimeEvent?.(async (payload) => {
+                if (!payload?.type || payload.requestId !== pendingDevToolsRequestId) {
+                    return;
+                }
+
+                if (payload.type === 'devtools-opened') {
+                    clearPendingDevToolsRequest();
+                    openDevToolsBtn.textContent = payload.alreadyOpen
+                        ? 'Already Open'
+                        : (payload.external || usesExternalDebugger ? 'Debugger Opened' : 'DevTools Open');
+                    setStatus(
+                        payload.external || usesExternalDebugger
+                            ? `Renderer debugger opened. ${payload.debuggerUrl || remoteDebuggingUrl || ''}`.trim()
+                            : (
+                                remoteDebuggingUrl
+                                    ? `DevTools opened. Remote inspector available at ${remoteDebuggingUrl}.`
+                                    : 'DevTools opened.'
+                            ),
+                        'success',
+                    );
+                    queueButtonReset();
+                    return;
+                }
+
+                if (payload.type === 'devtools-open-failed') {
+                    clearPendingDevToolsRequest();
+                    openDevToolsBtn.textContent = payload.failureKind === 'timeout' ? 'Timed Out' : 'Open Failed';
+
+                    try {
+                        const diagnostics = applyDiagnosticsSnapshot(
+                            await window.electronAPI.getDevToolsDiagnostics?.(),
+                        );
+                        setStatus(formatFailureMessage(payload, diagnostics), 'error');
+                    } catch (error) {
+                        setStatus(formatFailureMessage(payload), 'error');
+                    }
+
+                    queueButtonReset(2200);
+                }
+            });
+
+            openDevToolsBtn.addEventListener('click', async () => {
+                clearPendingDevToolsRequest();
+                openDevToolsBtn.disabled = true;
+                openDevToolsBtn.textContent = usesExternalDebugger ? 'Opening Debugger...' : 'Opening...';
+                setStatus(
+                    usesExternalDebugger
+                        ? 'Request accepted. Waiting for the external renderer debugger to launch...'
+                        : 'Request accepted. Waiting for the main process to report the result...',
+                    'info',
+                );
+
+                try {
+                    const result = await openDesktopDebugTool();
+                    if (!result?.accepted || !result?.requestId) {
+                        throw new Error('Main process did not accept the DevTools request.');
+                    }
+
+                    pendingDevToolsRequestId = result.requestId;
+                    if (result.alreadyOpen) {
+                        clearPendingDevToolsRequest();
+                        openDevToolsBtn.textContent = 'Already Open';
+                        setStatus(
+                            remoteDebuggingUrl
+                                ? `DevTools already open. Remote inspector available at ${remoteDebuggingUrl}.`
+                                : 'DevTools already open.',
+                            'success',
+                        );
+                        queueButtonReset();
+                        return;
+                    }
+
+                    pendingDevToolsTimeoutId = window.setTimeout(async () => {
+                        if (pendingDevToolsRequestId !== result.requestId) {
+                            return;
+                        }
+
+                        clearPendingDevToolsRequest();
+                        openDevToolsBtn.textContent = 'Timed Out';
+
+                        try {
+                            const diagnostics = applyDiagnosticsSnapshot(
+                                await window.electronAPI.getDevToolsDiagnostics?.(),
+                            );
+                            setStatus(formatFailureMessage({ failureKind: 'timeout' }, diagnostics), 'error');
+                        } catch (error) {
+                            setStatus(formatFailureMessage({ failureKind: 'timeout' }), 'error');
+                        }
+
+                        queueButtonReset(2200);
+                    }, DEVTOOLS_BUTTON_TIMEOUT_MS);
+                } catch (error) {
+                    clearPendingDevToolsRequest();
+                    console.error('[Settings] Error opening DevTools:', error);
+                    openDevToolsBtn.textContent = 'Open Failed';
+
+                    try {
+                        const diagnostics = applyDiagnosticsSnapshot(
+                            await window.electronAPI.getDevToolsDiagnostics?.(),
+                        );
+                        setStatus(
+                            formatFailureMessage({ failureKind: 'error', errorMessage: error.message }, diagnostics),
+                            'error',
+                        );
+                    } catch (diagnosticsError) {
+                        setStatus(
+                            formatFailureMessage({ failureKind: 'error', errorMessage: error.message }),
+                            'error',
+                        );
+                    }
+
+                    queueButtonReset(2200);
+                }
+            });
+        }
     }
 
     // Gamepad deadzone slider

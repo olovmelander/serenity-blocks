@@ -53,6 +53,7 @@ import {
 } from '../../ui/components/steam-leaderboard-panel.js';
 import { showCinematicLoadingOverlay, dismissCinematicLoadingOverlay } from '../../ui/cinematic-loading-overlay.js';
 import { getOdysseyThemePresentationPalette } from '../odyssey/theme-presentation.js';
+import { shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
 
 function isOdysseyLayoutEditorEnabled() {
     if (!import.meta.env.DEV || typeof window === 'undefined') {
@@ -149,6 +150,7 @@ export class OdysseyMode extends BaseGameMode {
         this.odysseyNavigatorButtonHandlersBound = false;
         this.boardReturnFallbackVeil = null;
         this.boardReturnFallbackVeilTimer = null;
+        this.boardViewReadyPromise = null;
     }
 
     /**
@@ -277,7 +279,22 @@ export class OdysseyMode extends BaseGameMode {
 
         // Default to board view (level selection)
         this.isInBoardView = true;
-        this._showBoardView();
+        try {
+            this.boardViewReadyPromise = this._showBoardView();
+            await this.boardViewReadyPromise;
+        } catch (error) {
+            console.error('[Odyssey] Failed to prepare board view:', error);
+            this.isActive = false;
+            this._disposeOdysseyBoard();
+            try {
+                await this._dismissCinematicLoadingOverlay();
+            } catch {
+                // Ignore overlay cleanup failures while surfacing the original startup error.
+            }
+            throw error;
+        } finally {
+            this.boardViewReadyPromise = null;
+        }
 
         // Expose for console testing: window.testOdysseyLevel(3) to test level 3
         window.testOdysseyLevel = (levelId) => {
@@ -3212,6 +3229,7 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _disposeOdysseyBoard() {
+        this.boardViewReadyPromise = null;
         if (this.boardController) {
             this.boardController.dispose();
             this.boardController = null;
@@ -4907,6 +4925,10 @@ export class OdysseyMode extends BaseGameMode {
     _onWheel(event) {
         if (!this.boardScene) return;
         if (!this.gameState?.isPaused) return;
+
+        // Don't capture wheel when an overlay (hub, settings) is above the game canvas.
+        // Uses elementFromPoint to handle Electron compositor hit-testing differences.
+        if (!shouldCaptureWheelEvent({ event })) return;
 
         event.preventDefault();
 

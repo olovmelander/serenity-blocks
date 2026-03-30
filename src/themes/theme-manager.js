@@ -29,6 +29,35 @@ function withTimeout(promise, ms, label) {
     ]).finally(() => clearTimeout(timer));
 }
 
+export function resolveThemeStartupPolicy(runtimeConfig = null, {
+    startupComplete = false,
+} = {}) {
+    const isPackagedWindows = runtimeConfig?.platform === 'win32' && runtimeConfig?.isPackaged;
+    const isSafeMode = isPackagedWindows && runtimeConfig?.safeMode === true;
+
+    if (isSafeMode) {
+        return {
+            maxCachedThemes: 1,
+            deferAdjacentThemePreload: true,
+            preserveSuspendedRuntime: false,
+        };
+    }
+
+    if (isPackagedWindows && !startupComplete) {
+        return {
+            maxCachedThemes: 1,
+            deferAdjacentThemePreload: true,
+            preserveSuspendedRuntime: false,
+        };
+    }
+
+    return {
+        maxCachedThemes: 2,
+        deferAdjacentThemePreload: !startupComplete,
+        preserveSuspendedRuntime: true,
+    };
+}
+
 /**
  * ThemeManager handles theme loading, switching, and lifecycle
  */
@@ -48,18 +77,21 @@ export class ThemeManager {
         this.themesSuspended = true;
         this.pendingThemeName = null;
         this.pendingThemeInstance = null;
+        this.startupPhaseComplete = false;
         this.deferAdjacentThemePreload = true;
         this.pendingAdjacentThemePreload = false;
         this.adjacentThemePreloadTimer = null;
         this.adjacentThemePreloadIdleId = null;
         this.runtimeConfig = runtimeConfig;
-
-        const isPackagedWindows = this.runtimeConfig?.platform === 'win32' && this.runtimeConfig?.isPackaged;
-        const isBaselineProfile = isPackagedWindows && this.runtimeConfig?.windowsProfile === 'baseline';
-        const isSafeMode = isPackagedWindows && this.runtimeConfig?.safeMode;
+        this.allowSuspendedRuntimeReuse = true;
 
         // LRU cache management
-        this.maxCachedThemes = isSafeMode ? 1 : (isBaselineProfile ? 2 : 5);
+        const startupPolicy = resolveThemeStartupPolicy(this.runtimeConfig, {
+            startupComplete: false,
+        });
+        this.maxCachedThemes = startupPolicy.maxCachedThemes;
+        this.deferAdjacentThemePreload = startupPolicy.deferAdjacentThemePreload;
+        this.allowSuspendedRuntimeReuse = startupPolicy.preserveSuspendedRuntime;
         this.themeLRU = []; // Track theme access order (oldest to newest)
 
         // Theme shuffle deck for better random distribution
@@ -135,6 +167,31 @@ export class ThemeManager {
         this.themeLRU.push(themeName);
     }
 
+    isHeavyGpuTheme(themeName) {
+        return getThemeMeta(themeName)?.performanceClass === 'heavy';
+    }
+
+    isStartupEligibleTheme(themeName) {
+        return getThemeMeta(themeName)?.startupEligible !== false;
+    }
+
+    deactivateThemeRuntime(themeInstance, themeName) {
+        if (!themeInstance) {
+            return;
+        }
+
+        if (this.isHeavyGpuTheme(themeName) && typeof themeInstance.releaseInactiveResources === 'function') {
+            themeInstance.releaseInactiveResources();
+        } else {
+            themeInstance.stop();
+        }
+
+        if (this.webglRenderer && typeof this.webglRenderer.clearThemeResources === 'function') {
+            console.log('[ThemeManager] Clearing renderer theme resources');
+            this.webglRenderer.clearThemeResources();
+        }
+    }
+
     /**
      * Evict oldest theme from cache if over limit
      * Protects active theme from eviction
@@ -207,6 +264,7 @@ export class ThemeManager {
 
             // Instantiate the theme
             const themeInstance = new ThemeClass();
+            themeInstance.resourceProfile = getThemeMeta(themeName)?.resourceProfile || 'light';
 
             // Initialize the theme (with timeout to prevent game freeze)
             await withTimeout(themeInstance.init(), THEME_LIFECYCLE_TIMEOUT, `Theme "${themeName}" init`);
@@ -279,6 +337,11 @@ export class ThemeManager {
         const nextIndex = (currentIndex + 1) % THEMES.length;
         const nextTheme = THEMES[nextIndex];
 
+        if (this.isHeavyGpuTheme(nextTheme)) {
+            console.log(`[ThemeManager] Skipping adjacent preload for heavy theme: ${nextTheme}`);
+            return;
+        }
+
         if (!this.themeInstances.has(nextTheme)) {
             console.log(`[ThemeManager] Preloading next theme: ${nextTheme}`);
             await this.loadTheme(nextTheme, true);
@@ -328,7 +391,13 @@ export class ThemeManager {
             return;
         }
 
-        this.deferAdjacentThemePreload = false;
+        this.startupPhaseComplete = true;
+        const nextPolicy = resolveThemeStartupPolicy(this.runtimeConfig, {
+            startupComplete: true,
+        });
+        this.maxCachedThemes = nextPolicy.maxCachedThemes;
+        this.deferAdjacentThemePreload = nextPolicy.deferAdjacentThemePreload;
+        this.allowSuspendedRuntimeReuse = nextPolicy.preserveSuspendedRuntime;
         const effectiveDelayMs = this.isPackagedWindowsBaselineProfile()
             ? Math.max(delayMs, 2200)
             : delayMs;
@@ -376,13 +445,7 @@ export class ThemeManager {
             // Stop and cleanup current theme if any
             if (this.activeTheme) {
                 console.log('[ThemeManager] Stopping current theme:', this.activeThemeName);
-                this.activeTheme.stop();
-
-                // IMPORTANT: Clean up renderer resources before loading new theme
-                if (this.webglRenderer && typeof this.webglRenderer.clearThemeResources === 'function') {
-                    console.log('[ThemeManager] Clearing renderer theme resources');
-                    this.webglRenderer.clearThemeResources();
-                }
+                this.deactivateThemeRuntime(this.activeTheme, this.activeThemeName);
             }
 
             this.pendingThemeInstance = newTheme;
@@ -419,13 +482,7 @@ export class ThemeManager {
         // Stop current active theme if different from the one we're activating
         if (this.activeTheme && this.activeTheme !== themeInstance) {
             console.log('[ThemeManager] Stopping current theme:', this.activeThemeName);
-            this.activeTheme.stop();
-
-            // Clean up renderer resources when switching between different themes
-            if (this.webglRenderer && typeof this.webglRenderer.clearThemeResources === 'function') {
-                console.log('[ThemeManager] Clearing renderer theme resources for theme switch');
-                this.webglRenderer.clearThemeResources();
-            }
+            this.deactivateThemeRuntime(this.activeTheme, this.activeThemeName);
         }
 
         // Start the theme (this calls createScene and initializes everything)
@@ -468,7 +525,8 @@ export class ThemeManager {
     suspendThemes() {
         if (this.activeTheme) {
             console.log('[ThemeManager] Suspending active theme:', this.activeThemeName);
-            const paused = typeof this.activeTheme.pause === 'function'
+            const paused = this.allowSuspendedRuntimeReuse
+                && typeof this.activeTheme.pause === 'function'
                 ? this.activeTheme.pause()
                 : false;
 
@@ -481,10 +539,14 @@ export class ThemeManager {
             this.activeTheme = null;
         }
 
-        // Don't cleanup the renderer when suspending - we'll likely resume with the same theme
-        // Only cleanup when actually switching themes or shutting down
-        // This preserves canvas contexts and GPU resources for quick resume
-        console.log('[ThemeManager] Theme suspended, renderer preserved for quick resume');
+        if (!this.allowSuspendedRuntimeReuse
+            && this.webglRenderer
+            && typeof this.webglRenderer.clearThemeResources === 'function') {
+            this.webglRenderer.clearThemeResources();
+            console.log('[ThemeManager] Theme suspended, renderer resources released');
+        } else {
+            console.log('[ThemeManager] Theme suspended, renderer preserved for quick resume');
+        }
 
         this.themesSuspended = true;
     }

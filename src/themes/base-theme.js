@@ -5,6 +5,7 @@
 
 import { gpuResilience } from '../utils/gpu-context-resilience.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
+import { computeScenePixelRatio } from '../utils/desktop-performance-policy.js';
 
 // Global render scale (set by settings system)
 let globalRenderScale = 1.0;
@@ -77,6 +78,7 @@ export class BaseTheme {
         this.isPaused = false;
         this.hasStarted = false;
         this.lifecycleState = 'initialized';
+        this.resourceProfile = 'light';
         this.animationIds = [];
         this.containers = [];
         this.webglLayers = [];
@@ -242,6 +244,105 @@ export class BaseTheme {
     }
 
     /**
+     * Release restartable runtime resources when a theme becomes inactive.
+     * Heavy GPU themes opt into deeper disposal via resourceProfile metadata.
+     */
+    releaseInactiveResources() {
+        this.stop();
+
+        if (this.resourceProfile === 'heavy-gpu') {
+            this.releaseManagedGpuResources();
+        }
+    }
+
+    clearEventUnsubscribers() {
+        if (!Array.isArray(this.eventUnsubscribers) || this.eventUnsubscribers.length === 0) {
+            return;
+        }
+
+        this.eventUnsubscribers.forEach((unsubscribe) => {
+            if (typeof unsubscribe === 'function') {
+                try {
+                    unsubscribe();
+                } catch (error) {
+                    console.warn(`[BaseTheme] Failed to unsubscribe runtime event for ${this.name}:`, error);
+                }
+            }
+        });
+        this.eventUnsubscribers = [];
+    }
+
+    removeCommonResizeHandlers() {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const handlers = [
+            this.boundResizeHandler,
+            this.resizeHandler,
+            this._boundResizeHandler,
+        ].filter((handler, index, array) => typeof handler === 'function' && array.indexOf(handler) === index);
+
+        handlers.forEach((handler) => {
+            window.removeEventListener('resize', handler);
+        });
+    }
+
+    disposeRuntimeProperty(propName) {
+        const value = this[propName];
+        if (!value || value === this.webglRenderer) {
+            return;
+        }
+
+        if (typeof value.dispose === 'function') {
+            value.dispose();
+        }
+
+        this[propName] = null;
+    }
+
+    releaseManagedGpuResources() {
+        this.clearEventUnsubscribers();
+        this.removeCommonResizeHandlers();
+        this.removeRendererResilience();
+
+        if (this.particleSystem && typeof this.particleSystem.dispose === 'function') {
+            this.particleSystem.dispose();
+            this.particleSystem = null;
+        }
+
+        this.disposeRuntimeProperty('simulator');
+        this.disposeRuntimeProperty('snowCompute');
+        this.disposeRuntimeProperty('post');
+        this.disposeRuntimeProperty('postProcessing');
+        this.disposeRuntimeProperty('postComposer');
+        this.disposeRuntimeProperty('composer');
+
+        if (this.scene) {
+            this.disposeThreeJSGroup(this.scene);
+            if (typeof this.scene.clear === 'function') {
+                this.scene.clear();
+            }
+            this.scene = null;
+        }
+
+        if (this.renderer && this.renderer !== this.webglRenderer) {
+            const { domElement } = this.renderer;
+            if (typeof this.renderer.dispose === 'function') {
+                this.renderer.dispose();
+            }
+            if (domElement?.parentNode) {
+                domElement.parentNode.removeChild(domElement);
+            }
+            this.renderer = null;
+        }
+
+        if (this.camera) {
+            this.camera = null;
+        }
+    }
+
+    /**
      * Resume theme after suspension
      * Restores canvas contexts and restarts animations without recreating the scene
      * Override this in subclasses that use canvas contexts
@@ -260,6 +361,7 @@ export class BaseTheme {
 
         this.isActive = true;
         this.isPaused = false;
+        this._wasPaused = false;
         this.lifecycleState = 'running';
 
         // Reactivate the DOM container
@@ -290,8 +392,8 @@ export class BaseTheme {
     cleanup() {
         console.log(`[BaseTheme] Cleaning up theme: ${this.name}`);
 
-        // Stop animations and remove theme from active state
-        this.stop();
+        // Release restartable runtime resources first, then continue terminal teardown
+        this.releaseInactiveResources();
 
         // Remove GPU resilience listeners
         this.removeRendererResilience();
@@ -541,11 +643,14 @@ export class BaseTheme {
      * @param {number} maxRatio - Maximum pixel ratio cap (default 2)
      * @returns {number} Effective pixel ratio for setPixelRatio()
      */
-    static getEffectivePixelRatio(maxRatio = 2) {
+    static getEffectivePixelRatio(maxRatio = 2, sceneType = 'theme') {
         const baseRatio = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
-        const cappedRatio = Math.min(baseRatio, maxRatio);
-        const effectiveRatio = cappedRatio * globalRenderScale;
-        return Math.round(effectiveRatio * 100) / 100; // Round to 2 decimal places
+        return computeScenePixelRatio({
+            renderScale: globalRenderScale,
+            devicePixelRatio: baseRatio,
+            maxPixelRatio: maxRatio,
+            sceneType,
+        });
     }
 
     /**
@@ -553,8 +658,8 @@ export class BaseTheme {
      * @param {number} maxRatio - Maximum pixel ratio cap (default 2)
      * @returns {number} Effective pixel ratio
      */
-    getEffectivePixelRatio(maxRatio = 2) {
-        return BaseTheme.getEffectivePixelRatio(maxRatio);
+    getEffectivePixelRatio(maxRatio = 2, sceneType = 'theme') {
+        return BaseTheme.getEffectivePixelRatio(maxRatio, sceneType);
     }
 
     /**

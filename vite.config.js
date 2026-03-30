@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import replace from '@rollup/plugin-replace';
 import path from 'path';
+import { createThemeThumbnailAssetPlugin } from './scripts/theme-thumbnail-assets.js';
 
 export default defineConfig({
   // Base public path for assets
@@ -13,6 +14,9 @@ export default defineConfig({
         'typeof CANVAS_RENDERER': 'false',
         'typeof WEBGL_RENDERER': 'true',
       },
+    }),
+    createThemeThumbnailAssetPlugin({
+      projectRoot: __dirname,
     }),
   ],
 
@@ -31,6 +35,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
+    manifest: true,
     sourcemap: process.env.VITE_BUILD_SOURCEMAP === 'true',
     // Electron loads the packaged app from file://, so Vite's module-preload
     // rewrites add startup indirection without providing browser-network wins.
@@ -39,6 +44,10 @@ export default defineConfig({
     modulePreload: false,
     // Optimize chunk size for Phaser 4
     rollupOptions: {
+      input: {
+        app: path.resolve(__dirname, 'index.html'),
+        'entry-desktop': path.resolve(__dirname, 'src/entry-desktop.js'),
+      },
       output: {
         manualChunks(id) {
           // Split Phaser into its own chunk
@@ -105,7 +114,7 @@ export default defineConfig({
       },
     },
     // Increase chunk size warning limit (we know about the large chunks)
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1700,
     // Compress assets
     assetsInlineLimit: 4096, // Inline assets smaller than 4kb
     minify: 'esbuild', // Use esbuild for faster builds (terser is slower but smaller)
@@ -113,7 +122,7 @@ export default defineConfig({
     // Strip console.log and debugger statements in production builds
     esbuild: {
       drop: ['debugger'],
-      pure: ['console.log', 'console.debug'],
+      pure: ['console.debug'],
     },
   },
 

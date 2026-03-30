@@ -14,6 +14,12 @@ import { SessionsTab } from './SessionsTab.js';
 import { BreathworkSessionManager } from '../effects/breathwork-session-manager.js';
 import { throttle } from '../../utils/performance-utils.js';
 import { SpatialNavigation } from '../spatial-navigation.js';
+import {
+    resolveHubScrollContainer,
+    scrollHubElementIntoView,
+    scrollHubScrollContainer,
+    scrollHubScrollContainerFromWheelEvent,
+} from './hub-scroll-utils.js';
 
 export class SerenityHub {
     constructor(serenityMode) {
@@ -41,7 +47,6 @@ export class SerenityHub {
 
         // Tab instances
         this.breathingTab = null;
-        this.musicTab = null;
         this.musicTab = null;
         this.themesTab = null;
         this.sessionsTab = null;
@@ -210,6 +215,7 @@ export class SerenityHub {
         this.panel.setAttribute('role', 'dialog');
         this.panel.setAttribute('aria-modal', 'true');
         this.panel.setAttribute('aria-labelledby', 'hub-title');
+        this.panel.setAttribute('tabindex', '-1');
         this.panel.dataset.wheelLock = 'true';
 
         this.panel.innerHTML = `
@@ -306,24 +312,71 @@ export class SerenityHub {
         document.body.appendChild(this.panel);
 
         // Scroll Optimization: Detect scrolling to disable hover effects
-        const tabContent = this.panel.querySelector('.hub-tab-content');
-        this.tabContentScrollHandler = () => {
-            if (this.scrollRafId !== null) return;
-            this.scrollRafId = requestAnimationFrame(() => {
-                this.scrollRafId = null;
-                this.setScrollPerformanceMode(true);
-                if (this.scrollIdleTimeout) {
-                    clearTimeout(this.scrollIdleTimeout);
+        const scrollContainer = this.getScrollContainer();
+        if (scrollContainer) {
+            this.tabContentScrollHandler = () => {
+                if (this.scrollRafId !== null) return;
+                this.scrollRafId = requestAnimationFrame(() => {
+                    this.scrollRafId = null;
+                    this.setScrollPerformanceMode(true);
+                    if (this.scrollIdleTimeout) {
+                        clearTimeout(this.scrollIdleTimeout);
+                    }
+                    this.scrollIdleTimeout = setTimeout(() => {
+                        this.scrollIdleTimeout = null;
+                        this.setScrollPerformanceMode(false);
+                    }, this.scrollIdleDelay);
+                });
+            };
+            this.tabContentWheelHandler = (event) => {
+                if (!this.isOpen) {
+                    return;
                 }
-                this.scrollIdleTimeout = setTimeout(() => {
-                    this.scrollIdleTimeout = null;
-                    this.setScrollPerformanceMode(false);
-                }, this.scrollIdleDelay);
-            });
-        };
 
-        tabContent.addEventListener('scroll', this.tabContentScrollHandler, {
-            passive: true,
+                const didScroll = scrollHubScrollContainerFromWheelEvent(this.panel, event);
+                if (didScroll) {
+                    this.tabContentScrollHandler?.();
+                }
+            };
+
+            scrollContainer.addEventListener('scroll', this.tabContentScrollHandler, {
+                passive: true,
+                signal: this.abortController.signal,
+            });
+            scrollContainer.addEventListener('wheel', this.tabContentWheelHandler, {
+                passive: false,
+                signal: this.abortController.signal,
+            });
+        }
+
+        // Document-level capture-phase wheel listener for Electron.
+        // In Electron's Chromium compositor, event.target can resolve to the canvas
+        // beneath the hub panel. Since the hub isn't in the canvas's ancestor chain,
+        // the hub's scroll container wheel listener never fires. This capture listener
+        // uses elementFromPoint to detect when the cursor is actually over the hub panel
+        // and forwards the scroll event to the hub's scroll container.
+        this.documentWheelCaptureHandler = (event) => {
+            if (!this.isOpen || !this.panel) return;
+
+            const topElement = (Number.isFinite(event.clientX) && Number.isFinite(event.clientY))
+                ? document.elementFromPoint(event.clientX, event.clientY)
+                : null;
+            if (!topElement) return;
+
+            // Check if the topmost element is inside the hub panel
+            if (!this.panel.contains(topElement)) return;
+
+            // Already handled by the scroll container's own listener
+            if (event.target && this.panel.contains(event.target)) return;
+
+            const didScroll = scrollHubScrollContainerFromWheelEvent(this.panel, event);
+            if (didScroll) {
+                this.tabContentScrollHandler?.();
+            }
+        };
+        document.addEventListener('wheel', this.documentWheelCaptureHandler, {
+            capture: true,
+            passive: false,
             signal: this.abortController.signal,
         });
     }
@@ -431,6 +484,10 @@ export class SerenityHub {
         const isEnabled = enabled && this.isOpen;
         this.panel?.classList.toggle('is-scrolling', isEnabled);
         this.backdrop?.classList.toggle('is-scrolling', isEnabled);
+    }
+
+    getScrollContainer() {
+        return resolveHubScrollContainer(this.panel);
     }
 
     /**
@@ -623,6 +680,13 @@ export class SerenityHub {
         this.showIcon();
         this.cancelAutoHide();
 
+        // Hide global settings button — hub backdrop (z-index: 1999) blocks it,
+        // and the hub provides its own settings access
+        if (this.settingsBtn) {
+            this.settingsBtn.style.visibility = 'hidden';
+            this.settingsBtn.style.pointerEvents = 'none';
+        }
+
         // Load current tab content if not loaded
         this.loadTabContent(this.currentTab);
 
@@ -632,6 +696,13 @@ export class SerenityHub {
         // Update icon state
         this.hubIcon.classList.add('active');
         this.hubIcon.setAttribute('aria-label', 'Close Serenity Hub');
+
+        window.dispatchEvent(new CustomEvent('serenityHubVisibilityChange', {
+            detail: {
+                visible: true,
+                currentTab: this.currentTab,
+            },
+        }));
 
         console.log('🎨 Serenity Hub opened');
     }
@@ -662,6 +733,12 @@ export class SerenityHub {
         this.hubIcon.classList.remove('active');
         this.hubIcon.setAttribute('aria-label', 'Open Serenity Hub');
 
+        // Restore global settings button visibility
+        if (this.settingsBtn) {
+            this.settingsBtn.style.visibility = '';
+            this.settingsBtn.style.pointerEvents = '';
+        }
+
         // Resume game if callback is set (for single player, local MP, infinity mode)
         if (this.onResumeCallback) {
             this.onResumeCallback();
@@ -669,6 +746,13 @@ export class SerenityHub {
 
         // Restart auto-hide
         this.startAutoHide();
+
+        window.dispatchEvent(new CustomEvent('serenityHubVisibilityChange', {
+            detail: {
+                visible: false,
+                currentTab: this.currentTab,
+            },
+        }));
 
         console.log('Serenity Hub closed');
     }
@@ -729,10 +813,7 @@ export class SerenityHub {
 
             // Scrolling
             scrollContent: (delta) => {
-                const activePanel = this.panel.querySelector('.tab-panel.active');
-                if (activePanel) {
-                    activePanel.scrollTop += delta;
-                }
+                scrollHubScrollContainer(this.panel, delta);
             },
 
             // Quick actions (work even when hub is closed)
@@ -813,7 +894,7 @@ export class SerenityHub {
         const nextElement = SpatialNavigation.findNextElement(currentElement, direction, activePanel);
         if (nextElement) {
             nextElement.focus();
-            nextElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            scrollHubElementIntoView(nextElement);
         }
     }
 
@@ -837,7 +918,9 @@ export class SerenityHub {
             // Detect if gamepad is connected
             const gamepadController = this.serenityMode.deps?.gamepadController;
             const connectionStatus = gamepadController?.getConnectionStatus?.();
-            const hasGamepad = connectionStatus?.controller1?.connected || connectionStatus?.controller2?.connected || false;
+            const hasGamepad = connectionStatus?.controller1?.connected
+                || connectionStatus?.controller2?.connected
+                || false;
 
             // Create hints overlay
             hintsOverlay = document.createElement('div');

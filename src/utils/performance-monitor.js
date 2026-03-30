@@ -105,12 +105,15 @@ export class PerformanceMonitor {
         this.lastDisplayUpdate = 0;
         this.displayMetricsCache = null;
         this.collectionMode = 'disabled';
+        this.samplingActive = false;
+        this.samplingReasons = new Set();
         this.runtimeEvents = [];
         this.themeSwitches = [];
         this.latestNetworkStats = null;
         this.eventUnsubscribers = [];
         this.desktopGpuDiagnostics = null;
         this.desktopGpuRefreshPromise = null;
+        this.desktopPerformancePolicy = null;
 
         console.log('[PerformanceMonitor] Initialized');
     }
@@ -118,27 +121,31 @@ export class PerformanceMonitor {
     /**
      * Enable performance monitoring
      */
-    enable() {
-        if (this.enabled) return;
+    enable({ samplingReason = null } = {}) {
+        if (this.enabled) {
+            if (samplingReason) {
+                this.setSamplingReason(samplingReason, true);
+            }
+            this.refreshCollectionMode();
+            return;
+        }
 
         this.enabled = true;
-        this.collectionMode = this.showOverlay ? 'collecting_with_overlay' : 'collecting';
 
         // Reset metrics
         this.reset();
 
-        // Start memory monitoring
-        if (performance.memory) {
-            this.memoryInterval = setInterval(() => {
-                this.updateMemoryMetrics();
-            }, MEMORY_CHECK_INTERVAL);
-        }
-
         // Setup F3 toggle hotkey
         this.setupKeyboardToggle();
-        this.startFrameListener();
         this.bindRuntimeEvents();
         this.refreshDesktopGpuDiagnostics();
+        if (samplingReason) {
+            this.samplingReasons.add(samplingReason);
+        }
+        if (this.showOverlay) {
+            this.samplingReasons.add('overlay');
+        }
+        this.updateSamplingActivity();
 
         console.log('[PerformanceMonitor] Enabled');
     }
@@ -151,20 +158,75 @@ export class PerformanceMonitor {
 
         this.enabled = false;
         this.collectionMode = 'disabled';
+        this.samplingActive = false;
+        this.samplingReasons.clear();
 
-        // Stop memory monitoring
+        // Remove keyboard listener
+        this.removeKeyboardToggle();
+        this.stopSamplingLoops();
+        this.stopOverlayUpdates();
+        this.unbindRuntimeEvents();
+
+        console.log('[PerformanceMonitor] Disabled');
+    }
+
+    startSamplingLoops() {
+        if (performance.memory && !this.memoryInterval) {
+            this.memoryInterval = setInterval(() => {
+                this.updateMemoryMetrics();
+            }, MEMORY_CHECK_INTERVAL);
+        }
+
+        this.startFrameListener();
+    }
+
+    stopSamplingLoops() {
         if (this.memoryInterval) {
             clearInterval(this.memoryInterval);
             this.memoryInterval = null;
         }
 
-        // Remove keyboard listener
-        this.removeKeyboardToggle();
         this.stopFrameListener();
-        this.stopOverlayUpdates();
-        this.unbindRuntimeEvents();
+    }
 
-        console.log('[PerformanceMonitor] Disabled');
+    refreshCollectionMode() {
+        if (!this.enabled) {
+            this.collectionMode = 'disabled';
+            return;
+        }
+
+        if (this.samplingActive) {
+            this.collectionMode = this.showOverlay ? 'collecting_with_overlay' : 'collecting';
+            return;
+        }
+
+        this.collectionMode = this.showOverlay ? 'overlay-waiting' : 'armed';
+    }
+
+    updateSamplingActivity() {
+        const shouldSample = this.enabled && this.samplingReasons.size > 0;
+
+        if (shouldSample && !this.samplingActive) {
+            this.samplingActive = true;
+            this.startSamplingLoops();
+        } else if (!shouldSample && this.samplingActive) {
+            this.samplingActive = false;
+            this.stopSamplingLoops();
+        }
+
+        this.refreshCollectionMode();
+    }
+
+    setSamplingReason(reason, isActive) {
+        if (!reason) return;
+
+        if (isActive) {
+            this.samplingReasons.add(reason);
+        } else {
+            this.samplingReasons.delete(reason);
+        }
+
+        this.updateSamplingActivity();
     }
 
     /**
@@ -441,7 +503,28 @@ export class PerformanceMonitor {
             adapters: Array.isArray(diagnostics.adapters) ? diagnostics.adapters : [],
             gpuSwitches: diagnostics.gpuSwitches || {},
             auxAttributes: diagnostics.auxAttributes || {},
+            gpuHealth: diagnostics.gpuHealth || null,
+            activeAdapter: diagnostics.activeAdapter || null,
+            driverVendor: diagnostics.driverVendor || null,
+            driverVersion: diagnostics.driverVersion || null,
+            angleBackend: diagnostics.angleBackend || null,
             updatedAt: diagnostics.updatedAt || null,
+        };
+    }
+
+    setDesktopPerformancePolicy(policy) {
+        if (!policy || typeof policy !== 'object') {
+            this.desktopPerformancePolicy = null;
+            return;
+        }
+
+        this.desktopPerformancePolicy = {
+            ...policy,
+            pixelRatioCaps: policy.pixelRatioCaps ? { ...policy.pixelRatioCaps } : null,
+            internalRenderResolution: policy.internalRenderResolution
+                ? { ...policy.internalRenderResolution }
+                : null,
+            gpuHealth: policy.gpuHealth ? { ...policy.gpuHealth } : null,
         };
     }
 
@@ -500,12 +583,15 @@ export class PerformanceMonitor {
         const switchSummary = Object.entries(gpuSwitches)
             .map(([name, value]) => (value === true ? name : `${name}=${value}`))
             .join(', ');
+        const gpuHealth = this.desktopGpuDiagnostics.gpuHealth || this.desktopPerformancePolicy?.gpuHealth || null;
 
         return {
             adapterLabel,
             adapterTitle,
             featureSummary,
             switchSummary,
+            healthSummary: gpuHealth?.status ? `health: ${gpuHealth.status}` : null,
+            angleBackend: this.desktopGpuDiagnostics.angleBackend || null,
         };
     }
 
@@ -597,6 +683,11 @@ export class PerformanceMonitor {
         appMode = 'browser-dev',
         settingsSnapshot = null,
         runtimeConfig = null,
+        processMetrics = null,
+        windowBounds = null,
+        displayScaleFactor = null,
+        devicePixelRatio = null,
+        runtimeProfile = null,
         extra = {},
     } = {}) {
         return {
@@ -604,7 +695,12 @@ export class PerformanceMonitor {
             stage,
             appMode,
             runtimeConfig,
+            runtimeProfile,
             settingsSnapshot,
+            processMetrics,
+            windowBounds,
+            displayScaleFactor,
+            devicePixelRatio,
             metrics: this.getMetrics(),
             qualityMode: this.qualityMode,
             startupDurations: this.getStartupDurations(),
@@ -619,6 +715,7 @@ export class PerformanceMonitor {
                     || 'Unavailable',
                 desktopDiagnostics: this.desktopGpuDiagnostics,
             },
+            performancePolicy: this.desktopPerformancePolicy,
             extra,
         };
     }
@@ -788,6 +885,7 @@ export class PerformanceMonitor {
                     || 'Unavailable',
                 desktopDiagnostics: this.desktopGpuDiagnostics,
             },
+            performancePolicy: this.desktopPerformancePolicy,
         };
 
         console.group('📊 Performance Report');
@@ -851,7 +949,10 @@ export class PerformanceMonitor {
      */
     showPerformanceOverlay() {
         this.showOverlay = true;
-        this.collectionMode = this.enabled ? 'collecting_with_overlay' : 'disabled';
+        if (!this.enabled) {
+            this.enable();
+        }
+        this.setSamplingReason('overlay', true);
         this.createOverlay();
         if (this.overlayElement) {
             this.overlayElement.style.display = 'block';
@@ -866,7 +967,7 @@ export class PerformanceMonitor {
      */
     hidePerformanceOverlay() {
         this.showOverlay = false;
-        this.collectionMode = this.enabled ? 'collecting' : 'disabled';
+        this.setSamplingReason('overlay', false);
         this.stopOverlayUpdates();
         if (this.overlayElement) {
             this.overlayElement.style.display = 'none';
@@ -1069,6 +1170,11 @@ export class PerformanceMonitor {
             <div style="color: #888; font-size: 10px; margin-bottom: 8px; line-height: 1.4;" title="${escapeAttribute(desktopGpuInfo.switchSummary)}">
                 GPU Status: <span style="color: #8ff;">${desktopGpuInfo.featureSummary}</span>
             </div>` : ''}
+            ${desktopGpuInfo?.healthSummary || desktopGpuInfo?.angleBackend ? `
+            <div style="color: #888; font-size: 10px; margin-bottom: 8px; line-height: 1.4;">
+                ${desktopGpuInfo.healthSummary ? `<span style="color: #ffd166;">${desktopGpuInfo.healthSummary}</span>` : ''}
+                ${desktopGpuInfo.angleBackend ? `<span style="color: #8ff;"> · ANGLE: ${desktopGpuInfo.angleBackend}</span>` : ''}
+            </div>` : ''}
 
             <div style="color: ${displayMetrics.fpsColor}; font-weight: bold; font-size: 24px; margin: 8px 0;">
                 ${displayMetrics.fps.toFixed(1)} <span style="font-size: 14px;">FPS</span>
@@ -1175,7 +1281,7 @@ export const performanceMonitor = new PerformanceMonitor();
 if (typeof window !== 'undefined') {
     window.perfMonitor = {
         start: () => {
-            performanceMonitor.enable();
+            performanceMonitor.enable({ samplingReason: 'manual' });
             performanceMonitor.showPerformanceOverlay();
             console.log('✅ Performance monitoring started (Press F3 to toggle)');
         },

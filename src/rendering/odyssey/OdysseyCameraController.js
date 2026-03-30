@@ -11,6 +11,7 @@ import { ODYSSEY_PATH_DATA } from './path-data.js';
 const DEFAULT_CHAPTER_POSITIONS = ODYSSEY_PATH_DATA.chapterPositions || [0, 1];
 const CHAPTER_1_LOOK_DOWN = new THREE.Vector3(0, -26, 0);
 const CHAPTER_1_LOOK_FADE_RANGE = 0.035;
+const FREE_CAMERA_WORLD_UP = new THREE.Vector3(0, 1, 0);
 
 function buildChapterBoundaryPositions(chapterPositions) {
     const terminalTrimmed = chapterPositions[chapterPositions.length - 1] >= 1
@@ -52,6 +53,12 @@ export class OdysseyCameraController {
         this.targetPosition = this.startPosition;
         this.lookAtTarget = new THREE.Vector3();
         this.lookAtOffset = new THREE.Vector3();
+        this.freeCameraQuaternion = new THREE.Quaternion();
+        this.freeCameraTempQuat = new THREE.Quaternion();
+        this.freeCameraDirection = new THREE.Vector3(0, 0, -1);
+        this.freeCameraUp = new THREE.Vector3(0, 1, 0);
+        this.freeCameraRight = new THREE.Vector3(1, 0, 0);
+        this.freeCameraAnchor = new THREE.Vector3();
 
         // Animation state
         this.isAnimating = false;
@@ -79,6 +86,15 @@ export class OdysseyCameraController {
             maxPosition: 1, // Allow scrolling all the way to the end
             magneticRadius: 0.015, // Distance to feel magnetic pull
             magneticFriction: 0.2, // Multiplier for speed when near a level
+            freeCamera: {
+                lookSensitivity: 0.0015,
+                keyboardRotateSpeed: 1.35,
+                pitchLimit: Math.PI * 0.49,
+                lookDistance: 18,
+                wheelDollyDistance: 72,
+                progressSampleCount: 240,
+                pathLutSamples: 2048,
+            },
         };
 
         // ═══════════════════════════════════════════════════════════════════
@@ -119,14 +135,84 @@ export class OdysseyCameraController {
         this.fovPulseAmount = this.cinematicConfig.fovPulseAmount;
         this.fovPulseDuration = this.cinematicConfig.fovPulseDuration;
         this.lastChapterId = 1;
+        this.freeCameraState = {
+            lookDistance: this.config.freeCamera.lookDistance,
+        };
+
+        // Initialize LUT
+        this._buildPathLut();
 
         // Initialize camera position
         this.updateFollowPosition({ direct: true });
     }
 
+    _buildPathLut() {
+        const count = this.config.freeCamera.pathLutSamples;
+        this.pathLut = {
+            positions: new Float32Array(count * 3), // x, y, z
+            tangents: new Float32Array(count * 3), // x, y, z
+            count,
+        };
+
+        const point = new THREE.Vector3();
+        const tangent = new THREE.Vector3();
+
+        for (let i = 0; i < count; i++) {
+            const t = i / (count - 1);
+            this.pathCurve.getPointAt(t, point);
+            this.pathCurve.getTangentAt(t, tangent).normalize();
+
+            const idx = i * 3;
+            this.pathLut.positions[idx] = point.x;
+            this.pathLut.positions[idx + 1] = point.y;
+            this.pathLut.positions[idx + 2] = point.z;
+
+            this.pathLut.tangents[idx] = tangent.x;
+            this.pathLut.tangents[idx + 1] = tangent.y;
+            this.pathLut.tangents[idx + 2] = tangent.z;
+        }
+    }
+
+    /**
+     * Get interpolated path position and tangent from LUT
+     * @param {number} t - 0 to 1
+     * @param {THREE.Vector3} [optionalTargetPos]
+     * @param {THREE.Vector3} [optionalTargetTangent]
+     * @returns {{position: THREE.Vector3, tangent: THREE.Vector3}}
+     */
+    getPathDataAt(t, optionalTargetPos, optionalTargetTangent) {
+        const clampedT = THREE.MathUtils.clamp(t, 0, 1);
+        const count = this.pathLut.count;
+        const rawIdx = clampedT * (count - 1);
+        const i0 = Math.floor(rawIdx);
+        const i1 = Math.min(i0 + 1, count - 1);
+        const lerp = rawIdx - i0;
+
+        const pos = optionalTargetPos || new THREE.Vector3();
+        const tan = optionalTargetTangent || new THREE.Vector3();
+
+        const idx0 = i0 * 3;
+        const idx1 = i1 * 3;
+
+        pos.set(
+            THREE.MathUtils.lerp(this.pathLut.positions[idx0], this.pathLut.positions[idx1], lerp),
+            THREE.MathUtils.lerp(this.pathLut.positions[idx0 + 1], this.pathLut.positions[idx1 + 1], lerp),
+            THREE.MathUtils.lerp(this.pathLut.positions[idx0 + 2], this.pathLut.positions[idx1 + 2], lerp),
+        );
+
+        tan.set(
+            THREE.MathUtils.lerp(this.pathLut.tangents[idx0], this.pathLut.tangents[idx1], lerp),
+            THREE.MathUtils.lerp(this.pathLut.tangents[idx0 + 1], this.pathLut.tangents[idx1 + 1], lerp),
+            THREE.MathUtils.lerp(this.pathLut.tangents[idx0 + 2], this.pathLut.tangents[idx1 + 2], lerp),
+        ).normalize();
+
+        return { position: pos, tangent: tan };
+    }
+
     applyLayout(pathCurve, options = {}) {
         if (pathCurve) {
             this.pathCurve = pathCurve;
+            this._buildPathLut();
         }
 
         if (Array.isArray(options.levelPositions)) {
@@ -154,6 +240,9 @@ export class OdysseyCameraController {
 
         this.currentPosition = clampedPosition;
         this.targetPosition = clampedPosition;
+        if (this.mode === 'free') {
+            return;
+        }
         this.updateFollowPosition({ position: clampedPosition, direct: true });
     }
 
@@ -162,6 +251,11 @@ export class OdysseyCameraController {
      * @param {number} delta - Scroll amount (-1 to 1)
      */
     scroll(delta) {
+        if (this.mode === 'free') {
+            this.dollyFree(-delta * this.config.freeCamera.wheelDollyDistance);
+            return;
+        }
+
         if (this.pathTravel?.active || (this.isAnimating && this.mode === 'focus')) {
             this._cancelActiveAnimation(false);
             this.mode = 'follow';
@@ -196,17 +290,42 @@ export class OdysseyCameraController {
     }
 
     findNearestLevel(position) {
-        let minDist = Infinity;
-        let nearest = null;
+        if (!this.levelPositions.length) return null;
 
-        // Optimization: We could binary search, but iterating ~60 items is negligible
-        // We can just check the relevant chapter's levels if we had chapter info handy,
-        // but simple loop is fine for this scale.
-        for (const levelPos of this.levelPositions) {
-            const dist = Math.abs(position - levelPos);
+        // Binary search for nearest position in sorted array
+        let low = 0;
+        let high = this.levelPositions.length - 1;
+
+        while (low <= high) {
+            const mid = (low + high) >>> 1;
+            const val = this.levelPositions[mid];
+
+            if (val < position) {
+                low = mid + 1;
+            } else if (val > position) {
+                high = mid - 1;
+            } else {
+                return val; // Exact match
+            }
+        }
+
+        // Check the two closest candidates
+        const left = high >= 0 ? this.levelPositions[high] : null;
+        const right = low < this.levelPositions.length ? this.levelPositions[low] : null;
+
+        let nearest = null;
+        let minDist = Infinity;
+
+        if (left !== null) {
+            minDist = Math.abs(position - left);
+            nearest = left;
+        }
+
+        if (right !== null) {
+            const dist = Math.abs(position - right);
             if (dist < minDist) {
                 minDist = dist;
-                nearest = levelPos;
+                nearest = right;
             }
         }
 
@@ -516,7 +635,14 @@ export class OdysseyCameraController {
         // Update FOV pulse
         this.updateFovPulse(deltaTime);
 
-        // Always look at target
+        // Free camera is driven directly from its quaternion to avoid lookAt singularities.
+        if (this.mode === 'free') {
+            this.camera.quaternion.copy(this.freeCameraQuaternion);
+            this.camera.updateMatrixWorld(true);
+            return;
+        }
+
+        this.camera.up.copy(FREE_CAMERA_WORLD_UP);
         this.camera.lookAt(this.lookAtTarget);
     }
 
@@ -530,7 +656,7 @@ export class OdysseyCameraController {
         const seamWeight = this.getSeamBeatStrength();
 
         // Don't apply during rapid animations (focus/zoom)
-        if (this.portalApproach?.active || (this.isAnimating && this.mode === 'focus')) return;
+        if (this.mode === 'free' || this.portalApproach?.active || (this.isAnimating && this.mode === 'focus')) return;
 
         // Horizontal sway (dreamlike drift)
         if (cc.swayEnabled) {
@@ -641,10 +767,170 @@ export class OdysseyCameraController {
         this.updateFollowPosition({ direct: false });
     }
 
+    updateFreeCameraBasis() {
+        this.freeCameraDirection.set(0, 0, -1).applyQuaternion(this.freeCameraQuaternion).normalize();
+        this.freeCameraRight.set(1, 0, 0).applyQuaternion(this.freeCameraQuaternion).normalize();
+        this.freeCameraUp.set(0, 1, 0).applyQuaternion(this.freeCameraQuaternion).normalize();
+    }
+
+    updateFreeLookTarget() {
+        this.updateFreeCameraBasis();
+        this.lookAtTarget.copy(this.camera.position).addScaledVector(
+            this.freeCameraDirection,
+            this.freeCameraState.lookDistance,
+        );
+    }
+
+    syncFreeCameraFromScene() {
+        const direction = this.lookAtTarget.clone().sub(this.camera.position);
+        if (direction.lengthSq() < 1e-6) {
+            this.camera.getWorldDirection(direction);
+        }
+
+        direction.normalize();
+        this.camera.updateMatrixWorld(true);
+        this.freeCameraQuaternion.copy(this.camera.quaternion).normalize();
+        this.freeCameraState.lookDistance = Math.max(
+            6,
+            this.camera.position.distanceTo(this.lookAtTarget) || this.config.freeCamera.lookDistance,
+        );
+        this.updateFreeLookTarget();
+    }
+
+    findNearestPathPosition(worldPosition, sampleCount = this.config.freeCamera.progressSampleCount) {
+        if (!(worldPosition instanceof THREE.Vector3) || !this.pathCurve) {
+            return Number.NaN;
+        }
+
+        let bestPosition = this.currentPosition;
+        let bestDistanceSq = Infinity;
+        const samplePoint = new THREE.Vector3();
+
+        for (let sampleIndex = 0; sampleIndex <= sampleCount; sampleIndex += 1) {
+            const position = sampleIndex / sampleCount;
+            this.getPathDataAt(position, samplePoint);
+            const distanceSq = samplePoint.distanceToSquared(worldPosition);
+            if (distanceSq < bestDistanceSq) {
+                bestDistanceSq = distanceSq;
+                bestPosition = position;
+            }
+        }
+
+        return bestPosition;
+    }
+
+    syncFreeProgressFromCamera() {
+        this.freeCameraAnchor.copy(this.camera.position).lerp(this.lookAtTarget, 0.35);
+        const nearestPosition = this.findNearestPathPosition(this.freeCameraAnchor);
+        if (!Number.isFinite(nearestPosition)) {
+            return;
+        }
+
+        this.currentPosition = nearestPosition;
+        this.targetPosition = nearestPosition;
+    }
+
+    setFreeMode(enabled = true) {
+        if (!enabled) {
+            this.setFollowMode();
+            return;
+        }
+
+        this._cancelActiveAnimation(false);
+        this.portalApproach = null;
+        this.mode = 'free';
+        this.camera.rotation.z = 0;
+        this.syncFreeCameraFromScene();
+        this.camera.quaternion.copy(this.freeCameraQuaternion);
+        this.camera.updateMatrixWorld(true);
+        this.syncFreeProgressFromCamera();
+    }
+
+    isFreeMode() {
+        return this.mode === 'free';
+    }
+
+    applyFreeLookDelta(deltaX = 0, deltaY = 0) {
+        if (!this.isFreeMode()) {
+            return false;
+        }
+
+        return this.rotateFreeCamera(
+            -deltaX * this.config.freeCamera.lookSensitivity,
+            -deltaY * this.config.freeCamera.lookSensitivity,
+        );
+    }
+
+    rotateFreeCamera(yawDelta = 0, pitchDelta = 0) {
+        if (!this.isFreeMode()) {
+            return false;
+        }
+
+        if (yawDelta !== 0) {
+            this.freeCameraTempQuat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawDelta);
+            this.freeCameraQuaternion.multiply(this.freeCameraTempQuat).normalize();
+        }
+
+        if (pitchDelta !== 0) {
+            this.updateFreeCameraBasis();
+            const currentPitch = Math.asin(THREE.MathUtils.clamp(this.freeCameraDirection.y, -1, 1));
+            const nextPitch = THREE.MathUtils.clamp(
+                currentPitch + pitchDelta,
+                -this.config.freeCamera.pitchLimit,
+                this.config.freeCamera.pitchLimit,
+            );
+            const clampedDelta = nextPitch - currentPitch;
+            if (clampedDelta !== 0) {
+                this.freeCameraTempQuat.setFromAxisAngle(new THREE.Vector3(1, 0, 0), clampedDelta);
+                this.freeCameraQuaternion.multiply(this.freeCameraTempQuat).normalize();
+            }
+        }
+
+        this.camera.rotation.z = 0;
+        this.updateFreeLookTarget();
+        this.camera.quaternion.copy(this.freeCameraQuaternion);
+        this.camera.updateMatrixWorld(true);
+        this.syncFreeProgressFromCamera();
+        return true;
+    }
+
+    moveFreeCamera(localMovement) {
+        if (!this.isFreeMode()) {
+            return false;
+        }
+
+        const movement = localMovement instanceof THREE.Vector3
+            ? localMovement
+            : new THREE.Vector3(
+                Number(localMovement?.x) || 0,
+                Number(localMovement?.y) || 0,
+                Number(localMovement?.z) || 0,
+            );
+
+        if (movement.lengthSq() === 0) {
+            return false;
+        }
+
+        this.updateFreeCameraBasis();
+        this.camera.position.addScaledVector(this.freeCameraRight, movement.x);
+        this.camera.position.addScaledVector(FREE_CAMERA_WORLD_UP, movement.y);
+        this.camera.position.addScaledVector(this.freeCameraDirection, movement.z);
+        this.updateFreeLookTarget();
+        this.syncFreeProgressFromCamera();
+        return true;
+    }
+
+    dollyFree(distance) {
+        if (!this.isFreeMode() || !Number.isFinite(distance) || distance === 0) {
+            return false;
+        }
+
+        return this.moveFreeCamera(new THREE.Vector3(0, 0, distance));
+    }
+
     computeFollowFrame(position) {
         const clampedPosition = THREE.MathUtils.clamp(position, 0, 1);
-        const pathPoint = this.pathCurve.getPointAt(clampedPosition);
-        const tangent = this.pathCurve.getTangentAt(clampedPosition).normalize();
+        const { position: pathPoint, tangent } = this.getPathDataAt(clampedPosition);
         const seamWeight = this.getSeamBeatStrength();
         const seamDirection = this.seamBeat?.direction || 1;
         const forwardOffset = 1.15 * seamWeight * (this.seamBeat?.intensity || 0);
@@ -662,7 +948,7 @@ export class OdysseyCameraController {
             0,
             1,
         );
-        const lookTarget = this.pathCurve.getPointAt(lookAheadT);
+        const { position: lookTarget } = this.getPathDataAt(lookAheadT);
         if (forwardOffset > 0) {
             lookTarget.addScaledVector(tangent, forwardOffset * 0.45 * seamDirection);
         }
@@ -923,10 +1209,24 @@ export class OdysseyCameraController {
     /**
      * Set mode to follow
      */
-    setFollowMode() {
+    setFollowMode(options = {}) {
         this._cancelActiveAnimation(false);
         this.mode = 'follow';
         this.portalApproach = null;
+        this.camera.rotation.z = 0;
+        this.camera.up.copy(FREE_CAMERA_WORLD_UP);
+
+        const nextPosition = THREE.MathUtils.clamp(
+            Number.isFinite(options.position) ? options.position : this.currentPosition,
+            this.config.minPosition,
+            this.config.maxPosition,
+        );
+        this.currentPosition = nextPosition;
+        this.targetPosition = nextPosition;
+        this.updateFollowPosition({
+            position: nextPosition,
+            direct: options.direct !== false,
+        });
     }
 
     /**

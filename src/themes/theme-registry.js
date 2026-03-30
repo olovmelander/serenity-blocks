@@ -1,4 +1,4 @@
-export const THEME_REGISTRY = [
+const RAW_THEME_REGISTRY = [
     {
         id: 'forest',
         displayName: 'Forest',
@@ -406,6 +406,58 @@ export const THEME_REGISTRY = [
         group: 'cosmic',
     },
 ];
+
+const HEAVY_GPU_THEME_IDS = new Set([
+    'ice-temple',
+    'moonlit-forest',
+    'wolfhour',
+    'ocean',
+    'sunset',
+    'winter',
+    'fall',
+    'summer',
+    'sakura-twilight',
+    'aurora',
+    'galaxy',
+    'rainy-window',
+    'verdant-hills',
+    'singing-bowl',
+    'swedish-forest',
+    'geode',
+    'bioluminescence',
+    'shifting-sands',
+    'misty-lake',
+    'waves',
+    'luminous-tides',
+    'fluid-dreams',
+    'crystal-cave',
+    'electric-dreams',
+    'solar-eclipse',
+    'black-hole',
+    'supernova',
+    'cosmic-noir',
+    'chiral-gold',
+    'nimbus-veil',
+    'sky-children-v2',
+    'cinder-drift',
+    'pyrestorm',
+    'neon-dusk',
+    'neon-district',
+    'synthwave-sunset',
+    'chromadelic-highway',
+    'stillwater',
+    'blood-moon',
+    'astral-weave',
+    'stellar-velocity',
+    'stellar-drift',
+]);
+
+export const THEME_REGISTRY = RAW_THEME_REGISTRY.map((entry) => ({
+    ...entry,
+    resourceProfile: HEAVY_GPU_THEME_IDS.has(entry.id) ? 'heavy-gpu' : 'light',
+    performanceClass: HEAVY_GPU_THEME_IDS.has(entry.id) ? 'heavy' : 'light',
+    startupEligible: !HEAVY_GPU_THEME_IDS.has(entry.id),
+}));
 
 const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
 

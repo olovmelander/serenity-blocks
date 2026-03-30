@@ -7,6 +7,38 @@ import { GAME_MODES } from '../core/constants.js';
 import steamService from '../core/steam/steam-service.js';
 import { STEAM_EVENTS } from '../core/steam/steam-config.js';
 
+export function resolveOnlineMultiplayerAvailability(connectionState = 'offline') {
+    if (connectionState === 'connected' || connectionState === 'partial') {
+        return {
+            enabled: true,
+            disabledLabel: '',
+            title: '',
+        };
+    }
+
+    if (connectionState === 'connecting') {
+        return {
+            enabled: false,
+            disabledLabel: 'Connecting to Steam',
+            title: 'Connecting to Steam',
+        };
+    }
+
+    if (connectionState === 'offline') {
+        return {
+            enabled: false,
+            disabledLabel: 'Steam offline',
+            title: 'Steam is offline',
+        };
+    }
+
+    return {
+        enabled: false,
+        disabledLabel: 'Steam required',
+        title: 'Requires Steam connection',
+    };
+}
+
 /**
  * Game mode UI manager
  */
@@ -169,26 +201,31 @@ export class GameModeUI {
     setupSteamListeners() {
         if (!steamService?.on) return;
         this.steamUnsubscribers.push(
+            steamService.on(STEAM_EVENTS.READY, () => this.updateOnlineMultiplayerAvailability()),
+            steamService.on(STEAM_EVENTS.INIT_FAILED, () => this.updateOnlineMultiplayerAvailability()),
             steamService.on(STEAM_EVENTS.CONNECTED, () => this.updateOnlineMultiplayerAvailability()),
             steamService.on(STEAM_EVENTS.DISCONNECTED, () => this.updateOnlineMultiplayerAvailability()),
+            steamService.on(STEAM_EVENTS.RECONNECTED, () => this.updateOnlineMultiplayerAvailability()),
             steamService.on(STEAM_EVENTS.STATE_CHANGED, () => this.updateOnlineMultiplayerAvailability()),
+            steamService.on(STEAM_EVENTS.CAPABILITIES_UPDATED, () => this.updateOnlineMultiplayerAvailability()),
         );
     }
 
     updateOnlineMultiplayerAvailability() {
         if (!this.onlineMultiplayerBtn) return;
-        const isOnline = !!steamService?.isOnline;
-        this.setOnlineMultiplayerEnabled(isOnline);
+        const connectionState = steamService?.getConnectionState?.() || 'offline';
+        const availability = resolveOnlineMultiplayerAvailability(connectionState);
+        this.setOnlineMultiplayerAvailability(availability);
     }
 
-    setOnlineMultiplayerEnabled(isEnabled) {
+    setOnlineMultiplayerAvailability({ enabled, disabledLabel, title }) {
         if (!this.onlineMultiplayerBtn) return;
-        this.onlineMultiplayerBtn.classList.toggle('steam-disabled', !isEnabled);
-        this.onlineMultiplayerBtn.dataset.disabled = isEnabled ? 'false' : 'true';
-        this.onlineMultiplayerBtn.dataset.disabledLabel = isEnabled ? '' : 'Steam required';
-        this.onlineMultiplayerBtn.setAttribute('aria-disabled', String(!isEnabled));
-        this.onlineMultiplayerBtn.setAttribute('tabindex', isEnabled ? '0' : '-1');
-        this.onlineMultiplayerBtn.title = isEnabled ? '' : 'Requires Steam connection';
+        this.onlineMultiplayerBtn.classList.toggle('steam-disabled', !enabled);
+        this.onlineMultiplayerBtn.dataset.disabled = enabled ? 'false' : 'true';
+        this.onlineMultiplayerBtn.dataset.disabledLabel = enabled ? '' : disabledLabel;
+        this.onlineMultiplayerBtn.setAttribute('aria-disabled', String(!enabled));
+        this.onlineMultiplayerBtn.setAttribute('tabindex', enabled ? '0' : '-1');
+        this.onlineMultiplayerBtn.title = enabled ? '' : title;
     }
 
     isOnlineMultiplayerDisabled() {

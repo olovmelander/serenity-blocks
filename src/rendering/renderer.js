@@ -703,6 +703,7 @@ export class WebGLRenderer {
         this.effectQuality = 'High';
         this.qualityConfig = getQualityConfig(this.effectQuality);
         this._frameSkipCounter = 0;
+        this._particleUpdateCounter = 0;
 
         this._initializeResourceManagers();
 
@@ -1062,6 +1063,13 @@ export class WebGLRenderer {
         gl.uniform2f(this.particleProgram.uniforms.u_resolution, gl.canvas.width, gl.canvas.height);
 
         if (this.qualityConfig?.particles !== false) {
+            // At lower quality, skip particle physics updates on some frames
+            // to reduce CPU cost. Particles are still drawn (stale positions)
+            // so visually they just appear to move at a lower update rate.
+            const particleInterval = this.qualityConfig?.particleUpdateInterval ?? 1;
+            this._particleUpdateCounter = (this._particleUpdateCounter + 1) % particleInterval;
+            const shouldUpdateParticles = this._particleUpdateCounter === 0;
+
             for (let i = 0; i < this.particleSystems.length; i++) {
                 const ps = this.particleSystems[i];
                 gl.uniform1f(this.particleProgram.uniforms.u_zIndex, ps.zIndex);
@@ -1069,7 +1077,9 @@ export class WebGLRenderer {
                     this.particleProgram.uniforms.u_color,
                     ps.themeConfig.color || DEFAULT_PARTICLE_COLOR,
                 );
-                ps.update();
+                if (shouldUpdateParticles) {
+                    ps.update();
+                }
                 ps.bindBuffers(this.particleProgram);
                 ps.draw();
                 currentFrameDrawCalls++;

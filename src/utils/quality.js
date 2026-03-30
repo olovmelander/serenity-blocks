@@ -2,6 +2,7 @@ const QUALITY_CONFIG = {
     Extreme: {
         id: 'Extreme',
         renderFrameSkip: 0,
+        particleUpdateInterval: 1,
         renderScale: 1.0,
         shakeMultiplier: 1.2,
         particles: true,
@@ -23,6 +24,7 @@ const QUALITY_CONFIG = {
     Ultra: {
         id: 'Ultra',
         renderFrameSkip: 0,
+        particleUpdateInterval: 1,
         renderScale: 1.0,
         shakeMultiplier: 1.0,
         particles: true,
@@ -44,6 +46,7 @@ const QUALITY_CONFIG = {
     High: {
         id: 'High',
         renderFrameSkip: 0,
+        particleUpdateInterval: 1,
         renderScale: 1.0,
         shakeMultiplier: 1.0,
         particles: true,
@@ -65,6 +68,7 @@ const QUALITY_CONFIG = {
     Medium: {
         id: 'Medium',
         renderFrameSkip: 0, // No frame skip - backgrounds perform well
+        particleUpdateInterval: 2,
         renderScale: 0.75,
         shakeMultiplier: 0.75,
         particles: true,
@@ -86,6 +90,7 @@ const QUALITY_CONFIG = {
     Low: {
         id: 'Low',
         renderFrameSkip: 0, // No frame skip - backgrounds perform well
+        particleUpdateInterval: 3,
         renderScale: 0.5,
         shakeMultiplier: 0.5,
         particles: false,
@@ -107,6 +112,7 @@ const QUALITY_CONFIG = {
     Minimal: {
         id: 'Minimal',
         renderFrameSkip: 0, // No frame skip - backgrounds perform well
+        particleUpdateInterval: 4,
         renderScale: 0.4,
         shakeMultiplier: 0.3,
         particles: false,

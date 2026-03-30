@@ -1,6 +1,14 @@
 const DEFAULT_WHEEL_LOCK_ATTRIBUTES = ['data-wheel-lock', 'data-odyssey-wheel-lock'];
 const DEFAULT_WHEEL_LINE_HEIGHT_PX = 16;
 const DEFAULT_WHEEL_DELTA_CLAMP_PX = 240;
+
+// Debug mode for diagnosing wheel event routing in Electron.
+// Enable via: window.__WHEEL_ROUTING_DEBUG = true
+function debugLog(...args) {
+    if (typeof globalThis !== 'undefined' && globalThis.__WHEEL_ROUTING_DEBUG) {
+        console.log('[WheelRouting]', ...args);
+    }
+}
 const SCROLLABLE_OVERFLOW_VALUES = new Set(['auto', 'scroll', 'overlay']);
 const INTERACTIVE_WHEEL_TARGET_SELECTOR = [
     'input',
@@ -143,23 +151,77 @@ export function findInteractiveWheelTarget(target) {
     return null;
 }
 
+// Cache elementFromPoint results within the same millisecond (effectively the
+// same frame) to avoid redundant layout recalculations when multiple capture-phase
+// listeners all call resolveTopmostWheelTarget on the same wheel event.
+let _efpCacheResult = null;
+let _efpCacheTime = -1;
+
+export function resolveTopmostWheelTarget(event) {
+    if (!event) {
+        return null;
+    }
+
+    const fallbackTarget = event.target ?? null;
+    if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
+        return fallbackTarget;
+    }
+
+    if (typeof document === 'undefined' || typeof document.elementFromPoint !== 'function') {
+        return fallbackTarget;
+    }
+
+    try {
+        const now = performance.now() | 0; // integer ms
+        if (now === _efpCacheTime && _efpCacheResult) {
+            return _efpCacheResult;
+        }
+        const result = document.elementFromPoint(event.clientX, event.clientY) || fallbackTarget;
+        _efpCacheResult = result;
+        _efpCacheTime = now;
+        return result;
+    } catch {
+        return fallbackTarget;
+    }
+}
+
+export function shouldCaptureWheelEvent({
+    event,
+    styleResolver = resolveStyleForElement,
+    attributeNames = DEFAULT_WHEEL_LOCK_ATTRIBUTES,
+} = {}) {
+    const topmostTarget = resolveTopmostWheelTarget(event);
+    return shouldCaptureWheelInput({
+        target: topmostTarget || event?.target || null,
+        styleResolver,
+        attributeNames,
+    });
+}
+
 export function shouldCaptureWheelInput({
     target,
     styleResolver = resolveStyleForElement,
     attributeNames = DEFAULT_WHEEL_LOCK_ATTRIBUTES,
 }) {
-    if (findWheelLockTarget(target, attributeNames)) {
+    const lockTarget = findWheelLockTarget(target, attributeNames);
+    if (lockTarget) {
+        debugLog('blocked by wheel-lock', lockTarget.tagName, lockTarget.id || lockTarget.className);
         return false;
     }
 
-    if (findScrollableWheelTarget(target, styleResolver)) {
+    const scrollTarget = findScrollableWheelTarget(target, styleResolver);
+    if (scrollTarget) {
+        debugLog('blocked by scrollable target', scrollTarget.tagName, scrollTarget.id || scrollTarget.className);
         return false;
     }
 
-    if (findInteractiveWheelTarget(target)) {
+    const interactiveTarget = findInteractiveWheelTarget(target);
+    if (interactiveTarget) {
+        debugLog('blocked by interactive target', interactiveTarget.tagName);
         return false;
     }
 
+    debugLog('capture allowed for', target?.tagName, target?.id || target?.className);
     return true;
 }
 

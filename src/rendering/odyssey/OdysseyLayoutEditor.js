@@ -17,12 +17,22 @@ import {
     getKeyboardNudgeStep,
     insertControlPointAfterIndex,
     moveLevelAlongPath,
+    nudgeControlPointAtIndex,
     retimeChapterBoundary,
     spreadAllChapterLevelsEvenly,
     spreadChapterLevelsEvenly,
     subdivideControlPointSegments,
     stretchPathControlPoints,
 } from './odyssey-layout-editor-utils.js';
+import {
+    areLayoutSnapshotsEqual,
+    cloneLayoutSnapshot,
+    commitLayoutHistory,
+    createLayoutHistory,
+    getCurrentLayoutHistoryEntry,
+    getLayoutHistorySnapshot,
+    restoreLayoutHistoryIndex,
+} from './odyssey-layout-history.js';
 import { MOUNTAIN_AURORA_CURTAIN_CONFIGS } from './chapter-environments/shared/mountain-aurora.js';
 
 const HANDLE_MODE = Object.freeze({
@@ -35,6 +45,26 @@ const DRAG_PLANE_MODE = Object.freeze({
     FREE: 'free',
     XZ: 'xz',
     YZ: 'yz',
+});
+
+const FREE_CAMERA_MOVE_SPEED = 24;
+const FREE_CAMERA_BOOST_MULTIPLIER = 3.2;
+const FREE_CAMERA_PRECISION_MULTIPLIER = 0.35;
+const PATH_HANDLE_BASE_COLOR = 0xffbb55;
+const PATH_HANDLE_BASE_EMISSIVE = 0xff6600;
+const PATH_HANDLE_BASE_EMISSIVE_INTENSITY = 0.9;
+const PATH_HANDLE_BASE_SCALE = 1;
+const PATH_HANDLE_SELECTED_COLOR = 0xfff0bd;
+const PATH_HANDLE_SELECTED_EMISSIVE = 0xffd27a;
+const PATH_HANDLE_SELECTED_EMISSIVE_INTENSITY = 1.75;
+const PATH_HANDLE_SELECTED_SCALE = 1.34;
+const PATH_SELECTION_HALO_BASE_SCALE = 2.9;
+const PATH_SELECTION_HALO_PULSE_SCALE = 0.18;
+const PATH_SELECTION_HALO_PULSE_SPEED = 4.8;
+const PATH_KEYBOARD_NUDGE_STEPS = Object.freeze({
+    fineStep: 0.1,
+    defaultStep: 0.5,
+    coarseStep: 2,
 });
 
 function isEditableKeyboardTarget(target) {
@@ -81,39 +111,16 @@ function applyButtonEnabledState(button, enabled) {
     button.style.cursor = enabled ? 'pointer' : 'not-allowed';
 }
 
-function cloneLayoutSnapshot(layout) {
-    return {
-        controlPoints: (layout?.controlPoints || []).map((point) => ({ ...point })),
-        levelPositionsById: { ...(layout?.levelPositionsById || {}) },
-    };
-}
-
-function areLayoutSnapshotsEqual(left, right) {
-    const leftControlPoints = left?.controlPoints || [];
-    const rightControlPoints = right?.controlPoints || [];
-    if (leftControlPoints.length !== rightControlPoints.length) {
-        return false;
+function formatHistoryTimestamp(timestamp) {
+    try {
+        return new Intl.DateTimeFormat([], {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+        }).format(timestamp);
+    } catch {
+        return '';
     }
-
-    for (let index = 0; index < leftControlPoints.length; index += 1) {
-        const leftPoint = leftControlPoints[index];
-        const rightPoint = rightControlPoints[index];
-        if (
-            leftPoint?.x !== rightPoint?.x
-            || leftPoint?.y !== rightPoint?.y
-            || leftPoint?.z !== rightPoint?.z
-        ) {
-            return false;
-        }
-    }
-
-    const leftEntries = Object.entries(left?.levelPositionsById || {});
-    const rightEntries = Object.entries(right?.levelPositionsById || {});
-    if (leftEntries.length !== rightEntries.length) {
-        return false;
-    }
-
-    return leftEntries.every(([levelId, position]) => right?.levelPositionsById?.[levelId] === position);
 }
 
 export class OdysseyLayoutEditor {
@@ -129,6 +136,7 @@ export class OdysseyLayoutEditor {
         this.rootGroup.name = 'odyssey-layout-editor';
         this.transformControls = null;
         this.cameraProbe = null;
+        this.pathSelectionHalo = null;
         this.referenceGroup = new THREE.Group();
         this.pathHandleGroup = new THREE.Group();
         this.levelHandleGroup = new THREE.Group();
@@ -139,8 +147,13 @@ export class OdysseyLayoutEditor {
         this.selectedDescriptor = null;
         this.dragState = null;
         this.pendingLayout = null;
+        this.applyingLayout = null;
         this.isApplyingLayout = false;
         this.panel = null;
+        this.panelContent = null;
+        this.panelTitleLabel = null;
+        this.panelToggleButton = null;
+        this.isPanelMinimized = false;
         this.textArea = null;
         this.statusLabel = null;
         this.selectionLabel = null;
@@ -148,18 +161,28 @@ export class OdysseyLayoutEditor {
         this.modeHintLabel = null;
         this.modeButtons = new Map();
         this.dragPlaneButtons = new Map();
+        this.cameraModeButtons = new Map();
         this.undoButton = null;
-        this.undoStack = [];
-        this.maxUndoStackSize = 80;
-        this.dragUndoBaseline = null;
-        this.dragUndoRecorded = false;
+        this.redoButton = null;
+        this.cameraHintLabel = null;
+        this.historyList = null;
+        this.historyState = null;
+        this.dragHistoryBaseline = null;
+        this.dragHistoryMetadata = null;
+        this.freeCameraLookDrag = null;
+        this.freeCameraMovementKeys = new Set();
         this.chapterDragDiagnostics = null;
+        this.pathSelectionPulseTime = 0;
         this.boundHandlers = {
             pointerdown: this.onPointerDown.bind(this),
             pointermove: this.onPointerMove.bind(this),
             pointerup: this.onPointerUp.bind(this),
             click: this.onClick.bind(this),
             keydown: this.onKeyDown.bind(this),
+            keyup: this.onKeyUp.bind(this),
+            wheel: this.onWheel.bind(this),
+            contextmenu: this.onContextMenu.bind(this),
+            blur: this.onWindowBlur.bind(this),
         };
         this.pointer = new THREE.Vector2();
         this.raycaster = new THREE.Raycaster();
@@ -167,6 +190,7 @@ export class OdysseyLayoutEditor {
         this.projectedSample = new THREE.Vector3();
         this.dragIntersection = new THREE.Vector3();
         this.dragPlaneNormal = new THREE.Vector3();
+        this.freeCameraStep = new THREE.Vector3();
         this.suppressNextClick = false;
     }
 
@@ -179,17 +203,24 @@ export class OdysseyLayoutEditor {
 
         this.createTransformControls();
         this.createEditorHud();
+        this.initializeHistoryState();
         this.createCameraProbe();
+        this.createPathSelectionHalo();
         this.rebuildHandleMeshes();
         this.refreshFromBoardLayout();
         this.setMode(HANDLE_MODE.PATH);
+        this.updateCameraModeUi();
 
         const canvas = this.renderer?.domElement;
         canvas?.addEventListener('pointerdown', this.boundHandlers.pointerdown);
         canvas?.addEventListener('pointermove', this.boundHandlers.pointermove);
         canvas?.addEventListener('pointerup', this.boundHandlers.pointerup);
         canvas?.addEventListener('click', this.boundHandlers.click);
+        canvas?.addEventListener('contextmenu', this.boundHandlers.contextmenu);
         document.addEventListener('keydown', this.boundHandlers.keydown, true);
+        document.addEventListener('keyup', this.boundHandlers.keyup, true);
+        document.addEventListener('wheel', this.boundHandlers.wheel, { capture: true, passive: false });
+        window.addEventListener('blur', this.boundHandlers.blur);
     }
 
     createTransformControls() {
@@ -205,7 +236,7 @@ export class OdysseyLayoutEditor {
                 return;
             }
 
-            this.beginUndoTransaction();
+            this.beginHistoryTransaction(this.getDragHistoryMetadata());
         });
         this.transformControls.addEventListener('objectChange', () => {
             if (
@@ -225,11 +256,11 @@ export class OdysseyLayoutEditor {
             this.queueLayoutApply({
                 controlPoints,
                 levelPositionsById: workingLayout.levelPositionsById,
-            }, { recordUndoFromDrag: true });
+            });
             this.updateSelectionLabel();
         });
         this.transformControls.addEventListener('mouseUp', () => {
-            this.endUndoTransaction();
+            this.endHistoryTransaction();
         });
         this.scene.add(this.transformControls);
         this.applyDragPlaneMode();
@@ -242,7 +273,9 @@ export class OdysseyLayoutEditor {
             position: fixed;
             top: 22px;
             left: 22px;
-            width: 340px;
+            width: 380px;
+            max-height: calc(100vh - 44px);
+            overflow: auto;
             z-index: 1600;
             background: rgba(5, 10, 20, 0.9);
             border: 1px solid rgba(73, 255, 233, 0.22);
@@ -257,10 +290,25 @@ export class OdysseyLayoutEditor {
             backdrop-filter: blur(18px);
         `;
 
-        const title = document.createElement('div');
-        title.textContent = 'Odyssey Layout Editor';
-        title.style.cssText = 'font-size: 14px; font-weight: 800; color: #49ffe9;';
-        panel.appendChild(title);
+        const headerRow = document.createElement('div');
+        headerRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;';
+
+        this.panelTitleLabel = document.createElement('div');
+        this.panelTitleLabel.style.cssText = 'font-size: 14px; font-weight: 800; color: #49ffe9;';
+        headerRow.appendChild(this.panelTitleLabel);
+
+        this.panelToggleButton = createButton('▾', () => this.togglePanelMinimized());
+        this.panelToggleButton.style.minWidth = '38px';
+        this.panelToggleButton.style.width = '38px';
+        this.panelToggleButton.style.padding = '8px 0';
+        this.panelToggleButton.style.fontSize = '18px';
+        this.panelToggleButton.style.lineHeight = '1';
+        headerRow.appendChild(this.panelToggleButton);
+        panel.appendChild(headerRow);
+
+        const panelContent = document.createElement('div');
+        panelContent.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
+        panel.appendChild(panelContent);
 
         const modeRow = document.createElement('div');
         modeRow.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;';
@@ -273,7 +321,7 @@ export class OdysseyLayoutEditor {
             this.modeButtons.set(mode, button);
             modeRow.appendChild(button);
         });
-        panel.appendChild(modeRow);
+        panelContent.appendChild(modeRow);
 
         const dragRow = document.createElement('div');
         dragRow.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;';
@@ -286,19 +334,35 @@ export class OdysseyLayoutEditor {
             this.dragPlaneButtons.set(mode, button);
             dragRow.appendChild(button);
         });
-        panel.appendChild(dragRow);
+        panelContent.appendChild(dragRow);
+
+        const cameraRow = document.createElement('div');
+        cameraRow.style.cssText = 'display:grid;grid-template-columns:repeat(2,1fr);gap:8px;';
+        [
+            ['free', 'Free Camera', () => this.enableFreeCamera()],
+            ['follow', 'In-Game View', () => this.restoreInGameCameraView()],
+        ].forEach(([mode, label, onClick]) => {
+            const button = createButton(label, onClick);
+            this.cameraModeButtons.set(mode, button);
+            cameraRow.appendChild(button);
+        });
+        panelContent.appendChild(cameraRow);
+
+        this.cameraHintLabel = document.createElement('div');
+        this.cameraHintLabel.style.cssText = 'min-height: 18px; color: #8bd7ca; font-size: 11px;';
+        panelContent.appendChild(this.cameraHintLabel);
 
         this.selectionLabel = document.createElement('div');
         this.selectionLabel.style.cssText = 'min-height: 38px; color: #9fe9dd;';
-        panel.appendChild(this.selectionLabel);
+        panelContent.appendChild(this.selectionLabel);
 
         this.selectionDetailLabel = document.createElement('div');
         this.selectionDetailLabel.style.cssText = 'min-height: 18px; color: #78c8bf; font-size: 11px;';
-        panel.appendChild(this.selectionDetailLabel);
+        panelContent.appendChild(this.selectionDetailLabel);
 
         this.modeHintLabel = document.createElement('div');
         this.modeHintLabel.style.cssText = 'color: #78c8bf; font-size: 11px;';
-        panel.appendChild(this.modeHintLabel);
+        panelContent.appendChild(this.modeHintLabel);
 
         const toolGrid = document.createElement('div');
         toolGrid.style.cssText = 'display:grid;grid-template-columns:repeat(2,1fr);gap:8px;';
@@ -309,19 +373,21 @@ export class OdysseyLayoutEditor {
         toolGrid.appendChild(createButton('Spread All', () => this.spreadAllChapterLevels()));
         toolGrid.appendChild(createButton('Stretch After', () => this.extendPathAfterSelection()));
         toolGrid.appendChild(createButton('Append Tail', () => this.appendPathTailPoint()));
-        panel.appendChild(toolGrid);
+        panelContent.appendChild(toolGrid);
 
         const actionGrid = document.createElement('div');
         actionGrid.style.cssText = 'display:grid;grid-template-columns:repeat(2,1fr);gap:8px;';
-        this.undoButton = createButton('Undo Last', () => this.undoLatestChange());
+        this.undoButton = createButton('Undo', () => this.undoLatestChange());
         actionGrid.appendChild(this.undoButton);
+        this.redoButton = createButton('Redo', () => this.redoLatestChange());
+        actionGrid.appendChild(this.redoButton);
         actionGrid.appendChild(createButton('Copy Layout JSON', () => this.copyLayoutJson()));
         actionGrid.appendChild(createButton('Copy JS Snippet', () => this.copyLayoutSnippet()));
         actionGrid.appendChild(createButton('Copy Control Points', () => this.copyControlPoints()));
         actionGrid.appendChild(createButton('Copy Level Positions', () => this.copyLevelPositions()));
         actionGrid.appendChild(createButton('Copy Chapters', () => this.copyChapterPositions()));
         actionGrid.appendChild(createButton('Reset Layout', () => this.resetLayout()));
-        panel.appendChild(actionGrid);
+        panelContent.appendChild(actionGrid);
 
         this.textArea = document.createElement('textarea');
         this.textArea.spellcheck = false;
@@ -337,18 +403,62 @@ export class OdysseyLayoutEditor {
             padding: 10px;
             font: 500 12px/1.45 "JetBrains Mono", "Fira Code", monospace;
         `;
-        panel.appendChild(this.textArea);
+        panelContent.appendChild(this.textArea);
 
         const importButton = createButton('Import Pasted JSON', () => this.importLayoutFromTextArea());
-        panel.appendChild(importButton);
+        panelContent.appendChild(importButton);
+
+        const historyTitle = document.createElement('div');
+        historyTitle.textContent = 'History';
+        historyTitle.style.cssText = 'font-size: 12px; font-weight: 800; color: #49ffe9; margin-top: 2px;';
+        panelContent.appendChild(historyTitle);
+
+        this.historyList = document.createElement('div');
+        this.historyList.style.cssText = `
+            max-height: 230px;
+            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-right: 4px;
+        `;
+        panelContent.appendChild(this.historyList);
 
         this.statusLabel = document.createElement('div');
         this.statusLabel.style.cssText = 'min-height: 18px; color: #78c8bf;';
-        panel.appendChild(this.statusLabel);
+        panelContent.appendChild(this.statusLabel);
 
         document.body.appendChild(panel);
         this.panel = panel;
-        this.updateUndoButtonState();
+        this.panelContent = panelContent;
+        this.setPanelMinimized(false);
+        this.updateHistoryControlsState();
+    }
+
+    setPanelMinimized(minimized) {
+        this.isPanelMinimized = Boolean(minimized);
+        if (!this.panel || !this.panelContent || !this.panelTitleLabel || !this.panelToggleButton) {
+            return;
+        }
+
+        this.panelContent.style.display = this.isPanelMinimized ? 'none' : 'flex';
+        this.panel.style.width = this.isPanelMinimized ? '176px' : '380px';
+        this.panel.style.maxHeight = this.isPanelMinimized ? 'none' : 'calc(100vh - 44px)';
+        this.panel.style.overflow = this.isPanelMinimized ? 'hidden' : 'auto';
+        this.panel.style.padding = this.isPanelMinimized ? '10px 12px' : '14px';
+        this.panel.style.gap = this.isPanelMinimized ? '0' : '10px';
+
+        this.panelTitleLabel.textContent = this.isPanelMinimized
+            ? 'Odyssey Editor'
+            : 'Odyssey Layout Editor';
+        this.panelToggleButton.textContent = this.isPanelMinimized ? '▸' : '▾';
+        this.panelToggleButton.title = this.isPanelMinimized
+            ? 'Expand the Odyssey Layout Editor'
+            : 'Minimize the Odyssey Layout Editor';
+    }
+
+    togglePanelMinimized() {
+        this.setPanelMinimized(!this.isPanelMinimized);
     }
 
     createCameraProbe() {
@@ -363,6 +473,108 @@ export class OdysseyLayoutEditor {
         this.referenceGroup.add(this.cameraProbe);
     }
 
+    createPathSelectionHalo() {
+        const geometry = new THREE.RingGeometry(1.1, 1.72, 48);
+        const material = new THREE.MeshBasicMaterial({
+            color: 0xfff4c9,
+            transparent: true,
+            opacity: 0.82,
+            side: THREE.DoubleSide,
+            depthTest: false,
+            depthWrite: false,
+        });
+        this.pathSelectionHalo = new THREE.Mesh(geometry, material);
+        this.pathSelectionHalo.name = 'odyssey-path-selection-halo';
+        this.pathSelectionHalo.visible = false;
+        this.pathSelectionHalo.renderOrder = 140;
+        this.rootGroup.add(this.pathSelectionHalo);
+    }
+
+    normalizeSelectedPathDescriptor(count = this.pathHandles.length) {
+        if (this.selectedDescriptor?.type !== 'path') {
+            return null;
+        }
+
+        if (!Number.isFinite(count) || count <= 0) {
+            this.selectedDescriptor = null;
+            return null;
+        }
+
+        const normalizedIndex = THREE.MathUtils.clamp(
+            Number(this.selectedDescriptor.index) || 0,
+            0,
+            count - 1,
+        );
+        if (normalizedIndex !== this.selectedDescriptor.index) {
+            this.selectedDescriptor = {
+                type: 'path',
+                index: normalizedIndex,
+            };
+        }
+
+        return normalizedIndex;
+    }
+
+    applyPathHandleVisualState(handle, selected) {
+        if (!handle) {
+            return;
+        }
+
+        handle.scale.setScalar(selected ? PATH_HANDLE_SELECTED_SCALE : PATH_HANDLE_BASE_SCALE);
+        const { material } = handle;
+        if (!(material instanceof THREE.MeshStandardMaterial)) {
+            return;
+        }
+
+        material.color.setHex(selected ? PATH_HANDLE_SELECTED_COLOR : PATH_HANDLE_BASE_COLOR);
+        material.emissive.setHex(selected ? PATH_HANDLE_SELECTED_EMISSIVE : PATH_HANDLE_BASE_EMISSIVE);
+        material.emissiveIntensity = selected
+            ? PATH_HANDLE_SELECTED_EMISSIVE_INTENSITY
+            : PATH_HANDLE_BASE_EMISSIVE_INTENSITY;
+        material.roughness = selected ? 0.24 : 0.32;
+        material.metalness = selected ? 0.26 : 0.2;
+    }
+
+    syncPathSelectionVisuals(delta = 0) {
+        const selectedPathIndex = this.normalizeSelectedPathDescriptor();
+        const selectedHandle = Number.isInteger(selectedPathIndex)
+            ? this.pathHandles[selectedPathIndex] || null
+            : null;
+        const shouldHighlightSelection = this.mode === HANDLE_MODE.PATH && !!selectedHandle;
+
+        this.pathHandles.forEach((handle, index) => {
+            this.applyPathHandleVisualState(handle, shouldHighlightSelection && index === selectedPathIndex);
+        });
+
+        if (shouldHighlightSelection) {
+            if (this.transformControls?.object !== selectedHandle) {
+                this.transformControls?.attach?.(selectedHandle);
+            }
+        } else if (this.mode === HANDLE_MODE.PATH && this.transformControls?.object) {
+            this.transformControls.detach();
+        }
+
+        if (!this.pathSelectionHalo) {
+            return;
+        }
+
+        if (!shouldHighlightSelection) {
+            this.pathSelectionHalo.visible = false;
+            return;
+        }
+
+        this.pathSelectionPulseTime += Number.isFinite(delta) ? delta : 0;
+        const pulse = 1 + (
+            Math.sin(this.pathSelectionPulseTime * PATH_SELECTION_HALO_PULSE_SPEED)
+            * PATH_SELECTION_HALO_PULSE_SCALE
+        );
+        this.pathSelectionHalo.visible = true;
+        this.pathSelectionHalo.position.copy(selectedHandle.position);
+        this.pathSelectionHalo.quaternion.copy(this.camera.quaternion);
+        this.pathSelectionHalo.scale.setScalar(PATH_SELECTION_HALO_BASE_SCALE * pulse);
+        this.pathSelectionHalo.material.opacity = 0.72 + (0.1 * pulse);
+    }
+
     rebuildHandleMeshes() {
         this.clearHandleGroups();
 
@@ -370,9 +582,9 @@ export class OdysseyLayoutEditor {
         layout.controlPoints.forEach((point, index) => {
             const geometry = new THREE.SphereGeometry(1.05, 20, 20);
             const material = new THREE.MeshStandardMaterial({
-                color: 0xffbb55,
-                emissive: 0xff6600,
-                emissiveIntensity: 0.9,
+                color: PATH_HANDLE_BASE_COLOR,
+                emissive: PATH_HANDLE_BASE_EMISSIVE,
+                emissiveIntensity: PATH_HANDLE_BASE_EMISSIVE_INTENSITY,
                 metalness: 0.2,
                 roughness: 0.32,
             });
@@ -422,6 +634,7 @@ export class OdysseyLayoutEditor {
         });
 
         this.rebuildReferenceOverlays();
+        this.syncPathSelectionVisuals();
     }
 
     clearHandleGroups() {
@@ -550,7 +763,9 @@ export class OdysseyLayoutEditor {
             handle.lookAt(point.clone().add(tangent));
         });
 
+        this.syncPathSelectionVisuals();
         this.updateSelectionLabel();
+        this.updateCameraModeUi();
         this.updateStatus('Editor ready.');
     }
 
@@ -566,12 +781,139 @@ export class OdysseyLayoutEditor {
         this.rebuildReferenceOverlays();
     }
 
-    update() {
+    initializeHistoryState() {
+        this.historyState = createLayoutHistory(this.boardController.getLayoutData(), {
+            label: 'Initial Layout',
+            detail: 'Loaded from the current Odyssey path presentation.',
+        });
+        this.updateHistoryControlsState();
+        this.renderHistoryEntries();
+    }
+
+    commitHistoryEntry(layoutSnapshot, metadata = {}) {
+        const nextHistoryState = commitLayoutHistory(this.historyState, layoutSnapshot, metadata);
+        if (nextHistoryState === this.historyState) {
+            return false;
+        }
+
+        this.historyState = nextHistoryState;
+        this.updateHistoryControlsState();
+        this.renderHistoryEntries();
+        return true;
+    }
+
+    async restoreHistoryIndex(index) {
+        if (!this.historyState?.entries?.length) {
+            return false;
+        }
+
+        const nextSnapshot = getLayoutHistorySnapshot(this.historyState, index);
+        if (!nextSnapshot) {
+            return false;
+        }
+
+        this.pendingLayout = null;
+        this.endHistoryTransaction({ commit: false });
+        const applied = await this.boardController.applyLayoutOverride(nextSnapshot);
+        if (!applied) {
+            this.updateStatus('History restore failed.');
+            return false;
+        }
+
+        this.historyState = restoreLayoutHistoryIndex(this.historyState, index);
+        this.refreshFromBoardLayout();
+        this.updateHistoryControlsState();
+        this.renderHistoryEntries();
+        const entry = getCurrentLayoutHistoryEntry(this.historyState);
+        this.updateStatus(`Restored history entry ${entry?.id ?? index + 1}: ${entry?.label || 'state'}.`);
+        return true;
+    }
+
+    updateHistoryControlsState() {
+        const currentIndex = this.historyState?.currentIndex ?? 0;
+        const entryCount = this.historyState?.entries?.length ?? 0;
+        if (this.undoButton) {
+            applyButtonEnabledState(this.undoButton, currentIndex > 0);
+        }
+        if (this.redoButton) {
+            applyButtonEnabledState(this.redoButton, currentIndex < (entryCount - 1));
+        }
+    }
+
+    renderHistoryEntries() {
+        if (!this.historyList) {
+            return;
+        }
+
+        this.historyList.innerHTML = '';
+        const entries = this.historyState?.entries || [];
+        const currentIndex = this.historyState?.currentIndex ?? 0;
+
+        [...entries].reverse().forEach((entry) => {
+            const index = entries.indexOf(entry);
+            const row = document.createElement('div');
+            row.style.cssText = `
+                border: 1px solid ${index === currentIndex ? 'rgba(73, 255, 233, 0.6)' : 'rgba(73, 255, 233, 0.16)'};
+                background: ${index === currentIndex ? 'rgba(16, 39, 52, 0.9)' : 'rgba(7, 14, 24, 0.78)'};
+                border-radius: 12px;
+                padding: 9px 10px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            `;
+
+            const titleRow = document.createElement('div');
+            titleRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
+
+            const title = document.createElement('div');
+            title.textContent = `#${entry.id} ${entry.label}`;
+            title.style.cssText = 'font-weight: 700; color: #dffdf8;';
+            titleRow.appendChild(title);
+
+            const stateLabel = document.createElement('div');
+            stateLabel.textContent = index === currentIndex ? 'Current' : 'Restore';
+            stateLabel.style.cssText = `
+                font-size: 10px;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+                color: ${index === currentIndex ? '#49ffe9' : '#9fe9dd'};
+                cursor: ${index === currentIndex ? 'default' : 'pointer'};
+            `;
+            if (index !== currentIndex) {
+                stateLabel.addEventListener('click', () => {
+                    this.restoreHistoryIndex(index).catch((error) => {
+                        this.updateStatus(`History restore failed: ${error.message}`);
+                    });
+                });
+            }
+            titleRow.appendChild(stateLabel);
+            row.appendChild(titleRow);
+
+            if (entry.detail) {
+                const detail = document.createElement('div');
+                detail.textContent = entry.detail;
+                detail.style.cssText = 'font-size: 11px; color: #9ed8d0;';
+                row.appendChild(detail);
+            }
+
+            const timeLabel = document.createElement('div');
+            timeLabel.textContent = formatHistoryTimestamp(entry.timestamp);
+            timeLabel.style.cssText = 'font-size: 10px; color: rgba(183, 225, 219, 0.74);';
+            row.appendChild(timeLabel);
+
+            this.historyList.appendChild(row);
+        });
+    }
+
+    update(delta) {
         if (this.cameraProbe && this.boardController.cameraController && this.boardController.pathRenderer?.pathCurve) {
             const progress = this.boardController.cameraController.getCurrentPosition();
             const point = this.boardController.pathRenderer.pathCurve.getPointAt(progress);
             this.cameraProbe.position.copy(point);
         }
+
+        this.updateFreeCameraMovement(delta);
+        this.syncPathSelectionVisuals(delta);
     }
 
     setMode(mode) {
@@ -588,6 +930,7 @@ export class OdysseyLayoutEditor {
             this.transformControls.detach();
         }
 
+        this.syncPathSelectionVisuals();
         this.updateModeHint();
         this.updateSelectionLabel();
     }
@@ -598,6 +941,136 @@ export class OdysseyLayoutEditor {
             applyButtonActiveState(button, buttonMode === mode);
         });
         this.applyDragPlaneMode();
+    }
+
+    updateCameraModeUi() {
+        const isFreeCamera = this.boardController.cameraController?.isFreeMode?.() || false;
+        this.cameraModeButtons.forEach((button, buttonMode) => {
+            applyButtonActiveState(button, (buttonMode === 'free') === isFreeCamera);
+        });
+
+        if (!this.cameraHintLabel) {
+            return;
+        }
+
+        this.cameraHintLabel.textContent = isFreeCamera
+            ? [
+                'Free Camera: hold RMB and drag, or use IJKL to rotate.',
+                'Arrow keys still nudge the selected path point in Path mode.',
+                'WASD moves, Q/E vertical, Shift boosts, Alt slows, wheel dollies.',
+            ].join(' ')
+            : 'In-Game View: editor uses the authored Odyssey path camera framing.';
+    }
+
+    enableFreeCamera() {
+        this.boardController.cameraController?.setFreeMode?.(true);
+        this.updateCameraModeUi();
+        this.updateSelectionLabel();
+        this.updateStatus([
+            'Free camera enabled.',
+            'Use RMB drag or IJKL to rotate;',
+            'arrow keys keep nudging the selected path point.',
+        ].join(' '));
+    }
+
+    restoreInGameCameraView() {
+        this.boardController.cameraController?.setFollowMode?.();
+        this.updateCameraModeUi();
+        this.updateSelectionLabel();
+        this.updateStatus('Returned to the normal Odyssey path camera.');
+    }
+
+    updateFreeCameraMovement(delta) {
+        const { cameraController } = this.boardController;
+        if (!cameraController?.isFreeMode?.()) {
+            return;
+        }
+
+        const rotationSpeed = cameraController.config?.freeCamera?.keyboardRotateSpeed || 1.35;
+        let yawDelta = 0;
+        let pitchDelta = 0;
+        if (this.freeCameraMovementKeys.has('KeyJ')) {
+            yawDelta += rotationSpeed * delta;
+        }
+        if (this.freeCameraMovementKeys.has('KeyL')) {
+            yawDelta -= rotationSpeed * delta;
+        }
+        if (this.freeCameraMovementKeys.has('KeyI')) {
+            pitchDelta += rotationSpeed * delta;
+        }
+        if (this.freeCameraMovementKeys.has('KeyK')) {
+            pitchDelta -= rotationSpeed * delta;
+        }
+        if (yawDelta !== 0 || pitchDelta !== 0) {
+            cameraController.rotateFreeCamera(yawDelta, pitchDelta);
+        }
+
+        this.freeCameraStep.set(0, 0, 0);
+        if (this.freeCameraMovementKeys.has('KeyA')) {
+            this.freeCameraStep.x -= 1;
+        }
+        if (this.freeCameraMovementKeys.has('KeyD')) {
+            this.freeCameraStep.x += 1;
+        }
+        if (this.freeCameraMovementKeys.has('KeyQ')) {
+            this.freeCameraStep.y -= 1;
+        }
+        if (this.freeCameraMovementKeys.has('KeyE')) {
+            this.freeCameraStep.y += 1;
+        }
+        if (this.freeCameraMovementKeys.has('KeyS')) {
+            this.freeCameraStep.z -= 1;
+        }
+        if (this.freeCameraMovementKeys.has('KeyW')) {
+            this.freeCameraStep.z += 1;
+        }
+
+        if (this.freeCameraStep.lengthSq() === 0) {
+            return;
+        }
+
+        this.freeCameraStep.normalize();
+        let speed = FREE_CAMERA_MOVE_SPEED;
+        if (this.freeCameraMovementKeys.has('ShiftLeft') || this.freeCameraMovementKeys.has('ShiftRight')) {
+            speed *= FREE_CAMERA_BOOST_MULTIPLIER;
+        }
+        if (this.freeCameraMovementKeys.has('AltLeft') || this.freeCameraMovementKeys.has('AltRight')) {
+            speed *= FREE_CAMERA_PRECISION_MULTIPLIER;
+        }
+        this.freeCameraStep.multiplyScalar(speed * delta);
+        cameraController.moveFreeCamera(this.freeCameraStep);
+    }
+
+    isBoardInteractionBlocked() {
+        return !!(this.freeCameraLookDrag || this.dragState);
+    }
+
+    getPathPointKeyboardDelta(key, step) {
+        if (!Number.isFinite(step) || step <= 0) {
+            return null;
+        }
+
+        if (this.dragPlaneMode === DRAG_PLANE_MODE.XZ) {
+            if (key === 'ArrowLeft') return { x: -step, y: 0, z: 0 };
+            if (key === 'ArrowRight') return { x: step, y: 0, z: 0 };
+            if (key === 'ArrowUp') return { x: 0, y: 0, z: -step };
+            if (key === 'ArrowDown') return { x: 0, y: 0, z: step };
+            return null;
+        }
+
+        if (this.dragPlaneMode === DRAG_PLANE_MODE.YZ) {
+            if (key === 'ArrowLeft') return { x: 0, y: 0, z: -step };
+            if (key === 'ArrowRight') return { x: 0, y: 0, z: step };
+            if (key === 'ArrowUp') return { x: 0, y: step, z: 0 };
+            if (key === 'ArrowDown') return { x: 0, y: -step, z: 0 };
+            return null;
+        }
+
+        if (key === 'ArrowLeft') return { x: -step, y: 0, z: 0 };
+        if (key === 'ArrowRight') return { x: step, y: 0, z: 0 };
+        if (key === 'ArrowUp') return { x: 0, y: step, z: 0 };
+        if (key === 'ArrowDown') return { x: 0, y: -step, z: 0 };
+        return null;
     }
 
     applyDragPlaneMode() {
@@ -625,12 +1098,29 @@ export class OdysseyLayoutEditor {
     }
 
     onPointerDown(event) {
+        const { cameraController } = this.boardController;
+        if (cameraController?.isFreeMode?.() && event.button === 2) {
+            this.freeCameraLookDrag = {
+                pointerId: event.pointerId,
+                clientX: event.clientX,
+                clientY: event.clientY,
+            };
+            this.renderer?.domElement?.setPointerCapture?.(event.pointerId);
+            if (this.renderer?.domElement?.style) {
+                this.renderer.domElement.style.cursor = 'grabbing';
+            }
+            this.suppressNextClick = true;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return;
+        }
+
         if (this.mode === HANDLE_MODE.PATH) {
             const handle = this.pickHandle(event, this.pathHandles);
             if (handle) {
                 this.selectDescriptor({ type: 'path', index: handle.userData.index });
                 this.transformControls.attach(handle);
-                this.beginUndoTransaction();
+                this.beginHistoryTransaction(this.getDragHistoryMetadata());
                 this.dragState = this.createPathDragState(handle);
                 this.suppressNextClick = true;
                 event.preventDefault();
@@ -643,7 +1133,7 @@ export class OdysseyLayoutEditor {
             const handle = this.pickHandle(event, [...this.levelHandles.values()]);
             if (handle) {
                 this.selectDescriptor({ type: 'level', levelId: handle.userData.levelId });
-                this.beginUndoTransaction();
+                this.beginHistoryTransaction(this.getDragHistoryMetadata());
                 this.dragState = { type: 'level', levelId: handle.userData.levelId };
                 this.suppressNextClick = true;
                 event.preventDefault();
@@ -655,7 +1145,7 @@ export class OdysseyLayoutEditor {
         const handle = this.pickHandle(event, [...this.chapterHandles.values()]);
         if (handle) {
             this.selectDescriptor({ type: 'chapter', chapterId: handle.userData.chapterId });
-            this.beginUndoTransaction();
+            this.beginHistoryTransaction(this.getDragHistoryMetadata());
             this.dragState = { type: 'chapter', chapterId: handle.userData.chapterId };
             this.suppressNextClick = true;
             event.preventDefault();
@@ -664,6 +1154,18 @@ export class OdysseyLayoutEditor {
     }
 
     onPointerMove(event) {
+        if (this.freeCameraLookDrag && this.freeCameraLookDrag.pointerId === event.pointerId) {
+            const deltaX = event.clientX - this.freeCameraLookDrag.clientX;
+            const deltaY = event.clientY - this.freeCameraLookDrag.clientY;
+            this.freeCameraLookDrag.clientX = event.clientX;
+            this.freeCameraLookDrag.clientY = event.clientY;
+            this.boardController.cameraController?.applyFreeLookDelta?.(deltaX, deltaY);
+            this.updateCameraModeUi();
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return;
+        }
+
         if (this.dragState) {
             if (this.dragState.type === 'path') {
                 const handle = this.pathHandles[this.dragState.index];
@@ -714,7 +1216,7 @@ export class OdysseyLayoutEditor {
                 this.queueLayoutApply({
                     controlPoints: workingLayout.controlPoints,
                     levelPositionsById: nextPositions,
-                }, { recordUndoFromDrag: true });
+                });
             } else if (this.dragState.type === 'chapter') {
                 const workingLayout = this.getWorkingLayoutData();
                 const workingPresentationLayout = this.getWorkingPresentationLayout(workingLayout);
@@ -730,7 +1232,7 @@ export class OdysseyLayoutEditor {
                 this.queueLayoutApply({
                     controlPoints: workingLayout.controlPoints,
                     levelPositionsById: chapterRetime.levelPositionsById,
-                }, { recordUndoFromDrag: true });
+                });
                 this.updateSelectionLabel();
             }
 
@@ -756,12 +1258,35 @@ export class OdysseyLayoutEditor {
     }
 
     onPointerUp(event) {
+        if (this.freeCameraLookDrag && this.freeCameraLookDrag.pointerId === event.pointerId) {
+            this.renderer?.domElement?.releasePointerCapture?.(event.pointerId);
+            this.freeCameraLookDrag = null;
+            if (this.renderer?.domElement?.style) {
+                this.renderer.domElement.style.cursor = 'default';
+            }
+            this.suppressNextClick = true;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return;
+        }
+
         if (!this.dragState) {
             return;
         }
 
+        const finishedDragState = this.dragState;
         this.dragState = null;
-        this.endUndoTransaction();
+        this.endHistoryTransaction();
+        if (
+            finishedDragState.type === 'chapter'
+            && this.chapterDragDiagnostics?.chapterId === finishedDragState.chapterId
+            && this.chapterDragDiagnostics.localClampUsed
+        ) {
+            this.updateStatus(
+                `Chapter ${finishedDragState.chapterId} hit its local clamp. `
+                + 'Other chapter checkpoints stayed protected.',
+            );
+        }
         this.suppressNextClick = true;
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -786,14 +1311,82 @@ export class OdysseyLayoutEditor {
             return;
         }
 
+        const lowerKey = event.key.toLowerCase();
         const isUndoShortcut = (event.ctrlKey || event.metaKey)
             && !event.shiftKey
-            && event.key.toLowerCase() === 'z';
+            && lowerKey === 'z';
         if (isUndoShortcut) {
-            this.undoLatestChange();
+            this.undoLatestChange().catch((error) => {
+                this.updateStatus(`Undo failed: ${error.message}`);
+            });
             event.preventDefault();
             event.stopImmediatePropagation();
             return;
+        }
+
+        const isRedoShortcut = (event.ctrlKey || event.metaKey)
+            && (lowerKey === 'y' || (event.shiftKey && lowerKey === 'z'));
+        if (isRedoShortcut) {
+            this.redoLatestChange().catch((error) => {
+                this.updateStatus(`Redo failed: ${error.message}`);
+            });
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return;
+        }
+
+        if (
+            this.boardController.cameraController?.isFreeMode?.()
+            && [
+                'KeyW',
+                'KeyA',
+                'KeyS',
+                'KeyD',
+                'KeyQ',
+                'KeyE',
+                'KeyI',
+                'KeyJ',
+                'KeyK',
+                'KeyL',
+                'ShiftLeft',
+                'ShiftRight',
+                'AltLeft',
+                'AltRight',
+            ].includes(event.code)
+        ) {
+            this.freeCameraMovementKeys.add(event.code);
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return;
+        }
+
+        if (event.code === 'KeyF') {
+            this.enableFreeCamera();
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return;
+        }
+
+        if (event.code === 'KeyG') {
+            this.restoreInGameCameraView();
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return;
+        }
+
+        const isPathSelected = this.mode === HANDLE_MODE.PATH
+            && this.selectedDescriptor?.type === 'path';
+        if (isPathSelected && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+            const step = getKeyboardNudgeStep(event, PATH_KEYBOARD_NUDGE_STEPS);
+            const delta = this.getPathPointKeyboardDelta(event.key, step);
+            if (delta) {
+                this.nudgeSelectedPathPoint(delta).catch((error) => {
+                    this.updateStatus(`Path nudge failed: ${error.message}`);
+                });
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                return;
+            }
         }
 
         const isChapterSelected = this.selectedDescriptor?.type === 'chapter';
@@ -807,9 +1400,56 @@ export class OdysseyLayoutEditor {
 
         const direction = event.key === 'ArrowRight' ? 1 : -1;
         const step = getKeyboardNudgeStep(event);
-        this.nudgeSelectedChapterBoundary(direction * step);
+        this.nudgeSelectedChapterBoundary(direction * step).catch((error) => {
+            this.updateStatus(`Chapter nudge failed: ${error.message}`);
+        });
         event.preventDefault();
         event.stopImmediatePropagation();
+    }
+
+    onKeyUp(event) {
+        this.freeCameraMovementKeys.delete(event.code);
+    }
+
+    onWheel(event) {
+        if (!this.boardController.cameraController?.isFreeMode?.()) {
+            return;
+        }
+
+        if (!this.boardController.shouldHandleWheelEvent?.(event)) {
+            return;
+        }
+
+        if (event.ctrlKey) {
+            return;
+        }
+
+        const viewportHeight = this.container?.clientHeight || globalThis.window?.innerHeight || 900;
+        let deltaPixels = event.deltaY || 0;
+        if (event.deltaMode === 1) {
+            deltaPixels *= 16;
+        } else if (event.deltaMode === 2) {
+            deltaPixels *= viewportHeight;
+        }
+        const normalizedDelta = 0.001 * Math.max(Math.min(deltaPixels, 240), -240);
+        if (!normalizedDelta) {
+            return;
+        }
+
+        this.boardController.cameraController.dollyFree(-normalizedDelta * 72);
+        event.preventDefault();
+        event.stopImmediatePropagation();
+    }
+
+    onContextMenu(event) {
+        if (this.boardController.cameraController?.isFreeMode?.()) {
+            event.preventDefault();
+        }
+    }
+
+    onWindowBlur() {
+        this.freeCameraMovementKeys.clear();
+        this.freeCameraLookDrag = null;
     }
 
     pickHandle(event, objects, consume = true) {
@@ -901,17 +1541,64 @@ export class OdysseyLayoutEditor {
         if (descriptor?.type !== 'chapter') {
             this.chapterDragDiagnostics = null;
         }
+        this.syncPathSelectionVisuals();
         this.updateSelectionLabel();
     }
 
-    beginUndoTransaction() {
-        this.dragUndoBaseline = this.getWorkingLayoutData();
-        this.dragUndoRecorded = false;
+    getDragHistoryMetadata() {
+        const descriptor = this.dragState || this.selectedDescriptor;
+        if (!descriptor) {
+            return {
+                label: 'Adjusted Layout',
+                detail: 'Direct editor drag change.',
+            };
+        }
+
+        if (descriptor.type === 'path') {
+            return {
+                label: `Moved Path Point ${descriptor.index + 1}`,
+                detail: 'Spline control point repositioned.',
+            };
+        }
+
+        if (descriptor.type === 'level') {
+            return {
+                label: `Moved Level ${descriptor.levelId}`,
+                detail: 'Level node retimed along the Odyssey path.',
+            };
+        }
+
+        return {
+            label: `Adjusted Chapter ${descriptor.chapterId} Boundary`,
+            detail: 'Chapter start boundary retimed along the path.',
+        };
     }
 
-    endUndoTransaction() {
-        this.dragUndoBaseline = null;
-        this.dragUndoRecorded = false;
+    beginHistoryTransaction(metadata = this.getDragHistoryMetadata()) {
+        if (this.dragHistoryBaseline) {
+            return;
+        }
+
+        this.dragHistoryBaseline = this.getWorkingLayoutData();
+        this.dragHistoryMetadata = metadata;
+    }
+
+    endHistoryTransaction({ commit = true } = {}) {
+        const baseline = this.dragHistoryBaseline;
+        const metadata = this.dragHistoryMetadata;
+        this.dragHistoryBaseline = null;
+        this.dragHistoryMetadata = null;
+
+        if (!commit || !baseline) {
+            return;
+        }
+
+        const currentLayout = this.getWorkingLayoutData();
+        if (areLayoutSnapshotsEqual(baseline, currentLayout)) {
+            return;
+        }
+
+        this.commitHistoryEntry(currentLayout, metadata);
     }
 
     getOrderedLevelIds() {
@@ -919,7 +1606,7 @@ export class OdysseyLayoutEditor {
     }
 
     getWorkingLayoutData() {
-        const sourceLayout = this.pendingLayout || this.boardController.getLayoutData();
+        const sourceLayout = this.pendingLayout || this.applyingLayout || this.boardController.getLayoutData();
         return cloneLayoutSnapshot(sourceLayout);
     }
 
@@ -942,54 +1629,27 @@ export class OdysseyLayoutEditor {
         if (this.mode === HANDLE_MODE.PATH) {
             this.transformControls?.attach?.(this.pathHandles[normalizedIndex]);
         }
-    }
-
-    updateUndoButtonState() {
-        if (!this.undoButton) {
-            return;
-        }
-
-        applyButtonEnabledState(this.undoButton, this.undoStack.length > 0);
-    }
-
-    pushUndoSnapshot(layoutSnapshot) {
-        const snapshot = cloneLayoutSnapshot(layoutSnapshot);
-        const lastSnapshot = this.undoStack[this.undoStack.length - 1];
-        if (lastSnapshot && areLayoutSnapshotsEqual(lastSnapshot, snapshot)) {
-            return;
-        }
-
-        this.undoStack.push(snapshot);
-        if (this.undoStack.length > this.maxUndoStackSize) {
-            this.undoStack.shift();
-        }
-        this.updateUndoButtonState();
-    }
-
-    maybeRecordDragUndo(layoutOverride) {
-        if (!this.dragUndoBaseline || this.dragUndoRecorded) {
-            return;
-        }
-
-        if (areLayoutSnapshotsEqual(this.dragUndoBaseline, layoutOverride)) {
-            return;
-        }
-
-        this.pushUndoSnapshot(this.dragUndoBaseline);
-        this.dragUndoRecorded = true;
+        this.syncPathSelectionVisuals();
     }
 
     async applyEditorLayout(layoutOverride, successMessage, options = {}) {
         const currentLayout = this.getWorkingLayoutData();
-        if (!areLayoutSnapshotsEqual(currentLayout, layoutOverride) && options.recordUndo !== false) {
-            this.pushUndoSnapshot(currentLayout);
+        if (areLayoutSnapshotsEqual(currentLayout, layoutOverride)) {
+            if (successMessage) {
+                this.updateStatus(successMessage);
+            }
+            return false;
         }
+
         const applied = await this.boardController.applyLayoutOverride(layoutOverride);
         if (!applied) {
             this.updateStatus('Layout update failed.');
             return false;
         }
 
+        if (options.history) {
+            this.commitHistoryEntry(this.boardController.getLayoutData(), options.history);
+        }
         this.refreshFromBoardLayout();
         if (successMessage) {
             this.updateStatus(successMessage);
@@ -998,18 +1658,57 @@ export class OdysseyLayoutEditor {
     }
 
     async undoLatestChange() {
-        if (this.undoStack.length === 0) {
-            this.updateStatus('No previous editor change to undo.');
+        const previousIndex = (this.historyState?.currentIndex ?? 0) - 1;
+        if (previousIndex < 0) {
+            this.updateStatus('No previous editor change to restore.');
             return;
         }
 
-        const previousLayout = this.undoStack.pop();
-        this.updateUndoButtonState();
-        this.pendingLayout = null;
-        this.endUndoTransaction();
-        await this.applyEditorLayout(previousLayout, 'Latest editor change reverted.', {
-            recordUndo: false,
+        await this.restoreHistoryIndex(previousIndex);
+    }
+
+    async redoLatestChange() {
+        const nextIndex = (this.historyState?.currentIndex ?? 0) + 1;
+        if (nextIndex >= (this.historyState?.entries?.length ?? 0)) {
+            this.updateStatus('No later editor state to restore.');
+            return;
+        }
+
+        await this.restoreHistoryIndex(nextIndex);
+    }
+
+    async nudgeSelectedPathPoint(delta) {
+        const selectedIndex = this.selectedDescriptor?.type === 'path'
+            ? this.selectedDescriptor.index
+            : null;
+        if (!Number.isInteger(selectedIndex)) {
+            return false;
+        }
+
+        const workingLayout = this.getWorkingLayoutData();
+        const nextControlPoints = nudgeControlPointAtIndex(
+            workingLayout.controlPoints,
+            selectedIndex,
+            delta,
+        );
+        const nextLayout = {
+            controlPoints: nextControlPoints,
+            levelPositionsById: workingLayout.levelPositionsById,
+        };
+        if (areLayoutSnapshotsEqual(workingLayout, nextLayout)) {
+            return false;
+        }
+
+        const applied = await this.applyEditorLayout(nextLayout, `Path Point ${selectedIndex + 1} nudged.`, {
+            history: {
+                label: `Nudged Path Point ${selectedIndex + 1}`,
+                detail: `Adjusted by x ${delta.x || 0}, y ${delta.y || 0}, z ${delta.z || 0}.`,
+            },
         });
+        if (applied && this.mode === HANDLE_MODE.PATH) {
+            this.transformControls?.attach?.(this.pathHandles[selectedIndex]);
+        }
+        return applied;
     }
 
     async spreadSelectedChapterLevels() {
@@ -1040,7 +1739,12 @@ export class OdysseyLayoutEditor {
         await this.applyEditorLayout({
             controlPoints: workingLayout.controlPoints,
             levelPositionsById: nextPositions,
-        }, `Chapter ${chapterId} levels spread evenly inside its boundaries.`);
+        }, `Chapter ${chapterId} levels spread evenly inside its boundaries.`, {
+            history: {
+                label: `Spread Chapter ${chapterId}`,
+                detail: 'Redistributed all chapter levels evenly within the current chapter bounds.',
+            },
+        });
     }
 
     async insertPathPointAfterSelection() {
@@ -1060,7 +1764,16 @@ export class OdysseyLayoutEditor {
             levelPositionsById: workingLayout.levelPositionsById,
         }, selectedIndex >= (workingLayout.controlPoints.length - 1)
             ? 'Added a new tail path point after the selected spline handle.'
-            : 'Inserted a new spline handle after the selected path point.');
+            : 'Inserted a new spline handle after the selected path point.', {
+            history: {
+                label: selectedIndex >= (workingLayout.controlPoints.length - 1)
+                    ? `Extended Tail After Path Point ${selectedIndex + 1}`
+                    : `Inserted Path Point After ${selectedIndex + 1}`,
+                detail: selectedIndex >= (workingLayout.controlPoints.length - 1)
+                    ? 'Added a new control point to the end of the spline.'
+                    : 'Inserted a midpoint control point after the selected spline handle.',
+            },
+        });
         if (applied) {
             this.selectPathHandle(Math.min(selectedIndex + 1, nextControlPoints.length - 1));
         }
@@ -1080,7 +1793,12 @@ export class OdysseyLayoutEditor {
         const applied = await this.applyEditorLayout({
             controlPoints: nextControlPoints,
             levelPositionsById: workingLayout.levelPositionsById,
-        }, 'Inserted midpoint spline handles across the full path.');
+        }, 'Inserted midpoint spline handles across the full path.', {
+            history: {
+                label: 'Subdivided Path',
+                detail: 'Inserted midpoint spline handles across the full Odyssey path.',
+            },
+        });
         if (applied && Number.isInteger(selectedIndex)) {
             this.selectPathHandle(Math.min(selectedIndex * 2, nextControlPoints.length - 1));
         }
@@ -1103,7 +1821,12 @@ export class OdysseyLayoutEditor {
         const applied = await this.applyEditorLayout({
             controlPoints: nextControlPoints,
             levelPositionsById: workingLayout.levelPositionsById,
-        }, `Inserted ${insertedPointsPerSegment} extra spline handles per path segment.`);
+        }, `Inserted ${insertedPointsPerSegment} extra spline handles per path segment.`, {
+            history: {
+                label: 'Densified Path',
+                detail: `Inserted ${insertedPointsPerSegment} extra spline handles per path segment.`,
+            },
+        });
         if (applied && Number.isInteger(selectedIndex)) {
             const multiplier = insertedPointsPerSegment + 1;
             this.selectPathHandle(Math.min(selectedIndex * multiplier, nextControlPoints.length - 1));
@@ -1122,10 +1845,15 @@ export class OdysseyLayoutEditor {
         await this.applyEditorLayout({
             controlPoints: workingLayout.controlPoints,
             levelPositionsById: nextPositions,
-        }, 'All chapters redistributed to even spacing within their current boundaries.');
+        }, 'All chapters redistributed to even spacing within their current boundaries.', {
+            history: {
+                label: 'Spread All Chapters',
+                detail: 'Redistributed every chapter to even spacing across current boundaries.',
+            },
+        });
     }
 
-    nudgeSelectedChapterBoundary(delta) {
+    async nudgeSelectedChapterBoundary(delta) {
         const chapterId = this.selectedDescriptor?.type === 'chapter'
             ? this.selectedDescriptor.chapterId
             : null;
@@ -1154,13 +1882,30 @@ export class OdysseyLayoutEditor {
             levelPositionsById: chapterRetime.levelPositionsById,
         };
         if (areLayoutSnapshotsEqual(workingLayout, nextLayout)) {
+            if (chapterRetime.diagnostics.localClampUsed) {
+                this.updateStatus(
+                    `Chapter ${chapterId} is already at its local clamp. `
+                    + 'Other chapter checkpoints stayed protected.',
+                );
+            }
             return;
         }
 
         this.chapterDragDiagnostics = chapterRetime.diagnostics;
-        this.pushUndoSnapshot(workingLayout);
-        this.queueLayoutApply(nextLayout);
-        this.updateSelectionLabel();
+        const successMessage = chapterRetime.diagnostics.localClampUsed
+            ? `Chapter ${chapterId} boundary nudged to its local clamp. `
+                + 'Other chapter checkpoints stayed protected.'
+            : `Chapter ${chapterId} boundary nudged. `
+                + 'Other chapter checkpoints stayed protected.';
+        const applied = await this.applyEditorLayout(nextLayout, successMessage, {
+            history: {
+                label: `Nudged Chapter ${chapterId} Boundary`,
+                detail: `Applied a keyboard nudge of ${delta.toFixed(4)} to the chapter boundary.`,
+            },
+        });
+        if (applied) {
+            this.updateSelectionLabel();
+        }
     }
 
     resolveExtensionAnchorProgress() {
@@ -1206,7 +1951,14 @@ export class OdysseyLayoutEditor {
             levelPositionsById: layout.levelPositionsById,
         }, anchorProgress >= 0.995
             ? 'Path tail extended with a new control point.'
-            : 'Path stretched after the current selection.');
+            : 'Path stretched after the current selection.', {
+            history: {
+                label: anchorProgress >= 0.995 ? 'Extended Path Tail' : 'Stretched Path After Selection',
+                detail: anchorProgress >= 0.995
+                    ? 'Added a new trailing spline control point.'
+                    : 'Rescaled the spline after the current anchor selection.',
+            },
+        });
     }
 
     async appendPathTailPoint() {
@@ -1214,7 +1966,12 @@ export class OdysseyLayoutEditor {
         await this.applyEditorLayout({
             controlPoints: appendTailControlPoint(layout.controlPoints),
             levelPositionsById: layout.levelPositionsById,
-        }, 'Appended a new tail control point to extend the path.');
+        }, 'Appended a new tail control point to extend the path.', {
+            history: {
+                label: 'Appended Path Tail',
+                detail: 'Added a new control point to the end of the Odyssey spline.',
+            },
+        });
     }
 
     updateModeHint() {
@@ -1226,9 +1983,12 @@ export class OdysseyLayoutEditor {
             this.modeHintLabel.textContent = [
                 'Path: drag orange spline points.',
                 'Free/XZ/YZ set the drag plane.',
+                'Selected points stay highlighted, even while Free Camera is active.',
+                'Arrow keys nudge the selected point in the current drag plane.',
                 'Insert After adds a local handle.',
                 'Subdivide Path doubles density; Dense Path adds many more at once.',
-                'Use Stretch After or Append Tail to add length.',
+                'Use IJKL or RMB drag to rotate Free Camera.',
+                'Alt is fine; Shift is coarse. Use Stretch After or Append Tail to add length.',
             ].join(' ');
             return;
         }
@@ -1243,8 +2003,9 @@ export class OdysseyLayoutEditor {
         }
 
         this.modeHintLabel.textContent = [
-            'Chapters: Smart boundary mode.',
-            'Drag a chapter start ring to set the boundary exactly.',
+            'Chapters: local checkpoint mode.',
+            'Drag a chapter start ring until it hits its local clamp.',
+            'Only the two adjacent chapters compress; later checkpoints stay protected.',
             'Spread Chapter evens that chapter inside its current boundaries.',
             'ArrowLeft/ArrowRight nudge the selected chapter.',
             'Alt is fine; Shift is coarse.',
@@ -1252,6 +2013,12 @@ export class OdysseyLayoutEditor {
     }
 
     updateSelectionLabel() {
+        if (this.selectedDescriptor?.type === 'path') {
+            this.normalizeSelectedPathDescriptor(
+                this.boardController.getLayoutData()?.controlPoints?.length ?? 0,
+            );
+        }
+
         if (!this.selectionLabel) {
             return;
         }
@@ -1267,6 +2034,15 @@ export class OdysseyLayoutEditor {
 
         if (descriptor.type === 'path') {
             const point = this.boardController.getLayoutData().controlPoints[descriptor.index];
+            if (!point) {
+                this.selectionLabel.textContent = 'Select a path point, level marker, or chapter boundary.';
+                if (this.selectionDetailLabel) {
+                    this.selectionDetailLabel.textContent = '';
+                }
+                return;
+            }
+
+            const isFreeCamera = this.boardController.cameraController?.isFreeMode?.() || false;
             this.selectionLabel.textContent = [
                 `Path Point ${descriptor.index + 1}:`,
                 `x ${point.x.toFixed(1)},`,
@@ -1275,8 +2051,14 @@ export class OdysseyLayoutEditor {
             ].join(' ');
             if (this.selectionDetailLabel) {
                 this.selectionDetailLabel.textContent = [
-                    'Spline edits rebuild the live path, nodes, camera,',
-                    'and chapter anchors. Insert, subdivide, or densify to add more handles.',
+                    'Spline edits rebuild the live path, nodes, camera, and chapter anchors.',
+                    isFreeCamera
+                        ? [
+                            'This point stays highlighted in Free Camera.',
+                            'Arrow keys nudge it;',
+                            'use IJKL or RMB drag to rotate the camera.',
+                        ].join(' ')
+                        : 'Drag with the mouse or use arrow keys to nudge in the active drag plane.',
                 ].join(' ');
             }
             return;
@@ -1307,8 +2089,8 @@ export class OdysseyLayoutEditor {
             const diagnostics = this.chapterDragDiagnostics;
             if (!diagnostics || diagnostics.chapterId !== descriptor.chapterId) {
                 this.selectionDetailLabel.textContent = [
-                    'Smart boundary:',
-                    'proportional compression with upstream/downstream retiming as needed.',
+                    'Local boundary mode:',
+                    'only adjacent chapters compress and other checkpoints stay protected.',
                 ].join(' ');
                 return;
             }
@@ -1319,22 +2101,25 @@ export class OdysseyLayoutEditor {
                     `on Chapter ${diagnostics.compressedChapterId}`,
                 ].join(' ')
                 : 'Compression off';
-            const tailText = diagnostics.tailRetimeUsed
-                ? `${diagnostics.tailDirection} retime on`
-                : 'tail retime off';
+            const clampText = diagnostics.localClampUsed
+                ? [
+                    'Local clamp on',
+                    diagnostics.localClampSide === 'previous'
+                        ? 'previous chapter limit'
+                        : 'current chapter limit',
+                ].join(' ')
+                : 'local move';
             const exactText = diagnostics.exactRequested ? 'exact' : 'clamped';
             this.selectionDetailLabel.textContent = [
                 compressionText,
-                tailText,
+                clampText,
+                'other checkpoints protected',
                 exactText,
             ].join(' • ');
         }
     }
 
-    queueLayoutApply(layoutOverride, options = {}) {
-        if (options.recordUndoFromDrag) {
-            this.maybeRecordDragUndo(layoutOverride);
-        }
+    queueLayoutApply(layoutOverride) {
         this.pendingLayout = layoutOverride;
         if (this.isApplyingLayout) {
             return;
@@ -1354,7 +2139,16 @@ export class OdysseyLayoutEditor {
 
             const nextLayout = this.pendingLayout;
             this.pendingLayout = null;
-            await this.boardController.applyLayoutOverride(nextLayout);
+            this.applyingLayout = nextLayout;
+            let applied = false;
+            try {
+                applied = await this.boardController.applyLayoutOverride(nextLayout);
+            } finally {
+                this.applyingLayout = null;
+            }
+            if (!applied) {
+                throw new Error('Board controller rejected the live layout update.');
+            }
             this.refreshFromBoardLayout();
             await processNextLayout();
         };
@@ -1407,7 +2201,12 @@ export class OdysseyLayoutEditor {
     }
 
     async resetLayout() {
-        await this.applyEditorLayout(ODYSSEY_LAYOUT_DATA, 'Layout reset to the authored Odyssey layout.');
+        await this.applyEditorLayout(ODYSSEY_LAYOUT_DATA, 'Layout reset to the authored Odyssey layout.', {
+            history: {
+                label: 'Reset Layout',
+                detail: 'Restored the Odyssey layout to the authored source data.',
+            },
+        });
         this.textArea.value = serializeOdysseyLayoutData(this.boardController.getLayoutData());
     }
 
@@ -1418,7 +2217,12 @@ export class OdysseyLayoutEditor {
                 this.boardController.getLayoutData(),
                 this.boardController.levelData,
             );
-            await this.applyEditorLayout(parsedLayout, 'Imported layout applied.');
+            await this.applyEditorLayout(parsedLayout, 'Imported layout applied.', {
+                history: {
+                    label: 'Imported Layout',
+                    detail: 'Applied pasted Odyssey layout JSON from the editor text area.',
+                },
+            });
             this.textArea.value = serializeOdysseyLayoutData(this.boardController.getLayoutData());
         } catch (error) {
             this.updateStatus(`Import failed: ${error.message}`);
@@ -1437,12 +2241,21 @@ export class OdysseyLayoutEditor {
         canvas?.removeEventListener('pointermove', this.boundHandlers.pointermove);
         canvas?.removeEventListener('pointerup', this.boundHandlers.pointerup);
         canvas?.removeEventListener('click', this.boundHandlers.click);
+        canvas?.removeEventListener('contextmenu', this.boundHandlers.contextmenu);
         document.removeEventListener('keydown', this.boundHandlers.keydown, true);
+        document.removeEventListener('keyup', this.boundHandlers.keyup, true);
+        document.removeEventListener('wheel', this.boundHandlers.wheel, { capture: true, passive: false });
+        window.removeEventListener('blur', this.boundHandlers.blur);
+        this.freeCameraMovementKeys.clear();
+        this.freeCameraLookDrag = null;
+        this.endHistoryTransaction({ commit: false });
         this.transformControls?.dispose?.();
         if (this.transformControls?.parent) {
             this.transformControls.parent.remove(this.transformControls);
         }
         this.clearHandleGroups();
+        this.pathSelectionHalo?.geometry?.dispose?.();
+        this.pathSelectionHalo?.material?.dispose?.();
         this.cameraProbe?.geometry?.dispose?.();
         this.cameraProbe?.material?.dispose?.();
         this.scene.remove(this.rootGroup);

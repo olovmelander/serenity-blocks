@@ -1,0 +1,963 @@
+{
+  "generatedAt": "2026-03-18T20:13:16.772Z",
+  "stage": "settings-open",
+  "appMode": "electron-validation",
+  "runtimeConfig": {
+    "isElectron": true,
+    "appMode": "electron-validation",
+    "platform": "linux",
+    "isPackaged": false,
+    "windowsProfile": "validation",
+    "safeMode": false,
+    "useStartupRevealGate": false,
+    "gpuSwitches": {},
+    "windowBounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1599,
+      "height": 899
+    },
+    "displayScaleFactor": 1,
+    "gpuFallbackActive": true,
+    "gpuHealth": {
+      "status": "unsafe",
+      "reasons": [
+        "software_renderer_active",
+        "gpu_compositing_disabled_software",
+        "webgl_unavailable_software"
+      ],
+      "remediation": [
+        "Set Serenity Blocks.exe to High performance in Windows Graphics Settings.",
+        "Confirm the packaged launcher, not the core executable, is the process you are launching.",
+        "Update to a current WHQL GPU driver and retest the packaged build."
+      ],
+      "activeAdapter": {
+        "index": 0,
+        "active": false,
+        "vendor": "Unknown vendor",
+        "name": "Unknown GPU",
+        "vendorId": 0,
+        "deviceId": 0,
+        "driverVendor": null,
+        "driverVersion": null
+      },
+      "activeAdapterMatchesPreference": true,
+      "isUsingSoftwareRenderer": true,
+      "angleBackend": "d3d11",
+      "renderer": "Google Inc. (Google) - ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "driverVendor": "Unknown vendor",
+      "driverVersion": null,
+      "updatedAt": 1773864709449
+    },
+    "arch": "x64",
+    "runtimeProfileMode": "lab",
+    "angleBackend": "d3d11",
+    "desktopThemeThumbnails": true,
+    "contentBounds": {
+      "x": 0,
+      "y": 27,
+      "width": 1599,
+      "height": 872
+    },
+    "display": {
+      "id": 33,
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 1600,
+        "height": 900
+      },
+      "workArea": {
+        "x": 0,
+        "y": 0,
+        "width": 1600,
+        "height": 900
+      },
+      "scaleFactor": 1,
+      "rotation": 0,
+      "internal": false
+    },
+    "isFullscreen": false,
+    "isMaximized": false
+  },
+  "runtimeProfile": "validation",
+  "settingsSnapshot": {
+    "resolution": {
+      "width": 1599,
+      "height": 872,
+      "devicePixelRatio": 1
+    },
+    "displayMode": "windowed",
+    "vsyncEnabled": true,
+    "targetFrameRate": 60,
+    "effectQuality": "High",
+    "renderScale": 1,
+    "backgroundTabBehavior": "reduce",
+    "enableAntialiasing": true,
+    "enableBloom": true,
+    "enableShadows": true,
+    "particleQuality": "high",
+    "textureQuality": "high",
+    "qualityTier": "Low",
+    "internalRenderResolution": {
+      "width": 1039,
+      "height": 567,
+      "effectivePixelRatio": 0.65
+    }
+  },
+  "processMetrics": {
+    "generatedAt": "2026-03-18T20:13:16.770Z",
+    "processMetrics": [
+      {
+        "pid": 535899,
+        "type": "Browser",
+        "serviceName": null,
+        "name": null,
+        "creationTime": 1773864699930,
+        "sandboxed": null,
+        "cpu": {
+          "cumulativeCPUUsage": 2.56,
+          "percentCPUUsage": 0.12726640461484293,
+          "idleWakeupsPerSecond": 15
+        },
+        "memory": {
+          "workingSetSize": 151520,
+          "peakWorkingSetSize": 152352
+        }
+      },
+      {
+        "pid": 535939,
+        "type": "Utility",
+        "serviceName": "network.mojom.NetworkService",
+        "name": "Network Service",
+        "creationTime": 1773864700200,
+        "sandboxed": null,
+        "cpu": {
+          "cumulativeCPUUsage": 0.05,
+          "percentCPUUsage": 0,
+          "idleWakeupsPerSecond": 0
+        },
+        "memory": {
+          "workingSetSize": 72568,
+          "peakWorkingSetSize": 72704
+        }
+      },
+      {
+        "pid": 535941,
+        "type": "Tab",
+        "serviceName": null,
+        "name": null,
+        "creationTime": 1773864700230,
+        "sandboxed": null,
+        "cpu": {
+          "cumulativeCPUUsage": 8.28,
+          "percentCPUUsage": 0.6079132873277737,
+          "idleWakeupsPerSecond": 21
+        },
+        "memory": {
+          "workingSetSize": 428300,
+          "peakWorkingSetSize": 429104
+        }
+      },
+      {
+        "pid": 535995,
+        "type": "GPU",
+        "serviceName": "GPU",
+        "name": null,
+        "creationTime": 1773864700290,
+        "sandboxed": null,
+        "cpu": {
+          "cumulativeCPUUsage": 100.34,
+          "percentCPUUsage": 11.90371835686716,
+          "idleWakeupsPerSecond": 86
+        },
+        "memory": {
+          "workingSetSize": 603040,
+          "peakWorkingSetSize": 609956
+        }
+      },
+      {
+        "pid": 536065,
+        "type": "Utility",
+        "serviceName": "audio.mojom.AudioService",
+        "name": "Audio Service",
+        "creationTime": 1773864702600,
+        "sandboxed": null,
+        "cpu": {
+          "cumulativeCPUUsage": 1.18,
+          "percentCPUUsage": 0.07907800111689768,
+          "idleWakeupsPerSecond": 15
+        },
+        "memory": {
+          "workingSetSize": 62336,
+          "peakWorkingSetSize": 62336
+        }
+      }
+    ],
+    "runtimeProfile": "validation",
+    "safeMode": false,
+    "windowBounds": {
+      "x": 0,
+      "y": 0,
+      "width": 1599,
+      "height": 899
+    },
+    "contentBounds": {
+      "x": 0,
+      "y": 27,
+      "width": 1599,
+      "height": 872
+    },
+    "display": {
+      "id": 33,
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 1600,
+        "height": 900
+      },
+      "workArea": {
+        "x": 0,
+        "y": 0,
+        "width": 1600,
+        "height": 900
+      },
+      "scaleFactor": 1,
+      "rotation": 0,
+      "internal": false
+    },
+    "displayScaleFactor": 1,
+    "isFullscreen": false,
+    "isMaximized": false
+  },
+  "windowBounds": {
+    "x": 0,
+    "y": 0,
+    "width": 1599,
+    "height": 899
+  },
+  "displayScaleFactor": 1,
+  "devicePixelRatio": 1,
+  "metrics": {
+    "fps": 0,
+    "avgFPS": 0,
+    "minFPS": null,
+    "maxFPS": 0,
+    "frameTime": 0,
+    "avgFrameTime": 0,
+    "maxFrameTime": 0,
+    "updateTime": 0,
+    "renderTime": 0,
+    "inputLatency": 0,
+    "memoryUsed": 0,
+    "frameDrops": 0,
+    "totalFrames": 0,
+    "contextRestoreCount": 0,
+    "themeSwitchCount": 1
+  },
+  "qualityMode": "Low",
+  "startupDurations": {
+    "introRendererInitMs": null,
+    "audioTrackInitMs": 0.40000000037252903,
+    "serenityBlocksInitMs": 163.60000000149012,
+    "initialThemeReadyMs": 1.099999999627471,
+    "serenityHubFirstIconReadyMs": null,
+    "firstUsableFrameMs": 5787
+  },
+  "startupMarks": [
+    {
+      "type": "startup_bootstrap_begin",
+      "timestamp": 1773864701647,
+      "payload": {
+        "appMode": "electron-validation",
+        "windowsProfile": "validation",
+        "safeMode": false
+      }
+    },
+    {
+      "type": "startup_startup-shell-ready",
+      "timestamp": 1773864703429,
+      "payload": {}
+    },
+    {
+      "type": "startup_intro_music_init_started",
+      "timestamp": 1773864703432,
+      "payload": {}
+    },
+    {
+      "type": "startup_intro_music_init_completed",
+      "timestamp": 1773864703432,
+      "payload": {
+        "durationMs": 0.40000000037252903
+      }
+    },
+    {
+      "type": "startup_app_init_started",
+      "timestamp": 1773864703433,
+      "payload": {
+        "windowsProfile": "validation",
+        "safeMode": false
+      }
+    },
+    {
+      "type": "startup_app_init_completed",
+      "timestamp": 1773864703596,
+      "payload": {
+        "durationMs": 163.60000000149012
+      }
+    },
+    {
+      "type": "startup_essential_desktop_services_started",
+      "timestamp": 1773864703597,
+      "payload": {
+        "reason": "core-ready"
+      }
+    },
+    {
+      "type": "startup_steam_service_initialized",
+      "timestamp": 1773864703600,
+      "payload": {
+        "reason": "core-ready",
+        "connected": true,
+        "connectionState": "partial"
+      }
+    },
+    {
+      "type": "startup_shell_dismissed",
+      "timestamp": 1773864707433,
+      "payload": {
+        "reason": "menu-ready"
+      }
+    },
+    {
+      "type": "startup_first-usable-frame",
+      "timestamp": 1773864707434,
+      "payload": {
+        "windowsProfile": "validation",
+        "safeMode": false
+      }
+    },
+    {
+      "type": "startup_deferred-services-ready",
+      "timestamp": 1773864709448,
+      "payload": {
+        "reason": "menu-idle"
+      }
+    },
+    {
+      "type": "startup_deferred_task_started",
+      "timestamp": 1773864711440,
+      "payload": {
+        "label": "initial-theme-warmup"
+      }
+    },
+    {
+      "type": "startup_initial_theme_started",
+      "timestamp": 1773864711440,
+      "payload": {
+        "theme": "forest"
+      }
+    },
+    {
+      "type": "startup_initial_theme_ready",
+      "timestamp": 1773864711441,
+      "payload": {
+        "theme": "forest",
+        "durationMs": 1.099999999627471
+      }
+    },
+    {
+      "type": "startup_initial-theme-ready",
+      "timestamp": 1773864711441,
+      "payload": {}
+    },
+    {
+      "type": "startup_deferred_task_started",
+      "timestamp": 1773864711442,
+      "payload": {
+        "label": "global-serenity-hub"
+      }
+    },
+    {
+      "type": "startup_deferred_task_completed",
+      "timestamp": 1773864711442,
+      "payload": {
+        "label": "initial-theme-warmup"
+      }
+    },
+    {
+      "type": "startup_deferred_task_completed",
+      "timestamp": 1773864711444,
+      "payload": {
+        "label": "global-serenity-hub"
+      }
+    },
+    {
+      "type": "startup_deferred_task_started",
+      "timestamp": 1773864711444,
+      "payload": {
+        "label": "main-menu-player-card"
+      }
+    },
+    {
+      "type": "startup_deferred_task_started",
+      "timestamp": 1773864711445,
+      "payload": {
+        "label": "local-storage-warmup"
+      }
+    },
+    {
+      "type": "startup_deferred_task_started",
+      "timestamp": 1773864711446,
+      "payload": {
+        "label": "warm-selected-mode"
+      }
+    },
+    {
+      "type": "startup_deferred_task_completed",
+      "timestamp": 1773864711446,
+      "payload": {
+        "label": "warm-selected-mode"
+      }
+    },
+    {
+      "type": "startup_deferred_task_completed",
+      "timestamp": 1773864711446,
+      "payload": {
+        "label": "main-menu-player-card"
+      }
+    },
+    {
+      "type": "startup_deferred_task_started",
+      "timestamp": 1773864711447,
+      "payload": {
+        "label": "steam-cloud-sync"
+      }
+    },
+    {
+      "type": "startup_deferred_task_completed",
+      "timestamp": 1773864711451,
+      "payload": {
+        "label": "steam-cloud-sync"
+      }
+    },
+    {
+      "type": "startup_deferred_task_completed",
+      "timestamp": 1773864711461,
+      "payload": {
+        "label": "local-storage-warmup"
+      }
+    },
+    {
+      "type": "startup_first_interaction",
+      "timestamp": 1773864744844,
+      "payload": {
+        "inputType": "wheel"
+      }
+    }
+  ],
+  "topSections": [],
+  "releaseGates": {
+    "frameTime": {
+      "p50": 0,
+      "p95": 0,
+      "p99": 0
+    },
+    "fps": {
+      "p50": 0,
+      "p05": 0
+    },
+    "memory": {
+      "currentMb": 0,
+      "peakMb": 0
+    },
+    "themeSwitches": {
+      "count": 1,
+      "maxDurationMs": 0.6999999992549419
+    },
+    "runtime": {
+      "contextRestoreCount": 0,
+      "recentEvents": [
+        {
+          "type": "startup_deferred_task_completed",
+          "timestamp": 1773864711444,
+          "payload": {
+            "label": "global-serenity-hub"
+          }
+        },
+        {
+          "type": "startup_deferred_task_started",
+          "timestamp": 1773864711444,
+          "payload": {
+            "label": "main-menu-player-card"
+          }
+        },
+        {
+          "type": "startup_deferred_task_started",
+          "timestamp": 1773864711445,
+          "payload": {
+            "label": "local-storage-warmup"
+          }
+        },
+        {
+          "type": "startup_deferred_task_started",
+          "timestamp": 1773864711446,
+          "payload": {
+            "label": "warm-selected-mode"
+          }
+        },
+        {
+          "type": "startup_deferred_task_completed",
+          "timestamp": 1773864711446,
+          "payload": {
+            "label": "warm-selected-mode"
+          }
+        },
+        {
+          "type": "startup_deferred_task_completed",
+          "timestamp": 1773864711446,
+          "payload": {
+            "label": "main-menu-player-card"
+          }
+        },
+        {
+          "type": "startup_deferred_task_started",
+          "timestamp": 1773864711447,
+          "payload": {
+            "label": "steam-cloud-sync"
+          }
+        },
+        {
+          "type": "startup_deferred_task_completed",
+          "timestamp": 1773864711451,
+          "payload": {
+            "label": "steam-cloud-sync"
+          }
+        },
+        {
+          "type": "startup_deferred_task_completed",
+          "timestamp": 1773864711461,
+          "payload": {
+            "label": "local-storage-warmup"
+          }
+        },
+        {
+          "type": "startup_first_interaction",
+          "timestamp": 1773864744844,
+          "payload": {
+            "inputType": "wheel"
+          }
+        }
+      ]
+    },
+    "network": null
+  },
+  "runtimeEvents": [
+    {
+      "type": "desktop_runtime_config",
+      "timestamp": 1773864701647,
+      "payload": {
+        "isElectron": true,
+        "appMode": "electron-validation",
+        "platform": "linux",
+        "isPackaged": false,
+        "windowsProfile": "validation",
+        "safeMode": false,
+        "useStartupRevealGate": false,
+        "gpuSwitches": {},
+        "windowBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1599,
+          "height": 899
+        },
+        "displayScaleFactor": 1,
+        "gpuFallbackActive": false,
+        "gpuHealth": {
+          "status": "unsafe",
+          "reasons": [
+            "gpu_compositing_disabled_software",
+            "webgl_unavailable_software"
+          ],
+          "remediation": [
+            "Set Serenity Blocks.exe to High performance in Windows Graphics Settings.",
+            "Confirm the packaged launcher, not the core executable, is the process you are launching.",
+            "Update to a current WHQL GPU driver and retest the packaged build."
+          ],
+          "activeAdapter": {
+            "index": 0,
+            "active": false,
+            "vendor": "Unknown vendor",
+            "name": "Unknown GPU",
+            "vendorId": 0,
+            "deviceId": 0,
+            "driverVendor": null,
+            "driverVersion": null
+          },
+          "activeAdapterMatchesPreference": true,
+          "isUsingSoftwareRenderer": false,
+          "angleBackend": "d3d11",
+          "renderer": null,
+          "driverVendor": "Unknown vendor",
+          "driverVersion": null,
+          "updatedAt": 1773864701643
+        },
+        "arch": "x64",
+        "runtimeProfileMode": "lab",
+        "angleBackend": "d3d11",
+        "desktopThemeThumbnails": true,
+        "contentBounds": {
+          "x": 0,
+          "y": 27,
+          "width": 1599,
+          "height": 872
+        },
+        "display": {
+          "id": 33,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1600,
+            "height": 900
+          },
+          "workArea": {
+            "x": 0,
+            "y": 0,
+            "width": 1600,
+            "height": 900
+          },
+          "scaleFactor": 1,
+          "rotation": 0,
+          "internal": false
+        },
+        "isFullscreen": false,
+        "isMaximized": false
+      }
+    },
+    {
+      "type": "startup_bootstrap_begin",
+      "timestamp": 1773864701647,
+      "payload": {
+        "appMode": "electron-validation",
+        "windowsProfile": "validation",
+        "safeMode": false
+      }
+    },
+    {
+      "type": "startup_startup-shell-ready",
+      "timestamp": 1773864703429,
+      "payload": {}
+    },
+    {
+      "type": "startup_intro_music_init_started",
+      "timestamp": 1773864703432,
+      "payload": {}
+    },
+    {
+      "type": "startup_intro_music_init_completed",
+      "timestamp": 1773864703432,
+      "payload": {
+        "durationMs": 0.40000000037252903
+      }
+    },
+    {
+      "type": "startup_app_init_started",
+      "timestamp": 1773864703433,
+      "payload": {
+        "windowsProfile": "validation",
+        "safeMode": false
+      }
+    },
+    {
+      "type": "desktop_performance_policy_applied",
+      "timestamp": 1773864703542,
+      "payload": {
+        "reason": "startup",
+        "renderScale": 0.65,
+        "qualityTier": "Low",
+        "runtimeProfile": "validation",
+        "gpuHealthStatus": "unsafe"
+      }
+    },
+    {
+      "type": "startup_app_init_completed",
+      "timestamp": 1773864703596,
+      "payload": {
+        "durationMs": 163.60000000149012
+      }
+    },
+    {
+      "type": "startup_essential_desktop_services_started",
+      "timestamp": 1773864703597,
+      "payload": {
+        "reason": "core-ready"
+      }
+    },
+    {
+      "type": "startup_steam_service_initialized",
+      "timestamp": 1773864703600,
+      "payload": {
+        "reason": "core-ready",
+        "connected": true,
+        "connectionState": "partial"
+      }
+    },
+    {
+      "type": "startup_shell_dismissed",
+      "timestamp": 1773864707433,
+      "payload": {
+        "reason": "menu-ready"
+      }
+    },
+    {
+      "type": "startup_first-usable-frame",
+      "timestamp": 1773864707434,
+      "payload": {
+        "windowsProfile": "validation",
+        "safeMode": false
+      }
+    },
+    {
+      "type": "startup_deferred-services-ready",
+      "timestamp": 1773864709448,
+      "payload": {
+        "reason": "menu-idle"
+      }
+    },
+    {
+      "type": "startup_deferred_task_started",
+      "timestamp": 1773864711440,
+      "payload": {
+        "label": "initial-theme-warmup"
+      }
+    },
+    {
+      "type": "startup_initial_theme_started",
+      "timestamp": 1773864711440,
+      "payload": {
+        "theme": "forest"
+      }
+    },
+    {
+      "type": "theme_switch",
+      "timestamp": 1773864711441,
+      "payload": {
+        "fromTheme": "forest",
+        "toTheme": "forest",
+        "durationMs": 0.6999999992549419
+      }
+    },
+    {
+      "type": "startup_initial_theme_ready",
+      "timestamp": 1773864711441,
+      "payload": {
+        "theme": "forest",
+        "durationMs": 1.099999999627471
+      }
+    },
+    {
+      "type": "startup_initial-theme-ready",
+      "timestamp": 1773864711441,
+      "payload": {}
+    },
+    {
+      "type": "startup_deferred_task_started",
+      "timestamp": 1773864711442,
+      "payload": {
+        "label": "global-serenity-hub"
+      }
+    },
+    {
+      "type": "startup_deferred_task_completed",
+      "timestamp": 1773864711442,
+      "payload": {
+        "label": "initial-theme-warmup"
+      }
+    },
+    {
+      "type": "startup_deferred_task_completed",
+      "timestamp": 1773864711444,
+      "payload": {
+        "label": "global-serenity-hub"
+      }
+    },
+    {
+      "type": "startup_deferred_task_started",
+      "timestamp": 1773864711444,
+      "payload": {
+        "label": "main-menu-player-card"
+      }
+    },
+    {
+      "type": "startup_deferred_task_started",
+      "timestamp": 1773864711445,
+      "payload": {
+        "label": "local-storage-warmup"
+      }
+    },
+    {
+      "type": "startup_deferred_task_started",
+      "timestamp": 1773864711446,
+      "payload": {
+        "label": "warm-selected-mode"
+      }
+    },
+    {
+      "type": "startup_deferred_task_completed",
+      "timestamp": 1773864711446,
+      "payload": {
+        "label": "warm-selected-mode"
+      }
+    },
+    {
+      "type": "startup_deferred_task_completed",
+      "timestamp": 1773864711446,
+      "payload": {
+        "label": "main-menu-player-card"
+      }
+    },
+    {
+      "type": "startup_deferred_task_started",
+      "timestamp": 1773864711447,
+      "payload": {
+        "label": "steam-cloud-sync"
+      }
+    },
+    {
+      "type": "startup_deferred_task_completed",
+      "timestamp": 1773864711451,
+      "payload": {
+        "label": "steam-cloud-sync"
+      }
+    },
+    {
+      "type": "startup_deferred_task_completed",
+      "timestamp": 1773864711461,
+      "payload": {
+        "label": "local-storage-warmup"
+      }
+    },
+    {
+      "type": "startup_first_interaction",
+      "timestamp": 1773864744844,
+      "payload": {
+        "inputType": "wheel"
+      }
+    }
+  ],
+  "themeSwitches": [
+    {
+      "fromTheme": "forest",
+      "toTheme": "forest",
+      "durationMs": 0.6999999992549419,
+      "timestamp": 1773864711441
+    }
+  ],
+  "gpu": {
+    "webglRenderer": "Google Inc. (Google) - ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "desktopDiagnostics": {
+      "activeWebGLRenderer": "Google Inc. (Google) - ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+      "gpuFeatureStatus": {
+        "2d_canvas": "unavailable_software",
+        "direct_rendering_display_compositor": "disabled_off_ok",
+        "gpu_compositing": "disabled_software",
+        "multiple_raster_threads": "enabled_on",
+        "opengl": "disabled_off",
+        "rasterization": "disabled_software",
+        "raw_draw": "disabled_off_ok",
+        "skia_graphite": "disabled_off",
+        "trees_in_viz": "disabled_off",
+        "video_decode": "disabled_software",
+        "video_encode": "disabled_software",
+        "vulkan": "disabled_off",
+        "webgl": "unavailable_software",
+        "webgl2": "unavailable_software",
+        "webgpu": "disabled_off",
+        "webnn": "unavailable_software"
+      },
+      "adapters": [
+        {
+          "index": 0,
+          "active": false,
+          "vendor": "Unknown vendor",
+          "name": "Unknown GPU",
+          "vendorId": 0,
+          "deviceId": 0,
+          "driverVendor": null,
+          "driverVersion": null
+        }
+      ],
+      "gpuSwitches": {},
+      "auxAttributes": {},
+      "gpuHealth": null,
+      "activeAdapter": {
+        "vendor": "Unknown vendor",
+        "name": "Unknown GPU",
+        "driverVendor": null,
+        "driverVersion": null
+      },
+      "driverVendor": null,
+      "driverVersion": null,
+      "angleBackend": "d3d11",
+      "updatedAt": 1773864709448
+    }
+  },
+  "performancePolicy": {
+    "renderScale": 0.65,
+    "baseRenderScale": 1,
+    "qualityTier": "Low",
+    "pixelRatioCaps": {
+      "default": 1,
+      "theme": 1,
+      "menu": 1.15,
+      "gameplay": 1.1,
+      "odyssey": 1.05,
+      "hub": 1,
+      "settings": 1
+    },
+    "targetFrameRate": 60,
+    "vsyncMode": "on",
+    "displayMode": "windowed",
+    "devicePixelRatio": 1,
+    "internalRenderResolution": {
+      "width": 1039,
+      "height": 567,
+      "effectivePixelRatio": 0.65
+    },
+    "runtimeProfile": "validation",
+    "gpuHealth": {
+      "status": "unsafe",
+      "reasons": [
+        "gpu_compositing_disabled_software",
+        "webgl_unavailable_software"
+      ],
+      "remediation": [
+        "Set Serenity Blocks.exe to High performance in Windows Graphics Settings.",
+        "Confirm the packaged launcher, not the core executable, is the process you are launching.",
+        "Update to a current WHQL GPU driver and retest the packaged build."
+      ],
+      "activeAdapter": {
+        "index": 0,
+        "active": false,
+        "vendor": "Unknown vendor",
+        "name": "Unknown GPU",
+        "vendorId": 0,
+        "deviceId": 0,
+        "driverVendor": null,
+        "driverVersion": null
+      },
+      "activeAdapterMatchesPreference": true,
+      "isUsingSoftwareRenderer": false,
+      "angleBackend": "d3d11",
+      "renderer": null,
+      "driverVendor": "Unknown vendor",
+      "driverVersion": null,
+      "updatedAt": 1773864701643
+    },
+    "gpuFallbackActive": true,
+    "runtimeProfileMode": "lab"
+  },
+  "extra": {
+    "modalName": "settings"
+  }
+}

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     findInteractiveWheelTarget,
     normalizeWheelDeltaToPixels,
+    resolveTopmostWheelTarget,
+    shouldCaptureWheelEvent,
     shouldCaptureWheelInput,
 } from '../../src/utils/wheel-routing.js';
 
@@ -95,5 +97,30 @@ describe('wheel routing helpers', () => {
             deltaMode: 2,
             ctrlKey: false,
         }, { pageHeight: 500, clampPx: null })).toBe(500);
+    });
+
+    it('prefers the topmost hit-tested element when routing document-level wheel events', () => {
+        const lockedOverlay = createTarget({
+            attrs: { 'data-wheel-lock': 'true' },
+        });
+        const canvasTarget = createTarget();
+
+        vi.stubGlobal('document', {
+            elementFromPoint: vi.fn(() => lockedOverlay),
+        });
+
+        expect(resolveTopmostWheelTarget({
+            target: canvasTarget,
+            clientX: 120,
+            clientY: 240,
+        })).toBe(lockedOverlay);
+
+        expect(shouldCaptureWheelEvent({
+            event: {
+                target: canvasTarget,
+                clientX: 120,
+                clientY: 240,
+            },
+        })).toBe(false);
     });
 });
