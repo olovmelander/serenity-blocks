@@ -464,62 +464,26 @@ void main() {
 // ─────────────────────────────────────────────────────────────────────────────
 export const voidSparkVertexShader = `
 uniform float time;
-uniform float uPulseTimer;
 
-attribute float aTheta;
-attribute float aPhi;
-attribute float aRadius;
-attribute float aRandom;
+attribute vec4 aVelocity;
+attribute float aBirth;
+attribute float aLife;
+attribute float aSize;
 attribute vec3 aColor;
 
 varying vec3 vColor;
 varying float vAlpha;
 
 void main() {
-    // Initial position on planet surface (spherical coordinates)
-    vec3 initialPos;
-    initialPos.x = aRadius * sin(aPhi) * cos(aTheta);
-    initialPos.y = aRadius * sin(aPhi) * sin(aTheta);
-    initialPos.z = aRadius * cos(aPhi);
-
-    // Radial direction - outward from planet center
-    vec3 radialDir = normalize(initialPos);
-
-    // Stagger eruption timing based on random value
-    float triggerTime = aRandom * 3.5; // Wider stagger
-    float age = uPulseTimer - triggerTime;
-
-    vec3 animatedPos = initialPos;
-    float alpha = 0.0;
-    float size = 0.0;
-
-    // Effect parameters - increased life for longer visibility
-    float maxLife = 90.0;
-
-    if (age > 0.0 && age < maxLife) {
-        // VOID EXPLOSION! Burst outward from planet surface
-
-        // Add random spread to the radial direction - increased for more volume
-        float spreadX = (aRandom - 0.5) * 0.45;
-        float spreadY = (fract(aRandom * 7.0) - 0.5) * 0.45;
-        float spreadZ = (fract(aRandom * 13.0) - 0.5) * 0.45;
-        vec3 burstDir = normalize(radialDir + vec3(spreadX, spreadY, spreadZ));
-
-        // Strong outward velocity - speed increased significantly
-        float speed = 40.0 + aRandom * 25.0;
-        vec3 velocity = burstDir * speed;
-
-        // Apply velocity over time with better deceleration curve
-        float decel = 1.0 - pow(age / maxLife, 1.2);
-        animatedPos += velocity * age * max(decel, 0.35);
-
-        // Fade out over lifetime
-        alpha = 1.0 - (age / maxLife);
-        alpha = pow(alpha, 0.45); // Slower initial fade
-
-        // Larger particles that scale down
-        size = (1.2 - (age / maxLife) * 0.8) * 45.0;
-    }
+    float rawAge = time - aBirth;
+    float active = step(0.0, rawAge) * (1.0 - step(aLife, rawAge));
+    float safeLife = max(aLife, 0.001);
+    float age = clamp(rawAge, 0.0, safeLife);
+    float lifeNorm = clamp(age / safeLife, 0.0, 1.0);
+    float decel = max(0.35, 1.0 - pow(lifeNorm, 1.2));
+    vec3 animatedPos = mix(vec3(0.0, 0.0, -9999.0), position + aVelocity.xyz * age * decel, active);
+    float alpha = pow(1.0 - lifeNorm, 0.45) * active;
+    float size = aSize * (1.2 - lifeNorm * 0.8) * active;
 
     vec4 mvPosition = modelViewMatrix * vec4(animatedPos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
@@ -567,23 +531,53 @@ void main() {
 // Gas Swirl Particle Shader - Tangential particles from atmosphere shell
 // ─────────────────────────────────────────────────────────────────────────────
 export const gasSwirlVertexShader = `
+uniform float uTime;
+
 attribute float aAlpha;
 attribute float aSize;
+attribute vec4 aVelocity;
+attribute vec3 aSeed;
+attribute float aBirth;
+attribute float aLife;
 
 varying float vAlpha;
 varying vec3 vColor;
 
 void main() {
-    vAlpha = aAlpha;
+    float rawAge = uTime - aBirth;
+    float active = step(0.0, rawAge) * (1.0 - step(aLife, rawAge));
+    float safeLife = max(aLife, 0.001);
+    float age = clamp(rawAge, 0.0, safeLife);
+    float lifeNorm = clamp(age / safeLife, 0.0, 1.0);
+    float fade = pow(1.0 - lifeNorm, 0.3) * active;
+
+    vec3 pos = position + aVelocity.xyz * age;
+    float dist = max(length(pos.xz), 1.0);
+    float angle = atan(pos.z, pos.x);
+    vec2 radial = pos.xz / dist;
+    vec2 tangent = vec2(-radial.y, radial.x);
+
+    float swirl = sin(age * 2.2 + aSeed.x * 6.28318) * min(age * 18.0, 220.0) * (1.0 - lifeNorm);
+    pos.xz += tangent * swirl * 0.35;
+    float wave1 = sin(dist * 0.008 - uTime * 2.5 + angle * 2.0);
+    float wave2 = sin(dist * 0.02 + uTime * 1.5 - angle);
+    pos.y += (wave1 + wave2 * 0.5) * min(age * 12.0, 80.0) * (1.0 - lifeNorm);
+    pos += vec3(
+        sin(uTime * 3.4 + aSeed.x * 21.1 + angle),
+        cos(uTime * 2.8 + aSeed.y * 17.3 + dist * 0.01),
+        sin(uTime * 3.1 + aSeed.z * 19.7 - angle)
+    ) * 15.0 * (1.0 - lifeNorm);
+
+    vAlpha = aAlpha * fade;
 
     // Silver-blue tint matching atmosphere palette
     vColor = vec3(0.72, 0.76, 0.92);
 
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
 
     // Size attenuation — larger when close, smaller far away
-    gl_PointSize = aSize * (320.0 / -mvPosition.z);
+    gl_PointSize = aSize * (1.0 - lifeNorm * 0.45) * active * (320.0 / -mvPosition.z);
     gl_PointSize = clamp(gl_PointSize, 1.5, 300.0);
 }
 `;

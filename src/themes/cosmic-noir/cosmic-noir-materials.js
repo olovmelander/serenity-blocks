@@ -686,6 +686,57 @@ export function createVoidSparkNodeMaterial(params = {}) {
     );
 }
 
+export function createUnifiedVoidSparkNodeMaterial() {
+    const material = new PointsNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+    });
+
+    const uTime = uniform(0);
+    const aVelocity = attribute('aVelocity');
+    const aBirth = attribute('aBirth');
+    const aLife = attribute('aLife');
+    const aColor = attribute('aColor');
+    const aSize = attribute('aSize');
+
+    const rawAge = uTime.sub(aBirth);
+    const active = step(float(0.0), rawAge).mul(float(1.0).sub(step(aLife, rawAge)));
+    const safeLife = max(aLife, float(0.001));
+    const age = clamp(rawAge, 0.0, safeLife);
+    const lifeNorm = clamp(age.div(safeLife), 0.0, 1.0);
+    const fade = pow(float(1.0).sub(lifeNorm), 0.45).mul(active);
+    const decel = max(float(0.35), float(1.0).sub(pow(lifeNorm, 1.2)));
+    const animatedPos = positionLocal.add(aVelocity.xyz.mul(age).mul(decel));
+    const hiddenPos = vec3(0.0, 0.0, -9999.0);
+
+    material.positionNode = mix(hiddenPos, animatedPos, active);
+
+    const viewPos = modelViewMatrix.mul(vec4(material.positionNode, float(1.0)));
+    const depth = max(float(1.0), viewPos.z.negate());
+    const size = aSize.mul(float(1.2).sub(lifeNorm.mul(0.8))).mul(active);
+    material.sizeNode = clamp(
+        size.mul(float(300.0)).div(depth),
+        float(3.0),
+        float(100.0),
+    );
+
+    const core = clamp(pow(fade, 0.42), float(0.0), float(1.0));
+    let color = mix(aColor, vec3(1.0, 1.0, 1.0), core.mul(0.78));
+    color = mix(color, vec3(0.72, 0.74, 0.9), float(1.0).sub(core).mul(0.16));
+    color = color.mul(2.2);
+
+    material.colorNode = color.mul(clamp(fade.mul(0.9).add(0.1), 0.0, 1.0));
+    material.opacityNode = fade;
+    material.emissiveNode = color.mul(fade).mul(resolveBloomWeight('voidSpark') * 1.7);
+
+    return finalizeNodeMaterial(
+        material,
+        { uTime },
+        { emitsBloom: true, mrtRole: 'void-spark-unified' },
+    );
+}
+
 export function createCosmicWaveNodeMaterial(params = {}) {
     const material = new MeshBasicNodeMaterial({
         transparent: true,
@@ -723,15 +774,34 @@ export function createGasSwirlNodeMaterial(params = {}) {
         blending: AdditiveBlending,
     });
 
-    // Attributes for the CPU-simulated particles
+    const uTime = uniform(0);
     const aAlpha = attribute('aAlpha');
     const aSize = attribute('aSize');
+    const aVelocity = attribute('aVelocity');
+    const aSeed = attribute('aSeed');
+    const aBirth = attribute('aBirth');
+    const aLife = attribute('aLife');
+
+    const rawAge = uTime.sub(aBirth);
+    const active = step(float(0.0), rawAge).mul(float(1.0).sub(step(aLife, rawAge)));
+    const safeLife = max(aLife, float(0.001));
+    const age = clamp(rawAge, 0.0, safeLife);
+    const lifeNorm = clamp(age.div(safeLife), 0.0, 1.0);
+    const fade = pow(float(1.0).sub(lifeNorm), 0.3).mul(active);
+    const turbulence = vec3(
+        sin(uTime.mul(3.4).add(aSeed.x.mul(21.1))).mul(16.0),
+        cos(uTime.mul(2.8).add(aSeed.y.mul(17.3))).mul(22.0),
+        sin(uTime.mul(3.1).add(aSeed.z.mul(19.7))).mul(16.0),
+    ).mul(float(1.0).sub(lifeNorm));
+    const animatedPos = positionLocal.add(aVelocity.xyz.mul(age)).add(turbulence);
+    const hiddenPos = vec3(0.0, 0.0, -9999.0);
+    material.positionNode = mix(hiddenPos, animatedPos, active);
 
     // Size attenuation match: gl_PointSize = aSize * (320.0 / -mvPosition.z)
-    const viewPos = modelViewMatrix.mul(vec4(positionLocal, float(1.0)));
+    const viewPos = modelViewMatrix.mul(vec4(material.positionNode, float(1.0)));
     const depth = max(float(1.0), viewPos.z.negate());
     material.sizeNode = clamp(
-        aSize.mul(float(320.0)).div(depth),
+        aSize.mul(float(1.0).sub(lifeNorm.mul(0.45))).mul(active).mul(float(320.0)).div(depth),
         float(1.5),
         float(300.0),
     );
@@ -746,7 +816,7 @@ export function createGasSwirlNodeMaterial(params = {}) {
     const finalColor = baseColor.mul(5.5);
 
     // Soften opacity to account for full quad area
-    const alpha = aAlpha.mul(0.65);
+    const alpha = aAlpha.mul(fade).mul(0.65);
 
     material.colorNode = finalColor;
     material.opacityNode = alpha;
@@ -755,7 +825,7 @@ export function createGasSwirlNodeMaterial(params = {}) {
 
     return finalizeNodeMaterial(
         material,
-        {},
+        { uTime },
         { emitsBloom: true, mrtRole: 'gas-swirl' },
     );
 }
