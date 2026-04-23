@@ -41,6 +41,7 @@ import {
     createGasSwirlNodeMaterial,
     createAccretionDiskNodeMaterial,
     createAnamorphicFlareNodeMaterial,
+    createUnifiedVoidSparkNodeMaterial,
 } from './cosmic-noir-materials.js';
 import {
     planetVertexShader,
@@ -400,6 +401,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.voidSparks = []; // Fallback pool, or single compute-backed points system
         this.voidSparkIndex = 0; // Cycle index for pooled fallback
         this.sparkCompute = null;
+        this.unifiedSparkData = null;
         this.sharedNoiseTexture = null;
 
         // Effect states
@@ -436,7 +438,14 @@ export default class CosmicNoirTheme extends BaseTheme {
         // State
         this.eventUnsubscribers = [];
         this.qualityPreset = QUALITY_PRESETS.High;
+        this.activeQualityLevel = 'High';
+        this.qualityRebuildInProgress = false;
+        this.pendingQualityRebuild = null;
         this.pendingComboCount = 0;
+
+        // Pre-allocated colors reused during combo/spawn hot paths to avoid GC churn.
+        this._comboShockwaveColor = new THREE.Color(0xb8b8c8);
+        this._wavePoolScratchColor = new THREE.Color(0x888888);
         this.baselineFrames = [];
         this.baselineRenderStats = [];
         this.baselineMaxFrames = 3600;
@@ -452,6 +461,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.lastRendererHeight = 0;
         this.lastRendererPixelRatio = 0;
         this.lastAppliedPostResolutionScale = 1;
+        this.lastAppliedAdaptiveLodKey = '';
+        this.lastPostUpdateSignature = '';
 
         console.log('[CosmicNoir] Hybrid WebGPU/WebGL theme constructed');
     }
@@ -461,14 +472,30 @@ export default class CosmicNoirTheme extends BaseTheme {
     }
 
     getCurrentQualityLevel() {
-        if (typeof window !== 'undefined' && window.settings?.graphicsQuality) {
-            return normalizeQuality(window.settings.graphicsQuality);
+        if (typeof window !== 'undefined' && window.settings) {
+            if (window.settings.effectQuality) {
+                return normalizeQuality(window.settings.effectQuality);
+            }
+            if (window.settings.graphicsQuality) {
+                return normalizeQuality(window.settings.graphicsQuality);
+            }
         }
         return 'High';
     }
 
     applyQualityPreset(quality) {
-        this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
+        const normalized = normalizeQuality(quality);
+        this.activeQualityLevel = normalized;
+        this.qualityPreset = QUALITY_PRESETS[normalized] || QUALITY_PRESETS.High;
+    }
+
+    getAdaptiveTargetFrameMs() {
+        const settings = typeof window !== 'undefined' ? window.settings : null;
+        const targetFps = Number(settings?.targetFrameRate);
+        const resolvedFps = Number.isFinite(targetFps) && targetFps > 0
+            ? targetFps
+            : 90;
+        return THREE.MathUtils.clamp(1000 / resolvedFps, 8.33, 16.67);
     }
 
     getBasePixelRatioCap() {
@@ -480,8 +507,9 @@ export default class CosmicNoirTheme extends BaseTheme {
         const baseCap = this.getBasePixelRatioCap();
         this.adaptiveBudgetState = {
             basePixelRatioCap: baseCap,
+            targetFrameMs: this.getAdaptiveTargetFrameMs(),
             pixelRatioScale: 1.0,
-            minPixelRatioScale: 0.85,
+            minPixelRatioScale: 0.78,
             frameTimeEmaMs: 0,
             overBudgetMs: 0,
             underBudgetMs: 0,
@@ -489,11 +517,18 @@ export default class CosmicNoirTheme extends BaseTheme {
             bloomDownsample: this.qualityPreset.bloomDownsample ?? 0.8,
             chromaticEnabled: true,
             lensingStrength: 1.0,
+            transientScale: 1.0,
+            sparkScale: 1.0,
+            gasSwirlScale: 1.0,
+            waveScale: 1.0,
+            farStarScale: 1.0,
         };
         this.lastRendererWidth = 0;
         this.lastRendererHeight = 0;
         this.lastRendererPixelRatio = 0;
         this.lastAppliedPostResolutionScale = 1;
+        this.lastAppliedAdaptiveLodKey = '';
+        this.lastPostUpdateSignature = '';
     }
 
     getRendererPixelRatio() {
@@ -572,6 +607,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         if (this.ambientDustUniforms?.uPixelRatio) {
             this.ambientDustUniforms.uPixelRatio.value = pixelRatio;
         }
+
+        this.applyAdaptiveLodState(force);
     }
 
     updateAdaptiveBudgetState(frameMs) {
@@ -589,42 +626,73 @@ export default class CosmicNoirTheme extends BaseTheme {
             ? frameMs
             : (budget.frameTimeEmaMs * 0.88) + (frameMs * 0.12);
 
+        budget.targetFrameMs = this.getAdaptiveTargetFrameMs();
         const ema = budget.frameTimeEmaMs;
+        const targetMs = budget.targetFrameMs;
+        const pressure = targetMs > 0 ? ema / targetMs : 1.0;
         const baseBloomDownsample = this.qualityPreset.bloomDownsample ?? 0.8;
 
         budget.postResolutionScale = 1.0;
         budget.bloomDownsample = baseBloomDownsample;
         budget.chromaticEnabled = true;
         budget.lensingStrength = 1.0;
+        budget.transientScale = 1.0;
+        budget.sparkScale = 1.0;
+        budget.gasSwirlScale = 1.0;
+        budget.waveScale = 1.0;
+        budget.farStarScale = 1.0;
 
-        if (ema > 14.4) {
+        if (pressure > 1.05) {
             budget.postResolutionScale = 0.94;
             budget.bloomDownsample = Math.min(baseBloomDownsample, 0.75);
             budget.lensingStrength = 0.88;
         }
-        if (ema > 15.5) {
+        if (pressure > 1.16) {
             budget.postResolutionScale = 0.9;
             budget.bloomDownsample = Math.min(baseBloomDownsample, 0.7);
             budget.lensingStrength = 0.76;
+            budget.transientScale = 0.92;
+            budget.sparkScale = 0.9;
+            budget.gasSwirlScale = 0.9;
+            budget.farStarScale = 0.96;
         }
-        if (ema > 16.7) {
+        if (pressure > 1.32) {
             budget.postResolutionScale = 0.85;
             budget.bloomDownsample = Math.min(baseBloomDownsample, 0.65);
             budget.chromaticEnabled = false;
             budget.lensingStrength = 0.62;
+            budget.transientScale = 0.82;
+            budget.sparkScale = 0.78;
+            budget.gasSwirlScale = 0.76;
+            budget.waveScale = 0.86;
+            budget.farStarScale = 0.9;
         }
-        if (ema > 18.0) {
+        if (pressure > 1.48) {
             budget.postResolutionScale = 0.8;
             budget.bloomDownsample = Math.min(baseBloomDownsample, 0.6);
             budget.chromaticEnabled = false;
             budget.lensingStrength = 0.5;
+            budget.transientScale = 0.72;
+            budget.sparkScale = 0.66;
+            budget.gasSwirlScale = 0.64;
+            budget.waveScale = 0.72;
+            budget.farStarScale = 0.84;
+        }
+        if (pressure > 1.7) {
+            budget.postResolutionScale = 0.72;
+            budget.bloomDownsample = Math.min(baseBloomDownsample, 0.55);
+            budget.transientScale = 0.62;
+            budget.sparkScale = 0.56;
+            budget.gasSwirlScale = 0.54;
+            budget.waveScale = 0.62;
+            budget.farStarScale = 0.78;
         }
 
         if (!Number.isFinite(this.flags.fixedPixelRatio)) {
-            if (ema > 16.7) {
+            if (pressure > 1.5) {
                 budget.overBudgetMs += frameMs;
                 budget.underBudgetMs = 0;
-            } else if (ema < 13.0) {
+            } else if (pressure < 0.82) {
                 budget.underBudgetMs += frameMs;
                 budget.overBudgetMs = 0;
             } else {
@@ -632,18 +700,92 @@ export default class CosmicNoirTheme extends BaseTheme {
                 budget.underBudgetMs = 0;
             }
 
-            if (budget.overBudgetMs >= 500) {
+            if (budget.overBudgetMs >= 650) {
                 budget.pixelRatioScale = Math.max(
                     budget.minPixelRatioScale,
                     Number((budget.pixelRatioScale - 0.05).toFixed(2)),
                 );
                 budget.overBudgetMs = 0;
-            } else if (budget.underBudgetMs >= 2000) {
+            } else if (budget.underBudgetMs >= 1500) {
                 budget.pixelRatioScale = Math.min(
                     1.0,
                     Number((budget.pixelRatioScale + 0.05).toFixed(2)),
                 );
                 budget.underBudgetMs = 0;
+            }
+        }
+    }
+
+    getAdaptiveScale(key, fallback = 1.0) {
+        const value = this.adaptiveBudgetState?.[key];
+        return Number.isFinite(value) ? value : fallback;
+    }
+
+    scaleTransientCount(count, scaleKey, minCount = 0) {
+        if (!Number.isFinite(count) || count <= 0) return 0;
+        const scale = this.getAdaptiveScale(scaleKey, 1.0);
+        return Math.max(minCount, Math.floor(count * scale));
+    }
+
+    markAttributeRange(attribute, startIndex, itemCount) {
+        if (!attribute || !Number.isFinite(startIndex) || !Number.isFinite(itemCount) || itemCount <= 0) {
+            return;
+        }
+        const itemSize = attribute.itemSize || 1;
+        attribute.addUpdateRange(startIndex * itemSize, itemCount * itemSize);
+        attribute.needsUpdate = true;
+    }
+
+    markGeometryAttributeRange(geometry, startIndex, itemCount, attributeNames) {
+        if (!geometry || !Array.isArray(attributeNames) || itemCount <= 0) return;
+        attributeNames.forEach((name) => {
+            this.markAttributeRange(geometry.attributes?.[name], startIndex, itemCount);
+        });
+    }
+
+    applyAdaptiveLodState(force = false) {
+        const budget = this.adaptiveBudgetState;
+        if (!budget) return;
+
+        const lodKey = [
+            budget.transientScale,
+            budget.sparkScale,
+            budget.gasSwirlScale,
+            budget.waveScale,
+            budget.farStarScale,
+        ].map((value) => Number(value || 1).toFixed(2)).join(':');
+        if (!force && lodKey === this.lastAppliedAdaptiveLodKey) return;
+        this.lastAppliedAdaptiveLodKey = lodKey;
+
+        if (Array.isArray(this.starfieldLayers)) {
+            this.starfieldLayers.forEach((layer) => {
+                const baseCount = layer?.userData?.baseCount
+                    ?? layer?.geometry?.attributes?.position?.count
+                    ?? 0;
+                if (!baseCount || !layer?.geometry?.setDrawRange) return;
+
+                const layerId = layer.userData?.layerId;
+                let factor = 1.0;
+                if (layerId === 'far') {
+                    factor = budget.farStarScale ?? 1.0;
+                } else if (layerId === 'mid') {
+                    factor = Math.max(0.94, ((budget.farStarScale ?? 1.0) + 1.0) * 0.5);
+                }
+
+                const targetCount = Math.max(256, Math.floor(baseCount * factor));
+                if ((layer.geometry.drawRange?.count ?? baseCount) !== targetCount) {
+                    layer.geometry.setDrawRange(0, targetCount);
+                }
+            });
+        }
+
+        if (this.ambientDust?.geometry?.setDrawRange) {
+            const baseCount = this.ambientDust.userData?.baseCount
+                ?? this.ambientDust.geometry.attributes?.position?.count
+                ?? 0;
+            if (baseCount > 0) {
+                const targetCount = Math.max(20, Math.floor(baseCount * (budget.transientScale ?? 1.0)));
+                this.ambientDust.geometry.setDrawRange(0, targetCount);
             }
         }
     }
@@ -744,6 +886,10 @@ export default class CosmicNoirTheme extends BaseTheme {
         const p50Ms = getPercentile(0.5);
         const p95Ms = getPercentile(0.95);
         const p99Ms = getPercentile(0.99);
+        const lowSampleCount = Math.max(1, Math.ceil(frameCount * 0.01));
+        const slowestFrames = sortedFrames.slice(Math.max(0, frameCount - lowSampleCount));
+        const low1AvgMs = slowestFrames.reduce((sum, value) => sum + value, 0) / slowestFrames.length;
+        const low1Fps = low1AvgMs > 0 ? 1000 / low1AvgMs : 0;
 
         const totals = this.baselineRenderStats.reduce((acc, sample) => ({
             calls: acc.calls + sample.calls,
@@ -774,6 +920,17 @@ export default class CosmicNoirTheme extends BaseTheme {
         });
 
         const renderSamples = Math.max(1, this.baselineRenderStats.length);
+        const starfieldDrawCount = this.starfieldLayers.reduce((sum, layer) => {
+            const count = layer?.geometry?.drawRange?.count
+                ?? layer?.userData?.baseCount
+                ?? layer?.geometry?.attributes?.position?.count
+                ?? 0;
+            return sum + count;
+        }, 0);
+        const ambientDustDrawCount = this.ambientDust?.geometry?.drawRange?.count
+            ?? this.ambientDust?.userData?.baseCount
+            ?? 0;
+        const adaptive = this.adaptiveBudgetState || {};
 
         return {
             backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
@@ -781,6 +938,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             frameCount,
             avgFrameMs: avgMs,
             avgFps: avgMs > 0 ? 1000 / avgMs : 0,
+            low1Fps,
             p50FrameMs: p50Ms,
             p95FrameMs: p95Ms,
             p99FrameMs: p99Ms,
@@ -802,11 +960,36 @@ export default class CosmicNoirTheme extends BaseTheme {
                 useMRT: this.flags.useMRT,
                 useCompute: this.flags.useCompute,
                 qualityAllowsCompute: this.qualityPreset?.enableCompute !== false,
-                sparkMode: this.sparkCompute?.computeNode ? 'compute' : 'fallback-pool',
+                sparkMode: this.sparkCompute?.computeNode ? 'compute' : 'unified-fallback',
                 atmosphereLayers: this.qualityPreset?.atmosphereLayers ?? 1,
                 dustParticles: this.qualityPreset?.dustParticles ?? 0,
                 pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
                 postResolutionScale: this.adaptiveBudgetState?.postResolutionScale ?? 1.0,
+            },
+            adaptiveState: {
+                targetFrameMs: adaptive.targetFrameMs ?? null,
+                frameTimeEmaMs: adaptive.frameTimeEmaMs ?? null,
+                pixelRatioScale: adaptive.pixelRatioScale ?? 1.0,
+                postResolutionScale: adaptive.postResolutionScale ?? 1.0,
+                bloomDownsample: adaptive.bloomDownsample ?? this.qualityPreset?.bloomDownsample ?? null,
+                chromaticEnabled: adaptive.chromaticEnabled ?? true,
+                lensingStrength: adaptive.lensingStrength ?? 1.0,
+                transientScale: adaptive.transientScale ?? 1.0,
+                sparkScale: adaptive.sparkScale ?? 1.0,
+                gasSwirlScale: adaptive.gasSwirlScale ?? 1.0,
+                waveScale: adaptive.waveScale ?? 1.0,
+                farStarScale: adaptive.farStarScale ?? 1.0,
+            },
+            activeEffects: {
+                gasSwirlParticles: this.gasSwirlData?.activeEstimate ?? this.gasSwirlData?.activeCount ?? 0,
+                voidSparkParticles: this.unifiedSparkData?.activeEstimate
+                    ?? (this.sparkCompute?.count ?? 0),
+                activeCosmicWaves: this.cosmicWaves.length,
+                pooledCosmicWaves: this.cosmicWavePool.length,
+                starfieldDrawCount,
+                ambientDustDrawCount,
+                postScale: adaptive.postResolutionScale ?? 1.0,
+                pixelRatio: this.renderer?.getPixelRatio?.() ?? null,
             },
             mrtDowngrade: this.lastMrtDowngrade ? { ...this.lastMrtDowngrade } : null,
             flags: {
@@ -1636,6 +1819,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             const points = new THREE.Points(geometry, material);
             points.userData = {
                 layerId: config.id,
+                baseCount: layerCount,
                 parallax: config.parallax,
                 spinY: config.spinY,
                 spinZ: config.spinZ,
@@ -2117,6 +2301,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         points.renderOrder = 45;
         points.userData.uniforms = uniforms;
         points.userData.parallax = 0.09;
+        points.userData.baseCount = dustCount;
         this.ambientDust = points;
         this.ambientDustUniforms = uniforms;
         this.scene.add(points);
@@ -2213,17 +2398,21 @@ export default class CosmicNoirTheme extends BaseTheme {
         const sizes = new Float32Array(count);
         const velocities = new Float32Array(count * 4);
         const noiseSeeds = new Float32Array(count * 3);
+        const births = new Float32Array(count);
+        const lifetimes = new Float32Array(count);
 
         for (let i = 0; i < count; i++) {
             positions[i * 3] = 0;
             positions[i * 3 + 1] = 0;
-            positions[i * 3 + 2] = -9999;
+            positions[i * 3 + 2] = 0;
             alphas[i] = 0;
             sizes[i] = 55 + this.rand() * 105;
             velocities[i * 4 + 3] = 0;
             noiseSeeds[i * 3] = this.rand();
             noiseSeeds[i * 3 + 1] = this.rand();
             noiseSeeds[i * 3 + 2] = this.rand();
+            births[i] = -1000;
+            lifetimes[i] = 1;
         }
 
         const positionAttr = new THREE.BufferAttribute(positions, 3);
@@ -2232,31 +2421,49 @@ export default class CosmicNoirTheme extends BaseTheme {
         alphaAttr.setUsage(THREE.DynamicDrawUsage);
         const sizeAttr = new THREE.BufferAttribute(sizes, 1);
         sizeAttr.setUsage(THREE.DynamicDrawUsage);
+        const velocityAttr = new THREE.BufferAttribute(velocities, 4);
+        velocityAttr.setUsage(THREE.DynamicDrawUsage);
+        const seedAttr = new THREE.BufferAttribute(noiseSeeds, 3);
+        seedAttr.setUsage(THREE.DynamicDrawUsage);
+        const birthAttr = new THREE.BufferAttribute(births, 1);
+        birthAttr.setUsage(THREE.DynamicDrawUsage);
+        const lifeAttr = new THREE.BufferAttribute(lifetimes, 1);
+        lifeAttr.setUsage(THREE.DynamicDrawUsage);
 
         geometry.setAttribute('position', positionAttr);
         geometry.setAttribute('aAlpha', alphaAttr);
         geometry.setAttribute('aSize', sizeAttr);
+        geometry.setAttribute('aVelocity', velocityAttr);
+        geometry.setAttribute('aSeed', seedAttr);
+        geometry.setAttribute('aBirth', birthAttr);
+        geometry.setAttribute('aLife', lifeAttr);
         geometry.setDrawRange(0, 0);
 
         let material;
+        let uniforms = null;
         if (this.isWebGPU) {
-            const { material: nodeMaterial } = createGasSwirlNodeMaterial();
+            const { material: nodeMaterial, uniforms: nodeUniforms } = createGasSwirlNodeMaterial();
             material = nodeMaterial;
+            uniforms = nodeUniforms;
         } else {
             material = new THREE.ShaderMaterial({
-                uniforms: {},
+                uniforms: {
+                    uTime: { value: 0 },
+                },
                 vertexShader: gasSwirlVertexShader,
                 fragmentShader: gasSwirlFragmentShader,
                 transparent: true,
                 depthWrite: false,
                 blending: THREE.AdditiveBlending,
             });
+            ({ uniforms } = material);
         }
 
         const points = new THREE.Points(geometry, material);
         points.frustumCulled = false;
         points.renderOrder = 102;
         points.visible = false;
+        points.userData.uniforms = uniforms;
 
         this.gasSwirl = points;
         this.gasSwirlData = {
@@ -2266,45 +2473,60 @@ export default class CosmicNoirTheme extends BaseTheme {
             sizes,
             velocities,
             noiseSeeds,
-            activeCount: 0,
+            births,
+            lifetimes,
+            nextIndex: 0,
+            highWaterMark: 0,
+            activeWindows: [],
+            activeEstimate: 0,
         };
         this.planetGroup.add(points);
 
-        console.log('[CosmicNoir] Gas swirl particle system created with', count, 'particles (swirl spiral mode)');
+        console.log('[CosmicNoir] Gas swirl particle system created with', count, 'shader-driven particles');
     }
 
     triggerGasSwirlBurst(comboCount) {
         if (!this.gasSwirl || !this.gasSwirlData) return;
 
         const d = this.gasSwirlData;
-        const available = Math.max(0, d.count - d.activeCount);
-        const batchSize = Math.min(available, Math.floor(2200 + comboCount * 450));
+        const baseBatch = Math.floor(2200 + comboCount * 450);
+        const batchSize = Math.min(
+            d.count,
+            this.scaleTransientCount(baseBatch, 'gasSwirlScale', Math.min(600, baseBatch)),
+        );
         if (batchSize <= 0) return;
 
         const shellRadius = 350; // atmosphere outer shell radius
         const screenTargetZ = 1200;
+        const startIndex = d.nextIndex;
+        const visualCompensation = THREE.MathUtils.clamp(
+            1 / Math.sqrt(this.getAdaptiveScale('gasSwirlScale', 1.0)),
+            1.0,
+            1.28,
+        );
+        let maxExpiresAt = this.time;
 
         for (let b = 0; b < batchSize; b++) {
-            const idx = d.activeCount;
-            d.activeCount += 1;
+            const idx = (startIndex + b) % d.count;
 
             const theta = this.rand() * Math.PI * 2;
-            const phi = Math.acos(2 * this.rand() - 1);
-            const sinPhi = Math.sin(phi);
+            const cosPhi = 2 * this.rand() - 1;
+            const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
 
             const px = shellRadius * sinPhi * Math.cos(theta);
             const py = shellRadius * sinPhi * Math.sin(theta);
-            const pz = shellRadius * Math.cos(phi);
+            const pz = shellRadius * cosPhi;
 
             d.positions[idx * 3] = px;
             d.positions[idx * 3 + 1] = py;
             d.positions[idx * 3 + 2] = pz;
-            d.sizes[idx] = 55 + this.rand() * 105;
+            d.sizes[idx] = (55 + this.rand() * 105) * visualCompensation;
             d.noiseSeeds[idx * 3] = this.rand();
             d.noiseSeeds[idx * 3 + 1] = this.rand();
             d.noiseSeeds[idx * 3 + 2] = this.rand();
 
             const isShooter = this.rand() < (0.2 + comboCount * 0.05);
+            let lifeSeconds;
 
             if (isShooter) {
                 const dx = (this.rand() - 0.5) * 800; // Spread across screen width
@@ -2321,7 +2543,8 @@ export default class CosmicNoirTheme extends BaseTheme {
                 d.velocities[idx * 4] = (vx / len) * speed;
                 d.velocities[idx * 4 + 1] = (vy / len) * speed;
                 d.velocities[idx * 4 + 2] = (vz / len) * speed;
-                d.velocities[idx * 4 + 3] = 10.0;
+                d.velocities[idx * 4 + 3] = 1.0;
+                lifeSeconds = 4.4 + this.rand() * 1.8;
             } else {
                 const radialLen = Math.sqrt(px * px + pz * pz) || 1;
                 const tangX = -pz / radialLen;
@@ -2335,111 +2558,67 @@ export default class CosmicNoirTheme extends BaseTheme {
                 d.velocities[idx * 4] = tangX * tangSpeed + (px / shellRadius) * outwardSpeed;
                 d.velocities[idx * 4 + 1] = py / shellRadius * outwardSpeed + upDrift;
                 d.velocities[idx * 4 + 2] = tangZ * tangSpeed + (pz / shellRadius) * outwardSpeed;
-                d.velocities[idx * 4 + 3] = 20.0 + this.rand() * 16.0;
+                d.velocities[idx * 4 + 3] = 1.0;
+                lifeSeconds = 10.0 + this.rand() * 8.0;
             }
 
-            d.alphas[idx] = 0.75 + this.rand() * 0.25;
+            const birthTime = this.time + this.rand() * 0.22;
+            d.births[idx] = birthTime;
+            d.lifetimes[idx] = lifeSeconds;
+            d.alphas[idx] = Math.min(1.0, (0.75 + this.rand() * 0.25) * visualCompensation);
+            maxExpiresAt = Math.max(maxExpiresAt, birthTime + lifeSeconds);
         }
 
-        this.gasSwirl.visible = d.activeCount > 0;
-        this.gasSwirl.geometry.setDrawRange(0, d.activeCount);
-        this.gasSwirl.geometry.attributes.position.needsUpdate = true;
-        this.gasSwirl.geometry.attributes.aAlpha.needsUpdate = true;
-        this.gasSwirl.geometry.attributes.aSize.needsUpdate = true;
+        d.nextIndex = (startIndex + batchSize) % d.count;
+        d.highWaterMark = Math.max(d.highWaterMark, startIndex + Math.min(batchSize, d.count - startIndex));
+        if (startIndex + batchSize > d.count) {
+            d.highWaterMark = d.count;
+        }
+        d.activeWindows.push({ count: batchSize, expiresAt: maxExpiresAt });
+
+        const firstCount = Math.min(batchSize, d.count - startIndex);
+        const secondCount = batchSize - firstCount;
+        this.markGeometryAttributeRange(this.gasSwirl.geometry, startIndex, firstCount, [
+            'position',
+            'aAlpha',
+            'aSize',
+            'aVelocity',
+            'aSeed',
+            'aBirth',
+            'aLife',
+        ]);
+        if (secondCount > 0) {
+            this.markGeometryAttributeRange(this.gasSwirl.geometry, 0, secondCount, [
+                'position',
+                'aAlpha',
+                'aSize',
+                'aVelocity',
+                'aSeed',
+                'aBirth',
+                'aLife',
+            ]);
+        }
+
+        this.gasSwirl.visible = true;
+        this.gasSwirl.geometry.setDrawRange(0, Math.max(1, d.highWaterMark));
     }
 
-    updateGasSwirlParticles(delta) {
+    updateGasSwirlParticles() {
         if (!this.gasSwirl || !this.gasSwirlData) return;
 
         const d = this.gasSwirlData;
-        if (d.activeCount <= 0) {
-            this.gasSwirl.visible = false;
+        const uniforms = this.gasSwirl.userData?.uniforms || this.gasSwirl.material?.uniforms;
+        if (uniforms?.uTime) {
+            uniforms.uTime.value = this.time;
+        }
+
+        d.activeWindows = d.activeWindows.filter((entry) => entry.expiresAt > this.time);
+        d.activeEstimate = d.activeWindows.reduce((sum, entry) => sum + entry.count, 0);
+        this.gasSwirl.visible = d.activeEstimate > 0;
+        if (this.gasSwirl.visible) {
+            this.gasSwirl.geometry.setDrawRange(0, Math.max(1, d.highWaterMark));
+        } else {
             this.gasSwirl.geometry.setDrawRange(0, 0);
-            return;
-        }
-
-        let attributesDirty = false;
-        for (let i = d.activeCount - 1; i >= 0; i--) {
-            const x = d.positions[i * 3];
-            const y = d.positions[i * 3 + 1];
-            const z = d.positions[i * 3 + 2];
-            const dist = Math.sqrt(x * x + z * z) || 1;
-            const seedIndex = i * 3;
-            const seedA = d.noiseSeeds[seedIndex];
-            const seedB = d.noiseSeeds[seedIndex + 1];
-            const seedC = d.noiseSeeds[seedIndex + 2];
-
-            const radialAccel = 14.0 * delta;
-            d.velocities[i * 4] += (x / dist) * radialAccel;
-            d.velocities[i * 4 + 2] += (z / dist) * radialAccel;
-
-            const spinForce = 55.0 * delta;
-            d.velocities[i * 4] += (-z / dist) * spinForce;
-            d.velocities[i * 4 + 2] += (x / dist) * spinForce;
-
-            const twistAmp = 80.0 * delta;
-            const angle = Math.atan2(z, x);
-            const wave1 = Math.sin(dist * 0.008 - this.time * 2.5 + angle * 2.0);
-            const wave2 = Math.sin(dist * 0.02 + this.time * 1.5 - angle);
-
-            const verticalForce = (wave1 + wave2 * 0.5) * twistAmp;
-            d.velocities[i * 4 + 1] += verticalForce;
-
-            const noise = 15.0 * delta;
-            d.velocities[i * 4] += Math.sin((this.time * 3.4) + seedA * 21.1 + angle) * noise;
-            d.velocities[i * 4 + 1] += Math.cos((this.time * 2.8) + seedB * 17.3 + dist * 0.01) * noise;
-            d.velocities[i * 4 + 2] += Math.sin((this.time * 3.1) + seedC * 19.7 - angle) * noise;
-
-            d.positions[i * 3] += d.velocities[i * 4] * delta;
-            d.positions[i * 3 + 1] += d.velocities[i * 4 + 1] * delta;
-            d.positions[i * 3 + 2] += d.velocities[i * 4 + 2] * delta;
-
-            d.velocities[i * 4 + 3] -= delta;
-            const maxLife = 36.0;
-            const lifeRatio = Math.max(0, d.velocities[i * 4 + 3]) / (maxLife * 0.5);
-            d.alphas[i] = Math.pow(lifeRatio, 0.3) * 0.95;
-            attributesDirty = true;
-
-            if (d.velocities[i * 4 + 3] <= 0) {
-                const lastIndex = d.activeCount - 1;
-                if (i !== lastIndex) {
-                    const src3 = lastIndex * 3;
-                    const dst3 = i * 3;
-                    d.positions[dst3] = d.positions[src3];
-                    d.positions[dst3 + 1] = d.positions[src3 + 1];
-                    d.positions[dst3 + 2] = d.positions[src3 + 2];
-                    d.alphas[i] = d.alphas[lastIndex];
-                    d.sizes[i] = d.sizes[lastIndex];
-
-                    const src4 = lastIndex * 4;
-                    const dst4 = i * 4;
-                    d.velocities[dst4] = d.velocities[src4];
-                    d.velocities[dst4 + 1] = d.velocities[src4 + 1];
-                    d.velocities[dst4 + 2] = d.velocities[src4 + 2];
-                    d.velocities[dst4 + 3] = d.velocities[src4 + 3];
-
-                    const srcSeed = lastIndex * 3;
-                    d.noiseSeeds[dst3] = d.noiseSeeds[srcSeed];
-                    d.noiseSeeds[dst3 + 1] = d.noiseSeeds[srcSeed + 1];
-                    d.noiseSeeds[dst3 + 2] = d.noiseSeeds[srcSeed + 2];
-                }
-
-                const last3 = lastIndex * 3;
-                d.positions[last3] = 0;
-                d.positions[last3 + 1] = 0;
-                d.positions[last3 + 2] = -9999;
-                d.alphas[lastIndex] = 0;
-                d.velocities[lastIndex * 4 + 3] = 0;
-                d.activeCount -= 1;
-            }
-        }
-
-        this.gasSwirl.visible = d.activeCount > 0;
-        this.gasSwirl.geometry.setDrawRange(0, d.activeCount);
-        if (attributesDirty) {
-            this.gasSwirl.geometry.attributes.position.needsUpdate = true;
-            this.gasSwirl.geometry.attributes.aAlpha.needsUpdate = true;
-            this.gasSwirl.geometry.attributes.aSize.needsUpdate = true;
         }
     }
 
@@ -2528,87 +2707,230 @@ export default class CosmicNoirTheme extends BaseTheme {
             }
         }
 
-        const poolSize = 24; // Increased number of overlapping bursts allowed
-        const countPerSystem = Math.floor(this.qualityPreset.voidSparks / 3);
+        const sparkCount = Math.min(
+            48000,
+            Math.max(Math.floor(this.qualityPreset.voidSparks * 2), 8000),
+        );
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(sparkCount * 3);
+        const velocities = new Float32Array(sparkCount * 4);
+        const births = new Float32Array(sparkCount);
+        const lifetimes = new Float32Array(sparkCount);
+        const colors = new Float32Array(sparkCount * 3);
+        const sizes = new Float32Array(sparkCount);
 
-        for (let p = 0; p < poolSize; p++) {
-            const geometry = new THREE.BufferGeometry();
-
-            const thetas = new Float32Array(countPerSystem);
-            const phis = new Float32Array(countPerSystem);
-            const radii = new Float32Array(countPerSystem);
-            const randoms = new Float32Array(countPerSystem);
-            const colors = new Float32Array(countPerSystem * 3);
-            const positions = new Float32Array(countPerSystem * 3);
-
-            for (let i = 0; i < countPerSystem; i++) {
-                // Distribute particles evenly on planet surface
-                const theta = this.rand() * Math.PI * 2;
-                const phi = Math.acos(2 * this.rand() - 1);
-
-                thetas[i] = theta;
-                phis[i] = phi;
-                radii[i] = planetRadius;
-                randoms[i] = this.rand();
-
-                // Color selection - mostly white/silver with some gray
-                const colorType = this.rand();
-                let c;
-                if (colorType > 0.5) c = colorOptions[0]; // White
-                else if (colorType > 0.3) c = colorOptions[1]; // Light silver
-                else if (colorType > 0.15) c = colorOptions[2]; // Medium silver
-                else if (colorType > 0.05) c = colorOptions[3]; // Gray silver
-                else c = colorOptions[4]; // Darker silver
-
-                colors[i * 3] = c.r;
-                colors[i * 3 + 1] = c.g;
-                colors[i * 3 + 2] = c.b;
-
-                positions[i * 3] = 0;
-                positions[i * 3 + 1] = 0;
-                positions[i * 3 + 2] = 0;
-            }
-
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('aTheta', new THREE.BufferAttribute(thetas, 1));
-            geometry.setAttribute('aPhi', new THREE.BufferAttribute(phis, 1));
-            geometry.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
-            geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-            geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-
-            let material;
-            let uniforms = null;
-            if (this.isWebGPU) {
-                ({ material, uniforms } = createVoidSparkNodeMaterial());
-            } else {
-                material = new THREE.ShaderMaterial({
-                    uniforms: {
-                        time: { value: 0 },
-                        uPulseTimer: { value: -100.0 },
-                    },
-                    vertexShader: voidSparkVertexShader,
-                    fragmentShader: voidSparkFragmentShader,
-                    transparent: true,
-                    depthWrite: false,
-                    blending: THREE.AdditiveBlending,
-                });
-                ({ uniforms } = material);
-            }
-
-            const sparks = new THREE.Points(geometry, material);
-            sparks.userData.uniforms = uniforms;
-            sparks.visible = false;
-            this.planetGroup.add(sparks);
-            this.voidSparks.push(sparks);
+        for (let i = 0; i < sparkCount; i += 1) {
+            births[i] = -1000;
+            lifetimes[i] = 1;
+            sizes[i] = 38 + this.rand() * 44;
+            const color = colorOptions[i % colorOptions.length];
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
         }
 
-        console.log(
-            '[CosmicNoir] Void sparks pool created with',
-            poolSize,
-            'systems,',
-            countPerSystem,
-            'particles each',
+        const positionAttr = new THREE.BufferAttribute(positions, 3);
+        const velocityAttr = new THREE.BufferAttribute(velocities, 4);
+        const birthAttr = new THREE.BufferAttribute(births, 1);
+        const lifeAttr = new THREE.BufferAttribute(lifetimes, 1);
+        const colorAttr = new THREE.BufferAttribute(colors, 3);
+        const sizeAttr = new THREE.BufferAttribute(sizes, 1);
+        [
+            positionAttr,
+            velocityAttr,
+            birthAttr,
+            lifeAttr,
+            colorAttr,
+            sizeAttr,
+        ].forEach((attribute) => attribute.setUsage(THREE.DynamicDrawUsage));
+
+        geometry.setAttribute('position', positionAttr);
+        geometry.setAttribute('aVelocity', velocityAttr);
+        geometry.setAttribute('aBirth', birthAttr);
+        geometry.setAttribute('aLife', lifeAttr);
+        geometry.setAttribute('aColor', colorAttr);
+        geometry.setAttribute('aSize', sizeAttr);
+        geometry.setDrawRange(0, 0);
+
+        let material;
+        let uniforms = null;
+        if (this.isWebGPU) {
+            ({ material, uniforms } = createUnifiedVoidSparkNodeMaterial());
+            if (this.flags.useMRT && !this.applyMrtPatchToMaterial(material)) {
+                this.disableMrtRuntime('unified-void-spark-not-mrt-compatible');
+            }
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 },
+                },
+                vertexShader: voidSparkVertexShader,
+                fragmentShader: voidSparkFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+            ({ uniforms } = material);
+        }
+
+        const sparks = new THREE.Points(geometry, material);
+        sparks.userData = {
+            uniforms,
+            unifiedFallback: true,
+        };
+        sparks.visible = false;
+        this.planetGroup.add(sparks);
+        this.voidSparks.push(sparks);
+        this.unifiedSparkData = {
+            count: sparkCount,
+            planetRadius,
+            positions,
+            velocities,
+            births,
+            lifetimes,
+            colors,
+            sizes,
+            nextIndex: 0,
+            highWaterMark: 0,
+            activeWindows: [],
+            activeEstimate: 0,
+            colorOptions,
+        };
+
+        console.log('[CosmicNoir] Unified void spark fallback created with', sparkCount, 'particles in one draw call');
+    }
+
+    triggerUnifiedVoidSparkBurst(comboCount, burstIndex = 0, intensity = 1.0) {
+        if (!this.unifiedSparkData || !this.voidSparks.length) return;
+
+        const d = this.unifiedSparkData;
+        const clampedIntensity = THREE.MathUtils.clamp(intensity, 0.75, 2.25);
+        const normalizedIntensity = (clampedIntensity - 0.75) / 1.5;
+        const minBatch = Math.max(700, Math.floor(d.count * 0.06));
+        const maxBatch = Math.max(minBatch, Math.floor(d.count * 0.22));
+        const baseBatch = Math.floor(minBatch + (maxBatch - minBatch) * normalizedIntensity);
+        const targetBatch = Math.min(
+            d.count,
+            this.scaleTransientCount(baseBatch, 'sparkScale', Math.min(600, baseBatch)),
         );
+        if (targetBatch <= 0) return;
+
+        const startIndex = d.nextIndex;
+        const visualCompensation = THREE.MathUtils.clamp(
+            1 / Math.sqrt(this.getAdaptiveScale('sparkScale', 1.0)),
+            1.0,
+            1.3,
+        );
+        let maxExpiresAt = this.time;
+
+        for (let i = 0; i < targetBatch; i += 1) {
+            const index = (startIndex + i) % d.count;
+            const i3 = index * 3;
+            const i4 = index * 4;
+
+            const theta = this.rand() * Math.PI * 2;
+            const cosPhi = 2 * this.rand() - 1;
+            const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
+            const radialX = sinPhi * Math.cos(theta);
+            const radialY = sinPhi * Math.sin(theta);
+            const radialZ = cosPhi;
+
+            const spreadX = (this.rand() - 0.5) * 0.45;
+            const spreadY = (this.rand() - 0.5) * 0.45;
+            const spreadZ = (this.rand() - 0.5) * 0.45;
+            let burstX = radialX + spreadX;
+            let burstY = radialY + spreadY;
+            let burstZ = radialZ + spreadZ;
+            const invLen = 1 / Math.max(1e-5, Math.hypot(burstX, burstY, burstZ));
+            burstX *= invLen;
+            burstY *= invLen;
+            burstZ *= invLen;
+
+            const localIntensity = clampedIntensity * (0.88 + this.rand() * 0.24);
+            const speed = (34 + this.rand() * 28) * localIntensity;
+
+            d.positions[i3] = radialX * d.planetRadius;
+            d.positions[i3 + 1] = radialY * d.planetRadius;
+            d.positions[i3 + 2] = radialZ * d.planetRadius;
+            d.velocities[i4] = burstX * speed;
+            d.velocities[i4 + 1] = burstY * speed;
+            d.velocities[i4 + 2] = burstZ * speed;
+            d.velocities[i4 + 3] = localIntensity;
+
+            const birthTime = this.time + this.rand() * 0.7 + burstIndex * 0.03;
+            const life = 3.1 + this.rand() * 1.9;
+            d.births[index] = birthTime;
+            d.lifetimes[index] = life;
+            d.sizes[index] = (38 + this.rand() * 44) * visualCompensation;
+
+            const paletteRoll = this.rand();
+            let colorIndex = 0;
+            if (paletteRoll <= 0.5) colorIndex = 0;
+            else if (paletteRoll <= 0.7) colorIndex = 1;
+            else if (paletteRoll <= 0.85) colorIndex = 2;
+            else if (paletteRoll <= 0.95) colorIndex = 3;
+            else colorIndex = 4;
+            const color = d.colorOptions[colorIndex] || d.colorOptions[0];
+            d.colors[i3] = color.r;
+            d.colors[i3 + 1] = color.g;
+            d.colors[i3 + 2] = color.b;
+            maxExpiresAt = Math.max(maxExpiresAt, birthTime + life);
+        }
+
+        d.nextIndex = (startIndex + targetBatch) % d.count;
+        d.highWaterMark = Math.max(d.highWaterMark, startIndex + Math.min(targetBatch, d.count - startIndex));
+        if (startIndex + targetBatch > d.count) {
+            d.highWaterMark = d.count;
+        }
+        d.activeWindows.push({ count: targetBatch, expiresAt: maxExpiresAt });
+
+        const sparkSystem = this.voidSparks.find((entry) => entry?.userData?.unifiedFallback);
+        const geometry = sparkSystem?.geometry;
+        const firstCount = Math.min(targetBatch, d.count - startIndex);
+        const secondCount = targetBatch - firstCount;
+        this.markGeometryAttributeRange(geometry, startIndex, firstCount, [
+            'position',
+            'aVelocity',
+            'aBirth',
+            'aLife',
+            'aColor',
+            'aSize',
+        ]);
+        if (secondCount > 0) {
+            this.markGeometryAttributeRange(geometry, 0, secondCount, [
+                'position',
+                'aVelocity',
+                'aBirth',
+                'aLife',
+                'aColor',
+                'aSize',
+            ]);
+        }
+        if (sparkSystem) {
+            sparkSystem.visible = true;
+            sparkSystem.geometry.setDrawRange(0, Math.max(1, d.highWaterMark));
+        }
+    }
+
+    updateUnifiedVoidSparks() {
+        if (!this.unifiedSparkData) return;
+        const sparkSystem = this.voidSparks.find((entry) => entry?.userData?.unifiedFallback);
+        if (!sparkSystem) return;
+
+        const uniforms = sparkSystem.userData?.uniforms || sparkSystem.material?.uniforms;
+        if (uniforms?.time) {
+            uniforms.time.value = this.time;
+        }
+
+        const d = this.unifiedSparkData;
+        d.activeWindows = d.activeWindows.filter((entry) => entry.expiresAt > this.time);
+        d.activeEstimate = d.activeWindows.reduce((sum, entry) => sum + entry.count, 0);
+        sparkSystem.visible = d.activeEstimate > 0;
+        if (sparkSystem.visible) {
+            sparkSystem.geometry.setDrawRange(0, Math.max(1, d.highWaterMark));
+        } else {
+            sparkSystem.geometry.setDrawRange(0, 0);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2759,6 +3081,8 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.animationFrameId = requestAnimationFrame(() => this.animate());
         this.registerAnimation(this.animationFrameId);
 
+        if (!this.shouldRenderFrame()) return;
+
         const frameStartMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
         const measuredDelta = this.clock.getDelta();
         const rawDelta = this.fixedDeltaSeconds !== null ? this.fixedDeltaSeconds : measuredDelta;
@@ -2882,7 +3206,9 @@ export default class CosmicNoirTheme extends BaseTheme {
             }
         }
 
-        // Update all void spark systems in the pool
+        this.updateUnifiedVoidSparks();
+
+        // Update compute-backed or legacy void spark systems.
         for (const sparks of this.voidSparks) {
             const sparkUniforms = sparks?.userData?.uniforms || sparks?.material?.uniforms;
             if (sparks && sparkUniforms) {
@@ -2890,7 +3216,11 @@ export default class CosmicNoirTheme extends BaseTheme {
                     sparkUniforms.time.value = this.time;
                 }
 
-                if (sparks?.userData?.computeBacked || this.sparkCompute?.computeNode) {
+                if (
+                    sparks?.userData?.computeBacked
+                    || sparks?.userData?.unifiedFallback
+                    || this.sparkCompute?.computeNode
+                ) {
                     continue;
                 }
 
@@ -2915,17 +3245,20 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.updateGasSwirlParticles(delta);
 
         // Slow drift planet across entire screen (Lissajous curves for organic movement)
+        // `sinWithHalfAngle = sin(x + 0.5)` equivalent tricks aren't worth it here -
+        // each sin/cos is independent and cheap; the only win is hoisting the scaled-time constants.
         if (this.planetGroup) {
-            const driftX = Math.sin(this.time * 0.025 + this.planetPhaseX) * 550
-                + Math.cos(this.time * 0.018 + this.planetPhaseX2) * 250;
-            const driftY = Math.cos(this.time * 0.02 + this.planetPhaseY) * 350
-                + Math.sin(this.time * 0.012 + this.planetPhaseY2) * 150;
+            const t = this.time;
+            const driftX = Math.sin(t * 0.025 + this.planetPhaseX) * 550
+                + Math.cos(t * 0.018 + this.planetPhaseX2) * 250;
+            const driftY = Math.cos(t * 0.02 + this.planetPhaseY) * 350
+                + Math.sin(t * 0.012 + this.planetPhaseY2) * 150;
 
             this.planetGroup.position.x = driftX;
             this.planetGroup.position.y = driftY;
 
             // Gentle rotation
-            this.planetGroup.rotation.z = Math.sin(this.time * 0.008) * 0.04;
+            this.planetGroup.rotation.z = Math.sin(t * 0.008) * 0.04;
         }
 
         // Slow camera orbit for parallax depth (independent of planet)
@@ -2934,17 +3267,23 @@ export default class CosmicNoirTheme extends BaseTheme {
             const orbitRadiusX = 420; // Tighter horizontal sway
             const orbitRadiusY = 320; // Tighter vertical sway
 
+            // Precompute shared scaled-time terms so each sin/cos has a hoisted argument.
+            const ct05 = cameraTime * 0.5;
+            const ct07 = cameraTime * 0.7;
+            const ct08 = cameraTime * 0.8;
+            const ct018 = cameraTime * 0.18;
+
             // Orbital sway - creates parallax with starfield/nebula
             this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX
-                + Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4;
-            this.camera.position.y = Math.cos(cameraTime * 0.8) * orbitRadiusY
-                + Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3;
+                + Math.cos(ct07) * orbitRadiusX * 0.4;
+            this.camera.position.y = Math.cos(ct08) * orbitRadiusY
+                + Math.sin(ct05) * orbitRadiusY * 0.3;
 
             // Deep z-breathing: sweeping from far out to EXTREMELY close
             // Base 800, primary ±600 -> Min theoretically 200 (inside atmosphere)
             this.camera.position.z = 800
-                + Math.sin(cameraTime * 0.5) * 600
-                + Math.sin(cameraTime * 0.18 + 1.2) * 200;
+                + Math.sin(ct05) * 600
+                + Math.sin(ct018 + 1.2) * 200;
 
             // Safety clamp: Prevent clipping into planet (radius 240)
             // Surface skim distance: ~280
@@ -2952,9 +3291,10 @@ export default class CosmicNoirTheme extends BaseTheme {
                 this.camera.position.setLength(280);
             }
 
-            // LookAt drift for dynamic framing (not following planet)
+            // LookAt drift for dynamic framing (not following planet).
+            // Reuse `ct05` from the y-orbit above - same scaled time.
             const lookOffsetX = Math.sin(cameraTime * 0.4) * 150;
-            const lookOffsetY = Math.cos(cameraTime * 0.5) * 100;
+            const lookOffsetY = Math.cos(ct05) * 100;
 
             if (this.reactiveEnvelope.shake > 0) {
                 const shakeAmplitude = this.reactiveEnvelope.shake * 3.0;
@@ -3188,9 +3528,14 @@ export default class CosmicNoirTheme extends BaseTheme {
         const tube = options.tube ?? 2;
         const radialSegments = options.radialSegments ?? 8;
         const tubularSegments = options.tubularSegments ?? 48;
-        const waveColor = options.color instanceof THREE.Color
-            ? options.color
-            : new THREE.Color(options.color ?? 0x888888);
+        let waveColor;
+        if (options.color instanceof THREE.Color) {
+            waveColor = options.color;
+        } else {
+            // Reuse the scratch Color to avoid allocating one per pool-key lookup.
+            waveColor = this._wavePoolScratchColor;
+            waveColor.set(options.color ?? 0x888888);
+        }
         return [
             this.isWebGPU ? 'wgpu' : 'webgl',
             radius.toFixed(2),
@@ -3536,9 +3881,6 @@ export default class CosmicNoirTheme extends BaseTheme {
             && this.flags.useCompute
             && this.sparkCompute?.computeNode,
         );
-        const getSparkUniforms = (sparkSystem) => sparkSystem?.userData?.uniforms
-            || sparkSystem?.material?.uniforms
-            || null;
 
         // === COMBO EFFECTS: Void Sparks + Gas Explosion ===
         if (comboCount >= 2 && (usingSparkCompute || this.voidSparks.length > 0)) {
@@ -3558,7 +3900,11 @@ export default class CosmicNoirTheme extends BaseTheme {
                                 1.0 + comboCount * 0.14 + s * 0.08 + sparkBoost,
                                 2.25,
                             );
-                            this.sparkCompute.triggerBurst(this.time, burstIntensity);
+                            this.sparkCompute.triggerBurst(
+                                this.time,
+                                burstIntensity,
+                                this.getAdaptiveScale('sparkScale', 1.0),
+                            );
                         }
                     };
 
@@ -3576,68 +3922,38 @@ export default class CosmicNoirTheme extends BaseTheme {
                             1.4 + comboCount * 0.05 + t * 0.08,
                             2.1,
                         );
-                        this.sparkCompute.triggerBurst(this.time, trailingIntensity);
+                        this.sparkCompute.triggerBurst(
+                            this.time,
+                            trailingIntensity,
+                            this.getAdaptiveScale('sparkScale', 1.0),
+                        );
                     }, 320 + t * 140);
                 }
             } else {
                 for (let s = 0; s < burstsToTrigger; s++) {
-                    // Find an inactive spark system (one that has finished animating)
-                    // Never overwrite an active system — let old bursts keep playing (accumulation)
-                    let sparkSystem = null;
-                    for (let i = 0; i < this.voidSparks.length; i++) {
-                        const idx = (this.voidSparkIndex + i) % this.voidSparks.length;
-                        const candidate = this.voidSparks[idx];
-                        const sparkUniforms = getSparkUniforms(candidate);
-                        if (candidate && sparkUniforms?.uPulseTimer) {
-                            const timer = sparkUniforms.uPulseTimer.value;
-                            if (timer < -50.0 || timer > 85.0) {
-                                sparkSystem = candidate;
-                                this.voidSparkIndex = (idx + 1) % this.voidSparks.length;
-                                break;
-                            }
-                        }
-                    }
+                    const triggerFallbackBurst = () => {
+                        const sparkBoost = this.reactiveEnvelope.spark * 0.7;
+                        const burstIntensity = Math.min(
+                            1.0 + comboCount * 0.14 + s * 0.08 + sparkBoost,
+                            2.25,
+                        );
+                        this.triggerUnifiedVoidSparkBurst(comboCount, s, burstIntensity);
+                    };
 
-                    // If no inactive system is available, skip this burst so old
-                    // particles keep playing — this is the accumulation behaviour.
-                    if (!sparkSystem) continue;
-
-                    // Trigger the spark burst with a slight delay for staggered effect
-                    const sparkUniforms = getSparkUniforms(sparkSystem);
-                    if (sparkUniforms?.uPulseTimer) {
-                        if (s === 0) {
-                            sparkUniforms.uPulseTimer.value = 0.0;
-                            sparkSystem.visible = true;
-                        } else {
-                            this.registerDeferredTimeout(() => {
-                                const deferredUniforms = getSparkUniforms(sparkSystem);
-                                if (deferredUniforms?.uPulseTimer) {
-                                    deferredUniforms.uPulseTimer.value = 0.0;
-                                    sparkSystem.visible = true;
-                                }
-                            }, s * 150);
-                        }
+                    if (s === 0) {
+                        triggerFallbackBurst();
+                    } else {
+                        this.registerDeferredTimeout(triggerFallbackBurst, s * 150);
                     }
                 }
 
                 for (let t = 0; t < extraTrailBursts; t++) {
                     this.registerDeferredTimeout(() => {
-                        if (!this.voidSparks.length) return;
-                        // Only trigger trailing burst on an inactive system
-                        for (let i = 0; i < this.voidSparks.length; i++) {
-                            const idx = (this.voidSparkIndex + i) % this.voidSparks.length;
-                            const candidate = this.voidSparks[idx];
-                            const trailingUniforms = getSparkUniforms(candidate);
-                            if (trailingUniforms?.uPulseTimer) {
-                                const timer = trailingUniforms.uPulseTimer.value;
-                                if (timer < -50.0 || timer > 85.0) {
-                                    trailingUniforms.uPulseTimer.value = 0.0;
-                                    candidate.visible = true;
-                                    this.voidSparkIndex = (idx + 1) % this.voidSparks.length;
-                                    break;
-                                }
-                            }
-                        }
+                        const trailingIntensity = Math.min(
+                            1.4 + comboCount * 0.05 + t * 0.08,
+                            2.1,
+                        );
+                        this.triggerUnifiedVoidSparkBurst(comboCount, t + burstsToTrigger, trailingIntensity);
                     }, 320 + t * 140);
                 }
             }
@@ -3651,13 +3967,19 @@ export default class CosmicNoirTheme extends BaseTheme {
         }
 
         // Create cosmic waves
-        const waveCount = Math.min(lineCount + Math.floor(comboCount / 2), 4);
+        const baseWaveCount = Math.min(lineCount + Math.floor(comboCount / 2), 4);
+        const waveCount = this.scaleTransientCount(baseWaveCount, 'waveScale', Math.min(1, baseWaveCount));
         for (let i = 0; i < waveCount; i++) {
             this.registerDeferredTimeout(() => this.createCosmicWave(comboCount), i * 100);
         }
 
         if (comboCount >= 6) {
-            const extraShockwaves = Math.min(3, Math.floor(comboCount / 3));
+            const baseExtraShockwaves = Math.min(3, Math.floor(comboCount / 3));
+            const extraShockwaves = this.scaleTransientCount(
+                baseExtraShockwaves,
+                'waveScale',
+                Math.min(1, baseExtraShockwaves),
+            );
             for (let i = 0; i < extraShockwaves; i += 1) {
                 const tube = 1.2 + this.rand() * 2.2;
                 const radius = 36 + i * 12 + this.rand() * 8;
@@ -3670,7 +3992,7 @@ export default class CosmicNoirTheme extends BaseTheme {
                         tubularSegments: 64,
                         speedMultiplier,
                         lifeMultiplier: 1.25,
-                        color: new THREE.Color(0xb8b8c8),
+                        color: this._comboShockwaveColor,
                     });
                 }, 60 + i * 120);
             }

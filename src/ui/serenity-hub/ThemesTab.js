@@ -291,6 +291,7 @@ export class ThemesTab {
             'Swedish Forest': '🌲',
             Geode: '💎',
             Bioluminescence: '🦑',
+            'Void Ember': '🔥',
             'Desert Oasis': '🏜️',
             'Bamboo Grove': '🎋',
             'Misty Lake': '🌫️',
