@@ -36,6 +36,7 @@ import {
     positionLocal,
     sin,
     smoothstep,
+    sqrt,
     step,
     storage,
     texture,
@@ -63,7 +64,7 @@ function tslNoise(p) {
     return mix(mix(a, b, smoothF.x), mix(c, d, smoothF.x), smoothF.y);
 }
 
-function tslFbm(p, octaves = 5) {
+function tslFbm(p, octaves = 3) {
     let v = float(0.0);
     let a = float(0.5);
     let coord = p;
@@ -104,7 +105,7 @@ export function createBlackHoleCoreNodeMaterial() {
     const photonRing = exp(photonDist.mul(photonDist).negate().mul(3.0)).mul(uIntensity).mul(2.5);
 
     const shimmerCoord = uvCoord.mul(12.0).add(uTime.mul(0.8));
-    const shimmer = tslFbm(shimmerCoord, 5).mul(0.4);
+    const shimmer = tslFbm(shimmerCoord, 3).mul(0.4);
 
     // Mask shimmer exactly to the photon ring
     const shimmerMask = smoothstep(float(0.4), float(0.22), dist).mul(float(1.0).sub(black));
@@ -154,7 +155,7 @@ export function createAccretionDiskNodeMaterial() {
     const rotatedAngle = angle.add(uTime.mul(uRotationSpeed).mul(0.15));
 
     const turbUv = vec2(rotatedAngle.mul(2.0), normalizedRadius.mul(8.0));
-    const turb = tslFbm(turbUv.add(uTime.mul(0.1)), 5);
+    const turb = tslFbm(turbUv.add(uTime.mul(0.1)), 3);
 
     const spirals = sin(rotatedAngle.mul(3.0).add(normalizedRadius.mul(15.0)).add(turb.mul(3.0)));
     const spiralFactor = spirals.mul(0.3).add(0.7);
@@ -196,7 +197,15 @@ export function createAccretionDiskNodeMaterial() {
     return material;
 }
 
-export function createVolumetricAccretionDiskNodeMaterial(diskNormal) {
+export function createVolumetricAccretionDiskNodeMaterial(diskNormal, options = {}) {
+    const steps = Math.max(4, Math.floor(options.steps ?? 14));
+    const fbmOctaves = Math.max(1, Math.floor(options.fbmOctaves ?? 2));
+    // Ray march is capped at steps*stepSize = maxMarch. Beyond that, further steps are no-ops.
+    // maxMarchSq lets us cheaply short-circuit wasted iterations once the ray has drifted too far.
+    const stepSizeValue = 32.0;
+    const maxMarch = steps * stepSizeValue * 1.1;
+    const maxMarchSq = maxMarch * maxMarch;
+
     const material = new MeshBasicNodeMaterial({
         transparent: true,
         depthWrite: false,
@@ -218,8 +227,7 @@ export function createVolumetricAccretionDiskNodeMaterial(diskNormal) {
         const ro = cameraPosition.toVar();
         const rd = normalize(worldPos.sub(cameraPosition)).toVar();
 
-        const steps = 36;
-        const stepSize = float(18.0);
+        const stepSize = float(stepSizeValue);
 
         const accumColor = vec3(0.0).toVar();
         const activeRay = float(1.0).toVar();
@@ -229,7 +237,7 @@ export function createVolumetricAccretionDiskNodeMaterial(diskNormal) {
         for (let i = 0; i < steps; i++) {
             const toCenter = uCenter.sub(ro);
             const distSq = dot(toCenter, toCenter);
-            const dist = pow(distSq, 0.5);
+            const dist = sqrt(distSq);
 
             If(dist.lessThan(uEventHorizon), () => {
                 activeRay.assign(0.0);
@@ -237,8 +245,8 @@ export function createVolumetricAccretionDiskNodeMaterial(diskNormal) {
                 // We'll just stop accumulating by zeroing activeRay and using it as a multiplier.
             });
 
-            // Only accumulate if we haven't hit the event horizon
-            If(activeRay.greaterThan(0.0), () => {
+            // Skip remaining work when the ray is either absorbed or has drifted past any useful sampling range.
+            If(activeRay.greaterThan(0.0).and(distSq.lessThan(maxMarchSq)), () => {
                 const forceDist = max(distSq, uEventHorizon.mul(uEventHorizon));
                 const gravityForce = toCenter.div(dist).mul(gravStrength.div(forceDist));
                 rd.assign(normalize(rd.add(gravityForce.mul(stepSize))));
@@ -252,51 +260,50 @@ export function createVolumetricAccretionDiskNodeMaterial(diskNormal) {
                 If(radialDist.greaterThan(130.0)
                     .and(radialDist.lessThan(450.0))
                     .and(abs(height).lessThan(40.0)), () => {
+                    const radialMask = smoothstep(130.0, 160.0, radialDist)
+                        .mul(float(1.0).sub(smoothstep(380.0, 450.0, radialDist)));
+                    const heightFalloff = exp(height.mul(height).negate().mul(0.003));
 
-                        const radialMask = smoothstep(130.0, 160.0, radialDist)
-                            .mul(float(1.0).sub(smoothstep(380.0, 450.0, radialDist)));
-                        const heightFalloff = exp(height.mul(height).negate().mul(0.003));
+                    const angle = atan(radialVec.z, radialVec.x);
+                    const rotatedAngle = angle.add(uTime.mul(uRotationSpeed).mul(0.12));
+                    const normalizedRadius = clamp(radialDist.sub(130.0).div(320.0), 0.0, 1.0);
 
-                        const angle = atan(radialVec.z, radialVec.x);
-                        const rotatedAngle = angle.add(uTime.mul(uRotationSpeed).mul(0.12));
-                        const normalizedRadius = clamp(radialDist.sub(130.0).div(320.0), 0.0, 1.0);
+                    const turbUv = vec2(rotatedAngle.mul(2.0), normalizedRadius.mul(8.0));
+                    const turb = tslFbm(turbUv.add(uTime.mul(0.1)), fbmOctaves);
+                    const swirl = sin(rotatedAngle.mul(4.0).add(normalizedRadius.mul(12.0)).add(turb.mul(2.0)))
+                        .mul(0.4).add(0.6);
 
-                        const turbUv = vec2(rotatedAngle.mul(2.0), normalizedRadius.mul(8.0));
-                        const turb = tslFbm(turbUv.add(uTime.mul(0.1)), 5);
-                        const swirl = sin(rotatedAngle.mul(4.0).add(normalizedRadius.mul(12.0)).add(turb.mul(2.0)))
-                            .mul(0.4).add(0.6);
+                    // Add burst heating
+                    const heating = uDopplerBoost.sub(1.0).mul(0.5);
+                    const density = radialMask.mul(heightFalloff).mul(swirl.add(heating));
 
-                        // Add burst heating
-                        const heating = uDopplerBoost.sub(1.0).mul(0.5);
-                        const density = radialMask.mul(heightFalloff).mul(swirl.add(heating));
+                    If(density.greaterThan(0.01), () => {
+                        const temp = float(1.0).sub(pow(normalizedRadius, 0.6));
+                        const innerColor = vec3(1.0, 0.8, 0.5);
+                        const midColor = vec3(0.9, 0.35, 0.1);
+                        const outerColor = vec3(0.4, 0.1, 0.05);
 
-                        If(density.greaterThan(0.01), () => {
-                            const temp = float(1.0).sub(pow(normalizedRadius, 0.6));
-                            const innerColor = vec3(1.0, 0.8, 0.5);
-                            const midColor = vec3(0.9, 0.35, 0.1);
-                            const outerColor = vec3(0.4, 0.1, 0.05);
+                        const lowMix = mix(outerColor, midColor, temp.mul(2.0));
+                        const highMix = mix(midColor, innerColor, temp.sub(0.5).mul(2.0));
+                        const color = mix(lowMix, highMix, step(0.5, temp)).toVar();
 
-                            const lowMix = mix(outerColor, midColor, temp.mul(2.0));
-                            const highMix = mix(midColor, innerColor, temp.sub(0.5).mul(2.0));
-                            const color = mix(lowMix, highMix, step(0.5, temp)).toVar();
+                        const tangent = normalize(cross(uDiskNormal, radialVec));
+                        const dopplerFactor = dot(tangent, rd);
 
-                            const tangent = normalize(cross(uDiskNormal, radialVec));
-                            const dopplerFactor = dot(tangent, rd);
+                        const blueShift = vec3(0.6, 0.7, 1.0);
+                        const redShift = vec3(0.9, 0.2, 0.05);
 
-                            const blueShift = vec3(0.6, 0.7, 1.0);
-                            const redShift = vec3(0.9, 0.2, 0.05);
+                        // Scale the doppler color shift based on the boost
+                        const appliedDoppler = dopplerFactor.mul(uDopplerBoost);
+                        color.assign(mix(color, blueShift, max(0.0, appliedDoppler.mul(1.5))));
+                        color.assign(mix(color, redShift, max(0.0, appliedDoppler.negate().mul(1.0))));
 
-                            // Scale the doppler color shift based on the boost
-                            const appliedDoppler = dopplerFactor.mul(uDopplerBoost);
-                            color.assign(mix(color, blueShift, max(0.0, appliedDoppler.mul(1.5))));
-                            color.assign(mix(color, redShift, max(0.0, appliedDoppler.negate().mul(1.0))));
+                        // Brighter white hot approaching side
+                        const dopplerBright = float(1.0).add(appliedDoppler.mul(1.2));
 
-                            // Brighter white hot approaching side
-                            const dopplerBright = float(1.0).add(appliedDoppler.mul(1.2));
-
-                            accumColor.addAssign(color.mul(density).mul(dopplerBright).mul(0.05));
-                        });
+                        accumColor.addAssign(color.mul(density).mul(dopplerBright).mul(0.05));
                     });
+                });
             });
         }
 
@@ -316,7 +323,9 @@ export function createVolumetricAccretionDiskNodeMaterial(diskNormal) {
     material.opacityNode = finalAlpha;
     material.emissiveNode = finalColor.mul(activeRay); // Kill emissive if absorbed
 
-    material.userData = { uTime, uIntensity, uRotationSpeed, uCenter, uDiskNormal, uDopplerBoost, uEventHorizon };
+    material.userData = {
+        uTime, uIntensity, uRotationSpeed, uCenter, uDiskNormal, uDopplerBoost, uEventHorizon,
+    };
 
     return material;
 }

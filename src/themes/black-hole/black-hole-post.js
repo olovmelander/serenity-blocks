@@ -89,10 +89,6 @@ export class BlackHolePost {
         graded = graded.sub(0.5).mul(this.uContrast).add(0.5);
         graded = mix(graded, graded.mul(this.uTint), this.uTintStrength);
 
-        const noise = fract(sin(dot(uv, vec2(12.9898, 78.233))).mul(43758.5453));
-        const dither = noise.sub(0.5).mul(this.uDitherStrength);
-        graded = clamp(graded.add(dither), float(0.0), float(1.0));
-
         this.postProcessing.outputNode = graded;
         this.postProcessing.needsUpdate = true;
         this.size = { width: 0, height: 0 };

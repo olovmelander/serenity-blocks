@@ -294,6 +294,13 @@ const RAW_THEME_REGISTRY = [
         icon: './supernova/supernova-theme-icon.png',
     },
     {
+        id: 'void-ember',
+        displayName: 'Void Ember',
+        module: './void-ember/void-ember-theme.js',
+        group: 'cosmic',
+        icon: './black-hole/black-hole-theme-icon.png',
+    },
+    {
         id: 'cosmic-noir',
         displayName: 'Cosmic Noir',
         module: './cosmic-noir/cosmic-noir-theme.js',
@@ -435,6 +442,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'solar-eclipse',
     'black-hole',
     'supernova',
+    'void-ember',
     'cosmic-noir',
     'chiral-gold',
     'nimbus-veil',

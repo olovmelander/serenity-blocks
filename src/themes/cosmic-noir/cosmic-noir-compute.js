@@ -191,14 +191,22 @@ export class CosmicNoirSparkCompute {
         this.uTime.value = time;
     }
 
-    triggerBurst(time, intensity = 1.0) {
+    markBufferRange(attribute, startIndex, itemCount) {
+        if (!attribute || itemCount <= 0) return;
+        const itemSize = attribute.itemSize || 4;
+        attribute.addUpdateRange(startIndex * itemSize, itemCount * itemSize);
+        attribute.needsUpdate = true;
+    }
+
+    triggerBurst(time, intensity = 1.0, batchScale = 1.0) {
         const clampedIntensity = Math.max(0.75, Math.min(2.25, intensity));
+        const clampedBatchScale = Math.max(0.45, Math.min(1.0, batchScale));
         const normalizedIntensity = (clampedIntensity - 0.75) / 1.5;
         const minBatch = Math.max(900, Math.floor(this.count * 0.08));
         const maxBatch = Math.max(minBatch, Math.floor(this.count * 0.26));
         const targetBatch = Math.min(
             this.count,
-            Math.floor(minBatch + (maxBatch - minBatch) * normalizedIntensity),
+            Math.floor((minBatch + (maxBatch - minBatch) * normalizedIntensity) * clampedBatchScale),
         );
 
         const startIndex = this.nextTriggerIndex;
@@ -226,9 +234,16 @@ export class CosmicNoirSparkCompute {
         }
 
         this.nextTriggerIndex = (startIndex + targetBatch) % this.count;
-        this.positionBuffer.needsUpdate = true;
-        this.velocityBuffer.needsUpdate = true;
-        this.lifeBuffer.needsUpdate = true;
+        const firstCount = Math.min(targetBatch, this.count - startIndex);
+        const secondCount = targetBatch - firstCount;
+        this.markBufferRange(this.positionBuffer, startIndex, firstCount);
+        this.markBufferRange(this.velocityBuffer, startIndex, firstCount);
+        this.markBufferRange(this.lifeBuffer, startIndex, firstCount);
+        if (secondCount > 0) {
+            this.markBufferRange(this.positionBuffer, 0, secondCount);
+            this.markBufferRange(this.velocityBuffer, 0, secondCount);
+            this.markBufferRange(this.lifeBuffer, 0, secondCount);
+        }
         this.uBurstTrigger.value = time;
     }
 

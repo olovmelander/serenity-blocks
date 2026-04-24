@@ -122,63 +122,96 @@ export class CosmicNoirPost {
 
     update(params = {}) {
         if (params.bloomStrength !== undefined && this.bloomNode?.strength) {
-            this.bloomNode.strength.value = params.bloomStrength;
+            if (Math.abs(this.bloomNode.strength.value - params.bloomStrength) > 0.001) {
+                this.bloomNode.strength.value = params.bloomStrength;
+            }
         }
         if (params.bloomRadius !== undefined && this.bloomNode?.radius) {
-            this.bloomNode.radius.value = params.bloomRadius;
+            if (Math.abs(this.bloomNode.radius.value - params.bloomRadius) > 0.001) {
+                this.bloomNode.radius.value = params.bloomRadius;
+            }
         }
         if (params.bloomThreshold !== undefined && this.bloomNode?.threshold) {
-            this.bloomNode.threshold.value = params.bloomThreshold;
+            if (Math.abs(this.bloomNode.threshold.value - params.bloomThreshold) > 0.001) {
+                this.bloomNode.threshold.value = params.bloomThreshold;
+            }
         }
         if (params.chromaticStrength !== undefined) {
-            this.baseChromaticStrength = params.chromaticStrength;
-            this.uChromaticStrength.value = this.chromaticEnabled ? this.baseChromaticStrength : 0.0;
+            if (Math.abs(this.baseChromaticStrength - params.chromaticStrength) > 0.0001) {
+                this.baseChromaticStrength = params.chromaticStrength;
+                this.uChromaticStrength.value = this.chromaticEnabled ? this.baseChromaticStrength : 0.0;
+            }
         }
         if (params.chromaticEnabled !== undefined) {
-            this.chromaticEnabled = Boolean(params.chromaticEnabled);
-            this.uChromaticStrength.value = this.chromaticEnabled ? this.baseChromaticStrength : 0.0;
+            const nextEnabled = Boolean(params.chromaticEnabled);
+            if (this.chromaticEnabled !== nextEnabled) {
+                this.chromaticEnabled = nextEnabled;
+                this.uChromaticStrength.value = this.chromaticEnabled ? this.baseChromaticStrength : 0.0;
+            }
         }
         if (params.vignetteOffset !== undefined) {
-            this.uVignetteOffset.value = params.vignetteOffset;
+            if (Math.abs(this.uVignetteOffset.value - params.vignetteOffset) > 0.001) {
+                this.uVignetteOffset.value = params.vignetteOffset;
+            }
         }
         if (params.vignetteDarkness !== undefined) {
-            this.uVignetteDarkness.value = params.vignetteDarkness;
+            if (Math.abs(this.uVignetteDarkness.value - params.vignetteDarkness) > 0.001) {
+                this.uVignetteDarkness.value = params.vignetteDarkness;
+            }
         }
         if (params.exposure !== undefined) {
-            this.uExposure.value = params.exposure;
+            if (Math.abs(this.uExposure.value - params.exposure) > 0.001) {
+                this.uExposure.value = params.exposure;
+            }
         }
         if (params.contrast !== undefined) {
-            this.uContrast.value = params.contrast;
+            if (Math.abs(this.uContrast.value - params.contrast) > 0.001) {
+                this.uContrast.value = params.contrast;
+            }
         }
         if (params.saturation !== undefined) {
-            this.uSaturation.value = params.saturation;
+            if (Math.abs(this.uSaturation.value - params.saturation) > 0.001) {
+                this.uSaturation.value = params.saturation;
+            }
         }
         if (params.blackFloor !== undefined) {
-            this.uBlackFloor.value = params.blackFloor;
+            if (Math.abs(this.uBlackFloor.value - params.blackFloor) > 0.001) {
+                this.uBlackFloor.value = params.blackFloor;
+            }
         }
         if (params.ditherStrength !== undefined) {
-            this.uDitherStrength.value = params.ditherStrength;
+            if (Math.abs(this.uDitherStrength.value - params.ditherStrength) > 0.0001) {
+                this.uDitherStrength.value = params.ditherStrength;
+            }
         }
         if (params.bhScreenPos !== undefined) {
-            this.uBhScreenPos.value.copy(params.bhScreenPos);
+            if (this.uBhScreenPos.value.distanceToSquared(params.bhScreenPos) > 0.000001) {
+                this.uBhScreenPos.value.copy(params.bhScreenPos);
+            }
         }
         if (params.lensingStrength !== undefined) {
-            this.uLensingStrength.value = params.lensingStrength;
+            if (Math.abs(this.uLensingStrength.value - params.lensingStrength) > 0.001) {
+                this.uLensingStrength.value = params.lensingStrength;
+            }
         }
         if (params.bloomDownsample !== undefined) {
-            this.bloomDownsample = params.bloomDownsample;
-            if (
-                this.size.width > 0
-                && this.size.height > 0
-                && this.bloomNode?._separableBlurMaterials?.length
-            ) {
-                this.bloomNode.setSize(this.size.width, this.size.height);
+            if (Math.abs(this.bloomDownsample - params.bloomDownsample) > 0.005) {
+                this.bloomDownsample = params.bloomDownsample;
+                if (
+                    this.size.width > 0
+                    && this.size.height > 0
+                    && this.bloomNode?._separableBlurMaterials?.length
+                ) {
+                    this.bloomNode.setSize(this.size.width, this.size.height);
+                }
             }
         }
         if (params.resolutionScale !== undefined) {
-            this.resolutionScale = params.resolutionScale;
-            if (this.size.width > 0 && this.size.height > 0) {
-                this.setSize(this.size.width, this.size.height);
+            if (Math.abs(this.resolutionScale - params.resolutionScale) > 0.005) {
+                this.resolutionScale = params.resolutionScale;
+                if (this.size.width > 0 && this.size.height > 0) {
+                    this.setSize(this.size.width, this.size.height);
+                }
             }
         }
     }

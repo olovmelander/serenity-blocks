@@ -46,70 +46,76 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 const QUALITY_PRESETS = {
     Extreme: {
-        starCount: 3000,
-        particleCount: 9000,
-        comboParticleBudget: 16000,
-        nebulaCount: 25,
-        diskSegments: 128,
-        burstSparkCount: 22000,
+        starCount: 2500,
+        particleCount: 6500,
+        comboParticleBudget: 11000,
+        nebulaCount: 20,
+        diskSegments: 96,
+        burstSparkCount: 15000,
         bloomStrength: 0.6,
         bloomRadius: 0.8,
         enablePostProcessing: true,
+        enableVolumetricDisk: true,
     },
     Ultra: {
-        starCount: 2500,
-        particleCount: 7300,
-        comboParticleBudget: 13000,
-        nebulaCount: 20,
-        diskSegments: 96,
-        burstSparkCount: 17000,
+        starCount: 2000,
+        particleCount: 5200,
+        comboParticleBudget: 9000,
+        nebulaCount: 16,
+        diskSegments: 72,
+        burstSparkCount: 12000,
         bloomStrength: 0.55,
         bloomRadius: 0.7,
         enablePostProcessing: true,
+        enableVolumetricDisk: true,
     },
     High: {
-        starCount: 2000,
-        particleCount: 5600,
-        comboParticleBudget: 10000,
-        nebulaCount: 15,
-        diskSegments: 64,
-        burstSparkCount: 13000,
+        starCount: 1600,
+        particleCount: 4000,
+        comboParticleBudget: 7000,
+        nebulaCount: 12,
+        diskSegments: 56,
+        burstSparkCount: 9000,
         bloomStrength: 0.5,
         bloomRadius: 0.6,
         enablePostProcessing: true,
+        enableVolumetricDisk: true,
     },
     Medium: {
-        starCount: 1200,
-        particleCount: 3900,
-        comboParticleBudget: 7000,
-        nebulaCount: 10,
-        diskSegments: 48,
-        burstSparkCount: 9000,
+        starCount: 1000,
+        particleCount: 2800,
+        comboParticleBudget: 5000,
+        nebulaCount: 8,
+        diskSegments: 40,
+        burstSparkCount: 6000,
         bloomStrength: 0.4,
         bloomRadius: 0.5,
         enablePostProcessing: true,
+        enableVolumetricDisk: false,
     },
     Low: {
-        starCount: 600,
-        particleCount: 2000,
-        comboParticleBudget: 3500,
-        nebulaCount: 6,
-        diskSegments: 32,
-        burstSparkCount: 4800,
+        starCount: 500,
+        particleCount: 1500,
+        comboParticleBudget: 2500,
+        nebulaCount: 5,
+        diskSegments: 28,
+        burstSparkCount: 3500,
         bloomStrength: 0.3,
         bloomRadius: 0.4,
         enablePostProcessing: false,
+        enableVolumetricDisk: false,
     },
     Minimal: {
-        starCount: 300,
-        particleCount: 1000,
-        comboParticleBudget: 1800,
-        nebulaCount: 4,
-        diskSegments: 24,
-        burstSparkCount: 2600,
+        starCount: 250,
+        particleCount: 800,
+        comboParticleBudget: 1400,
+        nebulaCount: 3,
+        diskSegments: 20,
+        burstSparkCount: 2000,
         bloomStrength: 0.2,
         bloomRadius: 0.3,
         enablePostProcessing: false,
+        enableVolumetricDisk: false,
     },
 };
 
@@ -330,7 +336,7 @@ const BlackHoleShader = {
         float fbm(vec2 p) {
             float v = 0.0;
             float a = 0.5;
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < 3; i++) {
                 v += a * noise(p);
                 p *= 2.0;
                 a *= 0.5;
@@ -436,7 +442,7 @@ const AccretionDiskShader = {
         float fbm(vec2 p) {
             float v = 0.0;
             float a = 0.5;
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < 3; i++) {
                 v += a * noise(p);
                 p *= 2.0;
                 a *= 0.5;
@@ -553,7 +559,7 @@ const VolumetricAccretionDiskShader = {
         float fbm(vec2 p) {
             float v = 0.0;
             float a = 0.5;
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < 3; i++) {
                 v += a * noise(p);
                 p *= 2.0;
                 a *= 0.5;
@@ -565,8 +571,8 @@ const VolumetricAccretionDiskShader = {
             vec3 ro = cameraPosition;
             vec3 rd = normalize(vWorldPos - cameraPosition);
 
-            const int STEPS = 36;
-            float stepSize = 18.0;
+            const int STEPS = 20;
+            float stepSize = 32.0;
 
             vec3 accumColor = vec3(0.0);
             float activeRay = 1.0;
@@ -696,8 +702,6 @@ const ColorGradeShader = {
             color = (color - 0.5) * contrast + 0.5;
             color = mix(color, color * tint, tintStrength);
 
-            float noise = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
-            color += (noise - 0.5) * ditherStrength;
             color = clamp(color, 0.0, 1.0);
 
             gl_FragColor = vec4(color, texel.a);
@@ -776,11 +780,11 @@ export default class BlackHoleTheme extends BaseTheme {
         this.dynamicResolution = {
             enabled: !this.flags.noDrs,
             scale: 1.0,
-            minScale: 0.66,
+            minScale: 0.58,
             maxScale: 1.0,
             targetMs: 16.6,
             emaMs: 16.6,
-            adjustInterval: 0.5,
+            adjustInterval: 0.25,
             elapsed: 0,
         };
         this.performanceState = {
@@ -842,6 +846,22 @@ export default class BlackHoleTheme extends BaseTheme {
         this.comboBurstAnchor = new THREE.Vector3(); // Stable center for closely chained combos
         this.comboBurstAnchorUntil = 0;
         this.comboScatterHoldUntil = 0; // Keep combo particles outward before allowing recycle
+
+        // Cached disk-tilt trigonometry (disk rotates -PI*0.42 around X).
+        // Hot-looped in updateParticles, spawnBurstParticles and initParticle.
+        this.diskTiltAngle = -Math.PI * 0.42;
+        this.diskCosTilt = Math.cos(this.diskTiltAngle);
+        this.diskSinTilt = Math.sin(this.diskTiltAngle);
+
+        // Pre-allocated color instances for spawn paths (avoid GC churn during combos).
+        this._burstColorWhite = new THREE.Color(1.0, 1.0, 0.9);
+        this._burstColorOrange = new THREE.Color(1.0, 0.7, 0.2);
+        this._burstColorCyan = new THREE.Color(0.4, 0.8, 1.0);
+        this._hawkingColorBlue = new THREE.Color(0x88ccff);
+        this._hawkingColorPink = new THREE.Color(0xffbbdd);
+        this._jetColorBlue = new THREE.Color(0.4, 0.6, 1.0);
+        this._jetColorRed = new THREE.Color(1.0, 0.3, 0.2);
+        this._hasAnyBurstComputeNode = false;
 
         // Effect state
         this.diskIntensity = 1.0;
@@ -919,6 +939,19 @@ export default class BlackHoleTheme extends BaseTheme {
         this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
     }
 
+    getVolumetricRaymarchOptions() {
+        const quality = this.getCurrentQualityLevel();
+        switch (quality) {
+        case 'Extreme':
+            return { steps: 18, fbmOctaves: 3 };
+        case 'Ultra':
+            return { steps: 16, fbmOctaves: 2 };
+        case 'High':
+        default:
+            return { steps: 14, fbmOctaves: 2 };
+        }
+    }
+
     probeWebGPUCapabilities() {
         if (!this.renderer || !this.renderer.backend?.isWebGPUBackend) {
             this.capabilities = {
@@ -930,7 +963,7 @@ export default class BlackHoleTheme extends BaseTheme {
             return;
         }
 
-        const backend = this.renderer.backend;
+        const { backend } = this.renderer;
         const device = backend?.device;
         const maxColorAttachments = device?.limits?.maxColorAttachments ?? 0;
         const supportsTimestampQuery = this.renderer.hasFeature?.('timestamp-query') ?? false;
@@ -970,7 +1003,7 @@ export default class BlackHoleTheme extends BaseTheme {
         this.flags.useCompute = useCompute;
         this.flags.useLensing = useLensing;
         this.flags.useUnifiedParticles = useUnifiedParticles;
-        this.flags.useVolume = !this.flags.noVolume;
+        this.flags.useVolume = !this.flags.noVolume && (this.qualityPreset.enableVolumetricDisk ?? true);
         this.flags.useBloom = usePost;
         this.flags.useChromatic = usePost;
     }
@@ -1233,7 +1266,6 @@ export default class BlackHoleTheme extends BaseTheme {
                 this.setMaterialUniformVec3(burstSparks?.material, 'uBlackHolePos', x, y, z);
             });
         }
-
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1768,17 +1800,20 @@ export default class BlackHoleTheme extends BaseTheme {
         }
 
         if (this.flags.useVolume) {
-            // A large bounding box allows the raymarcher to sample bent light far from the disk
-            const volumeGeometry = new THREE.BoxGeometry(1600, 1600, 1600);
+            // Flattened bounding volume - the disk only exists for |height|<40 in a 130-450 radius,
+            // so a tall 1600^3 box was pure fill-rate waste. A 1600x400x1600 slab halves pixel
+            // coverage at typical camera angles while still enclosing the tilted disk + bending margin.
+            const volumeGeometry = new THREE.BoxGeometry(1600, 400, 1600);
 
             const diskNormal = new THREE.Vector3(0, Math.sin(Math.PI * 0.42), Math.cos(Math.PI * 0.42)).normalize();
 
+            const volumeOptions = this.getVolumetricRaymarchOptions();
             const volumeMaterial = this.isWebGPU
-                ? createVolumetricAccretionDiskNodeMaterial(diskNormal)
+                ? createVolumetricAccretionDiskNodeMaterial(diskNormal, volumeOptions)
                 : new THREE.ShaderMaterial({
                     uniforms: {
                         ...VolumetricAccretionDiskShader.uniforms,
-                        uDiskNormal: { value: diskNormal }
+                        uDiskNormal: { value: diskNormal },
                     },
                     vertexShader: VolumetricAccretionDiskShader.vertexShader,
                     fragmentShader: VolumetricAccretionDiskShader.fragmentShader,
@@ -2009,8 +2044,8 @@ export default class BlackHoleTheme extends BaseTheme {
 
         const colorMix = this.random();
         const baseColor = colorMix > 0.5
-            ? new THREE.Color(0x88ccff)
-            : new THREE.Color(0xffbbdd);
+            ? this._hawkingColorBlue
+            : this._hawkingColorPink;
 
         colors[i3] = baseColor.r;
         colors[i3 + 1] = baseColor.g;
@@ -2173,8 +2208,10 @@ export default class BlackHoleTheme extends BaseTheme {
             positions[i3 + 2] += velocities[i3 + 2] * delta;
 
             const angle = swirl[i] * delta;
-            const cosA = Math.cos(angle);
-            const sinA = Math.sin(angle);
+            // Small-angle approximation: cos(a)≈1-a²/2, sin(a)≈a (error < 0.001 for angles < 0.1 rad)
+            const a2 = angle * angle;
+            const cosA = 1 - a2 * 0.5;
+            const sinA = angle;
             const px = positions[i3];
             const py = positions[i3 + 1];
             positions[i3] = px * cosA - py * sinA;
@@ -2182,7 +2219,7 @@ export default class BlackHoleTheme extends BaseTheme {
 
             ages[i] += delta;
             const t = ages[i] / lifeSpans[i];
-            const life = Math.max(0, 1 - t);
+            const life = t >= 1 ? 0 : 1 - t;
             lifetimes[i] = life;
             sizes[i] = baseSizes[i] * (0.6 + life * 0.6) * this.hawkingIntensity;
 
@@ -2205,7 +2242,6 @@ export default class BlackHoleTheme extends BaseTheme {
         this.hawkingAttributes.position.needsUpdate = true;
         this.hawkingAttributes.size.needsUpdate = true;
         this.hawkingAttributes.lifetime.needsUpdate = true;
-        this.hawkingAttributes.color.needsUpdate = true;
 
         if (!this.isWebGPU && this.hawkingParticles?.material) {
             this.setMaterialUniformVec3(this.hawkingParticles.material, 'uBlackHolePos', this.driftX || 0, this.driftY || 0, this.driftZ || 0);
@@ -2245,7 +2281,11 @@ export default class BlackHoleTheme extends BaseTheme {
         drs.elapsed = 0;
 
         let newScale = drs.scale;
-        if (drs.emaMs > drs.targetMs * 1.12) {
+        // Down-scale more aggressively when the EMA is significantly over budget (combos / burst
+        // surges), and step gently on the way back up so we don't oscillate.
+        if (drs.emaMs > drs.targetMs * 1.2) {
+            newScale = Math.max(drs.minScale, drs.scale - 0.08);
+        } else if (drs.emaMs > drs.targetMs * 1.12) {
             newScale = Math.max(drs.minScale, drs.scale - 0.05);
         } else if (drs.emaMs < drs.targetMs * 0.85) {
             newScale = Math.min(drs.maxScale, drs.scale + 0.05);
@@ -2262,7 +2302,7 @@ export default class BlackHoleTheme extends BaseTheme {
         const drs = this.dynamicResolution;
         if (!drs?.enabled) return;
 
-        const scale = drs.scale;
+        const { scale } = drs;
         let starFactor = 1.0;
         let particleFactor = 1.0;
         let hawkingFactor = 1.0;
@@ -2359,16 +2399,18 @@ export default class BlackHoleTheme extends BaseTheme {
     }
 
     shouldRunBurstCompute() {
-        const hasBurstCompute = this.burstComputeBanks.some((compute) => compute?.computeNode);
-        if (!hasBurstCompute) return false;
-        const hasActiveBurstParticles = this.burstComputeBanks.some(
-            (compute) => compute?.hasActiveParticles?.(this.time),
-        );
-        return this.burstPhase
+        if (!this._hasAnyBurstComputeNode) return false;
+        // Cheap checks first - only scan for active particles if none of the fast triggers fired.
+        if (this.burstPhase
             || this.burstFactor > 0.01
             || this.time <= this.performanceState.burstComputeActiveUntil
-            || this.burstRequestQueue.length > 0
-            || hasActiveBurstParticles;
+            || this.burstRequestQueue.length > 0) {
+            return true;
+        }
+        for (let i = 0; i < this.burstComputeBanks.length; i += 1) {
+            if (this.burstComputeBanks[i]?.hasActiveParticles?.(this.time)) return true;
+        }
+        return false;
     }
 
     getBlackHoleCorePosition(target = this.computeBlackHolePos) {
@@ -2392,7 +2434,7 @@ export default class BlackHoleTheme extends BaseTheme {
             return;
         }
 
-        const backend = this.renderer.backend;
+        const { backend } = this.renderer;
         const compute = {};
         const addTiming = (label, node) => {
             if (!node) return;
@@ -2442,6 +2484,7 @@ export default class BlackHoleTheme extends BaseTheme {
         this.burstCompute = null;
         this.burstSparks = null;
         this.nextBurstBankIndex = 0;
+        this._hasAnyBurstComputeNode = false;
     }
 
     createBurstComputeBank(count, colorOptions = null) {
@@ -2509,6 +2552,7 @@ export default class BlackHoleTheme extends BaseTheme {
             this.burstSparkBanks.push(burstSparks);
             if (!this.burstCompute) this.burstCompute = burstCompute;
             if (!this.burstSparks) this.burstSparks = burstSparks;
+            if (burstCompute?.computeNode) this._hasAnyBurstComputeNode = true;
             return true;
         } catch (error) {
             if (burstSparks) {
@@ -2523,14 +2567,9 @@ export default class BlackHoleTheme extends BaseTheme {
 
     ensureBurstCapacityFor(neededCount) {
         if (neededCount <= 0) return true;
-        if (!this.isWebGPU || !this.flags.useCompute) return false;
-
-        const current = this.getBurstComputeTotalCapacity();
-        if (current >= this.burstCapacityMax) return false;
-
-        const remainingCapacity = this.burstCapacityMax - current;
-        const chunk = Math.min(this.burstCapacityBase, remainingCapacity);
-        return this.createBurstComputeBank(chunk);
+        // Burst banks are pre-allocated up to burstCapacityMax during createBurstSparks(), so
+        // we never compile shaders mid-gameplay. If we're already at cap, report "no more capacity".
+        return false;
     }
 
     getBurstComputeSpawnCountForIntensity(intensity) {
@@ -2641,11 +2680,22 @@ export default class BlackHoleTheme extends BaseTheme {
                 if (!created) {
                     throw new Error('Failed to create initial burst compute bank');
                 }
+                // Pre-allocate remaining capacity so no shader compilation happens mid-gameplay.
+                // Previously banks were created on-demand when combos saturated capacity, which
+                // forced WebGPU pipeline compile on the main thread during combo chains.
+                while (this.getBurstComputeTotalCapacity() < this.burstCapacityMax) {
+                    const remaining = this.burstCapacityMax - this.getBurstComputeTotalCapacity();
+                    const chunk = Math.min(this.burstCapacityBase, remaining);
+                    if (chunk <= 0) break;
+                    const ok = this.createBurstComputeBank(chunk, colorOptions);
+                    if (!ok) break;
+                }
                 console.log(
                     '[BlackHole] Burst sparks compute banks initialized:',
                     this.getBurstComputeTotalCapacity(),
                     '/',
                     this.burstCapacityMax,
+                    `(${this.burstComputeBanks.length} banks)`,
                 );
                 return;
             } catch (error) {
@@ -2759,9 +2809,8 @@ export default class BlackHoleTheme extends BaseTheme {
         let pz = Math.sin(angle) * radius;
 
         // Apply tilt rotation (around X axis) - matches disk rotation
-        const tilt = -Math.PI * 0.42;
-        const cosT = Math.cos(tilt);
-        const sinT = Math.sin(tilt);
+        const cosT = this.diskCosTilt;
+        const sinT = this.diskSinTilt;
 
         // Rotate position
         const p_y = py * cosT - pz * sinT;
@@ -2882,6 +2931,11 @@ export default class BlackHoleTheme extends BaseTheme {
                 current.set(value.x, value.y);
             }
             return;
+        }
+        // Skip no-op writes for scalar floats. Avoids dirtying the TSL uniform
+        // and scheduling redundant buffer uploads on WebGPU every frame.
+        if (typeof value === 'number' && typeof current === 'number') {
+            if (Math.abs(value - current) < 1e-4) return;
         }
         ref.value = value;
     }
@@ -3052,7 +3106,7 @@ export default class BlackHoleTheme extends BaseTheme {
 
     hasDedicatedComboBurstSystem() {
         return Boolean(
-            (this.isWebGPU && this.flags.useCompute && this.burstComputeBanks.some((burstCompute) => burstCompute?.computeNode))
+            (this.isWebGPU && this.flags.useCompute && this._hasAnyBurstComputeNode)
             || this.burstSparksPool.length > 0,
         );
     }
@@ -3085,7 +3139,7 @@ export default class BlackHoleTheme extends BaseTheme {
         this.chromaticPulse = Math.min(0.03, this.chromaticPulse + 0.004 + comboCount * 0.0015);
 
         // Prefer dedicated burst systems (like Galaxy/Blood Moon behavior).
-        if (this.isWebGPU && this.flags.useCompute && this.burstComputeBanks.some((burstCompute) => burstCompute?.computeNode)) {
+        if (this.isWebGPU && this.flags.useCompute && this._hasAnyBurstComputeNode) {
             const triggerCount = Math.min(1 + Math.floor(comboCount / 6), 2);
             for (let i = 0; i < triggerCount; i++) {
                 const intensity = Math.min(0.9, comboCount / 12 + i * 0.06);
@@ -3246,9 +3300,8 @@ export default class BlackHoleTheme extends BaseTheme {
             const indices = this.allocateComboParticleIndices(burstCount, 'nextBurstParticleIndex', burstLockSeconds);
             if (!indices.length) return;
 
-            const burstTilt = -Math.PI * 0.42;
-            const burstCosT = Math.cos(burstTilt);
-            const burstSinT = Math.sin(burstTilt);
+            const burstCosT = this.diskCosTilt;
+            const burstSinT = this.diskSinTilt;
 
             for (let i = 0; i < indices.length; i++) {
                 const index = indices[i];
@@ -3271,11 +3324,11 @@ export default class BlackHoleTheme extends BaseTheme {
                 const colorChoice = this.random();
                 let color;
                 if (colorChoice < 0.3) {
-                    color = new THREE.Color(1.0, 1.0, 0.9);
+                    color = this._burstColorWhite;
                 } else if (colorChoice < 0.6) {
-                    color = new THREE.Color(1.0, 0.7, 0.2);
+                    color = this._burstColorOrange;
                 } else {
-                    color = new THREE.Color(0.4, 0.8, 1.0);
+                    color = this._burstColorCyan;
                 }
 
                 const lockUntil = this.comboSpawnReuseUntil?.[index] || (this.time + burstLockSeconds);
@@ -3313,9 +3366,8 @@ export default class BlackHoleTheme extends BaseTheme {
         const indices = this.allocateComboParticleIndices(burstCount, 'nextBurstParticleIndex', burstLockSeconds);
         if (!indices.length) return;
 
-        const cpuBurstTilt = -Math.PI * 0.42;
-        const cpuBurstCosT = Math.cos(cpuBurstTilt);
-        const cpuBurstSinT = Math.sin(cpuBurstTilt);
+        const cpuBurstCosT = this.diskCosTilt;
+        const cpuBurstSinT = this.diskSinTilt;
 
         for (let i = 0; i < indices.length; i++) {
             const index = indices[i];
@@ -3397,9 +3449,7 @@ export default class BlackHoleTheme extends BaseTheme {
                 const vy = direction * speed;
                 const vz = (this.random() - 0.5) * 2;
 
-                const color = direction > 0
-                    ? new THREE.Color(0.4, 0.6, 1.0)
-                    : new THREE.Color(1.0, 0.3, 0.2);
+                const color = direction > 0 ? this._jetColorBlue : this._jetColorRed;
 
                 const lockUntil = this.comboSpawnReuseUntil?.[index] || (this.time + jetLockSeconds);
                 this.particleCompute.spawn(index, {
@@ -3810,10 +3860,9 @@ export default class BlackHoleTheme extends BaseTheme {
         const bhY = 0;
         const bhZ = 0;
         const comboScatterWindowActive = this.time <= this.comboScatterHoldUntil;
-        const tilt = -Math.PI * 0.42;
         const normalX = 0;
-        const normalY = Math.cos(tilt);
-        const normalZ = Math.sin(tilt);
+        const normalY = this.diskCosTilt;
+        const normalZ = this.diskSinTilt;
         const planePullScale = delta * 60.0;
         const planeDamp = Math.min(0.35, delta * 5.0);
 
@@ -3831,19 +3880,20 @@ export default class BlackHoleTheme extends BaseTheme {
             const effectiveBurstFactor = comboScatterActive ? Math.max(this.burstFactor, 1.5) : this.burstFactor;
             const burstBlend = Math.min(1.0, effectiveBurstFactor / 8.0);
 
-            // Calculate direction to black hole
-            const dx = bhX - positions[i3];
-            const dy = bhY - positions[i3 + 1];
-            const dz = bhZ - positions[i3 + 2];
-            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            // Calculate positions from center (bh is 0,0,0)
+            const px = positions[i3];
+            const py = positions[i3 + 1];
+            const pz = positions[i3 + 2];
+            const distSq = px * px + py * py + pz * pz;
 
-            if (dist > 50) {
+            if (distSq > 2500) { // 50*50
+                const dist = Math.sqrt(distSq);
                 // BURST PHASE: Push particles outward
                 if (shouldBurst) {
                     // Normalize direction from black hole center
-                    const nx = -dx / dist;
-                    const ny = -dy / dist;
-                    const nz = -dz / dist;
+                    const nx = px / dist;
+                    const ny = py / dist;
+                    const nz = pz / dist;
 
                     // Outward force - stronger when closer to center, scaled by burstFactor
                     const burstStrength = effectiveBurstFactor * (400.0 / (dist + 50)) * delta;
@@ -3874,7 +3924,7 @@ export default class BlackHoleTheme extends BaseTheme {
 
                     // Gravity pull - increases closer to center
                     // Reduced from 1200 to 800 for even slower "floating" feel
-                    let pullStrength = (800.0 / (dist * dist + 100)) * delta;
+                    let pullStrength = (800.0 / (distSq + 100)) * delta;
                     if (comboLocked) {
                         // Preserve combo burst trails so they accumulate across close combos.
                         pullStrength *= 0.08;
@@ -3885,21 +3935,17 @@ export default class BlackHoleTheme extends BaseTheme {
                         pullStrength *= (5.0 + this.gravitySurgeFactor * 2.0);
                     }
 
-                    velocities[i3] += dx * pullStrength;
-                    velocities[i3 + 1] += dy * pullStrength;
-                    velocities[i3 + 2] += dz * pullStrength;
+                    velocities[i3] -= px * pullStrength;
+                    velocities[i3 + 1] -= py * pullStrength;
+                    velocities[i3 + 2] -= pz * pullStrength;
 
                     // Tangential acceleration REMOVED - rely on natural gravity + drag for organic spiral
                     // This prevents the "off" feeling of forced planar motion
 
-                    velocities[i3] *= 0.995; // Less drag to maintain orbit longer
-                    velocities[i3 + 1] *= 0.995;
-                    velocities[i3 + 2] *= 0.995;
-
-                    // Damping / Speed limit
-                    velocities[i3] *= 0.99;
-                    velocities[i3 + 1] *= 0.99;
-                    velocities[i3 + 2] *= 0.99;
+                    // Combined damping (0.995 * 0.99 = 0.98505) - one multiply per axis instead of two.
+                    velocities[i3] *= 0.98505;
+                    velocities[i3 + 1] *= 0.98505;
+                    velocities[i3 + 2] *= 0.98505;
 
                     // Limit max speed so they don't teleport
                     const maxSpeed = 8.0 + this.gravitySurgeFactor * 5.0; // Allow faster speed during surge
@@ -3916,41 +3962,42 @@ export default class BlackHoleTheme extends BaseTheme {
                 }
             }
 
-            const relX = positions[i3] - bhX;
-            const relY = positions[i3 + 1] - bhY;
-            const relZ = positions[i3 + 2] - bhZ;
-            const planeOffset = relX * normalX + relY * normalY + relZ * normalZ;
-            const radialX = relX - normalX * planeOffset;
-            const radialY = relY - normalY * planeOffset;
-            const radialZ = relZ - normalZ * planeOffset;
-            const radialDist = Math.sqrt(radialX * radialX + radialY * radialY + radialZ * radialZ);
+            // plane calculation (normalX = 0)
+            const planeOffset = py * normalY + pz * normalZ;
+            const radialX = px;
+            const radialY = py - normalY * planeOffset;
+            const radialZ = pz - normalZ * planeOffset;
+            const radialDistSq = radialX * radialX + radialY * radialY + radialZ * radialZ;
 
-            const tangentX = normalY * radialZ - normalZ * radialY;
-            const tangentY = normalZ * radialX - normalX * radialZ;
-            const tangentZ = normalX * radialY - normalY * radialX;
-            const tangentLen = Math.sqrt(tangentX * tangentX + tangentY * tangentY + tangentZ * tangentZ);
+            // Skip the orbital assist when the particle is far outside the disk - innerBias saturates
+            // to 0 beyond ~750 units so the contribution is negligible, and we save a sqrt + normalize.
+            if (radialDistSq < 562500) { // 750 * 750
+                const tangentY = normalZ * radialX;
+                const tangentZ = -normalY * radialX;
+                const tangentX = normalY * radialZ - normalZ * radialY;
+                const tangentLenSq = tangentX * tangentX + tangentY * tangentY + tangentZ * tangentZ;
 
-            if (tangentLen > 1e-4) {
-                const tangentInv = 1 / tangentLen;
-                const tX = tangentX * tangentInv;
-                const tY = tangentY * tangentInv;
-                const tZ = tangentZ * tangentInv;
-                const radialNorm = Math.max(0, Math.min(1, (radialDist - 220) / (750 - 220)));
-                const innerBias = 1 - radialNorm;
-                const orbitalAssist = 0.0009 + innerBias * 0.0015;
-                velocities[i3] += tX * orbitalAssist;
-                velocities[i3 + 1] += tY * orbitalAssist;
-                velocities[i3 + 2] += tZ * orbitalAssist;
+                if (tangentLenSq > 1e-8) {
+                    const tangentInv = 1 / Math.sqrt(tangentLenSq);
+                    const tX = tangentX * tangentInv;
+                    const tY = tangentY * tangentInv;
+                    const tZ = tangentZ * tangentInv;
+                    const radialDist = Math.sqrt(radialDistSq);
+                    const radialNorm = Math.max(0, Math.min(1, (radialDist - 220) / (750 - 220)));
+                    const innerBias = 1 - radialNorm;
+                    const orbitalAssist = 0.0009 + innerBias * 0.0015;
+                    velocities[i3] += tX * orbitalAssist;
+                    velocities[i3 + 1] += tY * orbitalAssist;
+                    velocities[i3 + 2] += tZ * orbitalAssist;
+                }
             }
 
             const clampedPlaneOffset = Math.max(-0.32, Math.min(0.32, planeOffset * 0.0035));
             const planePull = clampedPlaneOffset * planePullScale;
-            velocities[i3] -= normalX * planePull;
             velocities[i3 + 1] -= normalY * planePull;
             velocities[i3 + 2] -= normalZ * planePull;
 
-            const normalVelocity = velocities[i3] * normalX + velocities[i3 + 1] * normalY + velocities[i3 + 2] * normalZ;
-            velocities[i3] -= normalX * normalVelocity * planeDamp;
+            const normalVelocity = velocities[i3 + 1] * normalY + velocities[i3 + 2] * normalZ;
             velocities[i3 + 1] -= normalY * normalVelocity * planeDamp;
             velocities[i3 + 2] -= normalZ * normalVelocity * planeDamp;
 
@@ -3962,11 +4009,10 @@ export default class BlackHoleTheme extends BaseTheme {
             // Smoothly relax reset distance during bursts so chained combos don't pop particles back.
             const maxDist = comboScatterActive ? (4200 + burstBlend * 800) : (950 + burstBlend * 750);
             const minResetDist = comboScatterActive ? 30 : 80;
-            const ndx = bhX - positions[i3];
-            const ndy = bhY - positions[i3 + 1];
-            const ndz = bhZ - positions[i3 + 2];
-            const nextDist = Math.sqrt(ndx * ndx + ndy * ndy + ndz * ndz);
-            if (!comboLocked && (nextDist < minResetDist || nextDist > maxDist)) {
+            const nextDistSq = positions[i3] * positions[i3] + positions[i3 + 1] * positions[i3 + 1] + positions[i3 + 2] * positions[i3 + 2];
+            const minSq = minResetDist * minResetDist;
+            const maxSq = maxDist * maxDist;
+            if (!comboLocked && (nextDistSq < minSq || nextDistSq > maxSq)) {
                 this.initParticle(
                     i,
                     positions,
@@ -3975,9 +4021,9 @@ export default class BlackHoleTheme extends BaseTheme {
                     this.particleAttributes.size.array,
                     lifetimes,
                     this.particleColors,
-                    bhX,
-                    bhY,
-                    bhZ,
+                    0,
+                    0,
+                    0,
                 );
             }
 
