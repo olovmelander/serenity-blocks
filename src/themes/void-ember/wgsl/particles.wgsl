@@ -1,0 +1,146 @@
+struct Params {
+    resolution: vec4f,
+    sim: vec4f,
+    ember: vec4f,
+    reaction: vec4f,
+    quality: vec4f,
+    post: vec4f,
+    colorA: vec4f,
+    colorB: vec4f,
+    misc: vec4f,
+    fx: vec4f,
+};
+
+struct Particle {
+    pos_vel: vec4f,
+    life_data: vec4f,
+};
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read> flow: array<vec4f>;
+@group(0) @binding(2) var<storage, read_write> particles: array<Particle>;
+
+fn flow_dims() -> vec2u {
+    return vec2u(u32(max(params.quality.x, 1.0)), u32(max(params.quality.y, 1.0)));
+}
+
+fn flow_index(coord: vec2u) -> u32 {
+    let dims = flow_dims();
+    return coord.y * dims.x + coord.x;
+}
+
+fn hash11(value: f32) -> f32 {
+    return fract(sin(value * 91.173) * 43758.5453123);
+}
+
+fn hash21(value: f32) -> vec2f {
+    return vec2f(hash11(value + 0.17), hash11(value + 0.71));
+}
+
+fn sample_flow(uv: vec2f) -> vec4f {
+    let dims = vec2f(flow_dims());
+    let scaled = clamp(uv, vec2f(0.0), vec2f(0.9999)) * dims;
+    let coord = vec2u(scaled);
+    return flow[flow_index(coord)];
+}
+
+fn spawn_particle(seed: f32) -> Particle {
+    let flare = params.fx.y;
+    let intensity = params.fx.w;
+
+    let angle = seed * 6.28318;
+    let radius = 0.004 + hash11(seed + 3.7) * 0.032;
+    let tangent = vec2f(cos(angle), sin(angle));
+    let spawn_pos = params.ember.xy + tangent * radius;
+
+    // During flare, particles spawn with more outward velocity
+    let speed_boost = 1.0 + flare * 1.5 + intensity * 0.3;
+    let outward = tangent * (0.0008 + hash11(seed + 5.1) * 0.0016) * speed_boost;
+    let upward = vec2f(0.0, -(0.0008 + hash11(seed + 8.4) * 0.0013));
+
+    // Flare makes particles bigger and brighter
+    let size = (1.6 + hash11(seed + 1.1) * 4.8 + params.reaction.y * 0.6) * (1.0 + flare * 0.6);
+    let alpha = (0.18 + hash11(seed + 9.3) * 0.48) * (1.0 + flare * 0.4 + intensity * 0.15);
+
+    return Particle(
+        vec4f(spawn_pos, outward + upward),
+        vec4f(0.75 + hash11(seed + 4.3) * 0.95, seed, size, alpha),
+    );
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn main(@builtin(global_invocation_id) global_id: vec3u) {
+    let index = global_id.x;
+    let particle_count = u32(max(params.quality.w, 0.0));
+    if (index >= particle_count) {
+        return;
+    }
+
+    var particle = particles[index];
+    let dt = clamp(params.sim.y, 0.001, 0.05);
+    let seed = particle.life_data.y + f32(index) * 0.173;
+
+    // Unpack gameplay FX
+    let shockwave = params.fx.x;
+    let flare = params.fx.y;
+    let flash = params.fx.z;
+
+    if (particle.life_data.x <= 0.001) {
+        particles[index] = spawn_particle(hash11(seed + params.sim.x * 0.07));
+        return;
+    }
+
+    let flow_sample = sample_flow(particle.pos_vel.xy);
+    let center_delta = params.ember.xy - particle.pos_vel.xy;
+    let distance_to_core = max(length(center_delta), 0.0001);
+    let inward = center_delta / distance_to_core;
+    let outward = -inward;
+    let noise = hash21(seed + params.sim.x * 0.13) - 0.5;
+
+    let turbulence = (flow_sample.xy * 0.9 + noise * 0.0014) * (1.0 + params.reaction.y * 0.5);
+    let inward_pull = inward * (0.00025 + params.reaction.x * 0.00055 + params.ember.w * 0.001);
+    let buoyancy = vec2f(0.0, -(0.0006 + flow_sample.z * 0.0008));
+
+    // === SHOCKWAVE PUSH ===
+    // Particles near the shockwave ring get blasted outward
+    let shock_radius = shockwave * 0.45;
+    let shock_dist = abs(distance_to_core - shock_radius);
+    let shock_impact = exp(-shock_dist * 30.0) * shockwave * (1.0 - shockwave) * 4.0;
+    let shock_force = outward * shock_impact * 0.008;
+
+    // === FLASH JOLT ===
+    // Hard drop flash gives all particles a brief random kick
+    let flash_jolt = vec2f(
+        (hash11(seed + params.sim.x * 7.3) - 0.5),
+        (hash11(seed + params.sim.x * 11.1) - 0.5)
+    ) * flash * 0.003;
+
+    let new_vel = particle.pos_vel.zw * 0.984 + turbulence + buoyancy + inward_pull + shock_force + flash_jolt;
+    let new_pos = particle.pos_vel.xy + new_vel * (dt * 60.0);
+    particle.pos_vel = vec4f(new_pos, new_vel);
+
+    // Life drains slightly faster during intense play (intensity makes things wilder)
+    let new_life = particle.life_data.x - dt * (0.16 + hash11(seed + 7.4) * 0.22);
+    let new_size = max(0.8, particle.life_data.z * (0.999 - params.ember.w * 0.004));
+
+    // Alpha boosted during flare — particles glow brighter
+    let flare_alpha_boost = flare * 0.08;
+    let new_alpha = clamp(
+        particle.life_data.w + params.reaction.y * 0.004 + flow_sample.w * 0.002 + flare_alpha_boost,
+        0.05,
+        1.5,
+    );
+    particle.life_data = vec4f(new_life, particle.life_data.y, new_size, new_alpha);
+
+    let out_of_bounds = particle.pos_vel.x < -0.12
+        || particle.pos_vel.x > 1.12
+        || particle.pos_vel.y < -0.12
+        || particle.pos_vel.y > 1.12;
+
+    if (particle.life_data.x <= 0.0 || out_of_bounds) {
+        particles[index] = spawn_particle(hash11(seed + params.sim.x * 0.31));
+        return;
+    }
+
+    particles[index] = particle;
+}
