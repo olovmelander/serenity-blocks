@@ -1,6 +1,8 @@
 /**
  * Chromadelic Highway - WebGPU Post Processing
  * Emissive-only bloom + chromatic aberration + vignette + ACES tonemap (WebGPU path)
+ * Cinematic flourishes (Extreme/Ultra): radial chroma curve, god rays, anamorphic flare,
+ * pace-driven barrel distortion.
  */
 
 import * as THREE from 'three/webgpu';
@@ -39,6 +41,7 @@ export class ChromadelicHighwayPost {
 
         const sceneColor = this.scenePass.getTextureNode('output');
         const bloomSource = this.useMRT ? this.scenePass.getTextureNode('emissive') : sceneColor;
+        const emissiveSampler = this.useMRT ? this.scenePass.getTextureNode('emissive') : sceneColor;
 
         // Bloom - stronger for psychedelic neon glow
         const bloomStrength = params.bloomStrength ?? 0.5;
@@ -56,20 +59,47 @@ export class ChromadelicHighwayPost {
         this.uChromaticStrength = uniform(params.chromaticStrength ?? 0.0015);
         this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.0);
         this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.5);
-        this.uExposure = uniform(params.exposure ?? 1.1);
-        this.uContrast = uniform(params.contrast ?? 1.06);
-        this.uSaturation = uniform(params.saturation ?? 1.15);
-        this.uTintStrength = uniform(params.tintStrength ?? 0.15);
+        this.uExposure = uniform(params.exposure ?? 0.94);
+        this.uContrast = uniform(params.contrast ?? 1.2);
+        this.uSaturation = uniform(params.saturation ?? 1.08);
+        this.uTintStrength = uniform(params.tintStrength ?? 0.1);
         this.uDitherStrength = uniform(params.ditherStrength ?? 0.00055);
-        // Slight purple/magenta tint for psychedelic feel
-        this.uTint = uniform(new THREE.Color(1.06, 0.96, 1.1));
+        // Deep violet bias — keeps shadows neutral-purple, lifts magenta highlights
+        this.uTint = uniform(new THREE.Color(1.0, 0.93, 1.1));
+        // Shadow preservation: prevents deep blacks from being washed to grey by saturation boost
+        this.uShadowFloor = uniform(params.shadowFloor ?? 0.08);
+
+        // Cinematic flourish uniforms (Extreme/Ultra usually drive these; default 0 = off)
+        // Radial chroma multiplier curve: 0 at center, +uRadialChromaBoost at edges.
+        this.uRadialChromaBoost = uniform(params.radialChromaBoost ?? 1.4);
+        // Anamorphic horizontal flare: sums bloom samples along ±X for a horizontal streak.
+        this.uAnamorphicStrength = uniform(params.anamorphicStrength ?? 0.0);
+        // God-ray (radial streak) sourced from the emissive pass around uGodRaySun (screen UV).
+        this.uGodRayStrength = uniform(params.godRayStrength ?? 0.0);
+        this.uGodRaySun = uniform(new THREE.Vector2(
+            params.godRaySunX ?? 0.5,
+            params.godRaySunY ?? 0.47, // Road vanishing point sits slightly below center
+        ));
+        // Barrel distortion: pulls UVs outward radially. Theme drives this with play pace.
+        this.uBarrelStrength = uniform(params.barrelStrength ?? 0.0);
+        // One-shot wormhole pulse on TETRIS (Phase 6 wires this).
+        this.uWormholeStrength = uniform(0.0);
+        // Wet-road reflection from the emissive MRT, gated to showcase tiers by the theme.
+        this.uRoadReflectionStrength = uniform(params.roadReflectionStrength ?? 0.0);
+        this.uTime = uniform(params.time ?? 0.0);
 
         // Build post-processing pipeline
-        const uvNode = viewportUV;
-        const centered = uvNode.sub(0.5).mul(2.0);
+        const baseUV = viewportUV;
+        const centered = baseUV.sub(0.5).mul(2.0);
         const dist = length(centered);
 
-        // Vignette
+        // Barrel distortion: pulls UV outward as a function of radius² (classic lens).
+        // Adds with wormhole pulse for cinematic TETRIS punctuation.
+        const totalBarrel = this.uBarrelStrength.add(this.uWormholeStrength.mul(0.6));
+        const barrelOffset = centered.mul(dist.mul(dist)).mul(totalBarrel.mul(0.5));
+        const uvNode = baseUV.add(barrelOffset);
+
+        // Vignette (computed on undistorted UV so edges remain consistent)
         const vignette = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.5), dist);
         const baseSample = sceneColor.sample(uvNode);
         const vignetteColor = mix(
@@ -78,11 +108,69 @@ export class ChromadelicHighwayPost {
             vignette,
         );
 
-        // Chromatic aberration
-        const chroma = chromaticAberration(vignetteColor, this.uChromaticStrength, vec2(0.5, 0.5), 1.1);
+        // Radial chromatic aberration: zero at center, ramps with radius² for that
+        // cinematic lens feel where edges separate into R/B fringes.
+        const radialChroma = this.uChromaticStrength
+            .mul(float(1.0).add(this.uRadialChromaBoost.mul(dist.mul(dist))))
+            .add(this.uWormholeStrength.mul(0.006));
+        const chroma = chromaticAberration(vignetteColor, radialChroma, vec2(0.5, 0.5), 1.1);
 
-        // Combine with bloom
-        const combined = chroma.add(this.bloomNode);
+        // Screen-space god rays — radial streaks sampled from the emissive MRT pass.
+        // Direction is from the configured sun-point (default: road vanishing point) outward.
+        // Cheap 6-tap accumulation, weighted by 1/N to keep cost bounded.
+        let godRays = vec3(0.0);
+        const sunUV = this.uGodRaySun;
+        const rayDir = uvNode.sub(sunUV);
+        const rayLen = length(rayDir).add(1e-4);
+        const rayUnit = rayDir.div(rayLen);
+        const rayFalloff = smoothstep(0.6, 0.0, rayLen); // brightest near sun
+        const rayStepCount = 6;
+        const rayStepSize = 0.04;
+        for (let i = 1; i <= rayStepCount; i++) {
+            const offset = rayUnit.mul(float(-i * rayStepSize));
+            const sampleUV = uvNode.add(offset);
+            const sample = emissiveSampler.sample(sampleUV).rgb;
+            const decay = float(1.0 - i / rayStepCount);
+            godRays = godRays.add(sample.mul(decay));
+        }
+        godRays = godRays.mul(rayFalloff).mul(this.uGodRayStrength.mul(0.18));
+
+        // Anamorphic horizontal flare — wide horizontal streak from bright emissives.
+        // Cheap 5-tap horizontal blur of the emissive pass, additively composed.
+        let anamorphic = vec3(0.0);
+        const flareTaps = 5;
+        const flareSpread = 0.045;
+        for (let i = 1; i <= flareTaps; i++) {
+            const dx = (i / flareTaps) * flareSpread;
+            const sampleA = emissiveSampler.sample(vec2(uvNode.x.add(float(dx)), uvNode.y)).rgb;
+            const sampleB = emissiveSampler.sample(vec2(uvNode.x.sub(float(dx)), uvNode.y)).rgb;
+            const decay = float(1.0 - i / flareTaps);
+            anamorphic = anamorphic.add(sampleA.mul(decay)).add(sampleB.mul(decay));
+        }
+        // Bias the flare warm (slight gold/magenta) so it reads as lens optic, not just bloom.
+        const flareTint = vec3(1.05, 0.88, 1.18);
+        anamorphic = anamorphic.mul(flareTint).mul(this.uAnamorphicStrength.mul(0.06));
+
+        // Subtle wet-road reflection: mirror bright emissives from above the road horizon
+        // into the lower screen with a small ripple. This keeps the road glossy without
+        // adding a physical water layer or another scene pass.
+        const roadHorizonY = float(0.48);
+        const roadMask = smoothstep(roadHorizonY, roadHorizonY.sub(0.36), uvNode.y)
+            .mul(smoothstep(0.05, 0.34, baseUV.x))
+            .mul(smoothstep(0.95, 0.66, baseUV.x));
+        const ripple = sin(baseUV.x.mul(58.0).add(this.uTime.mul(1.7))).mul(0.004)
+            .add(sin(baseUV.y.mul(41.0).sub(this.uTime.mul(1.1))).mul(0.003));
+        const reflectionUV = vec2(
+            uvNode.x.add(ripple.mul(0.45)),
+            roadHorizonY.add(roadHorizonY.sub(uvNode.y).mul(0.82)).add(ripple),
+        );
+        const roadReflection = emissiveSampler.sample(reflectionUV).rgb
+            .mul(vec3(0.72, 0.58, 1.0))
+            .mul(roadMask)
+            .mul(this.uRoadReflectionStrength);
+
+        // Combine: scene+chroma + bloom + god rays + anamorphic flare + road reflection
+        const combined = chroma.add(this.bloomNode).add(godRays).add(anamorphic).add(roadReflection);
 
         // ACES Filmic Tone Mapping
         const exposed = combined.mul(this.uExposure);
@@ -95,14 +183,18 @@ export class ChromadelicHighwayPost {
         const acesDen = exposed.mul(exposed.mul(acesC).add(acesD)).add(acesE);
         let graded = clamp(acesNum.div(acesDen), float(0.0), float(1.0));
 
-        // Color grading: saturation, contrast, tint
+        // Color grading: saturation (shadow-aware), contrast, tint
+        // Shadow guard: scale saturation back toward 1.0 in deep blacks so they stay neutral-purple
+        // rather than getting pulled into a muddy grey by uniform saturation boost.
         const luma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
-        graded = mix(vec3(luma), graded, this.uSaturation);
+        const shadowMask = smoothstep(this.uShadowFloor, this.uShadowFloor.add(0.18), luma);
+        const localSat = mix(float(1.0), this.uSaturation, shadowMask);
+        graded = mix(vec3(luma), graded, localSat);
         graded = graded.sub(0.5).mul(this.uContrast).add(0.5);
         graded = mix(graded, graded.mul(this.uTint), this.uTintStrength);
 
         // Dither to prevent banding
-        const noise = fract(sin(dot(uvNode, vec2(12.9898, 78.233))).mul(43758.5453));
+        const noise = fract(sin(dot(baseUV, vec2(12.9898, 78.233))).mul(43758.5453));
         const dither = noise.sub(0.5).mul(this.uDitherStrength);
         graded = clamp(graded.add(dither), float(0.0), float(1.0));
 
@@ -126,6 +218,27 @@ export class ChromadelicHighwayPost {
         }
         if (params.exposure !== undefined) {
             this.uExposure.value = params.exposure;
+        }
+        if (params.barrelStrength !== undefined) {
+            this.uBarrelStrength.value = params.barrelStrength;
+        }
+        if (params.anamorphicStrength !== undefined) {
+            this.uAnamorphicStrength.value = params.anamorphicStrength;
+        }
+        if (params.godRayStrength !== undefined) {
+            this.uGodRayStrength.value = params.godRayStrength;
+        }
+        if (params.godRaySun) {
+            this.uGodRaySun.value.set(params.godRaySun.x, params.godRaySun.y);
+        }
+        if (params.wormholeStrength !== undefined) {
+            this.uWormholeStrength.value = params.wormholeStrength;
+        }
+        if (params.roadReflectionStrength !== undefined) {
+            this.uRoadReflectionStrength.value = params.roadReflectionStrength;
+        }
+        if (params.time !== undefined) {
+            this.uTime.value = params.time;
         }
     }
 

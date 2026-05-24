@@ -32,10 +32,11 @@ fn luminance(color: vec3f) -> f32 {
 fn bright_sample(uv: vec2f) -> vec3f {
     let color = textureSampleLevel(scene_texture, scene_sampler, uv, 0.0).rgb;
     let luma = luminance(color);
-    // Dynamic threshold: lower during flare for more bloom
+    // Dynamic threshold: lower during flare, but keep bright points from flooding the frame.
     let flare = params.fx.y;
-    let threshold = max(params.post.y - flare * 0.35, 0.15);
-    let gain = max(luma - threshold, 0.0);
+    let threshold = max(params.post.y - flare * 0.22, 0.25);
+    let shoulder = smoothstep(threshold, threshold + 1.25, luma);
+    let gain = max(luma - threshold, 0.0) * shoulder;
     return color * gain / max(luma, 0.001);
 }
 
@@ -87,44 +88,54 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
     let lens_dir = normalize(to_ember + vec2f(0.00001));
     let lensed_uv = uv + lens_dir * lens_ring * lens_strength;
 
-    let base = textureSampleLevel(scene_texture, scene_sampler, lensed_uv, 0.0).rgb;
+    let base_raw = textureSampleLevel(scene_texture, scene_sampler, lensed_uv, 0.0).rgb;
+    let cardinal_neighbors = (
+        textureSampleLevel(scene_texture, scene_sampler, lensed_uv + vec2f(-1.0, 0.0) * texel, 0.0).rgb
+        + textureSampleLevel(scene_texture, scene_sampler, lensed_uv + vec2f(1.0, 0.0) * texel, 0.0).rgb
+        + textureSampleLevel(scene_texture, scene_sampler, lensed_uv + vec2f(0.0, -1.0) * texel, 0.0).rgb
+        + textureSampleLevel(scene_texture, scene_sampler, lensed_uv + vec2f(0.0, 1.0) * texel, 0.0).rgb
+    ) * 0.25;
+    let detail = base_raw - cardinal_neighbors;
+    let hot_guard = 1.0 - smoothstep(1.3, 5.0, luminance(base_raw));
+    let sharpness = clamp(params.misc.w, 0.0, 0.35) * mix(0.35, 1.0, hot_guard);
+    let base = max(base_raw + detail * sharpness, vec3f(0.0));
 
     // Dynamic bloom: stronger during flare events
-    let bloom_boost = 1.0 + flare * 1.8 + flash * 2.5 + intensity * 0.2;
+    let bloom_boost = 1.0 + flare * 1.2 + flash * 1.8 + intensity * 0.15;
 
     var bloom = vec3f(0.0);
-    bloom = bloom + bright_sample(lensed_uv + vec2f(-1.5, 0.0) * texel) * 0.14;
-    bloom = bloom + bright_sample(lensed_uv + vec2f(1.5, 0.0) * texel) * 0.14;
-    bloom = bloom + bright_sample(lensed_uv + vec2f(0.0, -1.5) * texel) * 0.08;
-    bloom = bloom + bright_sample(lensed_uv + vec2f(0.0, 1.5) * texel) * 0.08;
-    bloom = bloom + bright_sample(lensed_uv + vec2f(-4.0, 0.0) * texel) * 0.1;
-    bloom = bloom + bright_sample(lensed_uv + vec2f(4.0, 0.0) * texel) * 0.1;
-    bloom = bloom + bright_sample(lensed_uv + vec2f(-2.0, -2.0) * texel) * 0.08;
-    bloom = bloom + bright_sample(lensed_uv + vec2f(2.0, 2.0) * texel) * 0.08;
-    bloom = bloom + bright_sample(lensed_uv) * 0.2;
+    bloom = bloom + bright_sample(lensed_uv + vec2f(-1.0, 0.0) * texel) * 0.11;
+    bloom = bloom + bright_sample(lensed_uv + vec2f(1.0, 0.0) * texel) * 0.11;
+    bloom = bloom + bright_sample(lensed_uv + vec2f(0.0, -1.0) * texel) * 0.06;
+    bloom = bloom + bright_sample(lensed_uv + vec2f(0.0, 1.0) * texel) * 0.06;
+    bloom = bloom + bright_sample(lensed_uv + vec2f(-3.2, 0.0) * texel) * 0.06;
+    bloom = bloom + bright_sample(lensed_uv + vec2f(3.2, 0.0) * texel) * 0.06;
+    bloom = bloom + bright_sample(lensed_uv + vec2f(-1.8, -1.8) * texel) * 0.05;
+    bloom = bloom + bright_sample(lensed_uv + vec2f(1.8, 1.8) * texel) * 0.05;
+    bloom = bloom + bright_sample(lensed_uv) * 0.14;
 
     // Anamorphic streaks — amplified during events
-    let streak_strength = params.post.z + flare * 0.08;
+    let streak_strength = params.post.z + flare * 0.04;
     if (streak_strength > 0.0001) {
-        bloom = bloom + bright_sample(lensed_uv + vec2f(-10.0, 0.0) * texel) * streak_strength * 0.6;
-        bloom = bloom + bright_sample(lensed_uv + vec2f(10.0, 0.0) * texel) * streak_strength * 0.6;
-        bloom = bloom + bright_sample(lensed_uv + vec2f(-18.0, 0.0) * texel) * streak_strength * 0.35;
-        bloom = bloom + bright_sample(lensed_uv + vec2f(18.0, 0.0) * texel) * streak_strength * 0.35;
+        bloom = bloom + bright_sample(lensed_uv + vec2f(-8.0, 0.0) * texel) * streak_strength * 0.45;
+        bloom = bloom + bright_sample(lensed_uv + vec2f(8.0, 0.0) * texel) * streak_strength * 0.45;
+        bloom = bloom + bright_sample(lensed_uv + vec2f(-15.0, 0.0) * texel) * streak_strength * 0.24;
+        bloom = bloom + bright_sample(lensed_uv + vec2f(15.0, 0.0) * texel) * streak_strength * 0.24;
     }
 
     // Extra wide bloom during big events
     if (flare > 0.1) {
-        bloom = bloom + bright_sample(lensed_uv + vec2f(-8.0, -4.0) * texel) * flare * 0.04;
-        bloom = bloom + bright_sample(lensed_uv + vec2f(8.0, 4.0) * texel) * flare * 0.04;
-        bloom = bloom + bright_sample(lensed_uv + vec2f(-4.0, -8.0) * texel) * flare * 0.03;
-        bloom = bloom + bright_sample(lensed_uv + vec2f(4.0, 8.0) * texel) * flare * 0.03;
+        bloom = bloom + bright_sample(lensed_uv + vec2f(-6.0, -3.0) * texel) * flare * 0.025;
+        bloom = bloom + bright_sample(lensed_uv + vec2f(6.0, 3.0) * texel) * flare * 0.025;
+        bloom = bloom + bright_sample(lensed_uv + vec2f(-3.0, -6.0) * texel) * flare * 0.02;
+        bloom = bloom + bright_sample(lensed_uv + vec2f(3.0, 6.0) * texel) * flare * 0.02;
     }
 
     // ============================================================
     // VOLUMETRIC GOD RAYS — 6-sample radial march (was 10)
     // Larger steps + higher weight compensate for fewer samples
     // ============================================================
-    let ray_weight = 0.12 + flare * 0.08 + flash * 0.1;
+    let ray_weight = 0.09 + flare * 0.055 + flash * 0.08;
     var god_rays = vec3f(0.0);
     var ray_uv = lensed_uv;
     let ray_dir = (ember_ndc - lensed_uv) * 0.14;
@@ -134,16 +145,22 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         ray_uv = ray_uv + ray_dir;
         let ray_sample = textureSampleLevel(scene_texture, scene_sampler,
             clamp(ray_uv, vec2f(0.001), vec2f(0.999)), 0.0).rgb;
-        let ray_bright = max(luminance(ray_sample) - 0.4, 0.0);
+        let ray_bright = max(luminance(ray_sample) - 0.55, 0.0);
         god_rays = god_rays + ray_sample * ray_bright * ray_illumination_decay * ray_weight;
         ray_illumination_decay = ray_illumination_decay * 0.88;
     }
 
     var color = base + bloom * params.post.x * bloom_boost + god_rays;
 
-    let temporal_mix = clamp(params.post.w, 0.0, 0.95);
+    let event_temporal_suppression = clamp(flare * 0.5 + flash * 0.8 + shockwave * 0.3, 0.0, 0.85);
+    let bright_temporal_suppression = smoothstep(0.7, 2.5, luminance(color)) * 0.55;
+    let temporal_mix = clamp(
+        params.post.w * (1.0 - event_temporal_suppression) * (1.0 - bright_temporal_suppression),
+        0.0,
+        0.95
+    );
     if (temporal_mix > 0.001) {
-        var history = textureSampleLevel(history_texture, scene_sampler, lensed_uv, 0.0).rgb;
+        var history = textureSampleLevel(history_texture, scene_sampler, uv, 0.0).rgb;
         let clamp_delta = params.misc.z;
         history = clamp(history, color - vec3f(clamp_delta), color + vec3f(clamp_delta));
         color = mix(color, history, temporal_mix);

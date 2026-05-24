@@ -33,10 +33,12 @@ import {
     createRoadNodeMaterial,
     createTunnelRingNodeMaterial,
     createPlanetNodeMaterial,
+    createPlanetAtmosphereShellMaterial,
     createPlanetGlowNodeMaterial,
     createSpeedParticleNodeMaterial,
     createAmbientParticleNodeMaterial,
     createShootingStarNodeMaterial,
+    createShootingStarRibbonNodeMaterial,
     createStarfieldNodeMaterial,
     createEdgeGlowNodeMaterial,
     createGasGiantNodeMaterial,
@@ -44,6 +46,7 @@ import {
     createAtmosphericOrbNodeMaterial,
     createBinaryStarNodeMaterial,
     createNebulaNodeMaterial,
+    createVolumetricNebulaSkyMaterial,
 } from './chromadelic-highway-materials.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -412,6 +415,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.edgeStrips = [];
         this.starfield = null;
         this.nebulaPlanes = [];
+        this.volumetricNebulaSky = null;
         this.depthHazeLayers = [];
         this.speedParticles = null;
         this.ambientParticles = null;
@@ -420,6 +424,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         // Multi-planet system
         this.planet = null;
+        this.planetAtmosphereShell = null;
         this.planetGlows = [];
         this.neonGasGiant = null;
         this.neonGasGiantGlows = [];
@@ -433,6 +438,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.shootingStars = [];
         this.shootingStarTimer = 0;
         this.nextShootingStarDelay = 3;
+        this.cinematicTier = 0;
+        this._wormholeStrength = 0;
+        this.cinematicState = this.createCinematicState();
 
         // Planet journey - focal corridor anchored and intentionally paced
         this.journeyTime = 0;
@@ -528,6 +536,20 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             return normalizeQuality(window.settings.effectQuality);
         }
         return 'High';
+    }
+
+    isShowcaseTier() {
+        return this.activeQualityLevel === 'Extreme' || this.activeQualityLevel === 'Ultra';
+    }
+
+    createCinematicState() {
+        return {
+            bloomPulse: 0,
+            chromaSpike: 0,
+            cometCooldown: 0,
+            nebulaBloom: 0,
+            starfieldSpinBoost: 0,
+        };
     }
 
     getBaselinePresetOrder() {
@@ -961,6 +983,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.edgeStrips = [];
         this.starfield = null;
         this.nebulaPlanes = [];
+        this.volumetricNebulaSky = null;
         this.depthHazeLayers = [];
         this.speedParticles = null;
         this.ambientParticles = null;
@@ -968,6 +991,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.ambientParticleMaterialData = null;
         this.useShootingStarCompute = false;
         this.planet = null;
+        this.planetAtmosphereShell = null;
         this.planetGlows = [];
         this.neonGasGiant = null;
         this.neonGasGiantGlows = [];
@@ -983,6 +1007,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.journeyTime = 0;
         this.shootingStarTimer = 0;
         this.nextShootingStarDelay = 3;
+        this.cinematicTier = 0;
+        this._wormholeStrength = 0;
+        this.cinematicState = this.createCinematicState();
         this.pulseIntensity = 0;
         this.bloomBoost = 0;
         this.particleGlow = 0;
@@ -1233,6 +1260,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 { event: EVENTS.COMBO, payload: { comboCount: 4 } },
                 { event: EVENTS.PIECE_LOCK, payload: {} },
                 { event: EVENTS.LINE_CLEAR, payload: { lineCount: 4 } },
+                { event: EVENTS.LEVEL_UP, payload: { level: 2 } },
             ],
             stress: [
                 { event: EVENTS.PIECE_LOCK, payload: {} },
@@ -1242,6 +1270,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 { event: EVENTS.PIECE_LOCK, payload: {} },
                 { event: EVENTS.COMBO, payload: { comboCount: 6 } },
                 { event: EVENTS.LINE_CLEAR, payload: { lineCount: 4 } },
+                { event: EVENTS.LEVEL_UP, payload: { level: 3 } },
                 { event: EVENTS.PIECE_LOCK, payload: {} },
                 { event: EVENTS.COMBO, payload: { comboCount: 8 } },
                 { event: EVENTS.LINE_CLEAR, payload: { lineCount: 3 } },
@@ -1798,6 +1827,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.fixedElapsed = 0;
         this.resetBaseline();
         this.resetReactiveEnvelope();
+        this.cinematicState = this.createCinematicState();
+        this._wormholeStrength = 0;
 
         const quality = this.getCurrentQualityLevel();
         this.applyQualityPreset(quality);
@@ -1920,6 +1951,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         console.log(`[ChromadelicHighway] Using ${this.isWebGPU ? 'WebGPU' : 'WebGL2'} backend`);
 
+        // Dark cosmic void: the highway and rings carry the saturation, not the full sky.
         this.renderer.setClearColor(0x020008, 1);
         this.renderer.setPixelRatio(this.getRendererPixelRatio(1.5));
         this.renderer.setSize(width, height);
@@ -1928,7 +1960,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         container.appendChild(this.renderer.domElement);
 
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0x020008, 0.0004);
+        this.scene.fog = new THREE.FogExp2(0x020008, 0.00042);
 
         // Camera: Lower, closer to road - immersive racing view
         this.camera = new THREE.PerspectiveCamera(80, width / height, 1, 12000);
@@ -2413,6 +2445,28 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
     createNebulaBackdrop() {
         this.nebulaPlanes = [];
+        this.volumetricNebulaSky = null;
+
+        // Showcase tiers (Extreme/Ultra on WebGPU): replace flat nebula planes with a
+        // ray-traversed volumetric sky dome built from domain-warped fBm. Gives the cosmos
+        // real depth and parallax; planes-only fallback for all other tiers + WebGL.
+        const isShowcase = this.isWebGPU
+            && (this.activeQualityLevel === 'Extreme' || this.activeQualityLevel === 'Ultra');
+        if (isShowcase) {
+            const octaves = this.activeQualityLevel === 'Extreme' ? 4 : 3;
+            const skyData = createVolumetricNebulaSkyMaterial({ octaves, emissiveBoost: 0.72 });
+            const skyGeo = new THREE.SphereGeometry(9500, 48, 32);
+            const skyMesh = new THREE.Mesh(skyGeo, skyData.material);
+            skyMesh.material.side = THREE.BackSide;
+            skyMesh.renderOrder = -200; // Deepest backdrop
+            skyMesh.frustumCulled = false;
+            skyMesh.userData.materialData = skyData;
+            this.volumetricNebulaSky = skyMesh;
+            this.scene.add(skyMesh);
+            console.log('[ChromadelicHighway] Volumetric nebula sky enabled', { octaves });
+            this.createDepthHazeLayers();
+            return;
+        }
 
         // Use fewer, larger planes for the rainbow nebula effect
         // The texture handles color diversity, so we don't need the color palette loop
@@ -2442,8 +2496,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             } else {
                 mat = new THREE.MeshBasicMaterial({
                     map: rainbowTexture,
+                    // Violet bias mirrors the WebGPU nebula tint so WebGL fallback shares the same
+                    // backdrop discipline (deep indigo space, rainbow concentrated on highway).
+                    color: new THREE.Color(0.78, 0.62, 1.05),
                     transparent: true,
-                    opacity: 0.45,
+                    opacity: 0.18,
                     blending: THREE.AdditiveBlending,
                     depthWrite: false,
                     side: THREE.DoubleSide,
@@ -2485,10 +2542,12 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             const ctx = canvas.getContext('2d');
 
             const gradient = ctx.createRadialGradient(80, 80, 0, 80, 80, 80);
-            const hue = (0.58 + i * 0.11) % 1;
-            const color = new THREE.Color().setHSL(hue, 0.45, 0.32);
-            gradient.addColorStop(0, `rgba(${Math.floor(color.r * 255)},${Math.floor(color.g * 255)},${Math.floor(color.b * 255)},0.085)`);
-            gradient.addColorStop(0.55, `rgba(${Math.floor(color.r * 255)},${Math.floor(color.g * 255)},${Math.floor(color.b * 255)},0.03)`);
+            // Tight violet-indigo band (0.70–0.82) replaces the wider cyan→magenta sweep.
+            // Keeps depth haze as a backdrop tint instead of a second saturated color story.
+            const hue = (0.70 + i * 0.04) % 1;
+            const color = new THREE.Color().setHSL(hue, 0.48, 0.18);
+            gradient.addColorStop(0, `rgba(${Math.floor(color.r * 255)},${Math.floor(color.g * 255)},${Math.floor(color.b * 255)},0.038)`);
+            gradient.addColorStop(0.55, `rgba(${Math.floor(color.r * 255)},${Math.floor(color.g * 255)},${Math.floor(color.b * 255)},0.012)`);
             gradient.addColorStop(1, 'rgba(0,0,0,0)');
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, 160, 160);
@@ -2498,7 +2557,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             const material = new THREE.MeshBasicMaterial({
                 map: texture,
                 transparent: true,
-                opacity: 0.16 - i * 0.02,
+                opacity: 0.065 - i * 0.009,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
             });
@@ -2525,6 +2584,17 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
     animateDepthHaze() {
         if (!this.camera) return;
+
+        // Volumetric nebula sky dome (Extreme/Ultra) — drive its uniforms each frame.
+        if (this.volumetricNebulaSky?.userData?.materialData?.uniforms) {
+            const skyU = this.volumetricNebulaSky.userData.materialData.uniforms;
+            if (skyU.uTime) skyU.uTime.value = this.time;
+            if (skyU.uPulse) skyU.uPulse.value = this.pulseIntensity;
+            // Level-up punctuation lifts uEmissiveBoost; decay it back to the neutral sky.
+            if (skyU.uEmissiveBoost) {
+                skyU.uEmissiveBoost.value += (1.0 - skyU.uEmissiveBoost.value) * 0.04;
+            }
+        }
 
         this.nebulaPlanes.forEach((plane) => {
             const base = plane.userData.basePosition;
@@ -2554,9 +2624,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             haze.position.x = base.x + Math.sin(this.time * speed + phase) * ampX;
             haze.position.y = base.y + Math.cos(this.time * speed * 0.7 + phase) * ampY;
             haze.material.opacity = THREE.MathUtils.clamp(
-                haze.userData.baseOpacity * (0.9 + this.pulseIntensity * 0.14),
-                0.03,
-                0.22,
+                haze.userData.baseOpacity * (0.78 + this.pulseIntensity * 0.08),
+                0.01,
+                0.085,
             );
             haze.lookAt(this.camera.position);
         });
@@ -2568,7 +2638,16 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
     createRainbowPlanet() {
         const planetSize = 450;
-        const geometry = new THREE.SphereGeometry(planetSize, 48, 48);
+        // Showcase tiers get higher tessellation so the displacement reads cleanly along the
+        // terminator. Standard tiers stay at 48×48 to keep parity with the existing perf budget.
+        const isShowcase = this.isWebGPU
+            && (this.activeQualityLevel === 'Extreme' || this.activeQualityLevel === 'Ultra');
+        const tessellation = this.activeQualityLevel === 'Extreme'
+            ? 96
+            : this.activeQualityLevel === 'Ultra'
+                ? 64
+                : 48;
+        const geometry = new THREE.SphereGeometry(planetSize, tessellation, tessellation);
 
         const textureLoader = new THREE.TextureLoader();
         const planetTexture = textureLoader.load('./textures/2k_rainbow_planet.png');
@@ -2579,7 +2658,10 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         let materialData = null;
 
         if (this.isWebGPU) {
-            materialData = createPlanetNodeMaterial(planetTexture);
+            // ~1.7% radius displacement on showcase tiers — terminator silhouette breaks the
+            // perfect-sphere look without making the planet feel "lumpy".
+            const displacement = isShowcase ? planetSize * 0.017 : 0;
+            materialData = createPlanetNodeMaterial(planetTexture, { displacement });
             material = materialData.material;
         } else {
             material = new THREE.ShaderMaterial({
@@ -2641,6 +2723,25 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.planet.renderOrder = -50;
         this.planet.userData.materialData = materialData;
         this.scene.add(this.planet);
+
+        // Atmospheric scattering shell on showcase tiers — Rayleigh-style gradient rim
+        // wraps the planet, replacing the look the canvas-gradient glow planes were faking.
+        // Attached as a child so it inherits planet position + scale automatically.
+        if (isShowcase) {
+            const shellRadius = planetSize * 1.085;
+            const shellGeo = new THREE.SphereGeometry(shellRadius, tessellation, tessellation);
+            const shellData = createPlanetAtmosphereShellMaterial({
+                intensity: 1.0,
+                horizon: new THREE.Color(1.0, 0.45, 0.95), // magenta-violet horizon
+                zenith: new THREE.Color(0.35, 0.85, 1.0),  // cool cyan at higher altitude
+            });
+            shellData.material.side = THREE.BackSide;
+            const shell = new THREE.Mesh(shellGeo, shellData.material);
+            shell.renderOrder = -49;
+            shell.userData.materialData = shellData;
+            this.planet.add(shell);
+            this.planetAtmosphereShell = shell;
+        }
 
         // Glow layers
         const glowConfigs = [
@@ -3450,23 +3551,254 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         console.log('[ChromadelicHighway] Shooting star system initialized');
     }
 
-    spawnShootingStar() {
+    shouldUseShootingStarRibbons() {
+        return this.isWebGPU && this.isShowcaseTier();
+    }
+
+    createShootingStarRibbonGeometry({
+        direction,
+        trailLength,
+        segmentCount,
+        headWidth,
+        tailWidth,
+        colorSeed = 0,
+        curveAmount = 20,
+    }) {
+        const dir = direction.clone().normalize();
+        const side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 0, 1));
+        if (side.lengthSq() < 0.001) {
+            side.crossVectors(dir, new THREE.Vector3(0, 1, 0));
+        }
+        side.normalize();
+
+        const positions = [];
+        const colors = [];
+        const alphas = [];
+        const ribbonT = [];
+        const indices = [];
+
+        for (let i = 0; i <= segmentCount; i++) {
+            const t = i / segmentCount;
+            const width = THREE.MathUtils.lerp(headWidth, tailWidth, t);
+            const fade = (1 - t) ** 1.45;
+            const center = dir.clone().multiplyScalar(-trailLength * t);
+            center.addScaledVector(side, Math.sin(t * Math.PI) * curveAmount);
+
+            const hue = (colorSeed + t * 0.42) % 1;
+            const color = new THREE.Color().setHSL(hue, 0.92, 0.56 - t * 0.12);
+            if (t < 0.12) {
+                color.lerp(new THREE.Color(0xc7f2ff), (0.12 - t) / 0.12);
+            } else if (t > 0.62) {
+                color.lerp(new THREE.Color(0xff74da), (t - 0.62) / 0.38);
+            }
+
+            for (let sideIndex = -1; sideIndex <= 1; sideIndex += 2) {
+                const pos = center.clone().addScaledVector(side, width * sideIndex);
+                positions.push(pos.x, pos.y, pos.z);
+                colors.push(color.r, color.g, color.b);
+                alphas.push(Math.max(0.02, fade));
+                ribbonT.push(t);
+            }
+        }
+
+        for (let i = 0; i < segmentCount; i++) {
+            const a = i * 2;
+            const b = a + 1;
+            const c = a + 2;
+            const d = a + 3;
+            indices.push(a, c, b, b, c, d);
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        geometry.setAttribute('aAlpha', new THREE.Float32BufferAttribute(alphas, 1));
+        geometry.setAttribute('aRibbonT', new THREE.Float32BufferAttribute(ribbonT, 1));
+        geometry.setIndex(indices);
+        geometry.computeVertexNormals();
+        return geometry;
+    }
+
+    spawnShootingStarRibbon(options = {}) {
         const baseBudget = this.performanceBudget?.maxActiveShootingStars ?? 8;
-        const starBudget = baseBudget * 3; // Tripled budget to allow meteor showers
-        if (this.shootingStars.length >= starBudget) return;
+        const starBudget = baseBudget * (options.cinematic ? 4 : 3);
+        if (this.shootingStars.length >= starBudget) return false;
 
-        const startX = (this.rand() - 0.5) * 3000;
-        const startY = 200 + this.rand() * 600;
-        const startZ = -1200 - this.rand() * 1500;
+        const start = options.start || new THREE.Vector3(
+            (this.rand() - 0.5) * 3000,
+            200 + this.rand() * 600,
+            -1200 - this.rand() * 1500,
+        );
 
-        const angle = this.rand() * Math.PI * 2;
-        const dirX = Math.cos(angle) * (0.5 + this.rand() * 0.5);
-        const dirY = -0.2 - this.rand() * 0.4;
-        const dirZ = 0.2 + this.rand() * 0.3;
+        let velocity = options.velocity?.clone?.() || null;
+        let direction = options.direction?.clone?.() || null;
+        if (!direction && velocity) {
+            direction = velocity.clone().normalize();
+        }
+        if (!direction) {
+            const angle = this.rand() * Math.PI * 2;
+            direction = new THREE.Vector3(
+                Math.cos(angle) * (0.5 + this.rand() * 0.5),
+                -0.2 - this.rand() * 0.4,
+                0.2 + this.rand() * 0.3,
+            ).normalize();
+        }
+        if (!velocity) {
+            velocity = direction.clone().multiplyScalar(options.speed ?? (180 + this.rand() * 80));
+        }
 
-        const trailLength = 400 + this.rand() * 250;
         const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
-        const particleCount = Math.max(48, Math.floor(100 * effectScale));
+        const segmentCount = options.segmentCount ?? Math.max(20, Math.floor(32 * effectScale));
+        const geometry = this.createShootingStarRibbonGeometry({
+            direction,
+            trailLength: options.trailLength ?? (520 + this.rand() * 260),
+            segmentCount,
+            headWidth: options.headWidth ?? (26 + this.rand() * 14),
+            tailWidth: options.tailWidth ?? 3,
+            colorSeed: options.colorSeed ?? this.rand(),
+            curveAmount: options.curveAmount ?? (18 + this.rand() * 16),
+        });
+
+        let material;
+        let materialData = null;
+        if (this.isWebGPU) {
+            materialData = createShootingStarRibbonNodeMaterial({
+                opacity: options.opacity ?? 1.0,
+                headBoost: options.cinematic ? 1.45 : 1.0,
+            });
+            material = materialData.material;
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uOpacity: { value: options.opacity ?? 1.0 },
+                    uTime: { value: 0.0 },
+                },
+                vertexShader: `
+                    attribute vec3 color;
+                    attribute float aAlpha;
+                    attribute float aRibbonT;
+                    varying vec3 vColor;
+                    varying float vAlpha;
+                    varying float vT;
+                    void main() {
+                        vColor = color;
+                        vAlpha = aAlpha;
+                        vT = aRibbonT;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float uOpacity;
+                    uniform float uTime;
+                    varying vec3 vColor;
+                    varying float vAlpha;
+                    varying float vT;
+                    void main() {
+                        float shimmer = 0.92 + sin(uTime * 9.0 + vT * 7.0) * 0.08;
+                        float head = pow(1.0 - vT, 2.4);
+                        vec3 color = vColor * shimmer + vec3(0.22, 0.38, 0.52) * head;
+                        gl_FragColor = vec4(color, clamp(vAlpha * uOpacity, 0.0, 1.0));
+                    }
+                `,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+            });
+        }
+
+        const ribbon = new THREE.Mesh(geometry, material);
+        ribbon.position.copy(start);
+        ribbon.renderOrder = -36;
+        ribbon.userData = {
+            ribbon: true,
+            cinematic: options.cinematic === true,
+            velocity,
+            spin: options.spin ?? ((this.rand() - 0.5) * 0.16),
+            life: 0,
+            maxLife: options.maxLife ?? (5.2 + this.rand() * 2.4),
+            materialData,
+        };
+
+        this.shootingStars.push(ribbon);
+        this.scene.add(ribbon);
+        return true;
+    }
+
+    spawnCinematicComet() {
+        const fromLeft = this.rand() > 0.5;
+        const start = new THREE.Vector3(
+            fromLeft ? -1850 : 1850,
+            720 + this.rand() * 180,
+            -1850 - this.rand() * 950,
+        );
+        const end = new THREE.Vector3(
+            fromLeft ? 1750 : -1750,
+            230 + this.rand() * 210,
+            -950 - this.rand() * 1000,
+        );
+        const velocity = end.clone().sub(start).divideScalar(2.5);
+        const direction = velocity.clone().normalize();
+
+        return this.spawnShootingStar({
+            forceRibbon: this.isShowcaseTier(),
+            cinematic: true,
+            start,
+            velocity,
+            direction,
+            trailLength: 920,
+            segmentCount: this.activeQualityLevel === 'Extreme' ? 42 : 34,
+            headWidth: 52,
+            tailWidth: 4,
+            maxLife: 2.5,
+            opacity: 1.12,
+            colorSeed: 0.58 + this.rand() * 0.18,
+            curveAmount: 34,
+            speed: velocity.length(),
+        });
+    }
+
+    spawnShootingStar(options = {}) {
+        if (options.forceRibbon || (this.shouldUseShootingStarRibbons() && options.forcePoints !== true)) {
+            return this.spawnShootingStarRibbon(options);
+        }
+
+        const baseBudget = this.performanceBudget?.maxActiveShootingStars ?? 8;
+        const starBudget = baseBudget * (options.cinematic ? 4 : 3); // Tripled budget to allow meteor showers
+        if (this.shootingStars.length >= starBudget) return false;
+
+        const start = options.start || new THREE.Vector3(
+            (this.rand() - 0.5) * 3000,
+            200 + this.rand() * 600,
+            -1200 - this.rand() * 1500,
+        );
+        const startX = start.x;
+        const startY = start.y;
+        const startZ = start.z;
+
+        let velocity = options.velocity?.clone?.() || null;
+        let direction = options.direction?.clone?.() || null;
+        if (!direction && velocity) {
+            direction = velocity.clone().normalize();
+        }
+        if (!direction) {
+            const angle = this.rand() * Math.PI * 2;
+            direction = new THREE.Vector3(
+                Math.cos(angle) * (0.5 + this.rand() * 0.5),
+                -0.2 - this.rand() * 0.4,
+                0.2 + this.rand() * 0.3,
+            ).normalize();
+        }
+        if (!velocity) {
+            velocity = direction.clone().multiplyScalar(options.speed ?? (180 + this.rand() * 80));
+        }
+        const dirX = direction.x;
+        const dirY = direction.y;
+        const dirZ = direction.z;
+
+        const trailLength = options.trailLength ?? (400 + this.rand() * 250);
+        const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
+        const particleCount = options.particleCount ?? Math.max(48, Math.floor(100 * effectScale));
 
         const positions = new Float32Array(particleCount * 3);
         const colors = new Float32Array(particleCount * 3);
@@ -3527,7 +3859,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             }
         }
         if (this.isWebGPU) {
-            materialData = createShootingStarNodeMaterial({ particleCompute: starCompute });
+            materialData = createShootingStarNodeMaterial({
+                particleCompute: starCompute,
+                headBoost: options.cinematic ? 1.35 : 1.0,
+                sizeBoost: options.cinematic ? 1.15 : 1.0,
+            });
             material = materialData.material;
         } else {
             material = new THREE.ShaderMaterial({
@@ -3574,21 +3910,21 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         const points = new THREE.Points(geometry, material);
         points.userData = {
-            velocity: new THREE.Vector3(dirX, dirY, dirZ).multiplyScalar(180 + this.rand() * 80), // Slightly slower for longer view
+            velocity,
             life: 0,
-            maxLife: 10 + this.rand() * 5, // Longer lifetime (was 6-10)
+            maxLife: options.maxLife ?? (10 + this.rand() * 5), // Longer lifetime (was 6-10)
             materialData,
             compute: starCompute,
         };
 
         this.shootingStars.push(points);
         this.scene.add(points);
+        return true;
     }
 
     updateShootingStars(delta) {
         this.shootingStarTimer += delta;
         if (this.shootingStarTimer >= this.nextShootingStarDelay) {
-
             // 20% chance for a meteor shower
             const isMeteorShower = this.rand() > 0.8;
             const spawnCount = isMeteorShower ? 3 + Math.floor(this.rand() * 4) : 1;
@@ -3616,7 +3952,10 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         for (let i = this.shootingStars.length - 1; i >= 0; i--) {
             const star = this.shootingStars[i];
             star.userData.life += delta;
-            if (star.userData.compute?.computeNode) {
+            if (star.userData.ribbon) {
+                star.position.addScaledVector(star.userData.velocity, delta);
+                star.rotation.z += (star.userData.spin ?? 0) * delta;
+            } else if (star.userData.compute?.computeNode) {
                 star.userData.compute.update(delta, star.userData.velocity);
             } else {
                 const positions = star.geometry.attributes.position.array;
@@ -3721,22 +4060,45 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         if (this.isWebGPU) {
             // WebGPU: MRT-based emissive bloom + chromatic aberration + vignette + ACES
             const useMRT = this.capabilities.mrt;
+            // Cinematic flourishes gated to the showcase tiers. Extreme gets the full menu;
+            // Ultra runs at ~60% strength; everything below stays on the baseline pipeline.
+            let cinematicTier = 0.0;
+            if (this.activeQualityLevel === 'Extreme') {
+                cinematicTier = 1.0;
+            } else if (this.activeQualityLevel === 'Ultra') {
+                cinematicTier = 0.6;
+            }
+            // Bloom threshold dips a touch on showcase tiers so the volumetric/nebula haze
+            // catches subtle bloom instead of requiring brighter emissives to register.
+            const showcaseBloomThreshold = cinematicTier > 0
+                ? Math.max(0.14, this.getBloomThreshold() - 0.04)
+                : this.getBloomThreshold();
             try {
                 this.postProcessing = new ChromadelicHighwayPost(
-                    this.renderer, this.scene, this.camera,
+                    this.renderer,
+                    this.scene,
+                    this.camera,
                     {
                         useMRT,
                         bloomStrength: this.getBloomStrength(1),
                         bloomRadius: this.qualityPreset.bloomRadius,
-                        bloomThreshold: this.getBloomThreshold(),
+                        bloomThreshold: showcaseBloomThreshold,
                         chromaticStrength: 0.0015,
                         vignetteOffset: 1.0,
-                        vignetteDarkness: 0.5,
-                        exposure: 1.1,
-                        contrast: 1.06,
-                        saturation: 1.15,
+                        vignetteDarkness: 0.58,
+                        exposure: 0.94,
+                        contrast: 1.2,
+                        saturation: 1.08,
+                        tintStrength: 0.1,
+                        // Cinematic flourishes (defaults baked in; per-frame update modulates them)
+                        radialChromaBoost: 1.4,
+                        godRayStrength: 0.5 * cinematicTier,
+                        anamorphicStrength: 0.4 * cinematicTier,
+                        barrelStrength: 0.0,
+                        roadReflectionStrength: 0.0,
                     },
                 );
+                this.cinematicTier = cinematicTier;
                 this.postProcessing.setSize(width, height);
                 console.log(`[ChromadelicHighway] WebGPU PostProcessing (MRT: ${useMRT})`);
             } catch (err) {
@@ -3793,6 +4155,67 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.targetPaceMultiplier = targetSpeed;
     }
 
+    triggerTetrisCinematic() {
+        const tier = this.cinematicTier ?? (this.isShowcaseTier() ? 0.8 : 0);
+        this._wormholeStrength = Math.max(this._wormholeStrength ?? 0, tier > 0 ? 1.0 : 0.35);
+        this.cinematicState.chromaSpike = Math.max(this.cinematicState.chromaSpike, 1.0);
+        this.cinematicState.bloomPulse = Math.max(this.cinematicState.bloomPulse, 0.78);
+        this.pushReactiveEnvelope({
+            pulse: 0.42,
+            bloom: 0.32,
+            ring: 0.48,
+            particle: 0.38,
+            ambient: 0.32,
+        });
+    }
+
+    triggerHighComboCinematic(comboCount = 0) {
+        if (this.cinematicState.cometCooldown > 0) return;
+        this.cinematicState.cometCooldown = 1.2;
+        this.cinematicState.bloomPulse = Math.max(
+            this.cinematicState.bloomPulse,
+            THREE.MathUtils.clamp(0.28 + comboCount * 0.045, 0.42, 0.78),
+        );
+        this.spawnCinematicComet();
+    }
+
+    triggerLevelUpCinematic() {
+        this.cinematicState.nebulaBloom = Math.max(this.cinematicState.nebulaBloom, 1.0);
+        this.cinematicState.starfieldSpinBoost = Math.max(this.cinematicState.starfieldSpinBoost, 1.0);
+        this.cinematicState.bloomPulse = Math.max(this.cinematicState.bloomPulse, 0.48);
+
+        const skyUniforms = this.volumetricNebulaSky?.userData?.materialData?.uniforms;
+        if (skyUniforms?.uEmissiveBoost) {
+            skyUniforms.uEmissiveBoost.value = Math.max(skyUniforms.uEmissiveBoost.value, 1.3);
+        }
+
+        this.pushReactiveEnvelope({
+            pulse: 0.36,
+            bloom: 0.24,
+            ring: 0.28,
+            particle: 0.24,
+            ambient: 0.36,
+        });
+    }
+
+    updateCinematicEvents(delta) {
+        const state = this.cinematicState;
+        if (!state) return;
+
+        state.cometCooldown = Math.max(0, state.cometCooldown - delta);
+        state.chromaSpike = Math.max(0, state.chromaSpike - delta / 0.6);
+        state.bloomPulse = Math.max(0, state.bloomPulse - delta / 0.9);
+        state.nebulaBloom = Math.max(0, state.nebulaBloom - delta / 1.5);
+        state.starfieldSpinBoost = Math.max(0, state.starfieldSpinBoost - delta / 1.7);
+        this._wormholeStrength = Math.max(0, (this._wormholeStrength ?? 0) - delta / 0.6);
+
+        const skyUniforms = this.volumetricNebulaSky?.userData?.materialData?.uniforms;
+        if (skyUniforms?.uEmissiveBoost && state.nebulaBloom > 0) {
+            const target = 1.0 + state.nebulaBloom * 0.3;
+            skyUniforms.uEmissiveBoost.value = Math.max(skyUniforms.uEmissiveBoost.value, target);
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Event Listeners
     // ─────────────────────────────────────────────────────────────────────────
@@ -3831,6 +4254,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                     particle: 0.11 + intensity * 0.28,
                     ambient: 0.22 + intensity * 0.4,
                 });
+                if (combo >= 5) {
+                    this.triggerHighComboCinematic(combo);
+                }
             }
         });
 
@@ -3845,13 +4271,22 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                     particle: 0.08 + intensity * 0.18,
                     ambient: 0.12 + intensity * 0.2,
                 });
+                if (lines >= 4) {
+                    this.triggerTetrisCinematic();
+                }
+            }
+        });
+
+        const levelUpUnsub = eventBus.on(EVENTS.LEVEL_UP, () => {
+            if (this.isActive && window.settings?.backgroundComboEffects !== false) {
+                this.triggerLevelUpCinematic();
             }
         });
 
         this.resizeHandler = () => this.resize(window.innerWidth, window.innerHeight);
         window.addEventListener('resize', this.resizeHandler);
 
-        this.eventUnsubscribers.push(lockUnsub, comboUnsub, lineClearUnsub);
+        this.eventUnsubscribers.push(lockUnsub, comboUnsub, lineClearUnsub, levelUpUnsub);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -3881,6 +4316,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             // Unified reactive envelope with capped boosts and deterministic decay.
             this.updateReactiveEnvelope(delta);
+            this.updateCinematicEvents(delta);
             this.ambientSpeedBoost += (this.ambientSpeedTarget - this.ambientSpeedBoost) * 0.02;
             this.applyParticleDrawBudgets();
 
@@ -3984,7 +4420,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             // Subtle starfield drift + twinkle uniform (WebGPU) for desktop readability.
             if (this.starfield) {
-                this.starfield.rotation.y += delta * 0.00035;
+                const spinBoost = this.cinematicState?.starfieldSpinBoost ?? 0;
+                this.starfield.rotation.y += delta * (0.00035 + spinBoost * 0.055);
                 this.starfield.rotation.x = Math.sin(this.time * 0.012) * 0.01;
                 this.starfield.position.x = 0;
                 this.starfield.position.y = 0;
@@ -3998,14 +4435,45 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.camera.position.x = Math.sin(this.time * 0.25) * 4;
             this.camera.position.y = 55 + Math.sin(this.time * 0.2) * 3;
 
-            // Update bloom
+            // Update bloom + cinematic flourishes
             const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
-            const bloomStrength = this.getBloomStrength(effectScale);
+            const eventBloomPulse = this.cinematicState?.bloomPulse ?? 0;
+            const tierForBloom = this.cinematicTier ?? 0;
+            const bloomStrength = this.getBloomStrength(effectScale)
+                * (1 + eventBloomPulse * 0.36 * Math.max(tierForBloom, 0.35));
             if (this.isWebGPU && this.postProcessing) {
+                const tier = this.cinematicTier ?? 0;
+                // Barrel distortion ramps with play pace — fast combos feel like you're
+                // accelerating through the lens. Capped so it never crosses into nausea territory.
+                const paceOver = Math.max(0, this.playPaceMultiplier - 1.0);
+                const barrelStrength = tier > 0
+                    ? Math.min(0.07, paceOver * 0.10) * tier * effectScale
+                    : 0;
+                // Anamorphic flare tracks the reactive bloom envelope so bright cosmic moments
+                // (TETRIS, high combos) get the streaky lens-flare punch.
+                const anamorphicStrength = tier > 0
+                    ? (0.35 + (this.bloomBoost ?? 0) * 0.65 + eventBloomPulse * 0.45) * tier * effectScale
+                    : 0;
+                // God rays stay relatively stable but lift slightly with bloom envelope.
+                const godRayStrength = tier > 0
+                    ? (0.45 + (this.bloomBoost ?? 0) * 0.35 + eventBloomPulse * 0.18) * tier * effectScale
+                    : 0;
+                const roadReflectionStrength = tier > 0
+                    ? (0.055 + paceOver * 0.025 + eventBloomPulse * 0.035) * tier * effectScale
+                    : 0;
+                const chromaSpike = this.cinematicState?.chromaSpike ?? 0;
+
                 this.postProcessing.update({
                     bloomStrength,
-                    chromaticStrength: 0.0012 * effectScale,
-                    vignetteDarkness: 0.42 + (1 - effectScale) * 0.12,
+                    chromaticStrength: (0.0012 + chromaSpike * 0.006 * tier) * effectScale,
+                    exposure: 0.94 + eventBloomPulse * 0.035 * tier,
+                    vignetteDarkness: 0.56 + (1 - effectScale) * 0.1,
+                    barrelStrength,
+                    anamorphicStrength,
+                    godRayStrength,
+                    wormholeStrength: this._wormholeStrength,
+                    roadReflectionStrength,
+                    time: this.time,
                 });
             } else if (this.bloomPass) {
                 this.bloomPass.strength = bloomStrength;
@@ -4171,6 +4639,13 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         } else if (this.planet.material.uniforms) {
             this.planet.material.uniforms.uTime.value = this.time;
             this.planet.material.uniforms.uPulse.value = this.pulseIntensity + glowBoost;
+        }
+
+        // Atmospheric shell follows the planet (it's a child) — just feed its uniforms.
+        if (this.planetAtmosphereShell?.userData?.materialData?.uniforms) {
+            const shellU = this.planetAtmosphereShell.userData.materialData.uniforms;
+            shellU.uTime.value = this.time;
+            shellU.uPulse.value = this.pulseIntensity + glowBoost;
         }
 
         // Sync glow layers

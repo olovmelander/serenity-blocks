@@ -24,6 +24,7 @@ import {
 export class SerenityHub {
     constructor(serenityMode) {
         this.serenityMode = serenityMode;
+        this.originalSerenityMode = serenityMode;
         this.isOpen = false;
         this.currentTab = 'themes'; // 'themes', 'music', 'breathing'
 
@@ -650,6 +651,24 @@ export class SerenityHub {
     setPauseResumeCallbacks(onPause, onResume) {
         this.onPauseCallback = onPause;
         this.onResumeCallback = onResume;
+    }
+
+    /**
+     * Update the active mode context for the hub and all loaded tabs
+     * @param {Object} mode - The new mode context (e.g. SerenityMode instance or hubWrapper)
+     */
+    setMode(mode) {
+        this.serenityMode = mode;
+        if (this.breathingTab) this.breathingTab.serenityMode = mode;
+        if (this.musicTab) this.musicTab.serenityMode = mode;
+        if (this.themesTab) this.themesTab.serenityMode = mode;
+    }
+
+    /**
+     * Reset the mode context back to the original wrapper
+     */
+    resetModeToOriginal() {
+        this.setMode(this.originalSerenityMode);
     }
 
     /**

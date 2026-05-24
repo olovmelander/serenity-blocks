@@ -86,12 +86,18 @@ export class SerenityMode extends BaseGameMode {
 
         // Check if there's a global Serenity Hub (created by main.js)
         // If not, create mode-specific instance (fallback for testing)
-        if (window.serenityBlocks && window.serenityBlocks.serenityHub) {
+        if (window.serenityBlocks) {
+            if (!window.serenityBlocks.serenityHub) {
+                console.log('[Serenity] Global Serenity Hub not initialized yet. Initializing immediately...');
+                await window.serenityBlocks.initializeGlobalSerenityHub();
+            }
             console.log('[Serenity] Using global Serenity Hub instance');
             this.serenityHub = window.serenityBlocks.serenityHub;
             this.usingGlobalHub = true;
-            // Update the wrapper to point to this mode for breathing controls
-            this.serenityHub.serenityMode = this;
+            if (this.serenityHub) {
+                // Update the wrapper to point to this mode for breathing controls
+                this.serenityHub.setMode(this);
+            }
         } else {
             console.log('[Serenity] Creating mode-specific Serenity Hub instance');
             this.serenityHub = new SerenityHub(this);
@@ -193,6 +199,10 @@ export class SerenityMode extends BaseGameMode {
             if (this.usingGlobalHub) {
                 // Just hide it if it's global, don't destroy
                 this.serenityHub.hide();
+                // Restore original mode wrapper for non-Serenity Mode usage
+                if (typeof this.serenityHub.resetModeToOriginal === 'function') {
+                    this.serenityHub.resetModeToOriginal();
+                }
             } else {
                 this.serenityHub.destroy();
             }

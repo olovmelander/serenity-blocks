@@ -270,7 +270,8 @@ assert(
     'Crack overlay MRT role tag missing',
 );
 assert(
-    themeSource.includes("this.tagMaterialForMrt(shardMaterial, 'pillar-shard', true);"),
+    themeSource.includes("this.tagMaterialForMrt(shardMaterial, 'pillar-shard', true);")
+        || themeSource.includes("this.tagMaterialForMrt(mat, 'pillar-shard', true);"),
     'Pillar shard MRT role tag missing',
 );
 assert(
