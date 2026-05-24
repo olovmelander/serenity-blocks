@@ -177,7 +177,21 @@
         </div>
 
         <div class="panel">
-            <h2>5) Soak Test (30+ Minutes)</h2>
+            <h2>5) 120 FPS Perf Gate</h2>
+            <div class="row">
+                <label>Loops: <input id="perf-loops" type="number" min="1" step="1" value="3"></label>
+                <label>Step ms: <input id="perf-step-ms" type="number" min="100" step="10" value="180"></label>
+                <label>Warmup ms: <input id="perf-warmup-ms" type="number" min="250" step="50" value="1200"></label>
+                <button id="run-120fps-gate">Run 120 FPS Perf Gate</button>
+                <button id="download-120fps-gate" disabled>Download Gate Report</button>
+            </div>
+            <div class="hint">
+                Uses real frame timing at 1080p intent: WebGPU High must reach 120 FPS average / 100 FPS 1% low; forced WebGL High must reach 60 FPS average / 55 FPS 1% low.
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>6) Soak Test (30+ Minutes)</h2>
             <div class="row">
                 <label>Duration (minutes): <input id="soak-minutes" type="number" min="1" step="1" value="30"></label>
                 <label>Sample every (seconds): <input id="soak-sample-seconds" type="number" min="5" step="5" value="30"></label>
@@ -190,7 +204,7 @@
         </div>
 
         <div class="panel">
-            <h2>6) Theme Switch Leak Validation</h2>
+            <h2>7) Theme Switch Leak Validation</h2>
             <div class="row">
                 <label>Cycles: <input id="switch-cycles" type="number" min="1" step="1" value="20"></label>
                 <label>Settle ms: <input id="switch-settle-ms" type="number" min="200" step="100" value="900"></label>
@@ -201,7 +215,7 @@
         </div>
 
         <div class="panel">
-            <h2>7) Console / Commands</h2>
+            <h2>8) Console / Commands</h2>
             <code>window.iceTempleBaseline.play('stress', { loops: 2, stepMs: 220 });
 window.iceTempleBaseline.validateEvents({ settleMs: 260 });
 window.iceTempleBaseline.validatePipeline({ includePost: true });
@@ -230,6 +244,9 @@ window.iceTempleBaseline.stop();</code>
         const baselineQuery = '?iceTempleBaseline=1&iceTempleSeed=1234&iceTempleFixedDt=16.666';
         const webgpuUrl = `../../index.html${baselineQuery}`;
         const webglUrl = `../../index.html${baselineQuery}&forceWebGL=1`;
+        const perfQuery = '?iceTempleBaseline=1&iceTempleSeed=1234';
+        const perfWebgpuUrl = `../../index.html${perfQuery}`;
+        const perfWebglUrl = `../../index.html${perfQuery}&forceWebGL=1`;
 
         const soakState = {
             running: false,
@@ -242,6 +259,7 @@ window.iceTempleBaseline.stop();</code>
         let lastPresetMatrix = null;
         let lastEvidenceBundle = null;
         let lastDualCampaign = null;
+        let last120FpsGate = null;
 
         function nowLabel() {
             return new Date().toISOString().replace('T', ' ').slice(0, 19);
@@ -724,6 +742,99 @@ window.iceTempleBaseline.stop();</code>
             return campaign;
         }
 
+        async function runPerformanceSample(url, label, thresholds) {
+            const loops = Math.max(1, Number(document.getElementById('perf-loops').value) || 3);
+            const stepMs = Math.max(100, Number(document.getElementById('perf-step-ms').value) || 180);
+            const warmupMs = Math.max(250, Number(document.getElementById('perf-warmup-ms').value) || 1200);
+
+            await load(url);
+            const helper = await waitForHelper();
+            if (!helper.setQuality || !helper.play || !helper.report) {
+                throw new Error('Required Ice Temple baseline helpers are unavailable.');
+            }
+
+            await helper.setQuality('High', { waitMs: warmupMs });
+            helper.reset();
+            await sleep(warmupMs);
+            helper.play('stress', { loops, stepMs });
+            const sequenceDurationMs = helper.getSequenceDuration
+                ? helper.getSequenceDuration('stress', loops, stepMs)
+                : (stepMs * 12 * loops + 100);
+            await sleep(sequenceDurationMs + 600);
+
+            const report = helper.report();
+            const budget = helper.budget ? helper.budget() : null;
+            const avgPass = Number.isFinite(report?.avgFps) && report.avgFps >= thresholds.avgFps;
+            const lowPass = Number.isFinite(report?.low1Fps) && report.low1Fps >= thresholds.low1Fps;
+
+            return {
+                label,
+                thresholds,
+                loops,
+                stepMs,
+                warmupMs,
+                report,
+                budget,
+                passed: avgPass && lowPass,
+                checks: {
+                    avgFps: {
+                        expected: thresholds.avgFps,
+                        actual: report?.avgFps ?? null,
+                        passed: avgPass,
+                    },
+                    low1Fps: {
+                        expected: thresholds.low1Fps,
+                        actual: report?.low1Fps ?? null,
+                        passed: lowPass,
+                    },
+                },
+            };
+        }
+
+        async function run120FpsPerfGate() {
+            const startedAt = Date.now();
+            log('120 FPS Perf Gate started');
+
+            const webgpu = await runPerformanceSample(perfWebgpuUrl, 'webgpu-high-1080p-120fps', {
+                avgFps: 120,
+                low1Fps: 100,
+            });
+            const webgl = await runPerformanceSample(perfWebglUrl, 'webgl-high-1080p-60fps', {
+                avgFps: 60,
+                low1Fps: 55,
+            });
+
+            last120FpsGate = {
+                label: 'ice-temple-120fps-perf-gate',
+                startedAt,
+                finishedAt: Date.now(),
+                resolutionIntent: '1920x1080',
+                webgpu,
+                webgl,
+                passed: webgpu.passed && webgl.passed,
+            };
+            document.getElementById('download-120fps-gate').disabled = false;
+
+            downloadJson(`ice-temple-120fps-gate-${Date.now()}.json`, last120FpsGate);
+            log('120 FPS Perf Gate finished', {
+                passed: last120FpsGate.passed,
+                webgpu: {
+                    passed: webgpu.passed,
+                    avgFps: webgpu.report?.avgFps ?? null,
+                    low1Fps: webgpu.report?.low1Fps ?? null,
+                    budget: webgpu.budget?.scaler ?? null,
+                },
+                webgl: {
+                    passed: webgl.passed,
+                    avgFps: webgl.report?.avgFps ?? null,
+                    low1Fps: webgl.report?.low1Fps ?? null,
+                    budget: webgl.budget?.scaler ?? null,
+                },
+            });
+
+            return last120FpsGate;
+        }
+
         async function runThemeSwitchLeakTest() {
             const cycles = Math.max(1, Number(document.getElementById('switch-cycles').value) || 20);
             const settleMs = Math.max(200, Number(document.getElementById('switch-settle-ms').value) || 900);
@@ -906,6 +1017,17 @@ window.iceTempleBaseline.stop();</code>
             link.click();
             URL.revokeObjectURL(mdUrl);
             log('Dual backend campaign report downloaded.');
+        });
+        document.getElementById('run-120fps-gate').addEventListener('click', () => {
+            run120FpsPerfGate().catch((error) => log(`ERROR: ${error.message}`));
+        });
+        document.getElementById('download-120fps-gate').addEventListener('click', () => {
+            if (!last120FpsGate) {
+                log('No 120 FPS gate report available.');
+                return;
+            }
+            downloadJson(`ice-temple-120fps-gate-${Date.now()}.json`, last120FpsGate);
+            log('120 FPS gate report downloaded.');
         });
 
         document.getElementById('start-soak').addEventListener('click', () => {

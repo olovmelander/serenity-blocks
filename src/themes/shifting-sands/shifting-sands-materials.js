@@ -160,6 +160,7 @@ export function createDuneMaterial(params) {
 
     // Varyings for fragment shader
     const vWormTrail = varying(float(0), 'vWormTrail');
+    const vWormScar = varying(float(0), 'vWormScar');
     const vHeight = varying(float(0), 'vHeight');
     const vSlope = varying(float(0), 'vSlope');
     const vWorldPos = varying(vec3(0), 'vWorldPos');
@@ -190,34 +191,45 @@ export function createDuneMaterial(params) {
 
         // Distance from worm head
         const distFromHead = pos.z.sub(wormHeadZ);
-        const headMask = smoothstep(260.0, 0.0, abs(distFromHead));
+        const headMask = smoothstep(320.0, 0.0, abs(distFromHead));
 
         // Ridge parameters
         const ridgeLength = float(150.0);
-        const wakeLength = float(300.0);
+        const wakeLength = float(320.0);
 
         // Calculate ridge displacement
         const ridgeDisplacement = float(0).toVar();
 
-        // Main ridge (ahead of head)
+        // Main ridge (ahead of head) - sand pushed up by the worm breaching
         const inRidge = distFromHead.greaterThan(0.0).and(distFromHead.lessThan(ridgeLength));
         If(inRidge, () => {
             const ridgeProgress = distFromHead.div(ridgeLength);
             ridgeDisplacement.assign(sin(ridgeProgress.mul(3.14159)).mul(24.0));
         });
 
-        // Wake behind head
+        // Wake behind head - collapsed groove with oscillating ripples
         const inWake = distFromHead.greaterThanEqual(wakeLength.negate()).and(distFromHead.lessThanEqual(0.0));
         If(inWake, () => {
             const wakeProgress = distFromHead.negate().div(wakeLength);
-            const wakeDisp = float(1.0).sub(wakeProgress).mul(sin(wakeProgress.mul(4.0).add(uTime.mul(1.5)))).mul(8.0);
-            ridgeDisplacement.assign(wakeDisp);
+            const wakeRipple = float(1.0).sub(wakeProgress)
+                .mul(sin(wakeProgress.mul(4.0).add(uTime.mul(1.5)))).mul(8.0);
+            // Sunken groove (negative displacement) where the worm has been
+            const groove = float(1.0).sub(wakeProgress).mul(-6.0);
+            ridgeDisplacement.assign(wakeRipple.add(groove));
         });
 
         // Apply worm displacement
         const wormMask = pathMask.mul(headMask);
         pos.y.addAssign(ridgeDisplacement.mul(wormMask));
         wormEffect.assign(wormMask.mul(step(0.5, ridgeDisplacement).mul(0.7).add(0.3)));
+
+        // Long-reach scar trailing behind the worm (independent of headMask falloff).
+        // Visible groove that fades out ~520 units behind the head along the worm path.
+        const wakeDist = max(float(0.0), distFromHead.negate()); // 0 at head, positive behind
+        const scarReach = float(520.0);
+        const scarFade = float(1.0).sub(smoothstep(0.0, scarReach, wakeDist));
+        // Pre-multiplied by the cross-section pathMask so it tapers laterally too.
+        vWormScar.assign(clamp(pathMask.mul(scarFade), 0.0, 1.0));
 
         // Store varyings
         vWormTrail.assign(clamp(wormEffect, 0.0, 1.0));
@@ -332,6 +344,20 @@ export function createDuneMaterial(params) {
             0.35
         );
         finalColor.assign(mix(finalColor, dustColor, dustIntensity.mul(step(0.12, vWormTrail))));
+
+        // --- 7b. WORM SCAR - long darkened groove trailing the sandworm ---
+        // The scar makes the worm's path visibly carved into the desert across hundreds of units.
+        const scarShadow = uColorA.mul(0.55);
+        const scarNoise = noise3D(worldPos.mul(0.18).add(vec3(0.0, uTime.mul(0.04), 0.0)));
+        // Edge softening: stronger near center of the path, with light noise breakup.
+        const scarStrength = vWormScar.mul(float(0.62).add(scarNoise.mul(0.18)));
+        finalColor.assign(mix(finalColor, scarShadow, clamp(scarStrength, 0.0, 0.6)));
+
+        // Subtle warm dust haze sitting ON TOP of the scar (sand still settling in the groove)
+        const haze = mix(uColorB.mul(0.85), uColorC.mul(0.6), 0.4);
+        const hazeNoise = noise3D(worldPos.mul(0.05).add(vec3(uTime.mul(0.2), 0.0, uTime.mul(0.12))));
+        const hazeMix = vWormScar.mul(float(0.10).add(hazeNoise.mul(0.10)));
+        finalColor.assign(mix(finalColor, haze, clamp(hazeMix, 0.0, 0.18)));
 
         return vec4(finalColor, 1.0);
     })();
@@ -613,9 +639,15 @@ export function createSandSmokeMaterial(params = {}) {
             const rand = velRand.w;
             const age = float(1.0).sub(life);
 
-            // Keep cloud feel, but constrain overdraw for stable frame times.
-            const sizeBase = float(62.0).add(rand.mul(40.0));
-            const expansion = age.mul(72.0);
+            // Head plumes are massive and expand fast (explosive eruption).
+            // Wake dust is medium-sized and broader (long flat plume along ground).
+            const isWake = step(float(0.42), rand);
+            const headBase = float(58.0).add(rand.mul(46.0));
+            const wakeBase = float(72.0).add(rand.mul(48.0));
+            const sizeBase = mix(headBase, wakeBase, isWake);
+            const headExpand = float(96.0);
+            const wakeExpand = float(70.0);
+            const expansion = age.mul(mix(headExpand, wakeExpand, isWake));
             const finalSize = sizeBase.add(expansion);
 
             // Stable billboard basis, including near-vertical camera rays.

@@ -46,11 +46,11 @@ const UNIFORM = Object.freeze({
 // Color temperature stops for slow evolution cycle
 // Each: [core_r, core_g, core_b, outer_r, outer_g, outer_b]
 const COLOR_STOPS = Object.freeze([
-    [7.2, 1.15, 0.16, 1.8, 0.24, 0.05],    // Deep magma red
-    [8.5, 2.4, 0.22, 2.4, 0.55, 0.06],      // Volcanic orange
-    [9.2, 4.8, 0.85, 3.0, 1.2, 0.15],       // Golden amber
-    [10.0, 7.5, 3.2, 3.8, 2.2, 0.8],        // White-hot
-    [8.5, 2.4, 0.22, 2.4, 0.55, 0.06],      // Back through orange
+    [7.2, 1.15, 0.16, 1.8, 0.24, 0.05], // Deep magma red
+    [8.5, 2.4, 0.22, 2.4, 0.55, 0.06], // Volcanic orange
+    [9.2, 4.8, 0.85, 3.0, 1.2, 0.15], // Golden amber
+    [10.0, 7.5, 3.2, 3.8, 2.2, 0.8], // White-hot
+    [8.5, 2.4, 0.22, 2.4, 0.55, 0.06], // Back through orange
 ]);
 const COLOR_CYCLE_PERIOD = 180; // seconds for full cycle (~3 minutes)
 
@@ -220,6 +220,7 @@ export default class VoidEmberTheme extends BaseTheme {
         canvas.style.background = '#000';
         canvas.style.opacity = '1';
         canvas.style.zIndex = '0';
+        canvas.style.imageRendering = 'auto';
         container.appendChild(canvas);
         this.canvas = canvas;
         return canvas;
@@ -498,11 +499,13 @@ fn vs_main(
 fn fs_main(input: VSOut) -> @location(0) vec4f {
     let local = input.uv * 2.0 - 1.0;
     let radius = dot(local, local);
-    let falloff = exp(-radius * 4.6);
+    let halo = exp(-radius * 4.6);
+    let core = exp(-radius * 36.0);
     let heat = fract(input.heat * 13.17);
     let color = mix(vec3f(0.7, 0.07, 0.03), vec3f(2.6, 0.95, 0.28), clamp(heat * 1.3, 0.0, 1.0));
-    let alpha = input.alpha * falloff;
-    return vec4f(color * alpha, alpha);
+    let alpha = input.alpha * (halo * 0.72 + core * 0.9);
+    let crisp_color = mix(color, vec3f(4.2, 2.3, 0.7), core * 0.8);
+    return vec4f(crisp_color * alpha, alpha);
 }
 `,
                 }),
@@ -523,11 +526,13 @@ struct VSOut {
 fn fs_main(input: VSOut) -> @location(0) vec4f {
     let local = input.uv * 2.0 - 1.0;
     let radius = dot(local, local);
-    let falloff = exp(-radius * 4.6);
+    let halo = exp(-radius * 4.6);
+    let core = exp(-radius * 36.0);
     let heat = fract(input.heat * 13.17);
     let color = mix(vec3f(0.7, 0.07, 0.03), vec3f(2.6, 0.95, 0.28), clamp(heat * 1.3, 0.0, 1.0));
-    let alpha = input.alpha * falloff;
-    return vec4f(color * alpha, alpha);
+    let alpha = input.alpha * (halo * 0.72 + core * 0.9);
+    let crisp_color = mix(color, vec3f(4.2, 2.3, 0.7), core * 0.8);
+    return vec4f(crisp_color * alpha, alpha);
 }
 `,
                 }),
@@ -1087,20 +1092,37 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
 
     resizeCanvas() {
         if (!this.canvas) {
-            return;
+            return false;
         }
 
+        const rect = this.canvas.getBoundingClientRect?.();
+        const displayWidth = Math.max(
+            1,
+            rect?.width || this.canvas.clientWidth || window.innerWidth || 1,
+        );
+        const displayHeight = Math.max(
+            1,
+            rect?.height || this.canvas.clientHeight || window.innerHeight || 1,
+        );
         const ratio = clamp(this.getEffectivePixelRatio(2) * this.qualityPreset.renderScale, 0.45, 2);
-        const width = Math.max(1, Math.floor(window.innerWidth * ratio));
-        const height = Math.max(1, Math.floor(window.innerHeight * ratio));
+        const maxTextureDimension = this.webgpu.device?.limits?.maxTextureDimension2D || 16384;
+        const width = Math.max(1, Math.min(maxTextureDimension, Math.ceil(displayWidth * ratio)));
+        const height = Math.max(1, Math.min(maxTextureDimension, Math.ceil(displayHeight * ratio)));
 
+        if (this.canvas.width === width && this.canvas.height === height) {
+            return false;
+        }
         this.canvas.width = width;
         this.canvas.height = height;
+        return true;
     }
 
     handleResize() {
-        this.resizeCanvas();
+        const resized = this.resizeCanvas();
         if (this.renderBackend === 'webgpu' && this.webgpu.device) {
+            if (!resized && this.webgpu.sceneTexture) {
+                return;
+            }
             this.webgpu.context.configure({
                 device: this.webgpu.device,
                 format: this.webgpu.format,
@@ -1243,7 +1265,7 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         floats[UNIFORM.misc + 0] = this.qualityPreset.vignetteStrength;
         floats[UNIFORM.misc + 1] = this.qualityPreset.noiseStrength;
         floats[UNIFORM.misc + 2] = this.qualityPreset.historyClamp;
-        floats[UNIFORM.misc + 3] = 0;
+        floats[UNIFORM.misc + 3] = this.qualityPreset.sharpness ?? 0.12;
 
         // Pack reactive gameplay channels into the padding slot
         floats[36] = this.runtime.shockwave;

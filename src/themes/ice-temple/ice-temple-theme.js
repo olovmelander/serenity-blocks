@@ -65,14 +65,14 @@ const QUALITY_PRESETS = {
         starCount: 2200,
         snowCount: 4500,
         snowComputeCount: 12000,
-        auroraSegments: 220,
-        auroraHeightSegments: 80,
+        auroraSegments: 160,
+        auroraHeightSegments: 56,
         auroraLayers: 3,
         bloomStrength: 0.58,
         bloomRadius: 0.35,
         bloomThreshold: 0.38,
         bloomMode: 'full',
-        bloomDownsample: 1.0,
+        bloomDownsample: 0.85,
         postScale: 1.0,
         fogMotionProfile: 'full',
         frameBudgetMs: 16.7,
@@ -82,14 +82,14 @@ const QUALITY_PRESETS = {
         starCount: 1900,
         snowCount: 3600,
         snowComputeCount: 10000,
-        auroraSegments: 180,
-        auroraHeightSegments: 72,
+        auroraSegments: 140,
+        auroraHeightSegments: 50,
         auroraLayers: 3,
         bloomStrength: 0.54,
         bloomRadius: 0.32,
         bloomThreshold: 0.4,
         bloomMode: 'full',
-        bloomDownsample: 0.9,
+        bloomDownsample: 0.75,
         postScale: 1.0,
         fogMotionProfile: 'full',
         frameBudgetMs: 16.7,
@@ -99,14 +99,14 @@ const QUALITY_PRESETS = {
         starCount: 1500,
         snowCount: 3000,
         snowComputeCount: 8500,
-        auroraSegments: 160,
-        auroraHeightSegments: 64,
+        auroraSegments: 120,
+        auroraHeightSegments: 44,
         auroraLayers: 2,
         bloomStrength: 0.5,
         bloomRadius: 0.3,
         bloomThreshold: 0.4,
         bloomMode: 'full',
-        bloomDownsample: 0.85,
+        bloomDownsample: 0.7,
         postScale: 1.0,
         fogMotionProfile: 'full',
         frameBudgetMs: 16.7,
@@ -174,6 +174,117 @@ const RESONANCE_QUALITY_SCALE = {
     Minimal: 0.3,
 };
 
+const QUALITY_BUDGETS = {
+    Extreme: {
+        webgpuTargetFrameMs: 8.33,
+        webgpuLow1Fps: 100,
+        webglTargetFrameMs: 16.7,
+        webglLow1Fps: 55,
+        maxDrawCalls: 190,
+        maxPostCostMs: 2.6,
+        adaptiveEnabled: true,
+        adaptiveMinScale: 0.64,
+        adaptiveMaxScale: 1.0,
+        adaptiveDownRate: 0.042,
+        adaptiveUpRate: 0.018,
+        minResolutionScale: 0.58,
+        maxResolutionScale: 1.0,
+        baseResolutionScale: 0.92,
+        minEffectScale: 0.54,
+        compileTimeoutMs: 3600,
+    },
+    Ultra: {
+        webgpuTargetFrameMs: 8.33,
+        webgpuLow1Fps: 100,
+        webglTargetFrameMs: 16.7,
+        webglLow1Fps: 55,
+        maxDrawCalls: 175,
+        maxPostCostMs: 2.35,
+        adaptiveEnabled: true,
+        adaptiveMinScale: 0.62,
+        adaptiveMaxScale: 1.0,
+        adaptiveDownRate: 0.044,
+        adaptiveUpRate: 0.018,
+        minResolutionScale: 0.56,
+        maxResolutionScale: 1.0,
+        baseResolutionScale: 0.9,
+        minEffectScale: 0.5,
+        compileTimeoutMs: 3400,
+    },
+    High: {
+        webgpuTargetFrameMs: 8.33,
+        webgpuLow1Fps: 100,
+        webglTargetFrameMs: 16.7,
+        webglLow1Fps: 55,
+        maxDrawCalls: 155,
+        maxPostCostMs: 2.1,
+        adaptiveEnabled: true,
+        adaptiveMinScale: 0.6,
+        adaptiveMaxScale: 1.0,
+        adaptiveDownRate: 0.046,
+        adaptiveUpRate: 0.017,
+        minResolutionScale: 0.54,
+        maxResolutionScale: 0.96,
+        baseResolutionScale: 0.88,
+        minEffectScale: 0.46,
+        compileTimeoutMs: 3200,
+    },
+    Medium: {
+        webgpuTargetFrameMs: 11.1,
+        webgpuLow1Fps: 80,
+        webglTargetFrameMs: 17.4,
+        webglLow1Fps: 52,
+        maxDrawCalls: 130,
+        maxPostCostMs: 1.8,
+        adaptiveEnabled: true,
+        adaptiveMinScale: 0.56,
+        adaptiveMaxScale: 0.98,
+        adaptiveDownRate: 0.048,
+        adaptiveUpRate: 0.016,
+        minResolutionScale: 0.5,
+        maxResolutionScale: 0.88,
+        baseResolutionScale: 0.78,
+        minEffectScale: 0.4,
+        compileTimeoutMs: 2800,
+    },
+    Low: {
+        webgpuTargetFrameMs: 13.3,
+        webgpuLow1Fps: 65,
+        webglTargetFrameMs: 18.8,
+        webglLow1Fps: 48,
+        maxDrawCalls: 110,
+        maxPostCostMs: 1.55,
+        adaptiveEnabled: true,
+        adaptiveMinScale: 0.52,
+        adaptiveMaxScale: 0.94,
+        adaptiveDownRate: 0.05,
+        adaptiveUpRate: 0.015,
+        minResolutionScale: 0.48,
+        maxResolutionScale: 0.78,
+        baseResolutionScale: 0.68,
+        minEffectScale: 0.34,
+        compileTimeoutMs: 2400,
+    },
+    Minimal: {
+        webgpuTargetFrameMs: 16.7,
+        webgpuLow1Fps: 55,
+        webglTargetFrameMs: 20.0,
+        webglLow1Fps: 42,
+        maxDrawCalls: 92,
+        maxPostCostMs: 1.35,
+        adaptiveEnabled: true,
+        adaptiveMinScale: 0.5,
+        adaptiveMaxScale: 0.9,
+        adaptiveDownRate: 0.052,
+        adaptiveUpRate: 0.014,
+        minResolutionScale: 0.46,
+        maxResolutionScale: 0.7,
+        baseResolutionScale: 0.58,
+        minEffectScale: 0.3,
+        compileTimeoutMs: 2000,
+    },
+};
+
 const BASELINE_PRESET_ORDER = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
 
 const WEBGPU_MODULE = THREE_WEBGPU;
@@ -188,6 +299,7 @@ function parseIceTempleFlags() {
             noEnhancements: false,
             noAuroraVolume: false,
             noFogMotion: false,
+            noDrs: false,
             baseline: false,
             mrtAudit: false,
             seed: null,
@@ -243,6 +355,7 @@ function parseIceTempleFlags() {
         noEnhancements: readBool('iceTempleNoEnhancements'),
         noAuroraVolume: readBool('iceTempleNoAuroraVolume'),
         noFogMotion: readBool('iceTempleNoFogMotion'),
+        noDrs: readBool('iceTempleNoDrs'),
         baseline: readBool('iceTempleBaseline'),
         mrtAudit: readBool('iceTempleMrtAudit'),
         seed,
@@ -323,6 +436,9 @@ export default class IceTempleTheme extends BaseTheme {
         this.snowSystem = null;
         this.shardBursts = [];
         this.shockwaves = [];
+        this.webglShardBurstPool = [];
+        this.webglShardMaterials = new Map();
+        this.shockwavePool = [];
         this.resonanceCracks = [];
         this.resonanceCrackPool = [];
         this.pendingPillarResonanceBursts = [];
@@ -344,8 +460,13 @@ export default class IceTempleTheme extends BaseTheme {
         this.snowDrawCount = 0;
         this.snowScale = 1.0;
         this.frameTimeEmaMs = 16.7;
+        this.lastPostCostMs = 0;
+        this.lastRenderPath = 'none';
+        this.lastAdaptiveApplyKey = null;
         this.qualityCheckTimer = 0;
         this.qualityTransitionInProgress = false;
+        this.performanceBudget = { ...QUALITY_BUDGETS.High };
+        this.adaptiveScalerState = null;
 
         // Shared uniforms for synchronized animation
         this.uniforms = {
@@ -357,6 +478,8 @@ export default class IceTempleTheme extends BaseTheme {
 
         this.activeQualityLevel = this.getCurrentQualityLevel();
         this.qualityPreset = QUALITY_PRESETS[this.activeQualityLevel] || QUALITY_PRESETS.High;
+        this.performanceBudget = this.resolveQualityBudget(this.activeQualityLevel);
+        this.resetAdaptiveScalerState();
 
         // Effect state
         this.targetPulseIntensity = 0;
@@ -383,19 +506,215 @@ export default class IceTempleTheme extends BaseTheme {
         return 'High';
     }
 
+    resolveQualityBudget(level) {
+        const normalized = normalizeQuality(level);
+        return {
+            ...(QUALITY_BUDGETS[normalized] || QUALITY_BUDGETS.High),
+        };
+    }
+
     applyQualityPreset(level) {
         const normalized = normalizeQuality(level);
         this.activeQualityLevel = normalized;
         this.qualityPreset = QUALITY_PRESETS[normalized] || QUALITY_PRESETS.High;
+        this.performanceBudget = this.resolveQualityBudget(normalized);
+        this.resetAdaptiveScalerState();
     }
 
     getPostScale() {
         return this.qualityPreset?.postScale ?? 1.0;
     }
 
+    getActiveTargetFrameMs() {
+        const budget = this.performanceBudget || QUALITY_BUDGETS.High;
+        if (this.isWebGPU) return budget.webgpuTargetFrameMs ?? 8.33;
+        return budget.webglTargetFrameMs ?? this.qualityPreset?.frameBudgetMs ?? 16.7;
+    }
+
+    getRendererPixelRatio(maxRatio = 2) {
+        const baseRatio = this.getEffectivePixelRatio(maxRatio);
+        const resolutionScale = this.adaptiveScalerState?.resolutionScale ?? 1.0;
+        return THREE.MathUtils.clamp(baseRatio * resolutionScale, 0.35, maxRatio);
+    }
+
+    getAdaptiveEffectScale() {
+        return this.adaptiveScalerState?.effectScale ?? 1.0;
+    }
+
+    getAdaptivePostScale() {
+        const presetScale = this.getPostScale();
+        const resolutionScale = this.adaptiveScalerState?.resolutionScale ?? 1.0;
+        return THREE.MathUtils.clamp(presetScale * resolutionScale, 0.42, 1.0);
+    }
+
+    getAdaptiveBloomDownsample() {
+        const presetDownsample = this.qualityPreset?.bloomDownsample ?? 1.0;
+        const effectScale = this.getAdaptiveEffectScale();
+        return THREE.MathUtils.clamp(presetDownsample * (0.72 + effectScale * 0.28), 0.42, 0.9);
+    }
+
+    resetAdaptiveScalerState() {
+        const targetFrameMs = this.getActiveTargetFrameMs();
+        const baseResolutionScale = this.performanceBudget?.baseResolutionScale ?? 1.0;
+        this.adaptiveScalerState = {
+            frameTimeEmaMs: targetFrameMs,
+            drawCallEma: 0,
+            postCostEmaMs: 0,
+            qualityScale: 1.0,
+            resolutionScale: baseResolutionScale,
+            baseResolutionScale,
+            effectScale: 1.0,
+        };
+        this.frameTimeEmaMs = targetFrameMs;
+        this.lastPostCostMs = 0;
+        this.lastRenderPath = 'none';
+        this.lastAdaptiveApplyKey = null;
+    }
+
+    applyAdaptiveScalerState(force = false) {
+        if (!this.renderer || typeof window === 'undefined') return;
+
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const pixelRatio = this.getRendererPixelRatio(2);
+        const postScale = this.getAdaptivePostScale();
+        const bloomDownsample = this.getAdaptiveBloomDownsample();
+        const applyKey = [
+            pixelRatio.toFixed(3),
+            postScale.toFixed(3),
+            bloomDownsample.toFixed(3),
+            width,
+            height,
+        ].join(':');
+
+        if (!force && applyKey === this.lastAdaptiveApplyKey) return;
+        this.lastAdaptiveApplyKey = applyKey;
+
+        this.renderer.setPixelRatio(pixelRatio);
+        this.renderer.setSize(width, height);
+
+        if (this.postProcessing?.setSize) {
+            this.postProcessing.postScale = postScale;
+            this.postProcessing.bloomDownsample = bloomDownsample;
+            this.postProcessing.setSize(width, height);
+        }
+
+        if (this.composer) {
+            const scaledWidth = Math.max(1, Math.floor(width * postScale));
+            const scaledHeight = Math.max(1, Math.floor(height * postScale));
+            this.composer.setSize(scaledWidth, scaledHeight);
+            if (this.bloomPass?.resolution) {
+                this.bloomPass.resolution.set(scaledWidth, scaledHeight);
+            }
+        }
+    }
+
+    updateAdaptiveScaler(frameMs) {
+        if (
+            !Number.isFinite(frameMs)
+            || frameMs <= 0
+            || this.fixedDeltaSeconds !== null
+            || this.flags.baseline
+            || this.flags.noDrs
+        ) {
+            return;
+        }
+
+        const state = this.adaptiveScalerState;
+        const budget = this.performanceBudget;
+        if (!state || !budget || budget.adaptiveEnabled === false) return;
+
+        const targetFrameMs = this.getActiveTargetFrameMs();
+        state.frameTimeEmaMs = state.frameTimeEmaMs * 0.9 + frameMs * 0.1;
+        state.drawCallEma = state.drawCallEma * 0.9 + (this.renderer?.info?.render?.calls ?? 0) * 0.1;
+        state.postCostEmaMs = state.postCostEmaMs * 0.9 + (this.lastPostCostMs || 0) * 0.1;
+        this.frameTimeEmaMs = state.frameTimeEmaMs;
+
+        const frameOverBudget = state.frameTimeEmaMs > targetFrameMs * 1.08;
+        const drawOverBudget = state.drawCallEma > (budget.maxDrawCalls ?? 160) * 1.05;
+        const postOverBudget = state.postCostEmaMs > (budget.maxPostCostMs ?? 2.0) * 1.08;
+        const frameUnderBudget = state.frameTimeEmaMs < targetFrameMs * 0.88;
+        const drawUnderBudget = state.drawCallEma < (budget.maxDrawCalls ?? 160) * 0.82;
+        const postUnderBudget = state.postCostEmaMs < (budget.maxPostCostMs ?? 2.0) * 0.72;
+
+        let nextScale = state.qualityScale;
+        if (frameOverBudget || drawOverBudget || postOverBudget) {
+            nextScale -= budget.adaptiveDownRate ?? 0.045;
+        } else if (frameUnderBudget && drawUnderBudget && postUnderBudget) {
+            nextScale += budget.adaptiveUpRate ?? 0.016;
+        }
+
+        nextScale = THREE.MathUtils.clamp(
+            nextScale,
+            budget.adaptiveMinScale ?? 0.55,
+            budget.adaptiveMaxScale ?? 1.0,
+        );
+        if (Math.abs(nextScale - state.qualityScale) < 0.01) return;
+
+        state.qualityScale = nextScale;
+        state.resolutionScale = THREE.MathUtils.clamp(
+            state.baseResolutionScale * nextScale,
+            budget.minResolutionScale ?? 0.5,
+            budget.maxResolutionScale ?? 1.0,
+        );
+        state.effectScale = THREE.MathUtils.clamp(
+            (nextScale - 0.22) / 0.78,
+            budget.minEffectScale ?? 0.4,
+            1.0,
+        );
+
+        this.applyAdaptiveScalerState();
+    }
+
+    getRuntimeBudgetSnapshot() {
+        const state = this.adaptiveScalerState || {};
+        const budget = this.performanceBudget || {};
+        return {
+            quality: this.activeQualityLevel,
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            renderPath: this.lastRenderPath,
+            targetFrameMs: Number(this.getActiveTargetFrameMs().toFixed(3)),
+            fpsTargets: {
+                webgpu: {
+                    fps: 120,
+                    low1Fps: budget.webgpuLow1Fps ?? 100,
+                },
+                webgl: {
+                    fps: 60,
+                    low1Fps: budget.webglLow1Fps ?? 55,
+                },
+            },
+            postCostMs: {
+                budget: budget.maxPostCostMs ?? null,
+                last: Number((this.lastPostCostMs ?? 0).toFixed(3)),
+                ema: Number((state.postCostEmaMs ?? 0).toFixed(3)),
+            },
+            drawCalls: {
+                budget: budget.maxDrawCalls ?? null,
+                last: this.renderer?.info?.render?.calls ?? null,
+                ema: Number((state.drawCallEma ?? 0).toFixed(1)),
+            },
+            scaler: {
+                locked: this.flags.noDrs === true,
+                frameTimeEmaMs: Number((state.frameTimeEmaMs ?? 0).toFixed(3)),
+                qualityScale: Number((state.qualityScale ?? 1).toFixed(3)),
+                resolutionScale: Number((state.resolutionScale ?? 1).toFixed(3)),
+                effectScale: Number((state.effectScale ?? 1).toFixed(3)),
+            },
+            particles: {
+                snowDrawCount: this.snowDrawCount,
+                snowMaxCount: this.snowMaxCount,
+                activeShardBursts: this.shardBursts?.length ?? 0,
+                activeShockwaves: this.shockwaves?.length ?? 0,
+            },
+        };
+    }
+
     getSnowBaseCount() {
         if (this.shouldUseCompute()) return this.qualityPreset.snowComputeCount;
-        return this.qualityPreset.snowCount;
+        // WebGL fallback path has no GPU compute; vertex shader runs per particle per
+        // frame, so we throttle the count to keep frame budget on integrated GPUs.
+        return Math.round(this.qualityPreset.snowCount * 0.6);
     }
 
     getResonanceQualityScale() {
@@ -403,15 +722,24 @@ export default class IceTempleTheme extends BaseTheme {
     }
 
     getResonancePerformanceScale() {
-        const frameBudget = this.qualityPreset?.frameBudgetMs ?? 16.7;
+        const frameBudget = this.getActiveTargetFrameMs();
         const frameMs = Math.max(8.0, this.frameTimeEmaMs || frameBudget);
-        return THREE.MathUtils.clamp(frameBudget / frameMs, 0.55, 1.0);
+        const effectScale = this.getAdaptiveEffectScale();
+        return THREE.MathUtils.clamp((frameBudget / frameMs) * effectScale, 0.42, 1.0);
     }
 
     shouldUseVolumetricAurora() {
         if (!this.isWebGPU || !this.useWebGPUMaterials) return false;
         if (this.flags.noEnhancements || this.flags.noAuroraVolume) return false;
         return (this.qualityPreset.auroraLayers ?? 1) > 1;
+    }
+
+    getAdaptiveAuroraLayerLimit() {
+        const baseLayers = this.shouldUseVolumetricAurora() ? (this.qualityPreset.auroraLayers ?? 1) : 1;
+        const effectScale = this.getAdaptiveEffectScale();
+        if (effectScale < 0.64) return 1;
+        if (effectScale < 0.82) return Math.min(baseLayers, 2);
+        return baseLayers;
     }
 
     getFogMotionProfile() {
@@ -465,6 +793,8 @@ export default class IceTempleTheme extends BaseTheme {
     updateFogMotion(elapsed, delta) {
         const fogMotionProfile = this.getFogMotionProfile();
         const useEnhancedFogMotion = this.shouldUseEnhancedFogMotion();
+        const motionScale = this.getAdaptiveEffectScale();
+        const { speed } = fogMotionProfile;
 
         if (this.mistLayers?.length) {
             this.mistLayers.forEach((layer, index) => {
@@ -479,17 +809,19 @@ export default class IceTempleTheme extends BaseTheme {
                 const opacityBase = layer.userData.opacityBase ?? layer.material.opacity ?? 1.0;
 
                 if (useEnhancedFogMotion) {
-                    const speed = fogMotionProfile.speed;
                     const driftX = Math.sin(elapsed * speed * (flowSpeed * 9) + phase)
                         * driftRadius
-                        * fogMotionProfile.driftMultiplier;
+                        * fogMotionProfile.driftMultiplier
+                        * motionScale;
                     const driftZ = Math.cos(elapsed * speed * (flowSpeed * 7.6) + phase)
                         * driftRadius
                         * 0.65
-                        * fogMotionProfile.driftMultiplier;
+                        * fogMotionProfile.driftMultiplier
+                        * motionScale;
                     const driftY = Math.sin(elapsed * speed * (flowSpeed * 4.2) + phase * 0.7)
                         * heightAmplitude
-                        * fogMotionProfile.heightMultiplier;
+                        * fogMotionProfile.heightMultiplier
+                        * motionScale;
 
                     layer.position.set(
                         basePosition.x + driftX,
@@ -498,7 +830,7 @@ export default class IceTempleTheme extends BaseTheme {
                     );
 
                     const pulse = Math.sin(elapsed * speed * (flowSpeed * 4.6) + phase);
-                    const scalePulse = 1 + (pulse * fogMotionProfile.scalePulseAmplitude);
+                    const scalePulse = 1 + (pulse * fogMotionProfile.scalePulseAmplitude * motionScale);
                     layer.scale.set(
                         baseScale.x * scalePulse,
                         baseScale.y * scalePulse,
@@ -506,7 +838,8 @@ export default class IceTempleTheme extends BaseTheme {
                     );
 
                     if (layer.material) {
-                        const opacity = opacityBase * (1 + (pulse * fogMotionProfile.opacityPulseAmplitude));
+                        const opacity = opacityBase
+                            * (1 + (pulse * fogMotionProfile.opacityPulseAmplitude * motionScale));
                         layer.material.opacity = THREE.MathUtils.clamp(opacity, 0.02, 1.0);
                     }
                     return;
@@ -532,19 +865,19 @@ export default class IceTempleTheme extends BaseTheme {
         if (!baseScale || baseY === undefined || baseRotationZ === undefined || !ringMaterial) return;
 
         if (useEnhancedFogMotion) {
-            const speed = fogMotionProfile.speed;
             const ringWave = Math.sin(elapsed * speed * (flowSpeed * 5) + phase);
-            this.fogRing.position.y = baseY + (ringWave * 0.08 * fogMotionProfile.heightMultiplier);
-            this.fogRing.rotation.z += delta * flowSpeed * fogMotionProfile.ringRotationSpeed;
+            this.fogRing.position.y = baseY + (ringWave * 0.08 * fogMotionProfile.heightMultiplier * motionScale);
+            this.fogRing.rotation.z += delta * flowSpeed * fogMotionProfile.ringRotationSpeed * motionScale;
 
-            const ringScalePulse = 1 + (ringWave * fogMotionProfile.ringScaleAmplitude);
+            const ringScalePulse = 1 + (ringWave * fogMotionProfile.ringScaleAmplitude * motionScale);
             this.fogRing.scale.set(
                 baseScale.x * ringScalePulse,
                 baseScale.y * ringScalePulse,
                 baseScale.z,
             );
 
-            const ringOpacity = opacityBase * (1 + (ringWave * fogMotionProfile.ringOpacityPulse));
+            const ringOpacity = opacityBase
+                * (1 + (ringWave * fogMotionProfile.ringOpacityPulse * motionScale));
             ringMaterial.opacity = THREE.MathUtils.clamp(ringOpacity, 0.04, 1.0);
             return;
         }
@@ -579,6 +912,50 @@ export default class IceTempleTheme extends BaseTheme {
         this.auroraReflections = null;
     }
 
+    disposeShardBurstPools() {
+        if (this.shardBursts?.length) {
+            this.shardBursts.forEach((burst) => {
+                if (burst.parent) burst.parent.remove(burst);
+                burst.geometry?.dispose?.();
+                if (!burst.userData?.pooled) {
+                    burst.material?.dispose?.();
+                }
+            });
+        }
+        this.shardBursts = [];
+
+        if (this.webglShardBurstPool?.length) {
+            this.webglShardBurstPool.forEach((burst) => {
+                burst.geometry?.dispose?.();
+            });
+            this.webglShardBurstPool = [];
+        }
+
+        if (this.webglShardMaterials?.size) {
+            this.webglShardMaterials.forEach((material) => material?.dispose?.());
+            this.webglShardMaterials.clear();
+        }
+    }
+
+    disposeShockwavePool() {
+        if (this.shockwaves?.length) {
+            this.shockwaves.forEach((wave) => {
+                if (wave.parent) wave.parent.remove(wave);
+                wave.geometry?.dispose?.();
+                wave.material?.dispose?.();
+            });
+        }
+        this.shockwaves = [];
+
+        if (this.shockwavePool?.length) {
+            this.shockwavePool.forEach((wave) => {
+                wave.geometry?.dispose?.();
+                wave.material?.dispose?.();
+            });
+            this.shockwavePool = [];
+        }
+    }
+
     disposeSnowSystem() {
         if (this.snowSystem) {
             this.disposeObject3D(this.snowSystem);
@@ -587,11 +964,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.snowMaxCount = 0;
         this.snowDrawCount = 0;
         this.disposeComputeSystems();
-
-        if (this.shardBursts?.length) {
-            this.shardBursts.forEach((burst) => this.disposeObject3D(burst));
-        }
-        this.shardBursts = [];
+        this.disposeShardBurstPools();
     }
 
     updatePostSettings() {
@@ -599,6 +972,10 @@ export default class IceTempleTheme extends BaseTheme {
             this.bloomPass.strength = this.qualityPreset.bloomStrength;
             this.bloomPass.radius = this.qualityPreset.bloomRadius;
             this.bloomPass.threshold = this.qualityPreset.bloomThreshold;
+            this.bloomPass.resolution.set(
+                Math.max(1, Math.floor(window.innerWidth * this.getAdaptivePostScale())),
+                Math.max(1, Math.floor(window.innerHeight * this.getAdaptivePostScale())),
+            );
         }
     }
 
@@ -613,6 +990,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.createSnowSystem();
         this.createShardComputeSystem();
         await this.setupPostProcessing();
+        this.applyAdaptiveScalerState(true);
         this.auditMrtMaterials();
     }
 
@@ -665,7 +1043,7 @@ export default class IceTempleTheme extends BaseTheme {
         const smoothing = Math.min(1, delta * 2.5);
         this.frameTimeEmaMs += (frameMs - this.frameTimeEmaMs) * smoothing;
 
-        const frameBudget = this.qualityPreset.frameBudgetMs ?? 16.7;
+        const frameBudget = this.getActiveTargetFrameMs();
         const overBudget = this.frameTimeEmaMs > frameBudget * 1.12;
         const underBudget = this.frameTimeEmaMs < frameBudget * 0.9;
         const minScale = this.qualityPreset.minParticleScale ?? 0.45;
@@ -676,7 +1054,7 @@ export default class IceTempleTheme extends BaseTheme {
             this.snowScale = Math.min(1.0, this.snowScale + (delta * 0.2));
         }
 
-        const desiredSnowCount = this.getSnowBaseCount() * this.snowScale;
+        const desiredSnowCount = this.getSnowBaseCount() * this.snowScale * this.getAdaptiveEffectScale();
         this.applySnowBudget(desiredSnowCount);
     }
 
@@ -724,6 +1102,7 @@ export default class IceTempleTheme extends BaseTheme {
         parsedFlags.noEnhancements = parsedFlags.noEnhancements || previousFlags.noEnhancements === true;
         parsedFlags.noAuroraVolume = parsedFlags.noAuroraVolume || previousFlags.noAuroraVolume === true;
         parsedFlags.noFogMotion = parsedFlags.noFogMotion || previousFlags.noFogMotion === true;
+        parsedFlags.noDrs = parsedFlags.noDrs || previousFlags.noDrs === true;
         parsedFlags.baseline = parsedFlags.baseline || previousFlags.baseline === true;
         parsedFlags.mrtAudit = parsedFlags.mrtAudit || previousFlags.mrtAudit === true;
 
@@ -838,6 +1217,8 @@ export default class IceTempleTheme extends BaseTheme {
                 }
             });
         }
+
+        this._sharedShardMaterial = null;
     }
 
     disposeRendererResources(removeCanvas = true) {
@@ -896,6 +1277,8 @@ export default class IceTempleTheme extends BaseTheme {
     disposeRuntimeResources({ removeCanvas = true } = {}) {
         this.disposePostProcessing();
         this.disposeComputeSystems();
+        this.disposeShardBurstPools();
+        this.disposeShockwavePool();
         this.disposeSceneResources();
         this.disposeRendererResources(removeCanvas);
         this.resetRuntimeReferences();
@@ -941,6 +1324,35 @@ export default class IceTempleTheme extends BaseTheme {
             await this.requestWebGLFallback('device-loss', info);
         } finally {
             this.deviceLossRecoveryInProgress = false;
+        }
+    }
+
+    async precompileSceneWithTimeout() {
+        if (!this.isWebGPU || !this.renderer?.compileAsync || !this.scene || !this.camera) {
+            return false;
+        }
+
+        const timeoutMs = Math.max(600, this.performanceBudget?.compileTimeoutMs ?? 3000);
+        let timeoutId = null;
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+                reject(new Error(`compileAsync timeout (${timeoutMs}ms)`));
+            }, timeoutMs);
+        });
+
+        try {
+            await Promise.race([
+                this.renderer.compileAsync(this.scene, this.camera),
+                timeoutPromise,
+            ]);
+            return true;
+        } catch (error) {
+            console.warn('[IceTemple] compileAsync prewarm skipped:', error.message);
+            return false;
+        } finally {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+            }
         }
     }
 
@@ -1035,6 +1447,7 @@ export default class IceTempleTheme extends BaseTheme {
             heapUsedMb: heapMb !== null ? Number(heapMb.toFixed(1)) : null,
             capabilities: { ...this.capabilities },
             flags: { ...this.flags },
+            runtimeBudget: this.getRuntimeBudgetSnapshot(),
             sequence: { ...this.baselineSequenceStats },
             eventCounts: { ...this.baselineEventCounts },
         };
@@ -1820,8 +2233,11 @@ export default class IceTempleTheme extends BaseTheme {
 
         if (webgpuEvidence) {
             const high = this.getPresetReportFromEvidence(webgpuEvidence, 'High');
-            const highPass = Number.isFinite(high?.avgFps) && high.avgFps >= 60;
-            const highFail = Number.isFinite(high?.avgFps) && high.avgFps < 60;
+            const highPass = Number.isFinite(high?.avgFps)
+                && high.avgFps >= 120
+                && (!Number.isFinite(high?.low1Fps) || high.low1Fps >= 100);
+            const highFail = Number.isFinite(high?.avgFps)
+                && (high.avgFps < 120 || (Number.isFinite(high?.low1Fps) && high.low1Fps < 100));
             let highStatus = 'inconclusive';
             let highDetails = 'Target hardware/resolution verification metadata not supplied.';
             if (hasTargetHardwareVerification) {
@@ -1829,47 +2245,52 @@ export default class IceTempleTheme extends BaseTheme {
                 else if (highFail) highStatus = 'fail';
 
                 highDetails = Number.isFinite(high?.avgFps)
-                    ? `High preset avgFps=${high.avgFps}.`
+                    ? `High preset avgFps=${high.avgFps}, low1Fps=${high.low1Fps ?? 'n/a'}.`
                     : 'High preset metrics unavailable.';
             }
             addCriterion(
-                'high_1080p_rtx3060_60fps',
-                'High preset hits 60 FPS at 1080p on RTX 3060-class hardware.',
+                'webgpu_high_1080p_midrange_120fps',
+                'WebGPU High preset hits 120 FPS at 1080p on midrange desktop hardware with 100 FPS 1% low.',
                 highStatus,
                 highDetails,
             );
 
-            const extreme = this.getPresetReportFromEvidence(webgpuEvidence, 'Extreme');
-            const extremePass = Number.isFinite(extreme?.avgFps) && extreme.avgFps >= 60;
-            const extremeFail = Number.isFinite(extreme?.avgFps) && extreme.avgFps < 60;
-            let extremeStatus = 'inconclusive';
-            let extremeDetails = 'Target hardware/resolution verification metadata not supplied.';
+            const webgl = webglEvidence ? this.getPresetReportFromEvidence(webglEvidence, 'High') : null;
+            const webglPass = Number.isFinite(webgl?.avgFps)
+                && webgl.avgFps >= 60
+                && (!Number.isFinite(webgl?.low1Fps) || webgl.low1Fps >= 55);
+            const webglFail = Number.isFinite(webgl?.avgFps)
+                && (webgl.avgFps < 60 || (Number.isFinite(webgl?.low1Fps) && webgl.low1Fps < 55));
+            let webglStatus = 'inconclusive';
+            let webglDetails = webglEvidence
+                ? 'Target hardware/resolution verification metadata not supplied.'
+                : 'WebGL evidence is required.';
             if (hasTargetHardwareVerification) {
-                if (extremePass) extremeStatus = 'pass';
-                else if (extremeFail) extremeStatus = 'fail';
+                if (webglPass) webglStatus = 'pass';
+                else if (webglFail) webglStatus = 'fail';
 
-                extremeDetails = Number.isFinite(extreme?.avgFps)
-                    ? `Extreme preset avgFps=${extreme.avgFps}.`
-                    : 'Extreme preset metrics unavailable.';
+                webglDetails = Number.isFinite(webgl?.avgFps)
+                    ? `Forced WebGL High avgFps=${webgl.avgFps}, low1Fps=${webgl.low1Fps ?? 'n/a'}.`
+                    : 'Forced WebGL High metrics unavailable.';
             }
             addCriterion(
-                'extreme_1440p_rtx4070_60fps',
-                'Extreme preset hits 60 FPS at 1440p on RTX 4070-class hardware.',
-                extremeStatus,
-                extremeDetails,
+                'webgl_high_1080p_midrange_60fps',
+                'Forced WebGL High preset remains stable at 60 FPS with 55 FPS 1% low.',
+                webglStatus,
+                webglDetails,
             );
         } else {
             addCriterion(
-                'high_1080p_rtx3060_60fps',
-                'High preset hits 60 FPS at 1080p on RTX 3060-class hardware.',
+                'webgpu_high_1080p_midrange_120fps',
+                'WebGPU High preset hits 120 FPS at 1080p on midrange desktop hardware with 100 FPS 1% low.',
                 'inconclusive',
                 'WebGPU evidence is required.',
             );
             addCriterion(
-                'extreme_1440p_rtx4070_60fps',
-                'Extreme preset hits 60 FPS at 1440p on RTX 4070-class hardware.',
+                'webgl_high_1080p_midrange_60fps',
+                'Forced WebGL High preset remains stable at 60 FPS with 55 FPS 1% low.',
                 'inconclusive',
-                'WebGPU evidence is required.',
+                'WebGPU and WebGL evidence are required.',
             );
         }
 
@@ -1924,6 +2345,22 @@ export default class IceTempleTheme extends BaseTheme {
         lines.push(`- Backend: ${evidence.backend}`);
         lines.push(`- Generated: ${new Date(evidence.finishedAt).toISOString()}`);
         lines.push('');
+
+        if (evidence.runtimeBudget) {
+            const budget = evidence.runtimeBudget;
+            lines.push('## Runtime Budget Snapshot');
+            lines.push('');
+            lines.push(`- Render path: ${budget.renderPath ?? 'unknown'}`);
+            lines.push(`- Target frame: ${budget.targetFrameMs ?? 'n/a'}ms`);
+            lines.push(`- Post cost: ${budget.postCostMs?.ema ?? 'n/a'}ms EMA`);
+            lines.push(`- Draw calls: ${budget.drawCalls?.ema ?? 'n/a'} EMA`);
+            lines.push(
+                `- Scale: q=${budget.scaler?.qualityScale ?? 'n/a'},`
+                + ` r=${budget.scaler?.resolutionScale ?? 'n/a'},`
+                + ` fx=${budget.scaler?.effectScale ?? 'n/a'}`,
+            );
+            lines.push('');
+        }
 
         if (evidence.validation) {
             const formatStatus = (value) => {
@@ -2095,6 +2532,7 @@ export default class IceTempleTheme extends BaseTheme {
             validation,
             materialInventory,
             shaderInventory,
+            runtimeBudget: this.getRuntimeBudgetSnapshot(),
             rendererMemory: {
                 textures: memoryInfo.textures ?? null,
                 geometries: memoryInfo.geometries ?? null,
@@ -2316,6 +2754,7 @@ export default class IceTempleTheme extends BaseTheme {
             collectEvidence: (options = {}) => this.collectBaselineEvidence(options),
             downloadEvidence: (label) => this.downloadBaselineEvidence(label),
             evaluateCriteria: (options = {}) => this.evaluateSuccessCriteria(options),
+            budget: () => this.getRuntimeBudgetSnapshot(),
             getEvidence: () => this.lastBaselineEvidence,
             stop: () => this.clearBaselinePlaybackTimers(),
         };
@@ -2327,7 +2766,7 @@ export default class IceTempleTheme extends BaseTheme {
             + ' getSequenceDuration(sequence, loops, stepMs),'
             + ' getPresetOrder(), setQuality(level, options), capturePresetMatrix(options),'
             + ' downloadPresetMatrix(label), collectEvidence(options),'
-            + ' downloadEvidence(label), evaluateCriteria(options), getEvidence(), stop()',
+            + ' downloadEvidence(label), evaluateCriteria(options), budget(), getEvidence(), stop()',
         );
     }
 
@@ -2396,6 +2835,8 @@ export default class IceTempleTheme extends BaseTheme {
             return;
         }
         this.setupRendererResilience();
+        this.resetAdaptiveScalerState();
+        this.applyAdaptiveScalerState(true);
 
         this.useWebGPUMaterials = false;
         if (this.isWebGPU) {
@@ -2412,6 +2853,7 @@ export default class IceTempleTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
 
         await this.setupPostProcessing();
+        this.applyAdaptiveScalerState(true);
 
         // ─────────────────────────────────────────────────────────────────────
         // MAIN GROUP (for subtle drift animation)
@@ -2433,6 +2875,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.setupLighting();
         this.createEnvironmentMap();
         this.auditMrtMaterials();
+        await this.precompileSceneWithTimeout();
 
         // ─────────────────────────────────────────────────────────────────────
         // EVENT LISTENERS
@@ -2513,7 +2956,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.probeCapabilities();
 
         renderer.setSize(width, height);
-        renderer.setPixelRatio(this.getEffectivePixelRatio());
+        renderer.setPixelRatio(this.getRendererPixelRatio(2));
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.4;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -2601,10 +3044,10 @@ export default class IceTempleTheme extends BaseTheme {
         this.disposePostProcessing();
         if (!this.flags.usePost || !this.renderer || !this.scene || !this.camera) return;
 
-        const postScale = this.getPostScale();
+        const postScale = this.getAdaptivePostScale();
         const bloomDownsample = this.qualityPreset.bloomMode === 'half'
-            ? Math.min(0.75, this.qualityPreset.bloomDownsample ?? 0.75)
-            : (this.qualityPreset.bloomDownsample ?? 1.0);
+            ? Math.min(0.75, this.getAdaptiveBloomDownsample())
+            : this.getAdaptiveBloomDownsample();
 
         if (this.isWebGPU) {
             try {
@@ -2785,6 +3228,7 @@ export default class IceTempleTheme extends BaseTheme {
 
             const aurora = new THREE.Mesh(geometry, material);
             aurora.position.set(0, y, z);
+            aurora.userData.auroraLayerIndex = i;
             aurora.userData.auroraIntensityScale = intensityScale;
             aurora.userData.auroraTimeOffset = timeOffset;
             aurora.userData.basePosition = aurora.position.clone();
@@ -2812,6 +3256,7 @@ export default class IceTempleTheme extends BaseTheme {
             const reflectionAurora = new THREE.Mesh(reflectionGeometry, reflectionMaterial);
             reflectionAurora.position.set(0, -y, z);
             reflectionAurora.scale.y = -1;
+            reflectionAurora.userData.auroraLayerIndex = i;
             reflectionAurora.userData.auroraIntensityScale = reflectionIntensityScale;
             reflectionAurora.userData.auroraTimeOffset = timeOffset;
             reflectionAurora.userData.basePosition = reflectionAurora.position.clone();
@@ -2859,36 +3304,26 @@ export default class IceTempleTheme extends BaseTheme {
 
         const alphaTexture = new THREE.CanvasTexture(canvas);
 
-        // Floor material with FULL PBR ice settings - Enhanced Blue Tint
+        // Floor material - non-transmissive PBR ice (transmission removed for perf;
+        // refraction through floor is invisible since nothing exists below it).
+        // Deep-blue look preserved via brighter emissive + clearcoat + envMap.
         const material = new THREE.MeshPhysicalMaterial({
-            // 1. Basic Optical Properties
-            color: 0x4488ff, // Blue surface tint
-            roughness: 0.15, // Low for wet ice
-            metalness: 0.1, // Slight metalness for extra reflection
-            transmission: 0.85, // Glass-like
-            ior: 1.31, // Index of Refraction for ice
+            color: 0x4488ff,
+            roughness: 0.15,
+            metalness: 0.1,
 
-            // 2. Volume / Depth (The Blue Tint)
-            thickness: 2.5, // Thicker for deeper color
-            attenuationColor: new THREE.Color(0x0044ff), // Richer blue
-            attenuationDistance: 0.5, // Stronger blue absorption (lower value = bluer)
-
-            // 3. Surface Detail (The "Frost" layer)
-            clearcoat: 1.0, // Polished wet layer
+            clearcoat: 1.0,
             clearcoatRoughness: 0.05,
 
-            // 4. Texture as normal map for cracks
             normalMap: iceNormalTexture,
-            normalScale: new THREE.Vector2(0.5, 0.5), // Deeper cracks
+            normalScale: new THREE.Vector2(0.5, 0.5),
 
-            // 5. Glow and Edges - Enhanced for crystal effect
-            emissive: 0x0a2266, // Subtle blue inner glow
-            emissiveIntensity: 0.3, // Reduced glow
+            emissive: 0x0d2a78,
+            emissiveIntensity: 0.45,
 
             transparent: true,
             alphaMap: alphaTexture,
-            // alphaTest removed to allow soft blending
-            depthWrite: false, // Prevent z-fighting and allow proper blending
+            depthWrite: false,
             side: THREE.DoubleSide,
 
             envMapIntensity: 1.5,
@@ -2899,7 +3334,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.frostFloor.rotation.x = -Math.PI / 2;
         this.frostFloor.renderOrder = -1; // Draw first to act as background
         this.frostFloor.position.y = 0;
-        this.frostFloor.receiveShadow = true;
+        this.frostFloor.receiveShadow = false;
 
         this.mainGroup.add(this.frostFloor);
         this.floorMaterial = material;
@@ -3132,11 +3567,41 @@ export default class IceTempleTheme extends BaseTheme {
             },
         ];
 
-        for (const config of pillarPositions) {
-            const pillar = this.createIcePillar(config);
+        pillarPositions.forEach((config, index) => {
+            const pillar = this.createIcePillar({ ...config, index });
             this.icePillars.push(pillar);
             this.mainGroup.add(pillar.group);
+        });
+    }
+
+    getSharedShardMaterial() {
+        if (!this._sharedShardMaterial) {
+            const mat = new THREE.MeshPhysicalMaterial({
+                color: 0xaaffff,
+                emissive: 0x4499cc,
+                emissiveIntensity: 0.4,
+                roughness: 0.1,
+                metalness: 0.0,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.1,
+                side: THREE.DoubleSide,
+            });
+            this.tagMaterialForMrt(mat, 'pillar-shard', true);
+            this._sharedShardMaterial = mat;
         }
+        return this._sharedShardMaterial;
+    }
+
+    shouldUsePillarPointLight(index = 0) {
+        if (this.isWebGL) return false;
+        const quality = this.activeQualityLevel;
+        let maxLights = 1;
+        if (quality === 'Extreme' || quality === 'Ultra') {
+            maxLights = 3;
+        } else if (quality === 'High') {
+            maxLights = 2;
+        }
+        return index < maxLights;
     }
 
     createIcePillar(config) {
@@ -3184,20 +3649,7 @@ export default class IceTempleTheme extends BaseTheme {
         // Create a ring of jagged shards that look like the floor being pushed up
 
         const shardCount = 8 + Math.floor(this.random() * 4);
-        const shardMaterial = new THREE.MeshPhysicalMaterial({
-            color: 0xaaffff, // Slightly blue-white crystal
-            emissive: 0x3388bb, // Softer blue glow
-            emissiveIntensity: 0.4, // Reduced glow
-            roughness: 0.1, // Smooth fracture
-            metalness: 0.0,
-            transmission: 0.3, // Semi-transparent crystal
-            thickness: 1.0,
-            ior: 1.6, // Crystal refraction
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.1,
-            side: THREE.DoubleSide,
-        });
-        this.tagMaterialForMrt(shardMaterial, 'pillar-shard', true);
+        const shardMaterial = this.getSharedShardMaterial();
 
         for (let i = 0; i < shardCount; i++) {
             // Irregular shard geometry
@@ -3239,16 +3691,17 @@ export default class IceTempleTheme extends BaseTheme {
             group.add(shard);
         }
 
+        const useCheaperOptics = this.isWebGL || this.getAdaptiveEffectScale() < 0.7;
         const material = new THREE.MeshPhysicalMaterial({
             color: 0xccEeff, // Very pale blue-white
             emissive: 0x225588, // Balanced blue glow
-            emissiveIntensity: 0.6, // Reduced glow for balance
+            emissiveIntensity: useCheaperOptics ? 0.72 : 0.6,
 
             metalness: 0.0, // Non-metallic for crystal
             roughness: 0.05, // Very smooth like glass
 
-            transmission: 0.4, // Glass-like transparency (like geode)
-            thickness: config.radius * 4, // Deep volume
+            transmission: useCheaperOptics ? 0.08 : 0.4, // Glass-like transparency (like geode)
+            thickness: useCheaperOptics ? config.radius * 1.2 : config.radius * 4, // Deep volume
             ior: 1.8, // Crystal-like refraction index
 
             clearcoat: 1.0, // High polish
@@ -3260,7 +3713,7 @@ export default class IceTempleTheme extends BaseTheme {
             envMapIntensity: 0.8, // Strong environment reflections
             side: THREE.DoubleSide,
             transparent: true,
-            opacity: 0.9,
+            opacity: useCheaperOptics ? 0.96 : 0.9,
         });
         this.tagMaterialForMrt(material, 'pillar-core', true);
         material.userData = {
@@ -3270,14 +3723,18 @@ export default class IceTempleTheme extends BaseTheme {
 
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.y = 0; // Sits perfectly on ground now
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
         group.add(mesh);
 
         // Internal glow point light (balanced for crystal glow)
-        const light = new THREE.PointLight(0x66ddff, 0.8, config.height * 2.5);
-        light.position.y = config.height * 0.5;
-        group.add(light);
+        const light = this.shouldUsePillarPointLight(config.index)
+            ? new THREE.PointLight(0x66ddff, 0.8, config.height * 2.5)
+            : null;
+        if (light) {
+            light.position.y = config.height * 0.5;
+            group.add(light);
+        }
 
         // Add subtle outer glow sprite
         const glowSprite = this.createPillarGlow(config);
@@ -3290,7 +3747,7 @@ export default class IceTempleTheme extends BaseTheme {
             config,
             material,
             glowSprite,
-            baseLightIntensity: light.intensity,
+            baseLightIntensity: light?.intensity ?? 0,
             resonancePulse: 0,
             targetResonancePulse: 0,
         };
@@ -3632,10 +4089,15 @@ export default class IceTempleTheme extends BaseTheme {
     // ═══════════════════════════════════════════════════════════════════════════
 
     buildResonancePathPoints(start, end, segmentCount, jitterAmplitude, branchBias = 0) {
+        const resolveZ = (point, fallback) => {
+            if (Number.isFinite(point?.z)) return point.z;
+            if (Number.isFinite(point?.y)) return point.y;
+            return fallback;
+        };
         const startX = Number.isFinite(start?.x) ? start.x : 0;
-        const startZ = Number.isFinite(start?.z) ? start.z : (Number.isFinite(start?.y) ? start.y : 0);
+        const startZ = resolveZ(start, 0);
         const endX = Number.isFinite(end?.x) ? end.x : startX;
-        const endZ = Number.isFinite(end?.z) ? end.z : (Number.isFinite(end?.y) ? end.y : startZ);
+        const endZ = resolveZ(end, startZ);
 
         const points = [];
         const segments = Math.max(6, Math.floor(segmentCount));
@@ -3750,7 +4212,7 @@ export default class IceTempleTheme extends BaseTheme {
         const sampledPoints = new Array(pointCount);
 
         const positionAttr = crackLine.geometry.attributes.position;
-        const array = positionAttr.array;
+        const { array } = positionAttr;
         for (let i = 0; i < pointCount; i++) {
             const srcIndex = Math.min(points.length - 1, Math.round(i * sampleStep));
             const src = points[srcIndex];
@@ -3822,7 +4284,7 @@ export default class IceTempleTheme extends BaseTheme {
             if (this.icePillars.length && i % 3 === 0) {
                 const pillar = this.icePillars[i % this.icePillars.length];
                 if (pillar?.group?.position) {
-                    const position = pillar.group.position;
+                    const { position } = pillar.group;
                     angle = Math.atan2(position.z, position.x) + (this.random() - 0.5) * 0.24;
                     radius = Math.min(maxRadius + 7, Math.hypot(position.x, position.z) + 4 + this.random() * 8);
                 }
@@ -3847,7 +4309,7 @@ export default class IceTempleTheme extends BaseTheme {
 
         for (let i = 0; i < pillarTriggerCount; i++) {
             const pillar = pillarsByDistance[i];
-            const position = pillar.group.position;
+            const { position } = pillar.group;
             const distance = Math.hypot(position.x, position.z);
             const strength = Math.max(0.45, Math.min(1.65, 0.6 + clampedCombo * 0.12 - i * 0.08));
             this.pendingPillarResonanceBursts.push({
@@ -3971,15 +4433,20 @@ export default class IceTempleTheme extends BaseTheme {
                             deferUpload: true,
                         });
                     } else {
-                        this.createIceShardBurst(Math.max(3, Math.floor(3.5 * qualityScale * perfScale)), point.x, point.z, {
-                            style: 'crack-front',
-                            directionX,
-                            directionZ,
-                            spread: 0.7,
-                            upwardMin: 0.3,
-                            upwardMax: 1.65,
-                            duration: 1.1,
-                        });
+                        this.createIceShardBurst(
+                            Math.max(3, Math.floor(3.5 * qualityScale * perfScale)),
+                            point.x,
+                            point.z,
+                            {
+                                style: 'crack-front',
+                                directionX,
+                                directionZ,
+                                spread: 0.7,
+                                upwardMin: 0.3,
+                                upwardMax: 1.65,
+                                duration: 1.1,
+                            },
+                        );
                     }
                 }
                 data.lastFrontIndex = frontIndex;
@@ -3997,7 +4464,7 @@ export default class IceTempleTheme extends BaseTheme {
             event.delay -= delta;
             if (event.delay > 0) continue;
 
-            const pillar = event.pillar;
+            const { pillar } = event;
             if (pillar?.group?.position) {
                 const pos = pillar.group.position;
                 pillar.targetResonancePulse = Math.max(pillar.targetResonancePulse || 0, event.strength);
@@ -4037,14 +4504,12 @@ export default class IceTempleTheme extends BaseTheme {
         }
     }
 
-    createShockwave(intensity, options = {}) {
-        const radius = Number.isFinite(options.radius) ? Math.max(0.5, options.radius) : 2;
-        const thickness = Number.isFinite(options.thickness) ? Math.max(0.03, options.thickness) : 0.15;
-        const geometry = new THREE.TorusGeometry(radius, thickness, 8, 50);
-        const color = options.color instanceof THREE.Color
-            ? options.color.clone()
-            : new THREE.Color(options.color ?? COLORS.iceGlow);
+    acquireShockwaveMesh(color) {
+        if (this.shockwavePool?.length) {
+            return this.shockwavePool.pop();
+        }
 
+        const geometry = new THREE.TorusGeometry(1, 0.08, 8, 50);
         const { material } = this.useWebGPUMaterials
             ? createShockwaveMaterialWebGPU({
                 time: this.uniforms.time.value,
@@ -4059,9 +4524,45 @@ export default class IceTempleTheme extends BaseTheme {
 
         const wave = new THREE.Mesh(geometry, material);
         wave.rotation.x = Math.PI / 2;
+        wave.frustumCulled = false;
+        wave.userData.pooledShockwave = true;
+        return wave;
+    }
+
+    releaseShockwave(wave) {
+        if (!wave) return;
+        if (wave.parent) wave.parent.remove(wave);
+        wave.visible = false;
+        wave.scale.set(1, 1, 1);
+        this.setMaterialUniform(wave.material, 'uOpacity', 0);
+
+        if (!this.shockwavePool) this.shockwavePool = [];
+        if (this.shockwavePool.length < 24) {
+            this.shockwavePool.push(wave);
+            return;
+        }
+
+        wave.geometry?.dispose?.();
+        wave.material?.dispose?.();
+    }
+
+    createShockwave(intensity, options = {}) {
+        const radius = Number.isFinite(options.radius) ? Math.max(0.5, options.radius) : 2;
+        const color = options.color instanceof THREE.Color
+            ? options.color.clone()
+            : new THREE.Color(options.color ?? COLORS.iceGlow);
+
+        const wave = this.acquireShockwaveMesh(color);
+        wave.visible = true;
         wave.position.set(options.x ?? 0, options.y ?? 0.5, options.z ?? 0);
+        wave.scale.setScalar(radius);
+        this.setMaterialUniform(wave.material, 'uTime', this.uniforms.time.value);
+        this.setMaterialUniform(wave.material, 'uOpacity', 1.0);
+        this.setMaterialUniform(wave.material, 'uColor', color);
 
         wave.userData = {
+            ...(wave.userData || {}),
+            pooledShockwave: true,
             life: Number.isFinite(options.life) ? options.life : 1.0,
             speed: Number.isFinite(options.speed) ? options.speed : 8 + intensity * 2,
         };
@@ -4070,43 +4571,147 @@ export default class IceTempleTheme extends BaseTheme {
         this.mainGroup.add(wave);
     }
 
+    getSharedIceShardMaterial(size) {
+        const roundedSize = Number.isFinite(size) ? Number(size).toFixed(1) : '8.0';
+        if (!this.webglShardMaterials) this.webglShardMaterials = new Map();
+        if (this.webglShardMaterials.has(roundedSize)) {
+            return this.webglShardMaterials.get(roundedSize);
+        }
+
+        const { material } = createIceShardMaterialWebGL({
+            uTime: { value: 0 },
+            uSize: { value: Number(roundedSize) },
+            color: COLORS.iceShards,
+        });
+        this.webglShardMaterials.set(roundedSize, material);
+        return material;
+    }
+
+    acquireWebGLShardBurst(count, material) {
+        const capacity = Math.max(16, Math.ceil(count / 16) * 16);
+        const poolIndex = this.webglShardBurstPool?.findIndex((burst) => (
+            (burst.userData?.capacity ?? 0) >= capacity
+        )) ?? -1;
+
+        if (poolIndex >= 0) {
+            const [burst] = this.webglShardBurstPool.splice(poolIndex, 1);
+            burst.material = material;
+            return burst;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(capacity * 3), 3));
+        geometry.setAttribute('aVelocity', new THREE.BufferAttribute(new Float32Array(capacity * 3), 3));
+        geometry.setAttribute('aLife', new THREE.BufferAttribute(new Float32Array(capacity), 1));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(new Float32Array(capacity), 1));
+
+        const burst = new THREE.Points(geometry, material);
+        burst.frustumCulled = false;
+        burst.userData = {
+            capacity,
+            pooled: true,
+            activeCount: 0,
+            startTime: 0,
+            duration: 1.5,
+        };
+        return burst;
+    }
+
+    releaseWebGLShardBurst(burst) {
+        if (!burst) return;
+        if (burst.parent) burst.parent.remove(burst);
+        burst.visible = false;
+        burst.geometry?.setDrawRange?.(0, 0);
+        burst.userData.activeCount = 0;
+
+        if (!this.webglShardBurstPool) this.webglShardBurstPool = [];
+        if (this.webglShardBurstPool.length < 32) {
+            this.webglShardBurstPool.push(burst);
+            return;
+        }
+
+        burst.geometry?.dispose?.();
+    }
+
     createIceShardBurst(count, originX = 0, originZ = 0, options = {}) {
         if (this.shardCompute && this.shouldUseCompute()) {
             const computeOptions = {
                 ...options,
                 deferUpload: options.deferUpload ?? true,
             };
-            this.shardCompute.spawnBurst(count, originX, originZ, computeOptions);
+            this.shardCompute.spawnBurst(
+                Math.max(1, Math.floor(count * this.getAdaptiveEffectScale())),
+                originX,
+                originZ,
+                computeOptions,
+            );
             return;
         }
 
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(count * 3);
-        const velocities = new Float32Array(count * 3);
-        const lifes = new Float32Array(count);
-        const randoms = new Float32Array(count);
-
         const style = options.style || 'default';
+        const requestedCount = Math.max(1, Math.floor(count * this.getAdaptiveEffectScale()));
+        const size = options.size ?? (style === 'crack-front' ? 6.8 : 8.0);
         const spread = Number.isFinite(options.spread) ? Math.max(0.08, options.spread) : 1.5;
         const directionX = Number.isFinite(options.directionX) ? options.directionX : 0;
         const directionZ = Number.isFinite(options.directionZ) ? options.directionZ : 0;
         const directionLength = Math.hypot(directionX, directionZ);
         const dirX = directionLength > 1e-5 ? directionX / directionLength : 0;
         const dirZ = directionLength > 1e-5 ? directionZ / directionLength : 0;
+        const styleDefaults = {
+            radialSpeedMin: 3.0,
+            radialSpeedMax: 8.0,
+            upwardMin: 2.0,
+            upwardMax: 6.0,
+        };
+        if (style === 'pillar-jet') {
+            styleDefaults.radialSpeedMin = 1.8;
+            styleDefaults.radialSpeedMax = 4.2;
+            styleDefaults.upwardMin = 4.1;
+            styleDefaults.upwardMax = 8.0;
+        } else if (style === 'crack-front') {
+            styleDefaults.radialSpeedMin = 2.0;
+            styleDefaults.radialSpeedMax = 4.8;
+            styleDefaults.upwardMin = 0.35;
+            styleDefaults.upwardMax = 2.2;
+        }
         const radialSpeedMin = Number.isFinite(options.radialSpeedMin)
             ? Math.max(0.1, options.radialSpeedMin)
-            : (style === 'pillar-jet' ? 1.8 : (style === 'crack-front' ? 2.0 : 3.0));
+            : styleDefaults.radialSpeedMin;
         const radialSpeedMax = Number.isFinite(options.radialSpeedMax)
             ? Math.max(radialSpeedMin, options.radialSpeedMax)
-            : (style === 'pillar-jet' ? 4.2 : (style === 'crack-front' ? 4.8 : 8.0));
+            : styleDefaults.radialSpeedMax;
         const upwardMin = Number.isFinite(options.upwardMin)
             ? options.upwardMin
-            : (style === 'pillar-jet' ? 4.1 : (style === 'crack-front' ? 0.35 : 2.0));
+            : styleDefaults.upwardMin;
         const upwardMax = Number.isFinite(options.upwardMax)
             ? Math.max(upwardMin, options.upwardMax)
-            : (style === 'pillar-jet' ? 8.0 : (style === 'crack-front' ? 2.2 : 6.0));
+            : styleDefaults.upwardMax;
 
-        for (let i = 0; i < count; i++) {
+        const material = this.useWebGPUMaterials
+            ? createIceShardMaterialWebGPU({
+                time: 0,
+                size,
+                color: COLORS.iceShards,
+            }).material
+            : this.getSharedIceShardMaterial(size);
+        const burst = this.useWebGPUMaterials
+            ? new THREE.Points(new THREE.BufferGeometry(), material)
+            : this.acquireWebGLShardBurst(requestedCount, material);
+        burst.frustumCulled = false;
+        const { geometry } = burst;
+        let positions = geometry.attributes.position?.array;
+        let velocities = geometry.attributes.aVelocity?.array;
+        let lifes = geometry.attributes.aLife?.array;
+        let randoms = geometry.attributes.aRandom?.array;
+
+        if (this.useWebGPUMaterials) {
+            positions = new Float32Array(requestedCount * 3);
+            velocities = new Float32Array(requestedCount * 3);
+            lifes = new Float32Array(requestedCount);
+            randoms = new Float32Array(requestedCount);
+        }
+
+        for (let i = 0; i < requestedCount; i++) {
             const i3 = i * 3;
 
             // Start at the specified origin (pillar base)
@@ -4118,7 +4723,7 @@ export default class IceTempleTheme extends BaseTheme {
             const angle = this.random() * Math.PI * 2;
             const speed = radialSpeedMin + this.random() * (radialSpeedMax - radialSpeedMin);
             let velocityX = Math.cos(angle) * speed;
-            let velocityY = upwardMin + this.random() * (upwardMax - upwardMin);
+            const velocityY = upwardMin + this.random() * (upwardMax - upwardMin);
             let velocityZ = Math.sin(angle) * speed;
 
             if (style === 'pillar-jet') {
@@ -4141,28 +4746,27 @@ export default class IceTempleTheme extends BaseTheme {
             randoms[i] = this.random();
         }
 
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aVelocity', new THREE.BufferAttribute(velocities, 3));
-        geometry.setAttribute('aLife', new THREE.BufferAttribute(lifes, 1));
-        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        if (this.useWebGPUMaterials) {
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('aVelocity', new THREE.BufferAttribute(velocities, 3));
+            geometry.setAttribute('aLife', new THREE.BufferAttribute(lifes, 1));
+            geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
+        } else {
+            geometry.attributes.position.needsUpdate = true;
+            geometry.attributes.aVelocity.needsUpdate = true;
+            geometry.attributes.aLife.needsUpdate = true;
+            geometry.attributes.aRandom.needsUpdate = true;
+        }
+        geometry.setDrawRange(0, requestedCount);
 
-        const { material } = this.useWebGPUMaterials
-            ? createIceShardMaterialWebGPU({
-                time: 0,
-                size: options.size ?? (style === 'crack-front' ? 6.8 : 8.0),
-                color: COLORS.iceShards,
-            })
-            : createIceShardMaterialWebGL({
-                uTime: { value: 0 },
-                uSize: { value: options.size ?? (style === 'crack-front' ? 6.8 : 8.0) },
-                color: COLORS.iceShards,
-            });
-
-        const burst = new THREE.Points(geometry, material);
         burst.userData = {
+            ...(burst.userData || {}),
             startTime: this.uniforms.time.value,
             duration: Number.isFinite(options.duration) ? options.duration : 1.5,
+            activeCount: requestedCount,
+            pooled: !this.useWebGPUMaterials,
         };
+        burst.visible = true;
 
         this.shardBursts.push(burst);
         this.mainGroup.add(burst);
@@ -4277,13 +4881,17 @@ export default class IceTempleTheme extends BaseTheme {
             this.setMaterialUniform(this.snowSystem.material, 'uTime', elapsed);
         }
 
+        const auroraLayerLimit = this.getAdaptiveAuroraLayerLimit();
         if (this.auroraPlanes?.length) {
             for (const aurora of this.auroraPlanes) {
+                const layerIndex = aurora.userData?.auroraLayerIndex ?? 0;
+                aurora.visible = layerIndex < auroraLayerLimit;
+                if (!aurora.visible) continue;
                 const timeOffset = aurora.userData?.auroraTimeOffset ?? 0;
                 const intensityScale = aurora.userData?.auroraIntensityScale ?? 1.0;
                 const basePosition = aurora.userData?.basePosition;
                 if (basePosition) {
-                    const shear = this.auroraShear * (0.65 + intensityScale * 0.3);
+                    const shear = this.auroraShear * this.getAdaptiveEffectScale() * (0.65 + intensityScale * 0.3);
                     aurora.position.x = basePosition.x + Math.sin(elapsed * 2.1 + timeOffset * 2.4) * shear * 1.8;
                     aurora.position.z = basePosition.z + Math.cos(elapsed * 1.8 + timeOffset * 1.6) * shear * 1.2;
                 }
@@ -4299,11 +4907,14 @@ export default class IceTempleTheme extends BaseTheme {
         // Update aurora reflections
         if (this.auroraReflections) {
             for (const reflection of this.auroraReflections) {
+                const layerIndex = reflection.userData?.auroraLayerIndex ?? 0;
+                reflection.visible = layerIndex < auroraLayerLimit;
+                if (!reflection.visible) continue;
                 const timeOffset = reflection.userData?.auroraTimeOffset ?? 0;
                 const intensityScale = reflection.userData?.auroraIntensityScale ?? 0.6;
                 const basePosition = reflection.userData?.basePosition;
                 if (basePosition) {
-                    const shear = this.auroraShear * (0.45 + intensityScale * 0.25);
+                    const shear = this.auroraShear * this.getAdaptiveEffectScale() * (0.45 + intensityScale * 0.25);
                     reflection.position.x = basePosition.x
                         + Math.sin(elapsed * 2.0 + timeOffset * 2.2) * shear * 1.3;
                     reflection.position.z = basePosition.z
@@ -4338,8 +4949,10 @@ export default class IceTempleTheme extends BaseTheme {
             const baseIntensity = pillar.baseLightIntensity ?? 0.5;
             const pulse = Math.sin(elapsed * 1.5 + i * 0.8) * 0.2;
             const resonanceContribution = (pillar.resonancePulse || 0) * 2.1;
-            pillar.light.intensity = baseIntensity + pulse + this.uniforms.pulseIntensity.value * 1.5
-                + resonanceContribution;
+            if (pillar.light) {
+                pillar.light.intensity = baseIntensity + pulse + this.uniforms.pulseIntensity.value * 1.5
+                    + resonanceContribution;
+            }
 
             if (pillar.material) {
                 const baseEmissive = pillar.material.userData?.baseEmissiveIntensity ?? 0.6;
@@ -4374,10 +4987,8 @@ export default class IceTempleTheme extends BaseTheme {
             this.setMaterialUniform(wave.material, 'uOpacity', wave.userData.life);
 
             if (wave.userData.life <= 0) {
-                this.mainGroup.remove(wave);
-                wave.geometry.dispose();
-                wave.material.dispose();
                 this.shockwaves.splice(i, 1);
+                this.releaseShockwave(wave);
             }
         }
 
@@ -4397,18 +5008,23 @@ export default class IceTempleTheme extends BaseTheme {
 
             // Update life attribute
             const lifes = burst.geometry.attributes.aLife.array;
+            const activeCount = burst.userData?.activeCount ?? lifes.length;
             let allDead = true;
-            for (let j = 0; j < lifes.length; j++) {
+            for (let j = 0; j < activeCount; j++) {
                 lifes[j] = Math.max(0, 1.0 - age / burst.userData.duration);
                 if (lifes[j] > 0) allDead = false;
             }
             burst.geometry.attributes.aLife.needsUpdate = true;
 
             if (allDead || age > burst.userData.duration) {
-                this.mainGroup.remove(burst);
-                burst.geometry.dispose();
-                burst.material.dispose();
                 this.shardBursts.splice(i, 1);
+                if (burst.userData?.pooled) {
+                    this.releaseWebGLShardBurst(burst);
+                } else {
+                    this.mainGroup.remove(burst);
+                    burst.geometry.dispose();
+                    burst.material.dispose();
+                }
             }
         }
 
@@ -4417,15 +5033,23 @@ export default class IceTempleTheme extends BaseTheme {
         // ─────────────────────────────────────────────────────────────────────
 
         this.renderFrame();
+        this.updateAdaptiveScaler(rawDelta * 1000);
     }
 
     renderFrame() {
         if (!this.renderer || !this.scene || !this.camera) return;
 
+        const canMeasure = typeof performance !== 'undefined' && typeof performance.now === 'function';
+        this.lastPostCostMs = 0;
+        this.lastRenderPath = this.isWebGPU ? 'webgpu-direct' : 'webgl-direct';
+
         if (this.isWebGPU) {
             if (this.postProcessing?.render) {
                 try {
+                    const postStart = canMeasure ? performance.now() : 0;
                     this.postProcessing.render();
+                    this.lastPostCostMs = canMeasure ? Math.max(0, performance.now() - postStart) : 0;
+                    this.lastRenderPath = 'webgpu-post';
                     return;
                 } catch (error) {
                     console.warn('[IceTemple] WebGPU post render failed, disabling post path:', error);
@@ -4437,6 +5061,7 @@ export default class IceTempleTheme extends BaseTheme {
 
             try {
                 this.renderer.render(this.scene, this.camera);
+                this.lastRenderPath = 'webgpu-direct';
             } catch (error) {
                 this.requestWebGLFallback('webgpu-render-failure', error).catch((fallbackError) => {
                     console.error('[IceTemple] Render fallback request failed:', fallbackError);
@@ -4447,7 +5072,10 @@ export default class IceTempleTheme extends BaseTheme {
 
         if (this.isWebGL && this.composer) {
             try {
+                const postStart = canMeasure ? performance.now() : 0;
                 this.composer.render();
+                this.lastPostCostMs = canMeasure ? Math.max(0, performance.now() - postStart) : 0;
+                this.lastRenderPath = 'webgl-post';
                 return;
             } catch (error) {
                 console.warn('[IceTemple] WebGL composer render failed, using direct renderer path:', error);
@@ -4460,6 +5088,7 @@ export default class IceTempleTheme extends BaseTheme {
 
         try {
             this.renderer.render(this.scene, this.camera);
+            this.lastRenderPath = this.isWebGPU ? 'webgpu-direct' : 'webgl-direct';
         } catch (error) {
             console.error('[IceTemple] Render failed:', error);
         }
@@ -4475,11 +5104,19 @@ export default class IceTempleTheme extends BaseTheme {
         const width = window.innerWidth;
         const height = window.innerHeight;
 
+        // Reset the adaptive resolution scaler on resize so transitions like F11 fullscreen
+        // start at native resolution. Without this, a frame-time spike from the larger
+        // viewport drops resolutionScale below 1.0 and the canvas stays blurry until the
+        // scaler ramps back up. The scaler will re-evaluate over the next few frames.
+        if (this.adaptiveScalerState) {
+            this.resetAdaptiveScalerState();
+        }
+
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
+        this.renderer.setPixelRatio(this.getRendererPixelRatio(2));
         this.renderer.setSize(width, height);
-        const postScale = this.getPostScale();
+        const postScale = this.getAdaptivePostScale();
         const scaledWidth = Math.max(1, Math.floor(width * postScale));
         const scaledHeight = Math.max(1, Math.floor(height * postScale));
 
@@ -4491,8 +5128,11 @@ export default class IceTempleTheme extends BaseTheme {
             this.bloomPass.resolution.set(scaledWidth, scaledHeight);
         }
         if (this.postProcessing?.setSize) {
+            this.postProcessing.postScale = postScale;
+            this.postProcessing.bloomDownsample = this.getAdaptiveBloomDownsample();
             this.postProcessing.setSize(width, height);
         }
+        this.lastAdaptiveApplyKey = null;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
