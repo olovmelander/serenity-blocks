@@ -585,56 +585,86 @@ export class SandSmokeCompute {
                     const r2 = fract(sin(float(index).mul(127.1).add(time.mul(3.7))).mul(43758.5453));
                     const r3 = fract(sin(float(index).mul(269.5).add(time.mul(1.5))).mul(43758.5453));
 
-                    // Spawn slightly ahead of the moving head (toward camera) with tiny jitter.
-                    // Keeps the dust front visually "in front of" the worm without drifting far.
-                    const lead = r2.mul(64.0).add(40.0).mul(leadScale); // +40..+104 ahead in Z (before leadScale)
-                    const jitter = r3.mul(20.0).sub(10.0); // -10..+10 variation
-                    const spawnZ = wormHeadZ.add(lead).add(jitter);
+                    // Particle type: head plume (~42%) vs trailing wake dust (~58%).
+                    // Stable per-particle so the visual mix stays consistent over time.
+                    const isWake = step(float(0.42), r); // 0 = head plume, 1 = wake dust
 
+                    // Head spawn: explosive eruption right at / just ahead of worm head.
+                    const headJitter = r3.mul(46.0).sub(6.0).mul(leadScale); // -6..+40 along Z
+                    const headSpawnZ = wormHeadZ.add(headJitter);
+
+                    // Wake spawn: distributed BEHIND the head along the carved trail.
+                    // wakeT^1.25 biases more particles near the head for density falloff.
+                    const wakeT = pow(r2, float(1.25));
+                    const wakeOffset = wakeT.mul(300.0).sub(20.0); // -20..+280 behind head
+                    const wakeSpawnZ = wormHeadZ.sub(wakeOffset);
+
+                    const spawnZ = mix(headSpawnZ, wakeSpawnZ, isWake);
+
+                    // X position follows the worm path with organic meander.
                     const meander = tslNoise3D(vec3(spawnZ.mul(0.02), float(0.0), time.mul(0.02))).mul(12.0);
                     const spawnPathX = wormPathBaseX.add(spawnZ.mul(wormPathSlope)).add(meander);
 
-                    const angle = r.mul(6.28);
-                    const radius = float(8.0).add(r3.mul(22.0));
+                    const angle = r.mul(6.28).add(r3.mul(0.4));
+
+                    // Head bursts cluster tight; wake dust scatters wider across the groove.
+                    const headRadius = float(5.0).add(r3.mul(16.0));
+                    const wakeRadius = float(11.0).add(r3.mul(26.0));
+                    const radius = mix(headRadius, wakeRadius, isWake);
 
                     posLife.x.assign(spawnPathX.add(cos(angle).mul(radius)));
                     posLife.z.assign(spawnZ.add(sin(angle).mul(radius)));
 
-                    // Height: terrain EXACTLY (no gap)
+                    // Height: hug the terrain surface, tiny lift to seat into the sand.
                     const terrainH = tslApproxTerrainHeight(posLife.x, posLife.z);
-                    posLife.y.assign(terrainH.add(float(0.8)).add(r3.mul(2.4)));
+                    posLife.y.assign(terrainH.add(float(0.6)).add(r3.mul(2.0)));
 
-                    const outwardSpeed = float(14.0).add(r2.mul(12.0));
-                    velRand.x.assign(cos(angle).mul(outwardSpeed));
-                    velRand.z.assign(sin(angle).mul(outwardSpeed));
+                    // Velocities differ dramatically between head plumes and wake dust.
+                    // Head: explosive vertical eruption with strong outward + forward push.
+                    const headOutward = float(20.0).add(r2.mul(16.0));
+                    const headVx = cos(angle).mul(headOutward);
+                    const headVz = sin(angle).mul(headOutward).add(float(7.0));
+                    const headVy = float(22.0).add(r3.mul(24.0));
 
-                    velRand.y.assign(float(12.0).add(r3.mul(18.0)));
+                    // Wake: gentle ground-hugging puff that lingers in the trough.
+                    const wakeOutward = float(2.5).add(r2.mul(5.0));
+                    const wakeVx = cos(angle).mul(wakeOutward);
+                    const wakeVz = sin(angle).mul(wakeOutward).sub(float(1.5));
+                    const wakeVy = float(3.0).add(r3.mul(6.0));
 
-
-                    // Very light forward carry; most "lead" comes from spawn position.
-                    velRand.z.addAssign(float(7.6));
+                    velRand.x.assign(mix(headVx, wakeVx, isWake));
+                    velRand.y.assign(mix(headVy, wakeVy, isWake));
+                    velRand.z.assign(mix(headVz, wakeVz, isWake));
 
                     posLife.w.assign(float(1.0));
                 });
             }).Else(() => {
                 const age = float(1.0).sub(life);
+                const isWake = step(float(0.42), velRand.w);
 
-                const gravity = mix(float(-30.0), float(2.0), smoothstep(0.0, 0.4, age));
+                // Head plume: heavy gravity drop -> buoyant rise. Wake: gentle, low gravity.
+                const gravityHead = mix(float(-30.0), float(2.0), smoothstep(0.0, 0.4, age));
+                const gravityWake = mix(float(-10.0), float(1.2), smoothstep(0.0, 0.55, age));
+                const gravity = mix(gravityHead, gravityWake, isWake);
                 velRand.y.addAssign(gravity.mul(dt));
 
-                const drag = mix(float(0.5), float(2.5), smoothstep(0.0, 0.3, age));
+                // Drag: head decelerates fast, wake drifts.
+                const dragHead = mix(float(0.5), float(2.5), smoothstep(0.0, 0.3, age));
+                const dragWake = mix(float(0.25), float(1.4), smoothstep(0.0, 0.45, age));
+                const drag = mix(dragHead, dragWake, isWake);
                 velRand.x.subAssign(velRand.x.mul(drag).mul(dt));
                 velRand.y.subAssign(velRand.y.mul(drag).mul(dt));
                 velRand.z.subAssign(velRand.z.mul(drag).mul(dt));
 
                 const windFactor = smoothstep(0.2, 1.0, age);
-                const windForce = float(9.0).mul(wind);
-                velRand.x.addAssign(windForce.mul(windFactor).mul(dt));
+                const windScale = mix(float(11.0), float(6.5), isWake);
+                velRand.x.addAssign(windScale.mul(wind).mul(windFactor).mul(dt));
 
+                const turbScale = mix(float(10.0), float(5.5), isWake);
                 const noisePos = posLife.xyz.mul(0.05).add(vec3(time.mul(0.2), 0.0, 0.0));
-                const turbX = tslNoise3D(noisePos).mul(10.0);
-                const turbY = tslNoise3D(noisePos.add(vec3(100.0, 0.0, 0.0))).mul(5.0);
-                const turbZ = tslNoise3D(noisePos.add(vec3(0.0, 0.0, 100.0))).mul(10.0);
+                const turbX = tslNoise3D(noisePos).mul(turbScale);
+                const turbY = tslNoise3D(noisePos.add(vec3(100.0, 0.0, 0.0))).mul(turbScale.mul(0.5));
+                const turbZ = tslNoise3D(noisePos.add(vec3(0.0, 0.0, 100.0))).mul(turbScale);
 
                 velRand.x.addAssign(turbX.mul(windFactor).mul(dt));
                 velRand.y.addAssign(turbY.mul(windFactor).mul(dt));
@@ -652,16 +682,20 @@ export class SandSmokeCompute {
                 posLife.y.addAssign(velRand.y.mul(dt));
                 posLife.z.addAssign(velRand.z.mul(dt));
 
-                const decay = float(0.20).add(velRand.w.mul(0.12));
+                // Decay: head burns out fast (~3.5s), wake lingers (~7s) for continuous trail.
+                const decayHead = float(0.28).add(velRand.w.mul(0.10));
+                const decayWake = float(0.12).add(velRand.w.mul(0.06));
+                const decay = mix(decayHead, decayWake, isWake);
                 posLife.w.subAssign(decay.mul(dt));
 
                 If(life.greaterThan(0.68).and(life.lessThan(0.72)), () => {
                     velRand.xyz.mulAssign(float(0.5));
                 });
 
-                // Add cooldown so not all particles are active all the time.
+                // Cooldown — wake particles cycle fast for a continuously-fed trail.
                 If(posLife.w.lessThanEqual(0.0), () => {
-                    posLife.w.assign(float(-0.6).sub(velRand.w.mul(1.4)));
+                    const cooldownBase = mix(float(-0.5), float(-0.08), isWake);
+                    posLife.w.assign(cooldownBase.sub(velRand.w.mul(0.6)));
                     velRand.xyz.assign(vec3(0.0));
                 });
             });
@@ -715,6 +749,9 @@ export class SandSmokeCompute {
             let vz = this.stateData[i8 + 6];
             const rand = this.stateData[i8 + 7];
 
+            // Particle type: head plume vs wake dust (stable per particle via rand)
+            const isWake = rand >= 0.42 ? 1 : 0;
+
             // Respawn
             if (life <= 0) {
                 if (life < -0.05) {
@@ -725,66 +762,79 @@ export class SandSmokeCompute {
                 const r2 = Math.random();
                 const r3 = Math.random();
 
-                // Match GPU: spawn slightly ahead of head with tiny jitter.
-                const lead = (r2 * 64.0 + 40.0) * leadScale;
-                const jitter = r3 * 20.0 - 10.0;
-                const spawnZ = wormState.headZ + lead + jitter;
+                // Head spawn: at / just ahead of worm head. Wake spawn: distributed behind.
+                const headJitter = (r3 * 46.0 - 6.0) * leadScale;
+                const headSpawnZ = wormState.headZ + headJitter;
 
-                // CPU Meander approximation (using sin/cos instead of expensive noise)
+                const wakeT = Math.pow(r2, 1.25);
+                const wakeOffset = wakeT * 300.0 - 20.0;
+                const wakeSpawnZ = wormState.headZ - wakeOffset;
+
+                const spawnZ = isWake ? wakeSpawnZ : headSpawnZ;
+
                 const meander = Math.sin(spawnZ * 0.02 + time * 0.02) * 12.0;
                 const spawnPathX = wormState.pathBaseX + spawnZ * wormState.pathSlope + meander;
 
-                const angle = rand * 6.28;
-                const radius = 8.0 + r3 * 22.0;
+                const angle = rand * 6.28 + r3 * 0.4;
+                const headRadius = 5.0 + r3 * 16.0;
+                const wakeRadius = 11.0 + r3 * 26.0;
+                const radius = isWake ? wakeRadius : headRadius;
+
                 x = spawnPathX + Math.cos(angle) * radius;
                 z = spawnZ + Math.sin(angle) * radius;
                 const terrainH = this.approxTerrainHeight(x, z);
+                y = terrainH + 0.6 + r3 * 2.0;
 
-                y = terrainH + 0.8 + r3 * 2.4;
-
-                // Burst
-                const outwardSpeed = 14.0 + r2 * 12.0;
-                vx = Math.cos(angle) * outwardSpeed;
-                vz = Math.sin(angle) * outwardSpeed;
-
-                vy = 12.0 + r3 * 18.0;
-                vz += 7.6;
-
-                // Add meander velocity approximation to forward momentum
-                // Tangent of sin(kx) is k*cos(kx). 
-                const meanderVel = Math.cos(spawnZ * 0.02 + time * 0.02) * 12.0 * 0.02 * 10.0; // derivative * speed
-                vx += meanderVel;
+                if (isWake) {
+                    // Lingering wake dust: gentle puff, hugs the trough
+                    const outwardSpeed = 2.5 + r2 * 5.0;
+                    vx = Math.cos(angle) * outwardSpeed;
+                    vz = Math.sin(angle) * outwardSpeed - 1.5;
+                    vy = 3.0 + r3 * 6.0;
+                } else {
+                    // Explosive head plume: high vertical + forward burst
+                    const outwardSpeed = 20.0 + r2 * 16.0;
+                    vx = Math.cos(angle) * outwardSpeed;
+                    vz = Math.sin(angle) * outwardSpeed + 7.0;
+                    vy = 22.0 + r3 * 24.0;
+                }
 
                 life = 1.0;
             } else {
                 const age = 1.0 - life;
 
-                // Gravity & Buoyancy
-                // mix(-30, 2, smoothstep(0, 0.4, age))
-                let gravity = -30.0;
-                if (age > 0.4) gravity = 2.0;
-                else gravity = -30.0 + (32.0 * (age / 0.4)); // Linear approx
-
+                // Gravity: heavy for head plume, gentle for wake dust
+                let gravity;
+                if (isWake) {
+                    if (age > 0.55) gravity = 1.2;
+                    else gravity = -10.0 + (11.2 * (age / 0.55));
+                } else {
+                    if (age > 0.4) gravity = 2.0;
+                    else gravity = -30.0 + (32.0 * (age / 0.4));
+                }
                 vy += gravity * dt;
 
                 // Drag
-                // mix(0.5, 2.5, smoothstep(0, 0.3, age))
-                let drag = 0.5;
-                if (age > 0.3) drag = 2.5;
-                else drag = 0.5 + (2.0 * (age / 0.3));
-
+                let drag;
+                if (isWake) {
+                    if (age > 0.45) drag = 1.4;
+                    else drag = 0.25 + (1.15 * (age / 0.45));
+                } else {
+                    if (age > 0.3) drag = 2.5;
+                    else drag = 0.5 + (2.0 * (age / 0.3));
+                }
                 vx -= vx * drag * dt;
                 vy -= vy * drag * dt;
                 vz -= vz * drag * dt;
 
                 // Wind
                 if (age > 0.2) {
-                    vx += 8.0 * wind * dt;
-
-                    // Simple turbulence
-                    vx += Math.sin(y * 0.05 + time) * 8.0 * dt;
-                    vy += Math.sin(x * 0.05 + time) * 4.0 * dt;
-                    vz += Math.sin(z * 0.05 + time) * 8.0 * dt;
+                    const windScale = isWake ? 6.5 : 11.0;
+                    vx += windScale * wind * dt;
+                    const turbScale = isWake ? 5.5 : 10.0;
+                    vx += Math.sin(y * 0.05 + time) * turbScale * dt;
+                    vy += Math.sin(x * 0.05 + time) * turbScale * 0.5 * dt;
+                    vz += Math.sin(z * 0.05 + time) * turbScale * dt;
                 }
 
                 x += vx * dt;
@@ -799,10 +849,13 @@ export class SandSmokeCompute {
                     vz *= 0.5;
                 }
 
-                const decay = 0.20 + rand * 0.12;
+                // Decay: head burns out fast, wake lingers
+                const decay = isWake
+                    ? 0.12 + rand * 0.06
+                    : 0.28 + rand * 0.10;
                 life -= decay * dt;
                 if (life <= 0) {
-                    life = -0.6 - rand * 1.4;
+                    life = isWake ? (-0.08 - rand * 0.6) : (-0.5 - rand * 0.6);
                     vx = 0;
                     vy = 0;
                     vz = 0;

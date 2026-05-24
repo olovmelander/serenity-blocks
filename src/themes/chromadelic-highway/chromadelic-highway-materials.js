@@ -7,6 +7,7 @@
 
 import {
     AdditiveBlending,
+    Color,
     DoubleSide,
     MeshBasicNodeMaterial,
     PointsNodeMaterial,
@@ -239,15 +240,29 @@ export function createTunnelRingNodeMaterial(colorVec3) {
 // Rainbow Planet Material
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function createPlanetNodeMaterial(planetTexture) {
+export function createPlanetNodeMaterial(planetTexture, opts = {}) {
     const material = new MeshBasicNodeMaterial();
 
     const uTime = uniform(0);
     const uPulse = uniform(0);
+    const uDisplacement = uniform(opts.displacement ?? 0.0);
 
     const uvCoord = uv();
     const viewDir = normalize(cameraPosition.sub(positionWorld));
     const nrm = normalWorld;
+
+    // Subtle procedural displacement along the local normal — breaks the perfect-sphere
+    // silhouette at the terminator. Built from sine-product noise so it stays gentle and
+    // doesn't introduce visible grid artifacts. Zero displacement = identical to original.
+    if ((opts.displacement ?? 0) > 0) {
+        const localDir = normalize(positionLocal);
+        const tDisp = uTime.mul(0.05);
+        const dispNoise = sin(localDir.x.mul(7.3).add(tDisp))
+            .mul(sin(localDir.y.mul(5.7).add(tDisp.mul(0.7))))
+            .mul(sin(localDir.z.mul(6.1).add(tDisp.mul(1.3))));
+        // Map [-1,1] → [-disp, +disp]
+        material.positionNode = positionLocal.add(localDir.mul(dispNoise).mul(uDisplacement));
+    }
 
     // Sample the rainbow planet texture
     const texColor = texture(planetTexture, uvCoord);
@@ -287,8 +302,58 @@ export function createPlanetNodeMaterial(planetTexture) {
 
     return finalizeNodeMaterial(
         material,
-        { uTime, uPulse },
+        { uTime, uPulse, uDisplacement },
         { emitsBloom: true, mrtRole: 'planet' },
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Planet Atmospheric Shell (Rayleigh-style scattering rim)
+// ─────────────────────────────────────────────────────────────────────────────
+// Rendered as a slightly-larger BackSide sphere wrapping the planet. Color graduates
+// from warm horizon-band to cool high-altitude using fresnel against the view dir.
+// Replaces the canvas-gradient glow planes for showcase tiers.
+export function createPlanetAtmosphereShellMaterial(opts = {}) {
+    const material = new MeshBasicNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        side: DoubleSide,
+    });
+
+    const uTime = uniform(0);
+    const uPulse = uniform(0);
+    const uIntensity = uniform(opts.intensity ?? 1.0);
+    // Defaults bias toward warm-magenta horizon, cool cyan zenith — fits cosmic palette.
+    const uHorizon = uniform(opts.horizon ?? new Color(1.0, 0.55, 0.85));
+    const uZenith = uniform(opts.zenith ?? new Color(0.45, 0.75, 1.0));
+
+    const viewDir = normalize(cameraPosition.sub(positionWorld));
+    const nrm = normalWorld;
+    const viewDot = abs(dot(nrm, viewDir));
+
+    // Atmospheric falloff — Rayleigh-style strong rim, soft body.
+    const rim = pow(float(1.0).sub(viewDot), float(3.0));
+    const body = pow(float(1.0).sub(viewDot), float(1.4)).mul(0.35);
+
+    // Hue shifts from horizon-warm at terminator to cooler at higher altitude.
+    const altitudeT = smoothstep(float(0.0), float(0.6), viewDot);
+    const tintBase = mix(uHorizon, uZenith, altitudeT);
+
+    // Subtle pulse modulation so the atmosphere catches reactive events.
+    const pulseLift = float(1.0).add(uPulse.mul(0.35));
+    const finalColor = tintBase.mul(rim.add(body)).mul(uIntensity).mul(pulseLift);
+
+    const alpha = clamp(rim.add(body.mul(0.5)).mul(uIntensity), float(0.0), float(0.85));
+
+    material.colorNode = finalColor;
+    material.opacityNode = alpha;
+    material.emissiveNode = finalColor.mul(BLOOM_CLASS_WEIGHTS.planetGlow);
+
+    return finalizeNodeMaterial(
+        material,
+        { uTime, uPulse, uIntensity, uHorizon, uZenith },
+        { emitsBloom: true, mrtRole: 'planetAtmosphere' },
     );
 }
 
@@ -512,8 +577,19 @@ export function createShootingStarNodeMaterial(opts = {}) {
 
     material.positionNode = burningPosition;
 
+    // Cinematic comet gradient: cool cyan-white head → warm magenta-violet tail.
+    // The post-pipeline anamorphic flare adds a horizontal streak on the bright head,
+    // turning each star into a cinematic comet at near-zero extra cost.
+    const headBoost = uniform(opts.headBoost ?? 1.0);
     const starColor = Fn(() => {
-        return colorAttr; // Use pure color from attribute without adding white
+        const tailFactor = float(1.0).sub(sizeAttr.div(60.0));
+        const headness = clamp(float(1.0).sub(tailFactor), float(0.0), float(1.0));
+        const coolHead = vec3(0.78, 0.94, 1.10);
+        const warmTail = vec3(1.10, 0.55, 0.92);
+        const tinted = mix(warmTail, coolHead, headness);
+        const blended = mix(colorAttr, tinted, float(0.35));
+        const headPunch = headness.mul(headness).mul(headBoost.mul(0.55));
+        return blended.add(blended.mul(headPunch));
     })();
     material.colorNode = starColor;
 
@@ -521,13 +597,49 @@ export function createShootingStarNodeMaterial(opts = {}) {
         return clamp(uOpacity, float(0.0), float(1.0));
     })();
 
-    material.sizeNode = sizeAttr;
+    // Showcase tiers bump the head particle size so the anamorphic post-flare reads cleanly.
+    const sizeBoost = uniform(opts.sizeBoost ?? 1.0);
+    material.sizeNode = sizeAttr.mul(sizeBoost);
     material.emissiveNode = starColor.mul(uOpacity).mul(BLOOM_CLASS_WEIGHTS.shootingStar);
 
     return finalizeNodeMaterial(
         material,
-        { uOpacity, uTime },
+        { uOpacity, uTime, headBoost, sizeBoost },
         { emitsBloom: true, mrtRole: 'shooting-star' },
+    );
+}
+
+export function createShootingStarRibbonNodeMaterial(opts = {}) {
+    const material = new MeshBasicNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        side: DoubleSide,
+    });
+
+    const uOpacity = uniform(opts.opacity ?? 1.0);
+    const uTime = uniform(0.0);
+    const uHeadBoost = uniform(opts.headBoost ?? 1.0);
+
+    const colorAttr = attribute('color', 'vec3');
+    const alphaAttr = attribute('aAlpha', 'float');
+    const tAttr = attribute('aRibbonT', 'float');
+
+    const shimmer = sin(uTime.mul(9.0).add(tAttr.mul(7.0))).mul(0.08).add(1.0);
+    const headness = float(1.0).sub(tAttr);
+    const headCore = pow(headness, float(2.4)).mul(uHeadBoost);
+    const coolHead = vec3(0.78, 0.94, 1.12).mul(headCore.mul(0.42));
+    const finalColor = colorAttr.mul(shimmer).add(coolHead);
+    const alpha = clamp(alphaAttr.mul(uOpacity), float(0.0), float(1.0));
+
+    material.colorNode = finalColor;
+    material.opacityNode = alpha;
+    material.emissiveNode = finalColor.mul(alpha).mul(BLOOM_CLASS_WEIGHTS.shootingStar * 1.25);
+
+    return finalizeNodeMaterial(
+        material,
+        { uOpacity, uTime, uHeadBoost },
+        { emitsBloom: true, mrtRole: 'shooting-star-ribbon' },
     );
 }
 
@@ -603,20 +715,98 @@ export function createNebulaNodeMaterial(nebulaTexture) {
     const centerDist = length(uvCoord.sub(vec2(0.5)));
     const edgeMask = float(1.0).sub(smoothstep(float(0.35), float(0.5), centerDist));
 
-    const alpha = max(texColor.a, luminance).mul(float(0.5)).mul(edgeMask); // Base opacity adjustment with mask
+    const alpha = max(texColor.a, luminance).mul(float(0.36)).mul(edgeMask);
 
-    // Final color composition
-    const finalColor = texColor.rgb.mul(pulseMul).mul(float(1.2)); // Slight boost
+    // Backdrop tint: bias the rainbow nebula texture toward violet-indigo so it reads
+    // as moody cosmic backdrop, not a second rainbow competing with the highway.
+    const violetBias = vec3(0.78, 0.62, 1.05);
+    const tinted = texColor.rgb.mul(violetBias);
+    const finalColor = tinted.mul(pulseMul).mul(float(1.05));
 
     material.colorNode = finalColor;
     material.opacityNode = alpha;
-    // Emissive for bloom
-    material.emissiveNode = finalColor.mul(float(0.8));
+    // Emissive contribution lowered — backdrop should not drive bloom
+    material.emissiveNode = finalColor.mul(float(0.45));
 
     return finalizeNodeMaterial(
         material,
         { uTime, uPulse },
         { emitsBloom: true, mrtRole: 'nebula' }
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Volumetric Nebula Sky Dome (Extreme/Ultra)
+// ─────────────────────────────────────────────────────────────────────────────
+// Renders on an inverted sphere (BackSide) surrounding the scene. Procedural
+// nebula structure via domain-warped FBM with three-axis sine-product (kills
+// plane-wave stripes a la lunara). Two-stop palette: deep magenta-violet core,
+// far cyan-indigo highlight. Pulse-reactive emissive for bloom catch.
+export function createVolumetricNebulaSkyMaterial(opts = {}) {
+    const octaves = Math.max(2, Math.min(5, opts.octaves ?? 4));
+    const material = new MeshBasicNodeMaterial({
+        side: DoubleSide,
+        depthWrite: false,
+        fog: false,
+        transparent: false,
+    });
+
+    const uTime = uniform(0);
+    const uPulse = uniform(0);
+    const uEmissiveBoost = uniform(opts.emissiveBoost ?? 1.0);
+
+    // Direction from sphere center to fragment — used as 3D noise sample input.
+    const dir = normalize(positionLocal);
+    const t = uTime.mul(0.015);
+
+    // Domain-warped fBm built from three rotated sine fields multiplied together.
+    // Multiplication suppresses the plane-wave look that pure sum-noise produces.
+    let acc = float(0.0);
+    let amp = float(0.55);
+    let freq = float(2.6);
+    for (let i = 0; i < octaves; i++) {
+        const phase = float(i * 17.31);
+        const sa = sin(dir.x.mul(freq.mul(0.85)).add(t).add(phase));
+        const sb = sin(dir.y.mul(freq.mul(1.55)).add(t.mul(1.3)).add(phase.mul(0.7)));
+        const sc = sin(dir.z.mul(freq.mul(0.55)).add(t.mul(0.6)).add(phase.mul(1.4)));
+        const layer = sa.mul(sb).mul(sc).mul(amp);
+        acc = acc.add(layer);
+        amp = amp.mul(0.55);
+        freq = freq.mul(2.05);
+    }
+    // Map signed accumulation into [0,1] and squash hard so most of the dome stays
+    // dark. The highway/rings own the chroma; space should read as deep void.
+    const cloud = clamp(acc.mul(0.5).add(0.5), float(0.0), float(1.0));
+    const filaments = smoothstep(float(0.66), float(0.98), cloud);
+
+    // Near-black cosmic base with restrained cyan/violet filaments.
+    const voidColor = vec3(0.006, 0.003, 0.026);
+    const upperVoid = vec3(0.010, 0.016, 0.050);
+    const magenta = vec3(0.24, 0.055, 0.25);
+    const cyanAccent = vec3(0.035, 0.16, 0.22);
+
+    // Accent tint based on direction.y, but keep the background value low everywhere.
+    const verticality = clamp(dir.y.mul(0.5).add(0.5), float(0.0), float(1.0));
+    const baseVoid = mix(voidColor, upperVoid, smoothstep(0.18, 0.95, verticality).mul(0.45));
+    const filamentTint = mix(magenta, cyanAccent, smoothstep(0.12, 0.82, verticality));
+
+    const filamentEnergy = filaments.mul(filaments).mul(0.55);
+    const baseColor = baseVoid.add(filamentTint.mul(filamentEnergy));
+    // Subtle pulse lift (bigger reaction near filament peaks, where bloom catches most)
+    const pulseLift = float(1.0).add(uPulse.mul(0.26).mul(filamentEnergy));
+    const finalColor = baseColor.mul(pulseLift);
+
+    material.colorNode = finalColor;
+    // Emissive concentrated in filaments only — backdrop stays unobtrusive in bloom.
+    material.emissiveNode = filamentTint
+        .mul(filamentEnergy.mul(filaments))
+        .mul(uEmissiveBoost.mul(0.18))
+        .mul(pulseLift);
+
+    return finalizeNodeMaterial(
+        material,
+        { uTime, uPulse, uEmissiveBoost },
+        { emitsBloom: true, mrtRole: 'volumetricNebula' }
     );
 }
 

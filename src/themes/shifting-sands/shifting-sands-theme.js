@@ -155,6 +155,12 @@ export default class ShiftingSandsTheme extends BaseTheme {
             wormHeatIntensity: { value: 0 }, // Underground heat effect
         };
 
+        // Pointer tracking for parallax
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // Art-direction knobs for final smoke tuning (can be edited at runtime):
         // window.shiftingSandsSmokeArtDirection = { density: 1.0, lead: 1.0 }
         const sharedSmokeArt = typeof window !== 'undefined'
@@ -240,7 +246,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 96,
                 spiceParticleCount: 800,
                 dustParticleCount: 300,
-                sandSmokeCount: 80,
+                sandSmokeCount: 140,
                 enableHeatShimmer: false,
                 enableComboEffects: true,
             },
@@ -249,7 +255,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 128,
                 spiceParticleCount: 1500,
                 dustParticleCount: 450,
-                sandSmokeCount: 140,
+                sandSmokeCount: 240,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -258,7 +264,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 196,
                 spiceParticleCount: 2000,
                 dustParticleCount: 600,
-                sandSmokeCount: 220,
+                sandSmokeCount: 380,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -267,7 +273,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 256,
                 spiceParticleCount: 3000,
                 dustParticleCount: 800,
-                sandSmokeCount: 320,
+                sandSmokeCount: 560,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -276,7 +282,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 duneRes: 350,
                 spiceParticleCount: 5000,
                 dustParticleCount: 1000,
-                sandSmokeCount: 420,
+                sandSmokeCount: 800,
                 enableHeatShimmer: true,
                 enableComboEffects: true,
             },
@@ -765,7 +771,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
         // Billboard quads have significantly higher fill-rate cost than points.
         // Windows D3D WebGPU is more prone to device hangs when overdraw is extreme.
         const isWindows = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
-        const webgpuSmokeCap = isWindows ? 320 : 480;
+        const webgpuSmokeCap = isWindows ? 560 : 800;
         const count = this.isWebGPU
             ? Math.min(requestedCount, webgpuSmokeCap)
             : requestedCount;
@@ -1029,18 +1035,31 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
             // Camera Sway + Shake - Enhanced for cinematic feel
             if (this.camera) {
+                // Smooth pointer tracking for parallax
+                this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX || 0, delta * 2.5);
+                this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY || 0, delta * 2.5);
+                const parallaxX = this.smoothedPointerX * 55.0; // Increased from 35.0
+                const parallaxY = -this.smoothedPointerY * 28.0; // Increased from 18.0
+
                 // Multi-layered organic motion
                 let camX = this.baseCameraPos.x
-                    + Math.sin(elapsed * 0.08) * 12 // Slow side-to-side sweep
-                    + Math.sin(elapsed * 0.23) * 4; // Faster subtle drift
+                    + Math.sin(elapsed * 0.08) * 15 // Slow side-to-side sweep
+                    + Math.sin(elapsed * 0.23) * 6  // Faster subtle drift
+                    + parallaxX;
 
                 let camY = this.baseCameraPos.y
-                    + Math.cos(elapsed * 0.05) * 3 // Gentle vertical bob
-                    + Math.sin(elapsed * 0.17) * 1.5; // Secondary bob
+                    + Math.cos(elapsed * 0.05) * 5 // Gentle vertical bob
+                    + Math.sin(elapsed * 0.17) * 2.5 // Secondary bob
+                    + parallaxY;
 
                 let camZ = this.baseCameraPos.z
-                    + Math.sin(elapsed * 0.11) * 8 // Slow forward/back drift
-                    + Math.cos(elapsed * 0.31) * 3; // Faster subtle pulse
+                    + Math.sin(elapsed * 0.11) * 12 // Slow forward/back drift
+                    + Math.cos(elapsed * 0.31) * 5  // Faster subtle pulse
+                    + Math.sin(elapsed * 0.2) * 25; // Added deep forward/back drift
+
+                // Ensure camera never goes under dunes
+                const terrainH = this.getTerrainHeight(camX, camZ);
+                camY = Math.max(terrainH + 12, camY);
 
                 // Apply camera shake
                 if (this.cameraShake.duration > 0) {
@@ -1054,8 +1073,8 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 this.camera.position.set(camX, camY, camZ);
 
                 // Subtle look target drift for extra dynamism
-                const lookX = Math.sin(elapsed * 0.06) * 5;
-                const lookY = Math.cos(elapsed * 0.04) * 2;
+                const lookX = Math.sin(elapsed * 0.06) * 6 + parallaxX * 0.4;
+                const lookY = Math.cos(elapsed * 0.04) * 3 + parallaxY * 0.4;
                 this.camera.lookAt(lookX, lookY, 0);
             }
 
@@ -1098,8 +1117,8 @@ export default class ShiftingSandsTheme extends BaseTheme {
 
             if (this.sandSmokeMaterial) {
                 const smokeDensity = this.getSmokeDensityKnob();
-                const smokeOpacityBase = 0.11 + this.uniforms.dustDensity.value * 0.08;
-                const smokeOpacity = THREE.MathUtils.clamp(smokeOpacityBase * smokeDensity, 0.02, 0.32);
+                const smokeOpacityBase = 0.18 + this.uniforms.dustDensity.value * 0.10;
+                const smokeOpacity = THREE.MathUtils.clamp(smokeOpacityBase * smokeDensity, 0.05, 0.45);
                 this.sandSmokeMaterial.update(elapsed, smokeOpacity);
             }
 
@@ -1146,6 +1165,15 @@ export default class ShiftingSandsTheme extends BaseTheme {
         sub(EVENTS.LINE_CLEAR, (d) => this.onLineClear(d.lineCount));
         sub(EVENTS.COMBO, (d) => this.onCombo(d.comboCount));
         sub(EVENTS.PIECE_LOCK, () => this.onPieceLock());
+
+        // Pointer tracking for parallax
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        this.eventUnsubscribers.push(() => window.removeEventListener('pointermove', onPointerMove));
     }
 
     // --- DRAMATIC ARRAKIS EVENT REACTIONS ---
