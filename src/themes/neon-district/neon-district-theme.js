@@ -281,6 +281,12 @@ export default class NeonDistrictTheme extends BaseTheme {
         // SynthCity Assets Manager
         this.assets = new NeonDistrictAssets();
 
+        // Pointer tracking for parallax
+        this.targetPointerX = 0;
+        this.targetPointerY = 0;
+        this.currentPointerX = 0;
+        this.currentPointerY = 0;
+
         // Camera sway parameters (gentle floating drift)
         // Camera sway parameters (gentle floating drift) - increased movement
         this.cameraBasePosition = new THREE.Vector3(0, 4, 40);
@@ -7554,6 +7560,16 @@ export default class NeonDistrictTheme extends BaseTheme {
         eventBus.on(EVENTS.COMBO, onCombo);
         this.eventUnsubscribers.push(() => eventBus.off(EVENTS.COMBO, onCombo));
 
+        // Pointer handler
+        const pointerMoveHandler = (e) => {
+            if (this.isActive) {
+                this.targetPointerX = (e.clientX / window.innerWidth) * 2 - 1;
+                this.targetPointerY = -(e.clientY / window.innerHeight) * 2 + 1;
+            }
+        };
+        window.addEventListener('pointermove', pointerMoveHandler);
+        this.eventUnsubscribers.push(() => window.removeEventListener('pointermove', pointerMoveHandler));
+
         // Resize handler
         const onResize = () => this.handleResize();
         window.addEventListener('resize', onResize);
@@ -8379,11 +8395,23 @@ export default class NeonDistrictTheme extends BaseTheme {
         const targetY = Math.max(this.cameraBasePosition.y, this.cameraBasePosition.y + swayY);
         const targetZ = this.cameraBasePosition.z + this.cameraSway.z + subtleDollyZ;
 
+        // Pointer parallax integration
+        this.currentPointerX = this.currentPointerX || 0;
+        this.currentPointerY = this.currentPointerY || 0;
+        this.targetPointerX = this.targetPointerX || 0;
+        this.targetPointerY = this.targetPointerY || 0;
+
+        this.currentPointerX += (this.targetPointerX - this.currentPointerX) * dt * 1.5;
+        this.currentPointerY += (this.targetPointerY - this.currentPointerY) * dt * 1.5;
+
+        const parallaxX = this.currentPointerX * 45.0; // Increased city peek
+        const parallaxY = this.currentPointerY * 20.0;
+
         const lateralLerp = THREE.MathUtils.clamp(dt * 1.35, 0.03, 0.16);
         const movingUp = targetY >= this.camera.position.y;
         const verticalLerp = THREE.MathUtils.clamp(dt * (movingUp ? 1.45 : 0.78), 0.02, movingUp ? 0.18 : 0.1);
-        this.camera.position.x = THREE.MathUtils.lerp(this.camera.position.x, targetX, lateralLerp);
-        this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, targetY, verticalLerp);
+        this.camera.position.x = THREE.MathUtils.lerp(this.camera.position.x, targetX + parallaxX, lateralLerp);
+        this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, targetY + parallaxY, verticalLerp);
         this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, targetZ, lateralLerp);
 
         // LookAt sway - subtle view-target drift and smoothed tracking
@@ -8397,12 +8425,13 @@ export default class NeonDistrictTheme extends BaseTheme {
         const peakFactor = Math.max(0, (heldNormalizedY - peakThreshold) / (1.0 - peakThreshold));
         const peakNod = peakFactor * peakFactor * 180;
 
-        const lookTargetX = this.cameraBaseLookAt.x + lookSwayX + Math.sin(cinematicTime * 0.19 + 0.3) * 6;
+        const lookTargetX = this.cameraBaseLookAt.x + lookSwayX + Math.sin(cinematicTime * 0.19 + 0.3) * 6 + this.currentPointerX * 80.0;
         const baseLookTargetY = this.cameraBaseLookAt.y
             + lookSwayY
             + (swayY * 0.48)
             + peakNod
-            + Math.sin(cinematicTime * 0.23 + 0.9) * 3;
+            + Math.sin(cinematicTime * 0.23 + 0.9) * 3
+            + this.currentPointerY * 35.0;
         const straightLookY = targetY + 26;
         const lookTargetY = THREE.MathUtils.lerp(baseLookTargetY, straightLookY, topStraightFactor);
         const lookTargetZ = this.cameraBaseLookAt.z + Math.sin(cinematicTime * 0.16 + 0.7) * 8;

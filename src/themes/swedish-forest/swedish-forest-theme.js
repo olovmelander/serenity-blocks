@@ -473,6 +473,12 @@ export default class SwedishForestTheme extends BaseTheme {
             windSpeed: { value: 0 },
         };
 
+        // Pointer tracking for parallax
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // Effect targets for smooth transitions
         this.targetGlowIntensity = 0;
         this.targetMistIntensity = 0.6;
@@ -5474,7 +5480,16 @@ export default class SwedishForestTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
     }
 
     onLineClear(lineCount) {
@@ -5753,19 +5768,31 @@ export default class SwedishForestTheme extends BaseTheme {
         const baseY = 8;
         const baseZ = 30;
 
+        // Smooth pointer tracking for parallax
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX || 0, delta * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY || 0, delta * 2.2);
+        const parallaxX = this.smoothedPointerX * 25.0; // Increased from 15.0
+        const parallaxY = -this.smoothedPointerY * 10.0; // Increased from 5.5
+
         // Exploratory camera position - uses random phase offsets for unique movement each time
+        // Added deep forward/backward drift and enhanced organic breathing
         this.camera.position.x = baseX
-            + Math.sin(camTime * 1.0 + ro.posX1) * 15.0
-            + Math.sin(camTime * 0.37 + ro.posX2) * 8.0
-            + Math.cos(camTime * 0.71 + ro.posX3) * 5.0;
-        this.camera.position.y = baseY + Math.sin(camTime * 0.43 + ro.posY) * 2.0;
+            + Math.sin(camTime * 1.0 + ro.posX1) * 18.0
+            + Math.sin(camTime * 0.37 + ro.posX2) * 10.0
+            + Math.cos(camTime * 0.71 + ro.posX3) * 6.0
+            + parallaxX;
+        this.camera.position.y = Math.max(1.5, baseY
+            + Math.sin(camTime * 0.43 + ro.posY) * 3.0
+            + Math.cos(elapsed * 0.25) * 1.5 // Added subtle breathing float
+            + parallaxY);
         this.camera.position.z = baseZ
-            + Math.cos(camTime * 0.31 + ro.posZ1) * 4.0
-            + Math.sin(camTime * 0.53 + ro.posZ2) * 2.0;
+            + Math.cos(camTime * 0.31 + ro.posZ1) * 8.0
+            + Math.sin(camTime * 0.53 + ro.posZ2) * 4.0
+            + Math.sin(camTime * 0.22) * 22.0; // Deep forward/backward drift
 
         // Look target wanders independently with random offsets
-        const lookX = Math.sin(camTime * 0.47 + ro.lookX1) * 20.0 + Math.cos(camTime * 0.29 + ro.lookX2) * 10.0;
-        const lookY = 12 + Math.cos(camTime * 0.23 + ro.lookY) * 4.0;
+        const lookX = Math.sin(camTime * 0.47 + ro.lookX1) * 22.0 + Math.cos(camTime * 0.29 + ro.lookX2) * 12.0 + parallaxX * 0.4;
+        const lookY = 12 + Math.cos(camTime * 0.23 + ro.lookY) * 5.0 + parallaxY * 0.4;
         this.camera.lookAt(lookX, lookY, -30);
 
         // ─────────────────────────────────────────────────────────────────────

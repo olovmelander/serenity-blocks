@@ -111,9 +111,12 @@ fn star_layer(uv: vec2f, scale: f32, time: f32, brightness: f32) -> f32 {
     // Twinkling
     let twinkle = 0.55 + 0.45 * sin(rnd.y * 6.28318 + time * (0.4 + rnd.x * 1.2));
 
-    // Sharp point — Gaussian falloff. Star fits in cell (radius < 0.5).
-    let star_size = 0.006 + rnd.x * 0.012;
-    return exp(-dist * dist / (star_size * star_size)) * brightness * twinkle;
+    // Two-layer point: a small hard center over a softer cinematic halo.
+    let halo_size = 0.007 + rnd.x * 0.013;
+    let core_size = max(halo_size * 0.32, 0.002);
+    let halo = exp(-dist * dist / (halo_size * halo_size)) * 0.72;
+    let core = exp(-dist * dist / (core_size * core_size)) * 1.65;
+    return (halo + core) * brightness * twinkle;
 }
 
 fn star_field(uv: vec2f, aspect: f32, time: f32) -> vec3f {
