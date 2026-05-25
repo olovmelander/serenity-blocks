@@ -12,6 +12,12 @@ export default class SupernovaTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.boundResizeHandler = this.onWindowResize.bind(this);
 
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // Three.js components
         this.scene = null;
         this.camera = null;
@@ -300,6 +306,17 @@ export default class SupernovaTheme extends BaseTheme {
         this.updateShockwaves(delta);
         this.updateFlares(delta);
 
+        // Mouse parallax camera (base at 0,0,20)
+        if (this.camera) {
+            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+            const parallaxX = this.smoothedPointerX * 3.0;
+            const parallaxY = -this.smoothedPointerY * 1.5;
+            this.camera.position.x = parallaxX;
+            this.camera.position.y = parallaxY;
+            this.camera.lookAt(parallaxX * 0.4, parallaxY * 0.4, 0);
+        }
+
         this.renderer.render(this.scene, this.camera);
     }
 
@@ -448,7 +465,16 @@ export default class SupernovaTheme extends BaseTheme {
             if (this.isActive) this.onPieceLock(data.piece);
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
     }
 
     onLineClear(count) {

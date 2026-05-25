@@ -28,6 +28,12 @@ export default class CinderDriftTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.boundResizeHandler = this.onWindowResize.bind(this);
 
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // Three.js components
         this.scene = null;
         this.camera = null;
@@ -742,10 +748,16 @@ export default class CinderDriftTheme extends BaseTheme {
         const shakeX = (Math.random() - 0.5) * intensity * 0.2;
         const shakeY = (Math.random() - 0.5) * intensity * 0.2;
 
-        // Gentle cinematic orbit
-        this.camera.position.x = Math.sin(time * 0.1) * 5 + shakeX;
-        this.camera.position.y = Math.cos(time * 0.15) * 3 + shakeY;
-        this.camera.lookAt(0, 0, 0);
+        // Smooth pointer tracking for subtle mouse parallax
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+        const parallaxX = this.smoothedPointerX * 5.0;
+        const parallaxY = -this.smoothedPointerY * 2.5;
+
+        // Gentle cinematic orbit + mouse parallax
+        this.camera.position.x = Math.sin(time * 0.1) * 5 + shakeX + parallaxX;
+        this.camera.position.y = Math.cos(time * 0.15) * 3 + shakeY + parallaxY;
+        this.camera.lookAt(parallaxX * 0.4, parallaxY * 0.4, 0);
 
         // 3. Intensity Decay
         if (this.uniforms.coreIntensity.value > 1.0) {
@@ -823,6 +835,15 @@ export default class CinderDriftTheme extends BaseTheme {
                 this.triggerBurst(100, 0.5, new THREE.Color(0xff8800), puffPos);
             }),
         );
+
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        this.eventUnsubscribers.push(() => window.removeEventListener('pointermove', onPointerMove));
     }
 
     triggerSurge(strength) {

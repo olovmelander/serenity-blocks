@@ -673,6 +673,12 @@ export default class StellarDriftTheme extends BaseTheme {
         // State
         this.glowIntensity = 0.5;
         this.eventUnsubscribers = [];
+
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
         this.qualityPreset = QUALITY_PRESETS.High;
         this.activeQualityLevel = 'High';
         this.performanceBudget = { ...QUALITY_BUDGETS.High };
@@ -4255,7 +4261,16 @@ export default class StellarDriftTheme extends BaseTheme {
         this.resizeHandler = () => this.resize(window.innerWidth, window.innerHeight);
         window.addEventListener('resize', this.resizeHandler);
 
-        this.eventUnsubscribers.push(lockUnsub, comboUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lockUnsub, comboUnsub, pointerUnsub);
     }
 
     triggerCameraPulse(intensity = 0.2, {
@@ -4363,13 +4378,21 @@ export default class StellarDriftTheme extends BaseTheme {
             - Math.sin(statementTime * 0.52 + 1.4) * (20 + warp * 10);
         const warpDolly = -warp * (250 + this.radialBlurIntensity * 70);
 
+        // Smooth pointer tracking for subtle mouse parallax (additive on top of sway/drift/shake;
+        // the existing position.lerp at the bottom of this block will smooth it again).
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, dt * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, dt * 2.2);
+        const mouseParallaxX = this.smoothedPointerX * 150.0;
+        const mouseParallaxY = -this.smoothedPointerY * 75.0;
+
         const targetX = this.cameraBasePosition.x
             + this.heroCameraBias.x
             + followX
             + orbitX
             + this.cameraSway.x
             + this.cameraDrift.x
-            + this.cameraShake.x;
+            + this.cameraShake.x
+            + mouseParallaxX;
         const targetY = this.cameraBasePosition.y
             + this.heroCameraBias.y
             + followY
@@ -4377,7 +4400,8 @@ export default class StellarDriftTheme extends BaseTheme {
             + statementLift
             + this.cameraSway.y
             + this.cameraDrift.y
-            + this.cameraShake.y;
+            + this.cameraShake.y
+            + mouseParallaxY;
         const targetZ = this.cameraBasePosition.z
             + this.heroCameraBias.z
             + dollyWave
@@ -4397,14 +4421,16 @@ export default class StellarDriftTheme extends BaseTheme {
             + Math.sin(timeD * 0.27 + 0.2) * 142
             + Math.cos(timeB * 0.33 + 0.6) * 74
             + this.cameraDrift.x * 0.24
-            + this.cameraLookOffset.x;
+            + this.cameraLookOffset.x
+            + mouseParallaxX * 0.4;
         const lookTargetY = planetY * (0.58 + warp * 0.05)
             + this.heroLookBias.y
             + Math.cos(timeD * 0.21 + 0.5) * 68
             + Math.sin(timeC * 0.28 + 0.8) * 34
             + statementLift * 0.22
             + this.cameraDrift.y * 0.18
-            + this.cameraLookOffset.y;
+            + this.cameraLookOffset.y
+            + mouseParallaxY * 0.4;
         const lookTargetZ = this.heroLookBias.z
             + Math.sin(timeC * 0.18 + 0.4) * 34
             + statementDolly * 0.12
