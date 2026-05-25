@@ -276,6 +276,12 @@ export default class PyrestormTheme extends BaseTheme {
         this.cameraBreathSpeed = 0.12;
         this.cameraBreathAmplitude = { x: 12, y: 8, z: 8 };
 
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // Geysers
         this.geysers = [];
         this.maxGeysers = 5;
@@ -1579,6 +1585,15 @@ export default class PyrestormTheme extends BaseTheme {
             this.lavaPulse = Math.min(1, this.lavaPulse + 0.4);
         });
         this.eventUnsubscribers.push(onPieceLock);
+
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        this.eventUnsubscribers.push(() => window.removeEventListener('pointermove', onPointerMove));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1662,6 +1677,14 @@ export default class PyrestormTheme extends BaseTheme {
         this.camera.position.z = Math.cos(orbitAngle) * currentRadius;
         this.camera.position.y = currentHeight;
 
+        // Smooth pointer tracking for subtle mouse parallax
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, dt * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, dt * 2.2);
+        const mouseParallaxX = this.smoothedPointerX * 100.0;
+        const mouseParallaxY = -this.smoothedPointerY * 50.0;
+        this.camera.position.x += mouseParallaxX;
+        this.camera.position.y += mouseParallaxY;
+
         // Screen shake interaction
         if (this.shake > 0) {
             this.camera.position.x += (Math.random() - 0.5) * this.shake * 0.6;
@@ -1674,7 +1697,8 @@ export default class PyrestormTheme extends BaseTheme {
         // spends more time peeking from the left/right of the game board.
         const focusDrift = Math.sin(this.time * 0.15) * 200;
         const targetFocus = this.cameraLookAt.clone();
-        targetFocus.x += focusDrift;
+        targetFocus.x += focusDrift + mouseParallaxX * 0.4;
+        targetFocus.y += mouseParallaxY * 0.4;
 
         this.camera.lookAt(targetFocus);
 

@@ -896,6 +896,12 @@ export default class WinterTheme extends BaseTheme {
 
         this.eventUnsubscribers = [];
         this.qualityPreset = QUALITY_PRESETS.High;
+
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
         this.iceBurstData = {
             positions: null, velocities: null, lives: null, sizes: null, active: [], nextIndex: 0,
         };
@@ -2237,8 +2243,14 @@ export default class WinterTheme extends BaseTheme {
     // Dynamic Camera Animation (Breathing/Drifting)
     // ─────────────────────────────────────────────────────────────────────────
 
-    updateCameraAnimation() {
+    updateCameraAnimation(delta = 0) {
         if (!this.qualityPreset.enableCameraAnimation) return;
+
+        // Smooth pointer tracking for subtle mouse parallax (additive on top of breath/wind drift)
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+        const parallaxX = this.smoothedPointerX * 20.0;
+        const parallaxY = -this.smoothedPointerY * 10.0;
 
         // ─────────────────────────────────────────────────────────────────────
         // Immersive Breathing Camera Animation
@@ -2266,12 +2278,12 @@ export default class WinterTheme extends BaseTheme {
         const gustBump = Math.sin(this.time * 0.9) * this.gustIntensity * 3.5;
 
         // Apply position drift on top of camera shake
-        this.camera.position.x = this.baseCameraPosition.x + xDrift + windSway + gustBump + this.cameraShake.x;
-        this.camera.position.y = this.baseCameraPosition.y + yDrift + this.cameraShake.y;
+        this.camera.position.x = this.baseCameraPosition.x + xDrift + windSway + gustBump + this.cameraShake.x + parallaxX;
+        this.camera.position.y = this.baseCameraPosition.y + yDrift + this.cameraShake.y + parallaxY;
         this.camera.position.z = this.baseCameraPosition.z + zDrift;
         this.camera.lookAt(
-            windSway * 0.35 + Math.sin(this.time * 0.03) * 12,
-            -15 + Math.sin(this.time * 0.04 + 1.2) * 8 + this.gustIntensity * 4,
+            windSway * 0.35 + Math.sin(this.time * 0.03) * 12 + parallaxX * 0.4,
+            -15 + Math.sin(this.time * 0.04 + 1.2) * 8 + this.gustIntensity * 4 + parallaxY * 0.4,
             -500,
         );
         this.camera.rotation.z = windSway * 0.0009 + Math.sin(this.time * 0.15) * 0.003;
@@ -2757,6 +2769,16 @@ export default class WinterTheme extends BaseTheme {
             eventBus.on(EVENTS.COMBO, (d) => this.handleCombo(d)),
             eventBus.on(EVENTS.PIECE_LOCK, (d) => this.handlePieceLock(d)),
         );
+
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        this.eventUnsubscribers.push(() => window.removeEventListener('pointermove', onPointerMove));
+
         this.resizeHandler = () => this.resize(window.innerWidth, window.innerHeight);
         window.addEventListener('resize', this.resizeHandler);
     }
@@ -2957,7 +2979,7 @@ export default class WinterTheme extends BaseTheme {
 
             // === NEW ENHANCED EFFECT UPDATES ===
             this.updateShootingStars();
-            this.updateCameraAnimation();
+            this.updateCameraAnimation(delta);
             this.updateIceCrystalCrashes(delta);
             this.updateBlizzardWaves(delta);
             this.updateTempEffects(delta);

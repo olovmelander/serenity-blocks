@@ -236,6 +236,13 @@ export default class SolarEclipseTheme extends BaseTheme {
 
         // State
         this.eventUnsubscribers = [];
+
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         this.effectTimeouts = new Set();
         this.qualityPreset = QUALITY_PRESETS.High;
 
@@ -1563,7 +1570,16 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.resizeHandler = () => this.resize(window.innerWidth, window.innerHeight);
         window.addEventListener('resize', this.resizeHandler);
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1719,16 +1735,24 @@ export default class SolarEclipseTheme extends BaseTheme {
                 const orbitRadiusY = 150; // Adjusted for closer camera
                 const orbitRadiusZ = 120; // Adjusted for closer camera
 
-                // Orbital sway with multiple frequencies for organic feel
+                // Smooth pointer tracking for subtle mouse parallax
+                this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+                this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+                const parallaxX = this.smoothedPointerX * 100.0;
+                const parallaxY = -this.smoothedPointerY * 50.0;
+
+                // Orbital sway with multiple frequencies for organic feel + mouse parallax
                 this.camera.position.x = Math.sin(cameraTime + this.cameraPhaseX) * orbitRadiusX
-                    + Math.cos(cameraTime * 0.7 + this.cameraPhaseX2) * orbitRadiusX * 0.4;
+                    + Math.cos(cameraTime * 0.7 + this.cameraPhaseX2) * orbitRadiusX * 0.4
+                    + parallaxX;
                 this.camera.position.y = Math.cos(cameraTime * 0.8 + this.cameraPhaseY) * orbitRadiusY
-                    + Math.sin(cameraTime * 0.5 + this.cameraPhaseY2) * orbitRadiusY * 0.3;
+                    + Math.sin(cameraTime * 0.5 + this.cameraPhaseY2) * orbitRadiusY * 0.3
+                    + parallaxY;
                 this.camera.position.z = 850 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
 
-                // Dynamic look-at for extra parallax
-                const lookOffsetX = Math.sin(cameraTime * 0.4) * 150;
-                const lookOffsetY = Math.cos(cameraTime * 0.5) * 100;
+                // Dynamic look-at for extra parallax (also nudged by mouse at 0.4x)
+                const lookOffsetX = Math.sin(cameraTime * 0.4) * 150 + parallaxX * 0.4;
+                const lookOffsetY = Math.cos(cameraTime * 0.5) * 100 + parallaxY * 0.4;
                 this.camera.lookAt(lookOffsetX, lookOffsetY, 0);
             }
 

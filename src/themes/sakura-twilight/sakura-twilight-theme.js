@@ -101,6 +101,12 @@ export default class SakuraTwilightTheme extends BaseTheme {
         this.resolutionMode = 'auto';
 
         this.eventUnsubscribers = [];
+
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
     }
 
     async createScene() {
@@ -3152,18 +3158,25 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
         this.updatePetals();
 
-        // Create subtle camera float/sway for atmosphere
+        // Create subtle camera float/sway + mouse parallax for atmosphere
         if (this.camera) {
             const swaySpeed = 0.15;
             const swayAmount = 2.0;
             const bobSpeed = 0.2;
             const bobAmount = 0.3;
 
-            // Base position is (20, 4, 30)
-            this.camera.position.x = 20 + Math.sin(time * swaySpeed) * swayAmount;
-            this.camera.position.y = 4 + Math.sin(time * bobSpeed) * bobAmount;
-            // Keep looking at target
-            this.camera.lookAt(0, 4, 0);
+            // Smooth pointer tracking (frame-rate independent damping)
+            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, deltaTime * 2.2);
+            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, deltaTime * 2.2);
+
+            const parallaxX = this.smoothedPointerX * 6.0;
+            const parallaxY = -this.smoothedPointerY * 3.0;
+
+            // Base position is (20, 4, 30) + idle sway + mouse parallax
+            this.camera.position.x = 20 + Math.sin(time * swaySpeed) * swayAmount + parallaxX;
+            this.camera.position.y = 4 + Math.sin(time * bobSpeed) * bobAmount + parallaxY;
+            // LookAt also drifts at 0.4x for richer depth-parallax
+            this.camera.lookAt(parallaxX * 0.4, 4 + parallaxY * 0.4, 0);
         }
 
         if (this.scene && this.camera) {
@@ -3264,6 +3277,15 @@ export default class SakuraTwilightTheme extends BaseTheme {
             eventBus.on(EVENTS.PIECE_LOCK, () => this.onPieceLock()),
             eventBus.on(EVENTS.COMBO, () => this.onCombo()),
         );
+
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        this.eventUnsubscribers.push(() => window.removeEventListener('pointermove', onPointerMove));
     }
 
     getTetrominoConfig() {

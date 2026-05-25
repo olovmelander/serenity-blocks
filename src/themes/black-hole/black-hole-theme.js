@@ -916,6 +916,12 @@ export default class BlackHoleTheme extends BaseTheme {
         this.cameraPhaseY = this.random() * Math.PI * 2;
         this.cameraPhaseZ = this.random() * Math.PI * 2;
 
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // State
         this.eventUnsubscribers = [];
         this.qualityPreset = QUALITY_PRESETS.High;
@@ -3040,7 +3046,16 @@ export default class BlackHoleTheme extends BaseTheme {
         this.resizeHandler = () => this.resize(window.innerWidth, window.innerHeight);
         window.addEventListener('resize', this.resizeHandler);
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -3545,17 +3560,23 @@ export default class BlackHoleTheme extends BaseTheme {
         const followZ = (this.driftZ || 0) * 0.15; // Camera slightly follows Z depth
         const surgePushIn = comboEnergy * 24;
 
+        // Smooth pointer tracking for subtle mouse parallax
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+        const parallaxX = this.smoothedPointerX * 30.0;
+        const parallaxY = -this.smoothedPointerY * 14.0;
+
         this.cameraTargetPosition.set(
-            this.cameraBasePosition.x + followX + swayX,
-            this.cameraBasePosition.y + followY + swayY,
+            this.cameraBasePosition.x + followX + swayX + parallaxX,
+            this.cameraBasePosition.y + followY + swayY + parallaxY,
             this.cameraBasePosition.z + followZ + breatheZ - surgePushIn,
         );
 
         const moveLerp = Math.min(1.0, delta * (1.8 + comboEnergy * 0.9));
         this.camera.position.lerp(this.cameraTargetPosition, moveLerp);
 
-        const lookX = this.driftX * 0.3 + Math.sin(t * 0.2 + this.cameraPhaseX) * (2.6 + comboEnergy * 1.8);
-        const lookY = this.driftY * 0.3 + Math.cos(t * 0.17 + this.cameraPhaseY) * (1.9 + comboEnergy * 1.5);
+        const lookX = this.driftX * 0.3 + Math.sin(t * 0.2 + this.cameraPhaseX) * (2.6 + comboEnergy * 1.8) + parallaxX * 0.4;
+        const lookY = this.driftY * 0.3 + Math.cos(t * 0.17 + this.cameraPhaseY) * (1.9 + comboEnergy * 1.5) + parallaxY * 0.4;
         const lookZ = this.driftZ * 0.3; // Look target slightly tracks depth
 
         this.cameraLookTarget.set(lookX, lookY, lookZ);

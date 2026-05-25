@@ -159,6 +159,12 @@ export default class NimbusVeilTheme extends BaseTheme {
         // Event handlers
         this.eventUnsubscribers = [];
         this.boundResizeHandler = this.onWindowResize.bind(this);
+
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
         this.effectTimeouts = new Set();
 
         // Quality
@@ -744,9 +750,15 @@ export default class NimbusVeilTheme extends BaseTheme {
         const driftX = Math.sin(this.time * 0.1) * 0.5;
         const driftY = Math.cos(this.time * 0.08) * 0.3;
 
-        this.camera.position.x = driftX;
-        this.camera.position.y = driftY;
-        this.camera.lookAt(0, 0, -10);
+        // Smooth pointer tracking for subtle mouse parallax
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+        const parallaxX = this.smoothedPointerX * 3.0;
+        const parallaxY = -this.smoothedPointerY * 1.5;
+
+        this.camera.position.x = driftX + parallaxX;
+        this.camera.position.y = driftY + parallaxY;
+        this.camera.lookAt(parallaxX * 0.4, parallaxY * 0.4, -10);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -829,7 +841,16 @@ export default class NimbusVeilTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
     }
 
     onLineClear(lineCount) {

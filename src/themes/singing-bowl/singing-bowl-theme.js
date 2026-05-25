@@ -126,6 +126,12 @@ export default class SingingBowlTheme extends BaseTheme {
         super('singing-bowl');
         this.eventUnsubscribers = [];
 
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // Three.js components
         this.scene = null;
         this.camera = null;
@@ -994,7 +1000,16 @@ export default class SingingBowlTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
     }
 
     onPieceLock() {
@@ -1064,12 +1079,18 @@ export default class SingingBowlTheme extends BaseTheme {
         const cameraHeight = 10 + Math.sin(elapsed * 0.2) * 3;
         const cameraAngle = elapsed * 0.12; // Slow orbit
 
-        this.camera.position.x = Math.sin(cameraAngle) * cameraRadius;
-        this.camera.position.z = Math.cos(cameraAngle) * cameraRadius;
-        this.camera.position.y = cameraHeight;
+        // Smooth pointer tracking for subtle mouse parallax
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, deltaTime * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, deltaTime * 2.2);
+        const parallaxX = this.smoothedPointerX * 2.0;
+        const parallaxY = -this.smoothedPointerY * 1.0;
 
-        // Look at center of MAIN tree, higher up
-        this.camera.lookAt(0, 6, 0);
+        this.camera.position.x = Math.sin(cameraAngle) * cameraRadius + parallaxX;
+        this.camera.position.z = Math.cos(cameraAngle) * cameraRadius;
+        this.camera.position.y = cameraHeight + parallaxY;
+
+        // Look at center of MAIN tree (also nudged slightly by mouse)
+        this.camera.lookAt(parallaxX * 0.4, 6 + parallaxY * 0.4, 0);
 
         // Decay effects
         if (this.uniforms.uPulseIntensity.value > 0) {

@@ -25,6 +25,9 @@ import {
     createParticleNodeMaterial,
     createBuildingNodeMaterial,
     createBuildingEdgeNodeMaterial,
+    createMoteNodeMaterial,
+    createHazeNodeMaterial,
+    createPalmNodeMaterial,
 } from './synthwave-sunset-materials.js';
 import { SynthwaveSunsetPost } from './synthwave-sunset-post.js';
 import { SynthwaveParticleCompute, SynthwaveHighlightCompute } from './synthwave-sunset-compute.js';
@@ -119,6 +122,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.starField = null;
         this.buildings = [];
         this.buildingEdges = [];
+        this.hazeLayers = [];
+        this.ambientMotes = null;
+        this.ambientMotesUniforms = null;
+        this.palms = [];
+        this.palmUniforms = [];
 
         // Effects
         this.gridHighlights = [];
@@ -155,25 +163,52 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         // Event handlers
         this.eventUnsubscribers = [];
 
-        // Quality presets
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
+        // Quality presets — new tier keys drive the AAA visual stack:
+        //   windowEmissive / windowFlicker / rimIntensity / colorVariety → buildings
+        //   hazeLayers / ambientMotes / palms → atmospheric depth
+        //   chromaticAberration / filmGrain / reflectionIntensity → post
         this.qualityPresets = {
             Minimal: {
                 starCount: 500, buildingCount: 30, glowLayers: 1, maxHighlights: 30, particleBudget: 500,
+                windowEmissive: 0.25, windowFlicker: 0, rimIntensity: 0.3, colorVariety: 0,
+                hazeLayers: 0, ambientMotes: 0, palms: 0,
+                chromaticAberration: 0.0, filmGrain: 0.0, reflectionIntensity: 0.0,
             },
             Low: {
                 starCount: 1000, buildingCount: 50, glowLayers: 2, maxHighlights: 40, particleBudget: 1000,
+                windowEmissive: 0.3, windowFlicker: 0, rimIntensity: 0.35, colorVariety: 0,
+                hazeLayers: 0, ambientMotes: 0, palms: 0,
+                chromaticAberration: 0.0, filmGrain: 0.0, reflectionIntensity: 0.0,
             },
             Medium: {
                 starCount: 1800, buildingCount: 70, glowLayers: 3, maxHighlights: 60, particleBudget: 2000,
+                windowEmissive: 0.4, windowFlicker: 0, rimIntensity: 0.45, colorVariety: 1,
+                hazeLayers: 1, ambientMotes: 100, palms: 0,
+                chromaticAberration: 0.0, filmGrain: 0.0, reflectionIntensity: 0.0,
             },
             High: {
                 starCount: 2500, buildingCount: 90, glowLayers: 4, maxHighlights: 80, particleBudget: 3500,
+                windowEmissive: 0.5, windowFlicker: 1, rimIntensity: 0.55, colorVariety: 1,
+                hazeLayers: 3, ambientMotes: 220, palms: 4,
+                chromaticAberration: 0.2, filmGrain: 0.0, reflectionIntensity: 0.0,
             },
             Ultra: {
                 starCount: 4000, buildingCount: 120, glowLayers: 5, maxHighlights: 100, particleBudget: 6000,
+                windowEmissive: 0.55, windowFlicker: 1, rimIntensity: 0.6, colorVariety: 1,
+                hazeLayers: 3, ambientMotes: 320, palms: 6,
+                chromaticAberration: 0.25, filmGrain: 0.0, reflectionIntensity: 0.0,
             },
             Extreme: {
                 starCount: 6000, buildingCount: 150, glowLayers: 6, maxHighlights: 150, particleBudget: 10000,
+                windowEmissive: 0.6, windowFlicker: 1, rimIntensity: 0.65, colorVariety: 1,
+                hazeLayers: 3, ambientMotes: 420, palms: 6,
+                chromaticAberration: 0.3, filmGrain: 0.0, reflectionIntensity: 0.0,
             },
         };
         this.currentQuality = 'High';
@@ -634,6 +669,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.highlightData = [];
         this.buildingUniforms = [];
         this.shootingStarPool = [];
+        this.hazeLayers = [];
+        this.ambientMotes = null;
+        this.ambientMotesUniforms = null;
+        this.palms = [];
+        this.palmUniforms = [];
         this.sunScreenUv.set(0.5, 0.5);
         this.horizonUv = 0.46;
         this.gridWaveOrigin.set(0, 0);
@@ -701,8 +741,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.createStarField();
         this.createShootingStars();
         this.createSun();
+        this.createHazeLayers();
         this.createBuildings();
+        this.createPalmTrees();
         this.createGrid();
+        this.createAmbientMotes();
         this.createHighlightPool();
         this.createParticleSystem();
         this.setupPostProcessing();
@@ -996,11 +1039,20 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             this.buildingEdgeMaterial = edgeMaterial;
         }
 
-        layers.forEach((layer) => {
+        layers.forEach((layer, layerIndex) => {
             const buildingsPerLayer = Math.floor(count / 2);
             let buildingMaterial = null;
             if (this.isWebGPU) {
-                const { material, uniforms } = createBuildingNodeMaterial(new THREE.Color(layer.color));
+                // Far layer reads slightly dimmer + less rim than the near layer
+                const farLayer = layerIndex === 0;
+                const { material, uniforms } = createBuildingNodeMaterial(new THREE.Color(layer.color), {
+                    windowEmissive: this.activePreset.windowEmissive * (farLayer ? 0.85 : 1.0),
+                    rimIntensity: this.activePreset.rimIntensity * (farLayer ? 0.8 : 1.0),
+                    flickerEnabled: this.activePreset.windowFlicker,
+                    windowDensity: 0.35,
+                    colorVariety: this.activePreset.colorVariety,
+                    distanceBoost: farLayer ? 0.7 : 1.0,
+                });
                 buildingMaterial = material;
                 this.buildingMaterials.push(material);
                 this.buildingUniforms.push(uniforms);
@@ -1043,6 +1095,156 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             const edgeLines = new THREE.LineSegments(edges, edgeMaterial);
             this.scene.add(edgeLines);
             this.buildingEdges.push(edgeLines);
+        });
+    }
+
+    createHazeLayers() {
+        this.hazeLayers = [];
+        const layerCount = this.activePreset.hazeLayers ?? 0;
+        if (!this.isWebGPU || layerCount <= 0) return;
+
+        // Bottom-fade gradient quads sitting behind the buildings to give depth.
+        // Wider/taller for far layer, narrower/taller near the horizon.
+        const layerSpecs = [
+            { width: 360, height: 95, y: 28, z: -92, color: new THREE.Color(0xff2266), opacity: 0.16 },
+            { width: 250, height: 50, y: 16, z: -65, color: new THREE.Color(0xff7a18), opacity: 0.22 },
+            { width: 180, height: 28, y: 10, z: -38, color: new THREE.Color(0xff5599), opacity: 0.12 },
+        ].slice(0, layerCount);
+
+        layerSpecs.forEach((spec) => {
+            const geometry = new THREE.PlaneGeometry(spec.width, spec.height, 1, 1);
+            const { material } = createHazeNodeMaterial(spec.color, spec.opacity);
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(0, spec.y, spec.z);
+            mesh.renderOrder = -1;
+            this.scene.add(mesh);
+            this.hazeLayers.push(mesh);
+        });
+    }
+
+    createAmbientMotes() {
+        this.ambientMotes = null;
+        this.ambientMotesUniforms = null;
+        const moteCount = this.activePreset.ambientMotes ?? 0;
+        if (!this.isWebGPU || moteCount <= 0) return;
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(moteCount * 3);
+        const sizes = new Float32Array(moteCount);
+        const phases = new Float32Array(moteCount);
+        const speeds = new Float32Array(moteCount);
+        const driftRanges = new Float32Array(moteCount);
+        const colors = new Float32Array(moteCount * 3);
+
+        const palette = [
+            new THREE.Color(0xffd9b5),
+            new THREE.Color(0xffb5d9),
+            new THREE.Color(0xffffff),
+            new THREE.Color(0xff8c66),
+        ];
+
+        for (let i = 0; i < moteCount; i++) {
+            // Spread across the mid-distance air pocket between camera and sun
+            positions[i * 3] = (this.rand() - 0.5) * 160;
+            positions[i * 3 + 1] = 4 + this.rand() * 22;
+            positions[i * 3 + 2] = -15 - this.rand() * 70;
+            sizes[i] = 0.9 + this.rand() * 1.6;
+            phases[i] = this.rand() * Math.PI * 2;
+            speeds[i] = 0.08 + this.rand() * 0.18;
+            driftRanges[i] = 1.2 + this.rand() * 2.5;
+            const color = palette[Math.floor(this.rand() * palette.length)];
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+        geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
+        geometry.setAttribute('aDriftRange', new THREE.BufferAttribute(driftRanges, 1));
+        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+
+        const { material, uniforms } = createMoteNodeMaterial();
+        this.ambientMotesUniforms = uniforms;
+        if (uniforms?.uPixelRatio) {
+            uniforms.uPixelRatio.value = this.renderer.getPixelRatio();
+        }
+
+        this.ambientMotes = new THREE.Points(geometry, material);
+        this.ambientMotes.frustumCulled = false;
+        this.scene.add(this.ambientMotes);
+    }
+
+    createPalmTrees() {
+        this.palms = [];
+        this.palmUniforms = [];
+        const palmCount = this.activePreset.palms ?? 0;
+        if (!this.isWebGPU || palmCount <= 0) return;
+
+        // Camera (0, 8, 20), 70° FOV, ~16:9 → horizontal half-FOV ~51°. The visible
+        // half-width at world-z is (20 − z) * tan(51°) ≈ (20 − z) * 1.235. Palms sit
+        // at 90–95% of edge so trunks frame the very sides of the shot and fronds
+        // spill slightly off-screen for that iconic "driving past palms" look.
+        const placements = [
+            { x: -22, z: 2, scale: 1.05, rotation: 0.15 },   // close-left
+            { x: 24, z: 0, scale: 1.05, rotation: -0.2 },    // close-right
+            { x: -29, z: -7, scale: 1.0, rotation: -0.1 },   // mid-left
+            { x: 31, z: -9, scale: 0.95, rotation: 0.25 },   // mid-right
+            { x: -37, z: -18, scale: 0.9, rotation: 0.05 },  // far-left
+            { x: 40, z: -20, scale: 0.85, rotation: -0.15 }, // far-right
+        ].slice(0, palmCount);
+
+        const { material: palmMaterial, uniforms: palmMatUniforms } = createPalmNodeMaterial(
+            new THREE.Color(0xff66cc),
+        );
+        if (palmMatUniforms?.uRimIntensity) {
+            palmMatUniforms.uRimIntensity.value = 3.0;
+        }
+        this.palmUniforms.push(palmMatUniforms);
+
+        placements.forEach((spec) => {
+            const group = new THREE.Group();
+            group.position.set(spec.x, 0, spec.z);
+            group.rotation.y = spec.rotation;
+            group.scale.setScalar(spec.scale);
+
+            // Trunk — slight curve via TubeGeometry path
+            const curve = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(0.4, 3, 0),
+                new THREE.Vector3(-0.2, 6, 0),
+                new THREE.Vector3(0.3, 9, 0),
+            ]);
+            const trunkGeo = new THREE.TubeGeometry(curve, 16, 0.22, 8, false);
+            const trunk = new THREE.Mesh(trunkGeo, palmMaterial);
+            group.add(trunk);
+
+            // Fronds — radial planes from the crown
+            const frondCount = 8;
+            for (let i = 0; i < frondCount; i++) {
+                const frondGeo = new THREE.PlaneGeometry(5.5, 1.2, 6, 1);
+                // Curve the frond by displacing y-coords down at the tips
+                const pos = frondGeo.attributes.position;
+                for (let v = 0; v < pos.count; v++) {
+                    const x = pos.getX(v);
+                    const drop = Math.pow(Math.abs(x) / 2.75, 1.8) * 1.6;
+                    pos.setY(v, pos.getY(v) - drop);
+                }
+                pos.needsUpdate = true;
+                frondGeo.computeVertexNormals();
+
+                const frond = new THREE.Mesh(frondGeo, palmMaterial);
+                const angle = (i / frondCount) * Math.PI * 2;
+                frond.position.set(0, 9, 0);
+                frond.rotation.y = angle;
+                // Tilt fronds downward
+                frond.rotation.z = -0.25;
+                group.add(frond);
+            }
+
+            this.scene.add(group);
+            this.palms.push(group);
         });
     }
 
@@ -1251,18 +1453,24 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         }
 
         this.postProcessing = new SynthwaveSunsetPost(this.renderer, this.scene, this.camera, {
-            bloomStrength: 1.1,
+            bloomStrength: 0.85,
             bloomRadius: 0.65,
-            bloomThreshold: 0.12,
+            bloomThreshold: 0.22,
             bloomDownsample: 0.85,
             vignetteOffset: 1.0,
-            vignetteDarkness: 0.35,
+            vignetteDarkness: 0.4,
             gradeStrength: 0.18,
-            scanlineIntensity: 0.1,
+            scanlineIntensity: 0.08,
             godRaysIntensity: 0.22,
+            // NOTE: post-pass wet reflection is disabled — y-axis mismatch between
+            // viewportUV and the horizon line causes the reflection to render above
+            // the horizon (wavy red streaks across the upper sky). The grid material
+            // already has its own sun-streak reflection baked in.
             reflectionIntensity: 0.0,
             reflectionDistort: 0.0,
             reflectionSpeed: 0.0,
+            chromaticAberration: this.activePreset.chromaticAberration ?? 0.0,
+            filmGrain: this.activePreset.filmGrain ?? 0.0,
             horizon: this.horizonUv,
             sunScreen: this.sunScreenUv,
         });
@@ -1295,7 +1503,16 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
     }
 
     handlePieceLock(data) {
@@ -1651,7 +1868,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         }
         this.markBudget('compute');
 
-        this.updateCamera(elapsed);
+        this.updateCamera(elapsed, delta);
         this.updateSun(elapsed, delta);
         this.updateScreenSpaceTargets();
         this.updateGrid(elapsed, delta);
@@ -1660,6 +1877,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.updateBuildings(elapsed, delta);
         this.updateStars(elapsed);
         this.updateShootingStars(delta);
+        this.updateAmbience(elapsed);
         this.markBudget('update');
 
         if (this.postProcessing) {
@@ -1668,8 +1886,6 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 godRaysIntensity,
                 sunScreen: this.sunScreenUv,
                 reflectionIntensity: 0.0,
-                reflectionDistort: 0.0,
-                reflectionSpeed: 0.0,
                 horizon: this.horizonUv,
             });
             this.postProcessing.render();
@@ -1680,16 +1896,23 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.endBudgetFrame();
     }
 
-    updateCamera(time) {
+    updateCamera(time, delta = 0) {
         // Gentle orbital sway
         const t = time * 0.03;
-        this.camera.position.x = Math.sin(t) * 4;
-        this.camera.position.y = 8 + Math.cos(t * 0.7) * 2;
+
+        // Smooth pointer tracking for subtle mouse parallax
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+        const parallaxX = this.smoothedPointerX * 4.0;
+        const parallaxY = -this.smoothedPointerY * 2.0;
+
+        this.camera.position.x = Math.sin(t) * 4 + parallaxX;
+        this.camera.position.y = 8 + Math.cos(t * 0.7) * 2 + parallaxY;
         this.camera.position.z = 20 + Math.sin(t * 0.5) * 2;
 
         this.camera.lookAt(
-            Math.sin(t * 0.4) * 2,
-            3 + Math.cos(t * 0.3),
+            Math.sin(t * 0.4) * 2 + parallaxX * 0.4,
+            3 + Math.cos(t * 0.3) + parallaxY * 0.4,
             -20,
         );
     }
@@ -1995,6 +2218,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             const glow = Math.min(0.35, 0.06 + this.cityGlowIntensity * 0.25);
             this.buildingUniforms.forEach((uniforms) => {
                 if (uniforms?.uGlowIntensity) uniforms.uGlowIntensity.value = glow;
+                if (uniforms?.uTime) uniforms.uTime.value = time;
             });
         }
 
@@ -2027,6 +2251,23 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                 this.starField.material.uniforms.time.value = time;
             }
             this.starField.rotation.y = time * 0.002;
+        }
+    }
+
+    updateAmbience(time) {
+        if (this.ambientMotesUniforms?.uTime) {
+            this.ambientMotesUniforms.uTime.value = time;
+        }
+        // Subtle palm sway — single rotation y per palm group
+        if (this.palms.length) {
+            for (let i = 0; i < this.palms.length; i++) {
+                const palm = this.palms[i];
+                const baseRotation = palm.userData.baseRotation ?? palm.rotation.y;
+                if (palm.userData.baseRotation === undefined) {
+                    palm.userData.baseRotation = palm.rotation.y;
+                }
+                palm.rotation.y = baseRotation + Math.sin(time * 0.4 + i * 1.7) * 0.04;
+            }
         }
     }
 
@@ -2144,6 +2385,11 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.buildingMaterials = [];
         this.buildingUniforms = [];
         this.shootingStarPool = [];
+        this.hazeLayers = [];
+        this.ambientMotes = null;
+        this.ambientMotesUniforms = null;
+        this.palms = [];
+        this.palmUniforms = [];
         if (this.budgetMonitor) {
             this.budgetMonitor.samples = [];
             this.budgetMonitor.enabled = false;

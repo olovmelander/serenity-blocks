@@ -1314,6 +1314,12 @@ if (typeof window !== 'undefined') {
         getMetrics: () => performanceMonitor.getMetrics(),
         gates: () => performanceMonitor.getReleaseGateSnapshot(),
         event: (type, payload) => performanceMonitor.recordEvent(type, payload),
+        // Section profiling — exposed so themes can wrap subsystem work with
+        // startSection/endSection and the overlay's top-3 hot list will pick
+        // them up. No-ops when monitoring is disabled.
+        startSection: (name) => performanceMonitor.startSection(name),
+        endSection: (name) => performanceMonitor.endSection(name),
+        getTopSections: (limit) => performanceMonitor.getTopSections(limit),
     };
 
     console.log('💡 Performance monitor available:');
