@@ -526,6 +526,12 @@ export default class LuminousTidesTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.qualityPreset = QUALITY_PRESETS.High;
 
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // Ambient wave system
         this.ambientWaveTimer = 0;
         this.AMBIENT_WAVE_INTERVAL = 12.0;
@@ -904,7 +910,16 @@ export default class LuminousTidesTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
         console.log('[LuminousTides] Event listeners set up');
     }
 
@@ -1091,6 +1106,17 @@ export default class LuminousTidesTheme extends BaseTheme {
                 const targetStrength = this.qualityPreset.bloomStrength + this.bloomBoost;
                 this.bloomPass.strength += (targetStrength - this.bloomPass.strength) * delta * 0.3;
                 this.bloomBoost *= 0.9985; // Very gradual bloom decay
+            }
+
+            // Mouse parallax camera (base at 0,3,6 looking at 0,-0.5,0)
+            if (this.camera) {
+                this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+                this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+                const parallaxX = this.smoothedPointerX * 0.6;
+                const parallaxY = -this.smoothedPointerY * 0.3;
+                this.camera.position.x = parallaxX;
+                this.camera.position.y = 3 + parallaxY;
+                this.camera.lookAt(parallaxX * 0.4, -0.5 + parallaxY * 0.4, 0);
             }
 
             // Render

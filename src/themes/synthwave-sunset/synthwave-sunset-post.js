@@ -16,6 +16,7 @@ import {
     vec3,
     vec4,
     sin,
+    fract,
     dot,
     mix,
     length,
@@ -25,6 +26,7 @@ import {
     pow,
     max,
 } from 'three/tsl';
+import { mx_noise_float } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
 export class SynthwaveSunsetPost {
@@ -41,6 +43,8 @@ export class SynthwaveSunsetPost {
         this.uReflectionDistort = uniform(params.reflectionDistort ?? 0.015);
         this.uReflectionSpeed = uniform(params.reflectionSpeed ?? 0.15);
         this.uHorizon = uniform(params.horizon ?? 0.46);
+        this.uChromaticAberration = uniform(params.chromaticAberration ?? 0.0);
+        this.uFilmGrain = uniform(params.filmGrain ?? 0.0);
 
         this.scenePass = pass(scene, camera);
         this.scenePass.setMRT(mrt({ output, emissive }));
@@ -48,9 +52,9 @@ export class SynthwaveSunsetPost {
         const sceneColor = this.scenePass.getTextureNode('output');
         const emissivePass = this.scenePass.getTextureNode('emissive');
 
-        const bloomStrength = params.bloomStrength ?? 1.2;
-        const bloomRadius = params.bloomRadius ?? 0.5;
-        const bloomThreshold = params.bloomThreshold ?? 0.15;
+        const bloomStrength = params.bloomStrength ?? 0.85;
+        const bloomRadius = params.bloomRadius ?? 0.65;
+        const bloomThreshold = params.bloomThreshold ?? 0.22;
 
         this.bloomNode = bloom(emissivePass, bloomStrength, bloomRadius, bloomThreshold);
         this.bloomDownsample = params.bloomDownsample ?? 0.8;
@@ -61,9 +65,16 @@ export class SynthwaveSunsetPost {
         this.size = { width: 0, height: 0 };
 
         const uv = viewportUV;
-        const baseSample = sceneColor.sample(uv);
         const centered = uv.sub(0.5).mul(2.0);
         const dist = length(centered);
+
+        // Radial chromatic aberration — splits RGB along the view-center axis.
+        // Intensity peaks at corners (where `centered` has length ~sqrt(2)).
+        const caOffset = centered.mul(this.uChromaticAberration.mul(0.0035));
+        const sampleR = sceneColor.sample(uv.add(caOffset));
+        const sampleG = sceneColor.sample(uv);
+        const sampleB = sceneColor.sample(uv.sub(caOffset));
+        const baseSample = vec4(sampleR.r, sampleG.g, sampleB.b, sampleG.a);
 
         const vignetteOffset = float(params.vignetteOffset ?? 1.0);
         const vignetteDarkness = float(params.vignetteDarkness ?? 0.35);
@@ -136,7 +147,12 @@ export class SynthwaveSunsetPost {
             .mul(this.uReflectionIntensity.mul(1.4));
         outColor = outColor.add(vec4(sunReflection.mul(gridMask), 1.0));
 
-        this.postProcessing.outputNode = outColor.mul(scanMask).add(this.bloomNode);
+        // Film grain — animated luminance noise, intensity-gated by uFilmGrain.
+        const grain = mx_noise_float(vec3(uv.mul(900.0), fract(this.uTime.mul(13.0))));
+        const grainContribution = vec3(grain).mul(this.uFilmGrain).mul(0.06);
+
+        const composited = outColor.mul(scanMask).add(this.bloomNode);
+        this.postProcessing.outputNode = composited.add(vec4(grainContribution, 0.0));
         this.postProcessing.needsUpdate = true;
     }
 
@@ -165,6 +181,12 @@ export class SynthwaveSunsetPost {
         }
         if (params.horizon !== undefined) {
             this.uHorizon.value = params.horizon;
+        }
+        if (params.chromaticAberration !== undefined) {
+            this.uChromaticAberration.value = params.chromaticAberration;
+        }
+        if (params.filmGrain !== undefined) {
+            this.uFilmGrain.value = params.filmGrain;
         }
     }
 

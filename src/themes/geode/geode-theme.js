@@ -209,6 +209,12 @@ export default class GeodeTheme extends BaseTheme {
         this.cameraShake = { intensity: 0, x: 0, y: 0 };
         this.chromaticAberration = 0;
 
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // Combo state
         this.comboMultiplier = 1.0;
         this.pendingComboCount = 0;
@@ -872,7 +878,16 @@ export default class GeodeTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
     }
 
     onPieceLock() {
@@ -1223,7 +1238,7 @@ export default class GeodeTheme extends BaseTheme {
         }
 
         // Update camera
-        this.updateCamera(elapsed);
+        this.updateCamera(elapsed, delta);
 
         // Update crystal pulse decay
         this.updateCrystals(delta);
@@ -1249,14 +1264,22 @@ export default class GeodeTheme extends BaseTheme {
         }
     }
 
-    updateCamera(elapsed) {
-        // Organic drift motion
+    updateCamera(elapsed, delta = 0) {
+        // Smooth pointer tracking for subtle mouse parallax
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+        const parallaxX = this.smoothedPointerX * 8.0;
+        const parallaxY = -this.smoothedPointerY * 4.0;
+
+        // Organic drift motion + mouse parallax
         let camX = this.baseCameraPos.x
             + Math.sin(elapsed * 0.08) * 12
-            + Math.sin(elapsed * 0.23) * 4;
+            + Math.sin(elapsed * 0.23) * 4
+            + parallaxX;
         let camY = this.baseCameraPos.y
             + Math.cos(elapsed * 0.05) * 8
-            + Math.sin(elapsed * 0.17) * 3;
+            + Math.sin(elapsed * 0.17) * 3
+            + parallaxY;
         let camZ = this.baseCameraPos.z
             + Math.sin(elapsed * 0.11) * 10
             + Math.cos(elapsed * 0.31) * 3;
@@ -1270,9 +1293,9 @@ export default class GeodeTheme extends BaseTheme {
 
         this.camera.position.set(camX, camY, camZ);
 
-        // Subtle look target drift
-        const lookX = Math.sin(elapsed * 0.06) * 8;
-        const lookY = Math.cos(elapsed * 0.04) * 4;
+        // Subtle look target drift (also nudged by mouse at 0.4x)
+        const lookX = Math.sin(elapsed * 0.06) * 8 + parallaxX * 0.4;
+        const lookY = Math.cos(elapsed * 0.04) * 4 + parallaxY * 0.4;
         this.camera.lookAt(lookX, lookY, 0);
     }
 

@@ -870,7 +870,10 @@ export function createGasGiantNodeMaterial(jupiterTexture) {
         .mul(float(1.0).add(uPulse.mul(0.07)));
     material.colorNode = clamp(finalColor, vec3(0.0), vec3(1.0));
     material.opacityNode = float(1.0);
-    material.emissiveNode = atmosphere.add(shadedColor.mul(0.04)).mul(BLOOM_CLASS_WEIGHTS.gasGiant);
+    // Rim-bias the emissive so edges glow brighter than disc center — reads as a
+    // 3D atmospheric sphere rather than a flat colored disc inside a bloom blob.
+    const ggRim = pow(float(1.0).sub(viewDot), float(1.6)).mul(0.9).add(0.4);
+    material.emissiveNode = atmosphere.add(shadedColor.mul(0.04)).mul(ggRim).mul(BLOOM_CLASS_WEIGHTS.gasGiant);
 
     return finalizeNodeMaterial(
         material,
@@ -912,7 +915,8 @@ export function createIceMoonNodeMaterial(neptuneTexture) {
     const moonColor = shadedColor.add(rimColor).mul(float(1.0).add(uPulse.mul(0.08)));
     material.colorNode = clamp(moonColor, vec3(0.0), vec3(1.0));
     material.opacityNode = float(1.0);
-    material.emissiveNode = rimColor.add(shadedColor.mul(0.03)).mul(BLOOM_CLASS_WEIGHTS.iceMoon);
+    const imRim = pow(float(1.0).sub(viewDot), float(1.6)).mul(0.9).add(0.4);
+    material.emissiveNode = rimColor.add(shadedColor.mul(0.03)).mul(imRim).mul(BLOOM_CLASS_WEIGHTS.iceMoon);
 
     return finalizeNodeMaterial(
         material,
@@ -952,7 +956,8 @@ export function createAtmosphericOrbNodeMaterial(venusTexture) {
     const finalColor = shadedColor.add(hazeColor).mul(float(1.0).add(uPulse.mul(0.06)));
     material.colorNode = clamp(finalColor, vec3(0.0), vec3(1.0));
     material.opacityNode = float(1.0);
-    material.emissiveNode = hazeColor.add(shadedColor.mul(0.03)).mul(BLOOM_CLASS_WEIGHTS.atmosphericOrb);
+    const aoRim = pow(float(1.0).sub(viewDot), float(1.6)).mul(0.9).add(0.4);
+    material.emissiveNode = hazeColor.add(shadedColor.mul(0.03)).mul(aoRim).mul(BLOOM_CLASS_WEIGHTS.atmosphericOrb);
 
     return finalizeNodeMaterial(
         material,

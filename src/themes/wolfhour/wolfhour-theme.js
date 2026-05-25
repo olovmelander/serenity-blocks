@@ -502,6 +502,12 @@ export default class WolfhourTheme extends BaseTheme {
         this.time = 0;
         this.animationFrameId = null;
         this.eventUnsubscribers = [];
+
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
         this.qualityChangeHandler = null;
         this.qualityRebuildPending = false;
         this.runtimeRebuildTimeouts = new Set();
@@ -2251,7 +2257,16 @@ export default class WolfhourTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, levelUpUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, levelUpUnsub, pointerUnsub);
     }
 
     setupQualityListener() {
@@ -3928,7 +3943,7 @@ export default class WolfhourTheme extends BaseTheme {
             }
 
             // Subtle camera drift animation for immersive feel
-            this.updateCameraAnimation();
+            this.updateCameraAnimation(deltaTime);
 
             // Update time uniforms — branch by backend
             if (this.isWebGPU && this.materialFactories) {
@@ -3992,11 +4007,17 @@ export default class WolfhourTheme extends BaseTheme {
         animate();
     }
 
-    updateCameraAnimation() {
+    updateCameraAnimation(deltaTime = 0) {
         // More pronounced camera movements for immersive, breathing feel
         // Primary drift period: ~30 seconds, secondary: ~50 seconds
         const driftSpeed = 0.04;
         const slowDrift = 0.025;
+
+        // Smooth pointer tracking for subtle mouse parallax (frame-rate independent damping)
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, deltaTime * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, deltaTime * 2.2);
+        const parallaxX = this.smoothedPointerX * 60.0;
+        const parallaxY = -this.smoothedPointerY * 30.0;
 
         // Horizontal drift with layered motion for organic feel
         const xDrift = Math.sin(this.time * driftSpeed) * 85
@@ -4027,9 +4048,9 @@ export default class WolfhourTheme extends BaseTheme {
             + Math.sin(this.time * 79.0) * 0.5
         ) * shakeScale * 11.0;
 
-        // Apply position drift
-        this.camera.position.x = xDrift + shakeX;
-        this.camera.position.y = yDrift + shakeY;
+        // Apply position drift + mouse parallax
+        this.camera.position.x = xDrift + shakeX + parallaxX;
+        this.camera.position.y = yDrift + shakeY + parallaxY;
 
         // Deep Immersion: Dynamic Camera Roll (Banking & Tilt)
         // Bank slightly into the direction of the horizontal drift

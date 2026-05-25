@@ -50,6 +50,12 @@ export default class AuroraTheme extends BaseTheme {
         this.animationFrame = null;
         this.clock = new THREE.Clock();
 
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // Uniforms
         this.uniforms = {
             time: { value: 0 },
@@ -445,16 +451,25 @@ export default class AuroraTheme extends BaseTheme {
             const orbitRadiusY = 6; // Vertical sway range
             const orbitRadiusZ = 5; // Depth breathing
 
-            // Orbital sway - creates parallax with starfield/aurora
+            // Smooth pointer tracking (frame-rate independent damping)
+            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+
+            const parallaxX = this.smoothedPointerX * 6.0;
+            const parallaxY = -this.smoothedPointerY * 3.0;
+
+            // Orbital sway + mouse parallax - creates parallax with starfield/aurora
             this.camera.position.x = Math.sin(cameraTime) * orbitRadiusX
-                + Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4;
+                + Math.cos(cameraTime * 0.7) * orbitRadiusX * 0.4
+                + parallaxX;
             this.camera.position.y = -5 + Math.cos(cameraTime * 0.8) * orbitRadiusY
-                + Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3;
+                + Math.sin(cameraTime * 0.5) * orbitRadiusY * 0.3
+                + parallaxY;
             this.camera.position.z = 15 + Math.sin(cameraTime * 0.6) * orbitRadiusZ;
 
-            // LookAt drift for dynamic framing
-            const lookOffsetX = Math.sin(cameraTime * 0.4) * 4;
-            const lookOffsetY = 5 + Math.cos(cameraTime * 0.5) * 3;
+            // LookAt drift for dynamic framing (also nudged by mouse at 0.4x)
+            const lookOffsetX = Math.sin(cameraTime * 0.4) * 4 + parallaxX * 0.4;
+            const lookOffsetY = 5 + Math.cos(cameraTime * 0.5) * 3 + parallaxY * 0.4;
             const lookOffsetZ = -5 + Math.sin(cameraTime * 0.3) * 3;
             this.camera.lookAt(lookOffsetX, lookOffsetY, lookOffsetZ);
         }
@@ -686,7 +701,16 @@ export default class AuroraTheme extends BaseTheme {
             this.uniforms.intensity.value += 0.08;
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
     }
 
     onWindowResize() {
