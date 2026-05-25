@@ -45,6 +45,12 @@ export default class GalaxyTheme extends BaseTheme {
             lookAtX: 1.5,
         };
 
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // Three.js components
         this.scene = null;
         this.camera = null;
@@ -765,14 +771,20 @@ export default class GalaxyTheme extends BaseTheme {
             const baseZ = this.cameraBasePosition.z
                 + Math.cos(cameraTime) * this.cameraMotion.depth;
 
-            this.camera.position.x = baseX + lockDirection.x * 0.32 * parallax;
-            this.camera.position.y = baseY + Math.abs(lockDirection.x) * 0.05 * parallax;
+            // Smooth pointer tracking (frame-rate independent damping)
+            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+            const mouseParallaxX = this.smoothedPointerX * 4.0;
+            const mouseParallaxY = -this.smoothedPointerY * 2.0;
+
+            this.camera.position.x = baseX + lockDirection.x * 0.32 * parallax + mouseParallaxX;
+            this.camera.position.y = baseY + Math.abs(lockDirection.x) * 0.05 * parallax + mouseParallaxY;
             this.camera.position.z = baseZ - 0.45 * parallax;
 
             const lookAtOffset = Math.sin(cameraTime * 0.5) * this.cameraMotion.lookAtX;
             this.camera.lookAt(
-                lookAtOffset + lockDirection.x * 0.28 * parallax,
-                0.03 * parallax,
+                lookAtOffset + lockDirection.x * 0.28 * parallax + mouseParallaxX * 0.4,
+                0.03 * parallax + mouseParallaxY * 0.4,
                 0,
             );
         }
@@ -1036,7 +1048,16 @@ export default class GalaxyTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
     }
 
     onLineClear(count) {

@@ -175,6 +175,12 @@ export default class SunsetTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.boundResizeHandler = this.onWindowResize.bind(this);
 
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // Three.js core components
         this.scene = null;
         this.camera = null;
@@ -887,7 +893,7 @@ export default class SunsetTheme extends BaseTheme {
         }
 
         // Camera drift
-        this.updateCameraDrift(elapsed);
+        this.updateCameraDrift(elapsed, delta);
 
         // Update effects
         this.updateShockwaves(delta);
@@ -1060,8 +1066,14 @@ export default class SunsetTheme extends BaseTheme {
         this.scene.fog.color.copy(fogColor);
     }
 
-    updateCameraDrift(elapsed) {
+    updateCameraDrift(elapsed, delta = 0) {
         if (!this.camera) return;
+
+        // Smooth pointer tracking for subtle mouse parallax (additive on top of breathing drift)
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+        const parallaxX = this.smoothedPointerX * 5.0;
+        const parallaxY = -this.smoothedPointerY * 2.5;
 
         // ═══════════════════════════════════════════════════════════════════════
         // IMMERSIVE BREATHING CAMERA MOVEMENT
@@ -1095,8 +1107,8 @@ export default class SunsetTheme extends BaseTheme {
         const floatZ = Math.sin(t * breatheSpeed * 0.8) * 4.0 // Primary push/pull
             + Math.cos(t * driftSpeed * 0.5) * 2.0; // Secondary variation
 
-        this.camera.position.x = this.baseCameraPos.x + floatX;
-        this.camera.position.y = this.baseCameraPos.y + floatY;
+        this.camera.position.x = this.baseCameraPos.x + floatX + parallaxX;
+        this.camera.position.y = this.baseCameraPos.y + floatY + parallaxY;
         this.camera.position.z = this.baseCameraPos.z + floatZ;
 
         // ─────────────────────────────────────────────────────────────────────
@@ -1108,8 +1120,8 @@ export default class SunsetTheme extends BaseTheme {
         this.camera.updateProjectionMatrix();
 
         // Smart LookAt: Target moves slightly out of phase for stabilized feel
-        const targetX = Math.sin(t * driftSpeed * 0.8 + 1.0) * 2.0;
-        const targetY = Math.cos(t * breatheSpeed * 0.5 + 0.5) * 1.5;
+        const targetX = Math.sin(t * driftSpeed * 0.8 + 1.0) * 2.0 + parallaxX * 0.4;
+        const targetY = Math.cos(t * breatheSpeed * 0.5 + 0.5) * 1.5 + parallaxY * 0.4;
 
         this.camera.lookAt(targetX, targetY, 0);
     }
@@ -1311,7 +1323,16 @@ export default class SunsetTheme extends BaseTheme {
             this.onPieceLock();
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
     }
 
     onLineClear(lineCount) {

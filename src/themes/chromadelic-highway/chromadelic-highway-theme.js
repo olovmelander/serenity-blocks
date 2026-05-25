@@ -117,9 +117,9 @@ const QUALITY_PRESETS = {
         ambientParticleCount: 2000,
         roadSegments: 200,
         planetCount: 9,
-        bloomStrength: 0.5,
-        bloomRadius: 0.3,
-        bloomThreshold: 0.65,
+        bloomStrength: 0.62,
+        bloomRadius: 0.62,
+        bloomThreshold: 0.22,
         enableBloom: true,
         enableCompute: true,
     },
@@ -130,9 +130,9 @@ const QUALITY_PRESETS = {
         ambientParticleCount: 1500,
         roadSegments: 150,
         planetCount: 7,
-        bloomStrength: 0.45,
-        bloomRadius: 0.25,
-        bloomThreshold: 0.7,
+        bloomStrength: 0.55,
+        bloomRadius: 0.58,
+        bloomThreshold: 0.25,
         enableBloom: true,
         enableCompute: true,
     },
@@ -143,9 +143,9 @@ const QUALITY_PRESETS = {
         ambientParticleCount: 800,
         roadSegments: 100,
         planetCount: 5,
-        bloomStrength: 0.4,
-        bloomRadius: 0.2,
-        bloomThreshold: 0.75,
+        bloomStrength: 0.48,
+        bloomRadius: 0.55,
+        bloomThreshold: 0.28,
         enableBloom: true,
         enableCompute: true,
     },
@@ -156,9 +156,9 @@ const QUALITY_PRESETS = {
         ambientParticleCount: 400,
         roadSegments: 70,
         planetCount: 3,
-        bloomStrength: 0.35,
-        bloomRadius: 0.2,
-        bloomThreshold: 0.8,
+        bloomStrength: 0.40,
+        bloomRadius: 0.50,
+        bloomThreshold: 0.32,
         enableBloom: true,
         enableCompute: false,
     },
@@ -169,9 +169,9 @@ const QUALITY_PRESETS = {
         ambientParticleCount: 150,
         roadSegments: 40,
         planetCount: 2,
-        bloomStrength: 0.3,
-        bloomRadius: 0.15,
-        bloomThreshold: 0.85,
+        bloomStrength: 0.34,
+        bloomRadius: 0.45,
+        bloomThreshold: 0.40,
         enableBloom: false,
         enableCompute: false,
     },
@@ -182,9 +182,9 @@ const QUALITY_PRESETS = {
         ambientParticleCount: 80,
         roadSegments: 30,
         planetCount: 1,
-        bloomStrength: 0.2,
-        bloomRadius: 0.1,
-        bloomThreshold: 0.9,
+        bloomStrength: 0.25,
+        bloomRadius: 0.40,
+        bloomThreshold: 0.50,
         enableBloom: false,
         enableCompute: false,
     },
@@ -193,7 +193,34 @@ const QUALITY_PRESETS = {
 const BLOOM_TUNING = {
     baseScale: 1.15,
     reactiveScale: 0.85,
-    thresholdLift: 0.10,
+    thresholdLift: 0.04,
+};
+
+// Tight 5-hue palette for tunnel rings — collapses the strobe-rainbow into a
+// coherent magenta/violet/cyan language. Cycles by `i % RING_PALETTE.length`.
+const RING_PALETTE = [0.78, 0.86, 0.55, 0.62, 0.92];
+
+// Per-quality post-FX flourish ceilings. Each entry is the maximum value the
+// per-frame update can drive a flourish to. Below-zero entries disable that flourish.
+const FLOURISH_TUNING = {
+    Extreme: { godRay: 0.45, anamorphic: 0.30, roadReflection: 0.11, chromaBoost: 1.7 },
+    Ultra:   { godRay: 0.35, anamorphic: 0.22, roadReflection: 0.09, chromaBoost: 1.6 },
+    High:    { godRay: 0.20, anamorphic: 0.12, roadReflection: 0.07, chromaBoost: 1.5 },
+    Medium:  { godRay: 0.0,  anamorphic: 0.0,  roadReflection: 0.04, chromaBoost: 1.4 },
+    Low:     { godRay: 0.0,  anamorphic: 0.0,  roadReflection: 0.0,  chromaBoost: 1.3 },
+    Minimal: { godRay: 0.0,  anamorphic: 0.0,  roadReflection: 0.0,  chromaBoost: 1.2 },
+};
+
+// Celestial slot table — keeps secondary planets composed in the sky rather than
+// scattered. Each slot defines a bounding box; planets sample a position within it
+// at spawn and clamp to its bounds at runtime. Mutually exclusive zones prevent
+// planets from stacking on each other.
+const CELESTIAL_SLOTS = {
+    upperLeft : { x:[-1900,-1400], y:[560,720], z:[-3800,-3200], renderOrder:-72 },
+    upperRight: { x:[ 1400, 1900], y:[560,720], z:[-3800,-3200], renderOrder:-72 },
+    midLeft   : { x:[-1600,-1200], y:[340,460], z:[-2800,-2200], renderOrder:-64 },
+    midRight  : { x:[ 1200, 1600], y:[340,460], z:[-2800,-2200], renderOrder:-64 },
+    farBack   : { x:[ -500,  500], y:[640,780], z:[-4600,-4000], renderOrder:-80 },
 };
 
 const RING_GLOW_TUNING = {
@@ -442,15 +469,17 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this._wormholeStrength = 0;
         this.cinematicState = this.createCinematicState();
 
-        // Planet journey - focal corridor anchored and intentionally paced
+        // Planet journey — constrained to the upper celestial dome so the hero never
+        // crosses the highway. All Y >= 460 (above horizon line); all Z <= -2400 (behind
+        // mid-range tunnel rings); sweep X = [-800, 800] anchored over vanishing point.
         this.journeyTime = 0;
         this.journeyDuration = 180;
-        this.planetStartPos = new THREE.Vector3(940, 360, -2150);
-        this.planetClosePos = new THREE.Vector3(540, 170, 240);
-        this.planetEndPos = new THREE.Vector3(820, 310, 640);
+        this.planetStartPos = new THREE.Vector3(  800, 480, -3400);
+        this.planetClosePos = new THREE.Vector3(    0, 560, -2600);
+        this.planetEndPos   = new THREE.Vector3( -800, 480, -3400);
         this.celestialCorridor = {
-            centerX: 720,
-            halfWidth: 300,
+            centerX: 0,
+            halfWidth: 900,
         };
 
         // Effect intensities
@@ -507,6 +536,13 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.useShootingStarCompute = false;
 
         this.eventUnsubscribers = [];
+
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         this.qualityPreset = QUALITY_PRESETS.High;
         this.updateReactiveCaps();
         this.baselineFrames = [];
@@ -1951,8 +1987,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         console.log(`[ChromadelicHighway] Using ${this.isWebGPU ? 'WebGPU' : 'WebGL2'} backend`);
 
-        // Dark cosmic void: the highway and rings carry the saturation, not the full sky.
-        this.renderer.setClearColor(0x020008, 1);
+        // Deep violet cosmic void — fog color matches palette for atmospheric perspective.
+        this.renderer.setClearColor(0x0a0418, 1);
         this.renderer.setPixelRatio(this.getRendererPixelRatio(1.5));
         this.renderer.setSize(width, height);
 
@@ -1960,7 +1996,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         container.appendChild(this.renderer.domElement);
 
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0x020008, 0.00042);
+        this.scene.background = new THREE.Color(0x0a0418);
+        // FogExp2 is square-falloff: density 0.00075 puts >95% fog by Z=3000, eating
+        // the hero and the back rows of rings. 0.00028 lifts mid-range to ~50% fog
+        // by Z=3000 while still giving atmospheric depth on the back wall.
+        this.scene.fog = new THREE.FogExp2(0x0a0418, 0.00028);
 
         // Camera: Lower, closer to road - immersive racing view
         this.camera = new THREE.PerspectiveCamera(80, width / height, 1, 12000);
@@ -2090,23 +2130,33 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.scene.add(this.underRoadGlow);
     }
 
+    // Shared road-curve sampler. Single source of truth for the highway's lateral
+    // wander — used by road vertices, tunnel rings, and the camera bank/yaw follow
+    // so the road geometry and the camera react to the same signal in lockstep.
+    // Amplitudes ~30% wider and time scale ~38% slower than the original to read
+    // as a winding road rather than nervous wobble.
+    sampleRoadCurve(z) {
+        const t = Math.max(0, (200 - z) / 2700);
+        const strength = t * t;
+        const ts = this.time * 0.075;
+        const x =
+            Math.sin(t * 2.5 + ts)         * 260 * strength +
+            Math.sin(t * 1.2 + ts * 0.5)   * 160 * strength +
+            Math.cos(t * 1.8 + ts * 0.75)  * 100 * strength;
+        const y = Math.sin(t * 1.5 + ts * 0.33) * 30 * strength;
+        return { x, y, strength };
+    }
+
     updateRoadCurve() {
         if (!this.roadGeometry) return;
 
         const positions = this.roadGeometry.attributes.position.array;
         const segments = this.qualityPreset.roadSegments;
-        const time = this.time * 0.12;
 
         for (let i = 0; i <= segments; i++) {
             const t = i / segments;
             const z = 400 - t * 2900;
-            const curveStrength = t * t;
-
-            const curve1 = Math.sin(t * 2.5 + time) * 200 * curveStrength;
-            const curve2 = Math.sin(t * 1.2 + time * 0.6) * 120 * curveStrength;
-            const curve3 = Math.cos(t * 1.8 + time * 0.9) * 80 * curveStrength;
-            const xOffset = curve1 + curve2 + curve3;
-            const yOffset = Math.sin(t * 1.5 + time * 0.4) * 25 * curveStrength;
+            const { x: xOffset, y: yOffset } = this.sampleRoadCurve(z);
 
             const leftIdx = (i * 2) * 3;
             positions[leftIdx] = -100 + xOffset;
@@ -2230,7 +2280,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 profile.tubeSegments,
                 profile.radialSegments,
             );
-            const hue = i / ringCount;
+            // Cycle through a tight 5-hue palette instead of full rainbow per row —
+            // keeps the tunnel reading as a rhythm, not a strobe.
+            const hue = RING_PALETTE[i % RING_PALETTE.length];
             const color = new THREE.Color().setHSL(hue, RING_GLOW_TUNING.saturation, 0.55);
 
             let material;
@@ -2315,6 +2367,10 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 line.userData.offset = i;
                 line.userData.hue = hue;
                 line.userData.materialData = materialData;
+                // Cached for per-frame curve following — must match the create-time loop.
+                line.userData.segments = segments;
+                line.userData.xBase = side * (110 + i * 25);
+                line.userData.yBase = 2 + i * 3;
 
                 this.edgeStrips.push(line);
                 this.scene.add(line);
@@ -2731,7 +2787,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             const shellRadius = planetSize * 1.085;
             const shellGeo = new THREE.SphereGeometry(shellRadius, tessellation, tessellation);
             const shellData = createPlanetAtmosphereShellMaterial({
-                intensity: 1.0,
+                intensity: 1.3, // Hero owns the dominant atmospheric halo
                 horizon: new THREE.Color(1.0, 0.45, 0.95), // magenta-violet horizon
                 zenith: new THREE.Color(0.35, 0.85, 1.0),  // cool cyan at higher altitude
             });
@@ -2826,35 +2882,36 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             }
 
             this.neonGasGiant = new THREE.Mesh(gasGiantGeo, gasGiantMat);
-            this.neonGasGiant.position.set(-2520, 560, -3340);
+            // Pushed further left so it sits clearly on the side instead of behind the tunnel.
+            this.neonGasGiant.position.set(-3000, 580, -4800);
             this.neonGasGiant.renderOrder = -68;
             this.neonGasGiant.scale.setScalar(0.88);
             this.neonGasGiant.userData.materialData = gasGiantMatData;
             this.neonGasGiant.userData.basePosition = this.neonGasGiant.position.clone();
             this.neonGasGiant.userData.baseScale = 0.88;
             this.neonGasGiant.userData.approachProfile = {
-                start: new THREE.Vector3(-2520, 560, -3340),
-                close: new THREE.Vector3(-1140, 250, -840),
-                end: new THREE.Vector3(-1860, 430, 520),
+                start: new THREE.Vector3(-3000, 580, -4800),
+                close: new THREE.Vector3(-2400, 420, -1500),
+                end:   new THREE.Vector3(-3200, 520,   500),
                 phaseOffset: 36,
                 approachEnd: 114,
                 flybyEnd: 154,
-                arcAmplitudeX: 74,
-                arcAmplitudeY: 34,
+                arcAmplitudeX: 60,
+                arcAmplitudeY: 28,
                 arcFrequencyX: 0.5,
                 arcFrequencyY: 0.82,
                 arcPhaseY: 1.4,
-                corridorCenterX: -1200,
-                corridorHalfWidth: 980,
+                corridorCenterX: -2800,
+                corridorHalfWidth: 900,  // X ∈ [-3700, -1900]
             };
             this.neonGasGiant.userData.scaleProfile = {
-                minScale: 0.62,
-                maxScale: 1.26,
-                nearDistance: 780,
+                minScale: 0.55,
+                maxScale: 1.45,
+                nearDistance: 700,
                 farDistance: 5200,
-                glowScale: 0.22,
+                glowScale: 0.20,
                 pulseScale: 0.04,
-                paceScale: 0.06,
+                paceScale: 0.05,
             };
             this.neonGasGiant.userData.driftPhase = this.rand() * Math.PI * 2;
             this.neonGasGiant.userData.driftSpeed = 0.03;
@@ -2921,10 +2978,12 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             );
         }
 
-        // Binary Dwarf Stars - far background
+        // Binary Dwarf Stars — far upper-left, shared orbit center.
         if (planetCount >= 4) {
             const starSize = 60;
             const starHues = [0.1, 0.6]; // Orange and Cyan
+            // Fixed far-left anchor so binaries always sit clearly on the side.
+            const orbitCenter = new THREE.Vector3(-2800, 900, -4800);
 
             starHues.forEach((hue, idx) => {
                 const starGeo = new THREE.SphereGeometry(starSize, 24, 24);
@@ -2947,24 +3006,24 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
                 const star = new THREE.Mesh(starGeo, starMat);
                 star.position.set(
-                    -1320 + idx * 92,
-                    760,
-                    -4200,
+                    orbitCenter.x + idx * 92 - 46,
+                    orbitCenter.y,
+                    orbitCenter.z,
                 );
-                star.renderOrder = -70;
+                star.renderOrder = -72;
                 star.userData.materialData = starMatData;
                 star.userData.hue = hue;
                 star.userData.orbitOffset = idx * Math.PI;
-                star.userData.baseCenter = new THREE.Vector3(-1274, 760, -4200);
+                star.userData.baseCenter = orbitCenter.clone();
                 star.userData.orbitRadius = 46;
                 star.userData.orbitSpeed = 0.085;
                 star.userData.baseScale = 1.0;
                 star.userData.scaleProfile = {
-                    minScale: 0.7,
-                    maxScale: 1.08,
+                    minScale: 0.92,
+                    maxScale: 1.06,
                     nearDistance: 1200,
                     farDistance: 6800,
-                    glowScale: 0.1,
+                    glowScale: 0.08,
                     pulseScale: 0.02,
                     paceScale: 0.02,
                 };
@@ -2995,35 +3054,35 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             }
 
             this.venusOrb = new THREE.Mesh(venusGeo, venusMat);
-            this.venusOrb = new THREE.Mesh(venusGeo, venusMat);
-            this.venusOrb.position.set(-1500, 800, -4200);
-            this.venusOrb.renderOrder = -66;
+            // Pushed further right; stays high in the sky.
+            this.venusOrb.position.set(3100, 830, -4800);
+            this.venusOrb.renderOrder = -72;
             this.venusOrb.userData.materialData = venusMatData;
             this.venusOrb.userData.basePosition = this.venusOrb.position.clone();
             this.venusOrb.userData.baseScale = 1.2;
             this.venusOrb.userData.approachProfile = {
-                start: new THREE.Vector3(-1500, 800, -4200),
-                close: new THREE.Vector3(-1800, 900, -3800),
-                end: new THREE.Vector3(-1200, 700, -4000),
+                start: new THREE.Vector3(3100, 830, -4800),
+                close: new THREE.Vector3(2400, 720, -2200),
+                end:   new THREE.Vector3(3500, 780,   500),
                 phaseOffset: 86,
                 approachEnd: 118,
                 flybyEnd: 160,
-                arcAmplitudeX: 70,
-                arcAmplitudeY: 42,
+                arcAmplitudeX: 50,
+                arcAmplitudeY: 30,
                 arcFrequencyX: 0.58,
                 arcFrequencyY: 0.9,
                 arcPhaseY: 0.9,
-                corridorCenterX: -1260,
-                corridorHalfWidth: 980,
+                corridorCenterX: 2900,
+                corridorHalfWidth: 900,  // X ∈ [2000, 3800]
             };
             this.venusOrb.userData.scaleProfile = {
-                minScale: 0.58,
-                maxScale: 1.24,
-                nearDistance: 760,
+                minScale: 0.6,
+                maxScale: 1.35,
+                nearDistance: 700,
                 farDistance: 5000,
-                glowScale: 0.2,
-                pulseScale: 0.04,
-                paceScale: 0.05,
+                glowScale: 0.18,
+                pulseScale: 0.03,
+                paceScale: 0.04,
             };
             this.venusOrb.userData.driftPhase = this.rand() * Math.PI * 2;
             this.venusOrb.userData.driftSpeed = 0.02;
@@ -3052,25 +3111,28 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             }
 
             this.marsPlanet = new THREE.Mesh(marsGeo, marsMat);
-            this.marsPlanet.position.set(1300, 600, -2800);
-            this.marsPlanet.renderOrder = -63;
+            // Pushed further right so it sits visibly off-tunnel.
+            this.marsPlanet.position.set(2600, 480, -4500);
+            this.marsPlanet.renderOrder = -64;
             this.marsPlanet.userData.materialData = marsMatData;
             this.marsPlanet.userData.basePosition = this.marsPlanet.position.clone();
             this.marsPlanet.userData.approachProfile = {
-                start: new THREE.Vector3(1300, 500, -5000),
-                close: new THREE.Vector3(1800, 600, -1800),
-                end: new THREE.Vector3(2600, 800, 800),
+                start: new THREE.Vector3(2600, 480, -4500),
+                close: new THREE.Vector3(2200, 380, -1400),
+                end:   new THREE.Vector3(3100, 500,   600),
                 phaseOffset: 90,
                 approachEnd: 140,
                 flybyEnd: 170,
-                arcAmplitudeX: 30,
-                arcAmplitudeY: 15,
+                arcAmplitudeX: 40,
+                arcAmplitudeY: 20,
+                corridorCenterX: 2600,
+                corridorHalfWidth: 800,  // X ∈ [1800, 3400]
             };
             this.marsPlanet.userData.baseScale = 1.0;
             this.marsPlanet.userData.scaleProfile = {
-                minScale: 0.7, maxScale: 1.3,
+                minScale: 0.6, maxScale: 1.35,
                 nearDistance: 600, farDistance: 4500,
-                glowScale: 0.15, pulseScale: 0.03, paceScale: 0.04,
+                glowScale: 0.16, pulseScale: 0.03, paceScale: 0.04,
             };
             this.marsPlanet.userData.driftPhase = this.rand() * Math.PI * 2;
             this.marsPlanet.userData.driftSpeed = 0.025;
@@ -3097,28 +3159,28 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             }
 
             this.mercuryPlanet = new THREE.Mesh(mercuryGeo, mercuryMat);
-            this.mercuryPlanet.position.set(-1800, 400, -2100);
-            this.mercuryPlanet.renderOrder = -60;
+            // Drifts high overhead, biased far-right so it doesn't crowd the hero.
+            this.mercuryPlanet.position.set(1800, 1000, -6000);
+            this.mercuryPlanet.renderOrder = -76;
             this.mercuryPlanet.userData.materialData = mercuryMatData;
             this.mercuryPlanet.userData.basePosition = this.mercuryPlanet.position.clone();
 
-            // Approach profile to make it get closer over time
             this.mercuryPlanet.userData.approachProfile = {
-                start: new THREE.Vector3(-1800, 400, -4500),
-                close: new THREE.Vector3(-2400, 500, -1500),
-                end: new THREE.Vector3(-3200, 700, 1000),
+                start: new THREE.Vector3(1800, 1000, -6000),
+                close: new THREE.Vector3(1400,  920, -3800),
+                end:   new THREE.Vector3(1900,  960, -2400),
                 phaseOffset: 60,
                 approachEnd: 140,
                 flybyEnd: 170,
-                arcAmplitudeX: 40,
-                arcAmplitudeY: 20,
+                arcAmplitudeX: 60,
+                arcAmplitudeY: 30,
             };
 
             this.mercuryPlanet.userData.baseScale = 1.1;
             this.mercuryPlanet.userData.scaleProfile = {
-                minScale: 0.6, maxScale: 1.4,
-                nearDistance: 500, farDistance: 3500,
-                glowScale: 0.18, pulseScale: 0.04, paceScale: 0.05,
+                minScale: 0.7, maxScale: 1.25,
+                nearDistance: 1800, farDistance: 6000,
+                glowScale: 0.12, pulseScale: 0.02, paceScale: 0.03,
             };
             this.mercuryPlanet.userData.driftPhase = this.rand() * Math.PI * 2;
             this.mercuryPlanet.userData.driftSpeed = 0.035;
@@ -3166,25 +3228,28 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             saturnRings.rotation.y = Math.PI / 8;
             this.saturnPlanet.add(saturnRings);
 
-            this.saturnPlanet.position.set(2200, 700, -4500);
-            this.saturnPlanet.renderOrder = -68;
+            // Saturn sweeps far upper-right.
+            this.saturnPlanet.position.set(3300, 850, -5500);
+            this.saturnPlanet.renderOrder = -72;
             this.saturnPlanet.userData.materialData = saturnMatData;
             this.saturnPlanet.userData.basePosition = this.saturnPlanet.position.clone();
             this.saturnPlanet.userData.approachProfile = {
-                start: new THREE.Vector3(2200, 700, -5500),
-                close: new THREE.Vector3(2900, 800, -2200),
-                end: new THREE.Vector3(3800, 1000, 1200),
+                start: new THREE.Vector3(3300, 850, -5500),
+                close: new THREE.Vector3(2700, 720, -2200),
+                end:   new THREE.Vector3(3500, 800,   700),
                 phaseOffset: 30,
                 approachEnd: 140,
                 flybyEnd: 170,
                 arcAmplitudeX: 50,
                 arcAmplitudeY: 30,
+                corridorCenterX: 3100,
+                corridorHalfWidth: 800,  // X ∈ [2300, 3900]
             };
             this.saturnPlanet.userData.baseScale = 0.9;
             this.saturnPlanet.userData.scaleProfile = {
-                minScale: 0.6, maxScale: 1.2,
+                minScale: 0.6, maxScale: 1.3,
                 nearDistance: 800, farDistance: 5500,
-                glowScale: 0.2, pulseScale: 0.05, paceScale: 0.05,
+                glowScale: 0.18, pulseScale: 0.04, paceScale: 0.05,
             };
             this.saturnPlanet.userData.driftPhase = this.rand() * Math.PI * 2;
             this.saturnPlanet.userData.driftSpeed = 0.015;
@@ -3211,25 +3276,28 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             }
 
             this.uranusPlanet = new THREE.Mesh(uranusGeo, uranusMat);
-            this.uranusPlanet.position.set(-800, 900, -5000);
-            this.uranusPlanet.renderOrder = -70;
+            // Mirror saturn: sweeps far upper-left.
+            this.uranusPlanet.position.set(-3300, 850, -5500);
+            this.uranusPlanet.renderOrder = -72;
             this.uranusPlanet.userData.materialData = uranusMatData;
             this.uranusPlanet.userData.basePosition = this.uranusPlanet.position.clone();
             this.uranusPlanet.userData.approachProfile = {
-                start: new THREE.Vector3(-800, 900, -6000),
-                close: new THREE.Vector3(-1400, 1100, -2800),
-                end: new THREE.Vector3(-2200, 1400, 1500),
+                start: new THREE.Vector3(-3300, 850, -5500),
+                close: new THREE.Vector3(-2700, 720, -2200),
+                end:   new THREE.Vector3(-3500, 800,   700),
                 phaseOffset: 0,
                 approachEnd: 140,
                 flybyEnd: 170,
-                arcAmplitudeX: 60,
-                arcAmplitudeY: 35,
+                arcAmplitudeX: 50,
+                arcAmplitudeY: 30,
+                corridorCenterX: -3100,
+                corridorHalfWidth: 800,  // X ∈ [-3900, -2300]
             };
             this.uranusPlanet.userData.baseScale = 1.0;
             this.uranusPlanet.userData.scaleProfile = {
-                minScale: 0.5, maxScale: 1.1,
-                nearDistance: 1000, farDistance: 6000,
-                glowScale: 0.15, pulseScale: 0.03, paceScale: 0.04,
+                minScale: 0.6, maxScale: 1.3,
+                nearDistance: 800, farDistance: 5500,
+                glowScale: 0.18, pulseScale: 0.04, paceScale: 0.05,
             };
             this.uranusPlanet.userData.driftPhase = this.rand() * Math.PI * 2;
             this.uranusPlanet.userData.driftSpeed = 0.018;
@@ -3925,13 +3993,14 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     updateShootingStars(delta) {
         this.shootingStarTimer += delta;
         if (this.shootingStarTimer >= this.nextShootingStarDelay) {
-            // 20% chance for a meteor shower
-            const isMeteorShower = this.rand() > 0.8;
+            // 8% chance for a meteor shower — punctuation, not a constant downpour.
+            const isMeteorShower = this.rand() > 0.92;
             const spawnCount = isMeteorShower ? 3 + Math.floor(this.rand() * 4) : 1;
 
             for (let s = 0; s < spawnCount; s++) {
-                const baseBudget = this.performanceBudget?.maxActiveShootingStars ?? 8;
-                if (this.shootingStars.length < baseBudget * 3) {
+                // Hard cap at the active-star budget — no 3x bypass.
+                const baseBudget = this.performanceBudget?.maxActiveShootingStars ?? 6;
+                if (this.shootingStars.length < baseBudget) {
                     this.spawnShootingStar();
                 }
             }
@@ -3941,11 +4010,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             const delayScale = THREE.MathUtils.clamp(1.42 - effectScale * 0.4, 1.0, 1.4);
 
             if (isMeteorShower) {
-                // Wait longer if a shower just happened
-                this.nextShootingStarDelay = (2.0 + this.rand() * 2.0) * delayScale;
+                // 8–15 s between bursts so showers feel like an event.
+                this.nextShootingStarDelay = (8.0 + this.rand() * 7.0) * delayScale;
             } else {
-                // Short wait for frequent single stars
-                this.nextShootingStarDelay = (0.15 + this.rand() * 0.5) * delayScale;
+                // 1.4–3.0 s between single stars — punctuation, not rain.
+                this.nextShootingStarDelay = (1.4 + this.rand() * 1.6) * delayScale;
             }
         }
 
@@ -4060,14 +4129,10 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         if (this.isWebGPU) {
             // WebGPU: MRT-based emissive bloom + chromatic aberration + vignette + ACES
             const useMRT = this.capabilities.mrt;
-            // Cinematic flourishes gated to the showcase tiers. Extreme gets the full menu;
-            // Ultra runs at ~60% strength; everything below stays on the baseline pipeline.
-            let cinematicTier = 0.0;
-            if (this.activeQualityLevel === 'Extreme') {
-                cinematicTier = 1.0;
-            } else if (this.activeQualityLevel === 'Ultra') {
-                cinematicTier = 0.6;
-            }
+            // Per-quality flourish ceilings (FLOURISH_TUNING) drive what's available;
+            // cinematicTier is now derived from whether any flourishes are enabled.
+            const flourishes = FLOURISH_TUNING[this.activeQualityLevel] ?? FLOURISH_TUNING.Medium;
+            const cinematicTier = (flourishes.godRay > 0 || flourishes.anamorphic > 0) ? 1.0 : 0.0;
             // Bloom threshold dips a touch on showcase tiers so the volumetric/nebula haze
             // catches subtle bloom instead of requiring brighter emissives to register.
             const showcaseBloomThreshold = cinematicTier > 0
@@ -4090,15 +4155,16 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                         contrast: 1.2,
                         saturation: 1.08,
                         tintStrength: 0.1,
-                        // Cinematic flourishes (defaults baked in; per-frame update modulates them)
-                        radialChromaBoost: 1.4,
-                        godRayStrength: 0.5 * cinematicTier,
-                        anamorphicStrength: 0.4 * cinematicTier,
+                        // Cinematic flourishes — ceilings come from FLOURISH_TUNING per quality.
+                        radialChromaBoost: flourishes.chromaBoost,
+                        godRayStrength: flourishes.godRay,
+                        anamorphicStrength: flourishes.anamorphic,
                         barrelStrength: 0.0,
-                        roadReflectionStrength: 0.0,
+                        roadReflectionStrength: flourishes.roadReflection,
                     },
                 );
                 this.cinematicTier = cinematicTier;
+                this.flourishCeilings = flourishes;
                 this.postProcessing.setSize(width, height);
                 console.log(`[ChromadelicHighway] WebGPU PostProcessing (MRT: ${useMRT})`);
             } catch (err) {
@@ -4286,7 +4352,16 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.resizeHandler = () => this.resize(window.innerWidth, window.innerHeight);
         window.addEventListener('resize', this.resizeHandler);
 
-        this.eventUnsubscribers.push(lockUnsub, comboUnsub, lineClearUnsub, levelUpUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lockUnsub, comboUnsub, lineClearUnsub, levelUpUnsub, pointerUnsub);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -4346,15 +4421,15 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
                 if (ring.position.z > 300) {
                     ring.position.z = -2500;
-                    ring.userData.hue = (ring.userData.hue + 0.1) % 1.0;
+                    // Slow hue drift on recycle — was +0.1 (strobe), now +0.012 (rhythm).
+                    ring.userData.hue = (ring.userData.hue + 0.012) % 1.0;
                 }
 
+                // Rings ride the shared road curve so they stay glued to the highway.
+                const c = this.sampleRoadCurve(ring.position.z);
                 const t = Math.max(0, (200 - ring.position.z) / 2700);
-                const curveStrength = t * t;
-                const curve1 = Math.sin(t * 2.5 + this.time * 0.12) * 200 * curveStrength;
-                const curve2 = Math.sin(t * 1.2 + this.time * 0.08) * 120 * curveStrength;
-                ring.position.x = curve1 + curve2;
-                ring.position.y = 25 + Math.sin(t * 1.5 + this.time * 0.06) * 20 * curveStrength;
+                ring.position.x = c.x;
+                ring.position.y = 25 + c.y;
 
                 const rotSpeed = ring.userData.rotationSpeed * this.playPaceMultiplier;
                 ring.rotation.z += rotSpeed * 0.015;
@@ -4362,12 +4437,23 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 const scale = 0.5 + (1 - t) * 0.8 + this.ringGlow * 0.10;
                 ring.scale.set(scale, scale, 1);
 
+                // Depth-fade envelope: rings emerge softly from the fog (far end) and
+                // fade out before disappearing at the camera (near end). depthT = 0 at
+                // ring's spawn (z=-2500), 1 at recycle point (z=+300). Floor at 0.55 so
+                // far rings stay readable — fog handles the rest of the perspective fade.
+                const depthT = THREE.MathUtils.clamp((ring.position.z + 2500) / 2800, 0, 1);
+                const farFadeIn = THREE.MathUtils.smoothstep(depthT, 0.0, 0.15);
+                const nearFadeOut = 1.0 - THREE.MathUtils.smoothstep(depthT, 0.94, 1.0);
+                const depthFade = 0.55 + 0.45 * (farFadeIn * nearFadeOut);
+
                 // Update uniforms (both WebGPU TSL and WebGL ShaderMaterial)
                 const md = ring.userData.materialData;
                 const ringPulse = this.pulseIntensity + this.ringGlow * RING_GLOW_TUNING.pulseGlowScale;
-                const ringGlowStrength = this.ringGlow * RING_GLOW_TUNING.uniformGlowScale;
+                // Apply depth-fade AFTER the reactive envelope so far rings still pulse
+                // to pace, just attenuated into the fog.
+                const ringGlowStrength = this.ringGlow * RING_GLOW_TUNING.uniformGlowScale * depthFade;
                 const ringLightness = RING_GLOW_TUNING.baseLightness
-                    + this.ringGlow * RING_GLOW_TUNING.lightnessGlowScale;
+                    + this.ringGlow * RING_GLOW_TUNING.lightnessGlowScale * depthFade;
                 const color = new THREE.Color().setHSL(
                     ring.userData.hue,
                     RING_GLOW_TUNING.saturation,
@@ -4380,7 +4466,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                     md.uniforms.uGlow.value = ringGlowStrength;
                     md.uniforms.uColor.value = color;
                 } else if (ring.material.uniforms) {
-                    // WebGL path
+                    // WebGL path — depth-fade applied identically so both backends match.
                     ring.material.uniforms.uTime.value = this.time;
                     ring.material.uniforms.uPulse.value = ringPulse;
                     ring.material.uniforms.uGlow.value = ringGlowStrength;
@@ -4388,7 +4474,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 }
             });
 
-            // Animate edge glow lines
+            // Animate edge glow lines — bend them along the shared road curve so they
+            // hug the highway instead of running straight while the road bends away.
             if (this.edgeStrips) {
                 this.edgeStrips.forEach((line) => {
                     line.userData.hue = (line.userData.hue + 0.0002) % 1.0;
@@ -4400,6 +4487,24 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                         line.material.color.setHSL(line.userData.hue, 0.9, 0.55);
                         const baseOpacity = 0.5 - line.userData.offset * 0.12;
                         line.material.opacity = baseOpacity + this.pulseIntensity * 0.25;
+                    }
+
+                    // Rewrite vertex positions to follow the road curve.
+                    const positions = line.geometry.attributes.position?.array;
+                    const segments = line.userData.segments ?? 60;
+                    const xBase = line.userData.xBase ?? 0;
+                    const yBase = line.userData.yBase ?? 0;
+                    if (positions) {
+                        for (let j = 0; j <= segments; j++) {
+                            const t = j / segments;
+                            const z = 350 - t * 2600;
+                            const c = this.sampleRoadCurve(z);
+                            const idx = j * 3;
+                            positions[idx]     = xBase + c.x;
+                            positions[idx + 1] = yBase + c.y;
+                            positions[idx + 2] = z;
+                        }
+                        line.geometry.attributes.position.needsUpdate = true;
                     }
                 });
             }
@@ -4431,9 +4536,35 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 }
             }
 
-            // Camera sway
-            this.camera.position.x = Math.sin(this.time * 0.25) * 4;
-            this.camera.position.y = 55 + Math.sin(this.time * 0.2) * 3;
+            // Camera sway — multi-frequency, multi-axis. All sub-0.1 Hz so it reads as
+            // "floating" rather than head-bob. Tiny lookAt jitter so horizon breathes.
+            const ct = this.time;
+
+            // Smooth pointer tracking for subtle mouse parallax
+            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+            const parallaxX = this.smoothedPointerX * 10.0;
+            const parallaxY = -this.smoothedPointerY * 5.0;
+
+            // Sample the road curve ahead to derive yaw target and bank slope.
+            // Two samples → finite-difference slope = "how much the road bends ahead".
+            const cAhead = this.sampleRoadCurve(-1500);
+            const cNear  = this.sampleRoadCurve(-800);
+            const slope = (cAhead.x - cNear.x) / 700;
+
+            this.camera.position.x = Math.sin(ct * 0.13) * 2.4 + Math.sin(ct * 0.41) * 0.6 + parallaxX;
+            this.camera.position.y = 55 + Math.sin(ct * 0.17) * 1.8 + Math.sin(ct * 0.53) * 0.5 + parallaxY;
+            this.camera.position.z = 280 + Math.sin(ct * 0.09) * 3.0;
+
+            // Bank: tilt camera.up BEFORE lookAt so the camera rolls into the turn.
+            // Clamp to ±0.08 → ≈ ±4.6° roll (subtle, no nausea).
+            const bank = THREE.MathUtils.clamp(slope * 0.35, -0.08, 0.08);
+            this.camera.up.set(bank, 1, 0).normalize();
+
+            // Yaw: aim lookAt X toward the curve's lateral offset ahead (×0.5 soft follow).
+            const lookY = 20 + Math.sin(ct * 0.11) * 1.2 + parallaxY * 0.4 + cAhead.y * 0.3;
+            const lookX = cAhead.x * 0.5 + Math.sin(ct * 0.07) * 1.5 + parallaxX * 0.4;
+            this.camera.lookAt(lookX, lookY, -600);
 
             // Update bloom + cinematic flourishes
             const effectScale = this.adaptiveScalerState?.effectScale ?? 1;
@@ -4443,24 +4574,28 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 * (1 + eventBloomPulse * 0.36 * Math.max(tierForBloom, 0.35));
             if (this.isWebGPU && this.postProcessing) {
                 const tier = this.cinematicTier ?? 0;
+                const ceilings = this.flourishCeilings ?? FLOURISH_TUNING.Medium;
                 // Barrel distortion ramps with play pace — fast combos feel like you're
                 // accelerating through the lens. Capped so it never crosses into nausea territory.
                 const paceOver = Math.max(0, this.playPaceMultiplier - 1.0);
                 const barrelStrength = tier > 0
                     ? Math.min(0.07, paceOver * 0.10) * tier * effectScale
                     : 0;
-                // Anamorphic flare tracks the reactive bloom envelope so bright cosmic moments
-                // (TETRIS, high combos) get the streaky lens-flare punch.
-                const anamorphicStrength = tier > 0
-                    ? (0.35 + (this.bloomBoost ?? 0) * 0.65 + eventBloomPulse * 0.45) * tier * effectScale
+                // Anamorphic flare tracks the reactive bloom envelope; clamped per-quality.
+                const anamorphicEnvelope = ceilings.anamorphic > 0
+                    ? (0.18 + (this.bloomBoost ?? 0) * 0.32 + eventBloomPulse * 0.22)
                     : 0;
+                const anamorphicStrength = Math.min(ceilings.anamorphic, anamorphicEnvelope * effectScale);
                 // God rays stay relatively stable but lift slightly with bloom envelope.
-                const godRayStrength = tier > 0
-                    ? (0.45 + (this.bloomBoost ?? 0) * 0.35 + eventBloomPulse * 0.18) * tier * effectScale
+                const godRayEnvelope = ceilings.godRay > 0
+                    ? (0.22 + (this.bloomBoost ?? 0) * 0.18 + eventBloomPulse * 0.12)
                     : 0;
-                const roadReflectionStrength = tier > 0
-                    ? (0.055 + paceOver * 0.025 + eventBloomPulse * 0.035) * tier * effectScale
+                const godRayStrength = Math.min(ceilings.godRay, godRayEnvelope * effectScale);
+                // Road reflection is intentionally subtle — small lift, never dominates.
+                const roadReflectionEnvelope = ceilings.roadReflection > 0
+                    ? (0.06 + paceOver * 0.03 + eventBloomPulse * 0.05)
                     : 0;
+                const roadReflectionStrength = Math.min(ceilings.roadReflection, roadReflectionEnvelope * effectScale);
                 const chromaSpike = this.cinematicState?.chromaSpike ?? 0;
 
                 this.postProcessing.update({
@@ -4543,11 +4678,34 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         return { targetPos, glowBoost };
     }
 
+    // Sample a position inside a named celestial slot. Returns Vector3 + bounds so
+    // callers can clamp drifting planets back into their slot per frame.
+    pickSlotPosition(slotName) {
+        const slot = CELESTIAL_SLOTS[slotName];
+        if (!slot) return { pos: new THREE.Vector3(), slot: null };
+        const lerp = (range) => range[0] + this.rand() * (range[1] - range[0]);
+        return {
+            pos: new THREE.Vector3(lerp(slot.x), lerp(slot.y), lerp(slot.z)),
+            slot,
+        };
+    }
+
+    // Clamp a position to its slot's bounding box. Used after approach/drift updates
+    // so secondary planets never escape their composed zone.
+    clampToSlot(position, slot) {
+        if (!slot) return;
+        position.x = Math.max(slot.x[0], Math.min(slot.x[1], position.x));
+        position.y = Math.max(slot.y[0], Math.min(slot.y[1], position.y));
+        position.z = Math.max(slot.z[0], Math.min(slot.z[1], position.z));
+    }
+
     computeCelestialScale(position, scaleProfile = {}, glowBoost = 0) {
         const nearDistance = scaleProfile.nearDistance ?? 700;
         const farDistance = Math.max(nearDistance + 1, scaleProfile.farDistance ?? 5200);
-        const minScale = scaleProfile.minScale ?? 0.62;
-        const maxScale = scaleProfile.maxScale ?? 1.24;
+        // Defaults give meaningful distance scaling without lurch. Per-planet overrides
+        // tighten or widen this as needed.
+        const minScale = scaleProfile.minScale ?? 0.65;
+        const maxScale = scaleProfile.maxScale ?? 1.35;
         const distance = this.camera
             ? this.camera.position.distanceTo(position)
             : farDistance;

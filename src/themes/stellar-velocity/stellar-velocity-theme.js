@@ -550,6 +550,13 @@ export default class StellarVelocityTheme extends BaseTheme {
 
         // State
         this.eventUnsubscribers = [];
+
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         this.qualityPreset = { ...QUALITY_PRESETS.High };
         this.qualityBudget = getStellarVelocityComputeBudget('High');
         this.activeQualityLevel = 'High';
@@ -4377,7 +4384,16 @@ export default class StellarVelocityTheme extends BaseTheme {
         window.addEventListener('resize', this.boundResizeHandler);
         this.resizeHandler = this.boundResizeHandler;
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
         console.log('[StellarVelocity] Event listeners set up');
     }
 
@@ -4938,7 +4954,7 @@ export default class StellarVelocityTheme extends BaseTheme {
             this.updateEnergyDischargeArcs(rawDelta);
             this.updateCometStreaks(rawDelta);
             this.updatePostProcessing();
-            this.updateCamera();
+            this.updateCamera(rawDelta);
 
             this.render();
             this.updateAdaptiveScaler(rawDelta * 1000);
@@ -5587,7 +5603,7 @@ export default class StellarVelocityTheme extends BaseTheme {
         }
     }
 
-    updateCamera() {
+    updateCamera(delta = 0) {
         const choreography = this.hyperdriveFrame || this.createIdleHyperdriveFrame();
         const warpShake = this.isEnhancementsEnabled()
             ? Math.max(0, (this.currentSpeed / Math.max(this.maxSpeed, 0.0001)) * 0.35) + (choreography.shakeBoost || 0)
@@ -5605,8 +5621,14 @@ export default class StellarVelocityTheme extends BaseTheme {
         }
 
         if (this.camera) {
-            this.camera.position.x = this.cameraShake.x + (choreography.routeBiasX || 0);
-            this.camera.position.y = this.cameraShake.y + (choreography.routeBiasY || 0);
+            // Smooth pointer tracking for subtle mouse parallax (additive on top of shake + choreography)
+            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+            const parallaxX = this.smoothedPointerX * 100.0;
+            const parallaxY = -this.smoothedPointerY * 50.0;
+
+            this.camera.position.x = this.cameraShake.x + (choreography.routeBiasX || 0) + parallaxX;
+            this.camera.position.y = this.cameraShake.y + (choreography.routeBiasY || 0) + parallaxY;
             if (this.starfield?.userData?.cameraFacing === true) {
                 this.starfield.quaternion.copy(this.camera.quaternion);
             }

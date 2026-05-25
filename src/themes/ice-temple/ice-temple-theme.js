@@ -419,6 +419,12 @@ export default class IceTempleTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.boundResizeHandler = this.onWindowResize.bind(this);
 
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // Three.js components
         this.scene = null;
         this.camera = null;
@@ -4019,7 +4025,16 @@ export default class IceTempleTheme extends BaseTheme {
             if (this.isActive) this.onPieceLock(data);
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
     }
 
     onLineClear(lineCount) {
@@ -4853,10 +4868,16 @@ export default class IceTempleTheme extends BaseTheme {
         const camRadius = 25;
         const camHeight = 8 + Math.sin(camTime * 0.5) * 2; // Gentle vertical bob
 
-        this.camera.position.x = Math.sin(camTime) * 5; // Side-to-side sway
-        this.camera.position.y = camHeight;
+        // Smooth pointer tracking for subtle mouse parallax
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+        const parallaxX = this.smoothedPointerX * 5.0;
+        const parallaxY = -this.smoothedPointerY * 2.5;
+
+        this.camera.position.x = Math.sin(camTime) * 5 + parallaxX; // Side-to-side sway + mouse
+        this.camera.position.y = camHeight + parallaxY;
         this.camera.position.z = camRadius + Math.cos(camTime * 0.3) * 3; // Slight forward/back
-        this.camera.lookAt(0, 3, 0); // Always look at center
+        this.camera.lookAt(parallaxX * 0.4, 3 + parallaxY * 0.4, 0); // Always look near center
 
         // ─────────────────────────────────────────────────────────────────────
         // MAIN GROUP DRIFT

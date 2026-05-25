@@ -257,6 +257,12 @@ export default class NeonDuskTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.resizeHandler = null;
 
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // Debug / baseline
         this.debugConfig = null;
         this.fixedDelta = null;
@@ -2110,7 +2116,16 @@ export default class NeonDuskTheme extends BaseTheme {
             }
         });
 
-        this.eventUnsubscribers.push(pieceLockUnsub, lineClearUnsub, comboUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(pieceLockUnsub, lineClearUnsub, comboUnsub, pointerUnsub);
     }
 
     // =========================================================================
@@ -2615,7 +2630,7 @@ export default class NeonDuskTheme extends BaseTheme {
         this.updateCompute(delta);
         this.markProfile('compute');
 
-        this.updateCamera();
+        this.updateCamera(delta);
         this.updateSun(delta);
         this.updateMountains(delta);
         this.updateGrid(delta);
@@ -2650,16 +2665,23 @@ export default class NeonDuskTheme extends BaseTheme {
         this.updateGpuTiming(delta);
     }
 
-    updateCamera() {
+    updateCamera(delta = 0) {
         // Gentle sway animation - REDUCED to prevent grid aliasing movement
         const t = this.time * 0.02; // Slower
-        this.camera.position.x = Math.sin(t) * 0.5; // Was 4 - drastically reduced
-        this.camera.position.y = 25 + Math.cos(t * 0.7) * 1.0;
+
+        // Smooth pointer tracking for subtle mouse parallax
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+        const parallaxX = this.smoothedPointerX * 6.0;
+        const parallaxY = -this.smoothedPointerY * 3.0;
+
+        this.camera.position.x = Math.sin(t) * 0.5 + parallaxX;
+        this.camera.position.y = 25 + Math.cos(t * 0.7) * 1.0 + parallaxY;
         this.camera.position.z = 50 + Math.sin(t * 0.5) * 1.0;
 
         this.camera.lookAt(
-            Math.sin(t * 0.4) * 3,
-            10 + Math.cos(t * 0.3),
+            Math.sin(t * 0.4) * 3 + parallaxX * 0.4,
+            10 + Math.cos(t * 0.3) + parallaxY * 0.4,
             -100,
         );
     }

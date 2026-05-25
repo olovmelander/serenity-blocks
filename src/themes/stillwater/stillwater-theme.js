@@ -109,6 +109,12 @@ export default class StillwaterTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         this.boundResizeHandler = this.onWindowResize.bind(this);
 
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
+
         // Three.js core
         this.scene = null;
         this.camera = null;
@@ -1225,7 +1231,16 @@ export default class StillwaterTheme extends BaseTheme {
             if (this.isActive) this.onPieceLock(data);
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
     }
 
     onLineClear(lineCount) {
@@ -2729,6 +2744,21 @@ export default class StillwaterTheme extends BaseTheme {
                 beam.material.dispose();
                 this.lightBeams.splice(i, 1);
             }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // MOUSE PARALLAX CAMERA (base at 0,6,25 looking at 0,6,-15)
+        // ─────────────────────────────────────────────────────────────────────
+
+        if (this.camera) {
+            this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+            this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+            const parallaxX = this.smoothedPointerX * 3.0;
+            const parallaxY = -this.smoothedPointerY * 1.5;
+            this.camera.position.x = parallaxX;
+            this.camera.position.y = 6 + parallaxY;
+            this.camera.position.z = 25;
+            this.camera.lookAt(parallaxX * 0.4, 6 + parallaxY * 0.4, -15);
         }
 
         // ─────────────────────────────────────────────────────────────────────

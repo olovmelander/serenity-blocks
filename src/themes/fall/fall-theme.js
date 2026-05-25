@@ -626,6 +626,12 @@ export default class FallTheme extends BaseTheme {
         this.qualityPreset = QUALITY_PRESETS.High;
         this.eventUnsubscribers = [];
         this.texture = null;
+
+        // Pointer tracking for parallax camera
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
     }
 
     getTetrominoConfig() { return FALL_TETROMINOS; }
@@ -1017,6 +1023,15 @@ export default class FallTheme extends BaseTheme {
             eventBus.on(EVENTS.COMBO, (d) => this.onCombo(d)),
         ];
 
+        // Pointer tracking for parallax camera
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        this.eventUnsubscribers.push(() => window.removeEventListener('pointermove', onPointerMove));
+
         if (!this.boundResizeHandler) {
             this.boundResizeHandler = () => this.resize(window.innerWidth, window.innerHeight);
         }
@@ -1098,8 +1113,16 @@ export default class FallTheme extends BaseTheme {
         // Y-axis: Very subtle vertical bob (Base 0)
         const breatheY = Math.cos(this.time * 0.3) * 0.5;
 
+        // Smooth pointer tracking for subtle mouse parallax
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 2.2);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 2.2);
+        const parallaxX = this.smoothedPointerX * 10.0;
+        const parallaxY = -this.smoothedPointerY * 5.0;
+
+        this.camera.position.x = parallaxX;
+        this.camera.position.y = breatheY + parallaxY;
         this.camera.position.z = 100 + breatheZ;
-        this.camera.position.y = breatheY;
+        this.camera.lookAt(parallaxX * 0.4, parallaxY * 0.4, -500);
     }
 
     updateLeaves(delta) {

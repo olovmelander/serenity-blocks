@@ -88,6 +88,15 @@ export class ChromadelicHighwayPost {
         this.uRoadReflectionStrength = uniform(params.roadReflectionStrength ?? 0.0);
         this.uTime = uniform(params.time ?? 0.0);
 
+        // Depth-fog bloom attenuation — softens distant emissives without erasing them.
+        // The scene already has its own FogExp2; this is an additional thin pass that
+        // tints far pixels toward fog color and slightly reduces bloom on them.
+        this.fogNear = uniform(params.fogNear ?? 0.45);
+        this.fogFar = uniform(params.fogFar ?? 0.95);
+        this.fogDensity = uniform(params.fogDensity ?? 0.55);
+        this.fogBloomAttenuation = uniform(params.fogBloomAttenuation ?? 0.22);
+        this.fogColor = uniform(params.fogColor ?? new THREE.Color(0x0a0418));
+
         // Build post-processing pipeline
         const baseUV = viewportUV;
         const centered = baseUV.sub(0.5).mul(2.0);
@@ -99,9 +108,16 @@ export class ChromadelicHighwayPost {
         const barrelOffset = centered.mul(dist.mul(dist)).mul(totalBarrel.mul(0.5));
         const uvNode = baseUV.add(barrelOffset);
 
+        // Depth-fog: sample linear depth, build a [0..1] fog amount, mix scene → fog color.
+        // This must run BEFORE vignette/chroma so they operate on fogged base.
+        const linearDepth = this.scenePass.getLinearDepthNode();
+        const fogFactor = smoothstep(this.fogNear, this.fogFar, linearDepth);
+        const fogAmount = clamp(fogFactor.mul(this.fogDensity), float(0.0), float(1.0));
+        const baseSampleRaw = sceneColor.sample(uvNode);
+        const baseSample = mix(baseSampleRaw, this.fogColor, fogAmount);
+
         // Vignette (computed on undistorted UV so edges remain consistent)
         const vignette = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.5), dist);
-        const baseSample = sceneColor.sample(uvNode);
         const vignetteColor = mix(
             baseSample.mul(float(1.0).sub(this.uVignetteDarkness)),
             baseSample,
@@ -169,8 +185,15 @@ export class ChromadelicHighwayPost {
             .mul(roadMask)
             .mul(this.uRoadReflectionStrength);
 
-        // Combine: scene+chroma + bloom + god rays + anamorphic flare + road reflection
-        const combined = chroma.add(this.bloomNode).add(godRays).add(anamorphic).add(roadReflection);
+        // Combine: scene+chroma + bloom + god rays + anamorphic flare + road reflection.
+        // Bloom-like additives are attenuated by depth fog so distant emissives blend
+        // into the haze rather than punching out as floating bright dots.
+        const bloomAtten = clamp(float(1.0).sub(fogAmount.mul(this.fogBloomAttenuation)), float(0.0), float(1.0));
+        const combined = chroma
+            .add(this.bloomNode.mul(bloomAtten))
+            .add(godRays.mul(bloomAtten))
+            .add(anamorphic.mul(bloomAtten))
+            .add(roadReflection);
 
         // ACES Filmic Tone Mapping
         const exposed = combined.mul(this.uExposure);
@@ -239,6 +262,21 @@ export class ChromadelicHighwayPost {
         }
         if (params.time !== undefined) {
             this.uTime.value = params.time;
+        }
+        if (params.fogNear !== undefined) {
+            this.fogNear.value = params.fogNear;
+        }
+        if (params.fogFar !== undefined) {
+            this.fogFar.value = params.fogFar;
+        }
+        if (params.fogDensity !== undefined) {
+            this.fogDensity.value = params.fogDensity;
+        }
+        if (params.fogBloomAttenuation !== undefined) {
+            this.fogBloomAttenuation.value = params.fogBloomAttenuation;
+        }
+        if (params.fogColor !== undefined && this.fogColor) {
+            this.fogColor.value = params.fogColor;
         }
     }
 
