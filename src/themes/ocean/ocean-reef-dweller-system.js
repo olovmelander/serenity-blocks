@@ -14,15 +14,54 @@
  * minimal GPU cost.
  */
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { DoubleSide, MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import {
     attribute, cameraPosition, clamp as tslClamp, dot, exp, float,
     length, max as tslMax, mix, normalize, positionLocal, positionWorld,
-    pow, sin, smoothstep, uniform, vec3, vec2, normalMap, texture, normalWorld
+    pow, sin, smoothstep, uniform, vec3, vec2, normalMap, texture, normalWorld,
 } from 'three/tsl';
-import { OCEAN_REEF_SEAHORSE_ASSET } from './ocean-fauna-assets.js';
+import { loadGltfCached } from './ocean-asset-loader.js';
+import {
+    OCEAN_REEF_SEAHORSE_ASSET,
+    OCEAN_REEF_SEAHORSE_RIGGED_ASSET,
+} from './ocean-fauna-assets.js';
+
+// Walk down a skeleton from `root` and return the longest chain of bones —
+// then drop the leading "trunk" joints that are shared parents of multiple
+// limbs. For a UniRig-auto-rigged seahorse the longest path starts at
+// root → trunk → tail; if we animate the trunk, the head and fins (other
+// children of trunk) tilt along with the tail. We only want to flex the
+// tail-exclusive bones, so we skip leading joints that have non-chain
+// siblings.
+function findLongestBoneChain(root) {
+    if (!root || !root.isBone) return [];
+
+    function longestFrom(node) {
+        let best = [];
+        for (const child of node.children) {
+            if (!child.isBone) continue;
+            const childChain = longestFrom(child);
+            if (childChain.length > best.length) best = childChain;
+        }
+        return [node, ...best];
+    }
+    const chain = longestFrom(root); // includes root
+
+    // Strip the leading run of branching joints (the body-trunk). Stop as soon
+    // as we hit the first joint that has only one bone child — that's where
+    // the dominant chain becomes "tail-exclusive".
+    let cut = 0;
+    for (let i = 0; i < chain.length - 1; i++) {
+        const boneChildren = chain[i].children.filter((c) => c.isBone);
+        if (boneChildren.length > 1) {
+            cut = i + 1;
+        } else {
+            break;
+        }
+    }
+    return chain.slice(cut);
+}
 
 const textureLoader = new THREE.TextureLoader();
 let dwellerScaleNormalMap = null;
@@ -41,62 +80,118 @@ function getDwellerScaleNormalMap() {
 const REEF_SPECIES = [
     {
         name: 'clownfish',
-        bodyLength: 0.55, bodyHeight: 0.22, bodyWidth: 0.13, tailHeight: 0.3,
-        stripeFrequency: 22, patternStrength: 0.7,
-        base: new THREE.Color(0xff4500), accent: new THREE.Color(0xffffff),
-        behavior: 'orbit', territoryRadius: 4, hoverHeight: 1.5,
-        weight: 1.0, minQuality: 1,
+        bodyLength: 0.55,
+        bodyHeight: 0.22,
+        bodyWidth: 0.13,
+        tailHeight: 0.3,
+        stripeFrequency: 22,
+        patternStrength: 0.7,
+        base: new THREE.Color(0xff4500),
+        accent: new THREE.Color(0xffffff),
+        behavior: 'orbit',
+        territoryRadius: 4,
+        hoverHeight: 1.5,
+        weight: 1.0,
+        minQuality: 1,
     },
     {
         name: 'blue-green-chromis',
-        bodyLength: 0.45, bodyHeight: 0.18, bodyWidth: 0.10, tailHeight: 0.26,
-        stripeFrequency: 0, patternStrength: 0.08,
-        base: new THREE.Color(0x00f5ff), accent: new THREE.Color(0x7fffd4),
-        behavior: 'hover', territoryRadius: 5, hoverHeight: 3.5,
-        weight: 1.4, minQuality: 1,
+        bodyLength: 0.45,
+        bodyHeight: 0.18,
+        bodyWidth: 0.10,
+        tailHeight: 0.26,
+        stripeFrequency: 0,
+        patternStrength: 0.08,
+        base: new THREE.Color(0x00f5ff),
+        accent: new THREE.Color(0x7fffd4),
+        behavior: 'hover',
+        territoryRadius: 5,
+        hoverHeight: 3.5,
+        weight: 1.4,
+        minQuality: 1,
     },
     {
         name: 'coral-goby',
-        bodyLength: 0.35, bodyHeight: 0.12, bodyWidth: 0.08, tailHeight: 0.18,
-        stripeFrequency: 0, patternStrength: 0.05,
-        base: new THREE.Color(0xffd700), accent: new THREE.Color(0x9acd32),
-        behavior: 'perch', territoryRadius: 2.5, hoverHeight: 0.6,
-        weight: 0.8, minQuality: 2,
+        bodyLength: 0.35,
+        bodyHeight: 0.12,
+        bodyWidth: 0.08,
+        tailHeight: 0.18,
+        stripeFrequency: 0,
+        patternStrength: 0.05,
+        base: new THREE.Color(0xffd700),
+        accent: new THREE.Color(0x9acd32),
+        behavior: 'perch',
+        territoryRadius: 2.5,
+        hoverHeight: 0.6,
+        weight: 0.8,
+        minQuality: 2,
     },
     {
         name: 'bicolor-blenny',
-        bodyLength: 0.5, bodyHeight: 0.14, bodyWidth: 0.09, tailHeight: 0.22,
-        stripeFrequency: 5, patternStrength: 0.62,
-        base: new THREE.Color(0x483d8b), accent: new THREE.Color(0xff8c00),
-        behavior: 'peek', territoryRadius: 2, hoverHeight: 0.4,
-        weight: 0.7, minQuality: 2,
+        bodyLength: 0.5,
+        bodyHeight: 0.14,
+        bodyWidth: 0.09,
+        tailHeight: 0.22,
+        stripeFrequency: 5,
+        patternStrength: 0.62,
+        base: new THREE.Color(0x483d8b),
+        accent: new THREE.Color(0xff8c00),
+        behavior: 'peek',
+        territoryRadius: 2,
+        hoverHeight: 0.4,
+        weight: 0.7,
+        minQuality: 2,
     },
     {
         name: 'pajama-cardinalfish',
-        bodyLength: 0.55, bodyHeight: 0.24, bodyWidth: 0.12, tailHeight: 0.28,
-        stripeFrequency: 32, patternStrength: 0.48,
-        base: new THREE.Color(0xff69b4), accent: new THREE.Color(0x4b0082),
-        behavior: 'hover', territoryRadius: 3.5, hoverHeight: 2.0,
-        weight: 0.9, minQuality: 3,
+        bodyLength: 0.55,
+        bodyHeight: 0.24,
+        bodyWidth: 0.12,
+        tailHeight: 0.28,
+        stripeFrequency: 32,
+        patternStrength: 0.48,
+        base: new THREE.Color(0xff69b4),
+        accent: new THREE.Color(0x4b0082),
+        behavior: 'hover',
+        territoryRadius: 3.5,
+        hoverHeight: 2.0,
+        weight: 0.9,
+        minQuality: 3,
     },
     {
         name: 'royal-dottyback',
-        bodyLength: 0.4, bodyHeight: 0.16, bodyWidth: 0.10, tailHeight: 0.24,
-        stripeFrequency: 6, patternStrength: 0.55,
-        base: new THREE.Color(0xda70d6), accent: new THREE.Color(0xffff00),
-        behavior: 'dart', territoryRadius: 6, hoverHeight: 1.8,
-        weight: 0.6, minQuality: 3,
+        bodyLength: 0.4,
+        bodyHeight: 0.16,
+        bodyWidth: 0.10,
+        tailHeight: 0.24,
+        stripeFrequency: 6,
+        patternStrength: 0.55,
+        base: new THREE.Color(0xda70d6),
+        accent: new THREE.Color(0xffff00),
+        behavior: 'dart',
+        territoryRadius: 6,
+        hoverHeight: 1.8,
+        weight: 0.6,
+        minQuality: 3,
     },
     // Yellow tang school — the bright yellow schoolers visible in the upper-left
     // of the reference reef photo. Saturated body, single dark accent stripe,
     // hovers in loose clusters above reef shelves.
     {
         name: 'yellow-tang',
-        bodyLength: 0.6, bodyHeight: 0.32, bodyWidth: 0.10, tailHeight: 0.34,
-        stripeFrequency: 2, patternStrength: 0.18,
-        base: new THREE.Color(0xffd824), accent: new THREE.Color(0x1a1a1a),
-        behavior: 'hover', territoryRadius: 5.5, hoverHeight: 4.0,
-        weight: 1.3, minQuality: 2,
+        bodyLength: 0.6,
+        bodyHeight: 0.32,
+        bodyWidth: 0.10,
+        tailHeight: 0.34,
+        stripeFrequency: 2,
+        patternStrength: 0.18,
+        base: new THREE.Color(0xffd824),
+        accent: new THREE.Color(0x1a1a1a),
+        behavior: 'hover',
+        territoryRadius: 5.5,
+        hoverHeight: 4.0,
+        weight: 1.3,
+        minQuality: 2,
     },
 ];
 
@@ -110,14 +205,25 @@ function randRange(lo, hi) { return lo + Math.random() * (hi - lo); }
 
 // ── Procedural geometry (smaller/rounder fish variant) ──────────────────────
 function createDwellerGeometry(species) {
-    const verts = [], coords = [], idx = [];
+    const verts = []; const coords = []; const
+        idx = [];
     const half = species.bodyLength * 0.5;
     const rings = [
-        { x: -half * 0.75, w: 0.28, h: 0.30, c: 0.08 },
-        { x: -half * 0.42, w: 0.78, h: 0.82, c: 0.22 },
-        { x: -half * 0.05, w: 1.0,  h: 1.0,  c: 0.45 },
-        { x:  half * 0.32, w: 0.85, h: 0.88, c: 0.68 },
-        { x:  half * 0.68, w: 0.38, h: 0.45, c: 0.92 },
+        {
+            x: -half * 0.75, w: 0.28, h: 0.30, c: 0.08,
+        },
+        {
+            x: -half * 0.42, w: 0.78, h: 0.82, c: 0.22,
+        },
+        {
+            x: -half * 0.05, w: 1.0, h: 1.0, c: 0.45,
+        },
+        {
+            x: half * 0.32, w: 0.85, h: 0.88, c: 0.68,
+        },
+        {
+            x: half * 0.68, w: 0.38, h: 0.45, c: 0.92,
+        },
     ];
     const ringIdx = [];
 
@@ -185,7 +291,8 @@ function createDwellerNodeMaterial(species) {
         positionLocal.x
             .add(float(species.bodyLength * 0.77))
             .mul(float(1 / (species.bodyLength * 1.32))),
-        float(0.0), float(1.0)
+        float(0.0),
+        float(1.0),
     );
     const phase = aMisc.x;
     const speed = aMisc.y;
@@ -205,10 +312,10 @@ function createDwellerNodeMaterial(species) {
     const normal = normalize(baseNormal.add(texNormal.mul(1.5)));
     const viewDir = normalize(cameraPosition.sub(positionWorld));
     const lightDir = normalize(vec3(0.22, 0.94, -0.2));
-    
+
     const diff = tslMax(dot(normal, lightDir), float(0.0)).mul(0.65).add(0.55);
     const rim = pow(float(1.0).sub(tslMax(dot(normal, viewDir), float(0.0))), float(2.0));
-    
+
     const stripeWave = sin(aBodyCoord.mul(float(species.stripeFrequency)).add(phase.mul(6.283)));
     const stripe = smoothstep(float(0.42), float(0.92), stripeWave).mul(species.patternStrength);
 
@@ -218,7 +325,7 @@ function createDwellerNodeMaterial(species) {
     let color = mix(uBaseColor, uAccentColor, stripe);
     color = color.mul(diff);
     color = color.add(uAccentColor.mul(rim).mul(0.35));
-    
+
     // Add a tiny procedural scale shimmer
     const scaleShimmer = sin(aBodyCoord.mul(float(80.0)).add(uTime.mul(float(2.0))))
         .mul(0.5).add(0.5).mul(rim.mul(0.2));
@@ -229,7 +336,7 @@ function createDwellerNodeMaterial(species) {
     const eyeDist = length(eyePos);
     const eyeGlow = smoothstep(float(0.08), float(0.02), eyeDist).mul(2.0);
     color = color.add(vec3(1.0, 1.0, 0.8).mul(eyeGlow));
-    
+
     color = color.add(vec3(0.1, 0.52, 0.62).mul(float(0.06).add(rim.mul(0.12))));
 
     const viewDist = length(cameraPosition.sub(positionWorld));
@@ -348,20 +455,19 @@ export class OceanReefDwellerSystem {
         this.isPointOccupied = isPointOccupied;
         this.getFishSystem = getFishSystem;
 
-        this.anchors = [];       // { x, y, z } world positions of corals/rocks
-        this.fish = [];          // per-fish state
-        this.meshes = [];        // instanced meshes, one per species
+        this.anchors = []; // { x, y, z } world positions of corals/rocks
+        this.fish = []; // per-fish state
+        this.meshes = []; // instanced meshes, one per species
         this.materials = [];
-        this.speciesUsed = [];   // indices into REEF_SPECIES
+        this.speciesUsed = []; // indices into REEF_SPECIES
         this.speciesFishRanges = new Map(); // speciesIdx -> { start, count }
         this.dummy = new THREE.Object3D();
         this.elapsed = 0;
 
         // GLB seahorse layer
         this.seahorseCount = SEAHORSE_COUNTS_BY_TIER[clamp(qualityTier, 0, SEAHORSE_COUNTS_BY_TIER.length - 1)] || 0;
-        this.seahorseLoader = new GLTFLoader();
         this.seahorseGLTF = null;
-        this.seahorseClones = [];  // { group, anchor, phase, yawPhase, bobPhase }
+        this.seahorseClones = []; // { group, anchor, phase, yawPhase, bobPhase }
         this.seahorseLoadPromise = null;
     }
 
@@ -399,7 +505,8 @@ export class OceanReefDwellerSystem {
             const anchor = this.anchors[a];
             const fishPerAnchor = clamp(
                 Math.round(this.totalCount / this.anchors.length + randRange(-1, 1)),
-                1, 6,
+                1,
+                6,
             );
             for (let f = 0; f < fishPerAnchor && placed < this.totalCount; f++) {
                 // Pick species weighted
@@ -425,7 +532,8 @@ export class OceanReefDwellerSystem {
                     orbitAngle: angle,
                     orbitRadius: radius,
                     dartTimer: randRange(0, 3),
-                    dartTargetX: 0, dartTargetZ: 0,
+                    dartTargetX: 0,
+                    dartTargetZ: 0,
                     peekPhase: randRange(0, Math.PI * 2),
                     scale: randRange(0.8, 1.15),
                     // Predator state
@@ -469,7 +577,29 @@ export class OceanReefDwellerSystem {
 
             const mesh = new THREE.InstancedMesh(geometry, material, range.count);
             mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-            mesh.frustumCulled = false;
+            // WS 1.2: enable frustum culling. Dwellers stay near their anchor
+            // (orbit/hover/perch within ~25m), so an anchor-AABB + margin gives
+            // a much tighter sphere than the fish-system domain wrap.
+            if (this.anchors.length > 0) {
+                let minX = Infinity; let minY = Infinity; let
+                    minZ = Infinity;
+                let maxX = -Infinity; let maxY = -Infinity; let
+                    maxZ = -Infinity;
+                for (const a of this.anchors) {
+                    if (a.x < minX) minX = a.x; if (a.x > maxX) maxX = a.x;
+                    if (a.y < minY) minY = a.y; if (a.y > maxY) maxY = a.y;
+                    if (a.z < minZ) minZ = a.z; if (a.z > maxZ) maxZ = a.z;
+                }
+                const cx = (minX + maxX) * 0.5;
+                const cy = (minY + maxY) * 0.5;
+                const cz = (minZ + maxZ) * 0.5;
+                const dx = maxX - cx;
+                const dy = maxY - cy;
+                const dz = maxZ - cz;
+                const radius = (Math.sqrt(dx * dx + dy * dy + dz * dz) + 30) * 1.15;
+                geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, cy, cz), radius);
+                mesh.frustumCulled = true;
+            }
             mesh.name = `reef-dweller-${species.name}`;
             this.scene.add(mesh);
             this.meshes.push({ mesh, speciesIndex: si, range });
@@ -477,9 +607,30 @@ export class OceanReefDwellerSystem {
         });
     }
 
-    update(dt, elapsed, { currentStrength = 0.5 }) {
+    update(dt, elapsed, { currentStrength = 0.5, heavyTick = true, heavyDt = dt } = {}) {
         if (!this.fish.length && !this.seahorseClones.length) return;
         this.elapsed = elapsed;
+
+        // Always update uniforms (cheap, must stay at 60 Hz so time-based
+        // shader effects don't strobe).
+        this.materials.forEach((mat) => {
+            if (mat.userData && mat.userData.uTime) {
+                mat.userData.uTime.value = elapsed;
+                mat.userData.uCurrentStrength.value = currentStrength;
+            } else if (mat.uniforms) {
+                mat.uniforms.uTime.value = elapsed;
+                mat.uniforms.uCurrentStrength.value = currentStrength;
+            }
+        });
+
+        // Frame striding: heavy behavior + matrix updates run at 30 Hz.
+        // Skipped frames let the next heavy tick consume the accumulated dt
+        // so motion stays at the same speed.
+        if (!heavyTick) {
+            this.updateSeahorses(dt, elapsed);
+            return;
+        }
+        const stepDt = Math.max(heavyDt, dt);
 
         // Read predator influences from the fish system
         const influences = this.getFishSystem?.()?.getEnvironmentalInfluences?.() ?? [];
@@ -502,7 +653,7 @@ export class OceanReefDwellerSystem {
                 const life = 1 - clamp(pred.age / pred.duration, 0, 1);
                 threat = Math.max(threat, falloff * life * pred.strength);
             }
-            f.threatLevel += (threat - f.threatLevel) * clamp(dt * 3, 0, 1);
+            f.threatLevel += (threat - f.threatLevel) * clamp(stepDt * 3, 0, 1);
 
             // Territory compression under threat
             const territoryScale = 1 - f.threatLevel * 0.7;
@@ -513,7 +664,7 @@ export class OceanReefDwellerSystem {
             // Behavior-specific position updates
             switch (species.behavior) {
             case 'orbit': {
-                f.orbitAngle += dt * (0.6 + f.speed * 0.3) * speedMul;
+                f.orbitAngle += stepDt * (0.6 + f.speed * 0.3) * speedMul;
                 const r = clamp(f.orbitRadius, 0.4, effectiveRadius);
                 const figure8 = Math.sin(f.orbitAngle * 0.5) * r * 0.3;
                 f.x = anchor.x + Math.cos(f.orbitAngle) * r;
@@ -530,7 +681,7 @@ export class OceanReefDwellerSystem {
             }
             case 'perch': {
                 // Mostly still, occasional short dart
-                f.dartTimer -= dt;
+                f.dartTimer -= stepDt;
                 if (f.dartTimer <= 0) {
                     f.dartTimer = randRange(2, 5) / speedMul;
                     const da = randRange(0, Math.PI * 2);
@@ -538,13 +689,13 @@ export class OceanReefDwellerSystem {
                     f.dartTargetX = anchor.x + Math.cos(da) * dr;
                     f.dartTargetZ = anchor.z + Math.sin(da) * dr;
                 }
-                f.x += (f.dartTargetX - f.x) * clamp(dt * 2.5, 0, 0.15);
-                f.z += (f.dartTargetZ - f.z) * clamp(dt * 2.5, 0, 0.15);
+                f.x += (f.dartTargetX - f.x) * clamp(stepDt * 2.5, 0, 0.15);
+                f.z += (f.dartTargetZ - f.z) * clamp(stepDt * 2.5, 0, 0.15);
                 f.y = anchor.y + effectiveHover + Math.sin(elapsed * 0.5 + f.phase) * 0.08;
                 break;
             }
             case 'peek': {
-                f.peekPhase += dt * (0.8 + f.threatLevel * 2);
+                f.peekPhase += stepDt * (0.8 + f.threatLevel * 2);
                 const peekOut = Math.max(0, Math.sin(f.peekPhase)) * effectiveRadius * 0.5;
                 f.x = anchor.x + Math.cos(f.phase) * peekOut;
                 f.z = anchor.z + Math.sin(f.phase) * peekOut;
@@ -552,7 +703,7 @@ export class OceanReefDwellerSystem {
                 break;
             }
             case 'dart': {
-                f.dartTimer -= dt * speedMul;
+                f.dartTimer -= stepDt * speedMul;
                 if (f.dartTimer <= 0) {
                     f.dartTimer = randRange(1.2, 3.5);
                     const da = randRange(0, Math.PI * 2);
@@ -560,7 +711,7 @@ export class OceanReefDwellerSystem {
                     f.dartTargetX = anchor.x + Math.cos(da) * dr;
                     f.dartTargetZ = anchor.z + Math.sin(da) * dr;
                 }
-                const lerpRate = clamp(dt * 3.5, 0, 0.2);
+                const lerpRate = clamp(stepDt * 3.5, 0, 0.2);
                 f.x += (f.dartTargetX - f.x) * lerpRate;
                 f.z += (f.dartTargetZ - f.z) * lerpRate;
                 f.y = anchor.y + effectiveHover + Math.sin(elapsed * 1.8 + f.phase) * 0.55;
@@ -591,36 +742,36 @@ export class OceanReefDwellerSystem {
             mesh.instanceMatrix.needsUpdate = true;
         });
 
-        // Update uniforms
-        this.materials.forEach((mat) => {
-            if (mat.userData && mat.userData.uTime) {
-                mat.userData.uTime.value = elapsed;
-                mat.userData.uCurrentStrength.value = currentStrength;
-            } else if (mat.uniforms) {
-                mat.uniforms.uTime.value = elapsed;
-                mat.uniforms.uCurrentStrength.value = currentStrength;
-            }
-        });
-
-        // Update GLB seahorses — slow hover/bob with small yaw sway
+        // Update GLB seahorses — slow hover/bob with small yaw sway. Uses
+        // frame dt (not stepDt) so the GLB skinned animation stays at 60 Hz.
         this.updateSeahorses(dt, elapsed);
     }
 
     // ── GLB Seahorse Layer ───────────────────────────────────────────────────
     loadAndSpawnSeahorses() {
         if (this.seahorseLoadPromise) return this.seahorseLoadPromise;
-        const asset = OCEAN_REEF_SEAHORSE_ASSET;
-        if (!asset || !asset.url) return null;
+        const rigged = OCEAN_REEF_SEAHORSE_RIGGED_ASSET;
+        const unrigged = OCEAN_REEF_SEAHORSE_ASSET;
+        const primary = rigged && rigged.url ? rigged : unrigged;
+        if (!primary || !primary.url) return null;
 
-        this.seahorseLoadPromise = this.seahorseLoader.loadAsync(asset.url)
+        const tryLoad = (asset) => loadGltfCached(asset.url)
             .then((gltf) => {
+                this.seahorseAsset = asset;
                 this.seahorseGLTF = gltf;
                 this.prepareSeahorseAsset(gltf.scene);
                 this.spawnSeahorses();
-            })
-            .catch((err) => {
-                console.warn('🌊 [Ocean] Failed to load seahorse GLB:', err);
             });
+
+        this.seahorseLoadPromise = tryLoad(primary).catch((err) => {
+            if (primary !== unrigged && unrigged && unrigged.url) {
+                console.warn('🌊 [Ocean] Rigged seahorse GLB unavailable, falling back to unrigged:', err?.message || err);
+                return tryLoad(unrigged).catch((err2) => {
+                    console.warn('🌊 [Ocean] Failed to load seahorse GLB:', err2);
+                });
+            }
+            console.warn('🌊 [Ocean] Failed to load seahorse GLB:', err);
+        });
         return this.seahorseLoadPromise;
     }
 
@@ -678,8 +829,15 @@ export class OceanReefDwellerSystem {
 
     spawnSeahorses() {
         if (!this.seahorseGLTF || !this.anchors.length) return;
-        const asset = OCEAN_REEF_SEAHORSE_ASSET;
+        const asset = this.seahorseAsset || OCEAN_REEF_SEAHORSE_ASSET;
         const baseScale = asset.runtimeScale;
+
+        // The TripoSR mesh's body silhouette spans the Y–Z plane diagonally
+        // (head sits at +Y/-Z, tail base at -Y/+Z), so without correction the
+        // seahorse appears to lean backward. Tilt the model forward around X
+        // to bring the body axis vertical. Negative X-rotation pitches the
+        // head from -Z toward +Y. Tune if the lean changes after re-rigging.
+        const uprightPitchX = -0.55; // ~31° forward pitch
 
         // Pick anchors spread across the reef
         const anchorIndices = [];
@@ -691,7 +849,14 @@ export class OceanReefDwellerSystem {
         for (let i = 0; i < anchorIndices.length; i++) {
             const anchorIdx = anchorIndices[i];
             const anchor = this.anchors[anchorIdx];
-            const group = SkeletonUtils.clone(this.seahorseGLTF.scene);
+            const model = SkeletonUtils.clone(this.seahorseGLTF.scene);
+
+            // Wrap the model in a parent Group so updateSeahorses() can drive
+            // world position + yaw on the outer group while the inner model
+            // holds the static upright-pitch correction undisturbed.
+            const group = new THREE.Group();
+            model.rotation.x = uprightPitchX;
+            group.add(model);
 
             // Randomize scale slightly around the base
             const scaleJitter = baseScale * (0.85 + Math.random() * 0.3);
@@ -710,6 +875,16 @@ export class OceanReefDwellerSystem {
             group.userData.isOceanReefDweller = true;
             group.userData.kind = 'seahorse';
 
+            // Find the skeleton root inside the cloned model, then walk down
+            // to grab the longest bone chain (the spine/tail for a
+            // seahorse-shaped rig).
+            let skeletonRoot = null;
+            model.traverse((node) => {
+                if (!skeletonRoot && node.isBone) skeletonRoot = node;
+            });
+            const tailChain = findLongestBoneChain(skeletonRoot);
+            const tailInitial = tailChain.map((b) => b.rotation.clone());
+
             this.scene.add(group);
             this.seahorseClones.push({
                 group,
@@ -718,6 +893,8 @@ export class OceanReefDwellerSystem {
                 yawPhase: Math.random() * Math.PI * 2,
                 bobPhase: Math.random() * Math.PI * 2,
                 baseY: group.position.y,
+                tailChain,
+                tailInitial,
             });
         }
     }
@@ -736,6 +913,23 @@ export class OceanReefDwellerSystem {
 
             // Small yaw sway — seahorses gently turn side to side
             sh.group.rotation.y = Math.sin(elapsed * 0.25 + sh.yawPhase) * 0.25;
+
+            // Procedural spine/tail sway — phase travels down the chain so the
+            // tail looks like a wave, with the tip moving more than the base.
+            // No-op for the unrigged fallback (tailChain is empty).
+            const chain = sh.tailChain;
+            if (chain && chain.length) {
+                const inv = 1 / chain.length;
+                for (let b = 0; b < chain.length; b++) {
+                    const bone = chain[b];
+                    const init = sh.tailInitial[b];
+                    const t = elapsed * 1.6 + sh.phase + b * 0.55;
+                    const amp = 0.18 * ((b + 1) * inv);
+                    bone.rotation.x = init.x;
+                    bone.rotation.y = init.y + Math.cos(t * 0.7) * amp * 0.4;
+                    bone.rotation.z = init.z + Math.sin(t) * amp;
+                }
+            }
         }
     }
 

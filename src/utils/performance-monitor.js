@@ -95,6 +95,22 @@ export class PerformanceMonitor {
         this.sectionTimers = new Map();
         this.sectionMetrics = new Map();
 
+        // Phase D.1: renderer.info-style counters surfaced live in the overlay.
+        // Themes call recordCounters({calls, triangles, geometries, textures,
+        // programs}) once per frame after rendering; we keep a rolling avg so
+        // the overlay number doesn't flicker. Whichever counter is the largest
+        // tells us the dominant cost class (draw calls vs vertex vs material).
+        this.renderCounters = {
+            calls: 0,
+            triangles: 0,
+            geometries: 0,
+            textures: 0,
+            programs: 0,
+            callsAvg: 0,
+            trianglesAvg: 0,
+        };
+        this._counterSamples = { calls: [], triangles: [] };
+
         // Quality mode tracking
         this.qualityMode = 'Unknown';
 
@@ -362,6 +378,25 @@ export class PerformanceMonitor {
         if (frameTime > FRAME_BUDGET_MS * 1.5) {
             this.metrics.frameDrops++;
             this._consecutiveDrops++;
+
+            // Phase J: spike logger. Catch the tail of frames (>2× budget =
+            // 33ms = below 30 fps) and record context so we can identify what
+            // actually caused the stutter. Context comes from a registered
+            // collector (themes/systems can register one); fallback to a
+            // minimal record. Ring buffer caps memory at 100 spikes.
+            if (frameTime > FRAME_BUDGET_MS * 2) {
+                if (!this.spikes) this.spikes = [];
+                const ctx = (typeof this._spikeContextCollector === 'function')
+                    ? this._spikeContextCollector() : {};
+                this.spikes.push({
+                    t: Math.round(now),
+                    ms: +frameTime.toFixed(1),
+                    fps: +(1000 / frameTime).toFixed(1),
+                    p50Before: +this.calculatePercentile(this.frameTimes.slice(0, -1), 50).toFixed(1),
+                    ...ctx,
+                });
+                if (this.spikes.length > 100) this.spikes.shift();
+            }
 
             // Adaptive downscaling for heavy themes dropping below ~40 FPS for a sustained second
             if (this._consecutiveDrops > 30 && !this._hasEmittedDownscale) {
@@ -835,6 +870,81 @@ export class PerformanceMonitor {
     }
 
     /**
+     * Phase D.1: ingest renderer.info-style counters from the active theme.
+     * Called once per frame after `renderer.render()`. Cheap — just stores the
+     * last value and keeps a 60-sample rolling average for the volatile
+     * counters (calls + triangles). Memory counters (geometries, textures,
+     * programs) are stored as-is since they change slowly.
+     */
+    recordCounters({
+        calls = 0,
+        triangles = 0,
+        geometries = 0,
+        textures = 0,
+        programs = 0,
+    } = {}) {
+        this.renderCounters.calls = calls;
+        this.renderCounters.triangles = triangles;
+        this.renderCounters.geometries = geometries;
+        this.renderCounters.textures = textures;
+        this.renderCounters.programs = programs;
+
+        const samples = this._counterSamples;
+        samples.calls.push(calls);
+        if (samples.calls.length > SAMPLE_SIZE) samples.calls.shift();
+        samples.triangles.push(triangles);
+        if (samples.triangles.length > SAMPLE_SIZE) samples.triangles.shift();
+        this.renderCounters.callsAvg = this.calculateAverage(samples.calls);
+        this.renderCounters.trianglesAvg = this.calculateAverage(samples.triangles);
+    }
+
+    /**
+     * Phase J: register a function returning per-frame context to attach to
+     * spike records. Themes set this to expose info like "GLB upgrades
+     * pending", "bisect scenario name", etc. Called once per spike — keep
+     * it cheap.
+     */
+    setSpikeContextCollector(fn) {
+        this._spikeContextCollector = typeof fn === 'function' ? fn : null;
+    }
+
+    /**
+     * Phase J: return the spike ring buffer (most-recent last). Each entry:
+     *   { t, ms, fps, p50Before, ...themeContext }
+     */
+    getSpikes() {
+        return this.spikes ? [...this.spikes] : [];
+    }
+
+    clearSpikes() {
+        this.spikes = [];
+    }
+
+    /**
+     * Toggle the adaptive-downscale watchdog. Set to `true` while running
+     * synthetic profiling (bisect) so the render scale doesn't drop
+     * mid-measurement and skew per-scenario comparisons.
+     */
+    setAdaptiveDownscaleSuppressed(suppressed) {
+        // Setting _hasEmittedDownscale=true short-circuits the watchdog at
+        // performance-monitor.js:383; it stays true forever in normal
+        // operation after the first fire, so this is safe to flip.
+        this._hasEmittedDownscale = !!suppressed;
+    }
+
+    /**
+     * Phase D.4: return frame-time percentiles so the overlay can show the
+     * tail (p95/p99) — that's where "feels slow" actually lives.
+     */
+    getFrameTimePercentiles() {
+        return {
+            p50: this.calculatePercentile(this.frameTimes, 50),
+            p95: this.calculatePercentile(this.frameTimes, 95),
+            p99: this.calculatePercentile(this.frameTimes, 99),
+        };
+    }
+
+    /**
      * Get current metrics
      */
     getMetrics() {
@@ -1109,6 +1219,7 @@ export class PerformanceMonitor {
         const hotSections = this.getTopSections(3);
 
         // Cache stable metrics for smooth display
+        const percentiles = this.getFrameTimePercentiles();
         this.displayMetricsCache = {
             fps: safeFPS,
             frameTime: safeFrameTime,
@@ -1127,6 +1238,9 @@ export class PerformanceMonitor {
             collectionMode: this.collectionMode,
             themeSwitchCount: this.metrics.themeSwitchCount,
             contextRestoreCount: this.metrics.contextRestoreCount,
+            // Phase D.1 + D.4: real renderer.info counters + tail percentiles.
+            counters: { ...this.renderCounters },
+            percentiles,
         };
 
         this.renderOverlay(this.displayMetricsCache);
@@ -1208,6 +1322,36 @@ export class PerformanceMonitor {
                 <br />Themes: <span style="color: #0ff">${displayMetrics.themeSwitchCount}</span>
                 · Restores: <span style="color: #0ff">${displayMetrics.contextRestoreCount}</span>
             </div>
+            ${typeof window !== 'undefined' && window.__oceanBisectStatus ? `
+                <div style="margin-top: 10px; color: #fff; font-size: 11px; padding-top: 8px; border-top: 1px solid rgba(255, 200, 0, 0.4); background: rgba(255, 165, 0, 0.12); padding: 8px; border-radius: 4px;">
+                    <strong style="color: #ffa500;">🔬 Bisect running (${window.__oceanBisectStatus.scope})</strong>
+                    <br />${window.__oceanBisectStatus.idx} / ${window.__oceanBisectStatus.total} · ETA ${window.__oceanBisectStatus.etaSec}s
+                    <br /><span style="color: #ffd; font-size: 10px;">${window.__oceanBisectStatus.name}</span>
+                </div>
+            ` : ''}
+            ${displayMetrics.percentiles && displayMetrics.percentiles.p50 > 0 ? `
+                <div style="margin-top: 10px; color: #888; font-size: 11px; padding-top: 8px; border-top: 1px solid rgba(0,255,0,0.1);">
+                    <strong style="color: #0ff;">Frame Time Tail</strong>
+                    <br />p50: <span style="color: ${displayMetrics.percentiles.p50 <= FRAME_BUDGET_MS ? '#0f0' : '#ff0'}">${displayMetrics.percentiles.p50.toFixed(1)}ms</span>
+                    · p95: <span style="color: ${displayMetrics.percentiles.p95 <= 20 ? '#0f0' : displayMetrics.percentiles.p95 <= 33 ? '#ff0' : '#f00'}">${displayMetrics.percentiles.p95.toFixed(1)}ms</span>
+                    · p99: <span style="color: ${displayMetrics.percentiles.p99 <= 33 ? '#ff0' : '#f00'}">${displayMetrics.percentiles.p99.toFixed(1)}ms</span>
+                    ${this.spikes && this.spikes.length > 0 ? `
+                        <br /><span style="color: #f80;">Spikes(>33ms): ${this.spikes.length}</span>
+                        · last: <span style="color: #fa0;">${this.spikes[this.spikes.length - 1].ms.toFixed(0)}ms</span>
+                        <span style="color: #666; font-size: 10px;">→ window.perfMonitor.getSpikes()</span>
+                    ` : ''}
+                </div>
+            ` : ''}
+            ${displayMetrics.counters && (displayMetrics.counters.callsAvg > 0 || displayMetrics.counters.geometries > 0) ? `
+                <div style="margin-top: 10px; color: #888; font-size: 11px; padding-top: 8px; border-top: 1px solid rgba(0,255,0,0.1);">
+                    <strong style="color: #0ff;">renderer.info</strong>
+                    <br />Calls: <span style="color: ${displayMetrics.counters.callsAvg > 300 ? '#f00' : displayMetrics.counters.callsAvg > 150 ? '#ff0' : '#0f0'}">${displayMetrics.counters.callsAvg.toFixed(0)}</span>
+                    · Tris: <span style="color: ${displayMetrics.counters.trianglesAvg > 3_000_000 ? '#f00' : displayMetrics.counters.trianglesAvg > 1_500_000 ? '#ff0' : '#0f0'}">${(displayMetrics.counters.trianglesAvg / 1000).toFixed(0)}k</span>
+                    <br />Geoms: <span style="color: #0ff">${displayMetrics.counters.geometries}</span>
+                    · Texs: <span style="color: #0ff">${displayMetrics.counters.textures}</span>
+                    · Progs: <span style="color: ${displayMetrics.counters.programs > 80 ? '#ff0' : '#0ff'}">${displayMetrics.counters.programs}</span>
+                </div>
+            ` : ''}
             <div style="margin-top: 8px; color: #888; font-size: 10px;">
                 Frame Time (60 frames)
             </div>
@@ -1318,6 +1462,23 @@ if (typeof window !== 'undefined') {
         // startSection/endSection and the overlay's top-3 hot list will pick
         // them up. No-ops when monitoring is disabled.
         startSection: (name) => performanceMonitor.startSection(name),
+        // Phase D.1: themes push renderer.info counters once per frame so the
+        // overlay shows true draw call / triangle counts (not just JS time).
+        recordCounters: (counters) => performanceMonitor.recordCounters(counters),
+        getCounters: () => ({ ...performanceMonitor.renderCounters }),
+        getPercentiles: () => performanceMonitor.getFrameTimePercentiles(),
+        setAdaptiveDownscaleSuppressed: (b) => performanceMonitor.setAdaptiveDownscaleSuppressed(b),
+        // Phase J: spike logger surfacing.
+        setSpikeContextCollector: (fn) => performanceMonitor.setSpikeContextCollector(fn),
+        getSpikes: () => performanceMonitor.getSpikes(),
+        clearSpikes: () => performanceMonitor.clearSpikes(),
+        getAllSections: () => {
+            const out = {};
+            performanceMonitor.sectionMetrics.forEach((m, name) => {
+                out[name] = { avg: m.avg, max: m.max, last: m.last };
+            });
+            return out;
+        },
         endSection: (name) => performanceMonitor.endSection(name),
         getTopSections: (limit) => performanceMonitor.getTopSections(limit),
     };
