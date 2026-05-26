@@ -173,9 +173,17 @@ export class AstralWeaveFlowParticleCompute {
                 .mul(float(0.62).add(info.z.mul(0.52)))
                 .add(cos(state.x.mul(1.9).add(time.mul(0.12))).mul(3.8));
 
-            pos.x.assign(center.x.add(cos(laneAngle).mul(radius)));
-            pos.y.assign(center.y.add(height));
-            pos.z.assign(center.z.add(depth));
+            const spiralFreq = float(12.0).add(info.z.mul(6.0));
+            const spiralAngle = state.x.mul(spiralFreq).add(info.y.mul(6.28318530718));
+            const spiralRadius = float(0.48).add(sin(state.x.mul(3.5).add(info.y.mul(6.28318530718))).mul(0.12)).mul(float(1.0).add(energy.mul(0.35)));
+
+            const dispX = cos(laneAngle).mul(cos(spiralAngle).mul(spiralRadius));
+            const dispY = sin(spiralAngle).mul(spiralRadius);
+            const dispZ = sin(laneAngle).mul(cos(spiralAngle).mul(spiralRadius));
+
+            pos.x.assign(center.x.add(cos(laneAngle).mul(radius)).add(dispX));
+            pos.y.assign(center.y.add(height).add(dispY));
+            pos.z.assign(center.z.add(depth).add(dispZ));
 
             positions.element(index).assign(pos);
             states.element(index).assign(state);

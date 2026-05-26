@@ -22,6 +22,10 @@ import {
     pulseFragmentShader,
     dustVertexShader,
     dustFragmentShader,
+    lightShaftVertexShader,
+    lightShaftFragmentShader,
+    constellationVertexShader,
+    constellationFragmentShader,
 } from './astral-weave-shaders.js';
 
 const TAU = Math.PI * 2;
@@ -378,6 +382,10 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.dustNodeData = null;
         this.burstNodeData = null;
         this.shockwaves = [];
+        this.lightShafts = [];
+        this.lightShaftNodeData = [];
+        this.constellations = null;
+        this.constellationNodeData = null;
 
         this.flowCompute = null;
         this.dustCompute = null;
@@ -786,6 +794,8 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.createNexus();
         this.createRibbons();
         this.createStarfield();
+        this.createConstellations();
+        this.createLightShafts();
         this.createNebulaLayers();
         this.createFlowParticles();
         this.createDustParticles();
@@ -819,6 +829,8 @@ export default class AstralWeaveTheme extends BaseTheme {
             const coreGeo = new THREE.IcosahedronGeometry(1.75, 3);
             const shellGeo = new THREE.TorusKnotGeometry(2.95, 0.13, 180, 20, 2, 3);
             const haloGeo = new THREE.TorusGeometry(4.35, 0.17, 12, 96);
+            const halo2Geo = new THREE.TorusGeometry(5.2, 0.1, 12, 96);
+            const halo3Geo = new THREE.TorusGeometry(6.0, 0.07, 12, 96);
 
             const coreData = this.materialFactories.createAstralNexusCoreNodeMaterial({
                 colorA: this.palette.cyan,
@@ -838,21 +850,108 @@ export default class AstralWeaveTheme extends BaseTheme {
                 pulseBias: 0.1,
                 additive: true,
             });
+            const halo2Data = this.materialFactories.createAstralNexusShellNodeMaterial({
+                colorA: this.palette.gold,
+                colorB: this.palette.pink,
+                opacity: 0.038,
+                pulseBias: 0.08,
+                additive: true,
+            });
+            const halo3Data = this.materialFactories.createAstralNexusShellNodeMaterial({
+                colorA: this.palette.violet,
+                colorB: this.palette.cyan,
+                opacity: 0.032,
+                pulseBias: 0.06,
+                additive: true,
+            });
 
             const core = new THREE.Mesh(coreGeo, coreData.material);
             const shell = new THREE.Mesh(shellGeo, shellData.material);
             const halo = new THREE.Mesh(haloGeo, haloData.material);
+            const halo2 = new THREE.Mesh(halo2Geo, halo2Data.material);
+            const halo3 = new THREE.Mesh(halo3Geo, halo3Data.material);
+            
             shell.rotation.set(0.86, 0.18, 0.42);
             shell.scale.set(1, 0.94, 1.06);
             halo.rotation.set(Math.PI * 0.56, 0, 0.18);
             halo.scale.set(1, 0.72, 1);
+            halo2.rotation.set(Math.PI * 0.25, Math.PI * 0.35, 0.5);
+            halo3.rotation.set(-Math.PI * 0.3, -Math.PI * 0.15, 0.8);
 
             core.userData.baseRotation = new THREE.Euler(0, 0, 0);
             shell.userData.baseRotation = shell.rotation.clone();
             halo.userData.baseRotation = halo.rotation.clone();
+            halo2.userData.baseRotation = halo2.rotation.clone();
+            halo3.userData.baseRotation = halo3.rotation.clone();
 
-            this.nexusGroup.add(core, shell, halo);
-            this.nexusNodeData.push(coreData, shellData, haloData);
+            this.nexusGroup.add(core, shell, halo, halo2, halo3);
+            this.nexusNodeData.push(coreData, shellData, haloData, halo2Data, halo3Data);
+            return;
+        }
+
+        const isHighResNexus = this.activeQualityLevel !== 'Minimal' && this.activeQualityLevel !== 'Low';
+        if (isHighResNexus) {
+            const coreGeo = new THREE.IcosahedronGeometry(1.75, 3);
+            const shellGeo = new THREE.TorusKnotGeometry(2.95, 0.13, 90, 12, 2, 3);
+            const haloGeo = new THREE.TorusGeometry(4.35, 0.12, 8, 48);
+            const halo2Geo = new THREE.TorusGeometry(5.2, 0.08, 8, 48);
+            const halo3Geo = new THREE.TorusGeometry(6.0, 0.06, 8, 48);
+
+            const coreMat = new THREE.MeshBasicMaterial({
+                color: 0x73f8ff,
+                transparent: true,
+                opacity: 0.26,
+                depthWrite: false,
+            });
+            const shellMat = new THREE.MeshBasicMaterial({
+                color: 0xd95bff,
+                transparent: true,
+                opacity: 0.12,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+            const haloMat = new THREE.MeshBasicMaterial({
+                color: 0x3b8dff,
+                transparent: true,
+                opacity: 0.08,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+            const halo2Mat = new THREE.MeshBasicMaterial({
+                color: 0xff82d2,
+                transparent: true,
+                opacity: 0.06,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+            const halo3Mat = new THREE.MeshBasicMaterial({
+                color: 0xffd96d,
+                transparent: true,
+                opacity: 0.04,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+
+            const core = new THREE.Mesh(coreGeo, coreMat);
+            const shell = new THREE.Mesh(shellGeo, shellMat);
+            const halo = new THREE.Mesh(haloGeo, haloMat);
+            const halo2 = new THREE.Mesh(halo2Geo, halo2Mat);
+            const halo3 = new THREE.Mesh(halo3Geo, halo3Mat);
+
+            shell.rotation.set(0.86, 0.18, 0.42);
+            shell.scale.set(1, 0.94, 1.06);
+            halo.rotation.set(Math.PI * 0.56, 0, 0.18);
+            halo.scale.set(1, 0.72, 1);
+            halo2.rotation.set(Math.PI * 0.25, Math.PI * 0.35, 0.5);
+            halo3.rotation.set(-Math.PI * 0.3, -Math.PI * 0.15, 0.8);
+
+            core.userData.baseRotation = new THREE.Euler(0, 0, 0);
+            shell.userData.baseRotation = shell.rotation.clone();
+            halo.userData.baseRotation = halo.rotation.clone();
+            halo2.userData.baseRotation = halo2.rotation.clone();
+            halo3.userData.baseRotation = halo3.rotation.clone();
+
+            this.nexusGroup.add(core, shell, halo, halo2, halo3);
             return;
         }
 
@@ -872,6 +971,152 @@ export default class AstralWeaveTheme extends BaseTheme {
             sprite.userData.baseScale = size;
             this.nexusGroup.add(sprite);
         });
+    }
+
+    createLightShafts() {
+        this.lightShafts = [];
+        this.lightShaftNodeData = [];
+
+        if (this.activeQualityLevel === 'Minimal' || this.activeQualityLevel === 'Low') {
+            return;
+        }
+
+        const count = 8;
+        const radius = 18;
+        const height = 48;
+        const geometry = new THREE.CylinderGeometry(0.1, radius, height, 16, 1, true);
+        geometry.translate(0, -height / 2, 0);
+
+        for (let i = 0; i < count; i += 1) {
+            let material = null;
+            let nodeData = null;
+
+            const speed = 0.12 + (i % 3) * 0.06;
+            if (this.isWebGPU && this.materialFactories?.createAstralLightShaftNodeMaterial) {
+                nodeData = this.materialFactories.createAstralLightShaftNodeMaterial({
+                    colorA: this.palette.cyan,
+                    colorB: this.palette.magenta,
+                    opacity: 0.045 + (i % 3) * 0.015,
+                    scrollSpeed: speed,
+                });
+                material = nodeData.material;
+                this.lightShaftNodeData.push(nodeData);
+            } else {
+                material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        time: { value: 0 },
+                        opacity: { value: 0.065 + (i % 3) * 0.015 },
+                        colorA: { value: this.palette.cyan },
+                        colorB: { value: this.palette.magenta },
+                    },
+                    vertexShader: lightShaftVertexShader,
+                    fragmentShader: lightShaftFragmentShader,
+                    transparent: true,
+                    depthWrite: false,
+                    side: THREE.DoubleSide,
+                    blending: THREE.AdditiveBlending,
+                });
+            }
+
+            const shaft = new THREE.Mesh(geometry, material);
+            const theta = (i / count) * TAU + this.random() * 0.3;
+            const phi = Math.acos(2 * this.random() - 1);
+            shaft.rotation.set(phi, theta, this.random() * TAU);
+            
+            shaft.userData = {
+                baseRotation: shaft.rotation.clone(),
+                rotSpeedX: (this.random() - 0.5) * 0.06,
+                rotSpeedY: (this.random() - 0.5) * 0.06,
+                rotSpeedZ: 0.04 + this.random() * 0.06,
+            };
+
+            this.nexusGroup.add(shaft);
+            this.lightShafts.push(shaft);
+        }
+    }
+
+    createConstellations() {
+        if (this.activeQualityLevel === 'Minimal' || this.activeQualityLevel === 'Low') {
+            return;
+        }
+
+        const positionAttr = this.starfield?.geometry?.getAttribute('position');
+        if (!positionAttr) return;
+
+        const count = positionAttr.count;
+        const searchCount = Math.min(250, count);
+        const pairs = [];
+        const maxDist = 20.0;
+        const minDist = 8.0;
+
+        for (let i = 0; i < searchCount; i += 1) {
+            const x1 = positionAttr.getX(i);
+            const y1 = positionAttr.getY(i);
+            const z1 = positionAttr.getZ(i);
+            const p1 = new THREE.Vector3(x1, y1, z1);
+
+            let connections = 0;
+            const neighbors = [];
+            for (let j = i + 1; j < searchCount; j += 1) {
+                const x2 = positionAttr.getX(j);
+                const y2 = positionAttr.getY(j);
+                const z2 = positionAttr.getZ(j);
+                const p2 = new THREE.Vector3(x2, y2, z2);
+
+                const d = p1.distanceTo(p2);
+                if (d > minDist && d < maxDist) {
+                    neighbors.push({ pos: p2, dist: d });
+                }
+            }
+
+            neighbors.sort((a, b) => a.dist - b.dist);
+            for (let k = 0; k < Math.min(2, neighbors.length); k += 1) {
+                pairs.push(p1.x, p1.y, p1.z);
+                pairs.push(neighbors[k].pos.x, neighbors[k].pos.y, neighbors[k].pos.z);
+            }
+        }
+
+        if (pairs.length === 0) return;
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(pairs, 3));
+
+        const lineCount = pairs.length / 6;
+        const uvs = new Float32Array(lineCount * 2 * 2);
+        for (let i = 0; i < lineCount; i += 1) {
+            uvs[i * 4] = 0; uvs[i * 4 + 1] = 0.5;
+            uvs[i * 4 + 2] = 1; uvs[i * 4 + 3] = 0.5;
+        }
+        geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+
+        let material = null;
+        if (this.isWebGPU && this.materialFactories?.createAstralConstellationNodeMaterial) {
+            this.constellationNodeData = this.materialFactories.createAstralConstellationNodeMaterial({
+                colorA: this.palette.cyan,
+                colorB: this.palette.magenta,
+                opacity: 0.18,
+            });
+            material = this.constellationNodeData.material;
+        } else {
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0 },
+                    opacity: { value: 0.22 },
+                    colorA: { value: this.palette.cyan },
+                    colorB: { value: this.palette.magenta },
+                },
+                vertexShader: constellationVertexShader,
+                fragmentShader: constellationFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+        }
+
+        this.constellations = new THREE.LineSegments(geometry, material);
+        this.constellations.frustumCulled = false;
+        this.constellations.renderOrder = 5;
+        this.scene.add(this.constellations);
     }
 
     buildRibbonCurve(index, total) {
@@ -1462,7 +1707,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             this.nexusGroup.rotation.y = this.time * (0.08 + signals.braidVelocity * 0.06);
             this.nexusGroup.rotation.x = Math.sin(this.time * 0.42) * 0.08;
 
-            const [core, shell, halo] = this.nexusGroup.children;
+            const [core, shell, halo, halo2, halo3] = this.nexusGroup.children;
             if (core) {
                 core.rotation.x = Math.sin(this.time * 0.58) * 0.12;
                 core.rotation.y = this.time * 0.24;
@@ -1476,6 +1721,16 @@ export default class AstralWeaveTheme extends BaseTheme {
                 halo.rotation.x = halo.userData.baseRotation.x + Math.sin(this.time * 0.18) * 0.08;
                 halo.rotation.y = halo.userData.baseRotation.y - this.time * 0.12;
                 halo.rotation.z = halo.userData.baseRotation.z + Math.cos(this.time * 0.24) * 0.1;
+            }
+            if (halo2?.userData?.baseRotation) {
+                halo2.rotation.x = halo2.userData.baseRotation.x + Math.sin(this.time * 0.22) * 0.08;
+                halo2.rotation.y = halo2.userData.baseRotation.y + this.time * 0.16;
+                halo2.rotation.z = halo2.userData.baseRotation.z + Math.cos(this.time * 0.28) * 0.08;
+            }
+            if (halo3?.userData?.baseRotation) {
+                halo3.rotation.x = halo3.userData.baseRotation.x + Math.sin(this.time * 0.14) * 0.06;
+                halo3.rotation.y = halo3.userData.baseRotation.y - this.time * 0.2;
+                halo3.rotation.z = halo3.userData.baseRotation.z + Math.cos(this.time * 0.18) * 0.06;
             }
         }
 
@@ -1493,6 +1748,19 @@ export default class AstralWeaveTheme extends BaseTheme {
                 + signals.comboEnergy * 0.012,
             );
         });
+
+        if (this.lightShafts) {
+            this.lightShafts.forEach((shaft) => {
+                shaft.rotation.x = shaft.userData.baseRotation.x + Math.sin(this.time * 0.2) * shaft.userData.rotSpeedX;
+                shaft.rotation.y = shaft.userData.baseRotation.y + this.time * shaft.userData.rotSpeedY;
+                shaft.rotation.z = shaft.userData.baseRotation.z + this.time * shaft.userData.rotSpeedZ;
+            });
+        }
+
+        if (this.constellations) {
+            this.constellations.rotation.y = this.time * 0.005;
+            this.constellations.rotation.x = Math.sin(this.time * 0.02) * 0.015;
+        }
 
         if (this.starfield) {
             this.starfield.rotation.y = this.time * 0.01;
@@ -1606,6 +1874,16 @@ export default class AstralWeaveTheme extends BaseTheme {
             copyUniformValue(this.burstNodeData.uniforms.uEnergy, effectMix);
         }
 
+        this.lightShaftNodeData.forEach((nodeData) => {
+            copyUniformValue(nodeData.uniforms?.uTime, this.time);
+            copyUniformValue(nodeData.uniforms?.uPulse, signals.linePulse);
+        });
+
+        if (this.constellationNodeData) {
+            copyUniformValue(this.constellationNodeData.uniforms.uTime, this.time);
+            copyUniformValue(this.constellationNodeData.uniforms.uScintillation, signals.starScintillation);
+        }
+
         this.shockwaves.forEach(({ uniforms, mesh }) => {
             if (!mesh.userData.active) return;
             copyUniformValue(uniforms?.uProgress, mesh.userData.progress);
@@ -1625,6 +1903,19 @@ export default class AstralWeaveTheme extends BaseTheme {
             this.nebulaLayers.forEach((mesh) => {
                 if (mesh.material?.uniforms?.time) mesh.material.uniforms.time.value = this.time;
             });
+            if (this.lightShafts) {
+                this.lightShafts.forEach((shaft) => {
+                    if (shaft.material?.uniforms?.time) shaft.material.uniforms.time.value = this.time;
+                    if (shaft.material?.uniforms?.opacity) {
+                        // Base opacity mod speedZ to differentiate, multiplied by linePulse impact
+                        shaft.material.uniforms.opacity.value = (0.045 + (shaft.userData.rotSpeedZ * 10.0 % 0.015)) * (1.0 + signals.linePulse * 0.4);
+                    }
+                });
+            }
+            if (this.constellations?.material?.uniforms?.time) {
+                this.constellations.material.uniforms.time.value = this.time;
+                this.constellations.material.uniforms.opacity.value = 0.22 * (1.0 + signals.starScintillation * 0.5);
+            }
         }
 
         if (this.postProcessing?.updateDynamic) {
@@ -2170,6 +2461,10 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.nexusGroup = null;
         this.centerVeil = null;
         this.starfield = null;
+        this.lightShafts = [];
+        this.lightShaftNodeData = [];
+        this.constellations = null;
+        this.constellationNodeData = null;
         this.flowParticles = null;
         this.dustParticles = null;
         this.burstParticles = null;

@@ -165,6 +165,11 @@ export class DemoPlayer {
 
             // Catch up simulation to target time, stepping through inputs
             while (this.lastSimulatedTime < targetTime) {
+                // Bail out immediately if stopped or game ended mid-loop;
+                // updateGame is a no-op after isGameOver but lockPiece chains
+                // can still advance state if we keep iterating.
+                if (!this.isPlaying || this.gameState?.isGameOver) break;
+
                 // Determine the time of the next input
                 let nextInputTime = Infinity;
                 if (this.currentInputIndex < this.demo.inputs.length) {
@@ -225,7 +230,9 @@ export class DemoPlayer {
             }
         }
 
-        this.animationId = requestAnimationFrame(() => this._loop());
+        if (this.isPlaying) {
+            this.animationId = requestAnimationFrame(() => this._loop());
+        }
     }
 
     /**

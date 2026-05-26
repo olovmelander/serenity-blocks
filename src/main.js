@@ -2836,6 +2836,13 @@ class SerenityBlocks {
             this._returnToMainMenu();
         });
 
+        // Listen for "Watch Again" replay requests from the Demo Complete modal
+        eventBus.on(EVENTS.PLAY_DEMO, ({ demo }) => {
+            this._playDemoData(demo).catch((err) => {
+                console.error('[Main] Failed to replay demo:', err);
+            });
+        });
+
         // Setup modal UI with callbacks (pass gameModeManager for Serenity Hub icon)
         setupModalUI(this.modalManager, {
             onSettingsOpen: () => {
@@ -4249,6 +4256,19 @@ class SerenityBlocks {
      * Play a demo by its ID (used by high scores modal)
      * @param {number} demoId - The demo ID to play
      */
+    async _playDemoData(demo) {
+        if (!demo) return;
+
+        this.modalManager.hideAll();
+
+        if (introAnimation) {
+            introAnimation.dismiss();
+        }
+
+        await this.gameModeManager.activateMode('single');
+        await this.gameModeManager.startCurrentMode({ demo });
+    }
+
     async _playDemoById(demoId) {
         try {
             const demo = await this.demoManager.loadDemo(demoId);
@@ -4256,13 +4276,7 @@ class SerenityBlocks {
                 console.error('[Main] Demo not found:', demoId);
                 return;
             }
-
-            // Close all modals
-            this.modalManager.hideAll();
-
-            // Switch to single player mode and start playback
-            await this.gameModeManager.activateMode('single');
-            await this.gameModeManager.startCurrentMode({ demo });
+            await this._playDemoData(demo);
         } catch (err) {
             console.error('[Main] Failed to play demo:', err);
         }
