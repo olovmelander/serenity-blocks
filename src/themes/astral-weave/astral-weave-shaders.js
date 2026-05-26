@@ -103,6 +103,10 @@ void main() {
     pos.y += wave + wave2 + organic;
     pos.z += cos(uv.x * 8.0 - time * flowSpeed * 0.8) * waveIntensity * 0.5;
     
+    // Thickness/width pulsation along normal
+    float pulseWave = sin(uv.x * 6.2831853 * 8.0 - time * flowSpeed * 3.5) * 0.06;
+    pos += normal * (pulseWave + sin(uv.x * 3.2 - time * flowSpeed) * 0.02);
+    
     vEnergy = 0.5 + wave * 2.0;
     vWorldPos = pos;
     
@@ -169,7 +173,6 @@ varying vec3 vColor;
 varying float vAlpha;
 
 void main() {
-    // Particles spiral outward from center
     float angle = aAngle + time * aSpeed * 0.5;
     float radius = aRadius + sin(time * 0.5 + aRandom * 6.28) * 0.5;
     
@@ -178,10 +181,18 @@ void main() {
     pos.y = sin(time * 0.3 + aRandom * 10.0) * 2.0;
     pos.z = sin(angle) * radius;
     
+    // Helical spiral winding around the primary orbit path
+    float spiralFreq = 12.0 + aRandom * 6.0;
+    float spiralAngle = (aAngle + time * aSpeed) * spiralFreq + aRandom * 6.2831853;
+    float spiralRadius = 0.48 + sin((aAngle + time * aSpeed) * 3.5 + aRandom * 6.28) * 0.12;
+    
+    pos.x += cos(angle) * cos(spiralAngle) * spiralRadius;
+    pos.y += sin(spiralAngle) * spiralRadius;
+    pos.z += sin(angle) * cos(spiralAngle) * spiralRadius;
+    
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     
-    // Size based on distance
     float baseSize = 2.0 + aRandom * 3.0;
     gl_PointSize = baseSize * (20.0 / -mvPosition.z);
     
@@ -269,6 +280,7 @@ uniform float time;
 uniform float opacity;
 uniform vec3 colorA;
 uniform vec3 colorB;
+uniform vec3 colorC;
 
 varying vec2 vUv;
 
@@ -303,17 +315,29 @@ float fbm(vec2 p) {
 void main() {
     vec2 uv = vUv - 0.5;
     
-    float n1 = fbm(uv * 3.0 + time * 0.02);
-    float n2 = fbm(uv * 2.0 - time * 0.015 + vec2(5.0, 3.0));
+    // Double warping / coordinates churning
+    float drift = 0.16;
+    vec2 warped = vec2(
+        uv.x + sin(uv.y * 6.0 + time * drift) * 0.06 + cos(uv.x * 3.5 - time * drift * 0.4) * 0.04,
+        uv.y + cos(uv.x * 5.0 - time * drift * 0.8) * 0.055 + sin(uv.y * 4.0 + time * drift * 0.5) * 0.035
+    );
+    
+    float n1 = fbm(warped * 3.0 + time * 0.02);
+    float n2 = fbm(warped * 2.0 - time * 0.015 + vec2(5.0, 3.0));
     
     float finalNoise = (n1 + n2) * 0.5;
     
     float dist = length(uv) * 2.0;
     float falloff = 1.0 - smoothstep(0.2, 1.0, dist);
     
-    vec3 color = mix(colorA, colorB, finalNoise);
+    // Color churning
+    float tintMix1 = clamp(finalNoise * 1.2, 0.0, 1.0);
+    float tintMix2 = clamp(sin(warped.x * 3.0 + finalNoise * 2.0) * 0.5 + 0.5, 0.0, 1.0);
     
-    float alpha = finalNoise * falloff * opacity;
+    vec3 color = mix(colorA, colorB, tintMix1);
+    color = mix(color, colorC, tintMix2 * 0.42);
+    
+    float alpha = finalNoise * falloff * opacity * 1.2;
     
     gl_FragColor = vec4(color, alpha);
 }
@@ -389,5 +413,80 @@ void main() {
     float alpha = vAlpha * (1.0 - smoothstep(0.5, 1.0, dist));
     
     gl_FragColor = vec4(color, alpha);
+}
+`;
+
+/**
+ * Volumetric Light Shaft Shaders
+ */
+export const lightShaftVertexShader = `
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+export const lightShaftFragmentShader = `
+uniform float time;
+uniform float opacity;
+uniform vec3 colorA;
+uniform vec3 colorB;
+
+varying vec2 vUv;
+
+// Simple hash and noise for light shafts
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+void main() {
+    // Vertical fade: fades out at bottom (y=0) and top (y=1)
+    float vertFade = smoothstep(0.0, 0.22, vUv.y) * smoothstep(1.0, 0.42, vUv.y);
+    
+    // Radial fade: cylinder edge soft falloff
+    float radFade = smoothstep(0.5, 0.0, abs(vUv.x - 0.5));
+    
+    // Shimmer/noise along shaft
+    vec2 noiseCoords = vec2(vUv.x * 2.2, vUv.y * 0.45 - time * 0.45);
+    float shaftNoise = noise(noiseCoords * 4.0) * 0.5 + noise(noiseCoords * 8.0) * 0.25 + 0.25;
+    
+    vec3 finalColor = mix(colorA, colorB, shaftNoise * 0.75);
+    float alpha = vertFade * radFade * (shaftNoise * 0.68 + 0.32) * opacity;
+    
+    gl_FragColor = vec4(finalColor, alpha);
+}
+`;
+
+/**
+ * Constellation Line Shaders
+ */
+export const constellationVertexShader = `
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+export const constellationFragmentShader = `
+uniform float time;
+uniform float opacity;
+uniform vec3 colorA;
+uniform vec3 colorB;
+
+varying vec2 vUv;
+
+void main() {
+    float twinkle = sin(time * 2.8 + vUv.x * 12.0) * 0.22 + 0.78;
+    vec3 finalColor = mix(colorA, colorB, vUv.x) * twinkle;
+    float alpha = opacity * twinkle * smoothstep(0.0, 0.12, vUv.x) * smoothstep(1.0, 0.88, vUv.x);
+    gl_FragColor = vec4(finalColor, alpha);
 }
 `;

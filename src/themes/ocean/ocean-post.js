@@ -25,6 +25,7 @@ import {
     dot,
     emissive,
     float,
+    fract,
     int,
     length,
     Loop,
@@ -59,6 +60,7 @@ export class OceanPost {
     constructor(renderer, scene, camera, params = {}) {
         this.renderer = renderer;
         this.useMRT = params.useMRT ?? true;
+        this.sceneScale = params.sceneScale ?? 1.0;
         this.bloomScale = params.bloomScale ?? 0.6;
         this.postProcessing = new THREE_GPU.PostProcessing(renderer);
 
@@ -142,40 +144,49 @@ export class OceanPost {
         };
 
         const directSample = sampleAbsorbed(uv);
-        const surfaceMask = smoothstep(float(0.52), float(0.95), uv.y).mul(
-            float(1.0).sub(smoothstep(float(0.985), float(1.0), uv.y)),
-        );
-        const refractionMask = clamp(
-            surfaceMask.mul(this.uRefractionStrength),
-            float(0.0),
-            float(1.0),
-        );
-        const gameplayRefractionMask = clamp(
-            surfaceMask.mul(this.uGameplayPulse).mul(0.45),
-            float(0.0),
-            float(0.5),
-        );
-        const refractionDrive = clamp(
-            refractionMask.add(gameplayRefractionMask),
-            float(0.0),
-            float(1.0),
-        );
-        const refractionOffset = vec2(
-            sin(uv.y.mul(34.0).add(this.uTime.mul(0.72))).mul(0.0028),
-            sin(uv.x.mul(26.0).sub(this.uTime.mul(0.58))).mul(0.0017),
-        ).mul(refractionDrive);
-        const refractedSample = sampleAbsorbed(
-            clamp(uv.add(refractionOffset), vec2(0.0), vec2(1.0)),
-        );
-        const baseSample = mix(
-            directSample,
-            refractedSample,
-            clamp(
-                refractionMask.mul(0.62).add(gameplayRefractionMask.mul(0.7)),
+
+        // Screen-space refraction (Medium quality and below skip this)
+        const refractionEnabled = params.refractionEnabled === true;
+        let baseSample;
+        if (refractionEnabled) {
+            const surfaceMask = smoothstep(float(0.52), float(0.95), uv.y).mul(
+                float(1.0).sub(smoothstep(float(0.985), float(1.0), uv.y)),
+            );
+            const refractionMask = clamp(
+                surfaceMask.mul(this.uRefractionStrength),
                 float(0.0),
-                float(0.78),
-            ),
-        );
+                float(1.0),
+            );
+            const gameplayRefractionMask = clamp(
+                surfaceMask.mul(this.uGameplayPulse).mul(0.45),
+                float(0.0),
+                float(0.5),
+            );
+            const refractionDrive = clamp(
+                refractionMask.add(gameplayRefractionMask),
+                float(0.0),
+                float(1.0),
+            );
+            const refractionOffset = vec2(
+                sin(uv.y.mul(34.0).add(this.uTime.mul(0.72))).mul(0.0028),
+                sin(uv.x.mul(26.0).sub(this.uTime.mul(0.58))).mul(0.0017),
+            ).mul(refractionDrive);
+            const refractedSample = sampleAbsorbed(
+                clamp(uv.add(refractionOffset), vec2(0.0), vec2(1.0)),
+            );
+            baseSample = mix(
+                directSample,
+                refractedSample,
+                clamp(
+                    refractionMask.mul(0.62).add(gameplayRefractionMask.mul(0.7)),
+                    float(0.0),
+                    float(0.78),
+                ),
+            );
+        } else {
+            baseSample = directSample;
+        }
+
         const baseDepth = getLinearDepth(uv);
 
         const gameplayWave = sin(uv.x.mul(42.0).add(this.uTime.mul(3.2))).mul(
@@ -187,26 +198,32 @@ export class OceanPost {
             .mul(this.uCausticSweepStrength);
 
         // ── DOF (Phase 6, Extreme only) ──
-        // Variable-radius 5-tap Poisson sampling around a normalized scene-depth focal plane.
-        const dofMissDist = max(
-            abs(baseDepth.sub(this.uFocalDepth)).sub(this.uDofDeadZone),
-            float(0.0),
-        );
-        const dofRadius = clamp(dofMissDist.mul(this.uDofStrength), float(0.0), this.uDofMaxRadius);
-        let dofAccum = vec3(0.0);
-        for (let i = 0; i < POISSON_TAPS.length; i += 1) {
-            const [tx, ty] = POISSON_TAPS[i];
-            const offset = vec2(float(tx), float(ty)).mul(dofRadius);
-            dofAccum = dofAccum.add(sampleAbsorbed(uv.add(offset)).rgb);
+        const dofEnabled = params.dofEnabled === true;
+        let focusPick;
+        if (dofEnabled) {
+            // Variable-radius 5-tap Poisson sampling around a normalized scene-depth focal plane.
+            const dofMissDist = max(
+                abs(baseDepth.sub(this.uFocalDepth)).sub(this.uDofDeadZone),
+                float(0.0),
+            );
+            const dofRadius = clamp(dofMissDist.mul(this.uDofStrength), float(0.0), this.uDofMaxRadius);
+            let dofAccum = vec3(0.0);
+            for (let i = 0; i < POISSON_TAPS.length; i += 1) {
+                const [tx, ty] = POISSON_TAPS[i];
+                const offset = vec2(float(tx), float(ty)).mul(dofRadius);
+                dofAccum = dofAccum.add(sampleAbsorbed(uv.add(offset)).rgb);
+            }
+            const dofSampled = dofAccum.mul(float(1.0 / POISSON_TAPS.length));
+            const sharpSampled = baseSample.rgb;
+            const dofWeight = clamp(
+                dofRadius.div(this.uDofMaxRadius.add(float(0.0001))),
+                float(0.0),
+                float(1.0),
+            );
+            focusPick = vec4(mix(sharpSampled, dofSampled, dofWeight), baseSample.a);
+        } else {
+            focusPick = baseSample;
         }
-        const dofSampled = dofAccum.mul(float(1.0 / POISSON_TAPS.length));
-        const sharpSampled = baseSample.rgb;
-        const dofWeight = clamp(
-            dofRadius.div(this.uDofMaxRadius.add(float(0.0001))),
-            float(0.0),
-            float(1.0),
-        );
-        const focusPick = vec4(mix(sharpSampled, dofSampled, dofWeight), baseSample.a);
 
         // ── Edge-pinch chromatic aberration (Phase 4) ──
         // Stronger at the screen edges — looking through a water lens. We feed the
@@ -215,9 +232,16 @@ export class OceanPost {
         const chromated = chromaticAberration(focusPick, this.uChromaStrength, vec2(0.5, 0.5), 1.1);
 
         // ── God rays (TSL Loop) ──
-        const shaftDir = this.uSunScreen.sub(uv);
-        const shaftStep = float(0.08);
+        // WS 2.1: per-pixel hash dither on the start offset hides banding when
+        // sample count is reduced (Extreme 10→8). The bloom-source feed is
+        // soft, so randomizing positions becomes high-freq noise the eye
+        // tonemaps as additional shimmer rather than visible bands.
+        const shaftsEnabled = (params.shaftStrength ?? 0) > 0 && (params.shaftSamples ?? 0) > 0;
         const shafts = (() => {
+            if (!shaftsEnabled) return vec3(0.0);
+            const shaftDir = this.uSunScreen.sub(uv);
+            const shaftStep = float(0.08);
+            const dither = fract(sin(dot(uv, vec2(12.9898, 78.233))).mul(43758.5453));
             const sum = vec3(0.0).toVar();
             Loop(
                 {
@@ -227,7 +251,7 @@ export class OceanPost {
                     condition: '<',
                 },
                 ({ i }) => {
-                    const t = float(i).add(1.0);
+                    const t = float(i).add(dither);
                     const sampleUv = clamp(
                         uv.add(shaftDir.mul(shaftStep).mul(t)),
                         vec2(0.0),
@@ -244,9 +268,9 @@ export class OceanPost {
             return sum;
         })();
         // Warm gold tint for god rays
-        const shaftColor = shafts
-            .mul(this.uShaftStrength.add(this.uComboSurge.mul(0.7)))
-            .mul(vec3(1.0, 0.88, 0.62));
+        const shaftColor = shaftsEnabled
+            ? shafts.mul(this.uShaftStrength.add(this.uComboSurge.mul(0.7))).mul(vec3(1.0, 0.88, 0.62))
+            : vec3(0.0);
 
         // ── Vignette ──
         const vignette = smoothstep(this.uVignetteOffset, this.uVignetteOffset.sub(0.5), dist);
@@ -322,7 +346,9 @@ export class OceanPost {
     }
 
     updateParams(params = {}) {
-        if (params.bloomStrength !== undefined) this.bloomNode.strength.value = params.bloomStrength;
+        if (params.bloomStrength !== undefined && this.bloomNode?.strength) {
+            this.bloomNode.strength.value = params.bloomStrength;
+        }
         if (params.bloomRadius !== undefined) this.bloomNode.radius.value = params.bloomRadius;
         if (params.bloomThreshold !== undefined) this.bloomNode.threshold.value = params.bloomThreshold;
         if (params.exposure !== undefined) this.uExposure.value = params.exposure;
@@ -372,10 +398,12 @@ export class OceanPost {
     setSize(width, height) {
         this.size.width = width;
         this.size.height = height;
-        this.scenePass.setSize(width, height);
+        const sceneWidth = Math.max(1, Math.floor(width * this.sceneScale));
+        const sceneHeight = Math.max(1, Math.floor(height * this.sceneScale));
+        this.scenePass.setSize(sceneWidth, sceneHeight);
         if (this.bloomNode?._separableBlurMaterials?.length) {
-            const w = Math.max(1, Math.floor(width * this.bloomScale));
-            const h = Math.max(1, Math.floor(height * this.bloomScale));
+            const w = Math.max(1, Math.floor(sceneWidth * this.bloomScale));
+            const h = Math.max(1, Math.floor(sceneHeight * this.bloomScale));
             this.bloomNode.setSize(w, h);
         }
     }

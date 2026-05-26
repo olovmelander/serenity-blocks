@@ -60,6 +60,7 @@ export const EVENTS = {
     // Demo System
     OPEN_DEMO_BROWSER: 'openDemoBrowser',
     EXIT_TO_MAIN_MENU: 'exitToMainMenu',
+    PLAY_DEMO: 'playDemo',
     // GPU Context Resilience
     CONTEXT_LOST: 'contextLost',
     CONTEXT_RESTORED: 'contextRestored',

@@ -37,6 +37,8 @@ const FAUNA_URLS = {
     'rare-turtle-kenchoo.glb': new URL('./assets/fauna/rare-turtle-kenchoo.glb', import.meta.url).href,
     // Self-generated TripoSR reef-dweller seahorse
     'reef-seahorse-triposr.glb': new URL('./assets/fauna/reef-seahorse-triposr.glb', import.meta.url).href,
+    // UniRig auto-rigged variant of the TripoSR seahorse (bones driven procedurally in JS)
+    'reef-seahorse-triposr-rigged.glb': new URL('./assets/fauna/reef-seahorse-triposr-rigged.glb', import.meta.url).href,
 };
 
 function faunaUrl(fileName) {
@@ -371,6 +373,29 @@ export const OCEAN_REEF_SEAHORSE_ASSET = makeAssetRecord({
     sourceUrl: 'artifacts/triposr/seahorse-source.png',
     triangleBudget: { min: 2000, max: 12000 },
     maxBytes: 1024 * 1024,
+    animationNames: [],
+    runtimeScale: 2.8,
+    forwardAxis: '+X',
+});
+
+// UniRig-rigged variant of the TripoSR seahorse. Same mesh, plus an
+// auto-generated skeleton + skinning weights. animationNames stays empty —
+// bones are driven procedurally in updateSeahorses() (sin-wave spine sway).
+// The reef-dweller system falls back to the unrigged asset above if this
+// file is missing, so committing the rigged GLB is optional.
+export const OCEAN_REEF_SEAHORSE_RIGGED_ASSET = makeAssetRecord({
+    id: 'reef-seahorse-triposr-rigged',
+    kind: 'reef-dweller',
+    fileName: 'reef-seahorse-triposr-rigged.glb',
+    modelVersion: 'v1-triposr-mc96-unirig',
+    sourceMode: 'self-generated-triposr-unirig',
+    license: 'MIT-project-local',
+    author: 'Serenity Blocks TripoSR + UniRig pipeline',
+    sourceUrl: 'artifacts/triposr/seahorse-source.png',
+    triangleBudget: { min: 2000, max: 12000 },
+    // UniRig's merge step bakes the original mesh + 17-bone skeleton + per-vertex
+    // skinning weights into the GLB; expected size is ~2 MB.
+    maxBytes: 2.5 * 1024 * 1024,
     animationNames: [],
     runtimeScale: 2.8,
     forwardAxis: '+X',

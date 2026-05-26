@@ -27,7 +27,7 @@ export const OCEAN_CORAL_AUTHORING_CONTRACT = {
 };
 
 const CORAL_MODULES = typeof import.meta.glob === 'function'
-    ? import.meta.glob('./assets/corals/*.glb', {
+    ? import.meta.glob('./assets/corals/**/*.glb', {
         eager: true,
         query: '?url',
         import: 'default',
@@ -63,6 +63,33 @@ const CORAL_MODULES = typeof import.meta.glob === 'function'
             './assets/corals/coral-tube-orange-01.glb',
             import.meta.url,
         ).href,
+        // TripoSR-generated painterly corals (Nano Banana 2 source images → TripoSR → vertex-colored GLB).
+        // Unrigged variants are registered here; rigged variants for sea-fan and anemone live
+        // alongside in ./assets/corals/triposr/ as future-work assets for bone-driven sway.
+        './assets/corals/triposr/coral-brain-triposr-01.glb': new URL(
+            './assets/corals/triposr/coral-brain-triposr-01.glb',
+            import.meta.url,
+        ).href,
+        './assets/corals/triposr/coral-staghorn-triposr-01.glb': new URL(
+            './assets/corals/triposr/coral-staghorn-triposr-01.glb',
+            import.meta.url,
+        ).href,
+        './assets/corals/triposr/coral-sea-fan-triposr-01.glb': new URL(
+            './assets/corals/triposr/coral-sea-fan-triposr-01.glb',
+            import.meta.url,
+        ).href,
+        './assets/corals/triposr/coral-anemone-triposr-01.glb': new URL(
+            './assets/corals/triposr/coral-anemone-triposr-01.glb',
+            import.meta.url,
+        ).href,
+        './assets/corals/triposr/coral-tube-sponge-triposr-01.glb': new URL(
+            './assets/corals/triposr/coral-tube-sponge-triposr-01.glb',
+            import.meta.url,
+        ).href,
+        './assets/corals/triposr/coral-mushroom-triposr-01.glb': new URL(
+            './assets/corals/triposr/coral-mushroom-triposr-01.glb',
+            import.meta.url,
+        ).href,
     };
 
 const CORAL_METADATA = {
@@ -71,7 +98,7 @@ const CORAL_METADATA = {
         kind: 'branching-coral',
         triangleCount: 2500,
         byteSize: 126240,
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'hero-colony',
         materialMode: 'preserve-pbr-underwater-rim',
     },
@@ -80,7 +107,7 @@ const CORAL_METADATA = {
         kind: 'fan-coral',
         triangleCount: 7436,
         byteSize: 141704,
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'hero-colony',
         materialMode: 'preserve-pbr-underwater-rim',
     },
@@ -89,7 +116,7 @@ const CORAL_METADATA = {
         kind: 'table-coral',
         triangleCount: 2736,
         byteSize: 111096,
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'hero-colony',
         materialMode: 'preserve-pbr-underwater-rim',
     },
@@ -98,7 +125,7 @@ const CORAL_METADATA = {
         kind: 'spire-coral',
         triangleCount: 2108,
         byteSize: 106492,
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'hero-colony',
         materialMode: 'preserve-pbr-underwater-rim',
     },
@@ -107,7 +134,7 @@ const CORAL_METADATA = {
         kind: 'anemone-coral',
         triangleCount: 3008,
         byteSize: 150732,
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'hero-colony',
         materialMode: 'preserve-pbr-underwater-rim',
     },
@@ -116,7 +143,7 @@ const CORAL_METADATA = {
         kind: 'boulder-coral',
         triangleCount: 5144,
         byteSize: 163748,
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'hero-colony',
         materialMode: 'preserve-pbr-underwater-rim',
     },
@@ -125,7 +152,7 @@ const CORAL_METADATA = {
         kind: 'purple-blue-coral-carpet',
         triangleCount: 2884,
         byteSize: 194804,
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'carpet-patch',
         materialMode: 'preserve-pbr-underwater-rim',
     },
@@ -166,7 +193,7 @@ const CORAL_METADATA = {
         kind: 'orange-tube-sponge-cluster',
         triangleCount: 5520,
         byteSize: 278744,
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'carpet-patch',
         materialMode: 'preserve-pbr-underwater-rim',
     },
@@ -175,7 +202,7 @@ const CORAL_METADATA = {
         kind: 'green-yellow-plate-coral',
         triangleCount: 4176,
         byteSize: 174508,
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'carpet-patch',
         materialMode: 'preserve-pbr-underwater-rim',
     },
@@ -184,7 +211,7 @@ const CORAL_METADATA = {
         kind: 'blue-brush-coral',
         triangleCount: 2016,
         byteSize: 147184,
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'carpet-patch',
         materialMode: 'preserve-pbr-underwater-rim',
     },
@@ -194,37 +221,137 @@ const CORAL_METADATA = {
     'sponge-tube-orange-01.glb': {
         id: 'sponge-tube-orange-01',
         kind: 'orange-tube-sponge',
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'hero-colony',
         materialMode: 'preserve-pbr-underwater-rim',
     },
     'sponge-tube-purple-01.glb': {
         id: 'sponge-tube-purple-01',
         kind: 'purple-tube-sponge',
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'hero-colony',
         materialMode: 'preserve-pbr-underwater-rim',
     },
     'sponge-barrel-yellow-01.glb': {
         id: 'sponge-barrel-yellow-01',
         kind: 'yellow-barrel-sponge',
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'hero-colony',
         materialMode: 'preserve-pbr-underwater-rim',
     },
     'coral-vase-magenta-01.glb': {
         id: 'coral-vase-magenta-01',
         kind: 'magenta-vase-coral',
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'hero-colony',
         materialMode: 'preserve-pbr-underwater-rim',
     },
     'coral-fan-purple-01.glb': {
         id: 'coral-fan-purple-01',
         kind: 'purple-sea-fan',
-        runtimeScale: 1.0,
+        runtimeScale: 3.0,
         placementRole: 'hero-colony',
         materialMode: 'preserve-pbr-underwater-rim',
+    },
+
+    // ── TripoSR-generated painterly corals.
+    //    Source pipeline: Nano Banana 2 prompt → 1024×1024 PNG in artifacts/triposr/
+    //    → scripts/triposr-gen.sh (mc-resolution 128, chunk-size 4096) → vertex-colored GLB.
+    //    Sea-fan also rigged via scripts/unirig-gen.sh (6-bone chain); anemone rigged
+    //    (34-bone branching tree). Rigged variants are NOT registered here — they
+    //    require bypassing mergeMeshesByMaterial in prepareHeroCoralAsset and adding
+    //    a bone-update loop. Future work.
+    'coral-brain-triposr-01.glb': {
+        id: 'coral-brain-triposr-01',
+        kind: 'brain-coral',
+        triangleCount: 47350,
+        byteSize: 949204,
+        runtimeScale: 3.0,
+        placementRole: 'hero-colony',
+        materialMode: 'preserve-pbr-underwater-rim',
+        sourceMode: 'self-generated-triposr',
+        license: 'MIT-project-local',
+        author: 'Serenity Blocks TripoSR + Nano Banana 2 pipeline',
+        attributionRequired: false,
+        sourcePriority: 50,
+    },
+    'coral-staghorn-triposr-01.glb': {
+        id: 'coral-staghorn-triposr-01',
+        kind: 'staghorn-coral',
+        triangleCount: 24639,
+        byteSize: 494608,
+        runtimeScale: 3.0,
+        // TripoSR exported with longest extent on Z (0.97) instead of Y. Rotate -90°
+        // around X so the antlers stand upright in world space.
+        baseRotation: { x: -Math.PI / 2, y: 0, z: 0 },
+        placementRole: 'hero-colony',
+        materialMode: 'preserve-pbr-underwater-rim',
+        sourceMode: 'self-generated-triposr',
+        license: 'MIT-project-local',
+        author: 'Serenity Blocks TripoSR + Nano Banana 2 pipeline',
+        attributionRequired: false,
+        sourcePriority: 50,
+    },
+    'coral-sea-fan-triposr-01.glb': {
+        id: 'coral-sea-fan-triposr-01',
+        kind: 'purple-sea-fan',
+        triangleCount: 38819,
+        byteSize: 778176,
+        runtimeScale: 3.0,
+        // Z (1.00) is the longest axis after TripoSR export; rotate -90° X to
+        // stand the fan upright so its plane faces forward in world Z.
+        baseRotation: { x: -Math.PI / 2, y: 0, z: 0 },
+        placementRole: 'hero-colony',
+        materialMode: 'preserve-pbr-underwater-rim',
+        sourceMode: 'self-generated-triposr',
+        license: 'MIT-project-local',
+        author: 'Serenity Blocks TripoSR + Nano Banana 2 pipeline',
+        attributionRequired: false,
+        sourcePriority: 50,
+    },
+    'coral-anemone-triposr-01.glb': {
+        id: 'coral-anemone-triposr-01',
+        kind: 'anemone-coral',
+        triangleCount: 57288,
+        byteSize: 1148732,
+        runtimeScale: 3.0,
+        placementRole: 'hero-colony',
+        materialMode: 'preserve-pbr-underwater-rim',
+        sourceMode: 'self-generated-triposr',
+        license: 'MIT-project-local',
+        author: 'Serenity Blocks TripoSR + Nano Banana 2 pipeline',
+        attributionRequired: false,
+        sourcePriority: 50,
+    },
+    'coral-tube-sponge-triposr-01.glb': {
+        id: 'coral-tube-sponge-triposr-01',
+        kind: 'purple-tube-sponge',
+        triangleCount: 44820,
+        byteSize: 898556,
+        runtimeScale: 3.0,
+        // Z (1.08) is the longest extent; rotate -90° X so the tubes stand vertical.
+        baseRotation: { x: -Math.PI / 2, y: 0, z: 0 },
+        placementRole: 'hero-colony',
+        materialMode: 'preserve-pbr-underwater-rim',
+        sourceMode: 'self-generated-triposr',
+        license: 'MIT-project-local',
+        author: 'Serenity Blocks TripoSR + Nano Banana 2 pipeline',
+        attributionRequired: false,
+        sourcePriority: 50,
+    },
+    'coral-mushroom-triposr-01.glb': {
+        id: 'coral-mushroom-triposr-01',
+        kind: 'mushroom-coral',
+        triangleCount: 25136,
+        byteSize: 504764,
+        runtimeScale: 3.0,
+        placementRole: 'hero-colony',
+        materialMode: 'preserve-pbr-underwater-rim',
+        sourceMode: 'self-generated-triposr',
+        license: 'MIT-project-local',
+        author: 'Serenity Blocks TripoSR + Nano Banana 2 pipeline',
+        attributionRequired: false,
+        sourcePriority: 50,
     },
 };
 
@@ -255,6 +382,7 @@ function makeCoralRecord(key) {
         textureCount: metadata.textureCount ?? null,
         textureBudget: 4,
         runtimeScale: metadata.runtimeScale ?? 1,
+        baseRotation: metadata.baseRotation || null,
         placementRole: metadata.placementRole || 'hero-colony',
         materialMode: metadata.materialMode || 'preserve-pbr-underwater-rim',
         sourcePriority: metadata.sourcePriority ?? 0,
