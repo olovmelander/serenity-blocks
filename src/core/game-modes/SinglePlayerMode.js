@@ -366,12 +366,22 @@ export class SinglePlayerMode extends BaseGameMode {
 
         console.log('[SinglePlayer] Stopping game...');
 
+        // Mark game over FIRST so any in-flight physics short-circuits at
+        // updateGame's gameOver guard (game.js:763). This prevents the burst
+        // of locked pieces from a queued updateGame call with large delta.
+        if (this.gameState) {
+            this.gameState.isGameOver = true;
+        }
+
         // Stop game loop (handles both hybrid and standard loops)
         this._stopGameLoop();
 
         if (this.isPlayingDemo) {
-            this.demoPlayer.stopPlayback();
             this.isPlayingDemo = false;
+            // Suppress the natural-end callback during teardown to avoid
+            // a recursive _handleGameOver via onPlaybackEnd → _handleGameOver.
+            this.demoPlayer.onPlaybackEnd = null;
+            this.demoPlayer.stopPlayback();
             this.playbackControls.hide();
         }
 
@@ -394,11 +404,6 @@ export class SinglePlayerMode extends BaseGameMode {
             }
         } else {
             console.log('[SinglePlayer] Not recording, so no demo saved.');
-        }
-
-        // Mark game as over
-        if (this.gameState) {
-            this.gameState.isGameOver = true;
         }
 
         this._stopPhaserBoardScene();
@@ -873,10 +878,8 @@ export class SinglePlayerMode extends BaseGameMode {
                 {
                     onWatchAgain: () => {
                         console.log('[SinglePlayer] Watch Again - replaying demo');
-                        // No need to hideAll here as showDemoCompleteModal hides itself
-                        // and we want to stay in "demo context" potentially?
-                        // Actually better to restart clean.
-                        if (this.onRestart) this.onRestart();
+                        this.deps.modalManager.hideAll();
+                        eventBus.emit(EVENTS.PLAY_DEMO, { demo: this.currentDemo });
                     },
                     onBrowseReplays: () => {
                         console.log('[SinglePlayer] Browse Replays - showing demo browser');

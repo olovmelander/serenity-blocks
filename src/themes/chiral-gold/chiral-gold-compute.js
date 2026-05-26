@@ -235,29 +235,55 @@ export class ChiralGoldDustCompute {
                 life.w.assign(sin(life.w.mul(37.0).add(this.uTime.mul(0.31))).mul(0.5).add(0.5));
                 life.y.assign(0.18);
             }).Else(() => {
-                // Orbital rotation — mid frequency accelerates the swirl
-                const speed = vel.w.mul(float(1.0).add(this.uMid.mul(1.2)));
-                const angle = speed.mul(this.uDelta);
-                const orbitSin = sin(angle);
-                const orbitCos = cos(angle);
+                // Toroidal vortex flow math - keeps particles in a swirling, breathing torus framing the board
+                const radXZ = length(vec2(pos.x, pos.z)).add(0.001);
+                const dirX = pos.x.div(radXZ);
+                const dirZ = pos.z.div(radXZ);
 
-                const nextX = pos.x.mul(orbitCos).sub(pos.z.mul(orbitSin));
-                const nextZ = pos.x.mul(orbitSin).add(pos.z.mul(orbitCos));
-                pos.x.assign(nextX);
-                pos.z.assign(nextZ);
+                // Tangential vector (orbit direction)
+                const tangX = dirZ.negate();
+                const tangZ = dirX;
 
-                // Curl noise flow field — amplitude reacts strongly to overall energy and mids
-                const noiseFrequency = float(0.002);
-                const noiseTime = this.uTime.mul(0.05);
-                const flowX = sin(pos.y.mul(noiseFrequency).add(noiseTime))
-                    .sub(cos(pos.z.mul(noiseFrequency).sub(noiseTime.mul(0.7))));
-                const flowY = sin(pos.z.mul(noiseFrequency).add(noiseTime.mul(1.2)))
-                    .sub(cos(pos.x.mul(noiseFrequency).add(noiseTime.mul(0.6))));
-                const flowZ = sin(pos.x.mul(noiseFrequency).sub(noiseTime.mul(1.1)))
-                    .sub(cos(pos.y.mul(noiseFrequency).sub(noiseTime.mul(0.4))));
-                const flowVec = normalize(vec3(flowX, flowY, flowZ).add(vec3(0.0001, 0.0001, 0.0001)));
-                const flowAmp = mix(float(120.0), float(380.0), clamp(this.uEnergy.mul(1.5).add(this.uMid.mul(0.8)), 0.0, 1.0));
-                pos.xyz.addAssign(flowVec.mul(flowAmp).mul(this.uDelta));
+                // Radial pull/push to maintain a stable golden ring around the board
+                // Target radius = 3000, slowly undulating over time
+                const targetRadius = float(3000.0).add(sin(this.uTime.mul(0.12)).mul(450.0));
+                const radialDelta = radXZ.sub(targetRadius);
+                const pullStrength = radialDelta.mul(0.09); // pull back toward target radius
+
+                // Spiral velocity vector (speed is accelerated by mids)
+                const spiralSpeed = vel.w.mul(float(420.0).add(this.uMid.mul(550.0)));
+                const spiralX = tangX.mul(spiralSpeed).sub(dirX.mul(pullStrength));
+                const spiralZ = tangZ.mul(spiralSpeed).sub(dirZ.mul(pullStrength));
+
+                // Vertical wave oscillation (drifting up and down based on radius and bass)
+                const verticalWave = sin(radXZ.mul(0.00062).sub(this.uTime.mul(0.48))).mul(110.0);
+                const verticalSpeed = (vel.y.mul(55.0).add(verticalWave)).mul(float(1.0).add(this.uBass.mul(1.6)));
+
+                pos.x.addAssign(spiralX.mul(this.uDelta));
+                pos.z.addAssign(spiralZ.mul(this.uDelta));
+                pos.y.addAssign(verticalSpeed.mul(this.uDelta));
+
+                // Layered Curl Noise (TSL)
+                const f1 = float(0.0015);
+                const f2 = float(0.0042);
+                const nt = this.uTime.mul(0.08);
+
+                // Octave 1: low frequency currents (overall flow)
+                const cx1 = sin(pos.y.mul(f1).add(nt)).sub(cos(pos.z.mul(f1).sub(nt.mul(0.75))));
+                const cy1 = sin(pos.z.mul(f1).add(nt.mul(1.15))).sub(cos(pos.x.mul(f1).add(nt.mul(0.55))));
+                const cz1 = sin(pos.x.mul(f1).sub(nt.mul(0.95))).sub(cos(pos.y.mul(f1).sub(nt.mul(0.45))));
+
+                // Octave 2: high frequency micro-jitter (swimming currents, reactive to mids)
+                const cx2 = sin(pos.y.mul(f2).sub(nt.mul(1.85))).add(cos(pos.z.mul(f2).add(nt.mul(1.25))));
+                const cy2 = sin(pos.z.mul(f2).add(nt.mul(1.55))).add(cos(pos.x.mul(f2).sub(nt.mul(1.65))));
+                const cz2 = sin(pos.x.mul(f2).sub(nt.mul(1.15))).add(cos(pos.y.mul(f2).add(nt.mul(1.45))));
+
+                const noise1 = vec3(cx1, cy1, cz1);
+                const noise2 = vec3(cx2, cy2, cz2).mul(float(0.38).add(this.uMid.mul(0.72)));
+                const combinedNoise = normalize(noise1.add(noise2).add(0.0001));
+
+                const flowAmp = mix(float(140.0), float(520.0), clamp(this.uEnergy.mul(1.65).add(this.uMid.mul(0.95)), 0.0, 1.0));
+                pos.xyz.addAssign(combinedNoise.mul(flowAmp).mul(this.uDelta));
 
                 // Beat push — radial outward impulse (2.8x stronger than before)
                 const radialDir = normalize(vec3(pos.x, 0.0, pos.z).add(vec3(0.0001, 0.0, 0.0001)));
@@ -548,9 +574,10 @@ export class ChiralGoldBurstCompute {
         const normalizedIntensity = (clampedIntensity - 0.75) / 1.5;
         const minBatch = Math.max(120, Math.floor(this.count * 0.015));
         const maxBatch = Math.max(minBatch, Math.floor(this.count * 0.045));
+        const baseBatch = Math.floor(minBatch + (maxBatch - minBatch) * normalizedIntensity);
         const targetBatch = Math.min(
             this.count,
-            Math.floor(minBatch + (maxBatch - minBatch) * normalizedIntensity),
+            options.profile === 'lock_burst' ? Math.floor(baseBatch * 0.35) : baseBatch,
         );
 
         const startIndex = this.nextTriggerIndex;
@@ -566,7 +593,24 @@ export class ChiralGoldBurstCompute {
             let vy = 0;
             let vz = 0;
 
-            if (patternRoll < 0.6) {
+            if (options.profile === 'lock_burst') {
+                // Spherical small burst
+                const theta = this.random() * TAU;
+                const phi = Math.acos(2.0 * this.random() - 1.0);
+                const sinPhi = Math.sin(phi);
+                const speed = (35.0 + this.random() * 35.0) * clampedIntensity * velocityMultiplier;
+                vx = sinPhi * Math.cos(theta) * speed;
+                vy = sinPhi * Math.sin(theta) * speed;
+                vz = Math.cos(phi) * speed;
+            } else if (options.profile === 'dissolve') {
+                // Symmetrical dissolve: blast outward to the sides (left or right)
+                const isLeftOrigin = this.origin.x < 0;
+                const sideDir = isLeftOrigin ? -1.0 : 1.0;
+                
+                vx = (sideDir * (220.0 + this.random() * 260.0) + (this.random() - 0.5) * 60.0) * clampedIntensity * velocityMultiplier;
+                vy = (this.random() - 0.5) * 120.0 * velocityMultiplier;
+                vz = (this.random() - 0.5) * 90.0 * velocityMultiplier;
+            } else if (patternRoll < 0.6) {
                 // Radial explosion
                 const theta = this.random() * TAU;
                 const phi = Math.acos(2 * this.random() - 1);
@@ -602,9 +646,10 @@ export class ChiralGoldBurstCompute {
                 vz = streakSpeed * velocityMultiplier;
             }
 
-            this.spawnPosData[i4] = this.origin.x + (this.random() - 0.5) * 12;
-            this.spawnPosData[i4 + 1] = this.origin.y + (this.random() - 0.5) * 12;
-            this.spawnPosData[i4 + 2] = this.origin.z + (this.random() - 0.5) * 12;
+            const jitter = options.profile === 'lock_burst' ? 4.0 : 12.0;
+            this.spawnPosData[i4] = this.origin.x + (this.random() - 0.5) * jitter;
+            this.spawnPosData[i4 + 1] = this.origin.y + (this.random() - 0.5) * jitter;
+            this.spawnPosData[i4 + 2] = this.origin.z + (this.random() - 0.5) * jitter;
             this.spawnPosData[i4 + 3] = time; // spawnTime
 
             this.spawnVelData[i4] = vx;
@@ -632,6 +677,10 @@ export class ChiralGoldBurstCompute {
 
     getPositionBuffer() {
         return this.positionBuffer;
+    }
+
+    getVelocityBuffer() {
+        return this.velocityBuffer;
     }
 
     getLifeBuffer() {

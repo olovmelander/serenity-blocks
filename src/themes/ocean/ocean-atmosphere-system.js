@@ -1,6 +1,7 @@
 /* eslint-disable import/no-extraneous-dependencies, import/no-unresolved, no-await-in-loop */
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+import { loadGltfCached } from './ocean-asset-loader.js';
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import {
     attribute,
@@ -32,6 +33,7 @@ import {
     createBiomeSilhouetteNodeMaterial,
     createGlowAnchorNodeMaterial,
     createCoralNodeMaterial,
+    createCoralOvergrowthNodeMaterial,
 } from './ocean-materials.js';
 import {
     getHeroRockAssetRecords,
@@ -88,6 +90,17 @@ const ROCK_REEF_CLUSTERS = [
     {
         x: 68, z: -24, scale: 3.10, ry: -1.08, kind: 'purple-tube-sponge',
     }, // Right Mid Reef
+    // TripoSR painterly-coral placements for orphan kinds (brain, staghorn, mushroom).
+    // Inserted at slots 6-8 so they appear at Ultra/Extreme presets.
+    {
+        x: -86, z: -8, scale: 2.85, ry: 0.32, kind: 'brain-coral',
+    }, // Left Mid Dome
+    {
+        x: 88, z: -4, scale: 2.75, ry: -0.42, kind: 'staghorn-coral',
+    }, // Right Mid Antlers
+    {
+        x: -30, z: -58, scale: 2.6, ry: 0.92, kind: 'mushroom-coral',
+    }, // Center Mid Disk
     {
         x: -94, z: -68, scale: 3.2, ry: 0.62, kind: 'yellow-barrel-sponge',
     },
@@ -480,6 +493,131 @@ function disposeObject(root) {
     materials.forEach((material) => material.dispose());
 }
 
+// Phase I: per-variant InstancedMesh helper. After Phase G's per-clone
+// geometry merge, hero asset placements still produce M draw calls per clone
+// (one per unique material) × N placements = N×M draws per asset type. This
+// helper collapses that to M draw calls per VARIANT regardless of how many
+// placements use it — by extracting the merged meshes from the prepared scene
+// and rebuilding them as InstancedMeshes. With 10 hero coral placements
+// sharing 1 variant × 3 materials, draws drop from 30 → 3.
+function buildPlacementInstanceMeshes(placements, pickRecordFor, resultsById) {
+    const byVariant = new Map();
+    placements.forEach((placement, originalIndex) => {
+        const record = pickRecordFor(placement, originalIndex);
+        if (!record) return;
+        const result = resultsById.get(record.id);
+        if (!result || result.status !== 'fulfilled') return;
+        if (!byVariant.has(record.id)) {
+            byVariant.set(record.id, { record, scene: result.value.scene, slots: [] });
+        }
+        byVariant.get(record.id).slots.push({ placement, originalIndex });
+    });
+
+    const meshes = [];
+    const indexToVariantSlot = new Map();
+    const dummy = new THREE.Object3D();
+    byVariant.forEach(({ record, scene, slots }, variantId) => {
+        const count = slots.length;
+        if (count <= 0) return;
+        const localMinY = scene.userData?.localMinY ?? 0;
+        scene.traverse((child) => {
+            if (!child.isMesh || !child.geometry || !child.material) return;
+            if (Array.isArray(child.material)) return;
+            const inst = new THREE.InstancedMesh(child.geometry, child.material, count);
+            inst.name = `${child.name || record.id}:inst`;
+            inst.frustumCulled = true;
+            inst.userData.assetId = record.id;
+            inst.userData.assetStatus = 'glb-loaded-instanced';
+            inst.userData.triangleCount = record.triangleCount;
+            for (let i = 0; i < count; i += 1) {
+                const { placement } = slots[i];
+                const scale = (placement.scale ?? 1) * (record.runtimeScale ?? 1);
+                dummy.position.set(placement.x, placement.y - localMinY * scale, placement.z);
+                dummy.rotation.set(placement.rx ?? 0, placement.ry ?? 0, placement.rz ?? 0);
+                dummy.scale.setScalar(scale);
+                dummy.updateMatrix();
+                inst.setMatrixAt(i, dummy.matrix);
+            }
+            inst.instanceMatrix.needsUpdate = true;
+            inst.computeBoundingSphere();
+            meshes.push(inst);
+        });
+        slots.forEach((slot, instanceIdx) => {
+            indexToVariantSlot.set(slot.originalIndex, { variantId, instanceIdx });
+        });
+    });
+    return { meshes, indexToVariantSlot };
+}
+
+// Phase G.1: shared utility for hero-asset draw-call consolidation.
+// Each loaded GLB scene typically contains many child meshes (10-50+); when
+// cloned per placement that becomes 10-50+ draw calls per clone. Bisect
+// data (noAtmosphere = +48 fps at Extreme) confirmed this is the dominant
+// cost. Merging child geometries by material reduces a clone to 1 draw call
+// per *unique material*. Must run AFTER per-mesh material conversion so the
+// converted materials are visible here; the prepareXAsset functions also
+// share materials by source so two children with the same source GLB
+// material end up sharing the same converted material instance (required
+// for the merge to actually group them).
+function mergeMeshesByMaterial(root) {
+    if (!root) return;
+    root.updateMatrixWorld(true);
+    const rootInverse = new THREE.Matrix4().copy(root.matrixWorld).invert();
+    const byMaterial = new Map(); // material → { geometries: [], origin: parentGroup }
+    const meshesToRemove = [];
+
+    root.traverse((child) => {
+        if (!child.isMesh || !child.geometry) return;
+        // Skip multi-material meshes — merging them safely would require
+        // splitting the geometry by material group, which is more invasive
+        // than this surgical pass warrants.
+        if (Array.isArray(child.material)) return;
+        const material = child.material;
+        if (!material) return;
+
+        child.updateMatrixWorld(true);
+        // Bake child's transform-relative-to-root into the geometry so the
+        // merged mesh placed under root renders the child at its current
+        // world position. (root's own transform is re-applied later by the
+        // scene graph when the prepared asset is positioned per-placement.)
+        const childToRoot = new THREE.Matrix4().multiplyMatrices(rootInverse, child.matrixWorld);
+        const geo = child.geometry.clone();
+        geo.applyMatrix4(childToRoot);
+
+        if (!byMaterial.has(material)) byMaterial.set(material, []);
+        byMaterial.get(material).push(geo);
+        meshesToRemove.push(child);
+    });
+
+    // Drop the per-child meshes (geometries are already cloned into the merge buckets).
+    meshesToRemove.forEach((mesh) => {
+        if (mesh.parent) mesh.parent.remove(mesh);
+    });
+
+    let mergedCount = 0;
+    byMaterial.forEach((geometries, material) => {
+        if (geometries.length === 0) return;
+        // mergeGeometries returns null on attribute mismatch — fall back to
+        // the first geometry alone so we never silently lose meshes.
+        const merged = geometries.length === 1
+            ? geometries[0]
+            : (BufferGeometryUtils.mergeGeometries(geometries, false) || geometries[0]);
+        if (!merged) return;
+        const mesh = new THREE.Mesh(merged, material);
+        mesh.name = `${root.name || 'merged'}:m${mergedCount}`;
+        mesh.frustumCulled = true;
+        mesh.castShadow = false;
+        mesh.receiveShadow = true;
+        mesh.userData.isMergedAsset = true;
+        root.add(mesh);
+        mergedCount += 1;
+        // Dispose individual cloned geometries that merged into a larger buffer.
+        if (geometries.length > 1) {
+            geometries.forEach((g) => { if (g !== merged) g.dispose(); });
+        }
+    });
+}
+
 function createSharedAtmosphereUniforms() {
     return {
         uTime: { value: 0 },
@@ -518,6 +656,9 @@ function createFallbackHeroKelpGeometry(height = 8, width = 0.58, segments = 12)
 
 function createHeroKelpNodeMaterial() {
     const material = new MeshBasicNodeMaterial({
+        // Hero kelp blades are thin and viewed from both sides as the camera
+        // drifts, so DoubleSide stays — but the cost from kelp is already
+        // small (it's the rim/caustic glow that's expensive elsewhere).
         side: THREE.DoubleSide,
         transparent: true,
         opacity: 0.94,
@@ -538,10 +679,14 @@ function createHeroKelpNodeMaterial() {
     const tip = vec3(0.35, 0.76, 0.42);
     let color = mix(base, mid, smoothstep(float(0.02), float(0.58), aHeight));
     color = mix(color, tip, smoothstep(float(0.55), float(1.0), aHeight));
+    // WS B1: tip highlight moves from emissiveNode → colorNode so kelp tips
+    // don't dump bright pixels into the MRT emissive target the god-ray Loop
+    // samples. Visual: the tip glow still appears in the rendered color.
+    const tipHighlight = tip.mul(smoothstep(float(0.74), float(1.0), aHeight).mul(0.1));
 
-    material.colorNode = color;
+    material.colorNode = color.add(tipHighlight);
     material.positionNode = positionLocal.add(vec3(swayX, float(0.0), swayZ));
-    material.emissiveNode = tip.mul(smoothstep(float(0.74), float(1.0), aHeight).mul(0.1));
+    material.emissiveNode = vec3(0);
     material.userData = { uTime, uCurrentStrength };
     return material;
 }
@@ -633,9 +778,13 @@ function createImportedSeabedPlantNodeMaterial() {
     const viewDist = length(modelViewMatrix.mul(vec4(positionLocal, float(1.0))).xyz);
     color = tslDepthGradedFog(color, positionWorld.y, viewDist, float(1.05));
 
-    material.colorNode = color;
+    // WS B1: tip highlight moves from emissiveNode → colorNode. Plants are not
+    // self-illuminated in nature; the highlight remains visible in the rendered
+    // output, but doesn't dump bright pixels into the MRT emissive target.
+    const tipHighlight = tip.mul(smoothstep(float(0.68), float(1.0), aHeight).mul(0.16));
+    material.colorNode = color.add(tipHighlight);
     material.positionNode = positionLocal.add(vec3(swayX, float(0.0), swayZ));
-    material.emissiveNode = tip.mul(smoothstep(float(0.68), float(1.0), aHeight).mul(0.16));
+    material.emissiveNode = vec3(0);
     material.userData = { uTime, uCurrentStrength };
     return material;
 }
@@ -728,7 +877,7 @@ function createImportedSeabedPlantShaderMaterial() {
     });
 }
 
-function createHeroCoralNodeMaterial(sourceMaterial) {
+function createHeroCoralNodeMaterial(sourceMaterial, opts = {}) {
     const baseColor = sourceMaterial?.color || new THREE.Color(0xc06a52);
     const material = new MeshStandardNodeMaterial({
         color: baseColor,
@@ -739,7 +888,9 @@ function createHeroCoralNodeMaterial(sourceMaterial) {
         roughness: sourceMaterial?.roughness ?? 0.74,
         metalness: sourceMaterial?.metalness ?? 0.02,
         envMapIntensity: 1.08,
-        side: sourceMaterial?.side ?? THREE.DoubleSide,
+        // WS B2: hero coral is always viewed from in front of the camera.
+        // FrontSide halves fragment shading vs DoubleSide.
+        side: sourceMaterial?.side === THREE.DoubleSide ? THREE.FrontSide : (sourceMaterial?.side ?? THREE.FrontSide),
         transparent: sourceMaterial?.transparent ?? false,
         opacity: sourceMaterial?.opacity ?? 1,
         alphaTest: sourceMaterial?.alphaTest ?? 0.08,
@@ -751,30 +902,49 @@ function createHeroCoralNodeMaterial(sourceMaterial) {
     const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.14);
     const warmRim = vec3(1.0, 0.58, 0.34).mul(rim).mul(0.28);
     const coolCaustic = vec3(0.26, 0.9, 0.78).mul(caustic).mul(0.18);
-    material.emissiveNode = warmRim.add(coolCaustic).mul(float(0.68).add(uGlowIntensity.mul(0.14)));
+    const tint = warmRim.add(coolCaustic).mul(float(0.68).add(uGlowIntensity.mul(0.14)));
+
+    // Vertex-colored meshes (TripoSR GLBs with COLOR_0) need their pastel painted
+    // colors to drive the final hue, not the GLB's neutral baseColorFactor. The
+    // 1.6× lift restores the pastel "pop" lost to underwater scene lighting.
+    if (opts.vertexColors) {
+        const vColor = attribute('color', 'vec3');
+        material.colorNode = vec3(baseColor.r, baseColor.g, baseColor.b).mul(vColor).mul(1.6).add(tint);
+    } else {
+        material.colorNode = vec3(baseColor.r, baseColor.g, baseColor.b).add(tint);
+    }
+    material.emissiveNode = vec3(0);
+
     material.userData = {
         uTime,
         uGlowIntensity,
         heroCoralMaterial: true,
-        materialMode: 'preserve-pbr-underwater-rim',
+        materialMode: 'no-emissive-mrt-rim-in-color',
     };
     return material;
 }
 
-function createHeroCoralStandardMaterial(sourceMaterial) {
+function createHeroCoralStandardMaterial(sourceMaterial, opts = {}) {
     const color = sourceMaterial?.color?.clone?.() || new THREE.Color(0xc06a52);
+    // WS B1: WebGL2 fallback. No MRT here (legacy composer path) but we still
+    // drop emissive so the scene-pass output stays at a similar luma to the
+    // WebGPU path (and bloom in the legacy composer doesn't pick coral up).
+    // Slightly brighten base color to compensate visually for the lost glow.
+    const brightened = color.clone().multiplyScalar(1.14);
     return new THREE.MeshStandardMaterial({
-        color,
+        color: brightened,
         map: sourceMaterial?.map ?? null,
         normalMap: sourceMaterial?.normalMap ?? null,
         roughnessMap: sourceMaterial?.roughnessMap ?? null,
         metalnessMap: sourceMaterial?.metalnessMap ?? null,
         roughness: sourceMaterial?.roughness ?? 0.74,
         metalness: sourceMaterial?.metalness ?? 0.02,
-        emissive: color.clone().multiplyScalar(0.16),
-        emissiveIntensity: 0.45,
+        vertexColors: !!opts.vertexColors,
+        emissive: 0x000000,
+        emissiveIntensity: 0,
         envMapIntensity: 1.08,
-        side: sourceMaterial?.side ?? THREE.DoubleSide,
+        // WS B2: FrontSide for the same reason as the WebGPU path.
+        side: sourceMaterial?.side === THREE.DoubleSide ? THREE.FrontSide : (sourceMaterial?.side ?? THREE.FrontSide),
         transparent: sourceMaterial?.transparent ?? false,
         opacity: sourceMaterial?.opacity ?? 1,
         alphaTest: sourceMaterial?.alphaTest ?? 0.08,
@@ -792,7 +962,8 @@ function createHeroReefNodeMaterial(sourceMaterial) {
         roughness: sourceMaterial?.roughness ?? 0.82,
         metalness: sourceMaterial?.metalness ?? 0.0,
         envMapIntensity: 1.18,
-        side: sourceMaterial?.side ?? THREE.DoubleSide,
+        // WS B2: hero reef walls are background scenery — backfaces never visible.
+        side: sourceMaterial?.side === THREE.DoubleSide ? THREE.FrontSide : (sourceMaterial?.side ?? THREE.FrontSide),
         transparent: sourceMaterial?.transparent ?? false,
         opacity: sourceMaterial?.opacity ?? 1,
         alphaTest: sourceMaterial?.alphaTest ?? 0.02,
@@ -805,13 +976,16 @@ function createHeroReefNodeMaterial(sourceMaterial) {
     const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.12);
     const cyanRim = vec3(0.42, 0.98, 0.88).mul(rim).mul(0.22);
     const shelfCaustic = vec3(0.82, 1.0, 0.58).mul(caustic).mul(upLight).mul(0.18);
-    material.emissiveNode = cyanRim.add(shelfCaustic).mul(float(0.7).add(uGlowIntensity.mul(0.12)));
+    const tint = cyanRim.add(shelfCaustic).mul(float(0.7).add(uGlowIntensity.mul(0.12)));
 
     // Slope-based sand accumulation (sand settles on horizontal shelves)
     const slope = normalWorld.y;
     const sandColor = vec3(0.82, 0.74, 0.56); // matching sandMid
     const sandWeight = smoothstep(float(0.45), float(0.85), slope);
-    material.colorNode = mix(baseColor, sandColor, sandWeight);
+    // WS B1: rim + caustic move from emissiveNode → colorNode so the reef
+    // doesn't contribute to MRT emissive (god-ray Loop / bloom samples).
+    material.colorNode = mix(baseColor, sandColor, sandWeight).add(tint);
+    material.emissiveNode = vec3(0);
 
     material.userData = {
         uTime,
@@ -824,18 +998,22 @@ function createHeroReefNodeMaterial(sourceMaterial) {
 
 function createHeroReefStandardMaterial(sourceMaterial) {
     const color = sourceMaterial?.color?.clone?.() || new THREE.Color(0x1c4c5a);
+    // WS B1: WebGL2 fallback. Drop emissive contribution and slightly
+    // brighten the base color to compensate visually.
+    const brightened = color.clone().multiplyScalar(1.12);
     const material = new THREE.MeshStandardMaterial({
-        color,
+        color: brightened,
         map: sourceMaterial?.map ?? null,
         normalMap: sourceMaterial?.normalMap ?? null,
         roughnessMap: sourceMaterial?.roughnessMap ?? null,
         metalnessMap: sourceMaterial?.metalnessMap ?? null,
         roughness: sourceMaterial?.roughness ?? 0.82,
         metalness: sourceMaterial?.metalness ?? 0.0,
-        emissive: color.clone().multiplyScalar(0.14),
-        emissiveIntensity: 0.36,
+        emissive: 0x000000,
+        emissiveIntensity: 0,
         envMapIntensity: 1.18,
-        side: sourceMaterial?.side ?? THREE.DoubleSide,
+        // WS B2: FrontSide for background reef geometry.
+        side: sourceMaterial?.side === THREE.DoubleSide ? THREE.FrontSide : (sourceMaterial?.side ?? THREE.FrontSide),
         transparent: sourceMaterial?.transparent ?? false,
         opacity: sourceMaterial?.opacity ?? 1,
         alphaTest: sourceMaterial?.alphaTest ?? 0.02,
@@ -880,6 +1058,7 @@ export class OceanAtmosphereSystem {
         preset,
         getSeabedHeight,
         isWebGPU = false,
+        skipFlags = {},
     }) {
         this.scene = scene;
         this.camera = camera;
@@ -887,6 +1066,9 @@ export class OceanAtmosphereSystem {
         this.getSeabedHeight = getSeabedHeight;
         this.isWebGPU = isWebGPU;
         this.settings = preset?.atmosphere ?? {};
+        // Phase 1 diagnostic skip flags: each key maps to one of the per-component
+        // ?oceanNoX URL flags. Defaults to {} (everything enabled).
+        this.skipFlags = skipFlags;
         this.group = new THREE.Group();
         this.group.name = 'ocean-cinematic-atmosphere';
         this.uniforms = [];
@@ -907,6 +1089,14 @@ export class OceanAtmosphereSystem {
         this.heroKelp = [];
         this.importedSeabedDetails = [];
         this.coralOvergrowthInstances = [];
+        // Tracking arrays for bisect drill-down. Without these, atmosphere
+        // sub-components like haze / silhouettes / arches are added directly
+        // to this.group and can't be targeted individually.
+        this.hazeLayers = [];
+        this.reefSilhouettes = [];
+        this.biomeSilhouettes = [];
+        this.arches = [];
+        this.volumetricShafts = [];
         this._coralOvergrowthCache = null;
         this.bottomAssetWarnings = [];
         this.foregroundRockStats = {
@@ -983,12 +1173,18 @@ export class OceanAtmosphereSystem {
         // These builders define the atmospheric look (god ray shafts, depth
         // haze, distant silhouettes, glow anchors, dust motes). They must be
         // present on the first visible frame.
-        this.createVolumetricShafts();
-        this.createHazeLayers();
-        this.createReefSilhouettes();
-        this.createBiomeSilhouettes();
-        this.createAnchoredGlowSources();
-        this.createBeamDust();
+        //
+        // createVolumetricShafts() is intentionally skipped: the post-processing
+        // pipeline (ocean-post.js god-ray TSL Loop) already renders the radiant
+        // shafts from emissive MRT samples, making the additive-blended cone
+        // meshes here visually redundant and a meaningful overdraw cost. If a
+        // visual A/B shows the post pass isn't enough, re-enable this call.
+        // this.createVolumetricShafts();
+        if (!this.skipFlags.haze) this.createHazeLayers();
+        if (!this.skipFlags.reefSilhouettes) this.createReefSilhouettes();
+        if (!this.skipFlags.bioSilhouettes) this.createBiomeSilhouettes();
+        if (!this.skipFlags.glowAnchors) this.createAnchoredGlowSources();
+        if (!this.skipFlags.beamDust) this.createBeamDust();
 
         this.scene.add(this.group);
     }
@@ -1005,12 +1201,13 @@ export class OceanAtmosphereSystem {
         // Heavy procedural anchors. Most of these get GLB-swapped via the
         // upgrade queue anyway, so the procedural fallbacks are scenery the
         // user can comfortably see fade in over the next few frames.
-        this.createHeroReefWalls();
-        this.createForegroundRocks();
-        this.createCoralCarpetPatches();
-        this.createHeroCorals();
-        this.createHeroKelp();
-        this.createImportedSeabedDetails();
+        // Gated by Phase 1 diagnostic flags so we can A/B each component.
+        if (!this.skipFlags.heroReef) this.createHeroReefWalls();
+        if (!this.skipFlags.foregroundRocks) this.createForegroundRocks();
+        if (!this.skipFlags.coralCarpets) this.createCoralCarpetPatches();
+        if (!this.skipFlags.heroCoral) this.createHeroCorals();
+        if (!this.skipFlags.heroKelp) this.createHeroKelp();
+        if (!this.skipFlags.importedSeabed) this.createImportedSeabedDetails();
     }
 
     scheduleAssetUpgrade(task, delayMs = 600) {
@@ -1043,6 +1240,19 @@ export class OceanAtmosphereSystem {
             await new Promise((resolve) => { setTimeout(resolve, 30); });
         }
         this.upgradeQueueRunning = false;
+    }
+
+    /**
+     * Scene-ready signal for the bisect runner. Returns true when no async
+     * asset upgrades are pending — scheduled deferred GLB loads have all
+     * fired, the upgrade queue has drained, and no upgrade task is currently
+     * running. Bisect uses this to avoid sampling FPS while the main thread
+     * is still being hit by clone/material-conversion work.
+     */
+    isSceneReady() {
+        return (this.assetUpgradeTimers?.length ?? 0) === 0
+            && (this.upgradeQueue?.length ?? 0) === 0
+            && this.upgradeQueueRunning !== true;
     }
 
     // Hero reef walls and arches frame the sand channel. Procedural anchors are
@@ -1155,21 +1365,12 @@ export class OceanAtmosphereSystem {
         const records = selectUniqueRecordsForPlacements(allRecords, placements, pickRecord);
         if (!records.length) return;
 
-        const loader = new GLTFLoader();
         records.forEach((record) => {
             this.heroReefStats.statuses[record.id] = 'loading';
             this.heroReefStats.errors[record.id] = null;
         });
-        const results = [];
-        for (const record of records) {
-            try {
-                const value = await loader.loadAsync(record.url);
-                results.push({ status: 'fulfilled', value });
-            } catch (reason) {
-                results.push({ status: 'rejected', reason });
-            }
-            await new Promise((resolve) => { setTimeout(resolve, 30); });
-        }
+        const promises = records.map((record) => loadGltfCached(record.url));
+        const results = await Promise.allSettled(promises);
 
         results.forEach((result, recordIndex) => {
             const record = records[recordIndex];
@@ -1197,7 +1398,9 @@ export class OceanAtmosphereSystem {
             root.position.set(placement.x, placement.y, placement.z);
             root.rotation.set(placement.rx, placement.ry, placement.rz);
             root.scale.setScalar(placement.scale * record.runtimeScale);
-            root.frustumCulled = false;
+            // WS A2: enable frustum culling on placed hero assets. Bounding
+            // spheres on GLB meshes are loader-computed and accurate.
+            root.frustumCulled = true;
 
             const old = this.heroReefWalls[i];
             if (old?.parent) {
@@ -1211,24 +1414,30 @@ export class OceanAtmosphereSystem {
     }
 
     prepareHeroReefAsset(root) {
+        // Phase G.3: same consolidation as hero corals — share converted
+        // materials by source, then merge child meshes per unique material.
+        const materialCache = new Map();
         root.traverse((child) => {
             if (!child.isMesh) return;
-            child.frustumCulled = false;
+            child.frustumCulled = true; // WS A2: GLB meshes have valid bounds
             child.castShadow = false;
             child.receiveShadow = true;
             child.geometry?.computeVertexNormals?.();
 
             const sources = Array.isArray(child.material) ? child.material : [child.material];
             const materials = sources.map((source) => {
+                if (source && materialCache.has(source)) return materialCache.get(source);
                 const material = this.isWebGPU
                     ? createHeroReefNodeMaterial(source)
                     : createHeroReefStandardMaterial(source);
                 if (this.isWebGPU) this.tslUserData.push(material.userData);
+                if (source) materialCache.set(source, material);
                 source?.dispose?.();
                 return material;
             });
             child.material = Array.isArray(child.material) ? materials : materials[0];
         });
+        mergeMeshesByMaterial(root);
     }
 
     createForegroundRocks() {
@@ -1335,7 +1544,7 @@ export class OceanAtmosphereSystem {
             rock.position.set(placement.x, placement.y, placement.z);
             rock.rotation.set(placement.rx, placement.ry, placement.rz);
             rock.scale.set(placement.sx, placement.sy, placement.sz);
-            rock.frustumCulled = false;
+            rock.frustumCulled = true; // WS A2
             rock.renderOrder = -2;
             rock.userData.heroRockIndex = i;
             this.foregroundRocks.push(rock);
@@ -1375,18 +1584,22 @@ export class OceanAtmosphereSystem {
             new THREE.Color(0x00b4d8), // vibrant turquoise
             new THREE.Color(0xeec900), // vibrant yellow
         ];
-        const materials = palette.map((color) => {
-            const material = this.isWebGPU
-                ? createCoralNodeMaterial(color)
-                : new THREE.MeshLambertMaterial({
-                    color,
-                    emissive: color.clone().multiplyScalar(0.18),
-                    emissiveIntensity: 0.38,
-                    side: THREE.DoubleSide,
-                });
-            if (this.isWebGPU) this.tslUserData.push(material.userData);
-            return material;
-        });
+
+        // WS 4.2: one material total (was 5) — color is supplied per-instance.
+        // WebGPU reads `aInstanceColor` attribute; WebGL uses InstancedMesh's
+        // built-in `instanceColor` (set via mesh.setColorAt). 20 InstancedMesh
+        // per rock-cluster → 4 InstancedMesh.
+        const sharedMaterial = this.isWebGPU
+            ? createCoralOvergrowthNodeMaterial()
+            : new THREE.MeshLambertMaterial({
+                color: 0xffffff,
+                emissive: new THREE.Color(0xffffff).multiplyScalar(0.18),
+                emissiveIntensity: 0.38,
+                side: THREE.DoubleSide,
+                vertexColors: true,
+            });
+        if (this.isWebGPU) this.tslUserData.push(sharedMaterial.userData);
+
         const geometries = [
             new THREE.CylinderGeometry(0.07, 0.09, 0.42, 10),
             new THREE.ConeGeometry(0.11, 0.48, 9),
@@ -1394,7 +1607,9 @@ export class OceanAtmosphereSystem {
             new THREE.IcosahedronGeometry(0.16, 1),
         ];
         geometries.forEach((geometry) => geometry.computeVertexNormals());
-        const buckets = geometries.map(() => materials.map(() => []));
+
+        // One bucket per geometry; each entry is { matrices: [], colors: [] }.
+        const buckets = geometries.map(() => ({ matrices: [], colors: [] }));
         const dummy = new THREE.Object3D();
         let createdClusters = 0;
         let instanceCount = 0;
@@ -1415,7 +1630,7 @@ export class OceanAtmosphereSystem {
                     const localAngle = rand() * Math.PI * 2;
                     const localRadius = Math.sqrt(rand()) * (0.28 + rand() * 0.82);
                     const typeIndex = Math.floor(rand() * geometries.length);
-                    const colorIndex = (pi + n + p + typeIndex) % materials.length;
+                    const colorIndex = (pi + n + p + typeIndex) % palette.length;
                     const heightScale = (0.7 + rand() * 1.8) * 2.2;
                     const footprint = (0.75 + rand() * 1.35) * 2.2;
                     dummy.position.set(
@@ -1434,30 +1649,47 @@ export class OceanAtmosphereSystem {
                         footprint,
                     );
                     dummy.updateMatrix();
-                    buckets[typeIndex][colorIndex].push(dummy.matrix.clone());
+                    buckets[typeIndex].matrices.push(dummy.matrix.clone());
+                    buckets[typeIndex].colors.push(palette[colorIndex]);
                     instanceCount += 1;
                 }
             }
         }
 
-        buckets.forEach((colorBuckets, typeIndex) => {
-            colorBuckets.forEach((matrices, colorIndex) => {
-                if (!matrices.length) return;
-                const mesh = new THREE.InstancedMesh(
-                    geometries[typeIndex].clone(),
-                    materials[colorIndex],
-                    matrices.length,
-                );
-                matrices.forEach((matrix, index) => mesh.setMatrixAt(index, matrix));
-                mesh.name = `OceanCoralOvergrowth:${typeIndex}:${colorIndex}`;
-                mesh.userData.isOceanCoralOvergrowth = true;
-                mesh.userData.assetStatus = 'procedural-instanced';
-                mesh.instanceMatrix.needsUpdate = true;
-                mesh.frustumCulled = false;
-                mesh.renderOrder = -1;
-                this.group.add(mesh);
-                this.coralOvergrowthInstances.push(mesh);
-            });
+        buckets.forEach((bucket, typeIndex) => {
+            if (!bucket.matrices.length) return;
+            const count = bucket.matrices.length;
+            const geometry = geometries[typeIndex].clone();
+
+            // Per-instance color attribute. WebGPU TSL reads `aInstanceColor`;
+            // WebGL uses InstancedMesh.setColorAt (which writes to a built-in
+            // instanceColor attribute). Both paths use vec3 (rgb).
+            if (this.isWebGPU) {
+                const colorArray = new Float32Array(count * 3);
+                for (let i = 0; i < count; i += 1) {
+                    const c = bucket.colors[i];
+                    colorArray[i * 3] = c.r;
+                    colorArray[i * 3 + 1] = c.g;
+                    colorArray[i * 3 + 2] = c.b;
+                }
+                geometry.setAttribute('aInstanceColor', new THREE.InstancedBufferAttribute(colorArray, 3));
+            }
+
+            const mesh = new THREE.InstancedMesh(geometry, sharedMaterial, count);
+            for (let i = 0; i < count; i += 1) {
+                mesh.setMatrixAt(i, bucket.matrices[i]);
+                if (!this.isWebGPU) mesh.setColorAt(i, bucket.colors[i]);
+            }
+            mesh.name = `OceanCoralOvergrowth:${typeIndex}`;
+            mesh.userData.isOceanCoralOvergrowth = true;
+            mesh.userData.assetStatus = 'procedural-instanced';
+            mesh.instanceMatrix.needsUpdate = true;
+            if (!this.isWebGPU && mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+            mesh.computeBoundingSphere();
+            mesh.frustumCulled = true;
+            mesh.renderOrder = -1;
+            this.group.add(mesh);
+            this.coralOvergrowthInstances.push(mesh);
         });
         geometries.forEach((geometry) => geometry.dispose());
         this.coralOvergrowthStats.createdClusters = createdClusters;
@@ -1469,13 +1701,12 @@ export class OceanAtmosphereSystem {
         const urls = providedUrls || getHeroRockAssetUrls();
         if (!urls.length) return;
 
-        const loader = new GLTFLoader();
         // Cache loaded scenes per URL so we can spread N variants across M>N
         // placements with cloning, while only downloading each GLB once.
         const sceneCache = new Map();
-        for (const url of urls) {
+        const promises = urls.map(async (url) => {
             try {
-                const gltf = await loader.loadAsync(url);
+                const gltf = await loadGltfCached(url);
                 sceneCache.set(url, gltf.scene);
             } catch (err) {
                 console.warn(
@@ -1483,8 +1714,8 @@ export class OceanAtmosphereSystem {
                     err?.message || err,
                 );
             }
-            await new Promise((resolve) => { setTimeout(resolve, 30); });
-        }
+        });
+        await Promise.all(promises);
 
         placements.forEach((p, i) => {
             const url = urls[i % urls.length];
@@ -1500,13 +1731,13 @@ export class OceanAtmosphereSystem {
             swapped.rotation.set(p.rx, p.ry, p.rz);
             const uniformScale = (p.sx + p.sz) * 0.5;
             swapped.scale.set(uniformScale, p.sy, uniformScale);
-            swapped.frustumCulled = false;
+            swapped.frustumCulled = true; // WS A2
             swapped.traverse((node) => {
                 if (node.isMesh) {
                     if (Array.isArray(node.material)) node.material.forEach((source) => source?.dispose?.());
                     else node.material?.dispose?.();
                     node.material = material;
-                    node.frustumCulled = false;
+                    node.frustumCulled = true; // WS A2
                     node.renderOrder = -2;
                     node.userData.heroRockIndex = i;
                     node.userData.glbSource = url;
@@ -1624,21 +1855,12 @@ export class OceanAtmosphereSystem {
         const records = selectUniqueRecordsForPlacements(allRecords, placements, pickRecord);
         if (!records.length) return;
 
-        const loader = new GLTFLoader();
         records.forEach((record) => {
             this.coralCarpetStats.statuses[record.id] = 'loading';
             this.coralCarpetStats.errors[record.id] = null;
         });
-        const results = [];
-        for (const record of records) {
-            try {
-                const value = await loader.loadAsync(record.url);
-                results.push({ status: 'fulfilled', value });
-            } catch (reason) {
-                results.push({ status: 'rejected', reason });
-            }
-            await new Promise((resolve) => { setTimeout(resolve, 30); });
-        }
+        const promises = records.map((record) => loadGltfCached(record.url));
+        const results = await Promise.allSettled(promises);
 
         results.forEach((result, recordIndex) => {
             const record = records[recordIndex];
@@ -1667,7 +1889,7 @@ export class OceanAtmosphereSystem {
             const scale = placement.scale * record.runtimeScale;
             root.scale.setScalar(scale);
             setSeabedAnchoredPosition(root, placement.x, placement.y, placement.z, scale);
-            root.frustumCulled = false;
+            root.frustumCulled = true; // WS A2: GLB has valid bounds
 
             const old = this.coralCarpetPatches[i];
             if (old?.parent) {
@@ -1782,21 +2004,12 @@ export class OceanAtmosphereSystem {
         const records = selectUniqueRecordsForPlacements(allRecords, placements, pickRecord);
         if (!records.length) return;
 
-        const loader = new GLTFLoader();
         records.forEach((record) => {
             this.heroCoralStats.statuses[record.id] = 'loading';
             this.heroCoralStats.errors[record.id] = null;
         });
-        const results = [];
-        for (const record of records) {
-            try {
-                const value = await loader.loadAsync(record.url);
-                results.push({ status: 'fulfilled', value });
-            } catch (reason) {
-                results.push({ status: 'rejected', reason });
-            }
-            await new Promise((resolve) => { setTimeout(resolve, 30); });
-        }
+        const promises = records.map((record) => loadGltfCached(record.url));
+        const results = await Promise.allSettled(promises);
 
         results.forEach((result, recordIndex) => {
             const record = records[recordIndex];
@@ -1806,57 +2019,102 @@ export class OceanAtmosphereSystem {
                 console.warn(`🌊 [Ocean] coral ${record.id} GLB load failed:`, result.reason);
                 return;
             }
-            this.prepareHeroCoralAsset(result.value.scene);
+            this.prepareHeroCoralAsset(result.value.scene, record);
             this.heroCoralStats.statuses[record.id] = 'loaded';
         });
         const resultsById = new Map(records.map((record, index) => [record.id, results[index]]));
 
-        placements.forEach((placement, i) => {
-            const record = pickRecord(allRecords, placement, i);
-            const result = record ? resultsById.get(record.id) : null;
-            if (!result || result.status !== 'fulfilled') return;
-            const root = result.value.scene.clone(true);
-            root.name = `OceanHeroCoral:${record.id}:${i}`;
-            root.userData.isOceanHeroCoral = true;
-            root.userData.assetId = record.id;
-            root.userData.assetStatus = 'glb-loaded';
-            root.userData.triangleCount = record.triangleCount;
-            root.rotation.set(placement.rx, placement.ry, placement.rz);
-            const scale = placement.scale * record.runtimeScale;
-            root.scale.setScalar(scale);
-            setSeabedAnchoredPosition(root, placement.x, placement.y, placement.z, scale);
-            root.frustumCulled = false;
+        // Phase I: per-variant InstancedMesh. The Phase G merge already
+        // collapsed each prepared scene to 1 mesh per unique material; this
+        // step takes those merged meshes and rebuilds them as InstancedMesh
+        // shared across ALL placements using the same variant. For 10
+        // placements × 1 variant × ~3 materials, draws drop from 30 → 3.
+        const { meshes } = buildPlacementInstanceMeshes(
+            placements,
+            (placement, index) => pickRecord(allRecords, placement, index),
+            resultsById,
+        );
 
+        // Remove existing placeholder roots; replace this.heroCorals[] with
+        // references to the new InstancedMeshes so bisect drill-down + dispose
+        // still work. We keep the array length = placements.length so the
+        // index → entry mapping for atmosphereSystem.heroCorals stays usable;
+        // multiple indices may point at the same InstancedMesh which is fine.
+        placements.forEach((_placement, i) => {
             const old = this.heroCorals[i];
             if (old?.parent) {
                 this.group.remove(old);
                 disposeObject(old);
             }
-            this.heroCorals[i] = root;
-            this.heroCoralStats.loadedCount += 1;
-            this.group.add(root);
+            // Point every index at the first InstancedMesh as a stable
+            // reference; visibility toggles on it affect all placements
+            // simultaneously (which is what the bisect scenario wants).
+            this.heroCorals[i] = meshes[0] || null;
         });
+
+        meshes.forEach((mesh) => {
+            mesh.userData.isOceanHeroCoral = true;
+            this.group.add(mesh);
+        });
+        this.heroCoralStats.loadedCount = placements.length;
+        this.heroCoralStats.instancedMeshCount = meshes.length;
+        this.heroCoralStats.optimizationNote = `phase-I: ${placements.length} placements collapsed to ${meshes.length} InstancedMesh draw calls`;
     }
 
-    prepareHeroCoralAsset(root) {
+    prepareHeroCoralAsset(root, record = null) {
+        // Bake per-record baseRotation into geometry BEFORE material conversion
+        // and bounds caching. TripoSR meshes sometimes export with their longest
+        // axis on Z instead of Y (sea-fan, staghorn, tube-sponge); rotating the
+        // geometry directly means the rotated bounds drive setSeabedAnchoredPosition
+        // correctly and the placement's own rotation stays free for randomized yaw.
+        if (record?.baseRotation) {
+            const { x = 0, y = 0, z = 0 } = record.baseRotation;
+            if (x !== 0 || y !== 0 || z !== 0) {
+                const rotMatrix = new THREE.Matrix4().makeRotationFromEuler(
+                    new THREE.Euler(x, y, z, 'XYZ'),
+                );
+                root.traverse((child) => {
+                    if (child.isMesh && child.geometry) {
+                        child.geometry.applyMatrix4(rotMatrix);
+                    }
+                });
+            }
+        }
+        // Phase G.1: share converted materials by source so child meshes
+        // pointing at the same source GLB material end up with the SAME
+        // converted material instance — required for mergeMeshesByMaterial
+        // to bucket them together.
+        const materialCache = new Map();
         root.traverse((child) => {
             if (!child.isMesh) return;
-            child.frustumCulled = false;
+            child.frustumCulled = true; // WS A2: GLB meshes have valid bounds
             child.castShadow = false;
             child.receiveShadow = true;
             child.geometry?.computeVertexNormals?.();
 
+            // TripoSR GLBs ship vertex colors as the COLOR_0 attribute (Three
+            // exposes it as `color`). The hero coral material reads it when
+            // present to preserve the painterly pastel hue.
+            const hasVertexColors = !!child.geometry?.attributes?.color;
+
             const sources = Array.isArray(child.material) ? child.material : [child.material];
             const materials = sources.map((source) => {
+                const cacheKey = source ? `${source.uuid}_vc${hasVertexColors ? 1 : 0}` : null;
+                if (cacheKey && materialCache.has(cacheKey)) return materialCache.get(cacheKey);
                 const material = this.isWebGPU
-                    ? createHeroCoralNodeMaterial(source)
-                    : createHeroCoralStandardMaterial(source);
+                    ? createHeroCoralNodeMaterial(source, { vertexColors: hasVertexColors })
+                    : createHeroCoralStandardMaterial(source, { vertexColors: hasVertexColors });
                 if (this.isWebGPU) this.tslUserData.push(material.userData);
+                if (cacheKey) materialCache.set(cacheKey, material);
                 source?.dispose?.();
                 return material;
             });
             child.material = Array.isArray(child.material) ? materials : materials[0];
         });
+        // Now collapse N child meshes → 1 mesh per unique material. Each
+        // placement's scene.clone(true) downstream inherits the merged shape,
+        // so 10 placements × 50 children → 10 placements × M materials.
+        mergeMeshesByMaterial(root);
         cacheLocalMinY(root);
     }
 
@@ -1909,7 +2167,7 @@ export class OceanAtmosphereSystem {
             mesh.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
             mesh.rotation.set(randRange(-0.08, 0.08), angle, randRange(-0.1, 0.1));
             mesh.scale.setScalar(randRange(0.86, 1.18));
-            mesh.frustumCulled = false;
+            mesh.frustumCulled = true; // WS A2: procedural mesh has valid bounds
             group.add(mesh);
         }
 
@@ -1924,21 +2182,12 @@ export class OceanAtmosphereSystem {
         this.heroKelpStats.manifest = summarizeKelpAssetManifest().heroKelp;
         if (!records.length) return;
 
-        const loader = new GLTFLoader();
         records.forEach((record) => {
             this.heroKelpStats.statuses[record.id] = 'loading';
             this.heroKelpStats.errors[record.id] = null;
         });
-        const results = [];
-        for (const record of records) {
-            try {
-                const value = await loader.loadAsync(record.url);
-                results.push({ status: 'fulfilled', value });
-            } catch (reason) {
-                results.push({ status: 'rejected', reason });
-            }
-            await new Promise((resolve) => { setTimeout(resolve, 30); });
-        }
+        const promises = records.map((record) => loadGltfCached(record.url));
+        const results = await Promise.allSettled(promises);
 
         results.forEach((result, recordIndex) => {
             const record = records[recordIndex];
@@ -1967,7 +2216,7 @@ export class OceanAtmosphereSystem {
             const scale = placement.scale * record.runtimeScale;
             root.scale.setScalar(scale);
             setSeabedAnchoredPosition(root, placement.x, placement.y, placement.z, scale);
-            root.frustumCulled = false;
+            root.frustumCulled = true; // WS A2: GLB has valid bounds
 
             const old = this.heroKelp[i];
             if (old?.parent) {
@@ -1981,20 +2230,26 @@ export class OceanAtmosphereSystem {
     }
 
     prepareHeroKelpAsset(root) {
+        // Phase G.2: hero kelp uses ONE material for every child — share it
+        // across the asset and let mergeMeshesByMaterial collapse all child
+        // meshes into a single draw call per kelp clone.
+        const sharedMaterial = this.isWebGPU ? createHeroKelpNodeMaterial() : createHeroKelpShaderMaterial();
+        if (this.isWebGPU) this.tslUserData.push(sharedMaterial.userData);
+        else this.uniforms.push(sharedMaterial.uniforms);
+
         root.traverse((child) => {
             if (!child.isMesh) return;
-            child.frustumCulled = false;
+            child.frustumCulled = true; // WS A2: GLB meshes have valid bounds
             child.castShadow = false;
             child.receiveShadow = false;
             addNormalizedHeightAttribute(child.geometry);
             child.geometry?.computeVertexNormals?.();
-            const material = this.isWebGPU ? createHeroKelpNodeMaterial() : createHeroKelpShaderMaterial();
-            if (this.isWebGPU) this.tslUserData.push(material.userData);
-            else this.uniforms.push(material.uniforms);
             if (Array.isArray(child.material)) child.material.forEach((source) => source?.dispose?.());
             else child.material?.dispose?.();
-            child.material = material;
+            child.material = sharedMaterial;
         });
+        // All children share one material → merge collapses them all to ONE draw call.
+        mergeMeshesByMaterial(root);
         cacheLocalMinY(root);
     }
 
@@ -2043,21 +2298,12 @@ export class OceanAtmosphereSystem {
         );
         if (!records.length) return;
 
-        const loader = new GLTFLoader();
         records.forEach((record) => {
             this.importedSeabedDetailStats.statuses[record.id] = 'loading';
             this.importedSeabedDetailStats.errors[record.id] = null;
         });
-        const results = [];
-        for (const record of records) {
-            try {
-                const value = await loader.loadAsync(record.url);
-                results.push({ status: 'fulfilled', value });
-            } catch (reason) {
-                results.push({ status: 'rejected', reason });
-            }
-            await new Promise((resolve) => { setTimeout(resolve, 30); });
-        }
+        const promises = records.map((record) => loadGltfCached(record.url));
+        const results = await Promise.allSettled(promises);
 
         results.forEach((result, recordIndex) => {
             const record = records[recordIndex];
@@ -2090,7 +2336,7 @@ export class OceanAtmosphereSystem {
             const scale = placement.scale * record.runtimeScale;
             root.scale.setScalar(scale);
             setSeabedAnchoredPosition(root, placement.x, placement.y + 0.02, placement.z, scale);
-            root.frustumCulled = false;
+            root.frustumCulled = true; // WS A2: imported seabed GLB has valid bounds
 
             this.importedSeabedDetails.push(root);
             this.importedSeabedDetailStats.loadedCount += 1;
@@ -2103,49 +2349,60 @@ export class OceanAtmosphereSystem {
     }
 
     prepareImportedSeabedPlantAsset(root) {
+        // Phase G.4: one shared material → mergeMeshesByMaterial collapses
+        // every child into a single draw call per asset clone.
+        const sharedMaterial = this.isWebGPU
+            ? createImportedSeabedPlantNodeMaterial()
+            : createImportedSeabedPlantShaderMaterial();
+        if (this.isWebGPU) this.tslUserData.push(sharedMaterial.userData);
+        else this.uniforms.push(sharedMaterial.uniforms);
+
         root.traverse((child) => {
             if (!child.isMesh) return;
-            child.frustumCulled = false;
+            child.frustumCulled = true; // WS A2: GLB meshes have valid bounds
             child.castShadow = false;
             child.receiveShadow = false;
             addNormalizedHeightAttribute(child.geometry);
             child.geometry?.computeVertexNormals?.();
-            const material = this.isWebGPU
-                ? createImportedSeabedPlantNodeMaterial()
-                : createImportedSeabedPlantShaderMaterial();
-            if (this.isWebGPU) this.tslUserData.push(material.userData);
-            else this.uniforms.push(material.uniforms);
             if (Array.isArray(child.material)) child.material.forEach((source) => source?.dispose?.());
             else child.material?.dispose?.();
-            child.material = material;
+            child.material = sharedMaterial;
         });
+        mergeMeshesByMaterial(root);
         cacheLocalMinY(root);
     }
 
     prepareImportedSeabedCoralAsset(root) {
+        // Phase G.4: same source-based material caching as hero corals.
+        const materialCache = new Map();
         root.traverse((child) => {
             if (!child.isMesh) return;
-            child.frustumCulled = false;
+            child.frustumCulled = true; // WS A2: GLB meshes have valid bounds
             child.castShadow = false;
             child.receiveShadow = true;
 
             const sources = Array.isArray(child.material) ? child.material : [child.material];
             const materials = sources.map((source) => {
+                if (source && materialCache.has(source)) return materialCache.get(source);
                 const material = this.isWebGPU
                     ? createHeroCoralNodeMaterial(source)
                     : createHeroCoralStandardMaterial(source);
                 if (this.isWebGPU) this.tslUserData.push(material.userData);
+                if (source) materialCache.set(source, material);
                 source?.dispose?.();
                 return material;
             });
             child.material = Array.isArray(child.material) ? materials : materials[0];
         });
+        mergeMeshesByMaterial(root);
         cacheLocalMinY(root);
     }
 
     prepareImportedSeabedRockAsset(root) {
         // Use ROCK_LOW (dark blue-grey) so these rocks blend with the darker
         // reef formations instead of standing out as pale plateaus.
+        // Phase G.4: this already uses a single shared material; just add
+        // the merge so multi-mesh rocks collapse to 1 draw call.
         const material = this.isWebGPU
             ? createHeroReefNodeMaterial({ color: ROCK_LOW })
             : createHeroReefStandardMaterial({ color: ROCK_LOW, roughness: 0.9, metalness: 0.0 });
@@ -2153,7 +2410,7 @@ export class OceanAtmosphereSystem {
 
         root.traverse((child) => {
             if (!child.isMesh) return;
-            child.frustumCulled = false;
+            child.frustumCulled = true; // WS A2: GLB mesh has valid bounds
             child.castShadow = false;
             child.receiveShadow = true;
             child.geometry?.computeVertexNormals?.();
@@ -2161,6 +2418,7 @@ export class OceanAtmosphereSystem {
             else child.material?.dispose?.();
             child.material = material;
         });
+        mergeMeshesByMaterial(root);
         cacheLocalMinY(root);
     }
 
@@ -2308,6 +2566,7 @@ export class OceanAtmosphereSystem {
                 layer.scale.setScalar(1.0 + t * 0.28);
                 layer.renderOrder = -10 + i;
                 this.group.add(layer);
+                this.hazeLayers.push(layer);
             }
             this.tslUserData.push(tslMaterial.userData);
             return;
@@ -2377,6 +2636,7 @@ export class OceanAtmosphereSystem {
             layer.scale.setScalar(1.0 + t * 0.28);
             layer.renderOrder = -10 + i;
             this.group.add(layer);
+            this.hazeLayers.push(layer);
         }
 
         this.uniforms.push(uniforms);
@@ -2449,13 +2709,18 @@ export class OceanAtmosphereSystem {
                     mesh.setMatrixAt(j, dummy.matrix);
                 }
                 mesh.instanceMatrix.needsUpdate = true;
-                mesh.frustumCulled = false;
+                // WS A2: compute a sphere wrapping all instances so frustum
+                // culling can skip the whole bucket when the camera is turned
+                // away from this rock cluster.
+                mesh.computeBoundingSphere();
+                mesh.frustumCulled = true;
                 this.group.add(mesh);
+                this.reefSilhouettes.push(mesh);
                 placed += bucketSize;
             }
 
             this.createGodRayOccluders(variants, tslMaterial);
-            this.createArchSilhouettes(tslMaterial);
+            if (!this.skipFlags.arches) this.createArchSilhouettes(tslMaterial);
             return;
         }
 
@@ -2522,14 +2787,16 @@ export class OceanAtmosphereSystem {
                 mesh.setMatrixAt(j, dummy.matrix);
             }
             mesh.instanceMatrix.needsUpdate = true;
-            mesh.frustumCulled = false;
+            mesh.computeBoundingSphere(); // WS A2
+            mesh.frustumCulled = true;
             this.group.add(mesh);
+            this.reefSilhouettes.push(mesh);
             placed += bucketSize;
         }
         this.uniforms.push(uniforms);
 
         this.createGodRayOccluders(variants, rockMaterial);
-        this.createArchSilhouettes(rockMaterial);
+        if (!this.skipFlags.arches) this.createArchSilhouettes(rockMaterial);
     }
 
     createArchSilhouettes(sharedMaterial) {
@@ -2553,8 +2820,10 @@ export class OceanAtmosphereSystem {
         }
 
         arches.instanceMatrix.needsUpdate = true;
-        arches.frustumCulled = false;
+        arches.computeBoundingSphere(); // WS A2
+        arches.frustumCulled = true;
         this.group.add(arches);
+        this.arches.push(arches);
     }
 
     /**
@@ -2594,7 +2863,8 @@ export class OceanAtmosphereSystem {
 
         variantMeshes.forEach((m) => {
             m.instanceMatrix.needsUpdate = true;
-            m.frustumCulled = false;
+            m.computeBoundingSphere(); // WS A2
+            m.frustumCulled = true;
             m.userData.isGodRayOccluder = true;
             this.group.add(m);
         });
@@ -2622,6 +2892,7 @@ export class OceanAtmosphereSystem {
             plane.userData.isBiomeSilhouette = true;
             plane.userData.isKelpCurtain = true;
             this.group.add(plane);
+            this.biomeSilhouettes.push(plane);
         }
         this.tslUserData.push(tslMaterial.userData);
     }
@@ -2672,7 +2943,11 @@ export class OceanAtmosphereSystem {
             billboardGeometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colors, 3));
             billboardGeometry.setAttribute('aSize', new THREE.InstancedBufferAttribute(sizes, 1));
             billboardGeometry.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases, 1));
-            const tslMaterial = createGlowAnchorNodeMaterial({ glowIntensity: 0.58 });
+            const tslMaterial = createGlowAnchorNodeMaterial({
+                glowIntensity: 0.58,
+                opacityScale: this.settings.glowAnchorOpacityScale ?? 1.0,
+                emissiveScale: this.settings.glowAnchorEmissiveScale ?? 1.0,
+            });
             const glows = new THREE.InstancedMesh(billboardGeometry, tslMaterial, glowCount);
             glows.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
             glows.frustumCulled = false;
@@ -2765,14 +3040,33 @@ export class OceanAtmosphereSystem {
             billboardGeometry.setAttribute('aSize', new THREE.InstancedBufferAttribute(sizes, 1));
             const tslMaterial = createBeamDustNodeMaterial();
             const dust = new THREE.InstancedMesh(billboardGeometry, tslMaterial, dustCount);
-            dust.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-            dust.frustumCulled = false;
+
+            // WS A3: bake each instance's base position into a static matrix
+            // and never re-upload. Drift motion is now in the vertex shader
+            // (see createBeamDustNodeMaterial). Rotation is identity — quads
+            // sit in their natural XY plane facing camera default direction.
+            const dummy = new THREE.Object3D();
+            for (let i = 0; i < dustCount; i += 1) {
+                const i3 = i * 3;
+                dummy.position.set(positions[i3], positions[i3 + 1], positions[i3 + 2]);
+                dummy.rotation.set(0, 0, 0);
+                dummy.scale.setScalar(1);
+                dummy.updateMatrix();
+                dust.setMatrixAt(i, dummy.matrix);
+            }
+            dust.instanceMatrix.needsUpdate = true;
+            dust.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+            dust.computeBoundingSphere();
+            dust.frustumCulled = false; // bound is tight per-instance but drift expands footprint; safer to skip cull
             dust.renderOrder = 3;
             dust.userData.primitive = 'billboard-quad';
             this.group.add(dust);
             this.tslUserData.push(tslMaterial.userData);
             this.dustBillboardMesh = dust;
-            this.dustBillboardData = { positions, phases, count: dustCount };
+            // Per-frame drift is now shader-side; we no longer need the
+            // positions/phases CPU arrays. Keep a stub so updateBillboards
+            // null-checks still pass cleanly without rewriting that branch.
+            this.dustBillboardData = null;
             return;
         }
 
@@ -2869,7 +3163,12 @@ export class OceanAtmosphereSystem {
         }
     }
 
-    update(elapsed, { currentStrength = 0.5, glowIntensity = 0.8 } = {}) {
+    update(elapsed, {
+        currentStrength = 0.5,
+        glowIntensity = 0.8,
+        billboardHeavyTick = true,
+        skipBillboards = false,
+    } = {}) {
         // Legacy ShaderMaterial uniforms (each is { value: ... } object)
         this.uniforms.forEach((uniforms) => {
             if (uniforms.uTime) uniforms.uTime.value = elapsed;
@@ -2882,7 +3181,10 @@ export class OceanAtmosphereSystem {
             if (userData.uCurrentStrength) userData.uCurrentStrength.value = currentStrength;
             if (userData.uGlowIntensity) userData.uGlowIntensity.value = glowIntensity;
         });
-        this.updateBillboards(elapsed, currentStrength);
+        // Glow + dust billboard meshes (up to ~504 instances at Extreme) update
+        // at 30 Hz on the odd-frame stride group. Slow drift; visually identical.
+        // ?oceanNoAtmosphereBillboards=1 sets skipBillboards to suppress entirely.
+        if (billboardHeavyTick && !skipBillboards) this.updateBillboards(elapsed, currentStrength);
     }
 
     collectSignoff() {

@@ -6,7 +6,13 @@
  * WebGPU only — the legacy ShaderMaterial paths remain in ocean-theme.js for WebGL fallback.
  */
 
-import { AdditiveBlending, DoubleSide, MeshBasicNodeMaterial } from 'three/webgpu';
+import * as THREE from 'three';
+import {
+    AdditiveBlending,
+    DoubleSide,
+    FrontSide,
+    MeshBasicNodeMaterial,
+} from 'three/webgpu';
 import {
     abs,
     attribute,
@@ -28,6 +34,7 @@ import {
     pow,
     sin,
     smoothstep,
+    texture,
     uniform,
     uv,
     vec2,
@@ -43,6 +50,41 @@ import {
     tslCausticProjection,
     tslDepthGradedFog,
 } from './ocean-tsl-helpers.js';
+
+// WS 4.1: tileable noise texture shared across material instances. Generated
+// once at first use; replaces 6 procedural noise/hash calls per seabed
+// fragment with cheap cache-friendly texture samples. Each channel carries
+// uncorrelated white noise — bilinear filtering during sampling smooths it
+// into continuous gradients that visually match the original tslNoise output.
+let _sharedSeabedNoiseTexture = null;
+function getSharedSeabedNoiseTexture() {
+    if (_sharedSeabedNoiseTexture) return _sharedSeabedNoiseTexture;
+    const size = 256;
+    const data = new Uint8Array(size * size * 4);
+    // Deterministic hash so the texture is identical across reloads.
+    const hash = (x, y, salt) => {
+        const h = Math.sin(x * 12.9898 + y * 78.233 + salt * 31.7) * 43758.5453;
+        return h - Math.floor(h);
+    };
+    for (let y = 0; y < size; y += 1) {
+        for (let x = 0; x < size; x += 1) {
+            const idx = (y * size + x) * 4;
+            data[idx] = (hash(x, y, 1) * 255) | 0;
+            data[idx + 1] = (hash(x, y, 2) * 255) | 0;
+            data[idx + 2] = (hash(x, y, 3) * 255) | 0;
+            data[idx + 3] = (hash(x, y, 4) * 255) | 0;
+        }
+    }
+    const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.generateMipmaps = true;
+    tex.needsUpdate = true;
+    _sharedSeabedNoiseTexture = tex;
+    return tex;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Water Surface
@@ -167,10 +209,10 @@ export function createSeabedNodeMaterial(params = {}) {
     const rippleHeight = (xz) => {
         // Perturb the coordinates using low frequency noise
         const perturbed = xz.add(tslNoise(xz.mul(0.04)).mul(3.5));
-        
+
         // Phase of the sand waves aligned to the current
         const theta = dot(perturbed, currentDirNode).mul(0.88);
-        
+
         // Skewed asymmetric wave profile: sin(theta - 0.45 * sin(theta))
         const skewedWave = sin(theta.sub(float(0.45).mul(sin(theta))))
             .mul(0.5)
@@ -203,15 +245,27 @@ export function createSeabedNodeMaterial(params = {}) {
     ));
     const litNormal = normalize(mix(normalWorld, rippleNormal, float(0.88)));
 
-    // High-frequency sand grain normal perturbation
+    // High-frequency sand grain normal perturbation.
+    // WS 4.1: bake-once tileable noise texture replaces 3× tslNoise (grain) +
+    // 1× tslNoise (microGrit) + 2× tslHash (sparkle) calls with cheap texture
+    // samples. Sample frequency chosen so each noise wavelength spans ~4-8
+    // texels — bilinear filtering then matches the visual density of the
+    // original procedural noise. Channels: R=grain, G=microGrit, B=sparklePhase,
+    // A=sparkleIntensity. Sample wrap via RepeatWrapping (set on the DataTexture).
+    const seabedNoiseTex = getSharedSeabedNoiseTexture();
     const grainEps = float(0.08);
-    const grainFreq = float(22.0);
-    const g0 = tslNoise(pxz.mul(grainFreq));
-    const gx = tslNoise(pxz.add(vec2(grainEps, float(0.0))).mul(grainFreq));
-    const gz = tslNoise(pxz.add(vec2(float(0.0), grainEps)).mul(grainFreq));
+    // World→UV factor for grain: matches the original 22 Hz feature density.
+    const grainUvScale = float(22.0 / 4.0); // ~4 texels per noise cycle.
+    const grainUv0 = pxz.mul(grainUvScale);
+    const g0 = texture(seabedNoiseTex, grainUv0).r;
+    const gx = texture(seabedNoiseTex, grainUv0.add(vec2(grainEps.mul(grainUvScale), float(0.0)))).r;
+    const gz = texture(seabedNoiseTex, grainUv0.add(vec2(float(0.0), grainEps.mul(grainUvScale)))).r;
 
     // Micro normal contribution (decreases at distance to prevent aliasing)
-    const microFalloff = float(1.0).sub(smoothstep(float(35.0), float(75.0), viewDist));
+    // WS 2.2: tightened fade range (20→40 instead of 35→75) — the sub-pixel
+    // grain/sparkle is invisible past ~40m anyway, so cutting earlier lets the
+    // GPU dead-code-eliminate the dependent micro-color math on most pixels.
+    const microFalloff = float(1.0).sub(smoothstep(float(20.0), float(40.0), viewDist));
     const grainN = float(0.24).mul(microFalloff);
     const grainNormal = vec3(
         g0.sub(gx).mul(grainN),
@@ -256,8 +310,11 @@ export function createSeabedNodeMaterial(params = {}) {
     // 3. Micro-grit color overlay
     const sandGrainNoise = tslFbm(positionWorld.xz.mul(0.085), 3);
     color = color.mul(float(0.88).add(sandGrainNoise.mul(0.16)));
-    const microGrit = tslNoise(positionWorld.xz.mul(48.0));
-    color = color.mul(float(0.92).add(microGrit.mul(0.12)));
+    // WS 4.1: microGrit from the G channel of the shared seabed noise texture.
+    // freq 48 maps to ~5 texels/cycle which preserves the original gritty look.
+    const microGrit = texture(seabedNoiseTex, positionWorld.xz.mul(float(48.0 / 5.0))).g;
+    // WS 2.2: gate micro-grit color modulation by the same near-field falloff.
+    color = color.mul(float(0.92).add(microGrit.mul(float(0.12).mul(microFalloff))));
 
     // Ripple crest warmth & stoss exposure highlights
     color = mix(color, sandLit, ridgeWarmth.mul(0.46).add(stossWeight.mul(0.28)));
@@ -279,11 +336,15 @@ export function createSeabedNodeMaterial(params = {}) {
     const specular = pow(specularDot, float(42.0)).mul(0.18).mul(rippleFalloff);
     color = color.add(vec3(0.9, 0.98, 0.95).mul(specular));
 
-    // Twinkling, view-dependent glinting sparkles
-    const sparklePhase = tslHash(positionWorld.xz.mul(12.0));
+    // Twinkling, view-dependent glinting sparkles.
+    // WS 4.1: sparkle phase from B channel, intensity from A channel of the
+    // shared seabed noise texture. Sample frequencies match the original
+    // 12 Hz / 24 Hz density (texels-per-cycle ratio tuned for visual parity).
+    const sparklePhase = texture(seabedNoiseTex, positionWorld.xz.mul(float(12.0 / 3.0))).b;
     const twinkle = sin(uTime.mul(2.2).add(sparklePhase.mul(6.28)));
     const viewGlint = dot(viewDir, finalNormal);
-    const sparkle = pow(tslHash(positionWorld.xz.mul(24.0)), float(14.0))
+    const sparkleSrc = texture(seabedNoiseTex, positionWorld.xz.mul(float(24.0 / 3.0))).a;
+    const sparkle = pow(sparkleSrc, float(14.0))
         .mul(twinkle.mul(0.5).add(0.5))
         .mul(float(1.0).add(viewGlint.mul(0.5)));
     color = color.add(vec3(0.95, 0.98, 0.88).mul(sparkle).mul(0.32).mul(microFalloff));
@@ -357,11 +418,18 @@ export function createSeaweedNodeMaterial(params = {}) {
     color = color.add(sssColor.mul(sssStrength));
 
     // Caustics on lower 30%
+    // WS 3.3: distance-fade caustic contribution. At ~11k seaweed blades on
+    // Extreme, the per-fragment tslCausticProjection (~3 noise samples) is a
+    // major fillrate cost. Beyond ~70m it's invisible against fog anyway —
+    // multiply by a near-field falloff so far blades skip the visible effect
+    // (the noise calls themselves may still execute, but downstream color
+    // math drops out and the GPU compiler often DCE's pure noise feeding zero).
+    const viewDist = length(modelViewMatrix.mul(vec4(positionLocal, float(1.0))).xyz);
+    const causticFalloff = float(1.0).sub(smoothstep(float(40.0), float(70.0), viewDist));
     const causticMask = float(1.0).sub(smoothstep(float(0.0), float(0.3), aHeight));
     const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.2);
-    color = color.add(vec3(0.06, 0.27, 0.22).mul(caustic.mul(causticMask).mul(0.2)));
+    color = color.add(vec3(0.06, 0.27, 0.22).mul(caustic.mul(causticMask).mul(causticFalloff).mul(0.2)));
 
-    const viewDist = length(modelViewMatrix.mul(vec4(positionLocal, float(1.0))).xyz);
     color = tslDepthGradedFog(color, positionWorld.y, viewDist, float(1.05));
 
     material.colorNode = color;
@@ -418,12 +486,15 @@ export function createSeagrassMeadowNodeMaterial(params = {}) {
     const sssColor = vec3(0.4, 0.88, 0.3);
     color = color.add(sssColor.mul(sssStrength));
 
-    // Dynamic water caustics projected onto seagrass blades
+    // Dynamic water caustics projected onto seagrass blades.
+    // WS 3.3: distance-fade for the same reason as seaweed — seagrass meadows
+    // can hit ~4k blades on Extreme, and far caustics are invisible.
+    const viewDist = length(modelViewMatrix.mul(vec4(positionLocal, float(1.0))).xyz);
+    const causticFalloff = float(1.0).sub(smoothstep(float(40.0), float(70.0), viewDist));
     const caustic = tslCausticProjection(positionWorld.xz, uTime, 0.18);
-    color = color.add(vec3(0.5, 0.96, 0.7).mul(caustic).mul(aHeight).mul(0.26));
+    color = color.add(vec3(0.5, 0.96, 0.7).mul(caustic).mul(aHeight).mul(causticFalloff).mul(0.26));
 
     // Depth-graded fog wash to blend seagrass into the deep water column
-    const viewDist = length(modelViewMatrix.mul(vec4(positionLocal, float(1.0))).xyz);
     color = tslDepthGradedFog(color, positionWorld.y, viewDist, float(1.05));
 
     material.colorNode = color;
@@ -440,7 +511,9 @@ export function createSeagrassMeadowNodeMaterial(params = {}) {
 
 export function createCoralNodeMaterial(baseColor) {
     const material = new MeshBasicNodeMaterial({
-        side: DoubleSide,
+        // WS B2: coral overgrowth + procedural hero/carpet fallbacks are static
+        // scenery; backfaces never visible from the camera path.
+        side: FrontSide,
     });
 
     const uTime = uniform(0);
@@ -467,16 +540,62 @@ export function createCoralNodeMaterial(baseColor) {
     const rim = pow(float(1.0).sub(abs(dot(normalWorld, normalize(cameraPosition.sub(positionWorld))))), float(1.8));
     color = color.add(warmBase.mul(rim.mul(0.22)));
 
-    // Emissive tips drive selective bloom — sharper exponent than before so only
-    // the very top of upward-facing geometry glows, the rest reads as solid colour.
+    // WS B1: tip-glow on upward-facing surfaces moves from emissiveNode into
+    // colorNode. The bright tips still appear in the rendered color; they
+    // just stop dumping pixels into MRT emissive, which is sampled 14× per
+    // pixel by the post-processing god-ray Loop. This was the dominant cost
+    // contributor for coral overgrowth, carpets, and procedural hero coral.
     const tipGlow = pow(max(normalWorld.y, float(0.0)), float(4.5)).mul(
         float(0.32).add(uGlowIntensity.mul(0.075)),
     );
-    const emissiveColor = tintColor.add(coolRim.mul(0.12)).mul(tipGlow);
+    const tipColor = tintColor.add(coolRim.mul(0.12)).mul(tipGlow);
 
-    material.colorNode = color;
+    material.colorNode = color.add(tipColor);
     material.positionNode = positionLocal.mul(breathing);
-    material.emissiveNode = emissiveColor;
+    material.emissiveNode = vec3(0);
+
+    material.userData = { uTime, uGlowIntensity };
+    return material;
+}
+
+// WS 4.2: per-instance-color variant for coral overgrowth. Reads tint from an
+// `aInstanceColor` InstancedBufferAttribute (vec3) so 5 separate color buckets
+// (×4 geometries = 20 InstancedMeshes/rock-cluster) consolidate to 4 meshes
+// total. Same visual: just substitute the uniform with the attribute.
+export function createCoralOvergrowthNodeMaterial() {
+    const material = new MeshBasicNodeMaterial({
+        side: FrontSide,
+    });
+
+    const uTime = uniform(0);
+    const uGlowIntensity = uniform(0.8);
+    const aInstanceColor = attribute('aInstanceColor');
+
+    const breathing = sin(uTime.mul(1.4)).mul(0.06).add(1.0);
+
+    const pattern = tslFbm(
+        positionWorld.xz.mul(0.32).add(vec2(positionWorld.y.mul(0.1), positionWorld.y.mul(0.07))),
+        2,
+    );
+    let color = aInstanceColor.mul(breathing).mul(float(0.98).add(pattern.mul(0.18)));
+
+    const aoMask = float(1.0).sub(smoothstep(float(0.0), float(0.35), positionLocal.y));
+    const aoColor = vec3(0.01, 0.04, 0.08);
+    color = mix(color, aoColor, aoMask.mul(0.65));
+
+    const warmBase = vec3(1.0, 0.62, 0.38);
+    const coolRim = vec3(0.18, 0.72, 0.64);
+    const rim = pow(float(1.0).sub(abs(dot(normalWorld, normalize(cameraPosition.sub(positionWorld))))), float(1.8));
+    color = color.add(warmBase.mul(rim.mul(0.22)));
+
+    const tipGlow = pow(max(normalWorld.y, float(0.0)), float(4.5)).mul(
+        float(0.32).add(uGlowIntensity.mul(0.075)),
+    );
+    const tipColor = aInstanceColor.add(coolRim.mul(0.12)).mul(tipGlow);
+
+    material.colorNode = color.add(tipColor);
+    material.positionNode = positionLocal.mul(breathing);
+    material.emissiveNode = vec3(0);
 
     material.userData = { uTime, uGlowIntensity };
     return material;
@@ -974,7 +1093,20 @@ export function createBeamDustNodeMaterial() {
     const aSize = attribute('aSize');
 
     const pulse = float(0.5).add(sin(uTime.mul(0.5).add(aPhase)).mul(0.42));
-    material.positionNode = positionLocal.mul(aSize.mul(float(1.0).add(uCurrentStrength.mul(0.4))));
+
+    // WS A3: world-space drift computed in the vertex shader, eliminating the
+    // 480-instance CPU loop in OceanAtmosphereSystem.updateBillboards(). The
+    // instance matrix is static (translation only, identity rotation) so adding
+    // to positionLocal is equivalent to adding in world space. Frequencies +
+    // amplitudes match the previous CPU drift exactly.
+    const driftX = sin(uTime.mul(0.11).add(aPhase))
+        .mul(float(1.0).add(uCurrentStrength.mul(0.8)));
+    const driftY = sin(uTime.mul(0.09).add(aPhase.mul(1.7))).mul(0.45);
+    const driftZ = cos(uTime.mul(0.08).add(aPhase.mul(1.3))).mul(0.65);
+    const drift = vec3(driftX, driftY, driftZ);
+
+    const sized = positionLocal.mul(aSize.mul(float(1.0).add(uCurrentStrength.mul(0.4))));
+    material.positionNode = sized.add(drift);
 
     const radial = safeBillboardRadialFalloff();
     const alpha = pow(radial, float(1.7)).mul(pulse);
@@ -1046,6 +1178,8 @@ export function createGlowAnchorNodeMaterial(params = {}) {
 
     const uTime = uniform(0);
     const uGlowIntensity = uniform(params.glowIntensity ?? 0.8);
+    const uOpacityScale = uniform(params.opacityScale ?? 1.0);
+    const uEmissiveScale = uniform(params.emissiveScale ?? 1.0);
 
     const aColor = attribute('aColor');
     const aPhase = attribute('aPhase');
@@ -1064,9 +1198,14 @@ export function createGlowAnchorNodeMaterial(params = {}) {
     const alpha = aura.mul(0.18).mul(pulse);
 
     material.colorNode = color;
-    material.opacityNode = alpha;
-    material.emissiveNode = color.mul(alpha.mul(1.25));
+    material.opacityNode = alpha.mul(uOpacityScale);
+    material.emissiveNode = color.mul(alpha.mul(1.25).mul(uEmissiveScale));
 
-    material.userData = { uTime, uGlowIntensity };
+    material.userData = {
+        uTime,
+        uGlowIntensity,
+        uOpacityScale,
+        uEmissiveScale,
+    };
     return material;
 }

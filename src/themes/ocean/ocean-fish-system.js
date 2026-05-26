@@ -1,6 +1,5 @@
 /* eslint-disable import/no-extraneous-dependencies, import/no-unresolved, no-await-in-loop */
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { DoubleSide, MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import {
@@ -29,6 +28,7 @@ import {
     texture,
     vec2,
 } from 'three/tsl';
+import { loadGltfCached } from './ocean-asset-loader.js';
 import { tslCausticProjection } from './ocean-tsl-helpers.js';
 import {
     OCEAN_FAUNA_ASSET_VERSION,
@@ -614,6 +614,25 @@ export class OceanFishSystem {
 
         this.positions = new Float32Array(this.totalFish * 3);
         this.velocities = new Float32Array(this.totalFish * 3);
+
+        // WS 1.1: uniform-grid spatial hash for boid neighbor queries.
+        // Cell size = cohesionDist (22). Domain wraps fish-area + margin so
+        // border-clamped fish never index OOB. Per-school rebuild reuses the
+        // same head/next TypedArrays — zero per-frame allocations.
+        this._boidGridCellSize = 22;
+        this._boidGridDimX = Math.ceil((FISH_AREA_X * 2 + 40) / this._boidGridCellSize); // ~14
+        this._boidGridDimY = Math.ceil((SURFACE_Y + 30) / this._boidGridCellSize); // ~5
+        this._boidGridDimZ = Math.ceil((FISH_AREA_Z * 2 + 40) / this._boidGridCellSize); // ~14
+        this._boidGridOriginX = -FISH_AREA_X - 20;
+        this._boidGridOriginY = -15;
+        this._boidGridOriginZ = -FISH_AREA_Z - 20;
+        this._boidGridStrideZ = this._boidGridDimX;
+        this._boidGridStrideY = this._boidGridDimX * this._boidGridDimZ;
+        const totalCells = this._boidGridStrideY * this._boidGridDimY;
+        this._boidGridHead = new Int32Array(totalCells);
+        this._boidGridNext = new Int32Array(Math.max(1, this.totalSchoolFish));
+        this._boidTouchedCells = new Int32Array(totalCells);
+        this._boidTouchedCount = 0;
         this.scales = new Float32Array(this.totalFish);
         this.phases = new Float32Array(this.totalFish);
         this.speeds = new Float32Array(this.totalFish);
@@ -898,7 +917,16 @@ export class OceanFishSystem {
             const mesh = new THREE.InstancedMesh(geometry, material, count);
             mesh.count = 0;
             mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-            mesh.frustumCulled = false;
+            // WS 1.2: enable frustum culling with a domain-wide bounding sphere.
+            // Fish roam the entire fish-area volume; per-frame BV recomputation
+            // would be wasted work, so wrap the worst-case extent (×1.15 safety)
+            // and let Three reject the whole species when off-screen.
+            const domainCenter = new THREE.Vector3(0, SURFACE_Y * 0.5, 0);
+            const domainRadius = Math.sqrt(
+                FISH_AREA_X * FISH_AREA_X + (SURFACE_Y * 0.5) * (SURFACE_Y * 0.5) + FISH_AREA_Z * FISH_AREA_Z,
+            ) * 1.15;
+            geometry.boundingSphere = new THREE.Sphere(domainCenter, domainRadius);
+            mesh.frustumCulled = true;
             this.scene.add(mesh);
             this.meshes[speciesIndex] = mesh;
             this.materials[speciesIndex] = material;
@@ -910,14 +938,9 @@ export class OceanFishSystem {
         if (this.heroAssetLoadPromise) return;
 
         this.heroAssetLoadStarted = true;
-        this.heroAssetLoader = new GLTFLoader();
         this.heroAssetLoadPromise = (async () => {
-            const results = [];
-            for (const asset of OCEAN_HERO_FISH_ASSETS) {
-                const res = await this.loadHeroAsset(asset);
-                results.push(res);
-                await new Promise((resolve) => { setTimeout(resolve, 30); });
-            }
+            const promises = OCEAN_HERO_FISH_ASSETS.map((asset) => this.loadHeroAsset(asset));
+            const results = await Promise.all(promises);
             this.spawnHeroAssetInstances();
             return this.heroAssetRecords;
         })();
@@ -928,7 +951,7 @@ export class OceanFishSystem {
         this.heroAssetStatus[asset.id] = 'loading';
 
         try {
-            const gltf = await this.heroAssetLoader.loadAsync(asset.url);
+            const gltf = await loadGltfCached(asset.url);
             this.prepareHeroAsset(gltf.scene);
             const record = { gltf, asset };
             this.heroAssetRecords.set(asset.id, record);
@@ -1140,9 +1163,16 @@ export class OceanFishSystem {
         }
     }
 
-    update(delta, elapsed, { currentStrength = 0.5, glowIntensity = 0.8 } = {}) {
+    update(delta, elapsed, {
+        currentStrength = 0.5,
+        glowIntensity = 0.8,
+        heroHeavyTick = true,
+        heroHeavyDt = delta,
+        skipHeroAssets = false,
+    } = {}) {
         if (this.totalFish <= 0) return;
 
+        const perf = typeof window !== 'undefined' ? window.perfMonitor : null;
         const dt = clamp(delta || 0.016, 0.001, 0.033);
         this.updatePopulationReveal(dt);
         const activeGameplaySurge = this.gameplaySurge;
@@ -1150,17 +1180,43 @@ export class OceanFishSystem {
         this.updateEnvironmentalInfluences(dt);
         this.updateSchoolGoals(elapsed);
         if (this.activeSchoolFish > 0) {
-            this.updateSchoolFish(
-                dt,
-                elapsed,
-                currentStrength,
-                activeGameplaySurge,
-                this.environmentalInfluences,
-            );
+            if (heroHeavyTick) {
+                perf?.startSection('ocean.fish.flocking');
+                this.updateSchoolFish(
+                    dt,
+                    elapsed,
+                    currentStrength,
+                    activeGameplaySurge,
+                    this.environmentalInfluences,
+                );
+                perf?.endSection('ocean.fish.flocking');
+            } else {
+                perf?.startSection('ocean.fish.positions');
+                // Lightweight position update using existing velocities for 60 Hz smoothness
+                for (let i = 0; i < this.activeSchoolFish; i++) {
+                    const i3 = i * 3;
+                    this.positions[i3] += this.velocities[i3] * dt;
+                    this.positions[i3 + 1] += this.velocities[i3 + 1] * dt;
+                    this.positions[i3 + 2] += this.velocities[i3 + 2] * dt;
+                }
+                perf?.endSection('ocean.fish.positions');
+            }
         }
         if (this.activeHeroFish > 0) this.updateHeroFish(dt, elapsed);
-        this.updateHeroAssetLayer(dt, elapsed, currentStrength);
-        if (this.activeFishCount > 0) this.updateMatrices();
+        // Hero asset layer (GLB hero creatures) strides at 30 Hz; uses
+        // accumulated heavyDt so motion stays at the same speed.
+        // Skipped entirely when ?oceanNoHeroAssets=1.
+        if (heroHeavyTick && !skipHeroAssets) {
+            perf?.startSection('ocean.fish.heroAssets');
+            const heroDt = clamp(heroHeavyDt || dt, 0.001, 0.066);
+            this.updateHeroAssetLayer(heroDt, elapsed, currentStrength);
+            perf?.endSection('ocean.fish.heroAssets');
+        }
+        if (this.activeFishCount > 0) {
+            perf?.startSection('ocean.fish.matrices');
+            this.updateMatrices();
+            perf?.endSection('ocean.fish.matrices');
+        }
 
         this.materials.forEach((material) => {
             if (!material) return;
@@ -1319,6 +1375,27 @@ export class OceanFishSystem {
         const cohesionDistSq = 22 * 22;
         const currentBoost = 1 + currentStrength * 0.06;
         const surgeAnchor = this.gameplaySurgeAnchor;
+        const { camera } = this;
+        const camX = camera ? camera.position.x : 0;
+        const camY = camera ? camera.position.y : 0;
+        const camZ = camera ? camera.position.z : 0;
+        // Past fog fade (~150 units) schools are invisible; skip neighbor loop.
+        const skipDistSq = 250 * 250;
+
+        // Per-school cached locals for spatial-hash query (declared here so
+        // the inner cell-walk doesn't repeatedly hit `this.*` properties).
+        const cellSize = this._boidGridCellSize;
+        const invCellSize = 1 / cellSize;
+        const dimX = this._boidGridDimX;
+        const dimY = this._boidGridDimY;
+        const dimZ = this._boidGridDimZ;
+        const originX = this._boidGridOriginX;
+        const originY = this._boidGridOriginY;
+        const originZ = this._boidGridOriginZ;
+        const strideZ = this._boidGridStrideZ;
+        const strideY = this._boidGridStrideY;
+        const gridHead = this._boidGridHead;
+        const gridNext = this._boidGridNext;
 
         for (let s = 0; s < SCHOOL_COUNT; s++) {
             const start = this.schoolStarts[s];
@@ -1329,11 +1406,58 @@ export class OceanFishSystem {
             const gy = this.schoolGoals[goalIndex + 1];
             const gz = this.schoolGoals[goalIndex + 2];
 
+            if (camera) {
+                const ddx = gx - camX;
+                const ddy = gy - camY;
+                const ddz = gz - camZ;
+                if (ddx * ddx + ddy * ddy + ddz * ddz > skipDistSq) continue;
+            }
+
+            // WS 1.1: build a spatial hash over this school's fish so the
+            // neighbor query walks ~27 nearby cells (avg <1 fish each) instead
+            // of every fish in the school. Reset only the cells we touch
+            // (cheaper than fill() across the full grid for sparse schools).
+            const touchedCells = this._boidTouchedCells;
+            let touchedCount = 0;
+            for (let i = start; i < end; i++) {
+                const i3 = i * 3;
+                let cx = ((this.positions[i3] - originX) * invCellSize) | 0;
+                let cy = ((this.positions[i3 + 1] - originY) * invCellSize) | 0;
+                let cz = ((this.positions[i3 + 2] - originZ) * invCellSize) | 0;
+                if (cx < 0) cx = 0; else if (cx >= dimX) cx = dimX - 1;
+                if (cy < 0) cy = 0; else if (cy >= dimY) cy = dimY - 1;
+                if (cz < 0) cz = 0; else if (cz >= dimZ) cz = dimZ - 1;
+                const cell = cy * strideY + cz * strideZ + cx;
+                const localIdx = i - start;
+                gridNext[localIdx] = gridHead[cell] - 1; // sentinel: store (idx+1), -1 == empty
+                if (gridHead[cell] === 0) {
+                    touchedCells[touchedCount++] = cell;
+                }
+                gridHead[cell] = localIdx + 1; // +1 so 0 means empty
+            }
+
             for (let i = start; i < end; i++) {
                 const i3 = i * 3;
                 const px = this.positions[i3];
                 const py = this.positions[i3 + 1];
                 const pz = this.positions[i3 + 2];
+
+                // WS 1.3: distance-band gating. Far fish are fog-faded and
+                // visually small — skipping their neighbor queries / influence
+                // reactions is invisible but saves real CPU.
+                //   <80²:     full update
+                //   <150²:    skip environmental influence reactions
+                //   >=150²:   also skip neighbor query (goal-seek + bounds only)
+                let distToCamSq = 0;
+                if (camera) {
+                    const ddx = px - camX;
+                    const ddy = py - camY;
+                    const ddz = pz - camZ;
+                    distToCamSq = ddx * ddx + ddy * ddy + ddz * ddz;
+                }
+                const skipNeighbors = distToCamSq >= 150 * 150;
+                const skipInfluences = distToCamSq >= 80 * 80;
+
                 let desiredX = (gx - px) * 0.018;
                 let desiredY = (gy - py) * 0.026;
                 let desiredZ = (gz - pz) * 0.018;
@@ -1349,32 +1473,58 @@ export class OceanFishSystem {
                 let alignCount = 0;
                 let cohesionCount = 0;
 
-                for (let j = start; j < end; j++) {
-                    if (i === j) continue;
-                    const j3 = j * 3;
-                    const dx = this.positions[j3] - px;
-                    const dy = this.positions[j3 + 1] - py;
-                    const dz = this.positions[j3 + 2] - pz;
-                    const distSq = dx * dx + dy * dy + dz * dz;
-                    if (distSq < 0.0001 || distSq > cohesionDistSq) continue;
+                // Walk the 27 neighbor cells around this fish's cell.
+                if (!skipNeighbors) {
+                    let ccx = ((px - originX) * invCellSize) | 0;
+                    let ccy = ((py - originY) * invCellSize) | 0;
+                    let ccz = ((pz - originZ) * invCellSize) | 0;
+                    if (ccx < 0) ccx = 0; else if (ccx >= dimX) ccx = dimX - 1;
+                    if (ccy < 0) ccy = 0; else if (ccy >= dimY) ccy = dimY - 1;
+                    if (ccz < 0) ccz = 0; else if (ccz >= dimZ) ccz = dimZ - 1;
+                    const x0 = ccx > 0 ? ccx - 1 : 0;
+                    const x1 = ccx < dimX - 1 ? ccx + 1 : dimX - 1;
+                    const y0 = ccy > 0 ? ccy - 1 : 0;
+                    const y1 = ccy < dimY - 1 ? ccy + 1 : dimY - 1;
+                    const z0 = ccz > 0 ? ccz - 1 : 0;
+                    const z1 = ccz < dimZ - 1 ? ccz + 1 : dimZ - 1;
+                    for (let ny = y0; ny <= y1; ny++) {
+                        const yOff = ny * strideY;
+                        for (let nz = z0; nz <= z1; nz++) {
+                            const zOff = nz * strideZ;
+                            for (let nx = x0; nx <= x1; nx++) {
+                                let bucketLocal = gridHead[yOff + zOff + nx] - 1;
+                                while (bucketLocal >= 0) {
+                                    const j = start + bucketLocal;
+                                    bucketLocal = gridNext[bucketLocal];
+                                    if (i === j) continue;
+                                    const j3 = j * 3;
+                                    const dx = this.positions[j3] - px;
+                                    const dy = this.positions[j3 + 1] - py;
+                                    const dz = this.positions[j3 + 2] - pz;
+                                    const distSq = dx * dx + dy * dy + dz * dz;
+                                    if (distSq < 0.0001 || distSq > cohesionDistSq) continue;
 
-                    if (distSq < separationDistSq) {
-                        const force = (separationDistSq - distSq) / separationDistSq;
-                        sepX -= dx * force;
-                        sepY -= dy * force;
-                        sepZ -= dz * force;
-                    } else if (distSq < alignmentDistSq) {
-                        alignX += this.velocities[j3];
-                        alignY += this.velocities[j3 + 1];
-                        alignZ += this.velocities[j3 + 2];
-                        alignCount++;
-                    } else {
-                        cohX += this.positions[j3];
-                        cohY += this.positions[j3 + 1];
-                        cohZ += this.positions[j3 + 2];
-                        cohesionCount++;
+                                    if (distSq < separationDistSq) {
+                                        const force = (separationDistSq - distSq) / separationDistSq;
+                                        sepX -= dx * force;
+                                        sepY -= dy * force;
+                                        sepZ -= dz * force;
+                                    } else if (distSq < alignmentDistSq) {
+                                        alignX += this.velocities[j3];
+                                        alignY += this.velocities[j3 + 1];
+                                        alignZ += this.velocities[j3 + 2];
+                                        alignCount++;
+                                    } else {
+                                        cohX += this.positions[j3];
+                                        cohY += this.positions[j3 + 1];
+                                        cohZ += this.positions[j3 + 2];
+                                        cohesionCount++;
+                                    }
+                                }
+                            }
+                        }
                     }
-                }
+                } // end if (!skipNeighbors)
 
                 if (alignCount > 0) {
                     desiredX += (alignX / alignCount) * 0.045;
@@ -1406,48 +1556,50 @@ export class OceanFishSystem {
                     desiredZ += (surgeZ / surgeDist) * response * 3.4;
                 }
 
-                environmentalInfluences.forEach((influence) => {
-                    const dx = px - influence.position.x;
-                    const dy = (py - influence.position.y) * 0.48;
-                    const dz = pz - influence.position.z;
-                    const dist = Math.hypot(dx, dy, dz) || 1;
-                    const falloff = clamp(1 - dist / influence.radius, 0, 1);
-                    if (falloff <= 0) return;
+                if (!skipInfluences) {
+                    environmentalInfluences.forEach((influence) => {
+                        const dx = px - influence.position.x;
+                        const dy = (py - influence.position.y) * 0.48;
+                        const dz = pz - influence.position.z;
+                        const dist = Math.hypot(dx, dy, dz) || 1;
+                        const falloff = clamp(1 - dist / influence.radius, 0, 1);
+                        if (falloff <= 0) return;
 
-                    const life = 1 - clamp(influence.age / influence.duration, 0, 1);
-                    const response = falloff * life * influence.strength;
-                    if (influence.kind === 'predator') {
+                        const life = 1 - clamp(influence.age / influence.duration, 0, 1);
+                        const response = falloff * life * influence.strength;
+                        if (influence.kind === 'predator') {
                         // Charge/strike (strength > 1.0) = explosive scatter;
                         // stalk (moderate) = bait-ball tightening then flee.
-                        const isCharge = influence.strength > 1.0;
-                        const fleeMultiplier = isCharge ? 7.2 : 3.4; // AAA intensity scatter
-                        desiredX += (dx / dist) * response * fleeMultiplier;
-                        desiredY += (dy / dist) * response * (isCharge ? 1.45 : 0.65) + response * 0.22;
-                        desiredZ += (dz / dist) * response * fleeMultiplier;
+                            const isCharge = influence.strength > 1.0;
+                            const fleeMultiplier = isCharge ? 7.2 : 3.4; // AAA intensity scatter
+                            desiredX += (dx / dist) * response * fleeMultiplier;
+                            desiredY += (dy / dist) * response * (isCharge ? 1.45 : 0.65) + response * 0.22;
+                            desiredZ += (dz / dist) * response * fleeMultiplier;
 
-                        // Under moderate threat fish tighten aggressively toward their school goal
-                        // (defensive bait-ball). During a charge they only scatter.
-                        if (!isCharge && falloff > 0.15) {
-                            desiredX += (gx - px) * response * 0.085;
-                            desiredZ += (gz - pz) * response * 0.085;
+                            // Under moderate threat fish tighten aggressively toward their school goal
+                            // (defensive bait-ball). During a charge they only scatter.
+                            if (!isCharge && falloff > 0.15) {
+                                desiredX += (gx - px) * response * 0.085;
+                                desiredZ += (gz - pz) * response * 0.085;
+                            } else {
+                                desiredX += (gx - px) * response * 0.012;
+                                desiredZ += (gz - pz) * response * 0.012;
+                            }
+                            environmentalSpeedBoost = Math.max(
+                                environmentalSpeedBoost,
+                                isCharge ? 1 + response * 2.4 : 1 + response * 0.68,
+                            );
                         } else {
-                            desiredX += (gx - px) * response * 0.012;
-                            desiredZ += (gz - pz) * response * 0.012;
+                            desiredX += (dx / dist) * response * 0.72;
+                            desiredY += (dy / dist) * response * 0.24 + response * 0.08;
+                            desiredZ += (dz / dist) * response * 0.72;
+                            environmentalSpeedBoost = Math.max(
+                                environmentalSpeedBoost,
+                                1 + response * 0.08,
+                            );
                         }
-                        environmentalSpeedBoost = Math.max(
-                            environmentalSpeedBoost,
-                            isCharge ? 1 + response * 2.4 : 1 + response * 0.68,
-                        );
-                    } else {
-                        desiredX += (dx / dist) * response * 0.72;
-                        desiredY += (dy / dist) * response * 0.24 + response * 0.08;
-                        desiredZ += (dz / dist) * response * 0.72;
-                        environmentalSpeedBoost = Math.max(
-                            environmentalSpeedBoost,
-                            1 + response * 0.08,
-                        );
-                    }
-                });
+                    });
+                }
 
                 const floorY = this.getSeabedHeight(px, pz) + 5.5;
                 if (py < floorY) desiredY += (floorY - py) * 0.22;
@@ -1466,6 +1618,12 @@ export class OceanFishSystem {
                     0.86,
                     currentBoost * environmentalSpeedBoost,
                 );
+            }
+
+            // Reset touched cells for the next school's reuse of the grid.
+            // O(touched) rather than O(total cells) keeps the reset cheap.
+            for (let t = 0; t < touchedCount; t++) {
+                gridHead[touchedCells[t]] = 0;
             }
         }
     }

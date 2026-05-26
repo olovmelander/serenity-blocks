@@ -230,20 +230,27 @@ export function createAstralRibbonNodeMaterial(params = {}) {
             .add(noise.sub(0.5).mul(0.08)),
         sin(travelPhase.mul(1.7).add(vUv.y.mul(TAU * 2.0)).sub(uPulseOffset.mul(0.8))).mul(comboWarp.mul(0.78)),
     );
+    
+    // Ribbon pulsation Wave (width swell)
+    const pulseWave = sin(vUv.x.mul(TAU * 8.0).sub(uTime.mul(uFlowSpeed).mul(3.5)).add(uPulseOffset))
+        .mul(0.06)
+        .mul(float(1.0).add(uLinePulse.mul(1.5).add(uComboEnergy.mul(0.8))));
     const shellBreath = normalLocal.mul(
-        sin(travelPhase.mul(4.6).sub(uPulseOffset.mul(0.6))).mul(0.05).mul(float(1.0).add(uEnergy.mul(0.14))),
+        pulseWave.add(sin(travelPhase.mul(3.2)).mul(0.02).mul(float(1.0).add(uEnergy.mul(0.2))))
     );
+    
+    // High-end glowing neon emissive
     const emissiveColor = wovenColor.mul(
-        float(0.34)
-            .add(centerMask.mul(0.18))
-            .add(pulsePacket.mul(0.22))
-            .add(uComboEnergy.mul(0.12))
-            .add(fresnel.mul(0.08)),
+        float(1.15)
+            .add(centerMask.mul(0.4))
+            .add(pulsePacket.mul(1.2))
+            .add(uComboEnergy.mul(0.85))
+            .add(fresnel.mul(0.3))
     );
     const alpha = centerMask
-        .mul(float(0.22).add(braidMask.mul(0.12)))
-        .mul(float(0.62).add(uEnergy.mul(0.1)))
-        .mul(float(0.72).add(fresnel.mul(0.08)));
+        .mul(float(0.26).add(braidMask.mul(0.18)))
+        .mul(float(0.88).add(uEnergy.mul(0.12)))
+        .mul(float(0.88).add(fresnel.mul(0.12)));
 
     const material = new MeshBasicNodeMaterial({
         transparent: true,
@@ -339,26 +346,32 @@ export function createAstralNebulaNodeMaterial(params = {}) {
     const uDrift = uniform(Number.isFinite(params.drift) ? params.drift : 0.16);
     const uTintA = uniform(params.tintA || new THREE.Color(0x2d8cff));
     const uTintB = uniform(params.tintB || new THREE.Color(0xdc64ff));
+    const uTintC = uniform(params.tintC || new THREE.Color(0xffdb72));
 
     const vUv = uv();
     const texNode = texture(tex);
     const warped = vec2(
-        vUv.x.add(sin(vUv.y.mul(8.0).add(uTime.mul(uDrift))).mul(0.045)),
-        vUv.y.add(cos(vUv.x.mul(6.0).sub(uTime.mul(uDrift).mul(0.7))).mul(0.04)),
+        vUv.x.add(sin(vUv.y.mul(6.0).add(uTime.mul(uDrift))).mul(0.06)).add(cos(vUv.x.mul(3.5).sub(uTime.mul(uDrift.mul(0.4)))).mul(0.04)),
+        vUv.y.add(cos(vUv.x.mul(5.0).sub(uTime.mul(uDrift.mul(0.8)))).mul(0.055)).add(sin(vUv.y.mul(4.0).add(uTime.mul(uDrift.mul(0.5)))).mul(0.035)),
     );
     const detail = tslFbm(warped.mul(vec2(5.5, 3.2)).add(vec2(uTime.mul(0.06), uTime.mul(-0.04))));
     const edgeFade = smoothstep(0.03, 0.28, vUv.x)
         .mul(smoothstep(0.97, 0.72, vUv.x))
         .mul(smoothstep(0.02, 0.28, vUv.y))
         .mul(smoothstep(0.98, 0.72, vUv.y));
-    const tintMix = clamp(detail.mul(0.68).add(texNode.r.mul(0.24)), 0.0, 1.0);
-    const colorNode = mix(uTintA, uTintB, tintMix)
-        .mul(texNode.rgb.add(0.12))
-        .mul(float(0.26).add(uPulse.mul(0.08)));
+    const tintMix1 = clamp(detail.mul(0.72).add(texNode.r.mul(0.28)), 0.0, 1.0);
+    const tintMix2 = clamp(sin(warped.x.mul(3.0).add(detail.mul(2.0))).mul(0.5).add(0.5).add(uPulse.mul(0.12)), 0.0, 1.0);
+    
+    let colorNode = mix(uTintA, uTintB, tintMix1);
+    colorNode = mix(colorNode, uTintC, tintMix2.mul(0.42))
+        .mul(texNode.rgb.add(0.18))
+        .mul(float(0.85).add(uPulse.mul(0.35)));
+
     const alphaNode = texNode.a
-        .mul(float(0.55).add(detail.mul(0.55)))
+        .mul(float(0.4).add(detail.mul(0.7)))
         .mul(edgeFade)
-        .mul(uOpacity);
+        .mul(uOpacity)
+        .mul(float(1.0).add(uPulse.mul(0.25)));
 
     const material = new MeshBasicNodeMaterial({
         transparent: true,
@@ -380,6 +393,7 @@ export function createAstralNebulaNodeMaterial(params = {}) {
             uDrift,
             uTintA,
             uTintB,
+            uTintC,
         },
         meta: { emitsBloom: true },
     };
@@ -609,6 +623,89 @@ export function createAstralShockwaveNodeMaterial(params = {}) {
         uniforms: {
             uProgress,
             uOpacity,
+            uColorA,
+            uColorB,
+            uColorC: uniform(new THREE.Color(0xffdb72)),
+        },
+        meta: { emitsBloom: true },
+    };
+}
+
+export function createAstralLightShaftNodeMaterial(params = {}) {
+    const uTime = uniform(0);
+    const uOpacity = uniform(Number.isFinite(params.opacity) ? params.opacity : 0.28);
+    const uPulse = uniform(0);
+    const uColorA = uniform(params.colorA || new THREE.Color(0x73f8ff));
+    const uColorB = uniform(params.colorB || new THREE.Color(0xd95bff));
+    const uScrollSpeed = uniform(params.scrollSpeed || 0.45);
+
+    const vUv = uv();
+    
+    const vertFade = smoothstep(float(0.0), float(0.22), vUv.y).mul(smoothstep(float(1.0), float(0.42), vUv.y));
+    const radFade = smoothstep(float(0.5), float(0.0), abs(vUv.x.sub(0.5)));
+    
+    const noiseCoords = vec2(vUv.x.mul(2.2), vUv.y.mul(0.45).sub(uTime.mul(uScrollSpeed)));
+    const shaftNoise = tslFbm(noiseCoords);
+    
+    const pulseFactor = float(1.0).add(uPulse.mul(0.4));
+    const finalColor = mix(uColorA, uColorB, shaftNoise.mul(0.75)).mul(pulseFactor);
+    const alpha = vertFade.mul(radFade).mul(shaftNoise.mul(0.68).add(0.32)).mul(uOpacity).mul(pulseFactor);
+
+    const material = new MeshBasicNodeMaterial({
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+    });
+
+    material.colorNode = finalColor;
+    material.opacityNode = clamp(alpha, 0.0, 0.9);
+    material.emissiveNode = finalColor.mul(alpha.mul(0.22));
+
+    return {
+        material,
+        uniforms: {
+            uTime,
+            uOpacity,
+            uPulse,
+            uColorA,
+            uColorB,
+        },
+        meta: { emitsBloom: true },
+    };
+}
+
+export function createAstralConstellationNodeMaterial(params = {}) {
+    const uTime = uniform(0);
+    const uOpacity = uniform(Number.isFinite(params.opacity) ? params.opacity : 0.45);
+    const uScintillation = uniform(0);
+    const uColorA = uniform(params.colorA || new THREE.Color(0x73f8ff));
+    const uColorB = uniform(params.colorB || new THREE.Color(0xd95bff));
+
+    const vUv = uv();
+    
+    const twinkle = sin(uTime.mul(2.8).add(vUv.x.mul(12.0))).mul(0.22).add(0.78);
+    const pulseFactor = twinkle.mul(float(1.0).add(uScintillation.mul(0.5)));
+    
+    const finalColor = mix(uColorA, uColorB, vUv.x).mul(pulseFactor);
+    const alpha = uOpacity.mul(pulseFactor).mul(smoothstep(float(0.0), float(0.12), vUv.x).mul(smoothstep(float(1.0), float(0.88), vUv.x)));
+
+    const material = new MeshBasicNodeMaterial({
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+    });
+
+    material.colorNode = finalColor;
+    material.opacityNode = clamp(alpha, 0.0, 0.85);
+    material.emissiveNode = finalColor.mul(alpha.mul(0.15));
+
+    return {
+        material,
+        uniforms: {
+            uTime,
+            uOpacity,
+            uScintillation,
             uColorA,
             uColorB,
         },

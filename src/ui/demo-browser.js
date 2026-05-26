@@ -1,4 +1,5 @@
 import { eventBus, EVENTS } from '../events/event-bus.js';
+import { introAnimation } from './intro-animation.js';
 
 // Helper function to format time
 function formatTime(ms) {
@@ -137,6 +138,10 @@ export class DemoBrowser {
             // Close all other modals (e.g. Start Modal)
             if (this.gameModeManager.deps && this.gameModeManager.deps.modalManager) {
                 this.gameModeManager.deps.modalManager.hideAll();
+            }
+
+            if (introAnimation) {
+                introAnimation.dismiss();
             }
 
             // Switch to single player mode and start playback

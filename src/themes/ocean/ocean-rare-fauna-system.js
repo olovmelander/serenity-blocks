@@ -1,6 +1,6 @@
 /* eslint-disable import/no-extraneous-dependencies, import/no-unresolved, no-await-in-loop */
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { loadGltfCached } from './ocean-asset-loader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import {
@@ -478,7 +478,6 @@ export class OceanRareFaunaSystem {
         this.rng = rng;
         this.settings = normalizeSettings(preset?.rareFauna);
 
-        this.loader = new GLTFLoader();
         this.assets = new Map();
         this.assetStatus = Object.fromEntries(RARE_FAUNA_KINDS.map((kind) => [kind, 'idle']));
         this.assetRuntime = Object.fromEntries(RARE_FAUNA_KINDS.map((kind) => [kind, null]));
@@ -521,12 +520,8 @@ export class OceanRareFaunaSystem {
     ensureAssetsLoaded() {
         if (this.loadPromise) return this.loadPromise;
         this.loadPromise = (async () => {
-            const results = [];
-            for (const kind of RARE_FAUNA_KINDS) {
-                const res = await this.loadAsset(kind);
-                results.push(res);
-                await new Promise((resolve) => { setTimeout(resolve, 30); });
-            }
+            const promises = RARE_FAUNA_KINDS.map((kind) => this.loadAsset(kind));
+            const results = await Promise.all(promises);
             return results;
         })();
         return this.loadPromise;
@@ -553,7 +548,7 @@ export class OceanRareFaunaSystem {
 
         const asset = candidates[index];
         try {
-            const gltf = await this.loader.loadAsync(asset.url);
+            const gltf = await loadGltfCached(asset.url);
             this.prepareAsset(gltf.scene);
             const record = { gltf, asset, fallbackUsed: asset.fallback === true };
             this.assets.set(kind, record);
