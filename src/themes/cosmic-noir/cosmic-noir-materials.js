@@ -17,6 +17,7 @@ import {
 } from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     attribute,
     cameraPosition,
@@ -135,29 +136,42 @@ export function createPlanetNodeMaterial(params = {}) {
     const NdotV = dot(nrm, viewDir);
     const fresnel = float(1.0).sub(abs(NdotV)); // 0 at center, 1 at edge
 
-    // Singularity Core Mask - Pure black until the very edge
-    const coreMask = smoothstep(float(0.85), float(0.98), fresnel);
+    // The photon ring only exists at the rim. coreMask = smoothstep(0.85, 0.98, fresnel)
+    // is *exactly* 0 for fresnel <= 0.85, and the whole result is multiplied by coreMask,
+    // so the black interior contributes nothing. Gate the expensive FBM/noise behind
+    // fresnel > 0.8 (a margin below the 0.85 cutoff) so interior fragments skip it
+    // entirely. Output is pixel-identical to the ungated path.
+    const finalColor = Fn(() => {
+        const result = vec3(0.0, 0.0, 0.0).toVar();
+        If(fresnel.greaterThan(float(0.8)), () => {
+            // Singularity Core Mask - Pure black until the very edge
+            const coreMask = smoothstep(float(0.85), float(0.98), fresnel);
 
-    // Intense Photon Ring
-    const photonRing = pow(fresnel, 5.0).mul(1.5);
-    const sharpRing = pow(fresnel, 20.0).mul(3.0);
+            // Intense Photon Ring
+            const photonRing = pow(fresnel, 5.0).mul(1.5);
+            const sharpRing = pow(fresnel, 20.0).mul(3.0);
 
-    // Plasma noise in the ring
-    const ringNoise = tslFbm(positionLocal.mul(8.0).add(vec3(0.0, uTime.mul(0.5), uTime.mul(0.25))), params.fbmOctaves ?? 4);
+            // Plasma noise in the ring
+            const ringNoise = tslFbm(positionLocal.mul(8.0).add(vec3(0.0, uTime.mul(0.5), uTime.mul(0.25))), params.fbmOctaves ?? 4);
 
-    // Fracture effect on combos
-    const fractureNoise = tslNoise(positionLocal.mul(15.0).sub(vec3(uTime.mul(2.0), 0.0, 0.0)));
-    const fracture = fractureNoise.mul(0.5).add(0.5).mul(uPulseIntensity);
+            // Fracture effect on combos
+            const fractureNoise = tslNoise(positionLocal.mul(15.0).sub(vec3(uTime.mul(2.0), 0.0, 0.0)));
+            const fracture = fractureNoise.mul(0.5).add(0.5).mul(uPulseIntensity);
 
-    const ringColorBase = vec3(0.8, 0.85, 1.0);
-    const hotCore = vec3(1.0, 1.0, 1.0);
+            const ringColorBase = vec3(0.8, 0.85, 1.0);
+            const hotCore = vec3(1.0, 1.0, 1.0);
 
-    const ringColor = mix(ringColorBase, hotCore, ringNoise.mul(0.5).add(0.5))
-        .add(ringColorBase.mul(fracture).mul(2.0));
+            const ringColor = mix(ringColorBase, hotCore, ringNoise.mul(0.5).add(0.5))
+                .add(ringColorBase.mul(fracture).mul(2.0));
 
-    const finalColor = ringColor.mul(photonRing.add(sharpRing)).mul(coreMask)
-        .mul(float(1.0).add(uPulseIntensity.mul(1.5)))
-        .mul(uGlowIntensity);
+            result.assign(
+                ringColor.mul(photonRing.add(sharpRing)).mul(coreMask)
+                    .mul(float(1.0).add(uPulseIntensity.mul(1.5)))
+                    .mul(uGlowIntensity),
+            );
+        });
+        return result;
+    })();
 
     material.colorNode = finalColor;
     material.roughnessNode = float(1.0);

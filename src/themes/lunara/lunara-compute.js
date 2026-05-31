@@ -19,7 +19,9 @@ import {
     sin,
     storage,
     uniform,
+    vec3,
 } from 'three/tsl';
+import { curl3 } from './lunara-noise.js';
 
 export class LunaraMoteCompute {
     constructor(particleCount, bounds = {}, randomFn = Math.random) {
@@ -99,9 +101,14 @@ export class LunaraMoteCompute {
             const swayX = sin(time.mul(0.6).add(rand.x.mul(6.283185))).mul(0.4).mul(drift);
             const swayZ = cos(time.mul(0.45).add(rand.x.mul(5.1))).mul(0.3).mul(drift);
 
-            pos.x.addAssign(vel.x.add(swayX).mul(delta));
-            pos.y.addAssign(vel.y.mul(delta));
-            pos.z.addAssign(vel.z.add(swayZ).mul(delta));
+            // Curl-noise advection for organic, swirling drift (not pure sway).
+            const curl = curl3(
+                vec3(pos.x, pos.y, pos.z).mul(0.02).add(vec3(0.0, time.mul(0.05), 0.0)),
+            ).mul(drift);
+
+            pos.x.addAssign(vel.x.add(swayX).add(curl.x.mul(0.35)).mul(delta));
+            pos.y.addAssign(vel.y.add(curl.y.mul(0.12)).mul(delta));
+            pos.z.addAssign(vel.z.add(swayZ).add(curl.z.mul(0.35)).mul(delta));
 
             const oob = pos.y.greaterThan(halfH)
                 .or(abs(pos.x).greaterThan(halfW))

@@ -20,6 +20,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
@@ -542,7 +543,7 @@ export default class PyrestormTheme extends BaseTheme {
         points.push(new THREE.Vector2(baseRadius * 0.75, volcanoHeight * 0.25));
         points.push(new THREE.Vector2(baseRadius, 0));
 
-        const volcanoGeometry = new THREE.LatheGeometry(points, segments);
+        let volcanoGeometry = new THREE.LatheGeometry(points, segments);
 
         // Add noise displacement for rocky surface
         const volcanoPositions = volcanoGeometry.attributes.position.array;
@@ -560,6 +561,17 @@ export default class PyrestormTheme extends BaseTheme {
                 volcanoPositions[i + 1] += noise + fineNoise;
             }
         }
+
+        // Weld the LatheGeometry seam (+Z) before recomputing normals. The lathe
+        // leaves the start/end columns as duplicated, unwelded vertices with
+        // mirrored normals; the MOUNTAIN vertex shader extrudes each vertex along
+        // its own normal (pos += normal * noise * 30.0), which pulls those
+        // coincident seam vertices apart and opens a visible crack straight at the
+        // camera. Dropping the unused UVs (and stale normals) lets mergeVertices
+        // fuse the seam into a single vertex so the extrusion stays watertight.
+        volcanoGeometry.deleteAttribute('uv');
+        volcanoGeometry.deleteAttribute('normal');
+        volcanoGeometry = mergeVertices(volcanoGeometry);
         volcanoGeometry.computeVertexNormals();
 
         const volcanoMaterial = new THREE.ShaderMaterial({

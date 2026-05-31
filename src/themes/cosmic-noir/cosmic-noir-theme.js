@@ -401,6 +401,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.voidSparks = []; // Fallback pool, or single compute-backed points system
         this.voidSparkIndex = 0; // Cycle index for pooled fallback
         this.sparkCompute = null;
+        this.computeSparkPoints = null; // Cached compute-backed Points for idle-gating
         this.unifiedSparkData = null;
         this.sharedNoiseTexture = null;
 
@@ -2692,7 +2693,13 @@ export default class CosmicNoirTheme extends BaseTheme {
                     ...(sparks.userData || {}),
                     uniforms,
                     computeBacked: true,
+                    sparkCount,
                 };
+                // Start hidden with an empty draw range; the animate loop reveals the
+                // points only while a burst is alive (idle-gate, see animate()).
+                sparks.visible = false;
+                geometry.setDrawRange(0, 0);
+                this.computeSparkPoints = sparks;
                 this.planetGroup.add(sparks);
                 this.voidSparks.push(sparks);
 
@@ -3206,10 +3213,27 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.isWebGPU
             && this.flags.useCompute
             && this.renderer?.compute
+            && this.sparkCompute?.computeNode
         ) {
-            if (this.sparkCompute?.computeNode) {
+            // Idle-gate: only dispatch the spark compute and draw the points while a
+            // burst's particles are still alive. No spark is visible when idle, so
+            // skipping the dispatch + draw is pixel-identical and reclaims the full
+            // particle count in compute + vertex work every idle frame.
+            const sparksActive = this.time <= this.sparkCompute.lastActiveUntil;
+            const sparkPoints = this.computeSparkPoints;
+            if (sparksActive) {
                 this.sparkCompute.update(delta, this.time);
                 this.renderer.compute(this.sparkCompute.computeNode);
+                if (sparkPoints && !sparkPoints.visible) {
+                    sparkPoints.visible = true;
+                    sparkPoints.geometry.setDrawRange(
+                        0,
+                        sparkPoints.userData?.sparkCount ?? this.sparkCompute.count,
+                    );
+                }
+            } else if (sparkPoints && sparkPoints.visible) {
+                sparkPoints.visible = false;
+                sparkPoints.geometry.setDrawRange(0, 0);
             }
         }
 
@@ -3323,7 +3347,11 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.camera.lookAt(lookOffsetX, lookOffsetY, 0);
         }
 
-        if (this.comboLensFlare && this.camera) {
+        if (
+            this.comboLensFlare
+            && this.camera
+            && (this.comboLensFlareIntensity > 0.001 || this.comboLensFlare.visible)
+        ) {
             this.camera.getWorldDirection(this.tempCameraForward);
             this.comboLensFlare.position
                 .copy(this.camera.position)
@@ -3344,7 +3372,11 @@ export default class CosmicNoirTheme extends BaseTheme {
             this.comboLensFlare.scale.set(widthScale, heightScale, 1.0);
         }
 
-        if (this.comboFlash && this.camera) {
+        if (
+            this.comboFlash
+            && this.camera
+            && (this.comboFlashIntensity > 0.001 || this.comboFlash.visible)
+        ) {
             const flashPulse = 1.0 + Math.sin(this.time * 24.0) * 0.06;
             const flashOpacity = this.comboFlashIntensity * 0.75 * flashPulse;
             this.comboFlash.visible = flashOpacity > 0.001;
@@ -4239,6 +4271,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.voidSparks = [];
         this.voidSparkIndex = 0;
         this.sparkCompute = null;
+        this.computeSparkPoints = null;
         this.sharedNoiseTexture = null;
         this.gasSwirl = null;
         this.gasSwirlData = null;

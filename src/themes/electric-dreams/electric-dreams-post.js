@@ -15,6 +15,7 @@ import {
     mrt,
     output,
     pass,
+    pow,
     viewportUV,
     uniform,
     clamp,
@@ -54,6 +55,7 @@ export const ELECTRIC_DREAMS_POST_PROFILES = Object.freeze({
         chromaticStrength: 0,
         godRayStrength: 0,
         godRaySamples: 0,
+        glassRimStrength: 0,
     }),
     Low: Object.freeze({
         enabled: false,
@@ -72,6 +74,7 @@ export const ELECTRIC_DREAMS_POST_PROFILES = Object.freeze({
         chromaticStrength: 0,
         godRayStrength: 0,
         godRaySamples: 0,
+        glassRimStrength: 0,
     }),
     Medium: Object.freeze({
         enabled: true,
@@ -90,6 +93,7 @@ export const ELECTRIC_DREAMS_POST_PROFILES = Object.freeze({
         chromaticStrength: 0.0018,
         godRayStrength: 0.028,
         godRaySamples: 6,
+        glassRimStrength: 0,
     }),
     High: Object.freeze({
         enabled: true,
@@ -108,6 +112,7 @@ export const ELECTRIC_DREAMS_POST_PROFILES = Object.freeze({
         chromaticStrength: 0.0028,
         godRayStrength: 0.05,
         godRaySamples: 10,
+        glassRimStrength: 0,
     }),
     Ultra: Object.freeze({
         enabled: true,
@@ -126,6 +131,9 @@ export const ELECTRIC_DREAMS_POST_PROFILES = Object.freeze({
         chromaticStrength: 0.0042,
         godRayStrength: 0.08,
         godRaySamples: 12,
+        // Glass rim active on Ultra+ — replaces the world-space sphere overlay
+        // (which is now disabled at this tier; post pass gives the same look).
+        glassRimStrength: 0.65,
     }),
     Extreme: Object.freeze({
         enabled: true,
@@ -144,6 +152,7 @@ export const ELECTRIC_DREAMS_POST_PROFILES = Object.freeze({
         chromaticStrength: 0.0055,
         godRayStrength: 0.11,
         godRaySamples: 14,
+        glassRimStrength: 0.85,
     }),
 });
 
@@ -327,6 +336,9 @@ export class ElectricDreamsPost {
         this.uShockwaveCenter = uniform(new THREE.Vector2(0.5, 0.5));
         this.uTime = uniform(0);
         this.uLensCenter = uniform(new THREE.Vector2(0.5, 0.5));
+        // Glass rim strength — replaces the world-space glass sphere overlay.
+        // 0 = disabled (post pass adds nothing). Theme drives this from preset.
+        this.uGlassRimStrength = uniform(params.glassRimStrength ?? 0);
 
         const uvNode = viewportUV;
         const shockDelta = uvNode.sub(this.uShockwaveCenter);
@@ -359,17 +371,19 @@ export class ElectricDreamsPost {
         const bloomColor = chroma.add(this.bloomNode);
 
         // God rays (screen-space radial blur approximation)
-        // Uses bloom source luminance with radial sampling from center
+        // - 3 taps instead of 4 (the 0.5 tap was marginal at the falloff edge)
+        // - Luma gate on the closest tap so dark regions skip the additive cost
+        //   (samples still execute on GPU, but contribution math collapses to 0)
         const godRayDir = centered.mul(-0.15);
-        // Approximate god rays by sampling bloom along radial direction
-        // This is a simplified screen-space light shaft effect
         const gr1 = bloomSource.sample(distortedUv.add(godRayDir.mul(0.1)));
-        const gr2 = bloomSource.sample(distortedUv.add(godRayDir.mul(0.2)));
-        const gr3 = bloomSource.sample(distortedUv.add(godRayDir.mul(0.35)));
-        const gr4 = bloomSource.sample(distortedUv.add(godRayDir.mul(0.5)));
-        const godRayAccum = gr1.add(gr2).add(gr3).add(gr4).mul(0.25);
+        const gr2 = bloomSource.sample(distortedUv.add(godRayDir.mul(0.22)));
+        const gr3 = bloomSource.sample(distortedUv.add(godRayDir.mul(0.4)));
+        const godRayAccum = gr1.add(gr2).add(gr3).mul(float(1.0 / 3.0));
+        // Emissive-luma gate: only bright regions emit visible rays
+        const gateLuma = dot(gr1.rgb, vec3(0.2126, 0.7152, 0.0722));
+        const lumaGate = smoothstep(float(0.05), float(0.35), gateLuma);
         const godRayMask = smoothstep(float(0.8), float(0.0), dist);
-        const godRays = godRayAccum.rgb.mul(this.uGodRayStrength).mul(godRayMask);
+        const godRays = godRayAccum.rgb.mul(this.uGodRayStrength).mul(godRayMask).mul(lumaGate);
 
         const combined = bloomColor.rgb.add(godRays);
 
@@ -381,8 +395,18 @@ export class ElectricDreamsPost {
             vignette,
         );
 
+        // Glass-rim overlay (replaces the world-space glass sphere; same math, no draw call).
+        // Original sphere shader was: pow(fresnel, 4.2) * blueTint * (sin(time*0.3) shimmer).
+        // Screen-space equivalent: pow(1-vignette, 3) drives intensity at edges, blueTint is
+        // constant, shimmer uses uTime. Zero cost on top of existing vignette computation.
+        const edgeWeight = pow(float(1.0).sub(vignette), float(3.0));
+        const glassShimmer = sin(this.uTime.mul(0.3)).mul(0.015).add(0.985);
+        const glassTint = vec3(0.5, 0.62, 0.9);
+        const glassRim = glassTint.mul(edgeWeight).mul(glassShimmer).mul(this.uGlassRimStrength);
+        const glassedColor = vignetteColor.add(glassRim);
+
         // ACES filmic tone mapping
-        const exposed = vignetteColor.mul(this.uExposure);
+        const exposed = glassedColor.mul(this.uExposure);
         const acesA = float(2.51);
         const acesB = float(0.03);
         const acesC = float(2.43);
@@ -541,6 +565,9 @@ export class ElectricDreamsPost {
         }
         if (params.godRayStrength !== undefined && this.uGodRayStrength) {
             this.uGodRayStrength.value = params.godRayStrength;
+        }
+        if (params.glassRimStrength !== undefined && this.uGlassRimStrength) {
+            this.uGlassRimStrength.value = params.glassRimStrength;
         }
         if (params.time !== undefined) {
             if (this.uTime) this.uTime.value = params.time;

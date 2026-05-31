@@ -15,6 +15,7 @@ import {
     mix,
     length,
     sin,
+    cos,
     If,
     fract,
 } from 'three/tsl';
@@ -473,5 +474,168 @@ export class NeonDuskStarCompute {
         this.computeNode = null;
         this.stateBuffer = null;
         this.stateData = null;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Field Compute (ambient drift layers: dust motes, rising embers)
+// ---------------------------------------------------------------------------
+//
+// A general-purpose drifting-particle field shared by the atmospheric layers.
+// Each particle is advected by cheap curl-style turbulence, optional buoyancy
+// (rising), and optional attraction toward the sun, then toroidally wrapped
+// inside a bounding box so the field never depletes. Buffer layout matches the
+// particle materials (vec4 * 3 per particle):
+//   [0]: position.xyz, life
+//   [1]: velocity.xyz, (reserved)
+//   [2]: size, type, (reserved), (reserved)
+
+export class NeonDuskFieldCompute {
+    constructor(count, params = {}) {
+        this.count = count;
+
+        this.stateData = new Float32Array(count * 12);
+        this.stateBuffer = new THREE.StorageBufferAttribute(this.stateData, 4);
+
+        this.colorData = new Float32Array(count * 4);
+        this.colorBuffer = new THREE.StorageBufferAttribute(this.colorData, 4);
+
+        this.uDelta = uniform(0);
+        this.uTime = uniform(0);
+        this.uSun = uniform(new THREE.Vector3());
+        this.uBuoyancy = uniform(params.buoyancy ?? 0.0);
+        this.uSunPull = uniform(params.sunPull ?? 0.0);
+        this.uDrag = uniform(params.drag ?? 0.985);
+        this.uCurlAmp = uniform(params.curlAmp ?? 1.0);
+        this.uCurlScale = uniform(params.curlScale ?? 0.012);
+        this.uBounds = uniform(
+            new THREE.Vector3(params.boundX ?? 400.0, params.maxY ?? 150.0, params.boundZ ?? 320.0),
+        );
+        this.uMinY = uniform(params.minY ?? 0.0);
+        this.uCenterZ = uniform(params.centerZ ?? -250.0);
+
+        this.computeNode = null;
+    }
+
+    reset() {
+        this.stateData.fill(0);
+        this.colorData.fill(0);
+        this.stateBuffer.needsUpdate = true;
+        this.colorBuffer.needsUpdate = true;
+    }
+
+    createComputeNode() {
+        const state = storage(this.stateBuffer, 'vec4', this.count * 3);
+        const delta = this.uDelta;
+        const time = this.uTime;
+        const sun = this.uSun;
+        const buoyancy = this.uBuoyancy;
+        const sunPull = this.uSunPull;
+        const drag = this.uDrag;
+        const curlAmp = this.uCurlAmp;
+        const curlScale = this.uCurlScale;
+        const bounds = this.uBounds;
+        const minY = this.uMinY;
+        const centerZ = this.uCenterZ;
+
+        const computeField = Fn(() => {
+            const index = instanceIndex;
+            const base = index.mul(3);
+            const pos = state.element(base).toVar();
+            const vel = state.element(base.add(1)).toVar();
+
+            // Cheap divergence-light curl turbulence
+            const cx = sin(pos.y.mul(curlScale).add(time)).sub(cos(pos.z.mul(curlScale).sub(time)));
+            const cy = sin(pos.z.mul(curlScale).add(time.mul(0.7)));
+            const cz = cos(pos.x.mul(curlScale).add(time)).sub(sin(pos.y.mul(curlScale).sub(time)));
+
+            vel.x.addAssign(cx.mul(curlAmp).mul(delta));
+            vel.y.addAssign(cy.mul(curlAmp).mul(delta).add(buoyancy.mul(delta)));
+            vel.z.addAssign(cz.mul(curlAmp).mul(delta));
+
+            // Gentle attraction toward the sun
+            const toSun = sun.sub(pos.xyz);
+            const dist = max(length(toSun), float(1.0));
+            vel.x.addAssign(toSun.x.div(dist).mul(sunPull).mul(delta));
+            vel.y.addAssign(toSun.y.div(dist).mul(sunPull).mul(delta));
+            vel.z.addAssign(toSun.z.div(dist).mul(sunPull).mul(delta));
+
+            vel.x.assign(vel.x.mul(drag));
+            vel.y.assign(vel.y.mul(drag));
+            vel.z.assign(vel.z.mul(drag));
+
+            pos.x.addAssign(vel.x.mul(delta));
+            pos.y.addAssign(vel.y.mul(delta));
+            pos.z.addAssign(vel.z.mul(delta));
+
+            // Toroidal box wrap so the field never depletes
+            If(pos.y.greaterThan(bounds.y), () => { pos.y.assign(minY); });
+            If(pos.y.lessThan(minY), () => { pos.y.assign(bounds.y); });
+            If(pos.x.greaterThan(bounds.x), () => { pos.x.assign(bounds.x.negate()); });
+            If(pos.x.lessThan(bounds.x.negate()), () => { pos.x.assign(bounds.x); });
+            const zHi = centerZ.add(bounds.z);
+            const zLo = centerZ.sub(bounds.z);
+            If(pos.z.greaterThan(zHi), () => { pos.z.assign(zLo); });
+            If(pos.z.lessThan(zLo), () => { pos.z.assign(zHi); });
+
+            // Soft per-particle twinkle in [0.3, 1.0]
+            const phase = float(index).mul(7.0);
+            pos.w.assign(sin(time.mul(1.5).add(phase)).mul(0.35).add(0.65));
+
+            state.element(base).assign(pos);
+            state.element(base.add(1)).assign(vel);
+        });
+
+        this.computeNode = computeField().compute(this.count);
+        return this.computeNode;
+    }
+
+    update(delta, params = {}) {
+        this.uDelta.value = delta;
+        if (params.time !== undefined) this.uTime.value = params.time;
+        if (params.sun !== undefined) this.uSun.value.copy(params.sun);
+        if (params.buoyancy !== undefined) this.uBuoyancy.value = params.buoyancy;
+        if (params.sunPull !== undefined) this.uSunPull.value = params.sunPull;
+        if (params.drag !== undefined) this.uDrag.value = params.drag;
+        if (params.curlAmp !== undefined) this.uCurlAmp.value = params.curlAmp;
+    }
+
+    spawn(index, p) {
+        if (index < 0 || index >= this.count) return;
+        const base = index * 12;
+        this.stateData[base] = p.x;
+        this.stateData[base + 1] = p.y;
+        this.stateData[base + 2] = p.z;
+        this.stateData[base + 3] = p.life ?? 1.0;
+        this.stateData[base + 4] = p.vx ?? 0;
+        this.stateData[base + 5] = p.vy ?? 0;
+        this.stateData[base + 6] = p.vz ?? 0;
+        this.stateData[base + 8] = p.size ?? 1.0;
+        this.stateData[base + 9] = p.type ?? 0.0;
+
+        const cBase = index * 4;
+        this.colorData[cBase] = p.color.r;
+        this.colorData[cBase + 1] = p.color.g;
+        this.colorData[cBase + 2] = p.color.b;
+        this.colorData[cBase + 3] = 1.0;
+
+        this.stateBuffer.needsUpdate = true;
+        this.colorBuffer.needsUpdate = true;
+    }
+
+    getStateBuffer() {
+        return this.stateBuffer;
+    }
+
+    getColorBuffer() {
+        return this.colorBuffer;
+    }
+
+    dispose() {
+        this.computeNode = null;
+        this.stateBuffer = null;
+        this.colorBuffer = null;
+        this.stateData = null;
+        this.colorData = null;
     }
 }

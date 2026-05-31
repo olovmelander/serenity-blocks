@@ -904,7 +904,7 @@ export function createCrashMeteorTrailNodeMaterial(params = {}) {
     const plasmaTint = vec3(1.0, 0.78, 0.58).mul(headHalo.mul(0.22));
     material.colorNode = col.add(plasmaTint);
     material.opacityNode = alpha;
-    material.emissiveNode = col.mul(alpha.mul(0.1)).add(plasmaTint.mul(alpha.mul(0.12))); // Reduced from 0.4
+    material.emissiveNode = col.mul(alpha.mul(0.3)).add(plasmaTint.mul(alpha.mul(0.22)));
 
     return {
         material,
@@ -932,7 +932,7 @@ export function createCrashMeteorHeadNodeMaterial(params = {}) {
     const lifeAlpha = fadeIn.mul(fadeOut);
     const intensity = float(1.0).add(uProgress.mul(0.5));
 
-    const sizeNode = float(20.0)
+    const sizeNode = float(75.0)
         .mul(uPixelRatio)
         .mul(intensity)
         .mul(float(1.0).add(uAtmosphereGlow.mul(0.52)));

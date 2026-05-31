@@ -22,14 +22,22 @@ import {
     createLunaraSkyMaterialWebGL,
     createLunaraStarMaterialWebGPU,
     createLunaraStarMaterialWebGL,
+    createLunaraAuroraMaterialWebGPU,
+    createLunaraAuroraMaterialWebGL,
     createLunaraMoonMaterialWebGPU,
     createLunaraMoonMaterialWebGL,
     createLunaraMoonHaloMaterialWebGPU,
     createLunaraMoonHaloMaterialWebGL,
+    createLunaraAtmosphereMaterialWebGPU,
+    createLunaraAtmosphereMaterialWebGL,
+    createLunaraRingMaterialWebGPU,
+    createLunaraRingMaterialWebGL,
     createLunaraMountainMaterialWebGPU,
     createLunaraMountainMaterialWebGL,
     createLunaraCrystalMaterialWebGPU,
     createLunaraCrystalMaterialWebGL,
+    createLunaraCausticMaterialWebGPU,
+    createLunaraCausticMaterialWebGL,
     createLunaraFloraMaterialWebGPU,
     createLunaraFloraMaterialWebGL,
     createLunaraMoteMaterialWebGPU,
@@ -163,10 +171,18 @@ const LEGACY_DOM_CHILDREN = [
     'lunara-grain',
 ];
 
-const PRIMARY_MOON_POS = new THREE.Vector3(-46, 57, -212);
-const COMPANION_MOON_POS = new THREE.Vector3(14, 49, -200);
+const PRIMARY_MOON_POS = new THREE.Vector3(-72, 82, -360);
+const COMPANION_MOON_POS = new THREE.Vector3(23, 74, -348);
 
 const CRYSTAL_CLUSTER_CENTERS = [
+    // Near-foreground framing clusters — close to camera in the lower corners
+    // so a few hero spires bracket the composition and add depth.
+    {
+        x: -30, z: 26, spreadX: 6, spreadZ: 5, weight: 1.7, hero: true, foreground: true,
+    },
+    {
+        x: 34, z: 22, spreadX: 7, spreadZ: 5, weight: 1.6, hero: true, foreground: true,
+    },
     {
         x: -34, z: 8, spreadX: 7, spreadZ: 7, weight: 1.55, hero: true,
     },
@@ -251,6 +267,7 @@ export default class LunaraTheme extends BaseTheme {
         };
 
         this.post = null;
+        this.environmentMap = null;
         this.boundResizeHandler = this.onResize.bind(this);
         this.eventUnsubscribers = [];
 
@@ -266,6 +283,11 @@ export default class LunaraTheme extends BaseTheme {
         this.moonCompanionHalo = null;
         this.moonPrimaryHaloMaterial = null;
         this.moonCompanionHaloMaterial = null;
+        this.moonAtmospheres = [];
+        this.moonAtmosphereMaterials = [];
+        this.distantPlanet = null;
+        this.distantPlanetMaterial = null;
+        this.distantPlanetRing = null;
         this.mountainsDistant = null;
         this.mountainsMid = null;
         this.mountainsNear = null;
@@ -274,6 +296,8 @@ export default class LunaraTheme extends BaseTheme {
         this.crystalMeshes = [];
         this.crystalMaterial = null;
         this.crystalMaterials = [];
+        this.causticMeshes = [];
+        this.causticMaterials = [];
         this.rockField = null;
         this.rockMaterial = null;
         this.valleyStream = null;
@@ -287,10 +311,13 @@ export default class LunaraTheme extends BaseTheme {
         this.moteCompute = null;
         this.moteCpuFallback = null;
         this.nebulaClouds = [];
+        this.auroraMeshes = [];
+        this.auroraMaterials = [];
         this.lightShafts = [];
         this.fogCardMaterials = [];
         this.groundMesh = null;
         this.groundMaterial = null;
+        this.baseVeinStrength = undefined;
         this.shockwaves = [];
 
         this.directionalPrimary = null;
@@ -348,10 +375,13 @@ export default class LunaraTheme extends BaseTheme {
         if (!created) return;
 
         this.createScenePrimitives();
+        await this.setupEnvironment();
         this.createSky();
         this.createStarfield();
         this.createNebulaClouds();
+        this.createAurora();
         this.createMoons();
+        this.createDistantPlanet();
         this.createMountains();
         this.createGround();
         this.createValleyStream();
@@ -361,6 +391,7 @@ export default class LunaraTheme extends BaseTheme {
         this.createHorizonLights();
         this.createMotes();
         this.createFogCards();
+        this.createGroundFog();
         this.createMoonLightShafts();
         this.createLights();
         this.setupPost();
@@ -472,14 +503,85 @@ export default class LunaraTheme extends BaseTheme {
         this.camera.lookAt(this.cameraTarget);
     }
 
+    async setupEnvironment() {
+        // Procedural IBL: build a small gradient sky dome (plus bright moon
+        // emitters) and pre-filter it into an environment map so crystals, rocks
+        // and ground pick up plausible reflections. Best-effort — guarded so a
+        // backend without PMREM support simply renders without IBL.
+        //
+        // The WebGL `three` PMREMGenerator cannot render an env scene on the
+        // WebGPU renderer (its cube-render path touches WebGL-only internals →
+        // "reading 'buffers'"), so pick the generator + materials that match the
+        // active backend, and use the async path on WebGPU (pipelines compile
+        // asynchronously, so the synchronous fromScene yields a blank cube).
+        try {
+            const PMREMGeneratorClass = this.isWebGPU ? WEBGPU.PMREMGenerator : THREE.PMREMGenerator;
+            const makeBasic = (params) => (this.isWebGPU
+                ? Object.assign(new WEBGPU.MeshBasicNodeMaterial(), params)
+                : new THREE.MeshBasicMaterial(params));
+
+            const pmrem = new PMREMGeneratorClass(this.renderer);
+            const envScene = new THREE.Scene();
+
+            const domeRadius = 40;
+            const domeGeo = new THREE.SphereGeometry(domeRadius, 32, 16);
+            const colors = [];
+            const pos = domeGeo.attributes.position;
+            const top = new THREE.Color(0x05031a);
+            const midC = new THREE.Color(0x2a0e54);
+            const horiz = new THREE.Color(0x5a2a78);
+            const tmpCol = new THREE.Color();
+            for (let i = 0; i < pos.count; i++) {
+                const y = pos.getY(i) / domeRadius;
+                if (y > 0) tmpCol.copy(midC).lerp(top, Math.min(1, y));
+                else tmpCol.copy(midC).lerp(horiz, Math.min(1, -y));
+                colors.push(tmpCol.r, tmpCol.g, tmpCol.b);
+            }
+            domeGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            const domeMat = makeBasic({ side: THREE.BackSide, vertexColors: true });
+            const dome = new THREE.Mesh(domeGeo, domeMat);
+            envScene.add(dome);
+
+            const m1Geo = new THREE.SphereGeometry(3.2, 16, 12);
+            const m1Mat = makeBasic({ color: new THREE.Color(0xc79bff) });
+            const m1 = new THREE.Mesh(m1Geo, m1Mat);
+            m1.position.set(-12, 10, -20);
+            envScene.add(m1);
+            const m2Geo = new THREE.SphereGeometry(1.7, 12, 8);
+            const m2Mat = makeBasic({ color: new THREE.Color(0xff86ad) });
+            const m2 = new THREE.Mesh(m2Geo, m2Mat);
+            m2.position.set(9, 8, -18);
+            envScene.add(m2);
+
+            // renderer.init() was already awaited in initRenderer, so the sync
+            // fromScene is valid on both backends (fromSceneAsync is deprecated).
+            const rt = pmrem.fromScene(envScene, 0.04);
+            if (rt?.texture) {
+                this.environmentMap = rt.texture;
+                if (this.scene) this.scene.environment = rt.texture;
+            }
+
+            domeGeo.dispose();
+            domeMat.dispose();
+            m1Geo.dispose();
+            m1Mat.dispose();
+            m2Geo.dispose();
+            m2Mat.dispose();
+            pmrem.dispose();
+        } catch (error) {
+            console.warn('[LunaraTheme] IBL environment setup skipped:', error);
+            this.environmentMap = null;
+        }
+    }
+
     createSky() {
         const geometry = new THREE.SphereGeometry(2400, 48, 32);
         const factory = this.isWebGPU ? createLunaraSkyMaterialWebGPU : createLunaraSkyMaterialWebGL;
         const { material } = factory({
             zenith: new THREE.Color(0x030214),
             mid: new THREE.Color(0x1b0742),
-            horizon: new THREE.Color(0x542071),
-            horizonWarm: new THREE.Color(0xd24a92),
+            horizon: new THREE.Color(0x431a5e),
+            horizonWarm: new THREE.Color(0x8f3866), // deeper rose so the band doesn't blow to white
             nebula: new THREE.Color(0xb6a1ff),
             nebulaIntensity: 0.26,
         });
@@ -496,6 +598,7 @@ export default class LunaraTheme extends BaseTheme {
         const sizes = new Float32Array(count);
         const phases = new Float32Array(count);
         const twinkleSpeeds = new Float32Array(count);
+        const spikes = new Float32Array(count);
 
         const rng = makeSeededRandom(8423);
         const starColors = [
@@ -503,29 +606,52 @@ export default class LunaraTheme extends BaseTheme {
             new THREE.Color(0xc6cfff),
             new THREE.Color(0xffd2f2),
             new THREE.Color(0xc8a4ff),
+            new THREE.Color(0x9fe8ff), // cool cyan for variety
         ];
 
+        // Cheap CPU clustering field so stars form constellations/voids instead
+        // of a uniform spray (mirrors the GPU value-noise look).
+        const clusterField = (x, y, z) => {
+            const a = Math.sin(x * 1.7 + y * 2.3 + z * 1.1) * 0.5 + 0.5;
+            const b = Math.sin(x * 4.1 - y * 1.3 + z * 3.7) * 0.5 + 0.5;
+            const c = Math.sin(x * 8.6 + y * 5.2 - z * 2.4) * 0.5 + 0.5;
+            return a * 0.5 + b * 0.32 + c * 0.18;
+        };
+
         for (let i = 0; i < count; i++) {
-            // Distribute across an upper hemisphere (y > -0.05) at radius 1500.
-            let dx; let dy; let dz; let len;
+            // Distribute across an upper hemisphere with accept/reject clustering.
+            let dx; let dy; let dz; let len; let nx; let ny; let nz;
+            let tries = 0;
             do {
                 dx = rng() * 2 - 1;
                 dy = rng() * 1.6 - 0.05;
                 dz = rng() * 2 - 1;
                 len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-            } while (len < 0.1);
+                nx = dx / (len || 1);
+                ny = dy / (len || 1);
+                nz = dz / (len || 1);
+                tries += 1;
+                const density = clusterField(nx * 3.2, ny * 3.2, nz * 3.2);
+                if (rng() < 0.28 + 0.72 * density) break;
+            } while (len < 0.1 || tries < 4);
+
             const r = 1500 + rng() * 350;
-            positions[i * 3 + 0] = (dx / len) * r;
-            positions[i * 3 + 1] = (dy / len) * r;
-            positions[i * 3 + 2] = (dz / len) * r;
+            positions[i * 3 + 0] = nx * r;
+            positions[i * 3 + 1] = ny * r;
+            positions[i * 3 + 2] = nz * r;
 
             const palette = starColors[Math.floor(rng() * starColors.length)];
             const tint = 0.7 + rng() * 0.3;
-            colors[i * 3 + 0] = palette.r * tint;
-            colors[i * 3 + 1] = palette.g * tint;
-            colors[i * 3 + 2] = palette.b * tint;
 
-            sizes[i] = 0.9 + rng() * 2.4;
+            // ~3.5% hero stars: brighter, whiter, with diffraction spikes.
+            const isHero = rng() < 0.035;
+            spikes[i] = isHero ? 1.0 : 0.0;
+            const boost = isHero ? 1.35 : 1.0;
+            colors[i * 3 + 0] = Math.min(1, palette.r * tint * boost);
+            colors[i * 3 + 1] = Math.min(1, palette.g * tint * boost);
+            colors[i * 3 + 2] = Math.min(1, palette.b * tint * boost);
+
+            sizes[i] = isHero ? 2.6 + rng() * 2.4 : 0.9 + rng() * 2.0;
             phases[i] = rng() * Math.PI * 2;
             twinkleSpeeds[i] = 0.6 + rng() * 1.4;
         }
@@ -536,6 +662,7 @@ export default class LunaraTheme extends BaseTheme {
         geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
         geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
         geometry.setAttribute('aTwinkleSpeed', new THREE.BufferAttribute(twinkleSpeeds, 1));
+        geometry.setAttribute('aSpike', new THREE.BufferAttribute(spikes, 1));
 
         const factory = this.isWebGPU ? createLunaraStarMaterialWebGPU : createLunaraStarMaterialWebGL;
         const { material } = factory();
@@ -543,6 +670,67 @@ export default class LunaraTheme extends BaseTheme {
         this.starPoints = new THREE.Points(geometry, material);
         this.starPoints.frustumCulled = false;
         this.scene.add(this.starPoints);
+    }
+
+    createAurora() {
+        const level = this.activeQualityLevel;
+        if (level === 'Minimal' || level === 'Low') return;
+
+        const specs = [
+            {
+                x: -150,
+                y: 150,
+                z: -560,
+                w: 460,
+                h: 280,
+                rot: -0.16,
+                low: 0x32ffc4,
+                high: 0xb45cff,
+                opacity: 0.14,
+            },
+            {
+                x: 190,
+                y: 178,
+                z: -610,
+                w: 540,
+                h: 300,
+                rot: 0.12,
+                low: 0x46e6ff,
+                high: 0xff6ad0,
+                opacity: 0.10,
+            },
+            {
+                x: 30,
+                y: 214,
+                z: -680,
+                w: 660,
+                h: 250,
+                rot: -0.05,
+                low: 0x5effb0,
+                high: 0xc77bff,
+                opacity: 0.075,
+            },
+        ];
+        const count = level === 'Medium' ? 2 : specs.length;
+        const factory = this.isWebGPU ? createLunaraAuroraMaterialWebGPU : createLunaraAuroraMaterialWebGL;
+
+        for (let i = 0; i < count; i++) {
+            const spec = specs[i];
+            const geo = new THREE.PlaneGeometry(spec.w, spec.h, 1, 1);
+            const { material } = factory({
+                colorLow: new THREE.Color(spec.low),
+                colorHigh: new THREE.Color(spec.high),
+                opacity: spec.opacity,
+            });
+            this.auroraMaterials.push(material);
+            const mesh = new THREE.Mesh(geo, material);
+            mesh.position.set(spec.x, spec.y, spec.z);
+            mesh.rotation.z = spec.rot;
+            mesh.renderOrder = -3;
+            mesh.frustumCulled = false;
+            this.auroraMeshes.push(mesh);
+            this.scene.add(mesh);
+        }
     }
 
     createNebulaClouds() {
@@ -593,6 +781,7 @@ export default class LunaraTheme extends BaseTheme {
         const marsSurfaceTex = textureLoader.load('./textures/2k_mars.jpg');
 
         // Configure textures for spherical mapping
+        const maxAniso = this.renderer?.capabilities?.getMaxAnisotropy?.() ?? 1;
         for (const tex of [moonSurfaceTex, marsSurfaceTex]) {
             tex.colorSpace = THREE.SRGBColorSpace;
             tex.wrapS = THREE.RepeatWrapping;
@@ -600,6 +789,7 @@ export default class LunaraTheme extends BaseTheme {
             tex.minFilter = THREE.LinearMipmapLinearFilter;
             tex.magFilter = THREE.LinearFilter;
             tex.generateMipmaps = true;
+            tex.anisotropy = maxAniso;
         }
 
         // Primary — deep purple moon (lunar surface texture, purple-tinted)
@@ -641,6 +831,24 @@ export default class LunaraTheme extends BaseTheme {
         this.moonCompanionMesh = companionMesh;
         this.scene.add(companionMesh);
 
+        // Atmospheric scattering shells — true 3D limb glow hugging each disc.
+        const atmoFactory = this.isWebGPU
+            ? createLunaraAtmosphereMaterialWebGPU
+            : createLunaraAtmosphereMaterialWebGL;
+        const addAtmosphere = (moonMesh, radius, color, intensity) => {
+            const atmo = atmoFactory({ color, power: 3.0, intensity });
+            this.moonAtmosphereMaterials.push(atmo.material);
+            const shell = new THREE.Mesh(moonGeo, atmo.material);
+            shell.scale.setScalar(radius * 1.16);
+            shell.position.copy(moonMesh.position);
+            shell.frustumCulled = false;
+            shell.renderOrder = 0;
+            this.moonAtmospheres.push(shell);
+            this.scene.add(shell);
+        };
+        addAtmosphere(primaryMesh, primaryRadius, new THREE.Color(0x9a5cff), 1.05);
+        addAtmosphere(companionMesh, companionRadius, new THREE.Color(0xff5f9e), 1.0);
+
         // Halos — matching deep purple and blood red
         const haloFactory = this.isWebGPU ? createLunaraMoonHaloMaterialWebGPU : createLunaraMoonHaloMaterialWebGL;
         const haloGeo = new THREE.PlaneGeometry(1, 1);
@@ -675,6 +883,72 @@ export default class LunaraTheme extends BaseTheme {
         this.scene.add(this.moonCompanionHalo);
     }
 
+    createDistantPlanet() {
+        if (this.activeQualityLevel === 'Minimal') return;
+
+        const loader = new THREE.TextureLoader();
+        const maxAniso = this.renderer?.capabilities?.getMaxAnisotropy?.() ?? 1;
+        const bodyTex = loader.load('./textures/2k_saturn.jpg');
+        bodyTex.colorSpace = THREE.SRGBColorSpace;
+        bodyTex.wrapS = THREE.RepeatWrapping;
+        bodyTex.wrapT = THREE.ClampToEdgeWrapping;
+        bodyTex.minFilter = THREE.LinearMipmapLinearFilter;
+        bodyTex.magFilter = THREE.LinearFilter;
+        bodyTex.generateMipmaps = true;
+        bodyTex.anisotropy = maxAniso;
+
+        const ringTex = loader.load('./textures/2k_saturn_ring_alpha.png');
+        ringTex.colorSpace = THREE.SRGBColorSpace;
+        ringTex.wrapS = THREE.ClampToEdgeWrapping;
+        ringTex.wrapT = THREE.ClampToEdgeWrapping;
+        ringTex.anisotropy = maxAniso;
+
+        const radius = 96;
+        const pos = new THREE.Vector3(286, 92, -1500);
+
+        // Reuse the moon material (texture + terminator + rim) tinted gas-giant gold.
+        const bodyFactory = this.isWebGPU ? createLunaraMoonMaterialWebGPU : createLunaraMoonMaterialWebGL;
+        const body = bodyFactory({
+            surfaceMap: bodyTex,
+            color: new THREE.Color(0xe6d6a6),
+            shade: new THREE.Color(0x140f06),
+            mariaColor: new THREE.Color(0xb89b5e),
+            rimColor: new THREE.Color(0xffe7b0),
+            lightDir: new THREE.Vector3(0.55, 0.25, 1.0),
+            emissive: 0.11,
+        });
+        this.distantPlanetMaterial = body.material;
+        const sphereGeo = new THREE.SphereGeometry(1, 48, 36);
+        const mesh = new THREE.Mesh(sphereGeo, body.material);
+        mesh.scale.setScalar(radius);
+        mesh.position.copy(pos);
+        mesh.frustumCulled = false;
+        mesh.renderOrder = -1;
+        this.distantPlanet = mesh;
+        this.scene.add(mesh);
+
+        // Ring — flat disc sampling the radial alpha strip.
+        const ringFactory = this.isWebGPU ? createLunaraRingMaterialWebGPU : createLunaraRingMaterialWebGL;
+        const innerR = radius * 1.32;
+        const outerR = radius * 2.35;
+        const ringGeo = new THREE.PlaneGeometry(outerR * 2, outerR * 2, 1, 1);
+        const ring = ringFactory({
+            map: ringTex,
+            color: new THREE.Color(0xece0c0),
+            opacity: 0.9,
+            innerRadius: innerR,
+            outerRadius: outerR,
+        });
+        const ringMesh = new THREE.Mesh(ringGeo, ring.material);
+        ringMesh.position.copy(pos);
+        ringMesh.rotation.x = -1.12; // tilt the ring plane toward camera
+        ringMesh.rotation.z = 0.26;
+        ringMesh.frustumCulled = false;
+        ringMesh.renderOrder = -1;
+        this.distantPlanetRing = ringMesh;
+        this.scene.add(ringMesh);
+    }
+
     buildRidgeGeometry(seed, segments, baseHeight, peakHeight, frequency, options = {}) {
         const rng = makeSeededRandom(seed);
         const width = options.width ?? 900;
@@ -682,7 +956,8 @@ export default class LunaraTheme extends BaseTheme {
         const spireCount = options.spireCount ?? 10;
         const spireSharpness = options.spireSharpness ?? 1.6;
         const points = segments + 1;
-        const positions = new Float32Array(points * 2 * 3);
+        const depth = options.depth ?? 36; // ridge thickness in Z (gives silhouette)
+        const positions = [];
         const indices = [];
 
         const spires = [];
@@ -723,30 +998,38 @@ export default class LunaraTheme extends BaseTheme {
                 - valleyGap;
         }
 
+        // Build a tent/prism ridge (3 verts per column: peak, front base, back
+        // base) instead of a flat 2-row wall. Peaks are jittered in Z so the
+        // silhouette overlaps itself, and the front/back faces give the material
+        // real normals to catch moon rim-light — killing the cardboard look.
         for (let i = 0; i < points; i++) {
             const x = ((i / segments) - 0.5) * width;
             const top = heights[i];
-            // Top vertex
-            positions[i * 6 + 0] = x;
-            positions[i * 6 + 1] = top;
-            positions[i * 6 + 2] = 0;
-            // Bottom vertex
-            positions[i * 6 + 3] = x;
-            positions[i * 6 + 4] = floor;
-            positions[i * 6 + 5] = 0;
+            const zc = Math.sin(i * 0.7 + seed * 0.05) * depth * 0.28
+                + (triangleNoise(i * 0.13 + seed * 0.03) - 0.5) * depth * 0.55;
+            // peak
+            positions.push(x, top, zc);
+            // front base
+            positions.push(x, floor, zc + depth * 0.5);
+            // back base
+            positions.push(x, floor, zc - depth * 0.5);
         }
 
         for (let i = 0; i < segments; i++) {
-            const a = i * 2;
-            const b = a + 1;
-            const c = a + 2;
-            const d = a + 3;
-            indices.push(a, b, c);
-            indices.push(b, d, c);
+            const p0 = i * 3;
+            const f0 = p0 + 1;
+            const bk0 = p0 + 2;
+            const p1 = (i + 1) * 3;
+            const f1 = p1 + 1;
+            const bk1 = p1 + 2;
+            // front faces (toward camera)
+            indices.push(p0, f0, p1, p1, f0, f1);
+            // back faces (reverse winding)
+            indices.push(p1, bk0, p0, p1, bk1, bk0);
         }
 
         const geom = new THREE.BufferGeometry();
-        geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         geom.setIndex(indices);
         geom.computeVertexNormals();
         return geom;
@@ -769,6 +1052,7 @@ export default class LunaraTheme extends BaseTheme {
                 haze: 0x8a5bcb,
                 hazeAmount: 0.78,
                 width: 1150,
+                depth: 90,
                 spireCount: 8,
                 valleyGapWidth: 0.16,
                 valleyGapDepth: 7,
@@ -786,6 +1070,7 @@ export default class LunaraTheme extends BaseTheme {
                 haze: 0x6b35a3,
                 hazeAmount: 0.56,
                 width: 980,
+                depth: 64,
                 spireCount: 14,
                 valleyGapWidth: 0.32,
                 valleyGapDepth: 26,
@@ -804,6 +1089,7 @@ export default class LunaraTheme extends BaseTheme {
                 haze: 0x4d1d7f,
                 hazeAmount: 0.34,
                 width: 760,
+                depth: 46,
                 spireCount: 16,
                 valleyGapWidth: 0.42,
                 valleyGapDepth: 42,
@@ -821,6 +1107,7 @@ export default class LunaraTheme extends BaseTheme {
                 {
                     width: layer.width,
                     floor: -18,
+                    depth: layer.depth,
                     spireCount: layer.spireCount,
                     spireSharpness: layer.key === 'mountainsNear' ? 1.25 : 1.7,
                     valleyGapWidth: layer.valleyGapWidth,
@@ -832,6 +1119,7 @@ export default class LunaraTheme extends BaseTheme {
                 color: new THREE.Color(layer.color),
                 haze: new THREE.Color(layer.haze),
                 hazeAmount: layer.hazeAmount,
+                lightDir: PRIMARY_MOON_POS.clone().normalize(),
             });
             const mesh = new THREE.Mesh(geom, mat.material);
             mesh.position.set(0, layer.y, layer.z);
@@ -922,9 +1210,13 @@ export default class LunaraTheme extends BaseTheme {
         const geom = new THREE.BufferGeometry();
         geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         geom.setIndex(indices);
-        geom.computeVertexNormals();
-        geom.computeBoundingSphere();
-        return geom;
+        // Faceted (flat) normals so the spires read as cut crystal, not a smooth
+        // cone. toNonIndexed() unwelds shared verts; computeVertexNormals then
+        // yields per-face normals.
+        const finalGeom = options.faceted === false ? geom : geom.toNonIndexed();
+        finalGeom.computeVertexNormals();
+        finalGeom.computeBoundingSphere();
+        return finalGeom;
     }
 
     buildRockGeometry(seed = 9917) {
@@ -1025,21 +1317,29 @@ export default class LunaraTheme extends BaseTheme {
 
         const far = clamp01((-z - 18) / 178);
         const near = 1 - far;
+
+        // Stature variety: a good fraction become short stubs so a cluster reads
+        // as a mixed-height clump rather than a uniform "picket fence" of spires.
+        const isStub = rng() < (options.stubChance ?? 0.42);
+        const statureMul = isStub ? 0.26 + rng() * 0.36 : 0.82 + rng() * 0.42;
+
         const baseScale = (options.baseScale ?? 0.55) + rng() * (options.baseScaleJitter ?? 0.85);
-        const heightScale = (options.heightScale ?? 1.35)
+        const heightScale = ((options.heightScale ?? 1.35)
             + rng() * (options.heightJitter ?? 3.8)
-            + (cluster.hero ? near * 2.2 : near * 0.75);
-        const widthScale = baseScale * (options.widthMultiplier ?? (0.72 + rng() * 0.42));
+            + (cluster.hero ? near * 2.2 : near * 0.75)) * statureMul;
+        // Stubs are chunkier; tall ones can be slender → silhouette contrast.
+        const widthBias = isStub ? 1.2 + rng() * 0.55 : 0.58 + rng() * 0.5;
+        const widthScale = baseScale * (options.widthMultiplier ?? widthBias);
         const y = this.sampleTerrainHeight(x, z);
         const lean = options.lean ?? 0.32;
         const sink = options.sink ?? 0.08;
+        // Asymmetric, stub-amplified lean so they don't all tilt by the same hair.
+        const leanMul = isStub ? 2.1 : 1.0;
+        const leanX = (rng() - 0.5) * lean * leanMul;
+        const leanZ = (rng() - 0.5) * lean * leanMul;
 
         tmp.position.set(x, y + heightScale * 1.58 - sink, z);
-        tmp.rotation.set(
-            (rng() - 0.5) * lean,
-            rng() * Math.PI * 2,
-            (rng() - 0.5) * lean,
-        );
+        tmp.rotation.set(leanX, rng() * Math.PI * 2, leanZ);
         tmp.scale.set(widthScale, heightScale, widthScale * (0.82 + rng() * 0.36));
         tmp.updateMatrix();
         mesh.setMatrixAt(index, tmp.matrix);
@@ -1065,13 +1365,20 @@ export default class LunaraTheme extends BaseTheme {
             roughness: 0.1,
             metalness: 0.1,
         });
+        // True refraction is heavy; gate hero transmission to WebGPU + top presets.
+        const allowTransmission = this.isWebGPU
+            && (this.activeQualityLevel === 'Ultra' || this.activeQualityLevel === 'Extreme');
         const hero = factory({
             color: new THREE.Color(0xb392ff),
             emissive: new THREE.Color(0xdcc0ff),
             emissiveStrength: 1.42,
             opacity: 0.82,
             roughness: 0.06,
-            metalness: 0.16,
+            metalness: allowTransmission ? 0.0 : 0.16,
+            useTransmission: allowTransmission,
+            transmission: 0.9,
+            ior: 1.8,
+            thickness: 3.0,
         });
         const shard = factory({
             color: new THREE.Color(0x6d47c8),
@@ -1083,6 +1390,11 @@ export default class LunaraTheme extends BaseTheme {
         });
         this.crystalMaterial = main.material;
         this.crystalMaterials = [main.material, hero.material, shard.material];
+        // Record base emissive strength so combo surges can modulate relative to it.
+        for (const mat of this.crystalMaterials) {
+            const u = mat.userData?.uniforms?.uEmissiveStrength;
+            if (u) mat.userData.baseEmissiveStrength = u.value;
+        }
 
         const total = this.preset.crystalCount;
         const heroCount = Math.max(10, Math.floor(total * 0.23));
@@ -1182,6 +1494,35 @@ export default class LunaraTheme extends BaseTheme {
             this.scene.add(mesh);
         }
         this.crystalCluster = mainMesh;
+
+        this.createCrystalCaustics(heroClusters);
+    }
+
+    createCrystalCaustics(heroClusters) {
+        if (this.activeQualityLevel === 'Minimal' || this.activeQualityLevel === 'Low') return;
+
+        const factory = this.isWebGPU
+            ? createLunaraCausticMaterialWebGPU
+            : createLunaraCausticMaterialWebGL;
+
+        for (const cluster of heroClusters) {
+            const { material } = factory({
+                color: new THREE.Color(0x9be0ff),
+                opacity: 0.4,
+            });
+            material.userData.baseCausticOpacity = material.userData?.uniforms?.uOpacity?.value ?? 0.4;
+            this.causticMaterials.push(material);
+            const size = 20 + cluster.spreadX + cluster.spreadZ;
+            const geo = new THREE.PlaneGeometry(size, size);
+            const mesh = new THREE.Mesh(geo, material);
+            const gy = this.sampleTerrainHeight(cluster.x, cluster.z) + 0.12;
+            mesh.position.set(cluster.x, gy, cluster.z);
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.renderOrder = 2;
+            mesh.frustumCulled = false;
+            this.causticMeshes.push(mesh);
+            this.scene.add(mesh);
+        }
     }
 
     createFlora() {
@@ -1372,6 +1713,42 @@ export default class LunaraTheme extends BaseTheme {
         }
     }
 
+    createGroundFog() {
+        const level = this.activeQualityLevel;
+        if (level === 'Minimal' || level === 'Low') return;
+
+        const factory = this.isWebGPU ? createLunaraFogMaterialWebGPU : createLunaraFogMaterialWebGL;
+        const specs = [
+            {
+                x: 0, y: -2.2, z: -60, w: 380, h: 220, color: 0x7a5cff, opacity: 0.12, sx: 0.012, sy: 0.006,
+            },
+            {
+                x: -20, y: -1.4, z: -110, w: 480, h: 260, color: 0x9a6bff, opacity: 0.1, sx: 0.009, sy: 0.005,
+            },
+            {
+                x: 24, y: -0.6, z: -150, w: 560, h: 300, color: 0x5fd8ff, opacity: 0.07, sx: 0.007, sy: 0.004,
+            },
+        ];
+        const count = level === 'Medium' ? 2 : specs.length;
+
+        for (let i = 0; i < count; i++) {
+            const s = specs[i];
+            const geo = new THREE.PlaneGeometry(s.w, s.h);
+            const { material } = factory({
+                color: new THREE.Color(s.color),
+                opacity: s.opacity,
+                scroll: new THREE.Vector2(s.sx, s.sy),
+            });
+            this.fogCardMaterials.push(material);
+            const mesh = new THREE.Mesh(geo, material);
+            mesh.position.set(s.x, s.y, s.z);
+            mesh.rotation.x = -Math.PI / 2 + 0.08; // near-flat ground mist
+            mesh.renderOrder = 3;
+            mesh.frustumCulled = false;
+            this.scene.add(mesh);
+        }
+    }
+
     createMoonLightShafts() {
         const count = this.preset.lightShafts ?? 0;
         if (count <= 0) return;
@@ -1410,14 +1787,19 @@ export default class LunaraTheme extends BaseTheme {
 
     createGround() {
         const factory = this.isWebGPU ? createLunaraGroundMaterialWebGPU : createLunaraGroundMaterialWebGL;
+
+        // Matte alien mineral valley (no normal map — the old water-normal made
+        // the foreground read as an ocean). Micro-relief comes from the FBM tone
+        // + emissive vein network in the material itself.
         const { material } = factory({
             color: new THREE.Color(0x231048),
             veinColor: new THREE.Color(0xc19dff),
             veinStrength: 0.28,
         });
         this.groundMaterial = material;
+        this.baseVeinStrength = material.userData?.uniforms?.uVeinStrength?.value ?? 0.28;
 
-        const segments = ['Ultra', 'Extreme'].includes(this.activeQualityLevel) ? 112 : 88;
+        const segments = ['Ultra', 'Extreme'].includes(this.activeQualityLevel) ? 140 : 96;
         const geo = new THREE.PlaneGeometry(900, 900, segments, segments);
         const pos = geo.attributes.position;
         for (let i = 0; i < pos.count; i++) {
@@ -1547,6 +1929,7 @@ export default class LunaraTheme extends BaseTheme {
         try {
             this.post = new LunaraPost(this.renderer, this.scene, this.camera, {
                 useMRT: this.capabilities.useMRT,
+                dualBloom: this.isWebGPU && this.preset.useMRT === true,
                 bloomStrength: this.preset.bloomStrength,
                 bloomRadius: this.preset.bloomRadius,
                 bloomThreshold: this.preset.bloomThreshold,
@@ -1599,26 +1982,31 @@ export default class LunaraTheme extends BaseTheme {
 
             // Combine pointer parallax, auto-pan, and breathing float
             const totalPanX = this.currentPointerX * 14.0 + autoPanX; // Increased from 8.0
-            const totalPanY = this.currentPointerY * 7.0 + autoPanY;  // Increased from 4.0
+            const totalPanY = this.currentPointerY * 7.0 + autoPanY; // Increased from 4.0
             const totalPanZ = autoPanZ;
 
-            // Organic, multi-frequency floating and breathing movements
-            const floatX = Math.sin(this.time * 0.05) * 3.5 + Math.cos(this.time * 0.02) * 2.5;
-            const floatY = Math.sin(this.time * 0.07) * 2.2 + Math.cos(this.time * 0.035) * 1.5;
-            const floatZ = Math.sin(this.time * 0.041) * 3.2 + Math.cos(this.time * 0.025) * 2.2;
+            // Organic, multi-frequency floating — lower amplitude than before so
+            // it reads as a stable handheld push-in, not a floaty bob.
+            const floatX = Math.sin(this.time * 0.05) * 2.4 + Math.cos(this.time * 0.02) * 1.7;
+            const floatY = Math.sin(this.time * 0.07) * 1.4 + Math.cos(this.time * 0.035) * 1.0;
+            const floatZ = Math.sin(this.time * 0.041) * 2.2 + Math.cos(this.time * 0.025) * 1.5;
+
+            // Slow cinematic dolly: a long, eased push toward the moon gap that
+            // parallaxes the layered mountains/planets convincingly.
+            const dolly = (Math.sin(this.time * 0.022) * 0.5 + 0.5) * 14.0;
 
             this.camera.position.x = totalPanX + floatX;
             this.camera.position.y = 7.4 + totalPanY + floatY;
-            this.camera.position.z = 42 + totalPanZ + floatZ;
-            
+            this.camera.position.z = 42 + totalPanZ + floatZ - dolly;
+
             // Shift look-at target to amplify depth perspective
             const lookTarget = this.cameraTarget.clone();
             lookTarget.x += this.currentPointerX * 25.0 + autoPanX * 2.5;
             lookTarget.y += this.currentPointerY * 12.0 + autoPanY * 2.5;
             this.camera.lookAt(lookTarget);
 
-            // Subtle camera roll for a natural floating tilt
-            this.camera.rotateZ(Math.sin(this.time * 0.03) * 0.015 + Math.cos(this.time * 0.014) * 0.01);
+            // Subtle camera roll for a natural floating tilt (reduced for stability)
+            this.camera.rotateZ(Math.sin(this.time * 0.03) * 0.009 + Math.cos(this.time * 0.014) * 0.006);
         }
 
         const updateUTime = (mat) => {
@@ -1633,11 +2021,38 @@ export default class LunaraTheme extends BaseTheme {
         updateUTime(this.moonCompanionHaloMaterial);
         updateUTime(this.crystalMaterial);
         for (const material of this.crystalMaterials) updateUTime(material);
+        for (const material of this.causticMaterials) updateUTime(material);
         updateUTime(this.floraMaterial);
+
+        // Crystal resonance: emissive surges with combo energy/flash.
+        const crystalSurge = 1.0 + this.comboEnergy * 0.7 + this.comboFlash * 1.1;
+        for (const material of this.crystalMaterials) {
+            const u = material.userData?.uniforms?.uEmissiveStrength;
+            const base = material.userData?.baseEmissiveStrength;
+            if (u && base !== undefined) u.value = base * crystalSurge;
+        }
+        // Ground vein network brightens with the same energy.
+        if (this.groundMaterial) {
+            const u = this.groundMaterial.userData?.uniforms?.uVeinStrength;
+            if (u && this.baseVeinStrength !== undefined) {
+                u.value = this.baseVeinStrength * (1.0 + this.comboEnergy * 1.4 + this.comboFlash * 1.8);
+            }
+        }
+        // Caustic pools pulse on the beat too.
+        for (const material of this.causticMaterials) {
+            const u = material.userData?.uniforms?.uOpacity;
+            const base = material.userData?.baseCausticOpacity;
+            if (u && base !== undefined) u.value = base * (1.0 + this.comboFlash * 1.5);
+        }
         updateUTime(this.moteMaterial);
         updateUTime(this.groundMaterial);
         for (const material of this.horizonLightMaterials) updateUTime(material);
         for (const fog of this.fogCardMaterials) updateUTime(fog);
+        for (const aurora of this.auroraMaterials) {
+            updateUTime(aurora);
+            const surge = aurora.userData?.uniforms?.uSurge;
+            if (surge) surge.value = this.comboEnergy * 0.6 + this.comboFlash * 0.9;
+        }
 
         if (this.moonPrimaryMesh) {
             this.moonPrimaryMesh.rotation.y = this.time * 0.012;
@@ -1650,6 +2065,10 @@ export default class LunaraTheme extends BaseTheme {
         if (this.starPoints) {
             this.starPoints.rotation.y = this.time * 0.002;
         }
+        if (this.distantPlanet) {
+            this.distantPlanet.rotation.y = this.time * 0.006;
+        }
+        updateUTime(this.distantPlanetMaterial);
 
         // Halo pulse modulation
         if (this.moonPrimaryHaloMaterial) {
@@ -1833,6 +2252,33 @@ export default class LunaraTheme extends BaseTheme {
             elapsed: 0,
             duration: 1.4,
         });
+
+        this.spawnGroundRipple(lineCount, color);
+    }
+
+    spawnGroundRipple(lineCount, color) {
+        if (!this.scene) return;
+        const factory = this.isWebGPU ? createLunaraShockwaveMaterialWebGPU : createLunaraShockwaveMaterialWebGL;
+        const { material } = factory({ color, opacity: 0.7 + Math.min(lineCount, 4) * 0.08 });
+
+        // A flat ring expanding across the valley floor toward the moons.
+        const radius = 90 + lineCount * 26;
+        const geo = new THREE.PlaneGeometry(radius, radius);
+        const mesh = new THREE.Mesh(geo, material);
+        const gx = 0;
+        const gz = -54;
+        mesh.position.set(gx, this.sampleTerrainHeight(gx, gz) + 0.3, gz);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.renderOrder = 2;
+        mesh.frustumCulled = false;
+        this.scene.add(mesh);
+
+        this.shockwaves.push({
+            mesh,
+            material,
+            elapsed: 0,
+            duration: 1.8,
+        });
     }
 
     // -----------------------------------------------------------------------
@@ -1878,6 +2324,11 @@ export default class LunaraTheme extends BaseTheme {
         }
         this.moteCpuFallback = null;
 
+        if (this.environmentMap) {
+            this.environmentMap.dispose?.();
+            this.environmentMap = null;
+        }
+
         if (this.renderer) {
             const dom = this.renderer.domElement;
             if (typeof this.renderer.dispose === 'function') this.renderer.dispose();
@@ -1919,6 +2370,16 @@ export default class LunaraTheme extends BaseTheme {
         this.fogCardMaterials = [];
         this.groundMesh = null;
         this.groundMaterial = null;
+        this.baseVeinStrength = undefined;
+        this.moonAtmospheres = [];
+        this.moonAtmosphereMaterials = [];
+        this.distantPlanet = null;
+        this.distantPlanetMaterial = null;
+        this.distantPlanetRing = null;
+        this.causticMeshes = [];
+        this.causticMaterials = [];
+        this.auroraMeshes = [];
+        this.auroraMaterials = [];
         this.shockwaves = [];
 
         this.showLegacyDom();

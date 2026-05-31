@@ -1,227 +1,271 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
- * FLUID DREAMS THEME - Three.js 3D Implementation
+ * FLUID DREAMS — WebGPU/TSL Hero Refactor
  * ═══════════════════════════════════════════════════════════════════════════════
  *
- * A dreamy, flowing underwater-like experience featuring:
- * - Morphing 3D blobs with realistic reflective materials (MeshPhysicalMaterial)
- * - Iridescent soap bubbles with rainbow Fresnel effects
- * - Flowing ribbon streams with gradient shaders
- * - Ambient shimmer particles
- * - Gameplay-reactive effects (pulses, bursts, shockwaves)
+ * One vibrant iridescent fluid surface (TSL raymarched metaballs) drifting in
+ * volumetric neon haze, with curl-noise compute particles, MRT emissive bloom,
+ * ACES tonemap, and subtle chromatic aberration.
  *
- * Inspired by: https://redstapler.co/three-js-realistic-material-reflection-tutorial/
+ * WebGPU path: TSL node materials + compute + THREE.PostProcessing.
+ * WebGL fallback: MeshPhysicalMaterial liquid-glass orbs + EffectComposer.
  *
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
 import * as THREE from 'three';
+import * as THREE_WEBGPU from 'three/webgpu';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { FLUID_DREAMS_TETROMINOS } from './fluid-dreams-tetrominos.js';
 import {
     backgroundVertexShader,
     backgroundFragmentShader,
-    bubbleVertexShader,
-    bubbleFragmentShader,
-    blobVertexShader,
-    blobFragmentShader,
-    ribbonVertexShader,
-    ribbonFragmentShader,
-    particleVertexShader,
-    particleFragmentShader,
-    shockwaveVertexShader,
-    shockwaveFragmentShader,
+    fallbackParticleVertexShader,
+    fallbackParticleFragmentShader,
 } from './fluid-dreams-shaders.js';
+import {
+    createFluidHeroNodeMaterial,
+    createBackgroundNodeMaterial,
+    createVolumetricHazeNodeMaterial,
+    createFluidParticleNodeMaterial,
+    ELECTRIC_PALETTE,
+} from './fluid-dreams-materials.js';
+import { FluidDreamsParticleCompute } from './fluid-dreams-compute.js';
+import { FluidDreamsPost } from './fluid-dreams-post.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Quality Presets
+// Quality presets — vibrant-hero budget
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Quality budgets — rebalanced for stable framerate.
+// computeStride: dispatch particle compute every Nth frame (1 = every frame).
 const QUALITY_PRESETS = {
     Minimal: {
-        blobCount: 3,
-        bubbleCount: 12,
-        ribbonCount: 2,
-        particleCount: 200,
-        blobSegments: 24,
+        particleCount: 4000,
+        marchSteps: 24,
+        bgHazeSteps: 0,
+        hazeSegments: [0, 0],
+        metaballCount: 4,
         enableBloom: false,
-        bloomStrength: 0.15,
+        enableChromaticAberration: false,
+        bloomStrength: 0.25,
+        bloomRadius: 0.6,
+        bloomDownsample: 0.5,
+        computeStride: 2,
     },
     Low: {
-        blobCount: 4,
-        bubbleCount: 18,
-        ribbonCount: 3,
-        particleCount: 400,
-        blobSegments: 32,
+        particleCount: 10000,
+        marchSteps: 32,
+        bgHazeSteps: 6,
+        hazeSegments: [16, 12],
+        metaballCount: 5,
         enableBloom: true,
-        bloomStrength: 0.2,
+        enableChromaticAberration: false,
+        bloomStrength: 0.3,
+        bloomRadius: 0.7,
+        bloomDownsample: 0.55,
+        computeStride: 1,
     },
     Medium: {
-        blobCount: 5,
-        bubbleCount: 25,
-        ribbonCount: 4,
-        particleCount: 600,
-        blobSegments: 48,
+        particleCount: 24000,
+        marchSteps: 40,
+        bgHazeSteps: 10,
+        hazeSegments: [16, 12],
+        metaballCount: 6,
         enableBloom: true,
-        bloomStrength: 0.22,
+        enableChromaticAberration: true,
+        bloomStrength: 0.38,
+        bloomRadius: 0.8,
+        bloomDownsample: 0.6,
+        computeStride: 1,
     },
     High: {
-        blobCount: 6,
-        bubbleCount: 32,
-        ribbonCount: 5,
-        particleCount: 800,
-        blobSegments: 64,
+        particleCount: 50000,
+        marchSteps: 52,
+        bgHazeSteps: 14,
+        hazeSegments: [20, 14],
+        metaballCount: 6,
         enableBloom: true,
-        bloomStrength: 0.25,
+        enableChromaticAberration: true,
+        bloomStrength: 0.45,
+        bloomRadius: 0.9,
+        bloomDownsample: 0.6,
+        computeStride: 1,
     },
     Ultra: {
-        blobCount: 8,
-        bubbleCount: 40,
-        ribbonCount: 6,
-        particleCount: 1000,
-        blobSegments: 80,
+        particleCount: 75000,
+        marchSteps: 64,
+        bgHazeSteps: 16,
+        hazeSegments: [24, 16],
+        metaballCount: 7,
         enableBloom: true,
-        bloomStrength: 0.28,
+        enableChromaticAberration: true,
+        bloomStrength: 0.52,
+        bloomRadius: 0.95,
+        bloomDownsample: 0.6,
+        computeStride: 1,
     },
     Extreme: {
-        blobCount: 10,
-        bubbleCount: 50,
-        ribbonCount: 8,
-        particleCount: 1500,
-        blobSegments: 96,
+        particleCount: 120000,
+        marchSteps: 76,
+        bgHazeSteps: 20,
+        hazeSegments: [24, 16],
+        metaballCount: 8,
         enableBloom: true,
-        bloomStrength: 0.3,
+        enableChromaticAberration: true,
+        bloomStrength: 0.58,
+        bloomRadius: 1.0,
+        bloomDownsample: 0.65,
+        computeStride: 1,
     },
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Color Palettes - Dreamy Iridescent
-// ─────────────────────────────────────────────────────────────────────────────
-
-const BLOB_COLORS = [
-    {
-        color1: new THREE.Color(0x79faff), // Aqua glow
-        color2: new THREE.Color(0xff7cf0), // Magenta shine
-        color3: new THREE.Color(0xa1ffcf), // Mint wave
-    },
-    {
-        color1: new THREE.Color(0xff7cf0), // Magenta
-        color2: new THREE.Color(0x8c9bff), // Indigo
-        color3: new THREE.Color(0xffe066), // Golden
-    },
-    {
-        color1: new THREE.Color(0xa1ffcf), // Mint
-        color2: new THREE.Color(0x79faff), // Aqua
-        color3: new THREE.Color(0xff8ba0), // Coral
-    },
-    {
-        color1: new THREE.Color(0x8c9bff), // Indigo
-        color2: new THREE.Color(0xffe066), // Golden
-        color3: new THREE.Color(0xff7cf0), // Magenta
-    },
-];
-
-const BUBBLE_COLORS = [
-    new THREE.Color(0x79faff),
-    new THREE.Color(0xff7cf0),
-    new THREE.Color(0xa1ffcf),
-    new THREE.Color(0xff8ba0),
-    new THREE.Color(0x8c9bff),
-];
-
-const RIBBON_COLORS = [
-    { color1: new THREE.Color(0x79faff), color2: new THREE.Color(0xff7cf0), color3: new THREE.Color(0xa1ffcf) },
-    { color1: new THREE.Color(0xff8ba0), color2: new THREE.Color(0x8c9bff), color3: new THREE.Color(0xffe066) },
-    { color1: new THREE.Color(0xa1ffcf), color2: new THREE.Color(0x79faff), color3: new THREE.Color(0xff8ba0) },
-];
+const DEFAULT_QUALITY = 'High';
+const SHOCKWAVE_DURATION = 1.25;
+const SHOCKWAVE_MAX_RADIUS = 30.0;
+const COMBO_THRESHOLD_FOR_SHOCKWAVE = 5;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Theme Class
+// Theme
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default class FluidDreamsTheme extends BaseTheme {
     constructor() {
         super('fluid-dreams');
+
         this.eventUnsubscribers = [];
 
-        // Three.js components
+        // Renderers + core
+        this.renderer = null;
         this.scene = null;
         this.camera = null;
-        this.renderer = null;
-        this.composer = null;
-        this.mainGroup = null;
         this.clock = new THREE.Clock();
+        this.isWebGPU = false;
+        this.isWebGL = false;
         this.animationFrame = null;
 
-        // Bind resize handler to keep reference for removal
-        this.onWindowResize = this.onWindowResize.bind(this);
-        this.effectTimeouts = new Set();
+        // Scene meshes
+        this.heroMesh = null;
+        this.heroMaterial = null;
+        this.backgroundMesh = null;
+        this.backgroundMaterial = null;
+        this.hazeMesh = null;
+        this.hazeMaterial = null;
+        this.particleSystem = null;
+        this.particleMaterial = null;
+        this.particleCompute = null;
 
-        // Scene elements
-        this.backgroundSphere = null;
-        this.blobs = [];
-        this.bubbles = [];
-        this.ribbons = [];
-        this.particles = null;
-        this.envMap = null;
+        // WebGL fallback specifics
+        this.fallbackOrbs = [];
+        this.composer = null;
+        this.bloomPass = null;
 
-        // Effect state
-        this.shockwaves = [];
-        this.uniforms = {
-            time: { value: 0 },
-            pulseIntensity: { value: 0 },
-        };
+        // WebGPU post
+        this.post = null;
 
-        // Camera state
-        this.baseCameraPos = new THREE.Vector3(0, 0, 50);
-        this.cameraTarget = new THREE.Vector3(0, 0, 0);
-        this.cameraTargetOffset = new THREE.Vector3(0, 0, 0);
+        // Metaball CPU state (positions are advected on CPU and pushed to GPU uniforms)
+        this.metaballState = [];
 
-        // Combo state
-        this.comboMultiplier = 1.0;
-        this.targetPulseIntensity = 0;
+        // Combo / shockwave state
+        this.iridescenceShift = 0;
+        this.targetIridescenceShift = 0;
+        this.velocityBoost = 0;
+        this.targetVelocityBoost = 0;
+        this.shockwaveProgress = -1; // -1 == idle
+        this.shockwaveDuration = SHOCKWAVE_DURATION;
+        this.shockwaveOrigin = new THREE.Vector3(0, 0, 0);
+
+        // Gameplay-reactive impulse state. Each impulse is an additive momentum that
+        // decays exponentially — small/frequent events stack, large/rare events spike.
+        // lockImpulse  : piece lock (every few seconds) → small fluid breath
+        // lineFlash    : line clear (per clear) → palette wash + particle bath
+        // tetrisFlash  : 4-line clear → palette inversion + climax
+        // comboHum     : sustained combo tension → ambient intensification
+        // paletteCyclePhase: rotates through 5-stop iridescence ramp
+        // heroPulse    : eased breath scalar driving metaball SDF growth
+        this.lockImpulse = 0;
+        this.lineFlash = 0;
+        this.tetrisFlash = 0;
+        this.comboHum = 0;
+        this.paletteCyclePhase = 0;
+        this.heroPulse = 0;
+        this.targetHeroPulse = 0;
+        // Particle colour wash — line clears bleed a tint into the field for a beat.
+        this.particleColorTarget = new THREE.Color(0xff2d95);
+        this.particleColorMix = 0;
+        this.targetParticleColorMix = 0;
+        // Combo attract focal point — hero centre, slightly biased toward the cluster.
+        this._attractCenter = new THREE.Vector3(0, 0, 0);
+        // Line-clear tint cycle (by clear count): 1=cyan, 2=pink, 3=violet, 4=gold.
+        this._lineClearTints = [
+            new THREE.Color(0x00E5FF),
+            new THREE.Color(0xFF2D95),
+            new THREE.Color(0xB14CFF),
+            new THREE.Color(0xFFD93D),
+        ];
+
+        // Camera animation — composed for gameplay framing.
+        // The game board + right stats panel claim the center & center-right of the
+        // screen, so we shift the focal point to the right of world origin. That puts
+        // the hero metaballs (which orbit world origin) in the LEFT third of the
+        // viewport — the largest free zone in the gameplay UI — while leaving the
+        // particle atmosphere + haze to fill the bottom and edges across the full frame.
+        // Camera lifted slightly so the hero sits below screen-centre, away from the
+        // top-right player widget.
+        this.baseCameraPos = new THREE.Vector3(0, 1.5, 22);
+        this.cameraLook = new THREE.Vector3(3.5, 0.5, 0);
+
+        // Pointer tracking for parallax camera (matches aurora pattern).
+        this.pointerX = 0;
+        this.pointerY = 0;
+        this.smoothedPointerX = 0;
+        this.smoothedPointerY = 0;
 
         // Quality
-        this.currentQuality = 'High';
-        this.activePreset = QUALITY_PRESETS.High;
+        this.currentQuality = DEFAULT_QUALITY;
+        this.activePreset = QUALITY_PRESETS[DEFAULT_QUALITY];
         this.qualityChangeHandler = null;
 
-        // Post-processing
-        this.bloomPass = null;
-    }
+        // Frame stability — dynamic resolution scaling.
+        // Keeps frametime near 16.6ms by trimming pixel ratio when GPU-bound.
+        // Tuned to react before the global PerformanceMonitor's 31-frame
+        // PERFORMANCE_DOWNSCALE event fires (≈0.5s at 60Hz).
+        this.drs = {
+            enabled: true,
+            scale: 1.0,
+            minScale: 0.65,
+            maxScale: 1.0,
+            targetMs: 16.6,
+            emaMs: 16.6,
+            adjustInterval: 0.2,
+            elapsed: 0,
+            consecutiveSlow: 0,
+        };
+        this.frameCount = 0;
 
-    scheduleEffectTimeout(callback, delayMs = 0) {
-        const timeoutId = window.setTimeout(() => {
-            this.effectTimeouts.delete(timeoutId);
-            callback();
-        }, delayMs);
-        this.effectTimeouts.add(timeoutId);
-        return timeoutId;
-    }
-
-    clearEffectTimeouts() {
-        this.effectTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
-        this.effectTimeouts.clear();
+        // Resize
+        this.onWindowResize = this.onWindowResize.bind(this);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Quality Management
+    // Quality
     // ─────────────────────────────────────────────────────────────────────────
 
     getGraphicsQuality() {
         const settings = typeof window !== 'undefined' ? window.settings : null;
-        return settings?.effectQuality || 'High';
+        return settings?.effectQuality || DEFAULT_QUALITY;
     }
 
     applyQualityPreset(quality) {
-        if (!QUALITY_PRESETS[quality]) quality = 'High';
+        if (!QUALITY_PRESETS[quality]) quality = DEFAULT_QUALITY;
         this.currentQuality = quality;
         this.activePreset = QUALITY_PRESETS[quality];
-        console.log(`💧 Fluid Dreams 3D: Applied ${quality} quality preset`);
+        console.log(`💧 Fluid Dreams: Applied ${quality} quality preset`);
 
         if (this.isActive && this.scene) {
             this.rebuildQualityDependentElements();
@@ -229,18 +273,28 @@ export default class FluidDreamsTheme extends BaseTheme {
     }
 
     rebuildQualityDependentElements() {
-        // Rebuild particles
-        if (this.particles) {
-            this.mainGroup.remove(this.particles);
-            this.particles.geometry.dispose();
-            this.particles.material.dispose();
-        }
+        // Particles and hero march steps are baked in at material creation time —
+        // rebuild both. Cheap because they're a single mesh each.
+        this.disposeHero();
+        this.disposeParticles();
+        this.disposeHaze();
+
+        this.createHaze();
+        this.createHero();
         this.createParticles();
 
-        // Update bloom
+        if (this.post) {
+            this.post.update({
+                bloomStrength: this.activePreset.bloomStrength,
+                bloomRadius: this.activePreset.bloomRadius,
+                bloomDownsample: this.activePreset.bloomDownsample,
+                chromaticStrength: this.activePreset.enableChromaticAberration ? 0.0022 : 0.0,
+            });
+        }
         if (this.bloomPass) {
             this.bloomPass.enabled = this.activePreset.enableBloom;
             this.bloomPass.strength = this.activePreset.bloomStrength;
+            this.bloomPass.radius = this.activePreset.bloomRadius;
         }
     }
 
@@ -263,7 +317,7 @@ export default class FluidDreamsTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Tetromino Config
+    // Tetromino config
     // ─────────────────────────────────────────────────────────────────────────
 
     getTetrominoConfig() {
@@ -271,1168 +325,803 @@ export default class FluidDreamsTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Scene Creation
+    // Scene init
     // ─────────────────────────────────────────────────────────────────────────
 
     async createScene() {
-        console.log('💧 Fluid Dreams 3D: Initializing Three.js scene...');
+        console.log('💧 Fluid Dreams: Initializing WebGPU/TSL scene...');
 
         const container = document.getElementById('fluid-dreams-theme');
         if (!container) {
-            console.error('💧 Fluid Dreams 3D: Container not found');
+            console.error('💧 Fluid Dreams: Container not found');
             return;
         }
         container.innerHTML = '';
 
-        // Apply quality preset
         this.applyQualityPreset(this.getGraphicsQuality());
         this.setupQualityListener();
 
-        // Scene
+        await this.initRenderer(container);
+        if (!this.renderer || !this.isActive) return;
+
+        // Scene + camera (shared between WebGPU and WebGL paths)
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0x0a0515, 0.008);
+        this.scene.background = new THREE.Color(0x0A0418); // very dark base behind everything
 
-        // Camera
-        this.camera = new THREE.PerspectiveCamera(
-            60,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            500,
-        );
+        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
         this.camera.position.copy(this.baseCameraPos);
-        this.camera.lookAt(this.cameraTarget);
+        this.camera.lookAt(this.cameraLook);
 
-        // Renderer - Following Red Stapler tutorial approach
-        this.renderer = new THREE.WebGLRenderer({
-            alpha: true,
-            antialias: this.getAntialiasEnabled(),
-            powerPreference: 'high-performance',
-        });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-
-        // ACES Filmic tone mapping (from tutorial)
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 0.6;
-
-        // sRGB encoding (from tutorial)
-        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-
-        container.appendChild(this.renderer.domElement);
-
-        // Main group for scene organization
-        this.mainGroup = new THREE.Group();
-        this.scene.add(this.mainGroup);
-
-        // Create environment map FIRST (needed for materials)
-        this.createEnvironmentMap();
-
-        // Create scene elements
+        // Build scene contents
+        this.initMetaballState();
         this.createBackground();
-        this.createBlobs();
-        this.createBubbles();
-        this.createRibbons();
+        this.createHaze();
+        this.createHero();
         this.createParticles();
-        this.setupLighting();
         this.setupPostProcessing();
 
-        // Event listeners
+        // Events
         this.setupEventListeners();
         window.addEventListener('resize', this.onWindowResize);
 
-        // Start animation
         this.clock.start();
         this.animate();
 
-        console.log(`💧 Fluid Dreams 3D: Scene initialized with ${this.blobs.length} blobs, ${this.bubbles.length} bubbles`);
+        console.log(`💧 Fluid Dreams: scene ready (${this.isWebGPU ? 'WebGPU' : 'WebGL'}) — ${this.activePreset.metaballCount} metaballs, ${this.activePreset.particleCount} particles`);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Environment Map - For realistic reflections (per Red Stapler tutorial)
-    // ─────────────────────────────────────────────────────────────────────────
+    async initRenderer(container) {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const antialias = this.getAntialiasEnabled();
 
-    createEnvironmentMap() {
-        const size = 128;
-        const faces = [];
-
-        for (let i = 0; i < 6; i++) {
-            const canvas = document.createElement('canvas');
-            canvas.width = size;
-            canvas.height = size;
-            const ctx = canvas.getContext('2d');
-
-            // Base gradient - dreamy void (Darker)
-            const gradient = ctx.createRadialGradient(
-                size / 2,
-                size / 2,
-                0,
-                size / 2,
-                size / 2,
-                size * 0.7,
-            );
-            gradient.addColorStop(0, '#0d0414');
-            gradient.addColorStop(0.4, '#06020a');
-            gradient.addColorStop(0.7, '#040106');
-            gradient.addColorStop(1, '#000000');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, size, size);
-
-            // Add iridescent spots for reflection (More subtle)
-            const spotCount = 20 + Math.floor(Math.random() * 15);
-            const colors = ['#79faff', '#ff7cf0', '#a1ffcf', '#8c9bff', '#ff8ba0', '#ffe066'];
-
-            for (let j = 0; j < spotCount; j++) {
-                const x = Math.random() * size;
-                const y = Math.random() * size;
-                const r = 3 + Math.random() * 12;
-                const color = colors[Math.floor(Math.random() * colors.length)];
-
-                const spotGrad = ctx.createRadialGradient(x, y, 0, x, y, r);
-                spotGrad.addColorStop(0, color);
-                spotGrad.addColorStop(0.5, `${color}40`); // Lower alpha
-                spotGrad.addColorStop(1, 'transparent');
-                ctx.fillStyle = spotGrad;
-                ctx.fillRect(x - r, y - r, r * 2, r * 2);
-            }
-
-            faces.push(canvas);
+        // Try WebGPU first.
+        let webgpuRenderer = null;
+        try {
+            webgpuRenderer = new THREE_WEBGPU.WebGPURenderer({
+                antialias,
+                powerPreference: 'high-performance',
+                alpha: false,
+                forceWebGL: false,
+            });
+            await webgpuRenderer.init();
+        } catch (error) {
+            console.warn('💧 Fluid Dreams: WebGPU init failed, falling back to WebGL2:', error);
+            webgpuRenderer = null;
         }
 
-        this.envMap = new THREE.CubeTexture(faces);
-        this.envMap.needsUpdate = true;
+        if (webgpuRenderer?.backend?.isWebGPUBackend === true) {
+            this.renderer = webgpuRenderer;
+            this.isWebGPU = true;
+            this.isWebGL = false;
+        } else {
+            if (webgpuRenderer) {
+                try { webgpuRenderer.dispose(); } catch (e) { /* noop */ }
+            }
+            this.renderer = new THREE.WebGLRenderer({
+                alpha: false,
+                antialias,
+                powerPreference: 'high-performance',
+            });
+            this.isWebGPU = false;
+            this.isWebGL = true;
+        }
+
+        this.renderer.setSize(width, height);
+        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        if (this.isWebGL) {
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = 1.1;
+        }
+        container.appendChild(this.renderer.domElement);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Background - Dreamy cosmic void
+    // Metaball state
+    // ─────────────────────────────────────────────────────────────────────────
+
+    initMetaballState() {
+        this.metaballState = [];
+        const count = this.activePreset.metaballCount;
+        for (let i = 0; i < count; i += 1) {
+            const phase = (i / count) * Math.PI * 2;
+            // Tighter orbits keep the hero a compact cluster instead of a spread mass —
+            // so it stays inside the left-third "free zone" of the gameplay viewport
+            // and never drifts behind the game board.
+            const orbitRadius = 3.0 + Math.random() * 2.0;
+            const verticalAmp = 1.0 + Math.random() * 1.6;
+            const orbitSpeed = 0.18 + Math.random() * 0.22;
+            const radius = 3.0 + Math.random() * 1.4;
+            const noiseSeed = Math.random() * 100;
+            this.metaballState.push({
+                phase,
+                orbitRadius,
+                verticalAmp,
+                verticalPhase: Math.random() * Math.PI * 2,
+                orbitSpeed,
+                radius,
+                noiseSeed,
+                pos: new THREE.Vector3(),
+            });
+        }
+    }
+
+    updateMetaballState(elapsed) {
+        for (let i = 0; i < this.metaballState.length; i += 1) {
+            const m = this.metaballState[i];
+            const t = elapsed * m.orbitSpeed + m.phase;
+            // Slow figure-8 / lazy ellipse around origin with a vertical sine wave.
+            const x = Math.cos(t) * m.orbitRadius + Math.sin(t * 0.7) * 1.5;
+            const z = Math.sin(t * 0.9) * m.orbitRadius * 0.7;
+            const y = Math.sin(t * 0.6 + m.verticalPhase) * m.verticalAmp
+                + Math.sin(elapsed * 0.2 + m.noiseSeed) * 0.8;
+            m.pos.set(x, y, z);
+        }
+    }
+
+    pushMetaballsToHero() {
+        if (!this.heroMaterial?.userData?.metaballs) return;
+        const arr = this.heroMaterial.userData.metaballs;
+        const state = this.metaballState;
+        const n = Math.min(arr.length, state.length);
+        for (let i = 0; i < n; i += 1) {
+            const u = arr[i];
+            const m = state[i];
+            u.value.set(m.pos.x, m.pos.y, m.pos.z, m.radius);
+        }
+        // Idle metaballs (when preset is smaller than material capacity) pushed off-screen.
+        for (let i = n; i < arr.length; i += 1) {
+            arr[i].value.set(0, 1000, 0, 0.01);
+        }
+    }
+
+    pushMetaballsToFallbackOrbs() {
+        if (!this.fallbackOrbs?.length) return;
+        const n = Math.min(this.fallbackOrbs.length, this.metaballState.length);
+        for (let i = 0; i < n; i += 1) {
+            const orb = this.fallbackOrbs[i];
+            const m = this.metaballState[i];
+            orb.position.set(m.pos.x, m.pos.y, m.pos.z);
+            orb.scale.setScalar(m.radius);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Scene element factories
     // ─────────────────────────────────────────────────────────────────────────
 
     createBackground() {
-        const geometry = new THREE.SphereGeometry(200, 64, 48);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-                uPulseIntensity: this.uniforms.pulseIntensity,
-            },
-            vertexShader: backgroundVertexShader,
-            fragmentShader: backgroundFragmentShader,
-            side: THREE.BackSide,
-            fog: false,
+        if (this.isWebGPU) {
+            const geometry = new THREE.SphereGeometry(180, 32, 24);
+            const material = createBackgroundNodeMaterial();
+            this.backgroundMaterial = material;
+            this.backgroundMesh = new THREE.Mesh(geometry, material);
+            this.backgroundMesh.renderOrder = -10;
+            this.scene.add(this.backgroundMesh);
+        } else {
+            const geometry = new THREE.SphereGeometry(180, 32, 24);
+            this.backgroundMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uColorTop: { value: new THREE.Color(0x120538) },
+                    uColorMid: { value: new THREE.Color(0x2E0F58) },
+                    uColorBottom: { value: new THREE.Color(0x69299E) },
+                },
+                vertexShader: backgroundVertexShader,
+                fragmentShader: backgroundFragmentShader,
+                side: THREE.BackSide,
+                depthWrite: false,
+                fog: false,
+            });
+            this.backgroundMesh = new THREE.Mesh(geometry, this.backgroundMaterial);
+            this.backgroundMesh.renderOrder = -10;
+            this.scene.add(this.backgroundMesh);
+        }
+    }
+
+    createHaze() {
+        if (!this.isWebGPU) {
+            // Skip volumetric haze on WebGL fallback — it would be too expensive without compute.
+            return;
+        }
+        if (this.activePreset.bgHazeSteps <= 0) return;
+
+        const [segW, segH] = this.activePreset.hazeSegments ?? [16, 12];
+        // Tighter bounds keep the volumetric raymarch over fewer fragments.
+        const geometry = new THREE.SphereGeometry(50, segW, segH);
+        const material = createVolumetricHazeNodeMaterial({
+            steps: this.activePreset.bgHazeSteps,
+            density: 0.14,
         });
-
-        this.backgroundSphere = new THREE.Mesh(geometry, material);
-        this.scene.add(this.backgroundSphere);
+        this.hazeMaterial = material;
+        this.hazeMesh = new THREE.Mesh(geometry, material);
+        this.hazeMesh.renderOrder = -5;
+        this.scene.add(this.hazeMesh);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Morphing Blobs - Core visual element with realistic materials
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createBlobs() {
-        const count = this.activePreset.blobCount;
-        const segments = this.activePreset.blobSegments;
-
-        for (let i = 0; i < count; i++) {
-            const palette = BLOB_COLORS[i % BLOB_COLORS.length];
-            const size = 4 + Math.random() * 6;
-
-            // Icosahedron for organic blob shape
-            const geometry = new THREE.IcosahedronGeometry(size, 4);
-
-            // Create custom shader material with morphing
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: this.uniforms.time,
-                    uMorphSpeed: { value: 0.3 + Math.random() * 0.3 },
-                    uMorphAmount: { value: 0.8 + Math.random() * 0.6 },
-                    uPulseIntensity: this.uniforms.pulseIntensity,
-                    uMorphSeed: {
-                        value: new THREE.Vector3(
-                            Math.random() * 100,
-                            Math.random() * 100,
-                            Math.random() * 100,
-                        ),
-                    },
-                    uColor1: { value: palette.color1 },
-                    uColor2: { value: palette.color2 },
-                    uColor3: { value: palette.color3 },
-                    uEnvMap: { value: this.envMap },
-                    uEnvMapIntensity: { value: 0.25 },
-                    uClearcoat: { value: 0.6 },
-                    uRoughness: { value: 0.2 },
-                    uMetalness: { value: 0.8 },
-                },
-                vertexShader: blobVertexShader,
-                fragmentShader: blobFragmentShader,
-                transparent: true,
-                side: THREE.DoubleSide,
+    createHero() {
+        if (this.isWebGPU) {
+            const material = createFluidHeroNodeMaterial({
+                marchSteps: this.activePreset.marchSteps,
+                metaballCount: this.activePreset.metaballCount,
+                maxDist: 70,
+                // Intensity dropped from 1.15 → 0.85 so the hero body sits below the
+                // bloom threshold; only Fresnel/rim emissive pops blooming.
+                intensity: 0.85,
+                smoothK: 1.0,
+                // Tighter orbit (max ~5 + ~4.4 metaball radius ≈ 9.5) → bounding
+                // sphere can shrink to 12, which cuts wasted ray-march steps further.
+                boundsRadius: 12,
             });
+            this.heroMaterial = material;
 
-            const blob = new THREE.Mesh(geometry, material);
-
-            // Spread blobs across the FULL screen for immersive coverage
-            // Use layered depth - some close, some far
-            const zLayer = Math.random();
-            const zPosition = (zLayer < 0.3) ? 10 + Math.random() * 15 // Close layer
-                : (zLayer < 0.7) ? -10 + Math.random() * 20 // Mid layer
-                    : -30 + Math.random() * 20; // Far layer
-
-            blob.position.set(
-                (Math.random() - 0.5) * 120, // Wide X spread across screen
-                (Math.random() - 0.5) * 70, // Full vertical coverage
-                zPosition, // Layered depth
-            );
-
-            // Store animation data for drifting/floating
-            blob.userData = {
-                basePosition: blob.position.clone(),
-                floatPhase: Math.random() * Math.PI * 2,
-                floatPhase2: Math.random() * Math.PI * 2, // Secondary phase for complex motion
-                floatSpeed: 0.15 + Math.random() * 0.15, // Slower, dreamier
-                floatAmplitude: 3 + Math.random() * 5, // Larger float range
-                // Drift velocity - slow continuous movement across screen
-                driftSpeed: new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.8, // Slow X drift
-                    (Math.random() - 0.5) * 0.4, // Slow Y drift
-                    (Math.random() - 0.5) * 0.5, // Slow Z drift
-                ),
-                // Combo effect state
-                comboScale: 1.0,
-                targetComboScale: 1.0,
-                comboColorShift: 0, // Color cycling effect
-                comboWobble: 0, // Wobble/jiggle effect
-                comboGlow: 0, // Subtle light pulse
-                originalScale: size,
-            };
-
-            this.mainGroup.add(blob);
-            this.blobs.push(blob);
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Iridescent Bubbles - Floating upward with rainbow Fresnel
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createBubbles() {
-        const count = this.activePreset.bubbleCount;
-
-        for (let i = 0; i < count; i++) {
-            const size = 0.5 + Math.random() * 1.5;
-            const geometry = new THREE.SphereGeometry(size, 24, 24);
-
-            const baseColor = BUBBLE_COLORS[Math.floor(Math.random() * BUBBLE_COLORS.length)];
-
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: this.uniforms.time,
-                    uOpacity: { value: 0.6 + Math.random() * 0.3 },
-                    uBaseColor: { value: baseColor },
-                    uEnvMap: { value: this.envMap },
-                    uEnvMapIntensity: { value: 0.3 },
-                    uPulseIntensity: this.uniforms.pulseIntensity,
-                },
-                vertexShader: bubbleVertexShader,
-                fragmentShader: bubbleFragmentShader,
-                transparent: true,
-                side: THREE.DoubleSide,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending,
-            });
-
-            const bubble = new THREE.Mesh(geometry, material);
-
-            // Random starting position
-            bubble.position.set(
-                (Math.random() - 0.5) * 60,
-                -30 + Math.random() * 60,
-                (Math.random() - 0.5) * 40,
-            );
-
-            // Animation data
-            bubble.userData = {
-                speed: 1 + Math.random() * 2,
-                wobblePhase: Math.random() * Math.PI * 2,
-                wobbleSpeed: 1 + Math.random() * 2,
-                wobbleAmount: 0.5 + Math.random() * 1,
-                startY: bubble.position.y,
-            };
-
-            this.mainGroup.add(bubble);
-            this.bubbles.push(bubble);
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Flowing Ribbons - Gradient streams
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createRibbons() {
-        const count = this.activePreset.ribbonCount;
-
-        for (let i = 0; i < count; i++) {
-            // Create curved path
-            const points = [];
-            const segments = 50;
-            const startAngle = Math.random() * Math.PI * 2;
-            const length = 30 + Math.random() * 20;
-
-            for (let j = 0; j <= segments; j++) {
-                const t = j / segments;
-                const angle = startAngle + t * Math.PI * (0.5 + Math.random() * 1);
-                const radius = 20 + Math.sin(t * Math.PI * 3) * 10;
-                const height = (t - 0.5) * 30 + Math.sin(t * Math.PI * 4) * 5;
-
-                points.push(new THREE.Vector3(
-                    Math.cos(angle) * radius,
-                    height,
-                    Math.sin(angle) * radius,
-                ));
+            // Render the raymarched fluid inside a bounding box around the origin.
+            // BackSide + a box wider than the camera dolly range keeps fragments
+            // produced for every screen pixel that could see the hero.
+            const geometry = new THREE.BoxGeometry(60, 60, 60);
+            this.heroMesh = new THREE.Mesh(geometry, material);
+            this.heroMesh.frustumCulled = false;
+            this.heroMesh.renderOrder = 1;
+            this.scene.add(this.heroMesh);
+        } else {
+            // WebGL fallback: render N MeshPhysicalMaterial glass orbs as "metaballs".
+            this.fallbackOrbs = [];
+            const count = this.activePreset.metaballCount;
+            const sphereGeometry = new THREE.IcosahedronGeometry(1.0, 3);
+            const palette = [
+                ELECTRIC_PALETTE.neonPink,
+                ELECTRIC_PALETTE.electricViolet,
+                ELECTRIC_PALETTE.electricCyan,
+                ELECTRIC_PALETTE.warmGold,
+            ];
+            for (let i = 0; i < count; i += 1) {
+                const tint = palette[i % palette.length];
+                const material = new THREE.MeshPhysicalMaterial({
+                    color: new THREE.Color(tint.x, tint.y, tint.z),
+                    transmission: 0.85,
+                    roughness: 0.08,
+                    metalness: 0.0,
+                    ior: 1.42,
+                    iridescence: 0.7,
+                    iridescenceIOR: 1.3,
+                    iridescenceThicknessRange: [120, 720],
+                    emissive: new THREE.Color(tint.x, tint.y, tint.z),
+                    emissiveIntensity: 0.4,
+                    transparent: true,
+                    opacity: 0.92,
+                });
+                const orb = new THREE.Mesh(sphereGeometry, material);
+                orb.renderOrder = 1;
+                this.scene.add(orb);
+                this.fallbackOrbs.push(orb);
             }
 
-            const curve = new THREE.CatmullRomCurve3(points);
-            const tubeGeometry = new THREE.TubeGeometry(curve, 64, 0.3 + Math.random() * 0.4, 8, false);
-
-            // Add progress attribute for flowing effect
-            const positionAttr = tubeGeometry.attributes.position;
-            const progress = new Float32Array(positionAttr.count);
-
-            for (let j = 0; j < positionAttr.count; j++) {
-                // Approximate progress along tube
-                const pos = new THREE.Vector3().fromBufferAttribute(positionAttr, j);
-                let minDist = Infinity;
-                let bestT = 0;
-
-                for (let t = 0; t <= 1; t += 0.02) {
-                    const curvePoint = curve.getPointAt(t);
-                    const dist = pos.distanceTo(curvePoint);
-                    if (dist < minDist) {
-                        minDist = dist;
-                        bestT = t;
-                    }
-                }
-                progress[j] = bestT;
+            // Hero is conceptually the group of orbs in fallback mode.
+            this.heroMesh = null;
+            this.heroMaterial = null;
+            // Cheap fill light so MeshPhysicalMaterial has something to react to.
+            this._fallbackLights = [];
+            const ambient = new THREE.AmbientLight(0x1A0532, 0.4);
+            this.scene.add(ambient);
+            this._fallbackLights.push(ambient);
+            for (let i = 0; i < 3; i += 1) {
+                const lightColor = palette[i % palette.length];
+                const light = new THREE.PointLight(
+                    new THREE.Color(lightColor.x, lightColor.y, lightColor.z),
+                    1.8,
+                    60,
+                );
+                const angle = (i / 3) * Math.PI * 2;
+                light.position.set(Math.cos(angle) * 18, 6, Math.sin(angle) * 18);
+                this.scene.add(light);
+                this._fallbackLights.push(light);
             }
-            tubeGeometry.setAttribute('aProgress', new THREE.BufferAttribute(progress, 1));
-
-            const colors = RIBBON_COLORS[i % RIBBON_COLORS.length];
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: this.uniforms.time,
-                    uColor1: { value: colors.color1 },
-                    uColor2: { value: colors.color2 },
-                    uColor3: { value: colors.color3 },
-                    uOpacity: { value: 0.08 + Math.random() * 0.05 },
-                    uPulseIntensity: this.uniforms.pulseIntensity,
-                },
-                vertexShader: ribbonVertexShader,
-                fragmentShader: ribbonFragmentShader,
-                transparent: true,
-                side: THREE.DoubleSide,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending,
-            });
-
-            const ribbon = new THREE.Mesh(tubeGeometry, material);
-
-            // Rotation offset
-            ribbon.rotation.y = Math.random() * Math.PI * 2;
-            ribbon.rotation.x = (Math.random() - 0.5) * 0.3;
-
-            ribbon.userData = {
-                rotationSpeed: (Math.random() - 0.5) * 0.02,
-            };
-
-            this.mainGroup.add(ribbon);
-            this.ribbons.push(ribbon);
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Ambient Particles - Shimmer effect
-    // ─────────────────────────────────────────────────────────────────────────
 
     createParticles() {
         const count = this.activePreset.particleCount;
-        const geometry = new THREE.BufferGeometry();
 
-        const positions = new Float32Array(count * 3);
-        const phases = new Float32Array(count);
-        const sizes = new Float32Array(count);
-        const colors = new Float32Array(count * 3);
+        if (this.isWebGPU) {
+            this.particleCompute = new FluidDreamsParticleCompute(count, {
+                boundsRadius: 55.0,
+                spawnInner: 12.0,
+                spawnOuter: 48.0,
+                flowStrength: 1.6,
+                damping: 0.93,
+            });
+            this.particleCompute.createComputeNode();
 
-        const colorOptions = [
-            new THREE.Color(0x79faff),
-            new THREE.Color(0xff7cf0),
-            new THREE.Color(0xa1ffcf),
-            new THREE.Color(0x8c9bff),
-            new THREE.Color(0xffe066),
-        ];
+            this.particleMaterial = createFluidParticleNodeMaterial({
+                isWebGPU: true,
+                particleCompute: this.particleCompute,
+            });
 
-        for (let i = 0; i < count; i++) {
-            // Distribute in sphere
-            const r = 10 + Math.random() * 60;
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
+            const geometry = new THREE.BufferGeometry();
+            const dummyPositions = new Float32Array(count * 3);
+            geometry.setAttribute('position', new THREE.BufferAttribute(dummyPositions, 3));
+            // Stub `uv` attribute so TSL's AttributeNode finds it on the Points geometry.
+            // Values are unused at runtime — PointsNodeMaterial substitutes the sprite UV.
+            // Without this stub TSL logs a benign "attribute uv not found" warning per build.
+            const dummyUvs = new Float32Array(count * 2);
+            geometry.setAttribute('uv', new THREE.BufferAttribute(dummyUvs, 2));
+            geometry.setDrawRange(0, count);
+            geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 60);
 
-            positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-            positions[i * 3 + 1] = r * Math.cos(phi);
-            positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+            this.particleSystem = new THREE.Points(geometry, this.particleMaterial);
+            this.particleSystem.frustumCulled = false;
+            this.particleSystem.renderOrder = 2;
+            this.scene.add(this.particleSystem);
+        } else {
+            // WebGL fallback: simple animated point cloud (CPU-light, vertex-shader-driven).
+            const reduced = Math.min(count, 4000); // hard-cap for WebGL fallback
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(reduced * 3);
+            const colors = new Float32Array(reduced * 3);
+            const phases = new Float32Array(reduced);
+            const sizes = new Float32Array(reduced);
 
-            phases[i] = Math.random();
-            sizes[i] = 0.3 + Math.random() * 1.5;
+            const palette = [
+                ELECTRIC_PALETTE.neonPink,
+                ELECTRIC_PALETTE.electricViolet,
+                ELECTRIC_PALETTE.electricCyan,
+                ELECTRIC_PALETTE.warmGold,
+            ];
+            for (let i = 0; i < reduced; i += 1) {
+                const u = Math.random();
+                const v = Math.random();
+                const theta = u * Math.PI * 2;
+                const phi = Math.acos(2 * v - 1);
+                const r = 12 + Math.random() * 35;
+                const sinPhi = Math.sin(phi);
+                positions[i * 3]     = r * sinPhi * Math.cos(theta);
+                positions[i * 3 + 1] = r * sinPhi * Math.sin(theta);
+                positions[i * 3 + 2] = r * Math.cos(phi);
 
-            const color = colorOptions[Math.floor(Math.random() * colorOptions.length)];
-            colors[i * 3] = color.r;
-            colors[i * 3 + 1] = color.g;
-            colors[i * 3 + 2] = color.b;
+                const tint = palette[Math.floor(Math.random() * palette.length)];
+                colors[i * 3]     = tint.x;
+                colors[i * 3 + 1] = tint.y;
+                colors[i * 3 + 2] = tint.z;
+
+                phases[i] = Math.random() * Math.PI * 2;
+                sizes[i] = 1.5 + Math.random() * 3.0;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+            geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+
+            this.particleMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uPixelRatio: { value: this.renderer.getPixelRatio() },
+                },
+                vertexShader: fallbackParticleVertexShader,
+                fragmentShader: fallbackParticleFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+
+            this.particleSystem = new THREE.Points(geometry, this.particleMaterial);
+            this.particleSystem.frustumCulled = false;
+            this.particleSystem.renderOrder = 2;
+            this.scene.add(this.particleSystem);
         }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: this.uniforms.time,
-                uSize: { value: 3.0 },
-                uPulseIntensity: this.uniforms.pulseIntensity,
-            },
-            vertexShader: particleVertexShader,
-            fragmentShader: particleFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        this.particles = new THREE.Points(geometry, material);
-        this.mainGroup.add(this.particles);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Lighting
-    // ─────────────────────────────────────────────────────────────────────────
-
-    setupLighting() {
-        // Ambient light - soft purple tint
-        const ambient = new THREE.AmbientLight(0x1a0828, 0.2);
-        this.scene.add(ambient);
-
-        // Hemisphere light - gradient from above/below
-        const hemi = new THREE.HemisphereLight(0x79faff, 0xff7cf0, 0.2);
-        this.scene.add(hemi);
-
-        // Point lights near blobs
-        const lightColors = [0x79faff, 0xff7cf0, 0xa1ffcf, 0x8c9bff];
-        for (let i = 0; i < 4; i++) {
-            const light = new THREE.PointLight(lightColors[i], 0.5, 50);
-            const angle = (i / 4) * Math.PI * 2;
-            light.position.set(
-                Math.cos(angle) * 20,
-                (Math.random() - 0.5) * 15,
-                Math.sin(angle) * 20,
-            );
-            this.mainGroup.add(light);
-        }
-
-        // Central glow was removed to prevent whiteout
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Post-Processing
+    // Post-processing
     // ─────────────────────────────────────────────────────────────────────────
 
     setupPostProcessing() {
-        this.composer = new EffectComposer(this.renderer);
+        if (this.isWebGPU) {
+            this.post = new FluidDreamsPost(this.renderer, this.scene, this.camera, {
+                bloomStrength: this.activePreset.bloomStrength,
+                bloomRadius: this.activePreset.bloomRadius,
+                // Higher threshold = only rim/highlight hotspots bloom, not the whole fluid body.
+                // This preserves the iridescent palette inside the hero instead of blowing it to white.
+                bloomThreshold: 0.55,
+                bloomDownsample: this.activePreset.bloomDownsample,
+                chromaticStrength: this.activePreset.enableChromaticAberration ? 0.0018 : 0.0,
+                exposure: 1.0,
+                contrast: 1.06,
+                saturation: 1.15,
+                tintStrength: 0.12,
+                grainStrength: 0.015,
+                useMRT: true,
+            });
+            this.post.setSize(window.innerWidth, window.innerHeight);
+        } else {
+            this.composer = new EffectComposer(this.renderer);
+            const renderPass = new RenderPass(this.scene, this.camera);
+            this.composer.addPass(renderPass);
 
-        // Render pass
-        const renderPass = new RenderPass(this.scene, this.camera);
-        this.composer.addPass(renderPass);
-
-        // Bloom for dreamy glow
-        this.bloomPass = new UnrealBloomPass(
-            new THREE.Vector2(window.innerWidth, window.innerHeight),
-            this.activePreset.bloomStrength,
-            0.2, // radius
-            0.85, // threshold
-        );
-        this.bloomPass.enabled = this.activePreset.enableBloom;
-        this.composer.addPass(this.bloomPass);
+            if (this.activePreset.enableBloom) {
+                this.bloomPass = new UnrealBloomPass(
+                    new THREE.Vector2(window.innerWidth, window.innerHeight),
+                    this.activePreset.bloomStrength,
+                    this.activePreset.bloomRadius,
+                    0.45,
+                );
+                this.bloomPass.enabled = true;
+                this.composer.addPass(this.bloomPass);
+            }
+            this.composer.setSize(window.innerWidth, window.innerHeight);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Event Listeners
+    // Event listeners — combo / line clear
     // ─────────────────────────────────────────────────────────────────────────
 
     setupEventListeners() {
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            if (!this.isActive) return;
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onLineClear(data.lineCount);
-            }
+            if (settings?.backgroundComboEffects === false) return;
+            this.onLineClear(data?.lineCount ?? 1);
         });
 
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
+            if (!this.isActive) return;
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onCombo(data.comboCount);
-            }
+            if (settings?.backgroundComboEffects === false) return;
+            this.onCombo(data?.comboCount ?? 1);
         });
 
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
+        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
+            if (!this.isActive) return;
             const settings = typeof window !== 'undefined' ? window.settings : null;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onPieceLock();
-            }
+            if (settings?.backgroundComboEffects === false) return;
+            this.onPieceLock(data);
         });
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub);
+        // Pointer tracking for parallax camera.
+        const onPointerMove = (e) => {
+            if (!this.isActive) return;
+            this.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+            this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+        };
+        window.addEventListener('pointermove', onPointerMove);
+        const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
+
+        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, pointerUnsub);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Gameplay Effects
+    // Gameplay reactive effects
     // ─────────────────────────────────────────────────────────────────────────
+    //
+    // Design language for Fluid Dreams:
+    //   PIECE_LOCK  → soft breath through the fluid (frequent, subtle).
+    //   LINE_CLEAR  → palette wash + particle colour bath (per-clear celebration).
+    //   COMBO       → building hum: ambient glow, faster palette cycle, particle
+    //                 inward swirl. Tension that releases on combo break.
+    //   4-line/Tetris → climax: palette inversion + shockwave + flash.
+    //
+    // All impulses are ADDITIVE momentum (per the black-hole pattern) so rapid
+    // events stack rather than reset. Each impulse decays exponentially.
+
+    onPieceLock() {
+        // Cheap, frequent. Small breath, tiny iridescent nudge, brief particle puff.
+        this.lockImpulse = Math.min(2.0, this.lockImpulse + 0.7);
+        this.targetHeroPulse = Math.min(1.2, this.targetHeroPulse + 0.18);
+        this.targetIridescenceShift = Math.min(0.6, this.targetIridescenceShift + 0.03);
+        this.targetVelocityBoost = Math.min(2.5, this.targetVelocityBoost + 0.2);
+    }
 
     onLineClear(lineCount) {
-        // Very minimal pulse
-        this.targetPulseIntensity = Math.min(this.targetPulseIntensity + lineCount * 0.02, 0.2);
+        const safe = Math.max(1, Math.min(4, lineCount));
 
-        // Shockwave disabled - too bright
-        // this.createShockwave(lineCount * 0.3);
+        this.lineFlash = Math.min(3.0, this.lineFlash + safe * 0.55);
+        this.targetIridescenceShift = Math.min(1.2, this.targetIridescenceShift + safe * 0.1);
+        this.targetVelocityBoost = Math.min(3.5, this.targetVelocityBoost + safe * 0.45);
+        this.targetHeroPulse = Math.min(1.8, this.targetHeroPulse + safe * 0.22);
+        // Visible palette rotation through the 5 stops.
+        this.paletteCyclePhase = (this.paletteCyclePhase + safe * 0.16) % 1.0;
 
-        // Burst bubbles outward (subtle)
-        this.burstBubbles(lineCount * 0.3);
+        // Particle colour wash — tint by clear count (1=cyan ... 4=gold).
+        this.particleColorTarget.copy(this._lineClearTints[safe - 1]);
+        this.targetParticleColorMix = Math.min(0.85, this.targetParticleColorMix + 0.35 + safe * 0.08);
+
+        // Triple+ : send a shockwave through a random metaball.
+        if (safe >= 3 && this.shockwaveProgress < 0) {
+            const m = this.metaballState[Math.floor(Math.random() * this.metaballState.length)];
+            this.triggerShockwave(m?.pos ?? { x: 0, y: 0, z: 0 });
+        }
+        // Tetris signature flash — palette inversion + chromatic/bloom spike.
+        if (safe === 4) {
+            this.tetrisFlash = Math.max(this.tetrisFlash, 2.0);
+        }
     }
 
     onCombo(comboCount) {
-        this.comboMultiplier = Math.min(1 + comboCount * 0.25, 3.0);
+        const cap = Math.max(1, Math.min(15, comboCount));
 
-        // Minimal pulse - avoid brightness
-        this.targetPulseIntensity = Math.min(this.targetPulseIntensity + comboCount * 0.01, 0.15);
+        // comboHum builds with sustained combos and decays slowly. Drives ambient
+        // intensification of the whole scene.
+        this.comboHum = Math.min(2.5, this.comboHum + 0.2 + cap * 0.15);
+        this.targetVelocityBoost = Math.min(3.5, this.targetVelocityBoost + cap * 0.22);
 
-        // No bloom boost - keep it at base level
-        // (removed to prevent brightness)
-
-        // ═══════════════════════════════════════════════════════════════════
-        // BLOB-CONNECTED COMBO EFFECTS
-        // ═══════════════════════════════════════════════════════════════════
-
-        // Activate ALL blobs for the pulse/wobble/color effects
-        this.blobs.forEach((blob) => {
-            const data = blob.userData;
-
-            // Scale pulse - very subtle breathing effect
-            data.targetComboScale = 1.03 + comboCount * 0.01; // Barely visible
-
-            // Color shift - cycle through the palette
-            data.comboColorShift = 1.0 + comboCount * 0.3;
-
-            // Wobble - make blobs jiggle gently
-            data.comboWobble = 0.5 + comboCount * 0.2;
-
-            // Light Pulse - Sharp "kick" that decays fast (snappy flash)
-            data.comboGlow = Math.min(0.4 + comboCount * 0.1, 0.8);
-
-            // Speed up drift temporarily
-            const speedBoost = 1.5 + comboCount * 0.3;
-            data.driftSpeed.x *= speedBoost;
-            data.driftSpeed.y *= speedBoost;
-            data.driftSpeed.z *= speedBoost;
-
-            // Decay speed back to normal over time
-            this.scheduleEffectTimeout(() => {
-                if (data.driftSpeed) {
-                    data.driftSpeed.x /= speedBoost;
-                    data.driftSpeed.y /= speedBoost;
-                    data.driftSpeed.z /= speedBoost;
-                }
-            }, 800);
-        });
-
-        // Trigger particles/ripples on a subset to avoid performance/visual overload
-        // Select random blobs to emit particles/ripples based on combo count
-        const particleCount = Math.min(comboCount + 1, 5);
-        const shuffledBlobs = [...this.blobs].sort(() => Math.random() - 0.5);
-
-        for (let i = 0; i < particleCount; i++) {
-            const blob = shuffledBlobs[i];
-
-            // Emit burst particles from this blob (re-enabled)
-            this.emitBlobBurstParticles(blob, comboCount);
-
-            // Create ripple rings emanating from this blob (fluid theme fitting)
-            this.createBlobRipple(blob, comboCount);
+        if (cap >= COMBO_THRESHOLD_FOR_SHOCKWAVE && this.shockwaveProgress < 0) {
+            const m = this.metaballState[Math.floor(Math.random() * this.metaballState.length)];
+            this.triggerShockwave(m?.pos ?? { x: 0, y: 0, z: 0 });
         }
+    }
 
-        // Create energy connections between nearby blobs for high combos
-        if (comboCount >= 3) {
-            this.createBlobConnections(comboCount);
+    triggerShockwave(origin) {
+        this.shockwaveProgress = 0;
+        this.shockwaveOrigin.set(origin.x ?? 0, origin.y ?? 0, origin.z ?? 0);
+        if (this.heroMaterial?.userData?.uShockwaveOrigin) {
+            this.heroMaterial.userData.uShockwaveOrigin.value.copy(this.shockwaveOrigin);
         }
-
-        // Shockwaves disabled to prevent brightness
-        // if (comboCount >= 3) {
-        //     for (let i = 0; i < Math.min(comboCount - 2, 3); i++) {
-        //         setTimeout(() => {
-        //             this.createShockwave(0.5 + comboCount * 0.1);
-        //         }, i * 100);
-        //     }
-        // }
     }
 
-    onPieceLock() {
-        // Very minimal pulse
-        this.targetPulseIntensity = Math.min(this.targetPulseIntensity + 0.02, 0.1);
-    }
-
-    createShockwave(intensity) {
-        const geometry = new THREE.PlaneGeometry(100, 100);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uRadius: { value: 0 },
-                uMaxRadius: { value: 1.0 },
-                uColor: { value: new THREE.Color(0x79faff) },
-                uIntensity: { value: intensity },
-            },
-            vertexShader: shockwaveVertexShader,
-            fragmentShader: shockwaveFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-        });
-
-        const shockwave = new THREE.Mesh(geometry, material);
-        shockwave.position.copy(this.camera.position);
-        shockwave.position.z -= 30;
-        shockwave.lookAt(this.camera.position);
-
-        shockwave.userData = {
-            startTime: this.clock.getElapsedTime(),
-            duration: 1.0,
-        };
-
-        this.scene.add(shockwave);
-        this.shockwaves.push(shockwave);
-    }
-
-    burstBubbles(intensity) {
-        // Push bubbles outward briefly
-        this.bubbles.forEach((bubble) => {
-            const direction = bubble.position.clone().normalize();
-            bubble.userData.burstVelocity = direction.multiplyScalar(intensity * 2);
-            bubble.userData.burstDecay = 0.95;
-        });
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Blob Ripple Effect - Expanding rings emanating from blobs (fluid theme)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createBlobRipple(blob, comboCount) {
-        const blobRadius = blob.userData.originalScale || 5;
-
-        // Create a ring geometry around the blob
-        const geometry = new THREE.RingGeometry(blobRadius * 0.8, blobRadius * 1.0, 32);
-
-        // Pick a color from the blob's palette
-        const colors = [0x79faff, 0xff7cf0, 0xa1ffcf, 0x8c9bff];
-        const ringColor = new THREE.Color(colors[Math.floor(Math.random() * colors.length)]);
-
-        const material = new THREE.MeshBasicMaterial({
-            color: ringColor,
-            transparent: true,
-            opacity: 0.2, // Subtle starting opacity
-            side: THREE.DoubleSide,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        const ripple = new THREE.Mesh(geometry, material);
-        ripple.position.copy(blob.position);
-
-        // Random slight rotation
-        ripple.rotation.x = Math.random() * Math.PI * 0.3;
-        ripple.rotation.y = Math.random() * Math.PI * 2;
-
-        ripple.userData = {
-            startTime: this.clock.getElapsedTime(),
-            duration: 1.5 + comboCount * 0.2,
-            startScale: 1,
-            maxScale: 3 + comboCount * 0.5,
-            blob, // Reference to track blob position
-        };
-
-        this.scene.add(ripple);
-
-        // Store for animation/cleanup
-        if (!this.blobRipples) this.blobRipples = [];
-        this.blobRipples.push(ripple);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Blob Burst Particles - Emit sparkles from blob surface during combos
-    // ─────────────────────────────────────────────────────────────────────────
-
-    emitBlobBurstParticles(blob, comboCount) {
-        const particleCount = 5 + comboCount; // Very few particles
-        const geometry = new THREE.BufferGeometry();
-
-        const positions = new Float32Array(particleCount * 3);
-        const velocities = [];
-        const colors = new Float32Array(particleCount * 3);
-        const sizes = new Float32Array(particleCount);
-
-        const colorOptions = [
-            new THREE.Color(0x79faff),
-            new THREE.Color(0xff7cf0),
-            new THREE.Color(0xa1ffcf),
-            new THREE.Color(0xffe066),
-        ];
-
-        for (let i = 0; i < particleCount; i++) {
-            // Emit from blob surface in random directions
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
-            const direction = new THREE.Vector3(
-                Math.sin(phi) * Math.cos(theta),
-                Math.sin(phi) * Math.sin(theta),
-                Math.cos(phi),
-            );
-
-            // Start at blob surface
-            const blobRadius = blob.userData.originalScale || 5;
-            positions[i * 3] = blob.position.x + direction.x * blobRadius;
-            positions[i * 3 + 1] = blob.position.y + direction.y * blobRadius;
-            positions[i * 3 + 2] = blob.position.z + direction.z * blobRadius;
-
-            // Velocity outward
-            velocities.push(direction.clone().multiplyScalar(5 + Math.random() * 10));
-
-            // Random iridescent color
-            const color = colorOptions[Math.floor(Math.random() * colorOptions.length)];
-            colors[i * 3] = color.r;
-            colors[i * 3 + 1] = color.g;
-            colors[i * 3 + 2] = color.b;
-
-            sizes[i] = 0.5 + Math.random() * 0.8; // Very small particles
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uOpacity: { value: 1.0 },
-            },
-            vertexShader: `
-                attribute vec3 aColor;
-                attribute float aSize;
-                varying vec3 vColor;
-                varying float vOpacity;
-                uniform float uOpacity;
-                void main() {
-                    vColor = aColor;
-                    vOpacity = uOpacity;
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    gl_PointSize = aSize * (100.0 / -mvPosition.z);  // Smaller point size
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-            fragmentShader: `
-                varying vec3 vColor;
-                varying float vOpacity;
-                void main() {
-                    float dist = length(gl_PointCoord - vec2(0.5));
-                    if (dist > 0.5) discard;
-                    float glow = 1.0 - dist * 2.0;
-                    glow = pow(glow, 3.0);  // Very sharp falloff
-                    gl_FragColor = vec4(vColor, glow * vOpacity * 0.3);  // Much dimmer
-                }
-            `,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        });
-
-        const burstParticles = new THREE.Points(geometry, material);
-        burstParticles.userData = {
-            velocities,
-            startTime: this.clock.getElapsedTime(),
-            duration: 1.2,
-            gravity: -2,
-        };
-
-        this.scene.add(burstParticles);
-
-        // Store for animation/cleanup
-        if (!this.blobBurstParticles) this.blobBurstParticles = [];
-        this.blobBurstParticles.push(burstParticles);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Blob Energy Connections - Draw glowing lines between nearby blobs
-    // ─────────────────────────────────────────────────────────────────────────
-
-    createBlobConnections(comboCount) {
-        // 1. Constellation Chain Logic: A -> B -> C
-        // Pick a random starting blob to ensure variety
-        let currentBlob = this.blobs[Math.floor(Math.random() * this.blobs.length)];
-        const visited = new Set([currentBlob]);
-
-        // Limit chain length based on combo, but keep it reasonable
-        const chainLength = Math.min(comboCount, 5);
-
-        for (let i = 0; i < chainLength; i++) {
-            let nearestBlob = null;
-            let minDist = Infinity;
-
-            // Find nearest unvisited blob
-            for (const blob of this.blobs) {
-                if (!visited.has(blob)) {
-                    const dist = currentBlob.position.distanceTo(blob.position);
-                    if (dist < minDist) {
-                        minDist = dist;
-                        nearestBlob = blob;
-                    }
-                }
+    updateShockwave(delta) {
+        if (this.shockwaveProgress < 0) {
+            if (this.heroMaterial?.userData?.uShockwaveStrength) {
+                this.heroMaterial.userData.uShockwaveStrength.value = 0;
+                this.heroMaterial.userData.uShockwaveRadius.value = 0;
             }
-
-            // If we found a neighbor within reasonable range, connect and continue chain
-            if (nearestBlob && minDist < 100) { // Large search radius ensures connections
-                this.createEnergyLine(currentBlob, nearestBlob, comboCount);
-                visited.add(nearestBlob);
-                currentBlob = nearestBlob;
-            } else {
-                break; // End chain if no valid neighbors
-            }
+            return;
         }
-    }
-
-    createEnergyLine(blobA, blobB, comboCount) {
-        // Clean constellation line - simple glowing connection
-        const segments = 20;
-        const points = [];
-
-        // Create a gentle curved path between blobs
-        const midPoint = new THREE.Vector3()
-            .addVectors(blobA.position, blobB.position)
-            .multiplyScalar(0.5);
-        // Subtle upward arc for elegance
-        const dist = blobA.position.distanceTo(blobB.position);
-        midPoint.y += Math.min(dist * 0.15, 5);
-
-        const curve = new THREE.QuadraticBezierCurve3(
-            blobA.position.clone(),
-            midPoint,
-            blobB.position.clone(),
-        );
-
-        for (let i = 0; i <= segments; i++) {
-            points.push(curve.getPoint(i / segments));
+        this.shockwaveProgress += delta;
+        const t = Math.min(1, this.shockwaveProgress / this.shockwaveDuration);
+        const eased = 1 - Math.pow(1 - t, 2.5);
+        const radius = eased * SHOCKWAVE_MAX_RADIUS;
+        const strength = (1 - t) * 1.2;
+        if (this.heroMaterial?.userData?.uShockwaveStrength) {
+            this.heroMaterial.userData.uShockwaveStrength.value = strength;
+            this.heroMaterial.userData.uShockwaveRadius.value = radius;
         }
-
-        const geometry = new THREE.BufferGeometry().setFromPoints(points);
-
-        // Soft white-cyan glow for constellation aesthetic
-        const material = new THREE.LineBasicMaterial({
-            color: new THREE.Color(0xaaeeff),
-            transparent: true,
-            opacity: 0.6,
-            blending: THREE.AdditiveBlending,
-        });
-
-        const line = new THREE.Line(geometry, material);
-        line.userData = {
-            startTime: this.clock.getElapsedTime(),
-            duration: 1.5 + comboCount * 0.2,
-            blobA,
-            blobB,
-        };
-
-        this.mainGroup.add(line);
-
-        if (!this.energyLines) this.energyLines = [];
-        this.energyLines.push(line);
+        if (t >= 1) {
+            this.shockwaveProgress = -1;
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Animation Loop
+    // Dynamic resolution scaling — keep frametime stable
+    // ─────────────────────────────────────────────────────────────────────────
+
+    getEffectivePixelRatioWithDRS() {
+        const base = this.getEffectivePixelRatio();
+        const scale = this.drs.enabled ? this.drs.scale : 1.0;
+        return Math.max(0.25, Math.round(base * scale * 100) / 100);
+    }
+
+    applyDRSPixelRatio() {
+        if (!this.renderer) return;
+        const target = this.getEffectivePixelRatioWithDRS();
+        const current = this.renderer.getPixelRatio();
+        if (Math.abs(current - target) < 0.005) return;
+        this.renderer.setPixelRatio(target);
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        if (this.post) this.post.setSize(window.innerWidth, window.innerHeight);
+        if (this.composer) this.composer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    updateDRS(delta) {
+        const drs = this.drs;
+        if (!drs.enabled) return;
+
+        const frameMs = delta * 1000;
+        // EMA over ~12 frames for faster reaction than the 31-frame global monitor.
+        drs.emaMs = drs.emaMs * 0.88 + frameMs * 0.12;
+
+        // Emergency: if we see 10 hard-slow frames (>22ms = below 45fps) in a
+        // row, downscale immediately instead of waiting for the next interval.
+        // This catches sustained drops before PerformanceMonitor (31 frames) fires.
+        if (frameMs > 22.0) {
+            drs.consecutiveSlow += 1;
+            if (drs.consecutiveSlow >= 10 && drs.scale > drs.minScale) {
+                drs.scale = Math.max(drs.minScale, drs.scale - 0.1);
+                drs.consecutiveSlow = 0;
+                drs.elapsed = 0;
+                this.applyDRSPixelRatio();
+                return;
+            }
+        } else {
+            drs.consecutiveSlow = 0;
+        }
+
+        drs.elapsed += delta;
+        if (drs.elapsed < drs.adjustInterval) return;
+        drs.elapsed = 0;
+
+        let newScale = drs.scale;
+        if (drs.emaMs > drs.targetMs * 1.15) {
+            newScale = Math.max(drs.minScale, drs.scale - 0.08);
+        } else if (drs.emaMs < drs.targetMs * 0.85) {
+            newScale = Math.min(drs.maxScale, drs.scale + 0.04);
+        }
+
+        if (Math.abs(newScale - drs.scale) >= 0.01) {
+            drs.scale = newScale;
+            this.applyDRSPixelRatio();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Animation
     // ─────────────────────────────────────────────────────────────────────────
 
     animate() {
         if (!this.isActive) return;
-
         this.animationFrame = requestAnimationFrame(() => this.animate());
 
         const elapsed = this.clock.getElapsedTime();
-        const delta = this.clock.getDelta();
+        const delta = Math.min(0.05, this.clock.getDelta());
+        this.frameCount += 1;
+        this.updateDRS(delta);
 
-        // Update uniforms
-        this.uniforms.time.value = elapsed;
+        // Decay combo / impulse state. Each impulse has its own time constant —
+        // small frequent events (locks) decay quickly so they punctuate without
+        // bleeding into each other; sustained tension (comboHum) decays slowly.
+        // exp(-delta/tau) is frame-rate independent.
+        this.iridescenceShift += (this.targetIridescenceShift - this.iridescenceShift) * Math.min(1, delta * 6);
+        this.targetIridescenceShift *= Math.exp(-delta / 1.4);
+        this.velocityBoost += (this.targetVelocityBoost - this.velocityBoost) * Math.min(1, delta * 8);
+        this.targetVelocityBoost *= Math.exp(-delta / 0.9);
+        this.lockImpulse *= Math.exp(-delta / 0.3);
+        this.lineFlash *= Math.exp(-delta / 0.7);
+        this.tetrisFlash *= Math.exp(-delta / 1.2);
+        this.comboHum *= Math.exp(-delta / 3.5);
+        this.heroPulse += (this.targetHeroPulse - this.heroPulse) * Math.min(1, delta * 9);
+        this.targetHeroPulse *= Math.exp(-delta / 0.45);
+        this.particleColorMix += (this.targetParticleColorMix - this.particleColorMix) * Math.min(1, delta * 5);
+        this.targetParticleColorMix *= Math.exp(-delta / 0.8);
+        // Palette cycle drifts slowly at rest, accelerates with combo hum.
+        this.paletteCyclePhase = (this.paletteCyclePhase + delta * (0.02 + this.comboHum * 0.18)) % 1.0;
 
-        // Decay pulse intensity - SNAPPIER RESPONSE
-        // Faster lerp to catch up (0.4 vs 0.1), slightly slower decay (0.92 vs 0.95)
-        this.uniforms.pulseIntensity.value += (this.targetPulseIntensity - this.uniforms.pulseIntensity.value) * 0.4;
-        this.targetPulseIntensity *= 0.92;
+        // Aggregate values that feed into uniforms.
+        const heroPulseTotal = this.heroPulse
+            + this.lineFlash * 0.35
+            + this.tetrisFlash * 0.6
+            + this.lockImpulse * 0.12;
+        const iridescenceTotal = this.iridescenceShift
+            + this.paletteCyclePhase
+            + this.lineFlash * 0.18
+            + this.comboHum * 0.14;
+        const velocityTotal = this.velocityBoost
+            + this.lineFlash * 0.6
+            + this.lockImpulse * 0.35
+            + this.comboHum * 0.45;
+        const ambientGlowTotal = this.comboHum * 0.7 + this.tetrisFlash * 0.4;
 
-        // Reset bloom to base strength gradually
-        if (this.bloomPass && this.activePreset.enableBloom) {
-            this.bloomPass.strength += (this.activePreset.bloomStrength - this.bloomPass.strength) * 0.05;
-        }
+        // Advect metaballs CPU-side, then push to GPU/uniform/object positions.
+        this.updateMetaballState(elapsed);
+        this.updateShockwave(delta);
 
-        // Animate blobs with drifting and floating
-        this.blobs.forEach((blob) => {
-            const data = blob.userData;
+        if (this.isWebGPU) {
+            this.pushMetaballsToHero();
 
-            // Apply drift velocity (continuous slow movement)
-            blob.position.x += data.driftSpeed.x * delta;
-            blob.position.y += data.driftSpeed.y * delta;
-            blob.position.z += data.driftSpeed.z * delta;
-
-            // Layered floating motion (more organic with two sine waves)
-            const floatY = Math.sin(elapsed * data.floatSpeed + data.floatPhase) * data.floatAmplitude;
-            const floatX = Math.sin(elapsed * data.floatSpeed * 0.7 + data.floatPhase2) * data.floatAmplitude * 0.5;
-            blob.position.y += floatY * delta * 0.5;
-            blob.position.x += floatX * delta * 0.3;
-
-            // Wrap-around when blobs drift off-screen (seamless looping)
-            if (blob.position.x > 70) { blob.position.x = -70; data.basePosition.x = blob.position.x; }
-            if (blob.position.x < -70) { blob.position.x = 70; data.basePosition.x = blob.position.x; }
-            if (blob.position.y > 45) { blob.position.y = -45; data.basePosition.y = blob.position.y; }
-            if (blob.position.y < -45) { blob.position.y = 45; data.basePosition.y = blob.position.y; }
-            if (blob.position.z > 40) { blob.position.z = -40; data.basePosition.z = blob.position.z; }
-            if (blob.position.z < -50) { blob.position.z = 30; data.basePosition.z = blob.position.z; }
-
-            // Animate combo scale effect
-            data.comboScale += (data.targetComboScale - data.comboScale) * 0.08;
-            data.targetComboScale += (1.0 - data.targetComboScale) * 0.02; // Decay back to 1.0
-            const scale = data.originalScale * data.comboScale;
-            blob.scale.setScalar(scale / data.originalScale);
-
-            // Animate color shift (passed to shader via morph seed modulation)
-            if (data.comboColorShift > 0) {
-                data.comboColorShift *= 0.98; // Decay
-                if (blob.material.uniforms.uMorphSpeed) {
-                    blob.material.uniforms.uMorphSpeed.value = 0.3 + data.comboColorShift * 0.5;
+            // Push hero uniforms.
+            if (this.heroMaterial?.userData) {
+                const ud = this.heroMaterial.userData;
+                ud.uTime.value = elapsed;
+                ud.uIridescenceShift.value = iridescenceTotal;
+                ud.uHeroPulse.value = heroPulseTotal;
+                ud.uHeroPaletteInvert.value = Math.min(1.0, this.tetrisFlash * 0.65);
+                ud.uHeroAmbientGlow.value = ambientGlowTotal;
+            }
+            if (this.backgroundMaterial?.userData) {
+                this.backgroundMaterial.userData.uTime.value = elapsed;
+                this.backgroundMaterial.userData.uPulse.value = this.comboHum * 0.4 + this.tetrisFlash * 0.3;
+            }
+            if (this.hazeMaterial?.userData) {
+                this.hazeMaterial.userData.uTime.value = elapsed;
+                this.hazeMaterial.userData.uPulse.value = velocityTotal * 0.25 + this.comboHum * 0.3;
+            }
+            // Particle material colour wash uniforms.
+            if (this.particleMaterial?.userData?.uColorOverride) {
+                const pud = this.particleMaterial.userData;
+                pud.uColorOverride.value.set(
+                    this.particleColorTarget.r,
+                    this.particleColorTarget.g,
+                    this.particleColorTarget.b,
+                );
+                pud.uColorOverrideMix.value = this.particleColorMix;
+                pud.uBrightnessBoost.value = this.comboHum * 0.6 + this.lineFlash * 0.35;
+            }
+            // Particle compute — velocity + combo attract.
+            if (this.particleCompute) {
+                // Attract centre tracks the hero cluster centre (origin, slightly raised
+                // toward the camera so the swirl reads on screen).
+                this._attractCenter.set(0, 0.5, 4);
+                this.particleCompute.update(delta, {
+                    time: elapsed,
+                    velocityBoost: velocityTotal,
+                    attractCenter: this._attractCenter,
+                    attractStrength: this.comboHum * 1.4,
+                });
+            }
+        } else {
+            this.pushMetaballsToFallbackOrbs();
+            if (this.backgroundMaterial?.uniforms?.uTime) {
+                this.backgroundMaterial.uniforms.uTime.value = elapsed;
+            }
+            if (this.particleMaterial?.uniforms?.uTime) {
+                this.particleMaterial.uniforms.uTime.value = elapsed;
+            }
+            // Subtle iridescent pulse on fallback orbs.
+            const baseEmissive = 0.45 + this.iridescenceShift * 0.5;
+            for (let i = 0; i < this.fallbackOrbs.length; i += 1) {
+                const orb = this.fallbackOrbs[i];
+                orb.rotation.y += delta * 0.15;
+                orb.rotation.x += delta * 0.09;
+                if (orb.material?.emissiveIntensity !== undefined) {
+                    orb.material.emissiveIntensity = baseEmissive;
                 }
-            }
-
-            // Animate wobble effect
-            if (data.comboWobble > 0) {
-                data.comboWobble *= 0.96; // Decay
-                const wobbleX = Math.sin(elapsed * 8 + data.floatPhase) * data.comboWobble * 0.3;
-                const wobbleY = Math.cos(elapsed * 7 + data.floatPhase2) * data.comboWobble * 0.2;
-                blob.position.x += wobbleX * delta;
-                blob.position.y += wobbleY * delta;
-            }
-
-            // Animate glow pulse (Slower, dreamy pulse)
-            if (data.comboGlow > 0.01) {
-                data.comboGlow *= 0.96; // Slower decay for longer presence
-                if (blob.material.uniforms.uPulseIntensity) {
-                    // Add to base pulse
-                    const basePulse = this.uniforms.pulseIntensity.value;
-                    // Calmer sine modulation (3.0 vs 15.0)
-                    const life = 1.0 + Math.sin(elapsed * 3.0) * 0.15;
-                    blob.material.uniforms.uPulseIntensity.value = Math.min(basePulse + data.comboGlow * life, 1.3);
-                }
-            } else {
-                // Sync with global pulse if no local combo glow
-                if (blob.material.uniforms.uPulseIntensity) {
-                    blob.material.uniforms.uPulseIntensity.value = this.uniforms.pulseIntensity.value;
-                }
-            }
-
-            // Slow rotation for organic feel
-            blob.rotation.y += 0.003;
-            blob.rotation.x += 0.002;
-            blob.rotation.z += 0.001;
-        });
-
-        // Animate bubbles
-        this.bubbles.forEach((bubble) => {
-            const data = bubble.userData;
-
-            // Upward float
-            bubble.position.y += data.speed * delta * 3;
-
-            // Horizontal wobble
-            const wobble = Math.sin(elapsed * data.wobbleSpeed + data.wobblePhase) * data.wobbleAmount;
-            bubble.position.x += Math.sin(elapsed * 0.5) * 0.02;
-
-            // Burst velocity decay
-            if (data.burstVelocity) {
-                bubble.position.add(data.burstVelocity.clone().multiplyScalar(delta));
-                data.burstVelocity.multiplyScalar(data.burstDecay);
-                if (data.burstVelocity.length() < 0.01) {
-                    data.burstVelocity = null;
-                }
-            }
-
-            // Reset when off screen
-            if (bubble.position.y > 40) {
-                bubble.position.y = -35;
-                bubble.position.x = (Math.random() - 0.5) * 60;
-                bubble.position.z = (Math.random() - 0.5) * 40;
-            }
-        });
-
-        // Animate ribbons
-        this.ribbons.forEach((ribbon) => {
-            ribbon.rotation.y += ribbon.userData.rotationSpeed;
-        });
-
-        // Update shockwaves
-        for (let i = this.shockwaves.length - 1; i >= 0; i--) {
-            const shockwave = this.shockwaves[i];
-            const age = elapsed - shockwave.userData.startTime;
-            const progress = age / shockwave.userData.duration;
-
-            if (progress >= 1) {
-                this.scene.remove(shockwave);
-                shockwave.geometry.dispose();
-                shockwave.material.dispose();
-                this.shockwaves.splice(i, 1);
-            } else {
-                shockwave.material.uniforms.uRadius.value = progress;
-            }
-        }
-
-        // ═══════════════════════════════════════════════════════════════════
-        // Animate Blob Burst Particles
-        // ═══════════════════════════════════════════════════════════════════
-        if (this.blobBurstParticles) {
-            for (let i = this.blobBurstParticles.length - 1; i >= 0; i--) {
-                const burst = this.blobBurstParticles[i];
-                const age = elapsed - burst.userData.startTime;
-                const progress = age / burst.userData.duration;
-
-                if (progress >= 1) {
-                    this.scene.remove(burst);
-                    burst.geometry.dispose();
-                    burst.material.dispose();
-                    this.blobBurstParticles.splice(i, 1);
-                } else {
-                    // Update particle positions with velocity and gravity
-                    const positions = burst.geometry.attributes.position.array;
-                    const { velocities } = burst.userData;
-
-                    for (let j = 0; j < velocities.length; j++) {
-                        velocities[j].y += burst.userData.gravity * delta;
-                        positions[j * 3] += velocities[j].x * delta;
-                        positions[j * 3 + 1] += velocities[j].y * delta;
-                        positions[j * 3 + 2] += velocities[j].z * delta;
-                    }
-                    burst.geometry.attributes.position.needsUpdate = true;
-
-                    // Fade out
-                    burst.material.uniforms.uOpacity.value = 1 - progress;
+                if (orb.material?.iridescenceThicknessRange) {
+                    const shift = Math.sin(elapsed * 0.6 + i) * 60 + this.iridescenceShift * 200;
+                    orb.material.iridescenceThicknessRange = [120 + shift, 720 + shift];
                 }
             }
         }
 
-        // ═══════════════════════════════════════════════════════════════════
-        // Animate Blob Ripples
-        // ═══════════════════════════════════════════════════════════════════
-        if (this.blobRipples) {
-            for (let i = this.blobRipples.length - 1; i >= 0; i--) {
-                const ripple = this.blobRipples[i];
-                const age = elapsed - ripple.userData.startTime;
-                const progress = age / ripple.userData.duration;
+        // Smooth pointer toward target (frame-rate independent damping).
+        // delta * 5 → reaches ~95% of target in ~0.6s. Snappy but not jittery.
+        this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, delta * 5.0);
+        this.smoothedPointerY = THREE.MathUtils.lerp(this.smoothedPointerY, this.pointerY, delta * 5.0);
+        // Parallax magnitudes trimmed so mouse movement never swings the hero
+        // behind the game board or off-screen given the new off-centre framing.
+        const parallaxX = this.smoothedPointerX * 3.5;
+        const parallaxY = -this.smoothedPointerY * 2.2;
 
-                if (progress >= 1) {
-                    this.scene.remove(ripple);
-                    ripple.geometry.dispose();
-                    ripple.material.dispose();
-                    this.blobRipples.splice(i, 1);
-                } else {
-                    // Expand the ripple
-                    const scale = ripple.userData.startScale + progress * (ripple.userData.maxScale - ripple.userData.startScale);
-                    ripple.scale.setScalar(scale);
-
-                    // Fade out as it expands
-                    ripple.material.opacity = 0.2 * (1 - progress);
-
-                    // Follow the blob if it's still moving
-                    if (ripple.userData.blob && ripple.userData.blob.position) {
-                        ripple.position.lerp(ripple.userData.blob.position, 0.1);
-                    }
-                }
-            }
-        }
-
-        // ═══════════════════════════════════════════════════════════════════
-        // Animate Energy Lines
-        // Animate Constellation Lines
-        if (this.energyLines) {
-            for (let i = this.energyLines.length - 1; i >= 0; i--) {
-                const line = this.energyLines[i];
-                const age = elapsed - line.userData.startTime;
-                const progress = age / line.userData.duration;
-
-                if (progress >= 1) {
-                    // Cleanup
-                    line.geometry.dispose();
-                    line.material.dispose();
-                    this.mainGroup.remove(line);
-                    this.energyLines.splice(i, 1);
-                } else {
-                    const { blobA } = line.userData;
-                    const { blobB } = line.userData;
-
-                    if (blobA && blobB && blobA.position && blobB.position) {
-                        // Fade in/out - quick fade in, slow fade out
-                        const opacity = progress < 0.1 ? progress * 6 : 0.6 * (1 - progress);
-                        line.material.opacity = opacity;
-
-                        // Update curve to follow moving blobs
-                        const dist = blobA.position.distanceTo(blobB.position);
-                        const midPoint = new THREE.Vector3()
-                            .addVectors(blobA.position, blobB.position)
-                            .multiplyScalar(0.5);
-                        midPoint.y += Math.min(dist * 0.15, 5);
-
-                        const curve = new THREE.QuadraticBezierCurve3(
-                            blobA.position,
-                            midPoint,
-                            blobB.position,
-                        );
-
-                        const points = curve.getPoints(20);
-                        line.geometry.setFromPoints(points);
-                    }
-                }
-            }
-        }
-
-        // ═══════════════════════════════════════════════════════════════════
-        // Dynamic Dreamy Camera Movement
-        // ═══════════════════════════════════════════════════════════════════
-        const cameraTime = elapsed * 0.05; // Slow overall movement
-
-        // Multi-layered sine waves for organic floating motion
-        const cameraWobbleX = Math.sin(cameraTime) * 4 + Math.sin(cameraTime * 1.7) * 2 + Math.sin(cameraTime * 0.3) * 3;
-        const cameraWobbleY = Math.cos(cameraTime * 0.8) * 3 + Math.sin(cameraTime * 1.3) * 1.5;
-        const cameraWobbleZ = Math.sin(cameraTime * 0.6) * 5 + Math.cos(cameraTime * 0.4) * 2;
-
-        this.camera.position.x = this.baseCameraPos.x + cameraWobbleX;
-        this.camera.position.y = this.baseCameraPos.y + cameraWobbleY;
-        this.camera.position.z = this.baseCameraPos.z + cameraWobbleZ;
-
-        // Subtle camera target movement for additional dreaminess
-        this.cameraTargetOffset.x = Math.sin(cameraTime * 0.4) * 2;
-        this.cameraTargetOffset.y = Math.cos(cameraTime * 0.3) * 1.5;
+        // Slow cinematic camera — Z dolly + ±6° yaw orbit + mouse parallax.
+        const dollyZ = Math.sin(elapsed * (2 * Math.PI / 8)) * 2.5;
+        const yawAngle = Math.sin(elapsed * (2 * Math.PI / 14)) * (Math.PI / 30);
+        const baseX = this.baseCameraPos.x;
+        const baseZ = this.baseCameraPos.z + dollyZ;
+        this.camera.position.x = baseX * Math.cos(yawAngle) + baseZ * Math.sin(yawAngle) + parallaxX;
+        this.camera.position.y = this.baseCameraPos.y + Math.sin(elapsed * 0.3) * 0.6 + parallaxY;
+        this.camera.position.z = -baseX * Math.sin(yawAngle) + baseZ * Math.cos(yawAngle);
+        // LookAt nudged by mouse at 0.1x — focal point stays near (3.5, 0.5, 0)
+        // so the hero anchors in the left third regardless of mouse position.
         this.camera.lookAt(
-            this.cameraTarget.x + this.cameraTargetOffset.x,
-            this.cameraTarget.y + this.cameraTargetOffset.y,
-            this.cameraTarget.z,
+            this.cameraLook.x + parallaxX * 0.1,
+            this.cameraLook.y + parallaxY * 0.1,
+            this.cameraLook.z,
         );
 
         // Render
-        if (this.composer && this.activePreset.enableBloom) {
+        this.renderFrame(elapsed);
+    }
+
+    renderFrame(elapsed) {
+        if (this.isWebGPU) {
+            // Throttle compute dispatch on low quality presets — most users won't
+            // see the difference, and it cuts the per-frame GPU work meaningfully.
+            const stride = Math.max(1, this.activePreset.computeStride ?? 1);
+            if (this.particleCompute?.computeNode && (this.frameCount % stride) === 0) {
+                this.renderer.compute(this.particleCompute.computeNode);
+            }
+            if (this.post) {
+                // Post effects ride on top of the base preset values. Bloom + chromatic
+                // intensify with combo hum and spike on tetris flash; everything decays
+                // back to baseline within ~3 seconds of the last event.
+                const baseBloom = this.activePreset.bloomStrength;
+                const baseChroma = this.activePreset.enableChromaticAberration ? 0.0018 : 0.0;
+                this.post.update({
+                    time: elapsed,
+                    bloomStrength: baseBloom
+                        + this.comboHum * 0.12
+                        + this.lineFlash * 0.08
+                        + this.tetrisFlash * 0.22,
+                    chromaticStrength: baseChroma
+                        + this.comboHum * 0.0014
+                        + this.tetrisFlash * 0.0026,
+                    tintStrength: 0.12 + this.tetrisFlash * 0.25,
+                    saturation: 1.15 + this.comboHum * 0.06,
+                });
+                this.post.render();
+            } else {
+                this.renderer.render(this.scene, this.camera);
+            }
+        } else if (this.composer && this.activePreset.enableBloom) {
             this.composer.render();
         } else {
             this.renderer.render(this.scene, this.camera);
@@ -1440,160 +1129,143 @@ export default class FluidDreamsTheme extends BaseTheme {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Window Resize
+    // Resize
     // ─────────────────────────────────────────────────────────────────────────
 
     onWindowResize() {
         if (!this.camera || !this.renderer) return;
-
-        this.camera.aspect = window.innerWidth / window.innerHeight;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        // Respect current DRS scale on resize.
+        this.renderer.setPixelRatio(this.getEffectivePixelRatioWithDRS());
+        this.renderer.setSize(w, h);
 
-        if (this.composer) {
-            this.composer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        if (this.bloomPass) {
-            this.bloomPass.resolution.set(window.innerWidth, window.innerHeight);
-        }
+        if (this.post) this.post.setSize(w, h);
+        if (this.composer) this.composer.setSize(w, h);
+        if (this.bloomPass) this.bloomPass.resolution.set(w, h);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Cleanup
+    // Disposal
     // ─────────────────────────────────────────────────────────────────────────
 
+    disposeHero() {
+        if (this.heroMesh) {
+            this.heroMesh.geometry?.dispose();
+            this.scene?.remove(this.heroMesh);
+            this.heroMesh = null;
+        }
+        if (this.heroMaterial?.dispose) {
+            try { this.heroMaterial.dispose(); } catch (e) { /* noop */ }
+        }
+        this.heroMaterial = null;
+
+        if (this.fallbackOrbs?.length) {
+            this.fallbackOrbs.forEach((orb) => {
+                orb.geometry?.dispose?.();
+                orb.material?.dispose?.();
+                this.scene?.remove(orb);
+            });
+            this.fallbackOrbs = [];
+        }
+        if (this._fallbackLights?.length) {
+            this._fallbackLights.forEach((light) => this.scene?.remove(light));
+            this._fallbackLights = [];
+        }
+    }
+
+    disposeHaze() {
+        if (this.hazeMesh) {
+            this.hazeMesh.geometry?.dispose();
+            this.scene?.remove(this.hazeMesh);
+            this.hazeMesh = null;
+        }
+        if (this.hazeMaterial?.dispose) {
+            try { this.hazeMaterial.dispose(); } catch (e) { /* noop */ }
+        }
+        this.hazeMaterial = null;
+    }
+
+    disposeParticles() {
+        if (this.particleSystem) {
+            this.particleSystem.geometry?.dispose();
+            this.scene?.remove(this.particleSystem);
+            this.particleSystem = null;
+        }
+        if (this.particleMaterial?.dispose) {
+            try { this.particleMaterial.dispose(); } catch (e) { /* noop */ }
+        }
+        this.particleMaterial = null;
+        if (this.particleCompute?.dispose) {
+            try { this.particleCompute.dispose(); } catch (e) { /* noop */ }
+        }
+        this.particleCompute = null;
+    }
+
     stop() {
-        console.log('💧 Fluid Dreams 3D: Stopping...');
+        console.log('💧 Fluid Dreams: Stopping...');
 
-        this.clearEffectTimeouts();
-
-        // Cancel animation
         if (this.animationFrame) {
             cancelAnimationFrame(this.animationFrame);
             this.animationFrame = null;
         }
 
-        // Unsubscribe events
-        this.eventUnsubscribers.forEach((unsub) => unsub());
+        this.eventUnsubscribers.forEach((unsub) => {
+            try { unsub?.(); } catch (e) { /* noop */ }
+        });
         this.eventUnsubscribers = [];
 
-        // Teardown quality listener
         this.teardownQualityListener();
-
-        // Remove resize listener
         window.removeEventListener('resize', this.onWindowResize);
 
-        // Dispose Three.js resources
+        this.disposeHero();
+        this.disposeHaze();
+        this.disposeParticles();
+
+        if (this.backgroundMesh) {
+            this.backgroundMesh.geometry?.dispose();
+            try { this.backgroundMaterial?.dispose?.(); } catch (e) { /* noop */ }
+            this.scene?.remove(this.backgroundMesh);
+            this.backgroundMesh = null;
+            this.backgroundMaterial = null;
+        }
+
+        if (this.post) {
+            try { this.post.dispose(); } catch (e) { /* noop */ }
+            this.post = null;
+        }
+        if (this.composer) {
+            try { this.composer.dispose?.(); } catch (e) { /* noop */ }
+            this.composer = null;
+        }
+        if (this.bloomPass) {
+            try { this.bloomPass.dispose?.(); } catch (e) { /* noop */ }
+            this.bloomPass = null;
+        }
+
         if (this.scene) {
-            // Dispose blobs
-            this.blobs.forEach((blob) => {
-                blob.geometry.dispose();
-                blob.material.dispose();
-                this.mainGroup.remove(blob);
-            });
-            this.blobs = [];
-
-            // Dispose bubbles
-            this.bubbles.forEach((bubble) => {
-                bubble.geometry.dispose();
-                bubble.material.dispose();
-                this.mainGroup.remove(bubble);
-            });
-            this.bubbles = [];
-
-            // Dispose ribbons
-            this.ribbons.forEach((ribbon) => {
-                ribbon.geometry.dispose();
-                ribbon.material.dispose();
-                this.mainGroup.remove(ribbon);
-            });
-            this.ribbons = [];
-
-            // Dispose particles
-            if (this.particles) {
-                this.particles.geometry.dispose();
-                this.particles.material.dispose();
-                this.mainGroup.remove(this.particles);
-                this.particles = null;
-            }
-
-            // Dispose shockwaves
-            this.shockwaves.forEach((sw) => {
-                sw.geometry.dispose();
-                sw.material.dispose();
-                this.scene.remove(sw);
-            });
-            this.shockwaves = [];
-
-            // Dispose blob burst particles
-            if (this.blobBurstParticles) {
-                this.blobBurstParticles.forEach((burst) => {
-                    burst.geometry.dispose();
-                    burst.material.dispose();
-                    this.scene.remove(burst);
-                });
-                this.blobBurstParticles = [];
-            }
-
-            // Dispose energy lines
-            if (this.energyLines) {
-                this.energyLines.forEach((line) => {
-                    line.geometry.dispose();
-                    line.material.dispose();
-                    this.mainGroup.remove(line);
-                });
-                this.energyLines = [];
-            }
-
-            // Dispose blob ripples
-            if (this.blobRipples) {
-                this.blobRipples.forEach((ripple) => {
-                    ripple.geometry.dispose();
-                    ripple.material.dispose();
-                    this.scene.remove(ripple);
-                });
-                this.blobRipples = [];
-            }
-
-            // Dispose background
-            if (this.backgroundSphere) {
-                this.backgroundSphere.geometry.dispose();
-                this.backgroundSphere.material.dispose();
-                this.scene.remove(this.backgroundSphere);
-                this.backgroundSphere = null;
-            }
-
-            // Dispose env map
-            if (this.envMap) {
-                this.envMap.dispose();
-                this.envMap = null;
-            }
-
-            // Dispose composer
-            if (this.composer) {
-                this.composer.dispose();
-                this.composer = null;
-            }
-
-            // Dispose renderer
-            if (this.renderer) {
-                this.renderer.dispose();
-                this.renderer.domElement.remove();
-                this.renderer = null;
-            }
-
-            // Clear scene
-            this.scene.clear();
+            this.scene.clear?.();
             this.scene = null;
-            this.mainGroup = null;
+        }
+        if (this.renderer) {
+            try { this.renderer.dispose?.(); } catch (e) { /* noop */ }
+            try {
+                if (this.renderer.domElement?.parentNode) {
+                    this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
+                }
+            } catch (e) { /* noop */ }
+            this.renderer = null;
         }
 
         this.camera = null;
         this.clock = new THREE.Clock();
+        this.isWebGPU = false;
+        this.isWebGL = false;
+        this.metaballState = [];
 
         super.stop();
-
-        console.log('💧 Fluid Dreams 3D: Stopped.');
+        console.log('💧 Fluid Dreams: Stopped.');
     }
 }
