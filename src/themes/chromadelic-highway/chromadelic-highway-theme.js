@@ -2423,19 +2423,24 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
             positions[i3] = skyCenter.x + dirX * radius;
             positions[i3 + 1] = skyCenter.y + dirY * radius;
-            positions[i3 + 2] = skyCenter.z + dirZ * radius;
+            // Stars must stay deeper than the closest-approaching planet pass
+            // (Mars close ≈ Z=-1400). Any "in front" star is mirrored to the
+            // back so it can never additively bleed onto a planet's pixels.
+            const rawZ = skyCenter.z + dirZ * radius;
+            const minBackZ = -2200;
+            positions[i3 + 2] = rawZ > minBackZ ? (2 * minBackZ - rawZ) : rawZ;
 
             const brightnessClass = this.rand();
             let brightness;
             if (brightnessClass < 0.05) {
-                brightness = 0.95 + this.rand() * 0.22;
-                sizes[i] = 30 + this.rand() * 34;
+                brightness = 1.05 + this.rand() * 0.25;
+                sizes[i] = 44 + this.rand() * 38;
             } else if (brightnessClass < 0.32) {
-                brightness = 0.58 + this.rand() * 0.34;
-                sizes[i] = 16 + this.rand() * 24;
+                brightness = 0.72 + this.rand() * 0.36;
+                sizes[i] = 24 + this.rand() * 28;
             } else {
-                brightness = 0.34 + this.rand() * 0.34;
-                sizes[i] = 9 + this.rand() * 16;
+                brightness = 0.48 + this.rand() * 0.38;
+                sizes[i] = 14 + this.rand() * 18;
             }
 
             const colorIndex = this.rand() < 0.5
@@ -2477,10 +2482,10 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             const starSprite = new THREE.CanvasTexture(starSpriteCanvas);
 
             material = new THREE.PointsMaterial({
-                size: 24,
+                size: 38,
                 vertexColors: true,
                 transparent: true,
-                opacity: 0.88,
+                opacity: 1.0,
                 map: starSprite,
                 alphaMap: starSprite,
                 blending: THREE.AdditiveBlending,

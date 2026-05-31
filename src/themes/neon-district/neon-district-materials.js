@@ -34,6 +34,9 @@ import {
     time,
     texture,
     normalMap,
+    screenUV,
+    positionViewDirection,
+    normalView,
 } from 'three/tsl';
 
 const hash2D = /* @__PURE__ */ Fn(([p]) => {
@@ -221,7 +224,21 @@ export function createSkyNodeMaterial() {
     const hazeAmount = float(1.0).sub(smoothstep(-0.2, 0.5, height));
     const hazeColor = vec3(0.25, 0.08, 0.45);
 
-    material.colorNode = mix(skyColor, hazeColor, hazeAmount.mul(0.6));
+    // AAA Phase 4d: animated light-pollution glow along the city horizon.
+    const horizonLower = smoothstep(-0.45, -0.08, height);
+    const horizonUpper = float(1.0).sub(smoothstep(0.0, 0.34, height));
+    const horizonMask = horizonLower.mul(horizonUpper);
+    const shimmer = sin(positionWorld.x.mul(0.0012).add(time.mul(0.09)))
+        .mul(0.12)
+        .add(sin(positionWorld.z.mul(0.0017).sub(time.mul(0.055))).mul(0.08))
+        .add(1.0);
+    const horizonGlow = vec3(0.72, 0.10, 0.62)
+        .add(vec3(0.05, 0.20, 0.36).mul(sin(time.mul(0.12)).mul(0.5).add(0.5)))
+        .mul(horizonMask)
+        .mul(shimmer)
+        .mul(0.28);
+
+    material.colorNode = mix(skyColor, hazeColor, hazeAmount.mul(0.6)).add(horizonGlow);
     material.emissiveNode = vec3(0.0);
     material.side = THREE.BackSide;
 
@@ -485,26 +502,110 @@ export function createVhsBillboardNodeMaterial(params) {
     };
 }
 
+/**
+ * AAA Phase 4a — Hero moon. A bright, looming synthwave moon with a soft corona
+ * halo, retro horizontal banding, crater mottling and a glowing terminator rim.
+ * Bright emissive so MRT bloom + the Phase 2 god-rays anchor to it dramatically.
+ * The geometry should be a CircleGeometry sized larger than the visible disc so
+ * the halo has room to fall off (disc fills the inner ~45% of the quad).
+ */
 export function createMoonNodeMaterial() {
-    const color1 = uniform(new THREE.Color(0xff00ff));
-    const color2 = uniform(new THREE.Color(0x00ffff));
+    const color1 = uniform(new THREE.Color(0xff2bb0)); // bottom hot magenta
+    const color2 = uniform(new THREE.Color(0x35e8ff)); // top cyan
+    const uHaloColor = uniform(new THREE.Color(0x9b3bff)); // violet corona
+    const uBrightness = uniform(1.35);
+    const uHaloIntensity = uniform(0.85);
+
     const uvNode = uv();
+    // Normalized radius: 0 at center, 1 at the geometry edge.
+    const r = length(uvNode.sub(0.5)).mul(2.0);
 
+    // Disc vs. surrounding corona glow.
+    const discMask = float(1.0).sub(smoothstep(0.52, 0.58, r)); // 1 inside disc, soft edge
+    const haloPulse = sin(time.mul(0.4)).mul(0.08).add(1.0); // gentle breathing
+    const haloCore = float(1.0).sub(smoothstep(0.46, 1.0, r));
+    const halo = pow(haloCore, float(2.3)).mul(uHaloIntensity).mul(haloPulse);
+
+    // Vertical synthwave gradient.
     const grad = mix(color1, color2, uvNode.y);
-    const dist = length(uvNode.sub(0.5));
-    const alpha = smoothstep(0.5, 0.48, dist);
-    const scanline = sin(uvNode.y.mul(100.0)).mul(0.1);
 
-    const finalColor = grad.sub(vec3(scanline)).mul(0.3);
+    // Retro horizontal banding + crater mottling on the disc surface.
+    const bands = sin(uvNode.y.mul(70.0)).mul(0.06).add(0.94);
+    const craters = noise2D(uvNode.mul(7.0).add(vec2(13.0, 13.0))).mul(0.22)
+        .add(noise2D(uvNode.mul(18.0).sub(vec2(5.0, 5.0))).mul(0.12))
+        .add(0.7);
+    const surface = bands.mul(craters);
+
+    // Bright terminator rim near the disc edge.
+    const rim = smoothstep(0.30, 0.45, r).mul(0.6);
+
+    const discColor = grad.mul(surface).add(grad.mul(rim)).mul(uBrightness);
+    const haloColor = uHaloColor.mul(halo);
+
+    const finalColor = discColor.mul(discMask).add(haloColor);
+    const alpha = clamp(discMask.add(halo), 0.0, 1.0);
+
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = finalColor;
     material.opacityNode = alpha;
-    material.emissiveNode = finalColor;
+    material.emissiveNode = finalColor; // feeds MRT bloom + god-rays
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
 
-    return { material, uniforms: { color1, color2 } };
+    return {
+        material,
+        uniforms: {
+            color1, color2, uHaloColor, uBrightness, uHaloIntensity,
+        },
+    };
+}
+
+/**
+ * AAA Phase 4b — Drifting smog / cloud strata. A wide horizontal band of scrolling
+ * FBM cloud, additive and palette-tinted, hung high in the sky. Several of these at
+ * different heights/depths drifting in opposite directions give the upper sky living
+ * atmosphere and let the moon backlight the haze.
+ */
+export function createCloudStrataNodeMaterial(params = {}) {
+    const uTint = uniform(params.tint ?? new THREE.Color(0x7a2da0));
+    const uSpeed = uniform(params.speed ?? 0.012);
+    const uOpacity = uniform(params.opacity ?? 0.3);
+    const uScale = uniform(params.scale ?? 1.0);
+
+    const uvNode = uv();
+
+    // Horizontally-stretched scrolling fractal cloud.
+    const p = vec2(
+        uvNode.x.mul(5.0).mul(uScale).add(time.mul(uSpeed)),
+        uvNode.y.mul(2.0),
+    );
+    const n = fbm4(p);
+    const n2 = fbm4(p.mul(2.0).add(vec2(7.3, 2.1)));
+    const cloud = smoothstep(0.42, 0.85, n.mul(0.7).add(n2.mul(0.3)));
+
+    // Soft vertical falloff so the strip's top/bottom edges dissolve.
+    const vfade = smoothstep(0.0, 0.35, uvNode.y)
+        .mul(float(1.0).sub(smoothstep(0.6, 1.0, uvNode.y)));
+    const density = cloud.mul(vfade);
+
+    const color = uTint.mul(density.mul(1.4));
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = color;
+    material.opacityNode = density.mul(uOpacity);
+    material.emissiveNode = color.mul(0.55); // subtle bloom contribution
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.blending = THREE.AdditiveBlending;
+
+    return {
+        material,
+        uniforms: {
+            uTint, uSpeed, uOpacity, uScale,
+        },
+    };
 }
 
 export function createSkylineNodeMaterial() {
@@ -677,7 +778,8 @@ export function createSplashNodeMaterial() {
  */
 export function createWetGroundNodeMaterial(params = {}) {
     // const time = timerLocal(); // Removed: using imported time node
-    const uReflectionStrength = uniform(0.6);
+    // Global multiplier for the planar reflection blend (AAA Phase 1). Tunable at runtime.
+    const uReflectionStrength = uniform(1.0);
     const uRainIntensity = uniform(1.0);
 
     // World position for procedural effects
@@ -882,7 +984,47 @@ export function createWetGroundNodeMaterial(params = {}) {
     const neonStrength = puddleMask.mul(0.6).add(totalWetness.mul(0.15));
 
     // Final color with light pools and neon reflections
-    const finalColor = litColor.add(neonReflection.mul(neonStrength));
+    const litWithNeon = litColor.add(neonReflection.mul(neonStrength));
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // AAA PHASE 1 — TRUE PLANAR REFLECTIONS (WebGPU)
+    // When a reflector node is supplied, blend the live mirror of the scene
+    // (real neon/buildings/cars/moon) into the wet surface. Strongest in puddles
+    // and at grazing angles (fresnel), with ripple-driven shimmer (Phase 1d).
+    // ═══════════════════════════════════════════════════════════════════════
+    let finalColor = litWithNeon;
+    if (params.reflectorNode) {
+        // Default reflector UV is screenUV.flipX(); add ripple gradient as a small
+        // screen-space distortion so the reflection shimmers + smears like real water.
+        const baseReflUV = screenUV.flipX();
+        const rippleJitter = vec2(rippleNormals.x, rippleNormals.y)
+            .mul(0.05)
+            .mul(totalWetness)
+            .mul(rippleDetailFactor);
+        const reflUV = baseReflUV.add(rippleJitter);
+        const reflColor = params.reflectorNode.sample(reflUV).rgb;
+
+        // Fresnel: reflections strengthen at grazing angles (looking down the street).
+        const fresnel = pow(
+            clamp(float(1.0).sub(max(dot(normalView, positionViewDirection), 0.0)), 0.0, 1.0),
+            float(4.0),
+        );
+        const fresnelMix = mix(float(0.22), float(1.0), fresnel);
+
+        // Mask: mirror-strong in puddles, present on all wet asphalt; fades a touch
+        // with distance and is cut entirely on the far LOD to save the extra render.
+        const reflMask = clamp(
+            puddleMask.mul(0.85)
+                .add(totalWetness.mul(0.22))
+                .mul(fresnelMix)
+                .mul(uReflectionStrength)
+                .mul(lodNear.mul(0.45).add(0.55)),
+            0.0,
+            0.9,
+        );
+
+        finalColor = mix(litWithNeon, reflColor, reflMask);
+    }
 
     // ═══════════════════════════════════════════════════════════════════════
     // ROUGHNESS - Smooth wet surface, mirror-like puddles

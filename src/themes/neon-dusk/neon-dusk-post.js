@@ -26,6 +26,8 @@ import {
     perspectiveDepthToViewZ,
     viewZToOrthographicDepth,
     max,
+    abs,
+    pow,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 
@@ -62,18 +64,63 @@ export class NeonDuskPost {
         this.uSunScreen = uniform(new THREE.Vector2(0.5, 0.5));
         this.uRayIntensity = uniform(params.rayIntensity ?? 0.35);
 
+        // Cinematic layer — chromatic aberration, DOF, CRT, anamorphic flare
+        this.uAberration = uniform(params.aberration ?? 0.0);
+        this.uScanlineIntensity = uniform(params.scanlineIntensity ?? 0.0);
+        this.uScanlineCount = uniform(params.scanlineCount ?? 700.0);
+        this.uBarrel = uniform(params.barrel ?? 0.0);
+        this.uFlareIntensity = uniform(0.0);
+        this.flareBase = params.flareIntensity ?? 0.0;
+        this.uDofStrength = uniform(params.dofStrength ?? 0.0);
+        this.uDofFocus = uniform(params.dofFocus ?? 0.55);
+        this.uDofRange = uniform(params.dofRange ?? 2.2);
+        this.uDofMaxRadius = uniform(params.dofMaxRadius ?? 0.004);
+
         const cameraNear = uniform(camera.near);
         const cameraFar = uniform(camera.far);
 
-        const uv = viewportUV;
-        const centered = uv.sub(0.5).mul(2.0);
+        const depthTexture = this.scenePass.getTextureNode('depth');
+
+        const baseUv = viewportUV;
+        const centered = baseUv.sub(0.5).mul(2.0);
         const dist = length(centered);
+
+        // Barrel distortion (CRT curve) applied to scene sampling
+        const uv = baseUv.add(centered.mul(dist.mul(dist)).mul(this.uBarrel).mul(0.5));
+
+        // Radial chromatic aberration (sharp), stronger toward the edges
+        const caAmt = this.uAberration.mul(dist);
+        const caR = sceneColor.sample(uv.add(centered.mul(caAmt))).x;
+        const caG = sceneColor.sample(uv).y;
+        const caB = sceneColor.sample(uv.sub(centered.mul(caAmt))).z;
+        const caColor = vec4(caR, caG, caB, float(1.0));
+
+        // Depth of field — one-sided (far only) so the hero grid stays crisp and
+        // only the distant dust/sky softens. Gated off below High to save taps.
+        let baseSample = caColor;
+        if ((params.dofStrength ?? 0) > 0) {
+            const dofDepth = depthTexture.sample(uv).x;
+            const dofViewZ = perspectiveDepthToViewZ(dofDepth, cameraNear, cameraFar);
+            const dofLinear = viewZToOrthographicDepth(dofViewZ, cameraNear, cameraFar);
+            const coc = clamp(
+                max(float(0.0), dofLinear.sub(this.uDofFocus)).mul(this.uDofRange),
+                float(0.0),
+                float(1.0),
+            ).mul(this.uDofStrength);
+            const o = coc.mul(this.uDofMaxRadius);
+            const c0 = sceneColor.sample(uv);
+            const c1 = sceneColor.sample(uv.add(vec2(o, o)));
+            const c2 = sceneColor.sample(uv.add(vec2(o.negate(), o)));
+            const c3 = sceneColor.sample(uv.add(vec2(o, o.negate())));
+            const c4 = sceneColor.sample(uv.add(vec2(o.negate(), o.negate())));
+            const dofColor = c0.add(c1).add(c2).add(c3).add(c4).mul(float(0.2));
+            baseSample = mix(caColor, dofColor, coc);
+        }
 
         const vignetteOffset = float(params.vignetteOffset ?? 1.0);
         const vignetteDarkness = float(params.vignetteDarkness ?? 0.35);
         const vignette = smoothstep(vignetteOffset, vignetteOffset.sub(0.5), dist);
 
-        const baseSample = sceneColor.sample(uv);
         const vignetteColor = mix(
             baseSample.mul(float(1.0).sub(vignetteDarkness)),
             baseSample,
@@ -84,7 +131,6 @@ export class NeonDuskPost {
 
         let rays = vec3(0.0);
         if (params.enableRays ?? true) {
-            const depthTexture = this.scenePass.getTextureNode('depth');
             const sunUV = clamp(this.uSunScreen, vec2(0.0), vec2(1.0));
             const rayDir = sunUV.sub(uv);
             const stepVec = rayDir.mul(float(1.0 / 6.0));
@@ -128,7 +174,20 @@ export class NeonDuskPost {
         const grain = noise.sub(0.5).mul(this.uGrainIntensity);
 
         const graded = saturation(composite.add(vec4(rays, 0.0)).xyz, this.uSaturation).add(vec3(grain));
-        const finalColor = vec4(graded, composite.w);
+
+        // Subtle scanlines (CRT)
+        const scan = pow(sin(baseUv.y.mul(this.uScanlineCount)).mul(0.5).add(0.5), float(8.0));
+        const scanned = graded.mul(float(1.0).sub(scan.mul(this.uScanlineIntensity)));
+
+        // Anamorphic sun flare — horizontal streak anchored to the sun
+        const dx = abs(baseUv.x.sub(this.uSunScreen.x));
+        const dy = abs(baseUv.y.sub(this.uSunScreen.y));
+        const fx = float(1.0).sub(smoothstep(float(0.0), float(0.6), dx));
+        const fy = float(1.0).sub(smoothstep(float(0.0), float(0.014), dy));
+        const streak = fx.mul(fx).mul(fy);
+        const flared = scanned.add(vec3(1.0, 0.7, 0.5).mul(streak).mul(this.uFlareIntensity));
+
+        const finalColor = vec4(flared, composite.w);
 
         this.postProcessing.outputNode = finalColor;
         this.postProcessing.needsUpdate = true;
@@ -140,12 +199,15 @@ export class NeonDuskPost {
         }
     }
 
-    updateSun(screenPosition, intensity) {
+    updateSun(screenPosition, intensity, flare) {
         if (screenPosition) {
             this.uSunScreen.value.copy(screenPosition);
         }
         if (intensity !== undefined) {
             this.uRayIntensity.value = intensity;
+        }
+        if (flare !== undefined) {
+            this.uFlareIntensity.value = flare;
         }
     }
 

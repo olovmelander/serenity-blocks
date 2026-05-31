@@ -71,6 +71,9 @@ export class CosmicNoirSparkCompute {
         this.uBurstTrigger = uniform(-1000);
         this.uPlanetRadius = uniform(this.planetRadius);
         this.nextTriggerIndex = 0;
+        // Time (seconds) past which every triggered particle has expired. Lets the
+        // animate loop skip compute dispatch + draw while idle (no visible sparks).
+        this.lastActiveUntil = -Infinity;
 
         this.computeNode = null;
 
@@ -245,6 +248,11 @@ export class CosmicNoirSparkCompute {
             this.markBufferRange(this.lifeBuffer, 0, secondCount);
         }
         this.uBurstTrigger.value = time;
+        // Longest possible lifetime for this batch: birth (time) + max spawn delay + max life.
+        this.lastActiveUntil = Math.max(
+            this.lastActiveUntil,
+            time + this.maxDelay + this.maxLife,
+        );
     }
 
     getPositionBuffer() {

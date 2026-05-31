@@ -27,10 +27,17 @@ export const INTRO_VISUAL_PROFILES = {
         },
         post: {
             bloomThreshold: 0.15,
-            bloomRadius: 1.8,
-            vignette: 0.028,
+            bloomRadius: 2.05,
+            vignette: 0.045,
             grain: 0.0025,
-            baseExposure: 1.13,
+            baseExposure: 1.16,
+            // Phase B cinematic grade — applied in DISPLAY space (after the manual
+            // ACES tonemap), so contrast around the 0.5 pivot is safe to push.
+            saturation: 1.18, // luma-preserving saturation boost
+            contrast: 1.20, // contrast around mid-grey — punchier now it's display-space
+            chromatic: 0.0022, // lens chromatic-aberration strength
+            vignetteDarkness: 0.50, // multiply-vignette edge darkening (0..1)
+            dither: 0.0018, // anti-banding dither
         },
         particle: {
             layers: {
@@ -120,9 +127,9 @@ export const INTRO_VISUAL_PROFILES = {
         qualityBudgets: {
             HIGH: createQualityBudget('HIGH', {
                 bloom: true,
-                bloomStrength: 0.5,
+                bloomStrength: 0.62,
                 godRays: 0.0,
-                dof: 0.015,
+                dof: 0.024,
                 fringe: 0.0,
                 nebulaClouds: 0,
                 maxTetrominos: 50,
@@ -133,9 +140,9 @@ export const INTRO_VISUAL_PROFILES = {
             }),
             MEDIUM: createQualityBudget('MEDIUM', {
                 bloom: true,
-                bloomStrength: 0.42,
+                bloomStrength: 0.5,
                 godRays: 0.0,
-                dof: 0.01,
+                dof: 0.016,
                 fringe: 0.0,
                 nebulaClouds: 0,
                 maxTetrominos: 36,

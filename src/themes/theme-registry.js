@@ -238,6 +238,13 @@ const RAW_THEME_REGISTRY = [
         group: 'abstract',
     },
     {
+        id: 'electric-dreams-v3',
+        displayName: 'Electric Dreams V3',
+        module: './electric-dreams-v3/electric-dreams-v3-theme.js',
+        icon: './electric-dreams/electric-dreams-theme-icon.png',
+        group: 'abstract',
+    },
+    {
         id: 'nebula-flow',
         displayName: 'Nebula Flow',
         module: './nebula-flow/nebula-flow-theme.js',
@@ -350,6 +357,13 @@ const RAW_THEME_REGISTRY = [
         icon: './pyrestorm/pyrestorm-theme-icon.png',
     },
     {
+        id: 'pyrestorm-v2',
+        displayName: 'Pyrestorm V2',
+        module: './pyrestorm-v2/pyrestorm-v2-theme.js',
+        group: 'fantasy',
+        icon: './pyrestorm/pyrestorm-theme-icon.png',
+    },
+    {
         id: 'neon-dusk',
         displayName: 'Neon Dusk',
         module: './neon-dusk/neon-dusk-theme.js',
@@ -439,6 +453,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'fluid-dreams',
     'crystal-cave',
     'electric-dreams',
+    'electric-dreams-v3',
     'solar-eclipse',
     'black-hole',
     'supernova',
@@ -449,6 +464,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'sky-children-v2',
     'cinder-drift',
     'pyrestorm',
+    'pyrestorm-v2',
     'neon-dusk',
     'neon-district',
     'synthwave-sunset',

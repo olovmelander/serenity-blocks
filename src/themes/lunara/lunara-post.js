@@ -80,6 +80,12 @@ const LUNARA_GRADE_SHADER = {
             color = (color - 0.5) * uContrast + 0.5;
             color = mix(color, color * uTintColor, uTintStrength);
 
+            // Split-tone: cool violet shadows, warm rose highlights.
+            float gluma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+            vec3 shadowTint = vec3(0.86, 0.92, 1.1);
+            vec3 highTint = vec3(1.08, 0.99, 0.93);
+            color *= mix(shadowTint, highTint, smoothstep(0.18, 0.82, gluma));
+
             vec2 centered = (vUv - 0.5) * 2.0;
             float dist = length(centered);
             float vignette = smoothstep(uVignetteOffset, uVignetteOffset - 0.55, dist);
@@ -141,6 +147,21 @@ export class LunaraPost {
             originalSetSize(w * this.bloomDownsample, h * this.bloomDownsample);
         };
 
+        // Dual bloom: a tight, bright-core bloom on top of the wide veil for the
+        // "expensive" cinematic look. Gated (High+) via params.dualBloom.
+        if (this.useDualBloom) {
+            this.bloomNodeTight = bloom(
+                bloomSource,
+                (params.bloomStrength ?? 0.55) * 0.7,
+                (params.bloomRadius ?? 0.42) * 0.32,
+                (params.bloomThreshold ?? 0.32) + 0.22,
+            );
+            const tightSetSize = this.bloomNodeTight.setSize.bind(this.bloomNodeTight);
+            this.bloomNodeTight.setSize = (w, h) => {
+                tightSetSize(w * this.bloomDownsample, h * this.bloomDownsample);
+            };
+        }
+
         this.uExposure = uniform(params.exposure ?? 1.05);
         this.uContrast = uniform(params.contrast ?? 1.06);
         this.uSaturation = uniform(params.saturation ?? 1.18);
@@ -153,7 +174,9 @@ export class LunaraPost {
 
         const uv = viewportUV;
         const baseColor = sceneColor.sample(uv);
-        const bloomColor = baseColor.add(this.bloomNode);
+        const bloomColor = this.useDualBloom && this.bloomNodeTight
+            ? baseColor.add(this.bloomNode).add(this.bloomNodeTight)
+            : baseColor.add(this.bloomNode);
 
         const centered = uv.sub(0.5).mul(2.0);
         const dist = length(centered);
@@ -169,6 +192,13 @@ export class LunaraPost {
         graded = mix(vec3(luma), graded, this.uSaturation);
         graded = graded.sub(0.5).mul(this.uContrast).add(0.5);
         graded = mix(graded, graded.mul(this.uTintColor), this.uTintStrength);
+
+        // Split-tone: cool violet shadows, warm rose highlights — cohesive grade.
+        const gradeLuma = dot(graded, vec3(0.2126, 0.7152, 0.0722));
+        const shadowTint = vec3(0.86, 0.92, 1.1);
+        const highTint = vec3(1.08, 0.99, 0.93);
+        const splitTone = mix(shadowTint, highTint, smoothstep(float(0.18), float(0.82), gradeLuma));
+        graded = graded.mul(splitTone);
 
         const noise = fract(sin(dot(uv.mul(110.0), vec2(12.9898, 78.233))).mul(43758.5453));
         const grain = noise.sub(0.5).mul(this.uGrainStrength);
@@ -210,6 +240,7 @@ export class LunaraPost {
         }
         if (bloomStrength !== undefined) {
             if (this.bloomNode) this.bloomNode.strength.value = bloomStrength;
+            if (this.bloomNodeTight) this.bloomNodeTight.strength.value = bloomStrength * 0.7;
             if (this.bloomPass) this.bloomPass.strength = bloomStrength;
         }
         if (exposure !== undefined) {
@@ -238,6 +269,7 @@ export class LunaraPost {
 
         if (this.scenePass?.setSize) this.scenePass.setSize(w, h);
         if (this.bloomNode?._separableBlurMaterials?.length) this.bloomNode.setSize(w, h);
+        if (this.bloomNodeTight?._separableBlurMaterials?.length) this.bloomNodeTight.setSize(w, h);
         if (this.composer) this.composer.setSize(w, h);
         if (this.bloomPass?.setSize) this.bloomPass.setSize(w, h);
     }
@@ -245,10 +277,12 @@ export class LunaraPost {
     dispose() {
         if (this.scenePass?.dispose) this.scenePass.dispose();
         if (this.bloomNode?.dispose) this.bloomNode.dispose();
+        if (this.bloomNodeTight?.dispose) this.bloomNodeTight.dispose();
         if (this.postProcessing?.dispose) this.postProcessing.dispose();
         if (this.composer?.dispose) this.composer.dispose();
         this.scenePass = null;
         this.bloomNode = null;
+        this.bloomNodeTight = null;
         this.postProcessing = null;
         this.composer = null;
         this.bloomPass = null;

@@ -10,6 +10,7 @@ import {
     abs,
     clamp,
     cos,
+    dot,
     float,
     fract,
     instanceIndex,
@@ -30,8 +31,23 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { IntroParticleCompute } from './intro-particle-compute.js';
 import { IntroTetrominoCompute } from './intro-tetromino-compute.js';
 import { INTRO_PHASES, getIntroVisualProfile, getQualityBudget } from './intro-visual-config.js';
+import { IntroCameraParallax } from './intro-camera-parallax.js';
+import { createIntroNebulaSky } from './intro-nebula-sky.js';
 
 const SHAPE_KEYS = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
+
+// Camera idle-drift amplitudes — must match the values used in update(). Combined
+// with the pointer-parallax orbit amplitudes they bound how far the visible frame
+// can travel, so tetrominos spawn beyond that envelope and always drift in from
+// off-screen instead of popping into view.
+const CAMERA_IDLE_AMP_X = 5;
+const CAMERA_IDLE_AMP_Y = 3;
+// A tetromino's approximate half-extent (max block offset ~3 + block radius ~1).
+const TETROMINO_RADIUS = 4;
+// Extra clearance beyond the reveal envelope so the whole piece starts off-screen.
+const SPAWN_CLEARANCE = 6;
+// Minimum inward drift so pieces cross the larger off-screen margin in a few seconds.
+const SPAWN_INWARD_DRIFT = 0.05;
 const {
     AdditiveBlending,
     DoubleSide,
@@ -59,6 +75,7 @@ export default class ThreeJSIntroRendererWebGPU {
 
         this.particleMesh = null;
         this.nebulaClouds = [];
+        this.nebulaSky = null; // Phase A1: volumetric nebula backdrop
         this.volumetricNebula = null;
         this.constellationMesh = null;
         this.tetrominoInstances = {};
@@ -73,6 +90,9 @@ export default class ThreeJSIntroRendererWebGPU {
         this.clock = new THREE.Clock();
         this.lastSpawnTime = 0;
         this.spawnAccumulator = 0;
+
+        // Pointer-driven camera parallax (cursor arcs the camera around the scene).
+        this.cameraParallax = new IntroCameraParallax();
         this.simulationTime = 0;
         this.nextHeroInhaleTime = 0;
         this.heroInhaleReleaseAt = 0;
@@ -103,6 +123,16 @@ export default class ThreeJSIntroRendererWebGPU {
         this.uTitleGlowStrength = uniform(0.24);
         this.uTitleGlowCenter = uniform(new THREE.Vector2(0.5, 0.43));
         this.uTitleGlowSize = uniform(new THREE.Vector2(0.38, 0.13));
+
+        // Phase B — cinematic grade uniforms (luma-preserving saturation, gentle
+        // contrast, real chromatic aberration, multiply vignette).
+        this.uSaturation = uniform(this.visualProfile?.post?.saturation ?? 1.16);
+        this.uContrast = uniform(this.visualProfile?.post?.contrast ?? 1.10);
+        this.uChromaticStrength = uniform(this.visualProfile?.post?.chromatic ?? 0.0022);
+        this.uVignetteDarkness = uniform(this.visualProfile?.post?.vignetteDarkness ?? 0.42);
+        // Exposure feeds the manual ACES tonemap in the post graph (the renderer
+        // itself uses NoToneMapping, so toneMappingExposure no longer applies).
+        this.uExposure = uniform(this.visualProfile?.post?.baseExposure ?? 1.13);
 
         this.COLORS = {
             I: 0x00ff00,
@@ -146,14 +176,23 @@ export default class ThreeJSIntroRendererWebGPU {
 
             this.renderer.setSize(window.innerWidth, window.innerHeight);
             this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.pixelRatio));
-            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-            this.renderer.toneMappingExposure = this.visualProfile?.post?.baseExposure ?? 1.13;
+            // ACES is applied MANUALLY in the post graph (so the cinematic grade can
+            // run in display space). The renderer must therefore NOT tonemap — it
+            // only performs the sRGB output transform on the post output node.
+            this.renderer.toneMapping = THREE.NoToneMapping;
 
             this.scene = new THREE.Scene();
-            this.scene.fog = new THREE.FogExp2(this.visualProfile?.palette?.deepSpace ?? 0x05000f, 0.0065);
+            // A4 — atmospheric depth: tint the fog toward the nebula's deep-indigo
+            // base so distant particles dissolve INTO the backdrop instead of
+            // fading to flat black. Slightly thinner so the nebula reads through.
+            this.scene.fog = new THREE.FogExp2(0x0a0620, 0.0058);
 
             this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
             this.camera.position.z = 40;
+
+            // A1 — volumetric nebula sky backdrop (replaces the empty black void).
+            this.nebulaSky = createIntroNebulaSky();
+            this.scene.add(this.nebulaSky.mesh);
 
             this.createEnvironmentMap();
             this.setupLighting();
@@ -173,8 +212,12 @@ export default class ThreeJSIntroRendererWebGPU {
             this.setupPostProcessing();
             this.applyQualitySettings();
             this.setPhase(INTRO_PHASES.BOOT, true);
+            // Seed pieces already in view so the intro/menu background is alive
+            // from frame one instead of empty until pieces drift in.
+            this.prepopulateTetrominos();
 
             window.addEventListener('resize', this._onResize = this.onResize.bind(this));
+            this.cameraParallax.attach();
 
             console.log(`[IntroWebGPU] Initialized (${this.quality.key}) with ${IntroParticleCompute.TOTAL_PARTICLES} particles`);
             return true;
@@ -189,9 +232,11 @@ export default class ThreeJSIntroRendererWebGPU {
         this.visualProfile = getIntroVisualProfile(profileId);
         this.quality = getQualityBudget(this.visualProfile, this.performanceLevel);
 
+        // Exposure now feeds the manual ACES tonemap in the post graph, not the
+        // renderer (which is NoToneMapping).
         const exposure = this.visualProfile?.post?.baseExposure;
-        if (this.renderer && Number.isFinite(exposure)) {
-            this.renderer.toneMappingExposure = exposure;
+        if (this.uExposure && Number.isFinite(exposure)) {
+            this.uExposure.value = exposure;
         }
 
         this.phaseState = this.getPhasePreset(this.phase);
@@ -368,9 +413,10 @@ export default class ThreeJSIntroRendererWebGPU {
         );
         material.positionNode = local.add(worldPos);
 
-        // Unwrapped colorNode logic
+        // Unwrapped colorNode logic. Slightly tamed brightness (2.5 → 2.2) so the
+        // field reads as stars rather than saturated confetti.
         const particleLifeColor = lifeStore.element(instanceIndex);
-        material.colorNode = vec3(particleLifeColor.y, particleLifeColor.z, particleLifeColor.w).mul(float(2.5));
+        material.colorNode = vec3(particleLifeColor.y, particleLifeColor.z, particleLifeColor.w).mul(float(2.2));
 
         // Unwrapped opacityNode logic
         const particleLifeOpacity = lifeStore.element(instanceIndex);
@@ -389,10 +435,12 @@ export default class ThreeJSIntroRendererWebGPU {
 
         // Atmospheric Depth Fade:
         // Camera is at Z=40. Particles exist from Z=-160 to Z=60.
-        // Map Z range [-160, 40] to opacity [0.2, 1.0].
-        // This makes distant particles dimmer, enhancing 3D perception.
+        // Squared falloff maps Z [-160, 40] to opacity [0.06, 1.0] — far particles
+        // fade hard so the far/mid/near parallax reads as real 3D depth instead of
+        // an even confetti field.
         const zPos = particlePosOpacity.z;
-        const depthFade = smoothstep(float(-160.0), float(40.0), zPos).mul(float(0.8)).add(float(0.2));
+        const depthRamp = smoothstep(float(-160.0), float(40.0), zPos);
+        const depthFade = depthRamp.mul(depthRamp).mul(float(0.94)).add(float(0.06));
 
         material.opacityNode = baseOpacity.mul(circle).mul(depthFade);
 
@@ -510,37 +558,40 @@ export default class ThreeJSIntroRendererWebGPU {
 
         const screenUv = uv();
         const center = screenUv.sub(vec2(0.5, 0.52));
-        const radial = clamp(float(1.0).sub(length(center).mul(float(1.85))), float(0.0), float(1.0));
-        const streak = float(0.0);
+        const dist = length(center);
+
+        // ── Real chromatic aberration ──
+        // Resample the scene R/G/B at a radial, edge-biased offset — true lens
+        // dispersion (premium "glass" feel), not just an additive tint.
+        const edgeBoost = float(1.0).add(dist.mul(float(0.7)));
+        const chromaOffset = center.mul(this.uChromaticStrength).mul(edgeBoost);
+        const sampleR = sceneColor.sample(screenUv.add(chromaOffset));
+        const sampleG = sceneColor.sample(screenUv);
+        const sampleB = sceneColor.sample(screenUv.sub(chromaOffset));
+        const chroma = vec3(sampleR.r, sampleG.g, sampleB.b);
+
+        // ── A3: title-anchored volumetric light glow (soft, breathing) ──
+        const titleDelta = screenUv.sub(this.uTitleGlowCenter);
+        const titleDist = length(titleDelta);
         const breathing = sin(this.uTime.mul(float(1.9))).mul(float(0.5)).add(float(0.5));
-        const godRayMask = radial.mul(streak.mul(float(0.45)).add(float(0.55))).mul(breathing.mul(float(0.4)).add(float(0.6)));
-        const godRays = vec3(float(0.08), float(0.62), float(1.0)).mul(godRayMask).mul(this.uGodRayStrength);
+        const shaftMask = clamp(float(1.0).sub(titleDist.mul(float(1.7))), float(0.0), float(1.0));
+        const shaft = vec3(float(0.10), float(0.55), float(0.95))
+            .mul(shaftMask.mul(shaftMask))
+            .mul(breathing.mul(float(0.35)).add(float(0.65)))
+            .mul(this.uGodRayStrength.add(float(0.08)));
 
-        // Cinematic polish stack: subtle grade + DoF proxy + film grain + selective fringe.
-        const vignetteStrength = this.visualProfile?.post?.vignette ?? 0.028;
-        const grainStrength = this.visualProfile?.post?.grain ?? 0.0025;
-        const vignette = smoothstep(float(0.2), float(1.05), length(center)).mul(float(vignetteStrength));
-        const focusMask = smoothstep(float(0.1), float(0.72), length(center)).mul(this.uDoFStrength.mul(float(0.6)));
-        const ring = abs(sin(length(center).mul(float(95.0)).sub(this.uTime.mul(float(1.6))))).mul(float(0.015));
-        const softFocus = vec3(focusMask.add(ring.mul(this.uDoFStrength)));
+        // ── DoF proxy ──
+        const focusMask = smoothstep(float(0.1), float(0.72), dist).mul(this.uDoFStrength.mul(float(0.6)));
+        const softFocus = vec3(focusMask);
 
-        const gradeLift = sceneColor.mul(vec3(float(1.03), float(1.01), float(0.98)));
-        const gradeGain = gradeLift.add(vec3(float(0.008), float(0.006), float(0.012)));
-
-        const luma = sceneColor.x.mul(float(0.2126)).add(sceneColor.y.mul(float(0.7152))).add(sceneColor.z.mul(float(0.0722)));
-        const brightMask = clamp(luma.sub(float(0.55)).mul(float(2.2)), float(0.0), float(1.0));
-        const edgeMask = smoothstep(float(0.12), float(0.95), length(center));
+        // ── Selective chromatic fringe on bright scene edges ──
+        const sceneLuma = dot(chroma, vec3(float(0.2126), float(0.7152), float(0.0722)));
+        const brightMask = clamp(sceneLuma.sub(float(0.55)).mul(float(2.2)), float(0.0), float(1.0));
+        const edgeMask = smoothstep(float(0.12), float(0.95), dist);
         const fringeMask = brightMask.mul(edgeMask).mul(this.uFringeStrength);
         const fringeColor = vec3(float(0.08), float(0.0), float(0.14)).mul(fringeMask);
 
-        // Keep color fidelity at startup; avoid temporary gray washout.
-        const dofGraded = gradeGain.sub(vec3(focusMask.mul(float(0.04))));
-
-        const grainSeed = screenUv.x.mul(float(1234.5)).add(screenUv.y.mul(float(6789.3))).add(this.uTime.mul(float(41.0)));
-        const grain = fract(sin(grainSeed).mul(float(43758.5453))).sub(float(0.5)).mul(float(grainStrength));
-        const grainNode = vec3(grain);
-
-        const titleDelta = screenUv.sub(this.uTitleGlowCenter);
+        // ── Title glow (breathing two-tone elliptical halo) ──
         const titleScale = vec2(
             titleDelta.x.div(this.uTitleGlowSize.x),
             titleDelta.y.div(this.uTitleGlowSize.y),
@@ -561,14 +612,45 @@ export default class ThreeJSIntroRendererWebGPU {
             .mul(titleFalloff)
             .mul(this.uTitleGlowStrength);
 
-        this.postProcessing.outputNode = dofGraded
+        // ── HDR composite (pre-tonemap): scene + bloom + emissive glows − DoF ──
+        const hdr = chroma
             .add(bloomNode)
-            .add(godRays)
+            .add(shaft)
             .add(titleGlow)
             .add(fringeColor)
-            .sub(vec3(vignette))
-            .sub(softFocus)
-            .add(grainNode);
+            .sub(softFocus);
+
+        // Vignette in linear/HDR space (darkens edges before the tonemap shoulder).
+        const vignetteFactor = smoothstep(float(0.95), float(0.35), dist); // 1 centre → 0 edge
+        const vignetted = hdr.mul(
+            mix(float(1.0).sub(this.uVignetteDarkness), float(1.0), vignetteFactor),
+        );
+
+        // ── Exposure + manual ACES filmic tonemap → display-referred [0,1] ──
+        // The renderer uses NoToneMapping (it only does the sRGB output transform),
+        // so we tonemap HERE. That puts the grade below into DISPLAY space, where a
+        // 0.5-pivot contrast is correct and can be pushed hard WITHOUT driving
+        // channels negative (which previously produced an olive ACES artefact).
+        const exposed = clamp(vignetted, float(0.0), float(64.0)).mul(this.uExposure);
+        const acesNum = exposed.mul(exposed.mul(float(2.51)).add(float(0.03)));
+        const acesDen = exposed.mul(exposed.mul(float(2.43)).add(float(0.59))).add(float(0.14));
+        const toned = clamp(acesNum.div(acesDen), float(0.0), float(1.0));
+
+        // ── Display-space grade: luma-preserving saturation + contrast ──
+        const luma = dot(toned, vec3(float(0.2126), float(0.7152), float(0.0722)));
+        const saturated = mix(vec3(luma), toned, this.uSaturation);
+        const contrasted = saturated.sub(float(0.5)).mul(this.uContrast).add(float(0.5));
+
+        // ── Film grain (animated) + dither (anti-banding) ──
+        const grainStrength = this.visualProfile?.post?.grain ?? 0.0025;
+        const ditherStrength = this.visualProfile?.post?.dither ?? 0.0018;
+        const grainSeed = screenUv.x.mul(float(1234.5)).add(screenUv.y.mul(float(6789.3))).add(this.uTime.mul(float(41.0)));
+        const grain = fract(sin(grainSeed).mul(float(43758.5453))).sub(float(0.5)).mul(float(grainStrength));
+        const ditherSeed = screenUv.x.mul(float(317.1)).add(screenUv.y.mul(float(269.5)));
+        const dither = fract(sin(ditherSeed).mul(float(43758.5453))).sub(float(0.5)).mul(float(ditherStrength));
+
+        const finalColor = clamp(contrasted.add(vec3(grain)).add(vec3(dither)), float(0.0), float(1.0));
+        this.postProcessing.outputNode = finalColor;
         this.postProcessing.needsUpdate = true;
         this._scenePass = scenePass;
     }
@@ -769,7 +851,16 @@ export default class ThreeJSIntroRendererWebGPU {
         const bounds = this.getVisibleBoundsAtDepth(z);
         const halfW = bounds.width / 2;
         const halfH = bounds.height / 2;
-        const margin = 10;
+
+        // Spawn beyond the camera's full reveal envelope (idle drift + pointer
+        // parallax) so pieces always drift in from off-screen rather than popping
+        // into view when the camera pans toward them.
+        const envX = CAMERA_IDLE_AMP_X + (this.cameraParallax?.orbitX || 0);
+        const envY = CAMERA_IDLE_AMP_Y + (this.cameraParallax?.orbitY || 0);
+        const marginX = envX + TETROMINO_RADIUS + SPAWN_CLEARANCE;
+        const marginY = envY + TETROMINO_RADIUS + SPAWN_CLEARANCE;
+        const spanW = bounds.width + envX * 2;
+        const spanH = bounds.height + envY * 2;
 
         let x;
         let y;
@@ -780,29 +871,52 @@ export default class ThreeJSIntroRendererWebGPU {
         const side = Math.floor(Math.random() * 4);
         switch (side) {
             case 0:
-                x = (Math.random() - 0.5) * bounds.width;
-                y = halfH + margin;
-                vy = -Math.abs(vy) - 0.025;
+                x = (Math.random() - 0.5) * spanW;
+                y = halfH + marginY;
+                vy = -Math.abs(vy) - SPAWN_INWARD_DRIFT;
                 break;
             case 1:
-                x = (Math.random() - 0.5) * bounds.width;
-                y = -halfH - margin;
-                vy = Math.abs(vy) + 0.025;
+                x = (Math.random() - 0.5) * spanW;
+                y = -halfH - marginY;
+                vy = Math.abs(vy) + SPAWN_INWARD_DRIFT;
                 break;
             case 2:
-                x = -halfW - margin;
-                y = (Math.random() - 0.5) * bounds.height;
-                vx = Math.abs(vx) + 0.025;
+                x = -halfW - marginX;
+                y = (Math.random() - 0.5) * spanH;
+                vx = Math.abs(vx) + SPAWN_INWARD_DRIFT;
                 break;
             default:
-                x = halfW + margin;
-                y = (Math.random() - 0.5) * bounds.height;
-                vx = -Math.abs(vx) - 0.025;
+                x = halfW + marginX;
+                y = (Math.random() - 0.5) * spanH;
+                vx = -Math.abs(vx) - SPAWN_INWARD_DRIFT;
                 break;
         }
 
         const slot = this.tetrominoCompute.spawn(x, y, z, vx, vy, vz, typeIdx);
         return slot !== -1;
+    }
+
+    /**
+     * Seed a handful of tetrominos already INSIDE the view so the intro is alive
+     * from the first frame instead of starting empty and waiting ~5-7s for the
+     * first piece to drift in from off-screen (regular spawnTetromino() spawns
+     * beyond the edge so pieces "drift in" rather than pop).
+     */
+    prepopulateTetrominos(count = 12) {
+        if (!this.tetrominoCompute) return;
+        for (let i = 0; i < count; i++) {
+            const typeIdx = Math.floor(Math.random() * SHAPE_KEYS.length);
+            const z = (Math.random() - 0.5) * 24 - 8; // -20..4
+            const bounds = this.getVisibleBoundsAtDepth(z);
+            // Inset a little so they read as on-screen, not clipping the edges.
+            const x = (Math.random() - 0.5) * bounds.width * 0.82;
+            const y = (Math.random() - 0.5) * bounds.height * 0.7;
+            // Gentle drift in any direction (no forced inward push — they're already in view).
+            const vx = (Math.random() - 0.5) * 0.06;
+            const vy = (Math.random() - 0.5) * 0.06;
+            const vz = (Math.random() - 0.5) * 0.03;
+            this.tetrominoCompute.spawn(x, y, z, vx, vy, vz, typeIdx);
+        }
     }
 
     getVisibleBoundsAtDepth(depth) {
@@ -927,12 +1041,15 @@ export default class ThreeJSIntroRendererWebGPU {
         this.uAudioPulse.value = this.audioPulse;
         this.updateWarp(this.simulationTime);
 
+        // Idle Lissajous drift + warp dolly, then pointer parallax on top.
+        // apply() adds the cursor-driven offset and performs the final lookAt,
+        // so it must come after the base position is set.
         const cameraDriftScale = (1 + this.uWarp.value * 1.5) / Math.max(0.1, phase.cameraDriftMul);
         const t = this.simulationTime * 0.2;
-        this.camera.position.x = (Math.sin(t * 0.5) * 5) / cameraDriftScale;
-        this.camera.position.y = (Math.cos(t * 0.3) * 3) / cameraDriftScale;
+        this.camera.position.x = (Math.sin(t * 0.5) * CAMERA_IDLE_AMP_X) / cameraDriftScale;
+        this.camera.position.y = (Math.cos(t * 0.3) * CAMERA_IDLE_AMP_Y) / cameraDriftScale;
         this.camera.position.z = 40 - this.uWarp.value * 10;
-        this.camera.lookAt(0, 0, 0);
+        this.cameraParallax.apply(this.camera, delta);
 
         this.uBloomStrength.value = this.quality.bloom
             ? (this.quality.bloomStrength * phase.bloomMul) + (this.audioPulse * 0.05) + (this.uWarp.value * 0.1)
@@ -974,6 +1091,11 @@ export default class ThreeJSIntroRendererWebGPU {
             }
         }
 
+        if (this.nebulaSky) {
+            this.nebulaSky.uniforms.uTime.value = this.simulationTime;
+            this.nebulaSky.uniforms.uPulse.value = this.audioPulse;
+        }
+
         if (this.volumetricNebula) {
             this.volumetricNebula.rotation.z = Math.sin(this.simulationTime * 0.05) * 0.05;
         }
@@ -1001,7 +1123,10 @@ export default class ThreeJSIntroRendererWebGPU {
             }
         }
 
-        if (this.postProcessing && this.quality.bloom) {
+        // Always render through the post pipeline: it owns the manual ACES tonemap
+        // now (renderer is NoToneMapping), so the direct path would look untonemapped.
+        // On low tiers bloom strength is driven to 0, so the cost is just the grade.
+        if (this.postProcessing) {
             this.postProcessing.render();
         } else {
             this.renderer.render(this.scene, this.camera);
@@ -1061,6 +1186,13 @@ export default class ThreeJSIntroRendererWebGPU {
             cloud.visible = i < maxClouds;
         });
 
+        if (this.nebulaSky) {
+            // Full brightness for the intro (the liked look); dimmer behind the
+            // menu so it never competes with the cards.
+            const tierScale = this.quality.key === 'LOW' ? 0.8 : 1.0;
+            this.nebulaSky.setIntensity((this.isBackgroundMode ? 0.5 : 1.0) * tierScale);
+        }
+
         if (this.volumetricNebula) {
             // The nebula pass creates a broad blue haze behind the menu cards.
             // Keep it for the full intro, but disable it in background-only mode.
@@ -1091,6 +1223,7 @@ export default class ThreeJSIntroRendererWebGPU {
             window.removeEventListener('resize', this._onResize);
             this._onResize = null;
         }
+        this.cameraParallax?.detach();
 
         if (this.particleCompute) {
             this.particleCompute.dispose();
@@ -1138,6 +1271,11 @@ export default class ThreeJSIntroRendererWebGPU {
             cloud.removeFromParent();
         }
         this.nebulaClouds = [];
+
+        if (this.nebulaSky) {
+            this.nebulaSky.dispose();
+            this.nebulaSky = null;
+        }
 
         if (this.volumetricNebula) {
             this.volumetricNebula.geometry?.dispose();

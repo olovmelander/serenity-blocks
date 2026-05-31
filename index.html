@@ -80,6 +80,8 @@
     <link rel="stylesheet" href="/styles/match-config-styles.css">
     <link rel="stylesheet" href="/styles/serenity-hub.css">
     <link rel="stylesheet" href="/styles/custom-cursor.css">
+    <link rel="stylesheet" href="/styles/menu-aaa.css">
+    <link rel="stylesheet" href="/styles/settings-aaa.css">
 </head>
 
 <body>
@@ -351,6 +353,9 @@
             <div id="electric-veins"></div>
             <div id="electric-particles"></div>
         </div>
+        <div id="electric-dreams-v3-theme" class="theme-container">
+            <!-- Canvas will be dynamically added by ElectricDreamsV3Theme -->
+        </div>
         <div id="nebula-flow-theme" class="theme-container">
             <!-- Canvas will be dynamically added by NebulaFlowTheme -->
         </div>
@@ -393,6 +398,9 @@
         </div>
         <div id="pyrestorm-theme" class="theme-container">
             <!-- 3D canvas will be dynamically added by PyrestormTheme (Three.js) -->
+        </div>
+        <div id="pyrestorm-v2-theme" class="theme-container">
+            <!-- 3D canvas (WebGPU) dynamically added by PyrestormV2Theme -->
         </div>
         <div id="neon-dusk-theme" class="theme-container">
             <!-- All visual elements now rendered via WebGL canvases -->
@@ -1337,9 +1345,12 @@
             <h1 class="main-menu-logo" aria-label="Serenity Blocks">Serenity Blocks</h1>
             <div class="game-mode-card" data-mode="single" id="single-player-card-btn" tabindex="0">
                 <div class="mode-card-icon">
-                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M3 12h6v6H3zM9 12h6v6H9zM15 12h6v6H15zM9 6h6v6H9z" />
+                    <svg class="cs-icon cs-icon--tetro" viewBox="0 0 24 24" width="48" height="48" fill="none"
+                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect class="cs-tetro-block" style="--i:0" x="3" y="12" width="6" height="6" rx="1" />
+                        <rect class="cs-tetro-block" style="--i:1" x="9" y="12" width="6" height="6" rx="1" />
+                        <rect class="cs-tetro-block" style="--i:2" x="15" y="12" width="6" height="6" rx="1" />
+                        <rect class="cs-tetro-block" style="--i:3" x="9" y="6" width="6" height="6" rx="1" />
                     </svg>
                 </div>
                 <h2 class="mode-card-title">Single Player</h2>
@@ -1396,9 +1407,9 @@
 
             <div class="game-mode-card" data-mode="infinity" id="infinity-card-btn" tabindex="0">
                 <div class="mode-card-icon">
-                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path
+                    <svg class="cs-icon cs-icon--infinity" viewBox="0 0 24 24" width="48" height="48" fill="none"
+                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path class="cs-infinity-path" pathLength="1"
                             d="M12 12c-2-2.5-5-3.5-7-2-2 1.5-2 5 0 6.5 2 1.5 5 0.5 7-2 2 2.5 5 3.5 7 2 2-1.5 2-5 0-6.5-2-1.5-5-0.5-7 2z" />
                     </svg>
                 </div>
@@ -1409,14 +1420,14 @@
 
             <div class="game-mode-card" data-mode="odyssey" id="odyssey-card-btn" tabindex="0">
                 <div class="mode-card-icon">
-                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"
-                        stroke-linecap="round" stroke-linejoin="round">
+                    <svg class="cs-icon cs-icon--odyssey" viewBox="0 0 24 24" width="48" height="48" fill="none"
+                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                         <!-- Mountain path icon representing odyssey/ascent -->
-                        <path d="M3 20L8 10L13 15L21 4" />
-                        <polyline points="16 4 21 4 21 9" />
-                        <circle cx="8" cy="10" r="1.5" fill="currentColor" />
-                        <circle cx="13" cy="15" r="1.5" fill="currentColor" />
-                        <circle cx="21" cy="4" r="1.5" fill="currentColor" />
+                        <path class="cs-ascent-path" pathLength="1" d="M3 20L8 10L13 15L21 4" />
+                        <polyline class="cs-ascent-arrow" points="16 4 21 4 21 9" />
+                        <circle class="cs-ascent-dot" style="--i:0" cx="8" cy="10" r="1.5" fill="currentColor" />
+                        <circle class="cs-ascent-dot" style="--i:1" cx="13" cy="15" r="1.5" fill="currentColor" />
+                        <circle class="cs-ascent-dot" style="--i:2" cx="21" cy="4" r="1.5" fill="currentColor" />
                     </svg>
                 </div>
                 <h2 class="mode-card-title">Odyssey</h2>

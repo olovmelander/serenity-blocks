@@ -83,6 +83,9 @@ import { introAnimation } from './ui/intro-animation.js';
 import { DemoManager } from './core/demo/DemoManager.js';
 import { DemoBrowser } from './ui/demo-browser.js';
 import { showCinematicLoadingOverlay, dismissCinematicLoadingOverlay } from './ui/cinematic-loading-overlay.js';
+// Cosmic Serenity main-menu micro-interactions (cursor spotlight + parallax tilt).
+// Side-effect import: self-initialises on the `start` modal.
+import './ui/menu-card-interactions.js';
 
 // Audio imports
 import { SoundManager } from './audio/sound-manager.js';
@@ -111,6 +114,11 @@ const RIPPLE_SHADOW_ALPHA = 0.6;
 const INTRO_MUSIC_TRACK_KEY = 'CosmicChimes';
 const INTRO_MUSIC_PATH = './assets/music/Cosmic Chimes.mp3';
 const sharedSoundManager = new SoundManager();
+if (typeof window !== 'undefined') {
+    // Expose for lightweight UI modules that need SFX without importing the app
+    // (e.g. the main-menu card micro-interactions: hover blip + confirm chime).
+    window.__serenitySoundManager = sharedSoundManager;
+}
 let introMusicInitialized = false;
 let phaserModulePromise = null;
 let desktopBootCoordinator = null;
