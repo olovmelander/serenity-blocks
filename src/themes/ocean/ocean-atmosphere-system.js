@@ -70,6 +70,25 @@ const ROCK_REEF_CLUSTERS = [
     { x: -112, z: -72, radius: 42 },
     { x: 118, z: -86, radius: 44 },
 ]; const HERO_CORAL_PLACEMENTS = [
+    // ── Foreground framing corals ────────────────────────────────────────
+    // Slots 0-3 sit at high +Z (close to the camera at z=80, looking at 0)
+    // and at large |x| so they form the left/right "frame" of the composition
+    // visible in the reference reef photo — tall coral pillars that bracket
+    // the sandy valley. Scaled up to dominate the foreground silhouette.
+    // Quality-preset slicing keeps these in view down to Medium.
+    {
+        x: -62, z: 60, scale: 4.0, ry: 0.35, kind: 'purple-tube-sponge',
+    }, // FG far-left framing pillar
+    {
+        x: 64, z: 58, scale: 4.1, ry: -0.42, kind: 'magenta-vase-coral',
+    }, // FG far-right framing pillar
+    {
+        x: -52, z: 52, scale: 3.4, ry: -0.18, kind: 'anemone-coral',
+    }, // FG left base cluster
+    {
+        x: 50, z: 50, scale: 3.6, ry: 0.22, kind: 'fan-coral',
+    }, // FG right base cluster
+    // ── Midground hero corals ────────────────────────────────────────────
     // First 10 slots dominate at High/Ultra — new vibrant sponges + corals
     // interleaved with original heroes to match the reference reef photo.
     {
@@ -126,6 +145,35 @@ const ROCK_REEF_CLUSTERS = [
     {
         x: 18, z: -98, scale: 3.2, ry: -1.2, kind: 'purple-sea-fan',
     },
+    // ── Reef-shelf density cluster ───────────────────────────────────────
+    // Slots 21-28 fill the midground reef shelves with tightly-clustered
+    // variety — matches the dense, multi-species look of the reference photo
+    // where the reef ridges are packed with overlapping corals. Smaller
+    // scales (1.6-2.3) so they don't compete visually with the heroes.
+    {
+        x: -76, z: 8, scale: 2.0, ry: 0.55, kind: 'brain-coral',
+    },
+    {
+        x: 80, z: 6, scale: 1.95, ry: -0.6, kind: 'mushroom-coral',
+    },
+    {
+        x: -100, z: -28, scale: 2.2, ry: -0.35, kind: 'orange-tube-sponge',
+    },
+    {
+        x: 104, z: -32, scale: 2.15, ry: 0.4, kind: 'yellow-barrel-sponge',
+    },
+    {
+        x: -38, z: -42, scale: 1.85, ry: 1.1, kind: 'table-coral',
+    },
+    {
+        x: 42, z: -48, scale: 1.9, ry: -1.0, kind: 'staghorn-coral',
+    },
+    {
+        x: -62, z: -78, scale: 2.25, ry: 0.7, kind: 'spire-coral',
+    },
+    {
+        x: 66, z: -82, scale: 2.3, ry: -0.85, kind: 'boulder-coral',
+    },
 ];
 
 const HERO_KELP_PLACEMENTS = [
@@ -158,6 +206,21 @@ const HERO_KELP_PLACEMENTS = [
     },
     {
         x: 78, z: 58, scale: 1.1, ry: -0.4,
+    },
+    // ── Reef-edge filler kelp (Extreme tier) ──────────────────────────────
+    // Tall fronds peeking up beside the foreground framing corals — matches
+    // the reference photo's upper-left seaweed silhouettes.
+    {
+        x: -90, z: 50, scale: 1.32, ry: 0.78,
+    },
+    {
+        x: 92, z: 48, scale: 1.3, ry: -0.84,
+    },
+    {
+        x: -110, z: -8, scale: 1.14, ry: 1.32,
+    },
+    {
+        x: 112, z: -12, scale: 1.12, ry: -1.28,
     },
 ];
 
@@ -877,6 +940,17 @@ function createImportedSeabedPlantShaderMaterial() {
     });
 }
 
+// Vibrance constants for TripoSR-generated assets (corals + seahorse).
+// Re-tuned for the daylight palette (cyan fog, absorption fog 0.22, exposure
+// 1.20, brighter ambient lighting). Under bright daylight the previous
+// emissive of 0.55 reads as over-saturated/glowing; PBR shading already
+// gives the assets enough chroma now. We keep emissive low and let the
+// ambient/directional lighting carry the vibrance.
+const TRIPOSR_VERTEX_COLOR_BOOST = 1.35;
+const TRIPOSR_EMISSIVE_BOOST = 0.22;
+const TRIPOSR_TINT_ATTENUATION = 0.55;
+const TRIPOSR_FALLBACK_BASE_BOOST = 1.25;
+
 function createHeroCoralNodeMaterial(sourceMaterial, opts = {}) {
     const baseColor = sourceMaterial?.color || new THREE.Color(0xc06a52);
     const material = new MeshStandardNodeMaterial({
@@ -904,16 +978,22 @@ function createHeroCoralNodeMaterial(sourceMaterial, opts = {}) {
     const coolCaustic = vec3(0.26, 0.9, 0.78).mul(caustic).mul(0.18);
     const tint = warmRim.add(coolCaustic).mul(float(0.68).add(uGlowIntensity.mul(0.14)));
 
-    // Vertex-colored meshes (TripoSR GLBs with COLOR_0) need their pastel painted
-    // colors to drive the final hue, not the GLB's neutral baseColorFactor. The
-    // 1.6× lift restores the pastel "pop" lost to underwater scene lighting.
+    // Vertex-colored meshes (TripoSR GLBs with COLOR_0) need their painted
+    // colors to drive the final hue, not the GLB's neutral baseColorFactor.
+    // Diffuse stays modest so it doesn't clip on bright hues; the bulk of
+    // the perceived "PNG vibrance" comes from the emissive contribution,
+    // which flat-shades the dark side and survives the underwater post-FX.
+    // The rim/caustic tint is attenuated for vertex-colored materials so
+    // the cool caustic doesn't drown out subtle base hues (e.g. brain coral
+    // reads green, not cyan).
     if (opts.vertexColors) {
         const vColor = attribute('color', 'vec3');
-        material.colorNode = vec3(baseColor.r, baseColor.g, baseColor.b).mul(vColor).mul(1.6).add(tint);
+        material.colorNode = vec3(baseColor.r, baseColor.g, baseColor.b).mul(vColor).mul(TRIPOSR_VERTEX_COLOR_BOOST).add(tint.mul(TRIPOSR_TINT_ATTENUATION));
+        material.emissiveNode = vColor.mul(TRIPOSR_EMISSIVE_BOOST);
     } else {
         material.colorNode = vec3(baseColor.r, baseColor.g, baseColor.b).add(tint);
+        material.emissiveNode = vec3(0);
     }
-    material.emissiveNode = vec3(0);
 
     material.userData = {
         uTime,
@@ -926,11 +1006,14 @@ function createHeroCoralNodeMaterial(sourceMaterial, opts = {}) {
 
 function createHeroCoralStandardMaterial(sourceMaterial, opts = {}) {
     const color = sourceMaterial?.color?.clone?.() || new THREE.Color(0xc06a52);
-    // WS B1: WebGL2 fallback. No MRT here (legacy composer path) but we still
-    // drop emissive so the scene-pass output stays at a similar luma to the
-    // WebGPU path (and bloom in the legacy composer doesn't pick coral up).
-    // Slightly brighten base color to compensate visually for the lost glow.
-    const brightened = color.clone().multiplyScalar(1.14);
+    // WebGL2 fallback. Brightens the base color factor (which multiplies the
+    // vertex color in the shader) to compensate for the lost MRT-emissive
+    // bloom path. ACES at exposure 1.12 in ocean-theme.js handles the
+    // headroom, so a smaller multiplier than the WebGPU TSL boost matches.
+    const brightened = color.clone().multiplyScalar(TRIPOSR_FALLBACK_BASE_BOOST);
+    const emissiveColor = opts.vertexColors
+        ? brightened.clone().multiplyScalar(TRIPOSR_EMISSIVE_BOOST)
+        : new THREE.Color(0x000000);
     return new THREE.MeshStandardMaterial({
         color: brightened,
         map: sourceMaterial?.map ?? null,
@@ -940,8 +1023,8 @@ function createHeroCoralStandardMaterial(sourceMaterial, opts = {}) {
         roughness: sourceMaterial?.roughness ?? 0.74,
         metalness: sourceMaterial?.metalness ?? 0.02,
         vertexColors: !!opts.vertexColors,
-        emissive: 0x000000,
-        emissiveIntensity: 0,
+        emissive: emissiveColor,
+        emissiveIntensity: opts.vertexColors ? 1 : 0,
         envMapIntensity: 1.08,
         // WS B2: FrontSide for the same reason as the WebGPU path.
         side: sourceMaterial?.side === THREE.DoubleSide ? THREE.FrontSide : (sourceMaterial?.side ?? THREE.FrontSide),

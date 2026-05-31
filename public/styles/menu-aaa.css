@@ -1,0 +1,614 @@
+/* =================================================================================
+ * COSMIC SERENITY — AAA Main Menu Redesign
+ * ---------------------------------------------------------------------------------
+ * Loaded AFTER main.css so these rules win the cascade. Everything here is scoped to
+ * `body.start-modal-open` (the game-mode select screen) so nothing else is affected.
+ *
+ * Pillars:
+ *   1. Per-mode color identity (each card carries its own --accent)
+ *   2. Cinematic staggered entrance (blur + rise + settle, eased, <0.5s each)
+ *   3. Depth on hover: cursor-follow spotlight + 3D parallax tilt (driven by JS vars)
+ *   4. Console-grade focus ring for keyboard / gamepad
+ *   5. Aurora kinetic logo
+ *   6. Respects prefers-reduced-motion
+ * ============================================================================== */
+
+/* ---- Per-mode accent identity ------------------------------------------------ */
+body.start-modal-open .game-mode-card {
+    --accent: #7fdcff;
+    --accent-rgb: 127, 220, 255;
+    /* live, JS-driven interaction vars */
+    --mx: 50%;
+    --my: 50%;
+    --rx: 0deg;
+    --ry: 0deg;
+    --lift: 0px;
+    --scl: 1;
+}
+
+body.start-modal-open .game-mode-card[data-mode="single"]             { --accent: #7fdcff; --accent-rgb: 127, 220, 255; }
+body.start-modal-open .game-mode-card[data-mode="local-multiplayer"]  { --accent: #b39dff; --accent-rgb: 179, 157, 255; }
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"] { --accent: #5eead4; --accent-rgb: 94, 234, 212; }
+body.start-modal-open .game-mode-card[data-mode="serenity"]           { --accent: #ff9ecd; --accent-rgb: 255, 158, 205; }
+body.start-modal-open .game-mode-card[data-mode="infinity"]           { --accent: #8ea2ff; --accent-rgb: 142, 162, 255; }
+body.start-modal-open .game-mode-card[data-mode="odyssey"]            { --accent: #fcd17a; --accent-rgb: 252, 209, 122; }
+
+/* ---- Container: airier grid + 3D context for tilt --------------------------- */
+body.start-modal-open .game-mode-cards-container {
+    gap: 16px;
+    max-width: 880px;
+    perspective: 1500px;
+    align-content: center;
+    animation: cs-container-in 0.6s ease-out both;
+}
+
+@keyframes cs-container-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+/* ---- Card base: Cosmic Serenity glass with accent wash --------------------- */
+body.start-modal-open .game-mode-card {
+    background:
+        radial-gradient(130% 90% at 50% -20%, rgba(var(--accent-rgb), 0.16), transparent 58%),
+        linear-gradient(180deg, rgba(22, 24, 48, 0.90) 0%, rgba(11, 12, 30, 0.94) 100%);
+    border: 1px solid rgba(var(--accent-rgb), 0.30);
+    border-radius: 22px;
+    padding: 18px 18px 16px;
+    overflow: hidden;
+    transform-style: preserve-3d;
+    will-change: transform;
+    transform:
+        rotateX(var(--rx)) rotateY(var(--ry))
+        translateY(var(--lift)) scale(var(--scl));
+    box-shadow:
+        0 22px 60px rgba(0, 0, 0, 0.50),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.03),
+        inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    transition:
+        transform 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 0.5s ease,
+        border-color 0.45s ease,
+        background 0.45s ease;
+    /* Cinematic entrance (individual translate/scale/filter keep `transform` free for tilt) */
+    animation: cs-card-reveal 0.72s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cs-card-reveal {
+    from { opacity: 0; translate: 0 22px; scale: 0.95; filter: blur(8px); }
+    60%  { filter: blur(0); }
+    to   { opacity: 1; translate: 0 0;  scale: 1;    filter: blur(0); }
+}
+
+/* Logo is child 1; the six cards are children 2..7 — stagger their reveal */
+body.start-modal-open .game-mode-card:nth-child(2) { animation-delay: 0.06s; }
+body.start-modal-open .game-mode-card:nth-child(3) { animation-delay: 0.12s; }
+body.start-modal-open .game-mode-card:nth-child(4) { animation-delay: 0.18s; }
+body.start-modal-open .game-mode-card:nth-child(5) { animation-delay: 0.24s; }
+body.start-modal-open .game-mode-card:nth-child(6) { animation-delay: 0.30s; }
+body.start-modal-open .game-mode-card:nth-child(7) { animation-delay: 0.36s; }
+
+/* ---- Cursor-follow spotlight (behind content, clipped to the rounded card) -- */
+body.start-modal-open .game-mode-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(240px circle at var(--mx) var(--my),
+            rgba(var(--accent-rgb), 0.22), transparent 60%);
+    opacity: 0;
+    transition: opacity 0.45s ease;
+    pointer-events: none;
+    z-index: 0;
+}
+
+body.start-modal-open .game-mode-card:not(.steam-disabled):hover::before,
+body.start-modal-open .game-mode-card:not(.steam-disabled).gamepad-focused::before,
+body.start-modal-open .game-mode-card:not(.steam-disabled):focus-visible::before {
+    opacity: 1;
+}
+
+/* ---- Hover / pointer lift + tilt (JS feeds --rx/--ry/--mx/--my) ------------- */
+body.start-modal-open .game-mode-card:not(.steam-disabled):hover,
+body.start-modal-open .game-mode-card:not(.steam-disabled).gamepad-focused,
+body.start-modal-open .game-mode-card:not(.steam-disabled):focus-visible {
+    --lift: -10px;
+    --scl: 1.025;
+    transform:
+        rotateX(var(--rx)) rotateY(var(--ry))
+        translateY(var(--lift)) scale(var(--scl)) !important;
+    border-color: rgba(var(--accent-rgb), 0.85);
+    background:
+        radial-gradient(130% 90% at 50% -20%, rgba(var(--accent-rgb), 0.28), transparent 60%),
+        linear-gradient(180deg, rgba(28, 30, 58, 0.94) 0%, rgba(14, 16, 36, 0.96) 100%);
+    box-shadow:
+        0 34px 84px rgba(0, 0, 0, 0.55),
+        0 0 46px rgba(var(--accent-rgb), 0.35),
+        inset 0 0 0 1px rgba(var(--accent-rgb), 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+
+body.start-modal-open .game-mode-card:not(.steam-disabled):active {
+    --lift: -6px;
+    --scl: 1.01;
+}
+
+/* Console-grade focus ring for keyboard + gamepad */
+body.start-modal-open .game-mode-card:not(.steam-disabled).gamepad-focused,
+body.start-modal-open .game-mode-card:not(.steam-disabled):focus-visible {
+    outline: none;
+    box-shadow:
+        0 34px 84px rgba(0, 0, 0, 0.55),
+        0 0 46px rgba(var(--accent-rgb), 0.40),
+        0 0 0 2px rgba(var(--accent-rgb), 0.95),
+        0 0 0 7px rgba(var(--accent-rgb), 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.10);
+    animation: cs-focus-pulse 1.9s ease-in-out infinite;
+}
+
+@keyframes cs-focus-pulse {
+    0%, 100% { box-shadow:
+        0 34px 84px rgba(0, 0, 0, 0.55),
+        0 0 46px rgba(var(--accent-rgb), 0.40),
+        0 0 0 2px rgba(var(--accent-rgb), 0.95),
+        0 0 0 7px rgba(var(--accent-rgb), 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.10); }
+    50% { box-shadow:
+        0 34px 84px rgba(0, 0, 0, 0.55),
+        0 0 60px rgba(var(--accent-rgb), 0.55),
+        0 0 0 2px rgba(var(--accent-rgb), 1),
+        0 0 0 10px rgba(var(--accent-rgb), 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.10); }
+}
+
+/* ---- Accent glow blob (existing element, re-tinted) ------------------------- */
+body.start-modal-open .mode-card-glow {
+    background: radial-gradient(circle, rgba(var(--accent-rgb), 0.45) 0%, transparent 65%);
+}
+
+body.start-modal-open .game-mode-card:not(.steam-disabled):hover .mode-card-glow,
+body.start-modal-open .game-mode-card:not(.steam-disabled).gamepad-focused .mode-card-glow,
+body.start-modal-open .game-mode-card:not(.steam-disabled):focus-visible .mode-card-glow {
+    opacity: 0.7;
+    background: radial-gradient(circle, rgba(var(--accent-rgb), 0.5) 0%, transparent 70%);
+}
+
+/* ---- Icon: per-accent stroke + parallax pop -------------------------------- */
+body.start-modal-open .mode-card-icon {
+    color: var(--accent);
+    filter: drop-shadow(0 4px 16px rgba(var(--accent-rgb), 0.45));
+    transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), filter 0.4s ease;
+    transform: translateZ(28px);
+}
+
+body.start-modal-open .mode-card-icon svg {
+    stroke: var(--accent);
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), filter 0.4s ease, stroke 0.4s ease;
+}
+
+body.start-modal-open .game-mode-card:not(.steam-disabled):hover .mode-card-icon svg,
+body.start-modal-open .game-mode-card:not(.steam-disabled).gamepad-focused .mode-card-icon svg,
+body.start-modal-open .game-mode-card:not(.steam-disabled):focus-visible .mode-card-icon svg {
+    stroke: #ffffff;
+    transform: scale(1.12) translateY(-2px);
+    filter: drop-shadow(0 0 12px rgba(var(--accent-rgb), 0.9));
+}
+
+/* ---- Title / description: accent-keyed ------------------------------------- */
+body.start-modal-open .mode-card-title {
+    background: linear-gradient(120deg, #ffffff 0%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 22px rgba(var(--accent-rgb), 0.35);
+    transform: translateZ(18px);
+}
+
+body.start-modal-open .mode-card-desc {
+    color: rgba(226, 232, 255, 0.62);
+    transition: color 0.4s ease;
+    transform: translateZ(12px);
+}
+
+body.start-modal-open .game-mode-card:not(.steam-disabled):hover .mode-card-desc,
+body.start-modal-open .game-mode-card:not(.steam-disabled).gamepad-focused .mode-card-desc,
+body.start-modal-open .game-mode-card:not(.steam-disabled):focus-visible .mode-card-desc {
+    color: rgba(255, 255, 255, 0.92);
+}
+
+/* ---- Disabled (Steam-gated) card stays calm + muted ------------------------ */
+body.start-modal-open .game-mode-card.steam-disabled {
+    opacity: 0.5;
+    filter: grayscale(0.5);
+    border-color: rgba(var(--accent-rgb), 0.14);
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.42);
+    animation: cs-card-reveal 0.72s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ---- Aurora kinetic logo --------------------------------------------------- */
+body.start-modal-open .main-menu-logo {
+    position: relative;
+    z-index: 3;
+    font-size: clamp(1.45rem, 2.3vw, 2.15rem);
+    letter-spacing: 0.24em;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background: linear-gradient(100deg,
+            #cfe3ff 0%, #a9c2ff 24%, #c3b0ff 48%, #ffc6e6 72%, #bfe3ff 100%);
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    text-shadow: none;
+    filter: drop-shadow(0 0 18px rgba(150, 180, 255, 0.32));
+    margin-bottom: 10px;
+    animation:
+        cs-logo-reveal 0.9s cubic-bezier(0.22, 1, 0.36, 1) both,
+        cs-logo-shimmer 8s ease-in-out 1s infinite;
+}
+
+body.start-modal-open .main-menu-logo::after {
+    content: 'STACK · BREATHE · ASCEND';
+    display: block;
+    margin-top: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.56rem;
+    font-weight: 700;
+    letter-spacing: 0.42em;
+    text-indent: 0.42em;
+    color: rgba(190, 205, 245, 0.55);
+    -webkit-text-fill-color: rgba(190, 205, 245, 0.55);
+    background: none;
+    filter: none;
+    text-shadow: none;
+    animation: cs-tagline-in 1s ease-out 0.5s both;
+}
+
+@keyframes cs-logo-reveal {
+    from { opacity: 0; translate: 0 -18px; }
+    to   { opacity: 1; translate: 0 0; }
+}
+
+@keyframes cs-logo-shimmer {
+    0%, 100% { background-position: 0% center; }
+    50%      { background-position: 200% center; }
+}
+
+@keyframes cs-tagline-in {
+    from { opacity: 0; letter-spacing: 0.18em; }
+    to   { opacity: 1; letter-spacing: 0.42em; }
+}
+
+/* ---- Short-viewport compaction (laptops, windowed) ------------------------ */
+@media (max-height: 820px) {
+    body.start-modal-open .game-mode-cards-container {
+        gap: 12px;
+    }
+
+    body.start-modal-open .game-mode-card {
+        padding: 14px 16px 13px;
+    }
+
+    body.start-modal-open .main-menu-logo {
+        font-size: clamp(1.3rem, 2vw, 1.85rem);
+        margin-bottom: 7px;
+    }
+
+    body.start-modal-open .main-menu-logo::after {
+        margin-top: 6px;
+        font-size: 0.52rem;
+        letter-spacing: 0.36em;
+        text-indent: 0.36em;
+    }
+}
+
+@media (max-height: 680px) {
+    body.start-modal-open .main-menu-logo::after {
+        display: none;
+    }
+
+    body.start-modal-open .game-mode-cards-container {
+        gap: 10px;
+    }
+
+    body.start-modal-open .game-mode-card {
+        padding: 11px 14px;
+    }
+}
+
+/* ---- Headphone badge → glass pill ----------------------------------------- */
+body.start-modal-open .headphone-badge {
+    bottom: 26px;
+    left: 26px;
+    padding: 9px 16px 9px 13px;
+    background: rgba(16, 18, 34, 0.6);
+    border: 1px solid rgba(150, 180, 255, 0.18);
+    border-radius: 999px;
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    box-shadow:
+        0 10px 30px rgba(0, 0, 0, 0.35),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+body.start-modal-open .headphone-icon {
+    width: 16px;
+    height: 16px;
+    fill: rgba(170, 200, 255, 0.9);
+}
+
+body.start-modal-open .headphone-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(200, 214, 250, 0.82);
+}
+
+/* ============================================================================ *
+ * BESPOKE ANIMATED ICONS
+ * Each animated sub-element transforms about its own box (transform-box: fill-box)
+ * so SVG-space coordinates don't skew the origin. Idle = subtle loop; hover/focus
+ * = a one-shot "signature" beat (tetromino assembles, infinity traces, ascent draws).
+ * ============================================================================ */
+body.start-modal-open .cs-icon * {
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+/* --- Single Player: tetromino blocks drop in & settle --- */
+body.start-modal-open .cs-tetro-block {
+    animation: cs-tetro-idle 4.5s ease-in-out infinite;
+    animation-delay: calc(var(--i) * 0.12s);
+}
+
+@keyframes cs-tetro-idle {
+    0%, 100% { transform: translateY(0); opacity: 0.92; }
+    50%      { transform: translateY(-1px); opacity: 1; }
+}
+
+body.start-modal-open .game-mode-card[data-mode="single"]:hover .cs-tetro-block,
+body.start-modal-open .game-mode-card[data-mode="single"].gamepad-focused .cs-tetro-block,
+body.start-modal-open .game-mode-card[data-mode="single"]:focus-visible .cs-tetro-block {
+    animation: cs-tetro-assemble 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(var(--i) * 0.07s);
+}
+
+@keyframes cs-tetro-assemble {
+    0%   { transform: translateY(-7px); opacity: 0; }
+    55%  { transform: translateY(1px);  opacity: 1; }
+    100% { transform: translateY(0);    opacity: 1; }
+}
+
+/* --- Infinity: stroke traces the loop forever --- */
+body.start-modal-open .cs-infinity-path {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+    animation: cs-infinity-trace 5s linear infinite;
+}
+
+@keyframes cs-infinity-trace {
+    from { stroke-dashoffset: 1; }
+    to   { stroke-dashoffset: -1; }
+}
+
+body.start-modal-open .game-mode-card[data-mode="infinity"]:hover .cs-infinity-path,
+body.start-modal-open .game-mode-card[data-mode="infinity"].gamepad-focused .cs-infinity-path,
+body.start-modal-open .game-mode-card[data-mode="infinity"]:focus-visible .cs-infinity-path {
+    animation-duration: 1.8s;
+}
+
+/* --- Odyssey: ascent path draws, dots pop, arrow fades up --- */
+body.start-modal-open .cs-ascent-path {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+}
+
+body.start-modal-open .cs-ascent-dot {
+    animation: cs-ascent-twinkle 3s ease-in-out infinite;
+    animation-delay: calc(var(--i) * 0.4s);
+}
+
+@keyframes cs-ascent-twinkle {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50%      { opacity: 1;   transform: scale(1.35); }
+}
+
+body.start-modal-open .game-mode-card[data-mode="odyssey"]:hover .cs-ascent-path,
+body.start-modal-open .game-mode-card[data-mode="odyssey"].gamepad-focused .cs-ascent-path,
+body.start-modal-open .game-mode-card[data-mode="odyssey"]:focus-visible .cs-ascent-path {
+    animation: cs-ascent-draw 0.7s cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+
+@keyframes cs-ascent-draw {
+    from { stroke-dashoffset: 1; }
+    to   { stroke-dashoffset: 0; }
+}
+
+body.start-modal-open .game-mode-card[data-mode="odyssey"]:hover .cs-ascent-dot,
+body.start-modal-open .game-mode-card[data-mode="odyssey"].gamepad-focused .cs-ascent-dot,
+body.start-modal-open .game-mode-card[data-mode="odyssey"]:focus-visible .cs-ascent-dot {
+    animation: cs-ascent-pop 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(0.35s + var(--i) * 0.12s);
+}
+
+@keyframes cs-ascent-pop {
+    0%   { opacity: 0; transform: scale(0); }
+    70%  { opacity: 1; transform: scale(1.5); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* ============================================================================ *
+ * HUD COHESION — one Cosmic Serenity design language for the floating chrome.
+ *
+ * The side-rail buttons (hub / replays / high-scores / settings) are
+ * `position: fixed` global elements visible in EVERY mode, so their glass-tile
+ * styling is applied GAME-WIDE (not scoped to the menu) for full consistency.
+ * No game mode overrides their fixed positions, so this is safe.
+ *
+ * The player card is a menu component (`.main-menu-player-card`) so it stays
+ * scoped to the menu — it shouldn't restyle the in-game top-right corner.
+ *
+ * Shared tokens: glass surface, 14px radius, soft indigo border, lift on hover.
+ * All four tiles share one 50px box, one right edge (15px), and an even 12px gap.
+ * Stack (bottom-up): settings 30 → hub 92 → high-scores 154 → replays 216.
+ * ============================================================================ */
+:root {
+    --cs-hud-surface: rgba(16, 18, 34, 0.62);
+    --cs-hud-border: rgba(150, 180, 255, 0.20);
+    --cs-hud-border-hover: rgba(150, 180, 255, 0.45);
+    --cs-hud-shadow: 0 12px 32px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    --cs-hud-blur: blur(13px) saturate(140%);
+}
+
+/* Player card → glass tile matching the footer pill (menu only) */
+body.start-modal-open .main-menu-player-card {
+    background: var(--cs-hud-surface);
+    border: 1px solid var(--cs-hud-border);
+    border-radius: 14px;
+    backdrop-filter: var(--cs-hud-blur);
+    -webkit-backdrop-filter: var(--cs-hud-blur);
+    box-shadow: var(--cs-hud-shadow);
+}
+
+body.start-modal-open .main-menu-player-card:hover {
+    background: rgba(22, 26, 46, 0.78);
+    border-color: var(--cs-hud-border-hover);
+    box-shadow:
+        0 16px 38px rgba(0, 0, 0, 0.45),
+        0 0 22px rgba(150, 180, 255, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+body.start-modal-open .main-menu-player-card .mmpc-avatar-container {
+    border-color: rgba(150, 180, 255, 0.55);
+    box-shadow: 0 0 10px rgba(150, 180, 255, 0.3), inset 0 0 8px rgba(150, 180, 255, 0.12);
+}
+
+/* Side-rail icons → uniform glass tiles that lift coherently (GAME-WIDE).
+ * Includes the Odyssey Navigator (the teal ascent arrow), which is created by
+ * OdysseyMode at runtime and lives on the same rail. */
+.serenity-hub-icon,
+.replays-icon,
+.highscores-icon,
+.odyssey-navigator-icon,
+#settings-btn-global.floating-settings-btn {
+    background: var(--cs-hud-surface);
+    border: 1px solid var(--cs-hud-border);
+    border-radius: 14px;
+    backdrop-filter: var(--cs-hud-blur);
+    -webkit-backdrop-filter: var(--cs-hud-blur);
+    box-shadow: var(--cs-hud-shadow);
+    transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+        border-color 0.32s ease, box-shadow 0.32s ease, background 0.32s ease,
+        opacity 0.32s ease;
+}
+
+/* Normalise the rail to one 50px box on a single right edge + 12px gap rhythm.
+ * (Native hub was 60px @ right:9; siblings 50px @ right:14; settings inline @ right:15.) */
+.serenity-hub-icon {
+    width: 50px;
+    height: 50px;
+    right: 15px;
+    bottom: 92px;
+}
+
+.highscores-icon {
+    right: 15px;
+    bottom: 154px;
+}
+
+.replays-icon {
+    right: 15px;
+    bottom: 216px;
+}
+
+/* Odyssey Navigator shares the high-scores slot (those are mutually exclusive
+ * with the navigator in Odyssey mode): same right edge + rhythm as the rail. */
+.odyssey-navigator-icon {
+    right: 15px;
+    bottom: 154px;
+}
+
+/* Match the other line-icons' visual weight (native svg is a small 24px). */
+.odyssey-navigator-icon .odyssey-navigator-icon-svg {
+    width: 30px;
+    height: 30px;
+}
+
+/* Settings button is ~48px → bump to the shared 50px and pad its SVG */
+#settings-btn-global.floating-settings-btn {
+    width: 50px;
+    height: 50px;
+    padding: 11px;
+}
+
+#settings-btn-global.floating-settings-btn::before {
+    display: none; /* drop the old radial glow; the glass tile is the new language */
+}
+
+.serenity-hub-icon:hover,
+.replays-icon.visible:hover,
+.highscores-icon.visible:hover,
+.odyssey-navigator-icon.visible:hover,
+#settings-btn-global.floating-settings-btn:hover {
+    border-color: var(--cs-hud-border-hover);
+    box-shadow:
+        0 16px 38px rgba(0, 0, 0, 0.45),
+        0 0 22px rgba(150, 180, 255, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    transform: scale(1.06);
+}
+
+/* Inset the line-icon SVGs a touch so they sit nicely inside the new tile */
+.replays-icon .replays-icon-svg,
+.highscores-icon .highscores-icon-svg {
+    padding: 9px;
+    box-sizing: border-box;
+}
+
+/* The lotus is drawn small + low inside its 100×100 viewBox (content spans
+ * y≈45–85, visual centre ≈65 not 50), so it reads tiny AND low-hanging in the
+ * tile. Upscale for weight + nudge up ~15% of the box height so the lotus' optical
+ * centre lands on the tile centre, matching the trophy / film / gear icons. */
+.serenity-hub-icon .hub-icon-svg {
+    padding: 0;
+    box-sizing: border-box;
+    transform: translateY(-15%) scale(1.18);
+    transform-origin: center;
+}
+
+/* ---- Accessibility: honor reduced-motion ----------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    body.start-modal-open .game-mode-card,
+    body.start-modal-open .game-mode-card.steam-disabled,
+    body.start-modal-open .game-mode-cards-container,
+    body.start-modal-open .main-menu-logo,
+    body.start-modal-open .main-menu-logo::after,
+    body.start-modal-open .game-mode-card.gamepad-focused,
+    body.start-modal-open .game-mode-card:focus-visible {
+        animation: none !important;
+    }
+
+    body.start-modal-open .game-mode-card {
+        opacity: 1 !important;
+        translate: 0 0 !important;
+        scale: 1 !important;
+        filter: none !important;
+        transform: none !important;
+    }
+
+    body.start-modal-open .game-mode-card:not(.steam-disabled):hover {
+        transform: translateY(-6px) !important;
+    }
+
+    /* Bespoke icons: hold their resting pose, no looping/draw-on motion */
+    body.start-modal-open .cs-tetro-block,
+    body.start-modal-open .cs-infinity-path,
+    body.start-modal-open .cs-ascent-path,
+    body.start-modal-open .cs-ascent-dot {
+        animation: none !important;
+        transform: none !important;
+        stroke-dashoffset: 0 !important;
+        opacity: 1 !important;
+    }
+}

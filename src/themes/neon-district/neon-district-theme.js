@@ -23,6 +23,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 // Reflector import removed - unused (Phase 0 cleanup)
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
@@ -40,6 +41,7 @@ import {
     createMegaTowerNodeMaterial,
     createVhsBillboardNodeMaterial,
     createMoonNodeMaterial,
+    createCloudStrataNodeMaterial,
     createSkylineNodeMaterial,
     createSearchlightNodeMaterial,
     createHologramNodeMaterial,
@@ -71,6 +73,7 @@ import {
     positionWorld,
     smoothstep,
     uv,
+    reflector,
 } from 'three/tsl';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,6 +92,10 @@ const QUALITY_PRESETS = {
         bloomThreshold: 0.2,
         enablePostProcessing: true,
         flyingVehicles: 60,    // Was 70
+        // Phase 1 (AAA): true planar reflections on the wet street (WebGPU only)
+        enableReflections: true,
+        reflectionResolutionScale: 0.6,
+        skyStrataCount: 3,
     },
     Ultra: {
         buildingCount: 30,
@@ -99,6 +106,9 @@ const QUALITY_PRESETS = {
         bloomThreshold: 0.22,
         enablePostProcessing: true,
         flyingVehicles: 45,    // Was 50
+        enableReflections: true,
+        reflectionResolutionScale: 0.5,
+        skyStrataCount: 3,
     },
     High: {
         buildingCount: 20,
@@ -109,6 +119,9 @@ const QUALITY_PRESETS = {
         bloomThreshold: 0.28,
         enablePostProcessing: true,
         flyingVehicles: 30,    // Was 35
+        enableReflections: true,
+        reflectionResolutionScale: 0.35,
+        skyStrataCount: 2,
     },
     Medium: {
         buildingCount: 15,
@@ -119,6 +132,8 @@ const QUALITY_PRESETS = {
         bloomThreshold: 0.3,
         enablePostProcessing: false,
         flyingVehicles: 15,    // Was 20
+        enableReflections: false, // env-map reflections only below High
+        skyStrataCount: 1,
     },
     Low: {
         buildingCount: 10,
@@ -129,6 +144,7 @@ const QUALITY_PRESETS = {
         bloomThreshold: 1.0,
         enablePostProcessing: false,
         flyingVehicles: 4,     // Was 6
+        skyStrataCount: 0,
     },
     Minimal: {
         buildingCount: 8,
@@ -139,6 +155,7 @@ const QUALITY_PRESETS = {
         bloomThreshold: 1.0,
         enablePostProcessing: false,
         flyingVehicles: 2,     // Was 3
+        skyStrataCount: 0,
     },
 };
 
@@ -192,6 +209,9 @@ const NEON_COLORS = [
     0x9933ff, // Medium purple
 ];
 
+// Reused scratch vector for projecting the moon to screen space (AAA Phase 2b god-rays)
+const _moonProjVec = new THREE.Vector3();
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Theme Class
 // ─────────────────────────────────────────────────────────────────────────────
@@ -234,9 +254,17 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.flyingVehicles = [];
         this.streetLights = [];
         this.starfield = null;
+        this.moon = null;
+        this.moonUniforms = null;
+        this.skyStrata = [];
+        this.skyStrataUniforms = [];
         this.megaTowerUniforms = null;
         this.starUniforms = null;
         this.wetGroundUniforms = null; // WebGPU wet asphalt material uniforms
+        this.groundReflector = null;   // AAA Phase 1: planar reflector for wet street
+        this.reflectionsEnabled = false;
+        this.hdrEnvMap = null;
+        this.proceduralEnvMap = null;
 
         // Animation
         this.clock = new THREE.Clock();
@@ -254,11 +282,21 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.glitchIntensity = 0;
         this.fogSettings = {
             color: new THREE.Color(0x1a0b2a),
+            colorFar: new THREE.Color(0x0a0518),
             near: 0.18,
             far: 0.92,
             density: 0.85,
             bloomAttenuation: 0.5,
+            // AAA Phase 2a: world-space height band over which street fog fades out
+            heightBase: 0.0,
+            heightTop: 900.0,
+            heightFloor: 0.22,
         };
+
+        // AAA Phase 2b: god-ray anchor (moon) screen-space position, projected per frame
+        this.moonScreen = new THREE.Vector2(0.5, 0.6);
+        this.moonWorldPosition = new THREE.Vector3(-800, 1800, -5000);
+        this.godrayBaseIntensity = 0;
 
         // Combo effect state
         this.neonSignSurgeIntensity = 0;
@@ -447,6 +485,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             noBillboardLights: false,
             noStars: false,
             noSky: false,
+            noClouds: false,
             noSkyline: false,
             noSearchlights: false,
         };
@@ -606,6 +645,24 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         const megaTowerLite = enableFlag('megaTowerLite');
         const megaTowerNoBloom = enableFlag('megaTowerNoBloom');
+        // Phase 1 (AAA): wet-street reflections + HDR environment toggles
+        const noReflections = hasFlag('ndNoReflections') || hasFlag('noReflections')
+            || hasFlag('ndNoSSR') || hasFlag('noSSR');
+        const forceReflections = hasFlag('ndReflections') || hasFlag('reflections')
+            || hasFlag('ndForceReflections') || hasFlag('forceReflections');
+        const noHdrEnv = hasFlag('ndNoHdrEnv') || hasFlag('noHdrEnv');
+        // Phase 2 (AAA): volumetric atmosphere toggles
+        const noFog = hasFlag('ndNoFog') || hasFlag('noFog');
+        const noGodrays = hasFlag('ndNoGodrays') || hasFlag('noGodrays')
+            || hasFlag('ndNoGodRays') || hasFlag('noGodRays');
+        // Phase 3 (AAA): cinematic post toggles
+        const noDof = hasFlag('ndNoDof') || hasFlag('noDof')
+            || hasFlag('ndNoDOF') || hasFlag('noDOF');
+        const noGrade = hasFlag('ndNoGrade') || hasFlag('noGrade');
+        const noAnamorphic = hasFlag('ndNoAnamorphic') || hasFlag('noAnamorphic');
+        const forceCinematic = hasFlag('ndCinematic') || hasFlag('cinematic');
+        // Phase 4 (AAA): hero-sky smog strata toggles
+        const noClouds = hasFlag('ndNoClouds') || hasFlag('noClouds');
         const featureFlags = {
             noPost: hasFlag('ndNoPost') || hasFlag('noPost'),
             noMrt: hasFlag('ndNoMrt') || hasFlag('noMrt'),
@@ -619,6 +676,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             noBillboardLights: explicitNoBillboardLights,
             noStars: (minimal && !enableFlag('stars')) || hasFlag('ndNoStars') || hasFlag('noStars'),
             noSky: hasFlag('ndNoSky') || hasFlag('noSky'),
+            noClouds: (minimal && !enableFlag('clouds')) || noClouds,
             noSkyline: (minimal && !enableFlag('skyline')) || hasFlag('ndNoSkyline') || hasFlag('noSkyline'),
             noSearchlights: (minimal && !enableFlag('searchlights')) || hasFlag('ndNoSearchlights') || hasFlag('noSearchlights'),
             noGround: (minimal && !enableFlag('ground')) || hasFlag('ndNoGround') || hasFlag('noGround'),
@@ -628,6 +686,15 @@ export default class NeonDistrictTheme extends BaseTheme {
             noMoon: (minimal && !enableFlag('moon')) || hasFlag('ndNoMoon') || hasFlag('noMoon'),
             megaTowerLite,
             megaTowerNoBloom,
+            noReflections,
+            forceReflections,
+            noHdrEnv,
+            noFog,
+            noGodrays,
+            noDof,
+            noGrade,
+            noAnamorphic,
+            forceCinematic,
         };
 
         const prewarm = hasFlag('ndPrewarm') || hasFlag('prewarm');
@@ -803,6 +870,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             this.createMegaTower(); // Add hero building at horizon
             this.createDistantCityLayers(); // Add silhouette backdrop
             this.createMoon(); // Add Cyber Moon
+            this.createSkyStrata(); // Add drifting upper-sky smog bands
             if (!this.featureFlags.noSkyline) {
                 this.createDistantSkyline(); // Add 360-degree city horizon
             }
@@ -1552,10 +1620,13 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Create gradient sky dome - size increased to cover new far clip
         const skyGeometry = new THREE.SphereGeometry(9000, 24, 24);
         let skyMaterial;
-        if (this.isWebGPU) {
+        if (this.isWebGPU || this.isWebGL) {
             skyMaterial = createSkyNodeMaterial().material;
         } else {
             skyMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                },
                 vertexShader: `
                     varying vec3 vWorldPosition;
                     void main() {
@@ -1589,6 +1660,17 @@ export default class NeonDistrictTheme extends BaseTheme {
                         float hazeAmount = 1.0 - smoothstep(-0.2, 0.5, height);
                         vec3 hazeColor = vec3(0.25, 0.08, 0.45); // Vivid purple haze
                         color = mix(color, hazeColor, hazeAmount * 0.6);
+
+                        // AAA Phase 4d: faint animated city light-pollution band.
+                        float horizonLower = smoothstep(-0.45, -0.08, height);
+                        float horizonUpper = 1.0 - smoothstep(0.0, 0.34, height);
+                        float horizonMask = horizonLower * horizonUpper;
+                        float shimmer = 1.0
+                            + sin(vWorldPosition.x * 0.0012 + uTime * 0.09) * 0.12
+                            + sin(vWorldPosition.z * 0.0017 - uTime * 0.055) * 0.08;
+                        vec3 glowColor = vec3(0.72, 0.10, 0.62)
+                            + vec3(0.05, 0.20, 0.36) * (sin(uTime * 0.12) * 0.5 + 0.5);
+                        color += glowColor * horizonMask * shimmer * 0.28;
                         
                         // Stars are rendered separately as a point field
                         gl_FragColor = vec4(color, 1.0);
@@ -4385,6 +4467,28 @@ export default class NeonDistrictTheme extends BaseTheme {
         }
 
         // ═══════════════════════════════════════════════════════════════════════
+        // AAA PHASE 1: True planar reflections on the wet street (WebGPU only)
+        // Reflects the ACTUAL neon/buildings/cars/moon instead of the fake 128px
+        // purple cube map. Gated by quality preset + ?ndNoReflections / ?ndReflections.
+        // ═══════════════════════════════════════════════════════════════════════
+        this.reflectionsEnabled = this.isWebGPU
+            && !this.featureFlags?.noReflections
+            && (this.featureFlags?.forceReflections || this.qualityPreset?.enableReflections === true);
+        this.reflectionResolutionScale = this.qualityPreset?.reflectionResolutionScale ?? 0.5;
+
+        if (this.reflectionsEnabled && !this.groundReflector) {
+            // bounces:false -> renders once per frame (FRAME update) and won't recurse
+            // into other reflectors. generateMipmaps gives soft roughness reflections.
+            this.groundReflector = reflector({
+                resolutionScale: this.reflectionResolutionScale,
+                bounces: false,
+                generateMipmaps: true,
+            });
+            console.log(`[NeonDistrict] Wet-street planar reflections enabled (scale ${this.reflectionResolutionScale})`);
+        }
+        const reflectorNode = this.reflectionsEnabled ? this.groundReflector : null;
+
+        // ═══════════════════════════════════════════════════════════════════════
         // HIGH QUALITY WET ASPHALT - Extended Road
         // ═══════════════════════════════════════════════════════════════════════
         const groundGeometry = new THREE.PlaneGeometry(2000, 9000, 1, 1);
@@ -4397,7 +4501,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         if (this.isWebGPU) {
             // WebGPU: Create placeholder material first, then upgrade with textures
             // PHASE 1: Pass quality for shadow gating
-            const wetGround = createWetGroundNodeMaterial({ quality: this.currentQualityName });
+            const wetGround = createWetGroundNodeMaterial({ quality: this.currentQualityName, reflectorNode });
             wetAsphaltMaterial = wetGround.material;
             this.wetGroundUniforms = wetGround.uniforms;
 
@@ -4428,6 +4532,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                     roughnessMap,
                     aoMap,
                     quality: this.currentQualityName, // Phase 1: gate shadows
+                    reflectorNode: this.reflectionsEnabled ? this.groundReflector : null,
                 });
 
                 // Update the ground mesh material
@@ -4861,6 +4966,14 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.ground.userData.material = wetAsphaltMaterial;
         this.scene.add(this.ground);
         this.groundMaterial = wetAsphaltMaterial;
+
+        // AAA PHASE 1: parent the reflector's target to the ground so the reflection
+        // plane = the road. The ground is rotated -90deg on X, so the target's local
+        // +Z maps to world +Y (upward-facing mirror). Added before freeze so
+        // updateMatrixWorld(true) bakes the target's world matrix once.
+        if (this.groundReflector) {
+            this.ground.add(this.groundReflector.target);
+        }
         this.freezeStaticObject(this.ground);
 
         // Subtle warm spotlight - skip for WebGPU to keep light count low
@@ -5062,21 +5175,26 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Skip moon if noMoon flag is set
         if (this.featureFlags?.noMoon) {
             console.log('[NeonDistrict] Moon disabled via noMoon flag');
+            this.godrayBaseIntensity = 0;
             return;
         }
 
-        // Huge Synthwave Moon/Sun
-        const geometry = new THREE.CircleGeometry(800, 64);
+        // AAA Phase 4a: large enough for the visible disc plus a wide corona halo.
+        const geometry = new THREE.CircleGeometry(2200, 96);
 
         let material;
-        if (this.isWebGPU) {
-            material = createMoonNodeMaterial().material;
+        if (this.isWebGPU || this.isWebGL) {
+            const moonMaterial = createMoonNodeMaterial();
+            material = moonMaterial.material;
+            this.moonUniforms = moonMaterial.uniforms;
         } else {
-            // Custom shader for retro gradient look
+            // Custom shader fallback for the hero moon: bright disc, corona, banding.
             material = new THREE.ShaderMaterial({
                 uniforms: {
-                    color1: { value: new THREE.Color(0xff00ff) }, // Magenta bottom
-                    color2: { value: new THREE.Color(0x00ffff) }, // Cyan top
+                    color1: { value: new THREE.Color(0xff2bb0) },
+                    color2: { value: new THREE.Color(0x35e8ff) },
+                    haloColor: { value: new THREE.Color(0x9b3bff) },
+                    uTime: { value: 0 },
                 },
                 vertexShader: `
                     varying vec2 vUv;
@@ -5088,28 +5206,49 @@ export default class NeonDistrictTheme extends BaseTheme {
                 fragmentShader: `
                     uniform vec3 color1;
                     uniform vec3 color2;
+                    uniform vec3 haloColor;
+                    uniform float uTime;
                     varying vec2 vUv;
+
+                    float hash(vec2 p) {
+                        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+                    }
+
+                    float noise(vec2 p) {
+                        vec2 i = floor(p);
+                        vec2 f = fract(p);
+                        vec2 u = f * f * (3.0 - 2.0 * f);
+                        float a = hash(i);
+                        float b = hash(i + vec2(1.0, 0.0));
+                        float c = hash(i + vec2(0.0, 1.0));
+                        float d = hash(i + vec2(1.0, 1.0));
+                        return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+                    }
                     
                     void main() {
-                        // Vertical gradient
-                        vec3 color = mix(color1, color2, vUv.y);
-                        
-                        // Circular mask (soft edge)
-                        float dist = distance(vUv, vec2(0.5));
-                        float alpha = smoothstep(0.5, 0.48, dist);
-                        
-                        // Add scanlines for retro feel
-                        float scanline = sin(vUv.y * 100.0) * 0.1;
-                        color -= scanline;
+                        float r = distance(vUv, vec2(0.5)) * 2.0;
+                        float discMask = 1.0 - smoothstep(0.52, 0.58, r);
+                        float haloCore = 1.0 - smoothstep(0.46, 1.0, r);
+                        float halo = pow(haloCore, 2.3) * (0.85 + sin(uTime * 0.4) * 0.06);
 
-                        // Reduce brightness significantly (30% intensity)
-                        gl_FragColor = vec4(color * 0.3, alpha);
+                        vec3 grad = mix(color1, color2, vUv.y);
+                        float bands = sin(vUv.y * 70.0) * 0.06 + 0.94;
+                        float craters = noise(vUv * 7.0 + 13.0) * 0.22
+                            + noise(vUv * 18.0 - 5.0) * 0.12
+                            + 0.7;
+                        float rim = smoothstep(0.30, 0.55, r) * 0.6;
+                        vec3 disc = grad * bands * craters + grad * rim;
+                        vec3 finalColor = disc * discMask * 1.35 + haloColor * halo;
+                        float alpha = clamp(discMask + halo, 0.0, 1.0);
+
+                        gl_FragColor = vec4(finalColor, alpha);
                     }
                 `,
                 transparent: true,
                 depthWrite: false, // Render behind everything opaque
                 blending: THREE.AdditiveBlending,
             });
+            this.moonUniforms = material.uniforms;
         }
 
         const moon = new THREE.Mesh(geometry, material);
@@ -5123,7 +5262,154 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         this.scene.add(moon);
         this.freezeStaticObject(moon);
+        this.moon = moon;
+        // AAA Phase 2b: anchor the volumetric god-rays to the moon.
+        this.moonWorldPosition.copy(moon.position);
         console.log('[NeonDistrict] Cyber Moon created');
+    }
+
+    createCloudStrataFallbackMaterial(params = {}) {
+        return new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uTint: { value: params.tint ?? new THREE.Color(0x7a2da0) },
+                uSpeed: { value: params.speed ?? 0.012 },
+                uOpacity: { value: params.opacity ?? 0.3 },
+                uScale: { value: params.scale ?? 1.0 },
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec3 uTint;
+                uniform float uSpeed;
+                uniform float uOpacity;
+                uniform float uScale;
+                varying vec2 vUv;
+
+                float hash(vec2 p) {
+                    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+                }
+
+                float noise(vec2 p) {
+                    vec2 i = floor(p);
+                    vec2 f = fract(p);
+                    vec2 u = f * f * (3.0 - 2.0 * f);
+                    float a = hash(i);
+                    float b = hash(i + vec2(1.0, 0.0));
+                    float c = hash(i + vec2(0.0, 1.0));
+                    float d = hash(i + vec2(1.0, 1.0));
+                    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+                }
+
+                float fbm(vec2 p) {
+                    float n = noise(p);
+                    n += noise(p * 2.0 + 17.0) * 0.5;
+                    n += noise(p * 4.0 + 31.0) * 0.25;
+                    n += noise(p * 8.0 + 53.0) * 0.125;
+                    return n / 1.875;
+                }
+
+                void main() {
+                    vec2 p = vec2(vUv.x * 5.0 * uScale + uTime * uSpeed, vUv.y * 2.0);
+                    float n = fbm(p);
+                    float n2 = fbm(p * 2.0 + vec2(7.3, 2.1));
+                    float cloud = smoothstep(0.42, 0.85, n * 0.7 + n2 * 0.3);
+                    float vfade = smoothstep(0.0, 0.35, vUv.y) * (1.0 - smoothstep(0.6, 1.0, vUv.y));
+                    float density = cloud * vfade;
+                    gl_FragColor = vec4(uTint * density * 1.4, density * uOpacity);
+                }
+            `,
+            transparent: true,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending,
+        });
+    }
+
+    createSkyStrata() {
+        if (this.featureFlags?.noSky || this.featureFlags?.noClouds) {
+            return;
+        }
+        if (this.skyStrata?.length) {
+            return;
+        }
+
+        const strataCount = this.qualityPreset?.skyStrataCount ?? 0;
+        if (strataCount <= 0) {
+            return;
+        }
+
+        const configs = [
+            {
+                position: new THREE.Vector3(-500, 2550, -6100),
+                size: [8500, 1200],
+                tint: new THREE.Color(0x7a2da0),
+                speed: 0.010,
+                opacity: 0.34,
+                scale: 0.9,
+                roll: -0.035,
+            },
+            {
+                position: new THREE.Vector3(900, 3100, -7000),
+                size: [9400, 1050],
+                tint: new THREE.Color(0x214e7d),
+                speed: -0.007,
+                opacity: 0.26,
+                scale: 1.15,
+                roll: 0.045,
+            },
+            {
+                position: new THREE.Vector3(-1200, 2100, -5600),
+                size: [7200, 780],
+                tint: new THREE.Color(0xb22a7d),
+                speed: 0.014,
+                opacity: 0.18,
+                scale: 1.35,
+                roll: 0.02,
+            },
+        ];
+
+        for (let i = 0; i < Math.min(strataCount, configs.length); i++) {
+            const cfg = configs[i];
+            const geometry = new THREE.PlaneGeometry(cfg.size[0], cfg.size[1], 1, 1);
+            let material;
+            let uniforms = null;
+
+            if (this.isWebGPU || this.isWebGL) {
+                const materialInfo = createCloudStrataNodeMaterial({
+                    tint: cfg.tint,
+                    speed: cfg.speed,
+                    opacity: cfg.opacity,
+                    scale: cfg.scale,
+                });
+                material = materialInfo.material;
+                uniforms = materialInfo.uniforms;
+            } else {
+                material = this.createCloudStrataFallbackMaterial(cfg);
+                uniforms = material.uniforms;
+            }
+
+            const strata = new THREE.Mesh(geometry, material);
+            strata.position.copy(cfg.position);
+            strata.lookAt(0, 120, 40);
+            strata.rotateZ(cfg.roll);
+            strata.renderOrder = -12 + i;
+
+            this.scene.add(strata);
+            this.freezeStaticObject(strata);
+            this.skyStrata.push(strata);
+            if (uniforms) {
+                this.skyStrataUniforms.push(uniforms);
+            }
+        }
+
+        console.log(`[NeonDistrict] Sky smog strata created (${this.skyStrata.length})`);
     }
 
     /**
@@ -7334,7 +7620,86 @@ export default class NeonDistrictTheme extends BaseTheme {
         }
 
         pmremGenerator.dispose();
+        this.proceduralEnvMap = envMap;
         console.log('[NeonDistrict] Purple neon environment map created');
+
+        // AAA PHASE 1b: asynchronously upgrade to a real (tinted) city HDRI so the
+        // wet street reflects an actual skyline at grazing angles / off-screen, where
+        // the planar reflector can't reach. The procedural cube above stays as the
+        // instant + WebGL fallback.
+        this.upgradeEnvironmentToHDR();
+    }
+
+    /**
+     * AAA Phase 1b — Replace the procedural 128px purple cube environment with the
+     * real shanghai_bund HDRI, tinted cool/purple and darkened so it matches the
+     * cyberpunk palette instead of its native warm-golden look. Non-blocking; on any
+     * failure (or ?ndNoHdrEnv / non-WebGPU) the procedural env is kept.
+     */
+    upgradeEnvironmentToHDR() {
+        if (!this.isWebGPU) return;
+        if (this.featureFlags?.noHdrEnv) return;
+        if (typeof HDRLoader !== 'function') return;
+
+        const loader = new HDRLoader();
+        loader.setDataType(THREE.FloatType); // float RGBA so we can tint the pixels
+        loader.load(
+            './textures/neon-district/shanghai_bund_2k.hdr',
+            (texture) => {
+                if (!this.isActive || !this.scene || !this.renderer) {
+                    texture?.dispose?.();
+                    return;
+                }
+                let pmrem = null;
+                try {
+                    // Tint toward cool cyberpunk purple + darken (HDR is warm by default)
+                    const data = texture.image?.data;
+                    if (data && data.length) {
+                        const rMul = 0.55;
+                        const gMul = 0.48;
+                        const bMul = 0.95;
+                        const exposure = 0.8;
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] *= rMul * exposure;
+                            data[i + 1] *= gMul * exposure;
+                            data[i + 2] *= bMul * exposure;
+                        }
+                        texture.needsUpdate = true;
+                    }
+
+                    texture.mapping = THREE.EquirectangularReflectionMapping;
+                    pmrem = new THREE.PMREMGenerator(this.renderer);
+                    pmrem.compileEquirectangularShader();
+                    const hdrEnv = pmrem.fromEquirectangular(texture).texture;
+
+                    const previousEnv = this.scene.environment;
+                    this.scene.environment = hdrEnv;
+                    this.hdrEnvMap = hdrEnv;
+
+                    if (this.groundMaterial) {
+                        this.groundMaterial.envMap = hdrEnv;
+                        this.groundMaterial.envMapIntensity = 0.7;
+                        this.groundMaterial.needsUpdate = true;
+                    }
+
+                    // Dispose the now-unused procedural cube PMREM
+                    if (previousEnv && previousEnv === this.proceduralEnvMap && previousEnv.dispose) {
+                        previousEnv.dispose();
+                        this.proceduralEnvMap = null;
+                    }
+                    console.log('[NeonDistrict] HDR environment applied (tinted purple)');
+                } catch (e) {
+                    console.warn('[NeonDistrict] HDR env upgrade failed, keeping procedural env:', e);
+                } finally {
+                    texture?.dispose?.();
+                    pmrem?.dispose?.();
+                }
+            },
+            undefined,
+            (err) => {
+                console.warn('[NeonDistrict] HDR env load failed, keeping procedural env:', err);
+            },
+        );
     }
 
     setupSceneLighting() {
@@ -7456,6 +7821,25 @@ export default class NeonDistrictTheme extends BaseTheme {
                 bloomDownsample = 0.4;  // Was 0.5
             }
 
+            // AAA Phase 2: god-rays gated to High+ (post only runs on High+ anyway).
+            // Need MRT for the emissive buffer the rays sample.
+            const godraysEnabled = useMRT && !this.featureFlags?.noGodrays;
+            const godrayIntensityMap = { Extreme: 0.6, Ultra: 0.5, High: 0.4 };
+            const godrayIntensity = godrayIntensityMap[this.currentQualityName] ?? 0.4;
+            this.godrayBaseIntensity = godraysEnabled ? godrayIntensity : 0.0;
+            const fogDisabled = this.featureFlags?.noFog;
+
+            // AAA Phase 3: cinematic post. CA + grade + grain are cheap (High+).
+            // The heavier multi-tap DOF + anamorphic default to Ultra/Extreme,
+            // overridable on any tier with ?ndCinematic.
+            const isUltraPlus = this.currentQualityName === 'Ultra' || this.currentQualityName === 'Extreme';
+            const cinematicHeavy = (isUltraPlus || this.featureFlags?.forceCinematic);
+            const dofEnabled = cinematicHeavy && !this.featureFlags?.noDof;
+            const anamorphicEnabled = cinematicHeavy && useMRT && !this.featureFlags?.noAnamorphic;
+            const gradeEnabled = !this.featureFlags?.noGrade;
+            const caBase = this.featureFlags?.noGrade ? 0.0 : 0.0016;
+            const grainBase = this.featureFlags?.noGrade ? 0.0 : 0.022;
+
             this.post = new NeonDistrictPost(this.renderer, this.scene, this.camera, {
                 bloomStrength: this.qualityPreset.bloomStrength,
                 bloomRadius: this.qualityPreset.bloomRadius,
@@ -7466,10 +7850,29 @@ export default class NeonDistrictTheme extends BaseTheme {
                 grainAmount: 0.025,
                 bloomDownsample, // Phase 1: Quality-adaptive (0.8 High+, 0.6 Med, 0.5 Low)
                 fogColor: this.fogSettings?.color,
+                fogColorFar: this.fogSettings?.colorFar,
                 fogNear: this.fogSettings?.near,
                 fogFar: this.fogSettings?.far,
-                fogDensity: this.fogSettings?.density,
+                fogDensity: fogDisabled ? 0.0 : this.fogSettings?.density,
                 fogBloomAttenuation: this.fogSettings?.bloomAttenuation,
+                fogHeightBase: this.fogSettings?.heightBase,
+                fogHeightTop: this.fogSettings?.heightTop,
+                fogHeightFloor: this.fogSettings?.heightFloor,
+                enableGodrays: godraysEnabled,
+                godrayIntensity,
+                // Phase 3 cinematic stack
+                aberration: caBase,
+                grainIntensity: grainBase,
+                enableDOF: dofEnabled,
+                dofFocus: 0.32,
+                dofRange: 2.0,
+                dofStrength: 0.85,
+                dofMaxRadius: 0.0045,
+                enableAnamorphic: anamorphicEnabled,
+                anamorphicIntensity: anamorphicEnabled ? 0.5 : 0.0,
+                enableGrade: gradeEnabled,
+                saturationAmount: 1.12,
+                contrast: 1.06,
                 useMRT,
             });
             this.post.setSize(renderTargetWidth, renderTargetHeight);
@@ -8130,6 +8533,16 @@ export default class NeonDistrictTheme extends BaseTheme {
             if (this.sky?.material?.uniforms?.uTime) {
                 this.sky.material.uniforms.uTime.value = this.time;
             }
+            if (this.moonUniforms?.uTime) {
+                this.moonUniforms.uTime.value = this.time;
+            }
+            if (this.skyStrataUniforms?.length) {
+                this.skyStrataUniforms.forEach((uniforms) => {
+                    if (uniforms?.uTime) {
+                        uniforms.uTime.value = this.time;
+                    }
+                });
+            }
 
             if (this.buildingUniforms) {
                 this.buildingUniforms.uTime.value = this.time;
@@ -8283,13 +8696,35 @@ export default class NeonDistrictTheme extends BaseTheme {
                     this.post.updateParams({
                         bloomStrength: this.qualityPreset.bloomStrength + this.bloomBoost,
                     });
+                    // AAA Phase 3c: combos/line-clears briefly push chromatic aberration
+                    // for a visible "glitch" distortion, riding the same decay as bloom.
+                    if (this.post.setAberrationBoost) {
+                        this.post.setAberrationBoost(Math.min(this.bloomBoost, 1.0) * 0.004);
+                    }
                 }
             } else {
                 this.bloomBoost = 0;
+                if (this.post?.setAberrationBoost && this.aberrationBoostActive) {
+                    this.post.setAberrationBoost(0);
+                    this.aberrationBoostActive = false;
+                }
             }
+            if (this.bloomBoost > 0.001) this.aberrationBoostActive = true;
 
             if (this.post) {
                 this.post.updateTime(this.time);
+                // AAA Phase 2b: project the moon to screen space so the god-ray
+                // shafts radiate from it as the camera sways.
+                if (this.post.enableGodrays && this.camera) {
+                    _moonProjVec.copy(this.moonWorldPosition).project(this.camera);
+                    this.moonScreen.set(
+                        (_moonProjVec.x + 1) * 0.5,
+                        (_moonProjVec.y + 1) * 0.5,
+                    );
+                    // Fade rays out when the moon is behind the camera (z > 1 in NDC)
+                    const behind = _moonProjVec.z > 1.0;
+                    this.post.updateGodrays(this.moonScreen, behind ? 0.0 : this.godrayBaseIntensity);
+                }
             }
             mark = this.profileStep('pre-render', mark);
 
@@ -8963,11 +9398,30 @@ export default class NeonDistrictTheme extends BaseTheme {
         }
 
         if (this.sky) {
+            if (this.scene) this.scene.remove(this.sky);
             this.sky.geometry.dispose();
             this.sky.material.dispose();
+            this.sky = null;
         }
 
+        if (this.moon) {
+            if (this.scene) this.scene.remove(this.moon);
+            this.moon.geometry.dispose();
+            this.moon.material.dispose();
+            this.moon = null;
+            this.moonUniforms = null;
+        }
+
+        this.skyStrata.forEach((strata) => {
+            if (this.scene) this.scene.remove(strata);
+            if (strata.geometry) strata.geometry.dispose();
+            if (strata.material) strata.material.dispose();
+        });
+        this.skyStrata = [];
+        this.skyStrataUniforms = [];
+
         if (this.starfield) {
+            if (this.scene) this.scene.remove(this.starfield);
             this.starfield.geometry.dispose();
             this.starfield.material.dispose();
             this.starfield = null;
@@ -8980,6 +9434,20 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.streetLights = [];
         this.adInstanceBuckets = { small: [], large: [] };
         this.instancedBillboardUniforms = [];
+
+        // AAA Phase 1: dispose wet-street reflection resources
+        if (this.groundReflector) {
+            if (this.scene && this.groundReflector.target?.parent) {
+                this.groundReflector.target.parent.remove(this.groundReflector.target);
+            }
+            if (this.groundReflector.dispose) this.groundReflector.dispose();
+            this.groundReflector = null;
+        }
+        if (this.scene) this.scene.environment = null;
+        if (this.hdrEnvMap?.dispose) this.hdrEnvMap.dispose();
+        this.hdrEnvMap = null;
+        if (this.proceduralEnvMap?.dispose) this.proceduralEnvMap.dispose();
+        this.proceduralEnvMap = null;
 
         // Dispose composer
         if (this.composer) {

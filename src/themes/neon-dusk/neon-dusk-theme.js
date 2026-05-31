@@ -31,6 +31,9 @@ import {
     createRetroPixelNodeMaterial,
     createPixelTrailNodeMaterial,
     createRingNodeMaterial,
+    createSoftSpriteNodeMaterial,
+    createHorizonHazeNodeMaterial,
+    createGroundFogNodeMaterial,
 } from './neon-dusk-materials.js';
 import { NeonDuskPost } from './neon-dusk-post.js';
 import {
@@ -38,6 +41,7 @@ import {
     NeonDuskPixelCompute,
     NeonDuskHighlightCompute,
     NeonDuskStarCompute,
+    NeonDuskFieldCompute,
 } from './neon-dusk-compute.js';
 
 import {
@@ -61,6 +65,11 @@ import {
     ringFragmentShader,
     VHSShader,
     VignetteShader,
+    hazeBandVertexShader,
+    hazeBandFragmentShader,
+    groundFogVertexShader,
+    groundFogFragmentShader,
+    CinematicShader,
 } from './neon-dusk-shaders.js';
 
 // ============================================================================
@@ -82,6 +91,15 @@ const QUALITY_PRESETS = {
         ssrStrength: 0.35,
         rayIntensity: 0.15,
         gridScrollSpeed: 4.0,
+        dustCount: 0,
+        emberCount: 0,
+        groundFogCount: 0,
+        enableCinematic: false,
+        aberration: 0,
+        scanlineIntensity: 0,
+        barrel: 0,
+        dofStrength: 0,
+        flareIntensity: 0,
     },
     Low: {
         starCount: 1200,
@@ -98,6 +116,15 @@ const QUALITY_PRESETS = {
         rayIntensity: 0.2,
         gridScrollSpeed: 4.5,
         pixelCount: 100, // Added for retro pixels
+        dustCount: 400,
+        emberCount: 0,
+        groundFogCount: 3,
+        enableCinematic: true,
+        aberration: 0.0012,
+        scanlineIntensity: 0.04,
+        barrel: 0.015,
+        dofStrength: 0,
+        flareIntensity: 0.3,
     },
     Medium: {
         starCount: 1800,
@@ -116,6 +143,15 @@ const QUALITY_PRESETS = {
         rayIntensity: 0.25,
         gridScrollSpeed: 5.0,
         pixelCount: 200, // Added for retro pixels
+        dustCount: 700,
+        emberCount: 350,
+        groundFogCount: 4,
+        enableCinematic: true,
+        aberration: 0.0015,
+        scanlineIntensity: 0.05,
+        barrel: 0.02,
+        dofStrength: 0,
+        flareIntensity: 0.4,
     },
     High: {
         starCount: 2500,
@@ -134,6 +170,15 @@ const QUALITY_PRESETS = {
         rayIntensity: 0.3,
         gridScrollSpeed: 10.0, // Increased to 10.0
         pixelCount: 300, // Added for retro pixels
+        dustCount: 1000,
+        emberCount: 600,
+        groundFogCount: 5,
+        enableCinematic: true,
+        aberration: 0.0018,
+        scanlineIntensity: 0.05,
+        barrel: 0.02,
+        dofStrength: 0.8,
+        flareIntensity: 0.5,
     },
     Ultra: {
         starCount: 3500,
@@ -152,6 +197,15 @@ const QUALITY_PRESETS = {
         rayIntensity: 0.35,
         gridScrollSpeed: 10.0, // Increased to 10.0
         pixelCount: 400, // Added for retro pixels
+        dustCount: 1300,
+        emberCount: 750,
+        groundFogCount: 6,
+        enableCinematic: true,
+        aberration: 0.002,
+        scanlineIntensity: 0.06,
+        barrel: 0.022,
+        dofStrength: 1.0,
+        flareIntensity: 0.6,
     },
     Extreme: {
         starCount: 5000,
@@ -170,6 +224,15 @@ const QUALITY_PRESETS = {
         rayIntensity: 0.4,
         gridScrollSpeed: 10.0, // Increased to 10.0
         pixelCount: 500, // Added for retro pixels
+        dustCount: 1700,
+        emberCount: 950,
+        groundFogCount: 7,
+        enableCinematic: true,
+        aberration: 0.0022,
+        scanlineIntensity: 0.06,
+        barrel: 0.025,
+        dofStrength: 1.2,
+        flareIntensity: 0.7,
     },
 };
 
@@ -214,6 +277,13 @@ export default class NeonDuskTheme extends BaseTheme {
         this.gridHighlights = [];
         this.highlightPool = [];
         this.retroPixels = null; // New: Retro pixels
+
+        // Atmosphere + ambient particle layers
+        this.horizonHaze = null;
+        this.groundFog = [];
+        this.dustMotes = null;
+        this.risingEmbers = null;
+        this.cinematicPass = null;
 
         // Particle systems (minimal - only burst for effects)
         this.burstParticles = null;
@@ -413,6 +483,8 @@ export default class NeonDuskTheme extends BaseTheme {
         const noCompute = readBool('neonDuskNoCompute');
         const noSSR = readBool('neonDuskNoSSR');
         const noRays = readBool('neonDuskNoRays');
+        const noCinematic = readBool('neonDuskNoCinematic');
+        const noDOF = readBool('neonDuskNoDOF');
         const profile = readBool('neonDuskProfile');
 
         this.debugConfig = {
@@ -425,6 +497,8 @@ export default class NeonDuskTheme extends BaseTheme {
             noCompute,
             noSSR,
             noRays,
+            noCinematic,
+            noDOF,
             profile,
         };
 
@@ -636,6 +710,8 @@ export default class NeonDuskTheme extends BaseTheme {
         this.setMaterialUniform(this.burstParticles?.material, 'uPixelRatio', pixelRatio);
         this.setMaterialUniform(this.retroPixels?.material, 'uPixelRatio', pixelRatio);
         this.setMaterialUniform(this.retroPixelTrails?.material, 'uPixelRatio', pixelRatio);
+        this.setMaterialUniform(this.dustMotes?.points?.material, 'uPixelRatio', pixelRatio);
+        this.setMaterialUniform(this.risingEmbers?.points?.material, 'uPixelRatio', pixelRatio);
     }
 
     getRenderPixelRatio() {
@@ -879,6 +955,22 @@ export default class NeonDuskTheme extends BaseTheme {
             });
             this.renderer.compute(this.highlightCompute.computeNode);
         }
+
+        const sunVec = this.sun ? this.sun.position : null;
+        if (this.dustMotes?.compute?.computeNode) {
+            this.dustMotes.compute.update(delta, { time: this.time, sun: sunVec ?? undefined });
+            this.renderer.compute(this.dustMotes.compute.computeNode);
+        }
+
+        if (this.risingEmbers?.compute?.computeNode) {
+            const pull = 0.3 + this.effectState.sunPulseIntensity * 0.5;
+            this.risingEmbers.compute.update(delta, {
+                time: this.time,
+                sun: sunVec ?? undefined,
+                sunPull: pull,
+            });
+            this.renderer.compute(this.risingEmbers.compute.computeNode);
+        }
     }
 
     // =========================================================================
@@ -924,12 +1016,16 @@ export default class NeonDuskTheme extends BaseTheme {
         this.createSkyGradient();
         this.createStarfield();
         this.createSun();
+        this.createHorizonHaze(); // Atmospheric glow band at the horizon
         this.createMountains();
+        this.createGroundFog(); // Low drifting mist
         this.createGrid();
         this.createHighlightPool();
         this.createBurstParticleSystem();
         this.createHologramRingPool();
         this.createRetroPixels(); // New: Create retro pixels
+        this.createDustMotes(); // Far drifting dust layer
+        this.createRisingEmbers(); // Mid rising ember layer
 
         this.updatePixelRatioUniforms();
 
@@ -1430,6 +1526,414 @@ export default class NeonDuskTheme extends BaseTheme {
         this.sunGlow.position.z -= 10;
         this.sunGlow.renderOrder = -2100; // Render before sun
         this.scene.add(this.sunGlow);
+    }
+
+    // =========================================================================
+    // ATMOSPHERE — HORIZON HAZE + GROUND FOG
+    // =========================================================================
+
+    createHorizonHaze() {
+        if (this.horizonHaze) {
+            this.scene?.remove(this.horizonHaze);
+            this.horizonHaze.geometry?.dispose();
+            this.horizonHaze.material?.dispose();
+            this.horizonHaze = null;
+        }
+
+        const geometry = new THREE.PlaneGeometry(3200, 360);
+        const colorLow = new THREE.Color(0xff6a4a); // warm horizon glow
+        const colorHigh = new THREE.Color(0x5a1840); // fades into the magenta sky
+
+        const material = this.isWebGPU
+            ? createHorizonHazeNodeMaterial({ colorLow, colorHigh, intensity: 0.6 })
+            : new THREE.ShaderMaterial({
+                uniforms: {
+                    uColorLow: { value: colorLow },
+                    uColorHigh: { value: colorHigh },
+                    uIntensity: { value: 0.6 },
+                    uPulse: { value: 0 },
+                },
+                vertexShader: hazeBandVertexShader,
+                fragmentShader: hazeBandFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide,
+            });
+
+        // Sits behind the mountains (which depth-occlude it) and in front of the
+        // sun, so it glows around the sun and rims the valley along the horizon.
+        this.horizonHaze = new THREE.Mesh(geometry, material);
+        this.horizonHaze.position.set(0, 30, -870);
+        this.horizonHaze.renderOrder = -1850;
+        this.scene.add(this.horizonHaze);
+    }
+
+    createGroundFog() {
+        this.groundFog.forEach((fog) => {
+            this.scene?.remove(fog);
+            fog.geometry?.dispose();
+            fog.material?.dispose();
+        });
+        this.groundFog = [];
+
+        const count = this.activePreset.groundFogCount || 0;
+        if (!count) return;
+
+        const baseColor = new THREE.Color(0x4a1d6b);
+        for (let i = 0; i < count; i++) {
+            const width = 260 + this.random() * 360;
+            const height = 80 + this.random() * 90;
+            const geometry = new THREE.PlaneGeometry(width, height);
+            const opacity = 0.05 + this.random() * 0.05;
+            const seed = this.random() * 100;
+
+            const material = this.isWebGPU
+                ? createGroundFogNodeMaterial({ color: baseColor.clone(), opacity, seed })
+                : new THREE.ShaderMaterial({
+                    uniforms: {
+                        uColor: { value: baseColor.clone() },
+                        uOpacity: { value: opacity },
+                        uTime: { value: 0 },
+                        uSeed: { value: seed },
+                        uPulse: { value: 0 },
+                    },
+                    vertexShader: groundFogVertexShader,
+                    fragmentShader: groundFogFragmentShader,
+                    transparent: true,
+                    depthWrite: false,
+                    blending: THREE.AdditiveBlending,
+                    side: THREE.DoubleSide,
+                });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            const x = (this.random() - 0.5) * 240;
+            const y = 4 + this.random() * 14;
+            const z = -10 - this.random() * 160;
+            mesh.position.set(x, y, z);
+            mesh.renderOrder = -150;
+            mesh.userData = {
+                speed: 4 + this.random() * 6,
+                startX: x,
+                wrapRange: 260,
+            };
+            this.groundFog.push(mesh);
+            this.scene.add(mesh);
+        }
+    }
+
+    updateAtmosphere(delta) {
+        if (this.horizonHaze) {
+            this.setMaterialUniform(this.horizonHaze.material, 'uPulse', this.effectState.sunPulseIntensity);
+        }
+
+        for (const fog of this.groundFog) {
+            fog.position.x += fog.userData.speed * delta;
+            if (fog.position.x > fog.userData.startX + fog.userData.wrapRange) {
+                fog.position.x = fog.userData.startX - fog.userData.wrapRange;
+            }
+            this.setMaterialUniform(fog.material, 'uTime', this.time);
+            this.setMaterialUniform(fog.material, 'uPulse', this.effectState.gridPulseIntensity);
+        }
+    }
+
+    // =========================================================================
+    // AMBIENT PARTICLE FIELDS (dust motes + rising embers)
+    // =========================================================================
+
+    _buildFieldLayer(opts) {
+        const {
+            count, computeParams, materialParams, renderOrder, spawn, enableColorShift = false,
+        } = opts;
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const colors = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+        const lives = new Float32Array(count);
+        const types = new Float32Array(count);
+        const uvs = new Float32Array(count * 2); // stub uv to silence point-sprite warning
+        const cpuData = [];
+
+        let compute = null;
+        if (this.isComputeEnabled()) {
+            compute = new NeonDuskFieldCompute(count, computeParams);
+        }
+
+        for (let i = 0; i < count; i++) {
+            const p = spawn(i);
+            const i3 = i * 3;
+            positions[i3] = p.x;
+            positions[i3 + 1] = p.y;
+            positions[i3 + 2] = p.z;
+            colors[i3] = p.color.r;
+            colors[i3 + 1] = p.color.g;
+            colors[i3 + 2] = p.color.b;
+            sizes[i] = p.size;
+            lives[i] = p.life ?? 1.0;
+            types[i] = 0.0; // soft circle
+
+            cpuData.push({
+                vx: p.vx ?? 0,
+                vy: p.vy ?? 0,
+                vz: p.vz ?? 0,
+                phase: this.random() * Math.PI * 2,
+            });
+
+            if (compute) compute.spawn(i, p);
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aLife', new THREE.BufferAttribute(lives, 1));
+        geometry.setAttribute('aType', new THREE.BufferAttribute(types, 1));
+        geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+
+        if (compute) compute.createComputeNode();
+
+        const material = this.isWebGPU
+            ? createSoftSpriteNodeMaterial({
+                pixelRatio: this.renderer.getPixelRatio(),
+                isWebGPU: true,
+                particleCompute: compute,
+                enableColorShift,
+                ...materialParams,
+            })
+            : new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uPixelRatio: { value: this.renderer.getPixelRatio() },
+                    uTwinkle: { value: 0 },
+                    uColorShift: { value: 0 },
+                },
+                vertexShader: particleVertexShader,
+                fragmentShader: particleFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                vertexColors: true,
+            });
+
+        const points = new THREE.Points(geometry, material);
+        points.renderOrder = renderOrder;
+        points.frustumCulled = false;
+        this.scene.add(points);
+
+        return {
+            points,
+            compute,
+            cpuData,
+            computeParams,
+            bounds: {
+                boundX: computeParams.boundX ?? 400,
+                maxY: computeParams.maxY ?? 150,
+                minY: computeParams.minY ?? 0,
+                boundZ: computeParams.boundZ ?? 320,
+                centerZ: computeParams.centerZ ?? -250,
+            },
+        };
+    }
+
+    _disposeFieldLayer(layer) {
+        if (!layer) return;
+        if (layer.points) {
+            this.scene?.remove(layer.points);
+            layer.points.geometry?.dispose();
+            layer.points.material?.dispose();
+        }
+        if (layer.compute) {
+            layer.compute.dispose();
+        }
+    }
+
+    createDustMotes() {
+        this._disposeFieldLayer(this.dustMotes);
+        this.dustMotes = null;
+
+        const count = this.activePreset.dustCount || 0;
+        if (!count) return;
+
+        const palette = [
+            new THREE.Color(0xbfeaff),
+            new THREE.Color(0xffffff),
+            new THREE.Color(0xd9b3ff),
+        ];
+
+        this.dustMotes = this._buildFieldLayer({
+            count,
+            renderOrder: -70,
+            computeParams: {
+                buoyancy: 0.0,
+                curlAmp: 1.0,
+                curlScale: 0.008,
+                sunPull: 0.0,
+                drag: 0.99,
+                boundX: 520,
+                maxY: 150,
+                minY: 5,
+                boundZ: 340,
+                centerZ: -360,
+            },
+            materialParams: {
+                sizeScale: 180, softness: 2.0, opacity: 0.4, brightness: 0.6,
+            },
+            spawn: () => {
+                const col = palette[Math.floor(this.random() * palette.length)];
+                return {
+                    x: (this.random() - 0.5) * 1040,
+                    y: 5 + this.random() * 145,
+                    z: -360 + (this.random() - 0.5) * 680,
+                    vx: (this.random() - 0.5) * 4,
+                    vy: (this.random() - 0.5) * 1.5,
+                    vz: (this.random() - 0.5) * 4,
+                    size: 1.5 + this.random() * 3.0,
+                    life: this.random(),
+                    color: col.clone(),
+                };
+            },
+        });
+    }
+
+    createRisingEmbers() {
+        this._disposeFieldLayer(this.risingEmbers);
+        this.risingEmbers = null;
+
+        const count = this.activePreset.emberCount || 0;
+        if (!count) return;
+
+        const palette = [
+            new THREE.Color(0xff7a3c),
+            new THREE.Color(0xff4d7a),
+            new THREE.Color(0xffaa55),
+            new THREE.Color(0xff66cc),
+        ];
+
+        this.risingEmbers = this._buildFieldLayer({
+            count,
+            renderOrder: -40,
+            enableColorShift: true,
+            computeParams: {
+                buoyancy: 6.0,
+                curlAmp: 2.4,
+                curlScale: 0.02,
+                sunPull: 0.3,
+                drag: 0.985,
+                boundX: 320,
+                maxY: 160,
+                minY: -5,
+                boundZ: 240,
+                centerZ: -150,
+            },
+            materialParams: {
+                sizeScale: 240, softness: 1.5, opacity: 0.7, brightness: 1.0,
+            },
+            spawn: () => {
+                const col = palette[Math.floor(this.random() * palette.length)];
+                return {
+                    x: (this.random() - 0.5) * 640,
+                    y: -5 + this.random() * 165,
+                    z: -150 + (this.random() - 0.5) * 480,
+                    vx: (this.random() - 0.5) * 3,
+                    vy: 4 + this.random() * 8,
+                    vz: (this.random() - 0.5) * 3,
+                    size: 1.5 + this.random() * 2.5,
+                    life: this.random(),
+                    color: col.clone(),
+                };
+            },
+        });
+    }
+
+    updateFieldLayers(delta) {
+        this._updateFieldLayer(this.dustMotes, delta, {});
+        this._updateFieldLayer(this.risingEmbers, delta, { colorShift: this.effectState.colorShift });
+    }
+
+    _updateFieldLayer(layer, delta, opts) {
+        if (!layer) return;
+
+        // Compute path: physics runs in updateCompute; only material uniforms here.
+        if (this.isComputeEnabled() && layer.compute?.computeNode) {
+            if (opts.colorShift !== undefined) {
+                this.setMaterialUniform(layer.points.material, 'uColorShift', opts.colorShift);
+            }
+            this.setMaterialUniform(layer.points.material, 'uTime', this.time);
+            return;
+        }
+
+        this._updateFieldLayerCPU(layer, delta);
+        if (opts.colorShift !== undefined) {
+            this.setMaterialUniform(layer.points.material, 'uColorShift', opts.colorShift);
+        }
+    }
+
+    _updateFieldLayerCPU(layer, delta) {
+        const { points, cpuData, computeParams, bounds } = layer;
+        const positions = points.geometry.attributes.position.array;
+        const lives = points.geometry.attributes.aLife.array;
+
+        const sun = this.sun ? this.sun.position : null;
+        const buoyancy = computeParams.buoyancy ?? 0;
+        const sunPull = computeParams.sunPull ?? 0;
+        const drag = computeParams.drag ?? 0.985;
+        const curlAmp = computeParams.curlAmp ?? 1.0;
+        const curlScale = computeParams.curlScale ?? 0.012;
+        const t = this.time;
+        const {
+            boundX, maxY, minY, boundZ, centerZ,
+        } = bounds;
+        const zHi = centerZ + boundZ;
+        const zLo = centerZ - boundZ;
+
+        for (let i = 0; i < cpuData.length; i++) {
+            const p = cpuData[i];
+            const i3 = i * 3;
+            const px = positions[i3];
+            const py = positions[i3 + 1];
+            const pz = positions[i3 + 2];
+
+            const cx = Math.sin(py * curlScale + t) - Math.cos(pz * curlScale - t);
+            const cy = Math.sin(pz * curlScale + t * 0.7);
+            const cz = Math.cos(px * curlScale + t) - Math.sin(py * curlScale - t);
+            p.vx += cx * curlAmp * delta;
+            p.vy += (cy * curlAmp + buoyancy) * delta;
+            p.vz += cz * curlAmp * delta;
+
+            if (sun && sunPull) {
+                const dx = sun.x - px;
+                const dy = sun.y - py;
+                const dz = sun.z - pz;
+                const d = Math.max(1, Math.sqrt(dx * dx + dy * dy + dz * dz));
+                p.vx += (dx / d) * sunPull * delta;
+                p.vy += (dy / d) * sunPull * delta;
+                p.vz += (dz / d) * sunPull * delta;
+            }
+
+            p.vx *= drag;
+            p.vy *= drag;
+            p.vz *= drag;
+
+            let nx = px + p.vx * delta;
+            let ny = py + p.vy * delta;
+            let nz = pz + p.vz * delta;
+
+            if (ny > maxY) ny = minY;
+            else if (ny < minY) ny = maxY;
+            if (nx > boundX) nx = -boundX;
+            else if (nx < -boundX) nx = boundX;
+            if (nz > zHi) nz = zLo;
+            else if (nz < zLo) nz = zHi;
+
+            positions[i3] = nx;
+            positions[i3 + 1] = ny;
+            positions[i3 + 2] = nz;
+            lives[i] = 0.3 + 0.35 + 0.35 * Math.sin(t * 1.5 + p.phase);
+        }
+
+        points.geometry.attributes.position.needsUpdate = true;
+        points.geometry.attributes.aLife.needsUpdate = true;
+        this.setMaterialUniform(points.material, 'uTime', t);
     }
 
     // =========================================================================
@@ -1991,6 +2495,8 @@ export default class NeonDuskTheme extends BaseTheme {
             this.postProcessing = null;
         }
 
+        this.cinematicPass = null;
+
         if (this.isWebGPU) {
             const debug = this.initDebugConfig();
             const enablePost = this.activePreset.enableBloom || this.activePreset.enableVHS;
@@ -2007,6 +2513,9 @@ export default class NeonDuskTheme extends BaseTheme {
             const bloomThreshold = this.activePreset.bloomThreshold ?? 0.55;
             const rayIntensity = debug.noRays ? 0 : this.activePreset.rayIntensity ?? 0.35;
 
+            const cinematic = (this.activePreset.enableCinematic ?? false) && !debug.noCinematic;
+            const dofStrength = (cinematic && !debug.noDOF) ? this.activePreset.dofStrength ?? 0 : 0;
+
             this.postProcessing = new NeonDuskPost(this.renderer, this.scene, this.camera, {
                 useMRT: !debug.noMRT,
                 bloomStrength,
@@ -2020,6 +2529,14 @@ export default class NeonDuskTheme extends BaseTheme {
                 saturation: 1.08,
                 rayIntensity,
                 enableRays: !debug.noRays,
+                aberration: cinematic ? this.activePreset.aberration ?? 0 : 0,
+                scanlineIntensity: cinematic ? this.activePreset.scanlineIntensity ?? 0 : 0,
+                barrel: cinematic ? this.activePreset.barrel ?? 0 : 0,
+                flareIntensity: cinematic ? this.activePreset.flareIntensity ?? 0 : 0,
+                dofStrength,
+                dofFocus: 0.055,
+                dofRange: 14.0,
+                dofMaxRadius: 0.006,
             });
             this.applyRenderScale(true);
 
@@ -2081,11 +2598,27 @@ export default class NeonDuskTheme extends BaseTheme {
         }
         */
 
-        // Vignette pass
-        this.vignettePass = new ShaderPass(VignetteShader);
-        this.vignettePass.uniforms.uDarkness.value = 0.5;
-        this.vignettePass.uniforms.uOffset.value = 1.2;
-        this.composer.addPass(this.vignettePass);
+        // Final grade: combined cinematic pass (chromatic aberration + scanlines
+        // + vignette + anamorphic sun flare), falling back to plain vignette.
+        const cinematic = (this.activePreset.enableCinematic ?? false) && !debug.noCinematic;
+        if (cinematic) {
+            this.cinematicPass = new ShaderPass(CinematicShader);
+            const c = this.cinematicPass.uniforms;
+            c.uResolution.value = new THREE.Vector2(window.innerWidth, window.innerHeight);
+            c.uSunScreen.value = this.sunScreen.clone();
+            c.uAberration.value = this.activePreset.aberration ?? 0.0018;
+            c.uScanlineIntensity.value = this.activePreset.scanlineIntensity ?? 0.05;
+            c.uBarrel.value = this.activePreset.barrel ?? 0.02;
+            c.uVignetteDarkness.value = 0.45;
+            c.uVignetteOffset.value = 1.1;
+            c.uFlareIntensity.value = 0.0;
+            this.composer.addPass(this.cinematicPass);
+        } else {
+            this.vignettePass = new ShaderPass(VignetteShader);
+            this.vignettePass.uniforms.uDarkness.value = 0.5;
+            this.vignettePass.uniforms.uOffset.value = 1.2;
+            this.composer.addPass(this.vignettePass);
+        }
 
         this.applyRenderScale(true);
     }
@@ -2636,6 +3169,8 @@ export default class NeonDuskTheme extends BaseTheme {
         this.updateGrid(delta);
         this.updateHighlights(delta);
         this.updateRetroPixels(delta); // Update pixels
+        this.updateAtmosphere(delta); // Horizon haze + ground fog
+        this.updateFieldLayers(delta); // Dust motes + rising embers
         this.updateBurstParticles(delta);
         this.updateHologramRings(delta);
         this.updateStars(delta);
@@ -2652,6 +3187,15 @@ export default class NeonDuskTheme extends BaseTheme {
             if (this.vhsPass) {
                 this.vhsPass.uniforms.uTime.value = this.time;
                 this.vhsPass.uniforms.uIntensity.value = this.effectState.vhsIntensity; // Update intensity
+            }
+            if (this.cinematicPass) {
+                const c = this.cinematicPass.uniforms;
+                c.uTime.value = this.time;
+                c.uSunScreen.value.copy(this.sunScreen);
+                const aberrationBase = this.activePreset.aberration ?? 0;
+                c.uAberration.value = aberrationBase * (1.0 + this.effectState.vhsIntensity * 1.5);
+                const flareBase = this.activePreset.flareIntensity ?? 0;
+                c.uFlareIntensity.value = flareBase * (0.5 + this.effectState.sunPulseIntensity * 1.2);
             }
             this.composer.render();
         } else if (this.isWebGPU && typeof this.renderer.renderAsync === 'function') {
@@ -2700,13 +3244,18 @@ export default class NeonDuskTheme extends BaseTheme {
 
         this.sunPosition = { x: this.sun.position.x, y: this.sun.position.y };
 
-        if (this.postProcessing?.updateSun && this.sun) {
-            const projected = this.sun.position.clone().project(this.camera);
-            this.sunScreen.set((projected.x + 1) * 0.5, (projected.y + 1) * 0.5);
+        // Always track the sun's screen position — used by the anamorphic flare
+        // on both the WebGPU and WebGL post paths.
+        const projected = this.sun.position.clone().project(this.camera);
+        this.sunScreen.set((projected.x + 1) * 0.5, (projected.y + 1) * 0.5);
+
+        if (this.postProcessing?.updateSun) {
             const debug = this.initDebugConfig();
             const baseIntensity = debug.noRays ? 0 : this.activePreset.rayIntensity ?? 0.35;
             const intensity = baseIntensity * (0.6 + this.effectState.sunPulseIntensity * 0.8);
-            this.postProcessing.updateSun(this.sunScreen, intensity);
+            const flareBase = this.postProcessing.flareBase ?? 0;
+            const flare = flareBase * (0.5 + this.effectState.sunPulseIntensity * 1.2);
+            this.postProcessing.updateSun(this.sunScreen, intensity, flare);
         }
     }
 
@@ -3436,6 +3985,17 @@ export default class NeonDuskTheme extends BaseTheme {
             this.starCompute.dispose();
             this.starCompute = null;
         }
+        if (this.dustMotes?.compute) {
+            this.dustMotes.compute.dispose();
+        }
+        if (this.risingEmbers?.compute) {
+            this.risingEmbers.compute.dispose();
+        }
+        this.dustMotes = null;
+        this.risingEmbers = null;
+        this.horizonHaze = null;
+        this.groundFog = [];
+        this.cinematicPass = null;
 
         // Dispose Three.js resources LAST to avoid WebGPU errors
         if (this.renderer) {

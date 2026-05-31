@@ -7,6 +7,20 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { IntroCameraParallax } from './intro-camera-parallax.js';
+
+// Camera idle-drift amplitudes — must match the values used in update().
+// Used (together with the pointer-parallax orbit amplitudes) to compute how far
+// the visible frame can ever travel, so tetrominos spawn beyond that envelope
+// and always drift in from off-screen instead of popping into view.
+const CAMERA_IDLE_AMP_X = 5;
+const CAMERA_IDLE_AMP_Y = 3;
+// Extra clearance beyond the reveal envelope so a piece's whole body (not just
+// its center) starts fully off-screen.
+const SPAWN_CLEARANCE = 6;
+// Minimum inward drift so pieces cross the (now larger) off-screen margin in a
+// few seconds instead of crawling in.
+const SPAWN_INWARD_DRIFT = 0.05;
 
 export default class ThreeJSIntroRenderer {
     constructor(canvas) {
@@ -35,6 +49,9 @@ export default class ThreeJSIntroRenderer {
         this.clock = new THREE.Clock();
         this.lastSpawnTime = 0;
         this.raycaster = new THREE.Raycaster();
+
+        // Pointer-driven camera parallax (cursor arcs the camera around the scene).
+        this.cameraParallax = new IntroCameraParallax();
 
         // PERFORMANCE: Object pools for collision effects and shooting stars
         this.collisionEffectPool = [];
@@ -130,6 +147,7 @@ export default class ThreeJSIntroRenderer {
             this.setupPostProcessing();
 
             window.addEventListener('resize', this.boundResizeHandler);
+            this.cameraParallax.attach();
 
             return true;
         } catch (e) {
@@ -732,32 +750,42 @@ export default class ThreeJSIntroRenderer {
             type,
         };
 
-        // Determine Spawn Position (Outside Frustum)
+        // Determine Spawn Position (outside the frame at its most extreme pan).
+        // The camera can drift/parallax up to `env` units from center, which
+        // shifts and enlarges the visible frame; spawning beyond that envelope
+        // guarantees pieces are never visible at spawn — they always drift in.
         const z = (Math.random() - 0.5) * 20 - 10; // Z range: -20 to 0
         const bounds = this.getVisibleBoundsAtDepth(z);
         const halfW = bounds.width / 2;
         const halfH = bounds.height / 2;
+        const { radius } = mesh.userData;
 
-        // Spawn Margin (ensure fully offscreen)
-        const margin = 10;
+        const envX = CAMERA_IDLE_AMP_X + (this.cameraParallax?.orbitX || 0);
+        const envY = CAMERA_IDLE_AMP_Y + (this.cameraParallax?.orbitY || 0);
+        const marginX = envX + radius + SPAWN_CLEARANCE;
+        const marginY = envY + radius + SPAWN_CLEARANCE;
+        // Along-edge span widened by the envelope so pieces also enter across the
+        // corners the camera can pan to reveal.
+        const spanW = bounds.width + envX * 2;
+        const spanH = bounds.height + envY * 2;
 
         const side = Math.floor(Math.random() * 4);
         switch (side) {
             case 0: // Top
-                mesh.position.set((Math.random() - 0.5) * bounds.width, halfH + margin, z);
-                mesh.userData.velocity.y = -Math.abs(mesh.userData.velocity.y) - 0.025; // Force Down (slower)
+                mesh.position.set((Math.random() - 0.5) * spanW, halfH + marginY, z);
+                mesh.userData.velocity.y = -Math.abs(mesh.userData.velocity.y) - SPAWN_INWARD_DRIFT; // Drift down
                 break;
             case 1: // Bottom
-                mesh.position.set((Math.random() - 0.5) * bounds.width, -halfH - margin, z);
-                mesh.userData.velocity.y = Math.abs(mesh.userData.velocity.y) + 0.025; // Force Up (slower)
+                mesh.position.set((Math.random() - 0.5) * spanW, -halfH - marginY, z);
+                mesh.userData.velocity.y = Math.abs(mesh.userData.velocity.y) + SPAWN_INWARD_DRIFT; // Drift up
                 break;
             case 2: // Left
-                mesh.position.set(-halfW - margin, (Math.random() - 0.5) * bounds.height, z);
-                mesh.userData.velocity.x = Math.abs(mesh.userData.velocity.x) + 0.025; // Force Right (slower)
+                mesh.position.set(-halfW - marginX, (Math.random() - 0.5) * spanH, z);
+                mesh.userData.velocity.x = Math.abs(mesh.userData.velocity.x) + SPAWN_INWARD_DRIFT; // Drift right
                 break;
             case 3: // Right
-                mesh.position.set(halfW + margin, (Math.random() - 0.5) * bounds.height, z);
-                mesh.userData.velocity.x = -Math.abs(mesh.userData.velocity.x) - 0.025; // Force Left (slower)
+                mesh.position.set(halfW + marginX, (Math.random() - 0.5) * spanH, z);
+                mesh.userData.velocity.x = -Math.abs(mesh.userData.velocity.x) - SPAWN_INWARD_DRIFT; // Drift left
                 break;
         }
 
@@ -894,11 +922,14 @@ export default class ThreeJSIntroRenderer {
 
         const delta = this.clock.getDelta();
 
-        // 1. Camera Drift
+        // 1. Camera Drift — idle Lissajous sway, then pointer parallax on top.
+        // apply() adds the cursor-driven offset and performs the final lookAt,
+        // so it must come after the base position is set.
         const t = time * 0.2;
-        this.camera.position.x = Math.sin(t * 0.5) * 5;
-        this.camera.position.y = Math.cos(t * 0.3) * 3;
-        this.camera.lookAt(0, 0, 0);
+        this.camera.position.x = Math.sin(t * 0.5) * CAMERA_IDLE_AMP_X;
+        this.camera.position.y = Math.cos(t * 0.3) * CAMERA_IDLE_AMP_Y;
+        this.camera.position.z = 40;
+        this.cameraParallax.apply(this.camera, delta);
 
         // 2. Star field rotation
         if (this.starSystem) {
@@ -978,9 +1009,10 @@ export default class ThreeJSIntroRenderer {
             // 3. No damping - let tetrominos drift at constant speed off-screen
 
             // 4. Bounds Check - Soft bounce off "walls" or wrap/remove
-            // We'll keep the remove logic for simplicity as they drift in from outside
-            // Increased bounds to match new spawn logic (wider screen support)
-            if (Math.abs(t1.position.x) > 90 || Math.abs(t1.position.y) > 60 || Math.abs(t1.position.z) > 50) {
+            // We'll keep the remove logic for simplicity as they drift in from outside.
+            // Bounds must exceed the (camera-envelope-expanded) spawn distance so
+            // far-out spawns aren't culled before they drift into view.
+            if (Math.abs(t1.position.x) > 130 || Math.abs(t1.position.y) > 90 || Math.abs(t1.position.z) > 80) {
                 this.scene.remove(t1);
                 this.activeTetrominos.splice(i, 1);
                 continue;
@@ -1208,6 +1240,7 @@ export default class ThreeJSIntroRenderer {
 
     destroy() {
         window.removeEventListener('resize', this.boundResizeHandler);
+        this.cameraParallax?.detach();
 
         // Clean up geometries and materials
         // (Simplified cleanup for intro duration)

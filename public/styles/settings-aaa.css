@@ -1,0 +1,798 @@
+/* =================================================================================
+ * COSMIC SERENITY - AAA Settings Modal (Phase 1, CSS-only)
+ * ---------------------------------------------------------------------------------
+ * Loaded after main.css/menu-aaa.css. Everything is scoped to #settings-modal so
+ * shared modal classes elsewhere keep their existing behavior.
+ * ============================================================================== */
+
+#settings-modal {
+    --cs-accent: #7fdcff;
+    --cs-accent-rgb: 127, 220, 255;
+    --cs-accent-2: #8ea2ff;
+    --cs-panel: rgba(10, 13, 27, 0.78);
+    --cs-panel-2: rgba(18, 22, 41, 0.74);
+    --cs-panel-3: rgba(24, 30, 52, 0.74);
+    --cs-border: rgba(150, 180, 255, 0.18);
+    --cs-muted: rgba(211, 219, 245, 0.66);
+    --cs-text: #e8edff;
+    --cs-shadow: rgba(0, 0, 0, 0.56);
+}
+
+#settings-modal:has(.settings-tab[data-tab="general"].active) {
+    --cs-accent: #7fdcff;
+    --cs-accent-rgb: 127, 220, 255;
+    --cs-accent-2: #8ea2ff;
+}
+
+#settings-modal:has(.settings-tab[data-tab="display"].active) {
+    --cs-accent: #8ea2ff;
+    --cs-accent-rgb: 142, 162, 255;
+    --cs-accent-2: #7fdcff;
+}
+
+#settings-modal:has(.settings-tab[data-tab="audio"].active) {
+    --cs-accent: #5eead4;
+    --cs-accent-rgb: 94, 234, 212;
+    --cs-accent-2: #7fdcff;
+}
+
+#settings-modal:has(.settings-tab[data-tab="visual"].active) {
+    --cs-accent: #ff9ecd;
+    --cs-accent-rgb: 255, 158, 205;
+    --cs-accent-2: #8ea2ff;
+}
+
+#settings-modal:has(.settings-tab[data-tab="controls"].active) {
+    --cs-accent: #fcd17a;
+    --cs-accent-rgb: 252, 209, 122;
+    --cs-accent-2: #8ea2ff;
+}
+
+#settings-modal .modal-content {
+    box-sizing: border-box;
+    width: min(940px, calc(100vw - 48px));
+    min-width: 0;
+    max-width: none;
+    max-height: min(84vh, 760px);
+    padding: 0;
+    overflow: hidden;
+    text-align: left;
+    background:
+        radial-gradient(100% 62% at 50% -20%, rgba(var(--cs-accent-rgb), 0.16), transparent 62%),
+        radial-gradient(70% 72% at 8% 0%, rgba(114, 137, 255, 0.12), transparent 62%),
+        linear-gradient(180deg, rgba(16, 20, 38, 0.94) 0%, rgba(8, 10, 23, 0.96) 100%);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.28);
+    border-radius: 24px;
+    color: var(--cs-text);
+    backdrop-filter: blur(18px) saturate(135%);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    box-shadow:
+        0 28px 78px var(--cs-shadow),
+        0 0 0 1px rgba(255, 255, 255, 0.04),
+        0 0 86px rgba(var(--cs-accent-rgb), 0.10),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    animation: cs-settings-pop 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+#settings-modal .modal-content::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg,
+            rgba(var(--cs-accent-rgb), 0.52),
+            rgba(255, 255, 255, 0.04) 36%,
+            rgba(142, 162, 255, 0.28) 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.72;
+    z-index: 2;
+}
+
+#settings-modal .modal-content::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    height: auto;
+    width: auto;
+    background:
+        linear-gradient(90deg, transparent 0%, rgba(var(--cs-accent-rgb), 0.07) 48%, transparent 100%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 34%);
+    animation: none;
+    pointer-events: none;
+    opacity: 0.62;
+    z-index: 1;
+}
+
+body.electron-app #settings-modal .modal-content {
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
+}
+
+@keyframes cs-settings-pop {
+    from {
+        opacity: 0;
+        transform: translateY(14px) scale(0.985);
+        filter: blur(6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: blur(0);
+    }
+}
+
+#settings-modal .settings-header,
+#settings-modal .settings-tabs,
+#settings-modal .settings-scroll-container {
+    position: relative;
+    z-index: 3;
+}
+
+#settings-modal .settings-header {
+    margin: 0;
+    padding: 30px 40px 22px;
+    background:
+        radial-gradient(70% 150% at 12% 0%, rgba(var(--cs-accent-rgb), 0.13), transparent 58%),
+        linear-gradient(180deg, rgba(6, 9, 22, 0.52), transparent);
+    border-bottom: 1px solid rgba(var(--cs-accent-rgb), 0.12);
+}
+
+#settings-modal .settings-header h1 {
+    margin: 0;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background: linear-gradient(100deg,
+            #d9e7ff 0%,
+            var(--cs-accent) 30%,
+            var(--cs-accent-2) 58%,
+            #f1f7ff 100%);
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    font-size: clamp(28px, 3vw, 36px);
+    letter-spacing: 0.08em;
+    text-shadow: none;
+    filter: drop-shadow(0 0 18px rgba(var(--cs-accent-rgb), 0.34));
+    animation: cs-settings-title 8s ease-in-out infinite;
+}
+
+@keyframes cs-settings-title {
+    0%, 100% {
+        background-position: 0% center;
+    }
+
+    50% {
+        background-position: 200% center;
+    }
+}
+
+#settings-modal .modal-close-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background:
+        linear-gradient(180deg, rgba(255, 118, 118, 0.15), rgba(255, 80, 80, 0.08)),
+        rgba(8, 10, 23, 0.46);
+    border: 1px solid rgba(255, 118, 118, 0.42);
+    color: #ffb6b6;
+    font-size: 21px;
+    box-shadow:
+        0 10px 28px rgba(0, 0, 0, 0.35),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    transition:
+        transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+        border-color 0.26s ease,
+        background 0.26s ease,
+        box-shadow 0.26s ease;
+}
+
+#settings-modal .modal-close-btn:hover,
+#settings-modal .modal-close-btn:focus-visible {
+    background:
+        linear-gradient(180deg, rgba(255, 118, 118, 0.28), rgba(255, 80, 80, 0.15)),
+        rgba(8, 10, 23, 0.62);
+    border-color: rgba(255, 148, 148, 0.76);
+    transform: rotate(90deg) scale(1.06);
+    box-shadow:
+        0 14px 34px rgba(0, 0, 0, 0.42),
+        0 0 24px rgba(255, 100, 100, 0.30);
+    outline: none;
+}
+
+#settings-modal .settings-tabs {
+    margin: 0 40px 20px;
+    padding: 5px;
+    gap: 6px;
+    justify-content: space-between;
+    background: rgba(5, 8, 20, 0.58);
+    border: 1px solid var(--cs-border);
+    border-radius: 15px;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.045),
+        0 12px 32px rgba(0, 0, 0, 0.16);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+#settings-modal .settings-tab {
+    flex: 1 1 0;
+    min-width: max-content;
+    padding: 10px 16px;
+    border-radius: 10px;
+    color: rgba(220, 227, 250, 0.60);
+    transition:
+        color 0.22s ease,
+        background 0.22s ease,
+        border-color 0.22s ease,
+        box-shadow 0.22s ease,
+        transform 0.22s ease;
+}
+
+#settings-modal .settings-tab[data-tab="general"] {
+    --tab-rgb: 127, 220, 255;
+}
+
+#settings-modal .settings-tab[data-tab="display"] {
+    --tab-rgb: 142, 162, 255;
+}
+
+#settings-modal .settings-tab[data-tab="audio"] {
+    --tab-rgb: 94, 234, 212;
+}
+
+#settings-modal .settings-tab[data-tab="visual"] {
+    --tab-rgb: 255, 158, 205;
+}
+
+#settings-modal .settings-tab[data-tab="controls"] {
+    --tab-rgb: 252, 209, 122;
+}
+
+#settings-modal .settings-tab:hover {
+    color: #ffffff;
+    background: rgba(var(--tab-rgb), 0.10);
+    transform: translateY(-1px);
+}
+
+#settings-modal .settings-tab.active {
+    color: #ffffff;
+    background:
+        linear-gradient(180deg, rgba(var(--tab-rgb), 0.22), rgba(var(--tab-rgb), 0.12)),
+        rgba(255, 255, 255, 0.025);
+    border-color: rgba(var(--tab-rgb), 0.46);
+    box-shadow:
+        0 0 24px rgba(var(--tab-rgb), 0.19),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+#settings-modal .settings-tab:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 2px rgba(var(--tab-rgb), 0.92),
+        0 0 0 6px rgba(var(--tab-rgb), 0.18);
+}
+
+#settings-modal .settings-scroll-container {
+    margin: 0;
+    padding: 0 40px 34px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--cs-accent-rgb), 0.62) rgba(0, 0, 0, 0.12);
+}
+
+#settings-modal .settings-scroll-container::-webkit-scrollbar {
+    width: 7px;
+}
+
+#settings-modal .settings-scroll-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.10);
+    border-radius: 7px;
+}
+
+#settings-modal .settings-scroll-container::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.80), rgba(142, 162, 255, 0.55));
+    border: 1px solid rgba(8, 10, 23, 0.68);
+    border-radius: 7px;
+}
+
+#settings-modal .settings-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--cs-accent-rgb), 0.92);
+}
+
+#settings-modal .settings-tab-content.active {
+    display: block;
+}
+
+#settings-modal .settings-grid {
+    width: 100%;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+#settings-modal .setting {
+    position: relative;
+    box-sizing: border-box;
+    min-height: 58px;
+    gap: 18px;
+    padding: 10px 16px 10px 18px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0.035));
+    transition:
+        background 0.22s ease,
+        border-color 0.22s ease,
+        box-shadow 0.22s ease,
+        transform 0.22s ease;
+}
+
+#settings-modal .setting::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 10px;
+    bottom: 10px;
+    width: 2px;
+    border-radius: 2px;
+    background: transparent;
+    transition: background 0.22s ease;
+}
+
+#settings-modal .setting:hover {
+    background:
+        linear-gradient(90deg, rgba(var(--cs-accent-rgb), 0.08), rgba(255, 255, 255, 0.035));
+    border-color: rgba(var(--cs-accent-rgb), 0.14);
+}
+
+#settings-modal .setting:hover::before {
+    background: rgba(var(--cs-accent-rgb), 0.76);
+}
+
+#settings-modal .setting label {
+    min-width: 0;
+    color: rgba(229, 234, 252, 0.88);
+    font-size: 14px;
+    line-height: 1.35;
+    letter-spacing: 0.01em;
+    transition: color 0.22s ease;
+}
+
+#settings-modal .setting:hover label {
+    color: #ffffff;
+}
+
+#settings-modal .setting:has(> small) {
+    display: grid;
+    grid-template-columns: minmax(190px, 1fr) minmax(240px, 340px);
+    align-items: center;
+    column-gap: 20px;
+    row-gap: 5px;
+}
+
+#settings-modal .setting:has(> small) > label {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+#settings-modal .setting:has(> small) > .setting-select,
+#settings-modal .setting:has(> small) > .slider-container,
+#settings-modal .setting:has(> small) > div:not(.slider-container) {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: stretch;
+}
+
+#settings-modal .setting:has(> small) > small {
+    grid-column: 2;
+    grid-row: 2;
+    max-width: 340px;
+    margin-top: 0 !important;
+    color: rgba(211, 219, 245, 0.58) !important;
+    line-height: 1.35;
+}
+
+#settings-modal .setting-select,
+#settings-modal .key-input {
+    box-sizing: border-box;
+    min-width: 0;
+    width: min(320px, 100%);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025)),
+        var(--cs-panel-2);
+    border: 1px solid rgba(150, 180, 255, 0.18);
+    border-radius: 11px;
+    color: #eef3ff;
+    box-shadow:
+        inset 0 1px 2px rgba(0, 0, 0, 0.24),
+        0 8px 18px rgba(0, 0, 0, 0.12);
+    transition:
+        background 0.22s ease,
+        border-color 0.22s ease,
+        box-shadow 0.22s ease,
+        transform 0.22s ease;
+}
+
+#settings-modal .setting-select {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23d9d0ff' d='M6 9L1 4h10z'/%3E%3C/svg%3E"),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025));
+    background-repeat: no-repeat, no-repeat;
+    background-position: right 12px center, 0 0;
+}
+
+#settings-modal .setting-select:hover,
+#settings-modal .key-input:hover {
+    background-color: var(--cs-panel-3);
+    border-color: rgba(var(--cs-accent-rgb), 0.48);
+    transform: translateY(-1px);
+}
+
+#settings-modal .setting-select:focus,
+#settings-modal .setting-select:focus-visible,
+#settings-modal .key-input:focus,
+#settings-modal .key-input:focus-visible {
+    outline: none;
+    border-color: rgba(var(--cs-accent-rgb), 0.92);
+    box-shadow:
+        0 0 0 3px rgba(var(--cs-accent-rgb), 0.18),
+        0 0 22px rgba(var(--cs-accent-rgb), 0.18),
+        inset 0 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+#settings-modal .slider-container {
+    width: min(340px, 100%);
+    min-width: 0;
+    gap: 12px;
+}
+
+#settings-modal .slider-container input[type=range]::-webkit-slider-runnable-track {
+    height: 6px;
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+    border-radius: 999px;
+    background:
+        linear-gradient(90deg, rgba(var(--cs-accent-rgb), 0.35), rgba(255, 255, 255, 0.08));
+}
+
+#settings-modal .slider-container input[type=range]:hover::-webkit-slider-runnable-track {
+    background:
+        linear-gradient(90deg, rgba(var(--cs-accent-rgb), 0.48), rgba(255, 255, 255, 0.12));
+}
+
+#settings-modal .slider-container input[type=range]::-webkit-slider-thumb {
+    background: radial-gradient(circle at 35% 30%, #ffffff 0 12%, var(--cs-accent) 44%, #4fc9ff 100%);
+    border: 2px solid rgba(8, 10, 23, 0.72);
+    box-shadow:
+        0 0 0 1px rgba(var(--cs-accent-rgb), 0.35),
+        0 0 15px rgba(var(--cs-accent-rgb), 0.58);
+}
+
+#settings-modal .slider-container input[type=range]::-webkit-slider-thumb:hover {
+    background: #ffffff;
+    box-shadow:
+        0 0 0 1px rgba(var(--cs-accent-rgb), 0.60),
+        0 0 22px rgba(var(--cs-accent-rgb), 0.82);
+    transform: scale(1.16);
+}
+
+#settings-modal .slider-container input[type=range]:focus-visible::-webkit-slider-thumb {
+    box-shadow:
+        0 0 0 4px rgba(var(--cs-accent-rgb), 0.22),
+        0 0 18px rgba(var(--cs-accent-rgb), 0.72);
+}
+
+#settings-modal .slider-container input[type=range]::-moz-range-track {
+    height: 6px;
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.18);
+    border-radius: 999px;
+    background: rgba(var(--cs-accent-rgb), 0.18);
+}
+
+#settings-modal .slider-container input[type=range]::-moz-range-thumb {
+    background: var(--cs-accent);
+    border: 2px solid rgba(8, 10, 23, 0.72);
+    box-shadow: 0 0 15px rgba(var(--cs-accent-rgb), 0.58);
+}
+
+#settings-modal .slider-container span {
+    color: var(--cs-accent);
+    background: rgba(var(--cs-accent-rgb), 0.10);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.36);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+#settings-modal #render-quality-value {
+    min-width: 122px;
+}
+
+#settings-modal .setting-button,
+#settings-modal .controls-nav-action,
+#settings-modal .controls-subtab-action {
+    border-color: rgba(var(--cs-accent-rgb), 0.32);
+    background:
+        linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.14), rgba(var(--cs-accent-rgb), 0.055)),
+        rgba(8, 10, 23, 0.56);
+    color: #eef3ff;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 10px 22px rgba(0, 0, 0, 0.12);
+    transition:
+        border-color 0.22s ease,
+        background 0.22s ease,
+        box-shadow 0.22s ease,
+        transform 0.22s ease;
+}
+
+#settings-modal .setting-button:hover,
+#settings-modal .setting-button:focus-visible,
+#settings-modal .controls-nav-action:hover,
+#settings-modal .controls-nav-action:focus-visible,
+#settings-modal .controls-subtab-action:hover,
+#settings-modal .controls-subtab-action:focus-visible {
+    border-color: rgba(var(--cs-accent-rgb), 0.62);
+    box-shadow:
+        0 0 0 3px rgba(var(--cs-accent-rgb), 0.11),
+        0 0 24px rgba(var(--cs-accent-rgb), 0.18);
+    transform: translateY(-1px);
+    outline: none;
+}
+
+#settings-modal .settings-tab-content.active > .settings-grid > .setting,
+#settings-modal .settings-tab-content.active > .settings-grid > .settings-section,
+#settings-modal .settings-tab-content.active > .controls-layout {
+    animation: cs-row-reveal 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+#settings-modal .settings-tab-content.active > .settings-grid > *:nth-child(1) {
+    animation-delay: 0.02s;
+}
+
+#settings-modal .settings-tab-content.active > .settings-grid > *:nth-child(2) {
+    animation-delay: 0.05s;
+}
+
+#settings-modal .settings-tab-content.active > .settings-grid > *:nth-child(3) {
+    animation-delay: 0.08s;
+}
+
+#settings-modal .settings-tab-content.active > .settings-grid > *:nth-child(4) {
+    animation-delay: 0.11s;
+}
+
+#settings-modal .settings-tab-content.active > .settings-grid > *:nth-child(5) {
+    animation-delay: 0.14s;
+}
+
+#settings-modal .settings-tab-content.active > .settings-grid > *:nth-child(6) {
+    animation-delay: 0.17s;
+}
+
+#settings-modal .settings-tab-content.active > .settings-grid > *:nth-child(n+7) {
+    animation-delay: 0.20s;
+}
+
+@keyframes cs-row-reveal {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+        filter: blur(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+        filter: blur(0);
+    }
+}
+
+#settings-modal .controls-layout {
+    grid-template-columns: minmax(220px, 250px) minmax(0, 1fr);
+    gap: 24px;
+    align-items: stretch;
+}
+
+#settings-modal .controls-nav {
+    gap: 15px;
+    min-height: 0;
+}
+
+#settings-modal .controls-nav-heading {
+    margin: 0 0 2px;
+    color: rgba(221, 229, 252, 0.56);
+    font-size: 12px;
+    letter-spacing: 0.11em;
+}
+
+#settings-modal .controls-subtab {
+    background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012)),
+        rgba(10, 13, 27, 0.42);
+    border-color: rgba(150, 180, 255, 0.11);
+    color: rgba(224, 231, 255, 0.70);
+}
+
+#settings-modal .controls-subtab:hover,
+#settings-modal .controls-subtab:focus-visible {
+    border-color: rgba(var(--cs-accent-rgb), 0.28);
+    background: rgba(var(--cs-accent-rgb), 0.08);
+}
+
+#settings-modal .controls-subtab.active {
+    color: #ffffff;
+    background:
+        linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.20), rgba(var(--cs-accent-rgb), 0.10)),
+        rgba(255, 255, 255, 0.02);
+    border-color: rgba(var(--cs-accent-rgb), 0.45);
+    box-shadow:
+        0 0 20px rgba(var(--cs-accent-rgb), 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+#settings-modal .controls-content {
+    min-width: 0;
+}
+
+#settings-modal .controls-subtab-content.active {
+    min-height: 100%;
+    padding: 22px 24px;
+    background:
+        radial-gradient(80% 120% at 0% 0%, rgba(var(--cs-accent-rgb), 0.08), transparent 54%),
+        rgba(11, 14, 30, 0.58);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.20);
+    border-radius: 16px;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.045),
+        0 18px 42px rgba(0, 0, 0, 0.18);
+}
+
+#settings-modal .controls-subtab-content.active > h4:first-child,
+#settings-modal .serenity-controls-header h3 {
+    margin-top: 0;
+    color: rgba(238, 243, 255, 0.94);
+}
+
+#settings-modal .controls-helper-card,
+#settings-modal .controls-section,
+#settings-modal .controls-info-box,
+#settings-modal .controls-nav-footer {
+    background:
+        linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.08), rgba(255, 255, 255, 0.02)),
+        rgba(8, 10, 23, 0.46);
+    border-color: rgba(var(--cs-accent-rgb), 0.22);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+#settings-modal .controls-nav-footer {
+    padding: 16px;
+}
+
+#settings-modal .color-control {
+    width: min(320px, 100%);
+    min-width: 0;
+}
+
+@media (max-width: 960px) {
+    #settings-modal .modal-content {
+        width: min(720px, calc(100vw - 28px));
+        max-height: calc(100vh - 28px);
+    }
+
+    #settings-modal .settings-header {
+        padding: 24px 26px 18px;
+    }
+
+    #settings-modal .settings-tabs {
+        margin: 0 26px 18px;
+        justify-content: flex-start;
+    }
+
+    #settings-modal .settings-tab {
+        flex: 0 0 auto;
+    }
+
+    #settings-modal .settings-scroll-container {
+        padding: 0 26px 28px;
+    }
+
+    #settings-modal .controls-layout {
+        grid-template-columns: 1fr;
+    }
+
+    #settings-modal .controls-nav {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+}
+
+@media (max-width: 640px) {
+    #settings-modal .modal-content {
+        width: calc(100vw - 20px);
+        border-radius: 18px;
+    }
+
+    #settings-modal .settings-header {
+        padding: 20px 18px 16px;
+    }
+
+    #settings-modal .settings-header h1 {
+        font-size: 25px;
+        letter-spacing: 0.06em;
+    }
+
+    #settings-modal .modal-close-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        font-size: 20px;
+    }
+
+    #settings-modal .settings-tabs {
+        margin: 0 18px 16px;
+        padding: 4px;
+    }
+
+    #settings-modal .settings-tab {
+        padding: 9px 13px;
+        font-size: 12px;
+    }
+
+    #settings-modal .settings-scroll-container {
+        padding: 0 18px 22px;
+    }
+
+    #settings-modal .setting,
+    #settings-modal .setting:has(> small) {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 9px;
+        padding: 13px 14px;
+    }
+
+    #settings-modal .setting:has(> small) > label,
+    #settings-modal .setting:has(> small) > .setting-select,
+    #settings-modal .setting:has(> small) > .slider-container,
+    #settings-modal .setting:has(> small) > div:not(.slider-container),
+    #settings-modal .setting:has(> small) > small {
+        grid-column: auto;
+        grid-row: auto;
+        max-width: none;
+    }
+
+    #settings-modal .setting-select,
+    #settings-modal .key-input,
+    #settings-modal .slider-container,
+    #settings-modal .color-control {
+        width: 100%;
+    }
+
+    #settings-modal .controls-subtab-content.active {
+        padding: 18px 16px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #settings-modal .modal-content,
+    #settings-modal .settings-header h1,
+    #settings-modal .settings-tab-content.active > .settings-grid > .setting,
+    #settings-modal .settings-tab-content.active > .settings-grid > .settings-section,
+    #settings-modal .settings-tab-content.active > .controls-layout {
+        animation: none !important;
+    }
+
+    #settings-modal .settings-tab-content.active > .settings-grid > .setting,
+    #settings-modal .settings-tab-content.active > .settings-grid > .settings-section,
+    #settings-modal .settings-tab-content.active > .controls-layout {
+        opacity: 1 !important;
+        transform: none !important;
+        filter: none !important;
+    }
+}

@@ -72,7 +72,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.35,
         bloomThreshold: 0.38,
         bloomMode: 'full',
-        bloomDownsample: 0.85,
+        bloomDownsample: 1.0,
         postScale: 1.0,
         fogMotionProfile: 'full',
         frameBudgetMs: 16.7,
@@ -89,7 +89,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.32,
         bloomThreshold: 0.4,
         bloomMode: 'full',
-        bloomDownsample: 0.75,
+        bloomDownsample: 0.9,
         postScale: 1.0,
         fogMotionProfile: 'full',
         frameBudgetMs: 16.7,
@@ -106,7 +106,7 @@ const QUALITY_PRESETS = {
         bloomRadius: 0.3,
         bloomThreshold: 0.4,
         bloomMode: 'full',
-        bloomDownsample: 0.7,
+        bloomDownsample: 0.85,
         postScale: 1.0,
         fogMotionProfile: 'full',
         frameBudgetMs: 16.7,
@@ -189,7 +189,7 @@ const QUALITY_BUDGETS = {
         adaptiveUpRate: 0.018,
         minResolutionScale: 0.58,
         maxResolutionScale: 1.0,
-        baseResolutionScale: 0.92,
+        baseResolutionScale: 1.0,
         minEffectScale: 0.54,
         compileTimeoutMs: 3600,
     },
@@ -207,7 +207,7 @@ const QUALITY_BUDGETS = {
         adaptiveUpRate: 0.018,
         minResolutionScale: 0.56,
         maxResolutionScale: 1.0,
-        baseResolutionScale: 0.9,
+        baseResolutionScale: 1.0,
         minEffectScale: 0.5,
         compileTimeoutMs: 3400,
     },
@@ -224,8 +224,8 @@ const QUALITY_BUDGETS = {
         adaptiveDownRate: 0.046,
         adaptiveUpRate: 0.017,
         minResolutionScale: 0.54,
-        maxResolutionScale: 0.96,
-        baseResolutionScale: 0.88,
+        maxResolutionScale: 1.0,
+        baseResolutionScale: 1.0,
         minEffectScale: 0.46,
         compileTimeoutMs: 3200,
     },
@@ -556,7 +556,7 @@ export default class IceTempleTheme extends BaseTheme {
     getAdaptiveBloomDownsample() {
         const presetDownsample = this.qualityPreset?.bloomDownsample ?? 1.0;
         const effectScale = this.getAdaptiveEffectScale();
-        return THREE.MathUtils.clamp(presetDownsample * (0.72 + effectScale * 0.28), 0.42, 0.9);
+        return THREE.MathUtils.clamp(presetDownsample * (0.72 + effectScale * 0.28), 0.42, 1.0);
     }
 
     resetAdaptiveScalerState() {

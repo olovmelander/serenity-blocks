@@ -83,17 +83,20 @@ export class OceanPost {
             params.bloomThreshold ?? 0.78,
         );
 
-        // Uniforms — lifted exposure, lighter vignette, less aggressive fog so
-        // the new tropical palette reads as a daylit shallow reef.
+        // Uniforms — daylight tuning, dialed back from the initial overshoot.
+        // Exposure modest, absorption fog restored enough to give distance
+        // some saturation drop, god-ray strength kept, vignette restored
+        // enough to frame the brightness. Tuned to land between the original
+        // moody dim and the washed-out daylit pass.
         this.uTime = uniform(0);
-        this.uExposure = uniform(params.exposure ?? 1.05);
-        this.uGradeStrength = uniform(params.gradeStrength ?? 0.92);
+        this.uExposure = uniform(params.exposure ?? 1.08);
+        this.uGradeStrength = uniform(params.gradeStrength ?? 0.85);
         this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.18);
-        this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.1);
-        this.uFogDensity = uniform(params.fogDensity ?? 0.42);
+        this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.12);
+        this.uFogDensity = uniform(params.fogDensity ?? 0.34);
         this.uCameraNear = uniform(camera.near);
         this.uCameraFar = uniform(camera.far);
-        this.uShaftStrength = uniform(params.shaftStrength ?? 0.0);
+        this.uShaftStrength = uniform(params.shaftStrength ?? 0.55);
         this.uSunScreen = uniform(params.sunScreen ?? new THREE.Vector2(0.5, 1.0));
         this.uShaftSamples = int(params.shaftSamples ?? 8);
         // Phase 4: edge-pinch chromatic aberration
@@ -118,9 +121,11 @@ export class OceanPost {
         const uv = viewportUV;
         const centered = uv.sub(0.5).mul(2.0);
         const dist = length(centered);
-        // Deeper, more saturated absorption color so distant pixels fade to
-        // cobalt/sapphire (reference photo's mood), not bright cyan.
-        const deepWater = vec3(0.02, 0.14, 0.38);
+        // Daylit absorption color — distance fades to a deeper saturated
+        // cyan so the falloff still feels like underwater depth, not flat
+        // overcast haze. Sits between the original cobalt and the earlier
+        // too-bright pale cyan.
+        const deepWater = vec3(0.10, 0.40, 0.58);
 
         const getLinearDepth = (sampleUv) => {
             const depthSample = depthTexture.sample(sampleUv).x;
