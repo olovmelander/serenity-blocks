@@ -27,6 +27,15 @@ import {
     OCEAN_REEF_SEAHORSE_RIGGED_ASSET,
 } from './ocean-fauna-assets.js';
 
+// Vibrance constants for TripoSR-generated seahorse mesh. Kept in sync with
+// the same constants in ocean-atmosphere-system.js so corals and seahorse
+// read at matching saturation against the new daylight palette. Under bright
+// ambient + directional lighting the previous emissive of 0.55 caused the
+// seahorse to glow unnaturally; we let PBR shading carry most of the color
+// and only top up with a light emissive.
+const TRIPOSR_VERTEX_COLOR_BOOST = 1.35;
+const TRIPOSR_EMISSIVE_BOOST = 0.22;
+
 // Walk down a skeleton from `root` and return the longest chain of bones —
 // then drop the leading "trunk" joints that are shared parents of multiple
 // limbs. For a UniRig-auto-rigged seahorse the longest path starts at
@@ -811,13 +820,18 @@ export class OceanReefDwellerSystem {
                     roughness: mat.roughness !== undefined ? mat.roughness : 0.5,
                     metalness: mat.metalness !== undefined ? mat.metalness : 0.05,
                     vertexColors: hasVertexColors,
-                    transparent: true,
+                    transparent: false,
                     depthWrite: true,
-                    opacity: 0.92,
+                    opacity: 1.0,
                     side: mat.side ?? THREE.DoubleSide,
                     fog: true,
                     toneMapped: true,
                 });
+                if (hasVertexColors) {
+                    const vColor = attribute('color', 'vec3');
+                    nodeMat.colorNode = vColor.mul(TRIPOSR_VERTEX_COLOR_BOOST);
+                    nodeMat.emissiveNode = vColor.mul(TRIPOSR_EMISSIVE_BOOST);
+                }
                 nodeMat.name = `${mat.name || 'seahorse'} reef-dweller PBR`;
                 nodeMat.userData = { aquaticFaunaMaterial: true };
                 mat.dispose();

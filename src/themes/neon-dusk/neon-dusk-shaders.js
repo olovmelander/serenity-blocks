@@ -871,3 +871,141 @@ export const VignetteShader = {
         }
     `,
 };
+
+// ============================================================================
+// HORIZON HAZE BAND (WebGL fallback)
+// ============================================================================
+
+export const hazeBandVertexShader = `
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+export const hazeBandFragmentShader = `
+uniform vec3 uColorLow;
+uniform vec3 uColorHigh;
+uniform float uIntensity;
+uniform float uPulse;
+
+varying vec2 vUv;
+
+void main() {
+    float band = smoothstep(0.0, 0.32, vUv.y) * (1.0 - smoothstep(0.34, 1.0, vUv.y));
+    float horizontal = 1.0 - smoothstep(0.1, 0.55, abs(vUv.x - 0.5));
+    float glow = pow(band, 1.4) * (0.45 + horizontal * 0.55);
+    vec3 color = mix(uColorHigh, uColorLow, band);
+    float intensity = glow * uIntensity * (1.0 + uPulse * 0.6);
+    gl_FragColor = vec4(color * intensity, clamp(intensity, 0.0, 1.0));
+}
+`;
+
+// ============================================================================
+// GROUND FOG (WebGL fallback)
+// ============================================================================
+
+export const groundFogVertexShader = `
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+export const groundFogFragmentShader = `
+uniform vec3 uColor;
+uniform float uOpacity;
+uniform float uTime;
+uniform float uSeed;
+uniform float uPulse;
+
+varying vec2 vUv;
+
+void main() {
+    vec2 center = vUv - 0.5;
+    float ell = length(vec2(center.x, center.y * 2.2));
+    float blob = 1.0 - smoothstep(0.18, 0.5, ell);
+    float t = uTime + uSeed;
+    float wisp = sin(vUv.x * 9.0 + t * 0.6) * sin(vUv.y * 7.0 - t * 0.4) * 0.5 + 0.5;
+    float density = pow(blob, 1.5) * (0.55 + wisp * 0.45);
+    float intensity = density * uOpacity * (1.0 + uPulse * 0.5);
+    gl_FragColor = vec4(uColor * intensity, clamp(intensity, 0.0, 1.0));
+}
+`;
+
+// ============================================================================
+// POST-PROCESSING: CINEMATIC PASS (WebGL fallback)
+// Radial chromatic aberration + subtle scanlines + vignette + anamorphic sun flare
+// ============================================================================
+
+export const CinematicShader = {
+    uniforms: {
+        tDiffuse: { value: null },
+        uTime: { value: 0 },
+        uResolution: { value: null },
+        uSunScreen: { value: null },
+        uAberration: { value: 0.0018 },
+        uScanlineIntensity: { value: 0.06 },
+        uVignetteDarkness: { value: 0.45 },
+        uVignetteOffset: { value: 1.1 },
+        uFlareIntensity: { value: 0.0 },
+        uBarrel: { value: 0.02 },
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float uTime;
+        uniform vec2 uResolution;
+        uniform vec2 uSunScreen;
+        uniform float uAberration;
+        uniform float uScanlineIntensity;
+        uniform float uVignetteDarkness;
+        uniform float uVignetteOffset;
+        uniform float uFlareIntensity;
+        uniform float uBarrel;
+
+        varying vec2 vUv;
+
+        void main() {
+            vec2 centered = (vUv - 0.5) * 2.0;
+            float dist = length(centered);
+
+            // Subtle barrel distortion (CRT curve)
+            vec2 uv = vUv + centered * (dist * dist) * uBarrel * 0.5;
+
+            // Radial chromatic aberration, stronger toward edges
+            vec2 dir = centered;
+            float amt = uAberration * dist;
+            float r = texture2D(tDiffuse, uv + dir * amt).r;
+            float g = texture2D(tDiffuse, uv).g;
+            float b = texture2D(tDiffuse, uv - dir * amt).b;
+            vec3 color = vec3(r, g, b);
+
+            // Vignette
+            float vig = smoothstep(uVignetteOffset, uVignetteOffset - 0.5, dist);
+            color = mix(color * (1.0 - uVignetteDarkness), color, vig);
+
+            // Subtle scanlines (fixed frequency, resolution-independent)
+            float scan = pow(sin(vUv.y * 700.0) * 0.5 + 0.5, 8.0);
+            color *= (1.0 - scan * uScanlineIntensity);
+
+            // Anamorphic sun flare (horizontal streak)
+            float dx = abs(vUv.x - uSunScreen.x);
+            float dy = abs(vUv.y - uSunScreen.y);
+            float fx = 1.0 - smoothstep(0.0, 0.6, dx);
+            float fy = 1.0 - smoothstep(0.0, 0.014, dy);
+            float streak = fx * fx * fy;
+            color += vec3(1.0, 0.7, 0.5) * streak * uFlareIntensity;
+
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `,
+};

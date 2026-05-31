@@ -642,3 +642,154 @@ export function createRingNodeMaterial(params = {}) {
 
     return material;
 }
+
+// ============================================================================
+// SOFT SPRITE MATERIAL (atmospheric drift particles: dust motes, embers)
+// ============================================================================
+//
+// Reads from a NeonDuskFieldCompute state/color buffer on WebGPU and renders a
+// soft, round, depth-scaled sprite. Uses uv() (not pointUV) for the sprite
+// coordinate — pointUV emits invalid WGSL in this three revision.
+
+export function createSoftSpriteNodeMaterial(params = {}) {
+    const material = new THREE.PointsNodeMaterial();
+    material.transparent = true;
+    material.depthWrite = false;
+    material.blending = THREE.AdditiveBlending;
+    material.vertexColors = true;
+
+    const uPixelRatio = uniform(params.pixelRatio ?? 1);
+    const uTime = uniform(0);
+    const uColorShift = uniform(params.colorShift ?? 0);
+    const uBrightness = uniform(params.brightness ?? 1.0);
+    const sizeScale = float(params.sizeScale ?? 280.0);
+    const softness = float(params.softness ?? 1.7);
+    const baseOpacity = float(params.opacity ?? 0.7);
+    const enableColorShift = Boolean(params.enableColorShift);
+
+    const useGPU = Boolean(
+        params.isWebGPU && params.particleCompute?.getStateBuffer && params.particleCompute?.getColorBuffer,
+    );
+    const stateBuffer = useGPU
+        ? storage(params.particleCompute.getStateBuffer(), 'vec4', params.particleCompute.count * 3)
+        : null;
+    const colorBuffer = useGPU
+        ? storage(params.particleCompute.getColorBuffer(), 'vec4', params.particleCompute.count)
+        : null;
+
+    const aSize = attribute('aSize');
+    const aLife = attribute('aLife');
+
+    const basePos = useGPU ? stateBuffer.element(vertexIndex.mul(3)).xyz : positionLocal;
+    const lifeNode = useGPU ? stateBuffer.element(vertexIndex.mul(3)).w : aLife;
+    const sizeValue = useGPU ? stateBuffer.element(vertexIndex.mul(3).add(2)).x : aSize;
+    const colorValue = useGPU ? colorBuffer.element(vertexIndex).xyz : vertexColor();
+
+    material.positionNode = basePos;
+
+    const sizeNode = sizeValue
+        .mul(uPixelRatio)
+        .mul(sizeScale.div(positionView.z.negate()));
+    material.sizeNode = clamp(sizeNode, float(0.5), float(70.0));
+
+    const center = uv().sub(0.5);
+    const dist = length(center);
+    const sprite = max(float(0.0), float(1.0).sub(dist.mul(2.0)));
+    const soft = pow(sprite, softness);
+
+    let color = colorValue.mul(uBrightness).mul(float(1.0).add(lifeNode.mul(0.4)));
+    if (enableColorShift) {
+        const shiftAmount = clamp(uColorShift, float(0.0), float(1.0)).mul(0.3);
+        color = mix(color, vec3(1.0, 0.25, 0.9), shiftAmount);
+    }
+    const alpha = soft.mul(lifeNode).mul(baseOpacity);
+
+    material.colorNode = color;
+    material.opacityNode = alpha;
+    material.emissiveNode = color.mul(alpha);
+    material.userData = { uPixelRatio, uTime, uColorShift, uBrightness };
+
+    return material;
+}
+
+// ============================================================================
+// HORIZON HAZE BAND MATERIAL
+// ============================================================================
+//
+// A wide additive plane that sits behind the mountains and glows along the
+// horizon line, giving the sun atmosphere to sit in and softening the hard
+// mountain/sky seam. Brightest just below the horizon, fading up and outward.
+
+export function createHorizonHazeNodeMaterial(params = {}) {
+    const material = new THREE.MeshBasicNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+    });
+
+    const uColorLow = uniform(params.colorLow ?? new THREE.Color(0xff5a3c));
+    const uColorHigh = uniform(params.colorHigh ?? new THREE.Color(0x7a1f5a));
+    const uIntensity = uniform(params.intensity ?? 0.55);
+    const uPulse = uniform(0);
+
+    const coord = uv();
+    // Vertical band: peak at lower third, soft falloff above and below
+    const band = smoothstep(float(0.0), float(0.32), coord.y)
+        .mul(float(1.0).sub(smoothstep(float(0.34), float(1.0), coord.y)));
+    // Horizontal falloff toward the edges (concentrates glow around the sun)
+    const horizontal = float(1.0).sub(smoothstep(float(0.1), float(0.55), abs(coord.x.sub(0.5))));
+
+    const glow = pow(band, float(1.4)).mul(float(0.45).add(horizontal.mul(0.55)));
+    const color = mix(uColorHigh, uColorLow, band);
+    const intensity = glow.mul(uIntensity).mul(float(1.0).add(uPulse.mul(0.6)));
+
+    material.colorNode = color;
+    material.opacityNode = clamp(intensity, float(0.0), float(1.0));
+    material.emissiveNode = color.mul(intensity);
+    material.userData = { uColorLow, uColorHigh, uIntensity, uPulse };
+
+    return material;
+}
+
+// ============================================================================
+// GROUND FOG MATERIAL (low drifting mist slabs)
+// ============================================================================
+
+export function createGroundFogNodeMaterial(params = {}) {
+    const material = new THREE.MeshBasicNodeMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+    });
+
+    const uColor = uniform(params.color ?? new THREE.Color(0x4a1d6b));
+    const uOpacity = uniform(params.opacity ?? 0.08);
+    const uTime = uniform(0);
+    const uSeed = uniform(params.seed ?? 0);
+    const uPulse = uniform(0);
+
+    const coord = uv();
+    const center = coord.sub(0.5);
+    // Soft elliptical falloff (wide, short)
+    const ell = length(vec2(center.x.mul(1.0), center.y.mul(2.2)));
+    const blob = float(1.0).sub(smoothstep(float(0.18), float(0.5), ell));
+
+    // Wispy animated noise so the mist breathes and drifts
+    const t = uTime.add(uSeed);
+    const wisp = sin(coord.x.mul(9.0).add(t.mul(0.6)))
+        .mul(sin(coord.y.mul(7.0).sub(t.mul(0.4))))
+        .mul(0.5)
+        .add(0.5);
+
+    const density = pow(blob, float(1.5)).mul(float(0.55).add(wisp.mul(0.45)));
+    const intensity = density.mul(uOpacity).mul(float(1.0).add(uPulse.mul(0.5)));
+
+    material.colorNode = uColor;
+    material.opacityNode = clamp(intensity, float(0.0), float(1.0));
+    material.emissiveNode = uColor.mul(intensity);
+    material.userData = { uColor, uOpacity, uTime, uSeed, uPulse };
+
+    return material;
+}

@@ -2337,7 +2337,7 @@ export default class WolfhourTheme extends BaseTheme {
         const burstCount = Math.max(0, Math.floor(count));
         const startAt = performance.now();
         for (let i = 0; i < burstCount; i += 1) {
-            const spacing = type === 'meteor' ? 120 : type === 'crash' ? 260 : 35;
+            const spacing = type === 'meteor' ? 120 : type === 'crash' ? 380 : 35;
             const createdAtMs = startAt + (i * spacing);
             this.enqueueReactiveToken(type, payload, createdAtMs);
         }
@@ -2497,7 +2497,10 @@ export default class WolfhourTheme extends BaseTheme {
             Math.min(0.2 + comboCount * 0.1, 1.0),
         );
 
-        this.effectState.mountainPulse = Math.min(comboCount * 0.1, 0.8);
+        this.effectState.mountainPulse = Math.max(
+            this.effectState.mountainPulse,
+            Math.min(comboCount * 0.1, 0.8),
+        );
 
         if (this.isWebGPU && this.starfieldNodeData) {
             this.starfieldNodeData.uniforms.uEventBoost.value = Math.min(comboCount * 0.1, 0.5);
@@ -3178,8 +3181,18 @@ export default class WolfhourTheme extends BaseTheme {
         positionAttribute.needsUpdate = true;
     }
 
-    setHeadPosition(geometry, x, y, z) {
-        const positionAttribute = geometry?.attributes?.position;
+    setHeadPosition(head, x, y, z) {
+        if (head?.isInstancedMesh) {
+            const dummy = this._headMatrixDummy || (this._headMatrixDummy = new THREE.Object3D());
+            dummy.position.set(x, y, z);
+            dummy.rotation.set(0, 0, 0);
+            dummy.scale.set(1, 1, 1);
+            dummy.updateMatrix();
+            head.setMatrixAt(0, dummy.matrix);
+            head.instanceMatrix.needsUpdate = true;
+            return;
+        }
+        const positionAttribute = head?.geometry?.attributes?.position ?? head?.attributes?.position;
         if (!positionAttribute) return;
         const position = positionAttribute.array;
         position[0] = x;
@@ -3322,7 +3335,7 @@ export default class WolfhourTheme extends BaseTheme {
             data.direction,
             data.trailLength,
         );
-        this.setHeadPosition(data.head.geometry, data.startX, data.startY, data.startZ);
+        this.setHeadPosition(data.head, data.startX, data.startY, data.startZ);
 
         if (data.trailNodeData) {
             data.trailNodeData.uniforms.uTime.value = this.time;
@@ -3426,7 +3439,7 @@ export default class WolfhourTheme extends BaseTheme {
                 data.head.material.uniforms.uProgress.value = progress;
             }
 
-            this.setHeadPosition(data.head.geometry, headX, headY, headZ);
+            this.setHeadPosition(data.head, headX, headY, headZ);
         }
     }
 
@@ -3494,10 +3507,24 @@ export default class WolfhourTheme extends BaseTheme {
         head.renderOrder = 511;
 
         const debrisGeometry = new THREE.BufferGeometry();
+        const debrisVelocityArray = new Float32Array(debrisCount * 3);
+        const debrisSizeArray = new Float32Array(debrisCount);
+        const debrisRotationArray = new Float32Array(debrisCount);
+        for (let i = 0; i < debrisCount; i += 1) {
+            const i3 = i * 3;
+            const angle = this.random() * Math.PI * 2;
+            const upAngle = this.random() * Math.PI * 0.6;
+            const speed = 250 + this.random() * 400;
+            debrisVelocityArray[i3] = Math.cos(angle) * Math.sin(upAngle) * speed;
+            debrisVelocityArray[i3 + 1] = Math.cos(upAngle) * speed + 50;
+            debrisVelocityArray[i3 + 2] = Math.sin(angle) * Math.sin(upAngle) * speed * 0.3;
+            debrisSizeArray[i] = 12 + this.random() * 20;
+            debrisRotationArray[i] = this.random() * Math.PI * 2;
+        }
         debrisGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(debrisCount * 3), 3));
-        debrisGeometry.setAttribute('aVelocity', new THREE.BufferAttribute(new Float32Array(debrisCount * 3), 3));
-        debrisGeometry.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(debrisCount), 1));
-        debrisGeometry.setAttribute('aRotation', new THREE.BufferAttribute(new Float32Array(debrisCount), 1));
+        debrisGeometry.setAttribute('aVelocity', new THREE.BufferAttribute(debrisVelocityArray, 3));
+        debrisGeometry.setAttribute('aSize', new THREE.BufferAttribute(debrisSizeArray, 1));
+        debrisGeometry.setAttribute('aRotation', new THREE.BufferAttribute(debrisRotationArray, 1));
         debrisGeometry.setAttribute('aComputeOffset', new THREE.BufferAttribute(new Float32Array(debrisCount), 1));
 
         let debrisMaterial;
@@ -3545,14 +3572,25 @@ export default class WolfhourTheme extends BaseTheme {
                 side: THREE.DoubleSide,
             });
         }
-        const shockwave = new THREE.Mesh(this.geometryCache.shockwavePlane.clone(), shockwaveMaterial);
+        const shockwave = new THREE.Mesh(this.geometryCache.shockwavePlane, shockwaveMaterial);
         shockwave.renderOrder = 515;
 
         const dustGeometry = new THREE.BufferGeometry();
+        const dustSizeArray = new Float32Array(dustCount);
+        const dustPhaseArray = new Float32Array(dustCount);
+        const dustVelocityArray = new Float32Array(dustCount * 3);
+        for (let i = 0; i < dustCount; i += 1) {
+            const i3 = i * 3;
+            dustSizeArray[i] = 100 + this.random() * 120;
+            dustPhaseArray[i] = this.random() * Math.PI * 2;
+            dustVelocityArray[i3] = (this.random() - 0.5) * 80;
+            dustVelocityArray[i3 + 1] = this.random() * 40;
+            dustVelocityArray[i3 + 2] = this.random() * 20;
+        }
         dustGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(dustCount * 3), 3));
-        dustGeometry.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(dustCount), 1));
-        dustGeometry.setAttribute('aPhase', new THREE.BufferAttribute(new Float32Array(dustCount), 1));
-        dustGeometry.setAttribute('aVelocity', new THREE.BufferAttribute(new Float32Array(dustCount * 3), 3));
+        dustGeometry.setAttribute('aSize', new THREE.BufferAttribute(dustSizeArray, 1));
+        dustGeometry.setAttribute('aPhase', new THREE.BufferAttribute(dustPhaseArray, 1));
+        dustGeometry.setAttribute('aVelocity', new THREE.BufferAttribute(dustVelocityArray, 3));
 
         let dustMaterial;
         let dustNodeData = null;
@@ -3622,17 +3660,22 @@ export default class WolfhourTheme extends BaseTheme {
 
     resetMeteorCrashEffect(crash) {
         const data = crash.userData;
-        const targetMountain = this.mountains[Math.floor(this.random() * this.mountains.length)];
+        // Prefer foreground/mid peaks (z >= -1000) — distant peaks make the trail too small to read.
+        const candidateMountains = this.mountains.filter((m) => m.position.z >= -1000);
+        const pool = candidateMountains.length > 0 ? candidateMountains : this.mountains;
+        const targetMountain = pool[Math.floor(this.random() * pool.length)];
         data.targetX = targetMountain.position.x + (this.random() - 0.5) * 200;
-        data.targetY = targetMountain.position.y + 200 + this.random() * 150;
+        // Land on the visible peak ridge (mountain.position.y is the base, peaks rise ~380-520 above it).
+        data.targetY = targetMountain.position.y + 460 + this.random() * 80;
         data.targetZ = targetMountain.position.z + 100;
 
-        data.startX = data.targetX + (this.random() > 0.5 ? 1 : -1) * (400 + this.random() * 300);
-        data.startY = 400 + this.random() * 150;
+        data.startX = data.targetX + (this.random() > 0.5 ? 1 : -1) * (500 + this.random() * 300);
+        data.startY = 650 + this.random() * 150;
         data.startZ = data.targetZ;
         data.startTime = this.time;
         data.phase = 'descent';
-        data.duration = 0.8;
+        data.duration = 1.4;
+        data.trailLength = 360;
         data.explosionStartTime = 0;
 
         data.trail.visible = true;
@@ -3677,7 +3720,7 @@ export default class WolfhourTheme extends BaseTheme {
             1,
             data.trailLength,
         );
-        this.setHeadPosition(data.head.geometry, data.startX, data.startY, data.startZ);
+        this.setHeadPosition(data.head, data.startX, data.startY, data.startZ);
 
         if (data.trailNodeData) {
             data.trailNodeData.uniforms.uTime.value = this.time;
@@ -3736,20 +3779,12 @@ export default class WolfhourTheme extends BaseTheme {
         const debrisVelocities = data.debris.geometry.attributes.aVelocity.array;
         const debrisSizes = data.debris.geometry.attributes.aSize.array;
         const debrisRotations = data.debris.geometry.attributes.aRotation.array;
+        const debrisZ = targetZ + 50;
         for (let i = 0; i < data.debrisCount; i += 1) {
             const i3 = i * 3;
             debrisPositions[i3] = targetX;
             debrisPositions[i3 + 1] = targetY;
-            debrisPositions[i3 + 2] = targetZ + 50;
-
-            const angle = this.random() * Math.PI * 2;
-            const upAngle = this.random() * Math.PI * 0.6;
-            const speed = 250 + this.random() * 400;
-            debrisVelocities[i3] = Math.cos(angle) * Math.sin(upAngle) * speed;
-            debrisVelocities[i3 + 1] = Math.cos(upAngle) * speed + 50;
-            debrisVelocities[i3 + 2] = Math.sin(angle) * Math.sin(upAngle) * speed * 0.3;
-            debrisSizes[i] = 12 + this.random() * 20;
-            debrisRotations[i] = this.random() * Math.PI * 2;
+            debrisPositions[i3 + 2] = debrisZ;
         }
 
         if (this.debrisBatchCompute && this.shouldUseCompute() && this.qualityPreset.computeDebris === true) {
@@ -3774,9 +3809,6 @@ export default class WolfhourTheme extends BaseTheme {
             }
         } else {
             data.debris.geometry.attributes.position.needsUpdate = true;
-            data.debris.geometry.attributes.aVelocity.needsUpdate = true;
-            data.debris.geometry.attributes.aSize.needsUpdate = true;
-            data.debris.geometry.attributes.aRotation.needsUpdate = true;
             this.setDebrisSlotOffset(data.debris.geometry, 0);
         }
 
@@ -3790,25 +3822,15 @@ export default class WolfhourTheme extends BaseTheme {
         }
 
         const dustPositions = data.dustCloud.geometry.attributes.position.array;
-        const dustSizes = data.dustCloud.geometry.attributes.aSize.array;
-        const dustPhases = data.dustCloud.geometry.attributes.aPhase.array;
-        const dustVelocities = data.dustCloud.geometry.attributes.aVelocity.array;
-        const dustCount = dustSizes.length;
+        const dustCount = data.dustCloud.geometry.attributes.aSize.count;
+        const dustImpactZ = targetZ + 40;
         for (let i = 0; i < dustCount; i += 1) {
             const i3 = i * 3;
             dustPositions[i3] = targetX + (this.random() - 0.5) * 150;
             dustPositions[i3 + 1] = targetY + this.random() * 60;
-            dustPositions[i3 + 2] = targetZ + 40;
-            dustSizes[i] = 100 + this.random() * 120;
-            dustPhases[i] = this.random() * Math.PI * 2;
-            dustVelocities[i3] = (this.random() - 0.5) * 80;
-            dustVelocities[i3 + 1] = this.random() * 40;
-            dustVelocities[i3 + 2] = this.random() * 20;
+            dustPositions[i3 + 2] = dustImpactZ;
         }
         data.dustCloud.geometry.attributes.position.needsUpdate = true;
-        data.dustCloud.geometry.attributes.aSize.needsUpdate = true;
-        data.dustCloud.geometry.attributes.aPhase.needsUpdate = true;
-        data.dustCloud.geometry.attributes.aVelocity.needsUpdate = true;
 
         this.effectState.bloomBoost = 0.3;
         this.effectState.mountainShockwave = 1.5;
@@ -3889,7 +3911,7 @@ export default class WolfhourTheme extends BaseTheme {
                     data.head.material.uniforms.uProgress.value = progress;
                 }
 
-                this.setHeadPosition(data.head.geometry, currentX, currentY, currentZ);
+                this.setHeadPosition(data.head, currentX, currentY, currentZ);
             } else if (data.phase === 'explosion') {
                 const explosionElapsed = this.time - data.explosionStartTime;
                 const explosionDuration = 4.5;
@@ -3899,7 +3921,9 @@ export default class WolfhourTheme extends BaseTheme {
                 }
 
                 if (data.debrisNodeData) {
-                    data.debrisNodeData.uniforms.uTime.value = explosionElapsed;
+                    if (data.debrisSlot < 0) {
+                        data.debrisNodeData.uniforms.uTime.value = explosionElapsed;
+                    }
                 } else if (data.debris.material?.uniforms) {
                     data.debris.material.uniforms.uTime.value = explosionElapsed;
                 }

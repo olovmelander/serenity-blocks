@@ -539,8 +539,8 @@ export default class OceanTheme extends BaseTheme {
                     importedSeabedDetailCount: 12,
                     tubeCoralClusterCount: 3,
                     plateCoralShelfCount: 3,
-                    heroCoralCount: 13,
-                    heroKelpCount: 6,
+                    heroCoralCount: 18,
+                    heroKelpCount: 10,
                 },
                 rareFauna: {
                     enabled: true,
@@ -608,8 +608,8 @@ export default class OceanTheme extends BaseTheme {
                     importedSeabedDetailCount: 12,
                     tubeCoralClusterCount: 4,
                     plateCoralShelfCount: 4,
-                    heroCoralCount: 13,
-                    heroKelpCount: 8,
+                    heroCoralCount: 24,
+                    heroKelpCount: 14,
                 },
                 rareFauna: {
                     enabled: true,
@@ -1088,7 +1088,9 @@ export default class OceanTheme extends BaseTheme {
 
         this.renderer.setSize(width, height);
         this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        this.renderer.setClearColor(0x003e54);
+        // Tropical-cyan clear, slightly deeper than the fog so the horizon
+        // dome reads as bright water rather than featureless overcast.
+        this.renderer.setClearColor(0x2f8eb0);
 
         if (!this.isWebGPU) {
             this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1117,7 +1119,7 @@ export default class OceanTheme extends BaseTheme {
         if (!themeContainer) return;
 
         themeContainer.innerHTML = '';
-        themeContainer.style.background = '#003e54';
+        themeContainer.style.background = '#2f8eb0';
 
         this.applyQualityPreset(this.getGraphicsQuality());
         this.setupQualityListener();
@@ -1126,8 +1128,10 @@ export default class OceanTheme extends BaseTheme {
         await this.initRenderer(themeContainer);
 
         this.scene = new THREE.Scene();
-        // Smooth exponential fog for underwater depth - matches water surface
-        this.scene.fog = new THREE.FogExp2(0x005b82, 0.0032);
+        // Tropical-cyan fog tuned between dark mood and washed-out — slightly
+        // deeper hue + a touch more density so the distance has visible
+        // atmospheric falloff instead of reading as a uniform pale dome.
+        this.scene.fog = new THREE.FogExp2(0x2f8eb0, 0.0036);
 
         // Camera
         this.camera = new THREE.PerspectiveCamera(
@@ -3284,24 +3288,26 @@ export default class OceanTheme extends BaseTheme {
     // LIGHTING
     // ═══════════════════════════════════════════════════════════════════════════
     createLighting() {
-        // Cooler deep-navy ambient + warmer tropical-sun directional + hemisphere
-        // anchored in deep blue. Matches reference photo's high-contrast palette:
-        // cool shadow, warm sunbeam, saturated cobalt water.
-        const ambient = new THREE.AmbientLight(0x0c3a5e, 0.35);
+        // Daylit reef but with restored shadow contrast — between the
+        // original moody navy and the flat-washed daylight overshoot.
+        // Ambient softer (so sand floor doesn't blow out), directional sun
+        // moderate (so corals cast definition), hemisphere modest. The
+        // overall scene still reads bright/tropical but with depth.
+        const ambient = new THREE.AmbientLight(0x5a96b0, 0.42);
         this.scene.add(ambient);
 
-        const directional = new THREE.DirectionalLight(0xffeed0, 0.85);
-        directional.position.set(28, 92, -34);
+        const directional = new THREE.DirectionalLight(0xfff0d0, 1.0);
+        directional.position.set(18, 100, -18);
         this.scene.add(directional);
 
-        const hemisphere = new THREE.HemisphereLight(0x9adcd0, 0x0a2d4c, 0.38);
+        const hemisphere = new THREE.HemisphereLight(0x9ed4e0, 0x2c5a78, 0.4);
         this.scene.add(hemisphere);
 
-        const foregroundFill = new THREE.PointLight(0x35b8b2, 0.38, 150, 2.1);
+        const foregroundFill = new THREE.PointLight(0x6fc8d4, 0.3, 160, 2.0);
         foregroundFill.position.set(-34, 20, 48);
         this.scene.add(foregroundFill);
 
-        const reefWarmth = new THREE.PointLight(0xffb56f, 0.38, 115, 2.2);
+        const reefWarmth = new THREE.PointLight(0xffc890, 0.28, 115, 2.2);
         reefWarmth.position.set(54, 8, -34);
         this.scene.add(reefWarmth);
     }

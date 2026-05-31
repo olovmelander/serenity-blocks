@@ -663,19 +663,24 @@ export function createStarfieldNodeMaterial() {
     const twinkle = sin(uTime.mul(twinkleAttr.y).add(twinkleAttr.x)).mul(0.24).add(0.86);
 
     // WebGPU path: avoid point UV builtins (gl_PointCoord) because they can fail WGSL compilation.
-    const sizeFactor = clamp(sizeAttr.div(32.0), float(0.35), float(1.0));
-    const finalColor = colorAttr.mul(twinkle.mul(1.08)).add(vec3(0.02));
+    const sizeFactor = clamp(sizeAttr.div(32.0), float(0.45), float(1.0));
+    // Brighter base color so stars stand out against the violet fog.
+    const finalColor = colorAttr.mul(twinkle.mul(1.35)).add(vec3(0.04));
+    // Higher alpha floor + scale → dim stars no longer disappear in the haze.
     const alpha = clamp(
-        twinkle.mul(0.62).mul(sizeFactor).add(0.08),
-        float(0.08),
+        twinkle.mul(0.85).mul(sizeFactor).add(0.18),
+        float(0.18),
         float(1.0),
     );
     const sizePulse = twinkle.mul(0.18).add(0.92);
 
     material.colorNode = finalColor;
     material.opacityNode = alpha;
-    material.sizeNode = min(float(14.0), max(float(2.0), sizeAttr.mul(sizePulse).mul(0.22)));
-    material.emissiveNode = finalColor.mul(alpha.mul(0.8));
+    // Screen cap raised 14 → 30 and attr multiplier 0.22 → 0.38 so bright stars
+    // actually read as bright; dim stars still scale up proportionally.
+    material.sizeNode = min(float(30.0), max(float(3.0), sizeAttr.mul(sizePulse).mul(0.38)));
+    // Small bloom contribution so the brightest stars catch a halo.
+    material.emissiveNode = finalColor.mul(alpha).mul(0.35);
 
     return finalizeNodeMaterial(material, { uTime }, { emitsBloom: false, mrtRole: 'starfield' });
 }
