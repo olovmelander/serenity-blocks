@@ -112,13 +112,14 @@ async function stopDevServer() {
 }
 
 async function ensureDevServer() {
-    if (devServerAlive && devServerProcess && !devServerProcess.killed) {
-        // Quick health check
-        try {
-            const resp = await fetch(DEV_SERVER_URL, { method: 'GET', signal: AbortSignal.timeout(3000) });
-            if (resp.ok) return;
-        } catch {}
-    }
+    // Quick health check to see if dev server is alive (either locally started or pre-existing)
+    try {
+        const resp = await fetch(DEV_SERVER_URL, { method: 'GET', signal: AbortSignal.timeout(3000) });
+        if (resp.ok) {
+            devServerAlive = true;
+            return;
+        }
+    } catch {}
 
     console.log('[ThemeCapture] Dev server is down, restarting...');
     await stopDevServer();
@@ -300,10 +301,24 @@ async function hideAllUI(win) {
 async function main() {
     await mkdir(SCREENSHOT_DIR, { recursive: true });
 
-    console.log('[ThemeCapture] Starting Vite dev server on port', DEV_SERVER_PORT);
-    devServerProcess = startDevServer();
-    await waitForServer(DEV_SERVER_URL);
-    console.log('[ThemeCapture] Dev server ready');
+    // Check if a dev server is already running (e.g. started in WSL on UNC path)
+    let alreadyRunning = false;
+    try {
+        const resp = await fetch(DEV_SERVER_URL, { method: 'GET', signal: AbortSignal.timeout(2000) });
+        if (resp.ok) {
+            alreadyRunning = true;
+            console.log('[ThemeCapture] Found already running dev server on port', DEV_SERVER_PORT);
+        }
+    } catch (e) {}
+
+    if (!alreadyRunning) {
+        console.log('[ThemeCapture] Starting Vite dev server on port', DEV_SERVER_PORT);
+        devServerProcess = startDevServer();
+        await waitForServer(DEV_SERVER_URL);
+        console.log('[ThemeCapture] Dev server ready');
+    } else {
+        devServerAlive = true;
+    }
 
     const win = createWindow();
     const consoleEntries = [];

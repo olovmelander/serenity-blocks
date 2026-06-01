@@ -1511,7 +1511,26 @@
 }
 
 .pill-icon {
-  font-size: 13px;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: currentColor;
+}
+
+.pill-icon-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  stroke: currentColor;
+  transition: filter var(--hub-transition-fast), transform var(--hub-transition-fast);
+}
+
+.category-pill:hover .pill-icon-svg,
+.category-pill.active .pill-icon-svg {
+  transform: scale(1.04);
 }
 
 .pill-text {

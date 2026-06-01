@@ -42,6 +42,8 @@ export default class ThreeJSIntroRenderer {
         this.shootingStars = [];
         this.sparkleLayer = null;
         this.nebulaClouds = [];
+        this.nebulaSky = null; // Phase F: GLSL nebula backdrop (parity with WebGPU path)
+        this.nebulaSkyUniforms = null;
         this.lastShootingStarTime = 0;
         this.boundResizeHandler = this.onResize.bind(this);
 
@@ -117,12 +119,16 @@ export default class ThreeJSIntroRenderer {
 
             // Setup Scene
             this.scene = new THREE.Scene();
-            // Deep cosmic nebula fog - purple-magenta tinted for chromadelic feel
-            this.scene.fog = new THREE.FogExp2(0x0d0020, 0.007);
+            // Deep indigo fog so distant particles dissolve into the nebula backdrop
+            // (matches the WebGPU path).
+            this.scene.fog = new THREE.FogExp2(0x0a0620, 0.0058);
 
             // Setup Camera
             this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
             this.camera.position.z = 40;
+
+            // Phase F — volumetric nebula sky backdrop (replaces the empty black void).
+            this.createNebulaSky();
 
             // Create environment map for crystal reflections
             this.createEnvironmentMap();
@@ -154,6 +160,112 @@ export default class ThreeJSIntroRenderer {
             console.error('[ThreeJSIntroRenderer] Initialization failed:', e);
             return false;
         }
+    }
+
+    /**
+     * Phase F — GLSL nebula sky (WebGL parity with the WebGPU inverted-sphere
+     * backdrop): indigo→violet→teal gradient, domain-warped FBM highlight pockets
+     * (cyan/magenta), title-framing front-fade, and procedural stars.
+     */
+    createNebulaSky() {
+        const geometry = new THREE.SphereGeometry(200, 24, 16);
+        const uniforms = {
+            uTime: { value: 0 },
+            uIntensity: { value: 1.0 },
+        };
+        const material = new THREE.ShaderMaterial({
+            uniforms,
+            side: THREE.BackSide,
+            depthWrite: false,
+            fog: false,
+            vertexShader: `
+                varying vec3 vDir;
+                void main() {
+                    vDir = (modelMatrix * vec4(position, 1.0)).xyz;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                precision highp float;
+                varying vec3 vDir;
+                uniform float uTime;
+                uniform float uIntensity;
+
+                float hash3(vec3 p){
+                    p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+                    p += dot(p, p.yzx + 33.33);
+                    return fract((p.x + p.y) * p.z);
+                }
+                float vnoise3(vec3 p){
+                    vec3 i = floor(p); vec3 f = fract(p);
+                    vec3 u = f * f * (3.0 - 2.0 * f);
+                    float a = hash3(i + vec3(0.0,0.0,0.0));
+                    float b = hash3(i + vec3(1.0,0.0,0.0));
+                    float c = hash3(i + vec3(0.0,1.0,0.0));
+                    float d = hash3(i + vec3(1.0,1.0,0.0));
+                    float e = hash3(i + vec3(0.0,0.0,1.0));
+                    float f1= hash3(i + vec3(1.0,0.0,1.0));
+                    float g = hash3(i + vec3(0.0,1.0,1.0));
+                    float h = hash3(i + vec3(1.0,1.0,1.0));
+                    return mix(mix(mix(a,b,u.x), mix(c,d,u.x), u.y),
+                               mix(mix(e,f1,u.x), mix(g,h,u.x), u.y), u.z);
+                }
+                float fbm3(vec3 p){
+                    float v = 0.0; float a = 0.5;
+                    for (int i = 0; i < 4; i++){ v += a * vnoise3(p); p *= 2.0; a *= 0.5; }
+                    return v;
+                }
+                float warpedFbm3(vec3 p){
+                    vec3 w = vec3(fbm3(p), fbm3(p + vec3(5.2,1.3,0.0)), fbm3(p + vec3(0.0,7.7,3.1)));
+                    return fbm3(p + w * 2.1);
+                }
+                float hash2(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+                float vnoise2(vec2 p){
+                    vec2 i = floor(p); vec2 f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+                    return mix(mix(hash2(i), hash2(i+vec2(1.0,0.0)), u.x),
+                               mix(hash2(i+vec2(0.0,1.0)), hash2(i+vec2(1.0,1.0)), u.x), u.y);
+                }
+                void main(){
+                    vec3 dir = normalize(vDir);
+                    float elev = dir.y;
+
+                    vec3 COL_DEEP   = vec3(0.018, 0.010, 0.055);
+                    vec3 COL_VIOLET = vec3(0.090, 0.045, 0.190);
+                    vec3 COL_TEAL   = vec3(0.030, 0.110, 0.180);
+                    vec3 HI_MAGENTA = vec3(0.520, 0.120, 0.620);
+                    vec3 HI_CYAN    = vec3(0.080, 0.520, 0.680);
+
+                    vec3 lower = mix(COL_DEEP, COL_VIOLET, smoothstep(-0.6, 0.1, elev));
+                    vec3 upper = mix(COL_VIOLET, COL_TEAL, smoothstep(0.0, 0.7, elev));
+                    vec3 grad  = mix(lower, upper, smoothstep(-0.1, 0.5, elev));
+
+                    vec3 cc = dir * 2.6 + vec3(uTime * 0.035);
+                    float base = warpedFbm3(cc);
+                    float detail = fbm3(dir * 6.5 + vec3(uTime * 0.05));
+                    float neb = base * 0.8 + detail * 0.2;
+
+                    float frontFade = smoothstep(-1.0, -0.2, dir.z) * 0.7 + 0.3;
+                    float mask = smoothstep(0.54, 0.88, neb) * frontFade;
+                    float hue = sin(dir.x * 2.3 + dir.z * 1.7 + uTime * 0.05) * 0.5 + 0.5;
+                    vec3 hi = mix(HI_CYAN, HI_MAGENTA, hue);
+                    vec3 col = mix(grad, hi, mask * 0.42);
+
+                    vec2 starUv = (dir.xy + dir.zz * 0.5) * 90.0;
+                    float sn = vnoise2(starUv);
+                    float sm = smoothstep(0.986, 1.0, sn) * smoothstep(-0.2, 0.4, elev);
+                    col += vec3(0.85, 0.92, 1.0) * sm;
+
+                    gl_FragColor = vec4(clamp(col, 0.0, 1.0) * uIntensity, 1.0);
+                }
+            `,
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.renderOrder = -1000;
+        mesh.frustumCulled = false;
+        this.nebulaSky = mesh;
+        this.nebulaSkyUniforms = uniforms;
+        this.scene.add(mesh);
     }
 
     setupLighting() {
@@ -931,6 +1043,11 @@ export default class ThreeJSIntroRenderer {
         this.camera.position.z = 40;
         this.cameraParallax.apply(this.camera, delta);
 
+        // Nebula sky drift
+        if (this.nebulaSkyUniforms) {
+            this.nebulaSkyUniforms.uTime.value = time;
+        }
+
         // 2. Star field rotation
         if (this.starSystem) {
             this.starSystem.rotation.y = time * 0.02;
@@ -1238,9 +1355,28 @@ export default class ThreeJSIntroRenderer {
         }
     }
 
+    /**
+     * Phase F — dim the nebula backdrop behind the menu so it never competes with
+     * the cards (parity with the WebGPU path). Called (optional-chained) by
+     * intro-animation when entering/leaving background-only mode.
+     */
+    setBackgroundMode(enabled) {
+        this.isBackgroundMode = !!enabled;
+        if (this.nebulaSkyUniforms) {
+            this.nebulaSkyUniforms.uIntensity.value = enabled ? 0.5 : 1.0;
+        }
+    }
+
     destroy() {
         window.removeEventListener('resize', this.boundResizeHandler);
         this.cameraParallax?.detach();
+
+        if (this.nebulaSky) {
+            this.nebulaSky.geometry?.dispose();
+            this.nebulaSky.material?.dispose();
+            this.nebulaSky = null;
+            this.nebulaSkyUniforms = null;
+        }
 
         // Clean up geometries and materials
         // (Simplified cleanup for intro duration)

@@ -9,6 +9,8 @@ struct Params {
     colorB: vec4f,
     misc: vec4f,
     fx: vec4f,
+    star0: vec4f, // temperature, agitation, coronaEnergy, breath
+    star1: vec4f, // novaFlash, cmePulse, cameraPush, reserved
 };
 
 struct VSOut {
@@ -20,6 +22,7 @@ struct VSOut {
 @group(0) @binding(1) var scene_texture: texture_2d<f32>;
 @group(0) @binding(2) var scene_sampler: sampler;
 @group(0) @binding(3) var history_texture: texture_2d<f32>;
+@group(0) @binding(4) var bloom_texture: texture_2d<f32>;
 
 fn hash12(p: vec2f) -> f32 {
     return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453123);
@@ -70,11 +73,14 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
     let texel = params.resolution.zw;
     let aspect = max(params.sim.z, 0.001);
 
-    // Unpack gameplay FX
+    // Unpack gameplay FX + StellarConductor life-state
     let shockwave = params.fx.x;
     let flare = params.fx.y;
     let flash = params.fx.z;
     let intensity = params.fx.w;
+    let temperature = params.star0.x;
+    let corona_energy = params.star0.z;
+    let time = params.sim.x;
 
     // ============================================================
     // GRAVITATIONAL LENSING — subtle UV distortion near ember core
@@ -86,9 +92,28 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
     let lens_strength = 0.012 + intensity * 0.004 + flare * 0.008;
     let lens_ring = exp(-lens_dist * 12.0) * (1.0 - exp(-lens_dist * 60.0));
     let lens_dir = normalize(to_ember + vec2f(0.00001));
-    let lensed_uv = uv + lens_dir * lens_ring * lens_strength;
+    var lensed_uv = uv + lens_dir * lens_ring * lens_strength;
 
-    let base_raw = textureSampleLevel(scene_texture, scene_sampler, lensed_uv, 0.0).rgb;
+    // ============================================================
+    // HEAT-HAZE — refractive shimmer in the hot air near the star
+    // ============================================================
+    let heat_prox = exp(-lens_dist * 3.2);
+    let heat_n = ve_noise3(vec3f(uv * 22.0, time * 0.7));
+    let heat_n2 = ve_noise3(vec3f(uv * 22.0 + vec2f(7.3, 2.1), time * 0.7 + 4.0));
+    let heat_amp = heat_prox * (0.0025 + corona_energy * 0.004 + flare * 0.003);
+    lensed_uv = lensed_uv + (vec2f(heat_n, heat_n2) - 0.5) * heat_amp;
+
+    // ============================================================
+    // CHROMATIC ABERRATION — edge-weighted radial RGB split
+    // ============================================================
+    let ca_dir = normalize(uv - vec2f(0.5) + vec2f(1e-5));
+    let ca_edge = dot(uv - vec2f(0.5), uv - vec2f(0.5)); // ~r^2 from centre
+    let ca_off = ca_dir * ca_edge * (0.004 + flare * 0.004);
+    let base_raw = vec3f(
+        textureSampleLevel(scene_texture, scene_sampler, lensed_uv + ca_off, 0.0).r,
+        textureSampleLevel(scene_texture, scene_sampler, lensed_uv, 0.0).g,
+        textureSampleLevel(scene_texture, scene_sampler, lensed_uv - ca_off, 0.0).b,
+    );
     let cardinal_neighbors = (
         textureSampleLevel(scene_texture, scene_sampler, lensed_uv + vec2f(-1.0, 0.0) * texel, 0.0).rgb
         + textureSampleLevel(scene_texture, scene_sampler, lensed_uv + vec2f(1.0, 0.0) * texel, 0.0).rgb
@@ -100,21 +125,14 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
     let sharpness = clamp(params.misc.w, 0.0, 0.35) * mix(0.35, 1.0, hot_guard);
     let base = max(base_raw + detail * sharpness, vec3f(0.0));
 
-    // Dynamic bloom: stronger during flare events
-    let bloom_boost = 1.0 + flare * 1.2 + flash * 1.8 + intensity * 0.15;
+    // Dynamic bloom: stronger during flare events (tamed so peaks don't whiteout)
+    let bloom_boost = 1.0 + flare * 0.45 + flash * 0.6 + intensity * 0.1;
 
-    var bloom = vec3f(0.0);
-    bloom = bloom + bright_sample(lensed_uv + vec2f(-1.0, 0.0) * texel) * 0.11;
-    bloom = bloom + bright_sample(lensed_uv + vec2f(1.0, 0.0) * texel) * 0.11;
-    bloom = bloom + bright_sample(lensed_uv + vec2f(0.0, -1.0) * texel) * 0.06;
-    bloom = bloom + bright_sample(lensed_uv + vec2f(0.0, 1.0) * texel) * 0.06;
-    bloom = bloom + bright_sample(lensed_uv + vec2f(-3.2, 0.0) * texel) * 0.06;
-    bloom = bloom + bright_sample(lensed_uv + vec2f(3.2, 0.0) * texel) * 0.06;
-    bloom = bloom + bright_sample(lensed_uv + vec2f(-1.8, -1.8) * texel) * 0.05;
-    bloom = bloom + bright_sample(lensed_uv + vec2f(1.8, 1.8) * texel) * 0.05;
-    bloom = bloom + bright_sample(lensed_uv) * 0.14;
+    // Soft, wide HDR bloom from the dual-filter pyramid (bloom-*.wgsl), already
+    // bright-passed and energy-preserving — replaces the old single-pass taps.
+    var bloom = textureSampleLevel(bloom_texture, scene_sampler, lensed_uv, 0.0).rgb;
 
-    // Anamorphic streaks — amplified during events
+    // Anamorphic streaks — directional; kept here until the Phase 4 lens-flare pass.
     let streak_strength = params.post.z + flare * 0.04;
     if (streak_strength > 0.0001) {
         bloom = bloom + bright_sample(lensed_uv + vec2f(-8.0, 0.0) * texel) * streak_strength * 0.45;
@@ -123,19 +141,11 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         bloom = bloom + bright_sample(lensed_uv + vec2f(15.0, 0.0) * texel) * streak_strength * 0.24;
     }
 
-    // Extra wide bloom during big events
-    if (flare > 0.1) {
-        bloom = bloom + bright_sample(lensed_uv + vec2f(-6.0, -3.0) * texel) * flare * 0.025;
-        bloom = bloom + bright_sample(lensed_uv + vec2f(6.0, 3.0) * texel) * flare * 0.025;
-        bloom = bloom + bright_sample(lensed_uv + vec2f(-3.0, -6.0) * texel) * flare * 0.02;
-        bloom = bloom + bright_sample(lensed_uv + vec2f(3.0, 6.0) * texel) * flare * 0.02;
-    }
-
     // ============================================================
     // VOLUMETRIC GOD RAYS — 6-sample radial march (was 10)
     // Larger steps + higher weight compensate for fewer samples
     // ============================================================
-    let ray_weight = 0.09 + flare * 0.055 + flash * 0.08;
+    let ray_weight = 0.045 + flare * 0.025 + flash * 0.04;
     var god_rays = vec3f(0.0);
     var ray_uv = lensed_uv;
     let ray_dir = (ember_ndc - lensed_uv) * 0.14;
@@ -150,7 +160,28 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         ray_illumination_decay = ray_illumination_decay * 0.88;
     }
 
-    var color = base + bloom * params.post.x * bloom_boost + god_rays;
+    // The dual-filter pyramid is energy-rich (it accumulates every mip), so the
+    // strength knob is scaled down vs the old single-pass taps.
+    var color = base + bloom * params.post.x * 0.6 * bloom_boost + god_rays;
+
+    // ============================================================
+    // CINEMATIC LENS FLARE (lens-flare.wgsl) — gated by anamorphic strength
+    // so it's off on Low and scales up with quality / events.
+    // ============================================================
+    let flare_strength = params.post.z;
+    if (flare_strength > 0.0001) {
+        let disp = 0.32;
+        let ghosts = ve_lens_ghosts(bloom_texture, scene_sampler, uv, disp, 0.012 + flare * 0.01);
+        let halo = ve_lens_halo(bloom_texture, scene_sampler, uv, 0.42);
+        // Warm lens-coating tint so ghosts read as ember-coloured, not grey.
+        let coat = vec3f(1.0, 0.72, 0.45);
+        color = color + (ghosts + halo) * coat * (flare_strength * 5.0 + flare * 0.4);
+
+        // Diffraction starburst anchored on the star, energised by the corona.
+        let burst = ve_starburst(uv, ember_ndc, aspect, time);
+        color = color + ve_blackbody(min(1.0, temperature + 0.15)) * burst
+            * (0.5 + corona_energy * 1.2 + flare * 1.5) * (0.4 + flare_strength * 6.0);
+    }
 
     let event_temporal_suppression = clamp(flare * 0.5 + flash * 0.8 + shockwave * 0.3, 0.0, 0.85);
     let bright_temporal_suppression = smoothstep(0.7, 2.5, luminance(color)) * 0.55;
@@ -172,12 +203,15 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
     let vignette = pow(clamp(vignette_coord.x * vignette_coord.y * 20.0, 0.0, 1.0), vignette_power);
     color = color * mix(1.0 - params.misc.x, 1.0, vignette);
 
-    // Exposure boosted during flash
-    let dynamic_exposure = params.colorA.w + flash * 0.3 + flare * 0.12;
+    // Exposure boosted during flash (gentle — bloom already carries the punch)
+    let dynamic_exposure = params.colorA.w + flash * 0.15 + flare * 0.06;
     color = aces(color * dynamic_exposure);
 
-    let dither = (hash12(uv * params.resolution.xy + params.sim.xx) - 0.5) * params.misc.y;
-    color = clamp(color + vec3f(dither), vec3f(0.0), vec3f(1.0));
+    // Film grain — animated per frame, a touch stronger in shadows (filmic).
+    let grain_seed = uv * params.resolution.xy + vec2f(time * 91.7, params.sim.w);
+    let grain = hash12(grain_seed) - 0.5;
+    let grain_amt = params.misc.y + 0.012;
+    color = clamp(color + grain * grain_amt * (1.0 - luminance(color) * 0.6), vec3f(0.0), vec3f(1.0));
 
     return vec4f(color, 1.0);
 }

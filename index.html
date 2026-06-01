@@ -82,6 +82,9 @@
     <link rel="stylesheet" href="/styles/custom-cursor.css">
     <link rel="stylesheet" href="/styles/menu-aaa.css">
     <link rel="stylesheet" href="/styles/settings-aaa.css">
+    <link rel="stylesheet" href="/styles/serenity-hub-aaa.css">
+    <link rel="stylesheet" href="/styles/high-scores-aaa.css">
+    <link rel="stylesheet" href="/styles/demo-browser-aaa.css">
 </head>
 
 <body>
@@ -341,14 +344,8 @@
             <div id="ice-temple-snow"></div>
             <div id="ice-temple-refractions"></div>
         </div>
-        <div id="himalayan-peak-theme" class="theme-container">
-            <div id="himalayan-sky"></div>
-            <div id="himalayan-sun"></div>
-            <div id="himalayan-sun-rays"></div>
-            <div id="himalayan-clouds"></div>
-            <div id="himalayan-flags"></div>
-            <div id="himalayan-particles"></div>
-        </div>
+        <!-- Himalayan Peak: AAA WebGPU rebuild mounts a single canvas (see himalayan-peak-theme.js) -->
+        <div id="himalayan-peak-theme" class="theme-container"></div>
         <div id="electric-dreams-theme" class="theme-container">
             <div id="electric-veins"></div>
             <div id="electric-particles"></div>
@@ -1588,149 +1585,174 @@
             <div class="settings-scroll-container">
                 <div class="settings-tab-content active" id="settings-general">
                     <div class="settings-grid">
-                        <div class="setting">
-                            <label>Main Menu:</label>
-                            <button id="change-game-mode-btn" class="setting-button">Return to Main Menu</button>
-                        </div>
-                        <div class="setting">
-                            <label for="das-delay">DAS Delay (ms):</label>
-                            <div class="slider-container">
-                                <input type="range" id="das-delay" min="50" max="300" step="10"><span
-                                    id="das-delay-value">150</span>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">General</h3>
+                            <div class="setting">
+                                <label>Main Menu:</label>
+                                <button id="change-game-mode-btn" class="setting-button">Return to Main Menu</button>
                             </div>
                         </div>
-                        <div class="setting">
-                            <label for="das-interval">DAS Interval (ms):</label>
-                            <div class="slider-container">
-                                <input type="range" id="das-interval" min="10" max="100" step="5"><span
-                                    id="das-interval-value">50</span>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Input Timing</h3>
+                            <div class="setting">
+                                <label for="das-delay">DAS Delay (ms):</label>
+                                <div class="slider-container">
+                                    <input type="range" id="das-delay" min="50" max="300" step="10"><span
+                                        id="das-delay-value">150</span>
+                                </div>
+                            </div>
+                            <div class="setting">
+                                <label for="das-interval">DAS Interval (ms):</label>
+                                <div class="slider-container">
+                                    <input type="range" id="das-interval" min="10" max="100" step="5"><span
+                                        id="das-interval-value">50</span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="settings-tab-content" id="settings-display">
                     <div class="settings-grid">
-                        <div class="setting">
-                            <label for="display-mode">Display Mode:</label>
-                            <select id="display-mode" class="setting-select">
-                                <option value="windowed">Windowed</option>
-                                <option value="fullscreen">Fullscreen</option>
-                                <option value="borderless">Borderless Window</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="graphics-quality">Graphics Quality:</label>
-                            <select id="graphics-quality" class="setting-select">
-                                <option value="Minimal">Minimal (Lowest)</option>
-                                <option value="Low">Low (Performance)</option>
-                                <option value="Medium">Medium (Balanced)</option>
-                                <option value="High">High (Quality)</option>
-                                <option value="Ultra">Ultra (Maximum)</option>
-                                <option value="Extreme">Extreme (Highest)</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="render-quality">Render Quality:</label>
-                            <div class="slider-container">
-                                <input type="range" id="render-quality" min="50" max="150" value="100" step="5">
-                                <span id="render-quality-value">100% (Native)</span>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Display &amp; Resolution</h3>
+                            <div class="setting">
+                                <label for="display-mode">Display Mode:</label>
+                                <select id="display-mode" class="setting-select">
+                                    <option value="windowed">Windowed</option>
+                                    <option value="fullscreen">Fullscreen</option>
+                                    <option value="borderless">Borderless Window</option>
+                                </select>
                             </div>
-                            <small
-                                style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
-                                Lower = faster<br>
-                                Higher = sharper
-                            </small>
-                        </div>
-                        <div class="setting">
-                            <label for="fps-target">Frame Rate Target:</label>
-                            <select id="fps-target" class="setting-select">
-                                <option value="30">30 FPS (Battery Saver)</option>
-                                <option value="60">60 FPS (Standard)</option>
-                                <option value="120">120 FPS (High Refresh)</option>
-                                <option value="144">144 FPS (Gaming)</option>
-                                <option value="240">240 FPS (Pro)</option>
-                                <option value="0">Unlimited</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="vsync-toggle">Vertical Sync (VSync):</label>
-                            <select id="vsync-toggle" class="setting-select">
-                                <option value="true">On (Smooth)</option>
-                                <option value="false">Off (Low Latency)</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="antialiasing-toggle">Anti-Aliasing:</label>
-                            <select id="antialiasing-toggle" class="setting-select">
-                                <option value="true">On (Smoother edges)</option>
-                                <option value="false">Off (Better performance)</option>
-                            </select>
-                            <small
-                                style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
-                                Disabling improves performance on high-DPI displays. Requires theme reload.
-                            </small>
-                        </div>
-                        <div class="setting">
-                            <label for="show-fps-counter">Show FPS Counter:</label>
-                            <select id="show-fps-counter" class="setting-select">
-                                <option value="false">Off</option>
-                                <option value="true">On</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="custom-cursor-enabled">Cosmic Cursor:</label>
-                            <select id="custom-cursor-enabled" class="setting-select">
-                                <option value="true">On</option>
-                                <option value="false">Off</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="custom-cursor-intensity">Cursor Intensity:</label>
-                            <select id="custom-cursor-intensity" class="setting-select">
-                                <option value="low">Low</option>
-                                <option value="standard">Standard</option>
-                                <option value="high">High</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="custom-cursor-visibility">Cursor Visibility:</label>
-                            <select id="custom-cursor-visibility" class="setting-select">
-                                <option value="standard">Standard</option>
-                                <option value="high-visibility">High Visibility</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="custom-cursor-motion">Cursor Motion:</label>
-                            <select id="custom-cursor-motion" class="setting-select">
-                                <option value="system">Follow System</option>
-                                <option value="off">Full Motion</option>
-                                <option value="on">Reduced Motion</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="background-tab-behavior">Background Tab Behavior:</label>
-                            <select id="background-tab-behavior" class="setting-select">
-                                <option value="pause">Pause (Maximum Battery Savings)</option>
-                                <option value="reduce">Reduce to 10 FPS (Balanced)</option>
-                                <option value="continue">Continue (No Change)</option>
-                            </select>
-                            <small
-                                style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
-                                Controls rendering when browser tab is hidden. "Pause" saves the most battery/CPU.
-                            </small>
-                        </div>
-                        <div class="setting" id="desktop-devtools-setting" hidden>
-                            <label>Developer Tools:</label>
-                            <div>
-                                <button id="open-devtools-btn" class="setting-button">Open DevTools</button>
-                                <small id="open-devtools-status"
-                                    style="color: rgba(255, 255, 255, 0.72); font-size: 11px; display: block; margin-top: 6px;"
-                                    hidden></small>
+                            <div class="setting">
+                                <label for="graphics-quality">Graphics Quality:</label>
+                                <select id="graphics-quality" class="setting-select">
+                                    <option value="Minimal">Minimal (Lowest)</option>
+                                    <option value="Low">Low (Performance)</option>
+                                    <option value="Medium">Medium (Balanced)</option>
+                                    <option value="High">High (Quality)</option>
+                                    <option value="Ultra">Ultra (Maximum)</option>
+                                    <option value="Extreme">Extreme (Highest)</option>
+                                </select>
                             </div>
-                            <small
-                                style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
-                                Electron desktop only. Opens DevTools docked inside the game window.
-                            </small>
+                            <div class="setting">
+                                <label for="render-quality">Render Quality:</label>
+                                <div class="slider-container">
+                                    <input type="range" id="render-quality" min="50" max="150" value="100" step="5">
+                                    <span id="render-quality-value">100% (Native)</span>
+                                </div>
+                                <small
+                                    style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
+                                    Lower = faster<br>
+                                    Higher = sharper
+                                </small>
+                            </div>
+                        </div>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Frame Pacing</h3>
+                            <div class="setting">
+                                <label for="fps-target">Frame Rate Target:</label>
+                                <select id="fps-target" class="setting-select">
+                                    <option value="30">30 FPS (Battery Saver)</option>
+                                    <option value="60">60 FPS (Standard)</option>
+                                    <option value="120">120 FPS (High Refresh)</option>
+                                    <option value="144">144 FPS (Gaming)</option>
+                                    <option value="240">240 FPS (Pro)</option>
+                                    <option value="0">Unlimited</option>
+                                </select>
+                            </div>
+                            <div class="setting">
+                                <label for="vsync-toggle">Vertical Sync (VSync):</label>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input" id="vsync-toggle" role="switch">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Quality</h3>
+                            <div class="setting">
+                                <label for="antialiasing-toggle">Anti-Aliasing:</label>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input" id="antialiasing-toggle" role="switch">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
+                                </label>
+                                <small
+                                    style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
+                                    Disabling improves performance on high-DPI displays. Requires theme reload.
+                                </small>
+                            </div>
+                            <div class="setting">
+                                <label for="show-fps-counter">Show FPS Counter:</label>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input" id="show-fps-counter" role="switch">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Cosmic Cursor</h3>
+                            <div class="setting">
+                                <label for="custom-cursor-enabled">Cosmic Cursor:</label>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input" id="custom-cursor-enabled" role="switch">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
+                                </label>
+                            </div>
+                            <div class="setting">
+                                <label for="custom-cursor-intensity">Cursor Intensity:</label>
+                                <select id="custom-cursor-intensity" class="setting-select">
+                                    <option value="low">Low</option>
+                                    <option value="standard">Standard</option>
+                                    <option value="high">High</option>
+                                </select>
+                            </div>
+                            <div class="setting">
+                                <label for="custom-cursor-visibility">Cursor Visibility:</label>
+                                <select id="custom-cursor-visibility" class="setting-select">
+                                    <option value="standard">Standard</option>
+                                    <option value="high-visibility">High Visibility</option>
+                                </select>
+                            </div>
+                            <div class="setting">
+                                <label for="custom-cursor-motion">Cursor Motion:</label>
+                                <select id="custom-cursor-motion" class="setting-select">
+                                    <option value="system">Follow System</option>
+                                    <option value="off">Full Motion</option>
+                                    <option value="on">Reduced Motion</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Performance</h3>
+                            <div class="setting">
+                                <label for="background-tab-behavior">Background Tab Behavior:</label>
+                                <select id="background-tab-behavior" class="setting-select">
+                                    <option value="pause">Pause (Maximum Battery Savings)</option>
+                                    <option value="reduce">Reduce to 10 FPS (Balanced)</option>
+                                    <option value="continue">Continue (No Change)</option>
+                                </select>
+                                <small
+                                    style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
+                                    Controls rendering when browser tab is hidden. "Pause" saves the most battery/CPU.
+                                </small>
+                            </div>
+                            <div class="setting" id="desktop-devtools-setting" hidden>
+                                <label>Developer Tools:</label>
+                                <div>
+                                    <button id="open-devtools-btn" class="setting-button">Open DevTools</button>
+                                    <small id="open-devtools-status"
+                                        style="color: rgba(255, 255, 255, 0.72); font-size: 11px; display: block; margin-top: 6px;"
+                                        hidden></small>
+                                </div>
+                                <small
+                                    style="color: rgba(255, 255, 255, 0.6); font-size: 11px; display: block; margin-top: 4px;">
+                                    Electron desktop only. Opens DevTools docked inside the game window.
+                                </small>
+                            </div>
                         </div>
                     </div>
                     <div
@@ -1744,113 +1766,139 @@
                 </div>
                 <div class="settings-tab-content" id="settings-audio">
                     <div class="settings-grid">
-                        <div class="setting">
-                            <label for="music-volume">Music Volume:</label>
-                            <div class="slider-container">
-                                <input type="range" id="music-volume" min="0" max="100" step="1"><span
-                                    id="music-volume-value">100</span>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Volume</h3>
+                            <div class="setting">
+                                <label for="music-volume">Music Volume:</label>
+                                <div class="slider-container">
+                                    <input type="range" id="music-volume" min="0" max="100" step="1"><span
+                                        id="music-volume-value">100</span>
+                                </div>
+                            </div>
+                            <div class="setting">
+                                <label for="sfx-volume">SFX Volume:</label>
+                                <div class="slider-container">
+                                    <input type="range" id="sfx-volume" min="0" max="100" step="1"><span
+                                        id="sfx-volume-value">100</span>
+                                </div>
                             </div>
                         </div>
-                        <div class="setting">
-                            <label for="sfx-volume">SFX Volume:</label>
-                            <div class="slider-container">
-                                <input type="range" id="sfx-volume" min="0" max="100" step="1"><span
-                                    id="sfx-volume-value">100</span>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Sound</h3>
+                            <div class="setting">
+                                <label for="sfx-set">Sound Effects:</label>
+                                <select id="sfx-set" class="setting-select">
+                                    <option value="Zen">Zen</option>
+                                    <option value="Retro">Retro</option>
+                                    <option value="Pulse">Pulse</option>
+                                    <option value="Nebula">Nebula</option>
+                                    <option value="Cosmic">Cosmic</option>
+                                    <option value="Galaxy">Galaxy</option>
+                                    <option value="Pyrestorm">Pyrestorm</option>
+                                    <option value="SwedishForest">Swedish Forest</option>
+                                    <option value="Bioluminescence">Bioluminescence</option>
+                                    <option value="Wolfhour">Wolfhour</option>
+                                    <option value="NeonDusk">Neon Dusk</option>
+                                    <option value="BloodMoon">Blood Moon</option>
+                                    <option value="StellarDrift">Stellar Drift</option>
+                                    <option value="CinderDrift">Cinder Drift</option>
+                                </select>
                             </div>
                         </div>
-                        <div class="setting">
-                            <label for="sfx-set">Sound Effects:</label>
-                            <select id="sfx-set" class="setting-select">
-                                <option value="Zen">Zen</option>
-                                <option value="Retro">Retro</option>
-                                <option value="Pulse">Pulse</option>
-                                <option value="Nebula">Nebula</option>
-                                <option value="Cosmic">Cosmic</option>
-                                <option value="Galaxy">Galaxy</option>
-                                <option value="Pyrestorm">Pyrestorm</option>
-                                <option value="SwedishForest">Swedish Forest</option>
-                                <option value="Bioluminescence">Bioluminescence</option>
-                                <option value="Wolfhour">Wolfhour</option>
-                                <option value="NeonDusk">Neon Dusk</option>
-                                <option value="BloodMoon">Blood Moon</option>
-                                <option value="StellarDrift">Stellar Drift</option>
-                                <option value="CinderDrift">Cinder Drift</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="theme-linked-mode">Theme-Linked Music:</label>
-                            <select id="theme-linked-mode" class="setting-select">
-                                <option value="false">Off</option>
-                                <option value="true">On</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="theme-linked-sfx">Theme-Linked SFX:</label>
-                            <select id="theme-linked-sfx" class="setting-select">
-                                <option value="false">Off</option>
-                                <option value="true">On</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="auto-theme-change">Auto Theme on Music Change:</label>
-                            <select id="auto-theme-change" class="setting-select">
-                                <option value="false">Off</option>
-                                <option value="true">On</option>
-                            </select>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Theme Sync</h3>
+                            <div class="setting">
+                                <label for="theme-linked-mode">Theme-Linked Music:</label>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input" id="theme-linked-mode" role="switch">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
+                                </label>
+                            </div>
+                            <div class="setting">
+                                <label for="theme-linked-sfx">Theme-Linked SFX:</label>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input" id="theme-linked-sfx" role="switch">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
+                                </label>
+                            </div>
+                            <div class="setting">
+                                <label for="auto-theme-change">Auto Theme on Music Change:</label>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input" id="auto-theme-change" role="switch">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
                 <div class="settings-tab-content" id="settings-visual">
                     <div class="settings-grid">
-                        <div class="setting">
-                            <label for="background-mode">Background:</label>
-                            <select id="background-mode" class="setting-select">
-                                <option value="Level">Level Transition</option>
-                                <option value="Random">Random Transition</option>
-                                <option value="Specific">Set Specific</option>
-                            </select>
-                        </div>
-                        <div class="setting" id="random-theme-interval-setting">
-                            <label for="random-theme-interval">Random Theme Interval (seconds):</label>
-                            <div class="slider-container">
-                                <input type="range" id="random-theme-interval" min="10" max="300" step="10"><span
-                                    id="random-theme-interval-value">60</span>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Background</h3>
+                            <div class="setting">
+                                <label for="background-mode">Background:</label>
+                                <select id="background-mode" class="setting-select">
+                                    <option value="Level">Level Transition</option>
+                                    <option value="Random">Random Transition</option>
+                                    <option value="Specific">Set Specific</option>
+                                </select>
+                            </div>
+                            <div class="setting" id="random-theme-interval-setting">
+                                <label for="random-theme-interval">Random Theme Interval (seconds):</label>
+                                <div class="slider-container">
+                                    <input type="range" id="random-theme-interval" min="10" max="300" step="10"><span
+                                        id="random-theme-interval-value">60</span>
+                                </div>
                             </div>
                         </div>
-                        <div class="setting">
-                            <label for="piece-lock-ripple">Piece Lock Ripple Effect:</label>
-                            <select id="piece-lock-ripple" class="setting-select">
-                                <option value="true">On</option>
-                                <option value="false">Off</option>
-                            </select>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Effects</h3>
+                            <div class="setting">
+                                <label for="piece-lock-ripple">Piece Lock Ripple Effect:</label>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input" id="piece-lock-ripple" role="switch">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
+                                </label>
+                            </div>
+                            <div class="setting">
+                                <label for="combo-popup-effect">Combo Popup Effect:</label>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input" id="combo-popup-effect" role="switch">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
+                                </label>
+                            </div>
+                            <div class="setting">
+                                <label for="line-clear-effects">Line Clear Effects:</label>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input" id="line-clear-effects" role="switch">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
+                                </label>
+                            </div>
+                            <div class="setting">
+                                <label for="background-combo-effects">Background Combo Effects:</label>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input" id="background-combo-effects" role="switch">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
+                                </label>
+                            </div>
                         </div>
-                        <div class="setting">
-                            <label for="combo-popup-effect">Combo Popup Effect:</label>
-                            <select id="combo-popup-effect" class="setting-select">
-                                <option value="true">On</option>
-                                <option value="false">Off</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="line-clear-effects">Line Clear Effects:</label>
-                            <select id="line-clear-effects" class="setting-select">
-                                <option value="true">On</option>
-                                <option value="false">Off</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="background-combo-effects">Background Combo Effects:</label>
-                            <select id="background-combo-effects" class="setting-select">
-                                <option value="true">On</option>
-                                <option value="false">Off</option>
-                            </select>
-                        </div>
-                        <div class="setting">
-                            <label for="theme-based-tetrominos">Theme-Based Tetrominos:</label>
-                            <select id="theme-based-tetrominos" class="setting-select">
-                                <option value="true">On (Use theme colors)</option>
-                                <option value="false">Off (Classic colors)</option>
-                            </select>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Tetrominoes</h3>
+                            <div class="setting">
+                                <label for="theme-based-tetrominos">Theme-Based Tetrominos:</label>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input" id="theme-based-tetrominos" role="switch">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                    <span class="cs-toggle-track"><span class="cs-toggle-thumb"></span></span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2451,29 +2499,27 @@
         <div class="modal-content">
             <h1>HIGH SCORES</h1>
             <div class="settings-scroll-container">
-                <div id="high-scores-list" style="padding: 20px;"></div>
-                <div id="statistics-section"
-                    style="padding: 20px; border-top: 1px solid rgba(255,255,255,0.2); margin-top: 20px;"></div>
+                <div id="high-scores-list" class="hs-list"></div>
+                <div id="statistics-section" class="hs-stats"></div>
             </div>
             <button id="close-high-scores" class="action-btn">Close</button>
         </div>
     </div>
 
     <div id="demo-browser-modal" class="modal">
-        <div class="modal-content demo-browser-content" style="max-width: 800px; width: 90%;">
+        <div class="modal-content demo-browser-content">
             <div class="settings-header">
                 <h1>REPLAYS</h1>
                 <button class="modal-close-btn" id="close-demo-browser">✕</button>
             </div>
 
-            <div class="demo-browser-toolbar" style="display: flex; gap: 10px; margin-bottom: 20px;">
-                <button id="import-demo-btn" class="action-btn" style="font-size: 0.9em; padding: 8px 16px;">Import
-                    File</button>
+            <div class="demo-browser-toolbar">
+                <button id="import-demo-btn" class="action-btn">Import File</button>
                 <input type="file" id="import-demo-input" accept=".json" style="display: none;">
             </div>
 
-            <div class="settings-scroll-container" style="height: 400px;">
-                <div id="demo-list" class="demo-list" style="display: flex; flex-direction: column; gap: 10px;">
+            <div class="settings-scroll-container">
+                <div id="demo-list" class="demo-list">
                     <!-- Demos will be populated here -->
                 </div>
             </div>

@@ -22,14 +22,17 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { WINTER_TETROMINOS } from './winter-tetrominos.js';
-import { WinterPost } from './winter-post.js';
-import { SnowParticleCompute } from './winter-compute.js';
+import { StormDirector } from './composition/storm-director.js';
+import { createStormDebugOverlay } from './composition/storm-debug-overlay.js';
+import { WinterPipeline } from './post/winter-pipeline.js';
+import { StormField } from './sim/storm-field.js';
+import { createAuroraVolume } from './rendering/aurora-volume.js';
 import {
-    createWinterSkyNodeMaterial,
     createWinterStarfieldNodeMaterial,
     createWinterMoonNodeMaterial,
     createWinterMoonHaloNodeMaterial,
     createWinterMountainNodeMaterial,
+    createWinterGroundNodeMaterial,
     createWinterAuroraNodeMaterial,
     createWinterSnowNodeMaterial,
     createWinterSnowflakeBillboardMaterial,
@@ -342,7 +345,7 @@ const QUALITY_PRESETS = {
 
 const WEBGPU_QUALITY_PRESETS = {
     'Extreme+': {
-        snowCount: 30000,
+        snowCount: 12000,
         iceBurstCount: 600,
         auroraLayers: 5,
         auroraSegments: 192,
@@ -352,8 +355,8 @@ const WEBGPU_QUALITY_PRESETS = {
         bloomScale: 0.7,
         iceWispCount: 50,
         iceWispTrailSegments: 6,
-        closeSnowflakeCount: 260,
-        lensSnowflakeCount: 26,
+        closeSnowflakeCount: 180,
+        lensSnowflakeCount: 16,
         maxShootingStars: 4,
         maxIceCrystalCrashes: 4,
         maxBlizzardWaves: 3,
@@ -363,7 +366,7 @@ const WEBGPU_QUALITY_PRESETS = {
         shaftSamples: 4,
     },
     Extreme: {
-        snowCount: 22000,
+        snowCount: 9500,
         iceBurstCount: 500,
         auroraLayers: 4,
         auroraSegments: 128,
@@ -373,8 +376,8 @@ const WEBGPU_QUALITY_PRESETS = {
         bloomScale: 0.65,
         iceWispCount: 42,
         iceWispTrailSegments: 5,
-        closeSnowflakeCount: 220,
-        lensSnowflakeCount: 22,
+        closeSnowflakeCount: 155,
+        lensSnowflakeCount: 14,
         maxShootingStars: 3,
         maxIceCrystalCrashes: 3,
         maxBlizzardWaves: 2,
@@ -384,7 +387,7 @@ const WEBGPU_QUALITY_PRESETS = {
         shaftSamples: 4,
     },
     Ultra: {
-        snowCount: 18000,
+        snowCount: 7600,
         iceBurstCount: 420,
         auroraLayers: 3,
         auroraSegments: 96,
@@ -394,8 +397,8 @@ const WEBGPU_QUALITY_PRESETS = {
         bloomScale: 0.6,
         iceWispCount: 34,
         iceWispTrailSegments: 5,
-        closeSnowflakeCount: 180,
-        lensSnowflakeCount: 18,
+        closeSnowflakeCount: 125,
+        lensSnowflakeCount: 12,
         maxShootingStars: 3,
         maxIceCrystalCrashes: 3,
         maxBlizzardWaves: 2,
@@ -405,7 +408,7 @@ const WEBGPU_QUALITY_PRESETS = {
         shaftSamples: 3,
     },
     High: {
-        snowCount: 12000,
+        snowCount: 5200,
         iceBurstCount: 260,
         auroraLayers: 2,
         auroraSegments: 64,
@@ -415,8 +418,8 @@ const WEBGPU_QUALITY_PRESETS = {
         bloomScale: 0.6,
         iceWispCount: 26,
         iceWispTrailSegments: 4,
-        closeSnowflakeCount: 140,
-        lensSnowflakeCount: 13,
+        closeSnowflakeCount: 100,
+        lensSnowflakeCount: 9,
         maxShootingStars: 2,
         maxIceCrystalCrashes: 2,
         maxBlizzardWaves: 1,
@@ -426,7 +429,7 @@ const WEBGPU_QUALITY_PRESETS = {
         shaftSamples: 3,
     },
     Medium: {
-        snowCount: 8000,
+        snowCount: 3600,
         iceBurstCount: 140,
         auroraLayers: 1,
         auroraSegments: 48,
@@ -436,8 +439,8 @@ const WEBGPU_QUALITY_PRESETS = {
         bloomScale: 0.55,
         iceWispCount: 16,
         iceWispTrailSegments: 3,
-        closeSnowflakeCount: 80,
-        lensSnowflakeCount: 8,
+        closeSnowflakeCount: 60,
+        lensSnowflakeCount: 6,
         maxShootingStars: 1,
         maxIceCrystalCrashes: 1,
         maxBlizzardWaves: 1,
@@ -447,7 +450,7 @@ const WEBGPU_QUALITY_PRESETS = {
         shaftSamples: 2,
     },
     Low: {
-        snowCount: 4000,
+        snowCount: 1800,
         iceBurstCount: 70,
         auroraLayers: 1,
         auroraSegments: 32,
@@ -457,8 +460,8 @@ const WEBGPU_QUALITY_PRESETS = {
         bloomScale: 0.5,
         iceWispCount: 10,
         iceWispTrailSegments: 2,
-        closeSnowflakeCount: 40,
-        lensSnowflakeCount: 4,
+        closeSnowflakeCount: 30,
+        lensSnowflakeCount: 3,
         maxShootingStars: 1,
         maxIceCrystalCrashes: 1,
         maxBlizzardWaves: 0,
@@ -817,6 +820,10 @@ export default class WinterTheme extends BaseTheme {
         this.closeSnowflakeData = null;
         this.closeSnowflakeUniforms = null;
         this.auroraLayers = [];
+        this.auroraVolume = null;
+        this.auroraVolumeUniforms = null;
+        this.ground = null;
+        this.groundUniforms = null;
         this.skyDome = null;
         this.skyUniforms = null;
         this.mountains = [];
@@ -857,6 +864,12 @@ export default class WinterTheme extends BaseTheme {
             bloomBoost: 0,
             auroraBoost: 0,
         };
+        // Winter AAA — Storm Director spine (drives the 3-act blizzard arc).
+        // Phase 0: tracks intensity + powers the debug overlay; Phases 1–3 consume it.
+        this.stormDirector = new StormDirector();
+        this.stormDebug = null;
+        this.stormDebugEnabled = false;
+
         this.stormEnergy = 0.22;
         this.stormDirection = Math.random() > 0.5 ? 1 : -1;
         this.comboShockForce = 0;
@@ -928,6 +941,11 @@ export default class WinterTheme extends BaseTheme {
         this.closeSnowflakeFrame = 0;
         this.closeSnowflakeAccumulator = 0;
         this.forceWebGL = false;
+        this.disablePost = false;
+        this.noFlakes = false;
+        this.noStars = false;
+        this.noSnow = false;
+        this.bare = false;
         this.baselineEnabled = false;
         this.baselineFrames = [];
         this.baselineMaxFrames = 600;
@@ -1048,6 +1066,18 @@ export default class WinterTheme extends BaseTheme {
             this.mrtAuditEnabled = params.get('winterMrtAudit') === '1';
             this.forceWebGL = params.get('forceWebGL') === '1';
             this.baselineEnabled = params.get('winterBaseline') === '1';
+            this.stormDebugEnabled = params.get('winterStorm') === '1';
+            this.disablePost = params.get('winterNoPost') === '1';
+            // Diagnostic isolation flags (bisect the white-sky source).
+            this.noFlakes = params.get('winterNoFlakes') === '1';
+            this.noStars = params.get('winterNoStars') === '1';
+            this.noSnow = params.get('winterNoSnow') === '1';
+            // Master: strip ALL extra additive/transparent systems at once.
+            this.bare = params.get('winterBare') === '1';
+            if (this.bare) {
+                this.noFlakes = true;
+                this.noStars = true;
+            }
         }
         this.snowflakeTexture = createSnowflakeTexture();
 
@@ -1075,6 +1105,8 @@ export default class WinterTheme extends BaseTheme {
         this.createSkyBackground();
         this.createMoon();
         this.createMountains();
+        // The sky shell owns the stable dark gradient; curtain geometry owns the
+        // readable aurora so WebGPU post can process it without a white sky.
         if (this.qualityPreset.enableAurora) this.createAuroraSystem();
         this.createSnowParticles();
         this.createCloseSnowflakes();
@@ -1090,6 +1122,10 @@ export default class WinterTheme extends BaseTheme {
         }
         this.setupPostProcessing();
         this.setupEventListeners();
+        this.stormDirector.reset();
+        if (this.stormDebugEnabled && !this.stormDebug) {
+            this.stormDebug = createStormDebugOverlay();
+        }
         this.startAnimation();
     }
 
@@ -1112,6 +1148,7 @@ export default class WinterTheme extends BaseTheme {
 
         this.isWebGPU = this.renderer.backend?.isWebGPUBackend === true;
         this.isWebGL = this.renderer.backend?.isWebGLBackend === true;
+        console.log(`[WinterTheme] Backend: ${this.isWebGPU ? 'WebGPU' : 'WebGL2'}, post: ${this.disablePost ? 'BYPASSED' : 'on'}`);
         this.renderer.setClearColor(0x020408, 1); // Darker base
         this.basePixelRatio = this.getEffectivePixelRatio();
         this.pixelRatioScale = 1.0;
@@ -1142,7 +1179,7 @@ export default class WinterTheme extends BaseTheme {
 
     createSkyBackground() {
         // Starfield is key for deep atmosphere
-        const starCount = 5000;
+        const starCount = 3500;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(starCount * 3);
         const sizes = new Float32Array(starCount);
@@ -1163,7 +1200,7 @@ export default class WinterTheme extends BaseTheme {
             // Prefer upper hemisphere
             if (positions[i3 + 1] < -500) positions[i3 + 1] *= -1;
 
-            sizes[i] = 2.0 + Math.random() * 2.5;
+            sizes[i] = 1.1 + Math.random() * 1.8;
             phases[i] = Math.random() * Math.PI * 2;
             twinkles[i] = Math.random();
 
@@ -1219,23 +1256,28 @@ export default class WinterTheme extends BaseTheme {
         }
 
         this.starfield = new THREE.Points(geometry, material);
-        this.scene.add(this.starfield);
+        if (!this.noStars) this.scene.add(this.starfield); // diagnostic: ?winterNoStars=1
         this.starMaxCount = starCount;
         this.starfield.geometry.setDrawRange(0, starCount);
 
-        // Backdrop gradient mesh
-        const skyGeo = new THREE.SphereGeometry(4500, 32, 32);
-        let skyMat = null;
+        // Backdrop: WebGPU gets the volumetric aurora + night-sky shell (Phase 2);
+        // WebGL keeps the simple gradient dome + the separate flat-plane aurora.
         if (this.isWebGPU) {
-            const { material: skyMaterial, uniforms } = createWinterSkyNodeMaterial({
-                top: new THREE.Color(0x00030a),
-                mid: new THREE.Color(0x020613),
-                bottom: new THREE.Color(0x091222),
+            const detail = this.qualityPreset.auroraDetail ?? 0.8;
+            const auroraSteps = Math.round(12 + detail * 16); // 12..28 by preset
+            this.auroraVolume = createAuroraVolume({
+                steps: auroraSteps,
+                radius: 4500,
+                accent: this.stormDirector.accentHex,
+                moonDir: new THREE.Vector3(470, 330, -1050).normalize(),
             });
-            skyMat = skyMaterial;
-            this.skyUniforms = uniforms;
+            this.auroraVolumeUniforms = this.auroraVolume.uniforms;
+            this.skyDome = this.auroraVolume.mesh;
+            this.skyUniforms = null;
+            this.scene.add(this.skyDome);
         } else {
-            skyMat = new THREE.ShaderMaterial({
+            const skyGeo = new THREE.SphereGeometry(4500, 32, 32);
+            const skyMat = new THREE.ShaderMaterial({
                 uniforms: {
                     uTop: { value: new THREE.Color(0x00030a) },
                     uMid: { value: new THREE.Color(0x020613) },
@@ -1254,9 +1296,9 @@ export default class WinterTheme extends BaseTheme {
                 side: THREE.BackSide,
             });
             this.skyUniforms = skyMat.uniforms;
+            this.skyDome = new THREE.Mesh(skyGeo, skyMat);
+            this.scene.add(this.skyDome);
         }
-        this.skyDome = new THREE.Mesh(skyGeo, skyMat);
-        this.scene.add(this.skyDome);
     }
 
     createMoon() {
@@ -1275,16 +1317,18 @@ export default class WinterTheme extends BaseTheme {
             this.moonUniforms = null;
         }
         this.moon = new THREE.Mesh(geometry, material);
-        this.moon.position.set(500, 1000, -800);
+        // Lowered into the visible upper-right so it reads as the scene's anchor
+        // (was y=1000, off-frame above the camera's horizontal view).
+        this.moon.position.set(470, 330, -1050);
         this.moon.userData = {
-            baseX: 500,
-            baseY: 1000,
-            baseZ: -800,
+            baseX: 470,
+            baseY: 330,
+            baseZ: -1050,
         };
         this.scene.add(this.moon);
 
         if (this.isWebGPU) {
-            const haloGeo = new THREE.SphereGeometry(190, 48, 48);
+            const haloGeo = new THREE.SphereGeometry(260, 48, 48);
             const { material: haloMaterial, uniforms } = createWinterMoonHaloNodeMaterial();
             this.moonHalo = new THREE.Mesh(haloGeo, haloMaterial);
             this.moonHaloUniforms = uniforms;
@@ -1434,10 +1478,13 @@ export default class WinterTheme extends BaseTheme {
     createMountains() {
         const ranges = [
             {
-                z: -1800, color: 0x060c15, height: 700, width: 5000, snowLine: 0.35,
+                // Far ridge: snow-covered slopes (worldY +150 ridge down past the
+                // ground line ~−280) so there is no bare-rock void mid-frame.
+                z: -1800, color: 0x0a1526, rockHi: 0x1b2c46, height: 700, width: 5000, snowLine: 0.35, snowStart: -300, snowRange: 250,
             },
             {
-                z: -1100, color: 0x091220, height: 450, width: 4000, snowLine: 0.45,
+                // Near ridge: lower top (worldY up to +25), fully snow-clad slopes.
+                z: -1100, color: 0x0b1320, rockHi: 0x16223a, height: 450, width: 4000, snowLine: 0.45, snowStart: -340, snowRange: 230,
             },
         ];
 
@@ -1457,10 +1504,17 @@ export default class WinterTheme extends BaseTheme {
             if (this.isWebGPU) {
                 const { material: mountainMaterial } = createWinterMountainNodeMaterial({
                     baseColor: new THREE.Color(range.color),
-                    snowColor: new THREE.Color(0xddeeff),
-                    snowLine: range.snowLine,
-                    fogColor: new THREE.Color(0x03060e),
+                    rockHi: new THREE.Color(range.rockHi ?? 0x182438),
+                    snowColor: new THREE.Color(0xc2d4ec),
+                    snowStart: range.snowStart ?? 10,
+                    snowRange: range.snowRange ?? 200,
+                    // Dusk-blue mist (not near-black) so far slopes recede into
+                    // atmospheric haze instead of a hard black band.
+                    fogColor: new THREE.Color(0x16243c),
                     fogDensity: this.qualityPreset.fogDensity,
+                    // Aurora-tinted moonlit rim; far ridge a touch softer.
+                    rimColor: new THREE.Color(0x9fe0c8),
+                    rimStrength: index === 0 ? 0.4 : 0.55,
                 });
                 material = mountainMaterial;
             } else {
@@ -1509,12 +1563,45 @@ export default class WinterTheme extends BaseTheme {
             this.mountains.push(mesh);
             this.scene.add(mesh);
         });
+
+        if (this.isWebGPU) this.createGround();
+    }
+
+    // Snowy foreground/valley floor — grounds the composition and catches
+    // aurora + moonlight (WebGPU only; the WebGL fallback keeps the empty bg).
+    createGround() {
+        const geometry = new THREE.PlaneGeometry(7000, 3200, 96, 48);
+        // Gentle drift undulation so it isn't a dead-flat plane.
+        const posAttr = geometry.attributes.position;
+        for (let i = 0; i < posAttr.count; i++) {
+            const x = posAttr.getX(i);
+            const y = posAttr.getY(i); // pre-rotation: y is depth
+            const drift = Math.sin(x * 0.004) * 14 + Math.sin(y * 0.006 + 1.3) * 10
+                + Math.sin(x * 0.013 + y * 0.01) * 6;
+            posAttr.setZ(i, drift);
+        }
+        geometry.computeVertexNormals();
+
+        const { material, uniforms } = createWinterGroundNodeMaterial({
+            aurora: new THREE.Color(this.stormDirector?.accentHex ?? 0x33b890),
+            fogColor: new THREE.Color(0x16243c),
+        });
+        this.groundUniforms = uniforms;
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(0, -280, -650);
+        mesh.renderOrder = -50;
+        mesh.frustumCulled = false;
+        this.ground = mesh;
+        this.scene.add(mesh);
     }
 
     createAuroraSystem() {
         this.auroraLayers = [];
         const layerCount = this.qualityPreset.auroraLayers || 1;
         const segments = this.qualityPreset.auroraSegments || 64;
+        const layerOpacity = (this.isWebGPU ? 0.5 : 0.3) / layerCount;
 
         for (let i = 0; i < layerCount; i++) {
             // Each layer is a giant curved ribbon
@@ -1534,7 +1621,7 @@ export default class WinterTheme extends BaseTheme {
             if (this.isWebGPU) {
                 const { material: auroraMaterial, uniforms } = createWinterAuroraNodeMaterial({
                     offset: i * 100.0,
-                    opacity: 0.3 / layerCount,
+                    opacity: layerOpacity,
                     speed: 1.0 - i * 0.2,
                     detail: this.qualityPreset.auroraDetail ?? 1.0,
                 });
@@ -1545,7 +1632,7 @@ export default class WinterTheme extends BaseTheme {
                     uniforms: {
                         ...VolumetricAuroraShader.uniforms,
                         uOffset: { value: i * 100.0 }, // Different noise seed offset
-                        uOpacity: { value: 0.3 / layerCount }, // Distribute opacity
+                        uOpacity: { value: layerOpacity }, // Distribute opacity
                         uSpeed: { value: 1.0 - i * 0.2 }, // Layers move at diff speeds for parallax
                     },
                     vertexShader: VolumetricAuroraShader.vertexShader,
@@ -1561,7 +1648,7 @@ export default class WinterTheme extends BaseTheme {
             if (this.isWebGPU && material.userData?.uniforms) {
                 mesh.userData.uniforms = material.userData.uniforms;
             }
-            mesh.userData.baseOpacity = 0.3 / layerCount;
+            mesh.userData.baseOpacity = layerOpacity;
             mesh.userData.baseSpeed = 1.0 - i * 0.2;
             mesh.userData.colorPhase = i * 1.37 + Math.random() * 0.8;
             mesh.position.set(0, 400 - i * 50, -1200 - i * 200);
@@ -1574,6 +1661,7 @@ export default class WinterTheme extends BaseTheme {
     }
 
     createSnowParticles() {
+        if (this.noSnow) return; // diagnostic: ?winterNoSnow=1
         const count = this.qualityPreset.snowCount;
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(count * 3);
@@ -1584,7 +1672,16 @@ export default class WinterTheme extends BaseTheme {
         const rotationSpeeds = new Float32Array(count);
         const atlasIndices = new Float32Array(count);
         const velocities = new Float32Array(count * 3);
-        const bounds = { width: 900, height: 700, depth: 700 };
+        const uvs = new Float32Array(count * 2); // stub uv to silence point-sprite warning
+        const bounds = {
+            width: 900,
+            height: 540,
+            depth: 900,
+            centerY: -120,
+            centerZ: -760,
+        };
+        const centerY = bounds.centerY ?? 0;
+        const centerZ = bounds.centerZ ?? -200;
         const atlas = this.snowflakeTexture?.userData?.atlas;
         const atlasColumns = Math.max(1, atlas?.columns || 1);
         const atlasRows = Math.max(1, atlas?.rows || 1);
@@ -1597,10 +1694,10 @@ export default class WinterTheme extends BaseTheme {
         for (let i = 0; i < count; i++) {
             const i3 = i * 3;
             positions[i3] = (Math.random() - 0.5) * bounds.width;
-            positions[i3 + 1] = (Math.random() - 0.5) * bounds.height + 100;
-            positions[i3 + 2] = (Math.random() - 0.5) * bounds.depth - 200;
+            positions[i3 + 1] = centerY + (Math.random() - 0.5) * bounds.height;
+            positions[i3 + 2] = centerZ + (Math.random() - 0.5) * bounds.depth;
             depths[i] = Math.random();
-            sizes[i] = 3.0 + Math.random() * 5.0;
+            sizes[i] = 1.1 + Math.random() * 2.4;
             phases[i] = Math.random() * Math.PI * 2;
             wobbleSpeeds[i] = 1.0 + Math.random();
             rotationSpeeds[i] = (Math.random() - 0.5) * 2.0;
@@ -1613,8 +1710,9 @@ export default class WinterTheme extends BaseTheme {
             this.snowCompute = null;
         }
         if (this.isWebGPU) {
-            this.snowCompute = new SnowParticleCompute(count, bounds);
-            this.snowCompute.setInitialState(positions, velocities);
+            // Phase 1: curl-noise storm field (drop-in for the old gravity compute).
+            this.snowCompute = new StormField(count, bounds);
+            this.snowCompute.setInitialState();
             this.snowCompute.createComputeNode();
         }
 
@@ -1625,12 +1723,14 @@ export default class WinterTheme extends BaseTheme {
         geometry.setAttribute('wobbleSpeed', new THREE.BufferAttribute(wobbleSpeeds, 1));
         geometry.setAttribute('rotationSpeed', new THREE.BufferAttribute(rotationSpeeds, 1));
         geometry.setAttribute('atlasIndex', new THREE.BufferAttribute(atlasIndices, 1));
+        geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
 
         let material = null;
         if (this.isWebGPU) {
             const { material: snowMaterial, uniforms } = createWinterSnowNodeMaterial({
                 isWebGPU: this.isWebGPU,
                 snowCompute: this.snowCompute,
+                stormDriven: true,
             });
             material = snowMaterial;
             this.snowUniforms = uniforms;
@@ -1662,6 +1762,7 @@ export default class WinterTheme extends BaseTheme {
     }
 
     createCloseSnowflakes() {
+        if (this.noFlakes) return; // diagnostic: ?winterNoFlakes=1
         const count = this.qualityPreset.closeSnowflakeCount || 0;
         if (count === 0 || !this.snowflakeTexture) return;
 
@@ -1680,7 +1781,7 @@ export default class WinterTheme extends BaseTheme {
         const atlasScaleY = 1 / atlasRows;
         const { material, uniforms } = createWinterSnowflakeBillboardMaterial({
             map: this.snowflakeTexture,
-            opacity: 0.68,
+            opacity: 0.42,
             useAtlas: true,
         });
         this.closeSnowflakeUniforms = uniforms;
@@ -1739,7 +1840,7 @@ export default class WinterTheme extends BaseTheme {
                 velocities[i3] = (Math.random() - 0.5) * 9;
                 velocities[i3 + 1] = -(8 + Math.random() * 12);
                 velocities[i3 + 2] = (Math.random() - 0.5) * 5;
-                sizes[i] = 4.8 + Math.random() * 5.2;
+                sizes[i] = 3.4 + Math.random() * 3.6;
             } else {
                 positions[i3] = (Math.random() - 0.5) * bounds.width;
                 positions[i3 + 1] = -150 + Math.random() * bounds.height;
@@ -1747,7 +1848,7 @@ export default class WinterTheme extends BaseTheme {
                 velocities[i3] = (Math.random() - 0.5) * 4;
                 velocities[i3 + 1] = -(15 + Math.random() * 25);
                 velocities[i3 + 2] = (Math.random() - 0.5) * 2;
-                sizes[i] = 2 + Math.random() * 5;
+                sizes[i] = 1.6 + Math.random() * 3.6;
             }
 
             depths[i] = Math.random();
@@ -1856,6 +1957,7 @@ export default class WinterTheme extends BaseTheme {
     }
 
     createWindStreaks() {
+        if (this.bare) return; // diagnostic: ?winterBare=1
         const count = this.qualityPreset.streakCount;
         const geo = new THREE.BufferGeometry();
         const pos = new Float32Array(count * 3);
@@ -1904,6 +2006,7 @@ export default class WinterTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createIceWisps() {
+        if (this.bare) return; // diagnostic: ?winterBare=1
         const count = this.qualityPreset.iceWispCount || 0;
         if (count === 0) return;
         const trailSegments = this.qualityPreset.iceWispTrailSegments || 4;
@@ -1985,6 +2088,7 @@ export default class WinterTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createFogLayers() {
+        if (this.bare) return; // diagnostic: ?winterBare=1
         const layerCount = this.qualityPreset.fogLayerCount || 0;
         if (layerCount === 0) return;
 
@@ -1995,7 +2099,7 @@ export default class WinterTheme extends BaseTheme {
                 width: 2400,
                 height: 360,
                 speed: 0.01,
-                opacity: 0.13,
+                opacity: 0.08,
                 windScale: 0.55,
                 waveAmp: 24,
                 verticalAmp: 7,
@@ -2007,7 +2111,7 @@ export default class WinterTheme extends BaseTheme {
                 width: 3000,
                 height: 410,
                 speed: 0.006,
-                opacity: 0.085,
+                opacity: 0.055,
                 windScale: 0.36,
                 waveAmp: 20,
                 verticalAmp: 5,
@@ -2019,7 +2123,7 @@ export default class WinterTheme extends BaseTheme {
                 width: 3500,
                 height: 460,
                 speed: 0.004,
-                opacity: 0.06,
+                opacity: 0.04,
                 windScale: 0.24,
                 waveAmp: 16,
                 verticalAmp: 3,
@@ -2031,7 +2135,7 @@ export default class WinterTheme extends BaseTheme {
                 width: 2200,
                 height: 280,
                 speed: 0.013,
-                opacity: 0.1,
+                opacity: 0.065,
                 windScale: 0.72,
                 waveAmp: 30,
                 verticalAmp: 10,
@@ -2277,10 +2381,19 @@ export default class WinterTheme extends BaseTheme {
         const windSway = THREE.MathUtils.clamp(this.windForce * 0.08, -18, 18);
         const gustBump = Math.sin(this.time * 0.9) * this.gustIntensity * 3.5;
 
+        // Phase 5 — StormDirector camera beats (punchy, earned event reactions).
+        const sd = this.stormDirector;
+        const gustShove = (sd?.gustDir || 1) * (sd?.gust || 0) * 20; // directional punch on gusts
+        const dolly = -(sd?.kick || 0) * 16; // dolly-push toward the board on hard-drop/tetris/combo
+        const woShake = sd?.whiteout || 0; // whiteout rattle
+        const shakeX = (Math.random() - 0.5) * woShake * 5;
+        const shakeY = (Math.random() - 0.5) * woShake * 5;
+
         // Apply position drift on top of camera shake
-        this.camera.position.x = this.baseCameraPosition.x + xDrift + windSway + gustBump + this.cameraShake.x + parallaxX;
-        this.camera.position.y = this.baseCameraPosition.y + yDrift + this.cameraShake.y + parallaxY;
-        this.camera.position.z = this.baseCameraPosition.z + zDrift;
+        this.camera.position.x = this.baseCameraPosition.x + xDrift + windSway + gustBump
+            + gustShove + this.cameraShake.x + shakeX + parallaxX;
+        this.camera.position.y = this.baseCameraPosition.y + yDrift + this.cameraShake.y + shakeY + parallaxY;
+        this.camera.position.z = this.baseCameraPosition.z + zDrift + dolly;
         this.camera.lookAt(
             windSway * 0.35 + Math.sin(this.time * 0.03) * 12 + parallaxX * 0.4,
             -15 + Math.sin(this.time * 0.04 + 1.2) * 8 + this.gustIntensity * 4 + parallaxY * 0.4,
@@ -2292,7 +2405,8 @@ export default class WinterTheme extends BaseTheme {
         // Period: ~18 seconds, range: ±1.5 degrees
         const baseFov = 60; // Match the initial perspective camera FOV
         const fovBreath = Math.sin(this.time * 0.08) * 1.5 + this.gustIntensity * 0.8;
-        this.camera.fov = baseFov + fovBreath;
+        // Dolly-push narrows FOV (punch-in); whiteout widens slightly for drama.
+        this.camera.fov = baseFov + fovBreath - (sd?.kick || 0) * 3.5 + woShake * 1.8;
         this.camera.updateProjectionMatrix();
     }
 
@@ -2724,17 +2838,24 @@ export default class WinterTheme extends BaseTheme {
             this.vignettePass = null;
             if (this.post) this.post.dispose();
 
-            this.post = new WinterPost(this.renderer, this.scene, this.camera, {
-                bloomStrength: this.qualityPreset.bloomStrength,
+            // Diagnostic: ?winterNoPost=1 renders the scene directly (no post),
+            // to bisect whether a visual issue is in the scene or the post stack.
+            if (this.disablePost) {
+                this.post = null;
+                console.log('[WinterTheme] Post-processing bypassed (?winterNoPost=1)');
+                return;
+            }
+
+            this.post = new WinterPipeline(this.renderer, this.scene, this.camera, {
+                bloomStrength: this.qualityPreset.bloomStrength ?? 0.16,
                 bloomRadius: this.qualityPreset.bloomRadius,
-                bloomThreshold: 0.85,
-                vignetteDarkness: VignetteShader.uniforms.darkness.value,
-                vignetteOffset: VignetteShader.uniforms.offset.value,
-                gradeStrength: 0.34,
-                coldTint: new THREE.Color(0.06, 0.1, 0.18),
-                useMRT: true,
-                shaftStrength: 0.25,
-                shaftSamples: this.qualityPreset.shaftSamples ?? 4,
+                bloomThreshold: 0.9,
+                vignetteDarkness: 0.55,
+                // The winter sky shell is texture-backed to avoid Chrome/WebGPU
+                // white-sky shader fallback. The MRT output path drops that
+                // texture shell, so use the regular scene output with a high
+                // bloom threshold; snow remains normal-blended and low-alpha.
+                useMRT: false,
                 bloomScale: this.qualityPreset.bloomScale ?? 0.6,
             });
             this.post.setSize(window.innerWidth, window.innerHeight);
@@ -2768,6 +2889,8 @@ export default class WinterTheme extends BaseTheme {
             eventBus.on(EVENTS.LINE_CLEAR, (d) => this.handleLineClear(d)),
             eventBus.on(EVENTS.COMBO, (d) => this.handleCombo(d)),
             eventBus.on(EVENTS.PIECE_LOCK, (d) => this.handlePieceLock(d)),
+            eventBus.on(EVENTS.HARD_DROP, () => this.stormDirector.onHardDrop()),
+            eventBus.on(EVENTS.LEVEL_UP, () => this.stormDirector.onLevelUp()),
         );
 
         // Pointer tracking for parallax camera
@@ -2796,6 +2919,7 @@ export default class WinterTheme extends BaseTheme {
         const d = data.detail || data;
         const combo = d.comboCount || 0;
         if (combo > 0) this.pendingComboCount = combo;
+        this.stormDirector.onCombo(combo);
         this.comboMultiplier = Math.min(1 + combo * 0.5, 4.0);
         this.comboDecay = 200;
         this.stormEnergy = Math.min(1.65, this.stormEnergy + combo * 0.032);
@@ -2860,6 +2984,7 @@ export default class WinterTheme extends BaseTheme {
 
         if (tier >= 6 && this.canTriggerComboTier(6)) {
             this.createVortexSystem(0, 0, -220);
+            this.snowCompute?.addVortex?.(0, 0, 70 + combo * 7, 300);
             this.createIceCrystalCrash();
             this.spawnIceBurst(0, -40, -170, Math.min(280, 120 + combo * 22 + lines * 20));
             this.setComboTierCooldown(6);
@@ -2881,6 +3006,7 @@ export default class WinterTheme extends BaseTheme {
 
         if (tier >= 10 && this.canTriggerComboTier(10)) {
             this.createIceCrystalCrash();
+            this.snowCompute?.addVortex?.(0, 0, 130 + combo * 8, 360);
             this.createFrozenLightningEffect((Math.random() - 0.5) * 340, 180, -420);
             this.createBlizzardWave(direction);
             this.createBlizzardWave(-direction);
@@ -2896,6 +3022,7 @@ export default class WinterTheme extends BaseTheme {
     }
 
     handlePieceLock(data) {
+        this.stormDirector.onPieceLock();
         this.cameraShake.intensity += 0.5;
         this.cameraShake.intensity = Math.min(this.cameraShake.intensity, 2.5);
 
@@ -2935,6 +3062,7 @@ export default class WinterTheme extends BaseTheme {
     }
 
     onLineClear(lines, combo) {
+        this.stormDirector.onLineClear(lines, combo);
         const tier = this.resolveComboTier(lines, combo);
         const burst = Math.min(lines * 35 + combo * 22 + tier * 12, 280);
         this.spawnIceBurst(0, -50, -200, burst);
@@ -2971,6 +3099,10 @@ export default class WinterTheme extends BaseTheme {
 
             // Updates
             this.updateEffectState(delta);
+            this.stormDirector.update(delta);
+            if (this.stormDebug) {
+                this.stormDebug.update(this.stormDirector, { stormEnergy: this.stormEnergy });
+            }
             this.updateSnowParticles(delta);
             this.updateCloseSnowflakes(delta);
             this.updateIceBurst(delta);
@@ -2992,6 +3124,14 @@ export default class WinterTheme extends BaseTheme {
                 if (u?.uWindForce) u.uWindForce.value = this.windForce;
                 if (u?.uGustIntensity) u.uGustIntensity.value = this.gustIntensity;
                 if (u?.uFlashIntensity) u.uFlashIntensity.value = this.flashIntensity;
+                if (u?.uStormDensity) {
+                    // Keep modest — cranking snow opacity makes a constant veil.
+                    // Whiteout comes from fog/haze and post instead.
+                    u.uStormDensity.value = Math.min(
+                        0.35,
+                        this.stormDirector.intensity * 0.4 + this.stormDirector.whiteout * 0.3,
+                    );
+                }
             }
             if (this.windStreaks) {
                 const u = this.windStreakUniforms || this.windStreaks.material.uniforms;
@@ -3019,6 +3159,23 @@ export default class WinterTheme extends BaseTheme {
                 this._tempColorA.set(0x091222).lerp(this._tempColorB.set(0x1b3556), skyStorm)
                     .lerp(this._tempColorC.set(0x4a6b92), skyWhiteout);
                 this.skyUniforms.uBot.value.copy(this._tempColorA);
+            }
+            if (this.auroraVolumeUniforms) {
+                const av = this.auroraVolumeUniforms;
+                const sd = this.stormDirector;
+                av.uTime.value = this.time;
+                av.uIntensity.value = sd.intensity;
+                av.uFlare.value = Math.min(1.5, Math.max(sd.flare, this.effectState?.auroraBoost || 0));
+                av.uWhiteout.value = Math.min(1, sd.whiteout * 0.8 + this.whiteoutPulse * 0.4);
+                if (av.uAccent?.value?.setRGB) {
+                    av.uAccent.value.setRGB(sd.accent.r, sd.accent.g, sd.accent.b);
+                }
+            }
+            if (this.groundUniforms) {
+                this.groundUniforms.uTime.value = this.time;
+                // Ground reflects a muted version of the aurora accent.
+                const a = this.stormDirector.accent;
+                this.groundUniforms.uAurora.value.setRGB(a.r * 0.55, a.g * 0.6, a.b * 0.55);
             }
             this.auroraLayers.forEach((layer, layerIndex) => {
                 const u = layer.userData?.uniforms || layer.material.uniforms;
@@ -3079,8 +3236,8 @@ export default class WinterTheme extends BaseTheme {
             }
             if (this.closeSnowflakeUniforms?.uOpacity) {
                 this.closeSnowflakeUniforms.uOpacity.value = Math.min(
-                    1.0,
-                    0.52 + this.flashIntensity * 0.4 + this.stormEnergy * 0.22 + this.whiteoutPulse * 0.2,
+                    0.72,
+                    0.34 + this.flashIntensity * 0.25 + this.stormEnergy * 0.14 + this.whiteoutPulse * 0.12,
                 );
             }
 
@@ -3116,39 +3273,19 @@ export default class WinterTheme extends BaseTheme {
                     + Math.sin(this.time * 0.11 + phase) * (0.012 + this.stormEnergy * 0.016);
             });
 
-            if (this.post?.updateParams) {
-                const params = {
-                    gradeStrength: 0.28
-                        + this.stormEnergy * 0.14
-                        + this.gustIntensity * 0.08
-                        + this.whiteoutPulse * 0.2,
-                    vignetteDarkness: Math.min(
-                        0.9,
-                        0.62 + this.stormEnergy * 0.12 + this.whiteoutPulse * 0.16,
-                    ),
-                    vignetteOffset: Math.max(
-                        0.85,
-                        1.16 - this.stormEnergy * 0.1 - this.whiteoutPulse * 0.12,
-                    ),
-                };
-                this._tempColorA.setRGB(0.06, 0.1, 0.17);
-                this._tempColorB.setRGB(0.11, 0.2, 0.32);
-                params.coldTint = this._tempColorA.lerp(
-                    this._tempColorB,
-                    Math.min(1.0, this.stormEnergy * 0.42 + this.whiteoutPulse * 0.38),
-                );
-                if (this.moon && this.camera) {
-                    this.moon.getWorldPosition(this._moonScreen);
-                    this._moonScreen.project(this.camera);
-                    this._moonUv.set(this._moonScreen.x * 0.5 + 0.5, this._moonScreen.y * 0.5 + 0.5);
-                    params.lightPos = this._moonUv;
-                    params.shaftStrength = (
-                        0.25
-                        + this.flashIntensity * 0.4
-                        + this.whiteoutPulse * 0.45
-                    ) * (this.postPerfScale ?? 1.0);
-                }
-                this.post.updateParams(params);
+            if (this.post?.updateDynamic) {
+                const sd = this.stormDirector;
+                // Frost is "earned": appears in Rising Wind, peaks at Whiteout.
+                const frost = Math.max(0, Math.min(1, (sd.intensity - 0.45) / 0.55 + sd.whiteout * 0.5));
+                this.post.updateDynamic({
+                    time: this.time,
+                    intensity: sd.intensity,
+                    whiteout: Math.min(1, sd.whiteout * 0.8 + this.whiteoutPulse * 0.4),
+                    gust: Math.min(1, sd.gust + this.gustIntensity * 0.5),
+                    frost,
+                    motionX: Math.max(-1, Math.min(1, this.windForce / 150)),
+                    motionY: -0.25,
+                });
             }
             if (this.vignettePass?.uniforms) {
                 const u = this.vignettePass.uniforms;
@@ -3259,7 +3396,17 @@ export default class WinterTheme extends BaseTheme {
                 delta = this.snowUpdateAccumulator;
                 this.snowUpdateAccumulator = 0;
             }
-            this.snowCompute.update(this.time, delta, this.windForce, this.gustIntensity);
+            const s = this.stormDirector;
+            const { intensity, whiteout } = s;
+            this.snowCompute.update(this.time, delta, {
+                windX: this.windForce,
+                baseFall: -(45 + intensity * 70 + whiteout * 60),
+                // Much calmer turbulence — high values clump snow onto the
+                // curl-noise streamlines and read as TV static, not a blizzard.
+                turbAmp: 60 + intensity * 150 + s.gust * 130 + this.gustIntensity * 70,
+                drag: 1.6,
+                parallaxZ: 6 + intensity * 10,
+            });
             this.renderer.compute(this.snowCompute.computeNode);
             return;
         }
@@ -3274,15 +3421,20 @@ export default class WinterTheme extends BaseTheme {
         const vel = this.snowVelocities;
         const b = this.snowBounds;
         const count = this.snowDrawCount || pos.length / 3;
+        const centerY = b.centerY ?? 0;
+        const centerZ = b.centerZ ?? -200;
+        const bottomY = centerY - b.height / 2;
+        const topY = centerY + b.height / 2;
+        const frontZ = centerZ + b.depth / 2 + 80;
         for (let i = 0; i < count; i++) {
             const i3 = i * 3;
             pos[i3] += vel[i3] * delta;
             pos[i3 + 1] += vel[i3 + 1] * delta;
             pos[i3 + 2] += vel[i3 + 2] * delta;
-            if (pos[i3 + 1] < -b.height / 2 || Math.abs(pos[i3]) > b.width || pos[i3 + 2] > 200) {
+            if (pos[i3 + 1] < bottomY || Math.abs(pos[i3]) > b.width || pos[i3 + 2] > frontZ) {
                 pos[i3] = (Math.random() - 0.5) * b.width;
-                pos[i3 + 1] = b.height / 2 + Math.random() * 50;
-                pos[i3 + 2] = (Math.random() - 0.5) * b.depth - 200;
+                pos[i3 + 1] = topY + Math.random() * 50;
+                pos[i3 + 2] = centerZ + (Math.random() - 0.5) * b.depth;
                 vel[i3 + 1] = -(15 + Math.random() * 25);
             }
         }
@@ -3688,6 +3840,11 @@ export default class WinterTheme extends BaseTheme {
         if (typeof window !== 'undefined' && window.winterBaseline) {
             delete window.winterBaseline;
         }
+        if (this.stormDebug) {
+            this.stormDebug.dispose();
+            this.stormDebug = null;
+        }
+        if (this.stormDirector) this.stormDirector.reset();
         if (this.snowflakeTexture) this.snowflakeTexture.dispose();
         if (this.closeSnowflakes) {
             this.scene?.remove?.(this.closeSnowflakes);
@@ -3699,10 +3856,25 @@ export default class WinterTheme extends BaseTheme {
         }
         if (this.skyDome) {
             this.scene?.remove?.(this.skyDome);
-            if (this.skyDome.geometry) this.skyDome.geometry.dispose();
-            if (this.skyDome.material) this.skyDome.material.dispose();
+            if (this.auroraVolume) {
+                // WebGPU: aurora-volume owns geometry + material + CanvasTexture;
+                // its dispose() frees all three (the texture would otherwise leak).
+                this.auroraVolume.dispose();
+                this.auroraVolume = null;
+                this.auroraVolumeUniforms = null;
+            } else {
+                if (this.skyDome.geometry) this.skyDome.geometry.dispose();
+                if (this.skyDome.material) this.skyDome.material.dispose();
+            }
             this.skyDome = null;
             this.skyUniforms = null;
+        }
+        if (this.ground) {
+            this.scene?.remove?.(this.ground);
+            if (this.ground.geometry) this.ground.geometry.dispose();
+            if (this.ground.material) this.ground.material.dispose();
+            this.ground = null;
+            this.groundUniforms = null;
         }
         if (this.moonLight) {
             this.scene?.remove?.(this.moonLight);

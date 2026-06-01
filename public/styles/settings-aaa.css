@@ -378,7 +378,7 @@ body.electron-app #settings-modal .modal-content {
     row-gap: 5px;
 }
 
-#settings-modal .setting:has(> small) > label {
+#settings-modal .setting:has(> small) > label:not(.cs-toggle) {
     grid-column: 1;
     grid-row: 1;
 }
@@ -389,6 +389,12 @@ body.electron-app #settings-modal .modal-content {
     grid-column: 2;
     grid-row: 1;
     justify-self: stretch;
+}
+
+#settings-modal .setting:has(> small) > .cs-toggle {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
 }
 
 #settings-modal .setting:has(> small) > small {
@@ -779,6 +785,207 @@ body.electron-app #settings-modal .modal-content {
     }
 }
 
+/* =================================================================================
+ * PHASE 2 — Toggle switches + grouped section cards
+ * ============================================================================== */
+
+/* ---- Section cards: cluster related settings under a titled glass panel ----- */
+#settings-modal .settings-section {
+    position: relative;
+    margin: 0 0 14px;
+    padding: 8px 14px 12px;
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+    border-radius: 16px;
+    background:
+        radial-gradient(120% 90% at 0% 0%, rgba(var(--cs-accent-rgb), 0.07), transparent 56%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.022), rgba(8, 10, 23, 0.34));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.04),
+        0 14px 32px rgba(0, 0, 0, 0.16);
+}
+
+#settings-modal .settings-section:last-child {
+    margin-bottom: 0;
+}
+
+#settings-modal .settings-section-title {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 6px 4px 8px;
+    color: var(--cs-accent);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+#settings-modal .settings-section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(var(--cs-accent-rgb), 0.30), transparent);
+}
+
+/* Rows sit flatter inside a section (no card-in-card); the card is the frame */
+#settings-modal .settings-section .setting {
+    min-height: 52px;
+    background: transparent;
+    border-color: transparent;
+}
+
+#settings-modal .settings-section .setting:hover {
+    background: linear-gradient(90deg, rgba(var(--cs-accent-rgb), 0.08), rgba(255, 255, 255, 0.02));
+}
+
+/* Hairline divider between stacked rows inside a section */
+#settings-modal .settings-section .setting + .setting {
+    border-top: 1px solid rgba(150, 180, 255, 0.07);
+    border-radius: 0;
+}
+
+#settings-modal .settings-section .setting:first-of-type {
+    border-radius: 10px 10px 0 0;
+}
+
+#settings-modal .settings-section .setting:last-of-type {
+    border-radius: 0 0 10px 10px;
+}
+
+/* ---- Toggle switch: replaces On/Off dropdowns with a real switch ----------- */
+#settings-modal .cs-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    /* Override main.css `.setting label { flex: 1; padding-right: 24px }` so the
+       switch stays compact and flush-right instead of growing like a text label */
+    flex: 0 0 auto;
+    padding: 0;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Native control kept for semantics/focus, visually replaced by the track */
+#settings-modal .cs-toggle-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+#settings-modal .cs-toggle-state {
+    min-width: 26px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(211, 219, 245, 0.50);
+    text-align: right;
+    transition: color 0.22s ease;
+}
+
+#settings-modal .cs-toggle-state::after {
+    content: 'Off';
+}
+
+#settings-modal .cs-toggle-input:checked ~ .cs-toggle-state {
+    color: var(--cs-accent);
+}
+
+#settings-modal .cs-toggle-input:checked ~ .cs-toggle-state::after {
+    content: 'On';
+}
+
+#settings-modal .cs-toggle-track {
+    position: relative;
+    width: 52px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    border: 1px solid rgba(150, 180, 255, 0.20);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.18)),
+        rgba(8, 10, 23, 0.55);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+    transition:
+        background 0.26s ease,
+        border-color 0.26s ease,
+        box-shadow 0.26s ease;
+}
+
+#settings-modal .cs-toggle-thumb {
+    position: absolute;
+    top: 50%;
+    left: 3px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    transform: translateY(-50%);
+    background: radial-gradient(circle at 36% 32%, #ffffff 0 28%, rgba(214, 222, 246, 0.92) 100%);
+    box-shadow:
+        0 2px 5px rgba(0, 0, 0, 0.42),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    transition:
+        left 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+        background 0.26s ease,
+        box-shadow 0.26s ease;
+}
+
+#settings-modal .cs-toggle:hover .cs-toggle-track {
+    border-color: rgba(var(--cs-accent-rgb), 0.45);
+}
+
+#settings-modal .cs-toggle-input:checked ~ .cs-toggle-track {
+    border-color: rgba(var(--cs-accent-rgb), 0.70);
+    background:
+        linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.30), rgba(var(--cs-accent-rgb), 0.65));
+    box-shadow:
+        inset 0 1px 2px rgba(255, 255, 255, 0.20),
+        0 0 18px rgba(var(--cs-accent-rgb), 0.40);
+}
+
+#settings-modal .cs-toggle-input:checked ~ .cs-toggle-track .cs-toggle-thumb {
+    left: 27px;
+    background: radial-gradient(circle at 36% 32%, #ffffff 0 40%, #eaf6ff 100%);
+    box-shadow:
+        0 2px 7px rgba(0, 0, 0, 0.45),
+        0 0 10px rgba(var(--cs-accent-rgb), 0.55);
+}
+
+#settings-modal .cs-toggle-input:focus-visible ~ .cs-toggle-track {
+    outline: none;
+    box-shadow:
+        0 0 0 3px rgba(var(--cs-accent-rgb), 0.30),
+        inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+#settings-modal .cs-toggle-input:active ~ .cs-toggle-track .cs-toggle-thumb {
+    width: 26px;
+}
+
+/* Disabled toggle (e.g. dependent on a parent setting) reads as inert */
+#settings-modal .cs-toggle-input:disabled ~ .cs-toggle-track,
+#settings-modal .cs-toggle-input:disabled ~ .cs-toggle-state {
+    opacity: 0.42;
+}
+
+#settings-modal .cs-toggle:has(.cs-toggle-input:disabled) {
+    cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+    /* On the stacked mobile layout the toggle aligns to the row's left edge */
+    #settings-modal .cs-toggle {
+        align-self: flex-start;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     #settings-modal .modal-content,
     #settings-modal .settings-header h1,
@@ -794,5 +1001,10 @@ body.electron-app #settings-modal .modal-content {
         opacity: 1 !important;
         transform: none !important;
         filter: none !important;
+    }
+
+    #settings-modal .cs-toggle-thumb,
+    #settings-modal .cs-toggle-track {
+        transition: none !important;
     }
 }

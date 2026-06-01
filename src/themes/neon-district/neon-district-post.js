@@ -18,6 +18,9 @@ import {
     max,
     dot,
     fract,
+    floor,
+    pow,
+    step,
     saturation,
     getViewPosition,
     cameraProjectionMatrixInverse,
@@ -87,6 +90,11 @@ export class NeonDistrictPost {
         this.enableGrade = params?.enableGrade ?? false;
         this.uSaturation = uniform(params?.saturationAmount ?? 1.12);
         this.uContrast = uniform(params?.contrast ?? 1.06);
+
+        // ── 6b. Rain on the lens ───────────────────────────────────────────────
+        this.enableLensDroplets = params?.enableLensDroplets ?? false;
+        this.uLensDropletAmount = uniform(0.0);  // driven by rain intensity each frame
+        this.uLensAspect = uniform(16 / 9);      // updated in setSize so beads stay round
 
         const vignetteOffset = float(params?.vignetteOffset ?? 1.0);
         const vignetteDarkness = float(params?.vignetteDarkness ?? 0.3);
@@ -208,6 +216,47 @@ export class NeonDistrictPost {
             gradedRgb = saturation(contrasted, this.uSaturation);
         }
 
+        // ── 6b. Rain droplets clinging to the camera lens ───────────────────────
+        // Sparse aspect-corrected beads that slowly fade in/out, gently magnify the
+        // scene behind them and catch a specular sparkle off the neon.
+        if (this.enableLensDroplets) {
+            const hash2 = (p) => fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453));
+            const cols = float(9.0).mul(this.uLensAspect); // square cells → round beads
+            const su = vec2(uv.x.mul(cols), uv.y.mul(9.0));
+            const cell = floor(su);
+            const f = fract(su).sub(0.5);
+            const r1 = hash2(cell);
+            const r2 = hash2(cell.add(vec2(19.3, 7.1)));
+            const r3 = hash2(cell.add(vec2(3.7, 41.2)));
+            const cyc = fract(r3.add(this.time.mul(0.05).mul(r2.add(0.3))));
+            const life = sin(cyc.mul(3.14159));
+            // Sparse: only ~14% of cells hold a bead, so it reads as occasional rain
+            // beads rather than a lens caked in bubbles.
+            const beadAmt = step(0.86, r1).mul(life).mul(this.uLensDropletAmount);
+            const center = vec2(r1.sub(0.5), r2.sub(0.5)).mul(0.5);
+            const fd = f.sub(center);
+            const d = length(fd);
+            const radius = mix(float(0.09), float(0.22), r2);
+            const beadMask = smoothstep(radius, radius.mul(0.5), d).mul(beadAmt);
+
+            // Magnify-refraction of the scene behind the bead.
+            const fdUv = vec2(fd.x.div(cols), fd.y.div(9.0));
+            const refractUv = uv.sub(fdUv.mul(float(2.0)).mul(beadMask));
+            const refracted = scenePassColor.sample(refractUv).xyz;
+            let withDrops = mix(gradedRgb, refracted, beadMask.mul(0.65));
+
+            // Specular sparkle (toward a fixed light dir) + a faint cool rim — bright
+            // enough that the beads read as water catching light, not dark spots.
+            const specD = length(fd.sub(vec2(-0.06, 0.08)));
+            const spec = pow(smoothstep(radius.mul(0.6), 0.0, specD), float(2.0)).mul(beadMask);
+            const rim = smoothstep(radius, radius.mul(0.82), d)
+                .mul(smoothstep(radius.mul(0.55), radius, d))
+                .mul(beadMask);
+            withDrops = withDrops.add(vec3(spec.mul(0.7)));
+            withDrops = withDrops.add(vec3(0.45, 0.6, 0.9).mul(rim.mul(0.32)));
+            gradedRgb = withDrops;
+        }
+
         // ── 3c. Film grain (animated) ───────────────────────────────────────────
         const grainNoise = fract(
             sin(dot(uv.mul(900.0).add(this.time.mul(1.7)), vec2(12.9898, 78.233))).mul(43758.5453),
@@ -275,6 +324,13 @@ export class NeonDistrictPost {
         }
     }
 
+    /** AAA 6b — set the rain-on-lens droplet amount (0 = none). */
+    setLensDroplets(amount) {
+        if (this.uLensDropletAmount) {
+            this.uLensDropletAmount.value = amount;
+        }
+    }
+
     /**
      * AAA Phase 2b — update the god-ray anchor (screen-space UV of the moon) and
      * optionally its intensity. Call each frame after projecting the moon to NDC.
@@ -306,6 +362,9 @@ export class NeonDistrictPost {
         this.size.width = width;
         this.size.height = height;
         this.scenePass.setSize(width, height);
+        if (this.uLensAspect && height > 0) {
+            this.uLensAspect.value = width / height; // keep lens beads round
+        }
         if (this.bloomNode?._separableBlurMaterials?.length) {
             this.bloomNode.setSize(width, height);
         }

@@ -7,11 +7,23 @@ import {
     getVoidEmberQualityPreset,
     resolveVoidEmberTier,
 } from './void-ember-presets.js';
+import { StellarConductor } from './composition/stellar-conductor.js';
+import { createStellarDebugOverlay } from './composition/stellar-debug-overlay.js';
+import commonWGSL from './wgsl/void-ember-common.wgsl?raw';
+import environmentWGSL from './wgsl/environment.wgsl?raw';
 import flowWGSL from './wgsl/flow.wgsl?raw';
 import particlesWGSL from './wgsl/particles.wgsl?raw';
 import sceneWGSL from './wgsl/scene.wgsl?raw';
+import lensFlareWGSL from './wgsl/lens-flare.wgsl?raw';
+import bloomPrefilterWGSL from './wgsl/bloom-prefilter.wgsl?raw';
+import bloomDownWGSL from './wgsl/bloom-down.wgsl?raw';
+import bloomUpWGSL from './wgsl/bloom-up.wgsl?raw';
 import postWGSL from './wgsl/post.wgsl?raw';
 import presentWGSL from './wgsl/present.wgsl?raw';
+
+// Shared WGSL helpers (hash/noise/FBM/black-body/scattering) are concatenated
+// ahead of any module that needs them, so there is one source of truth.
+const withCommon = (moduleSource) => `${commonWGSL}\n${moduleSource}`;
 
 const GPU_BUFFER_USAGE_UNIFORM = globalThis.GPUBufferUsage?.UNIFORM ?? 0x40;
 const GPU_BUFFER_USAGE_COPY_DST = globalThis.GPUBufferUsage?.COPY_DST ?? 0x08;
@@ -25,7 +37,7 @@ const GPU_TEXTURE_USAGE_TEXTURE_BINDING = globalThis.GPUTextureUsage?.TEXTURE_BI
 const GPU_TEXTURE_USAGE_RENDER_ATTACHMENT = globalThis.GPUTextureUsage?.RENDER_ATTACHMENT ?? 0x10;
 const GPU_MAP_MODE_READ = globalThis.GPUMapMode?.READ ?? 0x1;
 
-const UNIFORM_FLOATS = 40;
+const UNIFORM_FLOATS = 48;
 const BYTES_PER_FLOAT = 4;
 const UNIFORM_BYTES = UNIFORM_FLOATS * BYTES_PER_FLOAT;
 const BYTES_PER_FLOW_CELL = 16;
@@ -41,6 +53,9 @@ const UNIFORM = Object.freeze({
     colorA: 24,
     colorB: 28,
     misc: 32,
+    fx: 36,
+    star0: 40, // temperature, agitation, coronaEnergy, breath
+    star1: 44, // novaFlash, cmePulse, cameraPush, reserved
 });
 
 // Color temperature stops for slow evolution cycle
@@ -98,16 +113,25 @@ function createEmptyWebGPUState() {
         particleComputePipeline: null,
         scenePipeline: null,
         particlePipeline: null,
+        bloomPrefilterPipeline: null,
+        bloomDownPipeline: null,
+        bloomUpPipeline: null,
         postPipeline: null,
         presentPipeline: null,
         flowComputeBindGroups: [],
         particleComputeBindGroups: [],
         sceneBindGroups: [],
+        bloomPrefilterBindGroup: null,
+        bloomDownBindGroups: [],
+        bloomUpBindGroups: [],
         postBindGroup: null,
         presentBindGroup: null,
         sceneTexture: null,
         postTexture: null,
         historyTexture: null,
+        bloomTextures: [],
+        bloomViews: [],
+        bloomLevels: 0,
         sceneView: null,
         postView: null,
         historyView: null,
@@ -163,6 +187,21 @@ export default class VoidEmberTheme extends BaseTheme {
 
         this.currentTier = null;
         this.qualityPreset = getVoidEmberPresetFromEffectQuality(this.getGraphicsQuality());
+
+        // Phase 0: the new reactive spine. Runs alongside the legacy `runtime`
+        // channels (which still drive the uniform/WGSL untouched) so we can prove
+        // it tracks gameplay via the `?voidEmber=1` overlay. Phases 1+ migrate the
+        // render path onto the conductor.
+        this.stellarConductor = new StellarConductor();
+        this.stellarDebug = null;
+        this.stellarDebugEnabled = false;
+        if (typeof window !== 'undefined') {
+            try {
+                this.stellarDebugEnabled = new URLSearchParams(window.location.search).get('voidEmber') === '1';
+            } catch {
+                this.stellarDebugEnabled = false;
+            }
+        }
     }
 
     async init() {
@@ -210,6 +249,11 @@ export default class VoidEmberTheme extends BaseTheme {
     }
 
     createCanvasElement(container) {
+        // Defensive: never leave a stale void-ember canvas anywhere in the DOM.
+        // A leftover canvas keeps its own WebGPU context + render loop alive,
+        // drawing a SECOND star on its own clock/anchor (the "two stars" bug).
+        document.querySelectorAll(`#${this.name}-canvas`).forEach((stale) => stale.remove());
+
         const canvas = document.createElement('canvas');
         canvas.id = `${this.name}-canvas`;
         canvas.style.position = 'absolute';
@@ -259,6 +303,11 @@ export default class VoidEmberTheme extends BaseTheme {
         this.createCanvasElement(container);
         this.resizeCanvas();
         this.setupEventListeners();
+
+        this.stellarConductor.reset();
+        if (this.stellarDebugEnabled && !this.stellarDebug) {
+            this.stellarDebug = createStellarDebugOverlay();
+        }
 
         const hasWebGPU = await this.initWebGPU(buildVersion);
         if (!hasWebGPU && buildVersion !== this.buildVersion) {
@@ -368,7 +417,7 @@ export default class VoidEmberTheme extends BaseTheme {
 
         const flowComputeModule = device.createShaderModule({
             label: 'void-ember/flow-compute',
-            code: flowWGSL,
+            code: withCommon(flowWGSL),
         });
         const particleComputeModule = device.createShaderModule({
             label: 'void-ember/particle-compute',
@@ -376,11 +425,11 @@ export default class VoidEmberTheme extends BaseTheme {
         });
         const sceneModule = device.createShaderModule({
             label: 'void-ember/scene',
-            code: sceneWGSL,
+            code: withCommon(`${environmentWGSL}\n${sceneWGSL}`),
         });
         const postModule = device.createShaderModule({
             label: 'void-ember/post',
-            code: postWGSL,
+            code: withCommon(`${lensFlareWGSL}\n${postWGSL}`),
         });
         const presentModule = device.createShaderModule({
             label: 'void-ember/present',
@@ -485,27 +534,52 @@ fn vs_main(
         return out;
     }
 
+    // Class by particle fraction (matches particles.wgsl): spark / cinder / dust.
+    let frac = f32(instance_index) / max(params.quality.w, 1.0);
+    let is_spark = frac < 0.5;
+    let is_cinder = frac >= 0.5 && frac < 0.82;
+
+    let pos = particle.pos_vel.xy;
+    let vel = particle.pos_vel.zw;
+    let res = params.resolution.xy;
+    let inv_res = params.resolution.zw;
+
+    // Velocity-stretched quad (pixel space → aspect-correct): sparks streak,
+    // cinders mildly, dust stays round.
+    let vel_px = vel * res;
+    let speed_px = length(vel_px);
+    let dir = select(vec2f(1.0, 0.0), vel_px / max(speed_px, 1e-5), speed_px > 1e-5);
+    let perp = vec2f(-dir.y, dir.x);
+    var trail = 0.0;
+    if (is_spark) {
+        trail = 2.4;
+    } else if (is_cinder) {
+        trail = 0.8;
+    }
+    let stretch = 1.0 + trail * clamp(speed_px * 0.6, 0.0, 4.0);
+
     let local = quad[vertex_index];
-    let ndc = particle.pos_vel.xy * 2.0 - 1.0;
-    let size = vec2f(size_px * params.resolution.z * 2.0, size_px * params.resolution.w * 2.0);
-    out.position = vec4f(ndc + local * size, 0.0, 1.0);
+    let corner_px = dir * (local.x * size_px * stretch) + perp * (local.y * size_px);
+    let final_uv = pos + corner_px * inv_res;
+    out.position = vec4f(final_uv * 2.0 - 1.0, 0.0, 1.0);
     out.uv = local * 0.5 + vec2f(0.5);
     out.alpha = alpha;
-    out.heat = particle.life_data.y;
-    return out;
-}
 
-@fragment
-fn fs_main(input: VSOut) -> @location(0) vec4f {
-    let local = input.uv * 2.0 - 1.0;
-    let radius = dot(local, local);
-    let halo = exp(-radius * 4.6);
-    let core = exp(-radius * 36.0);
-    let heat = fract(input.heat * 13.17);
-    let color = mix(vec3f(0.7, 0.07, 0.03), vec3f(2.6, 0.95, 0.28), clamp(heat * 1.3, 0.0, 1.0));
-    let alpha = input.alpha * (halo * 0.72 + core * 0.9);
-    let crisp_color = mix(color, vec3f(4.2, 2.3, 0.7), core * 0.8);
-    return vec4f(crisp_color * alpha, alpha);
+    // Per-class black-body temperature (0..1): sparks hot, cinders warm, dust cool
+    // (and dust warms as it catches the star's light).
+    let rnd = fract(particle.life_data.y * 13.17);
+    var temp = 0.3;
+    if (is_spark) {
+        temp = (0.5 + rnd * 0.4) * (0.6 + 0.4 * clamp(life, 0.0, 1.0));
+    } else if (is_cinder) {
+        temp = (0.28 + rnd * 0.22) * (0.7 + 0.3 * clamp(life, 0.0, 1.0));
+    } else {
+        let to_star = (pos - params.ember.xy) * vec2f(max(params.sim.z, 0.001), 1.0);
+        let prox = exp(-length(to_star) * 4.0);
+        temp = 0.16 + rnd * 0.12 + prox * 0.4;
+    }
+    out.heat = clamp(temp, 0.0, 1.0);
+    return out;
 }
 `,
                 }),
@@ -522,16 +596,33 @@ struct VSOut {
     @location(2) heat: f32,
 };
 
+// Black-body ramp (mirrors wgsl/void-ember-common.wgsl ve_blackbody) so sparks
+// share the same physical colour model as the star.
+fn bb(t: f32) -> vec3f {
+    let x = clamp(t, 0.0, 1.0);
+    let c0 = vec3f(0.35, 0.02, 0.005);
+    let c1 = vec3f(1.10, 0.18, 0.03);
+    let c2 = vec3f(1.90, 0.75, 0.18);
+    let c3 = vec3f(2.60, 1.90, 1.10);
+    let c4 = vec3f(2.20, 2.40, 3.20);
+    let f = x * 4.0;
+    if (f < 1.0) { return mix(c0, c1, smoothstep(0.0, 1.0, f)); }
+    if (f < 2.0) { return mix(c1, c2, smoothstep(0.0, 1.0, f - 1.0)); }
+    if (f < 3.0) { return mix(c2, c3, smoothstep(0.0, 1.0, f - 2.0)); }
+    return mix(c3, c4, smoothstep(0.0, 1.0, f - 3.0));
+}
+
 @fragment
 fn fs_main(input: VSOut) -> @location(0) vec4f {
     let local = input.uv * 2.0 - 1.0;
     let radius = dot(local, local);
     let halo = exp(-radius * 4.6);
     let core = exp(-radius * 36.0);
-    let heat = fract(input.heat * 13.17);
-    let color = mix(vec3f(0.7, 0.07, 0.03), vec3f(2.6, 0.95, 0.28), clamp(heat * 1.3, 0.0, 1.0));
+    // input.heat already carries the per-particle black-body temperature.
+    let temp = input.heat;
+    let color = bb(temp);
     let alpha = input.alpha * (halo * 0.72 + core * 0.9);
-    let crisp_color = mix(color, vec3f(4.2, 2.3, 0.7), core * 0.8);
+    let crisp_color = mix(color, bb(min(1.0, temp + 0.3)), core * 0.8);
     return vec4f(crisp_color * alpha, alpha);
 }
 `,
@@ -590,6 +681,63 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             primitive: {
                 topology: 'triangle-list',
             },
+        });
+
+        // --- Dual-filter bloom pyramid (prefilter → downsample → additive upsample) ---
+        const bloomPrefilterModule = device.createShaderModule({
+            label: 'void-ember/bloom-prefilter',
+            code: bloomPrefilterWGSL,
+        });
+        const bloomDownModule = device.createShaderModule({
+            label: 'void-ember/bloom-down',
+            code: bloomDownWGSL,
+        });
+        const bloomUpModule = device.createShaderModule({
+            label: 'void-ember/bloom-up',
+            code: bloomUpWGSL,
+        });
+
+        this.webgpu.bloomPrefilterPipeline = device.createRenderPipeline({
+            label: 'void-ember/bloom-prefilter-pipeline',
+            layout: 'auto',
+            vertex: { module: bloomPrefilterModule, entryPoint: 'vs_main' },
+            fragment: {
+                module: bloomPrefilterModule,
+                entryPoint: 'fs_main',
+                targets: [{ format: sceneFormat }],
+            },
+            primitive: { topology: 'triangle-list' },
+        });
+
+        this.webgpu.bloomDownPipeline = device.createRenderPipeline({
+            label: 'void-ember/bloom-down-pipeline',
+            layout: 'auto',
+            vertex: { module: bloomDownModule, entryPoint: 'vs_main' },
+            fragment: {
+                module: bloomDownModule,
+                entryPoint: 'fs_main',
+                targets: [{ format: sceneFormat }],
+            },
+            primitive: { topology: 'triangle-list' },
+        });
+
+        this.webgpu.bloomUpPipeline = device.createRenderPipeline({
+            label: 'void-ember/bloom-up-pipeline',
+            layout: 'auto',
+            vertex: { module: bloomUpModule, entryPoint: 'vs_main' },
+            fragment: {
+                module: bloomUpModule,
+                entryPoint: 'fs_main',
+                targets: [{
+                    format: sceneFormat,
+                    // Additive: each upsampled level accumulates onto the larger one.
+                    blend: {
+                        color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+                        alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+                    },
+                }],
+            },
+            primitive: { topology: 'triangle-list' },
         });
     }
 
@@ -660,6 +808,32 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         this.webgpu.postView = this.webgpu.postTexture.createView();
         this.webgpu.historyView = this.webgpu.historyTexture.createView();
 
+        // Bloom mip chain — half-res base, halving each level, capped by preset.
+        const bloomUsage = combineFlags(
+            GPU_TEXTURE_USAGE_RENDER_ATTACHMENT,
+            GPU_TEXTURE_USAGE_TEXTURE_BINDING,
+        );
+        const maxMips = Math.max(1, this.qualityPreset.bloomMips ?? 5);
+        this.webgpu.bloomTextures = [];
+        this.webgpu.bloomViews = [];
+        let bw = Math.max(1, Math.floor(this.canvas.width / 2));
+        let bh = Math.max(1, Math.floor(this.canvas.height / 2));
+        for (let level = 0; level < maxMips; level++) {
+            const tex = device.createTexture({
+                size: { width: bw, height: bh, depthOrArrayLayers: 1 },
+                format: this.webgpu.sceneFormat,
+                usage: bloomUsage,
+            });
+            this.webgpu.bloomTextures.push(tex);
+            this.webgpu.bloomViews.push(tex.createView());
+            bw = Math.max(1, Math.floor(bw / 2));
+            bh = Math.max(1, Math.floor(bh / 2));
+            if (bw < 4 || bh < 4) {
+                break;
+            }
+        }
+        this.webgpu.bloomLevels = this.webgpu.bloomTextures.length;
+
         this.seedBuffers();
         this.createBindGroups();
     }
@@ -669,6 +843,7 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             this.webgpu.sceneTexture,
             this.webgpu.postTexture,
             this.webgpu.historyTexture,
+            ...(this.webgpu.bloomTextures || []),
         ].forEach((texture) => {
             if (texture && typeof texture.destroy === 'function') {
                 try {
@@ -682,6 +857,9 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         this.webgpu.sceneTexture = null;
         this.webgpu.postTexture = null;
         this.webgpu.historyTexture = null;
+        this.webgpu.bloomTextures = [];
+        this.webgpu.bloomViews = [];
+        this.webgpu.bloomLevels = 0;
         this.webgpu.sceneView = null;
         this.webgpu.postView = null;
         this.webgpu.historyView = null;
@@ -723,21 +901,47 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         device.queue.writeBuffer(this.webgpu.flowBuffers[0], 0, flowSeed);
         device.queue.writeBuffer(this.webgpu.flowBuffers[1], 0, flowSeed);
 
-        const particleSeed = new Float32Array(this.qualityPreset.particleCount * 8);
-        for (let i = 0; i < this.qualityPreset.particleCount; i++) {
+        // Class-aware initial seeding (mirrors particles.wgsl spawn): sparks/cinders
+        // around the ember, dust scattered across the frame. Dust is long-lived, so
+        // its initial scatter matters; sparks/cinders respawn within ~1s anyway.
+        const count = this.qualityPreset.particleCount;
+        const anchor = this.getEmberAnchor();
+        const particleSeed = new Float32Array(count * 8);
+        for (let i = 0; i < count; i++) {
             const base = i * 8;
+            const frac = i / Math.max(count, 1);
             const angle = Math.random() * Math.PI * 2;
-            const radius = 0.004 + Math.random() * 0.03;
-            const emberX = this.getEmberAnchor().x;
-            const emberY = this.getEmberAnchor().y;
-            particleSeed[base] = emberX + Math.cos(angle) * radius;
-            particleSeed[base + 1] = emberY + Math.sin(angle) * radius;
-            particleSeed[base + 2] = (Math.random() - 0.5) * 0.0015;
-            particleSeed[base + 3] = -0.0008 - Math.random() * 0.0015;
-            particleSeed[base + 4] = Math.random() * 1.6;
-            particleSeed[base + 5] = Math.random();
-            particleSeed[base + 6] = 1.6 + Math.random() * 4.5;
-            particleSeed[base + 7] = 0.15 + Math.random() * 0.55;
+            if (frac < 0.5) {
+                // SPARK
+                const radius = 0.004 + Math.random() * 0.03;
+                particleSeed[base] = anchor.x + Math.cos(angle) * radius;
+                particleSeed[base + 1] = anchor.y + Math.sin(angle) * radius;
+                particleSeed[base + 2] = Math.cos(angle) * 0.0015;
+                particleSeed[base + 3] = -0.0012 - Math.random() * 0.0016;
+                particleSeed[base + 4] = 0.5 + Math.random() * 0.7; // life
+                particleSeed[base + 6] = 1.5 + Math.random() * 3.0; // size
+                particleSeed[base + 7] = 0.4 + Math.random() * 0.5; // alpha
+            } else if (frac < 0.82) {
+                // CINDER
+                const radius = 0.02 + Math.random() * 0.09;
+                particleSeed[base] = anchor.x + Math.cos(angle) * radius;
+                particleSeed[base + 1] = anchor.y + Math.sin(angle) * radius;
+                particleSeed[base + 2] = (Math.random() - 0.5) * 0.001;
+                particleSeed[base + 3] = -0.0005 - Math.random() * 0.001;
+                particleSeed[base + 4] = 1.5 + Math.random() * 1.6;
+                particleSeed[base + 6] = 2.0 + Math.random() * 4.0;
+                particleSeed[base + 7] = 0.22 + Math.random() * 0.35;
+            } else {
+                // DUST — scattered across the whole frame
+                particleSeed[base] = Math.random();
+                particleSeed[base + 1] = Math.random();
+                particleSeed[base + 2] = (Math.random() - 0.5) * 0.0004;
+                particleSeed[base + 3] = (Math.random() - 0.5) * 0.0004;
+                particleSeed[base + 4] = 4.0 + Math.random() * 5.0;
+                particleSeed[base + 6] = 0.8 + Math.random() * 1.4;
+                particleSeed[base + 7] = 0.06 + Math.random() * 0.16;
+            }
+            particleSeed[base + 5] = Math.random(); // stable per-particle seed
         }
         device.queue.writeBuffer(this.webgpu.particleBuffer, 0, particleSeed);
     }
@@ -811,6 +1015,36 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             ],
         });
 
+        // Bloom pyramid bind groups.
+        this.webgpu.bloomPrefilterBindGroup = device.createBindGroup({
+            layout: this.webgpu.bloomPrefilterPipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: this.webgpu.uniformBuffer } },
+                { binding: 1, resource: this.webgpu.sceneView },
+                { binding: 2, resource: this.webgpu.sampler },
+            ],
+        });
+        this.webgpu.bloomDownBindGroups = [];
+        this.webgpu.bloomUpBindGroups = [];
+        for (let level = 0; level < this.webgpu.bloomLevels - 1; level++) {
+            // downsample[level] reads bloomViews[level], writes bloomViews[level+1]
+            this.webgpu.bloomDownBindGroups.push(device.createBindGroup({
+                layout: this.webgpu.bloomDownPipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: this.webgpu.bloomViews[level] },
+                    { binding: 1, resource: this.webgpu.sampler },
+                ],
+            }));
+            // upsample[level] reads bloomViews[level+1], additively writes bloomViews[level]
+            this.webgpu.bloomUpBindGroups.push(device.createBindGroup({
+                layout: this.webgpu.bloomUpPipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: this.webgpu.bloomViews[level + 1] },
+                    { binding: 1, resource: this.webgpu.sampler },
+                ],
+            }));
+        }
+
         this.webgpu.postBindGroup = device.createBindGroup({
             layout: this.webgpu.postPipeline.getBindGroupLayout(0),
             entries: [
@@ -818,6 +1052,7 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
                 { binding: 1, resource: this.webgpu.sceneView },
                 { binding: 2, resource: this.webgpu.sampler },
                 { binding: 3, resource: this.webgpu.historyView },
+                { binding: 4, resource: this.webgpu.bloomViews[0] },
             ],
         });
 
@@ -962,6 +1197,7 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             this.runtime.shockwaveTarget = clamp(this.runtime.shockwaveTarget + 0.7, 0, 1.0);
             this.runtime.flareTarget = clamp(this.runtime.flareTarget + 0.15, 0, 2.0);
             this.runtime.intensityTarget = clamp(this.runtime.intensityTarget + 0.02, 0, 3.0);
+            this.stellarConductor.onPieceLock();
         }));
 
         this.eventUnsubscribers.push(eventBus.on(EVENTS.HARD_DROP, () => {
@@ -970,10 +1206,12 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             this.runtime.pulseTarget = clamp(this.runtime.pulseTarget + 0.7, 0, 3.0);
             this.runtime.eventTarget = clamp(this.runtime.eventTarget + 0.25, 0, 3.0);
             this.runtime.turbulenceTarget = clamp(this.runtime.turbulenceTarget + 0.08, 0.2, 2.0);
+            this.stellarConductor.onHardDrop();
         }));
 
         this.eventUnsubscribers.push(eventBus.on(EVENTS.LINE_CLEAR, (payload = {}) => {
             const lineCount = clamp(Number(payload.lineCount) || 1, 1, 4);
+            this.stellarConductor.onLineClear(lineCount, Number(payload.comboCount) || 0);
             const multiplier = lineCount === 4 ? 2.5 : lineCount;
             this.runtime.eventTarget = clamp(this.runtime.eventTarget + multiplier * 0.5, 0, 4.0);
             this.runtime.lineTarget = clamp(this.runtime.lineTarget + multiplier * 0.45, 0, 3.5);
@@ -989,6 +1227,7 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             if (comboCount <= 1) {
                 return;
             }
+            this.stellarConductor.onCombo(comboCount);
             this.runtime.comboTarget = clamp(this.runtime.comboTarget + comboCount * 0.24, 0, 4.0);
             this.runtime.turbulenceTarget = clamp(this.runtime.turbulenceTarget + comboCount * 0.1, 0.2, 2.8);
             this.runtime.eventTarget = clamp(this.runtime.eventTarget + comboCount * 0.14, 0, 4.0);
@@ -1002,6 +1241,7 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             this.runtime.shockwaveTarget = 1.0;
             this.runtime.pulseTarget = clamp(this.runtime.pulseTarget + 0.9, 0, 3.5);
             this.runtime.intensityTarget = clamp(this.runtime.intensityTarget + 0.15, 0, 3.0);
+            this.stellarConductor.onLevelUp();
         }));
 
         const collapse = () => {
@@ -1009,6 +1249,7 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
             this.runtime.pulseTarget = clamp(this.runtime.pulseTarget + 0.6, 0, 2.8);
             this.runtime.flareTarget = clamp(this.runtime.flareTarget + 0.8, 0, 3.0);
             this.runtime.shockwaveTarget = 1.0;
+            this.stellarConductor.onCollapse();
         };
 
         this.eventUnsubscribers.push(eventBus.on(EVENTS.ODYSSEY_GOAL_COMPLETE, collapse));
@@ -1133,6 +1374,10 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
     }
 
     startAnimation() {
+        // Guard against a second concurrent RAF loop (e.g. resume() while already
+        // animating). safeAnimate re-registers its id each frame, so resetting
+        // here reliably cancels any loop already running before we start a new one.
+        this.resetAnimationLoop();
         const animate = this.safeAnimate((time) => this.renderFrame(time));
         const frameId = requestAnimationFrame(animate);
         this.registerAnimation(frameId);
@@ -1147,6 +1392,13 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         this.frameCounter += 1;
 
         this.updateReactiveState(this.runtime.delta);
+
+        // Phase 0: advance the reactive spine alongside the legacy channels and
+        // surface it in the debug overlay. Not yet consumed by the render path.
+        this.stellarConductor.update(this.runtime.delta);
+        if (this.stellarDebug) {
+            this.stellarDebug.update(this.stellarConductor, { legacyIntensity: this.runtime.intensity });
+        }
 
         const frameStartedAt = performance.now();
         if (this.renderBackend === 'webgpu') {
@@ -1267,13 +1519,80 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         floats[UNIFORM.misc + 2] = this.qualityPreset.historyClamp;
         floats[UNIFORM.misc + 3] = this.qualityPreset.sharpness ?? 0.12;
 
-        // Pack reactive gameplay channels into the padding slot
-        floats[36] = this.runtime.shockwave;
-        floats[37] = this.runtime.flare;
-        floats[38] = this.runtime.hardDropFlash;
-        floats[39] = this.runtime.intensity;
+        // Pack reactive gameplay channels into the fx slot
+        floats[UNIFORM.fx + 0] = this.runtime.shockwave;
+        floats[UNIFORM.fx + 1] = this.runtime.flare;
+        floats[UNIFORM.fx + 2] = this.runtime.hardDropFlash;
+        floats[UNIFORM.fx + 3] = this.runtime.intensity;
+
+        // StellarConductor life-state — drives the hero star (scene.wgsl)
+        const conductor = this.stellarConductor;
+        floats[UNIFORM.star0 + 0] = conductor.temperature;
+        floats[UNIFORM.star0 + 1] = conductor.agitation;
+        floats[UNIFORM.star0 + 2] = conductor.coronaEnergy;
+        floats[UNIFORM.star0 + 3] = conductor.breath;
+        floats[UNIFORM.star1 + 0] = conductor.novaFlash;
+        floats[UNIFORM.star1 + 1] = conductor.cmePulse;
+        floats[UNIFORM.star1 + 2] = conductor.cameraPush;
+        floats[UNIFORM.star1 + 3] = 0;
 
         device.queue.writeBuffer(uniformBuffer, 0, floats);
+    }
+
+    runBloomPyramid(encoder) {
+        const levels = this.webgpu.bloomLevels;
+        if (!levels || levels < 1 || !this.webgpu.bloomPrefilterPipeline) {
+            return;
+        }
+
+        const clearBlack = {
+            r: 0, g: 0, b: 0, a: 1,
+        };
+
+        // Prefilter + bright-pass: scene → bloomViews[0] (half-res).
+        const prefilterPass = encoder.beginRenderPass({
+            colorAttachments: [{
+                view: this.webgpu.bloomViews[0],
+                clearValue: clearBlack,
+                loadOp: 'clear',
+                storeOp: 'store',
+            }],
+        });
+        prefilterPass.setPipeline(this.webgpu.bloomPrefilterPipeline);
+        prefilterPass.setBindGroup(0, this.webgpu.bloomPrefilterBindGroup);
+        prefilterPass.draw(3, 1, 0, 0);
+        prefilterPass.end();
+
+        // Downsample chain: bloomViews[i-1] → bloomViews[i].
+        for (let level = 1; level < levels; level++) {
+            const pass = encoder.beginRenderPass({
+                colorAttachments: [{
+                    view: this.webgpu.bloomViews[level],
+                    clearValue: clearBlack,
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                }],
+            });
+            pass.setPipeline(this.webgpu.bloomDownPipeline);
+            pass.setBindGroup(0, this.webgpu.bloomDownBindGroups[level - 1]);
+            pass.draw(3, 1, 0, 0);
+            pass.end();
+        }
+
+        // Upsample chain: additively accumulate bloomViews[i+1] onto bloomViews[i].
+        for (let level = levels - 2; level >= 0; level--) {
+            const pass = encoder.beginRenderPass({
+                colorAttachments: [{
+                    view: this.webgpu.bloomViews[level],
+                    loadOp: 'load',
+                    storeOp: 'store',
+                }],
+            });
+            pass.setPipeline(this.webgpu.bloomUpPipeline);
+            pass.setBindGroup(0, this.webgpu.bloomUpBindGroups[level]);
+            pass.draw(3, 1, 0, 0);
+            pass.end();
+        }
     }
 
     renderWebGPU() {
@@ -1366,6 +1685,9 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         particleRenderPass.setBindGroup(0, this.webgpu.particleVisualBindGroup);
         particleRenderPass.draw(6, this.qualityPreset.particleCount, 0, 0);
         particleRenderPass.end();
+
+        // Dual-filter bloom pyramid: scene → soft, wide HDR bloom in bloomViews[0].
+        this.runBloomPyramid(encoder);
 
         const postStartedAt = performance.now();
         const postPass = encoder.beginRenderPass({
@@ -1598,6 +1920,13 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
         this.clearEventUnsubscribers();
         this.resetAnimationLoop();
         this.teardownRuntime();
+        if (this.stellarDebug) {
+            this.stellarDebug.dispose();
+            this.stellarDebug = null;
+        }
+        if (this.stellarConductor) {
+            this.stellarConductor.reset();
+        }
     }
 
     cleanup() {

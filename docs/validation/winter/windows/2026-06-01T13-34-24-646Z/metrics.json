@@ -1,0 +1,305 @@
+{
+  "outDir": "/home/melolo/serenity-blocks/docs/validation/winter/windows/2026-06-01T13-34-24-646Z",
+  "results": [
+    {
+      "name": "bare",
+      "url": "http://localhost:4174/?skipIntro=1&winterBare=1&winterStorm=1",
+      "setupResult": {
+        "currentModeId": "serenity",
+        "currentModeActive": true,
+        "activeThemeName": "winter",
+        "hasActiveTheme": true,
+        "themeClass": "WinterTheme"
+      },
+      "runtime": {
+        "href": "http://localhost:4174/?skipIntro=1&winterBare=1&winterStorm=1",
+        "visibility": "visible",
+        "currentModeId": "serenity",
+        "activeThemeName": "winter",
+        "themeClass": "WinterTheme",
+        "isWebGPU": true,
+        "isWebGL": false,
+        "rendererClass": "WebGPURenderer",
+        "backendIsWebGPU": true,
+        "backendIsWebGL": false,
+        "noSnow": false,
+        "bare": true,
+        "noFlakes": true,
+        "noStars": true,
+        "disablePost": false,
+        "skyMaterial": "MeshBasicNodeMaterial",
+        "snowDrawCount": 5200,
+        "snowMaxCount": 5200,
+        "snowBlend": 1,
+        "snowPremultiplied": true,
+        "fogDensity": 0.0009534341573427571,
+        "storm": {
+          "intensity": 0.1199999999999999,
+          "act": "Still Night",
+          "actProgress": 0.3529411764705879,
+          "gust": 0,
+          "gustDir": 1,
+          "whiteout": 0,
+          "flare": 0,
+          "accent": {
+            "r": 0.43529411764705883,
+            "g": 0.9490196078431372,
+            "b": 0.8392156862745098
+          },
+          "accentHex": 7336662
+        }
+      },
+      "file": "/home/melolo/serenity-blocks/docs/validation/winter/windows/2026-06-01T13-34-24-646Z/bare.png",
+      "metrics": {
+        "width": 1600,
+        "height": 900,
+        "topSky": {
+          "name": "topSky",
+          "meanLuma": 223.69,
+          "whitePct": 87.05,
+          "darkPct": 2.07,
+          "maxLuma": 255
+        },
+        "playfieldSky": {
+          "name": "playfieldSky",
+          "meanLuma": 242.28,
+          "whitePct": 100,
+          "darkPct": 0,
+          "maxLuma": 242.65
+        },
+        "horizon": {
+          "name": "horizon",
+          "meanLuma": 74.08,
+          "whitePct": 30.28,
+          "darkPct": 69.44,
+          "maxLuma": 242.65
+        }
+      }
+    },
+    {
+      "name": "bare-no-snow",
+      "url": "http://localhost:4174/?skipIntro=1&winterBare=1&winterStorm=1&winterNoSnow=1",
+      "setupResult": {
+        "currentModeId": "serenity",
+        "currentModeActive": true,
+        "activeThemeName": "winter",
+        "hasActiveTheme": true,
+        "themeClass": "WinterTheme"
+      },
+      "runtime": {
+        "href": "http://localhost:4174/?skipIntro=1&winterBare=1&winterStorm=1&winterNoSnow=1",
+        "visibility": "visible",
+        "currentModeId": "serenity",
+        "activeThemeName": "winter",
+        "themeClass": "WinterTheme",
+        "isWebGPU": true,
+        "isWebGL": false,
+        "rendererClass": "WebGPURenderer",
+        "backendIsWebGPU": true,
+        "backendIsWebGL": false,
+        "noSnow": true,
+        "bare": true,
+        "noFlakes": true,
+        "noStars": true,
+        "disablePost": false,
+        "skyMaterial": "MeshBasicNodeMaterial",
+        "snowDrawCount": null,
+        "snowMaxCount": null,
+        "snowBlend": null,
+        "snowPremultiplied": null,
+        "fogDensity": 0.0009534268529417563,
+        "storm": {
+          "intensity": 0.11999999999999987,
+          "act": "Still Night",
+          "actProgress": 0.3529411764705878,
+          "gust": 0,
+          "gustDir": 1,
+          "whiteout": 0,
+          "flare": 0,
+          "accent": {
+            "r": 0.43529411764705883,
+            "g": 0.9490196078431372,
+            "b": 0.8392156862745098
+          },
+          "accentHex": 7336662
+        }
+      },
+      "file": "/home/melolo/serenity-blocks/docs/validation/winter/windows/2026-06-01T13-34-24-646Z/bare-no-snow.png",
+      "metrics": {
+        "width": 1600,
+        "height": 900,
+        "topSky": {
+          "name": "topSky",
+          "meanLuma": 223.69,
+          "whitePct": 87.05,
+          "darkPct": 2.07,
+          "maxLuma": 255
+        },
+        "playfieldSky": {
+          "name": "playfieldSky",
+          "meanLuma": 242.28,
+          "whitePct": 100,
+          "darkPct": 0,
+          "maxLuma": 242.65
+        },
+        "horizon": {
+          "name": "horizon",
+          "meanLuma": 74.05,
+          "whitePct": 30.3,
+          "darkPct": 69.47,
+          "maxLuma": 242.65
+        }
+      }
+    },
+    {
+      "name": "bare-no-snow-no-post",
+      "url": "http://localhost:4174/?skipIntro=1&winterBare=1&winterStorm=1&winterNoSnow=1&winterNoPost=1",
+      "setupResult": {
+        "currentModeId": "serenity",
+        "currentModeActive": true,
+        "activeThemeName": "winter",
+        "hasActiveTheme": true,
+        "themeClass": "WinterTheme"
+      },
+      "runtime": {
+        "href": "http://localhost:4174/?skipIntro=1&winterBare=1&winterStorm=1&winterNoSnow=1&winterNoPost=1",
+        "visibility": "visible",
+        "currentModeId": "serenity",
+        "activeThemeName": "winter",
+        "themeClass": "WinterTheme",
+        "isWebGPU": true,
+        "isWebGL": false,
+        "rendererClass": "WebGPURenderer",
+        "backendIsWebGPU": true,
+        "backendIsWebGL": false,
+        "noSnow": true,
+        "bare": true,
+        "noFlakes": true,
+        "noStars": true,
+        "disablePost": true,
+        "skyMaterial": "MeshBasicNodeMaterial",
+        "snowDrawCount": null,
+        "snowMaxCount": null,
+        "snowBlend": null,
+        "snowPremultiplied": null,
+        "fogDensity": 0.0009534234470792192,
+        "storm": {
+          "intensity": 0.11999999999999988,
+          "act": "Still Night",
+          "actProgress": 0.35294117647058787,
+          "gust": 0,
+          "gustDir": 1,
+          "whiteout": 0,
+          "flare": 0,
+          "accent": {
+            "r": 0.43529411764705883,
+            "g": 0.9490196078431372,
+            "b": 0.8392156862745098
+          },
+          "accentHex": 7336662
+        }
+      },
+      "file": "/home/melolo/serenity-blocks/docs/validation/winter/windows/2026-06-01T13-34-24-646Z/bare-no-snow-no-post.png",
+      "metrics": {
+        "width": 1600,
+        "height": 900,
+        "topSky": {
+          "name": "topSky",
+          "meanLuma": 235.79,
+          "whitePct": 88.82,
+          "darkPct": 2.01,
+          "maxLuma": 255
+        },
+        "playfieldSky": {
+          "name": "playfieldSky",
+          "meanLuma": 255,
+          "whitePct": 100,
+          "darkPct": 0,
+          "maxLuma": 255
+        },
+        "horizon": {
+          "name": "horizon",
+          "meanLuma": 82.26,
+          "whitePct": 30.29,
+          "darkPct": 69.44,
+          "maxLuma": 255
+        }
+      }
+    },
+    {
+      "name": "full",
+      "url": "http://localhost:4174/?skipIntro=1&winterStorm=1",
+      "setupResult": {
+        "currentModeId": "serenity",
+        "currentModeActive": true,
+        "activeThemeName": "winter",
+        "hasActiveTheme": true,
+        "themeClass": "WinterTheme"
+      },
+      "runtime": {
+        "href": "http://localhost:4174/?skipIntro=1&winterStorm=1",
+        "visibility": "visible",
+        "currentModeId": "serenity",
+        "activeThemeName": "winter",
+        "themeClass": "WinterTheme",
+        "isWebGPU": true,
+        "isWebGL": false,
+        "rendererClass": "WebGPURenderer",
+        "backendIsWebGPU": true,
+        "backendIsWebGL": false,
+        "noSnow": false,
+        "bare": false,
+        "noFlakes": false,
+        "noStars": false,
+        "disablePost": false,
+        "skyMaterial": "MeshBasicNodeMaterial",
+        "snowDrawCount": 5200,
+        "snowMaxCount": 5200,
+        "snowBlend": 1,
+        "snowPremultiplied": true,
+        "fogDensity": 0.0009537818155224882,
+        "storm": {
+          "intensity": 0.11999999999999995,
+          "act": "Still Night",
+          "actProgress": 0.3529411764705881,
+          "gust": 0,
+          "gustDir": 1,
+          "whiteout": 0,
+          "flare": 0,
+          "accent": {
+            "r": 0.43529411764705883,
+            "g": 0.9490196078431372,
+            "b": 0.8392156862745098
+          },
+          "accentHex": 7336662
+        }
+      },
+      "file": "/home/melolo/serenity-blocks/docs/validation/winter/windows/2026-06-01T13-34-24-646Z/full.png",
+      "metrics": {
+        "width": 1600,
+        "height": 900,
+        "topSky": {
+          "name": "topSky",
+          "meanLuma": 223.69,
+          "whitePct": 87.05,
+          "darkPct": 2.07,
+          "maxLuma": 255
+        },
+        "playfieldSky": {
+          "name": "playfieldSky",
+          "meanLuma": 242.27,
+          "whitePct": 100,
+          "darkPct": 0,
+          "maxLuma": 250.58
+        },
+        "horizon": {
+          "name": "horizon",
+          "meanLuma": 74,
+          "whitePct": 30.27,
+          "darkPct": 69.49,
+          "maxLuma": 247.87
+        }
+      }
+    }
+  ]
+}

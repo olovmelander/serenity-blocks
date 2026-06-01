@@ -42,6 +42,7 @@ import {
     createVhsBillboardNodeMaterial,
     createMoonNodeMaterial,
     createCloudStrataNodeMaterial,
+    createSkyFlashNodeMaterial,
     createSkylineNodeMaterial,
     createSearchlightNodeMaterial,
     createHologramNodeMaterial,
@@ -258,6 +259,13 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.moonUniforms = null;
         this.skyStrata = [];
         this.skyStrataUniforms = [];
+        // AAA Phase 4c: distant sheet-lightning state
+        this.skyFlash = null;
+        this.skyFlashUniform = null;
+        this.skyFlashIntensity = 0;
+        this.skyFlashTimer = 6 + Math.random() * 10;
+        this.skyFlashPulse2At = 0;
+        this.skyFlashPulse2Amp = 0;
         this.megaTowerUniforms = null;
         this.starUniforms = null;
         this.wetGroundUniforms = null; // WebGPU wet asphalt material uniforms
@@ -315,6 +323,9 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Shared spinner resources (initialized lazily)
         this.spinnerResources = null;
+        this.groundCarInstances = null; // ground traffic (driving cars)
+        this.groundCarData = null;
+        this.groundCarLanes = null;
 
         // SynthCity Assets Manager
         this.assets = new NeonDistrictAssets();
@@ -337,6 +348,12 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.cameraCurrentLookTarget = this.cameraBaseLookAt.clone();
         this.cameraRollOffset = 0;
         this.cameraDriftSeed = Math.random() * Math.PI * 2;
+        // AAA Phase 7a: reactive camera channel (event-driven dolly + FOV pulse)
+        this.cameraDollyZ = 0;     // negative pushes the camera down the canyon
+        this.cameraFovPulse = 0;   // transient FOV widen (dolly-zoom), degrees
+        this.cameraBaseFov = 70;
+        this._fovDirty = false;
+        this.baseSaturationAmount = 1.12; // Phase 3 grade base (combo ramps above this)
 
         // VHS billboards with shader effects
         this.vhsBillboards = [];
@@ -663,6 +680,17 @@ export default class NeonDistrictTheme extends BaseTheme {
         const forceCinematic = hasFlag('ndCinematic') || hasFlag('cinematic');
         // Phase 4 (AAA): hero-sky smog strata toggles
         const noClouds = hasFlag('ndNoClouds') || hasFlag('noClouds');
+        // Phase 5 (AAA): facade/storefront toggles
+        const noStorefrontSigns = hasFlag('ndNoStorefrontSigns') || hasFlag('noStorefrontSigns');
+        // Ground traffic (driving cars)
+        const noGroundTraffic = (minimal && !enableFlag('groundTraffic'))
+            || hasFlag('ndNoGroundTraffic') || hasFlag('noGroundTraffic');
+        // 6d headlight beam cones
+        const noHeadlightCones = hasFlag('ndNoHeadlightCones') || hasFlag('noHeadlightCones');
+        const forceHeadlightCones = hasFlag('ndHeadlightCones') || hasFlag('headlightCones');
+        // 6b rain-on-lens droplets
+        const noLensDrops = hasFlag('ndNoLensDrops') || hasFlag('noLensDrops');
+        const forceLensDrops = hasFlag('ndLensDrops') || hasFlag('lensDrops');
         const featureFlags = {
             noPost: hasFlag('ndNoPost') || hasFlag('noPost'),
             noMrt: hasFlag('ndNoMrt') || hasFlag('noMrt'),
@@ -695,6 +723,12 @@ export default class NeonDistrictTheme extends BaseTheme {
             noGrade,
             noAnamorphic,
             forceCinematic,
+            noStorefrontSigns,
+            noGroundTraffic,
+            noHeadlightCones,
+            forceHeadlightCones,
+            noLensDrops,
+            forceLensDrops,
         };
 
         const prewarm = hasFlag('ndPrewarm') || hasFlag('prewarm');
@@ -871,6 +905,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             this.createDistantCityLayers(); // Add silhouette backdrop
             this.createMoon(); // Add Cyber Moon
             this.createSkyStrata(); // Add drifting upper-sky smog bands
+            this.createSkyFlash(); // Add distant sheet-lightning
             if (!this.featureFlags.noSkyline) {
                 this.createDistantSkyline(); // Add 360-degree city horizon
             }
@@ -1055,6 +1090,7 @@ export default class NeonDistrictTheme extends BaseTheme {
             this.createOverheadWires(); // Merged geometry (1 mesh)
             if (!this.featureFlags.noVehicles) {
                 this.createFlyingVehicles(); // InstancedMesh (5 meshes)
+                this.createGroundTraffic(); // Driving cars on the street
             }
             // PERF: Prewarm after vehicles to compile their shaders off the render path
             if (this.prewarmEnabled && this.renderer?.compileAsync && !this.isPrewarming) {
@@ -1601,6 +1637,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Street-level camera IN THE ALLEY - more horizontal view
         // Far clip increased to 10000 to see the horizon tower
         this.camera = new THREE.PerspectiveCamera(70, width / height, 1, 10000);
+        this.cameraBaseFov = this.camera.fov; // AAA Phase 7a: rest FOV for dolly-zoom pulse
         this.camera.position.copy(this.cameraBasePosition);
         this.camera.lookAt(this.cameraBaseLookAt);
         this.cameraSway.set(0, 0, 0);
@@ -3157,7 +3194,10 @@ export default class NeonDistrictTheme extends BaseTheme {
                 height,
                 (Math.random() - 0.5) * depth * offsetScale,
             );
-            mesh.rotation.y = sign > 0 ? -Math.PI / 2 : Math.PI / 2;
+            // Front face (+Z) must point toward the street (the +sign·X side), so the
+            // ad text reads correctly instead of showing its mirrored back face.
+            // (Was inverted; the non-useX branch below was already correct.)
+            mesh.rotation.y = sign > 0 ? Math.PI / 2 : -Math.PI / 2;
         } else {
             mesh.position.set(
                 (Math.random() - 0.5) * width * offsetScale,
@@ -3186,8 +3226,59 @@ export default class NeonDistrictTheme extends BaseTheme {
         mesh.receiveShadow = true;
         building.add(mesh);
 
+        // AAA Phase 5c: glowing shop signage, lit doorway and a hanging blade sign
+        this.enrichStorefront(building, width, depth);
+
         // Add ground-level grime/debris for natural transition
         this.addGroundLevelDetails(building, width, depth);
+    }
+
+    /**
+     * AAA Phase 5c — enrich a storefront with street-facing emissive signage: a
+     * glowing sign band over the shopfront, a warm lit doorway, and (High+) a tall
+     * hanging blade sign. All emissive (so they bloom + feed reflections/god-rays)
+     * and additive. Skipped on Low/Minimal to keep draw calls down.
+     */
+    enrichStorefront(building, width, depth) {
+        if (this.featureFlags?.noStorefrontSigns) return;
+        const q = this.currentQualityName;
+        if (q === 'Low' || q === 'Minimal') return;
+
+        const palette = [0xff2bb0, 0x35e8ff, 0xff8a2b, 0xb14bff, 0x36ff8a];
+        const pick = () => palette[Math.floor(Math.random() * palette.length)];
+        const faceW = Math.max(width, depth);
+
+        const makeQuad = (w, h, color, opacity) => {
+            const mat = this.createBasicMaterial({
+                color,
+                transparent: true,
+                opacity,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            });
+            return new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+        };
+
+        // 1) Glowing sign band just above the shopfront.
+        const band = makeQuad(Math.min(faceW * 0.8, 64), 6, pick(), 0.95);
+        this.placeBillboardFacingStreet(building, band, width, depth, 34, { offset: 1.2, offsetScale: 0.0 });
+        band.renderOrder = 3;
+        building.add(band);
+
+        // 2) Warm lit doorway near the base.
+        const door = makeQuad(8, 16, 0xffcf8a, 0.8);
+        this.placeBillboardFacingStreet(building, door, width, depth, 9, { offset: 1.1, offsetScale: 0.4 });
+        door.renderOrder = 3;
+        building.add(door);
+
+        // 3) Hanging blade sign (High+ only) — a tall vertical neon strip.
+        if (q === 'High' || q === 'Ultra' || q === 'Extreme') {
+            const blade = makeQuad(5, 28, pick(), 0.9);
+            this.placeBillboardFacingStreet(building, blade, width, depth, 56, { offset: 3.5, offsetScale: 0.35 });
+            blade.renderOrder = 3;
+            building.add(blade);
+        }
     }
 
     /**
@@ -3496,9 +3587,16 @@ export default class NeonDistrictTheme extends BaseTheme {
         let emissiveNode = vec3(0.0, 0.0, 0.0);
         if (emissiveMap) {
             const emissiveTex = uniformTexture(emissiveMap).sample(uv()).rgb;
-            // Reduce emissive for more subtle window lighting (0.4)
-            colorNode = colorNode.add(emissiveTex.mul(float(0.4)));
-            emissiveNode = emissiveTex.mul(float(0.4));
+            // Harmonize the canyon-wall window strips: the baked emissive map has
+            // fully-saturated random hues (garish greens/cyans). Desaturate ~40%
+            // toward luma, bias very slightly cool, and dim so they sit in the
+            // purple palette instead of fighting it.
+            const luma = emissiveTex.x.mul(0.3).add(emissiveTex.y.mul(0.59)).add(emissiveTex.z.mul(0.11));
+            const harmonized = mix(emissiveTex, vec3(luma, luma, luma), float(0.4))
+                .mul(vec3(0.95, 0.92, 1.08));
+            const outerEmissive = harmonized.mul(float(0.28));
+            colorNode = colorNode.add(outerEmissive);
+            emissiveNode = outerEmissive;
         }
         material.colorNode = colorNode;
         material.emissiveNode = emissiveNode;
@@ -5413,6 +5511,66 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     /**
+     * AAA Phase 4c — distant sheet-lightning. A broad emissive plane behind the
+     * skyline whose intensity is pulsed from JS to silently flash the far sky,
+     * backlighting the smog strata. Triggers ambiently and on Tetris (4-line) clears.
+     */
+    createSkyFlash() {
+        if (this.featureFlags?.noSky || this.featureFlags?.noClouds) return;
+        if (!(this.isWebGPU || this.isWebGL)) return; // node material covers both backends
+        if (this.skyFlash) return;
+
+        const geometry = new THREE.PlaneGeometry(18000, 7000, 1, 1);
+        const { material, uniforms } = createSkyFlashNodeMaterial();
+        const flash = new THREE.Mesh(geometry, material);
+        flash.position.set(0, 2400, -8200); // behind the skyline cylinder
+        flash.renderOrder = -20; // draw before the strata/buildings
+        this.scene.add(flash);
+        this.freezeStaticObject(flash);
+        this.skyFlash = flash;
+        this.skyFlashUniform = uniforms?.uFlash ?? null;
+    }
+
+    /**
+     * Pulse the sheet-lightning. `amp` is the peak intensity; a quick secondary
+     * flicker is scheduled for the characteristic lightning double-flash.
+     */
+    triggerSkyFlash(amp = 1.0) {
+        if (!this.skyFlash) return;
+        this.skyFlashIntensity = Math.max(this.skyFlashIntensity, amp);
+        this.skyFlashPulse2At = 0.07 + Math.random() * 0.06;
+        this.skyFlashPulse2Amp = amp * (0.45 + Math.random() * 0.35);
+    }
+
+    updateSkyFlash(delta) {
+        if (!this.skyFlash) return;
+
+        // Fast exponential decay of the current flash.
+        this.skyFlashIntensity *= Math.exp(-delta * 6.0);
+
+        // Ambient scheduling — an occasional silent flash on the horizon.
+        this.skyFlashTimer -= delta;
+        if (this.skyFlashTimer <= 0) {
+            this.triggerSkyFlash(0.45 + Math.random() * 0.45);
+            this.skyFlashTimer = 9 + Math.random() * 17; // next in 9–26s
+        }
+
+        // Secondary double-flash flicker.
+        if (this.skyFlashPulse2At > 0) {
+            this.skyFlashPulse2At -= delta;
+            if (this.skyFlashPulse2At <= 0) {
+                this.skyFlashIntensity = Math.max(this.skyFlashIntensity, this.skyFlashPulse2Amp);
+                this.skyFlashPulse2At = 0;
+            }
+        }
+
+        const v = Math.min(this.skyFlashIntensity, 1.5);
+        if (this.skyFlashUniform) {
+            this.skyFlashUniform.value = v;
+        }
+    }
+
+    /**
      * Creates a panoramic skyline cylinder to surround the city
      * This fills the void with distant building silhouettes and lights
      */
@@ -6668,7 +6826,7 @@ export default class NeonDistrictTheme extends BaseTheme {
         const rainGeometry = new THREE.PlaneGeometry(0.06, 0.8);
 
         const rainMaterial = new THREE.MeshBasicMaterial({
-            color: 0xd0e0f0,  // Soft blue-white
+            color: 0xffffff,  // white base; per-instance colour (6a) does the tinting
             transparent: true,
             opacity: 0.45,
             depthWrite: false,
@@ -6697,6 +6855,18 @@ export default class NeonDistrictTheme extends BaseTheme {
         const camZ = camera?.position.z ?? 40;
         const cfg = this.rainConfig;
 
+        // AAA Phase 6a: tint each streak by the neon zone it falls through (left
+        // facades skew magenta/pink, right skew cyan, occasional amber) so the rain
+        // reads as lit by the city instead of a uniform blue-white sheet.
+        const _rainCol = new THREE.Color();
+        const zoneTint = (x) => {
+            const r = Math.random();
+            if (x < -12 && r < 0.5) return [1.0, 0.45, 0.82];   // left neon → magenta/pink
+            if (x > 12 && r < 0.5) return [0.42, 0.9, 1.0];     // right neon → cyan
+            if (r < 0.1) return [1.0, 0.74, 0.4];               // occasional amber
+            return [0.82, 0.9, 1.0];                            // cool blue-white default
+        };
+
         for (let i = 0; i < particleCount; i++) {
             const i3 = i * 3;
             // Random position in volume around camera
@@ -6706,7 +6876,12 @@ export default class NeonDistrictTheme extends BaseTheme {
 
             velocities[i] = cfg.fallSpeed * (0.8 + Math.random() * 0.4);
             sizes[i] = 0.4 + Math.random() * 0.5;
+
+            const [cr, cg, cb] = zoneTint(positions[i3] - camX);
+            _rainCol.setRGB(cr, cg, cb);
+            rainMesh.setColorAt(i, _rainCol);
         }
+        if (rainMesh.instanceColor) rainMesh.instanceColor.needsUpdate = true;
 
         this.rainMaterial = rainMaterial;
         this.rainUniforms = null;
@@ -6739,16 +6914,29 @@ export default class NeonDistrictTheme extends BaseTheme {
         const splashGeometry = new THREE.BufferGeometry();
         const splashPositions = new Float32Array(splashCount * 3);
         const splashPhases = new Float32Array(splashCount);
+        const splashColors = new Float32Array(splashCount * 3); // AAA Phase 6c
 
         for (let i = 0; i < splashCount; i++) {
-            splashPositions[i * 3] = (Math.random() - 0.5) * 1200;
+            const sx = (Math.random() - 0.5) * 1200;
+            splashPositions[i * 3] = sx;
             splashPositions[i * 3 + 1] = 0.5;
             splashPositions[i * 3 + 2] = (Math.random() - 0.5) * 2000 - 400;
             splashPhases[i] = Math.random() * 6.28;
+
+            // 6c: splashes catch the colour of the neon overhead (zone by world-X).
+            const r = Math.random();
+            let cr = 0.85; let cg = 0.93; let cb = 1.0; // cool default
+            if (sx < -120 && r < 0.55) { cr = 1.0; cg = 0.5; cb = 0.85; }       // left → magenta
+            else if (sx > 120 && r < 0.55) { cr = 0.5; cg = 0.92; cb = 1.0; }   // right → cyan
+            else if (r < 0.12) { cr = 1.0; cg = 0.78; cb = 0.45; }              // amber
+            splashColors[i * 3] = cr;
+            splashColors[i * 3 + 1] = cg;
+            splashColors[i * 3 + 2] = cb;
         }
 
         splashGeometry.setAttribute('position', new THREE.BufferAttribute(splashPositions, 3));
         splashGeometry.setAttribute('aPhase', new THREE.BufferAttribute(splashPhases, 1));
+        splashGeometry.setAttribute('aColor', new THREE.BufferAttribute(splashColors, 3));
 
         if (this.isWebGPU) {
             const splash = createSplashNodeMaterial();
@@ -6763,12 +6951,15 @@ export default class NeonDistrictTheme extends BaseTheme {
                 },
                 vertexShader: `
                     attribute float aPhase;
+                    attribute vec3 aColor;
                     uniform float uTime;
                     varying float vLife;
+                    varying vec3 vColor;
                     void main() {
                         vec3 pos = position;
                         float cycle = mod(uTime * 6.0 + aPhase, 6.28);
                         vLife = max(0.0, sin(cycle));
+                        vColor = aColor;
                         pos.y += vLife * 2.0;
                         vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
                         gl_Position = projectionMatrix * mvPosition;
@@ -6778,12 +6969,13 @@ export default class NeonDistrictTheme extends BaseTheme {
                 fragmentShader: `
                     uniform vec3 uColor;
                     varying float vLife;
+                    varying vec3 vColor;
                     void main() {
                         vec2 center = gl_PointCoord - vec2(0.5);
                         float dist = length(center) * 2.0;
                         float alpha = exp(-dist * dist * 6.0);
                         alpha *= 0.35 * vLife;
-                        gl_FragColor = vec4(uColor, alpha);
+                        gl_FragColor = vec4(uColor * vColor, alpha);
                     }
                 `,
                 transparent: true,
@@ -7065,6 +7257,285 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.vehicleInstances.tailLight.instanceMatrix.needsUpdate = true;
         this.vehicleInstances.exhaustCyan.instanceMatrix.needsUpdate = true;
         this.vehicleInstances.exhaustOrange.instanceMatrix.needsUpdate = true;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Ground Traffic — driving cars on the street (companion to the flying cars).
+    // GPU-instanced: a dark reflective body + a pair of headlights + a pair of
+    // taillights + a soft underglow pool. Cars drive in lanes along Z; oncoming
+    // cars show headlights, receding cars show taillights — and all of it reflects
+    // in the wet road for free via the Phase 1 planar reflector.
+    // ─────────────────────────────────────────────────────────────────────────
+    createGroundTraffic() {
+        if (this.featureFlags?.noGroundTraffic || this.featureFlags?.noVehicles) return;
+        if (this.groundCarInstances) return;
+
+        const countMap = {
+            Extreme: 26, Ultra: 18, High: 12, Medium: 6, Low: 3, Minimal: 0,
+        };
+        const count = countMap[this.currentQualityName] ?? 8;
+        if (count <= 0) return;
+
+        // ── Shared geometry ──────────────────────────────────────────────────
+        // Sleek low-poly "spinner"-style body: low+wide chassis, a raised mid
+        // shoulder, a tapered nose and a small rear deck/spoiler — merged into one
+        // mesh. Forward = +Z. (Research: low-poly cyberpunk cars read best with a
+        // low wedge silhouette, defined wheels, and a glass greenhouse.)
+        // Origin sits on the road (y=0); wheels (r=1.8) touch the ground.
+        const chassis = new THREE.BoxGeometry(9.6, 2.4, 25);
+        chassis.translate(0, 2.4, 0);
+        const shoulder = new THREE.BoxGeometry(9.2, 1.5, 17);
+        shoulder.translate(0, 3.9, -0.5);
+        const nose = new THREE.BoxGeometry(7.4, 1.3, 6);
+        nose.translate(0, 2.2, 11.0);
+        const rearDeck = new THREE.BoxGeometry(9.0, 1.1, 5.5);
+        rearDeck.translate(0, 3.95, -10.5);
+        const spoiler = new THREE.BoxGeometry(9.4, 0.35, 1.3);
+        spoiler.translate(0, 4.75, -12.6);
+        const bodyGeo = mergeGeometries([chassis, shoulder, nose, rearDeck, spoiler]);
+
+        // Glass greenhouse — a flattened half-dome (sleeker than a box cabin).
+        const canopyGeo = new THREE.SphereGeometry(1, 14, 9, 0, Math.PI * 2, 0, Math.PI / 2);
+        canopyGeo.scale(4.0, 2.0, 5.2);
+        canopyGeo.translate(0, 3.9, -0.5);
+
+        // Wheel — cylinder laid on its side (axis along X so it rolls along Z).
+        const wheelGeo = new THREE.CylinderGeometry(1.8, 1.8, 1.6, 14);
+        wheelGeo.rotateZ(Math.PI / 2);
+
+        const headGeo = new THREE.CircleGeometry(1.05, 10);          // faces +Z (front)
+        const tailGeo = new THREE.CircleGeometry(0.95, 10);
+        tailGeo.rotateY(Math.PI);                                    // faces -Z (rear)
+        const glowGeo = new THREE.PlaneGeometry(16, 32);
+        glowGeo.rotateX(-Math.PI / 2);                               // flat on the road
+
+        // ── Shared materials (node, MRT-safe) ────────────────────────────────
+        // Glossy car paint: clearcoat over a metallic base so it mirrors the neon
+        // city. White base × per-car instanceColor (set below) = varied paint.
+        const bodyMat = new THREE.MeshPhysicalNodeMaterial({
+            color: 0xffffff, roughness: 0.32, metalness: 0.55,
+            clearcoat: 1.0, clearcoatRoughness: 0.12, envMapIntensity: 1.1,
+        });
+        bodyMat.emissiveNode = vec3(0.0, 0.0, 0.0);
+
+        // Dark tinted reflective glass for the greenhouse.
+        const canopyMat = new THREE.MeshPhysicalNodeMaterial({
+            color: 0x04060c, roughness: 0.07, metalness: 0.5,
+            clearcoat: 1.0, clearcoatRoughness: 0.04, envMapIntensity: 1.4,
+        });
+        canopyMat.emissiveNode = this.colorToVec3(0x0a1830).mul(float(0.25));
+
+        // Matte dark tyres.
+        const wheelMat = new THREE.MeshStandardNodeMaterial({
+            color: 0x0a0a0e, roughness: 0.75, metalness: 0.15,
+        });
+        wheelMat.emissiveNode = vec3(0.0, 0.0, 0.0);
+
+        const headMat = new THREE.MeshBasicNodeMaterial({
+            color: 0xfff2d2, transparent: true, opacity: 1.0, blending: THREE.AdditiveBlending, depthWrite: false,
+        });
+        headMat.emissiveNode = this.colorToVec3(0xfff2d2).mul(float(1.6));
+
+        const tailMat = new THREE.MeshBasicNodeMaterial({
+            color: 0xff2233, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false,
+        });
+        tailMat.emissiveNode = this.colorToVec3(0xff2233).mul(float(1.2));
+
+        // Soft radial light pool (not a hard rectangle) via a UV falloff.
+        const glowMat = new THREE.MeshBasicNodeMaterial({
+            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+        });
+        const gFall = smoothstep(1.0, 0.0, uv().sub(0.5).length().mul(2.0));
+        const gColor = this.colorToVec3(0x6fb4ff).mul(gFall);
+        glowMat.colorNode = gColor;
+        glowMat.opacityNode = gFall.mul(float(0.34));
+        glowMat.emissiveNode = gColor.mul(float(0.5));
+
+        // AAA 6d — volumetric headlight beam cone, additive, fading along its
+        // length so it reads as headlights cutting through the fog. Heavier fill,
+        // so gated to Ultra/Extreme (or ?ndHeadlightCones to force).
+        this.groundConesEnabled = (this.currentQualityName === 'Ultra'
+            || this.currentQualityName === 'Extreme'
+            || this.featureFlags?.forceHeadlightCones)
+            && !this.featureFlags?.noHeadlightCones;
+        let coneGeo = null;
+        let coneMat = null;
+        if (this.groundConesEnabled) {
+            coneGeo = new THREE.ConeGeometry(3.4, 22, 18, 1, true);
+            coneGeo.translate(0, 11, 0);          // apex → origin (the headlight)
+            coneGeo.rotateX(-Math.PI / 2);        // widen toward +Z (forward)
+            coneMat = new THREE.MeshBasicNodeMaterial({
+                transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+            });
+            const beamZ = positionLocal.z.div(22.0).max(0.0).min(1.0); // 0 at car → 1 far
+            const beam = float(1.0).sub(beamZ).pow(1.6).mul(smoothstep(0.0, 0.05, beamZ));
+            const beamCol = vec3(1.0, 0.92, 0.72);
+            coneMat.colorNode = beamCol.mul(beam);
+            coneMat.opacityNode = beam.mul(float(0.16));
+            coneMat.emissiveNode = beamCol.mul(beam).mul(float(0.4));
+        }
+
+        const mk = (geo, mat, n) => {
+            const m = new THREE.InstancedMesh(geo, mat, n);
+            m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            m.frustumCulled = false;
+            m.renderOrder = 1;
+            this.scene.add(m);
+            return m;
+        };
+
+        this.groundCarInstances = {
+            body: mk(bodyGeo, bodyMat, count),
+            canopy: mk(canopyGeo, canopyMat, count),
+            wheel: mk(wheelGeo, wheelMat, count * 4),
+            head: mk(headGeo, headMat, count * 2),
+            tail: mk(tailGeo, tailMat, count * 2),
+            glow: mk(glowGeo, glowMat, count),
+            ...(this.groundConesEnabled ? { cone: mk(coneGeo, coneMat, count) } : {}),
+        };
+
+        // Per-car paint: mostly dark metallics, a vivid cyberpunk minority.
+        const paints = [
+            0x14151c, 0x101018, 0x1a1420, 0x0e1418, 0x181018, // dark (×5 weight)
+            0xb3186d, 0x1f9ad6, 0x18b39a, 0x7a2dd6, 0xd64b2d, // neon (magenta/cyan/teal/violet/orange)
+        ];
+        const _paint = new THREE.Color();
+        for (let i = 0; i < count; i++) {
+            const hex = Math.random() < 0.62
+                ? paints[Math.floor(Math.random() * 5)]            // dark
+                : paints[5 + Math.floor(Math.random() * 5)];       // neon
+            _paint.setHex(hex);
+            this.groundCarInstances.body.setColorAt(i, _paint);
+        }
+        if (this.groundCarInstances.body.instanceColor) {
+            this.groundCarInstances.body.instanceColor.needsUpdate = true;
+        }
+
+        this.groundCarDummy = new THREE.Object3D();
+        this.groundCarLightDummy = new THREE.Object3D();
+        this._groundCarV = new THREE.Vector3();
+
+        // ── Lanes: two oncoming (travel +Z), two receding (travel -Z) ─────────
+        const lanes = [
+            { x: -56, dir: 1 }, { x: -22, dir: 1 },
+            { x: 22, dir: -1 }, { x: 56, dir: -1 },
+        ];
+        this.groundCarRange = { min: -2500, max: 130 };
+        this.groundCarMinGap = 46;          // car length (~25) + buffer; no overlap
+        this.groundCarLanes = lanes.map(() => []); // car indices grouped per lane
+        // Keep cars well inside the ~±90 street corridor (buildings start at ±140).
+        const laneClamp = 80;
+        this.groundCarData = [];
+        const span = this.groundCarRange.max - this.groundCarRange.min;
+        for (let i = 0; i < count; i++) {
+            const laneId = i % lanes.length;
+            const lane = lanes[laneId];
+            const x = Math.max(-laneClamp, Math.min(laneClamp, lane.x + (Math.random() - 0.5) * 7));
+            this.groundCarData.push({
+                x,
+                z: this.groundCarRange.min + Math.random() * span,
+                dir: lane.dir,
+                speed: 55 + Math.random() * 75,
+                scale: 0.9 + Math.random() * 0.35,
+                laneId,
+            });
+            this.groundCarLanes[laneId].push(i);
+        }
+
+        this.updateGroundTraffic(0); // seed transforms before first render
+        console.log(`[NeonDistrict] Ground traffic created (${count} cars)`);
+    }
+
+    updateGroundTraffic(delta) {
+        const inst = this.groundCarInstances;
+        const data = this.groundCarData;
+        if (!inst || !data) return;
+
+        const dummy = this.groundCarDummy;
+        const light = this.groundCarLightDummy;
+        const v = this._groundCarV;
+        const { min, max } = this.groundCarRange;
+        const span = max - min;
+        const minGap = this.groundCarMinGap ?? 46;
+
+        // ── Pass 1: advance + wrap ───────────────────────────────────────────
+        for (let i = 0; i < data.length; i++) {
+            const car = data[i];
+            car.z += car.dir * car.speed * delta;
+            if (car.dir > 0 && car.z > max) car.z -= span;
+            else if (car.dir < 0 && car.z < min) car.z += span;
+        }
+
+        // ── Pass 2: per-lane car-following (no overtaking / no overlap) ───────
+        // Forward coordinate f = dir·z (larger = further ahead). Sort each lane
+        // front-to-back and clamp every car to stay ≥ minGap behind the one ahead.
+        const laneGroups = this.groundCarLanes;
+        if (laneGroups) {
+            for (let L = 0; L < laneGroups.length; L++) {
+                const lane = laneGroups[L];
+                if (lane.length < 2) continue;
+                lane.sort((a, b) => (data[b].dir * data[b].z) - (data[a].dir * data[a].z));
+                for (let k = 1; k < lane.length; k++) {
+                    const ahead = data[lane[k - 1]];
+                    const cur = data[lane[k]];
+                    const maxF = ahead.dir * ahead.z - minGap;
+                    if (cur.dir * cur.z > maxF) {
+                        cur.z = maxF * cur.dir; // dir = ±1 → z = f·dir
+                    }
+                }
+            }
+        }
+
+        // ── Pass 3: build instance transforms ────────────────────────────────
+        for (let i = 0; i < data.length; i++) {
+            const car = data[i];
+            const rotY = car.dir > 0 ? 0 : Math.PI;
+            dummy.position.set(car.x, 0, car.z); // origin on the road
+            dummy.rotation.set(0, rotY, 0);
+            dummy.scale.setScalar(car.scale);
+            dummy.updateMatrix();
+            dummy.updateMatrixWorld(true);
+            inst.body.setMatrixAt(i, dummy.matrix);
+            inst.canopy.setMatrixAt(i, dummy.matrix); // greenhouse baked at cabin offset
+
+            // Underglow pool on the road, centred under the car.
+            light.position.set(car.x, 0.35, car.z);
+            light.rotation.set(0, 0, 0);
+            light.scale.setScalar(car.scale);
+            light.updateMatrix();
+            inst.glow.setMatrixAt(i, light.matrix);
+
+            // Parts placed in the car's local frame (wheels, lights).
+            const place = (mesh, idx, lx, ly, lz, faceRot) => {
+                v.set(lx, ly, lz);
+                dummy.localToWorld(v);
+                light.position.copy(v);
+                light.rotation.set(0, rotY + faceRot, 0);
+                light.scale.setScalar(car.scale);
+                light.updateMatrix();
+                mesh.setMatrixAt(idx, light.matrix);
+            };
+            // Four wheels (r=1.8 → centre y=1.8 touches road).
+            place(inst.wheel, i * 4, -4.6, 1.8, 7.6, 0);
+            place(inst.wheel, i * 4 + 1, 4.6, 1.8, 7.6, 0);
+            place(inst.wheel, i * 4 + 2, -4.6, 1.8, -7.6, 0);
+            place(inst.wheel, i * 4 + 3, 4.6, 1.8, -7.6, 0);
+            // Head/tail light pairs.
+            place(inst.head, i * 2, -3.0, 2.3, 13.6, 0);
+            place(inst.head, i * 2 + 1, 3.0, 2.3, 13.6, 0);
+            place(inst.tail, i * 2, -3.3, 3.1, -13.0, 0);
+            place(inst.tail, i * 2 + 1, 3.3, 3.1, -13.0, 0);
+            // Headlight beam cone projecting forward from the front (6d).
+            if (inst.cone) place(inst.cone, i, 0, 2.2, 13.0, 0);
+        }
+
+        inst.body.instanceMatrix.needsUpdate = true;
+        inst.canopy.instanceMatrix.needsUpdate = true;
+        inst.wheel.instanceMatrix.needsUpdate = true;
+        inst.head.instanceMatrix.needsUpdate = true;
+        inst.tail.instanceMatrix.needsUpdate = true;
+        inst.glow.instanceMatrix.needsUpdate = true;
+        if (inst.cone) inst.cone.instanceMatrix.needsUpdate = true;
     }
 
     enableVehicleGpuInstancing(count) {
@@ -7432,51 +7903,68 @@ export default class NeonDistrictTheme extends BaseTheme {
     initSpinnerResources() {
         if (this.spinnerResources) return;
 
+        // Sleeker spinner hull (merged): tapered nose, raised mid, flat belly, short
+        // tail. Kept ~20 long (z ±10) / ~8 wide / ~4 tall so the engine, light and
+        // canopy offsets baked into the GPU flight attributes still line up.
+        const sBelly = new THREE.BoxGeometry(7.4, 1.7, 18);
+        sBelly.translate(0, -0.7, 0);
+        const sMid = new THREE.BoxGeometry(7.0, 2.0, 13);
+        sMid.translate(0, 0.8, -0.5);
+        const sNose = new THREE.BoxGeometry(4.4, 1.5, 6);
+        sNose.translate(0, 0.0, 8.4);
+        const sTail = new THREE.BoxGeometry(6.0, 1.7, 4);
+        sTail.translate(0, 0.4, -8.6);
+        const bodyGeometry = mergeGeometries([sBelly, sMid, sNose, sTail]);
+
         this.spinnerResources = {
             // Geometries (shared across all spinners)
-            bodyGeometry: new THREE.BoxGeometry(8, 4, 20),
-            canopyGeometry: new THREE.SphereGeometry(3, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2),
-            engineGeometry: new THREE.CylinderGeometry(2, 1.5, 8, 8),
-            exhaustCyanGeometry: new THREE.CircleGeometry(1.8, 8),
-            exhaustOrangeGeometry: new THREE.CircleGeometry(1.8, 8),
-            headlightGeometry: new THREE.CircleGeometry(1, 8),
-            tailGeometry: new THREE.CircleGeometry(0.9, 8),
+            bodyGeometry,
+            canopyGeometry: new THREE.SphereGeometry(3, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+            engineGeometry: new THREE.CylinderGeometry(2, 1.4, 8, 10),
+            exhaustCyanGeometry: new THREE.CircleGeometry(2.4, 12),
+            exhaustOrangeGeometry: new THREE.CircleGeometry(2.4, 12),
+            headlightGeometry: new THREE.CircleGeometry(1.2, 10),
+            tailGeometry: new THREE.CircleGeometry(0.95, 10),
             navGeometry: new THREE.SphereGeometry(0.5, 6, 6),
 
-            // Materials (shared across all spinners)
+            // Materials (shared across all spinners) — glossy reflective hull.
             bodyMaterial: new THREE.MeshStandardNodeMaterial({
-                color: 0x222233,
-                roughness: 0.4,
-                metalness: 0.7,
-                emissive: 0x111122,
-                emissiveIntensity: 0.2,
+                color: 0x1c1d28,
+                roughness: 0.22,
+                metalness: 0.78,
+                emissive: 0x0a0b16,
+                emissiveIntensity: 0.3,
             }),
+            // Dark tinted glass greenhouse with a faintly lit cockpit.
             canopyMaterial: new THREE.MeshStandardNodeMaterial({
-                color: 0x4488ff,
-                roughness: 0.1,
-                metalness: 0.9,
+                color: 0x06080f,
+                roughness: 0.06,
+                metalness: 0.55,
                 transparent: true,
-                opacity: 0.7,
+                opacity: 0.6,
             }),
             engineMaterial: new THREE.MeshStandardNodeMaterial({
-                color: 0x333344,
-                roughness: 0.3,
-                metalness: 0.8,
+                color: 0x282834,
+                roughness: 0.26,
+                metalness: 0.82,
             }),
             exhaustCyanMaterial: new THREE.MeshBasicNodeMaterial({
-                color: 0x00ffff,
+                color: 0x33ffff,
                 transparent: true,
                 opacity: 0.9,
+                blending: THREE.AdditiveBlending,
             }),
             exhaustOrangeMaterial: new THREE.MeshBasicNodeMaterial({
-                color: 0xff6600,
+                color: 0xff7a1a,
                 transparent: true,
                 opacity: 0.9,
+                blending: THREE.AdditiveBlending,
             }),
             headlightMaterial: new THREE.MeshBasicNodeMaterial({
-                color: 0xffffcc,
+                color: 0xfff2cc,
                 transparent: true,
                 opacity: 1.0,
+                blending: THREE.AdditiveBlending,
             }),
             tailMaterial: new THREE.MeshBasicNodeMaterial({
                 color: 0xff0033,
@@ -7488,16 +7976,14 @@ export default class NeonDistrictTheme extends BaseTheme {
         };
 
         // Ensure emissive outputs for MRT
-        this.spinnerResources.bodyMaterial.emissiveNode = this.makeEmissiveNode(
-            this.spinnerResources.bodyMaterial.emissive ?? 0x111122,
-            this.spinnerResources.bodyMaterial.emissiveIntensity ?? 1.0,
-        );
-        this.spinnerResources.canopyMaterial.emissiveNode = vec3(0.0, 0.0, 0.0);
+        this.spinnerResources.bodyMaterial.emissiveNode = this.makeEmissiveNode(0x0a0b16, 0.3);
+        // Faint cyan interior glow read through the tinted glass.
+        this.spinnerResources.canopyMaterial.emissiveNode = this.colorToVec3(0x123a5c).mul(float(0.5));
         this.spinnerResources.engineMaterial.emissiveNode = vec3(0.0, 0.0, 0.0);
-        this.spinnerResources.exhaustCyanMaterial.emissiveNode = this.colorToVec3(0x00ffff);
-        this.spinnerResources.exhaustOrangeMaterial.emissiveNode = this.colorToVec3(0xff6600);
-        this.spinnerResources.headlightMaterial.emissiveNode = this.colorToVec3(0xffffcc);
-        this.spinnerResources.tailMaterial.emissiveNode = this.colorToVec3(0xff0033);
+        this.spinnerResources.exhaustCyanMaterial.emissiveNode = this.colorToVec3(0x33ffff).mul(float(1.6));
+        this.spinnerResources.exhaustOrangeMaterial.emissiveNode = this.colorToVec3(0xff7a1a).mul(float(1.6));
+        this.spinnerResources.headlightMaterial.emissiveNode = this.colorToVec3(0xfff2cc).mul(float(1.4));
+        this.spinnerResources.tailMaterial.emissiveNode = this.colorToVec3(0xff0033).mul(float(1.2));
         this.spinnerResources.navMaterial.emissiveNode = this.colorToVec3(0x00ff00);
 
         this.spinnerResources.canopyGeometry.rotateX(Math.PI);
@@ -7839,6 +8325,11 @@ export default class NeonDistrictTheme extends BaseTheme {
             const gradeEnabled = !this.featureFlags?.noGrade;
             const caBase = this.featureFlags?.noGrade ? 0.0 : 0.0016;
             const grainBase = this.featureFlags?.noGrade ? 0.0 : 0.022;
+            // 6b rain-on-lens: Ultra/Extreme by default (or ?ndLensDrops), gated off
+            // by ?ndNoLensDrops. Amount is driven by rain intensity each frame.
+            const lensDropsEnabled = (isUltraPlus || this.featureFlags?.forceLensDrops)
+                && !this.featureFlags?.noLensDrops;
+            this.lensDropletBase = lensDropsEnabled ? 0.45 : 0.0;
 
             this.post = new NeonDistrictPost(this.renderer, this.scene, this.camera, {
                 bloomStrength: this.qualityPreset.bloomStrength,
@@ -7873,6 +8364,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                 enableGrade: gradeEnabled,
                 saturationAmount: 1.12,
                 contrast: 1.06,
+                enableLensDroplets: lensDropsEnabled,
                 useMRT,
             });
             this.post.setSize(renderTargetWidth, renderTargetHeight);
@@ -7951,6 +8443,15 @@ export default class NeonDistrictTheme extends BaseTheme {
             this.lightPulseIntensity = 0.8 + lineCount * 0.2;
             this.bloomBoost = 0.5 + lineCount * 0.1;
             this.rainIntensity = 1.5 + lineCount * 0.3;
+            // AAA Phase 7a: reactive dolly-push down the canyon, bigger per line.
+            this.triggerCameraPush(7 + lineCount * 4);
+            // AAA Phase 4c/7a: a Tetris (4-line) cracks distant sheet-lightning,
+            // pushes harder and widens the lens for a brief dolly-zoom.
+            if (lineCount >= 4) {
+                this.triggerSkyFlash(1.0);
+                this.triggerCameraPush(26);
+                this.triggerFovPulse(5);
+            }
         };
         eventBus.on(EVENTS.LINES_CLEARED, onLineClear);
         this.eventUnsubscribers.push(() => eventBus.off(EVENTS.LINES_CLEARED, onLineClear));
@@ -7983,6 +8484,21 @@ export default class NeonDistrictTheme extends BaseTheme {
     // Combo Effects System - Tiered Cyberpunk Effects
     // ─────────────────────────────────────────────────────────────────────────
 
+    /**
+     * AAA Phase 7a — push the camera forward down the canyon. `amount` is in world
+     * units; the push eases back to rest in updateCameraSway. Stacks by taking the
+     * strongest pending push.
+     */
+    triggerCameraPush(amount) {
+        const a = Math.abs(amount);
+        this.cameraDollyZ = Math.min(this.cameraDollyZ || 0, -a);
+    }
+
+    /** AAA Phase 7a — transient FOV widen (dolly-zoom), in degrees. */
+    triggerFovPulse(amount) {
+        this.cameraFovPulse = Math.max(this.cameraFovPulse || 0, amount);
+    }
+
     triggerComboEffects(combo) {
         const comboFxScale = this.getComboFxScale();
         if (comboFxScale <= 0) return;
@@ -7991,6 +8507,12 @@ export default class NeonDistrictTheme extends BaseTheme {
         // Bloom/glow boost scales with combo
         this.lightPulseIntensity = Math.min(0.5 + combo * 0.15, 1.2) * comboFxScale;
         this.bloomBoost = Math.min(0.4 + combo * 0.12, 1.0) * comboFxScale;
+
+        // AAA Phase 7a: bigger combos nudge the camera forward (saturation ramp +
+        // aberration ride the shared bloomBoost decay in the animation loop).
+        if (combo >= 3) {
+            this.triggerCameraPush(Math.min(6 + combo * 2, 22) * comboFxScale);
+        }
 
         // Rain intensifies
         this.rainIntensity = Math.min(1.5 + combo * 0.2, 3.0);
@@ -8543,6 +9065,10 @@ export default class NeonDistrictTheme extends BaseTheme {
                     }
                 });
             }
+            // AAA Phase 4c: drive the distant sheet-lightning.
+            if (this.skyFlash) {
+                this.updateSkyFlash(delta);
+            }
 
             if (this.buildingUniforms) {
                 this.buildingUniforms.uTime.value = this.time;
@@ -8649,6 +9175,10 @@ export default class NeonDistrictTheme extends BaseTheme {
                     this.updateFlyingVehicles(step);
                 }
             }
+            // Ground traffic — smooth linear motion, update every frame (cheap).
+            if (!skipHeavy && this.groundCarInstances) {
+                this.updateGroundTraffic(delta);
+            }
             mark = this.profileStep('vehicles', mark);
 
             // Update neon signs (flicker)
@@ -8695,6 +9225,9 @@ export default class NeonDistrictTheme extends BaseTheme {
                 } else if (this.post) {
                     this.post.updateParams({
                         bloomStrength: this.qualityPreset.bloomStrength + this.bloomBoost,
+                        // AAA Phase 7a: ramp the filmic grade's saturation with the boost
+                        // so combos/clears punch the colour, easing back on the same decay.
+                        saturationAmount: this.baseSaturationAmount + Math.min(this.bloomBoost, 1.0) * 0.4,
                     });
                     // AAA Phase 3c: combos/line-clears briefly push chromatic aberration
                     // for a visible "glitch" distortion, riding the same decay as bloom.
@@ -8706,6 +9239,7 @@ export default class NeonDistrictTheme extends BaseTheme {
                 this.bloomBoost = 0;
                 if (this.post?.setAberrationBoost && this.aberrationBoostActive) {
                     this.post.setAberrationBoost(0);
+                    this.post.updateParams({ saturationAmount: this.baseSaturationAmount });
                     this.aberrationBoostActive = false;
                 }
             }
@@ -8724,6 +9258,11 @@ export default class NeonDistrictTheme extends BaseTheme {
                     // Fade rays out when the moon is behind the camera (z > 1 in NDC)
                     const behind = _moonProjVec.z > 1.0;
                     this.post.updateGodrays(this.moonScreen, behind ? 0.0 : this.godrayBaseIntensity);
+                }
+                // AAA 6b: more beads on the lens the harder it's raining.
+                if (this.post.enableLensDroplets && this.post.setLensDroplets) {
+                    const rainF = Math.min(Math.max((this.rainIntensity ?? 1.3) / 1.5, 0.5), 1.6);
+                    this.post.setLensDroplets((this.lensDropletBase ?? 0) * rainF);
                 }
             }
             mark = this.profileStep('pre-render', mark);
@@ -8826,9 +9365,27 @@ export default class NeonDistrictTheme extends BaseTheme {
         const subtleOrbitX = Math.sin(cinematicTime * spd.x * 0.4 + 0.5) * amp.x * 0.2;
         const subtleDollyZ = Math.sin(cinematicTime * spd.z * 0.35 + 0.7) * amp.z * 0.35;
 
+        // AAA Phase 7a: reactive dolly-push down the canyon, easing back to rest.
+        this.cameraDollyZ *= Math.exp(-dt * 3.2);
+        if (Math.abs(this.cameraDollyZ) < 0.01) this.cameraDollyZ = 0;
+
         const targetX = this.cameraBasePosition.x + this.cameraSway.x + subtleOrbitX;
         const targetY = Math.max(this.cameraBasePosition.y, this.cameraBasePosition.y + swayY);
-        const targetZ = this.cameraBasePosition.z + this.cameraSway.z + subtleDollyZ;
+        const targetZ = this.cameraBasePosition.z + this.cameraSway.z + subtleDollyZ + this.cameraDollyZ;
+
+        // AAA Phase 7a: transient FOV widen (dolly-zoom) on big clears. Only touch the
+        // projection matrix while the pulse is active — it's removed for perf otherwise.
+        this.cameraFovPulse *= Math.exp(-dt * 4.0);
+        if (Math.abs(this.cameraFovPulse) > 0.02) {
+            this.camera.fov = this.cameraBaseFov + this.cameraFovPulse;
+            this.camera.updateProjectionMatrix();
+            this._fovDirty = true;
+        } else if (this._fovDirty) {
+            this.cameraFovPulse = 0;
+            this.camera.fov = this.cameraBaseFov;
+            this.camera.updateProjectionMatrix();
+            this._fovDirty = false;
+        }
 
         // Pointer parallax integration
         this.currentPointerX = this.currentPointerX || 0;
@@ -9397,6 +9954,19 @@ export default class NeonDistrictTheme extends BaseTheme {
             this.spinnerResources = null;
         }
 
+        // Dispose ground-traffic instances (driving cars)
+        if (this.groundCarInstances) {
+            Object.values(this.groundCarInstances).forEach((mesh) => {
+                if (!mesh) return;
+                if (this.scene) this.scene.remove(mesh);
+                if (mesh.geometry) mesh.geometry.dispose();
+                if (mesh.material) mesh.material.dispose();
+            });
+            this.groundCarInstances = null;
+            this.groundCarData = null;
+            this.groundCarLanes = null;
+        }
+
         if (this.sky) {
             if (this.scene) this.scene.remove(this.sky);
             this.sky.geometry.dispose();
@@ -9419,6 +9989,15 @@ export default class NeonDistrictTheme extends BaseTheme {
         });
         this.skyStrata = [];
         this.skyStrataUniforms = [];
+
+        // AAA Phase 4c: dispose sheet-lightning
+        if (this.skyFlash) {
+            if (this.scene) this.scene.remove(this.skyFlash);
+            if (this.skyFlash.geometry) this.skyFlash.geometry.dispose();
+            if (this.skyFlash.material) this.skyFlash.material.dispose();
+            this.skyFlash = null;
+            this.skyFlashUniform = null;
+        }
 
         if (this.starfield) {
             if (this.scene) this.scene.remove(this.starfield);

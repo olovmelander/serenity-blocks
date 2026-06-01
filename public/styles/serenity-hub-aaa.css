@@ -1,0 +1,965 @@
+/* =================================================================================
+ * COSMIC SERENITY — Serenity Hub redesign (Phase 1: shell foundation, CSS-only)
+ * ---------------------------------------------------------------------------------
+ * Loaded AFTER serenity-hub.css so these rules win the cascade. Everything is scoped
+ * to `#serenity-hub-panel` + `.serenity-hub-backdrop`, so the floating hub icon
+ * (already a glass HUD tile from menu-aaa) and other global hub CSS stay untouched.
+ *
+ * Strategy mirrors settings-aaa.css:
+ *   1. Re-key the hub's own `--hub-*` / `--music-*` tokens to the cosmic palette so
+ *      everything that reads them upgrades for free.
+ *   2. Per-tab accent identity propagated through the whole panel via :has().
+ *   3. Deep cosmic glass surface, aurora title, glass tab bar + close tile,
+ *      console-grade accent focus rings, accent scrollbar, staggered reveal.
+ *   4. Respects prefers-reduced-motion.
+ *
+ * Phases 2-4 (Themes / Music / Breathing+Sessions content) build on this.
+ * ============================================================================== */
+
+/* ---- Token re-key + live accent vars --------------------------------------- */
+#serenity-hub-panel {
+    --cs-accent: #7fdcff;
+    --cs-accent-rgb: 127, 220, 255;
+    --cs-accent-2: #8ea2ff;
+
+    /* Re-point the hub's existing tokens at the cosmic language */
+    --hub-accent: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    --hub-border: rgba(150, 180, 255, 0.18);
+    --hub-background: rgba(12, 15, 30, 0.70);
+    --hub-primary: #e8edff;
+    --music-primary: var(--cs-accent);
+    --music-secondary: var(--cs-accent-2);
+}
+
+/* Active tab re-keys the panel-wide accent (cyan / pink / teal / violet) */
+#serenity-hub-panel:has(.hub-tab[data-tab="themes"].active) {
+    --cs-accent: #7fdcff; --cs-accent-rgb: 127, 220, 255; --cs-accent-2: #8ea2ff;
+}
+#serenity-hub-panel:has(.hub-tab[data-tab="music"].active) {
+    --cs-accent: #ff9ecd; --cs-accent-rgb: 255, 158, 205; --cs-accent-2: #b39dff;
+}
+#serenity-hub-panel:has(.hub-tab[data-tab="breathing"].active) {
+    --cs-accent: #5eead4; --cs-accent-rgb: 94, 234, 212; --cs-accent-2: #7fdcff;
+}
+#serenity-hub-panel:has(.hub-tab[data-tab="sessions"].active) {
+    --cs-accent: #b39dff; --cs-accent-rgb: 179, 157, 255; --cs-accent-2: #ff9ecd;
+}
+
+/* ---- Backdrop: cosmic vignette --------------------------------------------- */
+.serenity-hub-backdrop {
+    background:
+        radial-gradient(120% 90% at 50% 35%, rgba(6, 8, 20, 0.42), rgba(2, 3, 10, 0.72) 100%);
+    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+}
+
+/* ---- Panel: deep cosmic glass ---------------------------------------------- *
+ * NOTE: the base keeps `transform: translate(-50%,-50%) scale()` for centering +
+ * the open animation, so we deliberately DON'T touch transform/animation here. */
+#serenity-hub-panel.serenity-hub-panel {
+    border-radius: 24px;
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.26);
+    background:
+        radial-gradient(100% 60% at 50% -15%, rgba(var(--cs-accent-rgb), 0.14), transparent 60%),
+        radial-gradient(70% 70% at 8% 0%, rgba(114, 137, 255, 0.10), transparent 60%),
+        linear-gradient(180deg, rgba(16, 20, 38, 0.93) 0%, rgba(8, 10, 23, 0.96) 100%);
+    backdrop-filter: blur(18px) saturate(135%);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    box-shadow:
+        0 30px 80px rgba(0, 0, 0, 0.60),
+        0 0 0 1px rgba(255, 255, 255, 0.04),
+        0 0 90px rgba(var(--cs-accent-rgb), 0.10),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transition:
+        opacity var(--hub-transition-normal),
+        transform var(--hub-transition-normal),
+        border-color var(--hub-transition-normal),
+        box-shadow var(--hub-transition-normal);
+}
+
+body.electron-app #serenity-hub-panel.serenity-hub-panel {
+    backdrop-filter: blur(9px) saturate(120%);
+    -webkit-backdrop-filter: blur(9px) saturate(120%);
+}
+
+/* Gradient-border ring (masked so only the 1px edge paints — never covers content) */
+#serenity-hub-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg,
+            rgba(var(--cs-accent-rgb), 0.50),
+            rgba(255, 255, 255, 0.04) 38%,
+            rgba(142, 162, 255, 0.26) 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.72;
+    z-index: 2;
+}
+
+/* Keep real content above the border ring */
+#serenity-hub-panel .hub-panel-header,
+#serenity-hub-panel .hub-tabs,
+#serenity-hub-panel .hub-tab-content {
+    position: relative;
+    z-index: 3;
+}
+
+/* ---- Header: aurora kinetic title + accent divider ------------------------- */
+#serenity-hub-panel .hub-panel-header {
+    padding: 18px 24px 14px;
+    border-bottom: 1px solid rgba(var(--cs-accent-rgb), 0.14);
+    background:
+        radial-gradient(70% 150% at 12% 0%, rgba(var(--cs-accent-rgb), 0.12), transparent 58%),
+        linear-gradient(180deg, rgba(6, 9, 22, 0.45), transparent);
+    transition: border-color var(--hub-transition-normal);
+}
+
+#serenity-hub-panel .hub-title {
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background: linear-gradient(100deg,
+            #d9e7ff 0%, var(--cs-accent) 30%, var(--cs-accent-2) 58%, #f1f7ff 100%);
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-shadow: none;
+    filter: drop-shadow(0 0 16px rgba(var(--cs-accent-rgb), 0.30));
+    animation: cs-hub-shimmer 9s ease-in-out 0.4s infinite;
+}
+
+/* Compact tagline under the title (echoes the menu's "STACK · BREATHE · ASCEND") */
+#serenity-hub-panel .hub-title::after {
+    content: 'BREATHE · FOCUS · FLOW';
+    display: block;
+    margin-top: 5px;
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.34em;
+    text-indent: 0.34em;
+    color: rgba(190, 205, 245, 0.50);
+    -webkit-text-fill-color: rgba(190, 205, 245, 0.50);
+    background: none;
+    filter: none;
+}
+
+@keyframes cs-hub-shimmer {
+    0%, 100% { background-position: 0% center; }
+    50%      { background-position: 200% center; }
+}
+
+/* ---- Close button: glass tile with red tint (was a tiny ghost circle) ------ */
+#serenity-hub-panel .hub-close-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    background:
+        linear-gradient(180deg, rgba(255, 118, 118, 0.15), rgba(255, 80, 80, 0.08)),
+        rgba(8, 10, 23, 0.46);
+    border: 1px solid rgba(255, 118, 118, 0.40);
+    color: #ffb6b6;
+    box-shadow:
+        0 8px 22px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(8px) saturate(130%);
+    -webkit-backdrop-filter: blur(8px) saturate(130%);
+    transition:
+        transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+        border-color 0.26s ease, background 0.26s ease, box-shadow 0.26s ease;
+}
+
+#serenity-hub-panel .hub-close-btn svg {
+    width: 17px;
+    height: 17px;
+}
+
+#serenity-hub-panel .hub-close-btn:hover {
+    background:
+        linear-gradient(180deg, rgba(255, 118, 118, 0.28), rgba(255, 80, 80, 0.15)),
+        rgba(8, 10, 23, 0.62);
+    border-color: rgba(255, 148, 148, 0.74);
+    color: #ffd4d4;
+    transform: rotate(90deg) scale(1.06);
+    box-shadow:
+        0 12px 30px rgba(0, 0, 0, 0.42),
+        0 0 22px rgba(255, 100, 100, 0.30);
+}
+
+#serenity-hub-panel .hub-close-btn:focus-visible {
+    outline: none;
+    border-color: rgba(255, 148, 148, 0.80);
+    box-shadow:
+        0 0 0 3px rgba(255, 100, 100, 0.28),
+        0 8px 22px rgba(0, 0, 0, 0.32);
+}
+
+/* ---- Tab bar: glass pill rail, per-tab accent ------------------------------ */
+#serenity-hub-panel .hub-tabs {
+    margin: 14px 24px 8px;
+    padding: 5px;
+    gap: 6px;
+    border: 1px solid var(--hub-border);
+    border-radius: 14px;
+    background: rgba(5, 8, 20, 0.52);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.045),
+        0 12px 30px rgba(0, 0, 0, 0.16);
+}
+
+#serenity-hub-panel .hub-tab {
+    flex: 1 1 0;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    color: rgba(220, 227, 250, 0.62);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    transition:
+        color 0.22s ease, background 0.22s ease,
+        border-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s ease;
+}
+
+#serenity-hub-panel .hub-tab[data-tab="themes"]    { --tab-rgb: 127, 220, 255; }
+#serenity-hub-panel .hub-tab[data-tab="music"]     { --tab-rgb: 255, 158, 205; }
+#serenity-hub-panel .hub-tab[data-tab="breathing"] { --tab-rgb: 94, 234, 212; }
+#serenity-hub-panel .hub-tab[data-tab="sessions"]  { --tab-rgb: 179, 157, 255; }
+
+#serenity-hub-panel .hub-tab:hover {
+    color: #ffffff;
+    background: rgba(var(--tab-rgb), 0.10);
+    transform: translateY(-1px);
+}
+
+#serenity-hub-panel .hub-tab.active {
+    color: #ffffff;
+    background:
+        linear-gradient(180deg, rgba(var(--tab-rgb), 0.20), rgba(var(--tab-rgb), 0.10)),
+        rgba(255, 255, 255, 0.02);
+    border-color: rgba(var(--tab-rgb), 0.45);
+    box-shadow:
+        0 0 22px rgba(var(--tab-rgb), 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+#serenity-hub-panel .hub-tab .tab-icon {
+    color: rgba(var(--tab-rgb), 0.95);
+    transition: color 0.22s ease, transform 0.22s ease;
+}
+
+#serenity-hub-panel .hub-tab.active .tab-icon {
+    transform: scale(1.06);
+    filter: drop-shadow(0 0 8px rgba(var(--tab-rgb), 0.6));
+}
+
+/* Re-tint the active underline to the tab accent + tuck it inside the pill */
+#serenity-hub-panel .hub-tab.active::after {
+    left: 26%;
+    right: 26%;
+    bottom: 3px;
+    height: 2px;
+    border-radius: 2px;
+    background: rgba(var(--tab-rgb), 0.85);
+}
+
+/* Console-grade focus ring (keyboard + gamepad parity with the menu) */
+#serenity-hub-panel .hub-tab:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 2px rgba(var(--tab-rgb), 0.92),
+        0 0 0 6px rgba(var(--tab-rgb), 0.18);
+}
+
+/* ---- Scrollbar: accent glass thumb ----------------------------------------- */
+#serenity-hub-panel .hub-tab-content {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--cs-accent-rgb), 0.62) rgba(0, 0, 0, 0.12);
+}
+
+#serenity-hub-panel .hub-tab-content::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.12);
+}
+
+#serenity-hub-panel .hub-tab-content::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.78), rgba(142, 162, 255, 0.55));
+    border-radius: 4px;
+}
+
+#serenity-hub-panel .hub-tab-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--cs-accent-rgb), 0.92);
+}
+
+/* ---- Tab-content reveal: gentle blur-rise on switch ------------------------ */
+#serenity-hub-panel .tab-panel.active {
+    animation: cs-hub-tab-in 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes cs-hub-tab-in {
+    from { opacity: 0; transform: translateY(10px); filter: blur(4px); }
+    to   { opacity: 1; transform: translateY(0);    filter: blur(0); }
+}
+
+/* =================================================================================
+ * PHASE 2 — Themes tab (search · category pills · theme cards · params)
+ * Uses the live `--cs-accent` (cyan while the Themes tab is active).
+ * ============================================================================== */
+
+/* ---- Control bar: glass search + accent focus ------------------------------ */
+#serenity-hub-panel .themes-search-input {
+    height: 34px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+        rgba(12, 15, 30, 0.60);
+    border: 1px solid rgba(150, 180, 255, 0.18);
+    border-radius: 12px;
+    color: #eef3ff;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.24);
+    transition: border-color 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
+}
+
+#serenity-hub-panel .themes-search-input::placeholder {
+    color: rgba(211, 219, 245, 0.40);
+}
+
+#serenity-hub-panel .themes-search-input:focus {
+    border-color: rgba(var(--cs-accent-rgb), 0.92);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025)),
+        rgba(12, 15, 30, 0.78);
+    box-shadow:
+        0 0 0 3px rgba(var(--cs-accent-rgb), 0.18),
+        0 0 18px rgba(var(--cs-accent-rgb), 0.14),
+        inset 0 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+#serenity-hub-panel .themes-search-wrap:focus-within .search-icon {
+    color: var(--cs-accent);
+}
+
+/* Current-theme badge → accent glass pill */
+#serenity-hub-panel .current-theme-badge {
+    background: rgba(12, 15, 30, 0.55);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.30);
+    border-radius: 999px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+#serenity-hub-panel .badge-icon {
+    color: var(--cs-accent);
+}
+
+/* ---- Category pills: glass rail, accent active ----------------------------- */
+#serenity-hub-panel .category-pill {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid transparent;
+    color: rgba(220, 227, 250, 0.62);
+    transition:
+        color 0.2s ease, background 0.2s ease,
+        border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+#serenity-hub-panel .category-pill:hover {
+    color: #ffffff;
+    background: rgba(var(--cs-accent-rgb), 0.10);
+    border-color: rgba(var(--cs-accent-rgb), 0.30);
+    transform: translateY(-1px);
+}
+
+#serenity-hub-panel .category-pill.active {
+    color: #ffffff;
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    border-color: transparent;
+    box-shadow: 0 3px 12px rgba(var(--cs-accent-rgb), 0.38);
+}
+
+#serenity-hub-panel .category-pill .pill-icon-svg {
+    transition: filter 0.2s ease, transform 0.2s ease;
+}
+
+#serenity-hub-panel .category-pill:hover .pill-icon-svg,
+#serenity-hub-panel .category-pill.active .pill-icon-svg {
+    filter: drop-shadow(0 0 5px rgba(var(--cs-accent-rgb), 0.58));
+}
+
+#serenity-hub-panel .category-pill .pill-count {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+#serenity-hub-panel .category-pill.active .pill-count {
+    background: rgba(8, 10, 23, 0.30);
+}
+
+#serenity-hub-panel .category-pill:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 2px rgba(var(--cs-accent-rgb), 0.9),
+        0 0 0 5px rgba(var(--cs-accent-rgb), 0.18);
+}
+
+/* ---- Theme cards: cosmic glass with accent hover/active glow ---------------- */
+#serenity-hub-panel .theme-card {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
+        rgba(10, 13, 27, 0.55);
+    border: 1px solid rgba(150, 180, 255, 0.10);
+    border-radius: 13px;
+}
+
+#serenity-hub-panel .theme-card:hover {
+    background:
+        linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.08), rgba(255, 255, 255, 0.02)),
+        rgba(14, 17, 34, 0.7);
+    border-color: rgba(var(--cs-accent-rgb), 0.55);
+    transform: translateY(-4px) scale(1.03);
+    box-shadow:
+        0 12px 28px rgba(0, 0, 0, 0.42),
+        0 0 26px rgba(var(--cs-accent-rgb), 0.28);
+}
+
+#serenity-hub-panel .theme-card.active {
+    border-color: rgba(var(--cs-accent-rgb), 0.85);
+    box-shadow:
+        0 0 0 1px rgba(var(--cs-accent-rgb), 0.6),
+        0 0 22px rgba(var(--cs-accent-rgb), 0.42);
+}
+
+#serenity-hub-panel .theme-card:focus-visible,
+#serenity-hub-panel .theme-card.gamepad-focused {
+    outline: none;
+    border-color: rgba(var(--cs-accent-rgb), 0.85);
+    box-shadow:
+        0 0 0 2px rgba(var(--cs-accent-rgb), 0.92),
+        0 0 0 6px rgba(var(--cs-accent-rgb), 0.20),
+        0 12px 28px rgba(0, 0, 0, 0.42);
+}
+
+/* Swatch: keep the theme gradient, add depth + a base scrim under the icon */
+#serenity-hub-panel .theme-swatch {
+    box-shadow:
+        inset 0 -34px 44px -24px rgba(0, 0, 0, 0.55),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+#serenity-hub-panel .theme-name {
+    transition: color 0.2s ease;
+}
+
+#serenity-hub-panel .theme-card:hover .theme-name,
+#serenity-hub-panel .theme-card.active .theme-name {
+    color: #ffffff;
+}
+
+/* Active check → accent token, dark glyph (scoped to theme cards; the breathing
+ * tab reuses `.active-indicator` as a glowing glyph, handled in Phase 4) */
+#serenity-hub-panel .theme-card .active-indicator {
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    color: #08121e;
+    box-shadow:
+        0 1px 4px rgba(0, 0, 0, 0.35),
+        0 0 10px rgba(var(--cs-accent-rgb), 0.7);
+}
+
+/* ---- Random theme button: cosmic accent CTA ------------------------------- */
+#serenity-hub-panel .random-theme-btn {
+    background:
+        linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.5);
+    color: #08121e;
+    box-shadow:
+        0 6px 18px rgba(var(--cs-accent-rgb), 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+#serenity-hub-panel .random-theme-btn:hover {
+    box-shadow:
+        0 9px 26px rgba(var(--cs-accent-rgb), 0.48),
+        inset 0 1px 0 rgba(255, 255, 255, 0.30);
+}
+
+#serenity-hub-panel .random-theme-btn:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 3px rgba(var(--cs-accent-rgb), 0.28),
+        0 9px 26px rgba(var(--cs-accent-rgb), 0.40);
+}
+
+/* ---- Theme params: cosmic glass card --------------------------------------- */
+#serenity-hub-panel .theme-params-panel {
+    background:
+        radial-gradient(120% 90% at 0% 0%, rgba(var(--cs-accent-rgb), 0.07), transparent 56%),
+        rgba(8, 10, 23, 0.55);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.20);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.045),
+        0 14px 32px rgba(0, 0, 0, 0.16);
+}
+
+#serenity-hub-panel .theme-params-title {
+    color: var(--cs-accent);
+}
+
+#serenity-hub-panel .theme-param-input[type="range"] {
+    accent-color: var(--cs-accent);
+}
+
+#serenity-hub-panel .theme-param-color {
+    border-color: rgba(var(--cs-accent-rgb), 0.40);
+}
+
+#serenity-hub-panel .theme-params-empty {
+    border-color: rgba(var(--cs-accent-rgb), 0.28);
+}
+
+/* ---- Preserve the base scroll-perf suppression (our id scope would otherwise
+ * out-rank `.is-scrolling .theme-card`, re-adding shadows mid-scroll) --------- */
+#serenity-hub-panel.is-scrolling .theme-card,
+#serenity-hub-panel.is-scrolling .theme-card:hover,
+#serenity-hub-panel.is-scrolling .theme-card.active {
+    box-shadow: none;
+    transform: none;
+}
+
+/* =================================================================================
+ * PHASE 3 — Music tab (now-playing · transport · progress · volume · playlist)
+ * Uses the live `--cs-accent` (pink) / `--cs-accent-2` (violet) while Music is active.
+ * Most accents come free from the re-keyed `--music-*` tokens; here we upgrade the
+ * flat-white surfaces to cosmic glass, swap the hardcoded indigo glows for accent,
+ * and add console-grade focus rings.
+ * ============================================================================== */
+
+#serenity-hub-panel .now-playing-header h3,
+#serenity-hub-panel .playlist-header h3 {
+    color: #eef3ff;
+    letter-spacing: 0.02em;
+}
+
+/* Combined now-playing + controls card → cosmic glass */
+#serenity-hub-panel .now-playing-card {
+    background:
+        radial-gradient(120% 100% at 0% 0%, rgba(var(--cs-accent-rgb), 0.10), transparent 55%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(8, 10, 23, 0.50));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.22);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 16px 36px rgba(0, 0, 0, 0.22),
+        0 0 30px rgba(var(--cs-accent-rgb), 0.08);
+}
+
+/* Vinyl: accent rim glow on the dark disc */
+#serenity-hub-panel .vinyl-disc {
+    box-shadow:
+        0 8px 24px rgba(0, 0, 0, 0.45),
+        0 0 0 1px rgba(var(--cs-accent-rgb), 0.25),
+        0 0 24px rgba(var(--cs-accent-rgb), 0.22);
+}
+
+/* Progress handle: accent halo (fill is already accent via tokens) */
+#serenity-hub-panel .progress-handle {
+    box-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.40),
+        0 0 0 1px rgba(var(--cs-accent-rgb), 0.50),
+        0 0 12px rgba(var(--cs-accent-rgb), 0.60);
+}
+
+/* Transport buttons → glass tiles + console focus */
+#serenity-hub-panel .control-btn {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+        rgba(10, 13, 27, 0.50);
+    border: 1px solid rgba(150, 180, 255, 0.18);
+}
+
+#serenity-hub-panel .control-btn:hover {
+    background: rgba(var(--cs-accent-rgb), 0.12);
+    border-color: rgba(var(--cs-accent-rgb), 0.50);
+    box-shadow:
+        0 6px 16px rgba(0, 0, 0, 0.25),
+        0 0 18px rgba(var(--cs-accent-rgb), 0.25);
+}
+
+#serenity-hub-panel .control-btn.primary {
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.50);
+    box-shadow:
+        0 6px 18px rgba(var(--cs-accent-rgb), 0.38),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+#serenity-hub-panel .control-btn.primary:hover {
+    box-shadow:
+        0 9px 24px rgba(var(--cs-accent-rgb), 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.30);
+}
+
+#serenity-hub-panel .control-btn:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 2px rgba(var(--cs-accent-rgb), 0.90),
+        0 0 0 6px rgba(var(--cs-accent-rgb), 0.18);
+}
+
+/* Volume section → cosmic glass; accent thumb halo + focus */
+#serenity-hub-panel .volume-section {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(8, 10, 23, 0.45));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.18);
+}
+
+#serenity-hub-panel .volume-slider::-webkit-slider-thumb {
+    box-shadow:
+        0 2px 8px rgba(var(--cs-accent-rgb), 0.45),
+        0 0 10px rgba(var(--cs-accent-rgb), 0.40);
+}
+
+#serenity-hub-panel .volume-slider::-moz-range-thumb {
+    box-shadow: 0 2px 8px rgba(var(--cs-accent-rgb), 0.45);
+}
+
+#serenity-hub-panel .volume-slider:focus-visible::-webkit-slider-thumb {
+    box-shadow:
+        0 0 0 4px rgba(var(--cs-accent-rgb), 0.25),
+        0 0 12px rgba(var(--cs-accent-rgb), 0.60);
+}
+
+/* Mute button → glass; preserve the red "muted" state */
+#serenity-hub-panel .mute-btn {
+    background: rgba(10, 13, 27, 0.50);
+    border: 1px solid rgba(150, 180, 255, 0.18);
+}
+
+#serenity-hub-panel .mute-btn:hover {
+    background: rgba(var(--cs-accent-rgb), 0.10);
+    border-color: rgba(var(--cs-accent-rgb), 0.40);
+}
+
+#serenity-hub-panel .mute-btn.muted {
+    background: rgba(255, 100, 100, 0.18);
+    border-color: rgba(255, 100, 100, 0.42);
+}
+
+/* Track-count badge → accent glass */
+#serenity-hub-panel .track-count {
+    background: rgba(var(--cs-accent-rgb), 0.12);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.28);
+    color: #eef3ff;
+}
+
+/* Playlist rows → glass with accent hover/active + console focus */
+#serenity-hub-panel .playlist-item {
+    background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.012)),
+        rgba(10, 13, 27, 0.42);
+    border: 1px solid transparent;
+}
+
+#serenity-hub-panel .playlist-item:hover {
+    background: rgba(var(--cs-accent-rgb), 0.10);
+    border-color: rgba(var(--cs-accent-rgb), 0.28);
+}
+
+#serenity-hub-panel .playlist-item.active {
+    background: linear-gradient(90deg, rgba(var(--cs-accent-rgb), 0.22), rgba(179, 157, 255, 0.10));
+    border-color: rgba(var(--cs-accent-rgb), 0.55);
+}
+
+#serenity-hub-panel .playlist-item:focus-visible,
+#serenity-hub-panel .playlist-item.gamepad-focused {
+    outline: none;
+    border-color: rgba(var(--cs-accent-rgb), 0.70);
+    box-shadow:
+        0 0 0 2px rgba(var(--cs-accent-rgb), 0.90),
+        0 0 0 6px rgba(var(--cs-accent-rgb), 0.18);
+}
+
+/* =================================================================================
+ * PHASE 4 — Breathing (teal) + Sessions (violet) tabs
+ * Breathing uses the live `--cs-accent` = teal; Sessions = violet. The active-session
+ * meditation HUD + countdown keep their bespoke per-type identity (base=blue,
+ * elixir=red) and are intentionally left untouched.
+ * ============================================================================== */
+
+/* ---- Breathing: section chrome -------------------------------------------- */
+#serenity-hub-panel .section-title {
+    color: #eef3ff;
+}
+
+#serenity-hub-panel .breathing-toggle-section {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(8, 10, 23, 0.40));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.18);
+}
+
+#serenity-hub-panel .breathing-settings-section {
+    border-top: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+}
+
+/* Toggle switch → cosmic (checked state already accent via re-keyed --hub-accent) */
+#serenity-hub-panel .toggle-slider {
+    background: rgba(8, 10, 23, 0.55);
+    border: 1px solid rgba(150, 180, 255, 0.20);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+#serenity-hub-panel .toggle-slider:before {
+    background: radial-gradient(circle at 36% 32%, #ffffff 0 30%, rgba(214, 222, 246, 0.92) 100%);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.42);
+}
+
+#serenity-hub-panel .toggle-switch input:checked + .toggle-slider {
+    background: linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.35), rgba(var(--cs-accent-rgb), 0.70));
+    border-color: rgba(var(--cs-accent-rgb), 0.70);
+    box-shadow:
+        inset 0 1px 2px rgba(255, 255, 255, 0.20),
+        0 0 16px rgba(var(--cs-accent-rgb), 0.40);
+}
+
+#serenity-hub-panel .toggle-switch input:focus-visible + .toggle-slider {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(var(--cs-accent-rgb), 0.30);
+}
+
+/* Technique cards → cosmic glass + accent hover/active/focus */
+#serenity-hub-panel .technique-card {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(10, 13, 27, 0.50));
+    border: 1px solid rgba(150, 180, 255, 0.10);
+}
+
+#serenity-hub-panel .technique-card:hover {
+    background: rgba(var(--cs-accent-rgb), 0.08);
+    border-color: rgba(var(--cs-accent-rgb), 0.50);
+    transform: translateY(-3px);
+    box-shadow:
+        0 10px 24px rgba(0, 0, 0, 0.40),
+        0 0 22px rgba(var(--cs-accent-rgb), 0.25);
+}
+
+#serenity-hub-panel .technique-card.active {
+    background: rgba(var(--cs-accent-rgb), 0.10);
+    border-color: rgba(var(--cs-accent-rgb), 0.85);
+    box-shadow:
+        0 0 0 1px rgba(var(--cs-accent-rgb), 0.60),
+        0 0 22px rgba(var(--cs-accent-rgb), 0.40);
+}
+
+#serenity-hub-panel .technique-card:focus-visible,
+#serenity-hub-panel .technique-card.gamepad-focused {
+    outline: none;
+    border-color: rgba(var(--cs-accent-rgb), 0.85);
+    box-shadow:
+        0 0 0 2px rgba(var(--cs-accent-rgb), 0.92),
+        0 0 0 6px rgba(var(--cs-accent-rgb), 0.20);
+}
+
+/* Breathing active-indicator is a glowing glyph (not the themes pill) → accent */
+#serenity-hub-panel .technique-card .active-indicator {
+    color: var(--cs-accent);
+}
+
+/* Info display → cosmic glass + accent accents */
+#serenity-hub-panel .technique-info-display {
+    background:
+        radial-gradient(120% 90% at 0% 0%, rgba(var(--cs-accent-rgb), 0.08), transparent 56%),
+        rgba(8, 10, 23, 0.45);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.20);
+}
+
+#serenity-hub-panel .info-title {
+    color: #eef3ff;
+}
+
+#serenity-hub-panel .info-pattern {
+    background: rgba(8, 10, 23, 0.45);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+}
+
+#serenity-hub-panel .info-pattern strong {
+    color: var(--cs-accent);
+}
+
+/* Breathing settings checkbox → accent */
+#serenity-hub-panel .setting-label input[type="checkbox"] {
+    accent-color: var(--cs-accent);
+}
+
+#serenity-hub-panel .setting-label input[type="checkbox"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(var(--cs-accent-rgb), 0.30);
+}
+
+/* ---- Sessions: cards (violet chrome; per-type icons stay semantic) --------- */
+#serenity-hub-panel .session-card {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(10, 13, 27, 0.50));
+    border: 1px solid rgba(150, 180, 255, 0.12);
+}
+
+#serenity-hub-panel .session-card:hover {
+    background: rgba(var(--cs-accent-rgb), 0.07);
+    border-color: rgba(var(--cs-accent-rgb), 0.50);
+    transform: translateY(-4px);
+    box-shadow:
+        0 14px 30px rgba(0, 0, 0, 0.30),
+        0 0 26px rgba(var(--cs-accent-rgb), 0.22);
+}
+
+#serenity-hub-panel .session-card:focus-within {
+    border-color: rgba(var(--cs-accent-rgb), 0.40);
+}
+
+/* Start button → cosmic accent CTA (dark glyph on the bright gradient) */
+#serenity-hub-panel .start-session-btn {
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.50);
+    color: #0a0c1a;
+    box-shadow:
+        0 6px 16px rgba(var(--cs-accent-rgb), 0.30),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+#serenity-hub-panel .start-session-btn:hover {
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    color: #0a0c1a;
+    transform: translateY(-1px);
+    box-shadow: 0 9px 22px rgba(var(--cs-accent-rgb), 0.45);
+}
+
+#serenity-hub-panel .start-session-btn:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 3px rgba(var(--cs-accent-rgb), 0.28),
+        0 9px 22px rgba(var(--cs-accent-rgb), 0.40);
+}
+
+/* ---- Sessions: prep overlay ------------------------------------------------ */
+#serenity-hub-panel .session-prep-overlay {
+    background: radial-gradient(ellipse at 50% 0%, rgba(var(--cs-accent-rgb), 0.08), rgba(4, 6, 16, 0.95) 60%);
+}
+
+#serenity-hub-panel .prep-close-btn:hover {
+    color: var(--cs-accent);
+}
+
+#serenity-hub-panel .prep-divider {
+    background: linear-gradient(90deg, transparent, rgba(var(--cs-accent-rgb), 0.50), transparent);
+}
+
+#serenity-hub-panel .intention-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(150, 180, 255, 0.12);
+}
+
+#serenity-hub-panel .intention-card:hover {
+    background: rgba(var(--cs-accent-rgb), 0.08);
+    border-color: rgba(var(--cs-accent-rgb), 0.35);
+    transform: translateY(-2px);
+}
+
+#serenity-hub-panel .intention-card.selected {
+    background: rgba(var(--cs-accent-rgb), 0.15);
+    border-color: rgba(var(--cs-accent-rgb), 0.55);
+    box-shadow: 0 0 20px rgba(var(--cs-accent-rgb), 0.22);
+}
+
+#serenity-hub-panel .intention-card:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 2px rgba(var(--cs-accent-rgb), 0.90),
+        0 0 0 5px rgba(var(--cs-accent-rgb), 0.18);
+}
+
+/* Begin button → cosmic accent CTA (was a fixed cyan→purple gradient) */
+#serenity-hub-panel .prep-begin-btn {
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.55);
+    color: #0a0c1a;
+}
+
+#serenity-hub-panel .prep-begin-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(var(--cs-accent-rgb), 0.40);
+}
+
+#serenity-hub-panel .prep-begin-btn:focus-visible:not(:disabled) {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(var(--cs-accent-rgb), 0.30);
+}
+
+#serenity-hub-panel .prep-skip-btn:hover {
+    color: var(--cs-accent);
+}
+
+/* =================================================================================
+ * PHASE 5 — Theme-card micro-interactions (cursor spotlight + parallax tilt)
+ * JS (theme-card-interactions.js) writes --mx/--my/--rx/--ry; CSS composites them.
+ * ============================================================================== */
+
+#serenity-hub-panel .theme-card {
+    position: relative;
+    --mx: 50%;
+    --my: 50%;
+    --rx: 0deg;
+    --ry: 0deg;
+}
+
+/* Cursor-follow spotlight — a soft accent glint that tracks the pointer */
+#serenity-hub-panel .theme-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(170px circle at var(--mx) var(--my),
+            rgba(var(--cs-accent-rgb), 0.20), transparent 60%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    z-index: 2;
+}
+
+#serenity-hub-panel .theme-card:hover::before,
+#serenity-hub-panel .theme-card.gamepad-focused::before {
+    opacity: 1;
+}
+
+/* Compose the parallax tilt with the Phase 2 hover lift/scale (JS feeds --rx/--ry) */
+#serenity-hub-panel .theme-card:hover {
+    transform:
+        perspective(900px)
+        rotateX(var(--rx)) rotateY(var(--ry))
+        translateY(-4px) scale(1.03);
+}
+
+/* ---- Accessibility: honour reduced-motion ---------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    #serenity-hub-panel .hub-title,
+    #serenity-hub-panel .tab-panel.active {
+        animation: none !important;
+    }
+
+    #serenity-hub-panel .tab-panel.active {
+        opacity: 1 !important;
+        transform: none !important;
+        filter: none !important;
+    }
+
+    #serenity-hub-panel .theme-card,
+    #serenity-hub-panel .theme-card:hover {
+        transition: none !important;
+        transform: none !important;
+    }
+
+    #serenity-hub-panel .music-icon,
+    #serenity-hub-panel .playing-indicator,
+    #serenity-hub-panel .vinyl-disc.spinning,
+    #serenity-hub-panel .technique-icon,
+    #serenity-hub-panel .technique-card .active-indicator,
+    #serenity-hub-panel .countdown-number.pulse {
+        animation: none !important;
+    }
+}
