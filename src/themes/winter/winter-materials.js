@@ -62,13 +62,13 @@ export function createWinterStarfieldNodeMaterial() {
     const twinkleSpeed = mix(float(0.8), float(2.2), aTwinkle);
     const twinkle = sin(uTime.mul(twinkleSpeed).add(aPhase.mul(10.0))).mul(0.5).add(0.5);
 
-    const alpha = twinkle.mul(0.4).add(0.1);
+    const alpha = twinkle.mul(0.16).add(0.035);
 
     const material = new THREE.PointsNodeMaterial();
     material.sizeNode = aSize;
     material.colorNode = aColor;
     material.opacityNode = alpha;
-    material.emissiveNode = aColor.mul(twinkle).mul(0.2);
+    material.emissiveNode = aColor.mul(twinkle).mul(0.04);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -83,15 +83,18 @@ export function createWinterMoonNodeMaterial(params = {}) {
     const craterNoise = mx_noise_float(vec3(vUv.mul(8.0), uTime.mul(0.02)))
         .mul(0.5)
         .add(0.5);
-    const craterMask = smoothstep(0.35, 0.85, craterNoise);
-    const craterShade = mix(vec3(1.0), vec3(0.85, 0.88, 0.92), craterMask);
+    const craterMask = smoothstep(0.35, 0.82, craterNoise);
+    // Visible darker maria so the disc reads as a moon, not a white blob.
+    const craterShade = mix(vec3(0.95, 0.96, 0.98), vec3(0.58, 0.64, 0.76), craterMask);
     const normal = normalize(normalView);
-    const intensity = pow(float(0.7).sub(normal.dot(vec3(0.0, 0.0, 1.0))), float(2.0));
-    const baseColor = uColor.mul(craterShade).add(vec3(0.2).mul(float(1.0).sub(intensity)));
+    // Limb darkening: bright center → dimmer toward the edge (3D sphere read).
+    const ndotv = clamp(normal.z, 0.0, 1.0);
+    const limb = float(0.5).add(pow(ndotv, float(0.45)).mul(0.55));
+    const baseColor = uColor.mul(craterShade).mul(limb);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = baseColor;
-    material.emissiveNode = baseColor.mul(0.4);
+    material.emissiveNode = baseColor.mul(0.35);
 
     return { material, uniforms: { uColor, uTime } };
 }
@@ -102,52 +105,137 @@ export function createWinterMoonHaloNodeMaterial(params = {}) {
     const uColor = uniform(params.color ?? new THREE.Color(0xaad9ff));
 
     const n = normalize(normalView);
-    const rim = pow(float(1.0).sub(abs(n.z)), float(2.0));
+    // Soft radial glow: BRIGHT facing the camera (center, behind the moon),
+    // fading to nothing at the sphere edge — NOT a rim ring (which read as a
+    // hard "soap-bubble" halo around the moon).
+    const glow = pow(clamp(abs(n.z), 0.0, 1.0), float(2.4));
     const pulse = sin(uTime.mul(2.0)).mul(0.05).add(1.0);
     const tintCycle = sin(uTime.mul(0.05)).mul(0.5).add(0.5);
     const tint = mix(uColor, vec3(0.5, 0.9, 0.85), tintCycle.mul(0.6));
 
-    const alpha = rim.mul(uIntensity).mul(pulse);
+    const alpha = glow.mul(uIntensity).mul(pulse);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
-    material.side = THREE.DoubleSide;
+    material.side = THREE.FrontSide;
     material.colorNode = tint;
     material.opacityNode = alpha;
-    material.emissiveNode = tint.mul(alpha.mul(1.2));
+    material.emissiveNode = tint.mul(alpha.mul(0.9));
 
     return { material, uniforms: { uTime, uIntensity, uColor } };
 }
 
 export function createWinterMountainNodeMaterial(params = {}) {
-    const uBaseColor = uniform(params.baseColor ?? new THREE.Color(0x060c15));
-    const uSnowColor = uniform(params.snowColor ?? new THREE.Color(0xddeeff));
-    const uSnowLine = uniform(params.snowLine ?? 0.35);
-    const uFogColor = uniform(params.fogColor ?? new THREE.Color(0x050a14));
+    const uBaseColor = uniform(params.baseColor ?? new THREE.Color(0x0a1320));
+    const uRockHi = uniform(params.rockHi ?? new THREE.Color(0x182438));
+    // Moonlit snow is NOT bright white — cool, dimmer, with a blue shadow tone.
+    const uSnowColor = uniform(params.snowColor ?? new THREE.Color(0xc2d4ec));
+    const uSnowShadow = uniform(params.snowShadow ?? new THREE.Color(0x35496a));
+    // snowStart/snowRange are WORLD-Y (reachable by the geometry).
+    const uSnowStart = uniform(params.snowStart ?? 10);
+    const uSnowRange = uniform(params.snowRange ?? 120);
+    const uFogColor = uniform(params.fogColor ?? new THREE.Color(0x070d18));
     const uFogDensity = uniform(params.fogDensity ?? 0.0008);
+    const uRimColor = uniform(params.rimColor ?? new THREE.Color(0x9fe0c8));
+    const uRimStrength = uniform(params.rimStrength ?? 0.4);
 
     const vPos = positionWorld;
     const vNormal = normalize(normalView);
-    const slope = float(1.0).sub(vNormal.y);
 
-    const snowThreshold = uSnowLine.mul(600.0).add(sin(vPos.x.mul(0.01)).mul(50.0));
-    const snowFactor = smoothstep(snowThreshold, snowThreshold.add(100.0), vPos.y)
-        .mul(smoothstep(0.8, 0.3, slope));
+    // Vertical form: dark at the base, lifting to a cooler lit rock higher up.
+    const rock = mix(uBaseColor, uRockHi, smoothstep(-260.0, 80.0, vPos.y));
 
-    const baseColor = mix(uBaseColor, uSnowColor, snowFactor);
+    // Organic snow line — sine folds + noise breakup so the edge isn't a clean cut.
+    const lineNoise = mx_noise_float(vec3(vPos.x.mul(0.02), vPos.y.mul(0.03), float(0.0))).mul(30.0);
+    const snowLineY = uSnowStart
+        .add(sin(vPos.x.mul(0.012)).mul(34.0))
+        .add(sin(vPos.x.mul(0.05)).mul(13.0))
+        .add(lineNoise);
+    const snowFactor = smoothstep(snowLineY, snowLineY.add(uSnowRange), vPos.y);
+
+    // Snow shading: blue shadow near the line → brighter higher, + noise texture
+    // variation + fine sparkle, so it reads as 3D snow, not a flat white cut-out.
+    const snowTex = mx_noise_float(vec3(vPos.xz.mul(0.035), float(0.0))).mul(0.5).add(0.5);
+    const heightBright = smoothstep(snowLineY, snowLineY.add(uSnowRange.mul(2.0)), vPos.y);
+    const snowBright = clamp(float(0.32).add(heightBright.mul(0.5)).add(snowTex.mul(0.26)), 0.0, 1.0);
+    const snowCol = mix(uSnowShadow, uSnowColor, snowBright);
+    const glint = mx_noise_float(vec3(vPos.xz.mul(0.5), float(0.0)));
+    const sparkle = smoothstep(0.72, 1.0, glint).mul(0.35);
+    const snowShade = snowCol.add(vec3(0.5, 0.6, 0.78).mul(sparkle));
+
+    const litColor = mix(rock, snowShade, snowFactor);
+
+    // Backlit moonlit rim along the ridge silhouette edges (cool aurora-tinted).
+    const rim = pow(float(1.0).sub(abs(vNormal.z)), float(2.5));
+    const rimMask = rim.mul(uRimStrength)
+        .mul(smoothstep(snowLineY.sub(60.0), snowLineY.add(80.0), vPos.y));
+    const withRim = litColor.add(uRimColor.mul(rimMask));
+
+    // Atmospheric fog (depth) — far ridge recedes into the night.
     const depth = length(vPos.sub(cameraPosition));
     const fogFactor = float(1.0).sub(
         exp(depth.mul(depth).mul(uFogDensity.mul(uFogDensity)).negate()),
     );
-    const finalColor = mix(baseColor, uFogColor, fogFactor);
+    const finalColor = mix(withRim, uFogColor, fogFactor);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = finalColor;
     material.emissiveNode = vec3(0.0);
 
-    return { material, uniforms: { uBaseColor, uSnowColor, uSnowLine, uFogColor, uFogDensity } };
+    return {
+        material,
+        uniforms: {
+            uBaseColor, uRockHi, uSnowColor, uSnowShadow, uSnowStart, uSnowRange, uFogColor, uFogDensity, uRimColor, uRimStrength,
+        },
+    };
+}
+
+export function createWinterGroundNodeMaterial(params = {}) {
+    const uTime = uniform(0);
+    // Moonlit night snow: dark cool base, NOT bright white.
+    const uBaseColor = uniform(params.baseColor ?? new THREE.Color(0x0b1626));
+    const uSnowColor = uniform(params.snowColor ?? new THREE.Color(0x8ba6cf));
+    const uFogColor = uniform(params.fogColor ?? new THREE.Color(0x070d18));
+    const uAurora = uniform(params.aurora ?? new THREE.Color(0x33b890)); // faint green reflection
+    const uNear = uniform(params.near ?? 200.0);
+    const uFar = uniform(params.far ?? 2200.0);
+
+    const vPos = positionWorld;
+    const depth = length(vPos.sub(cameraPosition));
+    const farT = smoothstep(uNear, uFar, depth); // 0 near camera → 1 at horizon
+    const nearT = float(1.0).sub(farT);
+
+    // Two-octave drift → visible snow drifts with light/shadow sides.
+    const drift1 = mx_noise_float(vec3(vPos.xz.mul(0.004), uTime.mul(0.02))).mul(0.5).add(0.5);
+    const drift2 = mx_noise_float(vec3(vPos.xz.mul(0.015), float(3.0))).mul(0.5).add(0.5);
+    const driftShade = clamp(drift1.mul(0.6).add(drift2.mul(0.4)), 0.0, 1.0);
+    // Brighter, more moonlit near the camera; darker far. Drift modulates it.
+    const nearBright = nearT.mul(0.4).add(0.55);
+    const base = mix(uSnowColor, uBaseColor, float(0.35))
+        .mul(float(0.4).add(driftShade.mul(0.6)).mul(nearBright));
+
+    // Aurora sheen reflected on the snow, stronger toward the lit horizon.
+    const auroraSheen = uAurora.mul(farT.mul(0.22).add(0.05));
+
+    // Cool moonlight sheen on the moon side (+X), near camera.
+    const moonSide = smoothstep(-1600.0, 1400.0, vPos.x);
+    const moonSheen = vec3(0.55, 0.66, 0.88).mul(moonSide.mul(nearT).mul(0.12));
+
+    // Cold crystalline sparkle — denser/brighter near the camera.
+    const sp = mx_noise_float(vec3(vPos.xz.mul(0.7), uTime.mul(0.05)));
+    const sparkle = smoothstep(0.78, 1.0, sp).mul(nearT).mul(0.85);
+
+    const col = base.add(auroraSheen).add(moonSheen).add(vec3(0.72, 0.82, 1.0).mul(sparkle));
+    // Fade into fog at the horizon so the ground blends into the ridges/sky.
+    const finalColor = mix(col, uFogColor, farT.mul(0.85));
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = finalColor;
+    material.emissiveNode = vec3(0.0);
+
+    return { material, uniforms: { uTime, uAurora } };
 }
 
 export function createWinterAuroraNodeMaterial(options = {}) {
@@ -212,16 +300,18 @@ export function createWinterAuroraNodeMaterial(options = {}) {
 }
 
 export function createWinterSnowNodeMaterial(params = {}) {
-    const { isWebGPU = false, snowCompute = null } = params;
+    const { isWebGPU = false, snowCompute = null, stormDriven = false } = params;
     const material = new THREE.PointsNodeMaterial();
     material.transparent = true;
     material.depthWrite = false;
-    material.blending = THREE.AdditiveBlending;
+    material.blending = THREE.NormalBlending;
+    material.premultipliedAlpha = true;
 
     const uTime = uniform(0);
     const uWindForce = uniform(0);
     const uGustIntensity = uniform(0);
     const uFlashIntensity = uniform(0);
+    const uStormDensity = uniform(0); // 0..1, lifts size + alpha toward whiteout
 
     const aDepth = attribute('depth');
     const aPhase = attribute('phase');
@@ -240,35 +330,70 @@ export function createWinterSnowNodeMaterial(params = {}) {
         }
         return positionLocal;
     })();
-    const windX = uWindForce.mul(aDepth.add(1.0));
-    const turbulence = sin(basePos.y.mul(0.05).add(uTime.mul(4.0))).mul(uGustIntensity).mul(12.0);
-    const spiral = sin(uTime.mul(aWobbleSpeed).add(aPhase)).mul(float(2.0).add(uGustIntensity.mul(4.0)));
-    const zOffset = cos(uTime.mul(aWobbleSpeed.mul(0.5)).add(aPhase)).mul(2.0).sub(uWindForce.mul(0.1));
-    const pos = vec3(basePos.x.add(windX).add(turbulence).add(spiral), basePos.y, basePos.z.add(zOffset));
-    material.positionNode = pos;
 
-    const flash = float(0.9).add(clamp(uFlashIntensity, 0.0, 1.0).mul(0.8));
-    material.colorNode = vec3(0.9, 0.92, 1.0).mul(flash);
+    if (stormDriven) {
+        // Motion is authoritative in the curl-noise compute — just read it.
+        material.positionNode = basePos;
+    } else {
+        // Legacy path: layer wind/turbulence/spiral on top of compute/CPU positions.
+        const windX = uWindForce.mul(aDepth.add(1.0));
+        const turbulence = sin(basePos.y.mul(0.05).add(uTime.mul(4.0))).mul(uGustIntensity).mul(12.0);
+        const spiral = sin(uTime.mul(aWobbleSpeed).add(aPhase)).mul(float(2.0).add(uGustIntensity.mul(4.0)));
+        const zOffset = cos(uTime.mul(aWobbleSpeed.mul(0.5)).add(aPhase)).mul(2.0).sub(uWindForce.mul(0.1));
+        material.positionNode = vec3(
+            basePos.x.add(windX).add(turbulence).add(spiral),
+            basePos.y,
+            basePos.z.add(zOffset),
+        );
+    }
 
-    const depthAlpha = float(0.2).add(aDepth.mul(0.6)).mul(0.8);
+    // --- Soft round flake sprite (replaces the square additive blob) ---
+    // NOTE: use uv() not pointUV — pointUV emits invalid WGSL (gl_PointCoord)
+    // in this three revision (see neon-dusk / fluid-dreams materials).
+    const coord = uv().sub(0.5);
+    const r = length(coord).mul(2.0);
+    const core = float(1.0).sub(smoothstep(0.1, 0.72, r));
+    const hotspot = float(1.0).sub(smoothstep(0.0, 0.34, r));
+    const flake = clamp(core.add(hotspot.mul(0.1)), 0.0, 1.0);
+
+    // Slightly more presence + a wider near/far split for layered depth
+    // (kept low — NormalBlending, so no additive haze risk).
+    const depthAlpha = float(0.022).add(aDepth.mul(0.072));
     const twinkle = float(0.85).add(sin(uTime.mul(3.0).add(aPhase.mul(10.0))).mul(0.15));
 
-    // Simple depth-of-field approximation: blur near/far, sharper mid-depth
+    // Depth-of-field approximation: soften near/far, sharpest mid-depth.
     const nearFocus = smoothstep(0.05, 0.25, aDepth);
     const farFocus = float(1.0).sub(smoothstep(0.75, 0.95, aDepth));
     const dof = nearFocus.mul(farFocus);
     const blurScale = mix(float(1.5), float(1.0), dof);
     const dofAlpha = mix(float(0.5), float(1.0), dof);
 
-    material.opacityNode = depthAlpha.mul(twinkle).mul(dofAlpha);
-    const depthScale = float(0.5).add(aDepth.mul(0.5));
+    // Keep snow as visible flakes/sheets. Whiteout is carried by fog/post, not
+    // by making every particle opaque.
+    const densityAlpha = float(1.0).add(uStormDensity.mul(0.08));
+    const densitySize = float(1.0).add(uStormDensity.mul(0.1));
+
+    const flash = float(0.85).add(clamp(uFlashIntensity, 0.0, 1.0).mul(0.45));
+    const snowAlpha = flake.mul(depthAlpha).mul(twinkle).mul(dofAlpha).mul(densityAlpha);
+    const snowColor = vec3(0.78, 0.86, 0.98).mul(flash);
+
+    material.colorNode = snowColor.mul(snowAlpha);
+    material.opacityNode = snowAlpha;
+    // Wider near/far size split: big soft foreground flakes vs fine far haze.
+    const depthScale = float(0.4).add(aDepth.mul(0.9));
     material.sizeNode = aSize
         .mul(depthScale)
         .mul(blurScale)
+        .mul(densitySize)
         .mul(float(600.0).div(positionView.z.negate()));
-    material.emissiveNode = vec3(0.05, 0.06, 0.08);
+    material.emissiveNode = vec3(0.0);
 
-    return { material, uniforms: { uTime, uWindForce, uGustIntensity, uFlashIntensity } };
+    return {
+        material,
+        uniforms: {
+            uTime, uWindForce, uGustIntensity, uFlashIntensity, uStormDensity,
+        },
+    };
 }
 
 export function createWinterSnowflakeBillboardMaterial(params = {}) {
@@ -295,7 +420,10 @@ export function createWinterSnowflakeBillboardMaterial(params = {}) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
     material.opacityNode = alpha;
-    material.emissiveNode = color.mul(alpha.mul(0.35));
+    // Snowflakes are NOT light sources — keep emissive tiny so dozens of
+    // upward-biased instances don't accumulate past the bloom threshold and
+    // bloom into a white haze across the upper sky.
+    material.emissiveNode = color.mul(alpha.mul(0.05));
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.NormalBlending;

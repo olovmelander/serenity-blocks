@@ -94,13 +94,22 @@ export class DemoBrowser {
         card.innerHTML = `
             <div class="demo-info">
                 <div class="demo-header">
-                    <span class="demo-date">${dateStr}</span>
                     <span class="demo-mode">${demo.gameMode || 'Single Player'}</span>
+                    <span class="demo-date">${dateStr}</span>
                 </div>
                 <div class="demo-stats">
-                    <span class="stat">Score: ${score}</span>
-                    <span class="stat">Level: ${demo.metadata?.level || 1}</span>
-                    <span class="stat">Duration: ${duration}</span>
+                    <span class="stat stat--score">
+                        <span class="stat-value">${score}</span>
+                        <span class="stat-label">Score</span>
+                    </span>
+                    <span class="stat">
+                        <span class="stat-value">${demo.metadata?.level || 1}</span>
+                        <span class="stat-label">Level</span>
+                    </span>
+                    <span class="stat">
+                        <span class="stat-value">${duration}</span>
+                        <span class="stat-label">Duration</span>
+                    </span>
                 </div>
             </div>
             <div class="demo-actions">

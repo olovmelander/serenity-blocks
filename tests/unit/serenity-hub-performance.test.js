@@ -6,8 +6,10 @@ import {
 } from 'vitest';
 import {
     applyThemeCardFilter,
+    CATEGORY_ICON_SVGS,
     createThemeIconObserverOptions,
     getFilteredThemeIds,
+    getCategoryIconSvg,
     getThemeIconHydrationPlan,
     resolveThemeIconHydrationSource,
 } from '../../src/ui/serenity-hub/ThemesTab.js';
@@ -92,6 +94,33 @@ function createFakeHydrationCard(themeId, rect) {
 }
 
 describe('Serenity Hub performance helpers', () => {
+    it('uses custom SVG category icons instead of emoji glyphs', () => {
+        const knownCategoryIds = [
+            'all',
+            'abstract',
+            'atmospheric',
+            'biomes',
+            'cosmic',
+            'fantasy',
+            'meditation',
+            'sky',
+            'urban',
+        ];
+        const emojiRegex = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+
+        knownCategoryIds.forEach((categoryId) => {
+            const iconMarkup = getCategoryIconSvg(categoryId);
+
+            expect(iconMarkup).toContain('<svg');
+            expect(iconMarkup).toContain('class="pill-icon-svg"');
+            expect(iconMarkup).toContain('stroke="currentColor"');
+            expect(iconMarkup).not.toMatch(emojiRegex);
+        });
+
+        expect(Object.keys(CATEGORY_ICON_SVGS).sort()).toEqual(knownCategoryIds.sort());
+        expect(getCategoryIconSvg('unknown-category')).toBe(getCategoryIconSvg('all'));
+    });
+
     it('filters and sorts theme ids without rebuilding the source list', () => {
         const themes = [
             { id: 'winter', displayName: 'Winter', group: 'biomes' },
@@ -188,8 +217,8 @@ describe('Serenity Hub performance helpers', () => {
             isPackaged: true,
             desktopThemeThumbnails: true,
         })).toEqual({
-            src: '/assets/theme-thumbnails/forest-theme-icon.png',
-            source: 'desktop',
+            src: '/icons/forest.png',
+            source: 'bundled',
         });
     });
 

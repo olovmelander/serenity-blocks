@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-05-02T12:38:59.896Z",
+  "generatedAt": "2026-06-01T16:09:11.258Z",
   "totalThemes": 1,
   "captured": 1,
   "failed": 0,
   "settleTimeMs": 25000,
   "results": [
     {
-      "theme": "ocean",
+      "theme": "sky-children-v2",
       "passed": true,
-      "screenshot": "docs/theme-screenshots/ocean.png",
+      "screenshot": "docs\\theme-screenshots\\sky-children-v2.png",
       "error": null
     }
   ]

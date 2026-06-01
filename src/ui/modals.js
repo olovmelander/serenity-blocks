@@ -601,108 +601,84 @@ export async function showHighScoresModal(modalManager, highScoreManager, onPlay
         // Check if any scores have linked demos
         const hasAnyDemos = topScores.some((score) => score.demoId);
 
-        // Build high scores table
-        let scoresHTML = '<h2 style="margin-bottom: 15px; color: #fbbf24;">Top 10 Scores</h2>';
+        // Build leaderboard (cosmic glass row-cards)
+        const leaderboardClass = hasAnyDemos ? 'hs-leaderboard hs-leaderboard--demos' : 'hs-leaderboard';
+        let scoresHTML = '<h2 class="hs-section-title">Top 10 Scores</h2>';
         if (topScores.length === 0) {
-            scoresHTML += '<p style="color: #9ca3af;">No scores yet. Start playing!</p>';
+            scoresHTML += '<p class="hs-empty">No scores yet. Start playing!</p>';
         } else {
-            scoresHTML += '<table style="width: 100%; border-collapse: collapse;">';
-            scoresHTML += `
-                <thead>
-                    <tr style="border-bottom: 2px solid rgba(255,255,255,0.3);">
-                        <th style="text-align: left; padding: 8px;">Rank</th>
-                        <th style="text-align: right; padding: 8px;">Score</th>
-                        <th style="text-align: center; padding: 8px;">Level</th>
-                        <th style="text-align: center; padding: 8px;">Lines</th>
-                        <th style="text-align: right; padding: 8px;">Date</th>
-                        ${hasAnyDemos ? '<th style="text-align: center; padding: 8px; width: 50px;"></th>' : ''}
-                    </tr>
-                </thead>
-                <tbody>
-            `;
-
-            topScores.forEach((score, index) => {
+            const rowsHTML = topScores.map((score, index) => {
                 const date = new Date(score.timestamp);
                 const dateStr = date.toLocaleDateString();
-                const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
-                const rowColor = index % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'transparent';
+                const medal = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : '';
+                const rankLabel = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}`;
+                const rowClass = `hs-row${medal ? ` hs-row--${medal}` : ''}`;
 
-                // Play button for scores with linked demos
-                let playButtonHTML = '';
+                // Play button for scores with linked demos (placeholder keeps rows aligned)
+                let playHTML = '';
                 if (hasAnyDemos) {
                     if (score.demoId && onPlayDemo) {
-                        playButtonHTML = `
-                            <td style="padding: 8px; text-align: center;">
-                                <button class="play-demo-btn" data-demo-id="${score.demoId}"
-                                    style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4);
-                                           color: #10b981; padding: 4px 8px; border-radius: 4px; cursor: pointer;
-                                           font-size: 14px; transition: all 0.2s;"
-                                    title="Watch replay">
-                                    ▶
-                                </button>
-                            </td>
-                        `;
+                        playHTML = `<button class="play-demo-btn hs-play" data-demo-id="${score.demoId}" title="Watch replay" aria-label="Watch replay">▶</button>`;
                     } else {
-                        playButtonHTML = '<td style="padding: 8px; text-align: center; color: #4b5563;">—</td>';
+                        playHTML = '<span class="hs-play hs-play--empty" aria-hidden="true">—</span>';
                     }
                 }
 
-                scoresHTML += `
-                    <tr style="background: ${rowColor};">
-                        <td style="padding: 8px; font-weight: bold;">${rankEmoji}</td>
-                        <td style="padding: 8px; text-align: right; color: #fbbf24; font-weight: bold;">${score.score.toLocaleString()}</td>
-                        <td style="padding: 8px; text-align: center;">${score.level}</td>
-                        <td style="padding: 8px; text-align: center;">${score.lines}</td>
-                        <td style="padding: 8px; text-align: right; color: #9ca3af; font-size: 12px;">${dateStr}</td>
-                        ${playButtonHTML}
-                    </tr>
+                return `
+                    <div class="${rowClass}">
+                        <div class="hs-rank">${rankLabel}</div>
+                        <div class="hs-main">
+                            <div class="hs-score">${score.score.toLocaleString()}</div>
+                            <div class="hs-meta">Lv ${score.level} · ${score.lines} lines</div>
+                        </div>
+                        <div class="hs-date">${dateStr}</div>
+                        ${playHTML}
+                    </div>
                 `;
-            });
+            }).join('');
 
-            scoresHTML += '</tbody></table>';
+            scoresHTML += `<div class="${leaderboardClass}">${rowsHTML}</div>`;
         }
 
         document.getElementById('high-scores-list').innerHTML = scoresHTML;
 
-        // Attach event listeners to play buttons
+        // Attach event listeners to play buttons (hover handled in CSS)
         if (onPlayDemo) {
             document.querySelectorAll('.play-demo-btn').forEach((btn) => {
                 btn.addEventListener('click', (e) => {
-                    const demoId = parseInt(e.target.dataset.demoId, 10);
+                    const demoId = parseInt(e.currentTarget.dataset.demoId, 10);
                     modalManager.hide('highScores');
                     onPlayDemo(demoId);
-                });
-                // Hover effect
-                btn.addEventListener('mouseenter', () => {
-                    btn.style.background = 'rgba(16, 185, 129, 0.4)';
-                });
-                btn.addEventListener('mouseleave', () => {
-                    btn.style.background = 'rgba(16, 185, 129, 0.2)';
                 });
             });
         }
 
-        // Build statistics section
-        let statsHTML = '<h2 style="margin-bottom: 15px; color: #fbbf24;">Statistics</h2>';
-        statsHTML += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">';
-        statsHTML += `<div><strong>Total Games:</strong> ${stats.totalGames}</div>`;
-        statsHTML += `<div><strong>Highest Score:</strong> ${stats.highestScore.toLocaleString()}</div>`;
-        statsHTML += `<div><strong>Total Lines:</strong> ${stats.totalLines.toLocaleString()}</div>`;
-        statsHTML += `<div><strong>Highest Level:</strong> ${stats.highestLevel}</div>`;
-
+        // Build statistics (cosmic glass stat cards)
+        const statCards = [
+            { label: 'Total Games', value: stats.totalGames.toLocaleString() },
+            { label: 'Highest Score', value: stats.highestScore.toLocaleString() },
+            { label: 'Total Lines', value: stats.totalLines.toLocaleString() },
+            { label: 'Highest Level', value: stats.highestLevel },
+        ];
         if (stats.totalGames > 0) {
-            const avgScore = Math.round(stats.totalScore / stats.totalGames);
-            const avgLines = Math.round(stats.totalLines / stats.totalGames);
-            statsHTML += `<div><strong>Avg Score:</strong> ${avgScore.toLocaleString()}</div>`;
-            statsHTML += `<div><strong>Avg Lines:</strong> ${avgLines}</div>`;
+            statCards.push({ label: 'Avg Score', value: Math.round(stats.totalScore / stats.totalGames).toLocaleString() });
+            statCards.push({ label: 'Avg Lines', value: Math.round(stats.totalLines / stats.totalGames).toLocaleString() });
         }
 
+        let statsHTML = '<h2 class="hs-section-title">Statistics</h2>';
+        statsHTML += '<div class="hs-stats-grid">';
+        statsHTML += statCards.map((s) => `
+            <div class="hs-stat">
+                <div class="hs-stat-value">${s.value}</div>
+                <div class="hs-stat-label">${s.label}</div>
+            </div>
+        `).join('');
         statsHTML += '</div>';
 
         document.getElementById('statistics-section').innerHTML = statsHTML;
     } catch (error) {
         console.error('Error loading high scores:', error);
-        document.getElementById('high-scores-list').innerHTML = '<p style="color: #ef4444;">Error loading scores</p>';
+        document.getElementById('high-scores-list').innerHTML = '<p class="hs-error">Error loading scores</p>';
     }
 
     modalManager.show('highScores');

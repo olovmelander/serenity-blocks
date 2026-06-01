@@ -1,0 +1,445 @@
+/* =================================================================================
+ * COSMIC SERENITY — High Scores modal redesign
+ * ---------------------------------------------------------------------------------
+ * Loaded AFTER main.css so these rules win the cascade. Everything is scoped to
+ * `#high-scores-modal` so the shared `.modal-content` / `.action-btn` / `.modal h1`
+ * used by the start + game-over modals stay untouched.
+ *
+ * Accent identity: GOLD (the menu's "trophy"/Odyssey accent). Top-3 rows carry
+ * gold / silver / bronze medal accents. Content markup is now class-based
+ * (see src/ui/modals.js) so the CSS can fully own the look.
+ * ============================================================================== */
+
+#high-scores-modal {
+    --cs-accent: #fcd17a;
+    --cs-accent-rgb: 252, 209, 122;
+    --cs-accent-2: #ffb75e;
+}
+
+/* ---- Shell: cosmic glass with a gold wash ---------------------------------- */
+#high-scores-modal .modal-content {
+    box-sizing: border-box;
+    width: min(720px, calc(100vw - 48px));
+    min-width: 0;
+    max-width: none;
+    max-height: min(84vh, 720px);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    text-align: left;
+    border-radius: 24px;
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.26);
+    background:
+        radial-gradient(100% 60% at 50% -15%, rgba(var(--cs-accent-rgb), 0.14), transparent 60%),
+        radial-gradient(70% 70% at 8% 0%, rgba(255, 183, 94, 0.10), transparent 60%),
+        linear-gradient(180deg, rgba(20, 17, 30, 0.94) 0%, rgba(10, 9, 18, 0.96) 100%);
+    backdrop-filter: blur(18px) saturate(135%);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    box-shadow:
+        0 28px 78px rgba(0, 0, 0, 0.58),
+        0 0 0 1px rgba(255, 255, 255, 0.04),
+        0 0 86px rgba(var(--cs-accent-rgb), 0.10),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    animation: hs-pop 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+body.electron-app #high-scores-modal .modal-content {
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
+}
+
+@keyframes hs-pop {
+    from { opacity: 0; transform: translateY(14px) scale(0.985); filter: blur(6px); }
+    to   { opacity: 1; transform: translateY(0) scale(1);        filter: blur(0); }
+}
+
+/* Gold gradient-border ring (masked to the 1px edge) + sheen (replaces scanline) */
+#high-scores-modal .modal-content::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg,
+            rgba(var(--cs-accent-rgb), 0.52),
+            rgba(255, 255, 255, 0.04) 38%,
+            rgba(255, 183, 94, 0.28) 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.72;
+    z-index: 2;
+}
+
+#high-scores-modal .modal-content::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    top: 0;
+    left: 0;
+    width: auto;
+    height: auto;
+    background:
+        linear-gradient(90deg, transparent 0%, rgba(var(--cs-accent-rgb), 0.06) 48%, transparent 100%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 32%);
+    animation: none;
+    pointer-events: none;
+    opacity: 0.6;
+    z-index: 1;
+}
+
+/* Keep real content above the sheen + ring */
+#high-scores-modal h1,
+#high-scores-modal .settings-scroll-container,
+#high-scores-modal .action-btn {
+    position: relative;
+    z-index: 3;
+}
+
+/* ---- Title: aurora gold + shimmer + tagline -------------------------------- */
+#high-scores-modal h1 {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 26px 32px 16px;
+    text-align: left;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background: linear-gradient(100deg,
+            #fff3d6 0%, var(--cs-accent) 38%, var(--cs-accent-2) 64%, #fffaf0 100%);
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    font-size: clamp(28px, 3vw, 38px);
+    letter-spacing: 0.10em;
+    text-shadow: none;
+    filter: drop-shadow(0 0 18px rgba(var(--cs-accent-rgb), 0.32));
+    animation: hs-shimmer 8s ease-in-out infinite;
+}
+
+#high-scores-modal h1::after {
+    content: 'HALL OF FAME';
+    display: block;
+    margin-top: 6px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.32em;
+    text-indent: 0.32em;
+    color: rgba(230, 210, 160, 0.50);
+    -webkit-text-fill-color: rgba(230, 210, 160, 0.50);
+    background: none;
+    filter: none;
+}
+
+@keyframes hs-shimmer {
+    0%, 100% { background-position: 0% center; }
+    50%      { background-position: 200% center; }
+}
+
+/* ---- Scroll container: gold scrollbar -------------------------------------- */
+#high-scores-modal .settings-scroll-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0 32px 10px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--cs-accent-rgb), 0.60) rgba(0, 0, 0, 0.12);
+}
+
+#high-scores-modal .settings-scroll-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.12);
+}
+
+#high-scores-modal .settings-scroll-container::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.80), rgba(255, 183, 94, 0.55));
+    border: 1px solid rgba(8, 8, 16, 0.6);
+    border-radius: 4px;
+}
+
+#high-scores-modal .settings-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--cs-accent-rgb), 0.92);
+}
+
+/* ---- Section titles -------------------------------------------------------- */
+#high-scores-modal .hs-section-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 14px 2px 12px;
+    color: var(--cs-accent);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+#high-scores-modal .hs-section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(var(--cs-accent-rgb), 0.30), transparent);
+}
+
+/* ---- Leaderboard: glass row-cards ----------------------------------------- */
+#high-scores-modal .hs-list {
+    padding-top: 6px;
+}
+
+#high-scores-modal .hs-leaderboard {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#high-scores-modal .hs-row {
+    display: grid;
+    grid-template-columns: 46px 1fr auto;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+    border: 1px solid rgba(150, 180, 255, 0.10);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(10, 13, 27, 0.50));
+    transition:
+        transform 0.2s ease, border-color 0.2s ease,
+        box-shadow 0.2s ease, background 0.2s ease;
+}
+
+#high-scores-modal .hs-leaderboard--demos .hs-row {
+    grid-template-columns: 46px 1fr auto 40px;
+}
+
+#high-scores-modal .hs-row:hover {
+    transform: translateY(-2px);
+    border-color: rgba(var(--cs-accent-rgb), 0.40);
+    box-shadow:
+        0 10px 24px rgba(0, 0, 0, 0.32),
+        0 0 22px rgba(var(--cs-accent-rgb), 0.14);
+}
+
+/* Medal-accented top 3 */
+#high-scores-modal .hs-row--gold   { --medal: 252, 209, 122; }
+#high-scores-modal .hs-row--silver { --medal: 209, 221, 236; }
+#high-scores-modal .hs-row--bronze { --medal: 214, 158, 110; }
+
+#high-scores-modal .hs-row--gold,
+#high-scores-modal .hs-row--silver,
+#high-scores-modal .hs-row--bronze {
+    border-color: rgba(var(--medal), 0.45);
+    background: linear-gradient(180deg, rgba(var(--medal), 0.12), rgba(10, 13, 27, 0.50));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 0 20px rgba(var(--medal), 0.14);
+}
+
+#high-scores-modal .hs-row--gold {
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        0 0 26px rgba(var(--medal), 0.22);
+}
+
+#high-scores-modal .hs-row--gold:hover,
+#high-scores-modal .hs-row--silver:hover,
+#high-scores-modal .hs-row--bronze:hover {
+    transform: translateY(-2px);
+    border-color: rgba(var(--medal), 0.70);
+    box-shadow:
+        0 12px 26px rgba(0, 0, 0, 0.34),
+        0 0 28px rgba(var(--medal), 0.30);
+}
+
+#high-scores-modal .hs-rank {
+    font-family: 'Space Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+    color: rgba(220, 227, 250, 0.55);
+}
+
+#high-scores-modal .hs-row--gold .hs-rank,
+#high-scores-modal .hs-row--silver .hs-rank,
+#high-scores-modal .hs-row--bronze .hs-rank {
+    font-size: 22px;
+}
+
+#high-scores-modal .hs-main {
+    min-width: 0;
+}
+
+#high-scores-modal .hs-score {
+    font-family: 'Space Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: 0.01em;
+    color: var(--cs-accent);
+}
+
+#high-scores-modal .hs-row--gold .hs-score,
+#high-scores-modal .hs-row--silver .hs-score,
+#high-scores-modal .hs-row--bronze .hs-score {
+    color: rgb(var(--medal));
+    text-shadow: 0 0 16px rgba(var(--medal), 0.40);
+}
+
+#high-scores-modal .hs-meta {
+    margin-top: 2px;
+    font-size: 12px;
+    color: rgba(211, 219, 245, 0.55);
+}
+
+#high-scores-modal .hs-date {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    white-space: nowrap;
+    color: rgba(211, 219, 245, 0.45);
+}
+
+/* Play-demo button → accent glass icon */
+#high-scores-modal .hs-play {
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    background: rgba(var(--cs-accent-rgb), 0.12);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.35);
+    color: var(--cs-accent);
+    font-size: 13px;
+    cursor: pointer;
+    transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#high-scores-modal .hs-play:hover {
+    background: rgba(var(--cs-accent-rgb), 0.22);
+    border-color: rgba(var(--cs-accent-rgb), 0.60);
+    box-shadow: 0 0 14px rgba(var(--cs-accent-rgb), 0.30);
+    transform: scale(1.06);
+}
+
+#high-scores-modal .hs-play:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 2px rgba(var(--cs-accent-rgb), 0.90),
+        0 0 0 5px rgba(var(--cs-accent-rgb), 0.18);
+}
+
+#high-scores-modal .hs-play--empty {
+    background: transparent;
+    border-color: transparent;
+    color: rgba(211, 219, 245, 0.22);
+    cursor: default;
+}
+
+/* ---- Statistics: glass stat cards ----------------------------------------- */
+#high-scores-modal .hs-stats {
+    margin-top: 22px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(var(--cs-accent-rgb), 0.14);
+}
+
+#high-scores-modal .hs-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+#high-scores-modal .hs-stat {
+    padding: 14px 16px;
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+    border-radius: 14px;
+    background:
+        radial-gradient(120% 90% at 0% 0%, rgba(var(--cs-accent-rgb), 0.08), transparent 56%),
+        rgba(8, 10, 23, 0.45);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+#high-scores-modal .hs-stat-value {
+    font-family: 'Space Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--cs-accent);
+}
+
+#high-scores-modal .hs-stat-label {
+    margin-top: 5px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(211, 219, 245, 0.55);
+}
+
+/* ---- Empty / error states -------------------------------------------------- */
+#high-scores-modal .hs-empty {
+    text-align: center;
+    padding: 24px;
+    color: rgba(211, 219, 245, 0.55);
+}
+
+#high-scores-modal .hs-error {
+    text-align: center;
+    padding: 24px;
+    color: #ff8a8a;
+}
+
+/* ---- Close button → cosmic gold CTA --------------------------------------- */
+#high-scores-modal .action-btn {
+    align-self: center;
+    flex-shrink: 0;
+    margin: 12px auto 22px;
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.50);
+    color: #1a1206;
+    box-shadow:
+        0 6px 16px rgba(var(--cs-accent-rgb), 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+#high-scores-modal .action-btn:hover {
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    color: #1a1206;
+    transform: translateY(-2px);
+    box-shadow:
+        0 9px 24px rgba(var(--cs-accent-rgb), 0.50),
+        inset 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+#high-scores-modal .action-btn:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 3px rgba(var(--cs-accent-rgb), 0.30),
+        0 9px 24px rgba(var(--cs-accent-rgb), 0.40);
+}
+
+/* ---- Responsive ------------------------------------------------------------ */
+@media (max-width: 560px) {
+    #high-scores-modal h1 {
+        padding: 22px 20px 14px;
+    }
+
+    #high-scores-modal .settings-scroll-container {
+        padding: 0 18px 10px;
+    }
+
+    #high-scores-modal .hs-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* ---- Accessibility: honour reduced-motion --------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    #high-scores-modal .modal-content,
+    #high-scores-modal h1 {
+        animation: none !important;
+    }
+
+    #high-scores-modal .hs-row,
+    #high-scores-modal .hs-row:hover {
+        transition: none !important;
+        transform: none !important;
+    }
+}
