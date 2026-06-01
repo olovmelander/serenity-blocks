@@ -44,28 +44,46 @@ fn sample_flow(uv: vec2f) -> vec4f {
     return flow[flow_index(coord)];
 }
 
-fn spawn_particle(seed: f32) -> Particle {
+// Three ember classes by particle fraction:
+//   SPARK  (frac < 0.50): hot, fast, short-lived, trailed — flung off the star
+//   CINDER (0.50..0.82) : warm, slower, tumbling, longer-lived
+//   DUST   (>= 0.82)     : cool motes scattered across the void, catch star light
+fn spawn_particle(seed: f32, frac: f32) -> Particle {
     let flare = params.fx.y;
     let intensity = params.fx.w;
-
     let angle = seed * 6.28318;
-    let radius = 0.004 + hash11(seed + 3.7) * 0.032;
     let tangent = vec2f(cos(angle), sin(angle));
-    let spawn_pos = params.ember.xy + tangent * radius;
 
-    // During flare, particles spawn with more outward velocity
-    let speed_boost = 1.0 + flare * 1.5 + intensity * 0.3;
-    let outward = tangent * (0.0008 + hash11(seed + 5.1) * 0.0016) * speed_boost;
-    let upward = vec2f(0.0, -(0.0008 + hash11(seed + 8.4) * 0.0013));
+    if (frac < 0.5) {
+        // SPARK
+        let radius = 0.004 + hash11(seed + 3.7) * 0.03;
+        let spawn_pos = params.ember.xy + tangent * radius;
+        let speed_boost = 1.0 + flare * 1.5 + intensity * 0.3;
+        let outward = tangent * (0.0012 + hash11(seed + 5.1) * 0.002) * speed_boost;
+        let upward = vec2f(0.0, -(0.0012 + hash11(seed + 8.4) * 0.0016));
+        let size = (1.5 + hash11(seed + 1.1) * 3.0) * (1.0 + flare * 0.5);
+        let alpha = (0.4 + hash11(seed + 9.3) * 0.5) * (1.0 + flare * 0.3);
+        let life = 0.5 + hash11(seed + 2.2) * 0.7;
+        return Particle(vec4f(spawn_pos, outward + upward), vec4f(life, seed, size, alpha));
+    } else if (frac < 0.82) {
+        // CINDER
+        let radius = 0.02 + hash11(seed + 3.7) * 0.09;
+        let spawn_pos = params.ember.xy + tangent * radius;
+        let outward = tangent * (0.0004 + hash11(seed + 5.1) * 0.0008);
+        let upward = vec2f(0.0, -(0.0005 + hash11(seed + 8.4) * 0.001));
+        let size = 2.0 + hash11(seed + 1.1) * 4.0;
+        let alpha = 0.22 + hash11(seed + 9.3) * 0.35;
+        let life = 1.5 + hash11(seed + 2.2) * 1.6;
+        return Particle(vec4f(spawn_pos, outward + upward), vec4f(life, seed, size, alpha));
+    }
 
-    // Flare makes particles bigger and brighter
-    let size = (1.6 + hash11(seed + 1.1) * 4.8 + params.reaction.y * 0.6) * (1.0 + flare * 0.6);
-    let alpha = (0.18 + hash11(seed + 9.3) * 0.48) * (1.0 + flare * 0.4 + intensity * 0.15);
-
-    return Particle(
-        vec4f(spawn_pos, outward + upward),
-        vec4f(0.75 + hash11(seed + 4.3) * 0.95, seed, size, alpha),
-    );
+    // DUST — scattered across the whole frame, drifting slowly.
+    let dpos = vec2f(hash11(seed + 1.3), hash11(seed + 2.7));
+    let drift = (vec2f(hash11(seed + 4.1), hash11(seed + 6.9)) - 0.5) * 0.0004;
+    let size = 0.8 + hash11(seed + 1.1) * 1.4;
+    let alpha = 0.06 + hash11(seed + 9.3) * 0.16;
+    let life = 4.0 + hash11(seed + 2.2) * 5.0;
+    return Particle(vec4f(dpos, drift), vec4f(life, seed, size, alpha));
 }
 
 @compute @workgroup_size(64, 1, 1)
@@ -79,6 +97,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     var particle = particles[index];
     let dt = clamp(params.sim.y, 0.001, 0.05);
     let seed = particle.life_data.y + f32(index) * 0.173;
+    let frac = f32(index) / max(params.quality.w, 1.0);
+    let is_spark = frac < 0.5;
+    let is_dust = frac >= 0.82;
 
     // Unpack gameplay FX
     let shockwave = params.fx.x;
@@ -86,8 +107,30 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     let flash = params.fx.z;
 
     if (particle.life_data.x <= 0.001) {
-        particles[index] = spawn_particle(hash11(seed + params.sim.x * 0.07));
+        particles[index] = spawn_particle(hash11(seed + params.sim.x * 0.07), frac);
         return;
+    }
+
+    // Per-class motion tuning (defaults = cinder).
+    var flow_infl = 0.8;
+    var buoy = 0.0006;
+    var pull = 0.0003;
+    var drag = 0.978;
+    var decay = 0.26;
+    var react = 1.0;
+    if (is_spark) {
+        flow_infl = 1.0;
+        buoy = 0.0012;
+        pull = 0.00012;
+        drag = 0.985;
+        decay = 0.55;
+    } else if (is_dust) {
+        flow_infl = 0.45;
+        buoy = 0.00012;
+        pull = 0.0;
+        drag = 0.97;
+        decay = 0.07;
+        react = 0.2;
     }
 
     let flow_sample = sample_flow(particle.pos_vel.xy);
@@ -97,37 +140,33 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     let outward = -inward;
     let noise = hash21(seed + params.sim.x * 0.13) - 0.5;
 
-    let turbulence = (flow_sample.xy * 0.9 + noise * 0.0014) * (1.0 + params.reaction.y * 0.5);
-    let inward_pull = inward * (0.00025 + params.reaction.x * 0.00055 + params.ember.w * 0.001);
-    let buoyancy = vec2f(0.0, -(0.0006 + flow_sample.z * 0.0008));
+    let turbulence = (flow_sample.xy * flow_infl + noise * 0.0012) * (1.0 + params.reaction.y * 0.4);
+    let inward_pull = inward * (pull + params.reaction.x * 0.0004 + params.ember.w * 0.001);
+    let buoyancy = vec2f(0.0, -(buoy + flow_sample.z * 0.0006));
 
-    // === SHOCKWAVE PUSH ===
-    // Particles near the shockwave ring get blasted outward
+    // === SHOCKWAVE PUSH === (dust barely reacts)
     let shock_radius = shockwave * 0.45;
     let shock_dist = abs(distance_to_core - shock_radius);
     let shock_impact = exp(-shock_dist * 30.0) * shockwave * (1.0 - shockwave) * 4.0;
-    let shock_force = outward * shock_impact * 0.008;
+    let shock_force = outward * shock_impact * 0.008 * react;
 
     // === FLASH JOLT ===
-    // Hard drop flash gives all particles a brief random kick
     let flash_jolt = vec2f(
         (hash11(seed + params.sim.x * 7.3) - 0.5),
         (hash11(seed + params.sim.x * 11.1) - 0.5)
-    ) * flash * 0.003;
+    ) * flash * 0.003 * react;
 
-    let new_vel = particle.pos_vel.zw * 0.984 + turbulence + buoyancy + inward_pull + shock_force + flash_jolt;
+    let new_vel = particle.pos_vel.zw * drag + turbulence + buoyancy + inward_pull + shock_force + flash_jolt;
     let new_pos = particle.pos_vel.xy + new_vel * (dt * 60.0);
     particle.pos_vel = vec4f(new_pos, new_vel);
 
-    // Life drains slightly faster during intense play (intensity makes things wilder)
-    let new_life = particle.life_data.x - dt * (0.16 + hash11(seed + 7.4) * 0.22);
-    let new_size = max(0.8, particle.life_data.z * (0.999 - params.ember.w * 0.004));
+    let new_life = particle.life_data.x - dt * (decay + hash11(seed + 7.4) * decay * 0.5);
+    let new_size = max(0.7, particle.life_data.z * (0.999 - params.ember.w * 0.004));
 
-    // Alpha boosted during flare — particles glow brighter
-    let flare_alpha_boost = flare * 0.08;
+    let flare_alpha_boost = flare * 0.05;
     let new_alpha = clamp(
-        particle.life_data.w + params.reaction.y * 0.004 + flow_sample.w * 0.002 + flare_alpha_boost,
-        0.05,
+        particle.life_data.w + params.reaction.y * 0.003 + flow_sample.w * 0.002 + flare_alpha_boost,
+        0.04,
         1.5,
     );
     particle.life_data = vec4f(new_life, particle.life_data.y, new_size, new_alpha);
@@ -138,7 +177,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
         || particle.pos_vel.y > 1.12;
 
     if (particle.life_data.x <= 0.0 || out_of_bounds) {
-        particles[index] = spawn_particle(hash11(seed + params.sim.x * 0.31));
+        particles[index] = spawn_particle(hash11(seed + params.sim.x * 0.31), frac);
         return;
     }
 

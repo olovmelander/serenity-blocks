@@ -591,12 +591,7 @@ export default class ThreeJSIntroRendererWebGPU {
         const fringeMask = brightMask.mul(edgeMask).mul(this.uFringeStrength);
         const fringeColor = vec3(float(0.08), float(0.0), float(0.14)).mul(fringeMask);
 
-        // ── Title glow (breathing two-tone elliptical halo) ──
-        const titleScale = vec2(
-            titleDelta.x.div(this.uTitleGlowSize.x),
-            titleDelta.y.div(this.uTitleGlowSize.y),
-        );
-        const titleFalloff = smoothstep(float(1.35), float(0.0), length(titleScale));
+        // ── C1: Title as a hero — volumetric halo + anamorphic lens streak ──
         const titleColor = vec3(
             float(this.visualProfile.palette.titleGlow[0]),
             float(this.visualProfile.palette.titleGlow[1]),
@@ -608,8 +603,32 @@ export default class ThreeJSIntroRendererWebGPU {
             float(this.visualProfile.palette.titleGlowSecondary[2]),
         );
         const titlePulse = sin(this.uTime.mul(float(1.35))).mul(float(0.5)).add(float(0.5));
-        const titleGlow = mix(titleColor, titleColorSecondary, titlePulse.mul(float(0.4)))
-            .mul(titleFalloff)
+        const titleHue = mix(titleColor, titleColorSecondary, titlePulse.mul(float(0.45)));
+
+        // (a) Soft volumetric halo — elliptical but larger/softer than the old flat
+        //     bar, so it reads as a glow VOLUME wrapping the wordmark.
+        const haloScale = vec2(
+            titleDelta.x.div(this.uTitleGlowSize.x),
+            titleDelta.y.div(this.uTitleGlowSize.y),
+        );
+        const halo = smoothstep(float(1.6), float(0.0), length(haloScale));
+
+        // (b) Anamorphic horizontal streak — a thin, very wide, bright lens line
+        //     through the title centre (the signature "expensive lens" look).
+        //     Breathes slightly wider/brighter with the pulse.
+        const streakV = smoothstep(float(1.0), float(0.0), abs(titleDelta.y).div(float(0.018)));
+        const streakH = smoothstep(float(1.0), float(0.0), abs(titleDelta.x).div(float(0.46)));
+        const streak = streakV.mul(streakH).mul(titlePulse.mul(float(0.25)).add(float(0.85)));
+
+        // (c) Faint vertical bloom crossing the streak → soft anamorphic star.
+        const vBloomH = smoothstep(float(1.0), float(0.0), abs(titleDelta.x).div(float(0.06)));
+        const vBloomV = smoothstep(float(1.0), float(0.0), abs(titleDelta.y).div(float(0.17)));
+        const vBloom = vBloomH.mul(vBloomV).mul(float(0.55));
+
+        // Compose: coloured halo + colored vertical bloom + bright near-white streak.
+        const streakColor = vec3(float(0.85), float(0.93), float(1.0));
+        const titleGlow = titleHue.mul(halo.add(vBloom))
+            .add(streakColor.mul(streak.mul(float(1.5))))
             .mul(this.uTitleGlowStrength);
 
         // ── HDR composite (pre-tonemap): scene + bloom + emissive glows − DoF ──
@@ -740,25 +759,31 @@ export default class ThreeJSIntroRendererWebGPU {
                 emissive: threeColor,
                 emissiveIntensity: 0.5,
                 roughness: 0.05,
-                metalness: 0.1,
+                metalness: 0.18,
                 envMap: this.envMap,
-                envMapIntensity: 0.5,
+                // E2 — richer cosmic reflections: the glossy pieces catch more of the
+                // colourful environment, so they read as "lit by the cosmos".
+                envMapIntensity: 0.85,
                 transparent: true,
                 opacity: 0.9,
                 side: THREE.DoubleSide,
             });
 
+            // E2 — cosmic rim: the BackSide additive hull is a (correctly-rotated)
+            // silhouette glow. Tint it toward a cool cyan/violet so the piece edges
+            // catch a cosmic rim instead of just glowing in their own colour.
+            const rimColor = threeColor.clone().lerp(new THREE.Color(0x86c8ff), 0.3).multiplyScalar(1.5);
             const glowMaterial = new MeshBasicNodeMaterial({
-                color: threeColor.clone().multiplyScalar(1.35),
+                color: rimColor,
                 transparent: true,
-                opacity: 0.33,
+                opacity: 0.38,
                 blending: AdditiveBlending,
                 side: THREE.BackSide,
                 depthWrite: false,
             });
 
             material.userData.baseEmissiveIntensity = 0.5;
-            glowMaterial.userData.baseOpacity = 0.33;
+            glowMaterial.userData.baseOpacity = 0.38;
 
             this.cachedResources[type] = { geometry, material, glowMaterial };
         });
@@ -821,7 +846,8 @@ export default class ThreeJSIntroRendererWebGPU {
             glowMesh.frustumCulled = false;
 
             resources.material.positionNode = createPositionNode(typeIdx, 0.75);
-            resources.glowMaterial.positionNode = createPositionNode(typeIdx, 0.82);
+            // Slightly larger rim hull (0.82 → 0.84) for a touch more cosmic edge glow.
+            resources.glowMaterial.positionNode = createPositionNode(typeIdx, 0.84);
 
             // Collision flash visual feedback:
             // rotationBuffer.w stores collision flash intensity (0→1 on hit, decays each frame).
@@ -1041,25 +1067,33 @@ export default class ThreeJSIntroRendererWebGPU {
         this.uAudioPulse.value = this.audioPulse;
         this.updateWarp(this.simulationTime);
 
-        // Idle Lissajous drift + warp dolly, then pointer parallax on top.
+        // D2 — slow "breath" macro-cycle (~24s): the whole scene gently inhales and
+        // exhales TOGETHER (bloom + nebula + title swell + a micro camera dolly), so
+        // it feels alive and calm rather than static. On-brand hypnosis for
+        // "Serenity", reinforced by the live audio pulse (D5).
+        const breath = Math.sin(this.simulationTime * 0.262) * 0.5 + 0.5; // 0.262 ≈ 2π/24s → 0..1
+        this._breathSwell = breath * 0.7 + this.audioPulse * 0.3; // shared with the nebula
+
+        // Idle Lissajous drift + warp dolly + breath dolly, then pointer parallax.
         // apply() adds the cursor-driven offset and performs the final lookAt,
         // so it must come after the base position is set.
         const cameraDriftScale = (1 + this.uWarp.value * 1.5) / Math.max(0.1, phase.cameraDriftMul);
         const t = this.simulationTime * 0.2;
         this.camera.position.x = (Math.sin(t * 0.5) * CAMERA_IDLE_AMP_X) / cameraDriftScale;
         this.camera.position.y = (Math.cos(t * 0.3) * CAMERA_IDLE_AMP_Y) / cameraDriftScale;
-        this.camera.position.z = 40 - this.uWarp.value * 10;
+        this.camera.position.z = 40 - this.uWarp.value * 10 + (breath - 0.5) * 1.4; // ±0.7u breath dolly
         this.cameraParallax.apply(this.camera, delta);
 
         this.uBloomStrength.value = this.quality.bloom
             ? (this.quality.bloomStrength * phase.bloomMul) + (this.audioPulse * 0.05) + (this.uWarp.value * 0.1)
+                + (breath * 0.03)
             : 0;
         this.uGodRayStrength.value = this.quality.godRays;
         this.uDoFStrength.value = this.quality.dof + (this.uWarp.value * 0.05);
         this.uFringeStrength.value = this.quality.fringe + (this.audioPulse * 0.03);
         const menuBgGlowAttenuation = this.phase === INTRO_PHASES.MENU_BG ? 0.28 : 1.0;
         this.uTitleGlowStrength.value = this.titleGlowEnabled
-            ? (0.22 * phase.titleGlowMul + this.audioPulse * 0.03) * menuBgGlowAttenuation
+            ? (0.22 * phase.titleGlowMul + this.audioPulse * 0.03 + breath * 0.02) * menuBgGlowAttenuation
             : 0;
 
         if (this.particleCompute) {
@@ -1093,7 +1127,8 @@ export default class ThreeJSIntroRendererWebGPU {
 
         if (this.nebulaSky) {
             this.nebulaSky.uniforms.uTime.value = this.simulationTime;
-            this.nebulaSky.uniforms.uPulse.value = this.audioPulse;
+            // Nebula highlight pockets swell with the breath cycle + audio (D2/D5).
+            this.nebulaSky.uniforms.uPulse.value = this._breathSwell ?? this.audioPulse;
         }
 
         if (this.volumetricNebula) {

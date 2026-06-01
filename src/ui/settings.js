@@ -877,10 +877,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Theme-Linked SFX toggle
     const themeLinkedSfxSelect = document.getElementById('theme-linked-sfx');
     if (themeLinkedSfxSelect) {
-        themeLinkedSfxSelect.value = (settings.themeLinkedSfx ?? false) ? 'true' : 'false';
+        themeLinkedSfxSelect.checked = !!(settings.themeLinkedSfx ?? false);
 
         themeLinkedSfxSelect.addEventListener('change', (e) => {
-            const enabled = e.target.value === 'true';
+            const enabled = e.target.checked;
             settingsManager.update({ themeLinkedSfx: enabled });
             settingsManager.save();
             console.log(`[Settings] Theme-linked SFX ${enabled ? 'enabled' : 'disabled'}`);
@@ -895,10 +895,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     const pieceLockRippleSelect = document.getElementById('piece-lock-ripple');
 
     if (pieceLockRippleSelect) {
-        pieceLockRippleSelect.value = settings.pieceLockRipple ? 'true' : 'false';
+        pieceLockRippleSelect.checked = !!settings.pieceLockRipple;
 
         pieceLockRippleSelect.addEventListener('change', (e) => {
-            const enabled = e.target.value === 'true';
+            const enabled = e.target.checked;
             settingsManager.update({ pieceLockRipple: enabled });
             settingsManager.save();
         });
@@ -907,10 +907,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Combo popup effect toggle
     const comboPopupSelect = document.getElementById('combo-popup-effect');
     if (comboPopupSelect) {
-        comboPopupSelect.value = settings.comboPopupEffect ? 'true' : 'false';
+        comboPopupSelect.checked = !!settings.comboPopupEffect;
 
         comboPopupSelect.addEventListener('change', (e) => {
-            const enabled = e.target.value === 'true';
+            const enabled = e.target.checked;
             settingsManager.update({ comboPopupEffect: enabled });
             settingsManager.save();
         });
@@ -919,10 +919,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Line clear effects toggle
     const lineClearEffectsSelect = document.getElementById('line-clear-effects');
     if (lineClearEffectsSelect) {
-        lineClearEffectsSelect.value = settings.lineClearEffects ? 'true' : 'false';
+        lineClearEffectsSelect.checked = !!settings.lineClearEffects;
 
         lineClearEffectsSelect.addEventListener('change', (e) => {
-            const enabled = e.target.value === 'true';
+            const enabled = e.target.checked;
             settingsManager.update({ lineClearEffects: enabled });
             settingsManager.save();
         });
@@ -931,10 +931,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Background combo effects toggle
     const backgroundComboEffectsSelect = document.getElementById('background-combo-effects');
     if (backgroundComboEffectsSelect) {
-        backgroundComboEffectsSelect.value = settings.backgroundComboEffects ? 'true' : 'false';
+        backgroundComboEffectsSelect.checked = !!settings.backgroundComboEffects;
 
         backgroundComboEffectsSelect.addEventListener('change', (e) => {
-            const enabled = e.target.value === 'true';
+            const enabled = e.target.checked;
             settingsManager.update({ backgroundComboEffects: enabled });
             settingsManager.save();
         });
@@ -943,10 +943,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Theme-based tetrominos toggle
     const themeBasedTetrominosSelect = document.getElementById('theme-based-tetrominos');
     if (themeBasedTetrominosSelect) {
-        themeBasedTetrominosSelect.value = (settings.themeBasedTetrominos ?? true) ? 'true' : 'false';
+        themeBasedTetrominosSelect.checked = !!(settings.themeBasedTetrominos ?? true);
 
         themeBasedTetrominosSelect.addEventListener('change', (e) => {
-            const enabled = e.target.value === 'true';
+            const enabled = e.target.checked;
             settingsManager.update({ themeBasedTetrominos: enabled });
             settingsManager.save();
             console.log(`[Settings] Theme-based tetrominos ${enabled ? 'enabled' : 'disabled'}`);
@@ -973,10 +973,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Theme-linked music toggle
     const themeLinkedSelect = document.getElementById('theme-linked-mode');
     if (themeLinkedSelect) {
-        themeLinkedSelect.value = settings.themeLinkedMode ? 'true' : 'false';
+        themeLinkedSelect.checked = !!settings.themeLinkedMode;
 
         themeLinkedSelect.addEventListener('change', (e) => {
-            const enabled = e.target.value === 'true';
+            const enabled = e.target.checked;
             settingsManager.update({ themeLinkedMode: enabled });
 
             if (callbacks.onThemeLinkedModeChange) {
@@ -990,10 +990,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Auto theme change toggle
     const autoThemeChangeSelect = document.getElementById('auto-theme-change');
     if (autoThemeChangeSelect) {
-        autoThemeChangeSelect.value = settings.autoThemeChange ? 'true' : 'false';
+        autoThemeChangeSelect.checked = !!settings.autoThemeChange;
 
         autoThemeChangeSelect.addEventListener('change', (e) => {
-            const enabled = e.target.value === 'true';
+            const enabled = e.target.checked;
             settingsManager.update({ autoThemeChange: enabled });
 
             if (callbacks.onAutoThemeChangeToggle) {
@@ -1083,10 +1083,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // VSync toggle
     const vsyncToggle = document.getElementById('vsync-toggle');
     if (vsyncToggle) {
-        vsyncToggle.value = String(settings.vsyncEnabled ?? true);
+        vsyncToggle.checked = (settings.vsyncEnabled ?? true);
 
         vsyncToggle.addEventListener('change', (e) => {
-            const enabled = e.target.value === 'true';
+            const enabled = e.target.checked;
             settingsManager.update({ vsyncEnabled: enabled });
             settingsManager.save();
 
@@ -1101,10 +1101,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // Anti-aliasing toggle
     const antialiasToggle = document.getElementById('antialiasing-toggle');
     if (antialiasToggle) {
-        antialiasToggle.value = String(settings.enableAntialiasing ?? true);
+        antialiasToggle.checked = (settings.enableAntialiasing ?? true);
 
         antialiasToggle.addEventListener('change', (e) => {
-            const enabled = e.target.value === 'true';
+            const enabled = e.target.checked;
             settingsManager.update({ enableAntialiasing: enabled });
             settingsManager.save();
 
@@ -1120,10 +1120,10 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     // FPS counter toggle
     const showFPSCounter = document.getElementById('show-fps-counter');
     if (showFPSCounter) {
-        showFPSCounter.value = String(settings.showFPSCounter || false);
+        showFPSCounter.checked = !!settings.showFPSCounter;
 
         showFPSCounter.addEventListener('change', (e) => {
-            const show = e.target.value === 'true';
+            const show = e.target.checked;
             settingsManager.update({ showFPSCounter: show });
             settingsManager.save();
 
@@ -1149,11 +1149,11 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     };
 
     if (customCursorEnabledSelect) {
-        customCursorEnabledSelect.value = String(settings.customCursorEnabled ?? true);
-        syncCustomCursorControlAvailability(customCursorEnabledSelect.value === 'true');
+        customCursorEnabledSelect.checked = (settings.customCursorEnabled ?? true);
+        syncCustomCursorControlAvailability(customCursorEnabledSelect.checked);
 
         customCursorEnabledSelect.addEventListener('change', (e) => {
-            const enabled = e.target.value === 'true';
+            const enabled = e.target.checked;
             settingsManager.update({ customCursorEnabled: enabled });
             settingsManager.save();
             syncCustomCursorControlAvailability(enabled);

@@ -37,6 +37,19 @@ fn read_flow(coord: vec2i) -> vec4f {
     return flow_in[flow_index(safe)];
 }
 
+// Scalar potential (FBM) — its curl is a divergence-free velocity field.
+fn ve_potential(p: vec2f, t: f32) -> f32 {
+    return ve_fbm(vec3f(p * 3.0, t * 0.3), 3);
+}
+
+// 2D curl noise: vel = (dψ/dy, -dψ/dx). Coherent, swirling, mass-conserving.
+fn ve_curl(uv: vec2f, t: f32) -> vec2f {
+    let e = 0.012;
+    let dx = ve_potential(uv + vec2f(e, 0.0), t) - ve_potential(uv - vec2f(e, 0.0), t);
+    let dy = ve_potential(uv + vec2f(0.0, e), t) - ve_potential(uv - vec2f(0.0, e), t);
+    return vec2f(dy, -dx) / (2.0 * e);
+}
+
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) global_id: vec3u) {
     let dims = flow_dims();
@@ -100,7 +113,10 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
         cos(params.sim.x * 2.9 + uv.x * 15.0)
     ) * flare * ember_falloff * 0.003;
 
-    let target_velocity = swirl_force + pull_force + shear + slow_drift + shock_push + flare_chaos;
+    // Divergence-free curl-noise turbulence — coherent eddies, energised by combos.
+    let curl_vel = ve_curl(uv, params.sim.x * 0.2) * 0.00003 * (0.5 + params.reaction.z * 1.2);
+
+    let target_velocity = curl_vel + swirl_force + pull_force + shear + slow_drift + shock_push + flare_chaos;
 
     var next_velocity = smoothed.xy * 0.95 + target_velocity * 0.9;
     next_velocity = mix(next_velocity, center_sample.xy, 0.12);

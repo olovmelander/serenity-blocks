@@ -1,0 +1,452 @@
+/* =================================================================================
+ * COSMIC SERENITY — Replays (Demo Browser) modal redesign
+ * ---------------------------------------------------------------------------------
+ * Loaded AFTER main.css so these rules win the cascade. Everything is scoped to
+ * `#demo-browser-modal` so the shared `.modal-content` / `.settings-header` /
+ * `.modal-close-btn` / `.action-btn` used by other modals stay untouched.
+ *
+ * Accent: CYAN (the cosmic primary — it matches the existing demo theming).
+ * The per-action buttons keep their semantic colours (play = teal, share = cyan,
+ * delete = red), just cosmic-ified. Card markup is already class-based, so this is
+ * a pure restyle (only the container inline styles were dropped from index.html).
+ * ============================================================================== */
+
+#demo-browser-modal {
+    --cs-accent: #7fdcff;
+    --cs-accent-rgb: 127, 220, 255;
+    --cs-accent-2: #8ea2ff;
+}
+
+/* ---- Shell: cosmic glass with a cyan wash ---------------------------------- */
+#demo-browser-modal .modal-content {
+    box-sizing: border-box;
+    width: min(820px, calc(100vw - 48px));
+    max-width: none;
+    max-height: min(86vh, 820px);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    text-align: left;
+    border-radius: 24px;
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.26);
+    background:
+        radial-gradient(100% 60% at 50% -15%, rgba(var(--cs-accent-rgb), 0.14), transparent 60%),
+        radial-gradient(70% 70% at 8% 0%, rgba(114, 137, 255, 0.10), transparent 60%),
+        linear-gradient(180deg, rgba(16, 20, 38, 0.93) 0%, rgba(8, 10, 23, 0.96) 100%);
+    backdrop-filter: blur(18px) saturate(135%);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    box-shadow:
+        0 28px 78px rgba(0, 0, 0, 0.58),
+        0 0 0 1px rgba(255, 255, 255, 0.04),
+        0 0 86px rgba(var(--cs-accent-rgb), 0.10),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    animation: db-pop 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+body.electron-app #demo-browser-modal .modal-content {
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
+}
+
+@keyframes db-pop {
+    from { opacity: 0; transform: translateY(14px) scale(0.985); filter: blur(6px); }
+    to   { opacity: 1; transform: translateY(0) scale(1);        filter: blur(0); }
+}
+
+/* Cyan gradient-border ring (masked) + sheen (replaces the purple scanline) */
+#demo-browser-modal .modal-content::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg,
+            rgba(var(--cs-accent-rgb), 0.50),
+            rgba(255, 255, 255, 0.04) 38%,
+            rgba(142, 162, 255, 0.28) 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.72;
+    z-index: 2;
+}
+
+#demo-browser-modal .modal-content::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    top: 0;
+    left: 0;
+    width: auto;
+    height: auto;
+    background:
+        linear-gradient(90deg, transparent 0%, rgba(var(--cs-accent-rgb), 0.06) 48%, transparent 100%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 32%);
+    animation: none;
+    pointer-events: none;
+    opacity: 0.6;
+    z-index: 1;
+}
+
+#demo-browser-modal .settings-header,
+#demo-browser-modal .demo-browser-toolbar,
+#demo-browser-modal .settings-scroll-container {
+    position: relative;
+    z-index: 3;
+}
+
+/* ---- Header: aurora title + glass close tile ------------------------------ */
+#demo-browser-modal .settings-header {
+    margin: 0;
+    padding: 24px 28px 16px;
+    border-bottom: 1px solid rgba(var(--cs-accent-rgb), 0.14);
+    background:
+        radial-gradient(70% 150% at 12% 0%, rgba(var(--cs-accent-rgb), 0.12), transparent 58%),
+        linear-gradient(180deg, rgba(6, 9, 22, 0.45), transparent);
+}
+
+#demo-browser-modal .settings-header h1 {
+    margin: 0;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background: linear-gradient(100deg,
+            #d9e7ff 0%, var(--cs-accent) 32%, var(--cs-accent-2) 60%, #f1f7ff 100%);
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    font-size: clamp(26px, 2.6vw, 34px);
+    letter-spacing: 0.12em;
+    text-shadow: none;
+    filter: drop-shadow(0 0 16px rgba(var(--cs-accent-rgb), 0.30));
+    animation: db-shimmer 8s ease-in-out infinite;
+}
+
+#demo-browser-modal .settings-header h1::after {
+    content: 'WATCH · SHARE · RELIVE';
+    display: block;
+    margin-top: 6px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.30em;
+    text-indent: 0.30em;
+    color: rgba(190, 205, 245, 0.50);
+    -webkit-text-fill-color: rgba(190, 205, 245, 0.50);
+    background: none;
+    filter: none;
+}
+
+@keyframes db-shimmer {
+    0%, 100% { background-position: 0% center; }
+    50%      { background-position: 200% center; }
+}
+
+#demo-browser-modal .modal-close-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    background:
+        linear-gradient(180deg, rgba(255, 118, 118, 0.15), rgba(255, 80, 80, 0.08)),
+        rgba(8, 10, 23, 0.46);
+    border: 1px solid rgba(255, 118, 118, 0.40);
+    color: #ffb6b6;
+    box-shadow:
+        0 8px 22px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(8px) saturate(130%);
+    -webkit-backdrop-filter: blur(8px) saturate(130%);
+    transition:
+        transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+        border-color 0.26s ease, background 0.26s ease, box-shadow 0.26s ease;
+}
+
+#demo-browser-modal .modal-close-btn:hover {
+    background:
+        linear-gradient(180deg, rgba(255, 118, 118, 0.28), rgba(255, 80, 80, 0.15)),
+        rgba(8, 10, 23, 0.62);
+    border-color: rgba(255, 148, 148, 0.74);
+    color: #ffd4d4;
+    transform: rotate(90deg) scale(1.06);
+    box-shadow:
+        0 12px 30px rgba(0, 0, 0, 0.42),
+        0 0 22px rgba(255, 100, 100, 0.30);
+}
+
+#demo-browser-modal .modal-close-btn:focus-visible {
+    outline: none;
+    border-color: rgba(255, 148, 148, 0.80);
+    box-shadow:
+        0 0 0 3px rgba(255, 100, 100, 0.28),
+        0 8px 22px rgba(0, 0, 0, 0.32);
+}
+
+/* ---- Toolbar + Import button ----------------------------------------------- */
+#demo-browser-modal .demo-browser-toolbar {
+    display: flex;
+    gap: 12px;
+    margin: 16px 28px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(var(--cs-accent-rgb), 0.12);
+}
+
+#demo-browser-modal .action-btn {
+    padding: 9px 16px;
+    font-size: 13px;
+    background:
+        linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.14), rgba(var(--cs-accent-rgb), 0.05)),
+        rgba(8, 10, 23, 0.50);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.40);
+    color: #eef3ff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+#demo-browser-modal .action-btn:hover {
+    background:
+        linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.22), rgba(var(--cs-accent-rgb), 0.08)),
+        rgba(8, 10, 23, 0.62);
+    border-color: rgba(var(--cs-accent-rgb), 0.65);
+    color: #ffffff;
+    transform: translateY(-1px);
+    box-shadow: 0 0 18px rgba(var(--cs-accent-rgb), 0.22);
+}
+
+#demo-browser-modal .action-btn:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 3px rgba(var(--cs-accent-rgb), 0.26),
+        0 0 18px rgba(var(--cs-accent-rgb), 0.22);
+}
+
+/* ---- Scroll container: cyan scrollbar -------------------------------------- */
+#demo-browser-modal .settings-scroll-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 4px 28px 22px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--cs-accent-rgb), 0.60) rgba(0, 0, 0, 0.12);
+}
+
+#demo-browser-modal .settings-scroll-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.12);
+}
+
+#demo-browser-modal .settings-scroll-container::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.80), rgba(142, 162, 255, 0.55));
+    border: 1px solid rgba(8, 10, 23, 0.6);
+    border-radius: 4px;
+}
+
+#demo-browser-modal .settings-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--cs-accent-rgb), 0.92);
+}
+
+#demo-browser-modal .demo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-right: 6px;
+}
+
+/* ---- Replay cards: cosmic glass + cyan hover + accent rail ----------------- */
+#demo-browser-modal .demo-card {
+    position: relative;
+    overflow: hidden;
+    padding: 14px 16px 14px 20px;
+    border: 1px solid rgba(150, 180, 255, 0.10);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(10, 13, 27, 0.50));
+    animation: db-card-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Left accent rail — lights up on hover */
+#demo-browser-modal .demo-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--cs-accent), var(--cs-accent-2));
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+#demo-browser-modal .demo-card:hover {
+    border-color: rgba(var(--cs-accent-rgb), 0.45);
+    transform: translateY(-2px);
+    background:
+        linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.07), rgba(255, 255, 255, 0.02)),
+        rgba(14, 17, 34, 0.60);
+    box-shadow:
+        0 12px 26px rgba(0, 0, 0, 0.34),
+        0 0 22px rgba(var(--cs-accent-rgb), 0.18);
+}
+
+#demo-browser-modal .demo-card:hover::before {
+    opacity: 1;
+}
+
+@keyframes db-card-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+#demo-browser-modal .demo-card:nth-child(1) { animation-delay: 0.02s; }
+#demo-browser-modal .demo-card:nth-child(2) { animation-delay: 0.06s; }
+#demo-browser-modal .demo-card:nth-child(3) { animation-delay: 0.10s; }
+#demo-browser-modal .demo-card:nth-child(4) { animation-delay: 0.14s; }
+#demo-browser-modal .demo-card:nth-child(5) { animation-delay: 0.18s; }
+#demo-browser-modal .demo-card:nth-child(n+6) { animation-delay: 0.22s; }
+
+#demo-browser-modal .demo-header {
+    align-items: center;
+    gap: 10px;
+}
+
+#demo-browser-modal .demo-date {
+    color: rgba(211, 219, 245, 0.55);
+    font-size: 0.82em;
+}
+
+/* Mode → glass pill */
+#demo-browser-modal .demo-mode {
+    background: rgba(var(--cs-accent-rgb), 0.12);
+    color: var(--cs-accent);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.30);
+    border-radius: 999px;
+    padding: 3px 11px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+}
+
+/* Stats → value/label chips with a hero cyan score */
+#demo-browser-modal .demo-stats {
+    display: flex;
+    align-items: flex-end;
+    gap: 24px;
+    margin-top: 8px;
+}
+
+#demo-browser-modal .demo-stats .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+#demo-browser-modal .stat-value {
+    font-family: 'Space Mono', monospace;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+    color: #eef3ff;
+}
+
+#demo-browser-modal .stat-label {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(211, 219, 245, 0.45);
+}
+
+#demo-browser-modal .stat--score .stat-value {
+    font-size: 23px;
+    color: var(--cs-accent);
+    text-shadow: 0 0 16px rgba(var(--cs-accent-rgb), 0.35);
+}
+
+/* Action buttons → glass tiles; semantic hover colours preserved (cosmic-ified) */
+#demo-browser-modal .demo-actions button {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(150, 180, 255, 0.18);
+    border-radius: 9px;
+    color: #e8edff;
+}
+
+#demo-browser-modal .demo-actions button:hover {
+    transform: scale(1.08);
+}
+
+#demo-browser-modal .demo-actions .btn-play:hover {
+    background: rgba(94, 234, 212, 0.18);
+    border-color: rgba(94, 234, 212, 0.50);
+    color: #5eead4;
+    box-shadow: 0 0 14px rgba(94, 234, 212, 0.30);
+}
+
+#demo-browser-modal .demo-actions .btn-share:hover {
+    background: rgba(127, 220, 255, 0.18);
+    border-color: rgba(127, 220, 255, 0.50);
+    color: var(--cs-accent);
+    box-shadow: 0 0 14px rgba(127, 220, 255, 0.30);
+}
+
+#demo-browser-modal .demo-actions .btn-delete:hover {
+    background: rgba(255, 120, 120, 0.18);
+    border-color: rgba(255, 120, 120, 0.50);
+    color: #ff8a8a;
+    box-shadow: 0 0 14px rgba(255, 100, 100, 0.30);
+}
+
+#demo-browser-modal .demo-actions button:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 2px rgba(var(--cs-accent-rgb), 0.90),
+        0 0 0 5px rgba(var(--cs-accent-rgb), 0.18);
+}
+
+/* ---- Empty / loading / error states --------------------------------------- */
+#demo-browser-modal .empty-state,
+#demo-browser-modal .loading-spinner,
+#demo-browser-modal .error-state {
+    text-align: center;
+    padding: 36px 20px;
+    color: rgba(211, 219, 245, 0.55);
+    font-size: 14px;
+}
+
+#demo-browser-modal .error-state {
+    color: #ff8a8a;
+}
+
+/* ---- Responsive ------------------------------------------------------------ */
+@media (max-width: 560px) {
+    #demo-browser-modal .settings-header {
+        padding: 20px 18px 14px;
+    }
+
+    #demo-browser-modal .demo-browser-toolbar {
+        margin: 14px 18px;
+    }
+
+    #demo-browser-modal .settings-scroll-container {
+        padding: 4px 18px 18px;
+    }
+
+    #demo-browser-modal .demo-card {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    #demo-browser-modal .demo-actions {
+        justify-content: flex-end;
+    }
+}
+
+/* ---- Accessibility: honour reduced-motion --------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    #demo-browser-modal .modal-content,
+    #demo-browser-modal .settings-header h1,
+    #demo-browser-modal .demo-card {
+        animation: none !important;
+    }
+
+    #demo-browser-modal .demo-card,
+    #demo-browser-modal .demo-card:hover {
+        transition: none !important;
+        transform: none !important;
+        opacity: 1 !important;
+    }
+}

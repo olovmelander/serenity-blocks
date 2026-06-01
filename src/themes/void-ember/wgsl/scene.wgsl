@@ -1,3 +1,18 @@
+// ============================================================================
+// Void Ember — scene pass
+//
+// Phase 1: the hero is now a TRUE volumetric star, not a radial glow.
+//   - sphere-reconstructed surface with rotated-FBM + domain-warped granulation
+//     (boiling convection cells), drifting sunspots, limb darkening
+//   - a hot chromosphere rim + a Beer-falloff corona with animated filaments
+//   - all incandescent matter coloured by the shared black-body ramp, driven by
+//     the StellarConductor's `temperature` channel
+//
+// The background is rebuilt in wgsl/environment.wgsl (Phase 2). This module is
+// concatenated AFTER void-ember-common.wgsl (ve_* helpers) and environment.wgsl
+// (ve_environment), so both are in scope.
+// ============================================================================
+
 struct Params {
     resolution: vec4f,
     sim: vec4f,
@@ -9,6 +24,8 @@ struct Params {
     colorB: vec4f,
     misc: vec4f,
     fx: vec4f,
+    star0: vec4f, // temperature, agitation, coronaEnergy, breath
+    star1: vec4f, // novaFlash, cmePulse, cameraPush, reserved
 };
 
 struct VSOut {
@@ -28,62 +45,6 @@ fn flow_index(coord: vec2u) -> u32 {
     return coord.y * dims.x + coord.x;
 }
 
-fn hash12(p: vec2f) -> f32 {
-    return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453123);
-}
-
-fn hash22(p: vec2f) -> vec2f {
-    return vec2f(
-        fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453123),
-        fract(sin(dot(p, vec2f(269.5, 183.3))) * 43758.5453123),
-    );
-}
-
-fn hash13(p: vec3f) -> f32 {
-    return fract(sin(dot(p, vec3f(127.1, 311.7, 191.999))) * 43758.5453123);
-}
-
-fn noise3(p: vec3f) -> f32 {
-    let i = floor(p);
-    let f = fract(p);
-    let u = f * f * (3.0 - 2.0 * f);
-
-    let n000 = hash13(i + vec3f(0.0, 0.0, 0.0));
-    let n100 = hash13(i + vec3f(1.0, 0.0, 0.0));
-    let n010 = hash13(i + vec3f(0.0, 1.0, 0.0));
-    let n110 = hash13(i + vec3f(1.0, 1.0, 0.0));
-    let n001 = hash13(i + vec3f(0.0, 0.0, 1.0));
-    let n101 = hash13(i + vec3f(1.0, 0.0, 1.0));
-    let n011 = hash13(i + vec3f(0.0, 1.0, 1.0));
-    let n111 = hash13(i + vec3f(1.0, 1.0, 1.0));
-
-    let nx00 = mix(n000, n100, u.x);
-    let nx10 = mix(n010, n110, u.x);
-    let nx01 = mix(n001, n101, u.x);
-    let nx11 = mix(n011, n111, u.x);
-    let nxy0 = mix(nx00, nx10, u.y);
-    let nxy1 = mix(nx01, nx11, u.y);
-    return mix(nxy0, nxy1, u.z);
-}
-
-// 3-octave FBM — used for volumetric march (was 4 octaves)
-fn fbm(p: vec3f) -> f32 {
-    var value = 0.0;
-    var amplitude = 0.5;
-    var frequency = 1.0;
-    for (var octave = 0; octave < 3; octave = octave + 1) {
-        value = value + noise3(p * frequency) * amplitude;
-        frequency = frequency * 2.03;
-        amplitude = amplitude * 0.5;
-    }
-    return value;
-}
-
-// 2-octave FBM — cheap, for nebula + detail
-fn fbm2(p: vec3f) -> f32 {
-    return noise3(p) * 0.5 + noise3(p * 2.03) * 0.25;
-}
-
 fn sample_flow(uv: vec2f) -> vec4f {
     let dims = vec2f(flow_dims());
     let scaled = clamp(uv, vec2f(0.0), vec2f(0.9999)) * dims;
@@ -92,109 +53,44 @@ fn sample_flow(uv: vec2f) -> vec4f {
 }
 
 // ============================================================
-// STAR FIELD — single-cell lookup, no neighbor loop
-// Each cell has at most one star; stars are small enough to
-// never bleed across boundaries. 3 layers for depth.
-// Cost: 3 layers × (2 hash + 1 sin + 1 exp) — no loops.
+// SOLAR PROMINENCES — temperature-coloured looped filaments that
+// whip with the conductor's corona energy.
 // ============================================================
-fn star_layer(uv: vec2f, scale: f32, time: f32, brightness: f32) -> f32 {
-    let grid = floor(uv * scale);
-    let local = fract(uv * scale);
-    let rnd = hash22(grid);
-
-    // ~35% of cells have a star
-    if (rnd.x > 0.35) { return 0.0; }
-
-    let star_center = rnd;
-    let dist = length(local - star_center);
-
-    // Twinkling
-    let twinkle = 0.55 + 0.45 * sin(rnd.y * 6.28318 + time * (0.4 + rnd.x * 1.2));
-
-    // Two-layer point: a small hard center over a softer cinematic halo.
-    let halo_size = 0.007 + rnd.x * 0.013;
-    let core_size = max(halo_size * 0.32, 0.002);
-    let halo = exp(-dist * dist / (halo_size * halo_size)) * 0.72;
-    let core = exp(-dist * dist / (core_size * core_size)) * 1.65;
-    return (halo + core) * brightness * twinkle;
-}
-
-fn star_field(uv: vec2f, aspect: f32, time: f32) -> vec3f {
-    let star_uv = vec2f(uv.x * aspect, uv.y);
-
-    // 3 layers — each returns scalar intensity, colored per-layer
-    let s1 = star_layer(star_uv, 80.0, time, 0.12);
-    let s2 = star_layer(star_uv + vec2f(17.3, 31.7), 40.0, time, 0.28);
-    let s3 = star_layer(star_uv + vec2f(53.1, 97.4), 18.0, time, 0.55);
-
-    // Color: dim=white, medium=warm, bright=blue-white
-    return vec3f(0.9, 0.92, 1.0) * s1
-         + vec3f(1.0, 0.88, 0.6) * s2
-         + vec3f(0.75, 0.85, 1.0) * s3;
-}
-
-// ============================================================
-// DEEP-SPACE NEBULA — simplified: 1 warp + 2 density reads
-// Cost: 3 × fbm2 = 6 noise3 calls (was 5 × fbm3 = 15 noise3)
-// ============================================================
-fn nebula_clouds(uv: vec2f, aspect: f32, time: f32) -> vec3f {
-    let nebula_uv = vec2f(uv.x * aspect, uv.y);
-    let slow_time = time * 0.008;
-
-    // Single domain warp
-    let warp = fbm2(vec3f(nebula_uv * 1.4, slow_time));
-    let warped_pos = vec3f(nebula_uv + vec2f(warp * 0.15), slow_time * 0.7);
-
-    let n1 = fbm2(warped_pos * 2.0);
-    let n2 = fbm2(warped_pos * 3.5 + vec3f(7.7, 3.1, 0.0));
-    let nebula_density = max(0.0, n1 * 0.65 + n2 * 0.35 - 0.38);
-
-    // Color palette driven by noise ratio
-    let color_t = clamp(n2 / max(n1, 0.01) - 0.3, 0.0, 1.0);
-    let crimson = vec3f(0.12, 0.015, 0.008);
-    let purple = vec3f(0.04, 0.012, 0.06);
-    let indigo = vec3f(0.008, 0.012, 0.04);
-    let nebula_color = mix(mix(crimson, purple, color_t), indigo, color_t * color_t);
-
-    return nebula_color * nebula_density * 1.8;
-}
-
-// ============================================================
-// SOLAR PROMINENCES — 3 arcs, uses hash instead of noise3
-// Cost: 3 × (trig + hash) — no noise3 calls (was 3 × noise3)
-// ============================================================
-fn prominences(centered: vec2f, radial_distance: f32, time: f32, event_energy: f32, flare: f32) -> vec3f {
-    // Early out if too far from core — prominences are near-field only
-    if (radial_distance > 0.35) { return vec3f(0.0); }
+fn prominences(
+    centered: vec2f,
+    radial_distance: f32,
+    star_radius: f32,
+    time: f32,
+    temperature: f32,
+    corona_energy: f32,
+) -> vec3f {
+    if (radial_distance > star_radius * 3.0) { return vec3f(0.0); }
 
     let angle = atan2(centered.y, centered.x);
     var prom_color = vec3f(0.0);
 
     for (var a = 0; a < 3; a = a + 1) {
-        let base_angle = f32(a) * 2.094 + time * 0.06;
+        let base_angle = f32(a) * 2.094 + time * (0.06 + corona_energy * 0.12);
         let angle_offset = angle - base_angle;
         let wrapped = angle_offset - round(angle_offset / 6.28318) * 6.28318;
 
-        let angular_width = 0.25 + 0.15 * sin(time * 0.18 + f32(a) * 1.5);
+        let angular_width = 0.22 + 0.16 * sin(time * 0.18 + f32(a) * 1.5) + corona_energy * 0.1;
         let angular_falloff = exp(-wrapped * wrapped / (angular_width * angular_width));
-
-        // Skip this arc early if angular contribution is negligible
         if (angular_falloff < 0.01) { continue; }
 
-        let peak_radius = 0.12 + 0.06 * sin(time * 0.13 + f32(a) * 2.7) + flare * 0.04;
-        let radial_profile = exp(-pow((radial_distance - peak_radius) / 0.06, 2.0)) * 0.6;
-        let inner_tendril = exp(-radial_distance * 18.0) * 0.3;
+        let peak_radius = star_radius * (1.05 + 0.5 * sin(time * 0.13 + f32(a) * 2.7)) + corona_energy * 0.05;
+        let rp_d = (radial_distance - peak_radius) / (star_radius * 0.45);
+        let radial_profile = exp(-rp_d * rp_d) * 0.6;
+        let inner_tendril = exp(-radial_distance * 16.0) * 0.3;
 
-        // Cheap turbulence via hash instead of noise3
-        let turbulence = 0.7 + 0.3 * hash12(centered * 8.0 + vec2f(time * 0.2, f32(a) * 3.1));
-
+        let turbulence = 0.7 + 0.3 * ve_noise3(vec3f(centered * 9.0, time * 0.3 + f32(a) * 3.1));
         let arc_intensity = angular_falloff * (radial_profile + inner_tendril) * turbulence;
-        let arc_boost = 1.0 + event_energy * 0.8 + flare * 1.5;
+        let arc_boost = 1.0 + corona_energy * 2.2;
 
-        let heat = clamp(1.0 - radial_distance * 4.0, 0.0, 1.0);
-        let arc_color = mix(vec3f(1.2, 0.12, 0.03), vec3f(4.0, 1.5, 0.3), heat);
+        let heat = clamp(1.0 - radial_distance / max(star_radius * 3.0, 0.001), 0.0, 1.0);
+        let arc_color = ve_blackbody(clamp(temperature - 0.05 + heat * 0.35, 0.0, 1.0)) * (1.0 + heat * 1.4);
 
-        prom_color = prom_color + arc_color * arc_intensity * arc_boost * 0.35;
+        prom_color = prom_color + arc_color * arc_intensity * arc_boost * 0.4;
     }
 
     return prom_color;
@@ -223,123 +119,125 @@ fn fs_main(input: VSOut) -> @location(0) vec4f {
     let centered = (uv - ember_pos) * vec2f(aspect, 1.0);
     let flow_sample = sample_flow(uv);
     let radial_distance = length(centered);
+    let time = params.sim.x;
 
-    // Unpack gameplay FX
+    // Legacy fast transients (also drive flow/particles/post)
     let shockwave = params.fx.x;
     let flare = params.fx.y;
     let flash = params.fx.z;
-    let intensity = params.fx.w;
-    let time = params.sim.x;
+
+    // StellarConductor life-state
+    let temperature = params.star0.x;
+    let agitation = params.star0.y;
+    let corona_energy = params.star0.z;
+    let breath = params.star0.w;
+    let nova = params.star1.x;
 
     // ==========================================================
-    // BACKGROUND: Star field + nebula (fills the black void)
-    // Only computed where ember glow doesn't dominate
+    // BACKGROUND — deep-space environment (environment.wgsl)
     // ==========================================================
-    let ember_occlusion = smoothstep(0.08, 0.45, radial_distance);
+    let ember_occlusion = smoothstep(0.05, 0.42, radial_distance);
     var bg = vec3f(0.0);
     if (ember_occlusion > 0.01) {
-        bg = (star_field(uv, aspect, time) + nebula_clouds(uv, aspect, time)) * ember_occlusion;
+        bg = ve_environment(uv, aspect, time, temperature) * ember_occlusion;
     }
 
     let framing = pow(smoothstep(1.34, 0.03, radial_distance), 2.4);
-    let fog_envelope = smoothstep(1.08, 0.06, radial_distance);
-    let flicker = 0.6 + 0.4 * sin(time * 1.45 + flow_sample.w * 4.0);
+    let flicker = 0.75 + 0.25 * sin(time * 1.45 + flow_sample.w * 4.0);
 
     // ==========================================================
-    // VOLUMETRIC EMBER — ray march with 3-octave FBM
-    // Halved: use fbm (3 oct) for coarse, single noise3 for fine
-    // Cost: steps × (3+1) = steps × 4 noise3 (was steps × 8)
+    // ★ HERO STAR — sphere surface + corona
     // ==========================================================
-    var color = vec3f(0.0);
-    var transmittance = 1.0;
-    let step_count = max(1.0, params.quality.z);
+    let base_radius = 0.135;
+    let star_radius = base_radius * (1.0 + breath * 0.05 + params.ember.z * 0.03 + nova * 0.06);
+    let nd = radial_distance / max(star_radius, 0.0001);
 
-    for (var i = 0u; i < 40u; i = i + 1u) {
-        if (f32(i) >= step_count) {
-            break;
-        }
+    // Surface boil speed scales with agitation.
+    let boil = time * (0.05 + agitation * 0.28);
 
-        let t = (f32(i) + 0.5) / step_count;
-        let warp = flow_sample.xy * (0.9 + t * 3.1);
-        let sample_pos = vec3f(
-            centered * mix(1.65, 0.34, t) + warp * 1.45,
-            t * 2.65 + time * 0.032,
-        );
-        let coarse = fbm(sample_pos * 3.0 + vec3f(0.0, 0.0, time * 0.03));
-        // Single noise3 for fine detail (was full 4-octave FBM)
-        let fine = noise3(sample_pos * 7.8 + vec3f(4.2, 9.7, time * 0.08));
-        let veil = max(0.0, coarse * 0.75 + fine * 0.25 - 0.44);
+    var surf_color = vec3f(0.0);
+    var surf_alpha = 0.0;
+    if (nd < 1.06) {
+        // Reconstruct a sphere: z is the surface height of a unit sphere; the
+        // view is ~+z so n·v ≈ z (drives limb darkening + sunspot foreshortening).
+        let z = sqrt(max(0.0, 1.0 - nd * nd));
+        let sp = vec3f(centered / star_radius, z);
+        // Slow rotation so granules drift across the limb like a real star.
+        let rot = ve_rot_y(time * 0.03) * ve_rot_z(time * 0.017);
+        let psurf = rot * sp;
 
-        let shell = exp(-radial_distance * mix(22.0, 6.5, t));
-        let core_band = exp(-radial_distance * mix(90.0, 14.0, t));
-        let filament_angle = atan2(centered.y, centered.x);
+        // Granulation: domain-warped FBM convection cells + fine mottling.
+        let warped = ve_domain_warp(psurf * 3.2 + vec3f(0.0, 0.0, boil), 0.5, 3);
+        let gran = ve_fbm(warped * 2.4, 5);
+        let fine = ve_noise3(warped * 9.0 + vec3f(0.0, 0.0, boil * 2.0));
+        let granule = clamp(gran * 0.7 + fine * 0.3, 0.0, 1.0);
 
-        let filament_strength = params.reaction.x + flare * 1.5 + intensity * 0.4;
-        let filament = pow(
-            max(
-                0.0,
-                0.5 + 0.5 * sin(filament_angle * 14.0 - time * 1.8 + fine * 3.4),
-            ),
-            max(6.0, 22.0 - flare * 8.0),
-        ) * filament_strength * exp(-radial_distance * (11.0 - flare * 2.0));
+        // Sunspots: low-frequency cool patches that drift with the surface.
+        let spot_n = ve_fbm(psurf * 1.5 + vec3f(11.0, 3.0, boil * 0.4), 3);
+        let sunspot = smoothstep(0.58, 0.46, spot_n);
 
-        let density = (veil * 0.12 + shell * 0.2 + core_band * 0.12 + filament * 0.85) * fog_envelope;
+        // Local temperature: base + granule variation - sunspot cooling.
+        let local_temp = clamp(temperature + (granule - 0.5) * 0.34 - sunspot * 0.42, 0.0, 1.0);
 
-        let ember_mix = clamp(core_band * 2.7 + filament * 0.55 + flow_sample.w * 0.08 + flare * 0.3, 0.0, 1.0);
-        let base_core = mix(params.colorB.rgb, params.colorA.rgb, ember_mix);
-        let flare_white = vec3f(8.0, 6.5, 4.0);
-        let intensity_warm = vec3f(1.0, 0.85, 0.6);
-        var ember_color = mix(base_core, flare_white, clamp(flare * 0.25, 0.0, 0.7));
-        ember_color = ember_color * mix(vec3f(1.0), intensity_warm, clamp(intensity * 0.15, 0.0, 0.5));
+        // Limb darkening — centre brightest, edge dimmer.
+        let limb = 0.4 + 0.6 * pow(clamp(z, 0.0, 1.0), 0.5);
 
-        color = color + ember_color * density * transmittance * mix(1.0, 1.7, flicker * shell);
-        transmittance = transmittance * exp(-density * 1.8);
-        if (transmittance < 0.025) {
-            break;
-        }
+        // Luminance scale compresses as the star heats so the inferno stays a
+        // readable blue-white body instead of a screen-filling white blob.
+        surf_color = ve_blackbody(local_temp) * (0.9 + granule * 1.0) * limb * mix(1.35, 0.95, temperature);
+        // Smooth the limb so the disc antialiases into the corona.
+        surf_alpha = smoothstep(1.04, 0.96, nd);
+        surf_color = surf_color * surf_alpha;
     }
 
-    // ==========================================================
-    // SOLAR PROMINENCES
-    // ==========================================================
-    color = color + prominences(centered, radial_distance, time, params.reaction.x, flare);
+    // Corona: hot chromosphere rim + Beer-falloff filaments reaching outward.
+    var corona = vec3f(0.0);
+    if (radial_distance < star_radius * 3.8 && nd > 0.8) {
+        let cd = radial_distance - star_radius; // distance beyond the limb
+        let angle = atan2(centered.y, centered.x);
+        let fc = vec3f(cos(angle), sin(angle), 0.0) * (1.5 + max(cd, 0.0) * 5.0)
+            + vec3f(0.0, 0.0, boil + time * 0.05);
+        let fil = ve_fbm(ve_domain_warp(fc * 1.4, 0.7, 3), 4);
+        let streak = pow(
+            max(0.0, 0.5 + 0.5 * sin(angle * 10.0 + fil * 7.0 - time * (0.5 + agitation * 1.6))),
+            3.0,
+        );
+        let falloff = ve_beer(max(cd, 0.0) * mix(12.0, 4.5, corona_energy));
+        let dens = falloff * (0.35 + streak * 0.95 + fil * 0.35) * (0.35 + corona_energy * 1.5);
+        let ctemp = clamp(temperature - 0.06 - max(cd, 0.0) * 0.6, 0.0, 1.0);
+        corona = ve_blackbody(ctemp) * dens * flicker;
 
-    // ==========================================================
-    // EMBER CORE + FX
-    // ==========================================================
-    let core_boost = 1.0 + flare * 2.5 + flash * 4.0;
-    let ember_core = exp(-radial_distance * (140.0 + params.ember.w * 32.0)) * (3.2 + params.ember.z * 5.0) * core_boost;
-    let ember_inner = exp(-radial_distance * (340.0 + params.ember.w * 80.0)) * (10.5 + params.reaction.x * 1.8 + flare * 6.0);
-    let ember_ring = exp(-abs(radial_distance - 0.028) * 145.0) * params.reaction.x * 0.65;
+        // Hot chromosphere ring right at the limb.
+        let chromo_d = (nd - 1.0) / 0.05;
+        let chromo = exp(-chromo_d * chromo_d) * (0.7 + corona_energy * 0.7);
+        corona = corona + ve_blackbody(min(1.0, temperature + 0.2)) * chromo;
+    }
 
-    let flash_color = mix(params.colorA.rgb, vec3f(12.0, 10.0, 7.0), clamp(flash * 0.6, 0.0, 0.8));
-    let ember_color_final = flash_color * ember_core + vec3f(7.0, 2.05, 0.4) * ember_inner + vec3f(0.95, 0.08, 0.1) * ember_ring;
+    // Prominences (looped filaments).
+    let prom = prominences(centered, radial_distance, star_radius, time, temperature, corona_energy);
 
-    // === SHOCKWAVE RING ===
+    // Flare / nova / flash punch a white-hot inner core (for bloom). Kept tight
+    // (steep falloff) so big events stay a bright CORE rather than a whiteout.
+    let flare_core = exp(-radial_distance * 165.0) * (nova * 4.5 + flash * 2.2 + flare * 1.1);
+    let core_glow = ve_blackbody(min(1.0, temperature + 0.4)) * flare_core;
+
+    // Shockwave ring (shared with flow/particles).
     let shock_radius = shockwave * 0.45;
     let shock_width = 0.015 + shockwave * 0.025;
-    let shock_ring = exp(-pow((radial_distance - shock_radius) / shock_width, 2.0));
+    let shock_d = (radial_distance - shock_radius) / shock_width;
+    let shock_ring = exp(-shock_d * shock_d);
     let shock_brightness = shockwave * (1.0 - shockwave) * 4.0;
-    let shock_color = mix(vec3f(4.5, 1.2, 0.3), vec3f(8.0, 5.0, 2.5), shockwave) * shock_ring * shock_brightness;
+    let shock_color = ve_blackbody(clamp(temperature + 0.2, 0.0, 1.0)) * shock_ring * shock_brightness * 1.6;
 
-    // === FLARE CORONA ===
-    let flare_corona = exp(-radial_distance * max(3.0, 8.0 - flare * 3.0)) * flare * 0.8;
-    let corona_color = vec3f(3.5, 0.8, 0.15) * flare_corona;
+    // ==========================================================
+    // COMPOSITE — opaque surface over background; emission additive.
+    // ==========================================================
+    var color = (surf_color + corona + prom + core_glow + shock_color) * framing;
+    color = color + bg * clamp(1.0 - surf_alpha, 0.0, 1.0);
+    color = color * mix(1.0, 0.1, clamp(params.ember.w, 0.0, 1.0)); // collapse dim
 
-    // Cheap distant smoke: single noise3 (was full 4-octave FBM)
-    let distant_smoke = noise3(vec3f(centered * 10.0, time * 0.012)) * 0.003 * framing;
-
-    // Composite
-    color = (color + ember_color_final + shock_color + corona_color + distant_smoke) * framing;
-    color = color + bg * clamp(transmittance, 0.0, 1.0);
-    color = color * mix(1.0, 0.08, clamp(params.ember.w, 0.0, 1.0));
-
-    // Hard drop flash overlay
     let flash_overlay = flash * exp(-radial_distance * 2.5) * 0.15;
     color = color + vec3f(1.0, 0.9, 0.7) * flash_overlay;
 
-    let blackout = mix(0.00012, 0.0, fog_envelope);
-    color = max(color - vec3f(blackout), vec3f(0.0));
-
-    return vec4f(color, 1.0);
+    return vec4f(max(color, vec3f(0.0)), 1.0);
 }

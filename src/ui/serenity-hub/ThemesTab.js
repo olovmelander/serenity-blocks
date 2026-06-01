@@ -13,6 +13,73 @@ import {
     resolveDesktopHubThemeThumbnailUrl,
     resolveHubThemeThumbnailUrl,
 } from './theme-thumbnail-manifest.js';
+import { initThemeCardInteractions } from './theme-card-interactions.js';
+
+const CATEGORY_ICON_SVG_OPEN = [
+    '<svg class="pill-icon-svg" viewBox="0 0 24 24" fill="none"',
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round"',
+    'stroke-linejoin="round" aria-hidden="true">',
+].join(' ');
+
+function createCategoryIconSvg(paths) {
+    return [CATEGORY_ICON_SVG_OPEN, ...paths, '</svg>'].join('');
+}
+
+export const CATEGORY_ICON_SVGS = Object.freeze({
+    all: createCategoryIconSvg([
+        '<circle cx="12" cy="12" r="7.25"></circle>',
+        '<circle cx="12" cy="12" r="2.4"></circle>',
+        '<path d="M12 2.75v2.5M12 18.75v2.5M2.75 12h2.5M18.75 12h2.5"></path>',
+        '<circle cx="12" cy="4.25" r="0.9"></circle>',
+        '<circle cx="19.75" cy="12" r="0.9"></circle>',
+        '<circle cx="12" cy="19.75" r="0.9"></circle>',
+        '<circle cx="4.25" cy="12" r="0.9"></circle>',
+    ]),
+    abstract: createCategoryIconSvg([
+        '<path d="M4 15c3.4-7.4 7.4 7.4 11 0 1.6-3.3 3.4-4.1 5-2"></path>',
+        '<path d="M5 9.5c3.8 4.2 7.2-4.2 10.7 0 1.3 1.6 2.5 1.8 3.8 0.7"></path>',
+        '<path d="M8 18c2.2-1.1 5.7-1.1 8 0"></path>',
+    ]),
+    atmospheric: createCategoryIconSvg([
+        '<path d="M5 12c2.2-4.3 8.9-5.7 12.2-2.1 2 2.2 0.8 5.6-2.4 6.5"></path>',
+        '<path d="M14.8 16.4c-3.2 0.9-6.1-1.1-5.7-3.5 0.3-1.9 2.7-2.7 4.5-1.7"></path>',
+        '<path d="M4 7.5h5.2M3.5 17.5h6M15.5 5.5h4.5M16.8 19h3.2"></path>',
+    ]),
+    biomes: createCategoryIconSvg([
+        '<path d="M3.5 17.5 8.8 8.8l3 4.1 2.4-3.5 6.3 8.1"></path>',
+        '<path d="M6 17.2c1.6-3.3 4.5-3.8 6-2.5-1.2 2.4-3.6 3.3-6 2.5z"></path>',
+        '<path d="M8.2 16.1 11 14.7"></path>',
+    ]),
+    cosmic: createCategoryIconSvg([
+        '<circle cx="12" cy="12" r="2.3"></circle>',
+        '<ellipse cx="12" cy="12" rx="8.1" ry="3.2" transform="rotate(-24 12 12)"></ellipse>',
+        '<path d="M18.2 4.4v3.2M16.6 6h3.2M5.5 18.5l1.2 1.2M6.7 17.3l-1.2 1.2"></path>',
+    ]),
+    fantasy: createCategoryIconSvg([
+        '<path d="M12 3.5 17 9l-5 11.5L7 9l5-5.5z"></path>',
+        '<path d="M7 9h10M10.2 6.1 12 20.5M13.8 6.1 12 20.5"></path>',
+        '<path d="M3.8 9.8h2M18.2 9.8h2M5.2 15.4l1.4-1.4M17.4 14l1.4 1.4"></path>',
+    ]),
+    meditation: createCategoryIconSvg([
+        '<circle cx="12" cy="12" r="2.2"></circle>',
+        '<path d="M7 12c0-3.1 2-5.1 5-5.1s5 2 5 5.1"></path>',
+        '<path d="M5 15c1.8 2.2 4.1 3.2 7 3.2s5.2-1 7-3.2"></path>',
+        '<path d="M8.2 14.2c2.4 1.8 5.2 1.8 7.6 0"></path>',
+    ]),
+    sky: createCategoryIconSvg([
+        '<path d="M4 16.5c2.5-3.1 5.2-4.6 8-4.6s5.5 1.5 8 4.6"></path>',
+        '<path d="M7 10.5c1.8-2.7 3.7-3.8 6-3.5M11 10c2.3-3.4 4.5-4.4 7-3.1"></path>',
+        '<path d="M5 19h14"></path>',
+    ]),
+    urban: createCategoryIconSvg([
+        '<path d="M4 18V10h4v8M8 18V6h5v12M13 18v-7h3v7M16 18V8h4v10"></path>',
+        '<path d="M3 18h18M6 13h0.01M10.5 9h0.01M18 11h0.01M14.5 14h0.01"></path>',
+    ]),
+});
+
+export function getCategoryIconSvg(categoryId) {
+    return CATEGORY_ICON_SVGS[categoryId] || CATEGORY_ICON_SVGS.all;
+}
 
 export function getFilteredThemeIds(themes, selectedCategory = 'all', searchQuery = '') {
     let filteredThemes = selectedCategory === 'all'
@@ -197,28 +264,28 @@ export class ThemesTab {
 
         const categories = [
             {
-                id: 'all', name: 'All Themes', icon: '🌍', count: this.themes.length,
+                id: 'all', name: 'All Themes', iconSvg: getCategoryIconSvg('all'), count: this.themes.length,
             },
         ];
 
         const categoryInfo = {
-            biomes: { name: 'Nature', icon: '🌲' },
-            cosmic: { name: 'Cosmic', icon: '✨' },
-            meditation: { name: 'Meditation', icon: '🧘' },
-            urban: { name: 'Urban', icon: '🏙️' },
-            fantasy: { name: 'Fantasy', icon: '🔮' },
-            abstract: { name: 'Abstract', icon: '🎨' },
-            sky: { name: 'Sky', icon: '☁️' },
-            atmospheric: { name: 'Atmospheric', icon: '🌪️' },
+            biomes: { name: 'Nature' },
+            cosmic: { name: 'Cosmic' },
+            meditation: { name: 'Meditation' },
+            urban: { name: 'Urban' },
+            fantasy: { name: 'Fantasy' },
+            abstract: { name: 'Abstract' },
+            sky: { name: 'Sky' },
+            atmospheric: { name: 'Atmospheric' },
         };
 
         Array.from(categorySet).sort().forEach((cat) => {
-            const info = categoryInfo[cat] || { name: cat, icon: '🎭' };
+            const info = categoryInfo[cat] || { name: cat };
             const count = this.themes.filter((t) => t.group === cat).length;
             categories.push({
                 id: cat,
                 name: info.name,
-                icon: info.icon,
+                iconSvg: getCategoryIconSvg(cat),
                 count,
             });
         });
@@ -397,6 +464,10 @@ export class ThemesTab {
         `;
 
         this.populateThemeGrid();
+
+        // Phase 5: cursor-follow spotlight + parallax tilt on theme cards
+        // (delegated to the grid, so it survives populateThemeGrid re-renders).
+        initThemeCardInteractions(container);
     }
 
     /**
@@ -407,7 +478,7 @@ export class ThemesTab {
         return this.categories.map((cat) => `
             <button class="category-pill ${cat.id === this.selectedCategory ? 'active' : ''}"
                     data-category="${cat.id}">
-                <span class="pill-icon">${cat.icon}</span>
+                <span class="pill-icon" aria-hidden="true">${cat.iconSvg}</span>
                 <span class="pill-text">${cat.name}</span>
                 <span class="pill-count">${cat.count}</span>
             </button>
@@ -775,7 +846,6 @@ export class ThemesTab {
 
         const scrollContainer = this.hub.getScrollContainer?.() || null;
         const hydrationPlan = getThemeIconHydrationPlan(cards, { scrollContainer });
-        const immediateIconSet = new Set(hydrationPlan.immediateIcons);
         const orderedIcons = [
             ...hydrationPlan.immediateIcons,
             ...hydrationPlan.deferredIcons,
