@@ -37,6 +37,7 @@ import {
     screenUV,
     positionViewDirection,
     normalView,
+    frontFacing,
 } from 'three/tsl';
 
 const hash2D = /* @__PURE__ */ Fn(([p]) => {
@@ -384,8 +385,20 @@ export function createBuildingNodeMaterial() {
     const hue = hash2D(cell.mul(2.0));
     const pureWhite = vec3(1.0, 1.0, 1.0);
     const warmWhite = vec3(1.0, 0.94, 0.85);
+    const neutralWin = mix(pureWhite, warmWhite, smoothstep(0.2, 0.8, hue));
 
-    const winColor = mix(pureWhite, warmWhite, smoothstep(0.2, 0.8, hue));
+    // AAA Phase 5a: a chromatic minority of neon-lit windows (cyan / magenta /
+    // amber) for Night City variety. Independent hashes choose which windows are
+    // neon and which colour, so colour doesn't correlate with the selection.
+    const neonCyan = vec3(0.35, 0.9, 1.0);
+    const neonMagenta = vec3(1.0, 0.3, 0.85);
+    const neonAmber = vec3(1.0, 0.62, 0.2);
+    const colorRoll = hash2D(cell.mul(9.0).sub(3.0));
+    const neonPick = mix(neonCyan, neonMagenta, step(0.5, colorRoll));
+    const neonWin = mix(neonPick, neonAmber, step(0.84, colorRoll));
+    const neonRoll = hash2D(cell.mul(5.0).add(7.0));
+    const isNeonWin = step(0.80, neonRoll); // ~20% of lit windows go neon
+    const winColor = mix(neutralWin, neonWin, isNeonWin);
 
     const wBright = float(0.75).add(hash2D(cell.mul(3.0)).mul(0.35));
     // Reduced brightness multiplier (0.55 -> 0.45)
@@ -393,7 +406,17 @@ export function createBuildingNodeMaterial() {
     const distanceDimming = mix(float(0.3), float(1.0), lodNear);
     const effectiveBright = mix(float(0.45), wBright, lodNear).mul(distanceDimming);
 
-    const windowGlow = winColor.mul(effectiveBright).mul(0.85).mul(isLit);
+    // AAA Phase 5b: interior depth shading — lit rooms glow brighter toward the
+    // floor and fall off toward the ceiling, reading as 3D rooms rather than flat
+    // panels. Near-LOD only (flat at distance to avoid shimmer).
+    const winInteriorY = clamp(
+        frac.y.sub(gap).div(float(1.0).sub(gap.mul(2.0))),
+        0.0,
+        1.0,
+    );
+    const interiorShade = mix(float(1.0), mix(float(1.25), float(0.55), winInteriorY), lodNear);
+
+    const windowGlow = winColor.mul(effectiveBright).mul(0.85).mul(isLit).mul(interiorShade);
 
     const distanceDarkening = mix(float(0.4), float(1.0), lodNear);
     const distanceBlackout = mix(float(0.5), float(1.0), lodNear);
@@ -454,7 +477,11 @@ export function createVhsBillboardNodeMaterial(params) {
     const tex1 = uniformTexture(params?.texture1 ?? new THREE.Texture());
     const tex2 = uniformTexture(params?.texture2 ?? new THREE.Texture());
 
-    const uvNode = uv();
+    // Billboards on buildings with random 90° rotations can present their back face
+    // to the camera; flip U on back faces so ad text never reads mirrored. (Parity
+    // with the WebGL `gl_FrontFacing` fix in neon-district-theme.js.)
+    const baseUv = uv();
+    const uvNode = frontFacing.select(baseUv, vec2(float(1.0).sub(baseUv.x), baseUv.y));
     const time = uTime.add(uRandomOffset);
 
     const glitchLine = step(0.99, rand2D(vec2(floor(time.mul(3.0)), floor(uvNode.y.mul(20.0)))));
@@ -513,7 +540,9 @@ export function createMoonNodeMaterial() {
     const color1 = uniform(new THREE.Color(0xff2bb0)); // bottom hot magenta
     const color2 = uniform(new THREE.Color(0x35e8ff)); // top cyan
     const uHaloColor = uniform(new THREE.Color(0x9b3bff)); // violet corona
-    const uBrightness = uniform(1.35);
+    // Kept under 1.0 so the disc keeps its magenta→cyan gradient + banding/craters
+    // instead of clipping to white once additive blending + bloom pile on.
+    const uBrightness = uniform(0.9);
     const uHaloIntensity = uniform(0.85);
 
     const uvNode = uv();
@@ -536,8 +565,9 @@ export function createMoonNodeMaterial() {
         .add(0.7);
     const surface = bands.mul(craters);
 
-    // Bright terminator rim near the disc edge.
-    const rim = smoothstep(0.30, 0.45, r).mul(0.6);
+    // Bright terminator rim near the disc edge (kept modest so it doesn't wash
+    // the disc back to white at the limb).
+    const rim = smoothstep(0.34, 0.50, r).mul(0.4);
 
     const discColor = grad.mul(surface).add(grad.mul(rim)).mul(uBrightness);
     const haloColor = uHaloColor.mul(halo);
@@ -606,6 +636,35 @@ export function createCloudStrataNodeMaterial(params = {}) {
             uTint, uSpeed, uOpacity, uScale,
         },
     };
+}
+
+/**
+ * AAA Phase 4c — Sheet-lightning flash plane. A broad horizon-weighted glow whose
+ * intensity (`uFlash`) is pulsed from JS to silently flash the far sky, backlighting
+ * the smog strata and rim-lighting the skyline. Sits behind everything, additive.
+ */
+export function createSkyFlashNodeMaterial() {
+    const uFlash = uniform(0.0);
+    const uColor = uniform(new THREE.Color(0xbcd2ff));
+
+    const uvNode = uv();
+    // Concentrated near the horizon (bottom of the plane), soft falloff upward,
+    // plus a little horizontal break-up so it doesn't read as a flat rectangle.
+    const vGrad = smoothstep(0.7, 0.0, uvNode.y);
+    const hBreak = noise2D(vec2(uvNode.x.mul(6.0), uvNode.y.mul(2.0))).mul(0.35).add(0.65);
+    const intensity = uFlash.mul(vGrad).mul(hBreak);
+
+    const color = uColor.mul(intensity);
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = color;
+    material.opacityNode = intensity;
+    material.emissiveNode = color;
+    material.transparent = true;
+    material.depthWrite = false;
+    material.blending = THREE.AdditiveBlending;
+    material.side = THREE.DoubleSide;
+
+    return { material, uniforms: { uFlash, uColor } };
 }
 
 export function createSkylineNodeMaterial() {
@@ -738,9 +797,11 @@ export function createRainNodeMaterial() {
 
 export function createSplashNodeMaterial() {
     const uTime = uniform(0);
-    const uColor = uniform(new THREE.Color(0xddeeff)); // Brighter
+    const uColor = uniform(new THREE.Color(0xddeeff)); // brightness tint
 
     const aPhase = attribute('aPhase');
+    // AAA Phase 6c: per-splash neon zone colour (defaults to white if absent).
+    const aColor = attribute('aColor', 'vec3');
     const vLife = varying(float(0.0), 'vLife');
 
     const positionNode = Fn(() => {
@@ -753,12 +814,13 @@ export function createSplashNodeMaterial() {
 
     const alpha = vLife.mul(0.5); // Increased opacity
     const sizeNode = vLife.mul(8.0).mul(float(300.0).div(positionView.z.negate())); // Larger
+    const splashColor = aColor.mul(uColor);
 
     const material = new THREE.PointsNodeMaterial();
     material.positionNode = positionNode;
-    material.colorNode = uColor;
+    material.colorNode = splashColor;
     material.opacityNode = alpha;
-    material.emissiveNode = uColor.mul(alpha);
+    material.emissiveNode = splashColor.mul(alpha);
     material.sizeNode = sizeNode;
     material.transparent = true;
     material.depthWrite = false;

@@ -284,7 +284,11 @@ export class IntroAnimation {
 
     syncTitleBounds(timeMs = performance.now()) {
         if (!this.threeRenderer?.setTitleBounds || !this.container) return;
-        if (timeMs - this.lastTitleBoundsSync < 120) return;
+        // Sync ~every frame so the renderer's title glow tracks the wordmark
+        // smoothly during the fast shrink-to-logo move (a coarse throttle made the
+        // glow lag/trail downward behind the rising text). Reading one element's
+        // rect is cheap, and the shrink already dirties layout each frame anyway.
+        if (timeMs - this.lastTitleBoundsSync < 16) return;
 
         const titleContainer = this.container.querySelector('.intro-title-container');
         if (!titleContainer) return;

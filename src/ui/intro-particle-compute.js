@@ -344,11 +344,16 @@ export class IntroParticleCompute {
                 If(isStar, () => {
                     const phase = misc.y;
                     const sway = sin(time.mul(float(0.3)).add(phase)).mul(float(0.008));
+                    // D1 — gentle curl/vortex flow: stars drift along slow curved
+                    // currents instead of straight lines (organic + mesmerizing, not
+                    // chaotic — the magnitude is deliberately small).
+                    const curlX = sin(pos.y.mul(float(0.045)).add(time.mul(float(0.22)))).mul(float(0.02));
+                    const curlY = cos(pos.x.mul(float(0.045)).sub(time.mul(float(0.18)))).mul(float(0.02));
                     const centerPullX = pos.x.negate().mul(float(0.0004)).mul(attraction);
                     const centerPullY = pos.y.negate().mul(float(0.0003)).mul(attraction);
 
-                    pos.x.addAssign(vel.x.add(sway).add(centerPullX).mul(delta));
-                    pos.y.addAssign(vel.y.add(centerPullY).mul(delta));
+                    pos.x.addAssign(vel.x.add(sway).add(curlX).add(centerPullX).mul(delta));
+                    pos.y.addAssign(vel.y.add(curlY).add(centerPullY).mul(delta));
                     // Parallax Drift: Use individual Z-velocity to drive speed (creates depth).
                     // vel.z is 0.05..0.2. Multiplied by 15.0 => speed 0.75..3.0.
                     // Warp adds global boost.
