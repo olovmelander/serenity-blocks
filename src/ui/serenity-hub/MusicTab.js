@@ -3,6 +3,8 @@
  * Provides music player controls, playlist browser, and volume settings
  */
 
+import { csIcon } from '../components/cosmic-icons.js';
+
 export class MusicTab {
     constructor(hubInstance, soundManager) {
         this.hub = hubInstance;
@@ -49,7 +51,7 @@ export class MusicTab {
                 <!-- Compact Now Playing + Controls Section -->
                 <div class="now-playing-section">
                     <div class="now-playing-header">
-                        <span class="music-icon">🎵</span>
+                        <span class="music-icon">${csIcon('note', 20)}</span>
                         <h3>Now Playing</h3>
                     </div>
                     <div class="now-playing-card">
@@ -82,13 +84,13 @@ export class MusicTab {
 
                                 <div class="main-controls">
                                     <button class="control-btn secondary" id="prev-track" title="Previous Track">
-                                        <span class="control-icon">⏮</span>
+                                        <span class="control-icon">${csIcon('prev', 20)}</span>
                                     </button>
                                     <button class="control-btn primary" id="play-pause" title="${this.isPlaying() ? 'Pause' : 'Play'}">
-                                        <span class="control-icon">${this.isPlaying() ? '⏸' : '▶'}</span>
+                                        <span class="control-icon">${csIcon(this.isPlaying() ? 'pause' : 'play', 22)}</span>
                                     </button>
                                     <button class="control-btn secondary" id="next-track" title="Next Track">
-                                        <span class="control-icon">⏭</span>
+                                        <span class="control-icon">${csIcon('next', 20)}</span>
                                     </button>
                                 </div>
                             </div>
@@ -99,13 +101,13 @@ export class MusicTab {
                 <!-- Volume Controls Section -->
                 <div class="volume-section">
                     <button class="mute-btn ${this.soundManager.isMuted ? 'muted' : ''}" id="mute-toggle">
-                        <span class="mute-icon">${this.soundManager.isMuted ? '🔇' : '🔊'}</span>
+                        <span class="mute-icon">${csIcon(this.soundManager.isMuted ? 'mute' : 'volume', 18)}</span>
                         <span class="mute-text">${this.soundManager.isMuted ? 'Unmute' : 'Mute'}</span>
                     </button>
 
                     <div class="volume-control">
                         <label class="volume-label">
-                            <span class="volume-icon">🎵</span>
+                            <span class="volume-icon">${csIcon('note', 16)}</span>
                             Music Volume
                         </label>
                         <div class="volume-slider-container">
@@ -125,7 +127,7 @@ export class MusicTab {
 
                     <div class="volume-control">
                         <label class="volume-label">
-                            <span class="volume-icon">🔊</span>
+                            <span class="volume-icon">${csIcon('volume', 16)}</span>
                             SFX Volume
                         </label>
                         <div class="volume-slider-container">
@@ -178,7 +180,7 @@ export class MusicTab {
                         <div class="playlist-item-artist">Serenity Blocks</div>
                     </div>
                     <div class="playlist-item-icon">
-                        ${isActive ? '<span class="playing-indicator">♪</span>' : ''}
+                        ${isActive ? `<span class="playing-indicator">${csIcon('equalizer', 16)}</span>` : ''}
                     </div>
                 </div>
             `;
@@ -328,12 +330,12 @@ export class MusicTab {
 
         if (isMuted) {
             muteBtn.classList.add('muted');
-            muteIcon.textContent = '🔇';
+            muteIcon.innerHTML = csIcon('mute', 18);
             muteText.textContent = 'Unmute';
             this.updateVinylAnimation(false);
         } else {
             muteBtn.classList.remove('muted');
-            muteIcon.textContent = '🔊';
+            muteIcon.innerHTML = csIcon('volume', 18);
             muteText.textContent = 'Mute';
             this.updateVinylAnimation(true);
         }
@@ -375,7 +377,7 @@ export class MusicTab {
             const trackKey = item.dataset.track;
             if (trackKey === this.currentSong) {
                 item.classList.add('active');
-                item.querySelector('.playlist-item-icon').innerHTML = '<span class="playing-indicator">♪</span>';
+                item.querySelector('.playlist-item-icon').innerHTML = `<span class="playing-indicator">${csIcon('equalizer', 16)}</span>`;
             } else {
                 item.classList.remove('active');
                 item.querySelector('.playlist-item-icon').innerHTML = '';
@@ -391,7 +393,7 @@ export class MusicTab {
         const playPauseBtn = document.getElementById('play-pause');
         if (playPauseBtn) {
             const icon = playPauseBtn.querySelector('.control-icon');
-            icon.textContent = isPlaying ? '⏸' : '▶';
+            icon.innerHTML = csIcon(isPlaying ? 'pause' : 'play', 22);
             playPauseBtn.title = isPlaying ? 'Pause' : 'Play';
         }
     }

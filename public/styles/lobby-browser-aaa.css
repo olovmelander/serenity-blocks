@@ -1,0 +1,299 @@
+/* =================================================================================
+ * COSMIC SERENITY — Lobby Browser redesign (online multiplayer)
+ * ---------------------------------------------------------------------------------
+ * Loaded AFTER lobby-styles.css so these rules win. Scoped to `#lobby-browser`.
+ * Accent = TEAL (Online-MP's identity). Adds a capacity bar + real status pills
+ * (the JS now derives Open/Full/In-progress and the real player count).
+ * ============================================================================== */
+
+#lobby-browser {
+    --cs-accent: var(--cs-teal);
+    --cs-accent-rgb: var(--cs-teal-rgb);
+    --cs-accent-2: var(--cs-cyan);
+}
+
+/* ---- Backdrop -------------------------------------------------------------- */
+#lobby-browser .lobby-browser-overlay {
+    background: radial-gradient(120% 90% at 50% 35%, rgba(6, 8, 20, 0.50), rgba(2, 3, 10, 0.80) 100%);
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+}
+
+/* ---- Panel ---------------------------------------------------------------- */
+#lobby-browser .lobby-browser-modal {
+    width: min(960px, calc(100vw - 48px));
+    max-width: none;
+    max-height: min(86vh, 820px);
+    border-radius: 24px;
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.26);
+    background:
+        radial-gradient(100% 55% at 50% -12%, rgba(var(--cs-accent-rgb), 0.13), transparent 60%),
+        radial-gradient(70% 70% at 8% 0%, rgba(114, 137, 255, 0.10), transparent 60%),
+        linear-gradient(180deg, rgba(16, 20, 38, 0.95) 0%, rgba(8, 10, 23, 0.97) 100%);
+    backdrop-filter: blur(18px) saturate(135%);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    box-shadow:
+        0 28px 78px rgba(0, 0, 0, 0.58),
+        0 0 0 1px rgba(255, 255, 255, 0.04),
+        0 0 86px rgba(var(--cs-accent-rgb), 0.10),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    animation: lb-pop 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes lb-pop {
+    from { opacity: 0; transform: translateY(14px) scale(0.985); filter: blur(6px); }
+    to   { opacity: 1; transform: translateY(0) scale(1);        filter: blur(0); }
+}
+
+/* ---- Header: aurora title + accent divider -------------------------------- */
+#lobby-browser .lobby-browser-header {
+    border-bottom: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+}
+
+#lobby-browser .lobby-browser-header h2 {
+    background: linear-gradient(100deg,
+            #d9fff6 0%, var(--cs-accent) 34%, var(--cs-accent-2) 62%, #f1f7ff 100%);
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    filter: drop-shadow(0 0 16px rgba(var(--cs-accent-rgb), 0.30));
+    animation: cs-shimmer 8s ease-in-out infinite;
+}
+
+/* (shimmer keyframe consolidated into cosmic-tokens.css → cs-shimmer) */
+
+#lobby-browser .close-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background:
+        linear-gradient(180deg, rgba(255, 118, 118, 0.15), rgba(255, 80, 80, 0.08)),
+        rgba(8, 10, 23, 0.46);
+    border: 1px solid rgba(255, 118, 118, 0.40);
+    color: #ffb6b6;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+#lobby-browser .close-btn:hover {
+    background:
+        linear-gradient(180deg, rgba(255, 118, 118, 0.28), rgba(255, 80, 80, 0.15)),
+        rgba(8, 10, 23, 0.62);
+    border-color: rgba(255, 148, 148, 0.74);
+    color: #ffd4d4;
+    transform: rotate(90deg) scale(1.06);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.42), 0 0 22px rgba(255, 100, 100, 0.30);
+}
+
+#lobby-browser .close-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 100, 100, 0.28);
+}
+
+/* ---- Controls: Create (teal CTA) + Refresh (glass) ------------------------ */
+#lobby-browser .btn-primary {
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.50);
+    color: #08201c;
+    box-shadow: 0 6px 18px rgba(var(--cs-accent-rgb), 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+#lobby-browser .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 9px 26px rgba(var(--cs-accent-rgb), 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.30);
+}
+
+#lobby-browser .btn-secondary {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(8, 10, 23, 0.50));
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.20);
+    color: #eef3ff;
+}
+
+#lobby-browser .btn-secondary:hover {
+    border-color: rgba(var(--cs-accent-rgb), 0.50);
+    background: rgba(var(--cs-accent-rgb), 0.10);
+    color: #fff;
+    box-shadow: 0 0 18px rgba(var(--cs-accent-rgb), 0.20);
+}
+
+#lobby-browser .btn-primary:focus-visible,
+#lobby-browser .btn-secondary:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(var(--cs-accent-rgb), 0.28);
+}
+
+/* ---- List container + header ---------------------------------------------- */
+#lobby-browser .lobby-list-container {
+    background: rgba(6, 8, 18, 0.40);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+    border-radius: 16px;
+    scrollbar-color: rgba(var(--cs-accent-rgb), 0.6) rgba(0, 0, 0, 0.2);
+}
+
+#lobby-browser .lobby-list-container::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.8), rgba(127, 220, 255, 0.5));
+}
+
+#lobby-browser .lobby-list-header {
+    background: rgba(var(--cs-accent-rgb), 0.08);
+    border-bottom: 1px solid rgba(var(--cs-accent-rgb), 0.20);
+    color: rgba(211, 219, 245, 0.6);
+}
+
+/* ---- Lobby rows → cosmic glass cards -------------------------------------- */
+#lobby-browser .lobby-item {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(10, 13, 27, 0.50));
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.10);
+    border-radius: 13px;
+}
+
+#lobby-browser .lobby-item::before {
+    background: linear-gradient(180deg, var(--cs-accent), var(--cs-accent-2));
+}
+
+#lobby-browser .lobby-item:hover {
+    background:
+        linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.07), rgba(255, 255, 255, 0.02)),
+        rgba(14, 17, 34, 0.60);
+    border-color: rgba(var(--cs-accent-rgb), 0.45);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.34), 0 0 22px rgba(var(--cs-accent-rgb), 0.16);
+}
+
+#lobby-browser .col-name strong {
+    color: #eef3ff;
+}
+
+#lobby-browser .lobby-host {
+    display: block;
+    margin-top: 3px;
+    font-size: 11px;
+    color: rgba(211, 219, 245, 0.50);
+    font-family: 'Space Mono', monospace;
+}
+
+/* Player count pill + capacity bar */
+#lobby-browser .col-players {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+}
+
+#lobby-browser .player-count {
+    background: rgba(var(--cs-accent-rgb), 0.12);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.30);
+    color: var(--cs-accent);
+}
+
+#lobby-browser .capacity-bar {
+    width: 100%;
+    max-width: 80px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+#lobby-browser .capacity-fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--cs-accent), var(--cs-accent-2));
+    box-shadow: 0 0 8px rgba(var(--cs-accent-rgb), 0.5);
+}
+
+/* Win-condition badge → cosmic teal pill */
+#lobby-browser .badge {
+    background: rgba(var(--cs-accent-rgb), 0.10);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.28);
+    color: var(--cs-accent);
+}
+
+/* Status pills */
+#lobby-browser .status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: 1px solid transparent;
+}
+
+#lobby-browser .status-badge.status-open,
+#lobby-browser .status-badge.status-waiting {
+    background: rgba(94, 234, 212, 0.12);
+    border-color: rgba(94, 234, 212, 0.40);
+    color: #5eead4;
+}
+
+#lobby-browser .status-badge.status-playing {
+    background: rgba(252, 209, 122, 0.12);
+    border-color: rgba(252, 209, 122, 0.40);
+    color: #fcd17a;
+}
+
+#lobby-browser .status-badge.status-full {
+    background: rgba(var(--cs-soft-rgb), 0.10);
+    border-color: rgba(var(--cs-soft-rgb), 0.28);
+    color: rgba(211, 219, 245, 0.62);
+}
+
+#lobby-browser .status-badge.status-finished {
+    background: rgba(var(--cs-soft-rgb), 0.06);
+    border-color: rgba(var(--cs-soft-rgb), 0.18);
+    color: rgba(211, 219, 245, 0.45);
+}
+
+/* Action buttons */
+#lobby-browser .btn-join {
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.50);
+    color: #08201c;
+    box-shadow: 0 4px 14px rgba(var(--cs-accent-rgb), 0.30);
+}
+
+#lobby-browser .btn-join:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 7px 20px rgba(var(--cs-accent-rgb), 0.48);
+}
+
+#lobby-browser .btn-join:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(var(--cs-accent-rgb), 0.30), 0 4px 14px rgba(var(--cs-accent-rgb), 0.3);
+}
+
+#lobby-browser .btn-disabled {
+    background: rgba(var(--cs-soft-rgb), 0.06);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.16);
+    color: rgba(211, 219, 245, 0.40);
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* Empty + footer */
+#lobby-browser .lobby-list-empty {
+    color: rgba(211, 219, 245, 0.55);
+}
+
+#lobby-browser .lobby-list-empty .text-muted,
+#lobby-browser .lobby-browser-footer .text-muted {
+    color: rgba(211, 219, 245, 0.42);
+}
+
+/* ---- Accessibility: honour reduced-motion --------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    #lobby-browser .lobby-browser-modal,
+    #lobby-browser .lobby-browser-header h2 {
+        animation: none !important;
+    }
+
+    #lobby-browser .lobby-item,
+    #lobby-browser .lobby-item:hover {
+        transition: none !important;
+        transform: none !important;
+    }
+}

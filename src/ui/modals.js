@@ -4,6 +4,7 @@
  */
 
 import { STEAM_LEADERBOARDS } from '../core/steam/steam-config.js';
+import steamService from '../core/steam/steam-service.js';
 import {
     SteamLeaderboardPanel,
     formatNumber,
@@ -277,8 +278,11 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
             <div class="steam-leaderboard-host" id="steam-leaderboard-host"></div>
         `;
 
+        // Only mount the Steam leaderboard panel when leaderboards are actually
+        // available. In a non-Steam/browser build it would render an "unavailable"
+        // shell (~260px) that adds nothing but forces the modal to scroll.
         const leaderboardHost = document.getElementById('steam-leaderboard-host');
-        if (leaderboardHost) {
+        if (leaderboardHost && steamService.capabilities?.leaderboards) {
             const isInfinity = !!gameState?.isInfinityMode;
             const startTime = gameState?.infinityStats?.sessionStartTime || gameState.startTime || Date.now();
             const durationSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
@@ -364,7 +368,10 @@ export async function showGameOverModal(modalManager, gameState, highScoreManage
     const buttonsContainer = document.getElementById('game-over-buttons');
     if (buttonsContainer) {
         buttonsContainer.innerHTML = `
-            <button id="game-over-main-menu" class="demo-btn tertiary">🏠 Main Menu</button>
+            <button id="game-over-main-menu" class="demo-btn tertiary">
+                <svg class="btn-icon-svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/><path d="M9.5 21v-6h5v6"/></svg>
+                <span>Main Menu</span>
+            </button>
         `;
 
         // Wire up button event listeners

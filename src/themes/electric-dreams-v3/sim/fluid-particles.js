@@ -256,19 +256,23 @@ export class FluidParticleSim {
             const vXYZ = vel.xyz.toVar();
             const age = pos.w.toVar();
 
-            // Shape mode has TWO separate dimmers:
+            // Shape mode has THREE separate dimmers (each shapes its own decay
+            // curve so the formation reads cleanly without going dead-static):
             //   gravityDimmer  — linear/soft. Gravity still helps shapes converge
             //                    and prevents far drift; only mildly reduced.
-            //   boardDimmer    — aggressive smoothstep. Board-repulsion turns
-            //                    OFF as soon as shape mode starts, so shapes
-            //                    can occupy the central board area without
-            //                    getting torn apart into a cross silhouette.
-            // Threshold 0.05→0.18 means board-repulsion is fully off whenever
-            // shapeStr > 0.18 (well below any real shape trigger value of 0.35+).
+            //   boardDimmer    — aggressive smoothstep. Board-repulsion off as
+            //                    soon as shape mode starts.
+            //   turbDimmer     — smoothstep. Turbulence is the main reason shapes
+            //                    "blur" or look noisy. At shape strengths >= 0.4
+            //                    turbulence is reduced ~85%, keeping just enough
+            //                    motion that the formation feels alive (not frozen).
             const gravityDimmer = float(1.0).sub(
                 shapeStr.mul(float(1.0).sub(shapeOverride)),
             );
             const boardDimmer = float(1.0).sub(smoothstep(0.05, 0.18, shapeStr));
+            const turbDimmer = float(1.0).sub(
+                smoothstep(0.0, 0.5, shapeStr).mul(0.85),
+            );
 
             // 1. Gentle gravity toward focal point — keeps the mass coherent.
             // Scaled down softly when in shape mode.
@@ -368,11 +372,13 @@ export class FluidParticleSim {
             // 3. Organic turbulence — three sine waves at different frequencies.
             // Per-particle phase shift via index makes adjacent particles diverge
             // (looks more chaotic / less coherent than uniform turbulence).
+            // Scaled by turbDimmer so shapes get ~15% turbulence (just enough
+            // for life) instead of fighting the formation at 100%.
             const idxF = float(index);
             const turbX = sin(time.mul(0.55).add(idxF.mul(0.013))).mul(turbStr).mul(0.35);
             const turbY = cos(time.mul(0.42).add(idxF.mul(0.017))).mul(turbStr).mul(0.32);
             const turbZ = sin(time.mul(0.31).add(idxF.mul(0.011))).mul(turbStr).mul(0.22);
-            vXYZ.addAssign(vec3(turbX, turbY, turbZ).mul(dt));
+            vXYZ.addAssign(vec3(turbX, turbY, turbZ).mul(turbDimmer).mul(dt));
 
             // 4. Damping (per-frame, so frame-rate independent only at 60fps;
             // good enough — adaptive scaling keeps us near 60).

@@ -14,6 +14,7 @@ import {
     resolveHubThemeThumbnailUrl,
 } from './theme-thumbnail-manifest.js';
 import { initThemeCardInteractions } from './theme-card-interactions.js';
+import { csIcon } from '../components/cosmic-icons.js';
 
 const CATEGORY_ICON_SVG_OPEN = [
     '<svg class="pill-icon-svg" viewBox="0 0 24 24" fill="none"',
@@ -326,68 +327,69 @@ export class ThemesTab {
     }
 
     /**
-     * Get icon for theme (PNG or emoji fallback)
+     * Get the cosmic-icons name used as a thumbnail fallback for a theme.
+     * (No emojis anywhere — these resolve to own-designed line SVGs.)
      * @param {Object} theme - Theme object with id and displayName
-     * @returns {string} HTML string for icon (img tag or emoji div)
+     * @returns {string} cosmic-icons key (see cosmic-icons.js)
      */
-    getThemeFallbackEmoji(theme) {
+    getThemeFallbackIconName(theme) {
         const icons = {
-            Forest: '🌲',
-            'Himalayan Peak': '🏔️',
-            'Ice Temple': '❄️',
-            'Moonlit Forest': '🌙',
-            Wolfhour: '🐺',
-            Ocean: '🌊',
-            Sunset: '🌅',
-            Mountain: '⛰️',
-            'Zen Garden': '🎋',
-            Winter: '☃️',
-            Fall: '🍂',
-            Summer: '☀️',
-            Tornado: '🌪️',
-            Aurora: '🌌',
-            Galaxy: '🌌',
-            'Rainy Window': '🌧️',
-            'Koi Pond': '🐟',
-            Meadow: '🌼',
-            'Cosmic Chimes': '🎐',
-            'Singing Bowl': '🔔',
-            Starlight: '⭐',
-            'Sky Children': '☁️',
-            'Sky Children v2': '🌤️',
-            'Swedish Forest': '🌲',
-            Geode: '💎',
-            Bioluminescence: '🦑',
-            'Void Ember': '🔥',
-            'Desert Oasis': '🏜️',
-            'Bamboo Grove': '🎋',
-            'Misty Lake': '🌫️',
-            Waves: '🌊',
-            'Fluid Dreams': '💧',
-            'Lantern Festival': '🏮',
-            'Crystal Cave': '💎',
-            'Candlelit Monastery': '🕯️',
-            'Cherry Blossom Garden': '🌸',
-            'Floating Islands': '🏝️',
-            'Meditation Temple': '🛕',
-            'Moonlit Greenhouse': '🌿',
-            'Electric Dreams': '⚡',
-            'Nebula Flow': '🌀',
-            Lunara: '🌙',
-            Pyrestorm: '🔥',
-            'Neon Dusk': '🌆',
-            Stillwater: '💧',
+            Forest: 'tree',
+            'Himalayan Peak': 'mountain',
+            'Ice Temple': 'snowflake',
+            'Moonlit Forest': 'moon',
+            Wolfhour: 'wolf',
+            Ocean: 'wave',
+            Sunset: 'sunrise',
+            Mountain: 'mountain',
+            'Zen Garden': 'bamboo',
+            Winter: 'snowflake',
+            Fall: 'leaf',
+            Summer: 'sun',
+            Tornado: 'spiral',
+            Aurora: 'aurora',
+            Galaxy: 'galaxy',
+            'Rainy Window': 'rain',
+            'Koi Pond': 'fish',
+            Meadow: 'flower',
+            'Cosmic Chimes': 'chime',
+            'Singing Bowl': 'bowl',
+            Starlight: 'star',
+            'Sky Children': 'cloud',
+            'Sky Children v2': 'cloud',
+            'Swedish Forest': 'tree',
+            Geode: 'gem',
+            Bioluminescence: 'jellyfish',
+            'Void Ember': 'flame',
+            'Desert Oasis': 'island',
+            'Bamboo Grove': 'bamboo',
+            'Misty Lake': 'mist',
+            Waves: 'wave',
+            'Fluid Dreams': 'droplet',
+            'Lantern Festival': 'lantern',
+            'Crystal Cave': 'gem',
+            'Candlelit Monastery': 'candle',
+            'Cherry Blossom Garden': 'flower',
+            'Floating Islands': 'island',
+            'Meditation Temple': 'temple',
+            'Moonlit Greenhouse': 'sprout',
+            'Electric Dreams': 'bolt',
+            'Nebula Flow': 'spiral',
+            Lunara: 'moon',
+            Pyrestorm: 'flame',
+            'Neon Dusk': 'city',
+            Stillwater: 'droplet',
         };
-        return icons[theme.displayName] || '🎨';
+        return icons[theme.displayName] || 'palette';
     }
 
     getThemeIcon(theme) {
         const iconUrl = resolveHubThemeThumbnailUrl(theme.id);
         const desktopIconUrl = resolveDesktopHubThemeThumbnailUrl(theme.id);
-        const fallbackEmoji = this.getThemeFallbackEmoji(theme);
+        const fallbackName = this.getThemeFallbackIconName(theme);
 
         if (!iconUrl) {
-            return `<div class="theme-icon-emoji">${fallbackEmoji}</div>`;
+            return `<div class="theme-icon-emoji">${csIcon(fallbackName, 40)}</div>`;
         }
 
         return `
@@ -397,7 +399,7 @@ export class ThemesTab {
                 class="theme-icon-img"
                 data-theme-icon-src="${iconUrl}"
                 data-theme-desktop-icon-src="${desktopIconUrl || ''}"
-                data-theme-icon-fallback="${fallbackEmoji}"
+                data-theme-icon-fallback="${fallbackName}"
                 loading="lazy"
                 decoding="async"
                 fetchpriority="low"
@@ -435,7 +437,7 @@ export class ThemesTab {
                         />
                     </div>
                     <div class="current-theme-badge">
-                        <span class="badge-icon">✓</span>
+                        <span class="badge-icon">${csIcon('check', 14)}</span>
                         <span class="badge-text">Current: ${this.getCurrentThemeDisplayName()}</span>
                     </div>
                 </div>
@@ -451,7 +453,7 @@ export class ThemesTab {
                 <!-- Random Theme Button -->
                 <div class="theme-actions">
                     <button class="random-theme-btn" id="random-theme-btn">
-                        <span class="btn-icon">🎲</span>
+                        <span class="btn-icon">${csIcon('dice', 18)}</span>
                         <span class="btn-text">Random Theme</span>
                     </button>
                 </div>
@@ -515,7 +517,7 @@ export class ThemesTab {
                      style="--theme-gradient: ${colorScheme.gradient}">
                     <div class="theme-swatch" style="background: ${colorScheme.gradient}">
                         ${iconHtml}
-                        ${isActive ? '<div class="active-indicator">✓</div>' : ''}
+                        ${isActive ? `<div class="active-indicator">${csIcon('check', 14)}</div>` : ''}
                     </div>
                     <div class="theme-info">
                         <div class="theme-name">${theme.displayName}</div>
@@ -712,10 +714,10 @@ export class ThemesTab {
                 return;
             }
 
-            const fallbackEmoji = icon.dataset.themeIconFallback || '🎨';
+            const fallbackName = icon.dataset.themeIconFallback || 'palette';
             const fallback = document.createElement('div');
             fallback.className = 'theme-icon-emoji';
-            fallback.textContent = fallbackEmoji;
+            fallback.innerHTML = csIcon(fallbackName, 40);
             icon.replaceWith(fallback);
             console.warn('[ThemesTab] Theme icon failed to load:', icon.dataset.themeIconSrc);
         };
@@ -1042,7 +1044,7 @@ export class ThemesTab {
             if (isActive && !existingIndicator) {
                 const indicator = document.createElement('div');
                 indicator.className = 'active-indicator';
-                indicator.textContent = '✓';
+                indicator.innerHTML = csIcon('check', 14);
                 swatch.appendChild(indicator);
             } else if (!isActive && existingIndicator) {
                 existingIndicator.remove();

@@ -1,0 +1,348 @@
+/* =================================================================================
+ * COSMIC SERENITY — Match Config modal redesign (local + online)
+ * ---------------------------------------------------------------------------------
+ * Loaded AFTER match-config-styles.css so these rules win. Scoped to
+ * `.match-config-modal` (shared by the local + online config modals). Per-modal
+ * accent via :has() — local = violet, online = teal — mirroring the Settings
+ * per-tab accent trick. Pure restyle (one inline border recolored in JS).
+ * ============================================================================== */
+
+.match-config-modal {
+    --cs-accent: var(--cs-violet);
+    --cs-accent-rgb: var(--cs-violet-rgb);
+    --cs-accent-2: var(--cs-indigo);
+}
+
+/* Local multiplayer → violet; Online multiplayer → teal */
+.match-config-modal:has(#local-match-config-form) {
+    --cs-accent: var(--cs-violet);
+    --cs-accent-rgb: var(--cs-violet-rgb);
+    --cs-accent-2: var(--cs-indigo);
+}
+
+.match-config-modal:has(#match-config-form) {
+    --cs-accent: var(--cs-teal);
+    --cs-accent-rgb: var(--cs-teal-rgb);
+    --cs-accent-2: var(--cs-cyan);
+}
+
+/* ---- Backdrop -------------------------------------------------------------- */
+.match-config-modal .match-config-overlay {
+    background: radial-gradient(120% 90% at 50% 35%, rgba(6, 8, 20, 0.50), rgba(2, 3, 10, 0.78) 100%);
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+}
+
+/* ---- Panel: cosmic glass --------------------------------------------------- */
+.match-config-modal .match-config-content {
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.26);
+    border-radius: 24px;
+    background:
+        radial-gradient(100% 60% at 50% -15%, rgba(var(--cs-accent-rgb), 0.13), transparent 60%),
+        radial-gradient(70% 70% at 8% 0%, rgba(114, 137, 255, 0.10), transparent 60%),
+        linear-gradient(180deg, rgba(16, 20, 38, 0.95) 0%, rgba(8, 10, 23, 0.97) 100%);
+    backdrop-filter: blur(18px) saturate(135%);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    box-shadow:
+        0 28px 78px rgba(0, 0, 0, 0.58),
+        0 0 0 1px rgba(255, 255, 255, 0.04),
+        0 0 86px rgba(var(--cs-accent-rgb), 0.10),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    scrollbar-color: rgba(var(--cs-accent-rgb), 0.60) rgba(0, 0, 0, 0.20);
+}
+
+.match-config-modal .match-config-content::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.20);
+}
+
+.match-config-modal .match-config-content::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.80), rgba(142, 162, 255, 0.55));
+    border: 2px solid rgba(8, 10, 23, 0.50);
+    box-shadow: none;
+}
+
+.match-config-modal .match-config-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--cs-accent-rgb), 0.92);
+    box-shadow: 0 0 10px rgba(var(--cs-accent-rgb), 0.4);
+}
+
+/* ---- Header: aurora title + accent divider -------------------------------- */
+.match-config-modal .match-config-header {
+    border-bottom: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+}
+
+.match-config-modal .match-config-header h2 {
+    background: linear-gradient(100deg,
+            #d9e7ff 0%, var(--cs-accent) 32%, var(--cs-accent-2) 60%, #f1f7ff 100%);
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    filter: drop-shadow(0 0 16px rgba(var(--cs-accent-rgb), 0.30));
+    animation: cs-shimmer 8s ease-in-out infinite;
+}
+
+/* (shimmer keyframe consolidated into cosmic-tokens.css → cs-shimmer) */
+
+/* ---- Labels + help --------------------------------------------------------- */
+.match-config-modal .form-group label {
+    color: rgba(211, 219, 245, 0.70);
+}
+
+.match-config-modal .form-help {
+    color: rgba(211, 219, 245, 0.50);
+    font-style: normal;
+}
+
+/* ---- Inputs + selects: cosmic glass + accent focus ------------------------- */
+.match-config-modal .form-group input[type="text"],
+.match-config-modal .form-group input[type="number"],
+.match-config-modal .form-group select {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+        rgba(12, 15, 30, 0.60);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.18);
+    border-radius: 11px;
+    color: #eef3ff;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+.match-config-modal .form-group input[type="text"]:hover,
+.match-config-modal .form-group input[type="number"]:hover,
+.match-config-modal .form-group select:hover {
+    border-color: rgba(var(--cs-accent-rgb), 0.48);
+    background-color: rgba(18, 22, 41, 0.74);
+}
+
+.match-config-modal .form-group input[type="text"]:focus,
+.match-config-modal .form-group input[type="number"]:focus,
+.match-config-modal .form-group select:focus {
+    outline: none;
+    border-color: rgba(var(--cs-accent-rgb), 0.92);
+    box-shadow:
+        0 0 0 3px rgba(var(--cs-accent-rgb), 0.18),
+        0 0 22px rgba(var(--cs-accent-rgb), 0.16),
+        inset 0 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+.match-config-modal .form-group input::placeholder {
+    color: rgba(211, 219, 245, 0.38);
+}
+
+/* Select keeps its dropdown arrow alongside the glass background */
+.match-config-modal .form-group select {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23aac4ff' d='M6 9L1 4h10z'/%3E%3C/svg%3E"),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+    background-color: rgba(12, 15, 30, 0.60);
+    background-repeat: no-repeat, no-repeat;
+    background-position: right 14px center, 0 0;
+}
+
+/* ---- Checkboxes → cosmic toggle switches (CSS-only, no markup change) ------- */
+.match-config-modal .checkbox-label {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(8, 10, 23, 0.40));
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.14);
+    border-radius: 12px;
+}
+
+.match-config-modal .checkbox-label:hover {
+    background: rgba(var(--cs-accent-rgb), 0.08);
+    border-color: rgba(var(--cs-accent-rgb), 0.30);
+}
+
+.match-config-modal .checkbox-label input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    width: 46px;
+    height: 26px;
+    margin: 0;
+    border-radius: 999px;
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.20);
+    background: rgba(8, 10, 23, 0.55);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.26s ease, border-color 0.26s ease, box-shadow 0.26s ease;
+}
+
+.match-config-modal .checkbox-label input[type="checkbox"]::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    transform: translateY(-50%);
+    background: radial-gradient(circle at 36% 32%, #ffffff 0 30%, rgba(214, 222, 246, 0.92) 100%);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.42);
+    transition: left 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.match-config-modal .checkbox-label input[type="checkbox"]:checked {
+    background: linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.35), rgba(var(--cs-accent-rgb), 0.70));
+    border-color: rgba(var(--cs-accent-rgb), 0.70);
+    box-shadow:
+        inset 0 1px 2px rgba(255, 255, 255, 0.20),
+        0 0 16px rgba(var(--cs-accent-rgb), 0.40);
+}
+
+.match-config-modal .checkbox-label input[type="checkbox"]:checked::before {
+    left: 23px;
+}
+
+.match-config-modal .checkbox-label input[type="checkbox"]:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 3px rgba(var(--cs-accent-rgb), 0.30),
+        inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.match-config-modal .checkbox-label span {
+    color: #e8edff;
+}
+
+/* ---- Advanced settings accordion ------------------------------------------ */
+.match-config-modal .advanced-settings {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.022), rgba(8, 10, 23, 0.40));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+    border-radius: 14px;
+}
+
+.match-config-modal .advanced-settings:hover {
+    border-color: rgba(var(--cs-accent-rgb), 0.30);
+}
+
+.match-config-modal .advanced-settings summary {
+    color: var(--cs-accent);
+}
+
+.match-config-modal .advanced-settings summary:hover {
+    color: #ffffff;
+}
+
+.match-config-modal .advanced-settings summary::before {
+    color: var(--cs-accent);
+}
+
+/* ---- Action buttons -------------------------------------------------------- */
+.match-config-modal .form-actions {
+    border-top: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+}
+
+.match-config-modal .btn-primary {
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.50);
+    color: #0a0c1a;
+    box-shadow:
+        0 6px 18px rgba(var(--cs-accent-rgb), 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.match-config-modal .btn-primary:hover {
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    transform: translateY(-2px);
+    box-shadow:
+        0 9px 26px rgba(var(--cs-accent-rgb), 0.50),
+        inset 0 1px 0 rgba(255, 255, 255, 0.30);
+}
+
+.match-config-modal .btn-primary:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 3px rgba(var(--cs-accent-rgb), 0.30),
+        0 9px 26px rgba(var(--cs-accent-rgb), 0.40);
+}
+
+.match-config-modal .btn-secondary {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(8, 10, 23, 0.50));
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.20);
+    color: #eef3ff;
+}
+
+.match-config-modal .btn-secondary:hover {
+    border-color: rgba(var(--cs-accent-rgb), 0.50);
+    background: rgba(var(--cs-accent-rgb), 0.10);
+    color: #ffffff;
+    box-shadow: 0 0 18px rgba(var(--cs-accent-rgb), 0.20);
+}
+
+.match-config-modal .btn-secondary:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(var(--cs-accent-rgb), 0.26);
+}
+
+/* ---- Close button → glass red tile ---------------------------------------- */
+.match-config-modal .close-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background:
+        linear-gradient(180deg, rgba(255, 118, 118, 0.15), rgba(255, 80, 80, 0.08)),
+        rgba(8, 10, 23, 0.46);
+    border: 1px solid rgba(255, 118, 118, 0.40);
+    color: #ffb6b6;
+    box-shadow:
+        0 8px 22px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.match-config-modal .close-btn:hover {
+    background:
+        linear-gradient(180deg, rgba(255, 118, 118, 0.28), rgba(255, 80, 80, 0.15)),
+        rgba(8, 10, 23, 0.62);
+    border-color: rgba(255, 148, 148, 0.74);
+    color: #ffd4d4;
+    transform: rotate(90deg) scale(1.06);
+    box-shadow:
+        0 12px 30px rgba(0, 0, 0, 0.42),
+        0 0 22px rgba(255, 100, 100, 0.30);
+}
+
+.match-config-modal .close-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 100, 100, 0.28);
+}
+
+/* ---- Presets + value display (online modal) ------------------------------- */
+.match-config-modal .preset-btn {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.16);
+    color: rgba(220, 227, 250, 0.70);
+}
+
+.match-config-modal .preset-btn:hover {
+    border-color: rgba(var(--cs-accent-rgb), 0.40);
+    background: rgba(var(--cs-accent-rgb), 0.08);
+    box-shadow: 0 4px 15px rgba(var(--cs-accent-rgb), 0.18);
+}
+
+.match-config-modal .preset-btn.active {
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    border-color: transparent;
+    color: #0a0c1a;
+    box-shadow: 0 3px 12px rgba(var(--cs-accent-rgb), 0.35);
+}
+
+.match-config-modal .value-display {
+    background: rgba(var(--cs-accent-rgb), 0.10);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.30);
+    color: var(--cs-accent);
+}
+
+/* ---- Accessibility: honour reduced-motion --------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    .match-config-modal .match-config-content,
+    .match-config-modal .match-config-header h2,
+    .match-config-modal .form-group {
+        animation: none !important;
+    }
+
+    .match-config-modal .checkbox-label input[type="checkbox"],
+    .match-config-modal .checkbox-label input[type="checkbox"]::before {
+        transition: none !important;
+    }
+}

@@ -371,3 +371,123 @@ Each phase: code-complete → `npm run build` + lint clean → **WebGPU browser-
 - *The Real-time Volumetric Cloudscapes of Horizon Zero Dawn* (Schneider/Guerrilla, SIGGRAPH 2015) — why we *approximate* rather than full-raymarch on a background budget.
 - Sea of Thieves mesh-cloud lineage; I. Quilez analytical sun-scattering fog; ACES tonemap.
 - In-repo template: `src/themes/himalayan-peak/` (architecture, director, shared uniforms, MRT post).
+
+---
+
+# Phase 7 — Living Composition ("make it feel alive")
+
+> Status: **PROPOSED** (2026-06-02). The bright-day Sky-COTL look has LANDED (blue sky,
+> white cloud sea, green grass islands, peak + light-beam). This phase closes the gap to
+> the *key-art liveliness*: colored flower fields, a bird flock, bushes, arch structures,
+> floating islands, and a real summit beacon — the things that make the reference read as
+> a populated, well-composed world rather than an empty vista.
+
+## 7.0 Quick wins (low risk, do first)
+- **Left-side brightness (DONE 2026-06-02):** tightened + dimmed the sky-dome sun halo
+  (`0.45→0.34`, pow 260→320) and horizon glow (`0.38→0.26`) so the sun side stops
+  blooming into a white wash. Further dial if needed: lower `bloomStrength`, or nudge
+  `SUN_DIR` yaw so the disc sits a touch off-frame-left.
+- **Reference (key art) gap list**, in rough visual-impact order: (1) colored flowers,
+  (2) bird flock, (3) bushes/shrubs on islands, (4) arch/gate structures, (5) extra small
+  floating islands, (6) a real summit beacon, (7) butterflies/light-spirits.
+
+## 7.1 Colored flower fields  ★ highest impact
+**Reuse:** `src/themes/shared/sky-core/sky-core-flower-carpet-field.js` already exists and
+is excellent — it's a procedural placement oracle: `sampleCarpet(x,z) → {density, family}`
+with families pink/yellow/purple/blue/white, painterly band-lanes + patch clusters +
+slope/path exclusion + horizon fade. It was wired to the OLD (broken) instanced flower
+renderer; the FIELD is sound, only the renderer needs rebuilding.
+
+**Plan (`rendering/meadow-flowers.js`):** a single GPU-instanced flower mesh, anchored to
+the GREEN ISLANDS (sample the GPU heightField height + only place where terrain pokes
+above the cloud deck, i.e. `terrainY > DECK_Y + margin`).
+- Build instance buffers ONCE on the CPU: scatter N candidate points over the island
+  XZ regions (the `islandLeft/Center/Near/FarRight` gaussians + macro highs); for each,
+  call `flowerCarpetField.sampleCarpet` for density (reject < threshold) + family → write
+  per-instance `aColor` (from `toFlowerColor(family)`), `aPhase`, `aScale`, position
+  (terrain height + small lift). NO per-frame rebuild (the old system's hitch source).
+- Geometry: a 2–3 quad cross-billboard (cheap) OR a tiny 5-petal fan; `MeshBasicNodeMaterial`
+  reading the shared `u`: wrapped diffuse + colored-shadow + the painterly lib, wind sway
+  via `u.uTime`/`u.uGust` (`aPhase` decorrelates), aerial-perspective to `u.uFogColor`,
+  alpha-tested petals. Per-instance `aColor` gives the yellow/pink/white field.
+- **Smart density:** concentrate flowers on island TOPS + near the camera (the key art has
+  dense foreground flowers, sparse far). Tie count to quality preset; cap ~6–14k instances.
+- Anchor count scales with island count; only the visible front islands need dense fields.
+
+## 7.2 Bird flock  ★ high impact, mostly reusable
+**Reuse:** `src/themes/himalayan-peak/rendering/peak-eagles.js` is a complete procedural
+articulated flyer (research-correct wing flap, spawn/despawn, combo-reactive via `scatter`,
+reads sun tint/warmth). Port → `sim/sky-birds.js`:
+- Recolor from dark eagle → **soft white/pale seagull** silhouettes (the Sky birds are
+  light); shrink `TARGET_SIZE`, raise count to a small **flock** (6–12) crossing together
+  with per-bird phase offset, plus a lone manta/large bird occasionally.
+- Drift slow + serene at rest; on LINE_CLEAR/COMBO the MoodDirector's `scatter`/`gust`
+  makes them wheel + a few extra spawn (already wired in peak-eagles' `update(scatter)`).
+- Keep them high (y 150–320) crossing between the peak and clouds. Emissive 0 (no bloom),
+  backlit-warm tint from `u.uSunColor` so they glow at golden hour.
+
+## 7.3 Bushes / shrubs on islands  (life + scale)
+Tiny instanced low-poly bush blobs (icosphere clusters or 2–3 stacked spheres) scattered
+on the island tops via the same anchor pass as flowers (reject on steep slopes). Dark
+sage-green, shaded with the painterly lib + rim. ~200–600 instances. Gives the islands
+silhouette interest + grounds the flowers. Share the meadow-flowers anchor sampler.
+
+## 7.4 Arch / gate structures  (Sky's iconic portals)
+The reference dots islands with **stone arches/gates** (the level "doors"). Two routes:
+- **Procedural (recommended, dependency-free):** a low-poly torii/arch built from boxes
+  (two pillars + lintel) or a half-torus arch; 3–5 placed on prominent island tops,
+  facing roughly camera-ward, scaled for the midground. Pale stone material w/ painterly
+  lib + warm rim. Cheap, full control, no asset pipeline.
+- **GLTF route:** `peak-eagles.js` shows the `GLTFLoader` + `?url` asset pattern already
+  used in-repo (e.g. `Stork.glb`) if a nicer arch model is wanted later.
+
+## 7.5 Extra floating islands  (depth + the "Sky" read)
+Beyond the terrain-poke islands, add **2–4 small detached floating islands** as standalone
+low-poly meshes (a rounded green-topped rock chunk: a flattened icosphere + a tapered
+underside) hovering in the cloud sea / low sky at varied depths, each carrying a few
+flowers/bushes (or a tiny arch). Gentle bob via `u.uTime`. This is the most "Sky" element —
+islands literally floating in cloud. Place off-center per the composition lock; aerial-
+perspective them to the shared fog so far ones fade.
+
+## 7.6 Summit beacon  (the light source)
+The peak currently emits a god-ray beam from the sun behind it. Add a real **beacon** at
+the summit: a small glowing emissive structure (a thin spire / ring of light) at the hero
+peak's apex, `emissiveNode` warm-white (bloom-eligible), pulsing subtly with `u.uTime` and
+brightening on `u.uIgnite`. This makes the beam read as *emitted by the temple* (the Sky
+"Eye/Vault of Eden" light), not just a lens artifact.
+
+## 7.7 Composition + atmosphere polish
+- **Foreground framing:** the key art frames with a denser flower/grass foreground island.
+  Once flowers land, ensure the nearest island sits low-front for a foreground band (the
+  look bible's 3 depth bands: flower foreground → cloud-sea midground → peak/sky far).
+- **Butterflies / light-spirits (optional):** a handful of larger, slower glint sprites
+  with a colored tint that drift over the flower fields (distinct from the fine glints).
+- **Cloud variety:** a couple of larger hero cloud clusters at different heights for sky
+  depth (the reference has layered clouds), plus keep the small drifting puffs.
+
+## Phasing & reuse summary
+| Element | Reuse / new | Effort | Impact |
+|---|---|---|---|
+| 7.1 Flowers | revive `sky-core-flower-carpet-field.js` + new `meadow-flowers.js` | Med | ★★★ |
+| 7.2 Birds | port `himalayan peak-eagles.js` → `sky-birds.js` | Low–Med | ★★★ |
+| 7.3 Bushes | share flower anchor pass | Low | ★★ |
+| 7.4 Arches | procedural boxes/torus | Low | ★★ |
+| 7.5 Floating islands | new low-poly meshes | Med | ★★★ |
+| 7.6 Beacon | emissive mesh on peak apex | Low | ★★ |
+| 7.7 Polish | tuning + optional sprites | Low | ★ |
+
+All new subsystems follow the established pattern: read the shared `u` uniform block
+(so they warm/cool with the MoodDirector for free), build buffers ONCE (no per-frame
+rebuild), analytic/instanced (no compute), dispose in teardown, scale by quality preset.
+
+### Recommended order
+**7.1 flowers → 7.2 birds → 7.5 floating islands → 7.3 bushes → 7.6 beacon → 7.4 arches → 7.7 polish.**
+Flowers + birds alone will close most of the "aliveness" gap to the key art.
+
+### Sources / inspiration (Phase 7)
+- *Art of Sky: Children of the Light* (GDC 2020, Y. Tanabe) — emotional time-of-day worlds,
+  light as theme: https://gdcvault.com/play/1026903/Art-of-Sky-Children-of
+- Sky environment art (R. Yoshino, ArtStation) + concept refs — island/flower/arch staging.
+- In-repo reuse: `shared/sky-core/sky-core-flower-carpet-field.js` (flower oracle),
+  `himalayan-peak/rendering/peak-eagles.js` (procedural flyer), instancing in
+  `sky-core-vegetation.js`.

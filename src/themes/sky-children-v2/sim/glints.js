@@ -4,107 +4,100 @@
  *
  * A field of fine pollen / light motes drifting on the wind over the meadow,
  * catching the low golden-hour sun and twinkling — the look bible's "selective,
- * stable glitter/spark accents" (anchor #5), and the bit of life the disabled
- * legacy vegetation used to (badly) provide.
+ * stable glitter/spark accents" (anchor #5).
  *
- * Driven analytically from per-point attributes in the vertex shader (no compute):
- * a horizontal wind flow that WRAPS across the volume, a gentle bob, and a stable
- * twinkle (no random strobe). Wind speed + field density ramp with the shared
- * uGust, so the air comes alive on combos. Reads the orchestrator's shared
- * uniform block (uTime/uGust/uSunColor) — no per-frame JS update needed.
+ * Rendered as camera-facing BILLBOARD QUADS (not PointsNodeMaterial): point
+ * sprites need `gl_PointCoord` (`pointUV`), which is invalid WGSL on this
+ * WebGPU/ANGLE-D3D11 backend, and `uv()` collapses the round mask to 0. Each
+ * quad billboards via the camera basis (cameraViewMatrix columns) and gets its
+ * round mask from the corner position — no point-sprite coord needed.
  *
- * Ported from himalayan-peak/sim/spindrift.js. See docs/SKY_CHILDREN_V2_AAA_PLAN.md §4.
+ * Analytic motion (no compute): a horizontal wind flow that WRAPS across the
+ * volume + a gentle bob + a stable twinkle. Reads the shared `u` block.
  */
 import * as THREE from 'three';
-import { PointsNodeMaterial } from 'three/webgpu';
+import { MeshBasicNodeMaterial } from 'three/webgpu';
 import {
-    Fn,
-    attribute,
-    clamp,
-    float,
-    length,
-    mod,
-    positionLocal,
-    positionView,
-    sin,
-    smoothstep,
-    uv,
-    vec3,
+    Fn, attribute, cameraViewMatrix, float, length, mod, positionLocal, sin, smoothstep, vec3,
 } from 'three/tsl';
 
 const SPAN_X = 980; // horizontal wrap span
+const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
 
-/**
- * @param {object} u    shared uniform block (uTime, uGust, uSunColor)
- * @param {object} opts { count }
- */
 export function createGlints(u, opts = {}) {
     const count = Math.max(60, Math.floor(opts.count ?? 600));
-    const positions = new Float32Array(count * 3);
-    const rands = new Float32Array(count * 3);
-    const sizes = new Float32Array(count);
+    const positions = []; // corner (x,y) packed in position.xy, z=0
+    const bases = [];
+    const rands = [];
+    const sizes = [];
+    const indices = [];
 
     for (let i = 0; i < count; i += 1) {
-        positions[i * 3 + 0] = (Math.random() - 0.5) * SPAN_X;
-        positions[i * 3 + 1] = 2 + Math.random() * 58; // low air over the meadow
-        positions[i * 3 + 2] = -440 + Math.random() * 600; // -440 .. 160
-        rands[i * 3 + 0] = Math.random();
-        rands[i * 3 + 1] = Math.random();
-        rands[i * 3 + 2] = Math.random();
-        sizes[i] = 0.5 + Math.random() * 1.2;
+        const bx = (Math.random() - 0.5) * SPAN_X;
+        const by = 2 + Math.random() * 58;
+        const bz = -440 + Math.random() * 600;
+        const r0 = Math.random();
+        const r1 = Math.random();
+        const r2 = Math.random();
+        const s = 0.7 + Math.random() * 1.7; // world-space half-size
+        const base = positions.length / 3;
+        for (let c = 0; c < 4; c += 1) {
+            positions.push(CORNERS[c][0], CORNERS[c][1], 0);
+            bases.push(bx, by, bz);
+            rands.push(r0, r1, r2);
+            sizes.push(s);
+        }
+        indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
     }
 
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('aRand', new THREE.BufferAttribute(rands, 3));
-    geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('aBase', new THREE.Float32BufferAttribute(bases, 3));
+    geometry.setAttribute('aRand', new THREE.Float32BufferAttribute(rands, 3));
+    geometry.setAttribute('aSize', new THREE.Float32BufferAttribute(sizes, 1));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals(); // MeshBasicNodeMaterial references `normal` → avoid per-frame "normal not found" rebuild
+    geometry.frustumCulled = false;
 
-    const material = new PointsNodeMaterial();
-    material.transparent = true;
+    const material = new MeshBasicNodeMaterial({ side: THREE.DoubleSide, transparent: true, fog: false });
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
 
+    const aBase = attribute('aBase');
     const aRand = attribute('aRand');
     const aSize = attribute('aSize');
     const phase = aRand.x.mul(6.2831);
-
-    // Wind speed ramps with gust; the field also drifts a little on its own.
     const windSpeed = float(4.0).add(u.uGust.mul(34.0));
 
     material.positionNode = Fn(() => {
-        const base = positionLocal.toVar();
-        // Horizontal flow, wrapped across the span (continuous drift).
+        const corner = positionLocal.xy;
         const wx = mod(
-            base.x.add(u.uTime.mul(windSpeed)).add(aRand.x.mul(SPAN_X)).add(SPAN_X * 0.5),
+            aBase.x.add(u.uTime.mul(windSpeed)).add(aRand.x.mul(SPAN_X)).add(SPAN_X * 0.5),
             float(SPAN_X),
         ).sub(SPAN_X * 0.5);
-        const wy = base.y.add(sin(u.uTime.mul(0.5).add(phase)).mul(3.5))
+        const wy = aBase.y.add(sin(u.uTime.mul(0.5).add(phase)).mul(3.5))
             .add(sin(u.uTime.mul(0.21).add(phase.mul(1.7))).mul(2.2));
-        const wz = base.z.add(sin(u.uTime.mul(0.32).add(phase.mul(1.3))).mul(6.0));
-        return vec3(wx, wy, wz);
+        const wz = aBase.z.add(sin(u.uTime.mul(0.32).add(phase.mul(1.3))).mul(6.0));
+        const anchor = vec3(wx, wy, wz);
+        // Camera-facing billboard via the view-matrix basis (no gl_PointCoord).
+        const right = vec3(cameraViewMatrix.element(0).x, cameraViewMatrix.element(1).x, cameraViewMatrix.element(2).x);
+        const up = vec3(cameraViewMatrix.element(0).y, cameraViewMatrix.element(1).y, cameraViewMatrix.element(2).y);
+        const sz = aSize.mul(float(1.0).add(u.uGust.mul(0.5)));
+        return anchor.add(right.mul(corner.x.mul(sz))).add(up.mul(corner.y.mul(sz)));
     })();
 
-    // Warm motes catching the low sun; stable twinkle (gentle, never strobe).
     const twinkle = float(0.6).add(sin(u.uTime.mul(2.4).add(phase.mul(7.0))).mul(0.4));
     material.colorNode = vec3(1.0, 0.95, 0.82).mul(u.uSunColor).mul(twinkle);
 
-    // Soft round sprite — in WebGPU PointsNodeMaterial, uv() gives the
-    // per-fragment point sprite coordinate (whereas pointUV is buggy).
-    const coord = uv().sub(0.5);
-    const r = length(coord).mul(2.0);
-    const mask = float(1.0).sub(smoothstep(float(0.15), float(1.0), r));
-
-    // Fade far motes; ramp the whole field's presence with gust. Subtle at rest.
-    const depthFade = clamp(float(1.0).add(positionView.z.mul(0.0016)), float(0.2), float(1.0));
+    // Round soft mask from the quad corner (−1..1) → no point-sprite coord needed.
+    const r = length(positionLocal.xy);
+    const mask = float(1.0).sub(smoothstep(float(0.1), float(1.0), r));
     const fieldAlpha = float(0.12).add(u.uGust.mul(0.34));
-    material.opacityNode = mask.mul(twinkle).mul(depthFade).mul(fieldAlpha);
-    material.sizeNode = aSize.mul(float(1.0).add(u.uGust.mul(0.5)))
-        .mul(float(300.0).div(positionView.z.negate()));
-    // Subtle emissive (feeds bloom only when MRT selective bloom is enabled).
+    material.opacityNode = mask.mul(twinkle).mul(fieldAlpha);
     material.emissiveNode = vec3(0.5, 0.47, 0.4).mul(mask).mul(0.3);
-    material.userData.emitsBloom = true;
+    material.userData.emitsBloom = false;
 
-    const mesh = new THREE.Points(geometry, material);
+    const mesh = new THREE.Mesh(geometry, material);
     mesh.frustumCulled = false;
     mesh.renderOrder = 3;
 

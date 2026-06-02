@@ -1,0 +1,733 @@
+/* =================================================================================
+ * COSMIC SERENITY — Lobby Waiting Room redesign (online multiplayer)
+ * ---------------------------------------------------------------------------------
+ * Loaded AFTER multiplayer-ui.css + lobby-styles.css. Scoped to `#lobby-waiting-room`
+ * so the LIVE in-game `.online-game-area` HUD is NOT affected (Phase 5 handles that).
+ * Accent = TEAL. Phase 2 = shell + left match-settings panel + header + room code +
+ * right-panel chrome (activity log + chat) + footer actions. Player-card internals,
+ * ready-progress and empty slots are Phase 3.
+ * ============================================================================== */
+
+#lobby-waiting-room {
+    --cs-accent: var(--cs-teal);
+    --cs-accent-rgb: var(--cs-teal-rgb);
+    --cs-accent-2: var(--cs-cyan);
+}
+
+/* ---- Shell ---------------------------------------------------------------- */
+#lobby-waiting-room.online-game-area.lobby-mode {
+    background:
+        radial-gradient(90% 60% at 50% -8%, rgba(var(--cs-accent-rgb), 0.07), transparent 60%),
+        radial-gradient(70% 60% at 8% 0%, rgba(114, 137, 255, 0.06), transparent 60%),
+        linear-gradient(180deg, rgba(11, 14, 26, 0.96), rgba(7, 8, 16, 0.97));
+    backdrop-filter: blur(20px) saturate(125%);
+    -webkit-backdrop-filter: blur(20px) saturate(125%);
+}
+
+/* ---- Left panel: lobby info + match settings ------------------------------ */
+#lobby-waiting-room .lobby-left-panel {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.022), rgba(8, 10, 23, 0.5));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+    border-radius: 16px;
+}
+
+#lobby-waiting-room .watch-controls {
+    border-bottom: 1px solid rgba(var(--cs-accent-rgb), 0.14);
+    background:
+        radial-gradient(70% 150% at 12% 0%, rgba(var(--cs-accent-rgb), 0.10), transparent 58%),
+        linear-gradient(180deg, rgba(6, 9, 22, 0.4), transparent);
+    padding: 16px 18px;
+}
+
+#lobby-waiting-room #room-name {
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background: linear-gradient(100deg, #d9fff6 0%, var(--cs-accent) 40%, var(--cs-accent-2) 70%, #f1f7ff 100%);
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    filter: drop-shadow(0 0 14px rgba(var(--cs-accent-rgb), 0.28));
+    animation: cs-shimmer 8s ease-in-out infinite;
+}
+
+/* (shimmer keyframe consolidated into cosmic-tokens.css → cs-shimmer) */
+
+/* Match settings → cosmic glass cards */
+#lobby-waiting-room .match-info-panel {
+    background: transparent;
+    border: none;
+}
+
+#lobby-waiting-room .match-info-panel h3 {
+    color: var(--cs-accent);
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 0.12em;
+}
+
+#lobby-waiting-room .info-item {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(8, 10, 23, 0.45));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+    border-radius: 12px;
+    padding: 12px 14px;
+}
+
+#lobby-waiting-room .info-label {
+    color: rgba(211, 219, 245, 0.55);
+    opacity: 1;
+}
+
+#lobby-waiting-room .info-value {
+    color: #eef3ff;
+}
+
+/* Room code + invite */
+#lobby-waiting-room .lobby-controls {
+    background: rgba(6, 8, 18, 0.30);
+    border-top: 1px solid rgba(var(--cs-accent-rgb), 0.14);
+}
+
+#lobby-waiting-room .room-code-display {
+    background: rgba(8, 10, 23, 0.55) !important;
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.28) !important;
+}
+
+#lobby-waiting-room #lobby-id-display {
+    color: var(--cs-accent) !important;
+}
+
+#lobby-waiting-room #invite-friends-btn {
+    background: linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.14), rgba(8, 10, 23, 0.5));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.40);
+    color: #eef3ff;
+}
+
+#lobby-waiting-room #invite-friends-btn:hover {
+    border-color: rgba(var(--cs-accent-rgb), 0.65);
+    background: rgba(var(--cs-accent-rgb), 0.12);
+    box-shadow: 0 0 18px rgba(var(--cs-accent-rgb), 0.22);
+}
+
+/* Leave (close) → glass red tile */
+#lobby-waiting-room #leave-lobby-btn {
+    border-radius: 10px;
+    background:
+        linear-gradient(180deg, rgba(255, 118, 118, 0.15), rgba(255, 80, 80, 0.08)),
+        rgba(8, 10, 23, 0.46);
+    border: 1px solid rgba(255, 118, 118, 0.40);
+    color: #ffb6b6;
+}
+
+#lobby-waiting-room #leave-lobby-btn:hover {
+    background:
+        linear-gradient(180deg, rgba(255, 118, 118, 0.28), rgba(255, 80, 80, 0.15)),
+        rgba(8, 10, 23, 0.62);
+    border-color: rgba(255, 148, 148, 0.74);
+    color: #ffd4d4;
+    transform: rotate(90deg) scale(1.06);
+}
+
+/* ---- Center: header + player count + legend + grid ------------------------ */
+#lobby-waiting-room .player-count-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 12px;
+    border-radius: 999px;
+    background: rgba(var(--cs-accent-rgb), 0.12);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.30);
+    color: var(--cs-accent);
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+#lobby-waiting-room .ready-legend {
+    color: rgba(211, 219, 245, 0.55);
+}
+
+#lobby-waiting-room .ready-indicator.ready {
+    color: var(--cs-accent);
+}
+
+#lobby-waiting-room .ready-indicator.not-ready {
+    color: #fcd17a;
+}
+
+#lobby-waiting-room .lobby-player-grid {
+    background: rgba(6, 8, 18, 0.30);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.14);
+    border-radius: 16px;
+}
+
+#lobby-waiting-room .lobby-player-grid::-webkit-scrollbar-thumb {
+    background: rgba(var(--cs-accent-rgb), 0.5);
+}
+
+/* ---- Center footer + action buttons --------------------------------------- */
+#lobby-waiting-room .waiting-indicator {
+    color: rgba(211, 219, 245, 0.55);
+}
+
+/* READY UP = gold (not ready) → teal-green (ready); START = teal CTA */
+#lobby-waiting-room .lobby-action-buttons .btn-ready {
+    background: linear-gradient(135deg, #fcd17a, #ffb75e);
+    color: #1a1206;
+}
+
+#lobby-waiting-room .lobby-action-buttons .btn-ready.ready {
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    color: #08201c;
+}
+
+#lobby-waiting-room .lobby-action-buttons .btn-start {
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    color: #08201c;
+    box-shadow: 0 4px 20px rgba(var(--cs-accent-rgb), 0.30);
+}
+
+#lobby-waiting-room .lobby-action-buttons button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(var(--cs-accent-rgb), 0.30);
+}
+
+/* ---- Right panel: activity log + chat ------------------------------------- */
+#lobby-waiting-room .online-kill-feed {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.022), rgba(8, 10, 23, 0.5));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+    border-radius: 16px;
+}
+
+#lobby-waiting-room .kill-feed-header {
+    color: var(--cs-accent);
+    border-bottom: 1px solid rgba(var(--cs-accent-rgb), 0.14);
+}
+
+#lobby-waiting-room .online-chat {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.022), rgba(8, 10, 23, 0.5));
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+#lobby-waiting-room .system-message {
+    color: rgba(var(--cs-accent-rgb), 0.9);
+}
+
+#lobby-waiting-room .chat-input-row {
+    background: rgba(6, 8, 18, 0.4) !important;
+    border-top: 1px solid rgba(var(--cs-accent-rgb), 0.12);
+}
+
+#lobby-waiting-room #lobby-chat-input {
+    background: rgba(12, 15, 30, 0.6);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.20);
+    color: #eef3ff;
+    border-radius: 9px;
+    padding: 8px 10px;
+}
+
+#lobby-waiting-room #lobby-chat-input:focus {
+    outline: none;
+    border-color: rgba(var(--cs-accent-rgb), 0.85);
+    box-shadow: 0 0 0 3px rgba(var(--cs-accent-rgb), 0.18);
+}
+
+#lobby-waiting-room #lobby-chat-send {
+    background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
+    color: #08201c;
+    border-radius: 9px;
+    font-weight: 700;
+}
+
+#lobby-waiting-room #lobby-chat-send:hover {
+    box-shadow: 0 0 16px rgba(var(--cs-accent-rgb), 0.4);
+}
+
+/* =================================================================================
+ * PHASE 3 — Player grid UX: ready-progress, cosmic player cards, empty slots
+ * ============================================================================== */
+
+/* ---- Ready-progress bar ---------------------------------------------------- */
+#lobby-waiting-room .lobby-ready-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 14px;
+    padding: 0 2px;
+}
+
+#lobby-waiting-room .ready-progress-track {
+    flex: 1;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.16);
+    overflow: hidden;
+}
+
+#lobby-waiting-room .ready-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #fcd17a, var(--cs-accent));
+    box-shadow: 0 0 12px rgba(var(--cs-accent-rgb), 0.40);
+    transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#lobby-waiting-room .ready-progress-fill.all-ready {
+    background: linear-gradient(90deg, var(--cs-accent), var(--cs-accent-2));
+}
+
+#lobby-waiting-room .ready-progress-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: rgba(211, 219, 245, 0.60);
+    white-space: nowrap;
+}
+
+/* ---- Player cards: cosmic glass keeping each player's neon as the accent --- */
+#lobby-waiting-room .lobby-player-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 20px;
+    border-radius: 14px;
+    overflow: hidden;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(10, 13, 27, 0.55));
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.12);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+#lobby-waiting-room .lobby-player-card .player-color-strip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--player-color, #808080);
+    box-shadow: 0 0 12px var(--player-color, #808080);
+}
+
+#lobby-waiting-room .lobby-player-card:hover {
+    transform: translateY(-2px);
+    box-shadow:
+        0 10px 24px rgba(0, 0, 0, 0.34),
+        0 0 22px rgba(var(--cs-accent-rgb), 0.14);
+}
+
+/* Local player gets a subtle accent frame; ready players get a teal glow */
+#lobby-waiting-room .lobby-player-card.local {
+    border-color: rgba(var(--cs-accent-rgb), 0.40);
+}
+
+#lobby-waiting-room .lobby-player-card.ready {
+    border-color: rgba(var(--cs-accent-rgb), 0.50);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 0 22px rgba(var(--cs-accent-rgb), 0.16);
+}
+
+#lobby-waiting-room .lobby-player-card .player-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: #eef3ff;
+    margin-top: 4px;
+}
+
+#lobby-waiting-room .lobby-player-card .player-status {
+    font-size: 12px;
+    color: rgba(211, 219, 245, 0.55);
+}
+
+#lobby-waiting-room .lobby-player-card .player-ready-badge {
+    margin-top: 6px;
+    padding: 4px 14px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+
+#lobby-waiting-room .lobby-player-card.ready .player-ready-badge {
+    background: rgba(var(--cs-accent-rgb), 0.15);
+    color: var(--cs-accent);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.40);
+}
+
+#lobby-waiting-room .lobby-player-card.not-ready .player-ready-badge {
+    background: rgba(252, 209, 122, 0.12);
+    color: #fcd17a;
+    border: 1px solid rgba(252, 209, 122, 0.40);
+}
+
+/* ---- Empty "Waiting…" ghost slots ----------------------------------------- */
+#lobby-waiting-room .lobby-player-card.empty-slot {
+    justify-content: center;
+    min-height: 184px;
+    background: rgba(8, 10, 23, 0.30);
+    border: 1px dashed rgba(var(--cs-soft-rgb), 0.18);
+    box-shadow: none;
+}
+
+#lobby-waiting-room .lobby-player-card.empty-slot:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+#lobby-waiting-room .empty-slot-icon {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    font-weight: 300;
+    color: rgba(var(--cs-accent-rgb), 0.45);
+    border: 1px dashed rgba(var(--cs-accent-rgb), 0.30);
+}
+
+#lobby-waiting-room .empty-slot-label {
+    font-size: 12px;
+    color: rgba(211, 219, 245, 0.40);
+}
+
+/* =================================================================================
+ * PHASE 4 — Activity Log + Chat
+ * ============================================================================== */
+
+/* ---- Activity log feed (join / leave / ready) ----------------------------- */
+#lobby-waiting-room #activity-log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 6px;
+}
+
+#lobby-waiting-room .activity-log-entry {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 10px;
+    border-radius: 9px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: rgba(211, 219, 245, 0.78);
+}
+
+#lobby-waiting-room .activity-log-entry + .activity-log-entry {
+    border-top: 1px solid rgba(var(--cs-soft-rgb), 0.06);
+}
+
+#lobby-waiting-room .activity-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: rgba(211, 219, 245, 0.40);
+}
+
+#lobby-waiting-room .activity-join .activity-dot,
+#lobby-waiting-room .activity-ready .activity-dot {
+    background: var(--cs-accent);
+    box-shadow: 0 0 8px rgba(var(--cs-accent-rgb), 0.6);
+}
+
+#lobby-waiting-room .activity-leave .activity-dot {
+    background: #ff8a8a;
+}
+
+#lobby-waiting-room .activity-unready .activity-dot {
+    background: #fcd17a;
+}
+
+#lobby-waiting-room .activity-text {
+    flex: 1;
+    min-width: 0;
+}
+
+#lobby-waiting-room .activity-time {
+    flex-shrink: 0;
+    margin-left: auto;
+    padding-left: 10px;
+    font-size: 10px;
+    white-space: nowrap;
+    color: rgba(211, 219, 245, 0.35);
+}
+
+#lobby-waiting-room .activity-log-entry {
+    align-items: baseline;
+}
+
+#lobby-waiting-room .activity-dot {
+    align-self: center;
+}
+
+/* ---- Chat messages -------------------------------------------------------- */
+#lobby-waiting-room .chat-messages .system-message {
+    color: rgba(var(--cs-accent-rgb), 0.85);
+    font-size: 12px;
+    font-style: italic;
+    padding: 4px 2px;
+}
+
+#lobby-waiting-room .chat-messages .player-message {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 2px;
+    font-size: 13px;
+    color: #e8edff;
+}
+
+#lobby-waiting-room .chat-messages .color-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    align-self: center;
+}
+
+#lobby-waiting-room .chat-messages .author {
+    font-weight: 700;
+}
+
+#lobby-waiting-room .chat-messages .text {
+    color: rgba(232, 237, 255, 0.85);
+    word-break: break-word;
+}
+
+/* =================================================================================
+ * LAYOUT — fit the lobby in the viewport, footer (START MATCH) ALWAYS visible.
+ * ROOT CAUSE: the centre column reuses `.main-board-panel`, which sets
+ * `margin: auto 0; width: max-content; flex-direction: row` (sizes-to-content +
+ * vertical-centre). That disables the grid stretch, so the column grew past the
+ * screen and pushed the footer off. We neutralise it, cap the grid row with
+ * `minmax(0,1fr)`, and let ONLY the player grid scroll.
+ * ============================================================================== */
+#lobby-waiting-room.online-game-area.lobby-mode {
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+}
+
+#lobby-waiting-room .lobby-center-panel {
+    margin: 0 !important;
+    width: auto !important;
+    height: 100% !important;
+    min-height: 0;
+    max-height: 100%;
+    align-self: stretch;
+    overflow: hidden;
+    padding: 0 20px;
+}
+
+#lobby-waiting-room .lobby-center-header,
+#lobby-waiting-room .lobby-ready-progress,
+#lobby-waiting-room .lobby-center-footer {
+    flex-shrink: 0;
+}
+
+#lobby-waiting-room .lobby-center-footer {
+    padding: 14px 16px 18px;
+}
+
+#lobby-waiting-room .lobby-player-grid {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+    padding: 14px;
+    align-content: safe center;
+}
+
+/* Compact, high-contrast player cards */
+#lobby-waiting-room .lobby-player-card {
+    padding: 14px 12px;
+    gap: 6px;
+    min-height: 0;
+}
+
+#lobby-waiting-room .lobby-player-card .player-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffffff;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#lobby-waiting-room .lobby-player-card .player-status {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(211, 219, 245, 0.66);
+}
+
+#lobby-waiting-room .lobby-player-card .player-ready-badge {
+    margin-top: 2px;
+    padding: 3px 12px;
+    font-size: 10px;
+}
+
+#lobby-waiting-room .lobby-player-card.empty-slot {
+    min-height: 132px;
+}
+
+/* ---- Contrast: brighten the dim labels ------------------------------------ */
+#lobby-waiting-room .info-label {
+    color: rgba(211, 219, 245, 0.72);
+}
+
+#lobby-waiting-room .ready-legend {
+    color: rgba(211, 219, 245, 0.72);
+}
+
+#lobby-waiting-room #activity-log-list .activity-text {
+    color: rgba(232, 237, 255, 0.90);
+}
+
+/* Left panel: keep settings scrollable and pin the room-code/invite to the bottom */
+#lobby-waiting-room .lobby-left-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#lobby-waiting-room .match-info-panel {
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* =================================================================================
+ * POLISH — objective callout, copy-able Lobby ID, "YOU" highlight
+ * ============================================================================== */
+
+/* Win-objective summary callout (fills the left-panel space + sets the goal) */
+#lobby-waiting-room .lobby-objective {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border-radius: 11px;
+    background:
+        radial-gradient(120% 120% at 0% 0%, rgba(var(--cs-accent-rgb), 0.12), transparent 60%),
+        rgba(8, 10, 23, 0.45);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.28);
+    color: #eef3ff;
+    font-family: 'Space Mono', monospace;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+#lobby-waiting-room .lobby-objective:empty {
+    display: none;
+}
+
+/* Lobby ID block + copy button */
+#lobby-waiting-room .room-code-display {
+    padding: 10px 12px !important;
+    border-radius: 12px !important;
+    text-align: left !important;
+}
+
+#lobby-waiting-room .room-code-label {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(211, 219, 245, 0.55);
+}
+
+#lobby-waiting-room .room-code-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+#lobby-waiting-room .room-code-value {
+    flex: 1;
+    min-width: 0;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    color: var(--cs-accent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#lobby-waiting-room .lobby-copy-btn {
+    position: relative;
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: rgba(var(--cs-accent-rgb), 0.12);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.32);
+    color: var(--cs-accent);
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease, color 0.2s ease;
+}
+
+#lobby-waiting-room .lobby-copy-btn:hover {
+    background: rgba(var(--cs-accent-rgb), 0.22);
+    border-color: rgba(var(--cs-accent-rgb), 0.6);
+    transform: scale(1.06);
+}
+
+#lobby-waiting-room .lobby-copy-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(var(--cs-accent-rgb), 0.9), 0 0 0 5px rgba(var(--cs-accent-rgb), 0.18);
+}
+
+#lobby-waiting-room .lobby-copy-btn.copied {
+    background: rgba(var(--cs-accent-rgb), 0.30);
+    border-color: var(--cs-accent);
+    color: #ffffff;
+}
+
+#lobby-waiting-room .lobby-copy-btn.copied::after {
+    content: 'Copied';
+    position: absolute;
+    transform: translateY(-26px);
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--cs-accent);
+    white-space: nowrap;
+}
+
+/* "YOU" — make the local player's card unmistakable */
+#lobby-waiting-room .lobby-player-card.local {
+    border-color: rgba(var(--cs-accent-rgb), 0.60);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 0 0 1px rgba(var(--cs-accent-rgb), 0.40),
+        0 0 24px rgba(var(--cs-accent-rgb), 0.20);
+}
+
+#lobby-waiting-room .lobby-player-card.local .player-status {
+    color: var(--cs-accent);
+    font-weight: 700;
+}
+
+/* ---- Accessibility: honour reduced-motion --------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    #lobby-waiting-room #room-name {
+        animation: none !important;
+    }
+
+    #lobby-waiting-room .lobby-player-card,
+    #lobby-waiting-room .lobby-player-card:hover,
+    #lobby-waiting-room .ready-progress-fill {
+        transition: none !important;
+        transform: none !important;
+    }
+}

@@ -148,7 +148,7 @@ export class LocalMatchConfigModal {
                 <small class="form-help">Allies share frags and do not attack each other</small>
             </div>
 
-            <div id="team-selection-area" class="team-selection-area hidden" style="margin-top: 20px; padding-top: 20px; border-top: 2px solid rgba(139, 92, 246, 0.3);">
+            <div id="team-selection-area" class="team-selection-area hidden" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(150, 180, 255, 0.2);">
                 <div class="form-group" style="margin-bottom: 15px;">
                     <label>Team Assignments</label>
                 </div>
