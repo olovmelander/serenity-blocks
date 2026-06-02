@@ -6,46 +6,46 @@
  * ============================================================================== */
 
 #settings-modal {
-    --cs-accent: #7fdcff;
-    --cs-accent-rgb: 127, 220, 255;
-    --cs-accent-2: #8ea2ff;
+    --cs-accent: var(--cs-cyan);
+    --cs-accent-rgb: var(--cs-cyan-rgb);
+    --cs-accent-2: var(--cs-indigo);
     --cs-panel: rgba(10, 13, 27, 0.78);
     --cs-panel-2: rgba(18, 22, 41, 0.74);
     --cs-panel-3: rgba(24, 30, 52, 0.74);
-    --cs-border: rgba(150, 180, 255, 0.18);
+    --cs-border: rgba(var(--cs-soft-rgb), 0.18);
     --cs-muted: rgba(211, 219, 245, 0.66);
     --cs-text: #e8edff;
     --cs-shadow: rgba(0, 0, 0, 0.56);
 }
 
 #settings-modal:has(.settings-tab[data-tab="general"].active) {
-    --cs-accent: #7fdcff;
-    --cs-accent-rgb: 127, 220, 255;
-    --cs-accent-2: #8ea2ff;
+    --cs-accent: var(--cs-cyan);
+    --cs-accent-rgb: var(--cs-cyan-rgb);
+    --cs-accent-2: var(--cs-indigo);
 }
 
 #settings-modal:has(.settings-tab[data-tab="display"].active) {
-    --cs-accent: #8ea2ff;
-    --cs-accent-rgb: 142, 162, 255;
-    --cs-accent-2: #7fdcff;
+    --cs-accent: var(--cs-indigo);
+    --cs-accent-rgb: var(--cs-indigo-rgb);
+    --cs-accent-2: var(--cs-cyan);
 }
 
 #settings-modal:has(.settings-tab[data-tab="audio"].active) {
-    --cs-accent: #5eead4;
-    --cs-accent-rgb: 94, 234, 212;
-    --cs-accent-2: #7fdcff;
+    --cs-accent: var(--cs-teal);
+    --cs-accent-rgb: var(--cs-teal-rgb);
+    --cs-accent-2: var(--cs-cyan);
 }
 
 #settings-modal:has(.settings-tab[data-tab="visual"].active) {
-    --cs-accent: #ff9ecd;
-    --cs-accent-rgb: 255, 158, 205;
-    --cs-accent-2: #8ea2ff;
+    --cs-accent: var(--cs-pink);
+    --cs-accent-rgb: var(--cs-pink-rgb);
+    --cs-accent-2: var(--cs-indigo);
 }
 
 #settings-modal:has(.settings-tab[data-tab="controls"].active) {
-    --cs-accent: #fcd17a;
-    --cs-accent-rgb: 252, 209, 122;
-    --cs-accent-2: #8ea2ff;
+    --cs-accent: var(--cs-gold);
+    --cs-accent-rgb: var(--cs-gold-rgb);
+    --cs-accent-2: var(--cs-indigo);
 }
 
 #settings-modal .modal-content {
@@ -414,7 +414,7 @@ body.electron-app #settings-modal .modal-content {
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025)),
         var(--cs-panel-2);
-    border: 1px solid rgba(150, 180, 255, 0.18);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.18);
     border-radius: 11px;
     color: #eef3ff;
     box-shadow:
@@ -621,7 +621,7 @@ body.electron-app #settings-modal .modal-content {
     background:
         linear-gradient(90deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012)),
         rgba(10, 13, 27, 0.42);
-    border-color: rgba(150, 180, 255, 0.11);
+    border-color: rgba(var(--cs-soft-rgb), 0.11);
     color: rgba(224, 231, 255, 0.70);
 }
 
@@ -841,7 +841,7 @@ body.electron-app #settings-modal .modal-content {
 
 /* Hairline divider between stacked rows inside a section */
 #settings-modal .settings-section .setting + .setting {
-    border-top: 1px solid rgba(150, 180, 255, 0.07);
+    border-top: 1px solid rgba(var(--cs-soft-rgb), 0.07);
     border-radius: 0;
 }
 
@@ -908,7 +908,7 @@ body.electron-app #settings-modal .modal-content {
     height: 28px;
     flex-shrink: 0;
     border-radius: 999px;
-    border: 1px solid rgba(150, 180, 255, 0.20);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.20);
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.18)),
         rgba(8, 10, 23, 0.55);

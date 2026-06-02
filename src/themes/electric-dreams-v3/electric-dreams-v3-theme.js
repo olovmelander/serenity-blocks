@@ -33,22 +33,17 @@ import { FluidParticleSim, getFluidBudget } from './sim/fluid-particles.js';
 import { FluidEmitters } from './sim/fluid-emitters.js';
 import { SHAPE_NAMES } from './sim/shape-formations.js';
 
-// ─── Shape pools per event type ───
-// Each pool groups shapes that fit the *energy* of an event. A small line clear
-// gets calm shapes; a 7+ combo gets dramatic ones. Random selection within each
-// pool keeps gameplay surprising — no two consecutive picks are the same shape.
-const SHAPE_POOLS = Object.freeze({
-    // 3-line clear — calm geometric. Soft signal "you cleared lines."
-    triple: Object.freeze(['ring', 'hexagon', 'sunflower']),
-    // Tetris (4-line) — game-themed geometric solids. Reads as "BOSS MOVE."
-    tetris: Object.freeze(['cube', 'octahedron', 'pyramid', 'tetromino']),
-    // Mid-combo (4-6) — interesting mid-complexity shapes.
-    comboMid: Object.freeze([
-        'helix', 'star', 'butterfly', 'infinity', 'trefoil', 'wavySphere', 'hexagon',
-    ]),
-    // High combo (7+) — dramatic, large, full-screen shapes.
-    comboBig: Object.freeze(['galaxy', 'sunflower', 'vortex', 'torus', 'trefoil']),
-});
+// ─── Master shape pool (single, randomized) ───
+// All visual shapes go here. Every game event rolls from this same pool — the
+// event's role is to control STRENGTH and DURATION, not which shape appears.
+// 'free' is excluded (it's the no-attraction state, not a shape).
+// 'heart' is excluded from the random pool because it's reserved for game over
+// as a deliberate emotional anchor (always heart on game over, never random).
+const RANDOM_SHAPE_POOL = Object.freeze([
+    'sphere', 'torus', 'helix', 'galaxy', 'cube', 'star', 'wave', 'butterfly',
+    'ring', 'tetromino', 'pyramid', 'octahedron', 'hexagon', 'sunflower',
+    'infinity', 'trefoil', 'vortex', 'wavySphere',
+]);
 
 const QUALITY_PRESETS = Object.freeze({
     Minimal: {
@@ -125,15 +120,10 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
             vignettePunch: 0,
         };
 
-        // Per-pool memory of last-picked shape — used by _pickRandomFromPool
-        // to avoid repeating the same shape on back-to-back events of the
-        // same type. Keys match SHAPE_POOLS keys.
-        this._lastPicks = {
-            triple: null,
-            tetris: null,
-            comboMid: null,
-            comboBig: null,
-        };
+        // Memory of last-picked shape — anti-repeat across the unified pool.
+        // Prevents the same shape from appearing twice in a row regardless
+        // of which event triggered it.
+        this._lastShapePick = null;
 
         // Reused dynamic-params payload — avoid per-frame allocation
         this._dynPostParams = {
@@ -349,15 +339,14 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
         this.fxState.comboPulse = Math.min(1.0, this.fxState.comboPulse + lineCount * 0.12);
         if (lineCount >= 4) {
             this.cameraDirector?.dolly(0.18);
-            // Tetris! Random geometric solid (cube / octahedron / pyramid /
-            // tetromino). Held ~2.5s. Shapes use their own defaults — no opts
-            // override — so the random pick fully drives the look.
-            const shape = this._pickRandomFromPool('tetris');
-            if (shape) this._triggerShape(shape, {}, 0.55, 2500);
+            // Tetris — random shape from the unified pool, held 4.5s crisp.
+            // Event controls strength/duration; the shape itself is fully random.
+            const shape = this._pickRandomShape();
+            if (shape) this._triggerShape(shape, {}, 0.7, 4500);
         } else if (lineCount === 3) {
-            // Triple — random calm shape (ring / hexagon / sunflower).
-            const shape = this._pickRandomFromPool('triple');
-            if (shape) this._triggerShape(shape, {}, 0.35, 1500);
+            // Triple — random shape, gentler strength + shorter duration.
+            const shape = this._pickRandomShape();
+            if (shape) this._triggerShape(shape, {}, 0.5, 2800);
         }
     }
 
@@ -367,16 +356,14 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
         this.fxState.rewardPulse = Math.min(1.0, this.fxState.rewardPulse + 0.15 + c * 0.05);
         if (c >= 7) {
             this.cameraDirector?.vertigo(0.8);
-            // Big combo — random dramatic shape (galaxy / sunflower / vortex /
-            // torus / trefoil). Strong pull (0.7), held 3s.
-            const shape = this._pickRandomFromPool('comboBig');
-            if (shape) this._triggerShape(shape, {}, 0.7, 3000);
+            // Big combo — random shape, strongest pull + longest hold (5s).
+            const shape = this._pickRandomShape();
+            if (shape) this._triggerShape(shape, {}, 0.85, 5000);
         } else if (c >= 4) {
             this.cameraDirector?.dolly(0.12);
-            // Mid-combo — random medium-complexity shape (helix / star /
-            // butterfly / infinity / trefoil / wavySphere / hexagon).
-            const shape = this._pickRandomFromPool('comboMid');
-            if (shape) this._triggerShape(shape, {}, 0.4, 1500);
+            // Mid-combo — random shape, medium strength + duration.
+            const shape = this._pickRandomShape();
+            if (shape) this._triggerShape(shape, {}, 0.55, 2800);
         }
     }
 
@@ -445,12 +432,15 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
         this.fluidSim?.setShapeStrength(s);
     }
 
-    /** Internal: fade strength to 0 over ~0.8s, then snap to 'free'. */
+    /** Internal: fade strength to 0 over ~1.2s, then snap to 'free'. */
     _fadeReleaseShape() {
         if (!this.fluidSim) return;
         const startStrength = this.fluidSim.uShapeStrength?.value ?? 0;
         if (startStrength <= 0) return;
-        const fadeMs = 800;
+        // Slower than before (was 800ms). With shapes now visible longer,
+        // a slightly slower fade feels less abrupt — the formation gently
+        // dissolves back to fluid instead of snapping away.
+        const fadeMs = 1200;
         const startTime = performance.now();
         const tick = () => {
             if (!this.fluidSim) return;
@@ -483,30 +473,23 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
     }
 
     /**
-     * Pick a random shape name from a pool, with anti-repeat: if the previous
-     * pick from this pool is rolled again, re-roll from the remaining shapes
-     * to avoid same-shape-twice-in-a-row. Single-element pools always return
-     * their only entry.
+     * Pick a random shape from the unified RANDOM_SHAPE_POOL, with anti-repeat:
+     * if the rolled shape matches the last pick, re-roll from the remaining
+     * shapes. Guarantees no immediate repeats without forcing a strict rotation.
      *
-     * @param {string} poolKey - key into SHAPE_POOLS ('triple','tetris','comboMid','comboBig')
-     * @returns {string|null}  - shape name, or null if pool is empty/invalid
+     * @returns {string|null}  - shape name, or null if pool somehow empty
      */
-    _pickRandomFromPool(poolKey) {
-        const pool = SHAPE_POOLS[poolKey];
+    _pickRandomShape() {
+        const pool = RANDOM_SHAPE_POOL;
         if (!pool || pool.length === 0) return null;
         if (pool.length === 1) return pool[0];
 
-        const last = this._lastPicks[poolKey];
         let pick = pool[Math.floor(Math.random() * pool.length)];
-
-        // If we hit the same shape as last time, pick from the other options.
-        // This is a soft constraint — guarantees no immediate repeat but doesn't
-        // shuffle so we still get organic randomness across the pool.
-        if (pick === last) {
-            const remaining = pool.filter((s) => s !== last);
+        if (pick === this._lastShapePick) {
+            const remaining = pool.filter((s) => s !== this._lastShapePick);
             pick = remaining[Math.floor(Math.random() * remaining.length)];
         }
-        this._lastPicks[poolKey] = pick;
+        this._lastShapePick = pick;
         return pick;
     }
 
@@ -526,26 +509,22 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
             strength: (s) => this.setShapeStrength(s),
             list: () => SHAPE_NAMES,
             current: () => this.fluidSim?.currentShape || 'free',
-            // Inspect the event-driven pools.
-            pools: () => ({
-                triple: SHAPE_POOLS.triple.slice(),
-                tetris: SHAPE_POOLS.tetris.slice(),
-                comboMid: SHAPE_POOLS.comboMid.slice(),
-                comboBig: SHAPE_POOLS.comboBig.slice(),
-            }),
-            // Simulate an event without playing: roll a random shape from a pool.
-            rollFromPool: (poolKey, strength = 0.6) => {
-                const pick = this._pickRandomFromPool(poolKey);
+            // Inspect the unified random pool.
+            pool: () => RANDOM_SHAPE_POOL.slice(),
+            // Simulate a random event: roll a shape from the unified pool.
+            // Optional strength override (default 0.6).
+            roll: (strength = 0.6) => {
+                const pick = this._pickRandomShape();
                 if (pick) this.setShape(pick, {}, strength, 0);
                 return pick;
             },
         };
         console.log(
             '[ElectricDreamsV3] Shape API ready:\n'
-            + `  shape(name, strength)     — set a specific shape (${SHAPE_NAMES.length} available)\n`
-            + '  rollFromPool(pool)        — random pick from "triple", "tetris", "comboMid", "comboBig"\n'
-            + '  release()                 — fade back to free fluid\n'
-            + '  pools()                   — inspect event pools\n'
+            + `  shape(name, strength)  — set a specific shape (${SHAPE_NAMES.length} available)\n`
+            + `  roll(strength)         — random pick from the unified pool (${RANDOM_SHAPE_POOL.length} shapes)\n`
+            + '  release()              — fade back to free fluid\n'
+            + '  pool()                 — inspect the random pool\n'
             + `Shapes: ${SHAPE_NAMES.join(', ')}`,
         );
     }

@@ -478,31 +478,36 @@ class MainMenuPlayerCard {
             })
         );
 
-        // Hide during gameplay, show when returning to menu
+        // Hide as soon as any game mode is selected (immediate; the start-modal
+        // observer below is the authoritative source of truth for re-showing).
         this._gameModeHandler = (e) => {
             const { mode } = e.detail || {};
-            // Hide card when any game mode is selected
             if (mode) {
                 this.hide();
             }
         };
         window.addEventListener('gameModeChanged', this._gameModeHandler);
 
-        // Show again when game stops or returns to menu
+        // Show again when game stops or returns to menu. show() is guarded by
+        // _isMenuVisible(), so this only takes effect once the menu is actually back.
         this._gameStopHandler = () => {
-            // Small delay to let modal appear first
+            // Small delay to let the start modal re-appear first.
             setTimeout(() => this.show(), 100);
         };
         window.addEventListener('gameEnded', this._gameStopHandler);
         window.addEventListener('returnToMenu', this._gameStopHandler);
 
-        // Also show when start modal becomes visible
+        // The start modal is the single source of truth for card visibility: the card
+        // belongs to the main menu. Drive show/hide off its visibility BOTH ways — the
+        // missing hide-on-close is why the card leaked into gameplay (game start removes
+        // the modal's `visible` class but nothing was hiding the card).
         this._startModalObserver = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-                    const modal = mutation.target;
-                    if (modal.classList.contains('visible') && !modal.classList.contains('hidden')) {
+                    if (this._isMenuVisible()) {
                         this.show();
+                    } else {
+                        this.hide();
                     }
                 }
             });
@@ -728,9 +733,26 @@ class MainMenuPlayerCard {
     }
 
     /**
+     * Whether the main menu (start modal) is currently on screen. This is the
+     * authoritative "should the card be visible" signal — the card belongs to the
+     * menu, so any show() outside it (e.g. async Steam INIT_FAILED during gameplay)
+     * must be suppressed.
+     */
+    _isMenuVisible() {
+        const startModal = document.getElementById('start-modal');
+        return !!startModal
+            && startModal.classList.contains('visible')
+            && !startModal.classList.contains('hidden');
+    }
+
+    /**
      * Show the player card
      */
     show() {
+        // Only ever surface the card on the main menu — neutralizes stray re-shows
+        // from async Steam events (INIT_FAILED/READY/RECONNECTED) during gameplay,
+        // regardless of event ordering or whether gameModeChanged fired.
+        if (!this._isMenuVisible()) return;
         if (this.isVisible) return;
         this.isVisible = true;
         void this.updateFriendsPlaying();

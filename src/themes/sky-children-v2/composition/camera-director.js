@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 
 const DEFAULT_FOCUS = new THREE.Vector3(0, 24, -380);
-const REST_POSITION = new THREE.Vector3(0, 56, 150);
+const REST_POSITION = new THREE.Vector3(0, 100, 150);
 
 const SPRING_FREQ = 1.1; // Hz — slow, weighty
 const SPRING_DAMP = 1.0; // critically damped
