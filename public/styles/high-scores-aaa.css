@@ -11,9 +11,9 @@
  * ============================================================================== */
 
 #high-scores-modal {
-    --cs-accent: #fcd17a;
-    --cs-accent-rgb: 252, 209, 122;
-    --cs-accent-2: #ffb75e;
+    --cs-accent: var(--cs-gold);
+    --cs-accent-rgb: var(--cs-gold-rgb);
+    --cs-accent-2: var(--cs-amber);
 }
 
 /* ---- Shell: cosmic glass with a gold wash ---------------------------------- */
@@ -115,7 +115,7 @@ body.electron-app #high-scores-modal .modal-content {
     letter-spacing: 0.10em;
     text-shadow: none;
     filter: drop-shadow(0 0 18px rgba(var(--cs-accent-rgb), 0.32));
-    animation: hs-shimmer 8s ease-in-out infinite;
+    animation: cs-shimmer 8s ease-in-out infinite;
 }
 
 #high-scores-modal h1::after {
@@ -133,10 +133,7 @@ body.electron-app #high-scores-modal .modal-content {
     filter: none;
 }
 
-@keyframes hs-shimmer {
-    0%, 100% { background-position: 0% center; }
-    50%      { background-position: 200% center; }
-}
+/* (shimmer keyframe consolidated into cosmic-tokens.css → cs-shimmer) */
 
 /* ---- Scroll container: gold scrollbar -------------------------------------- */
 #high-scores-modal .settings-scroll-container {
@@ -199,7 +196,7 @@ body.electron-app #high-scores-modal .modal-content {
     align-items: center;
     gap: 14px;
     padding: 12px 16px;
-    border: 1px solid rgba(150, 180, 255, 0.10);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.10);
     border-radius: 14px;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(10, 13, 27, 0.50));
     transition:

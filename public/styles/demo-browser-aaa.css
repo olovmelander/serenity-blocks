@@ -12,9 +12,9 @@
  * ============================================================================== */
 
 #demo-browser-modal {
-    --cs-accent: #7fdcff;
-    --cs-accent-rgb: 127, 220, 255;
-    --cs-accent-2: #8ea2ff;
+    --cs-accent: var(--cs-cyan);
+    --cs-accent-rgb: var(--cs-cyan-rgb);
+    --cs-accent-2: var(--cs-indigo);
 }
 
 /* ---- Shell: cosmic glass with a cyan wash ---------------------------------- */
@@ -120,7 +120,7 @@ body.electron-app #demo-browser-modal .modal-content {
     letter-spacing: 0.12em;
     text-shadow: none;
     filter: drop-shadow(0 0 16px rgba(var(--cs-accent-rgb), 0.30));
-    animation: db-shimmer 8s ease-in-out infinite;
+    animation: cs-shimmer 8s ease-in-out infinite;
 }
 
 #demo-browser-modal .settings-header h1::after {
@@ -138,10 +138,7 @@ body.electron-app #demo-browser-modal .modal-content {
     filter: none;
 }
 
-@keyframes db-shimmer {
-    0%, 100% { background-position: 0% center; }
-    50%      { background-position: 200% center; }
-}
+/* (shimmer keyframe consolidated into cosmic-tokens.css → cs-shimmer) */
 
 #demo-browser-modal .modal-close-btn {
     width: 38px;
@@ -254,7 +251,7 @@ body.electron-app #demo-browser-modal .modal-content {
     position: relative;
     overflow: hidden;
     padding: 14px 16px 14px 20px;
-    border: 1px solid rgba(150, 180, 255, 0.10);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.10);
     border-radius: 14px;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(10, 13, 27, 0.50));
     animation: db-card-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -359,7 +356,7 @@ body.electron-app #demo-browser-modal .modal-content {
 /* Action buttons → glass tiles; semantic hover colours preserved (cosmic-ified) */
 #demo-browser-modal .demo-actions button {
     background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(150, 180, 255, 0.18);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.18);
     border-radius: 9px;
     color: #e8edff;
 }

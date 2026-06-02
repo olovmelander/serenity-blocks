@@ -8,6 +8,8 @@
  * - Breath counter for active phases
  * - Rich guidance display with sub-prompts
  */
+import { csIcon } from '../components/cosmic-icons.js';
+
 export class SessionsTab {
     constructor(hub, sessionManager) {
         this.hub = hub;
@@ -21,58 +23,58 @@ export class SessionsTab {
         this.INTENTIONS = {
             BASE: [
                 {
-                    id: 'calm', icon: '🌊', label: 'Find Calm', desc: 'Release stress and anxiety',
+                    id: 'calm', icon: csIcon('wave'), label: 'Find Calm', desc: 'Release stress and anxiety',
                 },
                 {
-                    id: 'focus', icon: '🎯', label: 'Sharpen Focus', desc: 'Clear mental fog',
+                    id: 'focus', icon: csIcon('target'), label: 'Sharpen Focus', desc: 'Clear mental fog',
                 },
                 {
-                    id: 'ground', icon: '🌳', label: 'Ground Myself', desc: 'Feel centered and stable',
+                    id: 'ground', icon: csIcon('tree'), label: 'Ground Myself', desc: 'Feel centered and stable',
                 },
                 {
-                    id: 'breathe', icon: '💨', label: 'Just Breathe', desc: 'No goal, simply be',
+                    id: 'breathe', icon: csIcon('breath'), label: 'Just Breathe', desc: 'No goal, simply be',
                 },
             ],
             ELIXIR: [
                 {
-                    id: 'energy', icon: '⚡', label: 'Ignite Energy', desc: 'Wake up body and mind',
+                    id: 'energy', icon: csIcon('bolt'), label: 'Ignite Energy', desc: 'Wake up body and mind',
                 },
                 {
-                    id: 'release', icon: '🔥', label: 'Release & Let Go', desc: 'Clear emotional blocks',
+                    id: 'release', icon: csIcon('flame'), label: 'Release & Let Go', desc: 'Clear emotional blocks',
                 },
                 {
-                    id: 'transform', icon: '🦋', label: 'Transform', desc: 'Catalyze inner change',
+                    id: 'transform', icon: csIcon('butterfly'), label: 'Transform', desc: 'Catalyze inner change',
                 },
                 {
-                    id: 'power', icon: '💪', label: 'Build Power', desc: 'Strengthen willpower',
+                    id: 'power', icon: csIcon('shield'), label: 'Build Power', desc: 'Strengthen willpower',
                 },
             ],
             REST: [
                 {
-                    id: 'sleep', icon: '🌙', label: 'Prepare for Sleep', desc: 'Transition to deep rest',
+                    id: 'sleep', icon: csIcon('moon'), label: 'Prepare for Sleep', desc: 'Transition to deep rest',
                 },
                 {
-                    id: 'unwind', icon: '🍃', label: 'Unwind', desc: 'Release the day\'s tension',
+                    id: 'unwind', icon: csIcon('leaf'), label: 'Unwind', desc: 'Release the day\'s tension',
                 },
                 {
-                    id: 'restore', icon: '🌸', label: 'Restore', desc: 'Replenish your energy',
+                    id: 'restore', icon: csIcon('flower'), label: 'Restore', desc: 'Replenish your energy',
                 },
                 {
-                    id: 'peace', icon: '☁️', label: 'Find Peace', desc: 'Embrace stillness',
+                    id: 'peace', icon: csIcon('cloud'), label: 'Find Peace', desc: 'Embrace stillness',
                 },
             ],
             FLOW: [
                 {
-                    id: 'balance', icon: '☯️', label: 'Find Balance', desc: 'Harmonize mind and body',
+                    id: 'balance', icon: csIcon('balance'), label: 'Find Balance', desc: 'Harmonize mind and body',
                 },
                 {
-                    id: 'clarity', icon: '💎', label: 'Gain Clarity', desc: 'See with fresh perspective',
+                    id: 'clarity', icon: csIcon('gem'), label: 'Gain Clarity', desc: 'See with fresh perspective',
                 },
                 {
-                    id: 'presence', icon: '🌟', label: 'Be Present', desc: 'Anchor in the now',
+                    id: 'presence', icon: csIcon('star'), label: 'Be Present', desc: 'Anchor in the now',
                 },
                 {
-                    id: 'rhythm', icon: '🎵', label: 'Find Rhythm', desc: 'Sync with your flow',
+                    id: 'rhythm', icon: csIcon('note'), label: 'Find Rhythm', desc: 'Sync with your flow',
                 },
             ],
         };
@@ -228,15 +230,15 @@ export class SessionsTab {
                     <!-- Session Structure -->
                     <div class="prep-structure">
                         <div class="structure-item">
-                            <span class="structure-icon">🌬️</span>
+                            <span class="structure-icon">${csIcon('breath', 16)}</span>
                             <span class="structure-text structure-breathing"></span>
                         </div>
                         <div class="structure-item">
-                            <span class="structure-icon">🔄</span>
+                            <span class="structure-icon">${csIcon('cycle', 16)}</span>
                             <span class="structure-text">3 rounds with progressive intensity</span>
                         </div>
                         <div class="structure-item">
-                            <span class="structure-icon">⏱️</span>
+                            <span class="structure-icon">${csIcon('clock', 16)}</span>
                             <span class="structure-text structure-holds"></span>
                         </div>
                     </div>
@@ -552,7 +554,7 @@ export class SessionsTab {
             'Take a deep breath',
             'Begin',
         ];
-        const sequence = ['3', '2', '1', '🌬️'];
+        const sequence = ['3', '2', '1', 'Breathe'];
 
         for (let i = 0; i < sequence.length; i++) {
             countdownNumber.textContent = sequence[i];

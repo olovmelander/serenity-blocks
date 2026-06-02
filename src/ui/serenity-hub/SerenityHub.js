@@ -20,6 +20,7 @@ import {
     scrollHubScrollContainer,
     scrollHubScrollContainerFromWheelEvent,
 } from './hub-scroll-utils.js';
+import { csIcon } from '../components/cosmic-icons.js';
 
 export class SerenityHub {
     constructor(serenityMode) {
@@ -949,7 +950,7 @@ export class SerenityHub {
             if (hasGamepad) {
                 // Show gamepad controls
                 hintsOverlay.innerHTML = `
-          <div class="hint-title">🎮 Serenity Mode Controls</div>
+          <div class="hint-title"><span class="hint-title-icon">${csIcon('gamepad', 18)}</span> Serenity Mode Controls</div>
           <div class="hint-grid">
             <div class="hint-item"><span class="hint-button">Y</span> Toggle Hub</div>
             <div class="hint-item"><span class="hint-button">X</span> Breathing</div>

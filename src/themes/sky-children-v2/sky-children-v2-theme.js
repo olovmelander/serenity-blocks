@@ -12,7 +12,12 @@ import { createSkyDome as buildSkyDome } from './rendering/sky-dome.js';
 import { createCloudSea } from './rendering/cloud-sea.js';
 import { createValleyTerrainMaterial, createValleyCliffMaterial } from './rendering/valley-terrain.js';
 import { createFarRangeMaterial, createSummitLight } from './rendering/far-ranges.js';
+import { createMeadowFlowers } from './rendering/meadow-flowers.js';
+import { createFloatingIslands } from './rendering/floating-islands.js';
+import { createIslandBushes, createIslandArches } from './rendering/island-props.js';
 import { createGlints } from './sim/glints.js';
+import { createSpirits } from './sim/spirits.js';
+import { createSkyBirds } from './sim/sky-birds.js';
 import { createSkyTerrainField } from '../shared/sky-core/sky-core-terrain-field.js';
 import {
     updateVegetation,
@@ -357,7 +362,13 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         this.skyRuntime = null;
         this.cloudSeaRuntime = null;
         this.glintsRuntime = null;
+        this.spiritsRuntime = null;
         this.summitLight = null;
+        this.meadowRuntime = null;
+        this.birdsRuntime = null;
+        this.floatingIslandsRuntime = null;
+        this.bushesRuntime = null;
+        this.archesRuntime = null;
         this._tmpColor = new THREE.Color();
         this._fogColor = new THREE.Color();
 
@@ -750,9 +761,70 @@ export default class SkyChildrenV2Theme extends BaseTheme {
 
         this.createClouds();
         this.createGlintField();
+        this.createMeadowField();
+        this.createBirdFlock();
+        this.createIslandProps();
         // Vegetation is deferred — see createScene()
         this.syncPathDebug();
         this.syncCarpetDebug();
+    }
+
+    createMeadowField() {
+        if (this.meadowRuntime) {
+            if (this.meadowRuntime.mesh?.parent) this.scene.remove(this.meadowRuntime.mesh);
+            this.meadowRuntime.dispose();
+            this.meadowRuntime = null;
+        }
+        if (!this.terrainField) return;
+        // Colored flower fields on the green islands (Phase 7.1). Count scales with
+        // tier; placement reads the flower oracle + anchors to the exact terrain.
+        const count = clamp(
+            Math.round((this.qualityPreset.grassNearCount ?? 9000) * 0.08),
+            800,
+            6000,
+        );
+        const meadow = createMeadowFlowers(this.u, this.terrainField, { count, cloudY: 10 });
+        this.meadowRuntime = meadow;
+        this.scene.add(meadow.mesh);
+    }
+
+    createIslandProps() {
+        // Floating islands (7.5), bushes (7.3), arches (7.4) — the "alive" props.
+        [this.floatingIslandsRuntime, this.bushesRuntime, this.archesRuntime].forEach((rt) => {
+            if (rt) {
+                if (rt.group?.parent) this.scene.remove(rt.group);
+                if (rt.mesh?.parent) this.scene.remove(rt.mesh);
+                rt.dispose();
+            }
+        });
+
+        this.floatingIslandsRuntime = createFloatingIslands(this.u, {});
+        this.scene.add(this.floatingIslandsRuntime.group);
+
+        if (this.terrainField) {
+            const bushCount = clamp(
+                Math.round((this.qualityPreset.grassNearCount ?? 9000) * 0.006),
+                80,
+                500,
+            );
+            this.bushesRuntime = createIslandBushes(this.u, { count: bushCount, cloudY: 10 });
+            this.scene.add(this.bushesRuntime.mesh);
+
+            this.archesRuntime = createIslandArches(this.u, { cloudY: 10, count: 3 });
+            this.scene.add(this.archesRuntime.mesh);
+        }
+    }
+
+    createBirdFlock() {
+        if (this.birdsRuntime) {
+            if (this.birdsRuntime.mesh?.parent) this.scene.remove(this.birdsRuntime.mesh);
+            this.birdsRuntime.dispose();
+            this.birdsRuntime = null;
+        }
+        const count = clamp(Math.round((this.qualityPreset.mountainMeshes ?? 6) + 5), 5, 12);
+        const birds = createSkyBirds(this.u, { count, size: 18 });
+        this.birdsRuntime = birds;
+        this.scene.add(birds.mesh);
     }
 
     createGlintField() {
@@ -769,6 +841,18 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         const glints = createGlints(this.u, { count });
         this.glintsRuntime = glints;
         this.scene.add(glints.mesh);
+
+        // Colored light-spirits / butterflies drifting over the flower islands.
+        if (this.spiritsRuntime) {
+            if (this.spiritsRuntime.mesh?.parent) this.scene.remove(this.spiritsRuntime.mesh);
+            this.spiritsRuntime.dispose();
+            this.spiritsRuntime = null;
+        }
+        if (this.terrainField) {
+            const spiritCount = clamp(Math.round((this.qualityPreset.mountainMeshes ?? 6) * 4 + 14), 16, 48);
+            this.spiritsRuntime = createSpirits(this.u, { count: spiritCount });
+            this.scene.add(this.spiritsRuntime.mesh);
+        }
     }
 
     createLighting() {
@@ -1633,8 +1717,8 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             bloomRadius: postPreset.bloomRadius,
             bloomThreshold: Math.max(postPreset.bloomThreshold ?? 0.5, 0.92),
             exposure: 0.95,
-            contrast: Math.max(postPreset.contrast ?? 1.12, 1.18),
-            saturation: Math.max(postPreset.saturation ?? 1.2, 1.3),
+            contrast: Math.max(postPreset.contrast ?? 1.12, 1.2),
+            saturation: Math.max(postPreset.saturation ?? 1.2, 1.42),
             vignette: Math.max(postPreset.vignetteDarkness ?? 0.26, 0.48),
             grain: (postPreset.grainStrength ?? 0.004) * 0.6,
             // Tight, subtle optics — the heavy CA/diffusion/god-rays were the haze veil.
@@ -1936,20 +2020,8 @@ export default class SkyChildrenV2Theme extends BaseTheme {
                 return;
             }
 
-            if (typeof this.renderer.renderAsync === 'function') {
-                if (this.renderAsyncInFlight) return;
-                this.renderAsyncInFlight = true;
-                this.renderer.renderAsync(this.scene, this.camera)
-                    .catch((error) => {
-                        console.warn('[SkyChildrenV2] renderAsync failed:', error);
-                        this.requestWebGLFallback('render-async-failure', error);
-                    })
-                    .finally(() => {
-                        this.renderAsyncInFlight = false;
-                    });
-                return;
-            }
-
+            // Synchronous render — the renderer is already awaited-init in
+            // initRenderer, so render() is correct (renderAsync() is deprecated).
             this.renderer.render(this.scene, this.camera);
         } catch (error) {
             console.warn('[SkyChildrenV2] Render failed:', error);
@@ -2001,6 +2073,13 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             this.updateCamera(deltaSeconds);
             if (this.summitLight) {
                 this.summitLight.update(this.camera);
+            }
+            if (this.birdsRuntime) {
+                const flockScatter = Math.max(this.moodDirector.scatter, this.moodDirector.gust * 0.6);
+                this.birdsRuntime.update(this.runtime.time, flockScatter);
+            }
+            if (this.floatingIslandsRuntime) {
+                this.floatingIslandsRuntime.update(this.runtime.time);
             }
             this.syncUniforms();
 
@@ -2348,6 +2427,23 @@ export default class SkyChildrenV2Theme extends BaseTheme {
             this.summitLight = null;
         }
 
+        if (this.birdsRuntime) {
+            if (this.birdsRuntime.mesh?.parent) this.scene.remove(this.birdsRuntime.mesh);
+            this.birdsRuntime.dispose();
+            this.birdsRuntime = null;
+        }
+
+        [this.floatingIslandsRuntime, this.bushesRuntime, this.archesRuntime, this.spiritsRuntime].forEach((rt) => {
+            if (!rt) return;
+            if (rt.group?.parent) this.scene.remove(rt.group);
+            if (rt.mesh?.parent) this.scene.remove(rt.mesh);
+            rt.dispose();
+        });
+        this.floatingIslandsRuntime = null;
+        this.bushesRuntime = null;
+        this.archesRuntime = null;
+        this.spiritsRuntime = null;
+
         if (this._vegetationCallbackId !== null) {
             clearTimeout(this._vegetationCallbackId);
             this._vegetationCallbackId = null;
@@ -2395,6 +2491,7 @@ export default class SkyChildrenV2Theme extends BaseTheme {
         this.cloudGroup = null;
         this.cloudSeaRuntime = null;
         this.glintsRuntime = null;
+        this.meadowRuntime = null;
         this.grassMesh = null;
         this.flowerMesh = null;
         this.pathDebugGroup = null;
