@@ -15,6 +15,11 @@ import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import { PostProcessingStack } from './effects/PostProcessingStack.js';
+import { OdysseyDirector } from './composition/OdysseyDirector.js';
+import { OdysseyAudioReactor } from './composition/OdysseyAudioReactor.js';
+import { OdysseyAtmosphere } from './composition/OdysseyAtmosphere.js';
+import { OdysseyDebugOverlay, isOdysseyAAADebugEnabled } from './composition/odyssey-debug-overlay.js';
+import { OdysseyFallbackPipeline } from './odyssey-post/odyssey-post-fallback.js';
 import { resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
 import {
     applyOdysseyLayoutToLevels,
@@ -169,6 +174,8 @@ export class OdysseyBoardController {
         this.container = container;
         this.editorMode = !!options.editorMode;
         this.layoutOverride = options.layoutOverride || null;
+        const globalSoundManager = typeof window !== 'undefined' ? window.soundManager : null;
+        this.soundManager = options.soundManager || globalSoundManager || null;
 
         // Three.js core
         this.scene = null;
@@ -183,8 +190,15 @@ export class OdysseyBoardController {
         this.cameraController = null;
         this.environmentManager = null;
 
+        // AAA "Cosmic Ascent" spine (Phase 0 — additive, no visual effect yet)
+        this.director = null;
+        this.audioReactor = null;
+        this.debugOverlay = null;
+        this.atmosphere = null; // P2: director-driven global atmosphere (AAA only)
+
         // Enhanced post-processing
         this.postProcessingStack = null;
+        this.aaaPostActive = false; // P1: ?odysseyAAA=1 → OdysseyFallbackPipeline
         this.qualityName = 'High';
 
         // State
@@ -300,14 +314,17 @@ export class OdysseyBoardController {
         // ─── Step 3: Eagerly load all chapter environments ───
         // Trading longer init for smoother scrolling (no on-demand chapter loads during scroll)
         const totalChapters = this.presentationLayout.chapterPositions?.length || 8;
+        /* eslint-disable no-await-in-loop */
         for (let ch = 2; ch <= totalChapters; ch++) {
             await this.environmentManager.createChapterEnvironment(ch);
             await this._prewarmChapterEnvironment(ch);
             await this._yieldToMain();
         }
+        /* eslint-enable no-await-in-loop */
 
         // ─── Step 4: Build path ───
-        this.pathRenderer = new OdysseyPathRenderer(this.scene);
+        // P3: diegetic per-chapter path when the AAA preview is active.
+        this.pathRenderer = new OdysseyPathRenderer(this.scene, { aaa: isOdysseyAAADebugEnabled() });
         await this.pathRenderer.buildPath({
             ...ODYSSEY_PATH_DATA,
             controlPoints: this.presentationLayout.controlPoints,
@@ -319,6 +336,8 @@ export class OdysseyBoardController {
         // ─── Step 5: Create level nodes (55 nodes) ───
         this.nodeManager = new LevelNodeManager(this.scene, this.pathRenderer.pathCurve);
         this.nodeManager.setCamera(this.camera);
+        // P3/P3b: AAA node focal hierarchy + per-world shells.
+        this.nodeManager.setAAAVisualsEnabled(isOdysseyAAADebugEnabled());
         await this.nodeManager.createNodes(this.levelData, this._yieldToMain.bind(this));
         this.nodeManager.updateFromProgress(this.progressData);
 
@@ -360,6 +379,7 @@ export class OdysseyBoardController {
 
         this.setupPostProcessing();
         this.setupLighting();
+        this.setupDirector();
 
         await this._yieldToMain();
 
@@ -551,21 +571,27 @@ export class OdysseyBoardController {
     setupPostProcessing() {
         // Use enhanced PostProcessingStack instead of basic bloom
         // This provides chromatic aberration, dynamic vignette, and film grain
-        // based on quality preset
+        // based on quality preset.
+        //
+        // P1: behind ?odysseyAAA=1, swap in OdysseyFallbackPipeline — the same stack
+        // PLUS an exposure→ACES→director-grade pass for a consistent filmic finish.
+        // Default (no flag) keeps the exact current look = zero regression.
+        this.aaaPostActive = isOdysseyAAADebugEnabled();
         try {
-            this.postProcessingStack = new PostProcessingStack(
-                this.renderer,
-                this.scene,
-                this.camera,
-                this.qualityName,
-            );
+            this.postProcessingStack = this.aaaPostActive
+                ? new OdysseyFallbackPipeline(this.renderer, this.scene, this.camera, this.qualityName)
+                : new PostProcessingStack(this.renderer, this.scene, this.camera, this.qualityName);
 
             // Keep reference to composer for resize handling
             this.composer = this.postProcessingStack.composer;
             this.bloomPass = this.postProcessingStack.passes.bloom || null;
 
-            console.log(`[OdysseyBoard] PostProcessingStack initialized (${this.qualityName})`);
+            console.log(
+                `[OdysseyBoard] ${this.aaaPostActive ? 'OdysseyFallbackPipeline (AAA)' : 'PostProcessingStack'}`
+                + ` initialized (${this.qualityName})`,
+            );
         } catch (error) {
+            this.aaaPostActive = false;
             // Fallback to basic bloom if PostProcessingStack fails
             console.warn('[OdysseyBoard] PostProcessingStack failed, falling back to basic bloom:', error);
             this.composer = new EffectComposer(this.renderer);
@@ -583,6 +609,13 @@ export class OdysseyBoardController {
     }
 
     setupLighting() {
+        // P2: when the AAA atmosphere is active it owns the global light rig
+        // (key + ambient + fill) via OdysseyAtmosphere, so skip the board's own
+        // static globals to avoid double-lighting.
+        if (this.aaaPostActive) {
+            return;
+        }
+
         // Ambient light
         this.globalAmbientLight = new THREE.AmbientLight(0x404080, 0.3);
         this.scene.add(this.globalAmbientLight);
@@ -597,6 +630,42 @@ export class OdysseyBoardController {
         const pathLight1 = new THREE.PointLight(0x6688ff, 0.5, 50);
         pathLight1.position.set(0, 10, 0);
         this.scene.add(pathLight1);
+    }
+
+    /**
+     * Set up the AAA "Cosmic Ascent" spine: the director (conductor), the audio
+     * reactor, and the optional debug overlay (?odysseyAAA=1).
+     *
+     * PHASE 0: this is strictly additive. The director computes journey/atmosphere/
+     * camera/post state every frame but nothing consumes it yet (except the overlay),
+     * so there is zero visual change. Later phases progressively read director state.
+     */
+    setupDirector() {
+        try {
+            this.director = new OdysseyDirector({
+                chapterPositions: this.presentationLayout?.chapterPositions,
+            });
+            this.audioReactor = new OdysseyAudioReactor(this.soundManager);
+
+            // P2: the director-driven global atmosphere (graded sky-dome + fog +
+            // shared key/ambient/fill light rig). Gated to the AAA preview; when on,
+            // it owns the global look so ChapterEnvironmentManager yields fog/clear/
+            // ambient (it still detects chapter changes for the FOV pulse).
+            if (this.aaaPostActive) {
+                this.atmosphere = new OdysseyAtmosphere(this.scene, this.renderer);
+                this.environmentManager?.setAtmosphereOwned(true);
+            }
+
+            if (isOdysseyAAADebugEnabled()) {
+                this.debugOverlay = new OdysseyDebugOverlay();
+                console.log('[OdysseyBoard] AAA spine + debug overlay active (?odysseyAAA=1)');
+            }
+        } catch (error) {
+            console.warn('[OdysseyBoard] Director setup failed (non-fatal):', error);
+            this.director = null;
+            this.audioReactor = null;
+            this.debugOverlay = null;
+        }
     }
 
     // =============================
@@ -1026,16 +1095,31 @@ export class OdysseyBoardController {
     renderFrame(delta = 0) {
         this.time += delta;
 
-        // Update components
-        this.pathRenderer?.update(delta);
+        // Update components. P3: feed director state to the path so it flows toward
+        // the head + reacts to beats (AAA only; null otherwise).
+        this.pathRenderer?.update(delta, this.aaaPostActive ? this.director?.getState() : null);
         this.cameraController?.update(delta);
 
         // Pass camera progress to node manager for distance-based culling
         if (this.nodeManager && this.cameraController) {
             this.nodeManager.setCameraProgress(this.cameraController.getCurrentPosition());
         }
-        this.nodeManager?.update(delta);
+        this.nodeManager?.update(delta, this.aaaPostActive ? (this.director?.getState()?.beatPulse ?? 0) : 0);
         this.layoutEditor?.update(delta);
+
+        // AAA spine (Phase 0): drive the conductor from camera position + audio.
+        // Additive only — nothing consumes director state yet besides the overlay.
+        if (this.director) {
+            const audioState = this.audioReactor?.update(delta) || null;
+            this.director.update(delta, {
+                ascentProgress: this.cameraController?.getCurrentPosition() ?? 0,
+                audio: audioState,
+            });
+            // P2: drive the global atmosphere (sky-dome + fog + light rig) from
+            // the fresh director state.
+            this.atmosphere?.update(this.camera, this.director.getState());
+            this.debugOverlay?.update(this.director.getState(), audioState);
+        }
 
         // Update chapter environments based on camera position
         if (this.environmentManager && this.camera) {
@@ -1065,9 +1149,11 @@ export class OdysseyBoardController {
             this.stars.rotation.y += delta * 0.01;
         }
 
-        // Update and render via PostProcessingStack
+        // Update and render via PostProcessingStack.
+        // When the AAA pipeline is active it consumes director state (exposure/grade/
+        // bloom); the default PostProcessingStack ignores the extra argument.
         if (this.postProcessingStack) {
-            this.postProcessingStack.update(delta);
+            this.postProcessingStack.update(delta, this.aaaPostActive ? this.director?.getState() : undefined);
             this.postProcessingStack.render();
         } else if (this.composer) {
             this.composer.render();
@@ -1334,6 +1420,16 @@ export class OdysseyBoardController {
         this.isPrewarming = false;
         this.pendingChapterLoads.clear();
         this.activeSeamBoundaryId = null;
+
+        // Dispose AAA spine
+        this.debugOverlay?.dispose?.();
+        this.debugOverlay = null;
+        this.atmosphere?.dispose?.();
+        this.atmosphere = null;
+        this.audioReactor?.dispose?.();
+        this.audioReactor = null;
+        this.director?.dispose?.();
+        this.director = null;
 
         // Dispose sub-controllers
         this.environmentManager?.dispose();

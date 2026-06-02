@@ -139,6 +139,186 @@ function createRainCurtain() {
     );
 }
 
+function createNeonCitySpire() {
+    const group = new THREE.Group();
+    group.name = 'neon-megastructure-spire';
+    group.position.set(0, 14, -680);
+
+    const coreMaterial = new THREE.MeshStandardMaterial({
+        color: 0x080914,
+        emissive: 0x00f2ff,
+        emissiveIntensity: 0.45,
+        roughness: 0.35,
+        metalness: 0.75,
+    });
+
+    const tiers = [
+        { height: 92, width: 18, y: 6 },
+        { height: 64, width: 28, y: -20 },
+        { height: 38, width: 42, y: -44 },
+    ];
+
+    tiers.forEach(({ height, width, y }, index) => {
+        const mesh = new THREE.Mesh(
+            new THREE.BoxGeometry(width, height, width * 0.55),
+            coreMaterial.clone(),
+        );
+        mesh.position.y = y;
+        mesh.material.emissive = new THREE.Color(index % 2 === 0 ? 0x00f2ff : 0xff3fb4);
+        mesh.material.emissiveIntensity = 0.35 + index * 0.15;
+        group.add(mesh);
+
+        const frame = new THREE.Mesh(
+            new THREE.TorusGeometry(width * 0.72, 0.8, 8, 72),
+            new THREE.MeshBasicMaterial({
+                color: index % 2 === 0 ? 0x00f2ff : 0xff3fb4,
+                transparent: true,
+                opacity: 0.42,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            }),
+        );
+        frame.rotation.x = Math.PI * 0.5;
+        frame.position.y = y + height * 0.42;
+        group.add(frame);
+    });
+
+    const crown = new THREE.Mesh(
+        new THREE.ConeGeometry(20, 42, 6),
+        new THREE.MeshBasicMaterial({
+            color: 0xff3fb4,
+            transparent: true,
+            opacity: 0.55,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        }),
+    );
+    crown.position.y = 74;
+    group.add(crown);
+
+    return group;
+}
+
+function createHologramSigns() {
+    const group = new THREE.Group();
+    group.name = 'hologram-sign-stack';
+    const configs = [
+        {
+            x: -92, y: 42, z: -615, w: 42, h: 12, color: 0x00f2ff,
+        },
+        {
+            x: 88, y: 22, z: -640, w: 50, h: 15, color: 0xff3fb4,
+        },
+        {
+            x: -52, y: -6, z: -585, w: 36, h: 11, color: 0xa66cff,
+        },
+        {
+            x: 42, y: 62, z: -700, w: 58, h: 14, color: 0x00ffae,
+        },
+    ];
+
+    configs.forEach((config, index) => {
+        const material = new THREE.MeshBasicMaterial({
+            color: config.color,
+            transparent: true,
+            opacity: 0.32,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        });
+        const sign = new THREE.Mesh(new THREE.PlaneGeometry(config.w, config.h), material);
+        sign.position.set(config.x, config.y, config.z);
+        sign.rotation.y = (index % 2 === 0 ? 1 : -1) * 0.18;
+        sign.userData.baseOpacity = material.opacity;
+        group.add(sign);
+
+        const border = new THREE.Mesh(
+            new THREE.TorusGeometry(Math.max(config.w, config.h) * 0.36, 0.35, 8, 64),
+            new THREE.MeshBasicMaterial({
+                color: config.color,
+                transparent: true,
+                opacity: 0.24,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            }),
+        );
+        border.position.copy(sign.position);
+        border.scale.y = config.h / config.w;
+        border.rotation.copy(sign.rotation);
+        group.add(border);
+    });
+
+    return group;
+}
+
+function createWetReflectionPlane() {
+    const plane = new THREE.Mesh(
+        new THREE.PlaneGeometry(360, 180, 1, 1),
+        new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+            },
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                varying vec2 vUv;
+                void main() {
+                    float lanes = pow(abs(sin(vUv.x * 42.0)), 18.0);
+                    float ripple = sin(vUv.y * 32.0 + uTime * 1.6) * 0.5 + 0.5;
+                    vec3 cyan = vec3(0.0, 0.85, 1.0);
+                    vec3 magenta = vec3(1.0, 0.18, 0.68);
+                    vec3 color = mix(cyan, magenta, vUv.x) * (lanes * 0.45 + ripple * 0.08);
+                    float fade = smoothstep(1.0, 0.1, vUv.y);
+                    gl_FragColor = vec4(color, fade * 0.28);
+                }
+            `,
+        }),
+    );
+    plane.name = 'wet-neon-reflection-plane';
+    plane.position.set(0, -58, -610);
+    plane.rotation.x = -Math.PI * 0.48;
+    return plane;
+}
+
+function createSkyTraffic() {
+    const group = new THREE.Group();
+    group.name = 'sky-traffic-light-trails';
+    const colors = [0x00f2ff, 0xff3fb4, 0xffd36f];
+
+    for (let index = 0; index < 10; index += 1) {
+        const curve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(-170, 65 - index * 8, -700 - index * 8),
+            new THREE.Vector3(-30, 82 - index * 5, -650 - index * 5),
+            new THREE.Vector3(170, 48 - index * 6, -710 - index * 9),
+        ]);
+        const trail = new THREE.Mesh(
+            new THREE.TubeGeometry(curve, 24, 0.35, 6, false),
+            new THREE.MeshBasicMaterial({
+                color: colors[index % colors.length],
+                transparent: true,
+                opacity: 0.18,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            }),
+        );
+        trail.userData.baseX = 0;
+        trail.userData.speed = 0.12 + index * 0.018;
+        group.add(trail);
+    }
+
+    return group;
+}
+
 export function createUrbanDreamsEnvironment() {
     const group = new THREE.Group();
     group.name = 'urban-dreams-environment';
@@ -157,8 +337,30 @@ export function createUrbanDreamsEnvironment() {
     sky.position.z = -590;
     group.add(sky);
     group.add(createCityBlocks());
-    group.add(createNeonRails());
-    group.add(createRainCurtain());
+
+    const rails = createNeonRails();
+    group.add(rails);
+    group.userData.rails = rails;
+
+    const rain = createRainCurtain();
+    group.add(rain);
+    group.userData.rain = rain;
+
+    const spire = createNeonCitySpire();
+    group.add(spire);
+    group.userData.spire = spire;
+
+    const signs = createHologramSigns();
+    group.add(signs);
+    group.userData.signs = signs;
+
+    const reflectionPlane = createWetReflectionPlane();
+    group.add(reflectionPlane);
+    group.userData.reflectionPlane = reflectionPlane;
+
+    const traffic = createSkyTraffic();
+    group.add(traffic);
+    group.userData.traffic = traffic;
 
     group.position.y = chapterCenterY;
     return group;
@@ -171,14 +373,14 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera) {
         }
     });
 
-    const rails = group.children[2];
+    const rails = group.userData.rails || group.children[2];
     if (rails?.children) {
         rails.children.forEach((ring, index) => {
             ring.rotation.z += delta * (0.18 + index * 0.05);
         });
     }
 
-    const rain = group.children[3];
+    const rain = group.userData.rain || group.children[3];
     if (rain?.geometry?.attributes?.position) {
         const { array } = rain.geometry.attributes.position;
         const cameraY = camera?.position?.y ?? group.position.y;
@@ -189,6 +391,33 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera) {
             }
         }
         rain.geometry.attributes.position.needsUpdate = true;
+    }
+
+    const { spire, signs, traffic } = group.userData;
+    if (spire) {
+        spire.rotation.y = Math.sin(time * 0.18) * 0.08;
+        spire.children.forEach((child, index) => {
+            if (child.material?.emissiveIntensity !== undefined) {
+                child.material.emissiveIntensity = 0.35 + Math.sin(time * 1.2 + index) * 0.12;
+            } else if (child.material?.opacity !== undefined) {
+                child.material.opacity = 0.38 + Math.sin(time * 1.8 + index) * 0.12;
+            }
+        });
+    }
+
+    if (signs?.children) {
+        signs.children.forEach((sign, index) => {
+            if (sign.material?.opacity !== undefined) {
+                const base = sign.userData.baseOpacity || 0.22;
+                sign.material.opacity = base + Math.sin(time * 3.5 + index * 1.7) * 0.08;
+            }
+        });
+    }
+
+    if (traffic?.children) {
+        traffic.children.forEach((trail, index) => {
+            trail.position.x = Math.sin(time * trail.userData.speed + index) * 18;
+        });
     }
 }
 

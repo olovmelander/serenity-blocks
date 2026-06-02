@@ -3154,6 +3154,7 @@ export class OdysseyMode extends BaseGameMode {
         // Create board controller
         this.boardController = new OdysseyBoardController(boardContainer, {
             editorMode: isOdysseyLayoutEditorEnabled(),
+            soundManager: this.deps?.soundManager || null,
         });
 
         // Prepare level data with path positions

@@ -245,6 +245,10 @@ export class ChapterEnvironmentManager {
         // Chapter change callback (for camera FOV pulse integration)
         this.onChapterChangeCallback = null;
 
+        // When true, OdysseyAtmosphere owns fog/clear/ambient (P2). We still run
+        // chapter-change detection here (for the FOV pulse) but skip the visual writes.
+        this.atmosphereOwned = false;
+
         // Quality settings
         this.qualitySettings = {
             particleCount: 500,
@@ -266,6 +270,15 @@ export class ChapterEnvironmentManager {
      */
     setOnChapterChange(callback) {
         this.onChapterChangeCallback = callback;
+    }
+
+    /**
+     * When owned, OdysseyAtmosphere drives fog/clear/ambient; updateGlobalEnvironment
+     * keeps detecting chapter changes (FOV pulse) but skips its own visual writes.
+     * @param {boolean} owned
+     */
+    setAtmosphereOwned(owned) {
+        this.atmosphereOwned = !!owned;
     }
 
     /**
@@ -643,6 +656,10 @@ export class ChapterEnvironmentManager {
                 this.onChapterChangeCallback(this.currentChapter, previousChapter);
             }
         }
+
+        // P2: when OdysseyAtmosphere owns the global look, it drives fog/clear/ambient
+        // from director state. We still ran chapter-change detection above (FOV pulse).
+        if (this.atmosphereOwned) return;
 
         const currentConfig = this.chapterEnvironmentById.get(currentChapterId);
         const nextConfig = this.chapterEnvironmentById.get(nextChapterId);

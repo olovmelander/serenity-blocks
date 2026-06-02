@@ -54,97 +54,6 @@ const voidFragmentShader = `
     }
 `;
 
-// Black Hole Event Horizon + Accretion Disk Shader
-// Simplified version of the full theme's shader for background use
-const blackHoleVertexShader = `
-    varying vec2 vUv;
-    varying vec3 vPosition;
-    varying vec3 vViewPosition;
-    void main() {
-        vUv = uv;
-        vPosition = position;
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        vViewPosition = -mvPosition.xyz;
-        gl_Position = projectionMatrix * mvPosition;
-    }
-`;
-
-const blackHoleFragmentShader = `
-    uniform float uTime;
-    varying vec2 vUv;
-    varying vec3 vPosition;
-    
-    // Noise functions
-    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-    vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-    vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
-    
-    float snoise(vec2 v) {
-        const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
-        vec2 i  = floor(v + dot(v, C.yy) );
-        vec2 x0 = v - i + dot(i, C.xx);
-        vec2 i1;
-        i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-        vec4 x12 = x0.xyxy + C.xxzz;
-        x12.xy -= i1;
-        i = mod289(i);
-        vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
-        vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
-        m = m*m ;
-        m = m*m ;
-        vec3 x = 2.0 * fract(p * C.www) - 1.0;
-        vec3 h = abs(x) - 0.5;
-        vec3 ox = floor(x + 0.5);
-        vec3 a0 = x - ox;
-        m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
-        vec3 g;
-        g.x  = a0.x  * x0.x  + h.x  * x0.y;
-        g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-        return 130.0 * dot(m, g);
-    }
-
-    void main() {
-        vec2 center = vec2(0.5, 0.5);
-        vec2 uv = vUv - center;
-        float dist = length(uv);
-        float angle = atan(uv.y, uv.x);
-        
-        // Event Horizon (Black circle)
-        float horizonRadius = 0.15;
-        float horizonEdge = smoothstep(horizonRadius, horizonRadius + 0.01, dist);
-        
-        // Accretion Disk
-        float spiral = angle + 10.0 / (dist + 0.1); // Spiral distortion
-        float noise = snoise(vec2(spiral * 2.0, dist * 10.0 - uTime * 2.0));
-        
-        // Color Mapping
-        vec3 innerColor = vec3(1.0, 0.8, 0.4); // Hot white/orange
-        vec3 midColor = vec3(1.0, 0.3, 0.0);   // Deep orange
-        vec3 outerColor = vec3(0.5, 0.0, 0.2); // Red/Purple edge
-        
-        vec3 diskColor = mix(midColor, innerColor, noise * 0.5 + 0.5);
-        diskColor = mix(diskColor, outerColor, dist * 2.0);
-        
-        // Disk Shape intensity
-        float diskIntensity = smoothstep(0.15, 0.2, dist) * smoothstep(0.5, 0.2, dist);
-        diskIntensity *= (0.8 + noise * 0.4); // Add turbulence
-        
-        // Bright inner ring (photon ring)
-        float photonRing = smoothstep(0.15, 0.16, dist) * smoothstep(0.18, 0.16, dist);
-        
-        vec3 finalColor = diskColor * diskIntensity + vec3(1.0, 1.0, 0.9) * photonRing * 2.0;
-        
-        // Apply horizon mask (black center)
-        finalColor *= horizonEdge;
-        
-        // Soft outer glow
-        float glow = smoothstep(1.0, 0.0, dist) * 0.1;
-        finalColor += vec3(0.2, 0.0, 0.4) * glow;
-        
-        gl_FragColor = vec4(finalColor, diskIntensity + photonRing * 2.0 + glow);
-    }
-`;
-
 // Particle suction shader
 const suctionVertexShader = `
     uniform float uTime;
@@ -216,6 +125,10 @@ export function createCosmicExpanseEnvironment(options = {}) {
     group.add(blackHole);
     group.userData.blackHole = blackHole;
 
+    const heroPlanet = createHeroPlanet();
+    group.add(heroPlanet);
+    group.userData.heroPlanet = heroPlanet;
+
     // 3. Suction Particles (Matter falling in)
     const debris = createSuctionParticles(uniforms, options.particleCount || 1000);
     debris.position.set(0, 0, -800); // Centered on Black Hole
@@ -226,6 +139,10 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // 4. Distant "Stellar Velocity" Stars
     const stars = createVoidStars(uniforms, 2000);
     group.add(stars);
+
+    const nebulaVolume = createNebulaVolume(options.particleCount || 700);
+    group.add(nebulaVolume);
+    group.userData.nebulaVolume = nebulaVolume;
 
     // 5. Lighting (Ominous)
     setupCosmicLighting(group);
@@ -249,19 +166,169 @@ function createVoidSky(uniforms) {
 }
 
 function createBlackHole(uniforms) {
-    // A plane that billboards slightly but renders the accretion disk
-    const geometry = new THREE.PlaneGeometry(120, 120);
-    const material = new THREE.ShaderMaterial({
-        uniforms: { uTime: uniforms.uTime },
-        vertexShader: blackHoleVertexShader,
-        fragmentShader: blackHoleFragmentShader,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.NormalBlending, // Alpha blending for the disk
-        side: THREE.DoubleSide,
+    const group = new THREE.Group();
+    group.name = 'volumetric-black-hole-anchor';
+
+    const horizon = new THREE.Mesh(
+        new THREE.SphereGeometry(24, 48, 32),
+        new THREE.MeshBasicMaterial({ color: 0x000000 }),
+    );
+    horizon.scale.set(1.0, 0.92, 0.82);
+    group.add(horizon);
+
+    const haloColors = [0xfff0a0, 0xff6b22, 0xb14dff, 0x4f79ff];
+    haloColors.forEach((color, index) => {
+        const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(31 + index * 9, 1.25 + index * 0.4, 16, 160),
+            new THREE.MeshBasicMaterial({
+                color,
+                transparent: true,
+                opacity: 0.72 - index * 0.12,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            }),
+        );
+        ring.scale.y = 0.22 + index * 0.045;
+        ring.rotation.x = 0.08 + index * 0.03;
+        ring.rotation.y = index * 0.18;
+        group.add(ring);
     });
 
-    return new THREE.Mesh(geometry, material);
+    const lensShell = new THREE.Mesh(
+        new THREE.SphereGeometry(42, 48, 24),
+        new THREE.MeshBasicMaterial({
+            color: 0x6633ff,
+            transparent: true,
+            opacity: 0.075,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            wireframe: true,
+        }),
+    );
+    group.add(lensShell);
+
+    const farGlow = new THREE.Mesh(
+        new THREE.RingGeometry(42, 72, 96),
+        new THREE.MeshBasicMaterial({
+            color: 0x7f3cff,
+            transparent: true,
+            opacity: 0.16,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        }),
+    );
+    farGlow.name = 'distant-accretion-glow';
+    farGlow.userData.spin = -0.035;
+    group.add(farGlow);
+
+    group.userData.uniforms = uniforms;
+    return group;
+}
+
+function createHeroPlanet() {
+    const group = new THREE.Group();
+    group.name = 'hero-planet-nebula-anchor';
+    group.position.set(-145, 72, -720);
+
+    const planet = new THREE.Mesh(
+        new THREE.SphereGeometry(28, 48, 32),
+        new THREE.ShaderMaterial({
+            uniforms: {
+                uColor1: { value: new THREE.Color(0x273f68) },
+                uColor2: { value: new THREE.Color(0x111827) },
+            },
+            vertexShader: `
+                varying vec3 vNormal;
+                void main() {
+                    vNormal = normalize(normalMatrix * normal);
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 uColor1;
+                uniform vec3 uColor2;
+                varying vec3 vNormal;
+                void main() {
+                    float band = sin(vNormal.y * 12.0 + vNormal.x * 3.0) * 0.5 + 0.5;
+                    float rim = pow(1.0 - max(0.0, dot(vNormal, vec3(0.0, 0.0, 1.0))), 2.4);
+                    vec3 color = mix(uColor2, uColor1, band) + vec3(0.25, 0.45, 0.9) * rim;
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `,
+        }),
+    );
+    group.add(planet);
+    group.userData.planet = planet;
+
+    const atmosphere = new THREE.Mesh(
+        new THREE.SphereGeometry(31, 48, 24),
+        new THREE.MeshBasicMaterial({
+            color: 0x6c9dff,
+            transparent: true,
+            opacity: 0.12,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        }),
+    );
+    group.add(atmosphere);
+
+    const ring = new THREE.Mesh(
+        new THREE.RingGeometry(38, 54, 96),
+        new THREE.MeshBasicMaterial({
+            color: 0x8fb0ff,
+            transparent: true,
+            opacity: 0.18,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+        }),
+    );
+    ring.rotation.x = Math.PI * 0.43;
+    group.add(ring);
+
+    return group;
+}
+
+function createNebulaVolume(count) {
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const palette = [
+        new THREE.Color(0x6633ff),
+        new THREE.Color(0x2f6bff),
+        new THREE.Color(0xff5fb0),
+        new THREE.Color(0xffa14a),
+    ];
+
+    for (let index = 0; index < count; index += 1) {
+        const stride = index * 3;
+        positions[stride] = (Math.random() - 0.5) * 420;
+        positions[stride + 1] = (Math.random() - 0.5) * 240;
+        positions[stride + 2] = -620 - Math.random() * 320;
+
+        const color = palette[index % palette.length];
+        colors[stride] = color.r;
+        colors[stride + 1] = color.g;
+        colors[stride + 2] = color.b;
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const points = new THREE.Points(
+        geometry,
+        new THREE.PointsMaterial({
+            size: 4.2,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.18,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        }),
+    );
+    points.name = 'nebula-volume-points';
+    return points;
 }
 
 function createSuctionParticles(uniforms, count) {
@@ -353,6 +420,24 @@ export function updateCosmicExpanseEnvironment(group, delta, time) {
     const { blackHole } = group.userData;
     if (blackHole) {
         blackHole.rotation.z -= delta * 0.1;
+        blackHole.children.forEach((child, index) => {
+            if (child.userData?.spin) {
+                child.rotation.z += delta * child.userData.spin;
+            } else if (index > 0) {
+                child.rotation.z += delta * (0.025 + index * 0.006);
+            }
+        });
+    }
+
+    const { heroPlanet } = group.userData;
+    if (heroPlanet) {
+        heroPlanet.rotation.y += delta * 0.025;
+        heroPlanet.rotation.z = Math.sin(time * 0.08) * 0.025;
+    }
+
+    const { nebulaVolume } = group.userData;
+    if (nebulaVolume) {
+        nebulaVolume.rotation.y += delta * 0.006;
     }
 }
 

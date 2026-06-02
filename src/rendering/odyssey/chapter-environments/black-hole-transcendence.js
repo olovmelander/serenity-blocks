@@ -54,49 +54,64 @@ function createVoidDome() {
 }
 
 function createEventHorizon() {
-    const geometry = new THREE.PlaneGeometry(220, 220, 1, 1);
-    const material = new THREE.ShaderMaterial({
-        uniforms: {
-            uTime: { value: 0 },
-            uOpacity: { value: 1 },
-            uPrimary: { value: new THREE.Color(BLACK_HOLE_TRANSCENDENCE_CONFIG.colors.primary) },
-            uAccent: { value: new THREE.Color(BLACK_HOLE_TRANSCENDENCE_CONFIG.colors.tertiary) },
-        },
-        transparent: true,
-        depthWrite: false,
-        vertexShader: `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: `
-            uniform float uTime;
-            uniform float uOpacity;
-            uniform vec3 uPrimary;
-            uniform vec3 uAccent;
-            varying vec2 vUv;
+    const group = new THREE.Group();
+    group.name = 'dominant-event-horizon-anchor';
+    group.position.set(0, 0, -780);
 
-            void main() {
-                vec2 centered = vUv - 0.5;
-                float dist = length(centered);
-                float angle = atan(centered.y, centered.x);
-                float vortex = sin(angle * 8.0 - uTime * 1.8 + dist * 30.0) * 0.5 + 0.5;
-                float disk = smoothstep(0.42, 0.18, abs(dist - 0.24));
-                float ring = smoothstep(0.21, 0.16, abs(dist - 0.19));
-                float voidMask = smoothstep(0.16, 0.13, dist);
-                vec3 color = mix(uAccent, vec3(0.95, 0.72, 0.34), vortex);
-                color *= disk * 1.2 + ring * 2.0;
-                color *= voidMask;
-                gl_FragColor = vec4(color, (disk * 0.85 + ring * 0.9) * uOpacity);
-            }
-        `,
+    const horizon = new THREE.Mesh(
+        new THREE.SphereGeometry(34, 64, 40),
+        new THREE.MeshBasicMaterial({ color: 0x000000 }),
+    );
+    horizon.scale.set(1, 0.96, 0.82);
+    group.add(horizon);
+
+    const photonRing = new THREE.Mesh(
+        new THREE.TorusGeometry(38, 2.2, 16, 192),
+        new THREE.MeshBasicMaterial({
+            color: 0xffd28a,
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        }),
+    );
+    photonRing.scale.y = 0.24;
+    photonRing.rotation.x = 0.08;
+    group.add(photonRing);
+
+    const diskColors = [0xff33cc, 0xff8844, 0x66e3ff, 0xffd28a];
+    diskColors.forEach((color, index) => {
+        const disk = new THREE.Mesh(
+            new THREE.TorusGeometry(48 + index * 11, 1.6 + index * 0.55, 16, 192),
+            new THREE.MeshBasicMaterial({
+                color,
+                transparent: true,
+                opacity: 0.34 - index * 0.045,
+                side: THREE.DoubleSide,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            }),
+        );
+        disk.scale.y = 0.16 + index * 0.025;
+        disk.rotation.x = Math.PI * (0.03 + index * 0.015);
+        disk.rotation.y = index * 0.17;
+        group.add(disk);
     });
 
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(0, 0, -780);
-    return mesh;
+    const lensShell = new THREE.Mesh(
+        new THREE.SphereGeometry(72, 48, 24),
+        new THREE.MeshBasicMaterial({
+            color: 0x66e3ff,
+            transparent: true,
+            opacity: 0.055,
+            wireframe: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        }),
+    );
+    group.add(lensShell);
+
+    return group;
 }
 
 function createAccretionRings() {
@@ -161,6 +176,73 @@ function createTranscendenceShards() {
     );
 }
 
+function createLensingStarfield() {
+    const count = 900;
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+
+    for (let index = 0; index < count; index += 1) {
+        const stride = index * 3;
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 58 + Math.random() * 170;
+        const bend = 1 + Math.sin(angle * 3.0) * 0.18;
+        positions[stride] = Math.cos(angle) * radius * bend;
+        positions[stride + 1] = Math.sin(angle) * radius * 0.42;
+        positions[stride + 2] = -790 - Math.random() * 180;
+
+        const hot = index % 4 === 0;
+        colors[stride] = hot ? 1.0 : 0.55;
+        colors[stride + 1] = hot ? 0.62 : 0.78;
+        colors[stride + 2] = 1.0;
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const points = new THREE.Points(
+        geometry,
+        new THREE.PointsMaterial({
+            size: 2.0,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.48,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        }),
+    );
+    points.name = 'lensing-starfield';
+    return points;
+}
+
+function createInfallStreams() {
+    const group = new THREE.Group();
+    group.name = 'infall-streams';
+    const colors = [0xff33cc, 0x66e3ff, 0xffb347];
+
+    for (let index = 0; index < 9; index += 1) {
+        const curve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(-160 + index * 40, 85 - index * 11, -650 - index * 12),
+            new THREE.Vector3(-72 + index * 18, 30 - index * 5, -720),
+            new THREE.Vector3(-18 + index * 4, 5 - index * 2, -775),
+        ]);
+        const mesh = new THREE.Mesh(
+            new THREE.TubeGeometry(curve, 32, 0.7, 8, false),
+            new THREE.MeshBasicMaterial({
+                color: colors[index % colors.length],
+                transparent: true,
+                opacity: 0.22,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            }),
+        );
+        mesh.userData.spin = (index % 2 === 0 ? 1 : -1) * (0.015 + index * 0.002);
+        group.add(mesh);
+    }
+
+    return group;
+}
+
 export function createBlackHoleTranscendenceEnvironment() {
     const group = new THREE.Group();
     group.name = 'black-hole-transcendence-environment';
@@ -179,9 +261,20 @@ export function createBlackHoleTranscendenceEnvironment() {
     voidDome.position.z = -740;
     group.add(voidDome);
 
-    group.add(createEventHorizon());
+    const eventHorizon = createEventHorizon();
+    group.add(eventHorizon);
+    group.userData.eventHorizon = eventHorizon;
+
     group.add(createAccretionRings());
     group.add(createTranscendenceShards());
+
+    const lensingStarfield = createLensingStarfield();
+    group.add(lensingStarfield);
+    group.userData.lensingStarfield = lensingStarfield;
+
+    const infallStreams = createInfallStreams();
+    group.add(infallStreams);
+    group.userData.infallStreams = infallStreams;
 
     group.position.y = chapterCenterY;
     return group;
@@ -207,6 +300,16 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
         });
     }
 
+    const { eventHorizon } = group.userData;
+    if (eventHorizon?.children) {
+        eventHorizon.rotation.z -= delta * 0.08;
+        eventHorizon.children.forEach((child, index) => {
+            if (index > 0) {
+                child.rotation.z += delta * (0.03 + index * 0.01);
+            }
+        });
+    }
+
     const shards = group.children[3];
     if (shards?.geometry?.attributes?.position) {
         const { array } = shards.geometry.attributes.position;
@@ -215,6 +318,16 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
             array[index + 1] += Math.sin(time * 0.6 + index * 0.1 + cameraY * 0.002) * 0.0025;
         }
         shards.geometry.attributes.position.needsUpdate = true;
+    }
+
+    const { lensingStarfield, infallStreams } = group.userData;
+    if (lensingStarfield) {
+        lensingStarfield.rotation.z += delta * 0.012;
+    }
+    if (infallStreams?.children) {
+        infallStreams.children.forEach((stream) => {
+            stream.rotation.z += delta * stream.userData.spin;
+        });
     }
 }
 
