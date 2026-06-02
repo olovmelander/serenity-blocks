@@ -20,7 +20,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 // CHROMATIC ABERRATION SHADER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const ChromaticAberrationShader = {
+export const ChromaticAberrationShader = {
     uniforms: {
         tDiffuse: { value: null },
         uStrength: { value: 0.003 },
@@ -64,7 +64,7 @@ const ChromaticAberrationShader = {
 // DYNAMIC VIGNETTE SHADER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const VignetteShader = {
+export const VignetteShader = {
     uniforms: {
         tDiffuse: { value: null },
         uIntensity: { value: 0.4 },
@@ -109,7 +109,7 @@ const VignetteShader = {
 // FILM GRAIN SHADER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const FilmGrainShader = {
+export const FilmGrainShader = {
     uniforms: {
         tDiffuse: { value: null },
         uTime: { value: 0 },

@@ -206,6 +206,52 @@ const starFragmentShader = `
     }
 `;
 
+const cloudShaftVertexShader = `
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+
+const cloudShaftFragmentShader = `
+    uniform float uTime;
+    varying vec2 vUv;
+    void main() {
+        vec2 centered = vUv - 0.5;
+        float radial = smoothstep(0.52, 0.05, length(centered * vec2(0.65, 1.2)));
+        float rays = pow(max(0.0, sin((vUv.x * 18.0) + uTime * 0.28)), 3.0) * 0.22;
+        vec3 color = mix(vec3(0.55, 0.74, 1.0), vec3(1.0, 0.86, 0.54), vUv.y);
+        gl_FragColor = vec4(color * (0.35 + rays), radial * 0.32);
+    }
+`;
+
+const auroraVertexShader = `
+    uniform float uTime;
+    varying vec2 vUv;
+    void main() {
+        vUv = uv;
+        vec3 transformed = position;
+        transformed.y += sin(position.x * 0.018 + uTime * 0.45) * 7.0;
+        transformed.y += sin(position.x * 0.039 - uTime * 0.28) * 3.5;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
+    }
+`;
+
+const auroraFragmentShader = `
+    uniform float uTime;
+    uniform vec3 uColorA;
+    uniform vec3 uColorB;
+    varying vec2 vUv;
+    void main() {
+        float curtain = sin(vUv.x * 38.0 + uTime * 0.75) * 0.5 + 0.5;
+        float vertical = smoothstep(0.0, 0.22, vUv.y) * smoothstep(1.0, 0.18, vUv.y);
+        float strands = pow(curtain, 3.0) * 0.55 + 0.2;
+        vec3 color = mix(uColorA, uColorB, vUv.x);
+        gl_FragColor = vec4(color * (0.7 + strands), vertical * strands * 0.58);
+    }
+`;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Environment Creation
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -443,7 +489,126 @@ function createSolarEclipse(uniforms) {
     return eclipseGroup;
 }
 
-// ... (skipping shaders)
+function createCloudBreakShaft(uniforms) {
+    const shaft = new THREE.Mesh(
+        new THREE.PlaneGeometry(260, 360, 1, 1),
+        new THREE.ShaderMaterial({
+            uniforms: { uTime: uniforms.uTime },
+            vertexShader: cloudShaftVertexShader,
+            fragmentShader: cloudShaftFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+        }),
+    );
+    shaft.name = 'cloud-break-light-shaft';
+    shaft.position.set(0, 40, -620);
+    shaft.rotation.x = -0.08;
+    return shaft;
+}
+
+function createCloudDecks() {
+    const group = new THREE.Group();
+    group.name = 'cloud-deck-break';
+    const glowTexture = createGlowTexture();
+    const cloudColors = [0xcfe9ff, 0xffe6cc, 0xb6c8ff];
+
+    for (let layer = 0; layer < 3; layer += 1) {
+        const radius = 95 + layer * 38;
+        const count = 24 + layer * 8;
+        for (let index = 0; index < count; index += 1) {
+            const angle = (index / count) * Math.PI * 2 + layer * 0.33;
+            const gap = Math.abs(Math.sin(angle * 0.5));
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+                map: glowTexture,
+                color: cloudColors[(index + layer) % cloudColors.length],
+                transparent: true,
+                opacity: (0.18 + layer * 0.05) * (0.55 + gap * 0.45),
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+            }));
+            sprite.position.set(
+                Math.cos(angle) * radius,
+                -30 + Math.sin(angle * 1.7) * 18 + layer * 8,
+                -500 - layer * 70 + Math.sin(angle) * 28,
+            );
+            const scale = 42 + Math.random() * 34 + layer * 10;
+            sprite.scale.set(scale * 1.8, scale, 1);
+            group.add(sprite);
+        }
+    }
+
+    return group;
+}
+
+function createAuroraRibbons(uniforms) {
+    const group = new THREE.Group();
+    group.name = 'aurora-ribbons';
+    const configs = [
+        {
+            y: 88, z: -690, colorA: 0x64f7ff, colorB: 0xb15cff, rot: -0.12,
+        },
+        {
+            y: 118, z: -760, colorA: 0xffd36f, colorB: 0x7af7c4, rot: 0.16,
+        },
+    ];
+
+    configs.forEach((config) => {
+        const mesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(360, 86, 72, 1),
+            new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: uniforms.uTime,
+                    uColorA: { value: new THREE.Color(config.colorA) },
+                    uColorB: { value: new THREE.Color(config.colorB) },
+                },
+                vertexShader: auroraVertexShader,
+                fragmentShader: auroraFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide,
+            }),
+        );
+        mesh.position.set(0, config.y, config.z);
+        mesh.rotation.z = config.rot;
+        group.add(mesh);
+    });
+
+    return group;
+}
+
+function createRainVeils(count) {
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(count * 3);
+    const speeds = new Float32Array(count);
+
+    for (let index = 0; index < count; index += 1) {
+        const stride = index * 3;
+        positions[stride] = (Math.random() - 0.5) * 360;
+        positions[stride + 1] = Math.random() * 240 - 80;
+        positions[stride + 2] = -390 - Math.random() * 280;
+        speeds[index] = 0.45 + Math.random() * 0.85;
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
+
+    const veil = new THREE.Points(
+        geometry,
+        new THREE.PointsMaterial({
+            color: 0xaad4ff,
+            size: 1.5,
+            transparent: true,
+            opacity: 0.28,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        }),
+    );
+    veil.name = 'rain-veil-particles';
+    return veil;
+}
 
 export function createSkyDriftEnvironment(options = {}) {
     const group = new THREE.Group();
@@ -457,6 +622,18 @@ export function createSkyDriftEnvironment(options = {}) {
 
     // Sky background
     group.add(createSkyGradient(uniforms));
+
+    const cloudDecks = createCloudDecks();
+    group.add(cloudDecks);
+    group.userData.cloudDecks = cloudDecks;
+
+    const lightShaft = createCloudBreakShaft(uniforms);
+    group.add(lightShaft);
+    group.userData.lightShaft = lightShaft;
+
+    const aurora = createAuroraRibbons(uniforms);
+    group.add(aurora);
+    group.userData.aurora = aurora;
 
     // Dense starfield
     const starCount = options.particleCount ? options.particleCount * 4 : 2500;
@@ -492,6 +669,10 @@ export function createSkyDriftEnvironment(options = {}) {
     const ambient = createAmbientParticles(uniforms, options.particleCount || 400);
     group.add(ambient);
 
+    const rainVeils = createRainVeils(options.particleCount || 420);
+    group.add(rainVeils);
+    group.userData.rainVeils = rainVeils;
+
     setupSkyLighting(group);
     group.position.y = (SKY_DRIFT_CONFIG.yStart + SKY_DRIFT_CONFIG.yEnd) / 2;
 
@@ -501,7 +682,7 @@ export function createSkyDriftEnvironment(options = {}) {
 /**
  * Create colorful nebula formations
  */
-function createNebulae(uniforms) {
+function createNebulae() {
     const nebulaGroup = new THREE.Group();
     nebulaGroup.name = 'nebulae';
 
@@ -619,7 +800,10 @@ function createAmbientParticles(uniforms, count) {
 
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-    geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(new Float32Array(count).map(() => Math.random() * 6.28), 1));
+    geometry.setAttribute(
+        'aTwinkle',
+        new THREE.BufferAttribute(new Float32Array(count).map(() => Math.random() * 6.28), 1),
+    );
     geometry.setAttribute('aBrightness', new THREE.BufferAttribute(new Float32Array(count).fill(0.5), 1));
 
     const material = new THREE.ShaderMaterial({
@@ -685,12 +869,34 @@ export function updateSkyDriftEnvironment(group, delta, time) {
         galaxy.rotation.z += delta * 0.01;
     }
 
+    const { cloudDecks } = group.userData;
+    if (cloudDecks) {
+        cloudDecks.rotation.y += delta * 0.006;
+        cloudDecks.rotation.z = Math.sin(time * 0.07) * 0.015;
+    }
+
     // Rotate planets
     const { planets } = group.userData;
     if (planets) {
         planets.children.forEach((planet, i) => {
             planet.rotation.y += delta * (0.05 + i * 0.02);
         });
+    }
+
+    const { rainVeils } = group.userData;
+    const positionAttr = rainVeils?.geometry?.attributes?.position;
+    const speedAttr = rainVeils?.geometry?.attributes?.aSpeed;
+    if (positionAttr && speedAttr) {
+        const { array } = positionAttr;
+        for (let index = 0; index < speedAttr.count; index += 1) {
+            const stride = index * 3;
+            array[stride + 1] -= speedAttr.array[index] * 1.7;
+            array[stride] += Math.sin(time * 0.45 + index) * 0.012;
+            if (array[stride + 1] < -105) {
+                array[stride + 1] = 135;
+            }
+        }
+        positionAttr.needsUpdate = true;
     }
 }
 
