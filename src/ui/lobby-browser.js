@@ -172,32 +172,40 @@ export class LobbyBrowser {
             return;
         }
 
-        listEl.innerHTML = this.lobbies.map((lobby, index) => `
+        listEl.innerHTML = this.lobbies.map((lobby) => {
+            const max = lobby.maxPlayers || 8;
+            const current = this.getPlayerCount(lobby);
+            const status = this.getLobbyStatus(lobby);
+            const condition = lobby.endCondition || 'frags';
+            const pct = Math.min(100, Math.round((current / max) * 100));
+            const joinable = this.canJoinLobby(lobby);
+            const disabledLabel = status === 'playing' ? 'In Progress' : 'Full';
+
+            return `
       <div class="lobby-item" data-lobby-id="${lobby.id}">
         <span class="col-name">
           <strong>${this.escapeHtml(lobby.name)}</strong>
+          ${lobby.hostName ? `<span class="lobby-host">by ${this.escapeHtml(lobby.hostName)}</span>` : ''}
         </span>
         <span class="col-players">
-          <span class="player-count">${lobby.currentPlayers}/${lobby.maxPlayers}</span>
+          <span class="player-count">${current}/${max}</span>
+          <span class="capacity-bar"><span class="capacity-fill" style="width:${pct}%"></span></span>
         </span>
         <span class="col-condition">
-          <span class="badge badge-${lobby.endCondition || 'frags'}">
-            ${lobby.endCondition || 'frags'}
-          </span>
+          <span class="badge badge-${condition}">${condition}</span>
         </span>
         <span class="col-status">
-          <span class="status-badge status-${lobby.status || 'waiting'}">
-            ${this.getStatusText(lobby.status)}
-          </span>
+          <span class="status-badge status-${status}">${this.getStatusText(status)}</span>
         </span>
         <span class="col-action">
-          ${this.canJoinLobby(lobby)
+          ${joinable
         ? `<button class="btn btn-sm btn-join" data-lobby-id="${lobby.id}">Join</button>`
-        : '<button class="btn btn-sm btn-disabled" disabled>Full</button>'
+        : `<button class="btn btn-sm btn-disabled" disabled>${disabledLabel}</button>`
 }
         </span>
       </div>
-    `).join('');
+    `;
+        }).join('');
 
         // Add join button listeners
         listEl.querySelectorAll('.btn-join').forEach((btn) => {
@@ -209,11 +217,29 @@ export class LobbyBrowser {
     }
 
     /**
+   * Resolve the current player count from whichever field the source provides.
+   * Mock lobbies expose `players`; live game state uses `playerCount`.
+   */
+    getPlayerCount(lobby) {
+        return lobby.players ?? lobby.playerCount ?? lobby.currentPlayers ?? 0;
+    }
+
+    /**
+   * Resolve a lobby's status, deriving it from capacity when not supplied.
+   */
+    getLobbyStatus(lobby) {
+        if (lobby.status) return lobby.status;
+        const max = lobby.maxPlayers || 8;
+        return this.getPlayerCount(lobby) >= max ? 'full' : 'open';
+    }
+
+    /**
    * Check if player can join lobby
    */
     canJoinLobby(lobby) {
-        if (lobby.status === 'playing') return false;
-        if (lobby.currentPlayers >= lobby.maxPlayers) return false;
+        const status = this.getLobbyStatus(lobby);
+        if (status === 'playing' || status === 'finished') return false;
+        if (this.getPlayerCount(lobby) >= (lobby.maxPlayers || 8)) return false;
         return true;
     }
 
@@ -222,11 +248,13 @@ export class LobbyBrowser {
    */
     getStatusText(status) {
         const statusMap = {
-            waiting: 'Waiting',
+            open: 'Open',
+            waiting: 'Open',
+            full: 'Full',
             playing: 'In Progress',
             finished: 'Finished',
         };
-        return statusMap[status] || 'Unknown';
+        return statusMap[status] || 'Open';
     }
 
     /**

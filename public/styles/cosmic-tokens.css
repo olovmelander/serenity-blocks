@@ -1,0 +1,42 @@
+/* =================================================================================
+ * COSMIC SERENITY — Design tokens (single source of truth)
+ * ---------------------------------------------------------------------------------
+ * Loaded BEFORE every *-aaa.css override layer. Defines the shared accent palette,
+ * neutral primitives, the floating-HUD glass recipe, and shared keyframes — so the
+ * brand values live in ONE place instead of being re-declared per surface.
+ *
+ * Per-surface accent identity (cyan menu, gold trophies, teal online-MP, …) is set
+ * in each layer by pointing `--cs-accent` / `--cs-accent-rgb` at one of these named
+ * tokens. The rgba(var(--cs-accent-rgb), …) usages in each layer are unchanged.
+ * ============================================================================== */
+
+:root {
+    /* ---- Accent palette (hex + matching rgb triple for rgba()) ------------- */
+    --cs-cyan: #7fdcff;     --cs-cyan-rgb: 127, 220, 255;
+    --cs-indigo: #8ea2ff;   --cs-indigo-rgb: 142, 162, 255;
+    --cs-teal: #5eead4;     --cs-teal-rgb: 94, 234, 212;
+    --cs-violet: #b39dff;   --cs-violet-rgb: 179, 157, 255;
+    --cs-pink: #ff9ecd;     --cs-pink-rgb: 255, 158, 205;
+    --cs-gold: #fcd17a;     --cs-gold-rgb: 252, 209, 122;
+    --cs-lavender: #a78bfa; --cs-lavender-rgb: 167, 139, 250;
+    --cs-amber: #ffb75e;    --cs-amber-rgb: 255, 183, 94;
+
+    /* ---- Neutral primitives ------------------------------------------------ */
+    --cs-soft-rgb: 150, 180, 255;             /* soft-indigo glass borders */
+    --cs-deep-rgb: 8, 10, 23;                 /* deep-navy surface base */
+    --cs-ink: #eef3ff;                        /* bright text */
+    --cs-ink-soft: rgba(211, 219, 245, 0.55); /* muted text */
+
+    /* ---- Floating-HUD glass recipe (side-rail tiles, player card, …) ------- */
+    --cs-hud-surface: rgba(16, 18, 34, 0.62);
+    --cs-hud-border: rgba(var(--cs-soft-rgb), 0.20);
+    --cs-hud-border-hover: rgba(var(--cs-soft-rgb), 0.45);
+    --cs-hud-shadow: 0 12px 32px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    --cs-hud-blur: blur(13px) saturate(140%);
+}
+
+/* ---- Shared title shimmer (was duplicated as hs-/db-/lb-/go-/mc-/lr-/cs-hub-) -- */
+@keyframes cs-shimmer {
+    0%, 100% { background-position: 0% center; }
+    50%      { background-position: 200% center; }
+}

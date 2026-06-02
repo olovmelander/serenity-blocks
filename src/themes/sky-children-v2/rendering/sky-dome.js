@@ -67,14 +67,15 @@ export function createSkyDome(u, opts = {}) {
 
         // Crisp sun disc.
         const disc = smoothstep(float(0.9982), float(0.9994), sunDot);
-        // Wide soft halo around the low sun (restrained so the horizon stays moody).
-        const halo = pow(max(sunDot, float(0.0)), float(260.0)).mul(0.45)
-            .add(pow(max(sunDot, float(0.0)), float(16.0)).mul(0.12));
+        // Wide soft halo around the low sun — tighter + dimmer so the left side
+        // doesn't bloom out into a bright wash.
+        const halo = pow(max(sunDot, float(0.0)), float(360.0)).mul(0.24)
+            .add(pow(max(sunDot, float(0.0)), float(26.0)).mul(0.05));
 
         // Horizon glow concentrated toward the sun azimuth + low elevation.
-        const azimuthAlign = pow(max(sunDot, float(0.0)), float(4.0));
+        const azimuthAlign = pow(max(sunDot, float(0.0)), float(5.0));
         const lowBand = smoothstep(float(0.40), float(-0.10), elevation);
-        const horizonGlow = azimuthAlign.mul(lowBand).mul(0.38);
+        const horizonGlow = azimuthAlign.mul(lowBand).mul(0.26);
 
         const sunCol = u.uSunColor;
         let color = gradient
@@ -89,8 +90,8 @@ export function createSkyDome(u, opts = {}) {
             .mul(u.uStarFade);
         color = color.add(vec3(0.82, 0.88, 1.0).mul(starMask));
 
-        // Sun core (very bright, drives bloom via emissive below).
-        color = color.add(sunCol.mul(disc).mul(2.4));
+        // Sun core — restrained so the full-scene bloom doesn't blow out the sky.
+        color = color.add(sunCol.mul(disc).mul(1.5));
 
         return color;
     })();

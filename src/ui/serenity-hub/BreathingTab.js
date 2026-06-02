@@ -8,6 +8,8 @@
  * - Settings (text prompts, auto-start)
  */
 
+import { csIcon } from '../components/cosmic-icons.js';
+
 export class BreathingTab {
     constructor(hubInstance, breathingIndicator) {
         this.hub = hubInstance;
@@ -59,19 +61,19 @@ export class BreathingTab {
     }
 
     /**
-   * Get emoji for each technique
+   * Get a custom line-SVG icon for each technique (no emojis).
    */
     getTechniqueEmoji(id) {
-        const emojiMap = {
-            'deep-relaxation': '🌊',
-            'box-breathing': '⬜',
-            'calm-sleep': '🌙',
-            energizing: '⚡',
-            coherence: '💚',
-            triangle: '🔺',
-            'wim-hof': '🔥',
+        const iconMap = {
+            'deep-relaxation': 'wave',
+            'box-breathing': 'square',
+            'calm-sleep': 'moon',
+            energizing: 'bolt',
+            coherence: 'heart',
+            triangle: 'triangle',
+            'wim-hof': 'flame',
         };
-        return emojiMap[id] || '🧘';
+        return csIcon(iconMap[id] || 'lotus', 30);
     }
 
     /**
@@ -143,7 +145,7 @@ export class BreathingTab {
         </label>
       </div>
       <p class="section-description">
-        ${isActive ? '✓ Active' : 'Start the breathing guide to begin your practice'}
+        ${isActive ? `<span class="cs-inline-icon">${csIcon('check', 13)}</span> Active` : 'Start the breathing guide to begin your practice'}
       </p>
     `;
 
@@ -337,9 +339,11 @@ export class BreathingTab {
     updateToggleUI(enabled) {
         const description = document.querySelector('.breathing-toggle-section .section-description');
         if (description) {
-            description.textContent = enabled
-                ? '✓ Active - Follow the breathing rhythm'
-                : 'Start the breathing guide to begin your practice';
+            if (enabled) {
+                description.innerHTML = `<span class="cs-inline-icon">${csIcon('check', 13)}</span> Active - Follow the breathing rhythm`;
+            } else {
+                description.textContent = 'Start the breathing guide to begin your practice';
+            }
         }
     }
 

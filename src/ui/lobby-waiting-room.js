@@ -41,12 +41,13 @@ export class LobbyWaitingRoom {
                 <button class="close-btn" id="leave-lobby-btn" style="width: 32px; height: 32px; font-size: 16px;">✕</button>
             </div>
             <div class="lobby-header-info">
-                <h2 id="room-name" style="font-size: 18px; margin: 10px 0; color: #a78bfa;">Loading...</h2>
+                <h2 id="room-name" style="font-size: 18px; margin: 10px 0;">Loading...</h2>
             </div>
         </div>
 
         <div class="match-info-panel" style="flex: 1; overflow-y: auto;">
             <h3>Match Settings</h3>
+            <div class="lobby-objective" id="lobby-objective"></div>
             <div class="match-info-grid" style="display: flex; flex-direction: column; gap: 10px;">
               <div class="info-item">
                 <span class="info-label">Max Players</span>
@@ -69,10 +70,15 @@ export class LobbyWaitingRoom {
         
         <!-- Controls Area (Bottom Left) -->
         <div class="lobby-controls" style="margin-top: auto; padding-top: 20px;">
-             <!-- Invite Link / Room Code could go here -->
-             <div class="room-code-display" style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; text-align: center;">
-                <div style="font-size: 10px; color: #a0aec0; text-transform: uppercase;">Lobby ID</div>
-                <div style="font-size: 14px; color: #fff; font-family: monospace; letter-spacing: 1px;" id="lobby-id-display">Connecting...</div>
+             <!-- Invite Link / Room Code -->
+             <div class="room-code-display">
+                <div class="room-code-label">Lobby ID</div>
+                <div class="room-code-row">
+                   <span class="room-code-value" id="lobby-id-display">Connecting...</span>
+                   <button class="lobby-copy-btn" id="copy-lobby-id" title="Copy Lobby ID" aria-label="Copy Lobby ID">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+                   </button>
+                </div>
              </div>
              <button class="btn btn-secondary" id="invite-friends-btn" style="width: 100%; margin-top: 10px;">
                INVITE FRIENDS
@@ -91,7 +97,12 @@ export class LobbyWaitingRoom {
                 <span class="ready-indicator not-ready">●</span> Not Ready
              </div>
         </div>
-        
+
+        <div class="lobby-ready-progress">
+             <div class="ready-progress-track"><div class="ready-progress-fill" id="ready-progress-fill"></div></div>
+             <span class="ready-progress-label" id="ready-progress-label">0/0 ready</span>
+        </div>
+
         <div class="lobby-player-grid" id="player-list">
              <!-- Big player cards go here -->
         </div>
@@ -128,8 +139,8 @@ export class LobbyWaitingRoom {
               <div class="system-message">Welcome to the lobby!</div>
             </div>
             <div class="chat-input-row" style="display: flex; gap: 8px; padding: 10px; background: rgba(0,0,0,0.3);">
-                <input type="text" id="lobby-chat-input" placeholder="Chat..." maxlength="100" style="flex: 1; background: rgba(255,255,255,0.1); border: 1px solid rgba(139,92,246,0.3); color: white; padding: 8px; border-radius: 4px;">
-                <button id="lobby-chat-send" style="background: #8b5cf6; border: none; color: white; padding: 0 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">SEND</button>
+                <input type="text" id="lobby-chat-input" placeholder="Chat..." maxlength="100" style="flex: 1;">
+                <button id="lobby-chat-send" style="padding: 0 15px; cursor: pointer; font-weight: bold; border: none;">SEND</button>
             </div>
           </div>
       </div>
@@ -157,6 +168,25 @@ export class LobbyWaitingRoom {
       e.stopPropagation(); // Prevent global click handler from triggering
       this.toggleReady();
     });
+
+    // Copy Lobby ID
+    const copyBtn = this.container.querySelector('#copy-lobby-id');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = this.container.querySelector('#lobby-id-display')?.textContent || '';
+        if (!id || id === 'Connecting...') return;
+        const done = () => {
+          copyBtn.classList.add('copied');
+          setTimeout(() => copyBtn.classList.remove('copied'), 1200);
+        };
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(id).then(done).catch(() => {});
+        } else {
+          done();
+        }
+      });
+    }
 
     // Start button
     const startBtn = this.container.querySelector('#start-match-btn');
@@ -292,6 +322,7 @@ export class LobbyWaitingRoom {
     // Listen for player list changes and update immediately
     this.playerListChangeHandler = () => {
       console.log('🔄 Player list changed, updating UI...');
+      this._logRosterChanges();
       this.updateUI();
     };
     this.playerListChangeUnsub = onMultiplayerEvent(
@@ -385,6 +416,19 @@ export class LobbyWaitingRoom {
     const winTargetValue = document.getElementById('win-target-value');
     if (winTargetValue) winTargetValue.textContent = targetText;
 
+    // Objective summary callout
+    const objectiveEl = document.getElementById('lobby-objective');
+    if (objectiveEl) {
+      const cond = conditionText.toLowerCase();
+      if (config.endCondition === 'never') {
+        objectiveEl.textContent = '∞ Endless — no win condition';
+      } else if (config.endCondition === 'time') {
+        objectiveEl.textContent = `🎯 ${targetText} — most ${cond} wins`;
+      } else {
+        objectiveEl.textContent = `🎯 First to ${targetText} ${cond}`;
+      }
+    }
+
     // Host name
     const hostPlayer = Array.from(this.gameState.players.values())
       .find((p) => p.steamId === this.gameState.network.hostSteamId);
@@ -436,30 +480,15 @@ export class LobbyWaitingRoom {
       const isReady = player.isReady || isHost;
       const playerColor = player.color || '#808080';
 
-      // Create card container
+      // Create card container (visual styling owned by lobby-room-aaa.css;
+      // the per-player neon colour is passed through as a CSS var)
       const cardEl = document.createElement('div');
-      cardEl.className = `lobby-player-card ${isReady ? 'ready' : ''} ${isLocal ? 'local' : ''}`;
-      cardEl.style.cssText = `
-        background: rgba(30,35,50,0.6);
-        border: 2px solid ${isReady ? '#48bb78' : 'rgba(139,92,246,0.2)'};
-        border-radius: 12px;
-        padding: 20px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 10px;
-        position: relative;
-        overflow: hidden;
-      `;
+      cardEl.className = `lobby-player-card ${isReady ? 'ready' : 'not-ready'} ${isLocal ? 'local' : ''} ${isHost ? 'host' : ''}`.trim();
+      cardEl.style.setProperty('--player-color', playerColor);
 
-      // Color strip
+      // Color strip (per-player neon)
       const colorStrip = document.createElement('div');
-      colorStrip.style.cssText = `
-        position: absolute;
-        top: 0; left: 0; right: 0; height: 4px;
-        background: ${playerColor};
-        box-shadow: 0 0 10px ${playerColor};
-      `;
+      colorStrip.className = 'player-color-strip';
       cardEl.appendChild(colorStrip);
 
       // Player avatar using PlayerCard component
@@ -476,35 +505,32 @@ export class LobbyWaitingRoom {
       // Player name
       const nameEl = document.createElement('div');
       nameEl.className = 'player-name';
-      nameEl.style.cssText = 'font-size: 16px; font-weight: 700; color: white; margin-top: 5px;';
       nameEl.textContent = player.name;
       cardEl.appendChild(nameEl);
 
       // Player status
       const statusEl = document.createElement('div');
       statusEl.className = 'player-status';
-      statusEl.style.cssText = 'font-size: 12px; color: #a0aec0;';
       statusEl.textContent = isHost ? '👑 HOST' : isLocal ? 'YOU' : 'PLAYER';
       cardEl.appendChild(statusEl);
 
       // Ready badge
       const badgeEl = document.createElement('div');
       badgeEl.className = 'player-ready-badge';
-      badgeEl.style.cssText = `
-        margin-top: 10px;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: 700;
-        background: ${isReady ? 'rgba(72,187,120,0.2)' : 'rgba(251,191,36,0.2)'};
-        color: ${isReady ? '#48bb78' : '#fbbf24'};
-        border: 1px solid ${isReady ? 'rgba(72,187,120,0.4)' : 'rgba(251,191,36,0.4)'};
-      `;
       badgeEl.textContent = isReady ? 'READY' : 'WAITING';
       cardEl.appendChild(badgeEl);
 
       listEl.appendChild(cardEl);
     });
+
+    // Empty "waiting" ghost slots up to max capacity, so the grid always reads as N/max
+    const maxPlayers = parseInt(document.getElementById('max-players-count')?.textContent, 10) || players.length || 8;
+    for (let i = players.length; i < maxPlayers; i++) {
+      const slot = document.createElement('div');
+      slot.className = 'lobby-player-card empty-slot';
+      slot.innerHTML = '<div class="empty-slot-icon">+</div><div class="empty-slot-label">Waiting for player…</div>';
+      listEl.appendChild(slot);
+    }
   }
 
   /**
@@ -515,6 +541,16 @@ export class LobbyWaitingRoom {
     const players = Array.from(this.gameState.players.values());
     const readyCount = players.filter((p) => p.isReady || p.steamId === this.gameState.network.hostSteamId).length;
     const minPlayers = 2; // Minimum 2 players to start
+
+    // Ready-progress bar
+    const total = players.length;
+    const progressFill = document.getElementById('ready-progress-fill');
+    const progressLabel = document.getElementById('ready-progress-label');
+    if (progressFill) {
+      progressFill.style.width = total > 0 ? `${Math.round((readyCount / total) * 100)}%` : '0%';
+      progressFill.classList.toggle('all-ready', total > 0 && readyCount === total);
+    }
+    if (progressLabel) progressLabel.textContent = `${readyCount}/${total} ready`;
 
     const readyBtn = document.getElementById('ready-btn');
     const startBtn = document.getElementById('start-match-btn');
@@ -572,6 +608,7 @@ export class LobbyWaitingRoom {
 
     // Update UI immediately
     this.updateUI();
+    this._logRosterChanges();
   }
 
   /**
@@ -674,6 +711,53 @@ export class LobbyWaitingRoom {
 
     chatEl.appendChild(msgDiv);
     chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  /**
+ * Append an entry to the lobby Activity Log.
+ */
+  addActivityLogEntry(text, type = 'info') {
+    if (!this.container) return;
+    const listEl = this.container.querySelector('#activity-log-list');
+    if (!listEl) return;
+    const entry = document.createElement('div');
+    entry.className = `activity-log-entry activity-${type}`;
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    entry.innerHTML = `<span class="activity-dot"></span><span class="activity-text">${this.escapeHtml(text)}</span><span class="activity-time">${time}</span>`;
+    listEl.appendChild(entry);
+    listEl.scrollTop = listEl.scrollHeight;
+  }
+
+  /**
+ * Diff the roster against the last snapshot and log join / leave / ready changes.
+ */
+  _logRosterChanges() {
+    if (!this.gameState) return;
+    const hostId = this.gameState.network?.hostSteamId;
+    const next = new Map();
+    Array.from(this.gameState.players.values()).forEach((p) => {
+      next.set(p.steamId, { name: p.name, ready: !!(p.isReady || p.steamId === hostId) });
+    });
+
+    // First sync: seed without spamming "joined" for the initial roster.
+    if (!this._activitySnapshot) {
+      this._activitySnapshot = next;
+      this.addActivityLogEntry('Lobby ready — waiting for players', 'info');
+      return;
+    }
+
+    next.forEach((info, id) => {
+      const prev = this._activitySnapshot.get(id);
+      if (!prev) {
+        this.addActivityLogEntry(`${info.name} joined`, 'join');
+      } else if (prev.ready !== info.ready) {
+        this.addActivityLogEntry(`${info.name} ${info.ready ? 'is ready' : 'is not ready'}`, info.ready ? 'ready' : 'unready');
+      }
+    });
+    this._activitySnapshot.forEach((info, id) => {
+      if (!next.has(id)) this.addActivityLogEntry(`${info.name} left`, 'leave');
+    });
+    this._activitySnapshot = next;
   }
 
   /**

@@ -1,9 +1,29 @@
 /**
  * @fileoverview Infinity Mode HUD Component
- * Displays height, build statistics, and milestone achievements
+ * Displays height, build statistics, and milestone achievements.
+ *
+ * Visual language: Cosmic Serenity (violet glass). Accents are pulled from the
+ * shared tokens in public/styles/cosmic-tokens.css via var() — they resolve inside
+ * inline styles too. Semantics: VIOLET = brand/current, GOLD = records/summit,
+ * TEAL = live progress. (Note: this HUD is built with inline styles, so it can't be
+ * re-skinned from a CSS layer — the container BACKGROUND is additionally forced by a
+ * `!important` rule in main.css `.infinity-mode-active #infinity-hud`, kept in sync.)
  */
 
-import { calculateTopRow, calculateBuildHeight, getGridStats } from '../../core/infinity-grid.js';
+import { calculateTopRow, calculateBuildHeight } from '../../core/infinity-grid.js';
+
+// ---- Cosmic Serenity palette (token-backed) -------------------------------------
+const C = {
+    violet: 'var(--cs-lavender)',
+    violetRgb: 'var(--cs-lavender-rgb)',
+    gold: 'var(--cs-gold)',
+    goldRgb: 'var(--cs-gold-rgb)',
+    teal: 'var(--cs-teal)',
+    tealRgb: 'var(--cs-teal-rgb)',
+    ink: 'var(--cs-ink)',
+    label: 'rgba(196, 181, 253, 0.62)', // violet-grey muted label
+    hairline: 'rgba(167, 139, 250, 0.16)',
+};
 
 /**
  * InfinityHUD - Displays infinity-specific statistics and progress
@@ -23,6 +43,7 @@ export class InfinityHUD {
         // DOM elements
         this.container = null;
         this.heightDisplay = null;
+        this.rowUnit = null;
         this.topRowDisplay = null;
         this.progressBar = null;
         this.milestonesDisplay = null;
@@ -63,27 +84,30 @@ export class InfinityHUD {
      * @private
      */
     _initialize() {
-        // Create main container with modern glassmorphism design
+        // Inject shared keyframes once (milestone pulses + cascade counter)
+        this._injectKeyframes();
+
+        // Create main container — Cosmic Serenity violet glass
         this.container = document.createElement('div');
         this.container.id = 'infinity-hud';
         this.container.className = 'infinity-hud';
         this.container.style.cssText = `
             position: relative;
-            width: clamp(200px, 18vw, 280px);
-            background: linear-gradient(
-                165deg,
-                rgba(15, 20, 40, 0.85) 0%,
-                rgba(8, 12, 28, 0.92) 50%,
-                rgba(5, 8, 20, 0.95) 100%
-            );
-            border: 1px solid rgba(100, 200, 255, 0.25);
-            border-radius: 20px;
+            width: clamp(210px, 18vw, 290px);
+            background:
+                radial-gradient(120% 50% at 50% -10%, rgba(${C.violetRgb}, 0.14), transparent 60%),
+                linear-gradient(180deg, rgba(19, 18, 32, 0.92) 0%, rgba(10, 9, 18, 0.95) 100%);
+            border: 1px solid rgba(${C.violetRgb}, 0.26);
+            border-radius: 22px;
             padding: clamp(16px, 2vw, 24px);
             margin: 0;
             box-shadow:
-                0 8px 32px rgba(0, 0, 0, 0.4),
-                0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-                0 0 60px rgba(80, 150, 255, 0.08);
+                0 18px 50px rgba(0, 0, 0, 0.5),
+                0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+                0 1px 0 rgba(255, 255, 255, 0.06) inset,
+                0 0 70px rgba(${C.violetRgb}, 0.10);
+            backdrop-filter: blur(14px) saturate(135%);
+            -webkit-backdrop-filter: blur(14px) saturate(135%);
             font-family: 'Orbitron', 'Segoe UI', sans-serif;
             color: #fff;
             display: none;
@@ -91,25 +115,18 @@ export class InfinityHUD {
             overflow: hidden;
         `;
 
-        // Subtle animated gradient border effect (using pseudo-element simulation via additional div)
+        // Faint top sheen (replaces the old diagonal cyan glow)
         const glowOverlay = document.createElement('div');
         glowOverlay.style.cssText = `
             position: absolute;
-            top: -1px;
-            left: -1px;
-            right: -1px;
-            bottom: -1px;
-            border-radius: 21px;
-            background: linear-gradient(
-                45deg,
-                transparent 40%,
-                rgba(100, 200, 255, 0.1) 50%,
-                transparent 60%
-            );
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 40%;
+            border-radius: 22px 22px 0 0;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 70%);
             pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.5s ease;
-            z-index: -1;
+            z-index: 0;
         `;
         this.container.appendChild(glowOverlay);
 
@@ -118,13 +135,15 @@ export class InfinityHUD {
         title.className = 'hud-title';
         title.textContent = '∞ INFINITY';
         title.style.cssText = `
+            position: relative;
+            z-index: 1;
             font-size: clamp(11px, 1.2vw, 14px);
-            font-weight: 600;
+            font-weight: 700;
             text-align: center;
             margin-bottom: clamp(12px, 1.5vw, 20px);
-            color: rgba(140, 210, 255, 0.95);
-            letter-spacing: 3px;
-            text-shadow: 0 0 20px rgba(100, 200, 255, 0.4);
+            color: ${C.violet};
+            letter-spacing: 4px;
+            text-shadow: 0 0 20px rgba(${C.violetRgb}, 0.45);
             text-transform: uppercase;
         `;
         this.container.appendChild(title);
@@ -148,68 +167,100 @@ export class InfinityHUD {
     }
 
     /**
+     * Shared section-wrapper styling helper
+     * @private
+     */
+    _sectionCss(withDivider = true) {
+        return `
+            position: relative;
+            z-index: 1;
+            margin-bottom: clamp(12px, 1.5vw, 18px);
+            padding-bottom: clamp(10px, 1.2vw, 14px);
+            ${withDivider ? `border-bottom: 1px solid ${C.hairline};` : ''}
+        `;
+    }
+
+    /**
+     * Shared section-label styling helper
+     * @private
+     */
+    _labelCss(color = C.label) {
+        return `
+            font-family: 'Space Mono', monospace;
+            font-size: clamp(8px, 0.8vw, 10px);
+            color: ${color};
+            margin-bottom: 8px;
+            letter-spacing: 1.8px;
+            text-transform: uppercase;
+        `;
+    }
+
+    /**
      * Create height display section
      * @private
      */
     _createHeightSection() {
         const section = document.createElement('div');
         section.className = 'hud-section height-section';
-        section.style.cssText = `
-            margin-bottom: clamp(12px, 1.5vw, 18px);
-            padding-bottom: clamp(10px, 1.2vw, 14px);
-            border-bottom: 1px solid rgba(100, 200, 255, 0.15);
-        `;
+        section.style.cssText = this._sectionCss();
 
         // Build height (primary stat)
         const heightLabel = document.createElement('div');
         heightLabel.textContent = 'BUILD HEIGHT';
-        heightLabel.style.cssText = `
-            font-size: clamp(8px, 0.8vw, 10px);
-            color: rgba(180, 200, 220, 0.7);
-            margin-bottom: 6px;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-        `;
+        heightLabel.style.cssText = this._labelCss();
+        heightLabel.style.marginBottom = '4px';
         section.appendChild(heightLabel);
+
+        // Hero number + unit on one baseline (number only — no duplicated unit)
+        const heightRow = document.createElement('div');
+        heightRow.style.cssText = `
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            margin-bottom: 12px;
+        `;
 
         this.heightDisplay = document.createElement('div');
         this.heightDisplay.className = 'height-value';
         this.heightDisplay.textContent = '0';
         this.heightDisplay.style.cssText = `
-            font-size: clamp(28px, 3vw, 36px);
-            font-weight: 700;
+            font-size: clamp(30px, 3.2vw, 40px);
+            font-weight: 800;
             color: #fff;
-            margin-bottom: 4px;
             line-height: 1;
-            text-shadow: 0 0 30px rgba(100, 200, 255, 0.5);
+            text-shadow: 0 0 26px rgba(${C.violetRgb}, 0.55);
         `;
-        section.appendChild(this.heightDisplay);
+        heightRow.appendChild(this.heightDisplay);
 
-        // Row unit label
-        const rowUnit = document.createElement('div');
-        rowUnit.textContent = 'rows';
-        rowUnit.style.cssText = `
+        // Row unit label (singular/plural set dynamically — was "1 ROWS" + dup "rows")
+        this.rowUnit = document.createElement('div');
+        this.rowUnit.textContent = 'ROWS';
+        this.rowUnit.style.cssText = `
+            font-family: 'Space Mono', monospace;
             font-size: clamp(9px, 0.9vw, 11px);
-            color: rgba(140, 200, 255, 0.6);
-            margin-bottom: 12px;
-            letter-spacing: 1px;
+            color: rgba(${C.violetRgb}, 0.7);
+            letter-spacing: 1.5px;
         `;
-        section.appendChild(rowUnit);
+        heightRow.appendChild(this.rowUnit);
+        section.appendChild(heightRow);
 
-        // Distance from ceiling (secondary stat)
+        // Distance to ceiling (the summit — GOLD)
         const ceilingContainer = document.createElement('div');
         ceilingContainer.style.cssText = `
             display: flex;
             align-items: baseline;
+            justify-content: space-between;
             gap: 8px;
         `;
 
         const topRowLabel = document.createElement('div');
         topRowLabel.textContent = 'TO CEILING';
         topRowLabel.style.cssText = `
+            font-family: 'Space Mono', monospace;
             font-size: clamp(7px, 0.7vw, 9px);
-            color: rgba(255, 200, 130, 0.6);
-            letter-spacing: 1px;
+            color: rgba(${C.goldRgb}, 0.7);
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
         `;
         ceilingContainer.appendChild(topRowLabel);
 
@@ -217,9 +268,11 @@ export class InfinityHUD {
         this.topRowDisplay.className = 'top-row-value';
         this.topRowDisplay.textContent = '—';
         this.topRowDisplay.style.cssText = `
-            font-size: clamp(14px, 1.4vw, 18px);
-            font-weight: 600;
-            color: rgba(255, 200, 130, 0.9);
+            font-family: 'Space Mono', monospace;
+            font-size: clamp(13px, 1.3vw, 16px);
+            font-weight: 700;
+            color: ${C.gold};
+            text-shadow: 0 0 16px rgba(${C.goldRgb}, 0.35);
         `;
         ceilingContainer.appendChild(this.topRowDisplay);
 
@@ -234,11 +287,7 @@ export class InfinityHUD {
     _createProgressBar() {
         const section = document.createElement('div');
         section.className = 'hud-section progress-section';
-        section.style.cssText = `
-            margin-bottom: clamp(12px, 1.5vw, 18px);
-            padding-bottom: clamp(10px, 1.2vw, 14px);
-            border-bottom: 1px solid rgba(100, 200, 255, 0.15);
-        `;
+        section.style.cssText = this._sectionCss();
 
         // Header row with label and percentage
         const headerRow = document.createElement('div');
@@ -251,34 +300,33 @@ export class InfinityHUD {
 
         const label = document.createElement('div');
         label.textContent = 'PROGRESS';
-        label.style.cssText = `
-            font-size: clamp(8px, 0.8vw, 10px);
-            color: rgba(180, 200, 220, 0.7);
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-        `;
+        label.style.cssText = this._labelCss();
+        label.style.marginBottom = '0';
         headerRow.appendChild(label);
 
         this.progressText = document.createElement('div');
         this.progressText.textContent = '0%';
         this.progressText.style.cssText = `
+            font-family: 'Space Mono', monospace;
             font-size: clamp(12px, 1.2vw, 15px);
-            font-weight: 600;
-            color: rgba(100, 255, 200, 0.9);
+            font-weight: 700;
+            color: ${C.teal};
+            text-shadow: 0 0 14px rgba(${C.tealRgb}, 0.4);
         `;
         headerRow.appendChild(this.progressText);
         section.appendChild(headerRow);
 
-        // Progress bar container with modern styling
+        // Progress bar container
         const barContainer = document.createElement('div');
         barContainer.style.cssText = `
             width: 100%;
             height: 10px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 5px;
+            background: rgba(0, 0, 0, 0.32);
+            border: 1px solid rgba(${C.violetRgb}, 0.14);
+            border-radius: 6px;
             overflow: hidden;
             position: relative;
-            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
         `;
 
         this.progressBar = document.createElement('div');
@@ -286,12 +334,10 @@ export class InfinityHUD {
         this.progressBar.style.cssText = `
             height: 100%;
             width: 0%;
-            background: linear-gradient(90deg,
-                rgba(80, 180, 255, 1) 0%,
-                rgba(100, 255, 200, 1) 100%);
-            border-radius: 5px;
+            background: linear-gradient(90deg, ${C.violet} 0%, ${C.teal} 100%);
+            border-radius: 6px;
             transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 0 12px rgba(100, 220, 255, 0.6);
+            box-shadow: 0 0 12px rgba(${C.violetRgb}, 0.55);
         `;
         barContainer.appendChild(this.progressBar);
 
@@ -306,21 +352,12 @@ export class InfinityHUD {
     _createMilestonesSection() {
         const section = document.createElement('div');
         section.className = 'hud-section milestones-section';
-        section.style.cssText = `
-            margin-bottom: clamp(12px, 1.5vw, 18px);
-            padding-bottom: clamp(10px, 1.2vw, 14px);
-            border-bottom: 1px solid rgba(100, 200, 255, 0.15);
-        `;
+        section.style.cssText = this._sectionCss();
 
         const label = document.createElement('div');
         label.textContent = 'MILESTONES';
-        label.style.cssText = `
-            font-size: clamp(8px, 0.8vw, 10px);
-            color: rgba(180, 200, 220, 0.7);
-            margin-bottom: 10px;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-        `;
+        label.style.cssText = this._labelCss();
+        label.style.marginBottom = '10px';
         section.appendChild(label);
 
         this.milestonesDisplay = document.createElement('div');
@@ -331,27 +368,57 @@ export class InfinityHUD {
             gap: 6px;
         `;
 
-        // Create milestone badges with minimal pill style
+        // Create milestone badges — start in the "future/locked" state
         this.milestones.forEach((milestone) => {
             const badge = document.createElement('div');
             badge.className = 'milestone-badge';
             badge.dataset.milestone = milestone;
             badge.textContent = milestone;
-            badge.style.cssText = `
-                padding: 4px 10px;
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.15);
-                border-radius: 12px;
-                font-size: clamp(9px, 0.9vw, 11px);
-                color: rgba(255, 255, 255, 0.35);
-                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                font-weight: 500;
-            `;
+            badge.style.cssText = this._milestoneCss('future');
             this.milestonesDisplay.appendChild(badge);
         });
 
         section.appendChild(this.milestonesDisplay);
         this.container.appendChild(section);
+    }
+
+    /**
+     * Milestone badge styling per state: 'future' | 'next' | 'passed'
+     * @private
+     */
+    _milestoneCss(state) {
+        const base = `
+            padding: 4px 11px;
+            border-radius: 999px;
+            font-family: 'Space Mono', monospace;
+            font-size: clamp(9px, 0.9vw, 11px);
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        `;
+        if (state === 'passed') {
+            return `${base}
+                background: rgba(${C.goldRgb}, 0.16);
+                border: 1px solid rgba(${C.goldRgb}, 0.55);
+                color: ${C.gold};
+                box-shadow: 0 0 12px rgba(${C.goldRgb}, 0.28);
+            `;
+        }
+        if (state === 'next') {
+            return `${base}
+                background: rgba(${C.violetRgb}, 0.20);
+                border: 1px solid rgba(${C.violetRgb}, 0.70);
+                color: #f3f0ff;
+                box-shadow: 0 0 14px rgba(${C.violetRgb}, 0.40);
+                animation: milestone-next-pulse 1.8s ease-in-out infinite;
+            `;
+        }
+        // future / locked
+        return `${base}
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: rgba(220, 227, 250, 0.40);
+        `;
     }
 
     /**
@@ -361,16 +428,12 @@ export class InfinityHUD {
     _createStatsSection() {
         const section = document.createElement('div');
         section.className = 'hud-section stats-section';
+        section.style.cssText = this._sectionCss(false);
 
         const label = document.createElement('div');
         label.textContent = 'SESSION STATS';
-        label.style.cssText = `
-            font-size: clamp(8px, 0.8vw, 10px);
-            color: rgba(180, 200, 220, 0.7);
-            margin-bottom: 10px;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-        `;
+        label.style.cssText = this._labelCss();
+        label.style.marginBottom = '10px';
         section.appendChild(label);
 
         this.statsDisplay = document.createElement('div');
@@ -378,43 +441,75 @@ export class InfinityHUD {
         this.statsDisplay.style.cssText = `
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 8px 12px;
+            gap: 9px 12px;
             font-size: clamp(10px, 1vw, 12px);
         `;
+
+        const cellLabel = `font-family: 'Space Mono', monospace; font-size: 0.78em; color: ${C.label}; text-transform: uppercase; letter-spacing: 0.6px;`;
+        const cellValue = `font-family: 'Space Mono', monospace; font-weight: 700; color: ${C.ink};`;
+        const goldLabel = `font-family: 'Space Mono', monospace; font-size: 0.78em; color: rgba(${C.goldRgb}, 0.7); text-transform: uppercase; letter-spacing: 0.6px;`;
+        const goldValue = `font-family: 'Space Mono', monospace; font-weight: 700; color: ${C.gold}; text-shadow: 0 0 14px rgba(${C.goldRgb}, 0.30);`;
+
         this.statsDisplay.innerHTML = `
             <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
-                <span style="font-size: 0.8em; color: rgba(180, 200, 220, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Blocks</span>
-                <span id="stat-blocks" style="font-size: 1.2em; font-weight: 600; color: #fff;">0</span>
+                <span style="${cellLabel}">Blocks</span>
+                <span id="stat-blocks" style="${cellValue} font-size: 1.2em;">0</span>
             </div>
             <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
-                <span style="font-size: 0.8em; color: rgba(180, 200, 220, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Lines</span>
-                <span id="stat-lines" style="font-size: 1.2em; font-weight: 600; color: #fff;">0</span>
+                <span style="${cellLabel}">Lines</span>
+                <span id="stat-lines" style="${cellValue} font-size: 1.2em;">0</span>
             </div>
             <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px; grid-column: span 2;">
-                <span style="font-size: 0.8em; color: rgba(180, 200, 220, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Score</span>
-                <span id="stat-score" style="font-size: 1.4em; font-weight: 700; color: rgba(100, 220, 255, 1);">0</span>
+                <span style="${cellLabel}">Score</span>
+                <span id="stat-score" style="font-family: 'Space Mono', monospace; font-size: 1.5em; font-weight: 700; color: ${C.violet}; text-shadow: 0 0 16px rgba(${C.violetRgb}, 0.45);">0</span>
             </div>
-            <div style="grid-column: span 2; height: 1px; background: rgba(100, 200, 255, 0.15); margin: 4px 0;"></div>
+            <div style="grid-column: span 2; height: 1px; background: ${C.hairline}; margin: 4px 0;"></div>
             <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
-                <span style="font-size: 0.8em; color: rgba(100, 255, 180, 0.7); text-transform: uppercase; letter-spacing: 0.5px;">Best Score</span>
-                <span id="stat-max-cascade-score" style="font-size: 1.2em; font-weight: 700; color: rgba(100, 255, 180, 1);">0</span>
-            </div>
-            <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
-                <span style="font-size: 0.8em; color: rgba(100, 255, 180, 0.7); text-transform: uppercase; letter-spacing: 0.5px;">Best Lines</span>
-                <span id="stat-max-lines" style="font-size: 1.2em; font-weight: 700; color: rgba(100, 255, 180, 1);">0</span>
+                <span style="${goldLabel}">Best Score</span>
+                <span id="stat-max-cascade-score" style="${goldValue} font-size: 1.2em;">0</span>
             </div>
             <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
-                <span style="font-size: 0.8em; color: rgba(255, 180, 100, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Best Chain</span>
-                <span id="stat-max-cascade" style="font-size: 1.2em; font-weight: 600; color: rgba(255, 200, 130, 1);">0</span>
+                <span style="${goldLabel}">Best Lines</span>
+                <span id="stat-max-lines" style="${goldValue} font-size: 1.2em;">0</span>
             </div>
             <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
-                <span style="font-size: 0.8em; color: rgba(255, 180, 100, 0.6); text-transform: uppercase; letter-spacing: 0.5px;">Total Cascades</span>
-                <span id="stat-total-cascades" style="font-size: 1.2em; font-weight: 600; color: rgba(255, 200, 130, 1);">0</span>
+                <span style="${goldLabel}">Best Chain</span>
+                <span id="stat-max-cascade" style="${goldValue} font-size: 1.2em;">0</span>
+            </div>
+            <div class="stat-item" style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="${goldLabel}">Total Cascades</span>
+                <span id="stat-total-cascades" style="${goldValue} font-size: 1.2em;">0</span>
             </div>
         `;
 
         section.appendChild(this.statsDisplay);
         this.container.appendChild(section);
+    }
+
+    /**
+     * Inject shared keyframes (milestone pulses + cascade counter) once.
+     * @private
+     */
+    _injectKeyframes() {
+        if (document.getElementById('infinity-hud-keyframes')) return;
+        const style = document.createElement('style');
+        style.id = 'infinity-hud-keyframes';
+        style.textContent = `
+            @keyframes milestone-pulse {
+                0% { transform: scale(1); }
+                50% { transform: scale(1.3); }
+                100% { transform: scale(1); }
+            }
+            @keyframes milestone-next-pulse {
+                0%, 100% { box-shadow: 0 0 10px rgba(167, 139, 250, 0.30); }
+                50%      { box-shadow: 0 0 18px rgba(167, 139, 250, 0.55); }
+            }
+            @keyframes cascade-pulse {
+                0% { transform: translate(-50%, -50%) scale(0.95); }
+                100% { transform: translate(-50%, -50%) scale(1.05); }
+            }
+        `;
+        document.head.appendChild(style);
     }
 
     /**
@@ -435,8 +530,8 @@ export class InfinityHUD {
             font-weight: 900;
             color: #ffffff;
             text-shadow:
-                0 0 20px rgba(255, 100, 100, 1.0),
-                0 0 40px rgba(255, 100, 100, 0.8),
+                0 0 20px rgba(${C.goldRgb}, 1.0),
+                0 0 44px rgba(${C.violetRgb}, 0.75),
                 2px 2px 4px rgba(0, 0, 0, 0.8);
             z-index: 10000;
             pointer-events: none;
@@ -444,24 +539,6 @@ export class InfinityHUD {
             letter-spacing: 4px;
             animation: cascade-pulse 0.5s ease-in-out infinite alternate;
         `;
-
-        // Add animation keyframes
-        if (!document.getElementById('cascade-counter-keyframes')) {
-            const style = document.createElement('style');
-            style.id = 'cascade-counter-keyframes';
-            style.textContent = `
-                @keyframes cascade-pulse {
-                    0% { transform: translate(-50%, -50%) scale(0.95); }
-                    100% { transform: translate(-50%, -50%) scale(1.05); }
-                }
-                @keyframes cascade-flash {
-                    0% { opacity: 1; }
-                    50% { opacity: 0.7; }
-                    100% { opacity: 1; }
-                }
-            `;
-            document.head.appendChild(style);
-        }
 
         document.body.appendChild(this.cascadeCounter);
     }
@@ -577,16 +654,16 @@ export class InfinityHUD {
     _updateHeightDisplays(buildHeight) {
         const maxRows = this.gameState.maxRows || 1000;
 
-        // Build height from bottom
-        this.heightDisplay.textContent = `${buildHeight} ROWS`;
-
-        // Rows remaining to reach the ceiling (1000 rows)
-        if (buildHeight > 0) {
-            const rowsRemaining = maxRows - buildHeight;
-            this.topRowDisplay.textContent = `${rowsRemaining} ROWS`;
-        } else {
-            this.topRowDisplay.textContent = '— ROWS';
+        // Build height from bottom — number only; unit lives in the sublabel
+        this.heightDisplay.textContent = buildHeight.toLocaleString();
+        if (this.rowUnit) {
+            this.rowUnit.textContent = buildHeight === 1 ? 'ROW' : 'ROWS';
         }
+
+        // Rows remaining to reach the ceiling
+        const rowsRemaining = Math.max(0, maxRows - buildHeight);
+        const unit = rowsRemaining === 1 ? 'ROW' : 'ROWS';
+        this.topRowDisplay.textContent = `${rowsRemaining.toLocaleString()} ${unit}`;
     }
 
     /**
@@ -602,56 +679,46 @@ export class InfinityHUD {
         this.progressBar.style.width = `${percentage}%`;
         this.progressText.textContent = `${percentage.toFixed(1)}%`;
 
-        // Change color based on progress
+        // Shift toward GOLD as the summit nears (live=violet→teal, then →gold near top)
         if (percentage >= 75) {
-            this.progressBar.style.background = 'linear-gradient(90deg, rgba(255, 100, 100, 0.8) 0%, rgba(255, 200, 100, 0.8) 100%)';
-        } else if (percentage >= 50) {
-            this.progressBar.style.background = 'linear-gradient(90deg, rgba(255, 200, 100, 0.8) 0%, rgba(100, 255, 200, 0.8) 100%)';
+            this.progressBar.style.background = `linear-gradient(90deg, ${C.teal} 0%, ${C.gold} 100%)`;
+            this.progressBar.style.boxShadow = `0 0 14px rgba(${C.goldRgb}, 0.55)`;
+        } else if (percentage >= 40) {
+            this.progressBar.style.background = `linear-gradient(90deg, ${C.violet} 0%, ${C.teal} 100%)`;
+            this.progressBar.style.boxShadow = `0 0 12px rgba(${C.tealRgb}, 0.50)`;
         } else {
-            this.progressBar.style.background = 'linear-gradient(90deg, rgba(100, 200, 255, 0.8) 0%, rgba(100, 255, 200, 0.8) 100%)';
+            this.progressBar.style.background = `linear-gradient(90deg, ${C.violet} 0%, ${C.teal} 100%)`;
+            this.progressBar.style.boxShadow = `0 0 12px rgba(${C.violetRgb}, 0.55)`;
         }
     }
 
     /**
-     * Update milestone badges
+     * Update milestone badges (future / next-target / passed)
      * PERFORMANCE: Accepts pre-calculated buildHeight to avoid recalculation
      * @private
      * @param {number} buildHeight - Pre-calculated build height
      */
     _updateMilestones(buildHeight) {
+        // The next target = the first milestone still ahead of us
+        const nextMilestone = this.milestones.find((m) => buildHeight < m);
+
         this.milestones.forEach((milestone) => {
             const badge = this.milestonesDisplay.querySelector(`[data-milestone="${milestone}"]`);
             if (!badge) return;
 
             if (buildHeight >= milestone) {
-                // Milestone achieved
-                if (!this.achievedMilestones.has(milestone)) {
+                // Milestone achieved. Set the style FIRST, then the one-shot pulse —
+                // otherwise cssText would wipe the animation we just set.
+                const newlyAchieved = !this.achievedMilestones.has(milestone);
+                badge.style.cssText = this._milestoneCss('passed');
+                if (newlyAchieved) {
                     this.achievedMilestones.add(milestone);
                     this._animateMilestoneAchieved(badge);
                 }
-
-                badge.style.cssText = `
-                    padding: 4px 8px;
-                    background: rgba(100, 255, 200, 0.3);
-                    border: 1px solid rgba(100, 255, 200, 0.8);
-                    border-radius: 4px;
-                    font-size: 11px;
-                    color: rgba(100, 255, 200, 1.0);
-                    font-weight: 700;
-                    box-shadow: 0 0 10px rgba(100, 255, 200, 0.5);
-                    transition: all 0.3s ease;
-                `;
+            } else if (milestone === nextMilestone) {
+                badge.style.cssText = this._milestoneCss('next');
             } else {
-                // Not yet achieved
-                badge.style.cssText = `
-                    padding: 4px 8px;
-                    background: rgba(255, 255, 255, 0.1);
-                    border: 1px solid rgba(255, 255, 255, 0.2);
-                    border-radius: 4px;
-                    font-size: 11px;
-                    color: rgba(255, 255, 255, 0.4);
-                    transition: all 0.3s ease;
-                `;
+                badge.style.cssText = this._milestoneCss('future');
             }
         });
     }
@@ -661,23 +728,8 @@ export class InfinityHUD {
      * @private
      */
     _animateMilestoneAchieved(badge) {
-        // Pulse animation
+        // Pulse animation (keyframes injected in _injectKeyframes)
         badge.style.animation = 'milestone-pulse 0.6s ease-out';
-
-        // Add keyframes if not already added
-        if (!document.getElementById('milestone-keyframes')) {
-            const style = document.createElement('style');
-            style.id = 'milestone-keyframes';
-            style.textContent = `
-                @keyframes milestone-pulse {
-                    0% { transform: scale(1); }
-                    50% { transform: scale(1.3); }
-                    100% { transform: scale(1); }
-                }
-            `;
-            document.head.appendChild(style);
-        }
-
         console.log('[InfinityHUD] Milestone achieved:', badge.dataset.milestone);
     }
 
@@ -766,15 +818,10 @@ export class InfinityHUD {
             this.container.parentElement.removeChild(this.container);
         }
 
-        // Remove keyframes styles if exist
-        const keyframes = document.getElementById('milestone-keyframes');
+        // Remove injected keyframes
+        const keyframes = document.getElementById('infinity-hud-keyframes');
         if (keyframes) {
             keyframes.remove();
-        }
-
-        const cascadeKeyframes = document.getElementById('cascade-counter-keyframes');
-        if (cascadeKeyframes) {
-            cascadeKeyframes.remove();
         }
 
         console.log('[InfinityHUD] Destroyed');

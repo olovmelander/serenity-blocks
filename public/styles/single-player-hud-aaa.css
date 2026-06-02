@@ -1,0 +1,72 @@
+/* =================================================================================
+ * COSMIC SERENITY — Single-Player in-game HUD re-skin
+ * ---------------------------------------------------------------------------------
+ * Loaded AFTER main.css so these rules win the cascade by source order. Scoped to
+ * the single-player stage chrome (stat rail + next-queue frame). VIOLET accent, to
+ * harmonise with the existing violet board frame (.single-player-card uses
+ * --player-primary: #8b5cf6).
+ *
+ * SAFE-BY-DESIGN:
+ *  - Reuses the shared glass tokens defined in menu-aaa.css :root
+ *    (--cs-hud-surface / --cs-hud-border / --cs-hud-shadow / --cs-hud-blur).
+ *  - Replaces the 6-colour neon rainbow on the stat pills with one restrained violet
+ *    accent + near-white values. Keeps every stat (Score…PPM) and the existing
+ *    size hierarchy / pulse animation untouched (font-size rules in main.css remain).
+ *  - Selectors match main.css specificity exactly, so later source order wins — no
+ *    !important needed.
+ *  - Also styles the Serenity-mode HUD (shares .single-player-stats-bar); Infinity
+ *    hides the bar, so it's unaffected. The board playfield is NOT touched.
+ * ============================================================================== */
+
+/* ---- Stat pills → unified Cosmic Serenity glass --------------------------- */
+.single-player-stat {
+    background: var(--cs-hud-surface);
+    border: 1px solid var(--cs-hud-border);
+    box-shadow: var(--cs-hud-shadow);
+    backdrop-filter: var(--cs-hud-blur);
+    -webkit-backdrop-filter: var(--cs-hud-blur);
+}
+
+/* Score pill (first) keeps a gentle violet emphasis instead of the old green. */
+.single-player-stat:first-child {
+    border-color: rgba(167, 139, 250, 0.40);
+    box-shadow:
+        0 12px 32px rgba(0, 0, 0, 0.42),
+        0 0 18px rgba(139, 92, 246, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Drop the per-stat icon saturation tweak — let the unified accent read clean. */
+.single-player-stat .stat-icon {
+    filter: none;
+}
+
+/* ---- Kill the rainbow: one violet accent across every stat ----------------
+ * Matches the (0,3,0) specificity of the per-stat colour rules in main.css
+ * (.single-player-stat.stat-* .single-player-stat-value / .stat-icon) via an
+ * equal-specificity grouped selector, loaded later. Values read near-white with a
+ * soft violet glow; icons take the violet accent. */
+.single-player-stats-bar .single-player-stat .single-player-stat-value {
+    color: #f3f0ff;
+    text-shadow: 0 0 12px rgba(139, 92, 246, 0.45);
+}
+
+.single-player-stats-bar .single-player-stat .stat-icon {
+    color: #c4b5fd;
+    filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.40));
+}
+
+/* ---- Next-queue frame → calmer, cohesive with the board ------------------
+ * The native frame is a loud 4px violet border + heavy glow. Soften it (2px,
+ * gentler glow, glass surface) so the next-queue + board read as one Cosmic
+ * Serenity unit. Chrome only — board size / playfield unchanged. */
+.single-player-card .player-next-pieces {
+    background: var(--cs-hud-surface);
+    border: 2px solid rgba(139, 92, 246, 0.45);
+    border-bottom: none;
+    box-shadow:
+        0 8px 24px rgba(0, 0, 0, 0.35),
+        inset 0 0 18px rgba(139, 92, 246, 0.14);
+    backdrop-filter: var(--cs-hud-blur);
+    -webkit-backdrop-filter: var(--cs-hud-blur);
+}

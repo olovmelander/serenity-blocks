@@ -50,3 +50,6 @@ release/
 
 # Secrets
 google-credentials.json
+
+# Validation/screenshot artifacts
+artifacts/

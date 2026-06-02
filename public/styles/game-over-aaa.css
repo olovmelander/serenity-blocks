@@ -1,0 +1,435 @@
+/* =================================================================================
+ * COSMIC SERENITY — Game Over modal redesign
+ * ---------------------------------------------------------------------------------
+ * Loaded AFTER main.css so these rules win the cascade. Everything is scoped to
+ * `#game-over-modal` so the shared `.modal-content` / `.demo-btn` / `.modal h1`
+ * used by other modals stay untouched.
+ *
+ * Accent identity: VIOLET (the app's signature board accent, mode-neutral — the
+ * game-over screen serves both Single Player and Infinity). The final score keeps
+ * its celebratory GOLD. The four stat sections are re-tuned from the old neon
+ * rainbow to the exact Cosmic Serenity palette (violet / cyan / gold / teal — the
+ * same per-mode identities used in the main menu).
+ *
+ * Markup is already class-based (src/ui/modals.js builds .stat-card / .stat-row),
+ * so this is a pure CSS override — no JS changes needed.
+ * ============================================================================== */
+
+#game-over-modal {
+    --cs-accent: var(--cs-lavender);
+    --cs-accent-rgb: var(--cs-lavender-rgb);
+    --cs-accent-2: var(--cs-cyan);
+    --cs-gold: #fbbf24;
+    --cs-gold-rgb: 251, 191, 36;
+}
+
+/* ---- Shell: cosmic glass with a violet wash ------------------------------- */
+#game-over-modal .modal-content {
+    box-sizing: border-box;
+    width: min(840px, calc(100vw - 48px));
+    max-width: none;
+    /* Sizes to content (hero + 2×2 grid fits without scroll once the offline Steam
+       leaderboard panel is skipped); cap only caps growth on Steam builds / short windows. */
+    max-height: min(94vh, 880px);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    text-align: center;
+    border-radius: 24px;
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.26);
+    background:
+        radial-gradient(110% 60% at 50% -12%, rgba(var(--cs-accent-rgb), 0.16), transparent 60%),
+        radial-gradient(80% 70% at 92% 4%, rgba(127, 220, 255, 0.08), transparent 60%),
+        linear-gradient(180deg, rgba(19, 18, 32, 0.94) 0%, rgba(10, 9, 18, 0.96) 100%);
+    backdrop-filter: blur(18px) saturate(135%);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    box-shadow:
+        0 28px 80px rgba(0, 0, 0, 0.58),
+        0 0 0 1px rgba(255, 255, 255, 0.04),
+        0 0 90px rgba(var(--cs-accent-rgb), 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    animation: go-pop 0.44s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+body.electron-app #game-over-modal .modal-content {
+    backdrop-filter: blur(9px) saturate(120%);
+    -webkit-backdrop-filter: blur(9px) saturate(120%);
+}
+
+@keyframes go-pop {
+    from { opacity: 0; transform: translateY(16px) scale(0.985); filter: blur(6px); }
+    to   { opacity: 1; transform: translateY(0) scale(1);        filter: blur(0); }
+}
+
+/* Violet gradient-border ring (masked to the 1px edge) — replaces base ::before */
+#game-over-modal .modal-content::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg,
+            rgba(var(--cs-accent-rgb), 0.55),
+            rgba(255, 255, 255, 0.04) 42%,
+            rgba(127, 220, 255, 0.28) 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.72;
+    z-index: 2;
+}
+
+/* Static top sheen — replaces the base scan-line animation */
+#game-over-modal .modal-content::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    top: 0;
+    left: 0;
+    width: auto;
+    height: auto;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 28%);
+    animation: none;
+    pointer-events: none;
+    opacity: 0.7;
+    z-index: 1;
+}
+
+/* Keep real content above the ring + sheen */
+#game-over-modal h1,
+#game-over-modal .stats-scroll-container,
+#game-over-modal .game-over-buttons,
+#game-over-modal > .modal-content > p {
+    position: relative;
+    z-index: 3;
+}
+
+/* ---- Title: aurora violet→cyan + shimmer + tagline ------------------------- */
+#game-over-modal h1 {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 30px 32px 4px;
+    text-align: center;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background: linear-gradient(100deg,
+            #ede9ff 0%, var(--cs-accent) 36%, var(--cs-accent-2) 66%, #f3fbff 100%);
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    font-size: clamp(30px, 3.2vw, 40px);
+    letter-spacing: 0.04em;
+    text-shadow: none;
+    filter: drop-shadow(0 0 18px rgba(var(--cs-accent-rgb), 0.30));
+    animation: cs-shimmer 9s ease-in-out infinite;
+}
+
+#game-over-modal h1::after {
+    content: 'FINAL RESULTS';
+    display: block;
+    margin-top: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.34em;
+    text-indent: 0.34em;
+    color: rgba(196, 181, 253, 0.50);
+    -webkit-text-fill-color: rgba(196, 181, 253, 0.50);
+    background: none;
+    filter: none;
+}
+
+/* (shimmer keyframe consolidated into cosmic-tokens.css → cs-shimmer) */
+
+/* ---- Scroll container: violet scrollbar ----------------------------------- */
+#game-over-modal .stats-scroll-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 6px 28px 4px;
+    margin: 0;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--cs-accent-rgb), 0.55) rgba(0, 0, 0, 0.12);
+}
+
+#game-over-modal .stats-scroll-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+#game-over-modal .stats-scroll-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 4px;
+}
+
+#game-over-modal .stats-scroll-container::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.80), rgba(127, 220, 255, 0.45));
+    border: 1px solid rgba(8, 8, 16, 0.6);
+    border-radius: 4px;
+}
+
+#game-over-modal .stats-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--cs-accent-rgb), 0.95);
+}
+
+/* ---- Hero: final score + rank + badge ------------------------------------- */
+#game-over-modal .stats-header {
+    text-align: center;
+    margin: 4px 0 18px;
+    padding: 8px 0 14px;
+    position: relative;
+    border-bottom: 1px solid rgba(var(--cs-soft-rgb), 0.10);
+}
+
+#game-over-modal .score-display {
+    font-family: 'Orbitron', 'Space Mono', monospace;
+    font-size: clamp(48px, 6vw, 66px);
+    font-weight: 900;
+    line-height: 0.95;
+    letter-spacing: -0.01em;
+    background: linear-gradient(135deg, #ffe9a8 0%, var(--cs-gold) 50%, #f59e0b 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: none;
+    filter: drop-shadow(0 0 26px rgba(var(--cs-gold-rgb), 0.34));
+    margin-bottom: 8px;
+}
+
+#game-over-modal .ranking-display {
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--cs-accent-2);
+    margin-bottom: 0;
+}
+
+#game-over-modal .stat-badge {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+}
+
+#game-over-modal .stat-badge-gold {
+    background: rgba(var(--cs-gold-rgb), 0.14);
+    border: 1px solid rgba(var(--cs-gold-rgb), 0.50);
+    color: #ffe9a8;
+    box-shadow: 0 0 22px rgba(var(--cs-gold-rgb), 0.22);
+}
+
+#game-over-modal .stat-badge-purple {
+    background: rgba(var(--cs-accent-rgb), 0.14);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.50);
+    color: #e9e2ff;
+    box-shadow: 0 0 22px rgba(var(--cs-accent-rgb), 0.20);
+}
+
+/* ---- Stat grid: 2×2 cosmic glass cards ------------------------------------ */
+#game-over-modal .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+#game-over-modal .stat-card {
+    --card-rgb: var(--cs-accent-rgb);
+    position: relative;
+    text-align: left;
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(var(--card-rgb), 0.22);
+    background:
+        linear-gradient(180deg, rgba(var(--card-rgb), 0.06), transparent 70%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(10, 13, 27, 0.45));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+    animation: go-card-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+#game-over-modal .stat-card:nth-child(1) { animation-delay: 0.04s; }
+#game-over-modal .stat-card:nth-child(2) { animation-delay: 0.09s; }
+#game-over-modal .stat-card:nth-child(3) { animation-delay: 0.14s; }
+#game-over-modal .stat-card:nth-child(4) { animation-delay: 0.19s; }
+
+@keyframes go-card-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+#game-over-modal .stat-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(var(--card-rgb), 0.45);
+    box-shadow:
+        0 12px 28px rgba(0, 0, 0, 0.34),
+        0 0 24px rgba(var(--card-rgb), 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Per-section accents → Cosmic Serenity palette */
+#game-over-modal .stat-card-purple { --card-rgb: 167, 139, 250; }  /* violet */
+#game-over-modal .stat-card-cyan   { --card-rgb: 127, 220, 255; }  /* cyan   */
+#game-over-modal .stat-card-gold   { --card-rgb: 252, 209, 122; }  /* gold   */
+#game-over-modal .stat-card-green  { --card-rgb: 94, 234, 212;  }  /* teal   */
+
+#game-over-modal .stat-card .stat-card-header {
+    color: rgb(var(--card-rgb));
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(var(--card-rgb), 0.16);
+    line-height: 1.2;
+}
+
+#game-over-modal .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 5px 0;
+    font-size: 13px;
+    line-height: 1.3;
+    border: 0;
+}
+
+#game-over-modal .stat-row + .stat-row {
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+#game-over-modal .stat-label {
+    color: rgba(211, 219, 245, 0.58);
+    font-weight: 500;
+    letter-spacing: 0.01em;
+}
+
+#game-over-modal .stat-value {
+    font-family: 'Space Mono', monospace;
+    color: #f2f4ff;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.01em;
+}
+
+/* Session vs-best / vs-avg deltas read as gains (teal) or losses (soft rose) */
+#game-over-modal .stat-value.stat-comparison {
+    color: rgba(211, 219, 245, 0.78);
+    font-size: 13px;
+}
+
+/* Steam leaderboard host spacing (component styles itself) */
+#game-over-modal .steam-leaderboard-host:not(:empty) {
+    margin-top: 18px;
+}
+
+/* ---- Buttons + restart hint ----------------------------------------------- */
+#game-over-modal .game-over-buttons {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    padding: 16px 32px 4px;
+}
+
+#game-over-modal .game-over-buttons .demo-btn {
+    padding: 12px 30px;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    border-radius: 12px;
+    color: #eef3ff;
+    background:
+        linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.18), rgba(var(--cs-accent-rgb), 0.06)),
+        rgba(8, 10, 23, 0.5);
+    border: 1px solid rgba(var(--cs-accent-rgb), 0.42);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#game-over-modal .game-over-buttons .demo-btn:hover {
+    transform: translateY(-2px);
+    color: #ffffff;
+    background:
+        linear-gradient(180deg, rgba(var(--cs-accent-rgb), 0.28), rgba(var(--cs-accent-rgb), 0.10)),
+        rgba(8, 10, 23, 0.62);
+    border-color: rgba(var(--cs-accent-rgb), 0.66);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.34), 0 0 22px rgba(var(--cs-accent-rgb), 0.24);
+}
+
+#game-over-modal .game-over-buttons .demo-btn:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 3px rgba(var(--cs-accent-rgb), 0.30),
+        0 0 22px rgba(var(--cs-accent-rgb), 0.24);
+}
+
+#game-over-modal > .modal-content > p {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 6px 32px 22px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(196, 181, 253, 0.62);
+    animation: go-hint-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes go-hint-pulse {
+    0%, 100% { opacity: 0.85; }
+    50%      { opacity: 0.42; }
+}
+
+/* ---- Responsive ----------------------------------------------------------- */
+@media (max-width: 640px) {
+    #game-over-modal .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    #game-over-modal h1 {
+        padding: 24px 22px 4px;
+    }
+
+    #game-over-modal .stats-scroll-container {
+        padding: 6px 18px 4px;
+    }
+}
+
+/* ---- Main Menu button: custom home icon (no emoji) ------------------------ */
+#game-over-buttons .demo-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+#game-over-buttons .btn-icon-svg {
+    flex-shrink: 0;
+    opacity: 0.92;
+}
+
+/* ---- Reduced motion ------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    #game-over-modal .modal-content,
+    #game-over-modal h1,
+    #game-over-modal .stat-card,
+    #game-over-modal > .modal-content > p {
+        animation: none;
+    }
+}

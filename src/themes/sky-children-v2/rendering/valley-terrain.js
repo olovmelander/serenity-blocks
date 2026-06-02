@@ -94,8 +94,10 @@ const sampleValleyMaskTSL = Fn(([x, z]) => {
     return clamp(pathMask.mul(0.72).add(carveA.mul(0.34)).add(carveB.mul(0.26)), 0.0, 1.0);
 });
 
-// The master GPU heightfield algorithm (exact 1:1 match with CPU terrainField)
-const heightFieldTSL = Fn(([pInput]) => {
+// The master GPU heightfield algorithm (exact 1:1 match with CPU terrainField).
+// Exported so flowers/bushes/props anchor to the EXACT rendered terrain surface
+// (no CPU/GPU height divergence). The field is time-independent (static terrain).
+export const heightFieldTSL = Fn(([pInput]) => {
     const p = vec2(pInput).toVar();
     const { x } = p;
     const z = p.y;
@@ -164,10 +166,22 @@ const heightFieldTSL = Fn(([pInput]) => {
     return clamp(hBase, float(minHeight), float(maxHeight));
 });
 
-// Neutral-ish meadow albedo by elevation (warmth comes from the lighting).
-const COL_LOW = vec3(0.24, 0.48, 0.22); // rich vibrant green
-const COL_MID = vec3(0.42, 0.68, 0.28); // bright grass green
-const COL_HIGH = vec3(0.62, 0.78, 0.35); // vibrant light lime green
+// Island regions (world XZ + scatter radius) matching the dedicated mound centres
+// in heightFieldTSL (+ the macro-driven right swell). Props anchor here so flowers,
+// bushes, arches land ON the green islands that poke above the cloud sea.
+export const ISLAND_REGIONS = Object.freeze([
+    { x: -170, z: -160, r: 92 },
+    { x: -30, z: -238, r: 84 },
+    { x: 64, z: -118, r: 80 },
+    { x: 196, z: -252, r: 86 },
+    { x: 178, z: -150, r: 128 }, // the macro-swell right island
+]);
+
+// Meadow albedo by elevation — deeper, more saturated greens (the bright-day
+// post + sun glow were washing them pale).
+const COL_LOW = vec3(0.16, 0.40, 0.15); // deep shadow green
+const COL_MID = vec3(0.32, 0.60, 0.20); // rich grass green
+const COL_HIGH = vec3(0.52, 0.72, 0.28); // sunlit lime green
 const COL_ROCK = vec3(0.24, 0.32, 0.28); // soft green-grey rock
 
 // Plain-JS helper that INLINES nodes.
@@ -209,8 +223,8 @@ function shadeGround(u, displacedNormal) {
     // Aerial perspective toward the shared fog/sky-horizon color — light touch so
     // the lush green meadow stays crisp and saturated into the mid-distance.
     const dist = length(u.uCameraPos.sub(worldP));
-    const fog = clamp(float(1.0).sub(exp(dist.mul(-0.0009))), float(0.0), float(1.0)).toVar();
-    const color = mix(base, u.uFogColor, fog.mul(0.52));
+    const fog = clamp(float(1.0).sub(exp(dist.mul(-0.0008))), float(0.0), float(1.0)).toVar();
+    const color = mix(base, u.uFogColor, fog.mul(0.4));
     const emissive = rim.add(glintCol).mul(float(1.0).sub(fog.mul(0.7)));
     return { color, emissive };
 }

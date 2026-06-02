@@ -239,7 +239,7 @@ body.start-modal-open .main-menu-logo {
     -webkit-background-clip: text;
     background-clip: text;
     text-shadow: none;
-    filter: drop-shadow(0 0 18px rgba(150, 180, 255, 0.32));
+    filter: drop-shadow(0 0 18px rgba(var(--cs-soft-rgb), 0.32));
     margin-bottom: 10px;
     animation:
         cs-logo-reveal 0.9s cubic-bezier(0.22, 1, 0.36, 1) both,
@@ -321,7 +321,7 @@ body.start-modal-open .headphone-badge {
     left: 26px;
     padding: 9px 16px 9px 13px;
     background: rgba(16, 18, 34, 0.6);
-    border: 1px solid rgba(150, 180, 255, 0.18);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.18);
     border-radius: 999px;
     backdrop-filter: blur(12px) saturate(140%);
     -webkit-backdrop-filter: blur(12px) saturate(140%);
@@ -452,13 +452,8 @@ body.start-modal-open .game-mode-card[data-mode="odyssey"]:focus-visible .cs-asc
  * All four tiles share one 50px box, one right edge (15px), and an even 12px gap.
  * Stack (bottom-up): settings 30 → hub 92 → high-scores 154 → replays 216.
  * ============================================================================ */
-:root {
-    --cs-hud-surface: rgba(16, 18, 34, 0.62);
-    --cs-hud-border: rgba(150, 180, 255, 0.20);
-    --cs-hud-border-hover: rgba(150, 180, 255, 0.45);
-    --cs-hud-shadow: 0 12px 32px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    --cs-hud-blur: blur(13px) saturate(140%);
-}
+/* HUD glass tokens (--cs-hud-surface / -border / -border-hover / -shadow / -blur)
+ * now live in cosmic-tokens.css (single source of truth). */
 
 /* Player card → glass tile matching the footer pill (menu only) */
 body.start-modal-open .main-menu-player-card {
@@ -475,13 +470,13 @@ body.start-modal-open .main-menu-player-card:hover {
     border-color: var(--cs-hud-border-hover);
     box-shadow:
         0 16px 38px rgba(0, 0, 0, 0.45),
-        0 0 22px rgba(150, 180, 255, 0.22),
+        0 0 22px rgba(var(--cs-soft-rgb), 0.22),
         inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 body.start-modal-open .main-menu-player-card .mmpc-avatar-container {
-    border-color: rgba(150, 180, 255, 0.55);
-    box-shadow: 0 0 10px rgba(150, 180, 255, 0.3), inset 0 0 8px rgba(150, 180, 255, 0.12);
+    border-color: rgba(var(--cs-soft-rgb), 0.55);
+    box-shadow: 0 0 10px rgba(var(--cs-soft-rgb), 0.3), inset 0 0 8px rgba(var(--cs-soft-rgb), 0.12);
 }
 
 /* Side-rail icons → uniform glass tiles that lift coherently (GAME-WIDE).
@@ -554,7 +549,7 @@ body.start-modal-open .main-menu-player-card .mmpc-avatar-container {
     border-color: var(--cs-hud-border-hover);
     box-shadow:
         0 16px 38px rgba(0, 0, 0, 0.45),
-        0 0 22px rgba(150, 180, 255, 0.25),
+        0 0 22px rgba(var(--cs-soft-rgb), 0.25),
         inset 0 1px 0 rgba(255, 255, 255, 0.08);
     transform: scale(1.06);
 }

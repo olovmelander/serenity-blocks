@@ -18,13 +18,13 @@
 
 /* ---- Token re-key + live accent vars --------------------------------------- */
 #serenity-hub-panel {
-    --cs-accent: #7fdcff;
-    --cs-accent-rgb: 127, 220, 255;
-    --cs-accent-2: #8ea2ff;
+    --cs-accent: var(--cs-cyan);
+    --cs-accent-rgb: var(--cs-cyan-rgb);
+    --cs-accent-2: var(--cs-indigo);
 
     /* Re-point the hub's existing tokens at the cosmic language */
     --hub-accent: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
-    --hub-border: rgba(150, 180, 255, 0.18);
+    --hub-border: rgba(var(--cs-soft-rgb), 0.18);
     --hub-background: rgba(12, 15, 30, 0.70);
     --hub-primary: #e8edff;
     --music-primary: var(--cs-accent);
@@ -33,16 +33,16 @@
 
 /* Active tab re-keys the panel-wide accent (cyan / pink / teal / violet) */
 #serenity-hub-panel:has(.hub-tab[data-tab="themes"].active) {
-    --cs-accent: #7fdcff; --cs-accent-rgb: 127, 220, 255; --cs-accent-2: #8ea2ff;
+    --cs-accent: var(--cs-cyan); --cs-accent-rgb: var(--cs-cyan-rgb); --cs-accent-2: var(--cs-indigo);
 }
 #serenity-hub-panel:has(.hub-tab[data-tab="music"].active) {
-    --cs-accent: #ff9ecd; --cs-accent-rgb: 255, 158, 205; --cs-accent-2: #b39dff;
+    --cs-accent: var(--cs-pink); --cs-accent-rgb: var(--cs-pink-rgb); --cs-accent-2: var(--cs-violet);
 }
 #serenity-hub-panel:has(.hub-tab[data-tab="breathing"].active) {
-    --cs-accent: #5eead4; --cs-accent-rgb: 94, 234, 212; --cs-accent-2: #7fdcff;
+    --cs-accent: var(--cs-teal); --cs-accent-rgb: var(--cs-teal-rgb); --cs-accent-2: var(--cs-cyan);
 }
 #serenity-hub-panel:has(.hub-tab[data-tab="sessions"].active) {
-    --cs-accent: #b39dff; --cs-accent-rgb: 179, 157, 255; --cs-accent-2: #ff9ecd;
+    --cs-accent: var(--cs-violet); --cs-accent-rgb: var(--cs-violet-rgb); --cs-accent-2: var(--cs-pink);
 }
 
 /* ---- Backdrop: cosmic vignette --------------------------------------------- */
@@ -133,7 +133,7 @@ body.electron-app #serenity-hub-panel.serenity-hub-panel {
     text-transform: uppercase;
     text-shadow: none;
     filter: drop-shadow(0 0 16px rgba(var(--cs-accent-rgb), 0.30));
-    animation: cs-hub-shimmer 9s ease-in-out 0.4s infinite;
+    animation: cs-shimmer 9s ease-in-out 0.4s infinite;
 }
 
 /* Compact tagline under the title (echoes the menu's "STACK · BREATHE · ASCEND") */
@@ -152,10 +152,7 @@ body.electron-app #serenity-hub-panel.serenity-hub-panel {
     filter: none;
 }
 
-@keyframes cs-hub-shimmer {
-    0%, 100% { background-position: 0% center; }
-    50%      { background-position: 200% center; }
-}
+/* (shimmer keyframe consolidated into cosmic-tokens.css → cs-shimmer) */
 
 /* ---- Close button: glass tile with red tint (was a tiny ghost circle) ------ */
 #serenity-hub-panel .hub-close-btn {
@@ -320,7 +317,7 @@ body.electron-app #serenity-hub-panel.serenity-hub-panel {
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
         rgba(12, 15, 30, 0.60);
-    border: 1px solid rgba(150, 180, 255, 0.18);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.18);
     border-radius: 12px;
     color: #eef3ff;
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.24);
@@ -411,7 +408,7 @@ body.electron-app #serenity-hub-panel.serenity-hub-panel {
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
         rgba(10, 13, 27, 0.55);
-    border: 1px solid rgba(150, 180, 255, 0.10);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.10);
     border-radius: 13px;
 }
 
@@ -576,7 +573,7 @@ body.electron-app #serenity-hub-panel.serenity-hub-panel {
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
         rgba(10, 13, 27, 0.50);
-    border: 1px solid rgba(150, 180, 255, 0.18);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.18);
 }
 
 #serenity-hub-panel .control-btn:hover {
@@ -632,7 +629,7 @@ body.electron-app #serenity-hub-panel.serenity-hub-panel {
 /* Mute button → glass; preserve the red "muted" state */
 #serenity-hub-panel .mute-btn {
     background: rgba(10, 13, 27, 0.50);
-    border: 1px solid rgba(150, 180, 255, 0.18);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.18);
 }
 
 #serenity-hub-panel .mute-btn:hover {
@@ -703,7 +700,7 @@ body.electron-app #serenity-hub-panel.serenity-hub-panel {
 /* Toggle switch → cosmic (checked state already accent via re-keyed --hub-accent) */
 #serenity-hub-panel .toggle-slider {
     background: rgba(8, 10, 23, 0.55);
-    border: 1px solid rgba(150, 180, 255, 0.20);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.20);
     box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
@@ -728,7 +725,7 @@ body.electron-app #serenity-hub-panel.serenity-hub-panel {
 /* Technique cards → cosmic glass + accent hover/active/focus */
 #serenity-hub-panel .technique-card {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(10, 13, 27, 0.50));
-    border: 1px solid rgba(150, 180, 255, 0.10);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.10);
 }
 
 #serenity-hub-panel .technique-card:hover {
@@ -796,7 +793,7 @@ body.electron-app #serenity-hub-panel.serenity-hub-panel {
 /* ---- Sessions: cards (violet chrome; per-type icons stay semantic) --------- */
 #serenity-hub-panel .session-card {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(10, 13, 27, 0.50));
-    border: 1px solid rgba(150, 180, 255, 0.12);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.12);
 }
 
 #serenity-hub-panel .session-card:hover {
@@ -851,7 +848,7 @@ body.electron-app #serenity-hub-panel.serenity-hub-panel {
 
 #serenity-hub-panel .intention-card {
     background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(150, 180, 255, 0.12);
+    border: 1px solid rgba(var(--cs-soft-rgb), 0.12);
 }
 
 #serenity-hub-panel .intention-card:hover {
@@ -962,4 +959,131 @@ body.electron-app #serenity-hub-panel.serenity-hub-panel {
     #serenity-hub-panel .countdown-number.pulse {
         animation: none !important;
     }
+}
+
+/* =================================================================================
+ * Custom SVG icons (cosmic-icons.js) — replace the old emojis on Breathing/Sessions
+ * ============================================================================== */
+#serenity-hub-panel .cs-icon {
+    display: block;
+}
+
+/* Breathing: technique card icon (white on the per-technique gradient) */
+#serenity-hub-panel .technique-emoji {
+    color: #ffffff;
+    display: inline-flex;
+}
+
+#serenity-hub-panel .technique-emoji .cs-icon {
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
+}
+
+/* Breathing: info-display header icon (accent) */
+#serenity-hub-panel .info-emoji {
+    color: var(--cs-accent);
+    display: inline-flex;
+    align-items: center;
+}
+
+/* Sessions: intention card icon (accent, slightly larger) */
+#serenity-hub-panel .intention-icon {
+    color: var(--cs-accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#serenity-hub-panel .intention-icon .cs-icon {
+    width: 26px;
+    height: 26px;
+}
+
+/* Sessions: prep structure-row icons (accent) */
+#serenity-hub-panel .structure-icon {
+    color: var(--cs-accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Inline check (e.g. "✓ Active") aligned with adjacent text */
+#serenity-hub-panel .cs-inline-icon {
+    display: inline-flex;
+    vertical-align: -2px;
+    color: var(--cs-accent);
+}
+
+/* ---- Music tab control/volume icons + hub gamepad hint (cosmic-icons SVGs) -- */
+#serenity-hub-panel .music-icon,
+#serenity-hub-panel .control-icon,
+#serenity-hub-panel .mute-icon,
+#serenity-hub-panel .volume-icon,
+#serenity-hub-panel .playing-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+}
+
+/* Now-playing header note → accent */
+#serenity-hub-panel .music-icon {
+    color: var(--cs-accent);
+}
+
+/* Transport buttons inherit their button text colour (prev/next subtle, play bright) */
+#serenity-hub-panel .control-icon {
+    color: currentColor;
+}
+
+/* Volume label + mute glyphs → accent-tinted */
+#serenity-hub-panel .volume-icon,
+#serenity-hub-panel .mute-icon {
+    color: var(--cs-accent);
+}
+
+/* Active-track equalizer mark in the playlist → accent */
+#serenity-hub-panel .playing-indicator {
+    color: var(--cs-accent);
+}
+
+/* Gamepad-hint title icon */
+#serenity-hub-panel .hint-title-icon {
+    display: inline-flex;
+    vertical-align: -3px;
+    color: var(--cs-accent);
+}
+
+/* ---- Themes tab icons (cosmic-icons SVGs replacing emojis) ----------------- */
+/* Thumbnail fallback glyph (white over the theme's gradient swatch) */
+#serenity-hub-panel .theme-icon-emoji {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.92);
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+}
+
+/* "Current:" badge check → accent */
+#serenity-hub-panel .current-theme-badge .badge-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+    color: var(--cs-accent);
+}
+
+/* Random-theme dice → inherits button text colour */
+#serenity-hub-panel .random-theme-btn .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+}
+
+/* Active-theme check pip (sits in its existing accent pill) */
+#serenity-hub-panel .theme-swatch .active-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
 }
