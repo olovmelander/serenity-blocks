@@ -1311,6 +1311,8 @@ export default class WolfhourTheme extends BaseTheme {
                 } else {
                     console.log('[Wolfhour] WebGPU backend not acquired, falling back to WebGL');
                     if (renderer.dispose) renderer.dispose();
+                    renderer.forceContextLoss?.();
+                    renderer.domElement?.remove?.();
                 }
             } catch (err) {
                 console.warn('[Wolfhour] WebGPU initialization failed:', err);
@@ -4403,7 +4405,7 @@ export default class WolfhourTheme extends BaseTheme {
         }
 
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             this.renderer.domElement.remove();
             this.renderer = null;
         }

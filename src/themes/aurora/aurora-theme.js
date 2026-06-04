@@ -759,7 +759,7 @@ export default class AuroraTheme extends BaseTheme {
 
         // Cleanup renderer
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             const container = document.getElementById('aurora-theme');
             if (container && container.contains(this.renderer.domElement)) {
                 container.removeChild(this.renderer.domElement);

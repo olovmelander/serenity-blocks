@@ -1,110 +1,53 @@
 /**
  * @fileoverview Odyssey Mode Level Preview Panel
- * Displays detailed level information before starting gameplay
+ * Displays detailed level information before starting gameplay.
  */
 
 import { getLevelRegistry } from '../../core/odyssey/LevelRegistry.js';
 
 /**
- * LevelPreviewPanel - Shows detailed level info before playing
- *
- * Features:
- * - Level name and description
- * - Objective details
- * - Modifiers active
- * - Star requirements
- * - Best score/time (if previously played)
- * - Play button
+ * LevelPreviewPanel - Shows detailed level info before playing.
  */
 export class LevelPreviewPanel {
     /**
-     * Create preview panel
-     * @param {Object} options - Configuration options
+     * Create preview panel.
+     * @param {Object} options - Configuration options.
      */
     constructor(options = {}) {
-        // Callbacks
         this.onPlay = options.onPlay || (() => {});
         this.onClose = options.onClose || (() => {});
 
-        // State
         this.isVisible = false;
         this.currentLevelId = null;
         this.levelConfig = null;
         this.completionData = null;
         this.levelRegistry = getLevelRegistry();
 
-        // DOM elements
         this.container = null;
         this.overlay = null;
         this.panel = null;
 
-        // Initialize
         this._initialize();
     }
 
-    /**
-     * Initialize panel
-     * @private
-     */
     _initialize() {
-        // Create overlay
         this.overlay = document.createElement('div');
         this.overlay.className = 'level-preview-overlay';
         this.overlay.dataset.odysseyWheelLock = 'true';
-        this.overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(8px);
-            z-index: 1100;
-            display: none;
-            justify-content: center;
-            align-items: center;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        `;
         this.overlay.addEventListener('click', (e) => {
             if (e.target === this.overlay) this.hide();
         });
 
-        // Create panel
         this.panel = document.createElement('div');
         this.panel.className = 'level-preview-panel';
-        this.panel.style.cssText = `
-            width: min(500px, 90vw);
-            max-height: 90vh;
-            background: linear-gradient(165deg,
-                rgba(25, 15, 50, 0.98) 0%,
-                rgba(15, 10, 35, 0.98) 100%);
-            border: 2px solid rgba(180, 130, 255, 0.4);
-            border-radius: 24px;
-            padding: 32px;
-            font-family: 'Orbitron', 'Segoe UI', sans-serif;
-            color: #fff;
-            box-shadow:
-                0 24px 80px rgba(0, 0, 0, 0.6),
-                0 0 80px rgba(180, 130, 255, 0.15);
-            transform: scale(0.9);
-            transition: transform 0.3s ease;
-            overflow-y: auto;
-        `;
 
         this.overlay.appendChild(this.panel);
         document.body.appendChild(this.overlay);
 
-        // Setup keyboard
         this._setupKeyboard();
-
         console.log('[LevelPreviewPanel] Initialized');
     }
 
-    /**
-     * Setup keyboard handlers
-     * @private
-     */
     _setupKeyboard() {
         this._keyHandler = (e) => {
             if (!this.isVisible) return;
@@ -126,9 +69,9 @@ export class LevelPreviewPanel {
     }
 
     /**
-     * Show preview for a level
-     * @param {number} levelId - Level ID to preview
-     * @param {Object} [completionData] - Previous completion data
+     * Show preview for a level.
+     * @param {number} levelId - Level ID to preview.
+     * @param {Object} [completionData] - Previous completion data.
      */
     show(levelId, completionData = null) {
         this.currentLevelId = levelId;
@@ -141,267 +84,110 @@ export class LevelPreviewPanel {
         }
 
         this._buildContent();
-
-        this.overlay.style.display = 'flex';
+        this.overlay.classList.add('is-visible');
         this.isVisible = true;
-
-        // Animate in
-        requestAnimationFrame(() => {
-            this.overlay.style.opacity = '1';
-            this.panel.style.transform = 'scale(1)';
-        });
 
         console.log('[LevelPreviewPanel] Shown for level:', levelId);
     }
 
-    /**
-     * Build panel content
-     * @private
-     */
     _buildContent() {
         const level = this.levelConfig;
+        const title = this._escapeHtml(level.pathLabel || level.name);
+        const description = this._escapeHtml(level.description);
+        const timeLimit = level.victory.failure.type === 'time'
+            ? `<div class="ody-time-limit">Time Limit: ${this._formatTime(level.victory.failure.value)}</div>`
+            : '';
+        const modifiers = level.modifiers.active.length > 0 ? `
+            <div class="ody-section">
+                <div class="ody-section-title">Active Modifiers</div>
+                <div class="ody-modifier-list">
+                    ${level.modifiers.active.map((mod) => (
+        `<div class="ody-modifier">${this._escapeHtml(mod.replace(/-/g, ' '))}</div>`
+    )).join('')}
+                </div>
+            </div>
+        ` : '';
+        const best = this.completionData ? `
+            <div class="ody-section">
+                <div class="ody-section-title">Your Best</div>
+                <div class="ody-best-card">
+                    <div>
+                        <div class="ody-stat-label">Stars</div>
+                        <div class="ody-stat-value is-gold">${'&#9733;'.repeat(this.completionData.stars)}${'&#9734;'.repeat(3 - this.completionData.stars)}</div>
+                    </div>
+                    <div>
+                        <div class="ody-stat-label">Score</div>
+                        <div class="ody-stat-value is-success">${this.completionData.bestScore?.toLocaleString() || '&mdash;'}</div>
+                    </div>
+                    <div>
+                        <div class="ody-stat-label">Time</div>
+                        <div class="ody-stat-value is-cyan">${this.completionData.bestTime ? this._formatTime(this.completionData.bestTime) : '&mdash;'}</div>
+                    </div>
+                </div>
+            </div>
+        ` : '';
+        const tip = level.metadata.tip ? `
+            <div class="ody-tip">
+                <span class="ody-tip-label">Tip:</span> ${this._escapeHtml(level.metadata.tip)}
+            </div>
+        ` : '';
 
         this.panel.innerHTML = `
-            <!-- Header -->
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+            <div class="ody-modal-header">
                 <div>
-                    <div style="font-size: 11px; color: rgba(180, 130, 255, 0.7); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px;">
-                        Chapter ${level.chapter} • Level ${level.chapterLevel}
-                    </div>
-                    <h2 style="font-size: 28px; font-weight: 700; color: #fff; margin: 0; text-shadow: 0 0 30px rgba(180, 130, 255, 0.5);">
-                        ${level.pathLabel || level.name}
-                    </h2>
+                    <div class="ody-eyebrow">Chapter ${level.chapter} &middot; Level ${level.chapterLevel}</div>
+                    <h2 class="ody-title">${title}</h2>
                 </div>
-                <button class="preview-close-btn" style="
-                    width: 36px;
-                    height: 36px;
-                    border: 2px solid rgba(255, 255, 255, 0.2);
-                    border-radius: 50%;
-                    background: rgba(255, 255, 255, 0.05);
-                    color: #fff;
-                    font-size: 20px;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                ">&times;</button>
+                <button class="preview-close-btn" aria-label="Close level preview">&times;</button>
             </div>
 
-            <!-- Description -->
-            <div style="
-                background: rgba(0, 0, 0, 0.3);
-                border-radius: 12px;
-                padding: 16px;
-                margin-bottom: 20px;
-                font-size: 13px;
-                color: rgba(255, 255, 255, 0.7);
-                line-height: 1.6;
-            ">
-                ${level.description}
-            </div>
+            <div class="ody-card">${description}</div>
 
-            <!-- Objective Section -->
-            <div style="margin-bottom: 20px;">
-                <div style="font-size: 11px; color: rgba(180, 130, 255, 0.7); letter-spacing: 1.5px; margin-bottom: 8px;">OBJECTIVE</div>
-                <div style="
-                    background: rgba(100, 220, 255, 0.1);
-                    border: 1px solid rgba(100, 220, 255, 0.3);
-                    border-radius: 12px;
-                    padding: 16px;
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                ">
-                    <div style="
-                        width: 48px;
-                        height: 48px;
-                        background: rgba(100, 220, 255, 0.2);
-                        border-radius: 50%;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        font-size: 24px;
-                    ">${this._getObjectiveIcon(level.victory.primary.type)}</div>
+            <div class="ody-section">
+                <div class="ody-section-title">Objective</div>
+                <div class="ody-objective-card">
+                    <div class="ody-objective-icon">${this._getObjectiveIcon(level.victory.primary.type)}</div>
                     <div>
-                        <div style="font-size: 16px; font-weight: 600; color: rgba(100, 220, 255, 1);">
-                            ${this._getObjectiveText(level.victory.primary)}
-                        </div>
-                        ${level.victory.failure.type === 'time' ? `
-                        <div style="font-size: 12px; color: rgba(255, 150, 100, 0.8); margin-top: 4px;">
-                            Time Limit: ${this._formatTime(level.victory.failure.value)}
-                        </div>
-                        ` : ''}
+                        <div class="ody-objective-text">${this._getObjectiveText(level.victory.primary)}</div>
+                        ${timeLimit}
                     </div>
                 </div>
             </div>
 
-            <!-- Modifiers -->
-            ${level.modifiers.active.length > 0 ? `
-            <div style="margin-bottom: 20px;">
-                <div style="font-size: 11px; color: rgba(180, 130, 255, 0.7); letter-spacing: 1.5px; margin-bottom: 8px;">ACTIVE MODIFIERS</div>
-                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                    ${level.modifiers.active.map((mod) => `
-                        <div style="
-                            padding: 8px 14px;
-                            background: rgba(255, 200, 100, 0.1);
-                            border: 1px solid rgba(255, 200, 100, 0.3);
-                            border-radius: 20px;
-                            font-size: 11px;
-                            color: rgba(255, 200, 100, 0.9);
-                            text-transform: capitalize;
-                        ">${mod.replace(/-/g, ' ')}</div>
-                    `).join('')}
-                </div>
-            </div>
-            ` : ''}
+            ${modifiers}
 
-            <!-- Star Requirements -->
-            <div style="margin-bottom: 20px;">
-                <div style="font-size: 11px; color: rgba(180, 130, 255, 0.7); letter-spacing: 1.5px; margin-bottom: 8px;">STAR REQUIREMENTS</div>
-                <div style="
-                    background: rgba(0, 0, 0, 0.3);
-                    border-radius: 12px;
-                    padding: 12px 16px;
-                ">
+            <div class="ody-section">
+                <div class="ody-section-title">Star Requirements</div>
+                <div class="ody-star-requirements">
                     ${this._buildStarRequirements(level.stars)}
                 </div>
             </div>
 
-            <!-- Best Score (if previously played) -->
-            ${this.completionData ? `
-            <div style="margin-bottom: 24px;">
-                <div style="font-size: 11px; color: rgba(100, 255, 150, 0.7); letter-spacing: 1.5px; margin-bottom: 8px;">YOUR BEST</div>
-                <div style="
-                    background: rgba(100, 255, 150, 0.1);
-                    border: 1px solid rgba(100, 255, 150, 0.3);
-                    border-radius: 12px;
-                    padding: 16px;
-                    display: flex;
-                    justify-content: space-around;
-                    text-align: center;
-                ">
-                    <div>
-                        <div style="font-size: 10px; color: rgba(255, 255, 255, 0.5); margin-bottom: 4px;">STARS</div>
-                        <div style="font-size: 20px; color: rgba(255, 200, 100, 1);">
-                            ${'★'.repeat(this.completionData.stars)}${'☆'.repeat(3 - this.completionData.stars)}
-                        </div>
-                    </div>
-                    <div>
-                        <div style="font-size: 10px; color: rgba(255, 255, 255, 0.5); margin-bottom: 4px;">SCORE</div>
-                        <div style="font-size: 20px; color: rgba(100, 255, 150, 1);">${this.completionData.bestScore?.toLocaleString() || '—'}</div>
-                    </div>
-                    <div>
-                        <div style="font-size: 10px; color: rgba(255, 255, 255, 0.5); margin-bottom: 4px;">TIME</div>
-                        <div style="font-size: 20px; color: rgba(100, 220, 255, 1);">${this.completionData.bestTime ? this._formatTime(this.completionData.bestTime) : '—'}</div>
-                    </div>
-                </div>
-            </div>
-            ` : ''}
+            ${best}
+            ${tip}
 
-            <!-- Tip -->
-            ${level.metadata.tip ? `
-            <div style="
-                background: rgba(180, 130, 255, 0.1);
-                border-left: 3px solid rgba(180, 130, 255, 0.5);
-                padding: 12px 16px;
-                margin-bottom: 24px;
-                font-size: 12px;
-                color: rgba(255, 255, 255, 0.7);
-                line-height: 1.5;
-            ">
-                <span style="color: rgba(180, 130, 255, 0.9); font-weight: 600;">Tip:</span> ${level.metadata.tip}
-            </div>
-            ` : ''}
-
-            <!-- Actions -->
-            <div style="display: flex; gap: 12px;">
-                <button class="preview-cancel-btn" style="
-                    flex: 1;
-                    padding: 16px 24px;
-                    background: rgba(255, 255, 255, 0.1);
-                    border: 2px solid rgba(255, 255, 255, 0.2);
-                    border-radius: 12px;
-                    color: #fff;
-                    font-family: inherit;
-                    font-size: 14px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                ">Back</button>
-                <button class="preview-play-btn" style="
-                    flex: 2;
-                    padding: 16px 24px;
-                    background: linear-gradient(135deg, rgba(180, 130, 255, 0.8), rgba(130, 100, 255, 0.8));
-                    border: none;
-                    border-radius: 12px;
-                    color: #fff;
-                    font-family: inherit;
-                    font-size: 16px;
-                    font-weight: 700;
-                    cursor: pointer;
-                    transition: all 0.2s ease;
-                    box-shadow: 0 4px 20px rgba(180, 130, 255, 0.3);
-                    letter-spacing: 1px;
-                ">PLAY</button>
+            <div class="ody-actions">
+                <button class="ody-btn ody-btn-secondary preview-cancel-btn">Back</button>
+                <button class="ody-btn ody-btn-primary preview-play-btn">Play</button>
             </div>
         `;
 
-        // Setup button events
-        const closeBtn = this.panel.querySelector('.preview-close-btn');
-        const cancelBtn = this.panel.querySelector('.preview-cancel-btn');
-        const playBtn = this.panel.querySelector('.preview-play-btn');
-
-        closeBtn.addEventListener('click', () => this.hide());
-        cancelBtn.addEventListener('click', () => this.hide());
-        playBtn.addEventListener('click', () => this._startLevel());
-
-        // Button hover effects
-        closeBtn.addEventListener('mouseenter', () => {
-            closeBtn.style.background = 'rgba(255, 100, 100, 0.2)';
-            closeBtn.style.borderColor = 'rgba(255, 100, 100, 0.5)';
-        });
-        closeBtn.addEventListener('mouseleave', () => {
-            closeBtn.style.background = 'rgba(255, 255, 255, 0.05)';
-            closeBtn.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-        });
-
-        cancelBtn.addEventListener('mouseenter', () => {
-            cancelBtn.style.background = 'rgba(255, 255, 255, 0.2)';
-        });
-        cancelBtn.addEventListener('mouseleave', () => {
-            cancelBtn.style.background = 'rgba(255, 255, 255, 0.1)';
-        });
-
-        playBtn.addEventListener('mouseenter', () => {
-            playBtn.style.transform = 'translateY(-2px)';
-            playBtn.style.boxShadow = '0 6px 24px rgba(180, 130, 255, 0.5)';
-        });
-        playBtn.addEventListener('mouseleave', () => {
-            playBtn.style.transform = 'translateY(0)';
-            playBtn.style.boxShadow = '0 4px 20px rgba(180, 130, 255, 0.3)';
-        });
+        this.panel.querySelector('.preview-close-btn')?.addEventListener('click', () => this.hide());
+        this.panel.querySelector('.preview-cancel-btn')?.addEventListener('click', () => this.hide());
+        this.panel.querySelector('.preview-play-btn')?.addEventListener('click', () => this._startLevel());
     }
 
-    /**
-     * Get objective icon based on type
-     * @private
-     */
     _getObjectiveIcon(type) {
         const icons = {
-            lines: '═',
-            score: '★',
-            cascade: '↯',
-            time: '⏱',
-            height: '↑',
+            lines: 'L',
+            score: '&#9733;',
+            cascade: '&darr;',
+            time: 'T',
+            height: '&uarr;',
         };
-        return icons[type] || '◆';
+        return icons[type] || '&diams;';
     }
 
-    /**
-     * Get objective text
-     * @private
-     */
     _getObjectiveText(objective) {
         const { type, target } = objective;
         switch (type) {
@@ -420,10 +206,6 @@ export class LevelPreviewPanel {
         }
     }
 
-    /**
-     * Build star requirements HTML
-     * @private
-     */
     _buildStarRequirements(stars) {
         return ['one', 'two', 'three'].map((key, index) => {
             const reqs = stars[key];
@@ -434,36 +216,20 @@ export class LevelPreviewPanel {
             }).join(', ');
 
             return `
-                <div style="
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    padding: 8px 0;
-                    ${index < 2 ? 'border-bottom: 1px solid rgba(255, 255, 255, 0.1);' : ''}
-                ">
-                    <div style="color: rgba(255, 200, 100, 1); font-size: 16px;">
-                        ${'★'.repeat(index + 1)}${'☆'.repeat(2 - index)}
-                    </div>
-                    <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6);">${reqText}</div>
+                <div class="ody-star-requirement">
+                    <div class="ody-star-icons">${'&#9733;'.repeat(index + 1)}${'&#9734;'.repeat(2 - index)}</div>
+                    <div class="ody-star-text">${this._escapeHtml(reqText)}</div>
                 </div>
             `;
         }).join('');
     }
 
-    /**
-     * Format time in seconds to mm:ss
-     * @private
-     */
     _formatTime(seconds) {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
 
-    /**
-     * Start the level
-     * @private
-     */
     _startLevel() {
         if (this.currentLevelId) {
             this.onPlay(this.currentLevelId);
@@ -471,15 +237,10 @@ export class LevelPreviewPanel {
         }
     }
 
-    /**
-     * Hide the preview panel
-     */
     hide() {
-        this.overlay.style.opacity = '0';
-        this.panel.style.transform = 'scale(0.9)';
+        this.overlay.classList.remove('is-visible');
 
         setTimeout(() => {
-            this.overlay.style.display = 'none';
             this.isVisible = false;
             this.onClose();
         }, 300);
@@ -487,17 +248,10 @@ export class LevelPreviewPanel {
         console.log('[LevelPreviewPanel] Hidden');
     }
 
-    /**
-     * Check if panel is visible
-     * @returns {boolean}
-     */
     getIsVisible() {
         return this.isVisible;
     }
 
-    /**
-     * Destroy panel and clean up
-     */
     destroy() {
         document.removeEventListener('keydown', this._keyHandler);
 
@@ -506,5 +260,11 @@ export class LevelPreviewPanel {
         }
 
         console.log('[LevelPreviewPanel] Destroyed');
+    }
+
+    _escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text || '';
+        return div.innerHTML;
     }
 }

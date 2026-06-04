@@ -28,6 +28,7 @@ import { InGameChat } from '../../ui/ingame-chat.js';
 import { unifiedLoop } from './unified-game-loop.js';
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { InputJitterBuffer } from '../network/input-jitter-buffer.js';
+import { getBinaryEncoder } from '../network/binary-encoding.js';
 
 const RESYNC_CHUNK_SIZE = 16 * 1024;
 const RESYNC_WINDOW = 4;
@@ -138,6 +139,8 @@ export class FFAGameStateP2P {
         // State sync (host broadcasts at 30Hz)
         this.stateSyncInterval = null;
         this.STATE_SYNC_RATE = 30; // Hz
+        this._lastStateBroadcastTime = 0;
+        this._stateBroadcastAccumulator = 0;
 
         // Track last state for delta detection (reduces network spam)
         this.lastBroadcastState = new Map(); // steamId -> last state snapshot
@@ -882,10 +885,19 @@ export class FFAGameStateP2P {
         // The queue is consumed in game.js spawnPiece()
         if (gameState.isProcessingPhysics || !gameState.currentPiece) {
             if (inputType === 'move' || inputType === 'rotate') {
-                gameState.inputQueue = {
+                const queued = {
                     type: inputType,
                     dir: data.direction,
                 };
+                if (Array.isArray(gameState.inputQueue)) {
+                    if (gameState.inputQueue.length < 4) {
+                        gameState.inputQueue.push(queued);
+                    }
+                } else if (gameState.inputQueue) {
+                    gameState.inputQueue = [gameState.inputQueue, queued].slice(0, 4);
+                } else {
+                    gameState.inputQueue = queued;
+                }
             }
             return false;
         }
@@ -1007,14 +1019,22 @@ export class FFAGameStateP2P {
             // Host processes its own input immediately
             this.processPlayerInput(this.localPlayerId, inputType, data, timestamp);
         } else {
+            const seq = ++this.inputSequence;
             // Peer queues input for batch sending
-            this.pendingInputs.push({
+            const queuedInput = {
                 type: inputType,
                 data,
                 tick: this.hostTick, // Use estimated host tick
-                seq: ++this.inputSequence,
+                seq,
                 timestamp,
-            });
+            };
+            this.pendingInputs.push(queuedInput);
+
+            if (!this.inputHistory) this.inputHistory = [];
+            this.inputHistory.push(queuedInput);
+            if (this.inputHistory.length > 120) {
+                this.inputHistory.splice(0, this.inputHistory.length - 120);
+            }
 
             // Apply prediction locally immediately
             this._applyLocalPrediction(inputType, data);
@@ -1058,7 +1078,16 @@ export class FFAGameStateP2P {
             if (!['move', 'rotate', 'drop'].includes(input.type)) return;
 
             // Process individual input
-            this.processPlayerInput(steamId, input.type, input.data, input.timestamp || timestamp);
+            this.processPlayerInput(
+                steamId,
+                input.type,
+                {
+                    ...(input.data || {}),
+                    seq: input.seq,
+                    tick: input.tick,
+                },
+                input.timestamp || timestamp,
+            );
         });
     }
 
@@ -1398,27 +1427,21 @@ export class FFAGameStateP2P {
             clearInterval(this.stateSyncInterval);
         }
 
-        // Broadcast at 30Hz, but only when state has changed
-        let lastBroadcastTime = 0;
-        const minBroadcastInterval = 1000 / this.STATE_SYNC_RATE;
+        // Low-frequency fallback; normal snapshots are RAF-aligned in onUpdate.
 
         this.stateSyncInterval = setInterval(() => {
             if (this.gamePhase === 'playing') {
                 const now = Date.now();
 
-                // Check if any player state has changed since last broadcast
-                const hasChanges = this.hasSignificantStateChanges();
-
-                // Broadcast if changes detected OR if it's been too long (fallback sync)
-                if (hasChanges || (now - lastBroadcastTime) > 500) {
+                if ((now - this._lastStateBroadcastTime) > 500) {
                     this.broadcastGameState();
-                    lastBroadcastTime = now;
+                    this._lastStateBroadcastTime = now;
                 }
 
                 this._updateSyncpoint();
                 this._processPendingResyncs();
             }
-        }, minBroadcastInterval);
+        }, 500);
 
         console.log(`📡 State sync started (${this.STATE_SYNC_RATE}Hz with delta optimization)`);
     }
@@ -1601,6 +1624,25 @@ export class FFAGameStateP2P {
         return false; // No changes detected
     }
 
+    maybeBroadcastPostPhysics(delta) {
+        if (!this.isHost || this.gamePhase !== 'playing') return;
+
+        this._stateBroadcastAccumulator += delta;
+        const minBroadcastInterval = 1000 / this.STATE_SYNC_RATE;
+        if (this._stateBroadcastAccumulator < minBroadcastInterval) {
+            return;
+        }
+
+        this._stateBroadcastAccumulator %= minBroadcastInterval;
+        if (this.hasSignificantStateChanges()) {
+            this.broadcastGameState();
+            this._lastStateBroadcastTime = Date.now();
+        }
+
+        this._updateSyncpoint();
+        this._processPendingResyncs();
+    }
+
     /**
     * Broadcast current game state to all peers (host only)
     * Enhanced to include full board state for accurate rendering
@@ -1608,6 +1650,7 @@ export class FFAGameStateP2P {
     broadcastGameState() {
         if (!this.isHost) return;
         this.hostTick += 1;
+        this._lastStateBroadcastTime = Date.now();
 
         // Update last broadcast state snapshots
         for (const [steamId, player] of this.players) {
@@ -1668,10 +1711,7 @@ export class FFAGameStateP2P {
         // Store host digest for next comparison
         this._lastHostDigest = state.digest;
 
-        this._applySnapshotState(state, { forceLocal: true });
-
-        // Phase 5: Replay inputs for local reconciliation
-        this._reconcileLocalPlayer();
+        this._applySnapshotState(state, { forceLocal: false });
     }
 
     /**
@@ -1766,7 +1806,8 @@ export class FFAGameStateP2P {
                 // Local player runs their own physics and input handling.
                 // Syncing board state for local player causes race conditions where
                 // host state overwrites local line clears mid-animation.
-                if (forceLocal || !isLocalPlayer) {
+                const shouldApplyBoardState = forceLocal || !isLocalPlayer;
+                if (shouldApplyBoardState) {
                     // Update full board state for opponent rendering
                     if (playerData.grid) {
                         player.gameState.boardGrid = playerData.grid;
@@ -1780,12 +1821,9 @@ export class FFAGameStateP2P {
                     player.gameState.boardCacheDirty = true;
                 }
 
-                // Sync timing for all players
-                player.gameState.dropCounter = playerData.dropCounter || 0;
-                player.gameState.dropInterval = playerData.dropInterval || 1000;
-
-                // Sync next pieces only for opponents (local player uses their own seeded RNG)
-                if (forceLocal || !isLocalPlayer) {
+                if (shouldApplyBoardState) {
+                    player.gameState.dropCounter = playerData.dropCounter || 0;
+                    player.gameState.dropInterval = playerData.dropInterval || 1000;
                     player.gameState.nextPieces = playerData.nextPieces ? [...playerData.nextPieces] : [];
                 }
 
@@ -1824,11 +1862,16 @@ export class FFAGameStateP2P {
     }
 
     _buildResyncPayload() {
+        const snapshotBytes = new Uint8Array(getBinaryEncoder().encodeSnapshot(this.buildStateSnapshot()));
+
         return {
-            ...this.buildStateSnapshot(),
-            matchConfig: this.matchConfig,
-            sharedSeed: this.sharedSeed,
-            matchStartTime: this.matchStartTime,
+            encoding: 'binary-v1',
+            header: {
+                matchConfig: this.matchConfig,
+                sharedSeed: this.sharedSeed,
+                matchStartTime: this.matchStartTime,
+            },
+            snapshot: encodeBase64(snapshotBytes),
         };
     }
 
@@ -1919,6 +1962,11 @@ export class FFAGameStateP2P {
     }
 
     _handleResyncAck(msg) {
+        if (msg.data?.requestResync) {
+            this.queueResync(msg.from);
+            return;
+        }
+
         const { resyncId, chunkIndex, isFinal } = msg.data || {};
         const transfer = this.resyncTransfers.get(resyncId);
         if (!transfer || transfer.steamId !== msg.from) return;
@@ -1974,7 +2022,20 @@ export class FFAGameStateP2P {
 
             try {
                 const payload = JSON.parse(decodeUtf8(merged));
-                this._applyResyncState(payload);
+                if (payload?.encoding === 'binary-v1') {
+                    const snapshotBytes = decodeBase64(payload.snapshot || '');
+                    const snapshotBuffer = snapshotBytes.buffer.slice(
+                        snapshotBytes.byteOffset,
+                        snapshotBytes.byteOffset + snapshotBytes.byteLength,
+                    );
+                    const snapshot = getBinaryEncoder().decodeSnapshot(snapshotBuffer);
+                    this._applyResyncState({
+                        ...snapshot,
+                        ...(payload.header || {}),
+                    });
+                } else {
+                    this._applyResyncState(payload);
+                }
                 this.network.sendP2PMessage(this.network.hostSteamId, MessageTypes.GAME_STATE_RESYNC_ACK, {
                     resyncId,
                     chunkIndex: null,
@@ -2200,6 +2261,7 @@ export class FFAGameStateP2P {
             if (this.isHost) {
                 this.processBufferedInputs(); // Process inputs from jitter buffer
                 this.updateAllPlayers(delta);
+                this.maybeBroadcastPostPhysics(delta);
             }
         };
 
@@ -2245,6 +2307,9 @@ export class FFAGameStateP2P {
                     input.data, // This is the inner data object
                     callbacks,
                 );
+                if (applied && input.data?.seq && input.data.seq > (player.lastInputSeq || 0)) {
+                    player.lastInputSeq = input.data.seq;
+                }
             }
         }
 
@@ -2499,6 +2564,37 @@ export class FFAGameStateP2P {
             const physicsCallbacks = this.createPhysicsCallbacks(steamId);
             this.unifiedLoop.registerPlayer(steamId, player.gameState, physicsCallbacks, null);
         });
+    }
+
+    promoteToHost() {
+        this.isHost = true;
+        this.network.isHost = true;
+        this.network.hostSteamId = this.localPlayerId;
+        this.handshakeComplete = true;
+
+        if (!this.inputValidator) {
+            this.inputValidator = new InputValidator();
+        } else {
+            this.inputValidator.reset();
+        }
+
+        if (!this.inputJitterBuffer) {
+            this.inputJitterBuffer = new InputJitterBuffer({
+                bufferDepth: 2,
+                tickRate: 30,
+            });
+        } else {
+            this.inputJitterBuffer.clear();
+        }
+
+        this.players.forEach((_player, steamId) => {
+            this.inputJitterBuffer?.addPlayer(steamId);
+        });
+
+        this.startHeartbeatLoop();
+        this.syncUnifiedLoopPlayers();
+        this.startGameLoop();
+        this.startStateSyncLoop();
     }
 
     /**

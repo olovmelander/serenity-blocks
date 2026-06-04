@@ -30,10 +30,9 @@ export class SnapshotInterpolator {
         // Cache last interpolation results to avoid recalculating same frame
         this._lastRenderTime = 0;
         this._resultCache = new Map(); // steamId -> { time, result }
-        // Pre-allocated interpolated piece object (reused to avoid allocations)
-        this._interpolatedPiece = {
-            type: null, shape: null, x: 0, y: 0, rotation: 0, color: null,
-        };
+        // Pre-allocated interpolation objects (reused to avoid allocations)
+        this._interpolatedPieces = new Map();
+        this._stateScratch = new Map();
     }
 
     /**
@@ -130,7 +129,7 @@ export class SnapshotInterpolator {
         }
 
         // 4. Interpolate
-        const result = this._interpolate(fromNode, toNode, delayedTime);
+        const result = this._interpolate(steamId, fromNode, toNode, delayedTime);
 
         // PERF: Cache result for this frame
         this._resultCache.set(steamId, { time: renderTime, result });
@@ -141,7 +140,30 @@ export class SnapshotInterpolator {
     /**
      * Perform the interpolation
      */
-    _interpolate(fromNode, toNode, targetTime) {
+    _getScratchState(steamId, template) {
+        if (!this._stateScratch.has(steamId)) {
+            this._stateScratch.set(steamId, {});
+        }
+        const scratch = this._stateScratch.get(steamId);
+        Object.keys(scratch).forEach((key) => {
+            if (!(key in template)) {
+                delete scratch[key];
+            }
+        });
+        Object.assign(scratch, template);
+        return scratch;
+    }
+
+    _getScratchPiece(steamId) {
+        if (!this._interpolatedPieces.has(steamId)) {
+            this._interpolatedPieces.set(steamId, {
+                type: null, shape: null, x: 0, y: 0, rotation: 0, color: null,
+            });
+        }
+        return this._interpolatedPieces.get(steamId);
+    }
+
+    _interpolate(steamId, fromNode, toNode, targetTime) {
         const fromState = fromNode.data;
         const toState = toNode.data;
 
@@ -175,7 +197,7 @@ export class SnapshotInterpolator {
 
             if (canInterpolate) {
                 // PERF: Reuse pre-allocated piece object instead of creating new one
-                const piece = this._interpolatedPiece;
+                const piece = this._getScratchPiece(steamId);
                 const toPiece = toState.currentPiece;
                 piece.type = toPiece.type;
                 piece.shape = toPiece.shape;
@@ -187,12 +209,11 @@ export class SnapshotInterpolator {
             }
         }
 
-        // 2. Default to "toState" for discrete data (grid, score, etc.)
-        // This ensures events like line clears appear "eventually" at the right time
-        // PERF: Return toState directly with modified currentPiece reference
-        // (avoids object spread which creates new object)
-        toState.currentPiece = interpolatedPiece;
-        return toState;
+        // 2. Default to "toState" for discrete data (grid, score, etc.).
+        // Return a reusable wrapper so buffered snapshots stay immutable.
+        const out = this._getScratchState(steamId, toState);
+        out.currentPiece = interpolatedPiece;
+        return out;
     }
 
     _lerp(start, end, t) {
@@ -205,8 +226,12 @@ export class SnapshotInterpolator {
     reset(steamId) {
         if (steamId) {
             this.playerBuffers.delete(steamId);
+            this._stateScratch.delete(steamId);
+            this._interpolatedPieces.delete(steamId);
         } else {
             this.playerBuffers.clear();
+            this._stateScratch.clear();
+            this._interpolatedPieces.clear();
         }
     }
 }

@@ -1677,7 +1677,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.removeRendererResilienceListeners();
         const domElement = this.renderer.domElement;
         try {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
         } catch (error) {
             console.warn('[StellarDrift] renderer dispose failed:', error);
         }

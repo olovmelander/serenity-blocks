@@ -810,10 +810,10 @@ export async function processPhysics(gameState, callbacks) {
         const markedBoard = cloneBoardGrid(gameState.boardGrid);
 
         // Progressive speed multiplier: Faster for responsive cascades
-        // Cascade 1: 1.0x (120ms total) - Quick but visible
-        // Cascade 2-4: 0.8x (96ms) - Faster for cascades
-        // Cascade 5-9: 0.6x (72ms) - Quick cascade speed
-        // Cascade 10+: 0.5x (60ms) - Very fast for mega cascades
+        // Cascade 1: 1.0x (70ms total) - Quick but visible
+        // Cascade 2-4: 0.8x (56ms) - Faster for cascades
+        // Cascade 5-9: 0.6x (42ms) - Quick cascade speed
+        // Cascade 10+: 0.5x (35ms) - Very fast for mega cascades
         const speedMultiplier = cascadeCount === 1 ? 1.0
             : cascadeCount <= 4 ? 0.8
                 : cascadeCount <= 9 ? 0.6 : 0.5;
@@ -829,7 +829,7 @@ export async function processPhysics(gameState, callbacks) {
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
         if (!gameState.isSeeking) {
-            await waitForAnimationFrame(50 * speedMultiplier);
+            await waitForAnimationFrame(30 * speedMultiplier);
         }
 
         // Stage 2: Keep original colors, slightly dimmed - smooth transition
@@ -843,7 +843,7 @@ export async function processPhysics(gameState, callbacks) {
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
         if (!gameState.isSeeking) {
-            await waitForAnimationFrame(40 * speedMultiplier);
+            await waitForAnimationFrame(20 * speedMultiplier);
         }
 
         // Stage 3: Keep original colors, fade to transparent - smooth final fade
@@ -857,7 +857,7 @@ export async function processPhysics(gameState, callbacks) {
         if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
         if (callbacks.draw) callbacks.draw();
         if (!gameState.isSeeking) {
-            await waitForAnimationFrame(30 * speedMultiplier);
+            await waitForAnimationFrame(20 * speedMultiplier);
         }
 
         // --- Remove cleared lines from pieces ---

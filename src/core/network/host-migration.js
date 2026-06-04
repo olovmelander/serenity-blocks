@@ -112,20 +112,9 @@ export class HostMigration {
         this.stopMonitoring();
         this.isElectionInProgress = false;
 
-        // Update network role
-        this.network.isHost = true;
-        this.network.hostSteamId = this.gameState.localPlayerId;
-        this.gameState.isHost = true;
+        this.gameState.promoteToHost?.();
 
         console.log('🚀 Migration complete. I am now the host.');
-
-        // Initialize host systems
-        if (this.gameState.inputValidator) {
-            this.gameState.inputValidator.reset();
-        }
-
-        // Resume game loop as host
-        this.gameState.startHeartbeatLoop();
 
         // CRITICAL: Explicitly sync state to all peers to assert authority
         const snapshot = this.gameState.buildStateSnapshot();

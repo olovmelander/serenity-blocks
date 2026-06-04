@@ -2348,7 +2348,7 @@ export default class MistyLakeTheme extends BaseTheme {
         this.disposePostProcessing();
 
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             this.renderer = null;
         }
 

@@ -236,6 +236,7 @@ export class PiecePool extends ObjectPool {
                 shapeKey: null,
                 type: null,
                 shape: null,
+                rotation: 0,
                 x: 0,
                 y: 0,
                 color: null,
@@ -244,6 +245,7 @@ export class PiecePool extends ObjectPool {
                 piece.shapeKey = null;
                 piece.type = null;
                 piece.shape = null;
+                piece.rotation = 0;
                 piece.x = 0;
                 piece.y = 0;
                 piece.color = null;

@@ -15,8 +15,11 @@
  * **Phaser 4 Migration Status:** ✅ No changes required - already compatible
  */
 
-import { BLOCK_SIZE } from '../core/constants.js';
+import { COLS, ROWS } from '../core/constants.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
+
+const INSTANT_DAS_REPEAT_LIMIT = COLS;
+const INSTANT_SOFT_DROP_REPEAT_LIMIT = ROWS;
 
 /**
  * Input controller state management
@@ -43,6 +46,10 @@ export class InputController {
         this.lastTime = performance.now();
         this.gameActions = null; // Injected during setup
         this.settings = null;    // Injected during setup
+        this.handleKeyDown = null;
+        this.handleKeyUp = null;
+        this.handleVisibilityChange = null;
+        this.handleClick = null;
 
         // Sound initialization flag
         this.soundInitialized = false;
@@ -70,32 +77,48 @@ export class InputController {
         const currentSettings = window.settings || this.settings;
         const delay = currentSettings.dasDelay;
         const interval = currentSettings.dasInterval;
+        const softDropInterval = currentSettings.softDropInterval ?? 50;
 
         // Process Player 1
         this.processDasDirection(this.dasState.moveLeft, delay, interval, delta, () => {
-            if (this.gameActions.move) this.gameActions.move(-1);
+            if (this.gameActions.move) return this.gameActions.move(-1);
+            return false;
         });
         this.processDasDirection(this.dasState.moveRight, delay, interval, delta, () => {
-            if (this.gameActions.move) this.gameActions.move(1);
+            if (this.gameActions.move) return this.gameActions.move(1);
+            return false;
         });
-        this.processSoftDrop(this.dasState.softDrop, 50, delta, () => {
-            if (this.gameActions.softDrop) this.gameActions.softDrop();
+        this.processSoftDrop(this.dasState.softDrop, softDropInterval, delta, () => {
+            if (this.gameActions.softDrop) return this.gameActions.softDrop();
+            return false;
         });
 
         // Process Player 2
         this.processDasDirection(this.dasState.p2_moveLeft, delay, interval, delta, () => {
-            if (this.gameActions.moveP2) this.gameActions.moveP2(-1);
+            if (this.gameActions.moveP2) return this.gameActions.moveP2(-1);
+            return false;
         });
         this.processDasDirection(this.dasState.p2_moveRight, delay, interval, delta, () => {
-            if (this.gameActions.moveP2) this.gameActions.moveP2(1);
+            if (this.gameActions.moveP2) return this.gameActions.moveP2(1);
+            return false;
         });
-        this.processSoftDrop(this.dasState.p2_softDrop, 50, delta, () => {
-            if (this.gameActions.softDropP2) this.gameActions.softDropP2();
+        this.processSoftDrop(this.dasState.p2_softDrop, softDropInterval, delta, () => {
+            if (this.gameActions.softDropP2) return this.gameActions.softDropP2();
+            return false;
         });
     }
 
     processDasDirection(state, dasDelay, dasInterval, delta, actionCallback) {
         if (!state.active) return;
+
+        const runInstantRepeat = () => {
+            for (let i = 0; i < INSTANT_DAS_REPEAT_LIMIT; i++) {
+                if (actionCallback() === false) {
+                    break;
+                }
+            }
+            state.intervalAccumulator = 0;
+        };
 
         if (!state.isRepeating) {
             state.delayAccumulator += delta;
@@ -103,17 +126,28 @@ export class InputController {
                 state.isRepeating = true;
                 // Execute first repeat exactly at the delay threshold
                 state.intervalAccumulator = state.delayAccumulator - dasDelay;
+
+                if (dasInterval <= 0) {
+                    runInstantRepeat();
+                    return;
+                }
+
                 actionCallback();
 
                 // If the lag spike was massive, execute multiple times
-                while (state.intervalAccumulator >= dasInterval && dasInterval > 0) {
+                while (state.intervalAccumulator >= dasInterval) {
                     state.intervalAccumulator -= dasInterval;
                     actionCallback();
                 }
             }
         } else {
+            if (dasInterval <= 0) {
+                runInstantRepeat();
+                return;
+            }
+
             state.intervalAccumulator += delta;
-            while (state.intervalAccumulator >= dasInterval && dasInterval > 0) {
+            while (state.intervalAccumulator >= dasInterval) {
                 state.intervalAccumulator -= dasInterval;
                 actionCallback();
             }
@@ -122,6 +156,15 @@ export class InputController {
 
     processSoftDrop(state, dropInterval, delta, actionCallback) {
         if (!state.active) return;
+        if (dropInterval <= 0) {
+            for (let i = 0; i < INSTANT_SOFT_DROP_REPEAT_LIMIT; i++) {
+                if (actionCallback() === false) {
+                    break;
+                }
+            }
+            state.intervalAccumulator = 0;
+            return;
+        }
         state.intervalAccumulator += delta;
         while (state.intervalAccumulator >= dropInterval) {
             state.intervalAccumulator -= dropInterval;
@@ -144,6 +187,41 @@ export class InputController {
         this.lastTime = performance.now();
     }
 
+    removeKeyboardControls() {
+        if (typeof document === 'undefined') return;
+
+        if (this.handleKeyDown) {
+            document.removeEventListener('keydown', this.handleKeyDown);
+            this.handleKeyDown = null;
+        }
+        if (this.handleKeyUp) {
+            document.removeEventListener('keyup', this.handleKeyUp);
+            this.handleKeyUp = null;
+        }
+        if (this.handleVisibilityChange) {
+            document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+            this.handleVisibilityChange = null;
+        }
+    }
+
+    removeClickControls() {
+        if (typeof document === 'undefined') return;
+
+        if (this.handleClick) {
+            document.removeEventListener('click', this.handleClick);
+            this.handleClick = null;
+        }
+    }
+
+    cleanup() {
+        this.removeKeyboardControls();
+        this.removeClickControls();
+        this.clearTimers();
+        this.keyMap = {};
+        this.gameActions = null;
+        this.settings = null;
+    }
+
     /**
      * Validates that a game action callback exists and is callable
      * @param {Object} gameActions - Game actions object
@@ -161,8 +239,8 @@ export class InputController {
  */
 function handlePlayer2Action(action, gameActions, inputController, settings) {
     const {
-        moveP2, rotateP2, softDropP2, hardDropP2,
-        requestMoveP2, requestRotateP2, requestSoftDropP2, requestHardDropP2,
+        moveP2, rotateP2, softDropP2, hardDropP2, holdP2,
+        requestMoveP2, requestRotateP2, requestSoftDropP2, requestHardDropP2, requestHoldP2,
     } = gameActions;
 
     performanceMonitor.recordInputAction();
@@ -212,6 +290,10 @@ function handlePlayer2Action(action, gameActions, inputController, settings) {
             if (requestHardDropP2 || hardDropP2) (requestHardDropP2 || hardDropP2)();
             break;
 
+        case 'hold':
+            if (requestHoldP2 || holdP2) (requestHoldP2 || holdP2)();
+            break;
+
         default:
             break;
     }
@@ -241,10 +323,12 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
     }
 
     console.log('[Keyboard] Setting up keyboard controls');
+    inputController.removeKeyboardControls();
 
     const {
         move, rotate, softDrop, hardDrop, startGame, initSound,
-        requestMove, requestRotate, requestSoftDrop, requestHardDrop,
+        hold,
+        requestMove, requestRotate, requestSoftDrop, requestHardDrop, requestHold,
     } = gameActions;
 
     // Inject dependencies for the update loop
@@ -255,7 +339,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
     const getCurrentSettings = () => window.settings || settings;
 
     // Keydown handler
-    document.addEventListener('keydown', (e) => {
+    const handleKeyDown = (e) => {
         try {
             // Performance monitoring: Record input timestamp
             performanceMonitor.recordInput();
@@ -393,6 +477,13 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                     }
                     break;
 
+                case 'hold':
+                    if (requestHold || hold) {
+                        (requestHold || hold)();
+                        performanceMonitor.recordInputAction();
+                    }
+                    break;
+
                 default:
                     // No action for unrecognized key binding
                     break;
@@ -400,10 +491,12 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
         } catch (error) {
             console.error('[Keyboard] Error in keydown handler:', error);
         }
-    });
+    };
+    inputController.handleKeyDown = handleKeyDown;
+    document.addEventListener('keydown', handleKeyDown);
 
     // Keyup handler
-    document.addEventListener('keyup', (e) => {
+    const handleKeyUp = (e) => {
         try {
             // Block all input if settings modal is open
             const settingsModal = document.getElementById('settings-modal');
@@ -457,15 +550,19 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
         } catch (error) {
             console.error('[Keyboard] Error in keyup handler:', error);
         }
-    });
+    };
+    inputController.handleKeyUp = handleKeyUp;
+    document.addEventListener('keyup', handleKeyUp);
 
     // Clear all DAS/soft-drop timers when tab loses focus (keyup won't fire)
-    document.addEventListener('visibilitychange', () => {
+    const handleVisibilityChange = () => {
         if (document.hidden) {
             inputController.clearTimers();
             inputController.keyMap = {};
         }
-    });
+    };
+    inputController.handleVisibilityChange = handleVisibilityChange;
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     console.log('[Keyboard] Keyboard controls initialized');
 }
@@ -486,8 +583,9 @@ export function setupClickControls(inputController, startGame, initSound) {
     }
 
     console.log('[Click] Setting up click controls');
+    inputController.removeClickControls();
 
-    document.addEventListener('click', (e) => {
+    const handleClick = (e) => {
         try {
             // Initialize sound on first interaction
             if (!inputController.soundInitialized) {
@@ -519,7 +617,9 @@ export function setupClickControls(inputController, startGame, initSound) {
         } catch (error) {
             console.error('[Click] Error in click handler:', error);
         }
-    });
+    };
+    inputController.handleClick = handleClick;
+    document.addEventListener('click', handleClick);
 
     console.log('[Click] Click controls initialized');
 }

@@ -1496,7 +1496,7 @@ export default class SunsetTheme extends BaseTheme {
 
         // Dispose renderer
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             const container = document.getElementById('sunset-theme');
             if (container && container.contains(this.renderer.domElement)) {
                 container.removeChild(this.renderer.domElement);

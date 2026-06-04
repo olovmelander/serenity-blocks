@@ -449,7 +449,7 @@ export default class PyrestormV2Theme extends BaseTheme {
         }
 
         if (this.renderer) {
-            try { this.renderer.dispose(); } catch (e) { /* ignore */ }
+            try { this.disposeRenderer(this.renderer, { nullInstance: false }); } catch (e) { /* ignore */ }
             this.renderer = null;
         }
         this.scene = null;

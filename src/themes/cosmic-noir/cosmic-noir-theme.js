@@ -4226,7 +4226,7 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.renderer.onDeviceLost = null;
         const { domElement } = this.renderer;
         try {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
         } catch (error) {
             console.warn('[CosmicNoir] renderer dispose failed:', error);
         }

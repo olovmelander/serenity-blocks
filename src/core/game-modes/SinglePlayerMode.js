@@ -10,6 +10,7 @@ import {
     rotate as coreRotate,
     hardDrop as coreHardDrop,
     softDrop as coreSoftDrop,
+    holdPiece as coreHoldPiece,
 } from '../game.js';
 import {
     GAME_MODES,
@@ -23,7 +24,7 @@ import {
     triggerLineClearFlash as triggerLineClearFlashCanvas,
     triggerBackgroundPulse as triggerBackgroundPulseCanvas,
 } from '../../rendering/draw.js';
-import { updateNextQueue } from '../../ui/next-queue-ui.js';
+import { updateHoldPiece, updateNextQueue } from '../../ui/next-queue-ui.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { DemoRecorder } from '../demo/DemoRecorder.js';
 import { DemoPlayer } from '../demo/DemoPlayer.js';
@@ -242,7 +243,7 @@ export class SinglePlayerMode extends BaseGameMode {
                     spawnPiece: () => {
                         console.log('[SinglePlayer] Demo spawnPiece called');
                         spawnPiece(this.gameState);
-                        updateNextQueue(this.gameState);
+                        this._refreshNextQueue();
                     },
                     updateStats: statsCallback, // For DemoPlayer direct calls
                     updateStatsCallback: statsCallback, // For updateGame() in game.js
@@ -371,10 +372,22 @@ export class SinglePlayerMode extends BaseGameMode {
         // of locked pieces from a queued updateGame call with large delta.
         if (this.gameState) {
             this.gameState.isGameOver = true;
+            this.gameState.isStopped = true;
         }
 
         // Stop game loop (handles both hybrid and standard loops)
         this._stopGameLoop();
+
+        if (this.gameState?.latestPhysicsPromise) {
+            try {
+                await this.gameState.latestPhysicsPromise;
+            } catch (error) {
+                console.warn('[SinglePlayer] In-flight physics rejected during stop:', error);
+            } finally {
+                this.gameState.latestPhysicsPromise = null;
+                this.gameState.isProcessingPhysics = false;
+            }
+        }
 
         if (this.isPlayingDemo) {
             this.isPlayingDemo = false;
@@ -503,7 +516,7 @@ export class SinglePlayerMode extends BaseGameMode {
         this._initBoardJuice();
 
         window.move = (dir) => {
-            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
+            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return false;
 
             const moved = coreMove(
                 this.gameState,
@@ -526,6 +539,8 @@ export class SinglePlayerMode extends BaseGameMode {
             if (this.isRecording) {
                 this.demoRecorder.recordInput('move', dir);
             }
+
+            return moved;
         };
 
         window.rotate = (dir) => {
@@ -571,9 +586,9 @@ export class SinglePlayerMode extends BaseGameMode {
         };
 
         window.softDrop = () => {
-            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
+            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return false;
 
-            coreSoftDrop(
+            const dropped = coreSoftDrop(
                 this.gameState,
                 () => this.deps.soundManager.sfxPlayer.playDrop(),
                 this._getPhysicsCallbacks(), // ← USE MODE'S PHYSICS CALLBACKS!
@@ -583,15 +598,18 @@ export class SinglePlayerMode extends BaseGameMode {
             if (this.isRecording) {
                 this.demoRecorder.recordInput('softDrop');
             }
+
+            return dropped;
         };
 
         window.hold = () => {
             if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
 
-            // Call original hold if it exists (hold not in core game.js)
-            if (this.originalInputs.hold) {
-                this.originalInputs.hold();
-            }
+            coreHoldPiece(
+                this.gameState,
+                () => this._refreshNextQueue(),
+                () => this._handleGameOver(),
+            );
 
             // Record input
             if (this.isRecording) {
@@ -838,6 +856,7 @@ export class SinglePlayerMode extends BaseGameMode {
     _refreshNextQueue() {
         // Update next piece preview canvases
         updateNextQueue(this.gameState.nextPieces);
+        updateHoldPiece(this.gameState.heldPiece);
     }
 
     /**

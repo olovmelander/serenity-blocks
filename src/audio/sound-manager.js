@@ -57,6 +57,10 @@ export class SoundManager {
         this.volumeFadeToken = 0;
         this.musicGainNode = null;
         this.musicGainWired = false;
+        this.sfxBusNode = null;
+        this.sfxLimiterNode = null;
+        this.preloadAudioElement = null;
+        this.preloadedTrackKey = null;
         this.lastAnalyzerBootstrapAtMs = 0;
         this.analyzerBootstrapCooldownMs = 800;
         this.lastAnalyzerBootstrapError = null;
@@ -107,6 +111,7 @@ export class SoundManager {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             this.musicGainNode = this.audioContext.createGain();
             this.musicGainNode.gain.value = this.getMusicVolume();
+            this.ensureSfxBus();
             this.soundSets = createSoundSets(this.createTone.bind(this), this.createRichTone.bind(this));
             this.sfxPlayer = new SoundEffectPlayer(this.soundSets, this.soundSet);
         }
@@ -114,6 +119,57 @@ export class SoundManager {
         if (this.audioContext.state === 'suspended') {
             this.audioContext.resume();
         }
+    }
+
+    ensureSfxBus() {
+        if (!this.audioContext) return null;
+        if (this.sfxBusNode && this.sfxLimiterNode) {
+            return this.sfxBusNode;
+        }
+
+        const sfxBus = this.audioContext.createGain();
+        sfxBus.gain.value = 1.0;
+
+        const limiter = this.audioContext.createDynamicsCompressor();
+        limiter.threshold.value = -8;
+        limiter.knee.value = 0;
+        limiter.ratio.value = 12;
+        limiter.attack.value = 0.003;
+        limiter.release.value = 0.08;
+
+        sfxBus.connect(limiter);
+        limiter.connect(this.audioContext.destination);
+
+        this.sfxBusNode = sfxBus;
+        this.sfxLimiterNode = limiter;
+        return this.sfxBusNode;
+    }
+
+    getToneDestination(isMusic = false) {
+        if (!this.audioContext) return null;
+        if (isMusic) {
+            return this.audioContext.destination;
+        }
+        return this.ensureSfxBus() || this.audioContext.destination;
+    }
+
+    disposeSfxBus() {
+        if (this.sfxBusNode) {
+            try {
+                this.sfxBusNode.disconnect();
+            } catch {
+                // Already disconnected.
+            }
+        }
+        if (this.sfxLimiterNode) {
+            try {
+                this.sfxLimiterNode.disconnect();
+            } catch {
+                // Already disconnected.
+            }
+        }
+        this.sfxBusNode = null;
+        this.sfxLimiterNode = null;
     }
 
     bindRuntimeAudioHooks() {
@@ -316,9 +372,10 @@ export class SoundManager {
 
         const osc = this.audioContext.createOscillator();
         const gain = this.audioContext.createGain();
+        const destination = this.getToneDestination(isMusic);
 
         osc.connect(gain);
-        gain.connect(this.audioContext.destination);
+        gain.connect(destination);
 
         osc.type = type;
         osc.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
@@ -355,7 +412,7 @@ export class SoundManager {
 
         const now = this.audioContext.currentTime;
         const masterGain = this.audioContext.createGain();
-        masterGain.connect(this.audioContext.destination);
+        masterGain.connect(this.getToneDestination(isMusic));
 
         // Master Envelope
         masterGain.gain.setValueAtTime(0, now);
@@ -423,9 +480,13 @@ export class SoundManager {
 
             if (noise.type === 'pink') {
                 // Pink noise approximation
-                let b0; let b1; let b2; let b3; let b4; let b5; let
-                    b6;
-                b0 = b1 = b2 = b3 = b4 = b5 = b6 = 0.0;
+                let b0 = 0.0;
+                let b1 = 0.0;
+                let b2 = 0.0;
+                let b3 = 0.0;
+                let b4 = 0.0;
+                let b5 = 0.0;
+                let b6 = 0.0;
                 for (let i = 0; i < bufferSize; i++) {
                     const white = Math.random() * 2 - 1;
                     b0 = 0.99886 * b0 + white * 0.0555179;
@@ -472,6 +533,7 @@ export class SoundManager {
 
         // Populate the dropdown
         this.populateMusicDropdown();
+        this.preloadDefaultTrack();
 
         return this;
     }
@@ -509,6 +571,40 @@ export class SoundManager {
         const songPath = getSongPath(trackKey, this.songsData);
         if (!songPath) return null;
         return this.normalizeAudioUrl(songPath);
+    }
+
+    shouldPreloadMusicTrack() {
+        if (typeof window === 'undefined' || typeof Audio === 'undefined') {
+            return false;
+        }
+
+        if (window.electronAPI || window.electronDisplay) {
+            return false;
+        }
+
+        return window.location?.protocol !== 'file:';
+    }
+
+    preloadDefaultTrack() {
+        if (!this.shouldPreloadMusicTrack()) {
+            return;
+        }
+
+        const trackUrl = this.resolveTrackUrl(this.musicTrack);
+        if (!trackUrl || this.preloadedTrackKey === this.musicTrack) {
+            return;
+        }
+
+        if (this.preloadAudioElement) {
+            this.preloadAudioElement.src = '';
+            this.preloadAudioElement = null;
+        }
+
+        this.preloadAudioElement = new Audio();
+        this.preloadAudioElement.preload = 'auto';
+        this.preloadAudioElement.src = trackUrl;
+        this.preloadAudioElement.load();
+        this.preloadedTrackKey = this.musicTrack;
     }
 
     resolveTrackKeyFromUrl(url) {
@@ -704,9 +800,11 @@ export class SoundManager {
         this.lastRequestedTrackKey = trackName;
 
         // Update settings if available
-        if (didSelectionChange && typeof settings !== 'undefined') {
-            settings.musicTrack = trackName;
-            if (typeof saveSettings === 'function') saveSettings();
+        const globalSettings = globalThis.settings;
+        const globalSaveSettings = globalThis.saveSettings;
+        if (didSelectionChange && globalSettings) {
+            globalSettings.musicTrack = trackName;
+            if (typeof globalSaveSettings === 'function') globalSaveSettings();
         }
 
         const dropdown = document.getElementById('music-track');
@@ -1191,6 +1289,12 @@ export class SoundManager {
             this.audioElement = null;
         }
 
+        if (this.preloadAudioElement) {
+            this.preloadAudioElement.src = '';
+            this.preloadAudioElement = null;
+        }
+
+        this.disposeSfxBus();
         this.playPromise = null;
         this.currentTrackId = null;
         this.pendingTrackKey = null;
@@ -1198,6 +1302,7 @@ export class SoundManager {
         this.lastAppliedTrackKey = null;
         this.musicInterval = null;
         this.pendingThemeLinkedTrack = null;
+        this.preloadedTrackKey = null;
     }
 
     /**

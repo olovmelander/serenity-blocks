@@ -5,7 +5,7 @@
 
 import { seededRandom } from '../../utils/helpers.js';
 import {
-    GameState, gameLoop, updateGame, spawnPiece, fillBag, move, rotate, softDrop, hardDrop,
+    GameState, gameLoop, updateGame, spawnPiece, fillBag, move, rotate, softDrop, hardDrop, holdPiece,
 } from '../game.js';
 import { LEVEL_SPEEDS } from '../constants.js';
 
@@ -264,7 +264,7 @@ export class DemoPlayer {
             hardDrop(this.gameState, playDropCallback, physicsCallbacks);
             break;
         case 'hold':
-            // Implement hold if/when supported
+            holdPiece(this.gameState, effectiveCallbacks.updateStats || effectiveCallbacks.updateStatsCallback, null);
             break;
         }
     }

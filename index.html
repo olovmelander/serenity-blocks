@@ -92,6 +92,8 @@
     <link rel="stylesheet" href="/styles/multiplayer-hud-aaa.css">
     <link rel="stylesheet" href="/styles/single-player-hud-aaa.css">
     <link rel="stylesheet" href="/styles/game-over-aaa.css">
+    <link rel="stylesheet" href="/styles/odyssey-aaa.css">
+    <link rel="stylesheet" href="/styles/overlays-aaa.css">
 </head>
 
 <body>
@@ -518,7 +520,10 @@
                 aria-label="Single Player Game Board">
                 <div class="single-player-body">
                     <div class="single-player-main">
-                        <div id="next-queue-container" class="player-next-pieces single-player-next"></div>
+                        <div class="single-player-piece-previews">
+                            <div id="hold-piece-container" class="player-next-pieces single-player-hold"></div>
+                            <div id="next-queue-container" class="player-next-pieces single-player-next"></div>
+                        </div>
                         <div class="player-board-section">
                             <div id="phaser-game-container" class="phaser-board-container single-player-board"></div>
                             <div class="board-border-overlay" id="single-player-border"></div>
@@ -1605,14 +1610,21 @@
                                 <label for="das-delay">DAS Delay (ms):</label>
                                 <div class="slider-container">
                                     <input type="range" id="das-delay" min="50" max="300" step="10"><span
-                                        id="das-delay-value">150</span>
+                                        id="das-delay-value">120</span>
                                 </div>
                             </div>
                             <div class="setting">
                                 <label for="das-interval">DAS Interval (ms):</label>
                                 <div class="slider-container">
-                                    <input type="range" id="das-interval" min="10" max="100" step="5"><span
-                                        id="das-interval-value">50</span>
+                                    <input type="range" id="das-interval" min="0" max="100" step="5"><span
+                                        id="das-interval-value">40</span>
+                                </div>
+                            </div>
+                            <div class="setting">
+                                <label for="soft-drop-interval">Soft Drop Interval (ms):</label>
+                                <div class="slider-container">
+                                    <input type="range" id="soft-drop-interval" min="0" max="100" step="5"><span
+                                        id="soft-drop-interval-value">50</span>
                                 </div>
                             </div>
                         </div>
@@ -2250,6 +2262,10 @@
                                         <label for="key-hardDrop">Hard Drop:</label>
                                         <div id="key-hardDrop" class="key-input" tabindex="0">Space</div>
                                     </div>
+                                    <div class="setting">
+                                        <label for="key-hold">Hold:</label>
+                                        <div id="key-hold" class="key-input" tabindex="0">c</div>
+                                    </div>
                                 </div>
                                 <div class="controls-subtab-actions">
                                     <button class="controls-subtab-action" data-reset-target="keyboard-player1">Reset
@@ -2286,6 +2302,10 @@
                                     <div class="setting">
                                         <label for="key-p2-hardDrop">Hard Drop:</label>
                                         <div id="key-p2-hardDrop" class="key-input" tabindex="0">Shift</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-p2-hold">Hold:</label>
+                                        <div id="key-p2-hold" class="key-input" tabindex="0">f</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
@@ -2336,6 +2356,11 @@
                                             (Circle)</div>
                                     </div>
                                     <div class="setting">
+                                        <label for="gamepad-hold">Hold:</label>
+                                        <div id="gamepad-hold" class="gamepad-input key-input" tabindex="0">LB
+                                            (L1)</div>
+                                    </div>
+                                    <div class="setting">
                                         <label for="gamepad-pause">Pause:</label>
                                         <div id="gamepad-pause" class="gamepad-input key-input" tabindex="0">Start
                                             (Options)</div>
@@ -2383,6 +2408,11 @@
                                         <label for="gamepad-p2-hardDrop">Hard Drop:</label>
                                         <div id="gamepad-p2-hardDrop" class="gamepad-input key-input" tabindex="0">B
                                             (Circle)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p2-hold">Hold:</label>
+                                        <div id="gamepad-p2-hold" class="gamepad-input key-input" tabindex="0">LB
+                                            (L1)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p2-pause">Pause:</label>
@@ -2435,6 +2465,11 @@
                                             (Circle)</div>
                                     </div>
                                     <div class="setting">
+                                        <label for="gamepad-p3-hold">Hold:</label>
+                                        <div id="gamepad-p3-hold" class="gamepad-input key-input" tabindex="0">LB
+                                            (L1)</div>
+                                    </div>
+                                    <div class="setting">
                                         <label for="gamepad-p3-pause">Pause:</label>
                                         <div id="gamepad-p3-pause" class="gamepad-input key-input" tabindex="0">
                                             Start
@@ -2483,6 +2518,11 @@
                                         <label for="gamepad-p4-hardDrop">Hard Drop:</label>
                                         <div id="gamepad-p4-hardDrop" class="gamepad-input key-input" tabindex="0">B
                                             (Circle)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-p4-hold">Hold:</label>
+                                        <div id="gamepad-p4-hold" class="gamepad-input key-input" tabindex="0">LB
+                                            (L1)</div>
                                     </div>
                                     <div class="setting">
                                         <label for="gamepad-p4-pause">Pause:</label>

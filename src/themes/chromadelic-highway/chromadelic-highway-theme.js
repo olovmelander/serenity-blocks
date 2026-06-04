@@ -994,7 +994,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.renderer.onDeviceLost = null;
         const domElement = this.renderer.domElement;
         try {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
         } catch (error) {
             console.warn('[ChromadelicHighway] renderer dispose failed:', error);
         }

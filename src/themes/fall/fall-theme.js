@@ -1224,9 +1224,12 @@ export default class FallTheme extends BaseTheme {
 
     cleanup() {
         this.stop();
+        if (this.composer) {
+            this.disposeComposer(this.composer);
+            this.composer = null;
+        }
         if (this.renderer) {
-            this.renderer.dispose();
-            if (this.renderer.domElement.parentNode) this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
+            this.disposeRenderer(this.renderer);
         }
         super.cleanup();
     }

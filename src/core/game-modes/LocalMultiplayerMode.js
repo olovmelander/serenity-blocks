@@ -2102,10 +2102,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this._inputWrappersSetup = true;
 
         this._originalInputs = {
-            move: window.move, rotate: window.rotate, hardDrop: window.hardDrop,
-            moveP2: window.moveP2, rotateP2: window.rotateP2, hardDropP2: window.hardDropP2,
-            moveP3: window.moveP3, rotateP3: window.rotateP3, hardDropP3: window.hardDropP3,
-            moveP4: window.moveP4, rotateP4: window.rotateP4, hardDropP4: window.hardDropP4,
+            move: window.move, rotate: window.rotate, hardDrop: window.hardDrop, hold: window.hold,
+            moveP2: window.moveP2, rotateP2: window.rotateP2, hardDropP2: window.hardDropP2, holdP2: window.holdP2,
+            moveP3: window.moveP3, rotateP3: window.rotateP3, hardDropP3: window.hardDropP3, holdP3: window.holdP3,
+            moveP4: window.moveP4, rotateP4: window.rotateP4, hardDropP4: window.hardDropP4, holdP4: window.holdP4,
         };
 
         const wrapMove = (playerNum, origMove) => (dir) => {
@@ -2135,21 +2135,33 @@ export class LocalMultiplayerMode extends BaseGameMode {
             }
         };
 
+        const wrapHold = (playerNum, origHold) => () => {
+            if (origHold) origHold();
+            const juice = this[`boardJuiceP${playerNum}`];
+            if (juice) {
+                juice.nudge(0, -0.5);
+            }
+        };
+
         window.move = wrapMove(1, this._originalInputs.move);
         window.rotate = wrapRotate(1, this._originalInputs.rotate);
         window.hardDrop = wrapHardDrop(1, this._originalInputs.hardDrop);
+        window.hold = wrapHold(1, this._originalInputs.hold);
 
         if (this._originalInputs.moveP2) window.moveP2 = wrapMove(2, this._originalInputs.moveP2);
         if (this._originalInputs.rotateP2) window.rotateP2 = wrapRotate(2, this._originalInputs.rotateP2);
         if (this._originalInputs.hardDropP2) window.hardDropP2 = wrapHardDrop(2, this._originalInputs.hardDropP2);
+        if (this._originalInputs.holdP2) window.holdP2 = wrapHold(2, this._originalInputs.holdP2);
 
         if (this._originalInputs.moveP3) window.moveP3 = wrapMove(3, this._originalInputs.moveP3);
         if (this._originalInputs.rotateP3) window.rotateP3 = wrapRotate(3, this._originalInputs.rotateP3);
         if (this._originalInputs.hardDropP3) window.hardDropP3 = wrapHardDrop(3, this._originalInputs.hardDropP3);
+        if (this._originalInputs.holdP3) window.holdP3 = wrapHold(3, this._originalInputs.holdP3);
 
         if (this._originalInputs.moveP4) window.moveP4 = wrapMove(4, this._originalInputs.moveP4);
         if (this._originalInputs.rotateP4) window.rotateP4 = wrapRotate(4, this._originalInputs.rotateP4);
         if (this._originalInputs.hardDropP4) window.hardDropP4 = wrapHardDrop(4, this._originalInputs.hardDropP4);
+        if (this._originalInputs.holdP4) window.holdP4 = wrapHold(4, this._originalInputs.holdP4);
     }
 
     /**
@@ -2162,18 +2174,22 @@ export class LocalMultiplayerMode extends BaseGameMode {
         window.move = this._originalInputs.move;
         window.rotate = this._originalInputs.rotate;
         window.hardDrop = this._originalInputs.hardDrop;
+        window.hold = this._originalInputs.hold;
 
         if (this._originalInputs.moveP2 !== undefined) window.moveP2 = this._originalInputs.moveP2;
         if (this._originalInputs.rotateP2 !== undefined) window.rotateP2 = this._originalInputs.rotateP2;
         if (this._originalInputs.hardDropP2 !== undefined) window.hardDropP2 = this._originalInputs.hardDropP2;
+        if (this._originalInputs.holdP2 !== undefined) window.holdP2 = this._originalInputs.holdP2;
 
         if (this._originalInputs.moveP3 !== undefined) window.moveP3 = this._originalInputs.moveP3;
         if (this._originalInputs.rotateP3 !== undefined) window.rotateP3 = this._originalInputs.rotateP3;
         if (this._originalInputs.hardDropP3 !== undefined) window.hardDropP3 = this._originalInputs.hardDropP3;
+        if (this._originalInputs.holdP3 !== undefined) window.holdP3 = this._originalInputs.holdP3;
 
         if (this._originalInputs.moveP4 !== undefined) window.moveP4 = this._originalInputs.moveP4;
         if (this._originalInputs.rotateP4 !== undefined) window.rotateP4 = this._originalInputs.rotateP4;
         if (this._originalInputs.hardDropP4 !== undefined) window.hardDropP4 = this._originalInputs.hardDropP4;
+        if (this._originalInputs.holdP4 !== undefined) window.holdP4 = this._originalInputs.holdP4;
 
         this._originalInputs = null;
         this._inputWrappersSetup = false;

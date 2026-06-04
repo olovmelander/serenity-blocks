@@ -28,6 +28,7 @@ import {
     rotate as coreRotate,
     hardDrop as coreHardDrop,
     softDrop as coreSoftDrop,
+    holdPiece as coreHoldPiece,
     processAutoDrop as coreProcessAutoDrop,
     markBoardDirty,
 } from './core/game.js';
@@ -712,6 +713,7 @@ class SerenityBlocks {
         this.frameRateController = new FrameRateController(); // Phase 2: FPS & VSync control
         this.customCursor = null;
         this.cleanupHandlers = [];
+        this.isCleaningUp = false;
         this.currentEffectQuality = normalizeQuality(DEFAULT_SETTINGS.effectQuality);
         this._handledPreloadError = false;
         this.globalSerenityHubInitPromise = null;
@@ -1820,7 +1822,7 @@ class SerenityBlocks {
 
         if (this.fpsCounter.element) {
             this.fpsCounter.element.classList.add('hidden'); // Hide legacy counter
-            this.updateFPSCounter(performance.now());
+            this.updateFPSCounter(performance.now(), { recordFrame: false });
             this.startFPSMonitor();
             console.log('[FPS] Enhanced performance monitor shown');
         }
@@ -1857,7 +1859,7 @@ class SerenityBlocks {
     /**
      * Update FPS counter
      */
-    updateFPSCounter(currentTime = performance.now()) {
+    updateFPSCounter(currentTime = performance.now(), { recordFrame = true } = {}) {
         if (!this.fpsCounter.element) {
             this.fpsCounter.element = document.getElementById('fps-counter');
         }
@@ -1865,13 +1867,16 @@ class SerenityBlocks {
         let stats = null;
 
         if (this.frameRateController) {
-            stats = this.frameRateController.recordFrame(currentTime);
+            const shouldRecord = recordFrame && !this.frameRateController.isRunning;
+            stats = shouldRecord
+                ? this.frameRateController.recordFrame(currentTime)
+                : this.frameRateController.getStats();
             const currentFPS = stats.current;
 
             if (Number.isFinite(currentFPS) && currentFPS > 0) {
                 this.fpsCounter.fps = currentFPS;
             }
-        } else {
+        } else if (recordFrame) {
             this.fpsCounter.frames++;
             const elapsed = currentTime - this.fpsCounter.lastTime;
 
@@ -1915,7 +1920,7 @@ class SerenityBlocks {
         }
 
         const tick = (time) => {
-            this.updateFPSCounter(time);
+            this.updateFPSCounter(time, { recordFrame: false });
             this.fpsCounter.rafId = requestAnimationFrame(tick);
         };
 
@@ -3244,14 +3249,14 @@ class SerenityBlocks {
         // Expose game control functions
         window.move = (dir) => {
             const gameState = getCurrentGameState();
-            if (!gameState || !gameState.currentPiece) return;
+            if (!gameState || !gameState.currentPiece) return false;
 
             // Check if game is paused (important for multiplayer round transitions)
             const currentMode = this.gameModeManager?.getCurrentMode();
-            if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
-            if (isPlayerPaused(currentMode?.multiplayerState, 1)) return;
+            if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return false;
+            if (isPlayerPaused(currentMode?.multiplayerState, 1)) return false;
 
-            coreMove(
+            return coreMove(
                 gameState,
                 dir,
                 () => this.soundManager.sfxPlayer.playMove(),
@@ -3278,20 +3283,20 @@ class SerenityBlocks {
 
         window.softDrop = () => {
             const gameState = getCurrentGameState();
-            if (!gameState || !gameState.currentPiece) return;
+            if (!gameState || !gameState.currentPiece) return false;
 
             // Check if we're in multiplayer mode and use appropriate callbacks
             const currentMode = this.gameModeManager?.getCurrentMode();
 
             // Check if game is paused (important for multiplayer round transitions)
-            if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return;
-            if (isPlayerPaused(currentMode?.multiplayerState, 1)) return;
+            if (currentMode?.multiplayerState?.isPaused || gameState.isPaused) return false;
+            if (isPlayerPaused(currentMode?.multiplayerState, 1)) return false;
 
             const callbacks = (currentMode && currentMode.multiplayerState)
                 ? this.getMultiplayerPhysicsCallbacks(1)
                 : this.getPhysicsCallbacks();
 
-            coreSoftDrop(
+            return coreSoftDrop(
                 gameState,
                 () => this.soundManager.sfxPlayer.playDrop(),
                 callbacks,
@@ -3388,15 +3393,26 @@ class SerenityBlocks {
             Boolean(multiplayerState?.playerPaused?.[playerNum - 1])
         );
 
+        const holdMultiplayerPiece = (playerNum) => {
+            const multiplayerState = getMultiplayerState();
+            const playerState = getPlayerState(playerNum);
+            if (!multiplayerState || !playerState || multiplayerState.isGameOver || multiplayerState.isPaused) return false;
+            if (isPlayerPaused(multiplayerState, playerNum)) return false;
+
+            return coreHoldPiece(playerState);
+        };
+
+        window.hold = () => holdMultiplayerPiece(1);
+
         // Expose Player 2 controls for multiplayer
         window.moveP2 = (dir) => {
             const multiplayerState = getMultiplayerState();
             const player2State = getPlayerState(2);
             // Check if game is paused or game over
-            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            if (isPlayerPaused(multiplayerState, 2)) return;
+            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return false;
+            if (isPlayerPaused(multiplayerState, 2)) return false;
 
-            coreMove(
+            return coreMove(
                 player2State,
                 dir,
                 () => this.soundManager.sfxPlayer.playMove(),
@@ -3423,10 +3439,10 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player2State = getPlayerState(2);
             // Check if game is paused or game over
-            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            if (isPlayerPaused(multiplayerState, 2)) return;
+            if (!multiplayerState || !player2State || multiplayerState.isGameOver || multiplayerState.isPaused) return false;
+            if (isPlayerPaused(multiplayerState, 2)) return false;
 
-            coreSoftDrop(
+            return coreSoftDrop(
                 player2State,
                 () => this.soundManager.sfxPlayer.playDrop(),
                 this.getMultiplayerPhysicsCallbacks(2),
@@ -3447,15 +3463,17 @@ class SerenityBlocks {
             );
         };
 
+        window.holdP2 = () => holdMultiplayerPiece(2);
+
         // Expose Player 3 controls for multiplayer (Gamepad only)
         window.moveP3 = (dir) => {
             const multiplayerState = getMultiplayerState();
             const player3State = getPlayerState(3);
             // Check if game is paused or game over
-            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            if (isPlayerPaused(multiplayerState, 3)) return;
+            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return false;
+            if (isPlayerPaused(multiplayerState, 3)) return false;
 
-            coreMove(
+            return coreMove(
                 player3State,
                 dir,
                 () => this.soundManager.sfxPlayer.playMove(),
@@ -3482,10 +3500,10 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player3State = getPlayerState(3);
             // Check if game is paused or game over
-            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            if (isPlayerPaused(multiplayerState, 3)) return;
+            if (!multiplayerState || !player3State || multiplayerState.isGameOver || multiplayerState.isPaused) return false;
+            if (isPlayerPaused(multiplayerState, 3)) return false;
 
-            coreSoftDrop(
+            return coreSoftDrop(
                 player3State,
                 () => this.soundManager.sfxPlayer.playDrop(),
                 this.getMultiplayerPhysicsCallbacks(3),
@@ -3506,15 +3524,17 @@ class SerenityBlocks {
             );
         };
 
+        window.holdP3 = () => holdMultiplayerPiece(3);
+
         // Expose Player 4 controls for multiplayer (Gamepad only)
         window.moveP4 = (dir) => {
             const multiplayerState = getMultiplayerState();
             const player4State = getPlayerState(4);
             // Check if game is paused or game over
-            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            if (isPlayerPaused(multiplayerState, 4)) return;
+            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return false;
+            if (isPlayerPaused(multiplayerState, 4)) return false;
 
-            coreMove(
+            return coreMove(
                 player4State,
                 dir,
                 () => this.soundManager.sfxPlayer.playMove(),
@@ -3541,10 +3561,10 @@ class SerenityBlocks {
             const multiplayerState = getMultiplayerState();
             const player4State = getPlayerState(4);
             // Check if game is paused or game over
-            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return;
-            if (isPlayerPaused(multiplayerState, 4)) return;
+            if (!multiplayerState || !player4State || multiplayerState.isGameOver || multiplayerState.isPaused) return false;
+            if (isPlayerPaused(multiplayerState, 4)) return false;
 
-            coreSoftDrop(
+            return coreSoftDrop(
                 player4State,
                 () => this.soundManager.sfxPlayer.playDrop(),
                 this.getMultiplayerPhysicsCallbacks(4),
@@ -3565,6 +3585,8 @@ class SerenityBlocks {
             );
         };
 
+        window.holdP4 = () => holdMultiplayerPiece(4);
+
         this.gameplayInputQueue = [];
 
         const enqueueGameplayCommand = (command) => {
@@ -3574,40 +3596,57 @@ class SerenityBlocks {
         };
 
         const runGameplayCommand = (command) => {
-            if (typeof command !== 'function') return;
+            if (typeof command !== 'function') return false;
             try {
-                command();
+                return command();
             } catch (error) {
                 console.error('[Main] Gameplay command failed:', error);
+                return false;
             }
         };
 
         const enqueueSinglePlayerCommand = (command) => {
             const execute = () => {
                 if (this.gameState?.isProcessingPhysics) {
-                    if (!this.gameState.inputQueue && (command.type === 'move' || command.type === 'rotate')) {
-                        this.gameState.inputQueue = {
+                    if (command.type === 'move' || command.type === 'rotate' || command.type === 'hold') {
+                        const queued = {
                             type: command.type,
                             dir: command.value,
                         };
+                        if (Array.isArray(this.gameState.inputQueue)) {
+                            if (this.gameState.inputQueue.length < 4) {
+                                this.gameState.inputQueue.push(queued);
+                                return true;
+                            }
+                        } else if (this.gameState.inputQueue) {
+                            this.gameState.inputQueue = [this.gameState.inputQueue, queued].slice(0, 4);
+                            return true;
+                        } else {
+                            this.gameState.inputQueue = queued;
+                            return true;
+                        }
                     }
-                    return;
+                    return false;
                 }
 
                 if (command.type === 'move') {
-                    window.move?.(command.value);
+                    return window.move?.(command.value);
                 } else if (command.type === 'rotate') {
-                    window.rotate?.(command.value);
+                    return window.rotate?.(command.value);
                 } else if (command.type === 'softDrop') {
-                    window.softDrop?.();
+                    return window.softDrop?.();
                 } else if (command.type === 'hardDrop') {
-                    window.hardDrop?.();
+                    return window.hardDrop?.();
+                } else if (command.type === 'hold') {
+                    return window.hold?.();
                 }
+
+                return false;
             };
 
             // Execute immediately so input works across mode-specific loops.
             // Only the physics-busy branch above defers by writing to gameState.inputQueue.
-            runGameplayCommand(execute);
+            return runGameplayCommand(execute);
         };
 
         // Setup keyboard and touch controls with the exposed gameActions
@@ -3617,10 +3656,12 @@ class SerenityBlocks {
             rotate: (...args) => window.rotate?.(...args),
             softDrop: (...args) => window.softDrop?.(...args),
             hardDrop: (...args) => window.hardDrop?.(...args),
+            hold: (...args) => window.hold?.(...args),
             requestMove: (dir) => enqueueSinglePlayerCommand({ type: 'move', value: dir }),
             requestRotate: (dir) => enqueueSinglePlayerCommand({ type: 'rotate', value: dir }),
             requestSoftDrop: () => enqueueSinglePlayerCommand({ type: 'softDrop' }),
             requestHardDrop: () => enqueueSinglePlayerCommand({ type: 'hardDrop' }),
+            requestHold: () => enqueueSinglePlayerCommand({ type: 'hold' }),
             togglePause: (...args) => window.togglePause?.(...args),
             openSettingsMenu: (...args) => window.openSettingsMenu?.(...args),
             startGame: (...args) => window.startGame?.(...args),
@@ -3634,28 +3675,34 @@ class SerenityBlocks {
             rotateP2: (...args) => window.rotateP2?.(...args),
             softDropP2: (...args) => window.softDropP2?.(...args),
             hardDropP2: (...args) => window.hardDropP2?.(...args),
+            holdP2: (...args) => window.holdP2?.(...args),
             requestMoveP2: (dir) => runGameplayCommand(() => window.moveP2?.(dir)),
             requestRotateP2: (dir) => runGameplayCommand(() => window.rotateP2?.(dir)),
             requestSoftDropP2: () => runGameplayCommand(() => window.softDropP2?.()),
             requestHardDropP2: () => runGameplayCommand(() => window.hardDropP2?.()),
+            requestHoldP2: () => runGameplayCommand(() => window.holdP2?.()),
             // Player 3 actions (Gamepad only)
             moveP3: (...args) => window.moveP3?.(...args),
             rotateP3: (...args) => window.rotateP3?.(...args),
             softDropP3: (...args) => window.softDropP3?.(...args),
             hardDropP3: (...args) => window.hardDropP3?.(...args),
+            holdP3: (...args) => window.holdP3?.(...args),
             requestMoveP3: (dir) => runGameplayCommand(() => window.moveP3?.(dir)),
             requestRotateP3: (dir) => runGameplayCommand(() => window.rotateP3?.(dir)),
             requestSoftDropP3: () => runGameplayCommand(() => window.softDropP3?.()),
             requestHardDropP3: () => runGameplayCommand(() => window.hardDropP3?.()),
+            requestHoldP3: () => runGameplayCommand(() => window.holdP3?.()),
             // Player 4 actions (Gamepad only)
             moveP4: (...args) => window.moveP4?.(...args),
             rotateP4: (...args) => window.rotateP4?.(...args),
             softDropP4: (...args) => window.softDropP4?.(...args),
             hardDropP4: (...args) => window.hardDropP4?.(...args),
+            holdP4: (...args) => window.holdP4?.(...args),
             requestMoveP4: (dir) => runGameplayCommand(() => window.moveP4?.(dir)),
             requestRotateP4: (dir) => runGameplayCommand(() => window.rotateP4?.(dir)),
             requestSoftDropP4: () => runGameplayCommand(() => window.softDropP4?.()),
             requestHardDropP4: () => runGameplayCommand(() => window.hardDropP4?.()),
+            requestHoldP4: () => runGameplayCommand(() => window.holdP4?.()),
         };
 
         this.flushGameplayInputQueue = () => {
@@ -3683,7 +3730,11 @@ class SerenityBlocks {
             this.gamepadController.deadzone = settings.gamepadDeadzone;
         }
         if (settings.dasDelay !== undefined && settings.dasInterval !== undefined) {
-            this.gamepadController.updateDasSettings(settings.dasDelay, settings.dasInterval);
+            this.gamepadController.updateDasSettings(
+                settings.dasDelay,
+                settings.dasInterval,
+                settings.softDropInterval ?? 50,
+            );
         }
 
         // Listen for gamepad status changes to update UI
@@ -3923,6 +3974,18 @@ class SerenityBlocks {
                 settings.player2GamepadBindings,
                 settings.player3GamepadBindings,
                 settings.player4GamepadBindings,
+            );
+        }
+
+        if (
+            changes.dasDelay !== undefined
+            || changes.dasInterval !== undefined
+            || changes.softDropInterval !== undefined
+        ) {
+            this.gamepadController.updateDasSettings(
+                settings.dasDelay,
+                settings.dasInterval,
+                settings.softDropInterval ?? 50,
             );
         }
     }
@@ -4990,9 +5053,24 @@ class SerenityBlocks {
      * Cleanup and destroy application
      */
     cleanup() {
+        if (this.isCleaningUp) {
+            return;
+        }
+        this.isCleaningUp = true;
+
+        const cleanupHandlers = this.cleanupHandlers.splice(0);
+        cleanupHandlers.forEach((handler) => {
+            try {
+                handler?.();
+            } catch (error) {
+                console.warn('[Main] Cleanup handler failed:', error);
+            }
+        });
+
         // Stop game loop
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
         }
 
         // Cleanup Phaser
@@ -5161,6 +5239,14 @@ async function bootstrap() {
             void app?.startDeferredDesktopServices?.(`first-interaction:${event?.type || 'unknown'}`);
         });
         if (app && typeof window !== 'undefined') {
+            const handlePageHide = () => {
+                app?.cleanup?.();
+            };
+            window.addEventListener('pagehide', handlePageHide);
+            app.cleanupHandlers.push(() => {
+                window.removeEventListener('pagehide', handlePageHide);
+            });
+
             app.deferredDesktopServicesTimer = window.setTimeout(() => {
                 void app.startDeferredDesktopServices('menu-idle');
             }, 2000);

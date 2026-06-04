@@ -639,6 +639,8 @@ export default class AstralWeaveTheme extends BaseTheme {
                     this.capabilities.supportsCompute = typeof renderer.compute === 'function';
                 } else {
                     renderer.dispose();
+                    renderer.forceContextLoss?.();
+                    renderer.domElement?.remove?.();
                 }
             } catch (error) {
                 console.warn('[AstralWeave] WebGPU init failed, using WebGL fallback:', error);

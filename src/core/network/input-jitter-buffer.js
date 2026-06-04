@@ -39,6 +39,7 @@ export class InputJitterBuffer {
         this.historySize = 20; // Samples to keep
         this.maxBufferDepth = 8; // Cap at ~260ms latency
         this.minBufferDepth = 2; // Min ~66ms
+        this.lastDepthAdjustTick = -1;
 
         // Target tick rate (30Hz = 33.3ms per tick)
         this.tickRate = config.tickRate ?? 30;
@@ -50,6 +51,7 @@ export class InputJitterBuffer {
 
         // Current processing tick
         this.currentTick = 0;
+        this.processCursor = this.currentTick - this.bufferDepth;
 
         // Last input tick seen per player (for gap detection)
         this.lastInputTick = new Map();
@@ -116,7 +118,7 @@ export class InputJitterBuffer {
         }
 
         // Validate tick is reasonable
-        const minTick = this.currentTick - this.bufferDepth;
+        const minTick = this.processCursor;
         const maxTick = this.currentTick + this.bufferDepth + 2;
 
         if (tick < minTick) {
@@ -185,9 +187,7 @@ export class InputJitterBuffer {
      * @returns {Map<playerId, Input[]>} Inputs to process this tick
      */
     getInputsForTick() {
-        // Process inputs from (bufferDepth) ticks ago
-        // This gives time for late inputs to arrive
-        const tickToProcess = this.currentTick - this.bufferDepth;
+        const tickToProcess = this.processCursor;
         const inputs = new Map();
 
         for (const [playerId, playerBuffer] of this.playerBuffers) {
@@ -231,9 +231,10 @@ export class InputJitterBuffer {
      */
     advanceTick() {
         this.currentTick++;
+        this.processCursor++;
 
         // Clean up old buffered inputs (shouldn't happen if buffer is working)
-        const oldestAllowed = this.currentTick - this.bufferDepth - 2;
+        const oldestAllowed = this.processCursor - 2;
 
         for (const [playerId, playerBuffer] of this.playerBuffers) {
             for (const tick of playerBuffer.keys()) {
@@ -253,6 +254,7 @@ export class InputJitterBuffer {
      */
     setCurrentTick(tick) {
         this.currentTick = tick;
+        this.processCursor = this.currentTick - this.bufferDepth;
         this._log(`Jitter buffer tick synced to ${tick}`);
     }
 
@@ -290,6 +292,7 @@ export class InputJitterBuffer {
 
         return {
             currentTick: this.currentTick,
+            processCursor: this.processCursor,
             bufferDepth: this.bufferDepth,
             tickRate: this.tickRate,
             playerCount: this.playerBuffers.size,
@@ -314,7 +317,12 @@ export class InputJitterBuffer {
         }
 
         // Update target depth every 10 ticks or so
-        if (stats.offsets.length >= this.historySize && this.currentTick % 10 === 0) {
+        if (
+            stats.offsets.length >= this.historySize
+            && this.currentTick % 10 === 0
+            && this.lastDepthAdjustTick !== this.currentTick
+        ) {
+            this.lastDepthAdjustTick = this.currentTick;
             this._updateAdaptiveDepth();
         }
     }
@@ -364,10 +372,8 @@ export class InputJitterBuffer {
             if (maxRequiredDepth > this.targetBufferDepth) this.targetBufferDepth++;
             else this.targetBufferDepth--; // Shrink slower? No, symmetrical for now.
 
-            // Apply to actual buffer depth
-            // We update this.bufferDepth, but doing so abruptly might skip ticks or replay?
-            // If we increase depth (e.g. 2->3), we effectively "pause" processing for 1 tick.
-            // If we decrease depth (e.g. 3->2), we "fast forward" (process 2 ticks at once).
+            // Processing uses a monotonic cursor, so depth changes affect future
+            // acceptance windows without skipping or replaying buffered ticks.
             this.bufferDepth = this.targetBufferDepth;
 
             this.stats.avgJitterMs = (totalStdDev / this.playerStats.size) * this.tickInterval;
@@ -393,6 +399,7 @@ export class InputJitterBuffer {
             inputsDropped: 0,
             inputsInterpolated: 0,
             inputsTooFuture: 0,
+            avgJitterMs: 0,
         };
     }
 
@@ -403,6 +410,8 @@ export class InputJitterBuffer {
         this.playerBuffers.clear();
         this.lastInputTick.clear();
         this.currentTick = 0;
+        this.processCursor = this.currentTick - this.bufferDepth;
+        this.lastDepthAdjustTick = -1;
         this.resetStats();
         this._log('Jitter buffer cleared');
     }
