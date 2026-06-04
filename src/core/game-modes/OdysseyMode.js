@@ -412,6 +412,11 @@ export class OdysseyMode extends BaseGameMode {
 
         console.log('[Odyssey] Stopping...');
 
+        if (this.gameState) {
+            this.gameState.isGameOver = true;
+            this.gameState.isStopped = true;
+        }
+
         // Stop standard RAF loop
         if (this.gameState?.animationId) {
             cancelAnimationFrame(this.gameState.animationId);
@@ -423,6 +428,17 @@ export class OdysseyMode extends BaseGameMode {
             this.deps.frameRateController.stopHybridLoop();
         }
         this.usingHybridLoop = false;
+
+        if (this.gameState?.latestPhysicsPromise) {
+            try {
+                await this.gameState.latestPhysicsPromise;
+            } catch (error) {
+                console.warn('[Odyssey] In-flight physics rejected during stop:', error);
+            } finally {
+                this.gameState.latestPhysicsPromise = null;
+                this.gameState.isProcessingPhysics = false;
+            }
+        }
 
         // Stop level timer
         if (this.levelTimerInterval) {

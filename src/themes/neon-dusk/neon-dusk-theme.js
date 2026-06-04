@@ -1054,7 +1054,7 @@ export default class NeonDuskTheme extends BaseTheme {
             container.removeChild(this.renderer.domElement);
         }
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
         }
 
         let renderer = null;
@@ -1077,6 +1077,8 @@ export default class NeonDuskTheme extends BaseTheme {
         if (renderer && renderer.backend?.isWebGPUBackend === true && !this.webgpuMaterialsReady) {
             console.warn('[NeonDusk] WebGPU available but materials not ready, using WebGL2');
             renderer.dispose();
+            renderer.forceContextLoss?.();
+            renderer.domElement?.remove?.();
             renderer = null;
         }
 
@@ -3999,7 +4001,7 @@ export default class NeonDuskTheme extends BaseTheme {
 
         // Dispose Three.js resources LAST to avoid WebGPU errors
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             const container = document.getElementById('neon-dusk-theme');
             if (container && container.contains(this.renderer.domElement)) {
                 container.removeChild(this.renderer.domElement);

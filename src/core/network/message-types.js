@@ -39,7 +39,6 @@ export const MessageTypes = {
     GAME_PLAYER_FRAG: 'game:player:frag', // Host → All
     GAME_MATCH_END: 'game:match:end', // Host → All
     GAME_ROUND_RESTART: 'game:round:restart', // Host → All (restart round with countdown)
-    GAME_ROUND_RESTART: 'game:round:restart', // Host → All (restart round with countdown)
 
     // Host Migration
     GAME_HOST_MIGRATION_ELECT: 'game:host:elect', // Peer → All

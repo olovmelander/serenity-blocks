@@ -6,6 +6,10 @@
 
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { SpatialNavigation } from './spatial-navigation.js';
+import { COLS, ROWS } from '../core/constants.js';
+
+const INSTANT_DAS_REPEAT_LIMIT = COLS;
+const INSTANT_SOFT_DROP_REPEAT_LIMIT = ROWS;
 
 /**
  * Button mappings for standard gamepad (Xbox layout)
@@ -52,6 +56,7 @@ const DEFAULT_GAMEPAD_CONFIG = {
     flip: { type: 'button', index: BUTTON_MAP.X },
     softDrop: { type: 'button', index: BUTTON_MAP.D_DOWN, axisPositive: AXIS_MAP.LEFT_STICK_Y },
     hardDrop: { type: 'button', index: BUTTON_MAP.B },
+    hold: { type: 'button', index: BUTTON_MAP.LB },
     pause: { type: 'button', index: BUTTON_MAP.START },
 };
 
@@ -69,6 +74,7 @@ function convertBindingsToConfig(bindings) {
         flip: { type: 'button', index: bindings.flip ?? BUTTON_MAP.X },
         softDrop: { type: 'button', index: bindings.softDrop ?? BUTTON_MAP.D_DOWN, axisPositive: AXIS_MAP.LEFT_STICK_Y },
         hardDrop: { type: 'button', index: bindings.hardDrop ?? BUTTON_MAP.B },
+        hold: { type: 'button', index: bindings.hold ?? BUTTON_MAP.LB },
         pause: { type: 'button', index: bindings.pause ?? BUTTON_MAP.START },
     };
 }
@@ -106,6 +112,7 @@ export class GamepadController {
         ];
         this.dasDelay = 120;
         this.dasInterval = 40;
+        this.softDropInterval = 50;
 
         // Custom bindings for each player
         this.customBindings = [null, null, null, null];
@@ -123,6 +130,14 @@ export class GamepadController {
         // Callback functions
         this.onPauseCallback = null;
         this.onResumeCallback = null;
+        this.handleGamepadConnected = (event) => this.onGamepadConnected(event);
+        this.handleGamepadDisconnected = (event) => this.onGamepadDisconnected(event);
+        this.handleVisibilityChange = () => {
+            if (document.hidden) {
+                this.clearAllDasTimers();
+            }
+        };
+        this.isInitialized = false;
         // Gate menu toggles until Start is released after a press
         this.waitingForStartRelease = [false, false, false, false];
         this.selectEditState = {
@@ -148,20 +163,22 @@ export class GamepadController {
             return false;
         }
 
+        if (this.isInitialized) {
+            this.checkConnectedGamepads();
+            return true;
+        }
+
         // Listen for gamepad connections
-        window.addEventListener('gamepadconnected', (e) => this.onGamepadConnected(e));
-        window.addEventListener('gamepaddisconnected', (e) => this.onGamepadDisconnected(e));
+        window.addEventListener('gamepadconnected', this.handleGamepadConnected);
+        window.addEventListener('gamepaddisconnected', this.handleGamepadDisconnected);
 
         // Clear DAS timers when tab loses focus (gamepad polling stops but timers persist)
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                this.clearAllDasTimers();
-            }
-        });
+        document.addEventListener('visibilitychange', this.handleVisibilityChange);
 
         // Check for already connected gamepads
         this.checkConnectedGamepads();
 
+        this.isInitialized = true;
         console.log('[Gamepad] Gamepad support initialized');
         return true;
     }
@@ -404,6 +421,7 @@ export class GamepadController {
     }
 
     advanceGameplayInput(timestamp = performance.now()) {
+        if (this.lastGameplayTime === timestamp) return;
         const delta = Math.max(0, Math.min(100, timestamp - (this.lastGameplayTime ?? timestamp)));
         this.lastGameplayTime = timestamp;
 
@@ -1442,10 +1460,12 @@ export class GamepadController {
                     rotate: this.gameActions.rotate,
                     softDrop: this.gameActions.softDrop,
                     hardDrop: this.gameActions.hardDrop,
+                    hold: this.gameActions.hold,
                     requestMove: this.gameActions.requestMove,
                     requestRotate: this.gameActions.requestRotate,
                     requestSoftDrop: this.gameActions.requestSoftDrop,
                     requestHardDrop: this.gameActions.requestHardDrop,
+                    requestHold: this.gameActions.requestHold,
                     pause: this.gameActions.togglePause,
                 };
                 break;
@@ -1455,10 +1475,12 @@ export class GamepadController {
                     rotate: this.gameActions.rotateP2,
                     softDrop: this.gameActions.softDropP2,
                     hardDrop: this.gameActions.hardDropP2,
+                    hold: this.gameActions.holdP2,
                     requestMove: this.gameActions.requestMoveP2,
                     requestRotate: this.gameActions.requestRotateP2,
                     requestSoftDrop: this.gameActions.requestSoftDropP2,
                     requestHardDrop: this.gameActions.requestHardDropP2,
+                    requestHold: this.gameActions.requestHoldP2,
                     pause: this.gameActions.togglePause,
                 };
                 break;
@@ -1468,10 +1490,12 @@ export class GamepadController {
                     rotate: this.gameActions.rotateP3,
                     softDrop: this.gameActions.softDropP3,
                     hardDrop: this.gameActions.hardDropP3,
+                    hold: this.gameActions.holdP3,
                     requestMove: this.gameActions.requestMoveP3,
                     requestRotate: this.gameActions.requestRotateP3,
                     requestSoftDrop: this.gameActions.requestSoftDropP3,
                     requestHardDrop: this.gameActions.requestHardDropP3,
+                    requestHold: this.gameActions.requestHoldP3,
                     pause: this.gameActions.togglePause,
                 };
                 break;
@@ -1481,10 +1505,12 @@ export class GamepadController {
                     rotate: this.gameActions.rotateP4,
                     softDrop: this.gameActions.softDropP4,
                     hardDrop: this.gameActions.hardDropP4,
+                    hold: this.gameActions.holdP4,
                     requestMove: this.gameActions.requestMoveP4,
                     requestRotate: this.gameActions.requestRotateP4,
                     requestSoftDrop: this.gameActions.requestSoftDropP4,
                     requestHardDrop: this.gameActions.requestHardDropP4,
+                    requestHold: this.gameActions.requestHoldP4,
                     pause: this.gameActions.togglePause,
                 };
                 break;
@@ -1540,7 +1566,7 @@ export class GamepadController {
             if (actions.requestSoftDrop || actions.softDrop) {
                 (actions.requestSoftDrop || actions.softDrop)();
                 performanceMonitor.recordInputAction();
-                this.startDas(slot, 'down', () => (actions.requestSoftDrop || actions.softDrop)?.(), 50);
+                this.startDas(slot, 'down', () => (actions.requestSoftDrop || actions.softDrop)?.());
             }
         } else if (!downPressed && prevDown) {
             this.stopDas(slot, 'down');
@@ -1574,6 +1600,13 @@ export class GamepadController {
         if (this.isButtonJustPressed(gamepad, config.hardDrop, prevState, 'hardDrop')) {
             if (actions.requestHardDrop || actions.hardDrop) {
                 (actions.requestHardDrop || actions.hardDrop)();
+                performanceMonitor.recordInputAction();
+            }
+        }
+
+        if (this.isButtonJustPressed(gamepad, config.hold, prevState, 'hold')) {
+            if (actions.requestHold || actions.hold) {
+                (actions.requestHold || actions.hold)();
                 performanceMonitor.recordInputAction();
             }
         }
@@ -1629,14 +1662,13 @@ export class GamepadController {
     /**
      * Start DAS (Delayed Auto Shift) for continuous movement
      */
-    startDas(slot, direction, action, interval = null) {
+    startDas(slot, direction, action) {
         this.dasActions[slot][direction] = action;
         const state = this.dasState[slot][direction];
         state.active = true;
         state.delayAccumulator = 0;
         state.intervalAccumulator = 0;
         state.isRepeating = false;
-        // Interval is currently stored globally in this.dasInterval, but we could store it on state if needed.
     }
 
     /**
@@ -1645,14 +1677,23 @@ export class GamepadController {
     processDasTimers(slot, delta) {
         if (!this.gameActions || !this.enabled) return;
 
-        const processDirection = (dir, customInterval = false) => {
+        const processDirection = (dir) => {
             const state = this.dasState[slot][dir];
             const action = this.dasActions[slot][dir];
             if (!state.active || !action) return;
 
             // For downward movement map to continuous softDrop, custom interval or 50ms default
             if (dir === 'down') {
-                const interval = 50;
+                const interval = this.softDropInterval;
+                if (interval <= 0) {
+                    for (let i = 0; i < INSTANT_SOFT_DROP_REPEAT_LIMIT; i++) {
+                        if (action() === false) {
+                            break;
+                        }
+                    }
+                    state.intervalAccumulator = 0;
+                    return;
+                }
                 state.intervalAccumulator += delta;
                 while (state.intervalAccumulator >= interval) {
                     state.intervalAccumulator -= interval;
@@ -1662,21 +1703,41 @@ export class GamepadController {
             }
 
             // For left/right movement
+            const runInstantRepeat = () => {
+                for (let i = 0; i < INSTANT_DAS_REPEAT_LIMIT; i++) {
+                    if (action() === false) {
+                        break;
+                    }
+                }
+                state.intervalAccumulator = 0;
+            };
+
             if (!state.isRepeating) {
                 state.delayAccumulator += delta;
                 if (state.delayAccumulator >= this.dasDelay) {
                     state.isRepeating = true;
                     state.intervalAccumulator = state.delayAccumulator - this.dasDelay;
+
+                    if (this.dasInterval <= 0) {
+                        runInstantRepeat();
+                        return;
+                    }
+
                     action();
 
-                    while (state.intervalAccumulator >= this.dasInterval && this.dasInterval > 0) {
+                    while (state.intervalAccumulator >= this.dasInterval) {
                         state.intervalAccumulator -= this.dasInterval;
                         action();
                     }
                 }
             } else {
+                if (this.dasInterval <= 0) {
+                    runInstantRepeat();
+                    return;
+                }
+
                 state.intervalAccumulator += delta;
-                while (state.intervalAccumulator >= this.dasInterval && this.dasInterval > 0) {
+                while (state.intervalAccumulator >= this.dasInterval) {
                     state.intervalAccumulator -= this.dasInterval;
                     action();
                 }
@@ -1760,9 +1821,10 @@ export class GamepadController {
     /**
      * Update DAS settings
      */
-    updateDasSettings(dasDelay, dasInterval) {
+    updateDasSettings(dasDelay, dasInterval, softDropInterval = this.softDropInterval) {
         this.dasDelay = dasDelay;
         this.dasInterval = dasInterval;
+        this.softDropInterval = softDropInterval;
     }
 
     /**
@@ -2014,8 +2076,10 @@ export class GamepadController {
     destroy() {
         this.disable();
         this.disableSerenityMode();
-        window.removeEventListener('gamepadconnected', this.onGamepadConnected);
-        window.removeEventListener('gamepaddisconnected', this.onGamepadDisconnected);
+        window.removeEventListener('gamepadconnected', this.handleGamepadConnected);
+        window.removeEventListener('gamepaddisconnected', this.handleGamepadDisconnected);
+        document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+        this.isInitialized = false;
         console.log('[Gamepad] Controller manager destroyed');
     }
 }

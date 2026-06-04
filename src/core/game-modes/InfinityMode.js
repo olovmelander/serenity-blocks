@@ -457,6 +457,11 @@ export class InfinityMode extends BaseGameMode {
 
         console.log('[Infinity] Stopping game...');
 
+        if (this.gameState) {
+            this.gameState.isGameOver = true;
+            this.gameState.isStopped = true;
+        }
+
         // Reset exploration mode
         this.isInExplorationMode = false;
         this._cleanupScrollState();
@@ -473,6 +478,17 @@ export class InfinityMode extends BaseGameMode {
             this.deps.frameRateController.stopHybridLoop();
         }
         this.usingHybridLoop = false;
+
+        if (this.gameState?.latestPhysicsPromise) {
+            try {
+                await this.gameState.latestPhysicsPromise;
+            } catch (error) {
+                console.warn('[Infinity] In-flight physics rejected during stop:', error);
+            } finally {
+                this.gameState.latestPhysicsPromise = null;
+                this.gameState.isProcessingPhysics = false;
+            }
+        }
 
         // Hide minimap
         if (this.minimap) {

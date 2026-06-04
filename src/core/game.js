@@ -4,7 +4,15 @@
  */
 
 import {
-    COLS, ROWS, HIDDEN_ROWS, SHAPES, COLORS, LEVEL_SPEEDS, PIECE_KEYS,
+    COLS,
+    ROWS,
+    HIDDEN_ROWS,
+    SHAPES,
+    COLORS,
+    LEVEL_SPEEDS,
+    PIECE_KEYS,
+    LOCK_DELAY_MS,
+    LOCK_RESET_LIMIT,
 } from './constants.js';
 import { generateBoard, createBoardGrid, rebuildBoardGridFromPieces } from './board.js';
 import { processPhysics } from './physics.js';
@@ -69,11 +77,9 @@ function ensureBoardCache(gameState) {
             gameState.board = boardGrid;
         }
 
-        console.log(`[BoardCache] Rebuilding cache. boardGrid.length=${boardGrid?.length}, lockedPieces=${lockedPieces.length}`);
         gameState.boardCache = generateBoard(lockedPieces, {
             boardGrid,
         });
-        console.log(`[BoardCache] Cache rebuilt. boardCache.length=${gameState.boardCache?.length}`);
         gameState.boardCacheDirty = false;
     }
 
@@ -101,6 +107,178 @@ function hasLockedCells(grid) {
         }
     }
     return false;
+}
+
+function cloneShape(shape) {
+    return shape.map((row) => row.slice());
+}
+
+function rotateShapeMatrix(shape, dir = 'right') {
+    if (dir === 'right') {
+        return shape[0].map((_, i) => shape.map((row) => row[i]).reverse());
+    }
+    if (dir === 'left') {
+        return shape[0].map((_, i) => shape.map((row) => row[i])).reverse();
+    }
+    return shape.map((row) => row.slice().reverse()).reverse();
+}
+
+const ROTATION_STEP = {
+    right: 1,
+    left: -1,
+    flip: 2,
+};
+
+const ROTATION_NAMES = ['0', 'R', '2', 'L'];
+
+const JLSTZ_KICKS = {
+    '0>R': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
+    'R>0': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
+    'R>2': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
+    '2>R': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
+    '2>L': [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
+    'L>2': [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],
+    'L>0': [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],
+    '0>L': [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
+};
+
+const I_KICKS = {
+    '0>R': [[0, 0], [-2, 0], [1, 0], [-2, -1], [1, 2]],
+    'R>0': [[0, 0], [2, 0], [-1, 0], [2, 1], [-1, -2]],
+    'R>2': [[0, 0], [-1, 0], [2, 0], [-1, 2], [2, -1]],
+    '2>R': [[0, 0], [1, 0], [-2, 0], [1, -2], [-2, 1]],
+    '2>L': [[0, 0], [2, 0], [-1, 0], [2, 1], [-1, -2]],
+    'L>2': [[0, 0], [-2, 0], [1, 0], [-2, -1], [1, 2]],
+    'L>0': [[0, 0], [1, 0], [-2, 0], [1, -2], [-2, 1]],
+    '0>L': [[0, 0], [-1, 0], [2, 0], [-1, 2], [2, -1]],
+};
+
+function getLockDelay(gameState) {
+    const configured = Number(gameState?.lockDelay);
+    return Number.isFinite(configured) ? Math.max(0, configured) : LOCK_DELAY_MS;
+}
+
+function getLockResetLimit(gameState) {
+    const configured = Number(gameState?.lockResetLimit);
+    return Number.isFinite(configured) ? Math.max(0, configured) : LOCK_RESET_LIMIT;
+}
+
+function resetLockState(gameState) {
+    if (!gameState) return;
+    gameState.lockTimer = 0;
+    gameState.lockResetCount = 0;
+    gameState.isGrounded = false;
+    gameState.lockGroundedSince = null;
+}
+
+function isCurrentPieceGrounded(gameState) {
+    return Boolean(
+        gameState?.currentPiece
+        && !canPlacePiece(
+            gameState,
+            gameState.currentPiece,
+            gameState.currentPiece.x,
+            gameState.currentPiece.y + 1,
+        ),
+    );
+}
+
+function updateGroundedState(gameState, delta = 0) {
+    if (!gameState?.currentPiece) {
+        resetLockState(gameState);
+        return false;
+    }
+
+    const grounded = isCurrentPieceGrounded(gameState);
+    if (!grounded) {
+        gameState.lockTimer = 0;
+        gameState.isGrounded = false;
+        gameState.lockGroundedSince = null;
+        return false;
+    }
+
+    if (!gameState.isGrounded) {
+        gameState.isGrounded = true;
+        gameState.lockTimer = 0;
+        gameState.lockGroundedSince = gameState.lastTime || 0;
+    }
+
+    if (Number.isFinite(delta) && delta > 0) {
+        gameState.lockTimer += delta;
+    }
+
+    return true;
+}
+
+function maybeResetLockDelay(gameState, wasGrounded) {
+    if (!gameState?.currentPiece || !wasGrounded) return;
+
+    if (!isCurrentPieceGrounded(gameState)) {
+        gameState.lockTimer = 0;
+        gameState.isGrounded = false;
+        gameState.lockGroundedSince = null;
+        return;
+    }
+
+    if (gameState.lockResetCount < getLockResetLimit(gameState)) {
+        gameState.lockTimer = 0;
+        gameState.lockResetCount += 1;
+        gameState.isGrounded = true;
+        gameState.lockGroundedSince = gameState.lastTime || 0;
+    }
+}
+
+function shouldLockGroundedPiece(gameState) {
+    return getLockDelay(gameState) <= 0
+        || gameState.lockTimer >= getLockDelay(gameState)
+        || gameState.lockResetCount >= getLockResetLimit(gameState);
+}
+
+function applyBufferedInputs(gameState) {
+    if (!gameState?.inputQueue) return;
+
+    const queuedInputs = Array.isArray(gameState.inputQueue)
+        ? gameState.inputQueue.splice(0, 4)
+        : [gameState.inputQueue];
+    gameState.inputQueue = null;
+
+    for (const action of queuedInputs) {
+        if (
+            gameState.isPaused
+            || gameState.isGameOver
+            || gameState.isProcessingPhysics
+            || !gameState.currentPiece
+        ) {
+            return;
+        }
+
+        if (action.type === 'move') move(gameState, action.dir);
+        else if (action.type === 'rotate') rotate(gameState, action.dir);
+        else if (action.type === 'hold') holdPiece(gameState);
+    }
+}
+
+function createActivePiece(gameState, shapeKey) {
+    const shape = SHAPES[shapeKey];
+    if (!shape) return null;
+
+    const piece = piecePool.acquire();
+    piece.shapeKey = shapeKey;
+    piece.type = shapeKey;
+    piece.shape = cloneShape(shape);
+    piece.rotation = 0;
+    piece.x = Math.floor(COLS / 2) - Math.floor(shape[0].length / 2);
+
+    if (gameState.isInfinityMode) {
+        const cameraTopRow = gameState.cameraRow || 0;
+        const spawnOffset = 2;
+        piece.y = Math.max(0, Math.floor(cameraTopRow) - spawnOffset);
+    } else {
+        piece.y = HIDDEN_ROWS - 2;
+    }
+
+    piece.color = resolveActiveTetrominoColor(shapeKey);
+    return piece;
 }
 
 function isValidPositionCached(gameState, piece, checkX, checkY) {
@@ -210,11 +388,18 @@ export class GameState {
         this.lastTime = 0;
         this.startTime = Date.now();
         this.piecesPlaced = 0;
+        this.lockDelay = options.lockDelay ?? LOCK_DELAY_MS;
+        this.lockResetLimit = options.lockResetLimit ?? LOCK_RESET_LIMIT;
+        this.lockTimer = 0;
+        this.lockResetCount = 0;
+        this.isGrounded = false;
+        this.lockGroundedSince = null;
 
         // Flags
         this.isGameOver = false;
         this.isPaused = false;
         this.isProcessingPhysics = false;
+        this.isStopped = false;
         this.isAlive = true; // For multiplayer: tracks if player is still in the round
 
         // Victory Lap System (Odyssey Mode)
@@ -224,6 +409,9 @@ export class GameState {
 
         // Input
         this.inputQueue = null;
+        this.heldPiece = null;
+        this.holdUsedThisTurn = false;
+        this.holdEnabled = options.holdEnabled !== false;
 
         // Animation
         this.animationId = null;
@@ -298,10 +486,14 @@ export class GameState {
         this.dropInterval = LEVEL_SPEEDS[0];
         this.dropCounter = 0;
         this.piecesPlaced = 0;
+        resetLockState(this);
         this.isGameOver = false;
+        this.isStopped = false;
         this.isProcessingPhysics = false;
         this.isAlive = true;
         this.inputQueue = null;
+        this.heldPiece = null;
+        this.holdUsedThisTurn = false;
         this.startTime = Date.now();
         this.boardCache = null;
         this.boardCacheDirty = true;
@@ -367,11 +559,13 @@ export function fillBag(nextPieces, rng = Math.random) {
  * @param {Function} gameOverCallback - Callback to trigger game over
  */
 export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) {
-    const shapeKey = gameState.nextPieces.shift();
-    const shape = SHAPES[shapeKey];
+    if (!gameState || gameState.isGameOver || gameState.isStopped) return null;
 
-    if (!shapeKey || !shape) {
-        return;
+    const shapeKey = gameState.nextPieces.shift();
+    const piece = createActivePiece(gameState, shapeKey);
+
+    if (!shapeKey || !piece) {
+        return null;
     }
 
     if (gameState.pieceCounts) {
@@ -382,28 +576,10 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
         piecePool.release(gameState.currentPiece);
     }
 
-    const piece = piecePool.acquire();
-    piece.shapeKey = shapeKey;
-    piece.type = shapeKey;
-    piece.shape = shape;
-    piece.x = Math.floor(COLS / 2) - Math.floor(shape[0].length / 2);
-
-    // Infinity Mode: spawn pieces at the top of the current viewport (where camera is looking)
-    // Standard Mode: spawn at fixed position (HIDDEN_ROWS - 2)
-    if (gameState.isInfinityMode) {
-        // Spawn at the camera's current top row (or slightly above it)
-        // This ensures pieces always spawn just above the visible area
-        const cameraTopRow = gameState.cameraRow || 0;
-        const spawnOffset = 2; // Spawn 2 rows above the camera's top edge
-        piece.y = Math.max(0, Math.floor(cameraTopRow) - spawnOffset);
-    } else {
-        piece.y = HIDDEN_ROWS - 2; // Spawn 2 rows above visible area for smooth drop-in animation
-    }
-
-    piece.color = resolveActiveTetrominoColor(shapeKey);
-
     gameState.currentPiece = piece;
     invalidateGhostCache(gameState);
+    resetLockState(gameState);
+    gameState.holdUsedThisTurn = false;
 
     // Track when piece spawned for Quadra time-based lock bonus
     gameState.pieceSpawnTime = performance.now();
@@ -416,16 +592,6 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     if (drawNextPiecesCallback) drawNextPiecesCallback();
     gameState.piecesPlaced++;
 
-    // Handle queued input
-    if (gameState.inputQueue) {
-        const action = gameState.inputQueue;
-        gameState.inputQueue = null;
-        setTimeout(() => {
-            if (action.type === 'move') move(gameState, action.dir);
-            else if (action.type === 'rotate') rotate(gameState, action.dir);
-        }, 0);
-    }
-
     // Check if piece can spawn (game over condition)
     // In Infinity Mode, game over is handled separately by checkInfinityGameOver
     // Don't trigger game over here for Infinity Mode
@@ -436,9 +602,59 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
             gameState.currentPiece.x,
             gameState.currentPiece.y,
         )) {
+            gameState.isGameOver = true;
             if (gameOverCallback) gameOverCallback();
+            return null;
         }
     }
+
+    applyBufferedInputs(gameState);
+
+    return piece;
+}
+
+export function holdPiece(gameState, drawNextPiecesCallback, gameOverCallback) {
+    if (
+        !gameState?.currentPiece
+        || gameState.isProcessingPhysics
+        || gameState.isPaused
+        || gameState.isGameOver
+        || gameState.holdEnabled === false
+        || gameState.holdUsedThisTurn
+    ) return false;
+
+    const outgoingKey = gameState.currentPiece.shapeKey;
+    const incomingKey = gameState.heldPiece;
+
+    piecePool.release(gameState.currentPiece);
+    gameState.currentPiece = null;
+    gameState.heldPiece = outgoingKey;
+    gameState.holdUsedThisTurn = true;
+    resetLockState(gameState);
+    gameState.dropCounter = 0;
+
+    if (!incomingKey) {
+        const spawnedPiece = spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback);
+        gameState.holdUsedThisTurn = true;
+        if (drawNextPiecesCallback) drawNextPiecesCallback();
+        return Boolean(spawnedPiece);
+    }
+
+    const piece = createActivePiece(gameState, incomingKey);
+    if (!piece) return false;
+
+    gameState.currentPiece = piece;
+    invalidateGhostCache(gameState);
+    gameState.pieceSpawnTime = performance.now();
+
+    if (!gameState.isInfinityMode && !canPlacePiece(gameState, piece, piece.x, piece.y)) {
+        gameState.isGameOver = true;
+        if (gameOverCallback) gameOverCallback();
+        return false;
+    }
+
+    if (drawNextPiecesCallback) drawNextPiecesCallback();
+    return true;
 }
 
 /**
@@ -450,7 +666,14 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
  * @returns {boolean} True if move was successful
  */
 export function move(gameState, dir, playSoundCallback, addTrailCallback) {
-    if (!gameState.currentPiece || gameState.isProcessingPhysics) return false;
+    if (
+        !gameState?.currentPiece
+        || gameState.isProcessingPhysics
+        || gameState.isPaused
+        || gameState.isGameOver
+    ) return false;
+
+    const wasGrounded = isCurrentPieceGrounded(gameState);
 
     if (canPlacePiece(
         gameState,
@@ -464,6 +687,7 @@ export function move(gameState, dir, playSoundCallback, addTrailCallback) {
         gameState.currentPiece.x += dir;
         if (playSoundCallback) playSoundCallback();
         invalidateGhostCache(gameState);
+        maybeResetLockDelay(gameState, wasGrounded);
         return true;
     }
     return false;
@@ -478,44 +702,81 @@ export function move(gameState, dir, playSoundCallback, addTrailCallback) {
  * @returns {boolean} True if rotation was successful
  */
 export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCallback) {
-    if (!gameState.currentPiece || gameState.isProcessingPhysics) return false;
+    if (
+        !gameState?.currentPiece
+        || gameState.isProcessingPhysics
+        || gameState.isPaused
+        || gameState.isGameOver
+    ) return false;
 
     // Add trail before rotating
     if (addTrailCallback) addTrailCallback(gameState.currentPiece);
 
-    const originalShape = gameState.currentPiece.shape;
-    let rotatedShape;
-
-    if (dir === 'right') {
-        // Rotate clockwise
-        rotatedShape = originalShape[0].map((_, i) => originalShape.map((row) => row[i]).reverse());
-    } else if (dir === 'left') {
-        // Rotate counter-clockwise
-        rotatedShape = originalShape[0].map((_, i) => originalShape.map((row) => row[i])).reverse();
-    } else {
-        // Flip 180 degrees
-        rotatedShape = originalShape.map((row) => row.slice().reverse()).reverse();
+    const piece = gameState.currentPiece;
+    const wasGrounded = isCurrentPieceGrounded(gameState);
+    if (piece.shapeKey === 'O' && dir !== 'flip') {
+        if (playSoundCallback) playSoundCallback();
+        maybeResetLockDelay(gameState, wasGrounded);
+        return true;
     }
 
-    gameState.currentPiece.shape = rotatedShape;
+    const step = ROTATION_STEP[dir] ?? ROTATION_STEP.right;
+    const fromRotation = piece.rotation ?? 0;
+    const toRotation = (fromRotation + step + 4) % 4;
+    const originalShape = piece.shape;
+    const originalX = piece.x;
+    const originalY = piece.y;
 
-    // Wall kick: try offsets 0, 1, -1, 2, -2
-    for (const kick of [0, 1, -1, 2, -2]) {
+    let rotatedShape = rotateShapeMatrix(originalShape, dir);
+    if (dir === 'flip') {
+        // 180-degree rotation has no SRS kick table in guideline play; allow the
+        // old horizontal probes so existing "flip" bindings remain useful.
+        const originalRotation = piece.rotation;
+        piece.shape = rotatedShape;
+        piece.rotation = toRotation;
+        for (const kick of [0, 1, -1, 2, -2]) {
+            if (canPlacePiece(gameState, piece, originalX + kick, originalY)) {
+                piece.x = originalX + kick;
+                if (playSoundCallback) playSoundCallback();
+                invalidateGhostCache(gameState);
+                maybeResetLockDelay(gameState, wasGrounded);
+                return true;
+            }
+        }
+        piece.shape = originalShape;
+        piece.rotation = originalRotation;
+        piece.x = originalX;
+        piece.y = originalY;
+        return false;
+    }
+
+    const key = `${ROTATION_NAMES[fromRotation]}>${ROTATION_NAMES[toRotation]}`;
+    const kicks = piece.shapeKey === 'I' ? I_KICKS[key] : JLSTZ_KICKS[key];
+
+    piece.shape = rotatedShape;
+    piece.rotation = toRotation;
+
+    for (const [dx, dy] of kicks || [[0, 0]]) {
         if (canPlacePiece(
             gameState,
-            gameState.currentPiece,
-            gameState.currentPiece.x + kick,
-            gameState.currentPiece.y,
+            piece,
+            originalX + dx,
+            originalY - dy,
         )) {
-            gameState.currentPiece.x += kick;
+            piece.x = originalX + dx;
+            piece.y = originalY - dy;
             if (playSoundCallback) playSoundCallback();
             invalidateGhostCache(gameState);
+            maybeResetLockDelay(gameState, wasGrounded);
             return true;
         }
     }
 
     // Rotation failed, revert
-    gameState.currentPiece.shape = originalShape;
+    piece.shape = originalShape;
+    piece.rotation = fromRotation;
+    piece.x = originalX;
+    piece.y = originalY;
     return false;
 }
 
@@ -529,7 +790,12 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
  * @returns {boolean} True if piece moved down, false if it locked
  */
 export function softDrop(gameState, playDropCallback, physicsCallbacks, options = {}) {
-    if (!gameState.currentPiece || gameState.isProcessingPhysics) return false;
+    if (
+        !gameState?.currentPiece
+        || gameState.isProcessingPhysics
+        || gameState.isPaused
+        || gameState.isGameOver
+    ) return false;
     const { preserveDropCounter = false } = options;
 
     if (canPlacePiece(
@@ -544,9 +810,14 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks, options 
             gameState.dropCounter = 0;
         }
         invalidateGhostCache(gameState);
+        updateGroundedState(gameState, 0);
         return true;
     }
-    lockPiece(gameState, playDropCallback, physicsCallbacks);
+
+    updateGroundedState(gameState, 0);
+    if (shouldLockGroundedPiece(gameState)) {
+        lockPiece(gameState, playDropCallback, physicsCallbacks);
+    }
     return false;
 }
 
@@ -565,6 +836,16 @@ export function processAutoDrop(gameState, delta, playDropCallback, physicsCallb
 
     const dropInterval = Math.max(1, Number(gameState.dropInterval) || LEVEL_SPEEDS[0]);
     const MAX_DROP_STEPS_PER_UPDATE = 32;
+
+    if (updateGroundedState(gameState, delta)) {
+        if (shouldLockGroundedPiece(gameState)) {
+            lockPiece(gameState, playDropCallback, physicsCallbacks);
+            gameState.dropCounter = 0;
+        } else {
+            gameState.dropCounter = Math.min(gameState.dropCounter + delta, dropInterval);
+        }
+        return;
+    }
 
     gameState.dropCounter += delta;
 
@@ -602,7 +883,12 @@ export function processAutoDrop(gameState, delta, playDropCallback, physicsCallb
  * @param {Object} physicsCallbacks - Callbacks for physics processing
  */
 export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
-    if (!gameState.currentPiece || gameState.isProcessingPhysics) return;
+    if (
+        !gameState?.currentPiece
+        || gameState.isProcessingPhysics
+        || gameState.isPaused
+        || gameState.isGameOver
+    ) return;
 
     invalidateGhostCache(gameState);
 
@@ -630,6 +916,7 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
     }
 
     // Quadra: No points for hard drop distance - only line clears and time-based lock bonus
+    resetLockState(gameState);
     lockPiece(gameState, playDropCallback, physicsCallbacks);
 }
 
@@ -640,7 +927,7 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
  * @param {Object} physicsCallbacks - Callbacks for physics processing
  */
 export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
-    if (!gameState.currentPiece) return;
+    if (!gameState?.currentPiece || gameState.isGameOver) return;
 
     // Store piece reference before nulling for ripple effect
     const lockedPiece = gameState.currentPiece;
@@ -717,17 +1004,42 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     gameState.currentPiece = null;
     invalidateGhostCache(gameState);
     gameState.dropCounter = 0;
+    resetLockState(gameState);
 
     // Start physics processing
     if (physicsCallbacks) {
         gameState.isProcessingPhysics = true;
-        gameState.latestPhysicsPromise = processPhysics(gameState, physicsCallbacks).then(() => {
-            gameState.isProcessingPhysics = false;
-            // Spawn next piece after physics is complete
-            if (physicsCallbacks.spawnPiece) {
-                physicsCallbacks.spawnPiece();
-            }
-        });
+        gameState.latestPhysicsPromise = processPhysics(gameState, physicsCallbacks)
+            .then(() => {
+                gameState.isProcessingPhysics = false;
+                if (
+                    !gameState.isGameOver
+                    && !gameState.isStopped
+                    && physicsCallbacks.spawnPiece
+                ) {
+                    try {
+                        physicsCallbacks.spawnPiece();
+                    } catch (error) {
+                        console.error('[Game] spawnPiece failed after physics:', error);
+                    }
+                }
+            })
+            .catch((error) => {
+                console.error('[Game] Physics processing failed:', error);
+                gameState.isProcessingPhysics = false;
+                markBoardDirty(gameState);
+                if (
+                    !gameState.isGameOver
+                    && !gameState.isStopped
+                    && physicsCallbacks.spawnPiece
+                ) {
+                    try {
+                        physicsCallbacks.spawnPiece();
+                    } catch (spawnError) {
+                        console.error('[Game] Recovery spawn failed after physics error:', spawnError);
+                    }
+                }
+            });
     }
 }
 
@@ -777,6 +1089,9 @@ export function updateGame(time, gameState, callbacks) {
         // under one simulation clock.
         if (window.inputController) {
             window.inputController.updateDAS(delta);
+        }
+        if (window.gamepadController) {
+            window.gamepadController.advanceGameplayInput(time);
         }
 
         // Auto drop (fixed-step accumulator for frame-rate independent gravity timing)

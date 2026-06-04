@@ -631,7 +631,7 @@ export default class TornadoTheme extends BaseTheme {
             if (canvas && canvas.parentNode) {
                 canvas.parentNode.removeChild(canvas);
             }
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
         }
 
         this.scene = null;

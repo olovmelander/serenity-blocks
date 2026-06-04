@@ -2787,7 +2787,7 @@ export default class StillwaterTheme extends BaseTheme {
         window.removeEventListener('resize', this.boundResizeHandler);
 
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             const container = document.getElementById('stillwater-theme');
             if (container && this.renderer.domElement.parentNode === container) {
                 container.removeChild(this.renderer.domElement);

@@ -260,6 +260,7 @@ const SunShader = {
 export default class SummerTheme extends BaseTheme {
     constructor() {
         super('summer');
+        this.resourceProfile = 'heavy-gpu';
 
         this.renderer = null;
         this.scene = null;
@@ -1407,6 +1408,21 @@ export default class SummerTheme extends BaseTheme {
     cleanup() {
         console.log('[SummerTheme] Cleaning up...');
 
+        this.stop();
+        this.bloomPass?.dispose?.();
+        this.bloomPass = null;
+        if (this.composer) {
+            this.disposeComposer(this.composer);
+            this.composer = null;
+        }
+        if (this.scene) {
+            this.disposeThreeJSGroup(this.scene);
+            this.scene = null;
+        }
+        if (this.renderer) {
+            this.disposeRenderer(this.renderer);
+        }
+        this.camera = null;
         super.cleanup();
     }
 }

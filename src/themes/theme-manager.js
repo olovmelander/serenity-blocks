@@ -6,7 +6,6 @@ import { THEMES } from '../core/constants.js';
 import { THEME_REGISTRY, getThemeMeta } from './theme-registry.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { assetManager } from '../utils/asset-manager.js';
-import { audioManager } from '../utils/audio-manager.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 
 /** Timeout in ms for theme init() and start() — prevents game freeze from hanging themes */
@@ -754,9 +753,10 @@ export class ThemeManager {
         }
 
         // Stop all audio before cleaning up
-        if (this.audioManager?.stopAll) {
+        const stopAudio = this.audioManager?.stopBackgroundMusic || this.audioManager?.stopAll;
+        if (stopAudio) {
             console.log('[ThemeManager] Stopping all audio');
-            this.audioManager.stopAll();
+            stopAudio.call(this.audioManager);
         }
 
         // Cleanup all cached theme instances

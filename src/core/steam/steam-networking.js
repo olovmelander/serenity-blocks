@@ -44,6 +44,9 @@ export class SteamNetworking {
         this.useBinaryEncoding = true; // Enable by default for production
         this.binaryEncoder = null;
         this.binaryDecoder = null;
+        this.lastBroadcastSnapshot = null;
+        this.lastFullSnapshotAt = 0;
+        this.fullSnapshotIntervalMs = 1000;
 
         // Phase 4: Heartbeat and disconnect detection
         this.heartbeatInterval = null;
@@ -371,10 +374,11 @@ export class SteamNetworking {
                 // DELTA ENCODING OPTIMIZATION
                 let binaryBuffer;
                 let usedDelta = false;
+                const now = Date.now();
+                const forceFullSnapshot = now - this.lastFullSnapshotAt >= this.fullSnapshotIntervalMs;
 
-                if (this.lastBroadcastSnapshot) {
+                if (this.lastBroadcastSnapshot && !forceFullSnapshot) {
                     // Try to encode as delta relative to last broadcast
-                    // This is safe because we use RELIABLE delivery
                     binaryBuffer = this.binaryEncoder.encodeDeltaSnapshot(data, this.lastBroadcastSnapshot);
                     if (binaryBuffer) {
                         usedDelta = true;
@@ -385,6 +389,7 @@ export class SteamNetworking {
                 if (!binaryBuffer) {
                     binaryBuffer = this.binaryEncoder.encodeSnapshot(data);
                     usedDelta = false;
+                    this.lastFullSnapshotAt = now;
                 }
 
                 // Update baseline for next time
@@ -501,9 +506,11 @@ export class SteamNetworking {
                         if (lastSnapshot) {
                             payload = this.binaryDecoder.decodeDeltaSnapshot(binaryBuffer, lastSnapshot);
                         } else {
-                            console.warn(`Received DELTA from ${fromSteamId} but have no baseline! Requesting resync?`);
-                            // Drop it? Or try decoding as full (maybe magic handles it)?
-                            // decodeDelta checking magic might fail.
+                            console.warn(`Received DELTA from ${fromSteamId} but have no baseline. Requesting resync.`);
+                            this.sendP2PMessage(fromSteamId, 'game:state:resync:ack', {
+                                requestResync: true,
+                                reason: 'missing_delta_baseline',
+                            });
                             return;
                         }
                     } else {
@@ -516,6 +523,13 @@ export class SteamNetworking {
                 } catch (err) {
                     console.warn('Binary decoding failed, payload may be corrupted:', err);
                     this.packetStats.decodeFailures += 1;
+                    if (payload?._delta) {
+                        this.incomingSnapshotBaselines.delete(fromSteamId);
+                        this.sendP2PMessage(fromSteamId, 'game:state:resync:ack', {
+                            requestResync: true,
+                            reason: 'delta_decode_failed',
+                        });
+                    }
                     return; // Drop corrupted packet
                 }
             }

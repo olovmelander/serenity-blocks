@@ -882,8 +882,10 @@ export function createBaseBoardScene(
 
             const ghostY = getGhostLandingY(this.gameState);
 
-            piece.shape.forEach((row, y) => {
-                row.forEach((cell, x) => {
+            for (let y = 0; y < piece.shape.length; y += 1) {
+                const row = piece.shape[y];
+                for (let x = 0; x < row.length; x += 1) {
+                    const cell = row[x];
                     if (cell > 0) {
                         const worldX = piece.x + x;
                         const worldY = ghostY + y;
@@ -896,8 +898,8 @@ export function createBaseBoardScene(
                             this.drawBlock(worldX, worldY, '#FFFFFF', pulsatingAlpha, true);
                         }
                     }
-                });
-            });
+                }
+            }
         }
 
         drawCurrentPiece() {
@@ -908,24 +910,21 @@ export function createBaseBoardScene(
             const themedColor = this.getThemedColor(piece.type, piece.color);
 
             // Draw all blocks of the piece as solid fill first
-            piece.shape.forEach((row, y) => {
-                row.forEach((cell, x) => {
+            for (let y = 0; y < piece.shape.length; y += 1) {
+                const row = piece.shape[y];
+                for (let x = 0; x < row.length; x += 1) {
+                    const cell = row[x];
                     if (cell > 0) {
                         const worldY = piece.y + y;
                         if (this.gameState?.isInfinityMode || worldY >= this.hiddenRows) {
                             this.drawBlock(piece.x + x, worldY, themedColor, 1.0, false, piece.shape, x, y);
                         }
                     }
-                });
-            });
+                }
+            }
 
             // Draw outline around the entire piece
-            const tempPiece = {
-                ...piece,
-                y: piece.y, // Already in world coordinates
-                x: piece.x,
-            };
-            this.drawPieceOutline(tempPiece);
+            this.drawPieceOutline(piece);
         }
 
         /**

@@ -10041,7 +10041,7 @@ export default class NeonDistrictTheme extends BaseTheme {
 
         // Dispose renderer
         if (this.renderer) {
-            // this.renderer.dispose(); // Moved to stop()
+            // this.disposeRenderer(this.renderer, { nullInstance: false }); // Moved to stop()
             // this.renderer = null; // Moved to stop()
         }
 

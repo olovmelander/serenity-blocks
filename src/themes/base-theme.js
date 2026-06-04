@@ -294,11 +294,63 @@ export class BaseTheme {
             return;
         }
 
-        if (typeof value.dispose === 'function') {
+        if (propName.toLowerCase().includes('composer')) {
+            this.disposeComposer(value);
+        } else if (typeof value.dispose === 'function') {
             value.dispose();
         }
 
         this[propName] = null;
+    }
+
+    disposeComposer(composer) {
+        if (!composer) return;
+
+        if (Array.isArray(composer.passes)) {
+            composer.passes.forEach((pass) => {
+                if (pass && typeof pass.dispose === 'function') {
+                    try {
+                        pass.dispose();
+                    } catch (error) {
+                        console.warn(`[BaseTheme] Failed to dispose composer pass for ${this.name}:`, error);
+                    }
+                }
+            });
+        }
+
+        if (typeof composer.dispose === 'function') {
+            try {
+                composer.dispose();
+            } catch (error) {
+                console.warn(`[BaseTheme] Failed to dispose composer for ${this.name}:`, error);
+            }
+        }
+    }
+
+    disposeRenderer(renderer = this.renderer, { nullInstance = true } = {}) {
+        if (!renderer || renderer === this.webglRenderer) return;
+
+        const { domElement } = renderer;
+        if (typeof renderer.dispose === 'function') {
+            try {
+                renderer.dispose();
+            } catch (error) {
+                console.warn(`[BaseTheme] Failed to dispose renderer for ${this.name}:`, error);
+            }
+        }
+        if (typeof renderer.forceContextLoss === 'function') {
+            try {
+                renderer.forceContextLoss();
+            } catch (error) {
+                console.warn(`[BaseTheme] Failed to force WebGL context loss for ${this.name}:`, error);
+            }
+        }
+        if (domElement?.parentNode) {
+            domElement.parentNode.removeChild(domElement);
+        }
+        if (nullInstance && renderer === this.renderer) {
+            this.renderer = null;
+        }
     }
 
     releaseManagedGpuResources() {
@@ -327,14 +379,7 @@ export class BaseTheme {
         }
 
         if (this.renderer && this.renderer !== this.webglRenderer) {
-            const { domElement } = this.renderer;
-            if (typeof this.renderer.dispose === 'function') {
-                this.renderer.dispose();
-            }
-            if (domElement?.parentNode) {
-                domElement.parentNode.removeChild(domElement);
-            }
-            this.renderer = null;
+            this.disposeRenderer(this.renderer);
         }
 
         if (this.camera) {
@@ -439,7 +484,7 @@ export class BaseTheme {
 
         if (this.postComposer && typeof this.postComposer.dispose === 'function') {
             console.log(`[BaseTheme] deeply disposing post-composer`);
-            this.postComposer.dispose();
+            this.disposeComposer(this.postComposer);
             this.postComposer = null;
         }
 

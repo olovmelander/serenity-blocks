@@ -4463,7 +4463,7 @@ export default class OceanTheme extends BaseTheme {
         this.disposeSceneContents();
 
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             this.renderer = null;
         }
 

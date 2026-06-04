@@ -21,6 +21,7 @@ import { SAKURA_TWILIGHT_TETROMINOS } from './sakura-twilight-tetrominos.js';
 export default class SakuraTwilightTheme extends BaseTheme {
     constructor() {
         super('sakura-twilight');
+        this.resourceProfile = 'heavy-gpu';
         this.boundResizeHandler = this.onWindowResize.bind(this);
 
         // Three.js components
@@ -3215,9 +3216,8 @@ export default class SakuraTwilightTheme extends BaseTheme {
 
     stop() {
         console.log('[SakuraTheme] Stopping...');
-        this.isActive = false;
-        this.isActive = false;
         if (this.animationId) cancelAnimationFrame(this.animationId);
+        this.animationId = null;
         window.removeEventListener('resize', this.boundResizeHandler);
         window.removeEventListener('displaySettingsChanged', this.handleDisplaySettingsChange);
 
@@ -3229,20 +3229,15 @@ export default class SakuraTwilightTheme extends BaseTheme {
         for (const mixer of this.foxMixers) {
             mixer.stopAllAction();
         }
+        super.stop();
+    }
+
+    cleanup() {
+        super.cleanup();
         this.foxMixers = [];
-
-        for (const fox of this.foxes) {
-            if (fox.model) {
-                this.scene?.remove(fox.model);
-            }
-        }
         this.foxes = [];
-
-        if (this.renderer) {
-            this.renderer.dispose();
-            const container = document.getElementById('sakura-twilight-theme');
-            if (container) container.innerHTML = '';
-        }
+        this.instancedMeshes = [];
+        this.sharedCanopyMaterial = null;
     }
 
     /**

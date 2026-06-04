@@ -1233,7 +1233,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.renderer.onDeviceLost = null;
         this.removeRendererResilienceListeners();
         const { domElement } = this.renderer;
-        this.renderer.dispose();
+        this.disposeRenderer(this.renderer, { nullInstance: false });
 
         if (removeCanvas && domElement?.parentNode) {
             domElement.parentNode.removeChild(domElement);

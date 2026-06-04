@@ -3672,7 +3672,7 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.renderer.onDeviceLost = null;
         const { domElement } = this.renderer;
         try {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
         } catch (error) {
             console.warn('[ChiralGold] renderer dispose failed:', error);
         }

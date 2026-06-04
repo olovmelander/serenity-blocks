@@ -694,7 +694,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         if (!this.renderer || !this.isActive || this._sceneToken !== sceneToken) {
             if (this.renderer) {
                 try {
-                    this.renderer.dispose();
+                    this.disposeRenderer(this.renderer, { nullInstance: false });
                 } catch (error) {
                     console.warn('[Synthwave3D] Renderer dispose failed during abort:', error);
                 }
@@ -2364,7 +2364,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         }
 
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             const container = document.getElementById('synthwave-sunset-theme');
             if (container && container.contains(this.renderer.domElement)) {
                 container.removeChild(this.renderer.domElement);

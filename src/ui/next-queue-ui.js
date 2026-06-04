@@ -211,3 +211,27 @@ export function updateNextQueue(nextPieces, containerId = 'next-queue-container'
         }
     }
 }
+
+export function updateHoldPiece(pieceKey, containerId = 'hold-piece-container') {
+    ensureListeners();
+
+    const holdContainer = document.getElementById(containerId);
+    if (!holdContainer) return;
+    holdContainer.innerHTML = '';
+
+    holdContainer.classList.remove('next-queue-container');
+    holdContainer.classList.add('player-next-pieces', 'single-player-hold');
+
+    const pieceContainer = document.createElement('div');
+    pieceContainer.className = 'player-next-piece hold-piece';
+
+    const canvas = document.createElement('canvas');
+    pieceContainer.appendChild(canvas);
+    holdContainer.appendChild(pieceContainer);
+
+    if (pieceKey) {
+        drawPiece(canvas, pieceKey);
+    } else {
+        pieceContainer.classList.add('empty');
+    }
+}

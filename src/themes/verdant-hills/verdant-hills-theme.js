@@ -774,7 +774,7 @@ export default class VerdantHillsTheme extends BaseTheme {
         }
 
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             this.renderer = null;
         }
 

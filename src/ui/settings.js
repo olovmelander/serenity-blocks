@@ -11,6 +11,7 @@ const DEFAULT_CONFIG = {
     gameMode: 'single',
     dasDelay: 120,
     dasInterval: 40,
+    softDropInterval: 50,
     musicTrack: 'Ambient',
     soundSet: 'Zen',
     musicVolume: 1.0,
@@ -70,6 +71,7 @@ const DEFAULT_CONFIG = {
         flip: 'a',
         softDrop: 'ArrowDown',
         hardDrop: 'Space',
+        hold: 'c',
     },
     player2KeyBindings: {
         moveLeft: 'a',
@@ -79,6 +81,7 @@ const DEFAULT_CONFIG = {
         flip: 'e',
         softDrop: 's',
         hardDrop: 'Shift',
+        hold: 'f',
     },
     gamepadBindings: {
         moveLeft: 14, // D-pad Left
@@ -88,6 +91,7 @@ const DEFAULT_CONFIG = {
         flip: 2, // X Button
         softDrop: 13, // D-pad Down
         hardDrop: 1, // B Button
+        hold: 4, // Left Bumper
         pause: 9, // Start Button
     },
     player2GamepadBindings: {
@@ -98,6 +102,7 @@ const DEFAULT_CONFIG = {
         flip: 2, // X Button
         softDrop: 13, // D-pad Down
         hardDrop: 1, // B Button
+        hold: 4, // Left Bumper
         pause: 9, // Start Button
     },
     player3GamepadBindings: {
@@ -108,6 +113,7 @@ const DEFAULT_CONFIG = {
         flip: 2,
         softDrop: 13,
         hardDrop: 1,
+        hold: 4,
         pause: 9,
     },
     player4GamepadBindings: {
@@ -118,6 +124,7 @@ const DEFAULT_CONFIG = {
         flip: 2,
         softDrop: 13,
         hardDrop: 1,
+        hold: 4,
         pause: 9,
     },
 };
@@ -130,6 +137,7 @@ const KEYBOARD_BINDING_ACTIONS = [
     'flip',
     'softDrop',
     'hardDrop',
+    'hold',
 ];
 
 function sanitizeBindings(bindings, fallbackBindings) {
@@ -405,6 +413,7 @@ export function updateControlsDisplay(settings) {
         'flip',
         'softDrop',
         'hardDrop',
+        'hold',
     ];
 
     if (settings.controlScheme === 'Keyboard') {
@@ -583,7 +592,7 @@ export function handleGamepadBinding(element, settingsManager, updateCallback) {
  * @param {Object} settings - Current settings
  */
 export function updateGamepadControlsDisplay(settings) {
-    const actions = ['moveLeft', 'moveRight', 'rotateRight', 'rotateLeft', 'flip', 'softDrop', 'hardDrop', 'pause'];
+    const actions = ['moveLeft', 'moveRight', 'rotateRight', 'rotateLeft', 'flip', 'softDrop', 'hardDrop', 'hold', 'pause'];
     const descriptors = [
         { key: 'gamepadBindings', prefix: 'gamepad-' },
         { key: 'player2GamepadBindings', prefix: 'gamepad-p2-' },
@@ -793,6 +802,28 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             }
         });
     }
+
+    const bindTimingSlider = (sliderId, valueId, settingKey, fallbackValue) => {
+        const slider = document.getElementById(sliderId);
+        const value = document.getElementById(valueId);
+        if (!slider || !value) return;
+
+        const initialValue = Number(settings[settingKey] ?? fallbackValue);
+        slider.value = Number.isFinite(initialValue) ? initialValue : fallbackValue;
+        value.textContent = slider.value;
+
+        slider.addEventListener('input', (event) => {
+            const parsedValue = parseInt(event.target.value, 10);
+            const numericValue = Number.isFinite(parsedValue) ? parsedValue : fallbackValue;
+            settingsManager.update({ [settingKey]: numericValue });
+            value.textContent = String(numericValue);
+            settingsManager.save();
+        });
+    };
+
+    bindTimingSlider('das-delay', 'das-delay-value', 'dasDelay', DEFAULT_CONFIG.dasDelay);
+    bindTimingSlider('das-interval', 'das-interval-value', 'dasInterval', DEFAULT_CONFIG.dasInterval);
+    bindTimingSlider('soft-drop-interval', 'soft-drop-interval-value', 'softDropInterval', DEFAULT_CONFIG.softDropInterval);
 
     // Music volume slider
     const musicVolumeSlider = document.getElementById('music-volume');
@@ -1492,7 +1523,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     }
 
     // Initialize key bindings listeners
-    const keyInputs = document.querySelectorAll('.key-input');
+    const keyInputs = document.querySelectorAll('.key-input:not(.gamepad-input)');
     keyInputs.forEach((input) => {
         const elementId = input.id;
         const isPlayer2 = elementId.startsWith('key-p2-');

@@ -81,6 +81,7 @@ ipcMain.handle('get-displays', () => {
         scaleFactor: display.scaleFactor,
         rotation: display.rotation,
         internal: display.internal,
+        displayFrequency: display.displayFrequency,
     }));
 });
 

@@ -163,6 +163,9 @@ export const LEVEL_SPEEDS = (() => {
     return speeds;
 })();
 
+export const LOCK_DELAY_MS = 500;
+export const LOCK_RESET_LIMIT = 15;
+
 /**
  * Available theme names
  */
@@ -220,6 +223,9 @@ export const DEFAULT_SETTINGS = {
     // Input settings
     dasDelay: 120,
     dasInterval: 40,
+    softDropInterval: 50,
+    lockDelay: LOCK_DELAY_MS,
+    lockResetLimit: LOCK_RESET_LIMIT,
 
     // Audio settings
     musicTrack: 'Ambient',
@@ -271,6 +277,7 @@ export const DEFAULT_SETTINGS = {
         flip: 'a',
         softDrop: 'ArrowDown',
         hardDrop: 'Space',
+        hold: 'c',
     },
     // Player 2 controls (for multiplayer)
     player2KeyBindings: {
@@ -281,6 +288,7 @@ export const DEFAULT_SETTINGS = {
         flip: 'e',
         softDrop: 's',
         hardDrop: 'Shift',
+        hold: 'f',
     },
     // Gamepad bindings (Player 1)
     gamepadBindings: {
@@ -291,6 +299,7 @@ export const DEFAULT_SETTINGS = {
         flip: 2, // X Button
         softDrop: 13, // D-pad Down
         hardDrop: 1, // B Button
+        hold: 4, // Left Bumper
         pause: 9, // Start Button
     },
     // Player 2 gamepad bindings (for multiplayer)
@@ -302,6 +311,7 @@ export const DEFAULT_SETTINGS = {
         flip: 2, // X Button
         softDrop: 13, // D-pad Down
         hardDrop: 1, // B Button
+        hold: 4, // Left Bumper
         pause: 9, // Start Button
     },
     player3GamepadBindings: {
@@ -312,6 +322,7 @@ export const DEFAULT_SETTINGS = {
         flip: 2,
         softDrop: 13,
         hardDrop: 1,
+        hold: 4,
         pause: 9,
     },
     player4GamepadBindings: {
@@ -322,6 +333,7 @@ export const DEFAULT_SETTINGS = {
         flip: 2,
         softDrop: 13,
         hardDrop: 1,
+        hold: 4,
         pause: 9,
     },
     // Gamepad settings

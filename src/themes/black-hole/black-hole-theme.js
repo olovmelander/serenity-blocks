@@ -4118,15 +4118,17 @@ export default class BlackHoleTheme extends BaseTheme {
         }
 
         if (this.renderer) {
-            this.renderer.dispose();
-            if (this.renderer.domElement?.parentNode) {
-                this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
-            }
+            this.disposeRenderer(this.renderer, { nullInstance: false });
         }
 
+        this.bloomPass?.dispose?.();
+        this.chromaticPass?.dispose?.();
         if (this.postProcessing) {
             this.postProcessing.dispose();
             this.postProcessing = null;
+        }
+        if (this.composer) {
+            this.disposeComposer(this.composer);
         }
         if (this.particleCompute) {
             this.particleCompute.dispose();
@@ -4142,6 +4144,8 @@ export default class BlackHoleTheme extends BaseTheme {
         this.scene = null;
         this.camera = null;
         this.composer = null;
+        this.bloomPass = null;
+        this.chromaticPass = null;
         this.particleAttributes = null;
         this.comboSpawnReuseUntil = null;
         this.comboBurstAnchorUntil = 0;

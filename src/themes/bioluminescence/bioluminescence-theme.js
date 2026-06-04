@@ -1990,7 +1990,7 @@ export default class BioluminescenceTheme extends BaseTheme {
         if (this.noiseTexture) this.noiseTexture.dispose();
 
         // Dispose renderer
-        if (this.renderer) this.renderer.dispose();
+        if (this.renderer) this.disposeRenderer(this.renderer, { nullInstance: false });
         if (this.composer) this.composer.dispose();
 
         this.scene = null;

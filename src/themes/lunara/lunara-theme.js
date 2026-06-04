@@ -2331,7 +2331,7 @@ export default class LunaraTheme extends BaseTheme {
 
         if (this.renderer) {
             const dom = this.renderer.domElement;
-            if (typeof this.renderer.dispose === 'function') this.renderer.dispose();
+            if (typeof this.renderer.dispose === 'function') this.disposeRenderer(this.renderer, { nullInstance: false });
             if (dom?.parentNode) dom.parentNode.removeChild(dom);
             this.renderer = null;
         }

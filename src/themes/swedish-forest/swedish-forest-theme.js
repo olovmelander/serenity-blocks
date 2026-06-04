@@ -6380,7 +6380,7 @@ export default class SwedishForestTheme extends BaseTheme {
 
         // Renderer disposed AFTER scene materials so WebGPU node tracking is intact.
         if (this.renderer) {
-            this.renderer.dispose();
+            this.disposeRenderer(this.renderer, { nullInstance: false });
             const container = document.getElementById('swedish-forest-theme');
             if (container && container.contains(this.renderer.domElement)) {
                 container.removeChild(this.renderer.domElement);

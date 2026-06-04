@@ -8,6 +8,8 @@
  * Compared to JSON: ~12KB → ~1.2KB
  */
 
+import { COLORS, SHAPES } from '../constants.js';
+
 // Magic bytes for format identification
 const BINARY_MAGIC = 0x5342_4E45; // "SBNE" - Serenity Blocks Network Encoding
 const DELTA_MAGIC = 0x5342_4E44; // "SBND" - Serenity Blocks Network Delta
@@ -24,8 +26,10 @@ const DELTA_FLAGS = {
 };
 
 // Cell types mapping (4 bits = 16 values)
-const CELL_TYPES = ['empty', 'I', 'O', 'T', 'S', 'Z', 'J', 'L', 'garbage', 'ghost'];
+const CELL_TYPES = ['empty', 'I', 'O', 'T', 'S', 'Z', 'J', 'L', 'garbage', 'clean_garbage', 'ghost'];
 const CELL_TYPE_MAP = new Map(CELL_TYPES.map((type, i) => [type, i]));
+CELL_TYPE_MAP.set('GARBAGE', CELL_TYPE_MAP.get('garbage'));
+CELL_TYPE_MAP.set('CLEAN_GARBAGE', CELL_TYPE_MAP.get('clean_garbage'));
 
 // Piece types mapping (3 bits = 8 values)
 const PIECE_TYPES = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
@@ -382,8 +386,49 @@ export class BinaryEncoder {
      */
     _getCellType(cell) {
         if (!cell) return 0; // empty
-        const type = cell.type || cell.color || 'empty';
-        return CELL_TYPE_MAP.get(type) || 0;
+        const rawType = cell.type || cell.shapeKey || cell.color || 'empty';
+        const type = typeof rawType === 'string' ? rawType : 'empty';
+        return CELL_TYPE_MAP.get(type) || CELL_TYPE_MAP.get(type.toLowerCase()) || 0;
+    }
+
+    _decodeCell(cellTypeIndex) {
+        if (cellTypeIndex <= 0) return null;
+        const encodedType = CELL_TYPES[cellTypeIndex] || 'empty';
+        let type = encodedType;
+        if (encodedType === 'garbage') {
+            type = 'GARBAGE';
+        } else if (encodedType === 'clean_garbage') {
+            type = 'CLEAN_GARBAGE';
+        }
+        return {
+            type,
+            shapeKey: type,
+            color: COLORS[type] || COLORS.GARBAGE || '#808080',
+        };
+    }
+
+    _reconstructLockedPiecesFromGrid(grid) {
+        if (!Array.isArray(grid)) return [];
+
+        const pieces = [];
+        for (let y = 0; y < grid.length; y += 1) {
+            const row = grid[y];
+            if (!Array.isArray(row)) continue;
+            for (let x = 0; x < row.length; x += 1) {
+                const cell = row[x];
+                if (!cell) continue;
+                pieces.push({
+                    type: cell.type,
+                    shapeKey: cell.shapeKey || cell.type,
+                    shape: [[1]],
+                    x,
+                    y,
+                    color: cell.color || COLORS[cell.type] || COLORS.GARBAGE,
+                    pieceId: `grid-${y}-${x}`,
+                });
+            }
+        }
+        return pieces;
     }
 
     /**
@@ -584,11 +629,8 @@ export class BinaryDecoder {
         const tick = view.getUint32(offset, true); offset += 4;
         const baselineTick = view.getUint32(offset, true); offset += 4;
 
-        // Logic check: does baseline match what delta expects?
-        // We can warn if baseline.tick !== baselineTick, but we should try to apply anyway
-        // as long as we are robust.
         if (baseline.tick && baseline.tick !== baselineTick) {
-            // console.warn(`Delta baseline mismatch: Delta wants ${baselineTick}, have ${baseline.tick}`);
+            throw new Error(`Delta baseline mismatch: expected ${baselineTick}, have ${baseline.tick}`);
         }
 
         const gamePhase = GAME_PHASES[gamePhaseIndex] || 'waiting';
@@ -661,6 +703,7 @@ export class BinaryDecoder {
         // Grid
         if (mask & DELTA_FLAGS.GRID) {
             p.grid = this._decodeGrid(buffer, view, offset);
+            p.lockedPieces = this._reconstructLockedPiecesFromGrid(p.grid);
             offset += 120;
         }
 
@@ -736,7 +779,7 @@ export class BinaryDecoder {
         for (let i = 0; i < nextPieceCount; i++) {
             const typeIndex = view.getUint8(offset++);
             if (typeIndex > 0 && typeIndex <= PIECE_TYPES.length) {
-                nextPieces.push({ type: PIECE_TYPES[typeIndex - 1] });
+                nextPieces.push(PIECE_TYPES[typeIndex - 1]);
             }
         }
 
@@ -751,7 +794,7 @@ export class BinaryDecoder {
 
         // === LOCKED PIECES (skipped in encoding) ===
         const lockedPieceCount = view.getUint8(offset++);
-        const lockedPieces = [];
+        const lockedPieces = this._reconstructLockedPiecesFromGrid(grid);
         // Skip if any were encoded (shouldn't happen)
         offset += lockedPieceCount * 10; // Approximate bytes per locked piece
 
@@ -792,8 +835,8 @@ export class BinaryDecoder {
                 const cell1Type = (byte >> 4) & 0x0F;
                 const cell2Type = byte & 0x0F;
 
-                grid[y][x] = cell1Type > 0 ? { type: CELL_TYPES[cell1Type] } : null;
-                grid[y][x + 1] = cell2Type > 0 ? { type: CELL_TYPES[cell2Type] } : null;
+                grid[y][x] = this._decodeCell(cell1Type);
+                grid[y][x + 1] = this._decodeCell(cell2Type);
 
                 byteIndex++;
             }
@@ -813,6 +856,9 @@ export class BinaryDecoder {
 
         return {
             type: PIECE_TYPES[typeIndex - 1],
+            shapeKey: PIECE_TYPES[typeIndex - 1],
+            shape: SHAPES[PIECE_TYPES[typeIndex - 1]],
+            color: COLORS[PIECE_TYPES[typeIndex - 1]],
             x: view.getUint8(offset + 1) - 128,
             y: view.getUint8(offset + 2) - 128,
             rotation: view.getUint8(offset + 3),

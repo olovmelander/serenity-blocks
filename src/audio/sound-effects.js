@@ -1019,6 +1019,8 @@ export class SoundEffectPlayer {
     constructor(soundSets, soundSet = 'Zen') {
         this.soundSets = soundSets;
         this.soundSet = soundSet;
+        this.lastMoveSoundAt = -Infinity;
+        this.moveSoundCooldownMs = 55;
     }
 
     /**
@@ -1035,6 +1037,12 @@ export class SoundEffectPlayer {
      * Plays the move sound effect
      */
     playMove() {
+        const now = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+        if (now - this.lastMoveSoundAt < this.moveSoundCooldownMs) {
+            return;
+        }
+
+        this.lastMoveSoundAt = now;
         this.soundSets[this.soundSet].move();
     }
 

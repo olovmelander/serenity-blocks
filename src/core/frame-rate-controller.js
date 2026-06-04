@@ -35,6 +35,8 @@ export class FrameRateController {
         this.updateCallback = null;
         this.renderCallback = null;
 
+        this.refreshRateDetectionToken = 0;
+
         // Detect monitor refresh rate
         this._detectMonitorRefreshRate();
     }
@@ -43,39 +45,121 @@ export class FrameRateController {
      * Attempt to detect the monitor's refresh rate
      * @private
      */
-    _detectMonitorRefreshRate() {
+    async _detectMonitorRefreshRate() {
         if (typeof window === 'undefined') return;
 
+        const detectionToken = ++this.refreshRateDetectionToken;
+        const electronRate = await this._detectElectronRefreshRate();
+        if (detectionToken !== this.refreshRateDetectionToken) return;
+
+        if (electronRate) {
+            this.monitorRefreshRate = electronRate;
+            console.log(`[FrameRate] Detected monitor refresh rate from display metadata: ${this.monitorRefreshRate}Hz`);
+            return;
+        }
+
+        this._measureRefreshRateWithRaf(detectionToken);
+    }
+
+    async _detectElectronRefreshRate() {
+        const getDisplays = window.electronAPI?.getDisplays || window.electronDisplay?.getDisplays;
+        if (typeof getDisplays !== 'function') {
+            return null;
+        }
+
+        try {
+            const displays = await getDisplays();
+            if (!Array.isArray(displays) || displays.length === 0) {
+                return null;
+            }
+
+            const selectedDisplay = this._pickDisplayForWindow(displays);
+            return this._normalizeRefreshRate(selectedDisplay?.displayFrequency);
+        } catch (error) {
+            console.warn('[FrameRate] Unable to read display refresh rate from Electron:', error);
+            return null;
+        }
+    }
+
+    _pickDisplayForWindow(displays) {
+        const fallback = displays.find((display) => Number.isFinite(display?.displayFrequency)) || displays[0];
+        const screenX = Number(window.screenX ?? window.screenLeft ?? 0);
+        const screenY = Number(window.screenY ?? window.screenTop ?? 0);
+        const width = Number(window.outerWidth ?? window.innerWidth ?? 0);
+        const height = Number(window.outerHeight ?? window.innerHeight ?? 0);
+        const centerX = screenX + width / 2;
+        const centerY = screenY + height / 2;
+
+        return displays.find((display) => {
+            const bounds = display?.bounds;
+            if (!bounds) return false;
+            return centerX >= bounds.x
+                && centerX < bounds.x + bounds.width
+                && centerY >= bounds.y
+                && centerY < bounds.y + bounds.height;
+        }) || fallback;
+    }
+
+    _normalizeRefreshRate(value) {
+        const measuredRate = Math.round(Number(value));
+        if (!Number.isFinite(measuredRate) || measuredRate <= 0) {
+            return null;
+        }
+
+        if (measuredRate >= 55 && measuredRate <= 65) return 60;
+        if (measuredRate >= 110 && measuredRate <= 130) return 120;
+        if (measuredRate >= 135 && measuredRate <= 150) return 144;
+        if (measuredRate >= 155 && measuredRate <= 170) return 165;
+        if (measuredRate >= 230 && measuredRate <= 250) return 240;
+        return measuredRate;
+    }
+
+    _measureRefreshRateWithRaf(detectionToken) {
         let frameCount = 0;
+        let ignoredFrames = 0;
         let startTime = 0;
-        const sampleFrames = 20;
+        let previousTimestamp = 0;
+        const warmupFrames = 5;
+        const sampleFrames = 60;
+        const frameDeltas = [];
 
         const measureFrame = (timestamp) => {
+            if (detectionToken !== this.refreshRateDetectionToken) return;
+
+            if (ignoredFrames < warmupFrames) {
+                ignoredFrames++;
+                previousTimestamp = timestamp;
+                requestAnimationFrame(measureFrame);
+                return;
+            }
+
             if (frameCount === 0) {
                 startTime = timestamp;
+            } else {
+                frameDeltas.push(timestamp - previousTimestamp);
             }
+
+            previousTimestamp = timestamp;
             frameCount++;
 
             if (frameCount >= sampleFrames) {
                 const elapsed = timestamp - startTime;
-                const measuredRate = Math.round((frameCount * 1000) / elapsed);
-                // Round to common refresh rates
-                if (measuredRate >= 110 && measuredRate <= 130) {
-                    this.monitorRefreshRate = 120;
-                } else if (measuredRate >= 135 && measuredRate <= 150) {
-                    this.monitorRefreshRate = 144;
-                } else if (measuredRate >= 155 && measuredRate <= 170) {
-                    this.monitorRefreshRate = 165;
-                } else if (measuredRate >= 230 && measuredRate <= 250) {
-                    this.monitorRefreshRate = 240;
-                } else if (measuredRate >= 55 && measuredRate <= 65) {
-                    this.monitorRefreshRate = 60;
-                } else if (measuredRate < 30) {
+                const sortedDeltas = frameDeltas
+                    .filter((delta) => delta > 0 && delta < 100)
+                    .sort((a, b) => a - b);
+                const medianDelta = sortedDeltas[Math.floor(sortedDeltas.length / 2)];
+                const measuredRate = medianDelta
+                    ? Math.round(1000 / medianDelta)
+                    : Math.round(((frameCount - 1) * 1000) / Math.max(elapsed, 1));
+                const normalizedRate = this._normalizeRefreshRate(measuredRate);
+
+                if (!normalizedRate || measuredRate < 30) {
                     this.monitorRefreshRate = 60;
                     console.log(`[FrameRate] Refresh-rate sample (${measuredRate}Hz) looked throttled. Using 60Hz fallback.`);
                 } else {
-                    this.monitorRefreshRate = measuredRate;
+                    this.monitorRefreshRate = normalizedRate;
                 }
+
                 console.log(`[FrameRate] Detected monitor refresh rate: ${this.monitorRefreshRate}Hz (measured: ${measuredRate})`);
                 return;
             }
@@ -145,7 +229,6 @@ export class FrameRateController {
      * @returns {{current:number, average:number, min:number, max:number}}
      */
     recordFrame(currentTime = performance.now()) {
-        const delta = currentTime - this.lastFrameTime;
         this.lastFrameTime = currentTime;
 
         this.frameCount += 1;

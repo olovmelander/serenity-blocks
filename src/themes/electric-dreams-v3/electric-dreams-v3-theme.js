@@ -749,7 +749,7 @@ export default class ElectricDreamsV3Theme extends BaseTheme {
         this.cameraDirector = null;
 
         if (this.renderer) {
-            try { this.renderer.dispose(); } catch (e) { /* ignore */ }
+            try { this.disposeRenderer(this.renderer, { nullInstance: false }); } catch (e) { /* ignore */ }
             this.renderer = null;
         }
         this.scene = null;
