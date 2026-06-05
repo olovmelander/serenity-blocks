@@ -934,17 +934,20 @@ export function createBaseBoardScene(
          * @param {string} color - Hex color string
          * @param {number} alpha - Opacity (0-1)
          * @param {boolean} isGhost - Whether this is a ghost piece block
-         * @param {Object} shape - Piece shape (unused, kept for compatibility)
-         * @param {number} localX - Local X in piece shape (unused)
-         * @param {number} localY - Local Y in piece shape (unused)
-         * @param {Phaser.GameObjects.Graphics} graphics - Target graphics layer (defaults to pieceGraphics)
+         * @param {Object} shape - Piece shape
+         * @param {number} localX - Local X in piece shape
+         * @param {number} localY - Local Y in piece shape
+         * @param {Phaser.GameObjects.Graphics} graphics - Target graphics layer
          */
+        // eslint-disable-next-line no-unused-vars
         drawBlock(x, y, color, alpha = 1.0, isGhost = false, shape = null, localX = 0, localY = 0, graphics = null) {
-            // y is already in world coordinates (0-23), draw directly
-            // The camera is positioned to show only the visible portion
+            // Calculate pixel-perfect coordinates to prevent subpixel antialiasing gaps
             const px = Math.round(x * this.blockSize);
             const py = Math.round(y * this.blockSize);
-            const size = this.blockSize;
+            const pxNext = Math.round((x + 1) * this.blockSize);
+            const pyNext = Math.round((y + 1) * this.blockSize);
+            const width = pxNext - px;
+            const height = pyNext - py;
 
             // Use specified graphics layer or default to pieceGraphics (dynamic layer)
             const targetGraphics = graphics || this.pieceGraphics;
@@ -957,17 +960,16 @@ export function createBaseBoardScene(
                 }
             }
 
-            // --- Start of Ghost Piece Changes ---
             if (isGhost) {
-                // Change from an outline to a semi-transparent fill
+                // Ghost pieces use semi-transparent fills without overlap to prevent darker overlap lines
                 targetGraphics.fillStyle(colorInt, alpha);
-                targetGraphics.fillRect(px, py, size, size);
+                targetGraphics.fillRect(px, py, width, height);
                 return;
             }
 
-            // Draw the solid color fill for the block (no individual borders)
+            // Draw solid blocks with a tiny 0.25px overlap to guarantee perfect visual fusion with no seams
             targetGraphics.fillStyle(colorInt, alpha);
-            targetGraphics.fillRect(px, py, size, size);
+            targetGraphics.fillRect(px - 0.25, py - 0.25, width + 0.5, height + 0.5);
         }
 
         /**
@@ -976,14 +978,6 @@ export function createBaseBoardScene(
          */
         drawPieceOutline(piece) {
             if (!piece || !piece.shape) return;
-
-            let colorInt = 0x000000;
-            if (piece.color && typeof piece.color === 'string') {
-                const parsed = parseInt(piece.color.replace('#', ''), 16);
-                if (!Number.isNaN(parsed)) {
-                    colorInt = parsed;
-                }
-            }
 
             // Draw extremely subtle borders only on the outer edges of the piece
             // Very low opacity (0.08) makes it barely visible but helps distinguish pieces

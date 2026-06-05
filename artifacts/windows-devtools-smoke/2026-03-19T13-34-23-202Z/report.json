@@ -1,8 +1,0 @@
-{
-  "startedAt": "2026-03-19T13:34:24.492Z",
-  "finishedAt": "2026-03-19T13:34:24.492Z",
-  "errorMessage": "F12 shortcut did not open DevTools exactly once.",
-  "errorStack": "Error: F12 shortcut did not open DevTools exactly once.\n    at main (file:///home/melolo/serenity-blocks/scripts/windows-devtools-smoke.mjs:420:15)",
-  "remoteDebuggingUrl": "http://127.0.0.1:9222",
-  "reportPath": "/home/melolo/serenity-blocks/artifacts/windows-devtools-smoke/2026-03-19T13-34-23-202Z/report.json"
-}

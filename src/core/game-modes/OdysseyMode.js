@@ -4768,7 +4768,7 @@ export class OdysseyMode extends BaseGameMode {
         this._initBoardJuice();
 
         window.move = (dir) => {
-            if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
+            if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return;
             const moved = coreMove(this.gameState, dir, () => this.deps.soundManager?.sfxPlayer?.playMove());
             if (this.boardJuice) {
                 if (moved) {
@@ -4781,7 +4781,7 @@ export class OdysseyMode extends BaseGameMode {
         };
 
         window.rotate = (dir) => {
-            if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
+            if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return;
             coreRotate(this.gameState, dir, () => this.deps.soundManager?.sfxPlayer?.playRotate());
             if (this.boardJuice) {
                 this.boardJuice.tilt(dir === 'left' ? -0.3 : 0.3);
@@ -4789,7 +4789,7 @@ export class OdysseyMode extends BaseGameMode {
         };
 
         window.hardDrop = () => {
-            if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
+            if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return;
             if (this.boardJuice) {
                 this.boardJuice.dip(3);
                 this.boardJuice.bounce();
@@ -4802,7 +4802,7 @@ export class OdysseyMode extends BaseGameMode {
         };
 
         window.softDrop = () => {
-            if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
+            if (!this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return;
             coreSoftDrop(
                 this.gameState,
                 () => this.deps.soundManager?.sfxPlayer?.playDrop(),
