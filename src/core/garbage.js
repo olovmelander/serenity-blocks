@@ -26,6 +26,8 @@ export const HANDICAP_LEVELS = {
 // Quadra constants
 export const STAMP_PER_HANDICAP = 3; // Stamps needed to reduce 1 garbage line
 export const CROWD_THRESHOLD = 4; // Players before crowd handicap kicks in
+export const DEFAULT_POTATO_DURATION_MS = 12000;
+export const DEFAULT_POTATO_PENALTY_LINES = 6;
 
 // Quadra-authentic clean patterns (Quadra columns 5,8 and 4,7,10,13 mapped to 0-indexed)
 // Quadra even: 72  = 0b0001001000 = columns 3, 6 → [3, 6] in 0-indexed
@@ -140,6 +142,9 @@ function determineAttackParam(attackType, depth, complexity, rules = {}) {
     }
     if (attackType === ATTACK_TYPES.FULL_BLIND) {
         return Math.max(0, depth * (rules.fullBlindMultiplier || 2));
+    }
+    if (attackType === ATTACK_TYPES.POTATO) {
+        return Math.max(1000, rules.potatoDurationMs || DEFAULT_POTATO_DURATION_MS);
     }
     return 0;
 }
@@ -284,6 +289,38 @@ export function serializeAttack(attack) {
 export function deserializeAttack(payload) {
     if (!payload) return null;
     return GarbageAttack.fromJSON(payload);
+}
+
+export function createGarbageAttackFromColumns({
+    rows = 0,
+    columns = [Math.floor(COLS / 2)],
+    columnsByRow = null,
+    attackType = ATTACK_TYPES.LINES,
+    param = 0,
+    metadata = {},
+} = {}) {
+    const safeRows = Math.max(0, Math.floor(rows));
+    const fallbackColumns = Array.isArray(columns) && columns.length
+        ? columns
+        : [Math.floor(COLS / 2)];
+    const holeMasks = [];
+
+    for (let i = 0; i < safeRows; i++) {
+        const rowColumns = Array.isArray(columnsByRow?.[i]) && columnsByRow[i].length
+            ? columnsByRow[i]
+            : fallbackColumns;
+        holeMasks.push(maskArrayToBits(columnsToMask(rowColumns)));
+    }
+
+    return new GarbageAttack({
+        depth: safeRows + 1,
+        complexity: 1,
+        rows: safeRows,
+        holeMasks,
+        attackType,
+        param,
+        metadata,
+    });
 }
 
 /**

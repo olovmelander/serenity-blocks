@@ -5,7 +5,13 @@
  * Implements Quadra-style attack scaling based on player count
  */
 
-import { calculateGarbage } from '../garbage.js';
+import {
+    ATTACK_TYPES,
+    DEFAULT_POTATO_DURATION_MS,
+    DEFAULT_POTATO_PENALTY_LINES,
+    calculateGarbage,
+    createGarbageAttackFromColumns,
+} from '../garbage.js';
 
 export class FFAAttackRouter {
     constructor(ffaGameState) {
@@ -22,6 +28,187 @@ export class FFAAttackRouter {
         if (this.debugGarbage) {
             console.log(...args);
         }
+    }
+
+    isHotPotatoEnabled() {
+        const config = this.gameState.matchConfig || {};
+        const rules = config.attackRules || {};
+        return !!(
+            config.hotPotato
+            || config.attackStyle === 'hot_potato'
+            || rules.forceAttackType === ATTACK_TYPES.POTATO
+        );
+    }
+
+    resetHotPotato(now = Date.now()) {
+        const config = this.gameState.matchConfig || {};
+        const rules = config.attackRules || {};
+        const enabled = this.isHotPotatoEnabled();
+        const durationMs = Math.max(1000, Number(config.potatoDurationMs || rules.potatoDurationMs || DEFAULT_POTATO_DURATION_MS));
+        const penaltyLines = Math.max(1, Number(config.potatoPenaltyLines || rules.potatoPenaltyLines || DEFAULT_POTATO_PENALTY_LINES));
+        const holderId = enabled ? this._chooseHotPotatoHolder(null) : null;
+
+        this.gameState.hotPotatoState = {
+            enabled,
+            holderId,
+            previousHolderId: null,
+            expiresAt: holderId ? now + durationMs : 0,
+            durationMs,
+            penaltyLines,
+            generation: 0,
+            lastEvent: null,
+        };
+    }
+
+    _getHotPotatoState() {
+        if (!this.gameState.hotPotatoState) {
+            this.resetHotPotato();
+        }
+        return this.gameState.hotPotatoState;
+    }
+
+    _getAliveOpponentIds(attackerSteamId) {
+        return Array.from(this.gameState.players.values())
+            .filter((player) => player.steamId !== attackerSteamId && player.isAlive)
+            .map((player) => player.steamId);
+    }
+
+    _chooseHotPotatoHolder(previousHolderId = null, preferredTargets = []) {
+        const aliveIds = Array.from(this.gameState.players.values())
+            .filter((player) => player.isAlive)
+            .map((player) => player.steamId)
+            .sort();
+
+        if (aliveIds.length === 0) return null;
+
+        const preferred = preferredTargets.find((steamId) => aliveIds.includes(steamId) && steamId !== previousHolderId);
+        if (preferred) return preferred;
+
+        if (!previousHolderId || !aliveIds.includes(previousHolderId)) {
+            return aliveIds[0];
+        }
+
+        return aliveIds.find((steamId) => steamId > previousHolderId) || aliveIds[0];
+    }
+
+    _transferHotPotato(fromId, toId, reason = 'pass', now = Date.now()) {
+        const state = this._getHotPotatoState();
+        if (!state.enabled || !toId) return null;
+
+        state.previousHolderId = fromId || state.holderId;
+        state.holderId = toId;
+        state.expiresAt = now + state.durationMs;
+        state.generation++;
+        state.lastEvent = {
+            type: reason,
+            fromId,
+            toId,
+            timestamp: now,
+            generation: state.generation,
+        };
+
+        this.gameState.network?.broadcastToAll?.('game:potato:update', state.lastEvent);
+        return state.lastEvent;
+    }
+
+    _buildPotatoPenaltyAttack(holderId) {
+        const state = this._getHotPotatoState();
+        const playerIds = Array.from(this.gameState.players.keys()).sort();
+        const holderOffset = Math.max(0, playerIds.indexOf(holderId));
+        const columnsByRow = Array.from({ length: state.penaltyLines }, (_, rowIndex) => [
+            (holderOffset * 3 + rowIndex * 2) % 10,
+        ]);
+
+        return createGarbageAttackFromColumns({
+            rows: state.penaltyLines,
+            columnsByRow,
+            attackType: ATTACK_TYPES.POTATO,
+            metadata: {
+                source: 'hot_potato',
+                holderId,
+                generation: state.generation,
+            },
+        }).withId(`POTATO-${state.generation + 1}`);
+    }
+
+    detonateHotPotato(now = Date.now()) {
+        const state = this._getHotPotatoState();
+        if (!state.enabled || !state.holderId) return null;
+
+        const holder = this.gameState.players.get(state.holderId);
+        if (!holder?.isAlive) {
+            const nextHolder = this._chooseHotPotatoHolder(state.holderId);
+            return this._transferHotPotato(state.holderId, nextHolder, 'holder_eliminated', now);
+        }
+
+        const attack = this._buildPotatoPenaltyAttack(holder.steamId);
+        const entries = attack.expandEntries({
+            color: holder.color || '#f97316',
+            attackerId: null,
+            attackerName: 'Hot Potato',
+        });
+
+        entries.forEach((entry) => {
+            holder.garbageQueue.enqueue({
+                ...entry,
+                attackerId: null,
+                attackerName: 'Hot Potato',
+                isHotPotato: true,
+            });
+        });
+
+        holder.lastAttackerId = null;
+        this.gameState.network?.broadcastToAll?.('game:potato:detonate', {
+            holderId: holder.steamId,
+            holderName: holder.name,
+            lines: entries.filter((entry) => entry.type === 'line').length,
+        });
+
+        const nextHolder = this._chooseHotPotatoHolder(holder.steamId);
+        return this._transferHotPotato(holder.steamId, nextHolder, 'detonate', now);
+    }
+
+    updateHotPotato(now = Date.now()) {
+        if (!this.isHost || !this.isHotPotatoEnabled()) return null;
+        const state = this._getHotPotatoState();
+        const holder = state.holderId ? this.gameState.players.get(state.holderId) : null;
+
+        if (!holder?.isAlive) {
+            const nextHolder = this._chooseHotPotatoHolder(state.holderId);
+            return this._transferHotPotato(state.holderId, nextHolder, 'holder_eliminated', now);
+        }
+
+        if (state.expiresAt > 0 && now >= state.expiresAt) {
+            return this.detonateHotPotato(now);
+        }
+
+        return null;
+    }
+
+    routeHotPotatoAttack(attackerSteamId, attack) {
+        const state = this._getHotPotatoState();
+        const lineCount = attack.getTotalLines();
+        if (!state.enabled || lineCount <= 0) return true;
+
+        const targets = this._getAliveOpponentIds(attackerSteamId);
+        if (targets.length === 0) return true;
+
+        if (!state.holderId) {
+            this._transferHotPotato(null, this._chooseHotPotatoHolder(null), 'start');
+        } else if (state.holderId === attackerSteamId) {
+            this._transferHotPotato(attackerSteamId, this._chooseHotPotatoHolder(attackerSteamId, targets), 'pass');
+        }
+
+        this.recordAttack({
+            from: attackerSteamId,
+            fromName: this.gameState.players.get(attackerSteamId)?.name || attackerSteamId,
+            totalLines: 0,
+            targetCount: 0,
+            attackType: ATTACK_TYPES.POTATO,
+            timestamp: Date.now(),
+        });
+
+        return true;
     }
 
     /**
@@ -43,9 +230,19 @@ export class FFAAttackRouter {
             return; // Attacker doesn't exist or is dead
         }
 
+        const rules = this.gameState.matchConfig?.attackRules || {};
+        if (rules.disableAttacks) {
+            return;
+        }
+
         // Calculate garbage attack using Quadra formula
-        const attack = calculateGarbage(cascadeSummary);
+        const attack = calculateGarbage(cascadeSummary, rules);
         const totalLines = attack.getTotalLines();
+
+        if (this.isHotPotatoEnabled()) {
+            this.routeHotPotatoAttack(attackerSteamId, attack);
+            return;
+        }
 
         if (totalLines <= 0) {
             return; // No attack (too small)
@@ -123,7 +320,7 @@ export class FFAAttackRouter {
         this._logGarbage(`📦 Creating garbage entries with attackerId: ${attacker.steamId} (${attacker.name})`);
 
         // Expand garbage into actual entries
-        const garbageAttack = calculateGarbage(cascadeSummary);
+        const garbageAttack = calculateGarbage(cascadeSummary, this.gameState.matchConfig?.attackRules || {});
         const entries = garbageAttack.expandEntries(context);
 
         // Verify attackerId is set

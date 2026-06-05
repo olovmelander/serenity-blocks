@@ -37,6 +37,7 @@ let ezSteamApi = null;
 let ezSteamInitialized = false;
 
 const DEFAULT_STEAM_APP_ID = 480;
+const MAX_P2P_PACKET_BYTES = 64 * 1024;
 let steamAppId = null;
 
 const leaderboardHandles = new Map();
@@ -982,7 +983,8 @@ export function registerSteamIPC() {
             if (!steamworksClient.networking.isP2PPacketAvailable(channel)) return null;
             const packet = steamworksClient.networking.readP2PPacket(channel);
             if (!packet) return null;
-            return { steamId: packet.steamId.steamId64.toString(), data: JSON.parse(packet.data.toString()) };
+            if (!packet.data || packet.data.length > MAX_P2P_PACKET_BYTES) return null;
+            return { steamId: packet.steamId.steamId64.toString(), data: packet.data.toString('utf8') };
         } catch { return null; }
     });
 

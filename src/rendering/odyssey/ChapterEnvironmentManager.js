@@ -15,6 +15,10 @@ import {
     DEFAULT_BOARD_TRANSITION,
 } from '../../core/odyssey/data/chapters.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
+import {
+    getChapterProfile,
+    getChapterTransitionForChapter,
+} from './chapter-environments/shared/chapter-profile.js';
 
 /**
  * Dynamic chapter module map — each entry returns a Promise that loads the module
@@ -82,8 +86,8 @@ const CHAPTER_EXPORT_NAMES = {
 const CHAPTER_POSITIONS = ODYSSEY_PATH_DATA.chapterPositions || [];
 const CHAPTER_ENVIRONMENTS_BY_ID = new Map(
     CHAPTER_CONFIGS
-        .filter((chapter) => chapter?.environment)
-        .map((chapter) => [chapter.id, chapter.environment]),
+        .map((chapter) => [chapter.id, getChapterProfile(chapter.id).atmosphere])
+        .filter(([, atmosphere]) => atmosphere),
 );
 
 // Cache for loaded modules so we don't re-import
@@ -122,11 +126,10 @@ function smootherstep01(value) {
     return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
-export function getChapterBoardTransition(chapterId, chapterConfigs = CHAPTER_CONFIGS) {
-    const chapter = chapterConfigs.find((entry) => entry.id === chapterId);
+export function getChapterBoardTransition(chapterId) {
     return {
         ...DEFAULT_BOARD_TRANSITION,
-        ...(chapter?.boardTransition || {}),
+        ...getChapterTransitionForChapter(chapterId),
     };
 }
 
@@ -147,7 +150,7 @@ export function resolveChapterBlendState(
         const boundaryPosition = chapterPositions[chapterId];
         if (!Number.isFinite(boundaryPosition)) continue;
 
-        const transition = getChapterBoardTransition(chapterId, chapterConfigs);
+        const transition = getChapterBoardTransition(chapterId);
         const seamWidth = Math.max(0.001, transition.seamWidth || DEFAULT_BOARD_TRANSITION.seamWidth);
         const seamStart = boundaryPosition - seamWidth;
         const seamEnd = boundaryPosition + seamWidth;
@@ -156,7 +159,18 @@ export function resolveChapterBlendState(
             continue;
         }
 
-        const seamProgress = smootherstep01((clampedProgress - seamStart) / (seamEnd - seamStart));
+        const rawSeamProgress = THREE.MathUtils.clamp(
+            (clampedProgress - seamStart) / (seamEnd - seamStart),
+            0,
+            1,
+        );
+        const seamProgress = smootherstep01(rawSeamProgress);
+        const seamPhase = THREE.MathUtils.clamp(
+            (clampedProgress - boundaryPosition) / seamWidth,
+            -1,
+            1,
+        );
+        const seamEnvelope = Math.sin(rawSeamProgress * Math.PI);
         weights[chapterId] = 1 - seamProgress;
         weights[chapterId + 1] = seamProgress;
 
@@ -165,9 +179,13 @@ export function resolveChapterBlendState(
             sourceChapter: chapterId,
             targetChapter: chapterId + 1,
             seamProgress,
+            rawSeamProgress,
+            seamPhase,
+            seamEnvelope,
             inSeam: true,
             boundaryId: `${chapterId}-${chapterId + 1}`,
             boundaryPosition,
+            seamWidth,
             seamStart,
             seamEnd,
             transition,
@@ -191,12 +209,16 @@ export function resolveChapterBlendState(
         sourceChapter: activeChapter,
         targetChapter: activeChapter,
         seamProgress: 0,
+        rawSeamProgress: 0,
+        seamPhase: 0,
+        seamEnvelope: 0,
         inSeam: false,
         boundaryId: null,
         boundaryPosition: null,
+        seamWidth: null,
         seamStart: null,
         seamEnd: null,
-        transition: getChapterBoardTransition(activeChapter, chapterConfigs),
+        transition: getChapterBoardTransition(activeChapter),
         weights,
     };
 }
@@ -464,7 +486,7 @@ export class ChapterEnvironmentManager {
 
         if (mode === 'progress') {
             this.cameraProgress = THREE.MathUtils.clamp(position ?? 0, 0, 1);
-            this._resolvedBlendState = resolveChapterBlendState(
+            this._resolvedBlendState = options.blendState || resolveChapterBlendState(
                 this.cameraProgress,
                 CHAPTER_CONFIGS,
                 this.chapterPositions,
@@ -608,14 +630,15 @@ export class ChapterEnvironmentManager {
      * @param {number} delta - Delta time in seconds
      * @param {THREE.Camera} camera - Camera for position-based effects
      * @param {number|null} cameraProgress - Current Odyssey progress for path-anchored effects
+     * @param {object|null} directorState - Optional OdysseyDirector state for audio-reactive environments
      */
-    update(delta, camera = null, cameraProgress = null) {
+    update(delta, camera = null, cameraProgress = null, directorState = null) {
         this.time += delta;
 
         // Update each visible environment
         this.environments.forEach((env) => {
             if (env.group.visible && env.update) {
-                env.update(env.group, delta, this.time, camera, cameraProgress);
+                env.update(env.group, delta, this.time, camera, cameraProgress, directorState);
             }
         });
 

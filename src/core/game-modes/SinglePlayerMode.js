@@ -10,7 +10,6 @@ import {
     rotate as coreRotate,
     hardDrop as coreHardDrop,
     softDrop as coreSoftDrop,
-    holdPiece as coreHoldPiece,
 } from '../game.js';
 import {
     GAME_MODES,
@@ -24,7 +23,7 @@ import {
     triggerLineClearFlash as triggerLineClearFlashCanvas,
     triggerBackgroundPulse as triggerBackgroundPulseCanvas,
 } from '../../rendering/draw.js';
-import { updateHoldPiece, updateNextQueue } from '../../ui/next-queue-ui.js';
+import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { DemoRecorder } from '../demo/DemoRecorder.js';
 import { DemoPlayer } from '../demo/DemoPlayer.js';
@@ -508,7 +507,6 @@ export class SinglePlayerMode extends BaseGameMode {
             rotate: window.rotate,
             hardDrop: window.hardDrop,
             softDrop: window.softDrop,
-            hold: window.hold,
         };
 
         // Replace with mode-specific functions that use THIS mode's physics callbacks
@@ -600,21 +598,6 @@ export class SinglePlayerMode extends BaseGameMode {
             }
 
             return dropped;
-        };
-
-        window.hold = () => {
-            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
-
-            coreHoldPiece(
-                this.gameState,
-                () => this._refreshNextQueue(),
-                () => this._handleGameOver(),
-            );
-
-            // Record input
-            if (this.isRecording) {
-                this.demoRecorder.recordInput('hold');
-            }
         };
 
         console.log('[SinglePlayer] Input functions hooked successfully');
@@ -822,6 +805,21 @@ export class SinglePlayerMode extends BaseGameMode {
                     triggerBackgroundPulseCanvas(lineCount);
                 }
             },
+            // Perfect clear / all-clear celebration (flagship moment)
+            onPerfectClear: (depth, perfectClearBonus) => {
+                eventBus.emit(EVENTS.PERFECT_CLEAR, { depth, perfectClearBonus });
+
+                const boardScene = this._getBoardScene();
+                if (boardScene?.sharedEffects?.playPerfectClear) {
+                    boardScene.sharedEffects.playPerfectClear(depth);
+                }
+
+                // Extra board juice for the showstopper.
+                if (this.boardJuice) {
+                    this.boardJuice.dip(2);
+                    this.boardJuice.bounce();
+                }
+            },
             // Piece lock ripple effect
             onPieceLock: (piece) => {
                 // Emit event for theme reactions
@@ -856,7 +854,6 @@ export class SinglePlayerMode extends BaseGameMode {
     _refreshNextQueue() {
         // Update next piece preview canvases
         updateNextQueue(this.gameState.nextPieces);
-        updateHoldPiece(this.gameState.heldPiece);
     }
 
     /**

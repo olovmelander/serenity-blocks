@@ -236,7 +236,7 @@ export function isPartOfPiece(boardX, boardY, piece) {
 export function findCompleteLines(boardData) {
     const completeLines = [];
 
-    for (let y = 0; y < boardData.length; y++) {
+    for (let y = HIDDEN_ROWS; y < boardData.length; y++) {
         if (boardData[y].every((cell) => cell !== null)) {
             completeLines.push(y);
         }

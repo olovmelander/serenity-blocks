@@ -97,6 +97,18 @@ export class MatchConfigModal {
             <summary>⚙️ Advanced Settings</summary>
 
             <div class="form-group">
+              <label for="online-attack-style">Attack Style</label>
+              <select id="online-attack-style" name="attackStyle">
+                <option value="standard" selected>Standard - Line Garbage</option>
+                <option value="blind">Blind - garbage plus blackout</option>
+                <option value="full_blind">Full Blind - heavier blackout</option>
+                <option value="hot_potato">Hot Potato - pass the timer bomb</option>
+                <option value="peaceful">Peaceful - no attacks</option>
+              </select>
+              <small class="form-help" id="online-attack-style-help">Classic garbage lines sent on multi-line clears</small>
+            </div>
+
+            <div class="form-group">
               <label for="garbage-cancellation">Garbage Cancellation</label>
               <select id="garbage-cancellation" name="garbageCancellation">
                 <option value="full" selected>Full (Modern)</option>
@@ -152,6 +164,11 @@ export class MatchConfigModal {
         const endConditionSelect = this.container.querySelector('#end-condition');
         endConditionSelect.addEventListener('change', (e) => {
             this.updateEndConditionUI(e.target.value);
+        });
+
+        const attackStyleSelect = this.container.querySelector('#online-attack-style');
+        attackStyleSelect?.addEventListener('change', (e) => {
+            this.updateAttackStyleUI(e.target.value);
         });
 
         // Form submit
@@ -229,6 +246,40 @@ export class MatchConfigModal {
         }
     }
 
+    _attackRulesFor(style) {
+        switch (style) {
+        case 'blind':
+            return { forceAttackType: 'blind' };
+        case 'full_blind':
+            return { forceAttackType: 'full_blind' };
+        case 'hot_potato':
+            return {
+                forceAttackType: 'potato',
+                potatoDurationMs: 12000,
+                potatoPenaltyLines: 6,
+            };
+        case 'peaceful':
+            return { disableAttacks: true };
+        default:
+            return null;
+        }
+    }
+
+    updateAttackStyleUI(style) {
+        const help = this.container.querySelector('#online-attack-style-help');
+        if (!help) return;
+
+        const helpText = {
+            standard: 'Classic garbage lines sent on multi-line clears',
+            blind: 'Quadra Blind: garbage lines plus a short blackout of the target board',
+            full_blind: 'Quadra Full Blind: a stronger, longer blackout attack',
+            hot_potato: 'Hold the potato too long and it detonates; clear lines to pass it',
+            peaceful: 'No attacks are sent in this match',
+        };
+
+        help.textContent = helpText[style] || helpText.standard;
+    }
+
     /**
    * Handle form submission
    */
@@ -244,7 +295,14 @@ export class MatchConfigModal {
             endConditionValue: parseInt(formData.get('endConditionValue')) || 0,
             boringRules: formData.get('boringRules') === 'on',
             garbageCancellation: formData.get('garbageCancellation') || 'full',
+            attackStyle: formData.get('attackStyle') || 'standard',
+            attackRules: this._attackRulesFor(formData.get('attackStyle') || 'standard'),
         };
+        config.hotPotato = config.attackStyle === 'hot_potato';
+        if (config.hotPotato) {
+            config.potatoDurationMs = 12000;
+            config.potatoPenaltyLines = 6;
+        }
 
         // Validation
         if (config.gameName.length === 0) {
@@ -301,6 +359,7 @@ export class MatchConfigModal {
 
         // Reset to default end condition UI
         this.updateEndConditionUI('frags');
+        this.updateAttackStyleUI('standard');
     }
 
     /**

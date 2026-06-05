@@ -18,7 +18,6 @@ export const INPUT_TYPES = {
     ROTATE_CCW: 'rotate_ccw',
     SOFT_DROP: 'soft_drop',
     HARD_DROP: 'hard_drop',
-    HOLD: 'hold',
 };
 
 /**

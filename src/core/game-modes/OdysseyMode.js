@@ -151,6 +151,8 @@ export class OdysseyMode extends BaseGameMode {
         this.boardReturnFallbackVeil = null;
         this.boardReturnFallbackVeilTimer = null;
         this.boardViewReadyPromise = null;
+        this.chapterArrivalCueTimer = null;
+        this.isTallBoard = false;
     }
 
     /**
@@ -347,6 +349,7 @@ export class OdysseyMode extends BaseGameMode {
         // For tall boards, enable camera navigation during pause
         const boardRows = this.currentLevelConfig?.mechanics?.board?.rows || 20;
         const isTallBoard = boardRows >= this.MINIMAP_ROW_THRESHOLD;
+        this.isTallBoard = isTallBoard;
 
         if (isTallBoard) {
             if (this.boardScene) {
@@ -1929,6 +1932,7 @@ export class OdysseyMode extends BaseGameMode {
         }
 
         // Calculate final metrics
+        this.hybridEngine?.updateScore(this.gameState.score || 0);
         const finalResults = {
             score: this.gameState.score,
             time: this.levelMetrics.time,
@@ -2406,6 +2410,7 @@ export class OdysseyMode extends BaseGameMode {
         this._cleanupOdysseyHUD();
         this._cleanupMinimap();
         this._applyInfinityLayout(false);
+        this.isTallBoard = false;
         this._restoreInputs();
         this._stopPhaserBoardScene();
         this.boardScene = null;
@@ -3197,6 +3202,10 @@ export class OdysseyMode extends BaseGameMode {
 
         // Initialize the board
         await this.boardController.initialize(levelData, progressData, presentationLayout);
+        if (this.deps?.soundManager?.musicTrack) {
+            this.boardTrackKey = this.deps.soundManager.musicTrack;
+            this.boardTrackWasPlaying = !this.deps.soundManager.isMuted;
+        }
 
         // Connect level selection callback - now shows info panel first
         // Click once to select (shows info), click again or use Play button to enter
@@ -3228,6 +3237,15 @@ export class OdysseyMode extends BaseGameMode {
             this._clearLevelThemePrefetchTimer();
             const panel = document.getElementById('odyssey-level-panel');
             if (panel) panel.classList.add('hidden');
+        };
+
+        this.boardController.onChapterArrival = (arrival) => {
+            const track = arrival?.profile?.audioTrack || this.deps?.soundManager?.musicTrack || null;
+            if (track) {
+                this.boardTrackKey = track;
+                this.boardTrackWasPlaying = true;
+            }
+            this._showChapterArrivalCue(arrival);
         };
 
         // Create the info overlay (header + level panel)
@@ -3281,6 +3299,11 @@ export class OdysseyMode extends BaseGameMode {
                     <span id="odyssey-header-progress">Progress: 0%</span>
                 </div>
             </div>
+            <div id="odyssey-chapter-arrival-card" class="odyssey-chapter-arrival-card" aria-live="polite">
+                <div id="odyssey-arrival-kicker" class="odyssey-arrival-kicker">Chapter 1</div>
+                <div id="odyssey-arrival-title" class="odyssey-arrival-title">Earth Core</div>
+                <div id="odyssey-arrival-subtitle" class="odyssey-arrival-subtitle">Find your first rhythm</div>
+            </div>
             <div id="odyssey-level-panel" class="odyssey-level-panel hidden">
                 <div id="level-panel-number" class="level-number-badge">LEVEL 1</div>
                 <h2 id="level-panel-name">Level Name</h2>
@@ -3329,6 +3352,43 @@ export class OdysseyMode extends BaseGameMode {
                 gap: 2rem;
                 font-size: 1rem;
                 color: #88aaff;
+            }
+            .odyssey-chapter-arrival-card {
+                position: absolute;
+                left: 50%;
+                top: 18%;
+                transform: translate(-50%, -10px);
+                min-width: min(460px, calc(100vw - 48px));
+                max-width: min(620px, calc(100vw - 48px));
+                text-align: center;
+                opacity: 0;
+                pointer-events: none;
+                color: #eef7ff;
+                text-shadow: 0 0 18px rgba(0, 255, 204, 0.42);
+                transition: opacity 260ms ease, transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+            }
+            .odyssey-chapter-arrival-card.visible {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
+            .odyssey-arrival-kicker {
+                font-family: 'Space Mono', monospace;
+                font-size: 0.78rem;
+                letter-spacing: 0;
+                text-transform: uppercase;
+                color: rgba(180, 226, 255, 0.78);
+                margin-bottom: 0.35rem;
+            }
+            .odyssey-arrival-title {
+                font-family: 'Orbitron', sans-serif;
+                font-size: clamp(1.45rem, 4vw, 2.6rem);
+                line-height: 1.05;
+                color: #ffffff;
+            }
+            .odyssey-arrival-subtitle {
+                margin-top: 0.45rem;
+                font-size: clamp(0.85rem, 2vw, 1.05rem);
+                color: rgba(208, 226, 255, 0.76);
             }
             .odyssey-level-panel {
                 position: absolute;
@@ -3466,6 +3526,39 @@ export class OdysseyMode extends BaseGameMode {
         });
     }
 
+    _showChapterArrivalCue(arrival = {}) {
+        const chapterId = Number(arrival.chapterId);
+        if (!Number.isFinite(chapterId)) return;
+
+        const chapter = this.levelRegistry.getChapter(chapterId);
+        const profile = arrival.profile || {};
+        const card = document.getElementById('odyssey-chapter-arrival-card');
+        if (!card || !chapter) return;
+
+        const kicker = document.getElementById('odyssey-arrival-kicker');
+        const title = document.getElementById('odyssey-arrival-title');
+        const subtitle = document.getElementById('odyssey-arrival-subtitle');
+
+        if (kicker) kicker.textContent = `Chapter ${chapterId}`;
+        if (title) title.textContent = profile.name || chapter.name;
+        if (subtitle) subtitle.textContent = chapter.subtitle || '';
+
+        if (this.chapterArrivalCueTimer) {
+            clearTimeout(this.chapterArrivalCueTimer);
+            this.chapterArrivalCueTimer = null;
+        }
+
+        card.classList.remove('visible');
+        requestAnimationFrame(() => {
+            card.classList.add('visible');
+        });
+
+        this.chapterArrivalCueTimer = setTimeout(() => {
+            card.classList.remove('visible');
+            this.chapterArrivalCueTimer = null;
+        }, 1900);
+    }
+
     /**
      * Update header with current progress
      * @private
@@ -3589,6 +3682,10 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _disposeInfoOverlay() {
+        if (this.chapterArrivalCueTimer) {
+            clearTimeout(this.chapterArrivalCueTimer);
+            this.chapterArrivalCueTimer = null;
+        }
         const overlay = document.getElementById('odyssey-board-overlay');
         if (overlay) overlay.remove();
         const styles = document.getElementById('odyssey-board-overlay-styles');
@@ -4760,6 +4857,7 @@ export class OdysseyMode extends BaseGameMode {
      */
     _updateStats() {
         if (this.gameState) {
+            this.hybridEngine?.updateScore(this.gameState.score || 0);
             updateStats(this.gameState);
         }
     }

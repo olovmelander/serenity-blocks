@@ -25,6 +25,8 @@ export class SerenityMode extends BaseGameMode {
         this.cleanupHandlers = [];
         this.cursorTimeout = null;
         this.keyboardOverlayTimeout = null;
+        this.gamepadPollInterval = null;
+        this.gamepadPollingCleanupRegistered = false;
         this.breathingIndicatorActive = false;
 
         // Interactive effects state
@@ -184,6 +186,7 @@ export class SerenityMode extends BaseGameMode {
 
         // Show cursor again by removing hidden class
         document.body.classList.remove('cursor-hidden');
+        this._clearGamepadPolling();
     }
 
     /**
@@ -211,6 +214,7 @@ export class SerenityMode extends BaseGameMode {
 
         // Clean up event listeners
         this._cleanupEventListeners(this.cleanupHandlers);
+        this.gamepadPollingCleanupRegistered = false;
 
         // Clear timeouts
         if (this.cursorTimeout) {
@@ -803,16 +807,22 @@ export class SerenityMode extends BaseGameMode {
 
         // Gamepad button polling (if gamepad is connected)
         if (this.deps.gamepadController) {
+            this._clearGamepadPolling();
             this.gamepadPollInterval = setInterval(this.handleGamepadButton, 100);
-            this.cleanupHandlers.push(() => {
-                if (this.gamepadPollInterval) {
-                    clearInterval(this.gamepadPollInterval);
-                    this.gamepadPollInterval = null;
-                }
-            });
+            if (!this.gamepadPollingCleanupRegistered) {
+                this.cleanupHandlers.push(() => this._clearGamepadPolling());
+                this.gamepadPollingCleanupRegistered = true;
+            }
         }
 
         console.log('[Serenity] Interactive effects enabled - Click, tap, or press gamepad buttons to trigger theme effects');
+    }
+
+    _clearGamepadPolling() {
+        if (this.gamepadPollInterval) {
+            clearInterval(this.gamepadPollInterval);
+            this.gamepadPollInterval = null;
+        }
     }
 
     /**

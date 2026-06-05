@@ -1,5 +1,3 @@
-import { DEMO_TRACK_KEYS, filterSongsForBuild, IS_DEMO_MODE } from '../demo/demo-config.js';
-
 function defineSong(name, file, extra = {}) {
     return {
         name,
@@ -12,6 +10,34 @@ function defineSong(name, file, extra = {}) {
 function toTrackKey(name) {
     return String(name || '').replace(/\s+/g, '');
 }
+
+const DEMO_TRACK_KEYS = [];
+const IS_DEMO_MODE = false;
+
+function filterSongsForBuild(songs) {
+    return songs;
+}
+
+export const ODYSSEY_CHAPTER_TRACKS = Object.freeze({
+    1: 'CinderDrift',
+    2: 'OceanDeep',
+    3: 'MoonlitForest',
+    4: 'HimalayanPeak',
+    5: 'Starlight',
+    6: 'Galaxy',
+    7: 'BlackHole',
+    8: 'NeonDistrict',
+});
+
+export const ODYSSEY_THRESHOLD_STINGERS = Object.freeze({
+    '1-2': 'steam-quench',
+    '2-3': 'surface-breach',
+    '3-4': 'ridgeline-rise',
+    '4-5': 'summit-liftoff',
+    '5-6': 'atmosphere-edge',
+    '6-7': 'lensing-engage',
+    '7-8': 'neon-snap',
+});
 
 export const FULL_SONGS_MANIFEST = Object.freeze([
     defineSong('Aurora', 'aurora.mp3'),

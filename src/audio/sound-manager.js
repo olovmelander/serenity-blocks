@@ -708,6 +708,8 @@ export class SoundManager {
         requestToken,
         useFade = true,
         forceSwitch = false,
+        fadeOutMs = this.trackFadeOutMs,
+        fadeInMs = this.trackFadeInMs,
     }) {
         this.assertTrackRequestIsCurrent(requestToken);
 
@@ -744,7 +746,7 @@ export class SoundManager {
         }
 
         if (useFade && isSourceSwitch && isPlaying && !this.isMuted) {
-            await this.fadeMusicVolume(0, this.trackFadeOutMs);
+            await this.fadeMusicVolume(0, fadeOutMs);
         } else {
             this.cancelMusicVolumeFade();
         }
@@ -778,7 +780,7 @@ export class SoundManager {
         this.assertTrackRequestIsCurrent(requestToken);
 
         if (shouldFadeIn) {
-            await this.fadeMusicVolume(this.getMusicVolume(), this.trackFadeInMs);
+            await this.fadeMusicVolume(this.getMusicVolume(), fadeInMs);
         }
 
         this.lastAppliedTrackKey = this.getActualTrackKey() || trackKey || null;
@@ -788,7 +790,7 @@ export class SoundManager {
      * Sets the active music track
      * @param {string} trackName - Track name/key
      */
-    setTrack(trackName) {
+    setTrack(trackName, options = {}) {
         if (!this.trackNames.includes(trackName)) return;
         const previousTrack = this.musicTrack;
         const didSelectionChange = previousTrack !== trackName;
@@ -811,7 +813,13 @@ export class SoundManager {
         if (dropdown) dropdown.value = trackName;
 
         if (!this.isMuted && !isAlreadyAudible && !hasPendingSameRequest) {
-            this.startBackgroundMusic({ trackKey: trackName, reason: 'set-track' });
+            this.startBackgroundMusic({
+                trackKey: trackName,
+                reason: options.reason || 'set-track',
+                forceSwitch: options.forceSwitch,
+                fadeOutMs: options.fadeOutMs,
+                fadeInMs: options.fadeInMs,
+            });
         }
 
         // Apply auto theme change if enabled
@@ -970,6 +978,252 @@ export class SoundManager {
         if (this.sfxPlayer) this.sfxPlayer.playGarbageSend();
     }
 
+    playOdysseyStinger(stingerName, options = {}) {
+        if (!this.audioContext) {
+            this.resumeAudioContext();
+        }
+        if (!this.audioContext || this.isMuted) return;
+
+        const intensity = clampUnitVolume(options.intensity ?? 1, 1);
+        const volume = 0.32 * intensity;
+        const play = (params, delayMs = 0) => {
+            const run = () => this.createRichTone({
+                ...params,
+                volume: (params.volume ?? volume) * intensity,
+            });
+            if (delayMs > 0) {
+                setTimeout(run, delayMs);
+            } else {
+                run();
+            }
+        };
+
+        switch (stingerName) {
+        case 'steam-quench':
+            play({
+                oscillators: [{
+                    type: 'sine',
+                    freq: 72,
+                    gain: 0.45,
+                }],
+                noise: {
+                    type: 'pink',
+                    gain: 0.12,
+                },
+                filter: {
+                    type: 'lowpass',
+                    frequency: 420,
+                    Q: 0.8,
+                    envAmount: -240,
+                },
+                envelope: {
+                    attack: 0.02, decay: 0.35, sustain: 0.15, release: 0.45,
+                },
+                duration: 0.45,
+                volume,
+            });
+            play({
+                oscillators: [{
+                    type: 'triangle',
+                    freq: 420,
+                    gain: 0.16,
+                }],
+                noise: {
+                    type: 'white',
+                    gain: 0.08,
+                },
+                filter: {
+                    type: 'bandpass',
+                    frequency: 900,
+                    Q: 1.2,
+                },
+                envelope: {
+                    attack: 0.01, decay: 0.16, sustain: 0.02, release: 0.16,
+                },
+                duration: 0.16,
+                volume: volume * 0.65,
+            }, 110);
+            break;
+        case 'surface-breach':
+            play({
+                oscillators: [
+                    {
+                        type: 'sine',
+                        freq: 196,
+                        gain: 0.24,
+                    },
+                    {
+                        type: 'triangle',
+                        freq: 392,
+                        gain: 0.16,
+                        delay: 0.04,
+                    },
+                ],
+                noise: {
+                    type: 'white',
+                    gain: 0.07,
+                },
+                filter: {
+                    type: 'highpass',
+                    frequency: 320,
+                    Q: 0.7,
+                },
+                envelope: {
+                    attack: 0.015, decay: 0.32, sustain: 0.1, release: 0.38,
+                },
+                duration: 0.42,
+                volume,
+            });
+            break;
+        case 'ridgeline-rise':
+            [110, 147, 196].forEach((freq, index) => play({
+                oscillators: [{
+                    type: 'triangle',
+                    freq,
+                    gain: 0.22,
+                }],
+                filter: {
+                    type: 'lowpass',
+                    frequency: 620 + index * 180,
+                    Q: 0.6,
+                },
+                envelope: {
+                    attack: 0.08, decay: 0.25, sustain: 0.18, release: 0.55,
+                },
+                duration: 0.44,
+                volume: volume * 0.62,
+            }, index * 90));
+            break;
+        case 'summit-liftoff':
+            play({
+                oscillators: [
+                    {
+                        type: 'sine',
+                        freq: 262,
+                        gain: 0.2,
+                    },
+                    {
+                        type: 'sine',
+                        freq: 524,
+                        gain: 0.12,
+                        delay: 0.08,
+                    },
+                ],
+                noise: {
+                    type: 'pink',
+                    gain: 0.05,
+                },
+                filter: {
+                    type: 'highpass',
+                    frequency: 260,
+                    Q: 0.6,
+                    envAmount: 900,
+                },
+                envelope: {
+                    attack: 0.12, decay: 0.45, sustain: 0.2, release: 0.75,
+                },
+                duration: 0.62,
+                volume,
+            });
+            break;
+        case 'atmosphere-edge':
+            play({
+                oscillators: [
+                    {
+                        type: 'sine',
+                        freq: 55,
+                        gain: 0.34,
+                    },
+                    {
+                        type: 'triangle',
+                        freq: 220,
+                        gain: 0.1,
+                        delay: 0.12,
+                    },
+                ],
+                filter: {
+                    type: 'lowpass',
+                    frequency: 280,
+                    Q: 1.4,
+                    envAmount: 360,
+                },
+                envelope: {
+                    attack: 0.18, decay: 0.7, sustain: 0.18, release: 0.9,
+                },
+                duration: 0.78,
+                volume: volume * 1.08,
+            });
+            break;
+        case 'lensing-engage':
+            play({
+                oscillators: [
+                    {
+                        type: 'sine',
+                        freq: 38,
+                        gain: 0.5,
+                    },
+                    {
+                        type: 'sawtooth',
+                        freq: 76,
+                        gain: 0.09,
+                    },
+                ],
+                noise: {
+                    type: 'pink',
+                    gain: 0.05,
+                },
+                filter: {
+                    type: 'lowpass',
+                    frequency: 180,
+                    Q: 2.2,
+                    envAmount: -90,
+                },
+                envelope: {
+                    attack: 0.04, decay: 0.55, sustain: 0.22, release: 0.75,
+                },
+                duration: 0.68,
+                volume: volume * 1.1,
+            });
+            break;
+        case 'neon-snap':
+            play({
+                oscillators: [
+                    {
+                        type: 'square',
+                        freq: 440,
+                        gain: 0.16,
+                    },
+                    {
+                        type: 'sawtooth',
+                        freq: 880,
+                        gain: 0.1,
+                        delay: 0.025,
+                    },
+                    {
+                        type: 'sine',
+                        freq: 55,
+                        gain: 0.32,
+                    },
+                ],
+                filter: {
+                    type: 'bandpass',
+                    frequency: 1200,
+                    Q: 1.8,
+                    envAmount: 500,
+                },
+                envelope: {
+                    attack: 0.004, decay: 0.22, sustain: 0.08, release: 0.28,
+                },
+                duration: 0.28,
+                volume: volume * 1.18,
+            });
+            break;
+        default:
+            this.playLevelUp();
+            break;
+        }
+    }
+
     cancelMusicVolumeFade() {
         this.volumeFadeToken += 1;
         if (this.volumeFadeFrame !== null) {
@@ -1123,7 +1377,13 @@ export class SoundManager {
      * Starts background music (MP3 file from songs folder)
      */
     startBackgroundMusic(options = {}) {
-        const { trackKey = this.musicTrack, reason = 'start-background-music', forceSwitch = false } = options;
+        const {
+            trackKey = this.musicTrack,
+            reason = 'start-background-music',
+            forceSwitch = false,
+            fadeOutMs = undefined,
+            fadeInMs = undefined,
+        } = options;
         if (this.isMuted) return;
         const songPath = this.resolveTrackUrl(trackKey);
         if (!songPath) return;
@@ -1138,6 +1398,8 @@ export class SoundManager {
             trackKey,
             reason,
             forceSwitch,
+            fadeOutMs,
+            fadeInMs,
         });
         this.currentTrackId = Symbol();
         return switchPromise;
@@ -1177,6 +1439,8 @@ export class SoundManager {
                         requestToken,
                         useFade: true,
                         forceSwitch,
+                        fadeOutMs: options.fadeOutMs,
+                        fadeInMs: options.fadeInMs,
                     });
                 } catch (error) {
                     if (error?.name === 'AbortError') {
@@ -1190,6 +1454,8 @@ export class SoundManager {
                             requestToken,
                             useFade: false,
                             forceSwitch: true,
+                            fadeOutMs: options.fadeOutMs,
+                            fadeInMs: options.fadeInMs,
                         });
                     } catch (fallbackError) {
                         if (fallbackError?.name !== 'AbortError') {

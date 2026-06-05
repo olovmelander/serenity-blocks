@@ -403,6 +403,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 allowHandicap: true,
                 boringRules: config.boringRules || false,
                 garbageCancellation: config.garbageCancellation || 'full',
+                attackStyle: config.attackStyle || 'standard',
+                attackRules: config.attackRules || null,
+                hotPotato: config.hotPotato || false,
+                potatoDurationMs: config.potatoDurationMs || 12000,
+                potatoPenaltyLines: config.potatoPenaltyLines || 6,
                 maxPlayers: config.maxPlayers,
             };
 

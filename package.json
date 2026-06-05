@@ -6,10 +6,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "vitest run",
     "build": "vite build",
     "preview": "vite preview",
     "electron": "electron electron/main.js",
-    "dev:electron": "NODE_ENV=development electron electron/main.js",
+    "dev:electron": "node scripts/run-electron.mjs --dev electron/main.js",
     "electron:minimal": "electron electron/main-minimal.js",
     "lint": "eslint src --ext .js",
     "lint:fix": "eslint src --ext .js --fix",
@@ -17,14 +18,15 @@
     "format:check": "prettier --check \"src/**/*.js\"",
     "audit:theme-lifecycle": "node scripts/theme-lifecycle-audit.mjs",
     "check:release-gates": "node scripts/release-gate-check.mjs",
-    "validate:cosmic-noir:phase6": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/cosmic-noir-phase6-validation.mjs",
-    "validate:windows:devtools": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/windows-devtools-smoke.mjs",
-    "validate:wolfhour:phase6": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/wolfhour-phase6-validation.mjs",
-    "validate:windows:parity": "env -u ELECTRON_RUN_AS_NODE npx electron scripts/windows-electron-parity-validation.mjs",
+    "validate:cosmic-noir:phase6": "node scripts/run-electron.mjs scripts/cosmic-noir-phase6-validation.mjs",
+    "validate:windows:devtools": "node scripts/run-electron.mjs scripts/windows-devtools-smoke.mjs",
+    "validate:wolfhour:phase6": "node scripts/run-electron.mjs scripts/wolfhour-phase6-validation.mjs",
+    "validate:windows:parity": "node scripts/run-electron.mjs scripts/windows-electron-parity-validation.mjs",
     "build:win": "node scripts/build-win.mjs",
     "build:win:wsl": "SERENITY_ALLOW_WSL_WIN_BUILD=1 node scripts/build-win.mjs",
     "build:linux": "vite build && electron-builder --linux",
-    "capture:themes": "npx electron scripts/capture-theme-screenshots.mjs"
+    "capture:themes": "npx electron scripts/capture-theme-screenshots.mjs",
+    "capture:odyssey": "npx electron scripts/odyssey-aaa-board-capture.mjs"
   },
   "build": {
     "appId": "com.serenityblocks.game",

@@ -71,7 +71,6 @@ const DEFAULT_CONFIG = {
         flip: 'a',
         softDrop: 'ArrowDown',
         hardDrop: 'Space',
-        hold: 'c',
     },
     player2KeyBindings: {
         moveLeft: 'a',
@@ -81,7 +80,6 @@ const DEFAULT_CONFIG = {
         flip: 'e',
         softDrop: 's',
         hardDrop: 'Shift',
-        hold: 'f',
     },
     gamepadBindings: {
         moveLeft: 14, // D-pad Left
@@ -91,7 +89,6 @@ const DEFAULT_CONFIG = {
         flip: 2, // X Button
         softDrop: 13, // D-pad Down
         hardDrop: 1, // B Button
-        hold: 4, // Left Bumper
         pause: 9, // Start Button
     },
     player2GamepadBindings: {
@@ -102,7 +99,6 @@ const DEFAULT_CONFIG = {
         flip: 2, // X Button
         softDrop: 13, // D-pad Down
         hardDrop: 1, // B Button
-        hold: 4, // Left Bumper
         pause: 9, // Start Button
     },
     player3GamepadBindings: {
@@ -113,7 +109,6 @@ const DEFAULT_CONFIG = {
         flip: 2,
         softDrop: 13,
         hardDrop: 1,
-        hold: 4,
         pause: 9,
     },
     player4GamepadBindings: {
@@ -124,7 +119,6 @@ const DEFAULT_CONFIG = {
         flip: 2,
         softDrop: 13,
         hardDrop: 1,
-        hold: 4,
         pause: 9,
     },
 };
@@ -137,7 +131,6 @@ const KEYBOARD_BINDING_ACTIONS = [
     'flip',
     'softDrop',
     'hardDrop',
-    'hold',
 ];
 
 function sanitizeBindings(bindings, fallbackBindings) {
@@ -413,7 +406,6 @@ export function updateControlsDisplay(settings) {
         'flip',
         'softDrop',
         'hardDrop',
-        'hold',
     ];
 
     if (settings.controlScheme === 'Keyboard') {
@@ -592,7 +584,7 @@ export function handleGamepadBinding(element, settingsManager, updateCallback) {
  * @param {Object} settings - Current settings
  */
 export function updateGamepadControlsDisplay(settings) {
-    const actions = ['moveLeft', 'moveRight', 'rotateRight', 'rotateLeft', 'flip', 'softDrop', 'hardDrop', 'hold', 'pause'];
+    const actions = ['moveLeft', 'moveRight', 'rotateRight', 'rotateLeft', 'flip', 'softDrop', 'hardDrop', 'pause'];
     const descriptors = [
         { key: 'gamepadBindings', prefix: 'gamepad-' },
         { key: 'player2GamepadBindings', prefix: 'gamepad-p2-' },

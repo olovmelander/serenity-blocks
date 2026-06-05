@@ -42,6 +42,9 @@ const GAME_PHASE_MAP = new Map(GAME_PHASES.map((phase, i) => [phase, i]));
 // Grid dimensions
 const GRID_COLS = 10;
 const GRID_ROWS = 24; // Including hidden rows
+const GRID_BYTES = GRID_COLS * GRID_ROWS / 2;
+const MAX_BINARY_PLAYERS = 8;
+const MAX_NEXT_PIECES = 32;
 
 /**
  * Binary Encoder for game state snapshots
@@ -525,6 +528,17 @@ export class BinaryDecoder {
         this._attackerIdCache = new Map();
     }
 
+    _assertAvailable(view, offset, byteCount, label) {
+        if (!Number.isInteger(offset) || offset < 0 || offset + byteCount > view.byteLength) {
+            throw new RangeError(`Malformed binary snapshot: ${label} exceeds packet bounds`);
+        }
+    }
+
+    _readUint8(view, offset, label) {
+        this._assertAvailable(view, offset, 1, label);
+        return view.getUint8(offset);
+    }
+
     /**
      * Register known attacker IDs for reverse lookup
      */
@@ -548,6 +562,7 @@ export class BinaryDecoder {
         }
 
         const view = new DataView(buffer);
+        this._assertAvailable(view, 0, 12, 'snapshot header');
         let offset = 0;
 
         // === HEADER ===
@@ -563,6 +578,9 @@ export class BinaryDecoder {
         }
 
         const playerCount = view.getUint8(offset++);
+        if (playerCount > MAX_BINARY_PLAYERS) {
+            throw new Error(`Malformed binary snapshot: player count ${playerCount} exceeds ${MAX_BINARY_PLAYERS}`);
+        }
         const gamePhaseIndex = view.getUint8(offset++);
         offset++; // Reserved byte
         const tick = view.getUint32(offset, true); offset += 4;
@@ -586,7 +604,7 @@ export class BinaryDecoder {
         }
 
         // === WINNER ===
-        const hasWinner = view.getUint8(offset++);
+        const hasWinner = this._readUint8(view, offset++, 'winner flag');
         let winner = null;
         if (hasWinner) {
             const winnerSteamId = this._readString(buffer, view, offset);
@@ -612,6 +630,7 @@ export class BinaryDecoder {
         if (!baseline) throw new Error('Baseline required for delta decode');
 
         const view = new DataView(buffer);
+        this._assertAvailable(view, 0, 16, 'delta header');
         let offset = 0;
 
         // === HEADER ===
@@ -624,6 +643,9 @@ export class BinaryDecoder {
 
         const version = view.getUint8(offset++);
         const playerCount = view.getUint8(offset++);
+        if (playerCount > MAX_BINARY_PLAYERS) {
+            throw new Error(`Malformed binary delta: player count ${playerCount} exceeds ${MAX_BINARY_PLAYERS}`);
+        }
         const gamePhaseIndex = view.getUint8(offset++);
         offset++; // Reserved
         const tick = view.getUint32(offset, true); offset += 4;
@@ -655,7 +677,7 @@ export class BinaryDecoder {
         }
 
         // === WINNER ===
-        const hasWinner = view.getUint8(offset++);
+        const hasWinner = this._readUint8(view, offset++, 'delta winner flag');
         let winner = null;
         if (hasWinner) {
             const winnerSteamId = this._readString(buffer, view, offset);
@@ -681,11 +703,12 @@ export class BinaryDecoder {
     }
 
     _decodePlayerDelta(buffer, view, offset, basePlayer) {
-        const mask = view.getUint8(offset++);
+        const mask = this._readUint8(view, offset++, 'player delta mask');
         const p = { ...basePlayer }; // Start with clone of baseline
 
         // Stats
         if (mask & DELTA_FLAGS.STATS) {
+            this._assertAvailable(view, offset, 11, 'player delta stats');
             p.score = view.getUint32(offset, true); offset += 4;
             p.lines = view.getUint16(offset, true); offset += 2;
             p.level = view.getUint8(offset++);
@@ -696,6 +719,7 @@ export class BinaryDecoder {
 
         // Drops
         if (mask & DELTA_FLAGS.DROPS) {
+            this._assertAvailable(view, offset, 4, 'player delta drops');
             p.dropCounter = view.getUint16(offset, true); offset += 2;
             p.dropInterval = view.getUint16(offset, true); offset += 2;
         }
@@ -704,7 +728,7 @@ export class BinaryDecoder {
         if (mask & DELTA_FLAGS.GRID) {
             p.grid = this._decodeGrid(buffer, view, offset);
             p.lockedPieces = this._reconstructLockedPiecesFromGrid(p.grid);
-            offset += 120;
+            offset += GRID_BYTES;
         }
 
         // Piece
@@ -715,7 +739,11 @@ export class BinaryDecoder {
 
         // Next Pieces
         if (mask & DELTA_FLAGS.NEXT) {
-            const nextPieceCount = view.getUint8(offset++);
+            const nextPieceCount = this._readUint8(view, offset++, 'player delta next-piece count');
+            if (nextPieceCount > MAX_NEXT_PIECES) {
+                throw new Error(`Malformed binary delta: next-piece count ${nextPieceCount} exceeds ${MAX_NEXT_PIECES}`);
+            }
+            this._assertAvailable(view, offset, nextPieceCount, 'player delta next pieces');
             const nextPieces = [];
             for (let i = 0; i < nextPieceCount; i++) {
                 const typeIndex = view.getUint8(offset++);
@@ -728,7 +756,7 @@ export class BinaryDecoder {
 
         // Garbage
         if (mask & DELTA_FLAGS.GARBAGE) {
-            const garbageCount = view.getUint8(offset++);
+            const garbageCount = this._readUint8(view, offset++, 'player delta garbage count');
             const garbageEntries = [];
             for (let i = 0; i < garbageCount; i++) {
                 const result = this._decodeGarbageEntry(buffer, view, offset);
@@ -754,6 +782,7 @@ export class BinaryDecoder {
         offset = color.offset;
 
         // === STATS ===
+        this._assertAvailable(view, offset, 11, 'player stats');
         const score = view.getUint32(offset, true); offset += 4;
         const lines = view.getUint16(offset, true); offset += 2;
         const level = view.getUint8(offset++);
@@ -762,19 +791,24 @@ export class BinaryDecoder {
         const garbagePending = view.getUint8(offset++);
 
         // === DROP STATE ===
+        this._assertAvailable(view, offset, 4, 'player drop state');
         const dropCounter = view.getUint16(offset, true); offset += 2;
         const dropInterval = view.getUint16(offset, true); offset += 2;
 
         // === GRID ===
         const grid = this._decodeGrid(buffer, view, offset);
-        offset += 120;
+        offset += GRID_BYTES;
 
         // === CURRENT PIECE ===
         const currentPiece = this._decodePiece(buffer, view, offset);
         offset += 5;
 
         // === NEXT PIECES ===
-        const nextPieceCount = view.getUint8(offset++);
+        const nextPieceCount = this._readUint8(view, offset++, 'next-piece count');
+        if (nextPieceCount > MAX_NEXT_PIECES) {
+            throw new Error(`Malformed binary snapshot: next-piece count ${nextPieceCount} exceeds ${MAX_NEXT_PIECES}`);
+        }
+        this._assertAvailable(view, offset, nextPieceCount, 'next pieces');
         const nextPieces = [];
         for (let i = 0; i < nextPieceCount; i++) {
             const typeIndex = view.getUint8(offset++);
@@ -784,7 +818,7 @@ export class BinaryDecoder {
         }
 
         // === GARBAGE ENTRIES ===
-        const garbageCount = view.getUint8(offset++);
+        const garbageCount = this._readUint8(view, offset++, 'garbage count');
         const garbageEntries = [];
         for (let i = 0; i < garbageCount; i++) {
             const result = this._decodeGarbageEntry(buffer, view, offset);
@@ -793,10 +827,11 @@ export class BinaryDecoder {
         }
 
         // === LOCKED PIECES (skipped in encoding) ===
-        const lockedPieceCount = view.getUint8(offset++);
+        const lockedPieceCount = this._readUint8(view, offset++, 'locked-piece count');
+        if (lockedPieceCount !== 0) {
+            throw new Error('Malformed binary snapshot: locked pieces are not encoded in binary-v1');
+        }
         const lockedPieces = this._reconstructLockedPiecesFromGrid(grid);
-        // Skip if any were encoded (shouldn't happen)
-        offset += lockedPieceCount * 10; // Approximate bytes per locked piece
 
         return {
             player: {
@@ -825,6 +860,7 @@ export class BinaryDecoder {
      * Decode the game grid
      */
     _decodeGrid(buffer, view, offset) {
+        this._assertAvailable(view, offset, GRID_BYTES, 'grid');
         const grid = [];
 
         let byteIndex = 0;
@@ -845,13 +881,57 @@ export class BinaryDecoder {
         return grid;
     }
 
+    _decodeCell(cellTypeIndex) {
+        if (cellTypeIndex <= 0) return null;
+        const encodedType = CELL_TYPES[cellTypeIndex] || 'empty';
+        let type = encodedType;
+        if (encodedType === 'garbage') {
+            type = 'GARBAGE';
+        } else if (encodedType === 'clean_garbage') {
+            type = 'CLEAN_GARBAGE';
+        }
+        return {
+            type,
+            shapeKey: type,
+            color: COLORS[type] || COLORS.GARBAGE || '#808080',
+        };
+    }
+
+    _reconstructLockedPiecesFromGrid(grid) {
+        if (!Array.isArray(grid)) return [];
+
+        const pieces = [];
+        for (let y = 0; y < grid.length; y += 1) {
+            const row = grid[y];
+            if (!Array.isArray(row)) continue;
+            for (let x = 0; x < row.length; x += 1) {
+                const cell = row[x];
+                if (!cell) continue;
+                pieces.push({
+                    type: cell.type,
+                    shapeKey: cell.shapeKey || cell.type,
+                    shape: [[1]],
+                    x,
+                    y,
+                    color: cell.color || COLORS[cell.type] || COLORS.GARBAGE,
+                    pieceId: `grid-${y}-${x}`,
+                });
+            }
+        }
+        return pieces;
+    }
+
     /**
      * Decode a piece
      */
     _decodePiece(buffer, view, offset) {
+        this._assertAvailable(view, offset, 5, 'piece');
         const typeIndex = view.getUint8(offset);
         if (typeIndex === 0) {
             return null; // No piece
+        }
+        if (typeIndex > PIECE_TYPES.length) {
+            throw new Error(`Malformed binary snapshot: invalid piece type ${typeIndex}`);
         }
 
         return {
@@ -869,6 +949,7 @@ export class BinaryDecoder {
      * Decode a garbage entry
      */
     _decodeGarbageEntry(buffer, view, offset) {
+        this._assertAvailable(view, offset, 6, 'garbage entry');
         const type = view.getUint8(offset++) === 0 ? 'line' : 'other';
         const attackerHash = view.getUint32(offset, true); offset += 4;
         const holeMask = view.getUint8(offset++);
@@ -890,7 +971,8 @@ export class BinaryDecoder {
      * Read a length-prefixed string
      */
     _readString(buffer, view, offset) {
-        const len = view.getUint8(offset++);
+        const len = this._readUint8(view, offset++, 'string length');
+        this._assertAvailable(view, offset, len, 'string value');
         const bytes = new Uint8Array(buffer, offset, len);
         const value = new TextDecoder().decode(bytes);
         return { value, offset: offset + len };

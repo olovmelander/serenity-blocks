@@ -196,7 +196,7 @@ describe('OdysseyCameraController path travel', () => {
         controller.camera.lookAt(controller.lookAtTarget);
 
         const startingLevel = controller.pathCurve.getPointAt(registry.getLevel(1).pathPosition);
-        startingLevel.z += 1;
+        startingLevel.z += 0.45;
         const ndc = projectPointToNdc(startingLevel, controller.camera);
 
         expect(ndc.x).toBeGreaterThanOrEqual(-0.35);

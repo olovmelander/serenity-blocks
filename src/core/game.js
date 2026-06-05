@@ -130,6 +130,7 @@ const ROTATION_STEP = {
 };
 
 const ROTATION_NAMES = ['0', 'R', '2', 'L'];
+const LEGACY_WALL_KICKS = [[0, 0], [1, 0], [-1, 0], [2, 0], [-2, 0]];
 
 const JLSTZ_KICKS = {
     '0>R': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
@@ -254,7 +255,6 @@ function applyBufferedInputs(gameState) {
 
         if (action.type === 'move') move(gameState, action.dir);
         else if (action.type === 'rotate') rotate(gameState, action.dir);
-        else if (action.type === 'hold') holdPiece(gameState);
     }
 }
 
@@ -409,9 +409,6 @@ export class GameState {
 
         // Input
         this.inputQueue = null;
-        this.heldPiece = null;
-        this.holdUsedThisTurn = false;
-        this.holdEnabled = options.holdEnabled !== false;
 
         // Animation
         this.animationId = null;
@@ -486,14 +483,18 @@ export class GameState {
         this.dropInterval = LEVEL_SPEEDS[0];
         this.dropCounter = 0;
         this.piecesPlaced = 0;
+        this.pieceCounts = {
+            I: 0, J: 0, L: 0, O: 0, S: 0, T: 0, Z: 0,
+        };
+        this.lineClearCounts = {
+            1: 0, 2: 0, 3: 0, 4: 0,
+        };
         resetLockState(this);
         this.isGameOver = false;
         this.isStopped = false;
         this.isProcessingPhysics = false;
         this.isAlive = true;
         this.inputQueue = null;
-        this.heldPiece = null;
-        this.holdUsedThisTurn = false;
         this.startTime = Date.now();
         this.boardCache = null;
         this.boardCacheDirty = true;
@@ -579,7 +580,6 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     gameState.currentPiece = piece;
     invalidateGhostCache(gameState);
     resetLockState(gameState);
-    gameState.holdUsedThisTurn = false;
 
     // Track when piece spawned for Quadra time-based lock bonus
     gameState.pieceSpawnTime = performance.now();
@@ -593,68 +593,20 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     gameState.piecesPlaced++;
 
     // Check if piece can spawn (game over condition)
-    // In Infinity Mode, game over is handled separately by checkInfinityGameOver
-    // Don't trigger game over here for Infinity Mode
-    if (!gameState.isInfinityMode) {
-        if (!canPlacePiece(
-            gameState,
-            gameState.currentPiece,
-            gameState.currentPiece.x,
-            gameState.currentPiece.y,
-        )) {
-            gameState.isGameOver = true;
-            if (gameOverCallback) gameOverCallback();
-            return null;
-        }
+    if (!canPlacePiece(
+        gameState,
+        gameState.currentPiece,
+        gameState.currentPiece.x,
+        gameState.currentPiece.y,
+    )) {
+        gameState.isGameOver = true;
+        if (gameOverCallback) gameOverCallback();
+        return null;
     }
 
     applyBufferedInputs(gameState);
 
     return piece;
-}
-
-export function holdPiece(gameState, drawNextPiecesCallback, gameOverCallback) {
-    if (
-        !gameState?.currentPiece
-        || gameState.isProcessingPhysics
-        || gameState.isPaused
-        || gameState.isGameOver
-        || gameState.holdEnabled === false
-        || gameState.holdUsedThisTurn
-    ) return false;
-
-    const outgoingKey = gameState.currentPiece.shapeKey;
-    const incomingKey = gameState.heldPiece;
-
-    piecePool.release(gameState.currentPiece);
-    gameState.currentPiece = null;
-    gameState.heldPiece = outgoingKey;
-    gameState.holdUsedThisTurn = true;
-    resetLockState(gameState);
-    gameState.dropCounter = 0;
-
-    if (!incomingKey) {
-        const spawnedPiece = spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback);
-        gameState.holdUsedThisTurn = true;
-        if (drawNextPiecesCallback) drawNextPiecesCallback();
-        return Boolean(spawnedPiece);
-    }
-
-    const piece = createActivePiece(gameState, incomingKey);
-    if (!piece) return false;
-
-    gameState.currentPiece = piece;
-    invalidateGhostCache(gameState);
-    gameState.pieceSpawnTime = performance.now();
-
-    if (!gameState.isInfinityMode && !canPlacePiece(gameState, piece, piece.x, piece.y)) {
-        gameState.isGameOver = true;
-        if (gameOverCallback) gameOverCallback();
-        return false;
-    }
-
-    if (drawNextPiecesCallback) drawNextPiecesCallback();
-    return true;
 }
 
 /**
@@ -727,21 +679,30 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
     const originalX = piece.x;
     const originalY = piece.y;
 
-    let rotatedShape = rotateShapeMatrix(originalShape, dir);
+    const tryBoardOffsetKicks = (kicksToTry) => {
+        for (const [dx, dy] of kicksToTry) {
+            if (canPlacePiece(gameState, piece, originalX + dx, originalY + dy)) {
+                piece.x = originalX + dx;
+                piece.y = originalY + dy;
+                if (playSoundCallback) playSoundCallback();
+                invalidateGhostCache(gameState);
+                maybeResetLockDelay(gameState, wasGrounded);
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    const rotatedShape = rotateShapeMatrix(originalShape, dir);
     if (dir === 'flip') {
         // 180-degree rotation has no SRS kick table in guideline play; allow the
         // old horizontal probes so existing "flip" bindings remain useful.
         const originalRotation = piece.rotation;
         piece.shape = rotatedShape;
         piece.rotation = toRotation;
-        for (const kick of [0, 1, -1, 2, -2]) {
-            if (canPlacePiece(gameState, piece, originalX + kick, originalY)) {
-                piece.x = originalX + kick;
-                if (playSoundCallback) playSoundCallback();
-                invalidateGhostCache(gameState);
-                maybeResetLockDelay(gameState, wasGrounded);
-                return true;
-            }
+        if (tryBoardOffsetKicks(LEGACY_WALL_KICKS)) {
+            return true;
         }
         piece.shape = originalShape;
         piece.rotation = originalRotation;
@@ -770,6 +731,12 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
             maybeResetLockDelay(gameState, wasGrounded);
             return true;
         }
+    }
+
+    // Keep the old edge feel after SRS: if a vertical piece is flush with a side,
+    // try the simple horizontal kicks that players expect from earlier builds.
+    if (tryBoardOffsetKicks(LEGACY_WALL_KICKS)) {
+        return true;
     }
 
     // Rotation failed, revert
@@ -1146,32 +1113,33 @@ export function gameLoop(
         return; // Exit early to prevent loop multiplication
     }
 
-    // Delegate to updateGame
-    updateGame(time, gameState, {
-        drawCallback,
-        updateStatsCallback,
-        playDropCallback,
-        physicsCallbacks,
-    });
+    try {
+        // Delegate to updateGame
+        updateGame(time, gameState, {
+            drawCallback,
+            updateStatsCallback,
+            playDropCallback,
+            physicsCallbacks,
+        });
 
-    if (gameState.isGameOver) {
+        if (gameState.isGameOver) {
+            return;
+        }
+
+        // CRITICAL FIX: Schedule next frame ONCE at the end (not in pause branch)
+        // This prevents duplicate RAF loops from multiplying exponentially
+        gameState.animationId = requestAnimationFrame((t) => gameLoop(
+            t,
+            gameState,
+            drawCallback,
+            updateStatsCallback,
+            playDropCallback,
+            physicsCallbacks,
+        ));
+    } finally {
+        // SAFETY: Decrement loop counter even if update/draw callbacks throw
         activeLoopCount--;
-        return;
     }
-
-    // CRITICAL FIX: Schedule next frame ONCE at the end (not in pause branch)
-    // This prevents duplicate RAF loops from multiplying exponentially
-    gameState.animationId = requestAnimationFrame((t) => gameLoop(
-        t,
-        gameState,
-        drawCallback,
-        updateStatsCallback,
-        playDropCallback,
-        physicsCallbacks,
-    ));
-
-    // SAFETY: Decrement loop counter after scheduling next frame
-    activeLoopCount--;
 }
 
 /**
@@ -1194,6 +1162,7 @@ export function startGame(gameState, callbacks, settings) {
     if (gameState.animationId) {
         cancelAnimationFrame(gameState.animationId);
     }
+    activeLoopCount = 0;
 
     // Initialize bag and spawn first piece
     const rng = typeof gameState.randomGenerator === 'function' ? gameState.randomGenerator : Math.random;

@@ -275,8 +275,12 @@ export class VictoryConditionEvaluator {
 
             // Get value from metrics or gameState
             let value = this.trackedMetrics[key];
-            if (value === undefined && gameState) {
-                value = gameState[key];
+            const gameStateValue = gameState?.[key];
+            if (
+                gameState
+                && (value === undefined || (key === 'score' && value === 0 && Number(gameStateValue) > 0))
+            ) {
+                value = gameStateValue;
             }
             if (value === undefined) {
                 value = 0;

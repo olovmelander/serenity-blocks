@@ -5780,10 +5780,6 @@ export default class ElectricDreamsTheme extends BaseTheme {
             this.handleMicroGameplayEvent('hard-drop', data);
         });
 
-        const holdUnsub = eventBus.on(EVENTS.HOLD, (data) => {
-            this.handleMicroGameplayEvent('hold', data);
-        });
-
         const levelUpUnsub = eventBus.on(EVENTS.LEVEL_UP, (data) => {
             this.handleLevelUpEvent(data);
         });
@@ -5795,7 +5791,6 @@ export default class ElectricDreamsTheme extends BaseTheme {
             pieceMoveUnsub,
             pieceRotateUnsub,
             hardDropUnsub,
-            holdUnsub,
             levelUpUnsub,
         );
         if (!this.boundResizeHandler) {

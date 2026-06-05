@@ -51,7 +51,20 @@ export class LocalMatchConfigModal {
             </select>
             <small class="form-help" id="match-mode-help">Classic FFA with customizable win conditions</small>
           </div>
-          
+
+          <!-- Attack Style (Quadra rulesets) -->
+          <div class="form-group" id="attack-style-group">
+            <label for="attack-style">Attack Style</label>
+            <select id="attack-style" name="attackStyle">
+              <option value="standard" selected>Standard — Line Garbage</option>
+              <option value="blind">Blind — garbage + temporary blackout</option>
+              <option value="full_blind">Full Blind — heavier, longer blackout</option>
+              <option value="hot_potato">Hot Potato - pass the timer bomb</option>
+              <option value="peaceful">Peaceful — no attacks</option>
+            </select>
+            <small class="form-help" id="attack-style-help">Classic garbage lines sent on multi-line clears</small>
+          </div>
+
           <!-- Win Condition -->
           <div class="form-group" id="end-condition-group">
             <label for="end-condition">Win Condition</label>
@@ -156,6 +169,14 @@ export class LocalMatchConfigModal {
                     <!-- Player team dropdowns inserted here -->
                 </div>
             </div>
+
+            <div class="form-group handicap-heading">
+                <label>Player Handicaps</label>
+                <small class="form-help">Quadra-style: higher level = weaker attacks (handicap stronger players). Default Intermediate.</small>
+            </div>
+            <div id="player-handicap-assignments">
+                <!-- Per-player handicap dropdowns inserted here -->
+            </div>
           </details>
           
           <!-- Action Buttons -->
@@ -213,6 +234,14 @@ export class LocalMatchConfigModal {
             });
         }
 
+        // Attack style change handler (update help text)
+        const attackStyle = this.container.querySelector('#attack-style');
+        if (attackStyle) {
+            attackStyle.addEventListener('change', (e) => {
+                this.updateAttackStyleUI(e.target.value);
+            });
+        }
+
         // Form submit
         const form = this.container.querySelector('#local-match-config-form');
         if (form) {
@@ -237,6 +266,7 @@ export class LocalMatchConfigModal {
                 if (teamModeToggle && teamModeToggle.checked) {
                     this.updateTeamUI(true);
                 }
+                this.updateHandicapUI();
             });
         }
 
@@ -316,6 +346,50 @@ export class LocalMatchConfigModal {
             div.appendChild(label);
             div.appendChild(select);
             assignmentsArea.appendChild(div);
+        }
+    }
+
+    /**
+     * Render per-player handicap dropdowns based on the current player count,
+     * preserving any selections the user already made.
+     */
+    updateHandicapUI() {
+        const area = this.container.querySelector('#player-handicap-assignments');
+        if (!area) return;
+
+        const numPlayers = parseInt(this.container.querySelector('#num-players').value, 10) || 2;
+
+        // Preserve existing selections across re-renders
+        const previous = {};
+        area.querySelectorAll('select').forEach((sel) => {
+            previous[sel.name] = sel.value;
+        });
+
+        area.innerHTML = '';
+
+        for (let i = 1; i <= numPlayers; i++) {
+            const div = document.createElement('div');
+            div.className = 'form-group';
+
+            const label = document.createElement('label');
+            label.textContent = `Player ${i} Handicap`;
+
+            const select = document.createElement('select');
+            select.name = `player${i}Handicap`;
+            select.innerHTML = `
+                <option value="0">Beginner</option>
+                <option value="1">Apprentice</option>
+                <option value="2" selected>Intermediate</option>
+                <option value="3">Master</option>
+                <option value="4">Grandmaster</option>
+            `;
+            if (previous[select.name] !== undefined) {
+                select.value = previous[select.name];
+            }
+
+            div.appendChild(label);
+            div.appendChild(select);
+            area.appendChild(div);
         }
     }
 
@@ -442,6 +516,50 @@ export class LocalMatchConfigModal {
     }
 
     /**
+     * Map an attack-style selection to a garbage `rules` object understood by
+     * core/garbage.js `calculateGarbage`. Values match ATTACK_TYPES in that
+     * module (kept as literals here to avoid coupling the UI to core).
+     * @param {string} style - 'standard' | 'blind' | 'full_blind' | 'hot_potato' | 'peaceful'
+     * @returns {Object|null} rules object, or null for the default (standard)
+     */
+    _attackRulesFor(style) {
+        switch (style) {
+        case 'blind':
+            return { forceAttackType: 'blind' };
+        case 'full_blind':
+            return { forceAttackType: 'full_blind' };
+        case 'hot_potato':
+            return {
+                forceAttackType: 'potato',
+                potatoDurationMs: 12000,
+                potatoPenaltyLines: 6,
+            };
+        case 'peaceful':
+            return { disableAttacks: true };
+        default:
+            return null;
+        }
+    }
+
+    /**
+     * Update the attack-style help text based on selection
+     */
+    updateAttackStyleUI(style) {
+        const help = this.container.querySelector('#attack-style-help');
+        if (!help) return;
+
+        const helpText = {
+            standard: 'Classic garbage lines sent on multi-line clears',
+            blind: 'Quadra Blind: garbage lines plus a short blackout of the target board',
+            full_blind: 'Quadra Full Blind: a stronger, longer blackout attack',
+            hot_potato: 'Hold the potato too long and it detonates; clear lines to pass it',
+            peaceful: 'No attacks are sent — a calm, non-competitive match',
+        };
+
+        help.textContent = helpText[style] || helpText.standard;
+    }
+
+    /**
  * Handle form submission
  */
     handleSubmit() {
@@ -468,7 +586,14 @@ export class LocalMatchConfigModal {
             isTeamMode: formData.get('teamMode') === 'on',
             playerTeams: [],
             boringRules: formData.get('boringRules') === 'on',
+            attackStyle: formData.get('attackStyle') || 'standard',
+            attackRules: this._attackRulesFor(formData.get('attackStyle') || 'standard'),
         };
+        config.hotPotato = config.attackStyle === 'hot_potato';
+        if (config.hotPotato) {
+            config.potatoDurationMs = 12000;
+            config.potatoPenaltyLines = 6;
+        }
 
         // Only include these fields if NOT in infinity mode
         if (!isInfinityLMS) {
@@ -481,6 +606,13 @@ export class LocalMatchConfigModal {
             for (let i = 1; i <= config.numPlayers; i++) {
                 config.playerTeams.push(parseInt(formData.get(`player${i}Team`)) || 0);
             }
+        }
+
+        // Per-player Quadra handicap levels (0-4); default Intermediate (2)
+        config.playerHandicaps = [];
+        for (let i = 1; i <= config.numPlayers; i++) {
+            const level = parseInt(formData.get(`player${i}Handicap`), 10);
+            config.playerHandicaps.push(Number.isFinite(level) ? level : 2);
         }
 
         // Validate
@@ -527,6 +659,11 @@ export class LocalMatchConfigModal {
         if (endCondition) {
             this.updateEndConditionUI(endCondition.value);
         }
+        const attackStyle = this.container.querySelector('#attack-style');
+        if (attackStyle) {
+            this.updateAttackStyleUI(attackStyle.value);
+        }
+        this.updateHandicapUI();
         this.refreshFormState();
 
         console.log('[LocalMatchConfig] Modal shown');

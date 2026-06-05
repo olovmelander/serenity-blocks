@@ -56,7 +56,6 @@ const DEFAULT_GAMEPAD_CONFIG = {
     flip: { type: 'button', index: BUTTON_MAP.X },
     softDrop: { type: 'button', index: BUTTON_MAP.D_DOWN, axisPositive: AXIS_MAP.LEFT_STICK_Y },
     hardDrop: { type: 'button', index: BUTTON_MAP.B },
-    hold: { type: 'button', index: BUTTON_MAP.LB },
     pause: { type: 'button', index: BUTTON_MAP.START },
 };
 
@@ -74,7 +73,6 @@ function convertBindingsToConfig(bindings) {
         flip: { type: 'button', index: bindings.flip ?? BUTTON_MAP.X },
         softDrop: { type: 'button', index: bindings.softDrop ?? BUTTON_MAP.D_DOWN, axisPositive: AXIS_MAP.LEFT_STICK_Y },
         hardDrop: { type: 'button', index: bindings.hardDrop ?? BUTTON_MAP.B },
-        hold: { type: 'button', index: bindings.hold ?? BUTTON_MAP.LB },
         pause: { type: 'button', index: bindings.pause ?? BUTTON_MAP.START },
     };
 }
@@ -1460,12 +1458,10 @@ export class GamepadController {
                     rotate: this.gameActions.rotate,
                     softDrop: this.gameActions.softDrop,
                     hardDrop: this.gameActions.hardDrop,
-                    hold: this.gameActions.hold,
                     requestMove: this.gameActions.requestMove,
                     requestRotate: this.gameActions.requestRotate,
                     requestSoftDrop: this.gameActions.requestSoftDrop,
                     requestHardDrop: this.gameActions.requestHardDrop,
-                    requestHold: this.gameActions.requestHold,
                     pause: this.gameActions.togglePause,
                 };
                 break;
@@ -1475,12 +1471,10 @@ export class GamepadController {
                     rotate: this.gameActions.rotateP2,
                     softDrop: this.gameActions.softDropP2,
                     hardDrop: this.gameActions.hardDropP2,
-                    hold: this.gameActions.holdP2,
                     requestMove: this.gameActions.requestMoveP2,
                     requestRotate: this.gameActions.requestRotateP2,
                     requestSoftDrop: this.gameActions.requestSoftDropP2,
                     requestHardDrop: this.gameActions.requestHardDropP2,
-                    requestHold: this.gameActions.requestHoldP2,
                     pause: this.gameActions.togglePause,
                 };
                 break;
@@ -1490,12 +1484,10 @@ export class GamepadController {
                     rotate: this.gameActions.rotateP3,
                     softDrop: this.gameActions.softDropP3,
                     hardDrop: this.gameActions.hardDropP3,
-                    hold: this.gameActions.holdP3,
                     requestMove: this.gameActions.requestMoveP3,
                     requestRotate: this.gameActions.requestRotateP3,
                     requestSoftDrop: this.gameActions.requestSoftDropP3,
                     requestHardDrop: this.gameActions.requestHardDropP3,
-                    requestHold: this.gameActions.requestHoldP3,
                     pause: this.gameActions.togglePause,
                 };
                 break;
@@ -1505,12 +1497,10 @@ export class GamepadController {
                     rotate: this.gameActions.rotateP4,
                     softDrop: this.gameActions.softDropP4,
                     hardDrop: this.gameActions.hardDropP4,
-                    hold: this.gameActions.holdP4,
                     requestMove: this.gameActions.requestMoveP4,
                     requestRotate: this.gameActions.requestRotateP4,
                     requestSoftDrop: this.gameActions.requestSoftDropP4,
                     requestHardDrop: this.gameActions.requestHardDropP4,
-                    requestHold: this.gameActions.requestHoldP4,
                     pause: this.gameActions.togglePause,
                 };
                 break;
@@ -1600,13 +1590,6 @@ export class GamepadController {
         if (this.isButtonJustPressed(gamepad, config.hardDrop, prevState, 'hardDrop')) {
             if (actions.requestHardDrop || actions.hardDrop) {
                 (actions.requestHardDrop || actions.hardDrop)();
-                performanceMonitor.recordInputAction();
-            }
-        }
-
-        if (this.isButtonJustPressed(gamepad, config.hold, prevState, 'hold')) {
-            if (actions.requestHold || actions.hold) {
-                (actions.requestHold || actions.hold)();
                 performanceMonitor.recordInputAction();
             }
         }

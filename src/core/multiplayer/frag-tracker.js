@@ -303,10 +303,13 @@ export class FragTracker {
 
         const finalStats = Array.from(this.gameState.players.values()).map((p) => {
             const attack = attackStatsById.get(p.steamId);
-            const apm = Math.round(((attack && attack.totalAttacks) || 0) / minutes);
+            const attacksSent = (attack && attack.totalAttacks) || 0;
+            const attackLinesSent = (attack && attack.totalLinesSent) || 0;
+            const apm = Math.round(attacksSent / minutes);
             const piecesPlaced = p.gameState.piecesPlaced || 0;
             const bpm = Math.round(piecesPlaced / minutes); // BPM = Blocks(Pieces) Per Minute (matches SP)
             const ppm = Math.round(p.gameState.score / minutes); // PPM = Points Per Minute (matches SP)
+            const pps = Number((piecesPlaced / Math.max(durationMs / 1000, 0.001)).toFixed(2));
 
             return {
                 steamId: p.steamId,
@@ -319,6 +322,9 @@ export class FragTracker {
                 apm,
                 ppm,
                 bpm,
+                pps,
+                attacksSent,
+                attackLinesSent,
                 isAlive: p.isAlive,
                 placement: 0,
             };

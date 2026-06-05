@@ -78,8 +78,13 @@ export class OdysseyDirector {
             sourceChapter: 1,
             targetChapter: 1,
             seamProgress: 0,
+            rawSeamProgress: 0,
+            seamPhase: 0,
+            seamEnvelope: 0,
             inSeam: false,
             boundaryId: null,
+            boundaryPosition: null,
+            seamWidth: null,
             act: getChapterProfile(1).act,
             // blended atmosphere (colors are live THREE.Color refs — read, don't mutate)
             atmosphere: {
@@ -246,8 +251,13 @@ export class OdysseyDirector {
         this.state.sourceChapter = blendState.sourceChapter;
         this.state.targetChapter = blendState.targetChapter;
         this.state.seamProgress = seamT;
+        this.state.rawSeamProgress = THREE.MathUtils.clamp(blendState.rawSeamProgress || seamT, 0, 1);
+        this.state.seamPhase = Number.isFinite(blendState.seamPhase) ? blendState.seamPhase : 0;
+        this.state.seamEnvelope = Number.isFinite(blendState.seamEnvelope) ? blendState.seamEnvelope : 0;
         this.state.inSeam = !!blendState.inSeam;
         this.state.boundaryId = blendState.boundaryId;
+        this.state.boundaryPosition = blendState.boundaryPosition;
+        this.state.seamWidth = blendState.seamWidth;
         this.state.act = getChapterProfile(blendState.activeChapter).act;
 
         return this.state;

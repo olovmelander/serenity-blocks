@@ -8,6 +8,16 @@ import {
     ODYSSEY_CHAPTER_PROFILES,
     ODYSSEY_ACTS,
 } from '../chapter-environments/shared/chapter-profile.js';
+import {
+    getOdysseyThresholdProfile,
+    ODYSSEY_THRESHOLD_PROFILES,
+} from '../transitions/ChapterThresholdDirector.js';
+import { CHAPTER_CONFIGS } from '../../../core/odyssey/data/chapters.js';
+import {
+    FULL_SONGS_MANIFEST,
+    ODYSSEY_CHAPTER_TRACKS,
+    ODYSSEY_THRESHOLD_STINGERS,
+} from '../../../audio/music-manifest.js';
 
 describe('chapter profiles', () => {
     it('declares exactly eight chapters with monotonic ids', () => {
@@ -41,6 +51,47 @@ describe('chapter profiles', () => {
         const cam = getCameraProfileForChapter(6);
         expect(cam.followDistance).toBeGreaterThan(0);
         expect(cam.fovBase).toBeGreaterThan(0);
+    });
+
+    it('assigns real manifest tracks to every chapter', () => {
+        const manifestTrackKeys = new Set(FULL_SONGS_MANIFEST.map((song) => song.name.replace(/\s+/g, '')));
+
+        ODYSSEY_CHAPTER_PROFILES.forEach((profile) => {
+            expect(profile.audioTrack).not.toBe('Ambient');
+            expect(manifestTrackKeys.has(profile.audioTrack)).toBe(true);
+            expect(ODYSSEY_CHAPTER_TRACKS[profile.id]).toBe(profile.audioTrack);
+        });
+
+        CHAPTER_CONFIGS.forEach((chapter) => {
+            expect(chapter.music.track).toBe(ODYSSEY_CHAPTER_TRACKS[chapter.id]);
+        });
+    });
+});
+
+describe('Odyssey threshold profiles', () => {
+    it('declares the seven authored boundary breaches', () => {
+        expect(Object.keys(ODYSSEY_THRESHOLD_PROFILES)).toEqual([
+            '1-2',
+            '2-3',
+            '3-4',
+            '4-5',
+            '5-6',
+            '6-7',
+            '7-8',
+        ]);
+
+        Object.entries(ODYSSEY_THRESHOLD_PROFILES).forEach(([boundaryId, profile]) => {
+            expect(profile.id).toBe(boundaryId);
+            expect(profile.stinger).toBe(ODYSSEY_THRESHOLD_STINGERS[boundaryId]);
+            expect(profile.primary).toBeGreaterThan(0);
+            expect(profile.secondary).toBeGreaterThan(0);
+        });
+    });
+
+    it('falls back to a valid threshold profile for unknown boundaries', () => {
+        const profile = getOdysseyThresholdProfile('9-10');
+        expect(profile.id).toBe('1-2');
+        expect(profile.stinger).toBe('steam-quench');
     });
 });
 

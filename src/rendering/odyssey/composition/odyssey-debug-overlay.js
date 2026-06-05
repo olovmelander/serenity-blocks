@@ -6,9 +6,9 @@
  *
  * A lightweight, dependency-free HUD that visualizes the live OdysseyDirector
  * state — ascentProgress, audio energy/beat, active/source/target chapter, seam
- * progress, act, and the blended camera framing — so the spine can be validated
- * before any visual change lands. Gated behind ?odysseyAAA=1; throttled DOM
- * writes so it costs nothing meaningful.
+ * progress, act, and the blended camera framing — so the default cinematic spine
+ * can be validated live. Gated behind ?odysseyAAA=1; throttled DOM writes so it
+ * costs nothing meaningful.
  */
 
 import { getChapterProfile } from '../chapter-environments/shared/chapter-profile.js';

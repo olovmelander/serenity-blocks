@@ -277,7 +277,6 @@ export const DEFAULT_SETTINGS = {
         flip: 'a',
         softDrop: 'ArrowDown',
         hardDrop: 'Space',
-        hold: 'c',
     },
     // Player 2 controls (for multiplayer)
     player2KeyBindings: {
@@ -288,7 +287,6 @@ export const DEFAULT_SETTINGS = {
         flip: 'e',
         softDrop: 's',
         hardDrop: 'Shift',
-        hold: 'f',
     },
     // Gamepad bindings (Player 1)
     gamepadBindings: {
@@ -299,7 +297,6 @@ export const DEFAULT_SETTINGS = {
         flip: 2, // X Button
         softDrop: 13, // D-pad Down
         hardDrop: 1, // B Button
-        hold: 4, // Left Bumper
         pause: 9, // Start Button
     },
     // Player 2 gamepad bindings (for multiplayer)
@@ -311,7 +308,6 @@ export const DEFAULT_SETTINGS = {
         flip: 2, // X Button
         softDrop: 13, // D-pad Down
         hardDrop: 1, // B Button
-        hold: 4, // Left Bumper
         pause: 9, // Start Button
     },
     player3GamepadBindings: {
@@ -322,7 +318,6 @@ export const DEFAULT_SETTINGS = {
         flip: 2,
         softDrop: 13,
         hardDrop: 1,
-        hold: 4,
         pause: 9,
     },
     player4GamepadBindings: {
@@ -333,7 +328,6 @@ export const DEFAULT_SETTINGS = {
         flip: 2,
         softDrop: 13,
         hardDrop: 1,
-        hold: 4,
         pause: 9,
     },
     // Gamepad settings
