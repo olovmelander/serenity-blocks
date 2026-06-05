@@ -5,7 +5,7 @@
 
 import { seededRandom } from '../../utils/helpers.js';
 import {
-    GameState, gameLoop, updateGame, spawnPiece, fillBag, move, rotate, softDrop, hardDrop, holdPiece,
+    GameState, gameLoop, updateGame, spawnPiece, fillBag, move, rotate, softDrop, hardDrop,
 } from '../game.js';
 import { LEVEL_SPEEDS } from '../constants.js';
 
@@ -63,6 +63,9 @@ export class DemoPlayer {
 
         // Restore initial level
         this.gameState.level = this.demo.initialState.level || 1;
+        if (Number.isFinite(this.demo.initialState.dropInterval)) {
+            this.gameState.dropInterval = this.demo.initialState.dropInterval;
+        }
 
         // Setup time
         this.startTime = performance.now();
@@ -262,9 +265,6 @@ export class DemoPlayer {
             break;
         case 'hardDrop':
             hardDrop(this.gameState, playDropCallback, physicsCallbacks);
-            break;
-        case 'hold':
-            holdPiece(this.gameState, effectiveCallbacks.updateStats || effectiveCallbacks.updateStatsCallback, null);
             break;
         }
     }

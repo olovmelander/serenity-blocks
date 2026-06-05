@@ -13,6 +13,7 @@
  */
 
 import * as THREE from 'three';
+import { getChapterPathRange } from '../path-utils.js';
 
 /**
  * Earth Core environment configuration
@@ -563,6 +564,13 @@ export function createEarthCoreEnvironment(options = {}) {
     group.userData.chapterId = 1;
     group.userData.yStart = EARTH_CORE_CONFIG.yStart;
     group.userData.yEnd = EARTH_CORE_CONFIG.yEnd;
+    const chapterRange = getChapterPathRange(1);
+    const fallbackCenterY = (EARTH_CORE_CONFIG.yStart + EARTH_CORE_CONFIG.yEnd) / 2;
+    const chapterCenterY = chapterRange?.center.y ?? fallbackCenterY;
+    if (chapterRange) {
+        group.userData.yStart = chapterRange.start.y;
+        group.userData.yEnd = chapterRange.end.y;
+    }
 
     // Shared uniforms
     const uniforms = {
@@ -615,7 +623,7 @@ export function createEarthCoreEnvironment(options = {}) {
     setupVolcanicLighting(group);
 
     // Position the environment
-    group.position.y = (EARTH_CORE_CONFIG.yStart + EARTH_CORE_CONFIG.yEnd) / 2;
+    group.position.y = chapterCenterY;
 
     return group;
 }
@@ -1201,15 +1209,20 @@ function setupVolcanicLighting(group) {
 /**
  * Update Earth Core environment animations
  */
-export function updateEarthCoreEnvironment(group, delta, time) {
+export function updateEarthCoreEnvironment(group, delta, time, camera = null, cameraProgress = null, directorState = null) {
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
     }
 
-    // Decay pulse intensity
-    if (uniforms?.uPulseIntensity && uniforms.uPulseIntensity.value > 0) {
-        uniforms.uPulseIntensity.value *= 0.95;
+    if (uniforms?.uPulseIntensity) {
+        const audioPulse = directorState
+            ? THREE.MathUtils.clamp((directorState.bass || 0) * 0.7 + (directorState.energy || 0) * 0.3, 0, 1)
+            : 0;
+        uniforms.uPulseIntensity.value = Math.max(
+            uniforms.uPulseIntensity.value * Math.exp(-Math.max(0, delta) * 3.2),
+            audioPulse,
+        );
     }
 
     // Animate lava floor glow sprites

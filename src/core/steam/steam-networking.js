@@ -19,6 +19,20 @@ if (!hasSteamworks) {
     console.log('🌐 Running in browser mode - Steam features will use mock mode');
 }
 
+const HOST_AUTHORITATIVE_MESSAGE_TYPES = new Set([
+    'game:state:full',
+    'game:state:delta',
+    'game:state:resync',
+    'game:syncpoint',
+    'game:piece:lock',
+    'game:lines:clear',
+    'game:garbage:sent',
+    'game:player:died',
+    'game:player:frag',
+    'game:match:end',
+    'game:round:restart',
+]);
+
 
 
 export class SteamNetworking {
@@ -470,12 +484,17 @@ export class SteamNetworking {
    */
     handleP2PPacket(packet, channel = 0) {
         try {
-            const message = JSON.parse(packet.data.toString());
             const fromSteamId = packet.steamId;
+            const message = this._parsePacketData(packet.data);
             const envelope = this._normalizeEnvelope(message, fromSteamId);
             if (!envelope) return;
 
             if (!this._validateEnvelope(envelope, fromSteamId, channel)) {
+                this.packetStats.validationFailures += 1;
+                return;
+            }
+
+            if (!this._isSenderAllowedForMessage(envelope.msgType, fromSteamId)) {
                 this.packetStats.validationFailures += 1;
                 return;
             }
@@ -837,6 +856,22 @@ export class SteamNetworking {
         };
     }
 
+    _parsePacketData(data) {
+        if (typeof data === 'string') {
+            return JSON.parse(data);
+        }
+
+        if (data && typeof data === 'object' && (data.msgType || data.type)) {
+            return data;
+        }
+
+        if (data && typeof data.toString === 'function') {
+            return JSON.parse(data.toString());
+        }
+
+        throw new Error('Unsupported P2P packet payload');
+    }
+
     _normalizeEnvelope(message, fromSteamId) {
         if (message?.msgType) {
             return message;
@@ -857,6 +892,20 @@ export class SteamNetworking {
         }
         console.warn('⚠️ Unknown packet format from', fromSteamId);
         return null;
+    }
+
+    _isSenderAllowedForMessage(messageType, fromSteamId) {
+        if (
+            !this.isHost
+            && this.hostSteamId
+            && HOST_AUTHORITATIVE_MESSAGE_TYPES.has(messageType)
+            && fromSteamId !== this.hostSteamId
+        ) {
+            console.warn(`⚠️ Rejected host-authoritative ${messageType} from non-host ${fromSteamId}`);
+            return false;
+        }
+
+        return true;
     }
 
     _validateEnvelope(envelope, fromSteamId, channel) {

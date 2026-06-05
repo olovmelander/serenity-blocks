@@ -404,8 +404,11 @@ export class MatchResultsModal {
               <th>Score</th>
               <th>Lines</th>
               <th>BPM</th>
+              <th>PPS</th>
               <th>PPM</th>
               <th>APM</th>
+              <th>Atk</th>
+              <th>Sent</th>
             </tr>
           </thead>
           <tbody>
@@ -433,8 +436,11 @@ export class MatchResultsModal {
                 <td>${this.formatNumber(player.score || 0)}</td>
                 <td>${player.lines || 0}</td>
                 <td>${player.bpm || 0}</td>
+                <td>${player.pps || 0}</td>
                 <td>${player.ppm || 0}</td>
                 <td>${player.apm || 0}</td>
+                <td>${player.attacksSent || 0}</td>
+                <td>${player.attackLinesSent || 0}</td>
               </tr>
             `;
       }).join('')}

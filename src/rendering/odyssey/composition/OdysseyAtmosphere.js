@@ -24,7 +24,8 @@
  * deferred until board materials are TSL — see plan §4.1 status note), so the dome
  * is a classic ShaderMaterial like the rest of the board.
  *
- * Gated behind ?odysseyAAA=1; when inactive the board keeps its original globals.
+ * Active for the default cinematic Odyssey board; ?odysseyAAA=1 controls only the
+ * debug overlay.
  */
 
 import * as THREE from 'three';

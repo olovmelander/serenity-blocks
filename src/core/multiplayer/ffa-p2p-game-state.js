@@ -28,7 +28,7 @@ import { InGameChat } from '../../ui/ingame-chat.js';
 import { unifiedLoop } from './unified-game-loop.js';
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { InputJitterBuffer } from '../network/input-jitter-buffer.js';
-import { getBinaryEncoder } from '../network/binary-encoding.js';
+import { getBinaryDecoder, getBinaryEncoder } from '../network/binary-encoding.js';
 
 const RESYNC_CHUNK_SIZE = 16 * 1024;
 const RESYNC_WINDOW = 4;
@@ -125,10 +125,16 @@ export class FFAGameStateP2P {
             allowHandicap: true,
             boringRules: false,
             garbageCancellation: 'full', // 'full' (modern Quadra/TETR.IO) | 'disabled' (classic)
+            attackStyle: 'standard',
+            attackRules: null,
+            hotPotato: false,
+            potatoDurationMs: 12000,
+            potatoPenaltyLines: 6,
         };
         this.winner = null;
         this.matchStartTime = 0;
         this.lastMatchResults = null;
+        this.hotPotatoState = null;
         this.rematchVotes = new Set(); // Track steamIds who voted for rematch
 
         // Input validation (host only)
@@ -1320,6 +1326,7 @@ export class FFAGameStateP2P {
             this.players.forEach((player) => {
                 this.initializePlayerForMatch(player, this.sharedSeed);
             });
+            this.attackRouter.resetHotPotato();
 
             const session = this.network.refreshMatchSession();
             this.network.broadcastToAll(MessageTypes.NET_WELCOME, {
@@ -1351,6 +1358,7 @@ export class FFAGameStateP2P {
             // Initialize local player
             const localPlayer = this.players.get(this.localPlayerId);
             this.initializePlayerForMatch(localPlayer, seed);
+            this.attackRouter.resetHotPotato();
         }
 
         console.log('🎮 Match starting...');
@@ -1553,6 +1561,7 @@ export class FFAGameStateP2P {
         return {
             players,
             gamePhase: this.gamePhase,
+            hotPotatoState: this.hotPotatoState ? { ...this.hotPotatoState } : null,
             winner: this.winner ? {
                 steamId: this.winner.steamId,
                 name: this.winner.name,
@@ -1612,8 +1621,10 @@ export class FFAGameStateP2P {
                 || lastState.currentPieceY !== currentState.currentPiece?.y
                 || lastState.currentPieceX !== currentState.currentPiece?.x
                 || lastState.dropCounter !== currentState.dropCounter
+                || lastState.garbagePending !== player.garbageQueue.getTotalLines()
                 || player.frags !== lastState.frags
                 || player.isAlive !== lastState.isAlive
+                || lastState.hotPotatoGeneration !== (this.hotPotatoState?.generation || 0)
             );
 
             if (hasChanges) {
@@ -1661,8 +1672,10 @@ export class FFAGameStateP2P {
                 currentPieceY: player.gameState.currentPiece?.y,
                 currentPieceX: player.gameState.currentPiece?.x,
                 dropCounter: player.gameState.dropCounter,
+                garbagePending: player.garbageQueue.getTotalLines(),
                 frags: player.frags,
                 isAlive: player.isAlive,
+                hotPotatoGeneration: this.hotPotatoState?.generation || 0,
             });
         }
 
@@ -1711,7 +1724,8 @@ export class FFAGameStateP2P {
         // Store host digest for next comparison
         this._lastHostDigest = state.digest;
 
-        this._applySnapshotState(state, { forceLocal: false });
+        this._applySnapshotState(state, { forceLocal: false, reconcileLocal: true });
+        this._reconcileLocalPlayer();
     }
 
     /**
@@ -1778,7 +1792,7 @@ export class FFAGameStateP2P {
         this._desyncCount = 0;
     }
 
-    _applySnapshotState(state, { forceLocal }) {
+    _applySnapshotState(state, { forceLocal, reconcileLocal = false }) {
         // Update all player states from host
         state.players.forEach((playerData) => {
             const player = this.players.get(playerData.steamId);
@@ -1802,11 +1816,10 @@ export class FFAGameStateP2P {
                     player.lastInputSeq = playerData.lastInputSeq;
                 }
 
-                // CRITICAL: Only update board state for OPPONENTS (not local player)
-                // Local player runs their own physics and input handling.
-                // Syncing board state for local player causes race conditions where
-                // host state overwrites local line clears mid-animation.
-                const shouldApplyBoardState = forceLocal || !isLocalPlayer;
+                // Normal peer snapshots update opponents only. Reconciliation
+                // snapshots apply the authoritative local board first, then
+                // replay unacknowledged local inputs in _reconcileLocalPlayer().
+                const shouldApplyBoardState = forceLocal || !isLocalPlayer || (reconcileLocal && isLocalPlayer);
                 if (shouldApplyBoardState) {
                     // Update full board state for opponent rendering
                     if (playerData.grid) {
@@ -1841,6 +1854,9 @@ export class FFAGameStateP2P {
         });
 
         this.gamePhase = state.gamePhase;
+        if (state.hotPotatoState !== undefined) {
+            this.hotPotatoState = state.hotPotatoState ? { ...state.hotPotatoState } : null;
+        }
         this.winner = state.winner;
 
         // CRITICAL: Trigger rendering after state update
@@ -2028,7 +2044,7 @@ export class FFAGameStateP2P {
                         snapshotBytes.byteOffset,
                         snapshotBytes.byteOffset + snapshotBytes.byteLength,
                     );
-                    const snapshot = getBinaryEncoder().decodeSnapshot(snapshotBuffer);
+                    const snapshot = getBinaryDecoder().decodeSnapshot(snapshotBuffer);
                     this._applyResyncState({
                         ...snapshot,
                         ...(payload.header || {}),
@@ -2261,6 +2277,7 @@ export class FFAGameStateP2P {
             if (this.isHost) {
                 this.processBufferedInputs(); // Process inputs from jitter buffer
                 this.updateAllPlayers(delta);
+                this.attackRouter.updateHotPotato(Date.now());
                 this.maybeBroadcastPostPhysics(delta);
             }
         };
@@ -2571,6 +2588,7 @@ export class FFAGameStateP2P {
         this.network.isHost = true;
         this.network.hostSteamId = this.localPlayerId;
         this.handshakeComplete = true;
+        this.attackRouter.isHost = true;
 
         if (!this.inputValidator) {
             this.inputValidator = new InputValidator();

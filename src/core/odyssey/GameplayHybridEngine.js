@@ -82,9 +82,6 @@ export class GameplayHybridEngine {
         this.gameState.dropInterval = mechanics.speed.fixedDropInterval
             || LEVEL_SPEEDS[this.gameState.level - 1] || 1000;
 
-        // Apply hold setting
-        this.gameState.holdEnabled = mixer.get('holdEnabled');
-
         // Apply modifiers to game state
         this.modifierStack.applyToGameState(this.gameState);
 

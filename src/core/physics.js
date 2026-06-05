@@ -166,7 +166,8 @@ export async function applyGravity(
     // Note: Viewport optimization removed - it was causing stuck pieces
     // All pieces must be processed for gravity to work correctly
     // The performance gain wasn't worth the correctness issues
-    const visiblePieces = lockedPieces;
+    const visiblePieces = [...lockedPieces]
+        .sort((a, b) => b.y + b.shape.length - (a.y + a.shape.length));
 
     // PERFORMANCE: Only rebuild once at the start
     // The grid is already current from the previous physics phase
@@ -210,9 +211,7 @@ export async function applyGravity(
         // PERFORMANCE CRITICAL: NO REBUILD HERE!
         // Grid is kept up-to-date through incremental updates below
 
-        // Process blocks from bottom to top to prevent double-processing
-        visiblePieces.sort((a, b) => b.y + b.shape.length - (a.y + a.shape.length));
-
+        // Process blocks from bottom to top to prevent double-processing.
         for (const piece of visiblePieces) {
             let canFall = true;
 
@@ -300,7 +299,7 @@ export async function applyGravity(
  */
 export function detectFullLines(boardData) {
     const fullLines = [];
-    for (let y = boardData.length - 1; y >= 0; y--) {
+    for (let y = boardData.length - 1; y >= HIDDEN_ROWS; y--) {
         const isFull = boardData[y].every((cell) => cell !== null);
         if (isFull) {
             const hasGarbage = boardData[y].some((cell) => cell && cell.color === 'GARBAGE');

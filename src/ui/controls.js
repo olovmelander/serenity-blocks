@@ -239,8 +239,8 @@ export class InputController {
  */
 function handlePlayer2Action(action, gameActions, inputController, settings) {
     const {
-        moveP2, rotateP2, softDropP2, hardDropP2, holdP2,
-        requestMoveP2, requestRotateP2, requestSoftDropP2, requestHardDropP2, requestHoldP2,
+        moveP2, rotateP2, softDropP2, hardDropP2,
+        requestMoveP2, requestRotateP2, requestSoftDropP2, requestHardDropP2,
     } = gameActions;
 
     performanceMonitor.recordInputAction();
@@ -290,10 +290,6 @@ function handlePlayer2Action(action, gameActions, inputController, settings) {
             if (requestHardDropP2 || hardDropP2) (requestHardDropP2 || hardDropP2)();
             break;
 
-        case 'hold':
-            if (requestHoldP2 || holdP2) (requestHoldP2 || holdP2)();
-            break;
-
         default:
             break;
     }
@@ -327,8 +323,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
 
     const {
         move, rotate, softDrop, hardDrop, startGame, initSound,
-        hold,
-        requestMove, requestRotate, requestSoftDrop, requestHardDrop, requestHold,
+        requestMove, requestRotate, requestSoftDrop, requestHardDrop,
     } = gameActions;
 
     // Inject dependencies for the update loop
@@ -473,13 +468,6 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                     e.preventDefault();
                     if (requestHardDrop || hardDrop) {
                         (requestHardDrop || hardDrop)();
-                        performanceMonitor.recordInputAction();
-                    }
-                    break;
-
-                case 'hold':
-                    if (requestHold || hold) {
-                        (requestHold || hold)();
                         performanceMonitor.recordInputAction();
                     }
                     break;

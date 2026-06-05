@@ -52,6 +52,7 @@ const GLASS_GLOW_RADIUS = 1.3 * GLASS_ORB_SCALE;
 const INNER_FLOW_STRENGTH = 0.28;
 const INNER_WOBBLE_STRENGTH = 0.028;
 const UPDATE_PROXIMITY_THRESHOLD = 0.15; // Only fully update nodes within this path-distance of the camera
+const NODE_PATH_SURFACE_OFFSET_Z = 0.45;
 
 /**
  * LevelNodeManager - Manages level selection orbs
@@ -193,6 +194,7 @@ export class LevelNodeManager {
     rebuildPositionCache() {
         this.nodes.forEach((node) => {
             const point = this._getPathPoint(node.pathPosition);
+            point.z += NODE_PATH_SURFACE_OFFSET_Z;
             this.cachedBasePositions.set(node.config.id, point.clone());
         });
     }
@@ -682,12 +684,10 @@ export class LevelNodeManager {
         const pathPosition = levelConfig.pathPosition || (levelConfig.id - 1) / 55;
         const point = this._getPathPoint(pathPosition);
         group.position.copy(point);
+        group.position.z += NODE_PATH_SURFACE_OFFSET_Z;
 
         // Cache the base position for per-frame floating animation (avoids getPointAt per frame)
-        this.cachedBasePositions.set(levelConfig.id, point.clone());
-
-        // Offset Z slightly to ensure path is visually behind
-        group.position.z += 1.0;
+        this.cachedBasePositions.set(levelConfig.id, group.position.clone());
 
         // 1. Inner "Theme" Sphere (Solid textured sphere inside)
         const themeId = levelConfig.iconThemeId
@@ -966,17 +966,7 @@ export class LevelNodeManager {
         // ═══════════════════════════════════════════════════════════════════
         // VIBRANT CHAPTER COLORS - Saturated and eye-catching
         // ═══════════════════════════════════════════════════════════════════
-        const colors = [
-            new THREE.Color(0xff4400), // Ch1: Earth Core - Molten Orange
-            new THREE.Color(0x0088ff), // Ch2: Deep Ocean - Bright Blue
-            new THREE.Color(0x00dd44), // Ch3: Surface - Emerald Green
-            new THREE.Color(0x88ccff), // Ch4: Mountains - Icy Blue
-            new THREE.Color(0xffdd00), // Ch5: Sky - Golden Yellow
-            new THREE.Color(0xaa44ff), // Ch6: Space - Cosmic Purple
-            new THREE.Color(0xff44aa), // Ch7: Black Hole - Magenta
-            new THREE.Color(0x00eeff), // Ch8: Urban Dreams - Neon Cyan
-        ];
-        return colors[(chapter - 1) % colors.length];
+        return new THREE.Color(getChapterProfile(chapter).palette?.primary ?? 0xffffff);
     }
 
     /**
@@ -1122,9 +1112,9 @@ export class LevelNodeManager {
 
         const point = this._getPathPoint(node.pathPosition);
         node.group.position.copy(point);
-        node.group.position.z += 1.0;
+        node.group.position.z += NODE_PATH_SURFACE_OFFSET_Z;
         // Refresh cached base position
-        this.cachedBasePositions.set(node.config.id, point.clone());
+        this.cachedBasePositions.set(node.config.id, node.group.position.clone());
     }
 
     /**

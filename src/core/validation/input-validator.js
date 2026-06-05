@@ -29,6 +29,10 @@ export class InputValidator {
    * Returns: { valid: boolean, reason?: string }
    */
     validateInput(steamId, inputType, data, timestamp = Date.now()) {
+        if (!data || typeof data !== 'object') {
+            return { valid: false, reason: 'Invalid input payload' };
+        }
+
         // Check rate limiting first (prevent spam/bots)
         const rateCheck = this.checkInputRate(steamId, inputType, timestamp);
         if (!rateCheck.valid) {

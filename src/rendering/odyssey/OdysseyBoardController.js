@@ -20,6 +20,8 @@ import { OdysseyAudioReactor } from './composition/OdysseyAudioReactor.js';
 import { OdysseyAtmosphere } from './composition/OdysseyAtmosphere.js';
 import { OdysseyDebugOverlay, isOdysseyAAADebugEnabled } from './composition/odyssey-debug-overlay.js';
 import { OdysseyFallbackPipeline } from './odyssey-post/odyssey-post-fallback.js';
+import { ChapterThresholdDirector, getOdysseyThresholdProfile } from './transitions/ChapterThresholdDirector.js';
+import { getChapterProfile } from './chapter-environments/shared/chapter-profile.js';
 import { resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
 import {
     applyOdysseyLayoutToLevels,
@@ -174,6 +176,8 @@ export class OdysseyBoardController {
         this.container = container;
         this.editorMode = !!options.editorMode;
         this.layoutOverride = options.layoutOverride || null;
+        this.cinematicJourneyActive = options.cinematicJourneyActive !== false;
+        this.debugOverlayActive = false;
         const globalSoundManager = typeof window !== 'undefined' ? window.soundManager : null;
         this.soundManager = options.soundManager || globalSoundManager || null;
 
@@ -190,15 +194,16 @@ export class OdysseyBoardController {
         this.cameraController = null;
         this.environmentManager = null;
 
-        // AAA "Cosmic Ascent" spine (Phase 0 — additive, no visual effect yet)
+        // Cinematic journey spine (director + audio + optional debug overlay).
         this.director = null;
         this.audioReactor = null;
         this.debugOverlay = null;
-        this.atmosphere = null; // P2: director-driven global atmosphere (AAA only)
+        this.atmosphere = null; // Director-driven global atmosphere.
+        this.thresholdDirector = null; // Authored chapter breaches.
 
         // Enhanced post-processing
         this.postProcessingStack = null;
-        this.aaaPostActive = false; // P1: ?odysseyAAA=1 → OdysseyFallbackPipeline
+        this.aaaPostActive = false; // Cinematic OdysseyFallbackPipeline toggle.
         this.qualityName = 'High';
 
         // State
@@ -216,6 +221,7 @@ export class OdysseyBoardController {
         this.onLevelSelect = null;
         this.onLevelHover = null;
         this.onEmptyClick = null; // Called when clicking on empty space (no node)
+        this.onChapterArrival = null; // Called when scrolling arrives in a chapter
 
         // Raycaster for interaction
         this.raycaster = new THREE.Raycaster();
@@ -242,6 +248,7 @@ export class OdysseyBoardController {
         this.pendingChapterLoads = new Set();
         this.selectionSequence = 0;
         this.activeSeamBoundaryId = null;
+        this.seamMusicBoundaryId = null;
         this.lastCameraProgress = 0;
         this.levelData = [];
         this.progressData = null;
@@ -323,8 +330,8 @@ export class OdysseyBoardController {
         /* eslint-enable no-await-in-loop */
 
         // ─── Step 4: Build path ───
-        // P3: diegetic per-chapter path when the AAA preview is active.
-        this.pathRenderer = new OdysseyPathRenderer(this.scene, { aaa: isOdysseyAAADebugEnabled() });
+        // Diegetic per-chapter path is part of the default cinematic journey.
+        this.pathRenderer = new OdysseyPathRenderer(this.scene, { aaa: this.cinematicJourneyActive });
         await this.pathRenderer.buildPath({
             ...ODYSSEY_PATH_DATA,
             controlPoints: this.presentationLayout.controlPoints,
@@ -336,8 +343,8 @@ export class OdysseyBoardController {
         // ─── Step 5: Create level nodes (55 nodes) ───
         this.nodeManager = new LevelNodeManager(this.scene, this.pathRenderer.pathCurve);
         this.nodeManager.setCamera(this.camera);
-        // P3/P3b: AAA node focal hierarchy + per-world shells.
-        this.nodeManager.setAAAVisualsEnabled(isOdysseyAAADebugEnabled());
+        // Node focal hierarchy + per-world shells ride the same always-on spine.
+        this.nodeManager.setAAAVisualsEnabled(this.cinematicJourneyActive);
         await this.nodeManager.createNodes(this.levelData, this._yieldToMain.bind(this));
         this.nodeManager.updateFromProgress(this.progressData);
 
@@ -366,6 +373,19 @@ export class OdysseyBoardController {
         if (this.environmentManager && this.cameraController) {
             this.environmentManager.setOnChapterChange((chapterId, previousChapter) => {
                 this.cameraController.onChapterChange(chapterId);
+                this.onChapterArrival?.({
+                    chapterId,
+                    previousChapter,
+                    profile: getChapterProfile(chapterId),
+                });
+                if (this.cinematicJourneyActive) {
+                    this.director?.onChapterEnter(chapterId, previousChapter);
+                    this.cameraController.triggerVistaBeat({
+                        chapterId,
+                        durationMs: 1450,
+                        intensity: chapterId >= 5 ? 1.08 : 0.9,
+                    });
+                }
                 console.log(`[OdysseyBoard] Chapter transition: ${previousChapter} → ${chapterId}`);
             });
         }
@@ -380,6 +400,7 @@ export class OdysseyBoardController {
         this.setupPostProcessing();
         this.setupLighting();
         this.setupDirector();
+        this._applyChapterMusic(1, { reason: 'odyssey-board-initial' });
 
         await this._yieldToMain();
 
@@ -573,10 +594,11 @@ export class OdysseyBoardController {
         // This provides chromatic aberration, dynamic vignette, and film grain
         // based on quality preset.
         //
-        // P1: behind ?odysseyAAA=1, swap in OdysseyFallbackPipeline — the same stack
-        // PLUS an exposure→ACES→director-grade pass for a consistent filmic finish.
-        // Default (no flag) keeps the exact current look = zero regression.
-        this.aaaPostActive = isOdysseyAAADebugEnabled();
+        // The cinematic journey uses OdysseyFallbackPipeline by default: the base stack
+        // plus exposure, ACES, and director-grade passes for a consistent filmic finish.
+        // ?odysseyAAA=1 now controls only the diagnostics overlay.
+        this.debugOverlayActive = isOdysseyAAADebugEnabled();
+        this.aaaPostActive = this.cinematicJourneyActive;
         try {
             this.postProcessingStack = this.aaaPostActive
                 ? new OdysseyFallbackPipeline(this.renderer, this.scene, this.camera, this.qualityName)
@@ -587,7 +609,7 @@ export class OdysseyBoardController {
             this.bloomPass = this.postProcessingStack.passes.bloom || null;
 
             console.log(
-                `[OdysseyBoard] ${this.aaaPostActive ? 'OdysseyFallbackPipeline (AAA)' : 'PostProcessingStack'}`
+                `[OdysseyBoard] ${this.aaaPostActive ? 'OdysseyFallbackPipeline (cinematic)' : 'PostProcessingStack'}`
                 + ` initialized (${this.qualityName})`,
             );
         } catch (error) {
@@ -609,7 +631,7 @@ export class OdysseyBoardController {
     }
 
     setupLighting() {
-        // P2: when the AAA atmosphere is active it owns the global light rig
+        // When the cinematic atmosphere is active it owns the global light rig
         // (key + ambient + fill) via OdysseyAtmosphere, so skip the board's own
         // static globals to avoid double-lighting.
         if (this.aaaPostActive) {
@@ -633,12 +655,8 @@ export class OdysseyBoardController {
     }
 
     /**
-     * Set up the AAA "Cosmic Ascent" spine: the director (conductor), the audio
+     * Set up the cinematic Odyssey spine: the director (conductor), the audio
      * reactor, and the optional debug overlay (?odysseyAAA=1).
-     *
-     * PHASE 0: this is strictly additive. The director computes journey/atmosphere/
-     * camera/post state every frame but nothing consumes it yet (except the overlay),
-     * so there is zero visual change. Later phases progressively read director state.
      */
     setupDirector() {
         try {
@@ -647,24 +665,29 @@ export class OdysseyBoardController {
             });
             this.audioReactor = new OdysseyAudioReactor(this.soundManager);
 
-            // P2: the director-driven global atmosphere (graded sky-dome + fog +
-            // shared key/ambient/fill light rig). Gated to the AAA preview; when on,
+            // The director-driven global atmosphere (graded sky-dome + fog +
+            // shared key/ambient/fill light rig). When on,
             // it owns the global look so ChapterEnvironmentManager yields fog/clear/
             // ambient (it still detects chapter changes for the FOV pulse).
             if (this.aaaPostActive) {
                 this.atmosphere = new OdysseyAtmosphere(this.scene, this.renderer);
                 this.environmentManager?.setAtmosphereOwned(true);
+                this.thresholdDirector = new ChapterThresholdDirector(this.scene, this.pathRenderer?.pathCurve, {
+                    chapterPositions: this.presentationLayout?.chapterPositions,
+                    qualityName: this.qualityName,
+                });
             }
 
-            if (isOdysseyAAADebugEnabled()) {
+            if (this.debugOverlayActive) {
                 this.debugOverlay = new OdysseyDebugOverlay();
-                console.log('[OdysseyBoard] AAA spine + debug overlay active (?odysseyAAA=1)');
+                console.log('[OdysseyBoard] Odyssey debug overlay active (?odysseyAAA=1)');
             }
         } catch (error) {
             console.warn('[OdysseyBoard] Director setup failed (non-fatal):', error);
             this.director = null;
             this.audioReactor = null;
             this.debugOverlay = null;
+            this.thresholdDirector = null;
         }
     }
 
@@ -1094,39 +1117,45 @@ export class OdysseyBoardController {
 
     renderFrame(delta = 0) {
         this.time += delta;
+        const previousDirectorState = this.director?.getState?.() || null;
 
-        // Update components. P3: feed director state to the path so it flows toward
-        // the head + reacts to beats (AAA only; null otherwise).
-        this.pathRenderer?.update(delta, this.aaaPostActive ? this.director?.getState() : null);
+        if (this.director && this.cinematicJourneyActive) {
+            this.cameraController?.setDirectorState?.(previousDirectorState);
+        }
+
+        // Feed director state to the path so it flows toward the head and reacts to beats.
         this.cameraController?.update(delta);
+        const cameraProgress = this.cameraController?.getCurrentPosition() ?? 0;
+        const blendState = this.environmentManager?.getBlendState(cameraProgress) || null;
+        const audioState = this.audioReactor?.update(delta) || null;
+        let directorState = previousDirectorState;
+
+        if (this.director) {
+            directorState = this.director.update(delta, {
+                ascentProgress: cameraProgress,
+                audio: audioState,
+                blendState,
+            });
+        }
+
+        this.pathRenderer?.update(delta, this.cinematicJourneyActive ? directorState : null);
 
         // Pass camera progress to node manager for distance-based culling
-        if (this.nodeManager && this.cameraController) {
-            this.nodeManager.setCameraProgress(this.cameraController.getCurrentPosition());
+        if (this.nodeManager) {
+            this.nodeManager.setCameraProgress(cameraProgress);
         }
-        this.nodeManager?.update(delta, this.aaaPostActive ? (this.director?.getState()?.beatPulse ?? 0) : 0);
+        this.nodeManager?.update(delta, this.cinematicJourneyActive ? (directorState?.node?.focalPulse ?? 0) : 0);
         this.layoutEditor?.update(delta);
 
-        // AAA spine (Phase 0): drive the conductor from camera position + audio.
-        // Additive only — nothing consumes director state yet besides the overlay.
-        if (this.director) {
-            const audioState = this.audioReactor?.update(delta) || null;
-            this.director.update(delta, {
-                ascentProgress: this.cameraController?.getCurrentPosition() ?? 0,
-                audio: audioState,
-            });
-            // P2: drive the global atmosphere (sky-dome + fog + light rig) from
-            // the fresh director state.
-            this.atmosphere?.update(this.camera, this.director.getState());
-            this.debugOverlay?.update(this.director.getState(), audioState);
-        }
+        // Drive the conductor from camera position + audio.
+        this.atmosphere?.update(this.camera, directorState);
+        this.debugOverlay?.update(directorState, audioState);
 
         // Update chapter environments based on camera position
         if (this.environmentManager && this.camera) {
-            const cameraProgress = this.cameraController?.getCurrentPosition() ?? 0;
             this._ensureBoundaryAssets(cameraProgress);
-            this._handleChapterSeam(cameraProgress);
-            this.environmentManager.updateVisibility(cameraProgress, { mode: 'progress' });
+            this._handleChapterSeam(cameraProgress, blendState);
+            this.environmentManager.updateVisibility(cameraProgress, { mode: 'progress', blendState });
 
             const nowMs = performance.now();
             const progressDelta = Number.isFinite(this.lastGlobalEnvUpdateProgress)
@@ -1141,7 +1170,12 @@ export class OdysseyBoardController {
                 this.lastGlobalEnvUpdateProgress = cameraProgress;
             }
 
-            this.environmentManager.update(delta, this.camera, cameraProgress);
+            this.environmentManager.update(
+                delta,
+                this.camera,
+                cameraProgress,
+                this.cinematicJourneyActive ? directorState : null,
+            );
         }
 
         // Rotate stars slowly
@@ -1149,11 +1183,13 @@ export class OdysseyBoardController {
             this.stars.rotation.y += delta * 0.01;
         }
 
+        this.thresholdDirector?.update(delta, this.camera, directorState);
+
         // Update and render via PostProcessingStack.
-        // When the AAA pipeline is active it consumes director state (exposure/grade/
+        // When the cinematic pipeline is active it consumes director state (exposure/grade/
         // bloom); the default PostProcessingStack ignores the extra argument.
         if (this.postProcessingStack) {
-            this.postProcessingStack.update(delta, this.aaaPostActive ? this.director?.getState() : undefined);
+            this.postProcessingStack.update(delta, this.cinematicJourneyActive ? directorState : undefined);
             this.postProcessingStack.render();
         } else if (this.composer) {
             this.composer.render();
@@ -1287,6 +1323,9 @@ export class OdysseyBoardController {
         });
 
         this.environmentManager.setChapterPositions(this.presentationLayout.chapterPositions);
+        this.director?.setChapterPositions?.(this.presentationLayout.chapterPositions);
+        this.thresholdDirector?.setChapterPositions?.(this.presentationLayout.chapterPositions);
+        this.thresholdDirector?.setPathCurve?.(this.pathRenderer.pathCurve);
         this.environmentManager.updateVisibility(currentPosition, { mode: 'progress' });
         this.environmentManager.updateGlobalEnvironment(currentPosition);
         return true;
@@ -1297,14 +1336,15 @@ export class OdysseyBoardController {
         return Math.round(900 + (distance * 2600));
     }
 
-    _handleChapterSeam(cameraProgress) {
-        const blendState = this.environmentManager?.getBlendState(cameraProgress);
-        const boundaryId = blendState?.inSeam ? blendState.boundaryId : null;
+    _handleChapterSeam(cameraProgress, blendState = null) {
+        const resolvedBlendState = blendState || this.environmentManager?.getBlendState(cameraProgress);
+        if (!resolvedBlendState) return;
+        const boundaryId = resolvedBlendState.inSeam ? resolvedBlendState.boundaryId : null;
         const direction = this._resolveTravelDirection(cameraProgress);
 
         if (boundaryId && this.activeSeamBoundaryId !== boundaryId) {
             this.activeSeamBoundaryId = boundaryId;
-            const { transition } = blendState;
+            const { transition } = resolvedBlendState;
             let seamIntensity = 0.9;
             if (transition.fxPreset === 'heavy') {
                 seamIntensity = 1.15;
@@ -1317,22 +1357,140 @@ export class OdysseyBoardController {
                 intensity: seamIntensity,
                 direction,
             });
+            this.director?.onBoundaryCross(boundaryId, direction);
             this.postProcessingStack?.triggerChapterSeam({
                 preset: transition.fxPreset,
                 intensity: seamIntensity,
             });
-            this.pathRenderer?.triggerChapterTransition({
-                fromChapter: blendState.sourceChapter,
-                toChapter: blendState.targetChapter,
+            this.thresholdDirector?.trigger({
+                boundaryId,
+                boundaryPosition: resolvedBlendState.boundaryPosition,
+                durationMs: transition.beatDurationMs,
                 direction,
-                boundaryPosition: blendState.boundaryPosition,
+                intensity: seamIntensity,
+            });
+            this._playThresholdStinger(boundaryId, seamIntensity, transition);
+            this._startChapterMusicBridge(resolvedBlendState.targetChapter, transition, boundaryId);
+            this.pathRenderer?.triggerChapterTransition({
+                fromChapter: resolvedBlendState.sourceChapter,
+                toChapter: resolvedBlendState.targetChapter,
+                direction,
+                boundaryPosition: resolvedBlendState.boundaryPosition,
                 durationMs: transition.beatDurationMs,
             });
-        } else if (!boundaryId) {
+        }
+
+        if (boundaryId) {
+            const { transition } = resolvedBlendState;
+            const seamIntensity = transition.fxPreset === 'heavy'
+                ? 1.15
+                : (transition.fxPreset === 'neon' ? 1.0 : 0.9);
+            const envelope = THREE.MathUtils.clamp(
+                resolvedBlendState.seamEnvelope ?? Math.sin((resolvedBlendState.rawSeamProgress || 0) * Math.PI),
+                0,
+                1,
+            );
+
+            this.cameraController?.setSeamPhase?.({
+                boundaryId,
+                seamPhase: resolvedBlendState.seamPhase,
+                envelope,
+                direction,
+                intensity: seamIntensity,
+            });
+            this.pathRenderer?.setSeamPhase?.({
+                boundaryId,
+                fromChapter: resolvedBlendState.sourceChapter,
+                toChapter: resolvedBlendState.targetChapter,
+                boundaryPosition: resolvedBlendState.boundaryPosition,
+                seamWidth: resolvedBlendState.seamWidth,
+                seamPhase: resolvedBlendState.seamPhase,
+                envelope,
+            });
+            this.thresholdDirector?.setSeamPhase?.({
+                boundaryId,
+                boundaryPosition: resolvedBlendState.boundaryPosition,
+                seamProgress: resolvedBlendState.rawSeamProgress,
+                seamPhase: resolvedBlendState.seamPhase,
+                envelope,
+                direction,
+                intensity: seamIntensity,
+            });
+            this.postProcessingStack?.setChapterSeamState?.({
+                preset: transition.fxPreset,
+                intensity: seamIntensity * envelope,
+            });
+        } else {
             this.activeSeamBoundaryId = null;
+            this.seamMusicBoundaryId = null;
+            this.cameraController?.clearSeamPhase?.();
+            this.pathRenderer?.clearSeamPhase?.();
+            this.thresholdDirector?.clearSeamPhase?.();
+            this.postProcessingStack?.setChapterSeamState?.({ intensity: 0 });
         }
 
         this.lastCameraProgress = cameraProgress;
+    }
+
+    _applyChapterMusic(chapterId, options = {}) {
+        const track = getChapterProfile(chapterId)?.audioTrack;
+        if (!track || track === 'Ambient') return false;
+        if (!this.soundManager || typeof this.soundManager.setTrack !== 'function') return false;
+
+        const trackNames = Array.isArray(this.soundManager.trackNames) ? this.soundManager.trackNames : [];
+        if (trackNames.length > 0 && !trackNames.includes(track)) {
+            return false;
+        }
+
+        try {
+            if (this.soundManager.musicTrack !== track) {
+                this.soundManager.setTrack(track, options);
+            } else if (
+                options.forcePlayback
+                && !this.soundManager.isMuted
+                && typeof this.soundManager.startBackgroundMusic === 'function'
+            ) {
+                this.soundManager.startBackgroundMusic({
+                    trackKey: track,
+                    reason: options.reason || 'odyssey-chapter-music',
+                });
+            }
+            return true;
+        } catch (error) {
+            console.warn(`[OdysseyBoard] Failed to apply chapter ${chapterId} music:`, error);
+            return false;
+        }
+    }
+
+    _startChapterMusicBridge(chapterId, transition = {}, boundaryId = null) {
+        if (!boundaryId || this.seamMusicBoundaryId === boundaryId) {
+            return false;
+        }
+
+        this.seamMusicBoundaryId = boundaryId;
+        const crossfadeDurationMs = transition.crossfadeDurationMs
+            || getChapterProfile(chapterId)?.transition?.crossfadeDurationMs
+            || 3500;
+
+        return this._applyChapterMusic(chapterId, {
+            reason: 'odyssey-seam-music-bridge',
+            fadeOutMs: Math.max(250, Math.round(crossfadeDurationMs * 0.48)),
+            fadeInMs: Math.max(250, Math.round(crossfadeDurationMs * 0.52)),
+        });
+    }
+
+    _playThresholdStinger(boundaryId, intensity = 1, transition = null) {
+        const profile = getOdysseyThresholdProfile(boundaryId);
+        const stinger = transition?.stinger || profile.stinger;
+        try {
+            if (typeof this.soundManager?.playOdysseyStinger === 'function') {
+                this.soundManager.playOdysseyStinger(stinger, { intensity });
+            } else {
+                this.soundManager?.sfxPlayer?.playOdysseyStinger?.(stinger, { intensity });
+            }
+        } catch (error) {
+            console.warn(`[OdysseyBoard] Threshold stinger failed for ${boundaryId}:`, error);
+        }
     }
 
     _resolveTravelDirection(cameraProgress) {
@@ -1420,12 +1578,15 @@ export class OdysseyBoardController {
         this.isPrewarming = false;
         this.pendingChapterLoads.clear();
         this.activeSeamBoundaryId = null;
+        this.seamMusicBoundaryId = null;
 
         // Dispose AAA spine
         this.debugOverlay?.dispose?.();
         this.debugOverlay = null;
         this.atmosphere?.dispose?.();
         this.atmosphere = null;
+        this.thresholdDirector?.dispose?.();
+        this.thresholdDirector = null;
         this.audioReactor?.dispose?.();
         this.audioReactor = null;
         this.director?.dispose?.();

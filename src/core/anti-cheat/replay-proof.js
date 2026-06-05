@@ -35,6 +35,27 @@ export const buildReplayProof = async ({ demo, expectedScore, expectedLines, exp
     }
 
     const metadata = demo.metadata || {};
+    const initialState = demo.initialState || {};
+
+    if (!Number.isFinite(initialState.seed)) {
+        issues.push('missing_seed');
+    }
+
+    let lastTimestamp = -1;
+    const validActions = new Set(['move', 'rotate', 'hardDrop', 'softDrop']);
+    demo.inputs.forEach((input) => {
+        if (!input || !Number.isFinite(input.t) || input.t < 0) {
+            issues.push('invalid_input_timestamp');
+            return;
+        }
+        if (input.t < lastTimestamp) {
+            issues.push('input_order_mismatch');
+        }
+        if (!validActions.has(input.a)) {
+            issues.push('unknown_input_action');
+        }
+        lastTimestamp = input.t;
+    });
 
     if (Number.isFinite(expectedScore) && metadata.finalScore !== expectedScore) {
         issues.push('score_mismatch');
@@ -59,7 +80,13 @@ export const buildReplayProof = async ({ demo, expectedScore, expectedLines, exp
         version: demo.version,
         gameMode: demo.gameMode,
         timestamp: demo.timestamp,
-        initialState: demo.initialState,
+        initialState: {
+            seed: initialState.seed,
+            level: initialState.level,
+            dropInterval: initialState.dropInterval,
+            settings: initialState.settings || {},
+            rulesVersion: initialState.rulesVersion || '1.0',
+        },
         inputs: demo.inputs,
         metadata: {
             finalScore: metadata.finalScore,
@@ -83,6 +110,7 @@ export const buildReplayProof = async ({ demo, expectedScore, expectedLines, exp
         hash,
         checksum32: checksum32FromHex(hash),
         inputCount: demo.inputs.length,
+        seed: initialState.seed ?? null,
         durationMs: metadata.duration || null,
     };
 };

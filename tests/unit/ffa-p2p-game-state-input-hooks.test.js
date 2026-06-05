@@ -38,13 +38,17 @@ function createBareGameState({ isHost = false, gamePhase = 'playing' } = {}) {
     state.flushInputBatch = vi.fn(() => callOrder.push('flush'));
     state.processBufferedInputs = vi.fn(() => callOrder.push('buffer'));
     state.updateAllPlayers = vi.fn(() => callOrder.push('update'));
+    state.maybeBroadcastPostPhysics = vi.fn(() => callOrder.push('broadcast'));
     state.renderAllPlayers = vi.fn(() => callOrder.push('render'));
     state.syncUnifiedLoopPlayers = vi.fn(() => callOrder.push('syncUnifiedLoopPlayers'));
     state.buildLocalPredictionCallbacks = vi.fn(() => ({ prediction: true }));
     state.stopStateSyncLoop = vi.fn(() => callOrder.push('stopStateSyncLoop'));
     state.inputValidator = { reset: vi.fn(() => callOrder.push('inputValidator.reset')) };
     state.fragTracker = { reset: vi.fn(() => callOrder.push('fragTracker.reset')) };
-    state.attackRouter = { clearHistory: vi.fn(() => callOrder.push('attackRouter.clearHistory')) };
+    state.attackRouter = {
+        clearHistory: vi.fn(() => callOrder.push('attackRouter.clearHistory')),
+        updateHotPotato: vi.fn(() => callOrder.push('attackRouter.updateHotPotato')),
+    };
     state.setLocalInputHooks = FFAGameStateP2P.prototype.setLocalInputHooks;
 
     return { state, callOrder };
@@ -74,7 +78,7 @@ describe('FFAGameStateP2P local input hooks', () => {
         state.configureUnifiedLoopCallbacks();
         state.unifiedLoop.onUpdate(1000, 16);
 
-        expect(callOrder).toEqual(['advance', 'buffer', 'update']);
+        expect(callOrder).toEqual(['advance', 'buffer', 'update', 'attackRouter.updateHotPotato', 'broadcast']);
         expect(state.localInputHooks.advance).toHaveBeenCalledWith(1000, 16);
         expect(state.processBufferedInputs).toHaveBeenCalledOnce();
         expect(state.updateAllPlayers).toHaveBeenCalledWith(16);

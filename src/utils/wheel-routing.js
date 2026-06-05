@@ -156,6 +156,8 @@ export function findInteractiveWheelTarget(target) {
 // listeners all call resolveTopmostWheelTarget on the same wheel event.
 let _efpCacheResult = null;
 let _efpCacheTime = -1;
+let _efpCacheX = NaN;
+let _efpCacheY = NaN;
 
 export function resolveTopmostWheelTarget(event) {
     if (!event) {
@@ -173,12 +175,19 @@ export function resolveTopmostWheelTarget(event) {
 
     try {
         const now = performance.now() | 0; // integer ms
-        if (now === _efpCacheTime && _efpCacheResult) {
+        if (
+            now === _efpCacheTime
+            && event.clientX === _efpCacheX
+            && event.clientY === _efpCacheY
+            && _efpCacheResult
+        ) {
             return _efpCacheResult;
         }
         const result = document.elementFromPoint(event.clientX, event.clientY) || fallbackTarget;
         _efpCacheResult = result;
         _efpCacheTime = now;
+        _efpCacheX = event.clientX;
+        _efpCacheY = event.clientY;
         return result;
     } catch {
         return fallbackTarget;

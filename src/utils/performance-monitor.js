@@ -4,6 +4,7 @@
  */
 
 import { eventBus, EVENTS } from '../events/event-bus.js';
+import { escapeHtml } from './dom-safety.js';
 
 const FRAME_BUDGET_MS = 16.67; // 60fps target
 const SAMPLE_SIZE = 60; // 1 second worth of samples at 60fps
@@ -1274,20 +1275,20 @@ export class PerformanceMonitor {
             </div>
             ${webglRenderer ? `
             <div style="color: #888; font-size: 11px; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px;" title="${escapeAttribute(webglRenderer)}">
-                WebGL: <span style="color: #0f0;">${simplifyGPUName(webglRenderer)}</span>
+                WebGL: <span style="color: #0f0;">${escapeHtml(simplifyGPUName(webglRenderer))}</span>
             </div>` : ''}
             ${desktopGpuInfo?.adapterLabel ? `
             <div style="color: #888; font-size: 11px; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px;" title="${escapeAttribute(desktopGpuInfo.adapterTitle)}">
-                Desktop: <span style="color: #0ff;">${desktopGpuInfo.adapterLabel}</span>
+                Desktop: <span style="color: #0ff;">${escapeHtml(desktopGpuInfo.adapterLabel)}</span>
             </div>` : ''}
             ${desktopGpuInfo?.featureSummary ? `
             <div style="color: #888; font-size: 10px; margin-bottom: 8px; line-height: 1.4;" title="${escapeAttribute(desktopGpuInfo.switchSummary)}">
-                GPU Status: <span style="color: #8ff;">${desktopGpuInfo.featureSummary}</span>
+                GPU Status: <span style="color: #8ff;">${escapeHtml(desktopGpuInfo.featureSummary)}</span>
             </div>` : ''}
             ${desktopGpuInfo?.healthSummary || desktopGpuInfo?.angleBackend ? `
             <div style="color: #888; font-size: 10px; margin-bottom: 8px; line-height: 1.4;">
-                ${desktopGpuInfo.healthSummary ? `<span style="color: #ffd166;">${desktopGpuInfo.healthSummary}</span>` : ''}
-                ${desktopGpuInfo.angleBackend ? `<span style="color: #8ff;"> · ANGLE: ${desktopGpuInfo.angleBackend}</span>` : ''}
+                ${desktopGpuInfo.healthSummary ? `<span style="color: #ffd166;">${escapeHtml(desktopGpuInfo.healthSummary)}</span>` : ''}
+                ${desktopGpuInfo.angleBackend ? `<span style="color: #8ff;"> · ANGLE: ${escapeHtml(desktopGpuInfo.angleBackend)}</span>` : ''}
             </div>` : ''}
 
             <div style="color: ${displayMetrics.fpsColor}; font-weight: bold; font-size: 24px; margin: 8px 0;">

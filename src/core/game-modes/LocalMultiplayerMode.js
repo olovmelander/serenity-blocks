@@ -19,6 +19,8 @@ import {
     dismissCinematicLoadingOverlay,
     transitionCinematicLoadingOverlayToCountdown,
 } from '../../ui/cinematic-loading-overlay.js';
+import { createBoardScene } from '../../rendering/phaser/board-scene.js';
+import { createMultiplayerBoardScene } from '../../rendering/phaser/multiplayer/board-panel.js';
 
 const MATCH_START_LOADING_MIN_VISIBLE_MS = 2000;
 
@@ -240,7 +242,13 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     _getMatchStartLoadingTitle(config = this.matchConfig) {
-        return config?.isInfinityLMS ? 'LAST STANDING' : 'FREE-FOR-ALL';
+        if (config?.isInfinityLMS) {
+            return 'LAST STANDING';
+        }
+        if (config?.hotPotato || config?.attackStyle === 'hot_potato') {
+            return 'HOT POTATO';
+        }
+        return 'FREE-FOR-ALL';
     }
 
     async _dismissMatchStartLoadingOverlay({
@@ -732,6 +740,23 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const delta = currentTime - this.multiplayerState.lastTime;
             this.multiplayerState.lastTime = currentTime;
 
+            // Update Hot Potato state if enabled
+            if (this.multiplayerState.hotPotato?.enabled) {
+                const prevHolder = this.multiplayerState.hotPotato.holderIndex;
+                const event = this.multiplayerState.updateHotPotato(Date.now());
+                const currentHolder = this.multiplayerState.hotPotato.holderIndex;
+
+                if (prevHolder !== currentHolder && currentHolder !== null) {
+                    if (event && event.type === 'detonate') {
+                        this.deps.soundManager?.playGarbageReceived();
+                        console.log(`[LocalMultiplayer] Hot potato detonated! P${prevHolder + 1} -> P${currentHolder + 1}`);
+                    } else {
+                        this.deps.soundManager?.playGarbageSend();
+                        console.log(`[LocalMultiplayer] Hot potato passed: P${prevHolder + 1} -> P${currentHolder + 1}`);
+                    }
+                }
+            }
+
             // Update DAS (Delayed Auto Shift) for continuous movement
             if (window.inputController) {
                 window.inputController.updateDAS(delta);
@@ -897,6 +922,36 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         const { numPlayers } = this.multiplayerState;
+
+        // Update Hot Potato UI indicators (runs every frame for smooth timer)
+        if (this.multiplayerState.hotPotato?.enabled) {
+            const potatoState = this.multiplayerState.getHotPotatoState(Date.now());
+            const holderIndex = potatoState.holderIndex;
+            const timeRemainingMs = potatoState.timeRemainingMs;
+            const formattedTime = `${(timeRemainingMs / 1000).toFixed(1)}s`;
+
+            for (let i = 0; i < numPlayers; i++) {
+                const card = document.getElementById(`player-${i + 1}-card`);
+                if (card) {
+                    if (i === holderIndex && !this.multiplayerState.players[i].isGameOver) {
+                        card.classList.add('hot-potato-holder');
+                        card.setAttribute('data-potato-time', formattedTime);
+                    } else {
+                        card.classList.remove('hot-potato-holder');
+                        card.removeAttribute('data-potato-time');
+                    }
+                }
+            }
+        } else {
+            // Ensure classes are cleared when disabled
+            for (let i = 0; i < numPlayers; i++) {
+                const card = document.getElementById(`player-${i + 1}-card`);
+                if (card) {
+                    card.classList.remove('hot-potato-holder');
+                    card.removeAttribute('data-potato-time');
+                }
+            }
+        }
 
         // Skip DOM updates most frames (run at ~6fps for text stats)
         // But ALWAYS update minimaps for smooth animation
@@ -1833,7 +1888,17 @@ export class LocalMultiplayerMode extends BaseGameMode {
      */
     async _ensureMultiplayerBoardScenes(forceRestart = false) {
         const { phaserGame } = this.deps;
-        const MultiplayerBoardSceneClass = this.deps.phaserGame?.MultiplayerBoardSceneClass;
+        let MultiplayerBoardSceneClass = this.deps.MultiplayerBoardSceneClass 
+            || this.deps.phaserGame?.MultiplayerBoardSceneClass;
+
+        if (!MultiplayerBoardSceneClass) {
+            console.log('[LocalMultiplayer] MultiplayerBoardSceneClass not found, attempting dynamic creation...');
+            try {
+                MultiplayerBoardSceneClass = createMultiplayerBoardScene(Phaser);
+            } catch (err) {
+                console.error('[LocalMultiplayer] Failed to dynamically generate MultiplayerBoardScene class:', err);
+            }
+        }
 
         if (!phaserGame || !MultiplayerBoardSceneClass) {
             throw new Error('Phaser game or MultiplayerBoardScene class not available');
@@ -1985,7 +2050,20 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const numPlayers = this.matchConfig?.numPlayers || 2;
         console.log(`[LocalMultiplayer] Creating separate Phaser instances for ${numPlayers} players...`);
 
-        const BoardScene = this.deps.BoardSceneClass || this.deps.MultiplayerBoardSceneClass;
+        let BoardScene = this.deps.BoardSceneClass 
+            || this.deps.MultiplayerBoardSceneClass 
+            || this.deps.phaserGame?.BoardSceneClass 
+            || this.deps.phaserGame?.MultiplayerBoardSceneClass;
+
+        if (!BoardScene) {
+            console.log('[LocalMultiplayer] BoardSceneClass not found, attempting dynamic creation...');
+            try {
+                BoardScene = createBoardScene(Phaser);
+            } catch (err) {
+                console.error('[LocalMultiplayer] Failed to dynamically generate BoardScene class:', err);
+            }
+        }
+
         if (!BoardScene) {
             throw new Error('BoardScene or MultiplayerBoardScene class not available');
         }

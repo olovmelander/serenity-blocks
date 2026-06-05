@@ -66,7 +66,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -140,7 +139,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -214,7 +212,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -288,7 +285,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 4,
             },
         },
@@ -362,7 +358,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -437,7 +432,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 3,
             },
         },
@@ -508,7 +502,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -580,7 +573,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -651,7 +643,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -722,7 +713,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 6,
             },
         },
@@ -794,7 +784,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -866,7 +855,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 4,
             },
         },
@@ -938,7 +926,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -1009,7 +996,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -1081,7 +1067,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -1152,7 +1137,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 4,
             },
         },
@@ -1223,7 +1207,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -1295,7 +1278,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -1367,7 +1349,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -1439,7 +1420,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -1512,7 +1492,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -1586,7 +1565,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 4,
             },
         },
@@ -1657,7 +1635,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -1728,7 +1705,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 3,
             },
         },
@@ -1799,7 +1775,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -1871,7 +1846,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 3,
             },
         },
@@ -1946,7 +1920,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -2018,7 +1991,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 4,
             },
         },
@@ -2091,7 +2063,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -2162,7 +2133,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -2234,7 +2204,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -2305,7 +2274,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 3,
             },
         },
@@ -2376,7 +2344,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -2448,7 +2415,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -2523,7 +2489,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 4,
             },
         },
@@ -2596,7 +2561,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 4,
             },
         },
@@ -2668,7 +2632,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -2739,7 +2702,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 3,
             },
         },
@@ -2813,7 +2775,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 4,
             },
         },
@@ -2885,7 +2846,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 4,
             },
         },
@@ -2957,7 +2917,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 3,
             },
         },
@@ -3032,7 +2991,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 4,
             },
         },
@@ -3105,7 +3063,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -3176,7 +3133,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -3250,7 +3206,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 4,
             },
         },
@@ -3322,7 +3277,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 4,
             },
         },
@@ -3394,7 +3348,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 3,
             },
         },
@@ -3468,7 +3421,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -3543,7 +3495,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 3,
             },
         },
@@ -3615,7 +3566,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 3,
             },
         },
@@ -3689,7 +3639,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -3765,7 +3714,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -3839,7 +3787,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -3913,7 +3860,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },
@@ -3987,7 +3933,6 @@ const BASE_LEVEL_CONFIGS = [
             pieces: {
                 bagType: '7-bag',
                 customSequence: null,
-                holdEnabled: true,
                 previewCount: 5,
             },
         },

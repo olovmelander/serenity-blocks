@@ -15,8 +15,8 @@
  * Original 4543-line main.js backed up as main-original.js.
  */
 
-import { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu } from 'electron';
-import { join, dirname } from 'path';
+import { app, BrowserWindow, screen, ipcMain, powerMonitor, Menu, shell } from 'electron';
+import { join, dirname, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { appendFileSync, mkdirSync } from 'fs';
 
@@ -66,6 +66,38 @@ const desktopRuntimeConfig = {
 function emitRuntimeEvent(type, payload = {}) {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('desktop:runtime-event', { type, ...payload });
+    }
+}
+
+function isAllowedAppNavigation(targetUrl) {
+    try {
+        const parsed = new URL(targetUrl);
+        if (!isPackaged) {
+            return ['http://localhost:5173', 'http://127.0.0.1:5173'].includes(parsed.origin);
+        }
+
+        if (parsed.protocol !== 'file:') {
+            return false;
+        }
+
+        const distRoot = resolve(app.getAppPath(), 'dist');
+        const targetPath = resolve(fileURLToPath(parsed));
+        return targetPath === join(distRoot, 'index.html') || targetPath.startsWith(`${distRoot}${sep}`);
+    } catch {
+        return false;
+    }
+}
+
+function openExternalIfWebUrl(targetUrl) {
+    try {
+        const parsed = new URL(targetUrl);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+            shell.openExternal(targetUrl).catch((err) => {
+                console.warn('[Electron] Failed to open external URL:', err.message);
+            });
+        }
+    } catch {
+        // Ignore malformed URLs.
     }
 }
 
@@ -293,13 +325,28 @@ function createWindow() {
         backgroundColor: '#000000',
         show: true,
         webPreferences: {
-            preload: join(__dirname, 'preload.mjs'),
+            preload: join(__dirname, 'preload.cjs'),
             contextIsolation: true,
             nodeIntegration: false,
-            sandbox: false,  // Required for ES module preload (.mjs)
+            sandbox: true,
             backgroundThrottling: false,
         },
     });
+
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        openExternalIfWebUrl(url);
+        return { action: 'deny' };
+    });
+
+    const blockUnexpectedNavigation = (event, url) => {
+        if (isAllowedAppNavigation(url)) {
+            return;
+        }
+        event.preventDefault();
+        openExternalIfWebUrl(url);
+    };
+    mainWindow.webContents.on('will-navigate', blockUnexpectedNavigation);
+    mainWindow.webContents.on('will-redirect', blockUnexpectedNavigation);
 
     if (isPackaged && isWindows) {
         mainWindow.maximize();

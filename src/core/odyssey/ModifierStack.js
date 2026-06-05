@@ -97,15 +97,6 @@ export const MODIFIER_DEFINITIONS = {
         ,
     },
 
-    'no-hold': {
-        name: 'No Hold',
-        description: 'Hold piece is disabled',
-        apply: (gameState) => {
-            gameState.holdEnabled = false;
-        },
-        applyToCallbacks: (callbacks) => callbacks,
-    },
-
     'speed-up': {
         name: 'Speed Up',
         description: 'Speed increases faster than normal',

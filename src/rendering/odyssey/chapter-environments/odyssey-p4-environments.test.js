@@ -6,8 +6,11 @@ import {
 } from 'vitest';
 import { createSkyDriftEnvironment } from './sky-drift.js';
 import { createCosmicExpanseEnvironment } from './cosmic-expanse.js';
-import { createBlackHoleTranscendenceEnvironment } from './black-hole-transcendence.js';
-import { createUrbanDreamsEnvironment } from './urban-dreams.js';
+import {
+    createBlackHoleTranscendenceEnvironment,
+    BLACK_HOLE_TRANSCENDENCE_CONFIG,
+} from './black-hole-transcendence.js';
+import { createUrbanDreamsEnvironment, URBAN_DREAMS_CONFIG } from './urban-dreams.js';
 
 function stubCanvasDocument() {
     const gradient = { addColorStop: vi.fn() };
@@ -54,6 +57,8 @@ describe('Odyssey P4 chapter environment anchors', () => {
         expect(group.userData.eventHorizon?.name).toBe('dominant-event-horizon-anchor');
         expect(group.userData.lensingStarfield?.name).toBe('lensing-starfield');
         expect(group.userData.infallStreams?.name).toBe('infall-streams');
+        expect(Number.isFinite(group.userData.yStart)).toBe(true);
+        expect(Number.isFinite(group.userData.yEnd)).toBe(true);
     });
 
     it('adds a neon spire, holograms, reflections, and traffic to chapter 8', () => {
@@ -63,5 +68,17 @@ describe('Odyssey P4 chapter environment anchors', () => {
         expect(group.userData.signs?.name).toBe('hologram-sign-stack');
         expect(group.userData.reflectionPlane?.name).toBe('wet-neon-reflection-plane');
         expect(group.userData.traffic?.name).toBe('sky-traffic-light-trails');
+        expect(Number.isFinite(group.userData.yStart)).toBe(true);
+        expect(Number.isFinite(group.userData.yEnd)).toBe(true);
+    });
+
+    it('exposes spline-aligned yStart/yEnd on the chapter 7 and 8 configs', () => {
+        // getChapterAtPosition() reads yStart/yEnd off env.config; every chapter
+        // config must declare a valid, ordered range (regression guard for P4b).
+        expect(Number.isFinite(BLACK_HOLE_TRANSCENDENCE_CONFIG.yStart)).toBe(true);
+        expect(BLACK_HOLE_TRANSCENDENCE_CONFIG.yEnd)
+            .toBeGreaterThan(BLACK_HOLE_TRANSCENDENCE_CONFIG.yStart);
+        expect(Number.isFinite(URBAN_DREAMS_CONFIG.yStart)).toBe(true);
+        expect(URBAN_DREAMS_CONFIG.yEnd).toBeGreaterThan(URBAN_DREAMS_CONFIG.yStart);
     });
 });

@@ -26,6 +26,7 @@ import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../events/multiplayer-events.js';
 import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
 import steamService from '../core/steam/steam-service.js';
+import { escapeHtml, sanitizeCssColor } from '../utils/dom-safety.js';
 
 export class MultiPlayerCanvasLayout {
     constructor(ffaGameState) {
@@ -283,14 +284,14 @@ export class MultiPlayerCanvasLayout {
         messageEl.className = isSystem ? 'system-message' : 'player-message';
 
         if (!isSystem) {
-            const nameColor = color || '#a78bfa';
+            const nameColor = sanitizeCssColor(color);
             messageEl.innerHTML = `
         <span class="color-indicator" style="background:${nameColor};"></span>
-        <span class="author" style="color:${nameColor}">${this.escapeHtml(playerName)}:</span>
-        <span class="text">${this.escapeHtml(message)}</span>
+        <span class="author" style="color:${nameColor}">${escapeHtml(playerName)}:</span>
+        <span class="text">${escapeHtml(message)}</span>
       `;
         } else {
-            messageEl.innerHTML = this.escapeHtml(message);
+            messageEl.innerHTML = escapeHtml(message);
         }
 
         messagesContainer.appendChild(messageEl);
@@ -369,10 +370,7 @@ export class MultiPlayerCanvasLayout {
    * Escape HTML to prevent XSS
    */
     escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        return escapeHtml(text);
     }
 
     /**
@@ -717,7 +715,7 @@ export class MultiPlayerCanvasLayout {
 
         this._playerToppedUnsub = onMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, (detail) => {
             this.applyDeathEffect(detail.steamId);
-            this.addChatMessage(`💀 ${detail.playerName} topped out!`, 'system-death');
+            this.addChatMessage(null, `${detail.playerName || 'Player'} topped out!`, true);
 
             if (soundManager) {
                 soundManager.playPlayerDeath();

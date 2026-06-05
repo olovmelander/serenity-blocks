@@ -8,6 +8,7 @@
 import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../events/multiplayer-events.js';
 import { createPlayerCard } from './components/player-card.js';
 import steamService from '../core/steam/steam-service.js';
+import { escapeHtml, sanitizeCssColor } from '../utils/dom-safety.js';
 
 export class LobbyWaitingRoom {
   constructor(ffaGameState, onMatchStart, onLeaveLobby = null) {
@@ -478,7 +479,7 @@ export class LobbyWaitingRoom {
       const isHost = player.steamId === this.gameState.network.hostSteamId;
       const isLocal = player.steamId === this.gameState.localPlayerId;
       const isReady = player.isReady || isHost;
-      const playerColor = player.color || '#808080';
+      const playerColor = sanitizeCssColor(player.color, '#808080');
 
       // Create card container (visual styling owned by lobby-room-aaa.css;
       // the per-player neon colour is passed through as a CSS var)
@@ -700,12 +701,14 @@ export class LobbyWaitingRoom {
       msgDiv.textContent = message;
     } else {
       // Object format with player info
-      const playerColor = message.color || this.getPlayerColor(message.steamId) || '#a78bfa';
+      const playerColor = sanitizeCssColor(
+        this.getPlayerColor(message.steamId) || message.color,
+      );
       msgDiv.className = 'player-message';
       msgDiv.innerHTML = `
         <span class="color-indicator" style="background: ${playerColor};"></span>
-        <span class="author" style="color: ${playerColor};">${this.escapeHtml(message.playerName)}:</span>
-        <span class="text">${this.escapeHtml(message.message)}</span>
+        <span class="author" style="color: ${playerColor};">${escapeHtml(message.playerName)}:</span>
+        <span class="text">${escapeHtml(message.message)}</span>
       `;
     }
 
@@ -764,9 +767,7 @@ export class LobbyWaitingRoom {
  * Escape HTML
  */
   escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return escapeHtml(text);
   }
 
   /**

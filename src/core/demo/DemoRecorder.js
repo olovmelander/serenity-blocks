@@ -25,7 +25,9 @@ export class DemoRecorder {
             initialState: {
                 seed,
                 level: gameState.level,
+                dropInterval: gameState.dropInterval,
                 settings: this._captureSettings(settings),
+                rulesVersion: '1.0',
             },
             inputs: [],
             metadata: {},
@@ -38,7 +40,7 @@ export class DemoRecorder {
 
     /**
      * Record an input action
-     * @param {string} action - Action name (move, rotate, hardDrop, softDrop, hold)
+     * @param {string} action - Action name (move, rotate, hardDrop, softDrop)
      * @param {any} data - Action data (direction, etc.)
      */
     recordInput(action, data = null) {
@@ -70,6 +72,8 @@ export class DemoRecorder {
             finalScore: finalStats.score || 0,
             linesCleared: finalStats.lines || 0,
             level: finalStats.level || 1,
+            inputCount: this.demo.inputs.length,
+            seed: this.demo.initialState.seed,
             ...finalStats,
         };
 

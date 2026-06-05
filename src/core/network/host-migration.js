@@ -64,27 +64,30 @@ export class HostMigration {
         if (this.isElectionInProgress) return;
         this.isElectionInProgress = true;
 
-        // 1. Determine candidates (all peers minus old host)
-        // We use the player list from game state
-        const peers = Array.from(this.gameState.players.values())
-            .filter((p) => !p.isDisconnected && p.steamId !== this.network.hostSteamId);
-
-        if (peers.length === 0) {
+        const candidateId = this._getExpectedHostCandidateId();
+        if (!candidateId) {
             console.error('❌ No peers left to migrate to.');
+            this.isElectionInProgress = false;
             return;
         }
 
-        // 2. Select candidate with lowest Steam ID (string comparison)
-        // This is a deterministic way for all peers to agree on the same candidate
-        peers.sort((a, b) => a.steamId.localeCompare(b.steamId));
-        const candidate = peers[0];
-
-        console.log(`🗳️ Election started. Candidate: ${candidate.name} (${candidate.steamId})`);
+        const candidate = this.gameState.players.get(candidateId);
+        console.log(`🗳️ Election started. Candidate: ${candidate?.name || 'Unknown'} (${candidateId})`);
 
         // 3. If I am the candidate, claim host
-        if (candidate.steamId === this.gameState.localPlayerId) {
+        if (candidateId === this.gameState.localPlayerId) {
             this.claimHost();
         }
+    }
+
+    _getExpectedHostCandidateId() {
+        if (!this.gameState.players) return null;
+
+        const peers = Array.from(this.gameState.players.values())
+            .filter((p) => p?.steamId && !p.isDisconnected && p.steamId !== this.network.hostSteamId);
+
+        peers.sort((a, b) => String(a.steamId).localeCompare(String(b.steamId)));
+        return peers[0]?.steamId || null;
     }
 
     /**
@@ -136,7 +139,24 @@ export class HostMigration {
      * Handle CLAIM message from another peer
      */
     handleClaim(msg) {
-        const { newHostId } = msg.data;
+        const { newHostId } = msg.data || {};
+        const expectedHostId = this._getExpectedHostCandidateId();
+
+        if (!this.isElectionInProgress) {
+            console.warn(`🗳️ Ignoring host claim from ${msg.from}: no election in progress`);
+            return;
+        }
+
+        if (!newHostId || msg.from !== newHostId) {
+            console.warn(`🗳️ Ignoring forged host claim from ${msg.from}: claimed ${newHostId}`);
+            return;
+        }
+
+        if (expectedHostId !== newHostId) {
+            console.warn(`🗳️ Ignoring host claim from ${msg.from}: expected ${expectedHostId}`);
+            return;
+        }
+
         console.log(`🗳️ Accepting new host: ${newHostId}`);
 
         this.network.hostSteamId = newHostId;

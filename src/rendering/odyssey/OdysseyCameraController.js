@@ -7,11 +7,22 @@
 
 import * as THREE from 'three';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
+import {
+    ODYSSEY_ACTS,
+    getChapterProfile,
+} from './chapter-environments/shared/chapter-profile.js';
 
 const DEFAULT_CHAPTER_POSITIONS = ODYSSEY_PATH_DATA.chapterPositions || [0, 1];
 const CHAPTER_1_LOOK_DOWN = new THREE.Vector3(0, -26, 0);
 const CHAPTER_1_LOOK_FADE_RANGE = 0.035;
 const FREE_CAMERA_WORLD_UP = new THREE.Vector3(0, 1, 0);
+const PATH_FRAME_GRAVITY_UP = new THREE.Vector3(0, 1, 0);
+const ACT_TRAVEL_SPEEDS = Object.freeze({
+    [ODYSSEY_ACTS.ORIGIN]: 7.5,
+    [ODYSSEY_ACTS.LIVING]: 6.0,
+    [ODYSSEY_ACTS.BEYOND]: 4.2,
+    [ODYSSEY_ACTS.TRANSCENDENCE]: 7.0,
+});
 
 function buildChapterBoundaryPositions(chapterPositions) {
     const terminalTrimmed = chapterPositions[chapterPositions.length - 1] >= 1
@@ -59,6 +70,8 @@ export class OdysseyCameraController {
         this.freeCameraUp = new THREE.Vector3(0, 1, 0);
         this.freeCameraRight = new THREE.Vector3(1, 0, 0);
         this.freeCameraAnchor = new THREE.Vector3();
+        this.followCameraUp = new THREE.Vector3(0, 1, 0);
+        this.positionSeamBeat = null;
 
         // Animation state
         this.isAnimating = false;
@@ -75,17 +88,36 @@ export class OdysseyCameraController {
         this.portalApproach = null;
         this.pathTravel = null;
         this.seamBeat = null;
+        this.vistaBeat = null;
+        this.directorCamera = {
+            followDistance: 18,
+            fovBase: camera?.fov ?? 60,
+            sway: 1,
+            bob: 1,
+            drift: 1,
+            energy: 0,
+            beatPulse: 0,
+        };
+        this.directorCameraTarget = { ...this.directorCamera };
+        this._dynamicFollowOffset = new THREE.Vector3();
+        this._framePosition = new THREE.Vector3();
+        this._frameTangent = new THREE.Vector3();
+        this._frameNormal = new THREE.Vector3();
+        this._frameRight = new THREE.Vector3();
 
         // Configuration
         this.config = {
-            followOffset: new THREE.Vector3(0, -1, 18), // More straight camera angle
+            followOffset: new THREE.Vector3(0, -1.4, 18),
             followLerpSpeed: 0.03,
             scrollSpeed: 0.15, // Reduced from 0.5
             focusDistance: 10,
             minPosition: 0, // Allow scrolling all the way to Level 1
             maxPosition: 1, // Allow scrolling all the way to the end
-            magneticRadius: 0.015, // Distance to feel magnetic pull
-            magneticFriction: 0.2, // Multiplier for speed when near a level
+            magneticRadius: 0.004,
+            magneticFriction: 0.45,
+            idleAutoDrift: options.idleAutoDrift !== false,
+            autoDriftScale: 0.55,
+            beatDriftScale: 0.55,
             freeCamera: {
                 lookSensitivity: 0.0015,
                 keyboardRotateSpeed: 1.35,
@@ -138,6 +170,12 @@ export class OdysseyCameraController {
         this.freeCameraState = {
             lookDistance: this.config.freeCamera.lookDistance,
         };
+        this.travelModel = {
+            velocity: 0,
+            lastInputAt: 0,
+            inputVelocity: 0,
+            pathLength: 1,
+        };
 
         // Initialize LUT
         this._buildPathLut();
@@ -151,16 +189,43 @@ export class OdysseyCameraController {
         this.pathLut = {
             positions: new Float32Array(count * 3), // x, y, z
             tangents: new Float32Array(count * 3), // x, y, z
+            normals: new Float32Array(count * 3),
+            rights: new Float32Array(count * 3),
             count,
         };
+        this.travelModel.pathLength = Math.max(1, this.pathCurve?.getLength?.() || 1);
 
         const point = new THREE.Vector3();
         const tangent = new THREE.Vector3();
+        const previousTangent = new THREE.Vector3();
+        const normal = new THREE.Vector3();
+        const right = new THREE.Vector3();
+        const rotationAxis = new THREE.Vector3();
+        const rotation = new THREE.Matrix4();
 
         for (let i = 0; i < count; i++) {
             const t = i / (count - 1);
             this.pathCurve.getPointAt(t, point);
             this.pathCurve.getTangentAt(t, tangent).normalize();
+
+            if (i === 0) {
+                const seedUp = Math.abs(tangent.dot(PATH_FRAME_GRAVITY_UP)) > 0.92
+                    ? new THREE.Vector3(0, 0, 1)
+                    : PATH_FRAME_GRAVITY_UP.clone();
+                right.crossVectors(tangent, seedUp).normalize();
+                normal.crossVectors(right, tangent).normalize();
+            } else {
+                rotationAxis.crossVectors(previousTangent, tangent);
+                if (rotationAxis.lengthSq() > 1e-8) {
+                    rotationAxis.normalize();
+                    const angle = previousTangent.angleTo(tangent);
+                    rotation.makeRotationAxis(rotationAxis, angle);
+                    normal.applyMatrix4(rotation).normalize();
+                }
+                right.crossVectors(tangent, normal).normalize();
+                normal.crossVectors(right, tangent).normalize();
+            }
+            previousTangent.copy(tangent);
 
             const idx = i * 3;
             this.pathLut.positions[idx] = point.x;
@@ -170,6 +235,13 @@ export class OdysseyCameraController {
             this.pathLut.tangents[idx] = tangent.x;
             this.pathLut.tangents[idx + 1] = tangent.y;
             this.pathLut.tangents[idx + 2] = tangent.z;
+
+            this.pathLut.normals[idx] = normal.x;
+            this.pathLut.normals[idx + 1] = normal.y;
+            this.pathLut.normals[idx + 2] = normal.z;
+            this.pathLut.rights[idx] = right.x;
+            this.pathLut.rights[idx + 1] = right.y;
+            this.pathLut.rights[idx + 2] = right.z;
         }
     }
 
@@ -180,9 +252,9 @@ export class OdysseyCameraController {
      * @param {THREE.Vector3} [optionalTargetTangent]
      * @returns {{position: THREE.Vector3, tangent: THREE.Vector3}}
      */
-    getPathDataAt(t, optionalTargetPos, optionalTargetTangent) {
+    getPathDataAt(t, optionalTargetPos, optionalTargetTangent, optionalTargetNormal, optionalTargetRight) {
         const clampedT = THREE.MathUtils.clamp(t, 0, 1);
-        const count = this.pathLut.count;
+        const { count } = this.pathLut;
         const rawIdx = clampedT * (count - 1);
         const i0 = Math.floor(rawIdx);
         const i1 = Math.min(i0 + 1, count - 1);
@@ -190,6 +262,8 @@ export class OdysseyCameraController {
 
         const pos = optionalTargetPos || new THREE.Vector3();
         const tan = optionalTargetTangent || new THREE.Vector3();
+        const normal = optionalTargetNormal || new THREE.Vector3();
+        const right = optionalTargetRight || new THREE.Vector3();
 
         const idx0 = i0 * 3;
         const idx1 = i1 * 3;
@@ -206,7 +280,24 @@ export class OdysseyCameraController {
             THREE.MathUtils.lerp(this.pathLut.tangents[idx0 + 2], this.pathLut.tangents[idx1 + 2], lerp),
         ).normalize();
 
-        return { position: pos, tangent: tan };
+        normal.set(
+            THREE.MathUtils.lerp(this.pathLut.normals[idx0], this.pathLut.normals[idx1], lerp),
+            THREE.MathUtils.lerp(this.pathLut.normals[idx0 + 1], this.pathLut.normals[idx1 + 1], lerp),
+            THREE.MathUtils.lerp(this.pathLut.normals[idx0 + 2], this.pathLut.normals[idx1 + 2], lerp),
+        ).normalize();
+
+        right.set(
+            THREE.MathUtils.lerp(this.pathLut.rights[idx0], this.pathLut.rights[idx1], lerp),
+            THREE.MathUtils.lerp(this.pathLut.rights[idx0 + 1], this.pathLut.rights[idx1 + 1], lerp),
+            THREE.MathUtils.lerp(this.pathLut.rights[idx0 + 2], this.pathLut.rights[idx1 + 2], lerp),
+        ).normalize();
+
+        return {
+            position: pos,
+            tangent: tan,
+            normal,
+            right,
+        };
     }
 
     applyLayout(pathCurve, options = {}) {
@@ -287,6 +378,8 @@ export class OdysseyCameraController {
             this.config.minPosition,
             this.config.maxPosition,
         );
+        this.travelModel.lastInputAt = performance.now();
+        this.travelModel.inputVelocity += effectiveDelta * this.config.scrollSpeed * 2.4;
     }
 
     findNearestLevel(position) {
@@ -297,7 +390,7 @@ export class OdysseyCameraController {
         let high = this.levelPositions.length - 1;
 
         while (low <= high) {
-            const mid = (low + high) >>> 1;
+            const mid = Math.floor((low + high) / 2);
             const val = this.levelPositions[mid];
 
             if (val < position) {
@@ -616,6 +709,7 @@ export class OdysseyCameraController {
     update(deltaTime) {
         // Update breathing time
         this.breatheTime += deltaTime;
+        this.updateDirectorCamera(deltaTime);
 
         if (this.pathTravel?.active) {
             this.updatePathTravel();
@@ -628,9 +722,13 @@ export class OdysseyCameraController {
         }
 
         this.updateSeamBeat();
+        this.updateVistaBeat();
 
         // Apply cinematic breathing effects
         this.applyBreathingMotion(deltaTime);
+
+        // Keep the baseline framing synced to the OdysseyDirector camera profile.
+        this.applyBaseFov(deltaTime);
 
         // Update FOV pulse
         this.updateFovPulse(deltaTime);
@@ -642,7 +740,7 @@ export class OdysseyCameraController {
             return;
         }
 
-        this.camera.up.copy(FREE_CAMERA_WORLD_UP);
+        this.camera.up.copy(this.followCameraUp || FREE_CAMERA_WORLD_UP);
         this.camera.lookAt(this.lookAtTarget);
     }
 
@@ -654,27 +752,86 @@ export class OdysseyCameraController {
         const cc = this.cinematicConfig;
         const t = this.breatheTime;
         const seamWeight = this.getSeamBeatStrength();
+        const vistaWeight = this.getVistaBeatStrength();
+        const swayScale = this.directorCamera.sway * (1 + this.directorCamera.energy * 0.12);
+        const bobScale = this.directorCamera.bob * (1 + this.directorCamera.beatPulse * 0.08);
+        const driftScale = this.directorCamera.drift;
 
         // Don't apply during rapid animations (focus/zoom)
         if (this.mode === 'free' || this.portalApproach?.active || (this.isAnimating && this.mode === 'focus')) return;
 
         // Horizontal sway (dreamlike drift)
         if (cc.swayEnabled) {
-            const sway = Math.sin(t * Math.PI * 2 * cc.swayFrequency) * cc.swayAmplitude;
+            const sway = Math.sin(t * Math.PI * 2 * cc.swayFrequency) * cc.swayAmplitude * swayScale;
             this.camera.position.x += sway * deltaTime * 2; // Smooth application
         }
 
         // Vertical bob (gentle float)
         if (cc.bobEnabled) {
-            const bob = Math.sin(t * Math.PI * 2 * cc.bobFrequency + Math.PI * 0.5) * cc.bobAmplitude;
+            const bob = Math.sin(t * Math.PI * 2 * cc.bobFrequency + Math.PI * 0.5) * cc.bobAmplitude * bobScale;
             this.camera.position.y += bob * deltaTime * 2;
         }
 
         // Camera roll (very subtle tilt)
         if (cc.rollEnabled) {
-            const rollAmplitude = cc.rollAmplitude * (1 - (seamWeight * 0.82));
+            const rollAmplitude = cc.rollAmplitude * driftScale * (1 - (seamWeight * 0.82)) * (1 - vistaWeight * 0.55);
             const roll = Math.sin(t * Math.PI * 2 * cc.rollFrequency) * rollAmplitude;
             this.camera.rotation.z = roll;
+        }
+    }
+
+    setDirectorState(directorState = null) {
+        const cameraState = directorState?.camera;
+        if (!cameraState) return;
+
+        this.directorCameraTarget.followDistance = THREE.MathUtils.clamp(
+            cameraState.followDistance ?? this.directorCameraTarget.followDistance,
+            10,
+            32,
+        );
+        this.directorCameraTarget.fovBase = THREE.MathUtils.clamp(
+            cameraState.fovBase ?? this.directorCameraTarget.fovBase,
+            48,
+            74,
+        );
+        this.directorCameraTarget.sway = THREE.MathUtils.clamp(cameraState.sway ?? 1, 0.25, 1.8);
+        this.directorCameraTarget.bob = THREE.MathUtils.clamp(cameraState.bob ?? 1, 0.25, 1.8);
+        this.directorCameraTarget.drift = THREE.MathUtils.clamp(cameraState.drift ?? 1, 0.25, 1.8);
+        this.directorCameraTarget.energy = THREE.MathUtils.clamp(directorState.energy ?? 0, 0, 1);
+        this.directorCameraTarget.beatPulse = THREE.MathUtils.clamp(directorState.beatPulse ?? 0, 0, 1);
+    }
+
+    updateDirectorCamera(deltaTime) {
+        const lerp = 1 - Math.exp(-Math.max(0, deltaTime) * 2.6);
+        const target = this.directorCameraTarget;
+        const current = this.directorCamera;
+
+        current.followDistance = THREE.MathUtils.lerp(current.followDistance, target.followDistance, lerp);
+        current.fovBase = THREE.MathUtils.lerp(current.fovBase, target.fovBase, lerp);
+        current.sway = THREE.MathUtils.lerp(current.sway, target.sway, lerp);
+        current.bob = THREE.MathUtils.lerp(current.bob, target.bob, lerp);
+        current.drift = THREE.MathUtils.lerp(current.drift, target.drift, lerp);
+        current.energy = THREE.MathUtils.lerp(current.energy, target.energy, lerp);
+        current.beatPulse = THREE.MathUtils.lerp(current.beatPulse, target.beatPulse, lerp);
+        this.cinematicConfig.baseFov = current.fovBase;
+    }
+
+    applyBaseFov(deltaTime) {
+        if (this.mode !== 'follow') {
+            return;
+        }
+        if (this.fovPulseActive || this.portalApproach?.active || (this.isAnimating && this.mode === 'focus')) {
+            return;
+        }
+
+        const targetFov = this.directorCamera.fovBase;
+        if (!Number.isFinite(targetFov)) return;
+
+        const lerp = 1 - Math.exp(-Math.max(0, deltaTime) * 2.2);
+        const nextFov = THREE.MathUtils.lerp(this.camera.fov, targetFov, lerp);
+        if (Math.abs(nextFov - this.camera.fov) > 0.01) {
+            this.camera.fov = nextFov;
+            this.camera.updateProjectionMatrix();
         }
     }
 
@@ -755,7 +912,107 @@ export class OdysseyCameraController {
         });
     }
 
+    setSeamPhase({
+        boundaryId,
+        seamPhase = 0,
+        envelope = 0,
+        direction = 1,
+        intensity = 1,
+    } = {}) {
+        if (!boundaryId) return;
+        this.positionSeamBeat = {
+            boundaryId,
+            seamPhase: THREE.MathUtils.clamp(seamPhase || 0, -1, 1),
+            envelope: THREE.MathUtils.clamp(envelope || 0, 0, 1),
+            direction: Math.sign(direction) || 1,
+            intensity: THREE.MathUtils.clamp(intensity, 0, 1.6),
+        };
+    }
+
+    clearSeamPhase() {
+        this.positionSeamBeat = null;
+    }
+
+    triggerVistaBeat({
+        chapterId = 1,
+        durationMs = 1350,
+        intensity = 1,
+    } = {}) {
+        this.vistaBeat = {
+            active: true,
+            chapterId,
+            startTime: performance.now(),
+            duration: Math.max(1, durationMs),
+            intensity: THREE.MathUtils.clamp(intensity, 0, 1.4),
+        };
+    }
+
+    _getChapterAtProgress(progress) {
+        for (let index = 0; index < this.chapterPositions.length - 1; index += 1) {
+            const start = this.chapterPositions[index];
+            const end = this.chapterPositions[index + 1] ?? 1;
+            if (progress >= start && progress <= end) {
+                return index + 1;
+            }
+        }
+        return 1;
+    }
+
+    _getSeamSlowdown(progress) {
+        let slowdown = 1;
+        for (let index = 1; index < this.chapterPositions.length - 1; index += 1) {
+            const boundary = this.chapterPositions[index];
+            if (!Number.isFinite(boundary)) continue;
+            const distance = Math.abs(progress - boundary);
+            const window = 0.03;
+            if (distance <= window) {
+                const local = THREE.MathUtils.smoothstep(distance / window, 0, 1);
+                slowdown = Math.min(slowdown, THREE.MathUtils.lerp(0.48, 1, local));
+            }
+        }
+        return slowdown;
+    }
+
+    updateTravelCurrent(deltaTime) {
+        if (!this.config.idleAutoDrift || this.mode !== 'follow') {
+            return;
+        }
+
+        const dt = Math.max(0, deltaTime || 0);
+        if (dt <= 0 || this.targetPosition >= this.config.maxPosition) {
+            return;
+        }
+
+        const chapterId = this._getChapterAtProgress(this.currentPosition);
+        const profile = getChapterProfile(chapterId);
+        const worldSpeed = ACT_TRAVEL_SPEEDS[profile.act] ?? ACT_TRAVEL_SPEEDS[ODYSSEY_ACTS.LIVING];
+        const seamSlowdown = this._getSeamSlowdown(this.currentPosition);
+        const beatSurge = this.directorCamera.beatPulse * this.config.beatDriftScale;
+        const energyLift = this.directorCamera.energy * 0.28;
+        const autoVelocity = (worldSpeed / this.travelModel.pathLength)
+            * this.config.autoDriftScale
+            * (1 + beatSurge + energyLift)
+            * seamSlowdown;
+
+        this.travelModel.inputVelocity *= Math.exp(-dt * 2.4);
+        const targetVelocity = autoVelocity + this.travelModel.inputVelocity;
+        const lerp = 1 - Math.exp(-dt * 2.8);
+        this.travelModel.velocity = THREE.MathUtils.lerp(this.travelModel.velocity, targetVelocity, lerp);
+
+        if (Math.abs(this.travelModel.velocity) < 1e-5) {
+            return;
+        }
+
+        this.targetPosition = THREE.MathUtils.clamp(
+            this.targetPosition + this.travelModel.velocity * dt,
+            this.config.minPosition,
+            this.config.maxPosition,
+        );
+    }
+
     updateFollow(deltaTime) {
+        this.updateTravelCurrent(deltaTime);
+
         // Lerp current position toward target
         const lerpFactor = 1 - (1 - this.config.followLerpSpeed) ** (deltaTime * 60);
         this.currentPosition = THREE.MathUtils.lerp(
@@ -764,7 +1021,12 @@ export class OdysseyCameraController {
             lerpFactor,
         );
 
-        this.updateFollowPosition({ direct: false });
+        const frameBlend = 1 - Math.exp(-Math.max(0, deltaTime) * 7.2);
+        this.updateFollowPosition({
+            direct: false,
+            positionBlend: frameBlend,
+            lookBlend: frameBlend,
+        });
     }
 
     updateFreeCameraBasis() {
@@ -930,12 +1192,32 @@ export class OdysseyCameraController {
 
     computeFollowFrame(position) {
         const clampedPosition = THREE.MathUtils.clamp(position, 0, 1);
-        const { position: pathPoint, tangent } = this.getPathDataAt(clampedPosition);
+        const {
+            position: pathPoint,
+            tangent,
+            normal,
+            right,
+        } = this.getPathDataAt(
+            clampedPosition,
+            this._framePosition,
+            this._frameTangent,
+            this._frameNormal,
+            this._frameRight,
+        );
         const seamWeight = this.getSeamBeatStrength();
-        const seamDirection = this.seamBeat?.direction || 1;
-        const forwardOffset = 1.15 * seamWeight * (this.seamBeat?.intensity || 0);
+        const vistaWeight = this.getVistaBeatStrength();
+        const seamDirection = this.positionSeamBeat?.direction || this.seamBeat?.direction || 1;
+        const seamIntensity = this.positionSeamBeat?.intensity || this.seamBeat?.intensity || 0;
+        const forwardOffset = 1.15 * seamWeight * seamIntensity;
+        const vistaPullback = vistaWeight * (2.6 + this.directorCamera.followDistance * 0.08);
+        const vistaLift = vistaWeight * 1.85;
 
-        const camPos = pathPoint.clone().add(this.config.followOffset);
+        const gravityBlend = THREE.MathUtils.clamp(1 - Math.abs(tangent.y) * 0.45, 0.35, 0.9);
+        const cameraUp = normal.clone().lerp(PATH_FRAME_GRAVITY_UP, gravityBlend).normalize();
+        const camPos = pathPoint.clone()
+            .addScaledVector(tangent, -(this.directorCamera.followDistance + vistaPullback))
+            .addScaledVector(right, this.config.followOffset.x)
+            .addScaledVector(cameraUp, this.config.followOffset.y + vistaLift);
         if (forwardOffset > 0) {
             camPos.addScaledVector(tangent, forwardOffset * seamDirection);
         }
@@ -944,7 +1226,8 @@ export class OdysseyCameraController {
             ? this.cinematicConfig.lookAheadDistance
             : 0.01;
         const lookAheadT = THREE.MathUtils.clamp(
-            clampedPosition + (lookAheadDistance * (forwardOffset > 0 ? 1.4 : 1)),
+            clampedPosition + (lookAheadDistance * (forwardOffset > 0 ? 1.4 : 1) * this.directorCamera.drift)
+                + vistaWeight * 0.018,
             0,
             1,
         );
@@ -952,9 +1235,17 @@ export class OdysseyCameraController {
         if (forwardOffset > 0) {
             lookTarget.addScaledVector(tangent, forwardOffset * 0.45 * seamDirection);
         }
+        const climbBias = THREE.MathUtils.clamp((tangent.y + 0.15) * 0.55, 0, 0.65);
+        lookTarget.addScaledVector(cameraUp, climbBias * (2.5 + this.directorCamera.followDistance * 0.12));
         lookTarget.add(this.getLookAtOffset(clampedPosition));
 
-        return { camPos, lookTarget, tangent };
+        return {
+            camPos,
+            lookTarget,
+            tangent,
+            normal: cameraUp,
+            right,
+        };
     }
 
     updateFollowPosition(options = {}) {
@@ -965,16 +1256,18 @@ export class OdysseyCameraController {
             lookBlend = 0.1,
         } = options;
 
-        const { camPos, lookTarget } = this.computeFollowFrame(position);
+        const { camPos, lookTarget, normal } = this.computeFollowFrame(position);
 
         if (direct) {
             this.camera.position.copy(camPos);
             this.lookAtTarget.copy(lookTarget);
+            this.followCameraUp.copy(normal);
             return;
         }
 
         this.camera.position.lerp(camPos, positionBlend);
         this.lookAtTarget.lerp(lookTarget, lookBlend);
+        this.followCameraUp.lerp(normal, lookBlend).normalize();
     }
 
     getLookAtOffset(position) {
@@ -1144,13 +1437,36 @@ export class OdysseyCameraController {
         }
     }
 
+    updateVistaBeat() {
+        if (!this.vistaBeat?.active) return;
+
+        const elapsed = performance.now() - this.vistaBeat.startTime;
+        if (elapsed >= this.vistaBeat.duration) {
+            this.vistaBeat.active = false;
+        }
+    }
+
     getSeamBeatStrength() {
+        if (this.positionSeamBeat) {
+            return this.positionSeamBeat.envelope * (this.positionSeamBeat.intensity || 0);
+        }
+
         if (!this.seamBeat?.active) return 0;
 
         const elapsed = performance.now() - this.seamBeat.startTime;
         const t = THREE.MathUtils.clamp(elapsed / this.seamBeat.duration, 0, 1);
         const envelope = Math.sin(t * Math.PI);
         return envelope * (this.seamBeat.intensity || 0);
+    }
+
+    getVistaBeatStrength() {
+        if (!this.vistaBeat?.active) return 0;
+
+        const elapsed = performance.now() - this.vistaBeat.startTime;
+        const t = THREE.MathUtils.clamp(elapsed / this.vistaBeat.duration, 0, 1);
+        const intro = THREE.MathUtils.smoothstep(t, 0, 0.28);
+        const outro = 1 - THREE.MathUtils.smoothstep(t, 0.68, 1);
+        return intro * outro * (this.vistaBeat.intensity || 0);
     }
 
     getCrossedBoundaryIds(startPosition, endPosition) {

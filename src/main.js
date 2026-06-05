@@ -28,7 +28,6 @@ import {
     rotate as coreRotate,
     hardDrop as coreHardDrop,
     softDrop as coreSoftDrop,
-    holdPiece as coreHoldPiece,
     processAutoDrop as coreProcessAutoDrop,
     markBoardDirty,
 } from './core/game.js';
@@ -3393,17 +3392,6 @@ class SerenityBlocks {
             Boolean(multiplayerState?.playerPaused?.[playerNum - 1])
         );
 
-        const holdMultiplayerPiece = (playerNum) => {
-            const multiplayerState = getMultiplayerState();
-            const playerState = getPlayerState(playerNum);
-            if (!multiplayerState || !playerState || multiplayerState.isGameOver || multiplayerState.isPaused) return false;
-            if (isPlayerPaused(multiplayerState, playerNum)) return false;
-
-            return coreHoldPiece(playerState);
-        };
-
-        window.hold = () => holdMultiplayerPiece(1);
-
         // Expose Player 2 controls for multiplayer
         window.moveP2 = (dir) => {
             const multiplayerState = getMultiplayerState();
@@ -3462,8 +3450,6 @@ class SerenityBlocks {
                 this.getMultiplayerPhysicsCallbacks(2),
             );
         };
-
-        window.holdP2 = () => holdMultiplayerPiece(2);
 
         // Expose Player 3 controls for multiplayer (Gamepad only)
         window.moveP3 = (dir) => {
@@ -3524,8 +3510,6 @@ class SerenityBlocks {
             );
         };
 
-        window.holdP3 = () => holdMultiplayerPiece(3);
-
         // Expose Player 4 controls for multiplayer (Gamepad only)
         window.moveP4 = (dir) => {
             const multiplayerState = getMultiplayerState();
@@ -3585,8 +3569,6 @@ class SerenityBlocks {
             );
         };
 
-        window.holdP4 = () => holdMultiplayerPiece(4);
-
         this.gameplayInputQueue = [];
 
         const enqueueGameplayCommand = (command) => {
@@ -3608,7 +3590,7 @@ class SerenityBlocks {
         const enqueueSinglePlayerCommand = (command) => {
             const execute = () => {
                 if (this.gameState?.isProcessingPhysics) {
-                    if (command.type === 'move' || command.type === 'rotate' || command.type === 'hold') {
+                    if (command.type === 'move' || command.type === 'rotate') {
                         const queued = {
                             type: command.type,
                             dir: command.value,
@@ -3637,8 +3619,6 @@ class SerenityBlocks {
                     return window.softDrop?.();
                 } else if (command.type === 'hardDrop') {
                     return window.hardDrop?.();
-                } else if (command.type === 'hold') {
-                    return window.hold?.();
                 }
 
                 return false;
@@ -3656,12 +3636,10 @@ class SerenityBlocks {
             rotate: (...args) => window.rotate?.(...args),
             softDrop: (...args) => window.softDrop?.(...args),
             hardDrop: (...args) => window.hardDrop?.(...args),
-            hold: (...args) => window.hold?.(...args),
             requestMove: (dir) => enqueueSinglePlayerCommand({ type: 'move', value: dir }),
             requestRotate: (dir) => enqueueSinglePlayerCommand({ type: 'rotate', value: dir }),
             requestSoftDrop: () => enqueueSinglePlayerCommand({ type: 'softDrop' }),
             requestHardDrop: () => enqueueSinglePlayerCommand({ type: 'hardDrop' }),
-            requestHold: () => enqueueSinglePlayerCommand({ type: 'hold' }),
             togglePause: (...args) => window.togglePause?.(...args),
             openSettingsMenu: (...args) => window.openSettingsMenu?.(...args),
             startGame: (...args) => window.startGame?.(...args),
@@ -3675,34 +3653,28 @@ class SerenityBlocks {
             rotateP2: (...args) => window.rotateP2?.(...args),
             softDropP2: (...args) => window.softDropP2?.(...args),
             hardDropP2: (...args) => window.hardDropP2?.(...args),
-            holdP2: (...args) => window.holdP2?.(...args),
             requestMoveP2: (dir) => runGameplayCommand(() => window.moveP2?.(dir)),
             requestRotateP2: (dir) => runGameplayCommand(() => window.rotateP2?.(dir)),
             requestSoftDropP2: () => runGameplayCommand(() => window.softDropP2?.()),
             requestHardDropP2: () => runGameplayCommand(() => window.hardDropP2?.()),
-            requestHoldP2: () => runGameplayCommand(() => window.holdP2?.()),
             // Player 3 actions (Gamepad only)
             moveP3: (...args) => window.moveP3?.(...args),
             rotateP3: (...args) => window.rotateP3?.(...args),
             softDropP3: (...args) => window.softDropP3?.(...args),
             hardDropP3: (...args) => window.hardDropP3?.(...args),
-            holdP3: (...args) => window.holdP3?.(...args),
             requestMoveP3: (dir) => runGameplayCommand(() => window.moveP3?.(dir)),
             requestRotateP3: (dir) => runGameplayCommand(() => window.rotateP3?.(dir)),
             requestSoftDropP3: () => runGameplayCommand(() => window.softDropP3?.()),
             requestHardDropP3: () => runGameplayCommand(() => window.hardDropP3?.()),
-            requestHoldP3: () => runGameplayCommand(() => window.holdP3?.()),
             // Player 4 actions (Gamepad only)
             moveP4: (...args) => window.moveP4?.(...args),
             rotateP4: (...args) => window.rotateP4?.(...args),
             softDropP4: (...args) => window.softDropP4?.(...args),
             hardDropP4: (...args) => window.hardDropP4?.(...args),
-            holdP4: (...args) => window.holdP4?.(...args),
             requestMoveP4: (dir) => runGameplayCommand(() => window.moveP4?.(dir)),
             requestRotateP4: (dir) => runGameplayCommand(() => window.rotateP4?.(dir)),
             requestSoftDropP4: () => runGameplayCommand(() => window.softDropP4?.()),
             requestHardDropP4: () => runGameplayCommand(() => window.hardDropP4?.()),
-            requestHoldP4: () => runGameplayCommand(() => window.holdP4?.()),
         };
 
         this.flushGameplayInputQueue = () => {
@@ -4713,11 +4685,16 @@ class SerenityBlocks {
                 multiplayerState.handleGarbageSummary(
                     playerIdentifier,
                     summary,
-                    (player, garbageAmount) => {
+                    (player, targetsOrAmount, maybeGarbageAmount) => {
+                        const targetCount = Array.isArray(targetsOrAmount) ? targetsOrAmount.length : 1;
+                        const garbageAmount = Array.isArray(targetsOrAmount)
+                            ? maybeGarbageAmount
+                            : targetsOrAmount;
                         if (garbageAmount > 0) {
+                            const displayPlayer = multiplayerState.players ? player + 1 : player;
                             this.soundManager.sfxPlayer.playGarbageSend();
                             console.log(
-                                `[Garbage] Player ${player} CASCADE attack ready: ${garbageAmount} line(s), depth=${summary.totalLines}, combo=${summary.comboStages}, clean=${summary.cleanField}`,
+                                `[Garbage] Player ${displayPlayer} CASCADE attack ready: ${garbageAmount} line(s) to ${targetCount} target(s), depth=${summary.totalLines}, combo=${summary.comboStages}, clean=${summary.cleanField}`,
                             );
                         }
                     },
@@ -4793,6 +4770,10 @@ class SerenityBlocks {
                         juice.pulse(1.005);
                     }
                 }
+
+                // Quadra handicap: accumulate per-opponent stamps on each placement
+                // (no-op unless players have differing handicap levels).
+                multiplayerState?.accumulateHandicap?.(playerNum - 1);
 
                 // Emit event for theme reactions
                 eventBus.emit(EVENTS.PIECE_LOCK, { piece, player: playerNum });

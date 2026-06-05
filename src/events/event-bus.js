@@ -32,7 +32,7 @@ class EventBus {
     emit(eventName, payload) {
         const handlers = this.listeners.get(eventName);
         if (handlers) {
-            handlers.forEach((handler) => handler(payload));
+            [...handlers].forEach((handler) => handler(payload));
         }
     }
 }
@@ -45,11 +45,11 @@ export const EVENTS = {
     BACKGROUND_READY: 'backgroundReady',
     LINE_CLEAR: 'lineClear',
     COMBO: 'combo',
+    PERFECT_CLEAR: 'perfectClear',
     PIECE_LOCK: 'pieceLock',
     PIECE_MOVE: 'pieceMove',
     PIECE_ROTATE: 'pieceRotate',
     HARD_DROP: 'hardDrop',
-    HOLD: 'hold',
     LEVEL_UP: 'levelUp',
     SETTINGS_CHANGED: 'settingsChanged',
     ODYSSEY_SAVED: 'odysseySaved',

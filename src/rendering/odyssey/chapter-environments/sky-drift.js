@@ -12,6 +12,8 @@
  */
 
 import * as THREE from 'three';
+import { ODYSSEY_NOISE_GLSL } from './shared/odyssey-noise.js';
+import { getChapterPathRange } from '../path-utils.js';
 
 /**
  * Sky Drift environment configuration
@@ -616,12 +618,28 @@ export function createSkyDriftEnvironment(options = {}) {
     group.userData.chapterId = 5;
     group.userData.yStart = SKY_DRIFT_CONFIG.yStart;
     group.userData.yEnd = SKY_DRIFT_CONFIG.yEnd;
+    const chapterRange = getChapterPathRange(5);
+    const fallbackCenterY = (SKY_DRIFT_CONFIG.yStart + SKY_DRIFT_CONFIG.yEnd) / 2;
+    const chapterCenterY = chapterRange?.center.y ?? fallbackCenterY;
+    if (chapterRange) {
+        group.userData.yStart = chapterRange.start.y;
+        group.userData.yEnd = chapterRange.end.y;
+    }
 
-    const uniforms = { uTime: { value: 0 } };
+    const uniforms = {
+        uTime: { value: 0 },
+        uEnergy: { value: 0.4 },
+    };
     group.userData.uniforms = uniforms;
 
     // Sky background
     group.add(createSkyGradient(uniforms));
+
+    // FBM volumetric nebula veil — gives the backdrop real depth behind the
+    // glow-sprite nebulae (matches the Ch6/Ch7 backdrops).
+    const nebulaVeil = createNebulaVeil(uniforms);
+    group.add(nebulaVeil);
+    group.userData.nebulaVeil = nebulaVeil;
 
     const cloudDecks = createCloudDecks();
     group.add(cloudDecks);
@@ -674,7 +692,73 @@ export function createSkyDriftEnvironment(options = {}) {
     group.userData.rainVeils = rainVeils;
 
     setupSkyLighting(group);
-    group.position.y = (SKY_DRIFT_CONFIG.yStart + SKY_DRIFT_CONFIG.yEnd) / 2;
+    group.position.y = chapterCenterY;
+
+    return group;
+}
+
+/**
+ * FBM volumetric nebula veil — large additive planes deep behind the cosmic
+ * objects, giving the backdrop drifting volumetric depth instead of flat sprites.
+ */
+function createNebulaVeil(uniforms) {
+    const group = new THREE.Group();
+    group.name = 'nebula-veil';
+
+    const veilVertexShader = `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `;
+    const veilFragmentShader = `
+        uniform float uTime;
+        uniform float uEnergy;
+        uniform vec3 uColorA;
+        uniform vec3 uColorB;
+        varying vec2 vUv;
+
+        ${ODYSSEY_NOISE_GLSL}
+
+        void main() {
+            vec2 p = vUv * 3.0;
+            float n = fbm2(p + vec2(uTime * 0.01, uTime * 0.006));
+            float n2 = fbm2(p * 1.8 - vec2(uTime * 0.008, 0.0));
+            float density = smoothstep(0.42, 0.95, n * 0.6 + n2 * 0.55);
+            vec3 color = mix(uColorA, uColorB, n2);
+            float edge = smoothstep(0.5, 0.05, length(vUv - 0.5));
+            gl_FragColor = vec4(color, density * edge * (0.12 + uEnergy * 0.07));
+        }
+    `;
+
+    const veils = [
+        { z: -900, colorA: 0x6633cc, colorB: 0xff33cc },
+        { z: -940, colorA: 0x2f6bff, colorB: 0x9933ff },
+    ];
+
+    veils.forEach((config) => {
+        const mesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(1400, 1000),
+            new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: uniforms.uTime,
+                    uEnergy: uniforms.uEnergy,
+                    uColorA: { value: new THREE.Color(config.colorA) },
+                    uColorB: { value: new THREE.Color(config.colorB) },
+                },
+                vertexShader: veilVertexShader,
+                fragmentShader: veilFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide,
+            }),
+        );
+        mesh.position.set(0, 20, config.z);
+        mesh.renderOrder = -99;
+        group.add(mesh);
+    });
 
     return group;
 }
@@ -851,16 +935,26 @@ function setupSkyLighting(group) {
     group.add(eclipseGlow);
 }
 
-export function updateSkyDriftEnvironment(group, delta, time) {
+export function updateSkyDriftEnvironment(group, delta, time, ...updateArgs) {
+    const [, , directorState = null] = updateArgs;
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
+    }
+    // Autonomous energy breath (Phase 6 will drive this from the audio reactor).
+    if (uniforms?.uEnergy) {
+        const audioEnergy = directorState
+            ? THREE.MathUtils.clamp((directorState.energy || 0) * 0.75 + (directorState.treble || 0) * 0.25, 0, 1)
+            : null;
+        uniforms.uEnergy.value = audioEnergy === null
+            ? 0.4 + Math.sin(time * 0.55) * 0.2
+            : 0.28 + audioEnergy * 0.62 + (directorState.beatPulse || 0) * 0.08;
     }
 
     // Pulse lighting
     const { purpleGlow } = group.userData;
     if (purpleGlow) {
-        purpleGlow.intensity = 0.4 + Math.sin(time * 0.3) * 0.15;
+        purpleGlow.intensity = 0.4 + Math.sin(time * 0.3) * 0.15 + (uniforms?.uEnergy?.value ?? 0) * 0.2;
     }
 
     // Slowly rotate galaxy

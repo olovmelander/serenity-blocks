@@ -35,8 +35,9 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient', // Use existing track for now
+            track: 'CinderDrift',
             crossfadeDuration: 3000,
+            transitionOutStinger: 'steam-quench',
         },
 
         narrative: {
@@ -70,8 +71,9 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient',
+            track: 'OceanDeep',
             crossfadeDuration: 4000,
+            transitionOutStinger: 'surface-breach',
         },
 
         narrative: {
@@ -108,8 +110,9 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient',
+            track: 'MoonlitForest',
             crossfadeDuration: 3000,
+            transitionOutStinger: 'ridgeline-rise',
         },
 
         narrative: {
@@ -150,8 +153,9 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient',
+            track: 'HimalayanPeak',
             crossfadeDuration: 3500,
+            transitionOutStinger: 'summit-liftoff',
         },
 
         narrative: {
@@ -191,8 +195,9 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient',
+            track: 'Starlight',
             crossfadeDuration: 4000,
+            transitionOutStinger: 'atmosphere-edge',
         },
 
         narrative: {
@@ -229,8 +234,9 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient',
+            track: 'Galaxy',
             crossfadeDuration: 5000,
+            transitionOutStinger: 'lensing-engage',
         },
 
         narrative: {
@@ -273,8 +279,9 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient',
+            track: 'BlackHole',
             crossfadeDuration: 6000,
+            transitionOutStinger: 'neon-snap',
         },
 
         narrative: {
@@ -317,7 +324,7 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'Ambient',
+            track: 'NeonDistrict',
             crossfadeDuration: 4000,
         },
 

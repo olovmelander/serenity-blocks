@@ -47,6 +47,15 @@ export const ODYSSEY_NODE_STYLES = Object.freeze({
     NEON_SIGN: 'neonSign',
 });
 
+export const DEFAULT_ODYSSEY_TRANSITION = Object.freeze({
+    seamWidth: 0.018,
+    beatDurationMs: 850,
+    preloadDistance: 0.05,
+    fxPreset: 'standard',
+    crossfadeDurationMs: 3500,
+    stinger: null,
+});
+
 /**
  * Per-act camera language (see plan §3.1 / §7). These are forward-looking targets
  * consumed from Phase 7; declared here so the director can already blend toward
@@ -101,8 +110,13 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         },
         node: { style: ODYSSEY_NODE_STYLES.MAGMA_GEODE },
         anchor: 'magmaVault',
-        audioTrack: 'Ambient',
+        audioTrack: 'CinderDrift',
         transitionOut: '1-2',
+        transition: {
+            id: '1-2',
+            stinger: 'steam-quench',
+            crossfadeDurationMs: 3000,
+        },
     },
     {
         id: 2,
@@ -131,8 +145,13 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         },
         node: { style: ODYSSEY_NODE_STYLES.BUBBLE_PEARL },
         anchor: 'lightShaft',
-        audioTrack: 'Ambient',
+        audioTrack: 'OceanDeep',
         transitionOut: '2-3',
+        transition: {
+            id: '2-3',
+            stinger: 'surface-breach',
+            crossfadeDurationMs: 4000,
+        },
     },
     {
         id: 3,
@@ -161,8 +180,15 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         },
         node: { style: ODYSSEY_NODE_STYLES.SEED_LANTERN },
         anchor: 'distantRange',
-        audioTrack: 'Ambient',
+        audioTrack: 'MoonlitForest',
         transitionOut: '3-4',
+        transition: {
+            id: '3-4',
+            seamWidth: 0.03,
+            preloadDistance: 0.06,
+            stinger: 'ridgeline-rise',
+            crossfadeDurationMs: 3000,
+        },
     },
     {
         id: 4,
@@ -191,8 +217,14 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         },
         node: { style: ODYSSEY_NODE_STYLES.CAIRN_LANTERN },
         anchor: 'heroSummit',
-        audioTrack: 'Ambient',
+        audioTrack: 'HimalayanPeak',
         transitionOut: '4-5',
+        transition: {
+            id: '4-5',
+            seamWidth: 0.06,
+            stinger: 'summit-liftoff',
+            crossfadeDurationMs: 3500,
+        },
     },
     {
         id: 5,
@@ -220,8 +252,13 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         },
         node: { style: ODYSSEY_NODE_STYLES.CLOUD_WISP },
         anchor: 'cloudBreak',
-        audioTrack: 'Ambient',
+        audioTrack: 'Starlight',
         transitionOut: '5-6',
+        transition: {
+            id: '5-6',
+            stinger: 'atmosphere-edge',
+            crossfadeDurationMs: 4000,
+        },
     },
     {
         id: 6,
@@ -250,8 +287,17 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         },
         node: { style: ODYSSEY_NODE_STYLES.STARLIT_ORB },
         anchor: 'heroPlanet',
-        audioTrack: 'Ambient',
+        audioTrack: 'Galaxy',
         transitionOut: '6-7',
+        transition: {
+            id: '6-7',
+            seamWidth: 0.03,
+            beatDurationMs: 1100,
+            preloadDistance: 0.07,
+            fxPreset: 'heavy',
+            stinger: 'lensing-engage',
+            crossfadeDurationMs: 5000,
+        },
     },
     {
         id: 7,
@@ -280,8 +326,17 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         },
         node: { style: ODYSSEY_NODE_STYLES.LENSED_SHARD },
         anchor: 'accretionDisk',
-        audioTrack: 'Ambient',
+        audioTrack: 'BlackHole',
         transitionOut: '7-8',
+        transition: {
+            id: '7-8',
+            seamWidth: 0.022,
+            beatDurationMs: 900,
+            preloadDistance: 0.06,
+            fxPreset: 'neon',
+            stinger: 'neon-snap',
+            crossfadeDurationMs: 6000,
+        },
     },
     {
         id: 8,
@@ -309,8 +364,12 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         },
         node: { style: ODYSSEY_NODE_STYLES.NEON_SIGN },
         anchor: 'citySpire',
-        audioTrack: 'Ambient',
+        audioTrack: 'NeonDistrict',
         transitionOut: null,
+        transition: {
+            id: null,
+            crossfadeDurationMs: 4000,
+        },
     },
 ]);
 
@@ -343,6 +402,14 @@ export function getActForChapter(chapterId) {
 export function getCameraProfileForChapter(chapterId) {
     return ODYSSEY_CAMERA_PROFILES[getActForChapter(chapterId)]
         || ODYSSEY_CAMERA_PROFILES[ODYSSEY_ACTS.LIVING];
+}
+
+export function getChapterTransitionForChapter(chapterId) {
+    const profile = getChapterProfile(chapterId);
+    return {
+        ...DEFAULT_ODYSSEY_TRANSITION,
+        ...(profile.transition || {}),
+    };
 }
 
 /** Linear interpolation for plain numbers. */
