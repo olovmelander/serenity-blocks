@@ -72,7 +72,7 @@ export function drawGrid(ctx, width, height, cols = COLS, rows = ROWS) {
  * @param {boolean} isGhost - Whether this is a ghost piece
  * @param {boolean} isCurrent - Whether this is part of current piece
  */
-export function drawBlock(ctx, x, y, blockSize, color, isGhost = false, isCurrent = false) {
+export function drawBlock(ctx, x, y, blockSize, color, isGhost = false) {
     if (isGhost) {
         // Ghost piece - semi-transparent fill with pulsating effect
         const time = Date.now() / 1000;
@@ -123,16 +123,16 @@ export function drawBlockStyled(ctx, x, y, blockSize, styleConfig, isGhost = fal
 
     // Route to appropriate rendering function based on mode
     switch (renderMode) {
-        case 'glow':
-            drawBlockGlow(ctx, x, y, blockSize, color, effects, alpha);
-            break;
-        case 'gradient':
-            drawBlockGradient(ctx, x, y, blockSize, color, effects, alpha);
-            break;
-        case 'solid':
-        default:
-            drawBlockSolid(ctx, x, y, blockSize, color, effects, alpha);
-            break;
+    case 'glow':
+        drawBlockGlow(ctx, x, y, blockSize, color, effects, alpha);
+        break;
+    case 'gradient':
+        drawBlockGradient(ctx, x, y, blockSize, color, effects, alpha);
+        break;
+    case 'solid':
+    default:
+        drawBlockSolid(ctx, x, y, blockSize, color, effects, alpha);
+        break;
     }
 }
 
@@ -558,17 +558,92 @@ export function clearCanvas(ctx, width, height) {
 }
 
 /**
- * Draw an entire tetromino piece with solid look (outer edges only)
- * This renders the piece as a cohesive unit rather than separate blocks
+ * Draw a tetromino piece with theme-based styling as a unified fused shape
+ * with no internal borders or gaps between blocks.
  * @param {CanvasRenderingContext2D} ctx - Canvas context
  * @param {Array<Array<number>>} shape - 2D array representing piece shape
  * @param {number} offsetX - X offset in pixels
  * @param {number} offsetY - Y offset in pixels
  * @param {number} blockSize - Size of each block in pixels
  * @param {Object} styleConfig - Style configuration { color, renderMode, effects, rendererOverrides }
+ * @param {boolean} isGhost - Whether this is a ghost piece
+ * @param {number} alpha - Opacity (0-1)
  */
-export function drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleConfig) {
+export function drawPieceStyledUnified(
+    ctx,
+    shape,
+    offsetX,
+    offsetY,
+    blockSize,
+    styleConfig,
+    isGhost = false,
+    alpha = 1.0,
+) {
     if (!shape || shape.length === 0) return;
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    const size = Math.round(blockSize);
+
+    if (isGhost) {
+        // Ghost pieces use semi-transparent fills without overlap to prevent darker overlap lines
+        const time = Date.now() / 1000;
+        const pulse = 0.5 + 0.5 * Math.sin(time * 2 + (offsetX + offsetY) * 0.01);
+        const ghostAlpha = (0.1 + 0.25 * pulse) * alpha;
+
+        ctx.fillStyle = `rgba(255, 255, 255, ${ghostAlpha})`;
+
+        ctx.beginPath();
+        shape.forEach((row, y) => {
+            row.forEach((cell, x) => {
+                if (cell > 0) {
+                    const px = Math.round(offsetX + x * size);
+                    const py = Math.round(offsetY + y * size);
+                    ctx.rect(px, py, size, size);
+                }
+            });
+        });
+        ctx.fill();
+
+        // Stroke outer perimeter of ghost piece
+        ctx.strokeStyle = `rgba(100, 200, 255, ${ghostAlpha * 0.8})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        shape.forEach((row, y) => {
+            row.forEach((cell, x) => {
+                if (cell > 0) {
+                    const px = Math.round(offsetX + x * size);
+                    const py = Math.round(offsetY + y * size);
+
+                    const hasTop = y === 0 || !shape[y - 1]?.[x];
+                    const hasBottom = y === shape.length - 1 || !shape[y + 1]?.[x];
+                    const hasLeft = x === 0 || !row[x - 1];
+                    const hasRight = x === row.length - 1 || !row[x + 1];
+
+                    if (!hasTop) {
+                        ctx.moveTo(px, py + 0.5);
+                        ctx.lineTo(px + size, py + 0.5);
+                    }
+                    if (!hasBottom) {
+                        ctx.moveTo(px, py + size - 0.5);
+                        ctx.lineTo(px + size, py + size - 0.5);
+                    }
+                    if (!hasLeft) {
+                        ctx.moveTo(px + 0.5, py);
+                        ctx.lineTo(px + 0.5, py + size);
+                    }
+                    if (!hasRight) {
+                        ctx.moveTo(px + size - 0.5, py);
+                        ctx.lineTo(px + size - 0.5, py + size);
+                    }
+                }
+            });
+        });
+        ctx.stroke();
+        ctx.restore();
+        return;
+    }
 
     const effects = {
         ...styleConfig.effects,
@@ -576,28 +651,22 @@ export function drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleCon
     };
     const { color, renderMode } = styleConfig;
 
-    ctx.save();
+    ctx.globalAlpha = alpha;
 
-    // Match game board: disable smoothing for crisp pixel-perfect rendering
-    ctx.imageSmoothingEnabled = false;
-
-    // Ensure integer block size for pixel-perfect alignment
-    const size = Math.round(blockSize);
-
-    // Build a single path for the entire piece shape to avoid sub-pixel gaps
+    // First pass: Fill the unified path of the piece
     ctx.beginPath();
     shape.forEach((row, y) => {
         row.forEach((cell, x) => {
-            if (cell) {
+            if (cell > 0) {
                 const px = Math.round(offsetX + x * size);
                 const py = Math.round(offsetY + y * size);
-                // Expand rect by 0.5px on all sides to eliminate sub-pixel antialiasing gaps
-                ctx.rect(px - 0.5, py - 0.5, size + 1, size + 1);
+                // Expand rect by 0.25px on all sides to eliminate sub-pixel antialiasing gaps
+                ctx.rect(px - 0.25, py - 0.25, size + 0.5, size + 0.5);
             }
         });
     });
 
-    // Apply glow effect if renderMode is 'glow'
+    // Apply glow effect
     if (renderMode === 'glow' && effects.glowRadius > 0) {
         let intensity = effects.glowIntensity || 1;
         if (effects.pulse) {
@@ -608,17 +677,15 @@ export function drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleCon
         const glowColor = effects.glowColor === 'auto' ? color : effects.glowColor;
         ctx.shadowColor = glowColor;
         ctx.shadowBlur = effects.glowRadius;
-        ctx.globalAlpha = intensity;
+        ctx.globalAlpha = intensity * alpha;
     }
 
-    // Apply gradient if renderMode is 'gradient'
+    // Apply gradient fill
     if (renderMode === 'gradient' && effects.gradientStops) {
-        // Calculate bounding box for gradient
-        let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let
-            maxY = -Infinity;
+        let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
         shape.forEach((row, y) => {
             row.forEach((cell, x) => {
-                if (cell) {
+                if (cell > 0) {
                     minX = Math.min(minX, x);
                     minY = Math.min(minY, y);
                     maxX = Math.max(maxX, x + 1);
@@ -649,55 +716,66 @@ export function drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleCon
         ctx.fillStyle = color;
     }
 
-    // Fill the entire shape as one path (eliminates gaps)
     ctx.fill();
 
-    // Reset shadow for outline drawing
+    // Reset shadow/alpha for stroke pass
     ctx.shadowBlur = 0;
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = alpha;
 
-    // Second pass: Draw outline only on outer edges (matching game board exactly)
-    // Phaser uses 0.5 width and 0.08 opacity for extreme subtlety
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
-    ctx.lineWidth = 0.5;
+    // Second pass: Draw outline only on outer perimeter of the piece
+    if (effects.outline && effects.outlineWidth > 0) {
+        const outlineColor = computeOutlineColor(color, effects.outlineColor);
+        ctx.strokeStyle = outlineColor;
+        ctx.lineWidth = effects.outlineWidth;
 
-    ctx.beginPath();
-    shape.forEach((row, y) => {
-        row.forEach((cell, x) => {
-            if (cell) {
-                const px = Math.round(offsetX + x * size);
-                const py = Math.round(offsetY + y * size);
+        ctx.beginPath();
+        shape.forEach((row, y) => {
+            row.forEach((cell, x) => {
+                if (cell > 0) {
+                    const px = Math.round(offsetX + x * size);
+                    const py = Math.round(offsetY + y * size);
 
-                // Check adjacent cells to determine which edges to draw
-                const hasTop = y > 0 && shape[y - 1] && shape[y - 1][x];
-                const hasBottom = y < shape.length - 1 && shape[y + 1] && shape[y + 1][x];
-                const hasLeft = x > 0 && row[x - 1];
-                const hasRight = x < row.length - 1 && row[x + 1];
+                    const hasTop = y > 0 && shape[y - 1] && shape[y - 1][x];
+                    const hasBottom = y < shape.length - 1 && shape[y + 1] && shape[y + 1][x];
+                    const hasLeft = x > 0 && row[x - 1];
+                    const hasRight = x < row.length - 1 && row[x + 1];
 
-                // Draw only outer edges (matching game board offset pattern)
-                if (!hasTop) {
-                    ctx.moveTo(px, py + 0.5);
-                    ctx.lineTo(px + size, py + 0.5);
+                    if (!hasTop) {
+                        ctx.moveTo(px, py + 0.5);
+                        ctx.lineTo(px + size, py + 0.5);
+                    }
+                    if (!hasBottom) {
+                        ctx.moveTo(px, py + size - 0.5);
+                        ctx.lineTo(px + size, py + size - 0.5);
+                    }
+                    if (!hasLeft) {
+                        ctx.moveTo(px + 0.5, py);
+                        ctx.lineTo(px + 0.5, py + size);
+                    }
+                    if (!hasRight) {
+                        ctx.moveTo(px + size - 0.5, py);
+                        ctx.lineTo(px + size - 0.5, py + size);
+                    }
                 }
-                if (!hasBottom) {
-                    ctx.moveTo(px, py + size - 0.5);
-                    ctx.lineTo(px + size, py + size - 0.5);
-                }
-                if (!hasLeft) {
-                    ctx.moveTo(px + 0.5, py);
-                    ctx.lineTo(px + 0.5, py + size);
-                }
-                if (!hasRight) {
-                    ctx.moveTo(px + size - 0.5, py);
-                    ctx.lineTo(px + size - 0.5, py + size);
-                }
-            }
+            });
         });
-    });
-    ctx.stroke();
+        ctx.stroke();
+    }
 
-    // Re-enable image smoothing
     ctx.imageSmoothingEnabled = true;
-
     ctx.restore();
+}
+
+/**
+ * Draw an entire tetromino piece with solid look (outer edges only)
+ * This renders the piece as a cohesive unit rather than separate blocks
+ * @param {CanvasRenderingContext2D} ctx - Canvas context
+ * @param {Array<Array<number>>} shape - 2D array representing piece shape
+ * @param {number} offsetX - X offset in pixels
+ * @param {number} offsetY - Y offset in pixels
+ * @param {number} blockSize - Size of each block in pixels
+ * @param {Object} styleConfig - Style configuration { color, renderMode, effects, rendererOverrides }
+ */
+export function drawPieceSolid(ctx, shape, offsetX, offsetY, blockSize, styleConfig) {
+    drawPieceStyledUnified(ctx, shape, offsetX, offsetY, blockSize, styleConfig, false, 1.0);
 }

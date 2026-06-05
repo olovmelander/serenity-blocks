@@ -895,6 +895,18 @@ export function initializeSettingsUI(settingsManager, callbacks) {
             handleModeChange(mode);
             settingsManager.save();
         });
+
+        // Sync UI with external settings changes
+        if (typeof window !== 'undefined') {
+            window.addEventListener('settingsChanged', (e) => {
+                const changes = e.detail;
+                const currentSettings = settingsManager.get();
+                if (changes.backgroundMode !== undefined) {
+                    bgModeSelect.value = currentSettings.backgroundMode;
+                    handleModeChange(currentSettings.backgroundMode);
+                }
+            });
+        }
     }
 
     // Theme-Linked SFX toggle

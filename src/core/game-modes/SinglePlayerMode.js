@@ -514,7 +514,7 @@ export class SinglePlayerMode extends BaseGameMode {
         this._initBoardJuice();
 
         window.move = (dir) => {
-            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return false;
+            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return false;
 
             const moved = coreMove(
                 this.gameState,
@@ -542,7 +542,7 @@ export class SinglePlayerMode extends BaseGameMode {
         };
 
         window.rotate = (dir) => {
-            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
+            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return;
 
             coreRotate(
                 this.gameState,
@@ -563,7 +563,7 @@ export class SinglePlayerMode extends BaseGameMode {
         };
 
         window.hardDrop = () => {
-            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return;
+            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return;
 
             // Board juice: dip + bounce on hard drop
             if (this.boardJuice) {
@@ -584,7 +584,7 @@ export class SinglePlayerMode extends BaseGameMode {
         };
 
         window.softDrop = () => {
-            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver) return false;
+            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return false;
 
             const dropped = coreSoftDrop(
                 this.gameState,

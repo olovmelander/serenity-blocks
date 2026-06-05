@@ -398,6 +398,7 @@ export class GameState {
         // Flags
         this.isGameOver = false;
         this.isPaused = false;
+        this.hitStopRemaining = 0; // Tracks remaining hit-stop (impact freeze) milliseconds
         this.isProcessingPhysics = false;
         this.isStopped = false;
         this.isAlive = true; // For multiplayer: tracks if player is still in the round
@@ -492,6 +493,7 @@ export class GameState {
         resetLockState(this);
         this.isGameOver = false;
         this.isStopped = false;
+        this.hitStopRemaining = 0;
         this.isProcessingPhysics = false;
         this.isAlive = true;
         this.inputQueue = null;
@@ -1050,6 +1052,16 @@ export function updateGame(time, gameState, callbacks) {
     if (!gameState.isPaused) {
         const delta = time - gameState.lastTime;
         gameState.lastTime = time;
+
+        if (gameState.hitStopRemaining > 0) {
+            gameState.hitStopRemaining = Math.max(0, gameState.hitStopRemaining - delta);
+            if (drawCallback) drawCallback();
+            if (updateStatsCallback) updateStatsCallback();
+            if (monitoring) {
+                performanceMonitor.updateEnd();
+            }
+            return;
+        }
 
         // Phase 3: Advance input repeat (DAS/ARR) using the same authoritative
         // delta as gravity, so input timing is frame-rate independent and unified
