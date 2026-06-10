@@ -1,19 +1,40 @@
+/* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
  * @fileoverview Sky Drift Environment - Chapter 5 Visual Theme
  *
- * Creates a stunning cosmic vista with actual celestial objects:
- * - Distant spiral galaxy with glowing core and arms
- * - Solar eclipse with corona glow
- * - Colorful nebulae formations
- * - Floating planets
- * - Dense starfield
+ * Theme: "Drifting THROUGH a luminous cloud cathedral toward a warm low sun" — the
+ * bright, hazy, sun-anchored counterpoint to Space's vacuum. STRICTLY no stars /
+ * planets / galaxy / dark space objects: the path threads BETWEEN distinct billowing
+ * cloud strata that part to reveal a single warm on-camera Mie sun casting visible
+ * god-ray fans + silver-linings, with a cool teal→violet aurora HERO curtain arching
+ * across the upper frame. Warm sun + cool aurora = the two-hero colour story.
  *
- * Theme: "Float among clouds" - transitioning to deep space
+ * The former cosmic objects (spiral galaxy, solar-eclipse + dark moon, nebulae,
+ * nebula veil, banded planets, starfield) read as dark "bruise" blobs against the
+ * bright sky and broke the no-space identity, so they have been DELETED. The warm
+ * glow they carried is repurposed into an on-camera SUN-glow sprite stack coincident
+ * with the baked dome sun.
+ *
+ * WebGPU: this live chapter runs on THREE.WebGPURenderer; all visuals use the TSL
+ * NodeMaterial builders in sky-drift.tsl.js (sky gradient + boosted sun, sun-glow
+ * sprite, cloud strata, god-ray fans, aurora curtain, near-foreground wisps). The
+ * shared uTime/uEnergy uniforms are TSL uniform() nodes whose `.value` the update
+ * loop ticks. The cloud-deck break sprites + lights stay as canvas-glow Sprites /
+ * lights (they run on three/webgpu as-is).
  */
 
-import * as THREE from 'three';
-import { ODYSSEY_NOISE_GLSL } from './shared/odyssey-noise.js';
-import { getChapterPathRange } from '../path-utils.js';
+import * as THREE from 'three/webgpu';
+import { uniform } from 'three/tsl';
+import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-utils.js';
+import {
+    createSkyGradientTSL,
+    createSunGlowTSL,
+    createCloudBreakShaftTSL,
+    createCloudStrataTSL,
+    createAuroraRibbonsTSL,
+    createSkyWispTSL,
+    SKY_DRIFT_SUN_DIR,
+} from './sky-drift.tsl.js';
 
 /**
  * Sky Drift environment configuration
@@ -32,489 +53,87 @@ export const SKY_DRIFT_CONFIG = {
     },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// GLSL Shaders
-// ═══════════════════════════════════════════════════════════════════════════════
+// SEAM 5->6 ("the aurora just disappears with a pop"). The aurora is now ever-present
+// through Ch5, and the manager group-opacity crossfade can't reach its NodeMaterial (alpha
+// flows through opacityNode/uOpacity, not material.opacity). Across the LAST stretch of Ch5
+// into the Sky→Space boundary we fade the shared aurora uOpacity 1->0 so the curtain recedes
+// gracefully (the fog/sky COLOUR lerp Sky->Space is owned by ChapterEnvironmentManager's
+// smootherstep'd seam, widened to seamWidth 0.03 in chapter-profile so it never snaps).
+const SKY_AURORA_EXIT_BAND = 0.34; // fraction of Ch5 span before the boundary over which to recede
 
-const skyGradientVertexShader = `
-    varying vec3 vPosition;
-    void main() {
-        vPosition = position;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-`;
+function smoothstep01(value) {
+    const t = THREE.MathUtils.clamp(value, 0, 1);
+    return t * t * (3 - 2 * t);
+}
 
-const skyGradientFragmentShader = `
-    uniform float uOpacity;
-    varying vec3 vPosition;
-    void main() {
-        float t = (normalize(vPosition).y + 1.0) * 0.5;
-        // Much darker space colors
-        vec3 spaceTop = vec3(0.0, 0.0, 0.02);       // Near black
-        vec3 spaceMid = vec3(0.02, 0.01, 0.05);     // Very dark purple
-        vec3 horizon = vec3(0.04, 0.02, 0.08);      // Dark purple horizon
-        vec3 color;
-        if (t > 0.6) {
-            color = mix(spaceMid, spaceTop, (t - 0.6) / 0.4);
-        } else if (t > 0.3) {
-            color = mix(horizon, spaceMid, (t - 0.3) / 0.3);
-        } else {
-            color = horizon;
-        }
-        gl_FragColor = vec4(color, uOpacity);
-    }
-`;
+/**
+ * Resolve the 5->6 aurora recede opacity (1->0) across the back of Chapter 5. Outside the
+ * band (or without progress) returns 1 so the curtain reads fully in-chapter / standalone.
+ * @param {number} progress global Odyssey progress (0..1), or null.
+ * @param {number[]} [chapterPositions] active chapter-start progresses.
+ * @returns {number} 0..1 aurora opacity
+ */
+export function resolveSkyDriftAuroraExitOpacity(
+    progress,
+    chapterPositions = getActiveOdysseyChapterPositions(),
+) {
+    if (!Number.isFinite(progress)) return 1;
+    const ch5Start = chapterPositions?.[4];
+    const ch6Start = chapterPositions?.[5] ?? 1;
+    if (!Number.isFinite(ch5Start) || ch6Start <= ch5Start) return 1;
 
-// Spiral galaxy arms shader
-const galaxyVertexShader = `
-    uniform float uTime;
-    attribute float aAngle;
-    attribute float aRadius;
-    attribute float aRandom;
-    attribute vec3 aColor;
-    varying vec3 vColor;
-    varying float vAlpha;
-    
-    void main() {
-        float angle = aAngle + uTime * 0.03 * (1.0 - aRadius * 0.05);
-        float spiralOffset = aRadius * 0.4;
-        float finalAngle = angle + spiralOffset;
-        
-        vec3 pos = vec3(
-            cos(finalAngle) * aRadius,
-            (aRandom - 0.5) * 0.5,
-            sin(finalAngle) * aRadius
-        );
-        
-        vec3 transformed = position + pos;
-        vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
-        gl_Position = projectionMatrix * mvPosition;
-        
-        float sizeFactor = 1.0 - aRadius * 0.05;
-        gl_PointSize = (1.5 + aRandom * 1.5) * sizeFactor * (100.0 / -mvPosition.z);
-        gl_PointSize = clamp(gl_PointSize, 0.5, 4.0);
-        
-        vColor = aColor;
-        vAlpha = 0.6 + aRandom * 0.4;
-    }
-`;
-
-const galaxyFragmentShader = `
-    varying vec3 vColor;
-    varying float vAlpha;
-    void main() {
-        float dist = length(gl_PointCoord - 0.5);
-        if (dist > 0.5) discard;
-        float alpha = 1.0 - smoothstep(0.2, 0.5, dist);
-        gl_FragColor = vec4(vColor, alpha * vAlpha);
-    }
-`;
-
-// Corona glow shader for eclipse
-const coronaVertexShader = `
-    uniform float uTime;
-    attribute float aPhase;
-    attribute float aSpeed;
-    varying float vAlpha;
-    varying vec3 vColor;
-    attribute vec3 aColor;
-    
-    void main() {
-        vec3 pos = position;
-        float wave = sin(uTime * aSpeed + aPhase) * 0.5 + 0.5;
-        pos *= 1.0 + wave * 0.1;
-        
-        vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-        gl_Position = projectionMatrix * mvPosition;
-        gl_PointSize = (2.0 + wave * 2.0) * (150.0 / -mvPosition.z);
-        gl_PointSize = clamp(gl_PointSize, 0.5, 5.0);
-        
-        vAlpha = 0.4 + wave * 0.3;
-        vColor = aColor;
-    }
-`;
-
-const coronaFragmentShader = `
-    varying float vAlpha;
-    varying vec3 vColor;
-    void main() {
-        float dist = length(gl_PointCoord - 0.5);
-        if (dist > 0.5) discard;
-        float glow = pow(1.0 - dist * 2.0, 1.5);
-        gl_FragColor = vec4(vColor, glow * vAlpha);
-    }
-`;
-
-// Planet shader
-const planetVertexShader = `
-    varying vec3 vNormal;
-    varying vec3 vViewPos;
-    void main() {
-        vNormal = normalize(normalMatrix * normal);
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        vViewPos = -mvPosition.xyz;
-        gl_Position = projectionMatrix * mvPosition;
-    }
-`;
-
-const planetFragmentShader = `
-    uniform vec3 uColor1;
-    uniform vec3 uColor2;
-    uniform float uTime;
-    varying vec3 vNormal;
-    varying vec3 vViewPos;
-    
-    void main() {
-        vec3 viewDir = normalize(vViewPos);
-        float fresnel = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.0);
-        
-        float stripe = sin(vNormal.y * 10.0 + uTime * 0.1) * 0.5 + 0.5;
-        vec3 color = mix(uColor1, uColor2, stripe);
-        
-        color += fresnel * vec3(0.3, 0.4, 0.6) * 0.5;
-        
-        float diffuse = max(0.0, dot(vNormal, normalize(vec3(1.0, 0.5, 0.3))));
-        color *= 0.4 + diffuse * 0.6;
-        
-        gl_FragColor = vec4(color, 1.0);
-    }
-`;
-
-// Star shader
-const starVertexShader = `
-    uniform float uTime;
-    attribute float aSize;
-    attribute float aTwinkle;
-    attribute float aBrightness;
-    varying float vAlpha;
-    
-    void main() {
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * mvPosition;
-        float twinkle = sin(uTime * 2.0 + aTwinkle) * 0.4 + 0.6;
-        gl_PointSize = aSize * twinkle * (200.0 / -mvPosition.z);
-        gl_PointSize = clamp(gl_PointSize, 0.5, 5.0);
-        vAlpha = twinkle * aBrightness;
-    }
-`;
-
-const starFragmentShader = `
-    varying float vAlpha;
-    void main() {
-        float dist = length(gl_PointCoord - 0.5);
-        if (dist > 0.5) discard;
-        float glow = pow(1.0 - dist * 2.0, 1.5);
-        gl_FragColor = vec4(0.9, 0.92, 1.0, glow * vAlpha);
-    }
-`;
-
-const cloudShaftVertexShader = `
-    varying vec2 vUv;
-    void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-`;
-
-const cloudShaftFragmentShader = `
-    uniform float uTime;
-    varying vec2 vUv;
-    void main() {
-        vec2 centered = vUv - 0.5;
-        float radial = smoothstep(0.52, 0.05, length(centered * vec2(0.65, 1.2)));
-        float rays = pow(max(0.0, sin((vUv.x * 18.0) + uTime * 0.28)), 3.0) * 0.22;
-        vec3 color = mix(vec3(0.55, 0.74, 1.0), vec3(1.0, 0.86, 0.54), vUv.y);
-        gl_FragColor = vec4(color * (0.35 + rays), radial * 0.32);
-    }
-`;
-
-const auroraVertexShader = `
-    uniform float uTime;
-    varying vec2 vUv;
-    void main() {
-        vUv = uv;
-        vec3 transformed = position;
-        transformed.y += sin(position.x * 0.018 + uTime * 0.45) * 7.0;
-        transformed.y += sin(position.x * 0.039 - uTime * 0.28) * 3.5;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
-    }
-`;
-
-const auroraFragmentShader = `
-    uniform float uTime;
-    uniform vec3 uColorA;
-    uniform vec3 uColorB;
-    varying vec2 vUv;
-    void main() {
-        float curtain = sin(vUv.x * 38.0 + uTime * 0.75) * 0.5 + 0.5;
-        float vertical = smoothstep(0.0, 0.22, vUv.y) * smoothstep(1.0, 0.18, vUv.y);
-        float strands = pow(curtain, 3.0) * 0.55 + 0.2;
-        vec3 color = mix(uColorA, uColorB, vUv.x);
-        gl_FragColor = vec4(color * (0.7 + strands), vertical * strands * 0.58);
-    }
-`;
+    const span = ch6Start - ch5Start;
+    const exitStart = ch6Start - span * SKY_AURORA_EXIT_BAND;
+    // 1->0 as progress rises from exitStart to the boundary (reversed smoothstep edges).
+    return smoothstep01((ch6Start - progress) / Math.max(1e-5, ch6Start - exitStart));
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Environment Creation
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function createSkyGradient(uniforms) {
-    const geometry = new THREE.SphereGeometry(2500, 64, 48); // Large sphere like Ch4
-    const material = new THREE.ShaderMaterial({
-        uniforms: {
-            uTime: uniforms.uTime,
-            uOpacity: { value: 1.0 },
-        },
-        vertexShader: skyGradientVertexShader,
-        fragmentShader: skyGradientFragmentShader,
-        side: THREE.BackSide,
-        depthWrite: false,
-        transparent: true, // Allow Chapter 4 to show through
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.renderOrder = -100; // Render behind everything
+    const { mesh, uniforms: gradientUniforms } = createSkyGradientTSL();
+    // Surface the baked dome sun direction so B7 can drive it from the camera aim
+    // (a ch5 CHAPTER_LOOK is deferred); the sun is the single on-camera hero here.
+    if (uniforms) {
+        uniforms.uSunDir = gradientUniforms.uSunDir;
+    }
     return mesh;
 }
 
-function createStars(uniforms, count) {
-    const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(count * 3);
-    const sizes = new Float32Array(count);
-    const twinkles = new Float32Array(count);
-    const brightnesses = new Float32Array(count);
-
-    for (let i = 0; i < count; i++) {
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
-        const r = 180 + Math.random() * 40;
-        positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-        positions[i * 3 + 1] = r * Math.cos(phi);
-        positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-        sizes[i] = 0.5 + Math.random() * 2.5;
-        twinkles[i] = Math.random() * Math.PI * 2;
-        brightnesses[i] = 0.4 + Math.random() * 0.6;
-    }
-
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-    geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkles, 1));
-    geometry.setAttribute('aBrightness', new THREE.BufferAttribute(brightnesses, 1));
-
-    const material = new THREE.ShaderMaterial({
-        uniforms: { uTime: uniforms.uTime },
-        vertexShader: starVertexShader,
-        fragmentShader: starFragmentShader,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-    });
-
-    return new THREE.Points(geometry, material);
+/**
+ * On-camera warm sun-glow sprite stack (the repurposed eclipse warm glow), placed
+ * coincident with the baked dome sun along the shared sun direction so the warm bloom
+ * sits where the Mie sun is brightest. Returns the group so the caller can hold it.
+ */
+function createSunGlow(uniforms) {
+    const group = new THREE.Group();
+    group.name = 'sky-drift-sun';
+    const { mesh } = createSunGlowTSL(uniforms.uTime);
+    group.add(mesh);
+    // Offset the glow group along the sun direction at a fixed mid-distance so it sits
+    // on the baked sun. (B7 can re-aim by rotating this group with the camera look.)
+    group.position.copy(SKY_DRIFT_SUN_DIR.clone().multiplyScalar(360));
+    return group;
 }
 
 /**
- * Create a detailed spiral galaxy with core and arms
+ * God-ray FANS anchored at the on-camera sun. The TSL builder returns a group of 3
+ * shaft fans; offset toward the sun azimuth so they rake down through the cloud gaps.
  */
-function createSpiralGalaxy(uniforms) {
-    const galaxyGroup = new THREE.Group();
-    galaxyGroup.name = 'spiral-galaxy';
-
-    // Glow texture for core
-    const glowTexture = createGlowTexture();
-
-    // Galaxy core - layered glow sprites
-    const coreColors = [
-        { color: 0xFFFFFF, scale: 4, opacity: 0.95 },
-        { color: 0xFF66CC, scale: 8, opacity: 0.8 },
-        { color: 0x9933FF, scale: 14, opacity: 0.5 },
-        { color: 0x3366FF, scale: 22, opacity: 0.3 },
-    ];
-
-    coreColors.forEach(({ color, scale, opacity }) => {
-        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-            map: glowTexture,
-            color,
-            transparent: true,
-            opacity,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        }));
-        sprite.scale.set(scale, scale, 1);
-        galaxyGroup.add(sprite);
-    });
-
-    // Spiral arms - 4000 particles
-    const armCount = 4000;
-    const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(armCount * 3);
-    const angles = new Float32Array(armCount);
-    const radii = new Float32Array(armCount);
-    const randoms = new Float32Array(armCount);
-    const colors = new Float32Array(armCount * 3);
-
-    for (let i = 0; i < armCount; i++) {
-        const arm = i % 2;
-        const baseAngle = arm * Math.PI;
-        const t = Math.random();
-        const radius = 0.5 + t ** 0.4 * 18;
-        const spiralOffset = radius * 0.35;
-        const spread = (Math.random() - 0.5) * (0.3 + radius * 0.02);
-
-        angles[i] = baseAngle + spiralOffset + spread;
-        radii[i] = radius;
-        randoms[i] = Math.random();
-        positions[i * 3] = 0;
-        positions[i * 3 + 1] = 0;
-        positions[i * 3 + 2] = 0;
-
-        // Color gradient from center
-        const colorT = Math.min(radius / 16, 1.0);
-        let color;
-        if (colorT < 0.2) {
-            color = new THREE.Color(0xFFFFFF).lerp(new THREE.Color(0xFFAADD), colorT / 0.2);
-        } else if (colorT < 0.5) {
-            color = new THREE.Color(0xFFAADD).lerp(new THREE.Color(0xCC44FF), (colorT - 0.2) / 0.3);
-        } else {
-            color = new THREE.Color(0xCC44FF).lerp(new THREE.Color(0x6633CC), (colorT - 0.5) / 0.5);
-        }
-        colors[i * 3] = color.r;
-        colors[i * 3 + 1] = color.g;
-        colors[i * 3 + 2] = color.b;
-    }
-
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('aAngle', new THREE.BufferAttribute(angles, 1));
-    geometry.setAttribute('aRadius', new THREE.BufferAttribute(radii, 1));
-    geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-    geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-
-    const material = new THREE.ShaderMaterial({
-        uniforms: { uTime: uniforms.uTime },
-        vertexShader: galaxyVertexShader,
-        fragmentShader: galaxyFragmentShader,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-    });
-
-    galaxyGroup.add(new THREE.Points(geometry, material));
-    return galaxyGroup;
-}
-
-/**
- * Create a solar eclipse with sun, moon, and corona
- */
-function createSolarEclipse(uniforms) {
-    const eclipseGroup = new THREE.Group();
-    eclipseGroup.name = 'solar-eclipse';
-
-    const glowTexture = createGlowTexture();
-
-    // Sun glow layers (behind moon)
-    const sunColors = [
-        { color: 0xFFDD77, scale: 30, opacity: 0.9 },
-        { color: 0xFFAA44, scale: 45, opacity: 0.6 },
-        { color: 0xFF7722, scale: 60, opacity: 0.3 },
-    ];
-
-    sunColors.forEach(({ color, scale, opacity }) => {
-        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-            map: glowTexture,
-            color,
-            transparent: true,
-            opacity,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        }));
-        sprite.scale.set(scale, scale, 1);
-        sprite.position.z = -1;
-        eclipseGroup.add(sprite);
-    });
-
-    // Dark moon in front
-    const moonGeometry = new THREE.SphereGeometry(12, 32, 32);
-    const moonMaterial = new THREE.MeshBasicMaterial({
-        color: 0x050505,
-    });
-    const moon = new THREE.Mesh(moonGeometry, moonMaterial);
-    moon.position.z = 0.5;
-    eclipseGroup.add(moon);
-
-    // Corona particles
-    const coronaCount = 600;
-    const coronaGeometry = new THREE.BufferGeometry();
-    const coronaPositions = new Float32Array(coronaCount * 3);
-    const coronaColors = new Float32Array(coronaCount * 3);
-    const coronaPhases = new Float32Array(coronaCount);
-    const coronaSpeeds = new Float32Array(coronaCount);
-
-    const coronaPalette = [
-        new THREE.Color(0xffdd77),
-        new THREE.Color(0xffaa44),
-        new THREE.Color(0xff7722),
-        new THREE.Color(0xffcc55),
-    ];
-
-    for (let i = 0; i < coronaCount; i++) {
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
-        const radius = 14 + Math.random() * 12;
-
-        coronaPositions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
-        coronaPositions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
-        coronaPositions[i * 3 + 2] = radius * Math.cos(phi) * 0.3;
-
-        const color = coronaPalette[Math.floor(Math.random() * coronaPalette.length)];
-        coronaColors[i * 3] = color.r;
-        coronaColors[i * 3 + 1] = color.g;
-        coronaColors[i * 3 + 2] = color.b;
-
-        coronaPhases[i] = Math.random() * Math.PI * 2;
-        coronaSpeeds[i] = 1 + Math.random() * 2;
-    }
-
-    coronaGeometry.setAttribute('position', new THREE.BufferAttribute(coronaPositions, 3));
-    coronaGeometry.setAttribute('aColor', new THREE.BufferAttribute(coronaColors, 3));
-    coronaGeometry.setAttribute('aPhase', new THREE.BufferAttribute(coronaPhases, 1));
-    coronaGeometry.setAttribute('aSpeed', new THREE.BufferAttribute(coronaSpeeds, 1));
-
-    const coronaMaterial = new THREE.ShaderMaterial({
-        uniforms: { uTime: uniforms.uTime },
-        vertexShader: coronaVertexShader,
-        fragmentShader: coronaFragmentShader,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-    });
-
-    eclipseGroup.add(new THREE.Points(coronaGeometry, coronaMaterial));
-    return eclipseGroup;
-}
-
 function createCloudBreakShaft(uniforms) {
-    const shaft = new THREE.Mesh(
-        new THREE.PlaneGeometry(260, 360, 1, 1),
-        new THREE.ShaderMaterial({
-            uniforms: { uTime: uniforms.uTime },
-            vertexShader: cloudShaftVertexShader,
-            fragmentShader: cloudShaftFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-        }),
-    );
-    shaft.name = 'cloud-break-light-shaft';
-    shaft.position.set(0, 40, -620);
-    shaft.rotation.x = -0.08;
-    return shaft;
+    const { group } = createCloudBreakShaftTSL(uniforms.uTime);
+    return group;
 }
 
 function createCloudDecks() {
     const group = new THREE.Group();
     group.name = 'cloud-deck-break';
     const glowTexture = createGlowTexture();
-    const cloudColors = [0xcfe9ff, 0xffe6cc, 0xb6c8ff];
+    // Cooler, less saturated cloud tints (was 0xffe6cc warm) so the additive deck
+    // contributes atmospheric depth without pushing the lower frame toward white.
+    const cloudColors = [0xb9d6f5, 0xe6d2c4, 0xa9bdf0];
 
     for (let layer = 0; layer < 3; layer += 1) {
         const radius = 95 + layer * 38;
@@ -526,7 +145,8 @@ function createCloudDecks() {
                 map: glowTexture,
                 color: cloudColors[(index + layer) % cloudColors.length],
                 transparent: true,
-                opacity: (0.18 + layer * 0.05) * (0.55 + gap * 0.45),
+                // Reduced base/per-layer opacity (was 0.18 + layer*0.05).
+                opacity: (0.12 + layer * 0.035) * (0.55 + gap * 0.45),
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
             }));
@@ -544,72 +164,48 @@ function createCloudDecks() {
     return group;
 }
 
-function createAuroraRibbons(uniforms) {
-    const group = new THREE.Group();
-    group.name = 'aurora-ribbons';
-    const configs = [
-        {
-            y: 88, z: -690, colorA: 0x64f7ff, colorB: 0xb15cff, rot: -0.12,
-        },
-        {
-            y: 118, z: -760, colorA: 0xffd36f, colorB: 0x7af7c4, rot: 0.16,
-        },
-    ];
-
-    configs.forEach((config) => {
-        const mesh = new THREE.Mesh(
-            new THREE.PlaneGeometry(360, 86, 72, 1),
-            new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: uniforms.uTime,
-                    uColorA: { value: new THREE.Color(config.colorA) },
-                    uColorB: { value: new THREE.Color(config.colorB) },
-                },
-                vertexShader: auroraVertexShader,
-                fragmentShader: auroraFragmentShader,
-                transparent: true,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending,
-                side: THREE.DoubleSide,
-            }),
-        );
-        mesh.position.set(0, config.y, config.z);
-        mesh.rotation.z = config.rot;
-        group.add(mesh);
-    });
-
+/**
+ * Volumetric cloud strata — 6 feathered FBM sheets threaded through the camera
+ * travel volume so the path dollies THROUGH layered cloud. This is the hero fix for
+ * the empty washed-pale field; the corridor field still owns the FAR haze banks.
+ * (Trimmed 10 → 6 for overdraw; fewer-bigger-richer sheets read the same.)
+ */
+function createCloudStrata(uniforms) {
+    const { group } = createCloudStrataTSL(uniforms.uTime);
     return group;
 }
 
-function createRainVeils(count) {
-    const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(count * 3);
-    const speeds = new Float32Array(count);
-
-    for (let index = 0; index < count; index += 1) {
-        const stride = index * 3;
-        positions[stride] = (Math.random() - 0.5) * 360;
-        positions[stride + 1] = Math.random() * 240 - 80;
-        positions[stride + 2] = -390 - Math.random() * 280;
-        speeds[index] = 0.45 + Math.random() * 0.85;
+/**
+ * The bold, ever-present cool aurora HERO curtains across the upper frame (teal/green/
+ * violet/magenta interplay, complementary to the warm sun). The TSL builder spreads
+ * wide arcing curtains across the FULL travel depth so the aurora greets the camera at
+ * chapter ENTRY and stays present through the whole chapter; the curtain shimmer is
+ * driven by uniforms.uTime (ticked in the update loop). The update loop adds a slow
+ * lateral sway + a gentle energy-driven brightening so the curtains feel alive.
+ */
+function createAuroraRibbons(uniforms) {
+    const { group } = createAuroraRibbonsTSL(uniforms.uTime);
+    // SEAM 5->6: surface the shared aurora fade uniform so the chapter update can recede the
+    // whole curtain gracefully across the Sky→Space hand-off (the manager group-opacity
+    // crossfade can't reach this NodeMaterial; its alpha flows through opacityNode/uOpacity).
+    if (uniforms) {
+        uniforms.uAuroraOpacity = group.userData.auroraOpacityUniform;
     }
+    return group;
+}
 
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
-
-    const veil = new THREE.Points(
-        geometry,
-        new THREE.PointsMaterial({
-            color: 0xaad4ff,
-            size: 1.5,
-            transparent: true,
-            opacity: 0.28,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        }),
-    );
-    veil.name = 'rain-veil-particles';
-    return veil;
+/**
+ * Near-foreground cloud WISPS — repurposed from the old rain veil into fast streaking
+ * near-cloud wisps that fly past the camera for a sense of speed/altitude and fill the
+ * dead mid/right frame regions (the plan's "near-foreground wisps"). Built by the TSL
+ * wisp builder (warm-light, additive-soft, radial-feathered, capped). The per-instance
+ * world centers live in the `aBase` instanced attribute, which the update loop streaks
+ * toward the camera. Mesh name kept as `rain-veil-particles` for the chapter contract.
+ */
+function createRainVeils(count, uniforms) {
+    const { mesh } = createSkyWispTSL(uniforms.uTime, count);
+    mesh.name = 'rain-veil-particles';
+    return mesh;
 }
 
 export function createSkyDriftEnvironment(options = {}) {
@@ -626,280 +222,65 @@ export function createSkyDriftEnvironment(options = {}) {
         group.userData.yEnd = chapterRange.end.y;
     }
 
+    // Shared TSL uniform nodes — passed INTO the .tsl.js builders so the update loop
+    // keeps ticking `.value` exactly as before (uniform() exposes a `.value` setter).
     const uniforms = {
-        uTime: { value: 0 },
-        uEnergy: { value: 0.4 },
+        uTime: uniform(0),
+        uEnergy: uniform(0.4),
     };
     group.userData.uniforms = uniforms;
 
-    // Sky background
+    // Sky background — the structured vertical gradient + the BOOSTED on-camera Mie
+    // sun (the hero). createSkyGradient surfaces uniforms.uSunDir for B7.
     group.add(createSkyGradient(uniforms));
-
-    // FBM volumetric nebula veil — gives the backdrop real depth behind the
-    // glow-sprite nebulae (matches the Ch6/Ch7 backdrops).
-    const nebulaVeil = createNebulaVeil(uniforms);
-    group.add(nebulaVeil);
-    group.userData.nebulaVeil = nebulaVeil;
 
     const cloudDecks = createCloudDecks();
     group.add(cloudDecks);
     group.userData.cloudDecks = cloudDecks;
 
+    // Volumetric cloud strata threaded through the camera travel volume — the path
+    // now dollies BETWEEN 6 layered cloud sheets (kills the empty washed-pale field).
+    const cloudStrata = createCloudStrata(uniforms);
+    group.add(cloudStrata);
+    group.userData.cloudStrata = cloudStrata;
+
+    // God-ray FANS anchored at the on-camera sun (raking down through the cloud gaps).
     const lightShaft = createCloudBreakShaft(uniforms);
     group.add(lightShaft);
     group.userData.lightShaft = lightShaft;
 
+    // The arching cool teal→violet aurora HERO curtain across the upper frame.
     const aurora = createAuroraRibbons(uniforms);
     group.add(aurora);
     group.userData.aurora = aurora;
 
-    // Dense starfield
-    const starCount = options.particleCount ? options.particleCount * 4 : 2500;
-    group.add(createStars(uniforms, starCount));
+    // On-camera warm SUN glow sprite (repurposed from the deleted eclipse warm glow),
+    // coincident with the baked dome sun. The single on-camera hero/anchor/light.
+    const sunGlow = createSunGlow(uniforms);
+    group.add(sunGlow);
+    group.userData.sunGlow = sunGlow;
 
-    // COSMIC OBJECTS
-    // 1. Distant spiral galaxy - Moved deep into Z (-800) and adjusted Y
-    const galaxy = createSpiralGalaxy(uniforms);
-    galaxy.position.set(-80, 50, -850);
-    galaxy.rotation.x = 0.7;
-    galaxy.rotation.z = 0.3;
-    galaxy.scale.setScalar(2.5); // Larger because it's further away
-    group.add(galaxy);
-    group.userData.galaxy = galaxy;
+    // NO stars / galaxy / eclipse / nebulae / planets — those read as dark "bruise"
+    // blobs against the bright sky and broke the no-space identity. Chapter 5 is a
+    // luminous daytime cloud cathedral: structure comes from the gradient, sun, cloud
+    // strata, god-ray fans, aurora curtain and near-foreground wisps.
 
-    // 2. Solar eclipse - Moved deep into Z (-750)
-    const eclipse = createSolarEclipse(uniforms);
-    eclipse.position.set(120, 80, -750);
-    eclipse.scale.setScalar(1.5);
-    group.add(eclipse);
-    group.userData.eclipse = eclipse;
-
-    // 3. Colorful nebulae - Moved deep into Z
-    const nebulae = createNebulae(uniforms);
-    group.add(nebulae);
-
-    // 4. Distant planets - Moved deep into Z
-    const planets = createPlanets(uniforms);
-    group.add(planets);
-    group.userData.planets = planets;
-
-    // 5. Ambient drift particles
-    const ambient = createAmbientParticles(uniforms, options.particleCount || 400);
-    group.add(ambient);
-
-    const rainVeils = createRainVeils(options.particleCount || 420);
+    // Near-foreground cloud wisps for speed/altitude (repurposed rain veil).
+    const rainVeils = createRainVeils(options.particleCount || 380, uniforms);
     group.add(rainVeils);
     group.userData.rainVeils = rainVeils;
 
     setupSkyLighting(group);
-    group.position.y = chapterCenterY;
-
-    return group;
-}
-
-/**
- * FBM volumetric nebula veil — large additive planes deep behind the cosmic
- * objects, giving the backdrop drifting volumetric depth instead of flat sprites.
- */
-function createNebulaVeil(uniforms) {
-    const group = new THREE.Group();
-    group.name = 'nebula-veil';
-
-    const veilVertexShader = `
-        varying vec2 vUv;
-        void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-    `;
-    const veilFragmentShader = `
-        uniform float uTime;
-        uniform float uEnergy;
-        uniform vec3 uColorA;
-        uniform vec3 uColorB;
-        varying vec2 vUv;
-
-        ${ODYSSEY_NOISE_GLSL}
-
-        void main() {
-            vec2 p = vUv * 3.0;
-            float n = fbm2(p + vec2(uTime * 0.01, uTime * 0.006));
-            float n2 = fbm2(p * 1.8 - vec2(uTime * 0.008, 0.0));
-            float density = smoothstep(0.42, 0.95, n * 0.6 + n2 * 0.55);
-            vec3 color = mix(uColorA, uColorB, n2);
-            float edge = smoothstep(0.5, 0.05, length(vUv - 0.5));
-            gl_FragColor = vec4(color, density * edge * (0.12 + uEnergy * 0.07));
-        }
-    `;
-
-    const veils = [
-        { z: -900, colorA: 0x6633cc, colorB: 0xff33cc },
-        { z: -940, colorA: 0x2f6bff, colorB: 0x9933ff },
-    ];
-
-    veils.forEach((config) => {
-        const mesh = new THREE.Mesh(
-            new THREE.PlaneGeometry(1400, 1000),
-            new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: uniforms.uTime,
-                    uEnergy: uniforms.uEnergy,
-                    uColorA: { value: new THREE.Color(config.colorA) },
-                    uColorB: { value: new THREE.Color(config.colorB) },
-                },
-                vertexShader: veilVertexShader,
-                fragmentShader: veilFragmentShader,
-                transparent: true,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending,
-                side: THREE.DoubleSide,
-            }),
-        );
-        mesh.position.set(0, 20, config.z);
-        mesh.renderOrder = -99;
-        group.add(mesh);
-    });
-
-    return group;
-}
-
-/**
- * Create colorful nebula formations
- */
-function createNebulae() {
-    const nebulaGroup = new THREE.Group();
-    nebulaGroup.name = 'nebulae';
-
-    const glowTexture = createGlowTexture();
-    const configs = [
-        {
-            pos: [-150, -40, -800], scale: 120, color: 0xFF33CC, opacity: 0.3,
-        },
-        {
-            pos: [150, -60, -820], scale: 140, color: 0x3399FF, opacity: 0.25,
-        },
-        {
-            pos: [0, 80, -850], scale: 160, color: 0x9933FF, opacity: 0.2,
-        },
-        {
-            pos: [-80, -90, -780], scale: 100, color: 0x66CCFF, opacity: 0.25,
-        },
-        {
-            pos: [100, 50, -810], scale: 110, color: 0xCC44FF, opacity: 0.22,
-        },
-    ];
-
-    configs.forEach(({
-        pos, scale, color, opacity,
-    }) => {
-        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-            map: glowTexture,
-            color,
-            transparent: true,
-            opacity,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        }));
-        sprite.position.set(...pos);
-        sprite.scale.set(scale, scale, 1);
-        nebulaGroup.add(sprite);
-    });
-
-    return nebulaGroup;
-}
-
-/**
- * Create distant planets with atmospheric effects
- */
-function createPlanets(uniforms) {
-    const planetGroup = new THREE.Group();
-    planetGroup.name = 'planets';
-
-    const planetConfigs = [
-        {
-            pos: [-120, -50, -750], size: 15, color1: 0x2E4A62, color2: 0x1A2D3D, hasRing: false,
-        },
-        {
-            pos: [140, 60, -780], size: 25, color1: 0xA67C52, color2: 0x6B4423, hasRing: true,
-        },
-        {
-            pos: [-40, 90, -820], size: 10, color1: 0x4A626E, color2: 0x2C3E50, hasRing: false,
-        },
-    ];
-
-    planetConfigs.forEach(({
-        pos, size, color1, color2, hasRing,
-    }) => {
-        const geometry = new THREE.SphereGeometry(size, 32, 32);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: uniforms.uTime,
-                uColor1: { value: new THREE.Color(color1) },
-                uColor2: { value: new THREE.Color(color2) },
-            },
-            vertexShader: planetVertexShader,
-            fragmentShader: planetFragmentShader,
-        });
-
-        const planet = new THREE.Mesh(geometry, material);
-        planet.position.set(...pos);
-
-        // Add ring for gas giant
-        if (hasRing) {
-            const ringGeometry = new THREE.RingGeometry(size * 1.4, size * 2, 64);
-            const ringMaterial = new THREE.MeshBasicMaterial({
-                color: 0x8B7355,
-                transparent: true,
-                opacity: 0.5,
-                side: THREE.DoubleSide,
-            });
-            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-            ring.rotation.x = Math.PI * 0.4;
-            planet.add(ring);
-        }
-
-        planetGroup.add(planet);
-    });
-
-    return planetGroup;
-}
-
-/**
- * Ambient drift particles
- */
-function createAmbientParticles(uniforms, count) {
-    const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(count * 3);
-    const sizes = new Float32Array(count);
-
-    for (let i = 0; i < count; i++) {
-        const r = 100 + Math.random() * 200;
-        const theta = Math.random() * Math.PI * 2;
-        // Spread particles around the path in deep space
-        positions[i * 3] = r * Math.cos(theta);
-        positions[i * 3 + 1] = (Math.random() - 0.5) * 300; // Increased vertical spread
-        positions[i * 3 + 2] = -500 - Math.random() * 400; // Deep Z spread
-        sizes[i] = 1 + Math.random() * 2;
+    // Anchor the whole environment to the path's FULL centre (x/y/z), not just Y,
+    // so the backdrop and cloud-break shaft stay centred on the path and the path
+    // never clips through chapter geometry (matches mountain-peaks.js).
+    if (chapterRange?.center) {
+        group.position.set(chapterRange.center.x, chapterCenterY, chapterRange.center.z);
+    } else {
+        group.position.y = chapterCenterY;
     }
 
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-    geometry.setAttribute(
-        'aTwinkle',
-        new THREE.BufferAttribute(new Float32Array(count).map(() => Math.random() * 6.28), 1),
-    );
-    geometry.setAttribute('aBrightness', new THREE.BufferAttribute(new Float32Array(count).fill(0.5), 1));
-
-    const material = new THREE.ShaderMaterial({
-        uniforms: { uTime: uniforms.uTime },
-        vertexShader: starVertexShader,
-        fragmentShader: starFragmentShader,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-    });
-
-    return new THREE.Points(geometry, material);
+    return group;
 }
 
 function createGlowTexture() {
@@ -930,16 +311,25 @@ function setupSkyLighting(group) {
     cyanGlow.position.set(60, 20, -600);
     group.add(cyanGlow);
 
-    const eclipseGlow = new THREE.PointLight(0xFFAA44, 0.5, 300);
-    eclipseGlow.position.set(120, 80, -700);
-    group.add(eclipseGlow);
+    // Warm sun key — placed toward the on-camera sun azimuth so the clouds catch a
+    // warm sun-side rim (matches the baked Mie sun / sun-glow sprite).
+    const sunKey = new THREE.PointLight(0xffcf88, 0.42, 600);
+    sunKey.position.copy(SKY_DRIFT_SUN_DIR.clone().multiplyScalar(360));
+    group.add(sunKey);
+    group.userData.sunKey = sunKey;
 }
 
 export function updateSkyDriftEnvironment(group, delta, time, ...updateArgs) {
-    const [, , directorState = null] = updateArgs;
+    const [, cameraProgress = null, directorState = null] = updateArgs;
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
+    }
+
+    // SEAM 5->6: recede the ever-present aurora curtain (1->0) across the back of Ch5 so it
+    // fades out gracefully into Space rather than popping when the group hides.
+    if (uniforms?.uAuroraOpacity) {
+        uniforms.uAuroraOpacity.value = resolveSkyDriftAuroraExitOpacity(cameraProgress);
     }
     // Autonomous energy breath (Phase 6 will drive this from the audio reactor).
     if (uniforms?.uEnergy) {
@@ -957,41 +347,46 @@ export function updateSkyDriftEnvironment(group, delta, time, ...updateArgs) {
         purpleGlow.intensity = 0.4 + Math.sin(time * 0.3) * 0.15 + (uniforms?.uEnergy?.value ?? 0) * 0.2;
     }
 
-    // Slowly rotate galaxy
-    const { galaxy } = group.userData;
-    if (galaxy) {
-        galaxy.rotation.z += delta * 0.01;
-    }
-
     const { cloudDecks } = group.userData;
     if (cloudDecks) {
         cloudDecks.rotation.y += delta * 0.006;
         cloudDecks.rotation.z = Math.sin(time * 0.07) * 0.015;
     }
 
-    // Rotate planets
-    const { planets } = group.userData;
-    if (planets) {
-        planets.children.forEach((planet, i) => {
-            planet.rotation.y += delta * (0.05 + i * 0.02);
+    // Cloud strata breathe/drift gently (the FBM already animates internally via
+    // uTime; this adds a slow lateral sway so the layers feel alive as parallax).
+    const { cloudStrata } = group.userData;
+    if (cloudStrata) {
+        cloudStrata.children.forEach((sheet, i) => {
+            sheet.position.x += Math.sin(time * 0.05 + i * 1.3) * delta * 0.6;
         });
     }
 
-    const { rainVeils } = group.userData;
-    const positionAttr = rainVeils?.geometry?.attributes?.position;
-    const speedAttr = rainVeils?.geometry?.attributes?.aSpeed;
-    if (positionAttr && speedAttr) {
-        const { array } = positionAttr;
-        for (let index = 0; index < speedAttr.count; index += 1) {
-            const stride = index * 3;
-            array[stride + 1] -= speedAttr.array[index] * 1.7;
-            array[stride] += Math.sin(time * 0.45 + index) * 0.012;
-            if (array[stride + 1] < -105) {
-                array[stride + 1] = 135;
-            }
-        }
-        positionAttr.needsUpdate = true;
+    // Aurora HERO curtains: the per-strand shimmer is GPU-driven by uTime, so here we
+    // only add a slow whole-curtain sway (a gentle world-up bob + lateral drift) so the
+    // ever-present curtains breathe rather than sit static. No per-frame allocation —
+    // we write the group transform directly. The curtains are anchored well above the
+    // path so this never clips the dolly.
+    const { aurora } = group.userData;
+    if (aurora) {
+        aurora.position.x = Math.sin(time * 0.04) * 8;
+        aurora.position.y = Math.sin(time * 0.06) * 4;
+        aurora.rotation.z = Math.sin(time * 0.03) * 0.02;
     }
+
+    // Pulse the warm sun key gently with the energy breath so the sun feels alive.
+    const { sunKey } = group.userData;
+    if (sunKey) {
+        sunKey.intensity = 0.42 + Math.sin(time * 0.4) * 0.06 + (uniforms?.uEnergy?.value ?? 0) * 0.12;
+    }
+
+    // Near-foreground wisps STREAK forward past the camera (toward +Z) for a sense of
+    // speed/altitude, recycling to the far edge — replaces the old falling rain.
+    //
+    // PERF (Batch5): the per-frame CPU loop that rewrote the wisps' `aBase` array (and
+    // re-uploaded it via `needsUpdate=true`) is GONE. The streak + recycle now runs on
+    // the GPU inside createSkyWispTSL's positionNode, driven by uniforms.uTime ticked
+    // above plus the static per-instance aSpeed/aSeed attributes. Nothing to do here.
 }
 
 export default {

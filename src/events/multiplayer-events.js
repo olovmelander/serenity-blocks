@@ -17,6 +17,7 @@ export const MULTIPLAYER_EVENTS = {
     COUNTDOWN: 'ffa:countdown',
     GAME_OVER: 'ffa:game-over',
     ROUND_OVER: 'ffa:round-over',
+    PERFECT_CLEAR: 'ffa:perfect-clear',
 };
 
 export function emitMultiplayerEvent(event, payload) {

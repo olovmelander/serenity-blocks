@@ -1,17 +1,33 @@
+/* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
  * @fileoverview LevelNodeManager - Manages level node orbs along the path
  *
  * Creates interactive 3D representations for each level,
  * showing state (locked/unlocked/completed) and stars.
+ *
+ * WebGPU: this is the live manager. Its node materials are TSL NodeMaterials built by
+ * the validated sibling builders in ./level-node-manager.tsl.js (glass shell / glow
+ * halo / billboarded sparkle particles / fluid inner core) so they render on
+ * THREE.WebGPURenderer. The class API (createNodes/update/updateFromProgress/setCamera/
+ * setAAAVisualsEnabled/updateLayout/setPathEvaluator/setCameraProgress + node hit-
+ * testing) is unchanged.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import { uniform } from 'three/tsl';
 import { THEME_REGISTRY } from '../../themes/theme-registry.js';
 import { buildThemeIconLookup, resolveThemeIconAssetUrl } from './theme-icon-resolver.js';
 import {
     ODYSSEY_NODE_STYLES,
     getChapterProfile,
 } from './chapter-environments/shared/chapter-profile.js';
+import {
+    createGlassShellTSL,
+    createGlowHaloTSL,
+    createNodeParticlesTSL,
+    createNodeParticleGeometry,
+    createFluidInnerTSL,
+} from './level-node-manager.tsl.js';
 
 const THEME_ICON_MODULES = import.meta.glob('../../themes/*/*-theme-icon.{png,svg}', {
     import: 'default',
@@ -49,10 +65,36 @@ const GLASS_ORB_SCALE = 1.12; // Slight size bump for better readability on the 
 const GLASS_INNER_RADIUS = 0.95 * GLASS_ORB_SCALE;
 const GLASS_OUTER_RADIUS = 1.0 * GLASS_ORB_SCALE;
 const GLASS_GLOW_RADIUS = 1.3 * GLASS_ORB_SCALE;
-const INNER_FLOW_STRENGTH = 0.28;
-const INNER_WOBBLE_STRENGTH = 0.028;
+// Snow-globe: render the themed inner core at a fraction of the shell radius so it reads as
+// an object SUSPENDED inside the clear glass globe (glass-rim gap + orbiting sparkle "snow"),
+// instead of a magma ball that fills the shell and makes the transparent glass look solid.
+// Kept large enough (radius ≈0.70) to still cover the path line passing ≈0.45 behind centre.
+const INNER_CORE_DISPLAY_SCALE = 0.66;
+const CHAPTER_NODE_BASE_SCALE = Object.freeze({
+    1: 0.78,
+});
+// Inner-fluid flow/wobble strengths now live in the TSL builder (createFluidInnerTSL).
 const UPDATE_PROXIMITY_THRESHOLD = 0.15; // Only fully update nodes within this path-distance of the camera
 const NODE_PATH_SURFACE_OFFSET_Z = 0.45;
+// QW11: below this per-frame camera-progress delta the instanced/particle GPU buffers
+// are treated as unchanged, so update() skips the ~7040-particle + instance re-upload
+// (the time-driven sparkle/iridescence still animates in-shader via uTime). Small enough
+// that any real camera dolly re-flushes immediately.
+const UPDATE_PROGRESS_EPSILON = 1e-5;
+
+// Lock/star indicator placement relative to the orb, expressed in the CAMERA basis
+// (camera-right, camera-up, toward-camera) and multiplied by node scale. Placing them in
+// screen space — instead of a fixed world offset — keeps them directly above the orb and
+// facing the camera at every chapter's wildly different camera angle. `toward` pushes them
+// in FRONT of the orb's opaque core (radius ~1.06×scale) so the core never occludes them,
+// while still leaving depth-test on so a far level's indicator can't bleed over a nearer orb.
+// Applied each frame in _updateIndicatorBillboards().
+const LOCK_PLACEMENT = Object.freeze({ up: 1.5, toward: 1.0 });
+const STAR_PLACEMENT = Object.freeze([
+    Object.freeze({ right: -0.6, up: 1.5, toward: 0.9 }),
+    Object.freeze({ right: 0.0, up: 1.72, toward: 0.95 }),
+    Object.freeze({ right: 0.6, up: 1.5, toward: 0.9 }),
+]);
 
 /**
  * LevelNodeManager - Manages level selection orbs
@@ -101,6 +143,50 @@ export class LevelNodeManager {
         this.worldShellsEnabled = false;
         this.currentLevelId = 1;
         this._beatPulse = 0;
+
+        // QW11 (perf): reused per-frame scratch so update() allocates nothing per node.
+        // The matrix, the scale vec, the camera-basis vectors used to place the lock/star
+        // indicators in screen space, and a white fallback Color are all hoisted here and
+        // .copy()'d into rather than re-`new`d / `.clone()`d each of the ~55 nodes/frame.
+        this._scratchMatrix = new THREE.Matrix4();
+        this._scratchScaleVec = new THREE.Vector3();
+        // Camera-basis scratch for placing the lock/star indicators in screen space every
+        // frame (always above the orb, facing & slightly toward the camera). See
+        // _updateIndicatorBillboards() + LOCK_PLACEMENT / STAR_PLACEMENT.
+        this._scratchCamRight = new THREE.Vector3();
+        this._scratchCamUp = new THREE.Vector3();
+        this._scratchCamPos = new THREE.Vector3();
+        this._scratchToCam = new THREE.Vector3();
+        this._scratchIndicatorPos = new THREE.Vector3();
+        // Camera world matrix at the last indicator placement — lets the per-frame pass skip
+        // its (cheap) re-upload when the board is fully settled (no camera movement at all).
+        this._lastIndicatorCamMatrix = new THREE.Matrix4();
+        this._fallbackColor = new THREE.Color(0xffffff);
+
+        // QW11 (perf): gate the ~7040-particle + 4-instanced-attribute GPU re-upload so
+        // it only happens when something the buffers depend on actually changed (camera
+        // progress / visibility / hover / select / state / layout), not every frame.
+        // Bumping _uploadDirty marks the next update() to flush needsUpdate; otherwise
+        // the time-driven sparkle/iridescence keeps animating purely in the shader (uTime
+        // is still ticked every frame) with no per-frame CPU loop + GPU buffer churn.
+        this._uploadDirty = true;
+        this._lastUploadProgress = NaN;
+
+        // Shared TSL uniform nodes (WebGPU): one uTime ticks every node material,
+        // uAAA gates the per-world shell identity, uBeatPulse drives the focal glow.
+        // These are passed into the .tsl builders so update() keeps a single tick path.
+        this.uTime = uniform(0);
+        this.uAAA = uniform(this.worldShellsEnabled ? 1 : 0);
+        this.uBeatPulse = uniform(0);
+    }
+
+    /**
+     * QW11: mark the instanced/particle GPU buffers as needing a re-upload on the next
+     * update(). Called from every state-changing entry point (hover/select/state/layout/
+     * AAA toggle); camera-progress and visibility deltas are detected inside update().
+     */
+    _markUploadDirty() {
+        this._uploadDirty = true;
     }
 
     setAAAVisualsEnabled(enabled) {
@@ -108,12 +194,12 @@ export class LevelNodeManager {
         this.focalHierarchy = active;
         this.worldShellsEnabled = active;
         this._syncAAAVisualUniforms();
+        this._markUploadDirty();
     }
 
     _syncAAAVisualUniforms() {
-        if (this.glassInstancedMesh?.material?.uniforms?.uAAA) {
-            this.glassInstancedMesh.material.uniforms.uAAA.value = this.worldShellsEnabled ? 1 : 0;
-        }
+        // Shared TSL node uniform — the glass shell builder reads this same node.
+        this.uAAA.value = this.worldShellsEnabled ? 1 : 0;
     }
 
     setCamera(camera) {
@@ -263,193 +349,14 @@ export class LevelNodeManager {
         const count = this.instanceCount;
 
         // 1. Glass Instanced Mesh
-        // We use a custom shader to support per-instance uniforms (state).
+        // We use a TSL NodeMaterial to support per-instance state on WebGPU.
         // P3b: when uAAA>0.5 the shell adopts a per-world identity from per-instance
         // aNodeStyle + aNodeColor (magma geode / bubble / ley-lantern / cairn-crystal /
         // cloud-wisp / starlit / lensed-shard / neon-sign). Off → the original glass.
-        const glassMat = new THREE.ShaderMaterial({
-            uniforms: THREE.UniformsUtils.merge([
-                THREE.UniformsLib.common,
-                THREE.UniformsLib.lights,
-                {
-                    uTime: { value: 0 },
-                    uAAA: { value: this.worldShellsEnabled ? 1 : 0 },
-                },
-            ]),
-            vertexShader: `
-                #include <common>
-                #include <lights_pars_begin>
-
-                uniform float uTime;
-                uniform float uAAA;
-
-                attribute vec4 aState; // x:locked, y:completed, z:hovered, w:selected
-                attribute float aNodeStyle;
-                attribute vec3 aNodeColor;
-                attribute vec3 aNodeAccentColor;
-                attribute float aNodeSeed;
-
-                varying vec2 vUv;
-                varying vec3 vNormal;
-                varying vec3 vViewPosition;
-                varying vec4 vState;
-                varying float vNodeStyle;
-                varying vec3 vNodeColor;
-                varying vec3 vNodeAccentColor;
-                varying float vNodeSeed;
-
-                float ns_wave(vec3 p, float seed) {
-                    return sin((p.x + seed) * 8.0)
-                        * sin((p.y - seed) * 6.0)
-                        * sin((p.z + seed * 0.7) * 7.0);
-                }
-
-                void main() {
-                    vUv = uv;
-                    vState = aState;
-                    vNodeStyle = aNodeStyle;
-                    vNodeColor = aNodeColor;
-                    vNodeAccentColor = aNodeAccentColor;
-                    vNodeSeed = aNodeSeed;
-                    vNormal = normalize(normalMatrix * normal);
-
-                    vec3 transformed = position;
-                    if (uAAA > 0.5) {
-                        float s = aNodeStyle + 0.5;
-                        float wave = ns_wave(position, aNodeSeed * 6.2831);
-                        float displacement = 0.0;
-
-                        if (s < 1.0) {
-                            displacement = 0.02 + pow(abs(wave), 2.2) * 0.085;
-                        } else if (s < 2.0) {
-                            displacement = sin(uTime * 0.9 + position.y * 5.0 + aNodeSeed * 12.0) * 0.026;
-                        } else if (s < 3.0) {
-                            float ribs = pow(abs(sin((uv.x + aNodeSeed) * 18.0)), 8.0);
-                            displacement = ribs * 0.055;
-                        } else if (s < 4.0) {
-                            displacement = floor(abs(wave) * 4.0) * 0.018;
-                        } else if (s < 5.0) {
-                            displacement = sin(uTime * 0.45 + uv.x * 11.0 + uv.y * 13.0 + aNodeSeed * 9.0) * 0.036;
-                        } else if (s < 6.0) {
-                            displacement = smoothstep(0.88, 1.0, abs(wave)) * 0.045;
-                        } else if (s < 7.0) {
-                            transformed.x *= 1.055;
-                            transformed.y *= 0.965;
-                            displacement = sin(length(uv - 0.5) * 40.0 - uTime * 1.5) * 0.028;
-                        } else {
-                            transformed.x *= 1.035;
-                            transformed.y *= 1.035;
-                            transformed.z *= 0.985;
-                            displacement = sin((uv.y + aNodeSeed) * 36.0 + uTime * 3.0) * 0.018;
-                        }
-
-                        transformed += normal * displacement;
-                    }
-
-                    vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(transformed, 1.0);
-                    vViewPosition = -mvPosition.xyz;
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-            fragmentShader: `
-                uniform float uTime;
-                uniform float uAAA;
-                varying vec2 vUv;
-                varying vec3 vNormal;
-                varying vec3 vViewPosition;
-                varying vec4 vState;
-                varying float vNodeStyle;
-                varying vec3 vNodeColor;
-                varying vec3 vNodeAccentColor;
-                varying float vNodeSeed;
-
-                float ns_hash21(vec2 p) {
-                    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-                    p3 += dot(p3, p3.yzx + 33.33);
-                    return fract((p3.x + p3.y) * p3.z);
-                }
-
-                void main() {
-                    float uLocked = vState.x;
-                    float uHovered = vState.z;
-
-                    vec3 viewDir = normalize(vViewPosition);
-                    float rim = 1.0 - abs(dot(vNormal, viewDir));
-                    rim = pow(rim, 2.5);
-
-                    vec3 color;
-                    float alpha;
-
-                    if (uAAA > 0.5) {
-                        // ── P3b: per-world shell identity ──
-                        vec3 nc = vNodeColor;
-                        vec3 ac = vNodeAccentColor;
-                        float seed = vNodeSeed;
-                        float s = vNodeStyle + 0.5;
-                        if (s < 1.0) { // magmaGeode — dark cracked shell, molten cracks
-                            float n = ns_hash21(floor(vUv * vec2(24.0, 16.0) + seed * 13.0));
-                            float cr = smoothstep(0.55, 0.85, n);
-                            color = mix(nc * 0.16, ac * 1.65, cr) + ac * rim * 0.45;
-                            alpha = 0.26 + cr * 0.45 + rim * 0.3;
-                        } else if (s < 2.0) { // bubblePearl — pearlescent thin-film
-                            vec3 irid = 0.5 + 0.5 * cos(uTime * 0.24 + rim * 3.2 + seed * 6.0 + vec3(0.0, 2.0, 4.0));
-                            float caustic = pow(0.5 + 0.5 * sin((vUv.x + vUv.y) * 28.0 + uTime + seed * 8.0), 3.0);
-                            color = mix(vec3(0.82, 0.95, 1.0), irid, 0.55) * mix(vec3(1.0), ac, 0.28);
-                            alpha = 0.1 + rim * 0.42 + caustic * 0.1;
-                        } else if (s < 3.0) { // seedLantern — warm organic glow
-                            float ribs = pow(abs(sin((vUv.x + seed) * 18.0)), 8.0);
-                            color = mix(nc * 0.42, ac * 1.2, ribs * 0.65 + rim * 0.38);
-                            alpha = 0.18 + ribs * 0.18 + rim * 0.32;
-                        } else if (s < 4.0) { // cairnLantern — icy faceted crystal
-                            float facet = step(0.5, fract((vUv.x + seed) * 8.0)) * 0.5
-                                        + step(0.5, fract((vUv.y - seed) * 8.0)) * 0.5;
-                            color = nc * (0.28 + rim * 0.95) + ac * facet * 0.28;
-                            alpha = 0.14 + rim * 0.5;
-                        } else if (s < 5.0) { // cloudWisp — soft diffuse pastel
-                            float wisps = smoothstep(
-                                0.3,
-                                0.95,
-                                0.5 + 0.5 * sin(vUv.x * 15.0 + vUv.y * 10.0 - uTime * 0.7 + seed * 9.0)
-                            );
-                            color = mix(vec3(0.92), nc, 0.48) * (0.58 + rim * 0.42) + ac * wisps * 0.12;
-                            alpha = 0.12 + wisps * 0.15 + rim * 0.26;
-                        } else if (s < 6.0) { // starlitOrb — dark with sparkle points
-                            float spark = step(0.955, ns_hash21(floor(vUv * 44.0) + floor(uTime * 3.0) + seed * 17.0));
-                            color = nc * 0.14 + ac * rim * 0.9 + vec3(1.25, 1.15, 1.5) * spark;
-                            alpha = 0.12 + rim * 0.32 + spark * 0.6;
-                        } else if (s < 7.0) { // lensedShard — concentric lensing rings
-                            float rings = sin(length(vUv - 0.5) * 42.0 - uTime * 2.0 + seed * 8.0) * 0.5 + 0.5;
-                            color = mix(nc * 0.18, ac * 1.2, pow(rings, 3.0)) + nc * rim * 0.55;
-                            alpha = 0.18 + rim * 0.42;
-                        } else { // neonSign — bright electric rim
-                            float flick = 0.85 + 0.15 * sin(uTime * 18.0 + vUv.y * 6.0 + seed * 20.0);
-                            float scan = step(0.9, fract((vUv.y + uTime * 0.23 + seed) * 13.0));
-                            float edge = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
-                            float frame = 1.0 - smoothstep(0.025, 0.09, edge);
-                            color = nc * (0.5 + rim * 1.35) * flick + ac * (scan * 0.45 + frame * 0.9);
-                            alpha = 0.2 + rim * 0.45 + frame * 0.16;
-                        }
-                    } else {
-                        // ── Original white glass (default look, flag off) ──
-                        vec3 irid;
-                        irid.r = 0.5 + 0.5 * cos(uTime * 0.2 + rim * 3.0 + 0.0);
-                        irid.g = 0.5 + 0.5 * cos(uTime * 0.2 + rim * 3.0 + 2.0);
-                        irid.b = 0.5 + 0.5 * cos(uTime * 0.2 + rim * 3.0 + 4.0);
-                        color = mix(vec3(1.0), irid, 0.15 * rim * (1.0 - uLocked * 0.5));
-                        alpha = 0.15 + rim * 0.25;
-                    }
-
-                    // Shared locked/hover response.
-                    color *= (1.0 - uLocked * 0.4);
-                    alpha *= (0.6 + uHovered * 0.4);
-
-                    gl_FragColor = vec4(color, alpha);
-                }
-            `,
-            transparent: true,
-            depthWrite: false,
-            lights: true,
-        });
+        // The GLSL ShaderMaterial was ported to the validated createGlassShellTSL builder;
+        // we feed it this manager's shared uTime/uAAA so update() ticks one source.
+        const glass = createGlassShellTSL(this.uTime, this.uAAA);
+        const glassMat = glass.material;
 
         this.glassInstancedMesh = new THREE.InstancedMesh(this.sharedGlassGeo, glassMat, count);
         this.glassInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -485,53 +392,10 @@ export class LevelNodeManager {
         // 2. Glow Instanced Mesh
         // P3 focal hierarchy: aState.z flags the player's "current" node so it blazes
         // and beat-pulses (uBeatPulse). z stays 0 unless focalHierarchy is enabled, so
-        // the default look is unchanged.
-        const glowMat = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uBeatPulse: { value: 0 },
-            },
-            vertexShader: `
-                attribute vec3 aColor;
-                attribute vec3 aState; // x:locked, y:hovered, z:current
-
-                varying vec3 vNormal;
-                varying vec3 vColor;
-                varying vec3 vState;
-
-                void main() {
-                    vNormal = normalize(normalMatrix * normal);
-                    vColor = aColor;
-                    vState = aState;
-                    gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform float uTime;
-                uniform float uBeatPulse;
-                varying vec3 vNormal;
-                varying vec3 vColor;
-                varying vec3 vState;
-
-                void main() {
-                    float uLocked = vState.x;
-                    float uHovered = vState.y;
-                    float uCurrent = vState.z;
-
-                    float rim = 1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
-                    rim = pow(rim, 3.0);
-
-                    // Current/next node blazes and pulses with the beat for focal pop.
-                    float emphasis = uHovered * 0.3 + uCurrent * (0.45 + uBeatPulse * 0.5);
-                    float alpha = rim * (0.2 + emphasis) * (1.0 - uLocked * 0.7);
-                    gl_FragColor = vec4(vColor, alpha);
-                }
-            `,
-            transparent: true,
-            depthWrite: false,
-            side: THREE.BackSide,
-            blending: THREE.AdditiveBlending,
-        });
+        // the default look is unchanged. Ported to createGlowHaloTSL, sharing this
+        // manager's uTime/uBeatPulse uniforms.
+        const glow = createGlowHaloTSL(this.uTime, this.uBeatPulse);
+        const glowMat = glow.material;
 
         this.glowInstancedMesh = new THREE.InstancedMesh(this.sharedGlowGeo, glowMat, count);
         this.glowInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -544,19 +408,28 @@ export class LevelNodeManager {
         this.scene.add(this.glowInstancedMesh);
 
         // 3. Lock Instanced Mesh (Plane Mesh)
+        // The lock is placed in FRONT of its own orb (offset toward the camera in
+        // _updateIndicatorBillboards) so the orb's opaque core never occludes it, and a high
+        // renderOrder paints it after the (depth-write-free) glass shell/glow. depthTest stays
+        // ON so a FAR level's lock can't bleed over a nearer orb. DoubleSide (was BackSide — a
+        // latent bug that dropped it at grazing angles) keeps it visible whichever way it faces.
         const lockGeo = new THREE.PlaneGeometry(0.9, 0.9);
         const lockMat = new THREE.MeshBasicMaterial({
             map: this.sharedLockTextures.lockTexture,
             transparent: true,
             alphaTest: 0.1,
             depthWrite: false,
-            side: THREE.BackSide, // Since we want it inside/on top relative to camera? Actually DoubleSide is safer for billboards
+            side: THREE.DoubleSide,
         });
         this.lockInstancedMesh = new THREE.InstancedMesh(lockGeo, lockMat, count);
         this.lockInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.lockInstancedMesh.renderOrder = 10; // Paint after the orb shells/glow
         this.scene.add(this.lockInstancedMesh);
 
         // 4. Star Instanced Mesh (Plane Mesh) - 3 stars per level
+        // Same treatment as the lock: placed in front of the orb (so the core can't hide it)
+        // with a high renderOrder, depthTest kept on (so a far level's stars can't bleed over
+        // a nearer orb — that bleed was making stars look like they sat on unfinished levels).
         const starGeo = new THREE.PlaneGeometry(0.7, 0.7);
         const starMat = new THREE.MeshBasicMaterial({
             map: this.sharedStarTexture,
@@ -567,13 +440,17 @@ export class LevelNodeManager {
         });
         this.starInstancedMesh = new THREE.InstancedMesh(starGeo, starMat, count * 3);
         this.starInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.starInstancedMesh.renderOrder = 10; // Paint after the orb shells/glow
         this.scene.add(this.starInstancedMesh);
 
-        // 5. High-Fidelity Particles (Instanced Points)
-        // 128 particles per node * 55 nodes = 7040 particles in one draw call
+        // 5. High-Fidelity Particles (instanced billboard quads on WebGPU)
+        // 128 particles per node * 55 nodes = 7040 particles in one draw call.
+        // THREE.Points renders as 1px on WebGPU, so the sparkle cloud is drawn as
+        // camera-facing instanced quads via createNodeParticlesTSL + the shared billboard
+        // helper. Per-particle attributes (aOffset/aPState/aNodePos/aNodeScale/aNodeLocked)
+        // are identical to the old GLSL Points and are still ticked in update().
         const particleCountPerNode = 128;
         const totalParticles = count * particleCountPerNode;
-        const particleGeo = new THREE.BufferGeometry();
 
         const offsetArray = new Float32Array(totalParticles * 3); // Position within the orb
         const pStateArray = new Float32Array(totalParticles * 2); // x: speed mult, y: phase offset
@@ -596,69 +473,24 @@ export class LevelNodeManager {
             }
         }
 
-        particleGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(totalParticles * 3), 3));
-        particleGeo.setAttribute('aOffset', new THREE.BufferAttribute(offsetArray, 3));
-        particleGeo.setAttribute('aPState', new THREE.BufferAttribute(pStateArray, 2));
-
-        const particleMat = new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: { value: 0 },
-                uNodePositions: { value: [] }, // We'll update this or use instance data
-            },
-            vertexShader: `
-                attribute vec3 aOffset;
-                attribute vec2 aPState;
-                uniform float uTime;
-
-                // We'll pass node positions via an attribute since we have many particles per node
-                attribute vec3 aNodePos;
-                attribute float aNodeScale;
-                attribute float aNodeLocked;
-
-                varying float vOpacity;
-
-                void main() {
-                    float speed = aPState.x * mix(1.0, 0.35, aNodeLocked);
-                    float phase = aPState.y;
-                    float t = uTime * speed + phase;
-
-                    // Gentle orbital movement
-                    vec3 animatedOffset = aOffset;
-                    animatedOffset.x += sin(t * 0.7) * 0.1;
-                    animatedOffset.y += cos(t * 0.5) * 0.1;
-                    animatedOffset.z += sin(t * 1.1) * 0.1;
-
-                    vec3 worldPos = aNodePos + animatedOffset * aNodeScale;
-                    vOpacity = 0.4 + sin(t * 1.5) * 0.2;
-
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(worldPos, 1.0);
-                    gl_PointSize = (2.5 * aNodeScale) * (300.0 / length(gl_Position.xyz));
-                }
-            `,
-            fragmentShader: `
-                varying float vOpacity;
-                void main() {
-                    float dist = length(gl_PointCoord - vec2(0.5));
-                    if (dist > 0.5) discard;
-                    float alpha = smoothstep(0.5, 0.2, dist) * vOpacity;
-                    gl_FragColor = vec4(1.0, 0.7, 0.2, alpha);
-                }
-            `,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-
-        // Add node positions as attributes to the particles
+        // Per-node placement attributes (updated each frame from node positions/state).
         const nodePosArray = new Float32Array(totalParticles * 3);
         const nodeScaleArray = new Float32Array(totalParticles);
         const nodeLockedArray = new Float32Array(totalParticles);
 
-        particleGeo.setAttribute('aNodePos', new THREE.BufferAttribute(nodePosArray, 3));
-        particleGeo.setAttribute('aNodeScale', new THREE.BufferAttribute(nodeScaleArray, 1));
-        particleGeo.setAttribute('aNodeLocked', new THREE.BufferAttribute(nodeLockedArray, 1));
+        // Instanced billboard-quad geometry carries all per-particle attributes.
+        const particleGeo = createNodeParticleGeometry(totalParticles, {
+            offsetArray,
+            pStateArray,
+            nodePosArray,
+            nodeScaleArray,
+            nodeLockedArray,
+        });
 
-        this.particleSystem = new THREE.Points(particleGeo, particleMat);
+        const particles = createNodeParticlesTSL(this.uTime);
+        const particleMat = particles.material;
+
+        this.particleSystem = new THREE.Mesh(particleGeo, particleMat);
         this.particleSystem.frustumCulled = false; // Always update all for now, or chunk it
         this.scene.add(this.particleSystem);
     }
@@ -678,7 +510,11 @@ export class LevelNodeManager {
         group.userData.locked = true;
         group.userData.completed = false;
         group.userData.stars = 0;
-        const chapterColor = this.getChapterColor(levelConfig.chapter || 1);
+        const chapter = levelConfig.chapter || 1;
+        const chapterColor = this.getChapterColor(chapter);
+        const baseScale = CHAPTER_NODE_BASE_SCALE[chapter] ?? 1.0;
+        group.userData.baseScale = baseScale;
+        group.scale.setScalar(baseScale);
 
         // Position on path
         const pathPosition = levelConfig.pathPosition || (levelConfig.id - 1) / 55;
@@ -693,11 +529,20 @@ export class LevelNodeManager {
         const themeId = levelConfig.iconThemeId
             || levelConfig.theme?.pathIcon
             || levelConfig.theme?.primary;
-        const themeTex = await this.getOrLoadThemeTexture(themeId);
+        // Earth Core nodes should read as clean round magma balls. Texture-wrapped
+        // theme icons made them look like cracked/faceted geode tokens in the scene.
+        const useRoundMagmaCore = chapter === 1;
+        const themeTex = useRoundMagmaCore ? null : await this.getOrLoadThemeTexture(themeId);
 
         // Inner sphere acts as the solid core, hiding the path line that passes through
         const innerMat = this.createFluidInnerMaterial(themeTex, chapterColor, levelConfig.id);
+        if (useRoundMagmaCore && innerMat.uniforms) {
+            innerMat.uniforms.uFlowStrength.value = 0.18;
+            innerMat.uniforms.uWobbleStrength.value = 0.0;
+        }
         const innerMesh = new THREE.Mesh(this.sharedInnerGeo, innerMat);
+        // Suspend a smaller themed core inside the clear glass shell (snow-globe read).
+        innerMesh.scale.setScalar(INNER_CORE_DISPLAY_SCALE);
         group.add(innerMesh);
 
         // 2. Outer Glass Sphere (Moved to InstancedMesh)
@@ -763,108 +608,19 @@ export class LevelNodeManager {
     }
 
     createFluidInnerMaterial(themeTex, chapterColor, levelId) {
-        const hasThemeTexture = Boolean(themeTex);
-        const iconTexture = themeTex || this.fallbackIconTexture;
-        const fallback = chapterColor.clone();
-        const seed = ((levelId || 1) * 0.61803398875) % 1000;
-
-        return new THREE.ShaderMaterial({
-            uniforms: {
-                uMap: { value: iconTexture },
-                uUseTexture: { value: hasThemeTexture ? 1.0 : 0.0 },
-                uFallbackColor: { value: fallback },
-                uTime: { value: 0 },
-                uSeed: { value: seed },
-                uFlowStrength: { value: INNER_FLOW_STRENGTH },
-                uWobbleStrength: { value: INNER_WOBBLE_STRENGTH },
-                uLocked: { value: 0.0 },
-                uCompleted: { value: 0.0 },
-                uHovered: { value: 0.0 },
-                uSelected: { value: 0.0 },
-            },
-            vertexShader: `
-                uniform float uTime;
-                uniform float uSeed;
-                uniform float uWobbleStrength;
-                uniform float uLocked;
-
-                varying vec2 vUv;
-                varying vec3 vViewNormal;
-
-                void main() {
-                    vUv = uv;
-                    vViewNormal = normalize(normalMatrix * normal);
-
-                    vec3 transformed = position;
-                    float speed = mix(0.22, 1.25, 1.0 - uLocked);
-                    float phase = uTime * speed + uSeed;
-                    float waveA = sin(phase + position.y * 7.0 + position.x * 5.0);
-                    float waveB = cos(phase * 0.8 + position.z * 6.0 - position.y * 4.0);
-                    float wobble = (waveA + waveB * 0.65) * uWobbleStrength;
-                    transformed += normal * wobble;
-
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform sampler2D uMap;
-                uniform float uUseTexture;
-                uniform vec3 uFallbackColor;
-                uniform float uTime;
-                uniform float uSeed;
-                uniform float uFlowStrength;
-                uniform float uLocked;
-                uniform float uCompleted;
-                uniform float uHovered;
-                uniform float uSelected;
-
-                varying vec2 vUv;
-                varying vec3 vViewNormal;
-
-                void main() {
-                    vec2 uv = vUv;
-                    float speed = mix(0.28, 1.25, 1.0 - uLocked);
-                    float t = uTime * speed + uSeed;
-
-                    vec2 centered = uv - 0.5;
-                    float radius = length(centered);
-
-                    vec2 flow = vec2(
-                        sin((uv.y + t * 0.42) * 10.0) + cos((uv.y * 1.7 - t * 0.31) * 5.0),
-                        cos((uv.x - t * 0.37) * 10.0) + sin((uv.x * 1.4 + t * 0.33) * 5.0)
-                    );
-
-                    float swirlEnvelope = smoothstep(0.75, 0.0, radius);
-                    vec2 swirlDir = vec2(-centered.y, centered.x);
-
-                    uv += flow * (uFlowStrength * 0.010);
-                    uv += swirlDir
-                        * (sin(t * 1.2 + radius * 11.0) * uFlowStrength * 0.05 * swirlEnvelope);
-                    uv = clamp(uv, vec2(0.01), vec2(0.99));
-
-                    vec4 tex = texture2D(uMap, uv);
-                    vec3 color = uFallbackColor;
-                    if (uUseTexture > 0.5) {
-                        color = tex.rgb;
-                    }
-
-                    float luma = dot(color, vec3(0.299, 0.587, 0.114));
-                    color = mix(vec3(luma), color, 1.0 - (uLocked * 0.45));
-                    color *= mix(0.45, 1.0, 1.0 - uLocked);
-                    color += uCompleted * 0.15; // Subtle glow for completed levels
-
-                    float rim = 1.0 - abs(dot(normalize(vViewNormal), vec3(0.0, 0.0, 1.0)));
-                    rim = pow(rim, 2.2);
-                    color += rim * 0.08;
-                    color *= 1.0 + (uHovered * 0.10) + (uSelected * 0.06);
-
-                    gl_FragColor = vec4(color, 1.0);
-                }
-            `,
-            side: THREE.FrontSide,
-            transparent: false,
-            toneMapped: false,
-        });
+        // Ported to the validated createFluidInnerTSL builder (TSL NodeMaterial for
+        // WebGPU). When themeTex is null the builder uses the procedural fallback colour
+        // unconditionally (matches the old uUseTexture=0 path). The builder's `uniforms`
+        // object is attached as material.uniforms so setNodeState/setNodeHovered/
+        // setNodeSelected/update keep reading node.coreMaterial.uniforms.<x>.value.
+        const { material, uniforms } = createFluidInnerTSL(
+            themeTex || null,
+            chapterColor,
+            levelId,
+            this.uTime,
+        );
+        material.uniforms = uniforms;
+        return material;
     }
 
     createFallbackIconTexture() {
@@ -1000,6 +756,8 @@ export class LevelNodeManager {
             }
         }
         this.currentLevelId = current;
+        // QW11: progress changes the focal/lock/star/glow attribute set → re-upload once.
+        this._markUploadDirty();
     }
 
     /**
@@ -1026,6 +784,8 @@ export class LevelNodeManager {
         // Instanced UI (Lock, Stars) states are handled in update() based on userData below
         // Note: Glass and Glow effects are handled by InstancedMesh in update()
         // which pulls state from node.group.userData updated above.
+        // QW11: locked/completed/stars feed the instanced attributes → flag a re-upload.
+        this._markUploadDirty();
     }
 
     /**
@@ -1046,10 +806,13 @@ export class LevelNodeManager {
         }
 
         // Scale up on hover
-        const targetScale = hovered ? 1.2 : 1.0;
+        const baseScale = node.group.userData.baseScale ?? 1.0;
+        const targetScale = baseScale * (hovered ? 1.16 : 1.0);
         node.group.scale.setScalar(targetScale);
 
         this.hoveredNode = hovered ? levelId : null;
+        // QW11: hover changes the glass/glow aState + node scale matrices → re-upload.
+        this._markUploadDirty();
     }
 
     /**
@@ -1070,6 +833,8 @@ export class LevelNodeManager {
         }
 
         this.selectedNode = selected ? levelId : null;
+        // QW11: selection changes the glass aState (w) → re-upload.
+        this._markUploadDirty();
     }
 
     /**
@@ -1101,6 +866,8 @@ export class LevelNodeManager {
         if (pathCurve) {
             this.rebuildPositionCache();
         }
+        // QW11: layout moved node positions → instance matrices/particles need re-upload.
+        this._markUploadDirty();
     }
 
     /**
@@ -1227,15 +994,28 @@ export class LevelNodeManager {
             return;
         }
 
-        if (this.glassInstancedMesh.material.uniforms?.uTime) {
-            this.glassInstancedMesh.material.uniforms.uTime.value = this.time;
+        // Tick the shared TSL node uniforms (one source feeds glass/glow/particles/inner).
+        // These ALWAYS tick (even when the buffers are clean) so the in-shader sparkle /
+        // iridescence / focal beat-pulse keep animating between settled frames.
+        this.uTime.value = this.time;
+        this.uBeatPulse.value = this.focalHierarchy ? beatPulse : 0;
+
+        // QW11: detect camera/progress movement (also covers visibility flips, which are
+        // derived from |pathPosition - cameraProgress|). Combined with the interaction
+        // dirty flag, this decides whether the per-node CPU loop + GPU buffer re-upload
+        // runs this frame. When nothing changed we early-out and let the shaders animate.
+        const progressMoved = !(Math.abs(this.cameraProgress - this._lastUploadProgress)
+            <= UPDATE_PROGRESS_EPSILON); // NaN-safe: first frame forces a flush.
+        const needsUpload = this._uploadDirty || progressMoved;
+        if (!needsUpload) {
+            // The heavy glass/glow/particle buffers are settled, but the camera can still
+            // move without path progress changing (free-look / idle sway). Keep the cheap
+            // lock/star billboards tracking the camera so they always read above the orb.
+            this._updateIndicatorBillboards(false);
+            return;
         }
-        if (this.glowInstancedMesh.material.uniforms?.uTime) {
-            this.glowInstancedMesh.material.uniforms.uTime.value = this.time;
-        }
-        if (this.glowInstancedMesh.material.uniforms?.uBeatPulse) {
-            this.glowInstancedMesh.material.uniforms.uBeatPulse.value = this.focalHierarchy ? beatPulse : 0;
-        }
+        this._uploadDirty = false;
+        this._lastUploadProgress = this.cameraProgress;
 
         const glassStateAttr = this.glassInstancedMesh.geometry.getAttribute('aState');
         const glowColorAttr = this.glowInstancedMesh.geometry.getAttribute('aColor');
@@ -1246,7 +1026,8 @@ export class LevelNodeManager {
         const particleNodeScaleAttr = this.particleSystem.geometry.getAttribute('aNodeScale');
         const particleNodeLockedAttr = this.particleSystem.geometry.getAttribute('aNodeLocked');
 
-        const matrix = new THREE.Matrix4();
+        // Reused scratch (hoisted to the instance) — no per-node allocation below.
+        const matrix = this._scratchMatrix;
 
         this.nodes.forEach((node) => {
             const levelId = node.config.id;
@@ -1285,44 +1066,13 @@ export class LevelNodeManager {
             this.glassInstancedMesh.setMatrixAt(idx, matrix);
             this.glowInstancedMesh.setMatrixAt(idx, matrix);
 
-            // 1. Lock Billboard Matrix
+            // Lock/star indicator PLACEMENT now runs every frame in _updateIndicatorBillboards()
+            // (camera-relative + drawn on top) so it tracks free-look / idle camera moves where
+            // path progress — and thus this gated block — is frozen. Here we only still read
+            // locked/completed because the glass/glow/particle attributes below depend on them;
+            // invisible nodes are zeroed in the !isVisible branch above.
             const isLocked = node.group.userData.locked;
-            if (isLocked) {
-                matrix.identity();
-                matrix.copy(this.camera.matrixWorld);
-                matrix.setPosition(node.group.position.x, node.group.position.y + 1.1, node.group.position.z + 1.3);
-                // Apply node scale to lock
-                const s = node.group.scale.x * 0.9;
-                matrix.scale(new THREE.Vector3(s, s, s));
-                this.lockInstancedMesh.setMatrixAt(idx, matrix);
-            } else {
-                matrix.makeScale(0, 0, 0);
-                this.lockInstancedMesh.setMatrixAt(idx, matrix);
-            }
-
-            // 2. Star Billboard Matrices
             const isCompleted = node.group.userData.completed;
-            const stars = node.group.userData.stars || 0;
-            const starPositions = [
-                new THREE.Vector3(-0.5, 1.4, 1.2),
-                new THREE.Vector3(0, 1.6, 1.3),
-                new THREE.Vector3(0.5, 1.4, 1.2),
-            ];
-
-            for (let s = 0; s < 3; s++) {
-                if (isCompleted && s < stars) {
-                    matrix.identity();
-                    matrix.copy(this.camera.matrixWorld);
-                    const pos = starPositions[s].clone().multiplyScalar(node.group.scale.x);
-                    matrix.setPosition(node.group.position.clone().add(pos));
-                    const scale = node.group.scale.x * 0.7;
-                    matrix.scale(new THREE.Vector3(scale, scale, scale));
-                    this.starInstancedMesh.setMatrixAt(idx * 3 + s, matrix);
-                } else {
-                    matrix.makeScale(0, 0, 0);
-                    this.starInstancedMesh.setMatrixAt(idx * 3 + s, matrix);
-                }
-            }
 
             // Sync particle attributes
             for (let p = 0; p < particleCountPerNode; p++) {
@@ -1338,7 +1088,8 @@ export class LevelNodeManager {
 
             glassStateAttr.setXYZW(idx, isLocked ? 1.0 : 0.0, isCompleted ? 1.0 : 0.0, isHovered, isSelected);
 
-            const color = node.group.userData.chapterColor || new THREE.Color(0xffffff);
+            // QW11: reuse a shared fallback Color instead of allocating one per node.
+            const color = node.group.userData.chapterColor || this._fallbackColor;
             glowColorAttr.setXYZ(idx, color.r, color.g, color.b);
             const isCurrent = (this.focalHierarchy && levelId === this.currentLevelId && !isLocked) ? 1.0 : 0.0;
             glowStateAttr.setXYZ(idx, isLocked ? 1.0 : 0.0, isHovered, isCurrent);
@@ -1350,6 +1101,10 @@ export class LevelNodeManager {
             }
         });
 
+        // QW11: this whole re-upload block is reached only when needsUpload was true
+        // (camera moved / visibility / hover / select / state / layout changed). When the
+        // board is settled we early-out above, so the ~7040-particle + 4 instanced-buffer
+        // GPU re-upload no longer happens every frame.
         this.glassInstancedMesh.instanceMatrix.needsUpdate = true;
         this.glowInstancedMesh.instanceMatrix.needsUpdate = true;
         this.lockInstancedMesh.instanceMatrix.needsUpdate = true;
@@ -1361,9 +1116,96 @@ export class LevelNodeManager {
         particleNodePosAttr.needsUpdate = true;
         particleNodeScaleAttr.needsUpdate = true;
         particleNodeLockedAttr.needsUpdate = true;
-        if (this.particleSystem.material.uniforms?.uTime) {
-            this.particleSystem.material.uniforms.uTime.value = this.time;
+        // particle uTime is the shared node uniform ticked at the top of update().
+
+        // Re-place the lock/star billboards against the current camera. Forced because the
+        // gated block just moved node positions (float Y) / state this frame.
+        this._updateIndicatorBillboards(true);
+    }
+
+    /**
+     * Place the lock / star indicator billboards in screen space against the CURRENT camera
+     * so they always read directly above the orb, face the camera, and sit slightly toward it
+     * (near hemisphere). Combined with the materials' depthTest:false + high renderOrder, the
+     * indicators are never occluded by the orb at any viewing angle.
+     *
+     * Runs every frame — decoupled from the gated glass/glow/particle re-upload in update() —
+     * because the camera can rotate without path progress changing (free-look / idle sway), and
+     * the indicators must keep tracking it. Only visible nodes are written here; invisible nodes
+     * are scaled to 0 by the gated update() loop and skipped.
+     * @param {boolean} forcePlace - re-place even when the camera matrix is unchanged (the gated
+     *   block just moved node positions / state this frame).
+     */
+    _updateIndicatorBillboards(forcePlace = false) {
+        if (!this.lockInstancedMesh || !this.starInstancedMesh || !this.camera) {
+            return;
         }
+
+        // The follow camera's lookAt only updates its quaternion; matrixWorld is refreshed at
+        // render time. Refresh it here so the camera-up basis below reflects THIS frame's angle
+        // (otherwise the "upper side of the orb" offset would lag a frame behind a turning camera).
+        this.camera.updateMatrixWorld();
+
+        // Skip the re-upload when the board is fully settled (no camera movement) — preserves
+        // the QW11 "no per-frame GPU churn" win. Any real camera move re-flushes immediately.
+        const cameraMoved = !this.camera.matrixWorld.equals(this._lastIndicatorCamMatrix);
+        if (!forcePlace && !cameraMoved) {
+            return;
+        }
+        this._lastIndicatorCamMatrix.copy(this.camera.matrixWorld);
+
+        const matrix = this._scratchMatrix;
+        const scaleVec = this._scratchScaleVec;
+        // Camera basis (world space): right = column 0, up = column 1, eye = column 3.
+        const camRight = this._scratchCamRight.setFromMatrixColumn(this.camera.matrixWorld, 0).normalize();
+        const camUp = this._scratchCamUp.setFromMatrixColumn(this.camera.matrixWorld, 1).normalize();
+        const camPos = this._scratchCamPos.setFromMatrixColumn(this.camera.matrixWorld, 3);
+
+        this.nodes.forEach((node) => {
+            // Invisible nodes are scaled to 0 by the gated update() loop; nothing to place.
+            if (!node.group.visible) {
+                return;
+            }
+            const idx = this.instanceIdMap.get(node.config.id);
+            const scale = node.group.scale.x;
+            const pos = node.group.position;
+            const toCam = this._scratchToCam.copy(camPos).sub(pos).normalize();
+
+            // Lock — single billboard centred above the orb, facing the camera.
+            if (node.group.userData.locked) {
+                matrix.copy(this.camera.matrixWorld);
+                matrix.setPosition(this._scratchIndicatorPos.copy(pos)
+                    .addScaledVector(camUp, LOCK_PLACEMENT.up * scale)
+                    .addScaledVector(toCam, LOCK_PLACEMENT.toward * scale));
+                const s = scale * 0.9;
+                matrix.scale(scaleVec.set(s, s, s));
+                this.lockInstancedMesh.setMatrixAt(idx, matrix);
+            } else {
+                this.lockInstancedMesh.setMatrixAt(idx, matrix.makeScale(0, 0, 0));
+            }
+
+            // Stars — up to 3, arced above the orb (spread along camera-right).
+            const isCompleted = node.group.userData.completed;
+            const stars = node.group.userData.stars || 0;
+            for (let s = 0; s < 3; s += 1) {
+                if (isCompleted && s < stars) {
+                    const place = STAR_PLACEMENT[s];
+                    matrix.copy(this.camera.matrixWorld);
+                    matrix.setPosition(this._scratchIndicatorPos.copy(pos)
+                        .addScaledVector(camRight, place.right * scale)
+                        .addScaledVector(camUp, place.up * scale)
+                        .addScaledVector(toCam, place.toward * scale));
+                    const starScale = scale * 0.7;
+                    matrix.scale(scaleVec.set(starScale, starScale, starScale));
+                    this.starInstancedMesh.setMatrixAt(idx * 3 + s, matrix);
+                } else {
+                    this.starInstancedMesh.setMatrixAt(idx * 3 + s, matrix.makeScale(0, 0, 0));
+                }
+            }
+        });
+
+        this.lockInstancedMesh.instanceMatrix.needsUpdate = true;
+        this.starInstancedMesh.instanceMatrix.needsUpdate = true;
     }
 
     /**

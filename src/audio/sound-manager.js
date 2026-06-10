@@ -113,7 +113,12 @@ export class SoundManager {
             this.musicGainNode.gain.value = this.getMusicVolume();
             this.ensureSfxBus();
             this.soundSets = createSoundSets(this.createTone.bind(this), this.createRichTone.bind(this));
-            this.sfxPlayer = new SoundEffectPlayer(this.soundSets, this.soundSet);
+            this.sfxPlayer = new SoundEffectPlayer(
+                this.soundSets,
+                this.soundSet,
+                this.createTone.bind(this),
+                this.createRichTone.bind(this),
+            );
         }
         this.bindRuntimeAudioHooks();
         if (this.audioContext.state === 'suspended') {
@@ -801,12 +806,12 @@ export class SoundManager {
         this.musicTrack = trackName;
         this.lastRequestedTrackKey = trackName;
 
-        // Update settings if available
-        const globalSettings = globalThis.settings;
-        const globalSaveSettings = globalThis.saveSettings;
-        if (didSelectionChange && globalSettings) {
-            globalSettings.musicTrack = trackName;
-            if (typeof globalSaveSettings === 'function') globalSaveSettings();
+        // Persist the selection via the real settings manager (matches the
+        // applyAutoThemeChange path below). The previous globalThis.saveSettings
+        // call was a no-op — no such global exists.
+        if (didSelectionChange && this.settingsManager) {
+            this.settingsManager.update({ musicTrack: trackName });
+            this.settingsManager.save();
         }
 
         const dropdown = document.getElementById('music-track');

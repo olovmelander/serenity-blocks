@@ -935,6 +935,67 @@ export class SerenityHub {
         let hintsOverlay = document.getElementById('gamepad-hints-overlay');
 
         if (!hintsOverlay) {
+            const settings = this.serenityMode.deps?.settingsManager?.get?.() || {};
+            const gamepadBindings = {
+                toggleHub: 3,
+                toggleBreathing: 2,
+                randomTheme: 10,
+                toggleFullscreen: 11,
+                previousTrack: 4,
+                nextTrack: 5,
+                volumeDown: 6,
+                volumeUp: 7,
+                toggleControlHints: 8,
+                openSettings: 9,
+                previousBreathingTechnique: 12,
+                nextBreathingTechnique: 13,
+                confirmSelection: 0,
+                closeHub: 1,
+                navigateLeft: 14,
+                navigateRight: 15,
+                ...(settings.serenityGamepadBindings || {}),
+            };
+            const keyboardBindings = {
+                toggleHub: 'h',
+                toggleBreathing: 'Space',
+                cycleBreathingTechnique: 't',
+                randomTheme: 'b',
+                toggleFullscreen: 'f',
+                toggleControlHints: '/',
+                exitToMenu: 'Escape',
+                ...(settings.serenityKeyBindings || {}),
+            };
+            const gamepadButtonNames = {
+                0: 'A',
+                1: 'B',
+                2: 'X',
+                3: 'Y',
+                4: 'LB',
+                5: 'RB',
+                6: 'LT',
+                7: 'RT',
+                8: 'Select',
+                9: 'Start',
+                10: 'L3',
+                11: 'R3',
+                12: 'D-Up',
+                13: 'D-Down',
+                14: 'D-Left',
+                15: 'D-Right',
+                16: 'Home',
+            };
+            const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;',
+            })[char]);
+            const gamepadLabel = (action) => escapeHtml(
+                gamepadButtonNames[gamepadBindings[action]] || `Button ${gamepadBindings[action]}`,
+            );
+            const keyLabel = (action) => escapeHtml(keyboardBindings[action] || '');
+
             // Detect if gamepad is connected
             const gamepadController = this.serenityMode.deps?.gamepadController;
             const connectionStatus = gamepadController?.getConnectionStatus?.();
@@ -952,29 +1013,36 @@ export class SerenityHub {
                 hintsOverlay.innerHTML = `
           <div class="hint-title"><span class="hint-title-icon">${csIcon('gamepad', 18)}</span> Serenity Mode Controls</div>
           <div class="hint-grid">
-            <div class="hint-item"><span class="hint-button">Y</span> Toggle Hub</div>
-            <div class="hint-item"><span class="hint-button">X</span> Breathing</div>
+            <div class="hint-item"><span class="hint-button">${gamepadLabel('toggleHub')}</span> Toggle Hub</div>
+            <div class="hint-item"><span class="hint-button">${gamepadLabel('toggleBreathing')}</span> Breathing</div>
             <div class="hint-item"><span class="hint-button">D▲</span> Prev Technique</div>
             <div class="hint-item"><span class="hint-button">D▼</span> Next Technique</div>
-            <div class="hint-item"><span class="hint-button">L3</span> Random Theme</div>
-            <div class="hint-item"><span class="hint-button">R3</span> Fullscreen</div>
-            <div class="hint-item"><span class="hint-button">LB</span> Prev Track</div>
-            <div class="hint-item"><span class="hint-button">RB</span> Next Track</div>
-            <div class="hint-item"><span class="hint-button">LT</span> Volume Down</div>
-            <div class="hint-item"><span class="hint-button">RT</span> Volume Up</div>
-            <div class="hint-item"><span class="hint-button">Start</span> Settings</div>
-            <div class="hint-item"><span class="hint-button">Select</span> Hide Hints</div>
+            <div class="hint-item"><span class="hint-button">${gamepadLabel('randomTheme')}</span> Random Theme</div>
+            <div class="hint-item"><span class="hint-button">${gamepadLabel('toggleFullscreen')}</span> Fullscreen</div>
+            <div class="hint-item"><span class="hint-button">${gamepadLabel('previousTrack')}</span> Prev Track</div>
+            <div class="hint-item"><span class="hint-button">${gamepadLabel('nextTrack')}</span> Next Track</div>
+            <div class="hint-item"><span class="hint-button">${gamepadLabel('volumeDown')}</span> Volume Down</div>
+            <div class="hint-item"><span class="hint-button">${gamepadLabel('volumeUp')}</span> Volume Up</div>
+            <div class="hint-item"><span class="hint-button">${gamepadLabel('openSettings')}</span> Settings</div>
+            <div class="hint-item"><span class="hint-button">${gamepadLabel('toggleControlHints')}</span> Hide Hints</div>
           </div>
           <div class="hint-title" style="margin-top: 15px;">When Hub is Open</div>
           <div class="hint-grid">
-            <div class="hint-item"><span class="hint-button">A</span> Confirm</div>
-            <div class="hint-item"><span class="hint-button">B</span> Close Hub</div>
-            <div class="hint-item"><span class="hint-button">D-Pad</span> Navigate</div>
-            <div class="hint-item"><span class="hint-button">LB/RB</span> Switch Tab</div>
+            <div class="hint-item"><span class="hint-button">${gamepadLabel('confirmSelection')}</span> Confirm</div>
+            <div class="hint-item"><span class="hint-button">${gamepadLabel('closeHub')}</span> Close Hub</div>
+            <div class="hint-item"><span class="hint-button">${gamepadLabel('navigateLeft')} / ${gamepadLabel('navigateRight')}</span> Navigate</div>
+            <div class="hint-item"><span class="hint-button">${gamepadLabel('previousTrack')} / ${gamepadLabel('nextTrack')}</span> Switch Tab</div>
             <div class="hint-item"><span class="hint-button">R-Stick</span> Scroll</div>
           </div>
-          <div class="hint-footer">Press SELECT again to hide</div>
+          <div class="hint-footer">Press ${gamepadLabel('toggleControlHints')} again to hide</div>
         `;
+                const gamepadItems = hintsOverlay.querySelectorAll('.hint-item');
+                if (gamepadItems[2]) {
+                    gamepadItems[2].innerHTML = `<span class="hint-button">${gamepadLabel('previousBreathingTechnique')}</span> Prev Technique`;
+                }
+                if (gamepadItems[3]) {
+                    gamepadItems[3].innerHTML = `<span class="hint-button">${gamepadLabel('nextBreathingTechnique')}</span> Next Technique`;
+                }
             } else {
                 // Show keyboard controls
                 hintsOverlay.innerHTML = `
@@ -997,6 +1065,32 @@ export class SerenityHub {
           </div>
           <div class="hint-footer">Press / again to hide</div>
         `;
+                const keyboardTitle = hintsOverlay.querySelector('.hint-title');
+                if (keyboardTitle) {
+                    keyboardTitle.innerHTML = `<span class="hint-title-icon">${csIcon('square', 18)}</span> Serenity Mode Controls`;
+                }
+                const keyboardItems = hintsOverlay.querySelectorAll('.hint-item');
+                const keyboardRows = [
+                    ['toggleHub', 'Toggle Hub'],
+                    ['toggleBreathing', 'Breathing Guide'],
+                    ['cycleBreathingTechnique', 'Cycle Technique'],
+                    ['randomTheme', 'Random Theme'],
+                    ['toggleFullscreen', 'Fullscreen'],
+                    ['toggleControlHints', 'Toggle Hints'],
+                    ['exitToMenu', 'Exit to Menu'],
+                ];
+                keyboardRows.forEach(([action, label], index) => {
+                    if (keyboardItems[index]) {
+                        keyboardItems[index].innerHTML = `<span class="hint-button">${keyLabel(action)}</span> ${label}`;
+                    }
+                });
+                if (keyboardItems[8]) {
+                    keyboardItems[8].innerHTML = `<span class="hint-button">${keyLabel('toggleHub')} / ${keyLabel('exitToMenu')}</span> Close Hub`;
+                }
+                const keyboardFooter = hintsOverlay.querySelector('.hint-footer');
+                if (keyboardFooter) {
+                    keyboardFooter.textContent = `Press ${keyLabel('toggleControlHints')} again to hide`;
+                }
             }
 
             document.body.appendChild(hintsOverlay);

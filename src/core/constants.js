@@ -153,7 +153,7 @@ export function getQuadraDropInterval(level) {
 /**
  * Drop speeds per level (in milliseconds) - Quadra-authentic values
  * Generated from Quadra's canvas.cc:calc_speed() formula
- * Level 1 = 450ms, Level 10 = 37ms, Level 20+ = very fast
+ * Level 1 = 720ms, Level 10 = 58ms, Level 20+ = very fast
  */
 export const LEVEL_SPEEDS = (() => {
     const speeds = [];
@@ -288,6 +288,15 @@ export const DEFAULT_SETTINGS = {
         softDrop: 's',
         hardDrop: 'Shift',
     },
+    serenityKeyBindings: {
+        toggleHub: 'h',
+        toggleBreathing: 'Space',
+        cycleBreathingTechnique: 't',
+        randomTheme: 'b',
+        toggleFullscreen: 'f',
+        toggleControlHints: '/',
+        exitToMenu: 'Escape',
+    },
     // Gamepad bindings (Player 1)
     gamepadBindings: {
         moveLeft: 14, // D-pad Left
@@ -329,6 +338,24 @@ export const DEFAULT_SETTINGS = {
         softDrop: 13,
         hardDrop: 1,
         pause: 9,
+    },
+    serenityGamepadBindings: {
+        toggleHub: 3,
+        toggleBreathing: 2,
+        randomTheme: 10,
+        toggleFullscreen: 11,
+        previousTrack: 4,
+        nextTrack: 5,
+        volumeDown: 6,
+        volumeUp: 7,
+        toggleControlHints: 8,
+        openSettings: 9,
+        previousBreathingTechnique: 12,
+        nextBreathingTechnique: 13,
+        confirmSelection: 0,
+        closeHub: 1,
+        navigateLeft: 14,
+        navigateRight: 15,
     },
     // Gamepad settings
     gamepadEnabled: true,

@@ -370,7 +370,7 @@ export class OpponentWatchManager {
             const player = this._getPlayerById(playerId);
             const board = this.playerBoards.get(playerId);
             if (player && board && player.grid) {
-                this._renderMiniBoard(board.ctx, player.grid, player.currentPiece);
+                this._renderMiniBoard(board.ctx, player.grid, player.currentPiece, player.blindTimers);
             }
         });
     }
@@ -595,7 +595,7 @@ export class OpponentWatchManager {
             // Initial render
             if (player.grid) {
                 // Use the map entry we just created (using player.id)
-                this._renderMiniBoard(this.playerBoards.get(playerKey).ctx, player.grid, player.currentPiece);
+                this._renderMiniBoard(this.playerBoards.get(playerKey).ctx, player.grid, player.currentPiece, player.blindTimers);
             }
             if (player.nextPieces && this.playerBoards.get(playerKey).nextCtxs) {
                 this._renderNextQueue(this.playerBoards.get(playerKey).nextCtxs, player.nextPieces);
@@ -1192,7 +1192,7 @@ export class OpponentWatchManager {
      * Render a mini-board to canvas
      * Uses 8px block size for compact display
      */
-    _renderMiniBoard(ctx, grid, currentPiece) {
+    _renderMiniBoard(ctx, grid, currentPiece, blindTimers) {
         if (!ctx || !grid) return;
 
         // Dynamically get the parent frame's actual dimensions or the element's client dimensions
@@ -1221,6 +1221,32 @@ export class OpponentWatchManager {
 
         // Render cohesive opponent grid blocks
         this._drawCohesiveGrid(ctx, grid, blockSize, this._colorCache);
+
+        // Render Quadra blind blackout veils
+        if (blindTimers) {
+            if (blindTimers.field > 0) {
+                const ratio = blindTimers.field / (blindTimers.fieldMax || 4.0);
+                const alpha = Math.max(0, Math.min(0.95, ratio * 1.25));
+                ctx.fillStyle = `rgba(10, 15, 25, ${alpha})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            } else if (blindTimers.pending > 0) {
+                const ratio = blindTimers.pending / (blindTimers.pendingMax || 4.0);
+                const alpha = Math.max(0, Math.min(0.95, ratio * 1.25));
+                ctx.fillStyle = `rgba(10, 15, 25, ${alpha})`;
+                for (let r = 4; r < grid.length; r++) {
+                    const gridRow = grid[r];
+                    if (!gridRow) continue;
+                    const hasGarbage = gridRow.some(cell => {
+                        if (!cell) return false;
+                        const type = typeof cell === 'object' ? cell.type : cell;
+                        return type === 'garbage' || type === 'clean_garbage';
+                    });
+                    if (hasGarbage) {
+                        ctx.fillRect(0, (r - 4) * blockSize, canvas.width, blockSize);
+                    }
+                }
+            }
+        }
 
         if (currentPiece && currentPiece.shape) {
             const ghostY = this._calculateGhostY(currentPiece, grid);

@@ -26,7 +26,8 @@
     "build:win:wsl": "SERENITY_ALLOW_WSL_WIN_BUILD=1 node scripts/build-win.mjs",
     "build:linux": "vite build && electron-builder --linux",
     "capture:themes": "npx electron scripts/capture-theme-screenshots.mjs",
-    "capture:odyssey": "npx electron scripts/odyssey-aaa-board-capture.mjs"
+    "capture:odyssey": "npx electron scripts/odyssey-aaa-board-capture.mjs",
+    "validate:odyssey:webgpu": "node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs"
   },
   "build": {
     "appId": "com.serenityblocks.game",

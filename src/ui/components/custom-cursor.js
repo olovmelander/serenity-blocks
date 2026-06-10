@@ -37,6 +37,19 @@ const INTERACTIVE_SELECTOR = [
     'select',
     'label[for]',
     '[role="button"]',
+    '[role="tab"]',
+    '[role="menuitem"]',
+    '[role="menuitemradio"]',
+    '[role="menuitemcheckbox"]',
+    '[role="option"]',
+    '[role="switch"]',
+    '[role="radio"]',
+    '[role="checkbox"]',
+    '[role="combobox"]',
+    '[role="link"]',
+    '.cosmic-select__trigger',
+    '.cosmic-select__option',
+    '.cosmic-segmented__seg',
     '[data-cursor-interactive="true"]',
     '.clickable',
     '.setting-button',
@@ -61,6 +74,8 @@ const MAGNETIC_SELECTOR = [
     'input',
     'summary',
     'select',
+    '.cosmic-select__trigger',
+    '.cosmic-segmented__seg',
     '[role="button"]',
     '.clickable',
     '.setting-button',
@@ -363,6 +378,13 @@ export class CustomCursor {
         this.isHubOpen = false;
         this.pointerDown = false;
         this.prefersReducedMotion = false;
+        // While a native popup is open (non-enhanced <select>, or a date/color/file/
+        // time picker), the OS renders it as a separate window above the page: the
+        // cosmic cursor can't paint over it and pointermove stops firing. Detect that
+        // and reveal the real OS pointer instead of leaving a frozen custom cursor
+        // (enhanced CosmicSelects never open a native popup, so they're excluded).
+        // Cleared as soon as pointermove resumes (= popup closed) or on change/blur.
+        this.nativePopupOpen = false;
         this.supportsFinePointer = isFinePointerEnvironment();
 
         this.pos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
@@ -514,6 +536,38 @@ export class CustomCursor {
             this.refreshModalState();
         }, { signal, passive: true });
         document.addEventListener('visibilitychange', () => this.syncPresentation(), { signal, passive: true });
+
+        // Native-popup safety-net: reveal the OS pointer while a native popup the
+        // cosmic cursor can't reach is open — a non-enhanced <select> or a native
+        // date/color/file/time picker — then restore on selection/blur (pointermove
+        // also clears it on resume).
+        const nativePopupSelector = [
+            'select:not([data-cosmic-enhanced])',
+            'input[type="date"]',
+            'input[type="datetime-local"]',
+            'input[type="time"]',
+            'input[type="month"]',
+            'input[type="week"]',
+            'input[type="color"]',
+            'input[type="file"]',
+        ].join(', ');
+        const openNativePopup = (event) => {
+            const el = event.target?.closest?.(nativePopupSelector);
+            if (el && !el.disabled) {
+                this.nativePopupOpen = true;
+                this.syncPresentation();
+            }
+        };
+        const closeNativePopup = () => {
+            if (this.nativePopupOpen) {
+                this.nativePopupOpen = false;
+                this.syncPresentation();
+            }
+        };
+        document.addEventListener('mousedown', openNativePopup, { signal, passive: true });
+        document.addEventListener('focusin', openNativePopup, { signal, passive: true });
+        document.addEventListener('change', closeNativePopup, { signal, passive: true });
+        document.addEventListener('focusout', closeNativePopup, { signal, passive: true });
     }
 
     observeEnvironment() {
@@ -612,6 +666,8 @@ export class CustomCursor {
     onPointerMove(event) {
         if (!event || (event.pointerType && event.pointerType === 'touch')) return;
 
+        // pointermove resuming means any native popup has closed.
+        this.nativePopupOpen = false;
         this.pointerType = event.pointerType || 'mouse';
         this.pointerInsideWindow = true;
         this.lastPointerActivity = performance.now();
@@ -700,6 +756,7 @@ export class CustomCursor {
 
     shouldRender() {
         if (!this.settings.customCursorEnabled) return false;
+        if (this.nativePopupOpen) return false;
         if (!this.supportsFinePointer) return false;
         if (document.hidden) return false;
         if (!this.pointerInsideWindow) return false;

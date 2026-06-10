@@ -540,3 +540,214 @@
 .form-group:nth-child(5) { animation-delay: 0.25s; }
 .form-group:nth-child(6) { animation-delay: 0.3s; }
 
+
+/* =====================================================================
+   Local Multiplayer modal v2 — two-zone layout, slot cards, sticky footer.
+   Scoped to .lmc so the online match-config modal is unaffected.
+   ===================================================================== */
+.match-config-content.lmc {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    max-width: 760px;
+}
+
+.lmc .match-config-header {
+    flex: 0 0 auto;
+    padding: 26px 30px 14px;
+    margin: 0;
+}
+
+.lmc .match-config-form {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1 1 auto;
+}
+
+.lmc-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 6px 30px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+    scrollbar-width: thin;
+    scrollbar-color: #8b5cf6 rgba(0, 0, 0, 0.4);
+}
+
+.lmc-footer {
+    flex: 0 0 auto;
+    justify-content: flex-end;
+    gap: 12px;
+    margin: 0;
+    padding: 16px 30px;
+    background: rgba(12, 10, 26, 0.72);
+    border-top: 2px solid rgba(139, 92, 246, 0.3);
+    backdrop-filter: blur(6px);
+}
+
+.lmc-footer button {
+    flex: 0 1 auto;
+    min-width: 130px;
+}
+
+.lmc-footer .btn-primary {
+    flex: 0 1 auto;
+    min-width: 200px;
+}
+
+/* Zones */
+.lmc-zone {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.lmc-zone__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.lmc-zone__title {
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: #c4b5fd;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+}
+
+.lmc-zone__head .cosmic-segmented {
+    flex: 0 0 auto;
+}
+
+/* Slot cards */
+.lmc-slot-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.lmc-slot {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(139, 92, 246, 0.22);
+    border-left: 4px solid var(--slot-accent, #8b5cf6);
+    background: rgba(0, 0, 0, 0.28);
+}
+
+.lmc-slot__head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.lmc-slot__badge {
+    background: var(--slot-accent, #8b5cf6);
+    color: #0b0b18;
+    border-radius: 8px;
+    padding: 3px 9px;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.lmc-slot__name {
+    color: #e0e7ff;
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.lmc-slot .cosmic-segmented {
+    display: flex;
+}
+
+/* Progressive disclosure: skill only for bots. Team is always shown — it is the
+   single mechanism for both color identity and ally grouping. */
+.lmc-slot__skill {
+    display: none;
+}
+
+.lmc-slot.is-bot .lmc-slot__skill {
+    display: flex;
+}
+
+.lmc-slot__team {
+    display: flex;
+}
+
+/* Generic field wrapper used inside cards + rules. */
+.cosmic-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cosmic-field > label {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: #a78bfa;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.lmc-rules {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+@media (max-width: 680px) {
+    .lmc-slot-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Themed inputs inside .cosmic-field (the v2 local-MP layout) — mirror the dark
+   .form-group input styling so numeric fields (Frags to Win, Row Cap, etc.) don't
+   fall back to the white native look. */
+.cosmic-field input[type="text"],
+.cosmic-field input[type="number"] {
+    padding: 13px 16px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 2px solid rgba(139, 92, 246, 0.3);
+    border-radius: 12px;
+    color: #e0e7ff;
+    font-family: 'Space Mono', monospace;
+    font-size: 15px;
+    transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.cosmic-field input[type="text"]:hover,
+.cosmic-field input[type="number"]:hover {
+    border-color: rgba(139, 92, 246, 0.55);
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.cosmic-field input[type="text"]:focus,
+.cosmic-field input[type="number"]:focus {
+    outline: none;
+    border-color: rgba(139, 92, 246, 0.9);
+    background: rgba(0, 0, 0, 0.6);
+    box-shadow:
+        0 0 20px rgba(139, 92, 246, 0.35),
+        inset 0 2px 5px rgba(0, 0, 0, 0.3),
+        0 0 0 3px rgba(139, 92, 246, 0.12);
+}
+
+.cosmic-field input[type="number"]::placeholder,
+.cosmic-field input[type="text"]::placeholder {
+    color: rgba(164, 139, 253, 0.4);
+}

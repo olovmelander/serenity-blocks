@@ -50,6 +50,21 @@ describe('MultiPlayerState — Quadra handicap & attack rules', () => {
         expect(mps.garbageQueues[1].getTotalLines()).toBe(0);
     });
 
+    it('applies handicap per-opponent independently in a 3-player match', () => {
+        const mps = new MultiPlayerState(3);
+        mps.players.forEach((p) => { p.isAlive = true; });
+        mps.setPlayerHandicaps([4, 1, 4]); // P0 strong; P1 weaker; P2 equal to P0
+
+        for (let i = 0; i < 9; i++) mps.accumulateHandicap(0);
+        expect(mps.players[0].handicaps[1]).toBe(9); // stamps build vs weaker P1
+        expect(mps.players[0].handicaps[2] || 0).toBe(0); // none vs equal P2
+
+        mps.handleGarbageSummary(0, tripleClear(), null);
+        // P1 (weaker) is handicapped to 0 lines; P2 (equal) receives the full attack
+        expect(mps.garbageQueues[1].getTotalLines()).toBe(0);
+        expect(mps.garbageQueues[2].getTotalLines()).toBe(2);
+    });
+
     it('peaceful attack rules send no garbage at all', () => {
         const mps = newMatch([2, 2]);
         mps.setMatchConfig({ attackRules: { disableAttacks: true } });

@@ -83,6 +83,33 @@
     animation: cs-shimmer 8s ease-in-out infinite;
 }
 
+.match-config-modal .lmc .match-config-header h2 {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: none;
+    -webkit-background-clip: initial;
+    background-clip: initial;
+    -webkit-text-fill-color: #d9e7ff;
+    color: #d9e7ff;
+}
+
+.match-config-modal .lmc-title-text {
+    background: linear-gradient(100deg,
+            #d9e7ff 0%, var(--cs-accent) 32%, var(--cs-accent-2) 60%, #f1f7ff 100%);
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+}
+
+.match-config-modal .lmc-title-icon {
+    flex: 0 0 auto;
+    color: var(--cs-accent);
+    filter: drop-shadow(0 0 10px rgba(var(--cs-accent-rgb), 0.42));
+}
+
 /* (shimmer keyframe consolidated into cosmic-tokens.css → cs-shimmer) */
 
 /* ---- Labels + help --------------------------------------------------------- */
@@ -220,6 +247,11 @@
     color: var(--cs-accent);
 }
 
+.match-config-modal .advanced-settings summary .lmc-summary-icon {
+    flex: 0 0 auto;
+    color: var(--cs-accent);
+}
+
 .match-config-modal .advanced-settings summary:hover {
     color: #ffffff;
 }
@@ -234,6 +266,10 @@
 }
 
 .match-config-modal .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
     background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
     border: 1px solid rgba(var(--cs-accent-rgb), 0.50);
     color: #0a0c1a;
@@ -242,12 +278,80 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
+.match-config-modal .btn-primary .lmc-action-icon {
+    flex: 0 0 auto;
+    transition: transform 0.22s ease, filter 0.22s ease;
+    will-change: transform;
+}
+
+.match-config-modal .btn-primary .lmc-action-icon--match-start {
+    margin-left: -2px;
+    overflow: visible;
+    transform: translateY(1px) rotate(-8deg);
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+.match-config-modal .btn-primary .lmc-action-icon--match-start .cs-match-start-body {
+    stroke: #25305f;
+}
+
+.match-config-modal .btn-primary .lmc-action-icon--match-start .cs-match-start-fin {
+    stroke: #7b3ff2;
+}
+
+.match-config-modal .btn-primary .lmc-action-icon--match-start .cs-match-start-window {
+    fill: #b9fbff;
+    stroke: #138aa1;
+}
+
+.match-config-modal .btn-primary .lmc-action-icon--match-start .cs-match-start-flame {
+    stroke: #ff7a3d;
+    filter: drop-shadow(0 0 4px rgba(255, 122, 61, 0.45));
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+.match-config-modal .btn-primary:hover .lmc-action-icon--match-start {
+    animation: lmc-rocket-boost 0.72s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+    filter: drop-shadow(0 2px 5px rgba(10, 12, 26, 0.26));
+}
+
+.match-config-modal .btn-primary:hover .lmc-action-icon--match-start .cs-match-start-flame {
+    animation: lmc-rocket-flame 0.22s ease-in-out infinite alternate;
+}
+
 .match-config-modal .btn-primary:hover {
     background: linear-gradient(135deg, var(--cs-accent), var(--cs-accent-2));
     transform: translateY(-2px);
     box-shadow:
         0 9px 26px rgba(var(--cs-accent-rgb), 0.50),
         inset 0 1px 0 rgba(255, 255, 255, 0.30);
+}
+
+@keyframes lmc-rocket-boost {
+    0%, 100% {
+        transform: translateY(1px) rotate(-8deg);
+    }
+    42% {
+        transform: translate(2px, -3px) rotate(-13deg);
+    }
+    70% {
+        transform: translate(-1px, 1px) rotate(-6deg);
+    }
+}
+
+@keyframes lmc-rocket-flame {
+    from {
+        opacity: 0.72;
+        stroke-width: 1.8;
+        transform: translate(0, 0) scale(0.92);
+    }
+    to {
+        opacity: 1;
+        stroke-width: 2.5;
+        transform: translate(-0.5px, 0.5px) scale(1.16);
+    }
 }
 
 .match-config-modal .btn-primary:focus-visible {
@@ -337,12 +441,15 @@
 @media (prefers-reduced-motion: reduce) {
     .match-config-modal .match-config-content,
     .match-config-modal .match-config-header h2,
-    .match-config-modal .form-group {
+    .match-config-modal .form-group,
+    .match-config-modal .btn-primary:hover .lmc-action-icon--match-start,
+    .match-config-modal .btn-primary:hover .lmc-action-icon--match-start .cs-match-start-flame {
         animation: none !important;
     }
 
     .match-config-modal .checkbox-label input[type="checkbox"],
-    .match-config-modal .checkbox-label input[type="checkbox"]::before {
+    .match-config-modal .checkbox-label input[type="checkbox"]::before,
+    .match-config-modal .btn-primary .lmc-action-icon {
         transition: none !important;
     }
 }

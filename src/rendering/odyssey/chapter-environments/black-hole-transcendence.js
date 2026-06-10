@@ -1,3 +1,4 @@
+/* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
  * @fileoverview Black Hole Transcendence Environment - Chapter 7 Visual Theme
  *
@@ -17,9 +18,20 @@
  * All glow is GLSL-procedural so create() never needs a `document`/canvas.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import { uniform } from 'three/tsl';
 import { getChapterPathRange } from '../path-utils.js';
-import { ODYSSEY_NOISE_GLSL } from './shared/odyssey-noise.js';
+import {
+    createVoidDomeTSL,
+    createAccretionDiskTSL,
+    createLensingShellTSL,
+    createSharedMotifMaterialsTSL,
+    createTranscendenceShardsTSL,
+    createLensingStarfieldTSL,
+    createAmbientWashTSL,
+    createCorridorDustTSL,
+    createInfallEmberFieldTSL,
+} from './black-hole-transcendence.tsl.js';
 
 export const BLACK_HOLE_TRANSCENDENCE_CONFIG = {
     id: 7,
@@ -38,179 +50,48 @@ export const BLACK_HOLE_TRANSCENDENCE_CONFIG = {
     },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// GLSL Shaders
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const domeVertexShader = /* glsl */ `
-    varying vec3 vDir;
-    void main() {
-        vDir = normalize(position);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-`;
-
-const domeFragmentShader = /* glsl */ `
-    uniform float uTime;
-    uniform float uOpacity;
-    uniform float uEnergy;
-    varying vec3 vDir;
-
-    ${ODYSSEY_NOISE_GLSL}
-
-    void main() {
-        vec3 dir = normalize(vDir);
-        float h = dir.y * 0.5 + 0.5;
-        vec3 base = mix(vec3(0.0, 0.0, 0.0), vec3(0.05, 0.015, 0.09), h);
-
-        vec3 q = dir * 3.4 + vec3(0.0, 0.0, uTime * 0.03);
-        float dust = fbm3(q);
-        float filaments = ridged3(q * 0.8 + 7.0);
-
-        vec3 nebula = vec3(0.18, 0.03, 0.16) * filaments;
-        nebula += vec3(0.06, 0.10, 0.20) * dust;
-        vec3 color = base + nebula * (0.45 + uEnergy * 0.5);
-        gl_FragColor = vec4(color, uOpacity);
-    }
-`;
-
-const accretionVertexShader = /* glsl */ `
-    varying float vRadius;
-    varying float vAngle;
-    varying vec2 vLocal;
-    void main() {
-        vLocal = position.xy;
-        vRadius = length(position.xy);
-        vAngle = atan(position.y, position.x);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-`;
-
-const accretionFragmentShader = /* glsl */ `
-    uniform float uTime;
-    uniform float uEnergy;
-    uniform float uInner;
-    uniform float uOuter;
-    uniform vec3 uHot;
-    uniform vec3 uMid;
-    uniform vec3 uCool;
-    varying float vRadius;
-    varying float vAngle;
-    varying vec2 vLocal;
-
-    ${ODYSSEY_NOISE_GLSL}
-
-    void main() {
-        float t = clamp((vRadius - uInner) / (uOuter - uInner), 0.0, 1.0);
-        float swirl = vAngle + uTime * (0.7 + (1.0 - t) * 2.0);
-        vec3 sp = vec3(cos(swirl), sin(swirl), 0.0) * (0.7 + t * 3.4);
-        float turb = fbm3(sp * 1.8 + vec3(0.0, 0.0, uTime * 0.16));
-        float streaks = 0.5 + 0.5 * sin(swirl * 4.0 + t * 18.0 - uTime * 1.4);
-        float plasma = mix(turb, streaks, 0.45);
-
-        float radial = smoothstep(0.0, 0.05, t) * (1.0 - smoothstep(0.45, 1.0, t));
-        float doppler = 0.5 + 0.85 * smoothstep(-uOuter, uOuter, vLocal.x);
-
-        float intensity = radial * (0.35 + plasma) * doppler;
-        intensity *= 1.0 + uEnergy * 0.7;
-
-        vec3 color = mix(uHot, uMid, smoothstep(0.0, 0.38, t));
-        color = mix(color, uCool, smoothstep(0.38, 1.0, t));
-        color += vec3(0.25, 0.10, 0.30) * doppler * radial;
-
-        gl_FragColor = vec4(color * intensity, intensity);
-    }
-`;
-
-// Gravitational-lensing shell: an Einstein-ring band that rings the horizon.
-const lensVertexShader = /* glsl */ `
-    varying vec3 vNormal;
-    varying vec3 vView;
-    void main() {
-        vNormal = normalize(normalMatrix * normal);
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        vView = normalize(-mv.xyz);
-        gl_Position = projectionMatrix * mv;
-    }
-`;
-
-const lensFragmentShader = /* glsl */ `
-    uniform float uTime;
-    uniform float uEnergy;
-    uniform vec3 uColorA;
-    uniform vec3 uColorB;
-    varying vec3 vNormal;
-    varying vec3 vView;
-    void main() {
-        float fres = pow(1.0 - max(0.0, dot(vNormal, vView)), 2.0);
-        // Band brightest at mid-grazing angle -> reads as a lensed Einstein ring.
-        float band = smoothstep(0.2, 0.5, fres) * (1.0 - smoothstep(0.72, 1.0, fres));
-        float shimmer = 0.8 + 0.2 * sin(uTime * 1.6 + fres * 18.0);
-        vec3 color = mix(uColorA, uColorB, fres) * band * shimmer;
-        float alpha = band * (0.55 + uEnergy * 0.4);
-        gl_FragColor = vec4(color, alpha);
-    }
-`;
-
-// Twinkling point shader (shards + lensed stars).
-const twinkleVertexShader = /* glsl */ `
-    uniform float uTime;
-    attribute float aSize;
-    attribute float aTwinkle;
-    attribute vec3 aColor;
-    varying float vAlpha;
-    varying vec3 vColor;
-    void main() {
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * mv;
-        float tw = 0.5 + 0.5 * sin(uTime * 2.2 + aTwinkle);
-        gl_PointSize = aSize * tw * (260.0 / -mv.z);
-        gl_PointSize = clamp(gl_PointSize, 0.6, 6.0);
-        vAlpha = tw;
-        vColor = aColor;
-    }
-`;
-
-const twinkleFragmentShader = /* glsl */ `
-    varying float vAlpha;
-    varying vec3 vColor;
-    void main() {
-        float d = length(gl_PointCoord - 0.5);
-        if (d > 0.5) discard;
-        float glow = pow(1.0 - d * 2.0, 1.6);
-        gl_FragColor = vec4(vColor, glow * vAlpha);
-    }
-`;
+// B2 camera-lock scratch vectors — reused EVERY frame in update() so the per-frame
+// hero transform allocates nothing (the lead's "reuse scratch Vector3" constraint).
+const _fwd = new THREE.Vector3();
+const _up = new THREE.Vector3();
+const _heroWorld = new THREE.Vector3();
+const _heroLocal = new THREE.Vector3();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Environment Creation
 // ═══════════════════════════════════════════════════════════════════════════════
+//
+// WebGPU conversion: the five custom GLSL ShaderMaterials (void dome, accretion
+// disk, lensing shell, transcendence shards, lensed starfield) are now built by the
+// validated TSL NodeMaterial builders in ./black-hole-transcendence.tsl.js. The
+// shared uTime/uEnergy uniforms are passed INTO those builders so this file's
+// update() keeps ticking them unchanged. Non-shader companions (dark horizon,
+// photon ring, glow rings, infall tubes) stay as plain MeshBasicMaterial — they
+// render natively on the WebGPURenderer via three/webgpu.
 
 function createVoidDome(uniforms) {
-    const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(520, 48, 32),
-        new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: uniforms.uTime,
-                uEnergy: uniforms.uEnergy,
-                uOpacity: { value: 1 },
-            },
-            side: THREE.BackSide,
-            transparent: true,
-            depthWrite: false,
-            vertexShader: domeVertexShader,
-            fragmentShader: domeFragmentShader,
-        }),
-    );
-    mesh.renderOrder = -100;
+    // TSL NodeMaterial dome; share this file's uTime/uEnergy so update() ticks it.
+    const { mesh } = createVoidDomeTSL(uniforms.uTime, uniforms.uEnergy);
     return mesh;
 }
 
 function createEventHorizon(uniforms) {
     const group = new THREE.Group();
     group.name = 'dominant-event-horizon-anchor';
-    group.position.set(0, 0, -780);
+    // Laterally centred on the path (x=0) and dropped slightly below the eyeline so the
+    // forward-looking, gently-downward camera frames the singularity dead-centre instead
+    // of letting the lensing/horizon hero slide off the right edge.
+    group.position.set(0, -22, -780);
     group.rotation.x = -1.05;
+
+    // Shared ENTRY fade uniform — the close hero is the flyby for the first ~25% of the
+    // chapter, then ramps OUT so it hands off cleanly to the camera-locked distant hero
+    // (so we never have two equal heroes fighting for the frame). update() drives this.
+    const uEntryFade = uniform(1);
+    group.userData.uEntryFade = uEntryFade;
+    // MeshBasic children whose .opacity update() also fades (the TSL disk/shell fade via
+    // the uEntryFade uniform; plain materials need their .opacity ramped directly).
+    group.userData.fadeMaterials = [];
 
     // Dominant dark horizon.
     const horizon = new THREE.Mesh(
@@ -220,27 +101,8 @@ function createEventHorizon(uniforms) {
     horizon.scale.set(1, 1, 0.9);
     group.add(horizon);
 
-    // Shader accretion disk — the visual core.
-    const disk = new THREE.Mesh(
-        new THREE.RingGeometry(42, 132, 280, 6),
-        new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: uniforms.uTime,
-                uEnergy: uniforms.uEnergy,
-                uInner: { value: 42 },
-                uOuter: { value: 132 },
-                uHot: { value: new THREE.Color(0xfff1c4) },
-                uMid: { value: new THREE.Color(0xff48b0) },
-                uCool: { value: new THREE.Color(0x4fb6ff) },
-            },
-            vertexShader: accretionVertexShader,
-            fragmentShader: accretionFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-            blending: THREE.AdditiveBlending,
-        }),
-    );
+    // Shader accretion disk — the visual core (TSL NodeMaterial).
+    const { mesh: disk } = createAccretionDiskTSL(uniforms.uTime, uniforms.uEnergy, { uFade: uEntryFade });
     disk.name = 'accretion-disk';
     group.add(disk);
     group.userData.disk = disk;
@@ -249,7 +111,78 @@ function createEventHorizon(uniforms) {
     const photonRing = new THREE.Mesh(
         new THREE.RingGeometry(39, 43, 192, 1),
         new THREE.MeshBasicMaterial({
-            color: 0xffe9b0,
+            // Hotter incandescent gold-white photon ring — sharpens the bright rim that
+            // hugs the void and reads with more contrast against the magenta accretion.
+            color: 0xfff0c2,
+            transparent: true,
+            opacity: 0.95,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        }),
+    );
+    photonRing.userData.baseOpacity = 0.95;
+    group.userData.fadeMaterials.push(photonRing);
+    group.add(photonRing);
+
+    // Gravitational-lensing shell (Einstein-ring band, TSL NodeMaterial). The band
+    // is a view-space fresnel effect on a sphere, so it is rotation-invariant — the
+    // parent disk tilt does not skew it; it always rings the horizon facing the
+    // camera.
+    const { mesh: lensShell } = createLensingShellTSL(uniforms.uTime, uniforms.uEnergy, { uFade: uEntryFade });
+    lensShell.name = 'lensing-shell';
+    group.add(lensShell);
+
+    return group;
+}
+
+/**
+ * A large, FAR background singularity that stays framed for most of the traversal.
+ * The hero event horizon sits close and is passed early; this distant twin is parked
+ * deep down-path and scaled up so the ascending forward camera keeps an awe-inspiring
+ * black hole in frame the whole run (the lead's "one large always-visible background
+ * black hole"). Same accretion/lensing/photon-ring vocabulary as the hero, dimmer and
+ * cooler so it reads as distance, not a second equal hero.
+ */
+function createDistantBackgroundHole(uniforms) {
+    const group = new THREE.Group();
+    group.name = 'distant-background-singularity';
+    // B2 CAMERA-LOCK HERO: this is no longer a far-parked twin — update() repositions it
+    // in front of the camera EVERY FRAME (fwd*900 + an upper-centre screen-anchor bias)
+    // and lookAt()s the camera, so ONE colossal lensed hole stays framed for the WHOLE
+    // chapter regardless of spline turns. The initial transform here is only the
+    // pre-first-frame fallback; scale is enlarged so the locked hero DOMINATES (~40-55%
+    // of frame height at the ~900-unit lock depth).
+    group.position.set(0, 120, -900);
+    group.scale.setScalar(5.5);
+
+    // Colossal event horizon (sphere ~60 vs the close hero's 38) so the void core reads
+    // as a pure-black disc that dominates the upper-centre third.
+    const horizon = new THREE.Mesh(
+        new THREE.SphereGeometry(60, 48, 32),
+        new THREE.MeshBasicMaterial({ color: 0x000000 }),
+    );
+    horizon.scale.set(1, 1, 0.9);
+    group.add(horizon);
+
+    // Hero accretion disk enlarged to uOuter ~220 (geometry extended to match) so the
+    // glowing torus wraps the colossal horizon, not a tiny inner band.
+    const { mesh: disk } = createAccretionDiskTSL(
+        uniforms.uTime,
+        uniforms.uEnergy,
+        { innerRadius: 64, outerRadius: 220 },
+    );
+    disk.name = 'distant-accretion-disk';
+    group.add(disk);
+    group.userData.disk = disk;
+
+    // Razor photon ring hugging the enlarged horizon — brightened to ~0.9 (the plan's hero
+    // photon-ring opacity) and hot gold-white so it crosses bloom threshold as the only
+    // hard rim, seating the colossal void.
+    const photonRing = new THREE.Mesh(
+        new THREE.RingGeometry(61, 67, 192, 1),
+        new THREE.MeshBasicMaterial({
+            color: 0xfff0c2,
             transparent: true,
             opacity: 0.9,
             blending: THREE.AdditiveBlending,
@@ -259,28 +192,126 @@ function createEventHorizon(uniforms) {
     );
     group.add(photonRing);
 
-    // Gravitational-lensing shell (Einstein-ring band). The band is a view-space
-    // fresnel effect on a sphere, so it is rotation-invariant — the parent disk
-    // tilt does not skew it; it always rings the horizon facing the camera.
-    const lensShell = new THREE.Mesh(
-        new THREE.SphereGeometry(50, 48, 32),
-        new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: uniforms.uTime,
-                uEnergy: uniforms.uEnergy,
-                uColorA: { value: new THREE.Color(0x66e3ff) },
-                uColorB: { value: new THREE.Color(0xff66d8) },
-            },
-            vertexShader: lensVertexShader,
-            fragmentShader: lensFragmentShader,
+    // Wide magenta accretion halo (380..560) so the colossal hero carries a soft glowing
+    // aura that fills the deep-violet void around the locked singularity.
+    const halo = new THREE.Mesh(
+        new THREE.RingGeometry(380, 560, 96, 1),
+        new THREE.MeshBasicMaterial({
+            color: 0xff2bd0,
             transparent: true,
-            depthWrite: false,
+            opacity: 0.16,
             blending: THREE.AdditiveBlending,
-            side: THREE.FrontSide,
+            depthWrite: false,
+            side: THREE.DoubleSide,
         }),
     );
-    lensShell.name = 'lensing-shell';
+    group.add(halo);
+
+    const { mesh: lensShell } = createLensingShellTSL(uniforms.uTime, uniforms.uEnergy);
+    lensShell.name = 'distant-lensing-shell';
     group.add(lensShell);
+
+    return group;
+}
+
+/**
+ * A chain of secondary lensing/accretion motifs distributed ALONG the chapter's
+ * local-Y travel (the camera ascends through ~±90 local units). Each is an accretion
+ * disk + lensing shell + dark horizon + a bright additive bloom halo so that, between
+ * the close hero and the distant background hole, the ascending camera always has a
+ * glowing singularity/accretion framed near it (kills the "long empty corridor" the
+ * lead flagged). They are kept LARGE and close to the path centre-line (x near 0, only
+ * a gentle off-axis offset) and staggered in depth so a hero singularity reads for most
+ * of the traversal — not just at one anchor.
+ */
+function createSecondaryLensingMotifs(uniforms) {
+    const group = new THREE.Group();
+    group.name = 'secondary-lensing-motifs';
+
+    // [x, y, z, scale, tilt] in the chapter's local frame. Distributed low->high across
+    // the local-Y corridor and staggered in depth so one large motif is always framed
+    // mid-run; x kept modest so they sit in / near the forward view, not off-screen.
+    const specs = [
+        [-70, -70, -500, 0.92, -1.20],
+        [85, -10, -640, 1.05, -0.95],
+        [-55, 55, -820, 1.15, -1.05],
+        [70, 120, -1040, 1.30, -0.88],
+        [-40, 185, -1320, 1.45, -1.00],
+    ];
+
+    // B2 STRUCTURAL: SHARE one accretion-disk material+geometry and one lensing-shell
+    // material+geometry across ALL five motifs instead of building 5 fresh copies each
+    // (≈10 unique TSL programs → 2; ≈10 geometries → 2). Visuals are identical — each
+    // motif's distinct look comes from its parent group transform (position/tilt/scale/
+    // spin), not from the material. Likewise share one horizon material+geometry, one
+    // photon-ring material+geometry, and just TWO halo materials (the field only uses an
+    // alternating magenta/cyan halo color). The bundle is stashed on userData for the
+    // caller's dispose path.
+    const shared = createSharedMotifMaterialsTSL(uniforms.uTime, uniforms.uEnergy);
+    group.userData.sharedMotifMaterials = shared;
+
+    const horizonGeometry = new THREE.SphereGeometry(34, 32, 24);
+    const horizonMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+    // Two shared halo materials (even-index magenta, odd-index cyan) + one shared halo
+    // geometry, so the 5 halos cost 2 materials + 1 geometry instead of 5 of each.
+    const haloGeometry = new THREE.RingGeometry(132, 188, 96, 1);
+    const haloMaterialEven = new THREE.MeshBasicMaterial({
+        color: 0xff2bd0,
+        transparent: true,
+        opacity: 0.18,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+    });
+    const haloMaterialOdd = new THREE.MeshBasicMaterial({
+        color: 0x57dcff,
+        transparent: true,
+        opacity: 0.18,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+    });
+    group.userData.sharedHorizon = { geometry: horizonGeometry, material: horizonMaterial };
+    group.userData.sharedHalo = {
+        geometry: haloGeometry, materialEven: haloMaterialEven, materialOdd: haloMaterialOdd,
+    };
+
+    specs.forEach(([x, y, z, scale, tilt], index) => {
+        const motif = new THREE.Group();
+        motif.name = `lensing-motif-${index}`;
+        motif.position.set(x, y, z);
+        motif.rotation.x = tilt;
+        motif.scale.setScalar(scale);
+
+        const horizon = new THREE.Mesh(horizonGeometry, horizonMaterial);
+        horizon.scale.set(1, 1, 0.9);
+        motif.add(horizon);
+
+        const disk = shared.makeDiskMesh(`motif-accretion-disk-${index}`);
+        motif.add(disk);
+
+        // Bright incandescent photon ring hugging each motif's horizon so a glowing
+        // singularity reads even before the accretion disk resolves at distance.
+        const photonRing = shared.makePhotonRingMesh(`motif-photon-ring-${index}`);
+        motif.add(photonRing);
+
+        // Soft magenta/cyan accretion halo (a coplanar additive glow ring) so each motif
+        // carries a glowing aura that reads against the deep-violet void at distance.
+        const halo = new THREE.Mesh(
+            haloGeometry,
+            index % 2 === 0 ? haloMaterialEven : haloMaterialOdd,
+        );
+        halo.name = `motif-halo-${index}`;
+        motif.add(halo);
+
+        const lensShell = shared.makeShellMesh(`motif-lensing-shell-${index}`);
+        motif.add(lensShell);
+
+        // Per-motif slow spin (alternating) so the field has life without CPU work.
+        motif.userData.spin = (index % 2 === 0 ? 1 : -1) * (0.05 + index * 0.015);
+        group.add(motif);
+    });
 
     return group;
 }
@@ -288,9 +319,11 @@ function createEventHorizon(uniforms) {
 function createAccretionGlowRings() {
     const group = new THREE.Group();
     group.name = 'accretion-glow-rings';
-    group.position.set(0, 0, -780);
+    // Coplanar with the event-horizon anchor (kept in lockstep so the outer glow rings
+    // stay concentric with the re-centred singularity).
+    group.position.set(0, -22, -780);
     group.rotation.x = -1.05;
-    const ringColors = [0xff33cc, 0x66e3ff, 0xffb347];
+    const ringColors = [0xff2bd0, 0x57dcff, 0xffb347];
 
     ringColors.forEach((color, index) => {
         const ring = new THREE.Mesh(
@@ -298,7 +331,7 @@ function createAccretionGlowRings() {
             new THREE.MeshBasicMaterial({
                 color,
                 transparent: true,
-                opacity: 0.1 - index * 0.025,
+                opacity: 0.14 - index * 0.03,
                 side: THREE.DoubleSide,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
@@ -311,99 +344,22 @@ function createAccretionGlowRings() {
 }
 
 function createTranscendenceShards(uniforms) {
-    const count = 220;
-    const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
-    const sizes = new Float32Array(count);
-    const twinkles = new Float32Array(count);
-
-    const palette = [
-        new THREE.Color(0xff66d8),
-        new THREE.Color(0x66e3ff),
-        new THREE.Color(0xffd28a),
-    ];
-
-    for (let index = 0; index < count; index += 1) {
-        const stride = index * 3;
-        const angle = Math.random() * Math.PI * 2;
-        const radius = 30 + (Math.random() * 110);
-        positions[stride] = Math.cos(angle) * radius;
-        positions[stride + 1] = (Math.random() - 0.5) * 130;
-        positions[stride + 2] = -760 - (Math.random() * 130);
-
-        const color = palette[index % palette.length];
-        colors[stride] = color.r;
-        colors[stride + 1] = color.g;
-        colors[stride + 2] = color.b;
-        sizes[index] = 1.6 + Math.random() * 2.4;
-        twinkles[index] = Math.random() * Math.PI * 2;
-    }
-
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-    geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-    geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkles, 1));
-
-    const points = new THREE.Points(
-        geometry,
-        new THREE.ShaderMaterial({
-            uniforms: { uTime: uniforms.uTime },
-            vertexShader: twinkleVertexShader,
-            fragmentShader: twinkleFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        }),
-    );
-    points.name = 'transcendence-shards';
-    return points;
+    // Instanced billboard quads (THREE.Points renders as 1px on WebGPU). The shared
+    // uTime drives the twinkle in the TSL material; B5 — the vertical drift now also
+    // runs in the TSL material (driven by uTime + uCameraY) so update() no longer
+    // rewrites the aBase Float32Array each frame. Stash the drift uniforms so update()
+    // can feed camera.position.y into uCameraY.
+    const { mesh, uniforms: driftUniforms } = createTranscendenceShardsTSL(uniforms.uTime);
+    mesh.name = 'transcendence-shards';
+    mesh.userData.driftUniforms = driftUniforms;
+    return mesh;
 }
 
 function createLensingStarfield(uniforms) {
-    const count = 1100;
-    const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
-    const sizes = new Float32Array(count);
-    const twinkles = new Float32Array(count);
-
-    for (let index = 0; index < count; index += 1) {
-        const stride = index * 3;
-        const angle = Math.random() * Math.PI * 2;
-        const radius = 58 + Math.random() * 190;
-        // Tangential stretch near the horizon -> stars smear into lensed arcs.
-        const bend = 1 + Math.sin(angle * 3.0) * 0.22;
-        positions[stride] = Math.cos(angle) * radius * bend;
-        positions[stride + 1] = Math.sin(angle) * radius * 0.42;
-        positions[stride + 2] = -790 - Math.random() * 200;
-
-        const hot = index % 4 === 0;
-        colors[stride] = hot ? 1.0 : 0.6;
-        colors[stride + 1] = hot ? 0.66 : 0.8;
-        colors[stride + 2] = 1.0;
-        sizes[index] = 1.2 + Math.random() * 1.8;
-        twinkles[index] = Math.random() * Math.PI * 2;
-    }
-
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
-    geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-    geometry.setAttribute('aTwinkle', new THREE.BufferAttribute(twinkles, 1));
-
-    const points = new THREE.Points(
-        geometry,
-        new THREE.ShaderMaterial({
-            uniforms: { uTime: uniforms.uTime },
-            vertexShader: twinkleVertexShader,
-            fragmentShader: twinkleFragmentShader,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        }),
-    );
-    points.name = 'lensing-starfield';
-    return points;
+    // Instanced billboard quads (THREE.Points renders as 1px on WebGPU).
+    const { mesh } = createLensingStarfieldTSL(uniforms.uTime);
+    mesh.name = 'lensing-starfield';
+    return mesh;
 }
 
 function createInfallStreams() {
@@ -411,21 +367,56 @@ function createInfallStreams() {
     group.name = 'infall-streams';
     const colors = [0xff33cc, 0x66e3ff, 0xffb347];
 
+    // B2: SHARE three stream materials (one per color) across the 9 tubes instead of
+    // building 9 fresh MeshBasicMaterials. The 9 curves still need their OWN geometry +
+    // mesh because update() spins each stream independently (stream.rotation.z), so a
+    // full geometry merge would kill the per-stream tangential vortex spin — deferred to
+    // Wave 2 (where an instanced/compute approach could keep per-stream motion). Sharing
+    // the materials still trims 9 → 3 material instances with zero visual change.
+    const streamMaterials = colors.map((color) => new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        // Brightened 0.3 -> 0.5 (plan) — the infall reads as glowing matter, soft
+        // additive (ACES + threshold bloom are downstream; no hard white).
+        opacity: 0.5,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+    }));
+    group.userData.sharedStreamMaterials = streamMaterials;
+
+    // B2 REWORK: spiral the 9 streams tangentially INWARD to the group's LOCAL origin
+    // (0,0,0) so the whole group can be camera-locked onto the distant hero's screen-
+    // anchored position each frame (update() positions + orients this group). Each curve
+    // starts wide and high, wraps tangentially around the photon ring, and terminates AT
+    // the origin (the locked horizon) with a bright hot tip — matter visibly falling in.
     for (let index = 0; index < 9; index += 1) {
+        const a0 = (index / 9) * Math.PI * 2;
+        const startR = 320 + index * 24;
+        const midR = 150 + index * 8;
+        const innerR = 72;
+        const swirl = 1.7; // tangential wrap (radians) as the stream spirals inward
         const curve = new THREE.CatmullRomCurve3([
-            new THREE.Vector3(-160 + index * 40, 85 - index * 11, -650 - index * 12),
-            new THREE.Vector3(-72 + index * 18, 30 - index * 5, -720),
-            new THREE.Vector3(-18 + index * 4, 5 - index * 2, -775),
+            new THREE.Vector3(
+                Math.cos(a0) * startR,
+                90 - index * 9,
+                -40 - index * 10,
+            ),
+            new THREE.Vector3(
+                Math.cos(a0 + swirl * 0.5) * midR,
+                30 - index * 4,
+                -10,
+            ),
+            new THREE.Vector3(
+                Math.cos(a0 + swirl) * innerR,
+                Math.sin(a0 + swirl) * innerR * 0.42,
+                4,
+            ),
+            // Terminate AT the locked-hero origin (bright hot tip lands on the horizon).
+            new THREE.Vector3(0, 0, 0),
         ]);
         const mesh = new THREE.Mesh(
-            new THREE.TubeGeometry(curve, 48, 0.7, 8, false),
-            new THREE.MeshBasicMaterial({
-                color: colors[index % colors.length],
-                transparent: true,
-                opacity: 0.26,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-            }),
+            new THREE.TubeGeometry(curve, 56, 0.8, 8, false),
+            streamMaterials[index % colors.length],
         );
         mesh.userData.spin = (index % 2 === 0 ? 1 : -1) * (0.015 + index * 0.002);
         group.add(mesh);
@@ -434,14 +425,16 @@ function createInfallStreams() {
     return group;
 }
 
-export function createBlackHoleTranscendenceEnvironment() {
+export function createBlackHoleTranscendenceEnvironment(options = {}) {
     const group = new THREE.Group();
     group.name = 'black-hole-transcendence-environment';
     group.userData.chapterId = 7;
 
+    // TSL uniform nodes (shared into the .tsl builders). They expose `.value`, so the
+    // existing update() (`uniforms.uTime.value = ...`) ticks them unchanged.
     const uniforms = {
-        uTime: { value: 0 },
-        uEnergy: { value: 0.4 },
+        uTime: uniform(0),
+        uEnergy: uniform(0.4),
     };
     group.userData.uniforms = uniforms;
 
@@ -459,13 +452,44 @@ export function createBlackHoleTranscendenceEnvironment() {
     group.add(voidDome);
     group.userData.voidDome = voidDome;
 
+    // Deep-violet ambient wash the camera sits inside (re-centred on the camera in
+    // update()) so the corridor between motifs never reads as dead RGB-black.
+    const { mesh: ambientWash } = createAmbientWashTSL(uniforms.uTime, uniforms.uEnergy);
+    group.add(ambientWash);
+    group.userData.ambientWash = ambientWash;
+
+    // Large always-framed background singularity — keeps an awe hero on screen for the
+    // whole ascent (the close hero below is passed early).
+    const distantHole = createDistantBackgroundHole(uniforms);
+    group.add(distantHole);
+    group.userData.distantHole = distantHole;
+
+    // B4 HOOK: world-space position of the camera-locked hero singularity, refreshed
+    // every frame by update(). The DEFERRED screen-space gravitational-lensing post node
+    // (added in batch B4) projects this to NDC to centre the radial UV warp + the ch7 CA
+    // spike on the hero. Kept as a reused Vector3 (no per-frame alloc). See the camera-lock
+    // block in updateBlackHoleTranscendenceEnvironment().
+    group.userData.lensWorldPos = new THREE.Vector3(0, 120, -900);
+
     const eventHorizon = createEventHorizon(uniforms);
     group.add(eventHorizon);
     group.userData.eventHorizon = eventHorizon;
 
+    // Secondary lensing/accretion motifs distributed along the local-Y travel so the
+    // ascending camera always has a singularity near it (no long empty corridor).
+    const secondaryMotifs = createSecondaryLensingMotifs(uniforms);
+    group.add(secondaryMotifs);
+    group.userData.secondaryMotifs = secondaryMotifs;
+
     const accretionGlowRings = createAccretionGlowRings();
     group.add(accretionGlowRings);
     group.userData.accretionGlowRings = accretionGlowRings;
+
+    // Drifting violet dust hugging the corridor (re-centred on the camera in update()).
+    const { mesh: corridorDust } = createCorridorDustTSL(uniforms.uTime);
+    corridorDust.name = 'corridor-violet-dust';
+    group.add(corridorDust);
+    group.userData.corridorDust = corridorDust;
 
     const shards = createTranscendenceShards(uniforms);
     group.add(shards);
@@ -479,12 +503,31 @@ export function createBlackHoleTranscendenceEnvironment() {
     group.add(infallStreams);
     group.userData.infallStreams = infallStreams;
 
-    group.position.y = chapterCenterY;
+    // Dense infall ember / dust field wreathing the camera-locked hero (the user's "MORE
+    // particles" ask). Instanced + capped; the count scales off the preset particleCount
+    // (default ~520, hard-capped at 900 in the builder) so high-quality tiers add density
+    // and low tiers stay light — no per-frame CPU (motion is GPU-side). update() parents
+    // it onto the locked hero each frame so the embers always wreathe the on-screen hole.
+    const emberCount = options.particleCount ? Math.floor(options.particleCount * 1.04) : 520;
+    const { mesh: infallEmbers } = createInfallEmberFieldTSL(uniforms.uTime, emberCount);
+    group.add(infallEmbers);
+    group.userData.infallEmbers = infallEmbers;
+
+    // Anchor the whole environment to the path's FULL centre (x/y/z), not just Y.
+    // A Y-only anchor let the singularity drift laterally so the lensing/horizon hero
+    // sat half-off the right frame edge; centring on the path puts the event horizon
+    // in front of and centred on the forward-looking camera and stops the path from
+    // clipping through the accretion geometry (mirrors mountain-peaks.js).
+    if (chapterRange?.center) {
+        group.position.set(chapterRange.center.x, chapterCenterY, chapterRange.center.z);
+    } else {
+        group.position.y = chapterCenterY;
+    }
     return group;
 }
 
 export function updateBlackHoleTranscendenceEnvironment(group, delta, time, camera, ...updateArgs) {
-    const [, directorState = null] = updateArgs;
+    const [cameraProgress = null, directorState = null] = updateArgs;
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
@@ -510,29 +553,147 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
         });
     }
 
-    const { eventHorizon } = group.userData;
-    if (eventHorizon) {
-        eventHorizon.rotation.z -= delta * 0.06;
+    // ── B2 CAMERA-LOCK THE HERO ──────────────────────────────────────────────────
+    // Reposition the colossal distant singularity IN FRONT OF the camera every frame so
+    // ONE awe-inspiring lensed hole stays framed for the WHOLE chapter regardless of how
+    // the spline turns (the #1 fix — mid-chapter was empty RGB-black because the parked
+    // hero left the lookAt cone). World target = camera + fwd*900 + up*screenBias, biased
+    // to the upper-centre third; then lookAt(camera) so the disk reads near edge-on. All
+    // math reuses the module scratch vectors (no per-frame allocation).
+    const { distantHole } = group.userData;
+    if (distantHole && camera?.position) {
+        const LOCK_DEPTH = 900; // forward distance: disk outer ~220*5.5 fills ~40-55% frame
+        const UP_BIAS = 120; // ride the upper-centre third (plan's screen-anchor up bias)
+        const RIGHT_BIAS = 26; // slight right, matching the ch7 framing's rightward aim
+
+        // Forward + a stable up basis from the camera.
+        camera.getWorldDirection(_fwd).normalize();
+        _up.set(0, 1, 0);
+        // Right = fwd x up; re-derive up = right x fwd so the bias stays orthonormal even
+        // when the camera pitches/rolls down the spline (reuse _heroLocal as the right tmp).
+        _heroLocal.crossVectors(_fwd, _up).normalize();
+        _up.crossVectors(_heroLocal, _fwd).normalize();
+
+        // World-space hero position in front of the camera, lifted to the upper-centre.
+        _heroWorld.copy(camera.position)
+            .addScaledVector(_fwd, LOCK_DEPTH)
+            .addScaledVector(_up, UP_BIAS)
+            .addScaledVector(_heroLocal, RIGHT_BIAS);
+
+        // Publish the WORLD position for B4's deferred screen-space lensing post node.
+        group.userData.lensWorldPos.copy(_heroWorld);
+
+        // Convert to the group's LOCAL frame (the group is positioned but not rotated, so a
+        // plain subtract is exact — matches the ambient-wash re-centre above).
+        _heroLocal.copy(_heroWorld).sub(group.position);
+        distantHole.position.copy(_heroLocal);
+
+        // Face the camera so the accretion torus reads near edge-on (iconic lensed look),
+        // then keep a slow spin on the local Z for life. lookAt() works in the parent frame;
+        // with an unrotated group that is world space, so aim at the camera's world position.
+        distantHole.lookAt(camera.position);
+        distantHole.rotateX(-0.32); // tilt the disk plane so we see the torus, not edge-on flat
+        distantHole.rotateZ(time * 0.05); // gentle precession (was delta-accumulated)
+    } else if (distantHole) {
+        // No-camera fallback (smoke tests): keep the old slow precession.
+        distantHole.rotation.z -= delta * 0.025;
     }
 
-    const { shards } = group.userData;
-    if (shards?.geometry?.attributes?.position) {
-        const { array } = shards.geometry.attributes.position;
-        const cameraY = camera?.position?.y ?? group.position.y;
-        for (let index = 0; index < array.length; index += 3) {
-            array[index + 1] += Math.sin(time * 0.6 + index * 0.1 + cameraY * 0.002) * 0.0025;
+    // ── B2 ENTRY-FADE HANDOFF ────────────────────────────────────────────────────
+    // Ramp the close ENTRY event horizon OUT by ~25% chapter progress so it hands off
+    // cleanly to the locked hero (never two equal heroes fighting for the frame). Chapter-
+    // local progress is derived from the camera's ascent through the chapter y-range (set on
+    // userData by create()); falls back to the global cameraProgress, then to fully present.
+    const { eventHorizon } = group.userData;
+    if (eventHorizon) {
+        eventHorizon.rotation.z -= delta * 0.06; // entry hero keeps its slow spin while visible
+
+        let chapterT = null;
+        const { yStart, yEnd } = group.userData;
+        if (camera?.position && Number.isFinite(yStart) && Number.isFinite(yEnd) && yEnd !== yStart) {
+            chapterT = THREE.MathUtils.clamp((camera.position.y - yStart) / (yEnd - yStart), 0, 1);
+        } else if (Number.isFinite(cameraProgress)) {
+            chapterT = THREE.MathUtils.clamp(cameraProgress, 0, 1);
         }
-        shards.geometry.attributes.position.needsUpdate = true;
+        if (chapterT !== null) {
+            // 1 at chapter top -> 0 by ~25% progress (smooth, no pop).
+            const entryFade = 1 - THREE.MathUtils.smoothstep(chapterT, 0.0, 0.25);
+            if (eventHorizon.userData.uEntryFade) {
+                eventHorizon.userData.uEntryFade.value = entryFade;
+            }
+            // Plain MeshBasic children (photon ring) need their .opacity ramped directly.
+            const { fadeMaterials } = eventHorizon.userData;
+            if (Array.isArray(fadeMaterials)) {
+                fadeMaterials.forEach((mesh) => {
+                    const base = mesh.userData?.baseOpacity ?? 1;
+                    if (mesh.material) mesh.material.opacity = base * entryFade;
+                });
+            }
+            // Hide the whole entry group once faded so it cannot occlude the locked hero.
+            eventHorizon.visible = entryFade > 0.01;
+        }
+    }
+
+    // Per-motif alternating spin (the field of secondary singularities along the path).
+    const { secondaryMotifs } = group.userData;
+    if (secondaryMotifs?.children) {
+        secondaryMotifs.children.forEach((motif) => {
+            motif.rotation.z += delta * (motif.userData.spin || 0);
+        });
+    }
+
+    // Re-centre the camera-enveloping ambient wash + corridor dust on the camera (in the
+    // group's LOCAL frame: camera - group origin) so the camera is always inside them and
+    // no corridor frame goes black. Falls back to a static placement with no camera.
+    const { ambientWash, corridorDust } = group.userData;
+    if (camera?.position) {
+        const localX = camera.position.x - group.position.x;
+        const localY = camera.position.y - group.position.y;
+        const localZ = camera.position.z - group.position.z;
+        if (ambientWash) ambientWash.position.set(localX, localY, localZ);
+        // Dust rides with the camera laterally/vertically but keeps its forward bias.
+        if (corridorDust) corridorDust.position.set(localX, localY, localZ);
+    }
+
+    // B5: vertical shard drift now runs ENTIRELY in the TSL material (uTime + per-shard
+    // phase + uCameraY), so the old per-frame element-wise rewrite of the aBase
+    // Float32Array + needsUpdate full GPU re-upload is gone (no CPU loop / no upload each
+    // frame). We only feed the camera's Y into the drift uniform; if no camera (smoke
+    // tests) the drift simply uses the last value. Same gentle vertical bob.
+    const { shards } = group.userData;
+    const shardDrift = shards?.userData?.driftUniforms;
+    if (shardDrift?.uCameraY) {
+        shardDrift.uCameraY.value = camera?.position?.y ?? group.position.y;
     }
 
     const { lensingStarfield, infallStreams } = group.userData;
     if (lensingStarfield) {
         lensingStarfield.rotation.z += delta * 0.012;
     }
+    // B2: re-target the infall streams onto the camera-locked hero EACH FRAME. The curves
+    // were authored to terminate at the group's LOCAL origin (0,0,0), so positioning +
+    // orienting this group onto the locked hero makes every stream spiral into the on-screen
+    // singularity (not the old static z=-760 anchor). distantHole.position is already in the
+    // group's local frame; copy it so the streams share the hero's anchor + facing.
     if (infallStreams?.children) {
+        if (distantHole && camera?.position) {
+            infallStreams.position.copy(distantHole.position);
+            infallStreams.quaternion.copy(distantHole.quaternion);
+        }
         infallStreams.children.forEach((stream) => {
+            // Per-stream tangential spin (vortex wrap around the photon ring).
             stream.rotation.z += delta * stream.userData.spin;
         });
+    }
+
+    // Wreathe the dense infall ember field onto the camera-locked hero each frame (same
+    // anchor + facing as the infall streams) so the embers always orbit the on-screen
+    // singularity. The orbital + radial-breathing motion is GPU-side (uTime), so this is
+    // just a transform copy — no per-frame allocation, no CPU particle loop.
+    const { infallEmbers } = group.userData;
+    if (infallEmbers && distantHole && camera?.position) {
+        infallEmbers.position.copy(distantHole.position);
+        infallEmbers.quaternion.copy(distantHole.quaternion);
     }
 }
 

@@ -1,3 +1,4 @@
+/* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
  * @fileoverview Mountain Peaks Environment - Chapter 4 Visual Theme
  *
@@ -6,14 +7,46 @@
  * - Shader-based 3D Aurora Borealis (Aurora-theme style)
  * - Smooth Spherical Background
  * - Falling Snow Particles
+ *
+ * WebGPU/TSL: the three GLSL ShaderMaterials (sky-sphere, FBM peaks, foothills) are now
+ * built by the validated TSL NodeMaterial builders in ./mountain-peaks.tsl.js, and the
+ * canvas-texture THREE.Points (stars + falling snow) are drawn as instanced billboard
+ * quads (THREE.Points renders 1px on WebGPURenderer). The aurora backdrop stays in its
+ * shared helper. The public API (exports, group.userData fields, update signature) is
+ * unchanged.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import {
+    attribute,
+    float,
+    mod,
+    sin,
+    uniform,
+    uv,
+    vec3,
+    texture as textureNode,
+} from 'three/tsl';
 import {
     getActiveOdysseyChapterPositions,
     getChapterPathRange,
 } from '../path-utils.js';
 import { createMountainAuroraBackdrop } from './shared/mountain-aurora.js';
+import {
+    createMountainSkyTSL,
+    createFBMMountainTSL,
+    createSnowFloorTSL,
+    createCloudSeaDeckTSL,
+    createMountainSunTSL,
+} from './mountain-peaks.tsl.js';
+import {
+    billboardWorld,
+    makeQuadInstancedGeometry,
+} from './shared/odyssey-tsl-billboard.js';
+import {
+    MOUNTAIN_SHADING,
+    resolveMountainTreatment,
+} from './shared/mountain-language.js';
 
 /**
  * Mountain Peaks environment configuration
@@ -35,218 +68,56 @@ export const MOUNTAIN_PEAKS_CONFIG = {
 
 const MOUNTAIN_TRANSITION_START = 0.08;
 const MOUNTAIN_TRANSITION_END = 0.28;
-const MAIN_PEAK_MATERIAL_PROFILE = Object.freeze({
-    snowColor: 0xc7d6e0,
-    snowColorWarm: 0xbfc9d3,
-    rockColor: 0x465463,
-    rockColorWarm: 0x667789,
-    fogColor: 0x314252,
-    fogColorWarm: 0x91adc2,
-    snowLine: 0.5,
-    rimColor: 0x5f8098,
-    rimPower: 4.8,
-    baseMistStrength: 0.45,
-    baseFadeStart: 0.02,
-    baseFadeEnd: 0.1,
+// SEAM 4->5 ("the mountain tops just disappear with a pop"). The manager group-opacity
+// crossfade can't reach these TSL peak materials (alpha flows through opacityNode/uOpacity,
+// not material.opacity), so without this the peaks stay full-opacity until group.visible
+// flips false at the seam = a hard pop. Across the BACK of Ch4 into the 4->5 boundary we
+// SINK the peaks downward (so they descend beneath the rising cloud-sea) and FADE their
+// uOpacity to ~0, so the summits recede below the clouds rather than blinking out.
+const MOUNTAIN_SEAM_EXIT_BAND = 0.34; // fraction of Ch4 (by local progress) over which to sink+fade
+const MOUNTAIN_SEAM_SINK_DISTANCE = 140; // world units the peaks descend across the exit
+
+function smoothstep01(value) {
+    const t = THREE.MathUtils.clamp(value, 0, 1);
+    return t * t * (3 - 2 * t);
+}
+// ONE mountain language (shared/mountain-language.js): heroes ride the cool pole, the
+// lower foothill apron pulls toward neutral grey-blue with a higher snow line. The TSL
+// builder resolves the canonical palette; here we only forward the per-instance base
+// mist/fade so each peak's feet recede correctly.
+const MAIN_PEAK_TREATMENT = resolveMountainTreatment({ coolTemp: 1.0 });
+const FOOTHILL_APRON_TREATMENT = resolveMountainTreatment({
+    coolTemp: 0.72,
+    snowLine: MOUNTAIN_SHADING.snowLineFoothill,
 });
-const FOOTHILL_APRON_MATERIAL_PROFILE = Object.freeze({
-    snowColor: 0xbcc8d1,
-    snowColorWarm: 0xb3bec7,
-    rockColor: 0x56626d,
-    rockColorWarm: 0x746c64,
-    fogColor: 0x4f6271,
-    fogColorWarm: 0xa8bdca,
-    snowLine: 0.7,
-    rimColor: 0x5f8098,
-    rimPower: 4.8,
-    baseMistStrength: 0.22,
-    baseFadeStart: 0.08,
-    baseFadeEnd: 0.22,
+const MAIN_PEAK_BASE = Object.freeze({
+    baseMistStrength: 0.32, baseFadeStart: 0.02, baseFadeEnd: 0.1,
 });
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// MOUNTAIN SHADERS
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const mountainVertexShader = `
-attribute float aHeight;
-varying vec3 vNormal;
-varying vec3 vWorldPosition;
-varying float vHeight;
-varying vec2 vUv;
-
-void main() {
-    vNormal = normalize(normalMatrix * normal);
-    vUv = uv;
-    vHeight = aHeight;
-    
-    vec4 worldPos = modelMatrix * vec4(position, 1.0);
-    vWorldPosition = worldPos.xyz;
-    
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
-
-const mountainFragmentShader = `
-uniform vec3 uSnowColor;
-uniform vec3 uRockColor;
-uniform vec3 uFogColor;
-uniform vec3 uSnowColorWarm;
-uniform vec3 uRockColorWarm;
-uniform vec3 uFogColorWarm;
-uniform vec3 uRimColor;
-uniform float uRimPower;
-uniform float uTransition;
-uniform float uOpacity;
-uniform float uSnowLine;
-uniform float uBaseMistStrength;
-uniform float uBaseFadeStart;
-uniform float uBaseFadeEnd;
-
-varying vec3 vNormal;
-varying vec3 vWorldPosition;
-varying float vHeight;
-varying vec2 vUv; // Use vUv here
-
-// Hash noise
-float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-}
-
-// 2D Noise
-float noise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-    float a = hash(i);
-    float b = hash(i + vec2(1.0, 0.0));
-    float c = hash(i + vec2(0.0, 1.0));
-    float d = hash(i + vec2(1.0, 1.0));
-    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-}
-
-// FBM
-float fbm(vec2 p) {
-    float v = 0.0;
-    float a = 0.5;
-    for (int i = 0; i < 4; i++) {
-        v += a * noise(p);
-        p *= 2.0;
-        a *= 0.5;
-    }
-    return v;
-}
-
-void main() {
-    // Lighting
-    vec3 lightDir = normalize(vec3(0.5, 0.8, 0.5));
-    float diff = max(0.3, dot(vNormal, lightDir));
-    
-    // Colors
-    vec3 rockColor = mix(uRockColorWarm, uRockColor, uTransition);
-    vec3 snowColor = mix(uSnowColorWarm, uSnowColor, uTransition);
-    vec3 fogColor = mix(uFogColorWarm, uFogColor, uTransition);
-    vec3 rock = rockColor * diff;
-    vec3 snow = snowColor * diff;
-    
-    // Snow pattern
-    float snowNoise = fbm(vWorldPosition.xz * 0.05);
-    float snowThresh = uSnowLine + snowNoise * 0.2;
-    // Slope factor: snow doesn't stick to steep cliffs
-    float slope = 1.0 - abs(dot(vNormal, vec3(0.0, 1.0, 0.0)));
-    float slopeFactor = smoothstep(0.7, 0.4, slope);
-    
-    float snowMix = smoothstep(snowThresh - 0.1, snowThresh + 0.1, vHeight);
-    snowMix *= slopeFactor;
-    
-    vec3 color = mix(rock, snow, snowMix);
-    vec3 viewDir = normalize(cameraPosition - vWorldPosition);
-    float rim = pow(1.0 - max(dot(vNormal, viewDir), 0.0), uRimPower);
-    color += uRimColor * rim * (0.03 + 0.09 * (1.0 - uTransition));
-    
-    // Fog (Height and Distance based)
-    float dist = length(vWorldPosition - cameraPosition);
-    float fogFactor = smoothstep(200.0, 600.0, dist);
-    
-    // Base mist
-    float baseMist = smoothstep(0.2, 0.0, vHeight) * uBaseMistStrength;
-    
-    color = mix(color, fogColor, max(fogFactor, baseMist));
-    
-    // BASE FADE: Fade out at low heights to hide the hard edge of the plane
-    // vHeight is 0 at base, 1 at peak
-    // Fade in from the tuned range so foothills stay grounded.
-    float baseFade = smoothstep(uBaseFadeStart, uBaseFadeEnd, vHeight);
-    
-    gl_FragColor = vec4(color, uOpacity * baseFade);
-}
-`;
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// BACKGROUND SHADERS
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const skyVertexShader = `
-varying vec3 vWorldPosition;
-void main() {
-    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-    vWorldPosition = worldPosition.xyz;
-    gl_Position = projectionMatrix * viewMatrix * worldPosition;
-}
-`;
-
-const skyFragmentShader = `
-uniform vec3 topColorDay;
-uniform vec3 bottomColorDay;
-uniform vec3 topColorNight;
-uniform vec3 bottomColorNight;
-uniform float offset;
-uniform float exponent;
-uniform float uTransition;
-uniform float uOpacity;
-varying vec3 vWorldPosition;
-void main() {
-    float h = normalize(vWorldPosition + offset).y;
-    vec3 topColor = mix(topColorDay, topColorNight, uTransition);
-    vec3 bottomColor = mix(bottomColorDay, bottomColorNight, uTransition);
-    vec3 color = mix(bottomColor, topColor, max(pow(max(h , 0.0), exponent), 0.0));
-    gl_FragColor = vec4(color, uOpacity);
-}
-`;
+const FOOTHILL_APRON_BASE = Object.freeze({
+    baseMistStrength: 0.18, baseFadeStart: 0.08, baseFadeEnd: 0.22,
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ENVIRONMENT CREATION
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function collectUniformTargets(root, uniformName) {
-    if (!root) return [];
+/**
+ * Mark a TSL uniform node (or {value} uniform) as a transition target the update loop ticks.
+ */
+function pushTransitionTarget(targets, node) {
+    if (node) targets.push(node);
+}
 
-    const targets = [];
-    const seen = new Set();
-
-    const collectFromMaterial = (material) => {
-        const uniform = material?.uniforms?.[uniformName];
-        if (!uniform || seen.has(uniform)) return;
-        if (typeof uniform.value !== 'number') return;
-
-        if (uniform.__odysseyBaseOpacity === undefined && uniformName === 'uOpacity') {
-            uniform.__odysseyBaseOpacity = uniform.value;
-        }
-
-        seen.add(uniform);
-        targets.push(uniform);
-    };
-
-    root.traverse((child) => {
-        if (!child.material) return;
-        if (Array.isArray(child.material)) {
-            child.material.forEach(collectFromMaterial);
-        } else {
-            collectFromMaterial(child.material);
-        }
-    });
-
-    return targets;
+/**
+ * Mark a TSL uniform node as an opacity target, capturing its base value so the update loop
+ * can restore it (mirrors the legacy collectUniformTargets / __odysseyBaseOpacity behaviour).
+ */
+function pushOpacityTarget(targets, node) {
+    if (!node) return;
+    if (node.__odysseyBaseOpacity === undefined) {
+        node.__odysseyBaseOpacity = node.value;
+    }
+    targets.push(node);
 }
 
 export function createMountainPeaksEnvironment(options = {}) {
@@ -274,10 +145,22 @@ export function createMountainPeaksEnvironment(options = {}) {
     group.userData.progressStart = progressWindow.start;
     group.userData.progressEnd = progressWindow.end;
 
+    // Shared TSL transition uniform — drives sky + all peak/foothill materials.
+    const uTransition = uniform(0);
+    // Shared TSL time uniform for the cloud-sea billow (also reused by the sun ray fan).
+    const uTimeNode = uniform(0);
+    // Shared climax uniform — peaks at chapter end to ignite the hero summit + sun ray fan.
+    const uSummitGlow = uniform(0);
+    group.userData.summitGlowUniform = uSummitGlow;
+    group.userData.cloudSeaTimeUniform = uTimeNode;
+    const transitionTargets = [];
+    const opacityTargets = [];
+
     // 1. High Quality Sky Sphere (Boxiness fix)
-    const sky = createSkyBackground();
+    const sky = createSkyBackground(uTransition);
     group.add(sky);
     group.userData.sky = sky;
+    pushTransitionTarget(transitionTargets, sky.userData?.tslUniforms?.uTransition);
 
     // 2. FBM foothills + mountains (aligned to Chapter 3 distant terrain)
     const massif = new THREE.Group();
@@ -285,7 +168,18 @@ export function createMountainPeaksEnvironment(options = {}) {
 
     const chapter4StartY = chapterRange?.start.y ?? chapterCenterY;
     const foothillBaseY = (chapter4StartY - chapterCenterY) - 74;
-    const foothillApron = createFoothillApron(uniforms, foothillBaseY);
+
+    // Cloud-SEA deck just below the lane — the silver sea the camera breaks UP through, and
+    // the abyssal floor that sells altitude every frame (plan ch4 §Composition).
+    const cloudSea = createCloudSeaDeckTSL({
+        uTime: uTimeNode,
+        uTransition,
+        y: foothillBaseY + 20,
+    });
+    massif.add(cloudSea.mesh);
+    group.userData.cloudSea = cloudSea.mesh;
+
+    const foothillApron = createFoothillApron(uTransition, foothillBaseY, opacityTargets);
     massif.add(foothillApron);
     group.userData.foothillApron = foothillApron;
 
@@ -297,49 +191,89 @@ export function createMountainPeaksEnvironment(options = {}) {
     const rightMountainY = chapter3CenterY + ch3MountainOffsets[1];
     const centerMountainY = chapter3CenterY + ch3MountainOffsets[2];
 
-    // Left mountain (aligned with Ch3 left mountain)
-    const mountain1 = createFBMMountain(uniforms, {
-        size: 800,
-        height: 300,
-        position: new THREE.Vector3(-250, leftMountainY - chapterCenterY, -650),
+    // Left mountain (aligned with Ch3 left mountain) — bigger + pulled NEARER (z -650→-540,
+    // size 800→920, height 300→360) so its snowy top dominates the frame (user §Scale: get
+    // closer, hero peaks bigger). Tucked slightly inward (x -250→-230) to stay framing the lane.
+    const mountain1 = createFBMMountain(uTransition, {
+        size: 920,
+        height: 360,
+        position: new THREE.Vector3(-230, leftMountainY - chapterCenterY, -540),
         seed: 12.34,
-        materialProfile: MAIN_PEAK_MATERIAL_PROFILE,
-    });
+        treatment: MAIN_PEAK_TREATMENT,
+        base: MAIN_PEAK_BASE,
+        summitGlow: uSummitGlow,
+    }, opacityTargets);
     mountains.add(mountain1);
 
-    // Right mountain (aligned with Ch3 right mountain)
-    const mountain2 = createFBMMountain(uniforms, {
-        size: 800,
-        height: 280,
-        position: new THREE.Vector3(250, rightMountainY - chapterCenterY, -700),
+    // Right mountain (aligned with Ch3 right mountain) — same treatment: bigger + nearer
+    // (z -700→-590, size 800→900, height 280→340).
+    const mountain2 = createFBMMountain(uTransition, {
+        size: 900,
+        height: 340,
+        position: new THREE.Vector3(230, rightMountainY - chapterCenterY, -590),
         seed: 45.67,
-        materialProfile: MAIN_PEAK_MATERIAL_PROFILE,
-    });
+        treatment: MAIN_PEAK_TREATMENT,
+        base: MAIN_PEAK_BASE,
+        summitGlow: uSummitGlow,
+    }, opacityTargets);
     mountains.add(mountain2);
 
-    // Far center peak (aligned with Ch3 center mountain)
-    const mountain3 = createFBMMountain(uniforms, {
-        size: 1200,
-        height: 500,
-        position: new THREE.Vector3(0, centerMountainY - chapterCenterY, -900),
+    // Far center HERO peak (aligned with Ch3 center mountain) — the dominant snowy summit.
+    // Pulled markedly closer (z -820→-680) and taller (height 600→720, size 1200→1340) so the
+    // snow-capped top fills the upper frame and the climax summit-glow reads big (user §Scale).
+    const mountain3 = createFBMMountain(uTransition, {
+        size: 1340,
+        height: 720,
+        position: new THREE.Vector3(0, centerMountainY - chapterCenterY, -680),
         seed: 89.12,
-        materialProfile: MAIN_PEAK_MATERIAL_PROFILE,
-    });
+        treatment: MAIN_PEAK_TREATMENT,
+        base: MAIN_PEAK_BASE,
+        summitGlow: uSummitGlow,
+    }, opacityTargets);
     mountains.add(mountain3);
 
+    // ONE near foreground ridge-shoulder, lower-left, mostly below frame so only its sunlit
+    // snowy upper edge enters — the near depth tier that sells altitude (plan ch4 §Scale).
+    // Pulled in + up a touch (z -260→-220, height 180→220) so its snow-cap crests into frame.
+    const foreground = createFBMMountain(uTransition, {
+        size: 720,
+        height: 220,
+        position: new THREE.Vector3(-360, foothillBaseY - 30, -220),
+        seed: 71.5,
+        treatment: MAIN_PEAK_TREATMENT,
+        base: MAIN_PEAK_BASE,
+        summitGlow: uSummitGlow,
+    }, opacityTargets);
+    mountains.add(foreground);
+    group.userData.foregroundRidge = foreground;
+
     massif.add(mountains);
+
+    // On-screen SUN disc + bloom-halo + ray fan along lightDir (controlled bloom, NOT the
+    // old white node blowout). The ray fan widens as uSummitGlow peaks at the climax.
+    const sun = createMountainSunTSL({ uTransition, summitGlow: uSummitGlow });
+    massif.add(sun.group);
+    group.userData.sun = sun.group;
+
     group.add(massif);
     group.userData.mountains = massif;
     group.userData.mainPeaks = mountains;
+    // SEAM 4->5: record the peaks' authored base Y so the seam-exit sink is a non-compounding
+    // absolute offset (baseY - sink) rather than a per-frame accumulation.
+    mountains.userData.seamBaseY = mountains.position.y;
 
     // 3. Shader Aurora Curtains
+    // Lift the curtain opacities a touch so the aurora colour reads more strongly against
+    // the now-deeper twilight sky (without flattening it into a wash). Defaults were
+    // [1.0, 0.8, 0.8, 0.6]; the back/wide curtain stays subtle.
     const aurora = createMountainAuroraBackdrop(uniforms, {
         name: 'mountain-aurora',
+        layerOpacities: [1.0, 0.95, 0.95, 0.7],
     });
     group.add(aurora);
     group.userData.aurora = aurora;
-    group.userData.mountainTransitionUniformTargets = collectUniformTargets(massif, 'uTransition');
-    group.userData.mountainOpacityUniformTargets = collectUniformTargets(massif, 'uOpacity');
+    group.userData.mountainTransitionUniformTargets = transitionTargets;
+    group.userData.mountainOpacityUniformTargets = opacityTargets;
     group.userData.auroraFadeUniformTargets = collectUniformTargets(aurora, 'uAuroraFade');
     group.userData.auroraOpacityUniformTargets = collectUniformTargets(aurora, 'uOpacity');
 
@@ -347,54 +281,84 @@ export function createMountainPeaksEnvironment(options = {}) {
     const snow = createSnow(uniforms, options.particleCount || 1000);
     group.add(snow);
     group.userData.snow = snow;
+    // Snow drift is now uTime-driven in the TSL material (perf §5.3); the update loop ticks
+    // this node instead of rewriting + re-uploading the InstancedBufferAttribute each frame.
+    group.userData.snowTimeUniform = snow.userData.snowTimeUniform;
 
     // 5. Stars
     const stars = createStars(uniforms, 1000);
     group.add(stars);
     group.userData.stars = stars;
 
-    // Lighting
-    const ambient = new THREE.AmbientLight(0x445566, 0.4);
+    // Lighting — lower, cooler ambient so shadowed faces stay deep blue (more contrast),
+    // and a brighter, crisper moon key so snow caps pop as bright silhouettes.
+    const ambient = new THREE.AmbientLight(0x2b3a52, 0.3);
     group.add(ambient);
 
-    const moonLight = new THREE.DirectionalLight(0xaaddff, 0.5);
+    const moonLight = new THREE.DirectionalLight(0xcfe6ff, 0.72);
     moonLight.position.set(50, 100, 50);
     group.add(moonLight);
 
-    // Vertical positioning
-    group.position.y = chapterCenterY;
+    // Faint warm rim fill from the alpenglow side to echo the rose on the peak tops
+    // without flattening the overall cool key.
+    const alpenFill = new THREE.DirectionalLight(0xffb59a, 0.18);
+    alpenFill.position.set(-60, 40, 30);
+    group.add(alpenFill);
+
+    // Anchor the whole massif to the path's FULL center (x,y,z), not just Y. The ch4
+    // path swings out to ~x=-200,z=-350; with the group left at world XZ origin the huge
+    // FBM peaks (centered around local z=-650, ~800 wide) enveloped the path — the camera
+    // flew "straight through the mountain". Centering the group on the path puts the path
+    // at the massif's local origin, in front of the peaks (which now frame it from behind).
+    if (chapterRange?.center) {
+        group.position.set(chapterRange.center.x, chapterCenterY, chapterRange.center.z);
+    } else {
+        group.position.y = chapterCenterY;
+    }
 
     return group;
 }
 
-function createSkyBackground() {
-    const vertexShader = skyVertexShader;
-    const fragmentShader = skyFragmentShader;
-    const uniformsSky = {
-        topColorDay: { value: new THREE.Color(0x7ab3ff) },
-        bottomColorDay: { value: new THREE.Color(0xbad7ff) },
-        topColorNight: { value: new THREE.Color(0x000000) }, // Pure black for seamless space transition
-        bottomColorNight: { value: new THREE.Color(0x0a0a14) }, // Match Ch5 background
-        offset: { value: 33 },
-        exponent: { value: 0.6 },
-        uTransition: { value: 0 },
-        uOpacity: { value: 1 },
+/**
+ * Collect the legacy {value} uniforms named `uniformName` from any remaining raw
+ * ShaderMaterials (the aurora backdrop shared helper). Kept for the aurora fade/opacity
+ * targets; the peak/sky materials are TSL and tracked explicitly during creation.
+ */
+function collectUniformTargets(root, uniformName) {
+    if (!root) return [];
+
+    const targets = [];
+    const seen = new Set();
+
+    const collectFromMaterial = (material) => {
+        const uniform2 = material?.uniforms?.[uniformName];
+        if (!uniform2 || seen.has(uniform2)) return;
+        if (typeof uniform2.value !== 'number') return;
+
+        if (uniform2.__odysseyBaseOpacity === undefined && uniformName === 'uOpacity') {
+            uniform2.__odysseyBaseOpacity = uniform2.value;
+        }
+
+        seen.add(uniform2);
+        targets.push(uniform2);
     };
 
-    // Use high segment count to avoid boxy look
-    // Increased radius to 6000 to encompass the deep aurora (z=-3000 to -3800)
-    const geometry = new THREE.SphereGeometry(6000, 64, 48);
-    const material = new THREE.ShaderMaterial({
-        vertexShader,
-        fragmentShader,
-        uniforms: uniformsSky,
-        side: THREE.BackSide,
-        depthWrite: false,
-        transparent: true,
+    root.traverse((child) => {
+        if (!child.material) return;
+        if (Array.isArray(child.material)) {
+            child.material.forEach(collectFromMaterial);
+        } else {
+            collectFromMaterial(child.material);
+        }
     });
 
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.renderOrder = -100;
+    return targets;
+}
+
+function createSkyBackground(uTransition) {
+    // TSL graded sky-sphere (radius 6000, BackSide) from mountain-peaks.tsl.js.
+    const { mesh, uniforms: skyUniforms } = createMountainSkyTSL(uTransition);
+    mesh.userData.tslUniforms = skyUniforms;
     return mesh;
 }
 
@@ -419,9 +383,10 @@ function createParticleTexture() {
 }
 
 function createStars(uniforms, count) {
-    const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(count * 3);
-    const sizes = new Float32Array(count);
+    // Build the same spherical-shell star layout as the original Points cloud, but
+    // gather only the accepted points (cos(phi) >= 0) so the instanced quad count is exact.
+    const positions = [];
+    const sizes = [];
 
     for (let i = 0; i < count; i++) {
         const theta = Math.random() * Math.PI * 2;
@@ -430,154 +395,62 @@ function createStars(uniforms, count) {
 
         if (Math.cos(phi) < 0) continue;
 
-        positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-        positions[i * 3 + 1] = r * Math.cos(phi);
-        positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-        sizes[i] = 0.5 + Math.random() * 1.5;
+        positions.push(
+            r * Math.sin(phi) * Math.cos(theta),
+            r * Math.cos(phi),
+            r * Math.sin(phi) * Math.sin(theta),
+        );
+        sizes.push(0.5 + Math.random() * 1.5);
     }
 
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const instanceCount = sizes.length;
+    const basePositions = new Float32Array(positions);
+    const aSize = new Float32Array(sizes);
 
-    // Use texture map for round particles
-    const texture = createParticleTexture();
-    const material = new THREE.PointsMaterial({
-        color: 0xffffff,
-        size: 2.0, // Slightly larger to account for texture fade
-        map: texture,
-        transparent: true,
-        opacity: 0.8,
-        depthWrite: false,
-        sizeAttenuation: true,
+    const geometry = makeQuadInstancedGeometry(instanceCount, {
+        aBase: { array: basePositions, itemSize: 3 },
+        aSize: { array: aSize, itemSize: 1 },
     });
 
-    return new THREE.Points(geometry, material);
+    // Round particle sprite (same soft-circle canvas the Points version used).
+    const map = createParticleTexture();
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.transparent = true;
+    material.depthWrite = false;
+
+    // Billboard each quad at its base position; convert the old ~2px PointsMaterial size +
+    // per-point size variation (0.5..2.0) into a small world-space half-extent.
+    const worldSize = attribute('aSize', 'float').mul(0.45);
+    material.positionNode = billboardWorld(attribute('aBase', 'vec3'), worldSize);
+
+    const sprite = textureNode(map, uv());
+    material.colorNode = sprite.rgb.mul(new THREE.Color(0xffffff));
+    material.opacityNode = sprite.a.mul(0.8);
+
+    const stars = new THREE.Mesh(geometry, material);
+    stars.name = 'mountain-stars';
+    stars.frustumCulled = false;
+    return stars;
 }
 
 /**
  * Creates a mountain using PlaneGeometry and heightmap displacement
- * (Adapted from SakuraTwilightTheme)
+ * (Adapted from SakuraTwilightTheme). Backed by the validated TSL builder; the
+ * accumulated opacityTargets array receives this peak's opacity uniform so the
+ * update loop can restore it like the legacy collectUniformTargets did.
  */
-function createFBMMountain(uniforms, config) {
-    const {
-        materialProfile = MAIN_PEAK_MATERIAL_PROFILE,
-    } = config;
-    const segments = 128;
-    const geometry = new THREE.PlaneGeometry(config.size, config.size, segments, segments);
-    geometry.rotateX(-Math.PI / 2);
-
-    // --- FBM Noise Generation ---
-    const posAttribute = geometry.attributes.position;
-    const vertex = new THREE.Vector3();
-    const heights = [];
-    const seed = config.seed || 0;
-
-    // Helper functions for FBM on CPU
-    const fract = (n) => n - Math.floor(n);
-    const mix = (a, b, t) => a * (1 - t) + b * t;
-
-    // Simple pseudo-random based on position + seed
-    const rand = (x, y) => Math.sin(x * 12.9898 + y * 78.233 + seed) * 43758.5453;
-
-    const noise = (x, y) => {
-        const i = Math.floor(x);
-        const j = Math.floor(y);
-        const f = fract(x);
-        const g = fract(y);
-
-        // Cubic smoothstep
-        const u = f * f * (3.0 - 2.0 * f);
-        const v = g * g * (3.0 - 2.0 * g);
-
-        return mix(
-            mix(fract(rand(i, j)), fract(rand(i + 1, j)), u),
-            mix(fract(rand(i, j + 1)), fract(rand(i + 1, j + 1)), u),
-            v,
-        );
-    };
-
-    const fbm = (x, y) => {
-        let sampleX = x;
-        let sampleY = y;
-        let v = 0.0;
-        let a = 0.5;
-        for (let i = 0; i < 5; i++) {
-            v += a * noise(sampleX, sampleY);
-            sampleX *= 2.0;
-            sampleY *= 2.0;
-            a *= 0.5;
-        }
-        return v;
-    };
-
-    // Apply displacement
-    for (let i = 0; i < posAttribute.count; i++) {
-        vertex.fromBufferAttribute(posAttribute, i);
-
-        // Distance falloff (create a peak)
-        const dx = vertex.x;
-        const dz = vertex.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-        const maxDist = config.size * 0.45;
-
-        if (dist > maxDist) {
-            posAttribute.setY(i, 0);
-            heights.push(0);
-            continue;
-        }
-
-        // Cone shape
-        const normDist = dist / maxDist;
-        const cone = (1.0 - normDist) ** 1.5 * config.height;
-
-        // Noise detail
-        const n = fbm(vertex.x * 0.01, vertex.z * 0.01);
-        const n2 = fbm(vertex.x * 0.04, vertex.z * 0.04);
-
-        const detail = (n * 0.7 + n2 * 0.3) * config.height * 0.4 * (1.0 - normDist);
-
-        const h = cone + detail;
-        posAttribute.setY(i, h);
-        heights.push(h);
-    }
-
-    geometry.computeVertexNormals();
-
-    // Height attribute for shader
-    const heightAttr = new Float32Array(posAttribute.count);
-    for (let i = 0; i < posAttribute.count; i++) {
-        heightAttr[i] = heights[i] / config.height;
-    }
-    geometry.setAttribute('aHeight', new THREE.BufferAttribute(heightAttr, 1));
-
-    const material = new THREE.ShaderMaterial({
-        uniforms: {
-            uSnowColor: { value: new THREE.Color(materialProfile.snowColor) },
-            uSnowColorWarm: { value: new THREE.Color(materialProfile.snowColorWarm) },
-            uRockColor: { value: new THREE.Color(materialProfile.rockColor) },
-            uRockColorWarm: { value: new THREE.Color(materialProfile.rockColorWarm) },
-            uFogColor: { value: new THREE.Color(materialProfile.fogColor) },
-            uFogColorWarm: { value: new THREE.Color(materialProfile.fogColorWarm) },
-            uSnowLine: { value: materialProfile.snowLine },
-            uRimColor: { value: new THREE.Color(materialProfile.rimColor) },
-            uRimPower: { value: materialProfile.rimPower },
-            uBaseMistStrength: { value: materialProfile.baseMistStrength },
-            uBaseFadeStart: { value: materialProfile.baseFadeStart },
-            uBaseFadeEnd: { value: materialProfile.baseFadeEnd },
-            uTransition: { value: 0 },
-            uOpacity: { value: 1 },
-        },
-        vertexShader: mountainVertexShader,
-        fragmentShader: mountainFragmentShader,
-        transparent: true,
-        depthWrite: false,
+function createFBMMountain(uTransition, config, opacityTargets) {
+    const { mesh, uniforms: peakUniforms } = createFBMMountainTSL({
+        ...config,
+        transition: uTransition,
     });
-
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.copy(config.position);
+    if (opacityTargets) pushOpacityTarget(opacityTargets, peakUniforms.uOpacity);
+    mesh.userData.tslUniforms = peakUniforms;
     return mesh;
 }
 
-function createFoothillApron(uniforms, baseY) {
+function createFoothillApron(uTransition, baseY, opacityTargets) {
     const group = new THREE.Group();
     group.name = 'foothill-apron';
 
@@ -601,10 +474,12 @@ function createFoothillApron(uniforms, baseY) {
             seed: 58.42,
         },
     ].forEach((config) => {
-        const foothill = createFBMMountain(uniforms, {
+        const foothill = createFBMMountain(uTransition, {
             ...config,
-            materialProfile: FOOTHILL_APRON_MATERIAL_PROFILE,
-        });
+            treatment: FOOTHILL_APRON_TREATMENT,
+            base: FOOTHILL_APRON_BASE,
+            isHero: false,
+        }, opacityTargets);
         foothill.renderOrder = -2;
         group.add(foothill);
     });
@@ -618,163 +493,86 @@ function createFoothillApron(uniforms, baseY) {
  * Uses softer colors to prevent glowing/brightness issues
  */
 export function createSnowFloor(uniforms, offsetY = -123.75) {
-    const group = new THREE.Group();
-    group.name = 'snow-floor';
-
-    // Use circular geometry to completely eliminate straight edges
-    const radius = 3000;
-    const segments = 128;
-    const geometry = new THREE.CircleGeometry(radius, segments);
-    geometry.rotateX(-Math.PI / 2);
-
-    const positionAttr = geometry.attributes.position;
-
-    // Simple noise for subtle snow variation
-    const noise = (x, z, scale) => Math.sin(x * scale) * Math.cos(z * scale * 0.8) * 0.5
-        + Math.sin(x * scale * 2.3) * Math.cos(z * scale * 1.7) * 0.25;
-
-    // Apply gentle height displacement
-    for (let i = 0; i < positionAttr.count; i++) {
-        const x = positionAttr.getX(i);
-        const z = positionAttr.getZ(i);
-
-        // Very gentle snow drifts
-        const height = noise(x, z, 0.01) * 8 + noise(x, z, 0.025) * 3;
-        positionAttr.setY(i, height);
-    }
-
-    geometry.computeVertexNormals();
-
-    // Muted snow material - softer colors to prevent glowing
-    const snowMaterial = new THREE.ShaderMaterial({
-        uniforms: {
-            uSnowColor: { value: new THREE.Color(0xdde4ea) }, // Muted snow white (not pure white)
-            uShadowColor: { value: new THREE.Color(0x8a9aa8) }, // Soft blue-gray shadows
-            uLightDir: { value: new THREE.Vector3(0.3, 0.8, 0.5).normalize() },
-            uTime: uniforms.uTime,
-            uOpacity: { value: 1 },
-        },
-        vertexShader: `
-            varying vec3 vNormal;
-            varying vec3 vPosition;
-            varying vec2 vUv;
-
-            void main() {
-                vNormal = normalize(normalMatrix * normal);
-                vPosition = position;
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: `
-            uniform vec3 uSnowColor;
-            uniform vec3 uShadowColor;
-            uniform vec3 uLightDir;
-            uniform float uTime;
-            uniform float uOpacity;
-
-            varying vec3 vNormal;
-            varying vec3 vPosition;
-            varying vec2 vUv;
-
-            float rand(vec2 n) {
-                return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
-            }
-
-            float noise(vec2 p) {
-                vec2 ip = floor(p);
-                vec2 u = fract(p);
-                u = u * u * (3.0 - 2.0 * u);
-                float res = mix(
-                    mix(rand(ip), rand(ip + vec2(1.0, 0.0)), u.x),
-                    mix(rand(ip + vec2(0.0, 1.0)), rand(ip + vec2(1.0, 1.0)), u.x), u.y);
-                return res;
-            }
-
-            void main() {
-                // Soft lighting with more ambient
-                float NdotL = dot(vNormal, uLightDir);
-                float light = 0.6 + 0.4 * NdotL;
-
-                // Muted snow with soft shadows
-                vec3 color = mix(uShadowColor, uSnowColor, light);
-
-                // Distance fade to sky/atmosphere color
-                float dist = length(vPosition.xz);
-                float distFactor = 1.0 - smoothstep(600.0, 1400.0, dist) * 0.3;
-                color *= distFactor;
-
-                // Blend to atmosphere at far distance
-                vec3 atmColor = vec3(0.1, 0.15, 0.22);
-                color = mix(color, atmColor, smoothstep(1000.0, 1800.0, dist));
-
-                float sparkle = smoothstep(0.9, 1.0, noise(vPosition.xz * 0.2 + uTime * 0.02));
-                color += sparkle * 0.1;
-
-                // Radial falloff based on world position distance
-                // Use world XZ distance from center for smooth circular fade
-                float distFromCenter = length(vPosition.xz);
-                
-                // Add noise to create organic, irregular edge
-                float edgeNoise = noise(vPosition.xz * 0.005) * 400.0;
-                float adjustedDist = distFromCenter + edgeNoise;
-                
-                // Fade from 2000 (solid) to 2800 (fully transparent)
-                // This ensures edges are completely invisible before reaching geometry boundary
-                float alpha = 1.0 - smoothstep(2000.0, 2800.0, adjustedDist);
-                
-                gl_FragColor = vec4(color, uOpacity * alpha);
-            }
-        `,
-        side: THREE.FrontSide, // Ensure we see it from above
-        depthWrite: false,
-        depthTest: true,
-        transparent: true,
-    });
-
-    const mesh = new THREE.Mesh(geometry, snowMaterial);
-    // Position aligned with Ch3 ground level (Ch3 ground at local y=-15, world y=60)
-    // Ch4 local y = 60 - 183.75 = -123.75
-    mesh.position.set(0, offsetY, -900);
-    mesh.renderOrder = -1;
-    group.add(mesh);
-
+    // Delegate to the validated TSL snow-floor builder (radial circle, sparkle, edge fade).
+    // The builder needs a TSL uniform node; a legacy { value } object has no node methods,
+    // so bridge to a fresh TSL time uniform when a non-node is supplied.
+    const uTime = uniforms?.uTime?.isNode ? uniforms.uTime : uniform(0);
+    const { group } = createSnowFloorTSL(uTime, offsetY);
     return group;
 }
 
+// Falling-snow wrap window (perf §5.3): the original CPU loop reset y from <-10 back to
+// 100 — a 110-unit fall span. The TSL drift mods over the same [-10, 100) window so the
+// loop point and density are visually identical, just computed on the GPU from uTime.
+const SNOW_Y_SPAN = 110;
+const SNOW_Y_MIN = -10;
+
 function createSnow(uniforms, count) {
-    const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(count * 3);
+    // Per-flake fall speed + a gentle horizontal sway phase/amplitude. Replaces the old
+    // per-flake {x,y,z} velocity objects + the per-frame CPU integration; the shader now
+    // derives each flake's position from uTime so the attribute array is never re-uploaded.
+    const fallSpeed = new Float32Array(count);
+    const sway = new Float32Array(count * 2); // (phase, ampX|ampZ packed via phase reuse)
 
     for (let i = 0; i < count; i++) {
         positions[i * 3] = (Math.random() - 0.5) * 200;
         positions[i * 3 + 1] = Math.random() * 100;
         positions[i * 3 + 2] = (Math.random() - 0.5) * 100;
+        // Original fall velocity was -0.1 .. -0.3 units/frame @ ~60fps ≈ 6..18 units/sec.
+        fallSpeed[i] = 6 + Math.random() * 12;
+        sway[i * 2] = Math.random() * Math.PI * 2; // sway phase
+        sway[i * 2 + 1] = 0.5 + Math.random() * 1.5; // sway amplitude (world units)
     }
 
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-    // Reuse texture
-    const texture = createParticleTexture();
-
-    const material = new THREE.PointsMaterial({
-        color: 0xffffff,
-        size: 0.8,
-        map: texture,
-        transparent: true,
-        opacity: 0.8,
-        depthWrite: false,
-        sizeAttenuation: true,
+    const geometry = makeQuadInstancedGeometry(count, {
+        aBase: { array: positions, itemSize: 3 },
+        aFall: { array: fallSpeed, itemSize: 1 },
+        aSway: { array: sway, itemSize: 2 },
     });
 
-    const snow = new THREE.Points(geometry, material);
-    snow.userData = {
-        velocities: Array(count).fill(0).map(() => ({
-            y: -0.1 - Math.random() * 0.2,
-            x: (Math.random() - 0.5) * 0.05,
-            z: (Math.random() - 0.5) * 0.05,
-        })),
-    };
+    // Reuse soft-circle sprite texture.
+    const map = createParticleTexture();
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.transparent = true;
+    material.depthWrite = false;
+
+    // GPU-side drift (perf §5.3): the snowflake center is derived from uTime in the shader
+    // instead of a per-frame JS loop + InstancedBufferAttribute.needsUpdate re-upload. The
+    // falling motion mods over the same [-10, 100) window as the old CPU wrap so the look
+    // (density, loop point, gentle horizontal sway) is preserved.
+    const uTime = uniform(0);
+    const aBase = attribute('aBase', 'vec3');
+    const aFall = attribute('aFall', 'float');
+    const aSway = attribute('aSway', 'vec2');
+
+    // y: fall + wrap into [-10, 100). mod() returns [0, span); shift back to the window.
+    const fallen = aBase.y.sub(SNOW_Y_MIN).sub(uTime.mul(aFall));
+    const yPos = mod(fallen, float(SNOW_Y_SPAN)).add(SNOW_Y_MIN);
+    // x/z: a bounded sine sway (the old per-frame x/z velocity was a tiny gentle walk;
+    // a uTime sine reads the same as drifting flakes without unbounded accumulation).
+    const swayPhase = aSway.x;
+    const swayAmp = aSway.y;
+    const swayX = sin(uTime.mul(0.6).add(swayPhase)).mul(swayAmp);
+    const swayZ = sin(uTime.mul(0.45).add(swayPhase.mul(1.7))).mul(swayAmp.mul(0.6));
+    const center = vec3(aBase.x.add(swayX), yPos, aBase.z.add(swayZ));
+
+    // Original Points size 0.8 -> small world-space half-extent.
+    material.positionNode = billboardWorld(center, 0.8);
+
+    // Slightly cooler, dimmer flakes so the dense snowfield adds depth without piling up
+    // into a near-white atmospheric wash.
+    const sprite = textureNode(map, uv());
+    material.colorNode = sprite.rgb.mul(new THREE.Color(0xdfe9f2));
+    material.opacityNode = sprite.a.mul(0.6);
+
+    const snow = new THREE.Mesh(geometry, material);
+    snow.name = 'mountain-snow';
+    snow.frustumCulled = false;
+    // Expose the TSL time uniform so the update loop ticks it (mirrors cloudSeaTimeUniform);
+    // no per-frame attribute mutation/re-upload remains.
+    snow.userData = { snowTimeUniform: uTime };
 
     return snow;
 }
@@ -809,60 +607,66 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera, camer
         MOUNTAIN_TRANSITION_END,
     );
 
-    const { sky } = group.userData;
-    if (sky?.material?.uniforms) {
-        if (sky.material.uniforms.uTransition) {
-            sky.material.uniforms.uTransition.value = transition;
-        }
-        if (sky.material.uniforms.uOpacity) {
-            const baseOpacity = typeof sky.material.uniforms.uOpacity.__odysseyBaseOpacity === 'number'
-                ? sky.material.uniforms.uOpacity.__odysseyBaseOpacity
-                : sky.material.uniforms.uOpacity.value;
-            sky.material.uniforms.uOpacity.value = baseOpacity;
-        }
+    // Cloud-sea billow scroll (TSL time uniform).
+    if (group.userData.cloudSeaTimeUniform) {
+        group.userData.cloudSeaTimeUniform.value = time;
+    }
+
+    // SUMMIT-GLOW CLIMAX (plan ch4 §Cinematic): ramp up across the back of the chapter so
+    // the hero summit ignites rose-gold + the sun ray fan widens together. Peaks ~0.9→1.0,
+    // then eases back toward the 4→5 exit (B7 owns the actual exit lerp). The in-shader
+    // ignite already fades with night via oneMinus(uTransition), so don't double-gate here.
+    if (group.userData.summitGlowUniform) {
+        const rise = THREE.MathUtils.smoothstep(progress, 0.62, 0.9);
+        const ease = 1 - THREE.MathUtils.smoothstep(progress, 0.94, 1.0) * 0.5;
+        group.userData.summitGlowUniform.value = rise * ease;
     }
 
     const mountainTransitionUniformTargets = group.userData.mountainTransitionUniformTargets || [];
-    mountainTransitionUniformTargets.forEach((uniform) => {
-        uniform.value = transition;
+    mountainTransitionUniformTargets.forEach((uniform2) => {
+        uniform2.value = transition;
     });
 
+    // SEAM 4->5: ramp 0->1 across the last MOUNTAIN_SEAM_EXIT_BAND of the chapter so the peaks
+    // SINK below the rising cloud-sea and FADE out smoothly, rather than popping when the
+    // group hides at the seam. `progress` is local 0..1 across the Ch4 window.
+    const seamExit = smoothstep01(
+        (progress - (1 - MOUNTAIN_SEAM_EXIT_BAND)) / MOUNTAIN_SEAM_EXIT_BAND,
+    );
+    const seamFade = 1 - seamExit;
+
+    const { mainPeaks } = group.userData;
+    if (mainPeaks) {
+        const baseY = mainPeaks.userData.seamBaseY ?? 0;
+        mainPeaks.position.y = baseY - seamExit * MOUNTAIN_SEAM_SINK_DISTANCE;
+    }
+
     const mountainOpacityUniformTargets = group.userData.mountainOpacityUniformTargets || [];
-    mountainOpacityUniformTargets.forEach((uniform) => {
-        const baseOpacity = typeof uniform.__odysseyBaseOpacity === 'number'
-            ? uniform.__odysseyBaseOpacity
-            : uniform.value;
-        uniform.value = baseOpacity;
+    mountainOpacityUniformTargets.forEach((uniform2) => {
+        const baseOpacity = typeof uniform2.__odysseyBaseOpacity === 'number'
+            ? uniform2.__odysseyBaseOpacity
+            : uniform2.value;
+        uniform2.value = baseOpacity * seamFade;
     });
 
     const auroraFadeUniformTargets = group.userData.auroraFadeUniformTargets || [];
-    auroraFadeUniformTargets.forEach((uniform) => {
-        uniform.value = 1;
+    auroraFadeUniformTargets.forEach((uniform2) => {
+        uniform2.value = 1;
     });
 
     const auroraOpacityUniformTargets = group.userData.auroraOpacityUniformTargets || [];
-    auroraOpacityUniformTargets.forEach((uniform) => {
-        const baseOpacity = typeof uniform.__odysseyBaseOpacity === 'number'
-            ? uniform.__odysseyBaseOpacity
-            : uniform.value;
-        uniform.value = baseOpacity;
+    auroraOpacityUniformTargets.forEach((uniform2) => {
+        const baseOpacity = typeof uniform2.__odysseyBaseOpacity === 'number'
+            ? uniform2.__odysseyBaseOpacity
+            : uniform2.value;
+        uniform2.value = baseOpacity;
     });
 
-    const { snow } = group.userData;
-    if (snow) {
-        const positions = snow.geometry.attributes.position.array;
-        const vels = snow.userData.velocities;
-
-        for (let i = 0; i < vels.length; i++) {
-            positions[i * 3] += vels[i].x;
-            positions[i * 3 + 1] += vels[i].y;
-            positions[i * 3 + 2] += vels[i].z;
-
-            if (positions[i * 3 + 1] < -10) {
-                positions[i * 3 + 1] = 100;
-            }
-        }
-        snow.geometry.attributes.position.needsUpdate = true;
+    // Snow drift (perf §5.3): the per-frame CPU integration + InstancedBufferAttribute
+    // re-upload (~1000 flakes × 3 floats every frame) is gone — the TSL material derives
+    // each flake's falling/sway position from uTime. Just tick the shared time uniform.
+    if (group.userData.snowTimeUniform) {
+        group.userData.snowTimeUniform.value = time;
     }
 }
 

@@ -29,6 +29,7 @@ import { unifiedLoop } from './unified-game-loop.js';
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { InputJitterBuffer } from '../network/input-jitter-buffer.js';
 import { getBinaryDecoder, getBinaryEncoder } from '../network/binary-encoding.js';
+import { createBlindTimers, applyBlindEffect, applyFullBlindEffect } from '../blind.js';
 
 const RESYNC_CHUNK_SIZE = 16 * 1024;
 const RESYNC_WINDOW = 4;
@@ -638,7 +639,7 @@ export class FFAGameStateP2P {
             if (this.isHost) return; // Host handles locally via performRoundRestart
 
             const data = msg.data || {};
-            console.log(`🔄 Peer received restart command:`, data);
+            console.log('🔄 Peer received restart command:', data);
 
             // Use shared method
             this.performRoundRestart(data);
@@ -719,7 +720,7 @@ export class FFAGameStateP2P {
             emitMultiplayerEvent('rematch_status', {
                 votes: msg.data.votes,
                 total: this.players.size,
-                required: Math.ceil(this.players.size / 2)
+                required: Math.ceil(this.players.size / 2),
             });
         });
     }
@@ -736,10 +737,10 @@ export class FFAGameStateP2P {
         // Broadcast restart
         this.network.broadcastToAll(MessageTypes.GAME_ROUND_RESTART, {
             fullReset: true,
-            newSeed: newSeed,
+            newSeed,
             prefixText: 'READY',
             countFrom: 0,
-            includeZero: false
+            includeZero: false,
         });
 
         // Trigger local restart logic (simulated by receiving own message, or explicit call?)
@@ -749,12 +750,16 @@ export class FFAGameStateP2P {
 
         // Ideally we emit a local message or call a shared method.
         // For now, let's just piggyback on the handler logic refactor or duplicate essential valid reset.
-        // Actually, broadcastToAll typically implies "to peers". 
+        // Actually, broadcastToAll typically implies "to peers".
         // We should construct the logic to run locally too.
 
         // Hack: trigger the event handler locally
-        const mockMsg = { data: { fullReset: true, newSeed, prefixText: 'READY', countFrom: 0, includeZero: false } };
-        // We need to call the logic inside the handler. 
+        const mockMsg = {
+            data: {
+                fullReset: true, newSeed, prefixText: 'READY', countFrom: 0, includeZero: false,
+            },
+        };
+        // We need to call the logic inside the handler.
         // Refactoring the handler to a method `handleRoundRestart(data)` is cleaner but for now I'll just emit.
 
         // Better: Make network loopback work or extract function.
@@ -770,7 +775,7 @@ export class FFAGameStateP2P {
         const instantStart = data.instantStart === true;
 
         // ... (Same reset logic as before) ...
-        console.log(`🔄 Host performing local restart...`);
+        console.log('🔄 Host performing local restart...');
 
         // Stop current game
         this.stopGameLoop();
@@ -833,7 +838,6 @@ export class FFAGameStateP2P {
         this.showCountdown(startRound, prefixText, countFrom, includeZero);
     }
 
-
     sendRematchVote() {
         if (this.isHost) {
             this.rematchVotes.add(this.localPlayerId);
@@ -847,13 +851,13 @@ export class FFAGameStateP2P {
     broadcastRematchStatus() {
         if (!this.isHost) return;
         this.broadcastToPeers('game:rematch:status', {
-            votes: Array.from(this.rematchVotes)
+            votes: Array.from(this.rematchVotes),
         });
         // Also update local UI
         emitMultiplayerEvent('rematch_status', {
             votes: Array.from(this.rematchVotes),
             total: this.players.size,
-            required: Math.ceil(this.players.size / 2)
+            required: Math.ceil(this.players.size / 2),
         });
     }
 
@@ -911,30 +915,30 @@ export class FFAGameStateP2P {
         const callbacks = physicsCallbacks || this.buildPhysicsCallbacks(steamId);
 
         switch (inputType) {
-            case 'move':
-                move(gameState, data.direction, null, null);
-                break;
-            case 'rotate':
-                rotate(gameState, data.direction, null, null);
-                break;
-            case 'drop':
-                if (data.type === 'soft') {
-                    softDrop(gameState, null, callbacks);
-                } else if (data.type === 'hard') {
-                    // Update callbacks to proxy the hard drop effect through to the client
-                    const dropCallbacks = {
-                        ...callbacks,
-                        onHardDrop: (dropData) => {
-                            if (callbacks.onHardDrop) callbacks.onHardDrop(dropData);
-                            // Provide a hook for local UI integration in FFA multiplayer
-                            emitMultiplayerEvent('hard_drop_effect', { steamId, dropData });
-                        }
-                    };
-                    hardDrop(gameState, null, dropCallbacks);
-                }
-                break;
-            default:
-                return false;
+        case 'move':
+            move(gameState, data.direction, null, null);
+            break;
+        case 'rotate':
+            rotate(gameState, data.direction, null, null);
+            break;
+        case 'drop':
+            if (data.type === 'soft') {
+                softDrop(gameState, null, callbacks);
+            } else if (data.type === 'hard') {
+                // Update callbacks to proxy the hard drop effect through to the client
+                const dropCallbacks = {
+                    ...callbacks,
+                    onHardDrop: (dropData) => {
+                        if (callbacks.onHardDrop) callbacks.onHardDrop(dropData);
+                        // Provide a hook for local UI integration in FFA multiplayer
+                        emitMultiplayerEvent('hard_drop_effect', { steamId, dropData });
+                    },
+                };
+                hardDrop(gameState, null, dropCallbacks);
+            }
+            break;
+        default:
+            return false;
         }
 
         return true;
@@ -1125,6 +1129,19 @@ export class FFAGameStateP2P {
         if (!player || !player.isAlive) return;
 
         const { garbageQueue } = player;
+
+        // Apply Quadra blind attacks FIRST. This both triggers the blackout
+        // and removes leading blind/full_blind entries that would otherwise
+        // block dequeueLineBurst() (which bails on a non-'line' head).
+        const blindBurst = garbageQueue.takePendingBlindBurst?.() || [];
+        blindBurst.forEach((entry) => {
+            if (entry.type === 'full_blind') {
+                applyFullBlindEffect(player.gameState, entry.duration);
+            } else {
+                applyBlindEffect(player.gameState, entry.duration);
+            }
+        });
+
         const totalLines = garbageQueue.getTotalLines();
 
         if (totalLines === 0) return;
@@ -1552,6 +1569,13 @@ export class FFAGameStateP2P {
                 shapeKey: piece.shapeKey,
             })),
 
+            blindTimers: player.gameState.blindTimers ? {
+                field: player.gameState.blindTimers.field,
+                fieldMax: player.gameState.blindTimers.fieldMax,
+                pending: player.gameState.blindTimers.pending,
+                pendingMax: player.gameState.blindTimers.pendingMax,
+            } : null,
+
             lastInputSeq: player.lastInputSeq,
         }));
 
@@ -1849,6 +1873,18 @@ export class FFAGameStateP2P {
                         holeMask: e.holeMask,
                         variant: e.variant,
                     }));
+                }
+
+                // Sync blind timers
+                if (playerData.blindTimers) {
+                    player.gameState.blindTimers = {
+                        field: playerData.blindTimers.field || 0,
+                        fieldMax: playerData.blindTimers.fieldMax || 0,
+                        pending: playerData.blindTimers.pending || 0,
+                        pendingMax: playerData.blindTimers.pendingMax || 0,
+                    };
+                } else if (!player.gameState.blindTimers) {
+                    player.gameState.blindTimers = createBlindTimers();
                 }
             }
         });
@@ -2368,6 +2404,18 @@ export class FFAGameStateP2P {
                 const player = getPlayer();
                 if (!player) return;
 
+                const settings = (typeof window !== 'undefined' && window.settingsManager) ? window.settingsManager.get() : {};
+                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                if (!prefersReducedMotion && player.gameState) {
+                    let hitStop = 0;
+                    if (lineCount >= 4) {
+                        hitStop = 70;
+                    }
+                    if (hitStop > 0) {
+                        player.gameState.hitStopRemaining = hitStop;
+                    }
+                }
+
                 emitMultiplayerEvent(MULTIPLAYER_EVENTS.LINE_CLEAR_IMPACT, {
                     steamId,
                     playerName: player.name,
@@ -2403,10 +2451,34 @@ export class FFAGameStateP2P {
                 const player = getPlayer();
                 if (!player) return;
 
+                const settings = (typeof window !== 'undefined' && window.settingsManager) ? window.settingsManager.get() : {};
+                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                if (!prefersReducedMotion && player.gameState) {
+                    player.gameState.hitStopRemaining = Math.max(player.gameState.hitStopRemaining || 0, 30);
+                }
+
                 emitMultiplayerEvent('game:hard_drop', {
                     steamId,
                     playerName: player.name,
                     dropData,
+                    isLocal: isLocal(),
+                });
+            },
+            onPerfectClear: (depth, perfectClearBonus) => {
+                const player = getPlayer();
+                if (!player) return;
+
+                const settings = (typeof window !== 'undefined' && window.settingsManager) ? window.settingsManager.get() : {};
+                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                if (!prefersReducedMotion && player.gameState) {
+                    player.gameState.hitStopRemaining = 110;
+                }
+
+                emitMultiplayerEvent(MULTIPLAYER_EVENTS.PERFECT_CLEAR, {
+                    steamId,
+                    playerName: player.name,
+                    depth,
+                    perfectClearBonus,
                     isLocal: isLocal(),
                 });
             },

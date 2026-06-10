@@ -791,8 +791,27 @@ export async function processPhysics(gameState, callbacks) {
                 holeColumns,
                 waveHoleMasks.map((mask) => mask.slice()),
                 fullLines.slice(),
+                cascadeCount,
             );
         }
+
+        // T-spin and B2B tracking — evaluated on the manual clear (cascade 1) per lock.
+        const isTSpin = cascadeCount === 1 && Boolean(gameState.comboState?.tSpin);
+        const isDifficultClear = fullLines.length >= 4 || isTSpin;
+
+        if (isTSpin && callbacks.onTSpin) {
+            callbacks.onTSpin(fullLines.length);
+        }
+        if (isDifficultClear) {
+            if (gameState.b2bActive && callbacks.onB2B) {
+                callbacks.onB2B(true);
+            }
+            gameState.b2bActive = true;
+        } else if (cascadeCount === 1) {
+            // Reset B2B only on the manual clear; cascade stages don't break the chain.
+            gameState.b2bActive = false;
+        }
+
         if (callbacks.onLineClearImpact) callbacks.onLineClearImpact(fullLines.length, cascadeCount);
         if (callbacks.triggerFlash) callbacks.triggerFlash(fullLines);
         if (callbacks.triggerBackgroundPulse) callbacks.triggerBackgroundPulse(fullLines.length);

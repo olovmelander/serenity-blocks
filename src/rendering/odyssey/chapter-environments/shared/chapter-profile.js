@@ -64,16 +64,16 @@ export const DEFAULT_ODYSSEY_TRANSITION = Object.freeze({
  */
 export const ODYSSEY_CAMERA_PROFILES = Object.freeze({
     [ODYSSEY_ACTS.ORIGIN]: Object.freeze({
-        followDistance: 14, fovBase: 58, sway: 0.7, bob: 0.7, drift: 0.85,
+        followDistance: 24, fovBase: 58, sway: 0.7, bob: 0.7, drift: 0.85,
     }),
     [ODYSSEY_ACTS.LIVING]: Object.freeze({
-        followDistance: 18, fovBase: 60, sway: 1.0, bob: 1.0, drift: 1.0,
+        followDistance: 30, fovBase: 60, sway: 1.0, bob: 1.0, drift: 1.0,
     }),
     [ODYSSEY_ACTS.BEYOND]: Object.freeze({
-        followDistance: 24, fovBase: 66, sway: 1.25, bob: 0.8, drift: 0.7,
+        followDistance: 42, fovBase: 66, sway: 1.25, bob: 0.8, drift: 0.7,
     }),
     [ODYSSEY_ACTS.TRANSCENDENCE]: Object.freeze({
-        followDistance: 20, fovBase: 64, sway: 1.1, bob: 0.9, drift: 1.15,
+        followDistance: 36, fovBase: 64, sway: 1.1, bob: 0.9, drift: 1.15,
     }),
 });
 
@@ -89,9 +89,9 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         act: ODYSSEY_ACTS.ORIGIN,
         palette: { primary: 0xff4400, accent: 0xffaa44, shadow: 0x1a0600 },
         atmosphere: {
-            skyColor: 0x1a0a00,
+            skyColor: 0x1f0c00,
             fogColor: 0x2d1500,
-            fogDensity: 0.015,
+            fogDensity: 0.014,
             ambientLight: 0x331100,
             ambientIntensity: 0.4,
             skyFeatures: ['magmaVault', 'embers'],
@@ -124,9 +124,14 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         act: ODYSSEY_ACTS.ORIGIN,
         palette: { primary: 0x0088ff, accent: 0x6fe8ff, shadow: 0x001020 },
         atmosphere: {
-            skyColor: 0x001030,
-            fogColor: 0x002040,
-            fogDensity: 0.003,
+            skyColor: 0x041a30,
+            // FLAGSHIP REMAKE: thin + deepen the fog so the abyss can fall into real
+            // darkness and the vertical gradient sphere + set pieces show through
+            // (the old 0x06243f/0.008 wrapped the camera in a flat pale-teal wash that
+            // flattened the gradient into uniform "pool water"). fogColor -> a deeper
+            // indigo-teal, fogDensity halved so the dive reads top-bright/bottom-dark.
+            fogColor: 0x041726,
+            fogDensity: 0.0035,
             ambientLight: 0x003366,
             ambientIntensity: 0.5,
             skyFeatures: ['lightShaft', 'caustics', 'particulate'],
@@ -159,9 +164,12 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         act: ODYSSEY_ACTS.LIVING,
         palette: { primary: 0x00dd44, accent: 0xfff2c0, shadow: 0x123018 },
         atmosphere: {
-            skyColor: 0x87ceeb,
-            fogColor: 0xc8e6c9,
-            fogDensity: 0.0008,
+            // Deepened (capture review): 0x9ec6e8/0xaec8e0 were so pale that FogExp2
+            // washed the upper frame near-white. A richer mid sky-blue reads as a real
+            // daytime sky and lets the vegetation/clouds register against it.
+            skyColor: 0x6ba3d8,
+            fogColor: 0x6f9ec4,
+            fogDensity: 0.004,
             ambientLight: 0xfff8e7,
             ambientIntensity: 0.8,
             skyFeatures: ['sun', 'distantRange', 'clouds'],
@@ -176,7 +184,7 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             baseColor: 0x1d4a22,
             emissiveColor: 0x9be84f,
             flowSpeed: 0.7,
-            widthScale: 0.95,
+            widthScale: 0.98,
         },
         node: { style: ODYSSEY_NODE_STYLES.SEED_LANTERN },
         anchor: 'distantRange',
@@ -196,9 +204,9 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         act: ODYSSEY_ACTS.LIVING,
         palette: { primary: 0x88ccff, accent: 0xffd6c0, shadow: 0x1c2a3a },
         atmosphere: {
-            skyColor: 0x2c3e50,
-            fogColor: 0x95a5a6,
-            fogDensity: 0.0005,
+            skyColor: 0x3a4f66,
+            fogColor: 0x7d93ad,
+            fogDensity: 0.005,
             ambientLight: 0xbdc3c7,
             ambientIntensity: 0.6,
             skyFeatures: ['heroSummit', 'aerialHaze', 'snowPlume'],
@@ -232,9 +240,12 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         act: ODYSSEY_ACTS.BEYOND,
         palette: { primary: 0xffdd00, accent: 0xaad4ff, shadow: 0x141a2e },
         atmosphere: {
-            skyColor: 0x1a1a2e,
-            fogColor: 0x16213e,
-            fogDensity: 0.001,
+            // Deepened (capture review): 0xc8b6d6/0xb9a6c8 washed the frame near-white.
+            // A richer warm-violet keeps the bright/hazy daytime identity while letting
+            // the cloud strata, aurora and sun read instead of a flat pale wash.
+            skyColor: 0x9a7fb5,
+            fogColor: 0x8266a0,
+            fogDensity: 0.006,
             ambientLight: 0x4a5568,
             ambientIntensity: 0.5,
             skyFeatures: ['cloudDeck', 'aurora', 'rainVeil'],
@@ -256,6 +267,13 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         transitionOut: '5-6',
         transition: {
             id: '5-6',
+            // 5->6 is the journey's WORST seam ("pink soup in space"). Widen the fog/
+            // content seam (0.018 default -> 0.03) so the violet haze dissolves toward the
+            // black vacuum EARLIER and the ecotone has room to ignite Space's stars across
+            // the last ~8% of Sky (ChapterEnvironmentManager 5->6 seam-in handling), so by
+            // Space-01 the crisp vacuum reads immediately instead of arriving late.
+            seamWidth: 0.03,
+            preloadDistance: 0.06,
             stinger: 'atmosphere-edge',
             crossfadeDurationMs: 4000,
         },
@@ -266,9 +284,9 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         act: ODYSSEY_ACTS.BEYOND,
         palette: { primary: 0xaa44ff, accent: 0x8fb0ff, shadow: 0x05060f },
         atmosphere: {
-            skyColor: 0x0a0a0a,
-            fogColor: 0x1a1a2e,
-            fogDensity: 0.005,
+            skyColor: 0x05060f,
+            fogColor: 0x05060f,
+            fogDensity: 0.0006,
             ambientLight: 0x2d3436,
             ambientIntensity: 0.3,
             skyFeatures: ['heroPlanet', 'nebula', 'starfield'],
@@ -276,7 +294,10 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             lightDir: [0.6, 0.3, -0.7],
             lightColor: 0x99aaff,
             lightIntensity: 0.55,
-            exposure: 1.15,
+            // Lowered 1.15 -> 1.08 (plan §3 Space color/grade): the pink nebula over-
+            // brightened into flat smoke at 1.15. Let the hero triad's bloom carry the
+            // brightness instead, keeping cool indigo vacuum with true-black gaps.
+            exposure: 1.08,
         },
         path: {
             style: ODYSSEY_PATH_STYLES.STELLAR_STREAM,
@@ -305,9 +326,9 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         act: ODYSSEY_ACTS.TRANSCENDENCE,
         palette: { primary: 0xff44aa, accent: 0xffc266, shadow: 0x000000 },
         atmosphere: {
-            skyColor: 0x000000,
-            fogColor: 0x0d0d0d,
-            fogDensity: 0.02,
+            skyColor: 0x0a0410,
+            fogColor: 0x0a0410,
+            fogDensity: 0.010,
             ambientLight: 0x1a1a1a,
             ambientIntensity: 0.2,
             skyFeatures: ['accretionDisk', 'lensing', 'infall'],
@@ -322,7 +343,7 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             baseColor: 0x180611,
             emissiveColor: 0xff5fb0,
             flowSpeed: 1.6,
-            widthScale: 0.9,
+            widthScale: 0.95,
         },
         node: { style: ODYSSEY_NODE_STYLES.LENSED_SHARD },
         anchor: 'accretionDisk',
@@ -344,9 +365,9 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         act: ODYSSEY_ACTS.TRANSCENDENCE,
         palette: { primary: 0x00eeff, accent: 0xff66c4, shadow: 0x0a0a1a },
         atmosphere: {
-            skyColor: 0x0a0a1a,
-            fogColor: 0x1a1020,
-            fogDensity: 0.02,
+            skyColor: 0x0e0816,
+            fogColor: 0x140a1e,
+            fogDensity: 0.012,
             ambientLight: 0x2a1a3a,
             ambientIntensity: 0.4,
             skyFeatures: ['citySpire', 'litWindows', 'wetReflection'],

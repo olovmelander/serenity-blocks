@@ -1016,11 +1016,15 @@ export function createSoundSets(createTone, createRichTone) {
  * Sound effect player wrapper
  */
 export class SoundEffectPlayer {
-    constructor(soundSets, soundSet = 'Zen') {
+    constructor(soundSets, soundSet = 'Zen', createTone = null, createRichTone = null) {
         this.soundSets = soundSets;
         this.soundSet = soundSet;
         this.lastMoveSoundAt = -Infinity;
         this.moveSoundCooldownMs = 55;
+        // Direct tone generators for new procedural effects (cascade, T-spin, B2B, perfect clear).
+        // Injected by SoundManager so we don't need to duplicate them into every sound profile.
+        this._createTone = createTone;
+        this._createRichTone = createRichTone;
     }
 
     /**
@@ -1061,10 +1065,74 @@ export class SoundEffectPlayer {
     }
 
     /**
-     * Plays the line clear sound effect
+     * Plays the line clear sound effect.
+     * @param {number} [cascadeCount=1] - Current cascade depth (1 = manual clear).
+     *   Values > 1 trigger an additional rising chime on top of the base clear sound.
      */
-    playLineClear() {
+    playLineClear(cascadeCount = 1) {
         this.soundSets[this.soundSet].lineClear();
+    }
+
+    /**
+     * Whole-tone pitch arpeggiation chime for cascade chains (Puyo-style).
+     * Each cascade step goes up 2 semitones from a base of C5 (523 Hz).
+     * Cascade 2 → C#5/Db5, 3 → D#5/Eb5, … growing brighter with depth.
+     * @param {number} cascadeCount
+     */
+    playCascadeChime(cascadeCount) {
+        if (!this._createTone) return;
+        const semitones = (cascadeCount - 1) * 2; // 2 semitones per stage
+        const pitchFactor = Math.pow(1.05946, semitones);
+        const baseFreq = 523.25; // C5
+        const freq = baseFreq * pitchFactor;
+        // A short, bright bell tone that rises with each cascade.
+        this._createTone(freq, 0.18, 'sine', Math.min(0.25 + cascadeCount * 0.04, 0.55));
+        // Octave overtone for sparkle
+        setTimeout(() => this._createTone(freq * 2, 0.12, 'triangle', 0.12), 40);
+    }
+
+    /**
+     * Arpeggiated celebratory chord for perfect clears.
+     * Plays across all 5 notes of a pentatonic scale starting from C4.
+     */
+    playPerfectClear() {
+        if (!this._createTone) return;
+        const pentatonic = [261.63, 293.66, 329.63, 392.00, 523.25]; // C4 pentatonic
+        pentatonic.forEach((f, i) => {
+            setTimeout(() => {
+                this._createTone(f, 0.4, 'sine', 0.35);
+                this._createTone(f * 2, 0.25, 'triangle', 0.15);
+            }, i * 70);
+        });
+        // Final resolution chord: octave hit at 380ms
+        setTimeout(() => this._createTone(523.25, 0.6, 'sine', 0.4), 380);
+    }
+
+    /**
+     * Signature vortex spin sound for T-spin clears.
+     * Rising-then-falling chirp to evoke the spin motion.
+     */
+    playTSpin() {
+        if (!this._createTone) return;
+        // Rising chirp
+        [660, 784, 880].forEach((f, i) => {
+            setTimeout(() => this._createTone(f, 0.1, 'triangle', 0.3), i * 35);
+        });
+        // Falling tail
+        setTimeout(() => this._createTone(659, 0.15, 'sine', 0.2), 120);
+    }
+
+    /**
+     * Charged energy hit for Back-to-Back difficult clears.
+     * A short power-chord stab to punctuate the B2B bonus.
+     */
+    playB2B() {
+        if (!this._createTone) return;
+        // Quick double-hit: root + major third
+        this._createTone(440, 0.15, 'square', 0.28);
+        setTimeout(() => this._createTone(554, 0.12, 'square', 0.2), 30);
+        // Decay shimmer
+        setTimeout(() => this._createTone(880, 0.2, 'sine', 0.15), 80);
     }
 
     /**

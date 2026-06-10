@@ -1,3 +1,4 @@
+/* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
  * @fileoverview Deep Ocean Environment - Chapter 2 Visual Theme
  *
@@ -6,13 +7,41 @@
  * - Volumetric Light Rays (God Rays)
  * - Bioluminescent Jellyfish & Plankton
  * - Deep Sea Gradient
+ *
+ * WebGPU migration: the three GLSL ShaderMaterials (gradient sphere, Gerstner water
+ * ceiling, god-ray cones) are now built by the validated TSL NodeMaterial builders in
+ * the sibling deep-ocean.tsl.js (createOceanGradientTSL / createWaterSurfaceTSL /
+ * createGodRaysTSL) so they render on THREE.WebGPURenderer. The canvas-texture
+ * THREE.Points clouds (bubbles, plankton) — which render as 1px on WebGPU — are now
+ * instanced billboard quads via the shared odyssey-tsl-billboard helper. The public
+ * API (createDeepOceanEnvironment/updateDeepOceanEnvironment + DEEP_OCEAN_CONFIG +
+ * group.userData shape) is unchanged.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import {
+    attribute,
+    uniform,
+    uv,
+    texture,
+    vec3,
+} from 'three/tsl';
 import {
     getChapterPathRange,
+    getOdysseyPathCurve,
+    getActiveOdysseyChapterPositions,
     ODYSSEY_SURFACE_BREAKOUT_Y_OFFSET,
 } from '../path-utils.js';
+import {
+    createOceanGradientTSL,
+    createWaterSurfaceTSL,
+    createGodRaysTSL,
+    createSeabedTSL,
+    createCreatureSilhouetteMaterial,
+    createKelpClusterMaterial,
+    createJellyfishMaterial,
+} from './deep-ocean.tsl.js';
+import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 
 /**
  * Deep Ocean environment configuration
@@ -32,216 +61,93 @@ export const DEEP_OCEAN_CONFIG = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SHARED NOISE UTILS
+// PATH-CORRIDOR SAMPLER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const noiseGLSL = `
-vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
-vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+// The whole environment group is anchored at the chapter-2 path centre (x,y,z) with NO
+// rotation, so every per-instance aBase is a LOCAL offset from that centre. The camera
+// dollies UP the spline (y ~124 -> ~293, curving out in x/z near the top), so content
+// placed in a fixed scatter cloud around the anchor mostly sits off to the side / behind
+// the climbing camera and never reads (the bug in the screenshots). This sampler walks
+// the chapter-2 path range, converts each sampled world point into the group's LOCAL
+// space (subtract the anchor centre), builds a cheap perpendicular frame from the local
+// travel tangent, and returns LOCAL positions strung ALONG the corridor with a lateral
+// offset inside [minRadius, maxRadius] — so the moving camera actually flies past them.
+//
+// Returns { sample(rand01, lateralRadius, jitter) -> {x,y,z}, ok } where sample() picks a
+// point at parametric position rand01 along the chapter, offset laterally by ~lateralRadius
+// in the corridor cross-section. `ok` is false in the standalone pilot harness (no curve),
+// where callers fall back to the legacy scatter so the pilot page still renders.
+function createCorridorSampler(anchor) {
+    let curve = null;
+    try {
+        curve = getOdysseyPathCurve();
+    } catch {
+        curve = null;
+    }
+    const chapterPositions = getActiveOdysseyChapterPositions();
+    const tStart = chapterPositions?.[1];
+    const tEnd = chapterPositions?.[2];
+    if (!curve || !anchor || !Number.isFinite(tStart) || !Number.isFinite(tEnd)) {
+        return { ok: false, sample: null };
+    }
 
-float snoise(vec3 v) {
-    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+    // Pre-sample the corridor centreline + a perpendicular frame at a handful of stations
+    // so sample() is allocation-free at call time (create-time only).
+    const STATIONS = 16;
+    const stations = [];
+    const point = new THREE.Vector3();
+    const tangent = new THREE.Vector3();
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3();
+    const worldUp = new THREE.Vector3(0, 1, 0);
+    for (let i = 0; i <= STATIONS; i += 1) {
+        const t = tStart + (tEnd - tStart) * (i / STATIONS);
+        curve.getPointAt(t, point);
+        curve.getTangentAt(t, tangent).normalize();
+        // Build a stable perpendicular frame (corridor cross-section axes).
+        right.copy(worldUp).cross(tangent);
+        if (right.lengthSq() < 1e-5) right.set(1, 0, 0);
+        right.normalize();
+        up.copy(tangent).cross(right).normalize();
+        stations.push({
+            cx: point.x - anchor.x,
+            cy: point.y - anchor.y,
+            cz: point.z - anchor.z,
+            rx: right.x,
+            ry: right.y,
+            rz: right.z,
+            ux: up.x,
+            uy: up.y,
+            uz: up.z,
+        });
+    }
 
-    vec3 i = floor(v + dot(v, C.yyy));
-    vec3 x0 = v - i + dot(i, C.xxx);
+    function sample(rand01, lateralRadius, jitter = 0) {
+        const f = THREE.MathUtils.clamp(rand01, 0, 1) * STATIONS;
+        const idx = Math.min(STATIONS - 1, Math.floor(f));
+        const frac = f - idx;
+        const a = stations[idx];
+        const b = stations[idx + 1] ?? a;
+        // Interpolate the centreline + frame between adjacent stations.
+        const cx = a.cx + (b.cx - a.cx) * frac;
+        const cy = a.cy + (b.cy - a.cy) * frac;
+        const cz = a.cz + (b.cz - a.cz) * frac;
+        // Lateral offset in the corridor cross-section: a random angle + radius so motes
+        // ring the path rather than sitting on one side.
+        const ang = Math.random() * Math.PI * 2;
+        const r = lateralRadius;
+        const ox = (a.rx * Math.cos(ang) + a.ux * Math.sin(ang)) * r;
+        const oy = (a.ry * Math.cos(ang) + a.uy * Math.sin(ang)) * r;
+        const oz = (a.rz * Math.cos(ang) + a.uz * Math.sin(ang)) * r;
+        const jx = jitter ? (Math.random() - 0.5) * jitter : 0;
+        const jy = jitter ? (Math.random() - 0.5) * jitter : 0;
+        const jz = jitter ? (Math.random() - 0.5) * jitter : 0;
+        return { x: cx + ox + jx, y: cy + oy + jy, z: cz + oz + jz };
+    }
 
-    vec3 g = step(x0.yzx, x0.xyz);
-    vec3 l = 1.0 - g;
-    vec3 i1 = min(g.xyz, l.zxy);
-    vec3 i2 = max(g.xyz, l.zxy);
-
-    vec3 x1 = x0 - i1 + C.xxx;
-    vec3 x2 = x0 - i2 + C.yyy;
-    vec3 x3 = x0 - D.yyy;
-
-    i = mod289(i);
-    vec4 p = permute(permute(permute(
-                i.z + vec4(0.0, i1.z, i2.z, 1.0))
-            + i.y + vec4(0.0, i1.y, i2.y, 1.0))
-            + i.x + vec4(0.0, i1.x, i2.x, 1.0));
-
-    float n_ = 0.142857142857;
-    vec3 ns = n_ * D.wyz - D.xzx;
-
-    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-
-    vec4 x_ = floor(j * ns.z);
-    vec4 y_ = floor(j - 7.0 * x_);
-
-    vec4 x = x_ * ns.x + ns.yyyy;
-    vec4 y = y_ * ns.x + ns.yyyy;
-    vec4 h = 1.0 - abs(x) - abs(y);
-
-    vec4 b0 = vec4(x.xy, y.xy);
-    vec4 b1 = vec4(x.zw, y.zw);
-
-    vec4 s0 = floor(b0) * 2.0 + 1.0;
-    vec4 s1 = floor(b1) * 2.0 + 1.0;
-    vec4 sh = -step(h, vec4(0.0));
-
-    vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
-    vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
-
-    vec3 p0 = vec3(a0.xy, h.x);
-    vec3 p1 = vec3(a0.zw, h.y);
-    vec3 p2 = vec3(a1.xy, h.z);
-    vec3 p3 = vec3(a1.zw, h.w);
-
-    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-    p0 *= norm.x;
-    p1 *= norm.y;
-    p2 *= norm.z;
-    p3 *= norm.w;
-
-    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-    m = m * m;
-    return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+    return { ok: true, sample };
 }
-`;
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// WATER SURFACE SHADERS (From Ocean Theme)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const waterVertexShader = `
-uniform float uTime;
-varying vec3 vPosition;
-varying vec2 vUv;
-varying float vElevation;
-
-// Gerstner wave
-vec3 gerstnerWave(vec2 dir, float steep, float wlen, vec3 p, float t) {
-    float k = 6.28318 / wlen;
-    float c = sqrt(9.8 / k);
-    vec2 d = normalize(dir);
-    float f = k * (dot(d, p.xz) - c * t);
-    float a = steep / k;
-    return vec3(d.x * a * cos(f), a * sin(f), d.y * a * cos(f));
-}
-
-${noiseGLSL}
-
-void main() {
-    vUv = uv;
-    vec3 pos = position;
-    float time = uTime * 0.5;
-    
-    // Gerstner waves
-    vec3 wave = vec3(0.0);
-    wave += gerstnerWave(vec2(1.0, 0.3), 0.2, 25.0, pos, time);
-    wave += gerstnerWave(vec2(0.7, 0.7), 0.15, 18.0, pos, time * 1.1);
-    
-    // Perlin noise detail
-    float noise = snoise(vec3(pos.xz * 0.08, time * 0.3)) * 2.0;
-    
-    float displacement = wave.y + noise;
-    vElevation = displacement;
-    
-    pos.y += displacement;
-    pos.x += wave.x;
-    pos.z += wave.z;
-    
-    vPosition = pos;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-}
-`;
-
-const waterFragmentShader = `
-uniform float uTime;
-uniform vec3 uSurfaceColor;
-uniform vec3 uDeepColor;
-
-varying vec3 vPosition;
-varying vec2 vUv;
-varying float vElevation;
-
-${noiseGLSL}
-
-void main() {
-    // Caustics pattern
-    vec2 causticsUV = vPosition.xz * 0.15;
-    float c1 = snoise(vec3(causticsUV, uTime * 0.2));
-    float c2 = snoise(vec3(causticsUV * 1.4, uTime * -0.15));
-    float caustics = (c1 + c2) * 0.5 + 0.5;
-    caustics = pow(caustics, 3.0); // Sharpen
-    
-    // Mix colors based on elevation
-    vec3 color = mix(uDeepColor, uSurfaceColor, vElevation * 0.1 + 0.5);
-    
-    // Add caustics
-    color += vec3(0.6, 0.9, 1.0) * caustics * 0.5;
-    
-    // Edge fade
-    float dist = length(vUv - 0.5) * 2.0;
-    float alpha = 1.0 - smoothstep(0.8, 1.0, dist);
-    
-    gl_FragColor = vec4(color, alpha * 0.8);
-}
-`;
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// GOD RAYS SHADER - Enhanced volumetric look
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const godRayVertexShader = `
-varying vec2 vUv;
-varying vec3 vPos;
-varying float vDepth;
-
-void main() {
-    vUv = uv;
-    vPos = position;
-    
-    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-    vDepth = -mvPos.z;
-    
-    gl_Position = projectionMatrix * mvPos;
-}
-`;
-
-const godRayFragmentShader = `
-uniform float uTime;
-varying vec2 vUv;
-varying vec3 vPos;
-varying float vDepth;
-
-${noiseGLSL}
-
-void main() {
-    // Vertical fade - stronger at top, fading to bottom
-    float verticalFade = pow(1.0 - vUv.y, 0.8);
-    
-    // Volumetric noise for light scattering effect
-    vec3 noisePos = vec3(vPos.x * 0.05, vPos.y * 0.02 + uTime * 0.1, vPos.z * 0.05);
-    float volumeNoise = snoise(noisePos) * 0.5 + 0.5;
-    float detailNoise = snoise(noisePos * 3.0 + uTime * 0.05) * 0.3;
-    
-    // Combine for ethereal look
-    float volume = volumeNoise + detailNoise * 0.3;
-    
-    // Soft edge fade (center to edges)
-    float edgeFade = 1.0 - pow(abs(vUv.x - 0.5) * 2.0, 2.0);
-    
-    // Shimmer animation
-    float shimmer = sin(vPos.y * 0.3 + uTime * 2.0) * 0.15 + 0.85;
-    
-    // Combine all fades
-    float alpha = verticalFade * edgeFade * volume * shimmer * 0.4;
-    
-    // Beautiful cyan-blue color gradient
-    vec3 topColor = vec3(0.6, 0.95, 1.0);   // Bright cyan
-    vec3 bottomColor = vec3(0.2, 0.5, 0.8); // Deep blue
-    vec3 color = mix(bottomColor, topColor, verticalFade);
-    
-    // Add slight warm tint near edges
-    color += vec3(0.1, 0.05, 0.0) * (1.0 - edgeFade) * 0.3;
-    
-    gl_FragColor = vec4(color, alpha);
-}
-`;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ENVIRONMENT CREATION
@@ -254,7 +160,9 @@ export function createDeepOceanEnvironment(options = {}) {
     group.userData.yStart = DEEP_OCEAN_CONFIG.yStart;
     group.userData.yEnd = DEEP_OCEAN_CONFIG.yEnd;
 
-    const uniforms = { uTime: { value: 0 } };
+    // Shared time uniform — a TSL uniform() node so it can feed the .tsl.js builders
+    // while still being ticked via .value in the update loop (same surface as before).
+    const uniforms = { uTime: uniform(0) };
     group.userData.uniforms = uniforms;
 
     const chapterRange = getChapterPathRange(2);
@@ -270,290 +178,393 @@ export function createDeepOceanEnvironment(options = {}) {
         group.userData.yEnd = chapterRange.end.y;
     }
 
-    // 1. Ocean Gradient Background
-    const oceanGradient = createOceanGradient(uniforms);
-    group.add(oceanGradient);
+    // Build the path-corridor sampler from the FINAL anchor centre (the same x,y,z the
+    // group is positioned at below) so every per-instance aBase lands in the corridor the
+    // camera actually flies up — not a fixed scatter cloud beside it. `ok` is false in the
+    // pilot harness (no curve); placement falls back to the legacy scatter there.
+    const anchor = chapterRange?.center
+        ? { x: chapterRange.center.x, y: chapterCenterY, z: chapterRange.center.z }
+        : { x: 0, y: chapterCenterY, z: 0 };
+    const corridor = createCorridorSampler(anchor);
 
-    // 2. Water Surface (Looking up) - [NEW]
-    const waterSurface = createWaterSurface(uniforms, surfaceOffsetY);
-    group.add(waterSurface);
+    // 1. Ocean Gradient Background (TSL NodeMaterial)
+    const oceanGradient = createOceanGradientTSL();
+    group.add(oceanGradient.mesh);
 
-    // 3. Volumetric God Rays - Enhanced
-    const rays = createGodRays(uniforms);
-    group.add(rays);
+    // 2. Water Surface (Looking up) — TSL NodeMaterial, shares uTime
+    const waterSurface = createWaterSurfaceTSL(uniforms.uTime, surfaceOffsetY);
+    group.add(waterSurface.mesh);
 
-    // 4. Bioluminescent Jellyfish (reduced count for cleaner look)
-    const jellyfishCount = Math.floor((options.particleCount || 500) / 25); // Fewer jellyfish
-    const jellyfish = createBioluminescentJellyfish(uniforms, jellyfishCount);
+    // 3. Volumetric God Rays — TSL NodeMaterial, shares uTime. The cones are re-placed
+    // ALONG the corridor (createGodRaysTSL stations them in local space, then we shift the
+    // whole group up the path) so 2-3 shafts cross the climbing camera's sightline.
+    const rays = createGodRaysTSL(uniforms.uTime);
+    placeGodRaysAlongCorridor(rays.group, corridor);
+    group.add(rays.group);
+
+    // 3b. Far seabed silhouette — the abyssal floor far below the path, fading into
+    // murk. Placed well under the chapter center so it anchors the bottom of the frame.
+    const seabed = createSeabedTSL(uniforms.uTime);
+    seabed.mesh.position.set(0, -70, -40);
+    group.add(seabed.mesh);
+
+    // 3c. Kelp / coral clusters rooted near the seabed (swaying instanced billboards).
+    const kelp = createKelpClusters(uniforms, 26);
+    group.add(kelp);
+
+    // 3d. Far creature silhouettes (whales / rays / jellyfish) strung DOWN the corridor at
+    // multiple depths so the frame reads with layered life as the camera climbs; the hero
+    // leviathan crosses the mid-act sightline.
+    const creatures = createCreatureSilhouettes(uniforms, 9, corridor);
+    group.add(creatures);
+
+    // 4. Bioluminescent Jellyfish — FEWER + BIGGER + brighter, distributed ALONG the
+    // corridor so the camera passes a string of glowing jellies (was a scatter cloud the
+    // climbing camera mostly missed).
+    const jellyfishCount = Math.max(6, Math.floor((options.particleCount || 500) / 36));
+    const jellyfish = createBioluminescentJellyfish(uniforms, jellyfishCount, corridor);
     group.add(jellyfish);
 
-    // 5. Bubbles
-    const bubbles = createBubbleParticles(uniforms, options.particleCount || 400);
+    // 5. Bubbles — count trimmed further (fewer, brighter motes read as life, not flat
+    // speckle noise; the flat additive murk was the chapter's #1 wash offender, and
+    // every bubble is an additive overdraw layer, so the perf pass thins the field).
+    const bubbles = createBubbleParticles(
+        uniforms,
+        Math.floor((options.particleCount || 400) * 0.45),
+        corridor,
+    );
     group.add(bubbles);
 
-    // 6. Plankton
-    const plankton = createPlanktonParticles(uniforms, options.particleCount || 600);
+    // 6. Plankton — DENSER + more visible drifting motes, strung through the corridor so
+    // the camera flies through a field of bioluminescent sparks (the additive cost stays
+    // bounded because each quad is tiny and capped below blowout).
+    const plankton = createPlanktonParticles(
+        uniforms,
+        Math.floor((options.particleCount || 600) * 0.7),
+        corridor,
+    );
     group.add(plankton);
 
-    // Position group center
-    group.position.y = chapterCenterY;
+    // Anchor the whole ocean volume to the path's FULL center (x,y,z), not just Y, so
+    // the god-ray cones, water ceiling and particle field stay wrapped around the path
+    // as it swings out in X/Z — otherwise the forward camera can drift past the rays /
+    // clip through the gradient backstop. (Mirrors mountain-peaks.js anchoring.)
+    if (chapterRange?.center) {
+        group.position.set(chapterRange.center.x, chapterCenterY, chapterRange.center.z);
+    } else {
+        group.position.y = chapterCenterY;
+    }
     group.userData.waterSurfaceY = waterSurfaceY;
 
+    // Cache the per-frame animated set pieces on userData at create time so the update
+    // loop never re-walks the scene graph (was 3× getObjectByName/frame). Jellyfish now
+    // animate entirely in their shader, so the loop only needs the god-rays + bubbles.
+    group.userData.animated = {
+        godRays: rays.group,
+        bubbles,
+    };
+
     return group;
 }
 
-function createOceanGradient(uniforms) {
-    const geometry = new THREE.SphereGeometry(280, 48, 48); // High quality sphere
-    const material = new THREE.ShaderMaterial({
-        uniforms: {
-            uTime: uniforms.uTime,
-            uColorTop: { value: new THREE.Color(0x004466) },
-            uColorMid: { value: new THREE.Color(0x001530) },
-            uColorBottom: { value: new THREE.Color(0x000510) },
-            uOpacity: { value: 1.0 },
-        },
-        vertexShader: `
-            varying vec3 vPosition;
-            void main() {
-                vPosition = position;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: `
-            uniform float uTime;
-            uniform vec3 uColorTop;
-            uniform vec3 uColorMid;
-            uniform vec3 uColorBottom;
-            uniform float uOpacity;
-            varying vec3 vPosition;
-            
-            void main() {
-                // Sphere mapping -1 to 1
-                float t = normalize(vPosition).y;
-                
-                vec3 color;
-                if(t > 0.0) {
-                    color = mix(uColorMid, uColorTop, t);
-                } else {
-                    color = mix(uColorMid, uColorBottom, -t);
-                }
-                
-                gl_FragColor = vec4(color, uOpacity);
-            }
-        `,
-        side: THREE.BackSide,
-        depthWrite: false,
-        transparent: true,
+// Re-place the god-ray cones ALONG the corridor so the shafts plunge through the
+// climbing camera's sightline at several depths, instead of clustering at one fixed point
+// beside the anchor. Each cone keeps its lateral spread + tilt (so they read as separate
+// shafts) but its local centre is moved to a corridor station; the cone geometry already
+// hangs its wide base UP and feathers downward, so a small +Y lift keeps the bright entry
+// near the surface. No-op (keeps the authored layout) in the pilot harness where the
+// corridor is unavailable.
+function placeGodRaysAlongCorridor(rayGroup, corridor) {
+    if (!corridor.ok || !rayGroup?.children?.length) return;
+    const rays = rayGroup.children;
+    const n = rays.length;
+    rays.forEach((ray, i) => {
+        // Spread the shafts up the corridor (t 0.15..0.9) so the camera meets fresh rays
+        // as it climbs; keep the authored lateral X spread + tilt for separation.
+        const t = 0.15 + (i / Math.max(1, n - 1)) * 0.75;
+        const c = corridor.sample(t, 12 + (i % 3) * 10);
+        // Lift the cone so its bright wide top sits above the station (light from above).
+        ray.position.set(ray.position.x * 0.6 + c.x, c.y + 24, c.z);
     });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.renderOrder = -100;
-    return mesh;
 }
 
-function createWaterSurface(uniforms, surfaceOffsetY = 20) {
-    // Plane geometry for water surface overhead
-    const geometry = new THREE.PlaneGeometry(300, 300, 64, 64);
-    geometry.rotateX(Math.PI / 2); // Horizontal
+// Creature silhouettes — instanced billboard quads at multiple depths. Each instance
+// picks a shape (0 whale, 1 ray, 2 jelly, 3 COLOSSAL leviathan hero), a size, a base
+// tint and a world center; the material depth-tints by world Y so deeper creatures sink
+// into shadow.
+//
+// FLAGSHIP REMAKE: instance 0 is reserved for ONE colossal bioluminescent LEVIATHAN
+// (shape 3, aSize ~80) crossing the corridor laterally at the mid-act sightline depth
+// (z ~ -55, y ~ -8) — the unforgettable hero beat — with its flank markings + slow X
+// traverse driven in the material. The remaining instances stay small distant whales/
+// rays/jellies for layered depth (NOT competing silhouettes).
+function createCreatureSilhouettes(uniforms, count, corridor) {
+    const positions = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const shapes = new Float32Array(count);
+    const tints = new Float32Array(count * 3);
 
-    const material = new THREE.ShaderMaterial({
-        uniforms: {
-            uTime: uniforms.uTime,
-            uSurfaceColor: { value: new THREE.Color(0x007799) },
-            uDeepColor: { value: new THREE.Color(0x003355) },
-        },
-        vertexShader: waterVertexShader,
-        fragmentShader: waterFragmentShader,
-        transparent: true,
-        side: THREE.DoubleSide,
-        depthWrite: false, // Don't occlude particles behind it if viewed from weird angle
-        blending: THREE.AdditiveBlending, // Glowy look from below
-    });
+    // Mostly dark silhouette tints; jellies get a faintly luminous base so the glow
+    // term in the material has something to lift. The leviathan gets a deep teal-indigo
+    // base so its flank markings + body rim (added in the material) read as luminous.
+    const whaleTint = new THREE.Color(0x0a1830);
+    const rayTint = new THREE.Color(0x0c1c34);
+    const jellyTint = new THREE.Color(0x2a6cff);
+    const leviathanTint = new THREE.Color(0x081a2e);
 
-    const mesh = new THREE.Mesh(geometry, material);
-    // Position at top of chapter bounds (relative to center is +15, since height is 30)
-    // Actually we want it slightly above to be the "ceiling"
-    mesh.position.y = surfaceOffsetY;
-    return mesh;
-}
+    for (let i = 0; i < count; i += 1) {
+        if (i === 0) {
+            // THE HERO: one colossal leviathan crossing the MID-ACT sightline. Placed at a
+            // corridor station ~halfway up the chapter, pushed ~55u ahead of that station
+            // (down-path) so the climbing camera sees it crossing the frame off-centre. The
+            // material adds the slow lateral X traverse + flank-marking pulse.
+            if (corridor?.ok) {
+                const c = corridor.sample(0.5, 18);
+                positions[0] = c.x - 12;
+                positions[1] = c.y - 6;
+                positions[2] = c.z - 45; // ahead of the station, down the corridor
+            } else {
+                positions[0] = -28;
+                positions[1] = -8;
+                positions[2] = -55;
+            }
+            shapes[0] = 3;
+            sizes[0] = 84; // aSize ~70-90 (vs 26 for the old generic whale)
+            tints[0] = leviathanTint.r;
+            tints[1] = leviathanTint.g;
+            tints[2] = leviathanTint.b;
+            continue;
+        }
 
-function createGodRays(uniforms) {
-    const group = new THREE.Group();
-    group.name = 'god-rays';
+        // Distribute the remaining creatures DOWN the corridor (varied t) at a far lateral
+        // radius + extra depth jitter so they read as distant masses descending past the
+        // climbing camera, not a fixed cloud behind the anchor.
+        if (corridor?.ok) {
+            const t = 0.12 + Math.random() * 0.82;
+            const c = corridor.sample(t, 55 + Math.random() * 60, 40);
+            positions[i * 3] = c.x;
+            positions[i * 3 + 1] = c.y - Math.random() * 24; // bias a touch deeper
+            positions[i * 3 + 2] = c.z - 30 - Math.random() * 80; // push behind the sightline
+        } else {
+            positions[i * 3] = (Math.random() - 0.5) * 180;
+            positions[i * 3 + 1] = 18 - Math.random() * 80;
+            positions[i * 3 + 2] = -70 - Math.random() * 160;
+        }
 
-    // Use tapered cone for more realistic light shaft
-    const geometry = new THREE.ConeGeometry(12, 100, 24, 8, true);
-    geometry.translate(0, -50, 0); // Pivot at top
+        // Bias toward whales/rays (big distant masses); a few jellies for glow.
+        const r = Math.random();
+        let shape = 2; // jelly
+        if (r < 0.4) shape = 0; // whale
+        else if (r < 0.75) shape = 1; // ray
+        shapes[i] = shape;
 
-    const material = new THREE.ShaderMaterial({
-        uniforms: { uTime: uniforms.uTime },
-        vertexShader: godRayVertexShader,
-        fragmentShader: godRayFragmentShader,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-    });
+        // Small distant whales/rays/jellies (the hero owns the foreground scale).
+        const baseSizes = [18, 14, 8];
+        const base = baseSizes[shape];
+        sizes[i] = base + Math.random() * base * 0.5;
 
-    // Fewer, cleaner rays
-    const rayCount = 5;
-    for (let i = 0; i < rayCount; i++) {
-        const ray = new THREE.Mesh(geometry, material);
-
-        // Spread evenly across the scene
-        const angle = (i / rayCount) * Math.PI * 0.8 - Math.PI * 0.4; // Spread in front
-        const radius = 30 + i * 20;
-        ray.position.x = Math.sin(angle) * radius;
-        ray.position.z = -40 - i * 15;
-        ray.position.y = 25; // Start from top
-
-        // Very slight tilt
-        ray.rotation.z = (i - 2) * 0.08;
-        ray.rotation.x = -0.05;
-
-        // Thinner rays
-        const scale = 0.4 + i * 0.1;
-        ray.scale.set(scale, 1.0, scale);
-
-        group.add(ray);
+        const tintByShape = [whaleTint, rayTint, jellyTint];
+        const tint = tintByShape[shape];
+        tints[i * 3] = tint.r;
+        tints[i * 3 + 1] = tint.g;
+        tints[i * 3 + 2] = tint.b;
     }
-    return group;
+
+    const geo = makeQuadInstancedGeometry(count, {
+        aBase: { array: positions, itemSize: 3 },
+        aSize: { array: sizes, itemSize: 1 },
+        aShape: { array: shapes, itemSize: 1 },
+        aTint: { array: tints, itemSize: 3 },
+    });
+
+    const mat = createCreatureSilhouetteMaterial(uniforms.uTime);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.name = 'ocean-creatures';
+    mesh.frustumCulled = false;
+    mesh.renderOrder = -60;
+    return mesh;
 }
 
-function createBioluminescentJellyfish(uniforms, count) {
-    const group = new THREE.Group();
-    group.name = 'jellyfish-group';
+// Kelp / coral clusters — instanced swaying billboards rooted near the seabed.
+function createKelpClusters(uniforms, count) {
+    const positions = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const tints = new Float32Array(count * 3);
 
-    // Create glow texture for bioluminescent effect
-    const glowTexture = createJellyfishGlowTexture();
-
-    // Jellyfish colors - soft bioluminescent palette
-    const jellyColors = [
-        0x00ffff, // Cyan
-        0x00aaff, // Light blue
-        0xff88ff, // Pink
-        0x88ffaa, // Soft green
-        0xaaddff, // Pale blue
+    const kelpTints = [
+        new THREE.Color(0x0b3a2e), // dark kelp green
+        new THREE.Color(0x103f3a), // teal-green
+        new THREE.Color(0x0a2f3c), // dark teal coral
     ];
 
-    for (let i = 0; i < count; i++) {
-        const jellyGroup = new THREE.Group();
+    // FLAGSHIP REMAKE: CLUSTER the kelp around the sunken bioluminescent REEF pockets
+    // (which the seabed material lights on the dune crests near the corridor center)
+    // instead of scattering it evenly — clustered glowing kelp reads as a living reef.
+    // A few cluster centers in the crest band; each kelp instance jitters around one.
+    const reefCenters = [
+        { x: -34, z: -84 },
+        { x: 26, z: -120 },
+        { x: -6, z: -150 },
+        { x: 44, z: -64 },
+    ];
 
-        // Random color from palette
-        const color = jellyColors[Math.floor(Math.random() * jellyColors.length)];
-        const size = 0.8 + Math.random() * 1.5;
+    for (let i = 0; i < count; i += 1) {
+        // Root clusters around the reef pocket centers (low Y, seabed crest band).
+        const c = reefCenters[i % reefCenters.length];
+        positions[i * 3] = c.x + (Math.random() - 0.5) * 30;
+        positions[i * 3 + 1] = -64 + Math.random() * 8; // near the seabed surface
+        positions[i * 3 + 2] = c.z + (Math.random() - 0.5) * 36;
 
-        // Jellyfish body - semi-transparent dome
-        const bodyGeo = new THREE.SphereGeometry(size, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.6);
-        const bodyMat = new THREE.MeshBasicMaterial({
-            color,
-            transparent: true,
-            opacity: 0.4,
-            side: THREE.DoubleSide,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-        const body = new THREE.Mesh(bodyGeo, bodyMat);
-        // Dome faces UP (natural jellyfish orientation)
-        jellyGroup.add(body);
+        sizes[i] = 14 + Math.random() * 22; // cluster height
 
-        // Inner glow core
-        const coreGeo = new THREE.SphereGeometry(size * 0.5, 16, 12);
-        const coreMat = new THREE.MeshBasicMaterial({
-            color,
-            transparent: true,
-            opacity: 0.6,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-        const core = new THREE.Mesh(coreGeo, coreMat);
-        core.position.y = -size * 0.1; // Core slightly inside dome
-        jellyGroup.add(core);
-
-        // Glow sprite for ambient light
-        const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
-            map: glowTexture,
-            color,
-            transparent: true,
-            opacity: 0.5,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        }));
-        glowSprite.scale.set(size * 4, size * 4, 1);
-        jellyGroup.add(glowSprite);
-
-        // Position in the scene
-        jellyGroup.position.set(
-            (Math.random() - 0.5) * 120,
-            (Math.random() - 0.5) * 35,
-            -15 - Math.random() * 70,
-        );
-
-        jellyGroup.userData = {
-            t: Math.random() * 100,
-            speed: 0.3 + Math.random() * 0.4,
-            pulsePhase: Math.random() * Math.PI * 2,
-            baseScale: size,
-        };
-
-        group.add(jellyGroup);
+        const tint = kelpTints[Math.floor(Math.random() * kelpTints.length)];
+        tints[i * 3] = tint.r;
+        tints[i * 3 + 1] = tint.g;
+        tints[i * 3 + 2] = tint.b;
     }
-    return group;
+
+    const geo = makeQuadInstancedGeometry(count, {
+        aBase: { array: positions, itemSize: 3 },
+        aSize: { array: sizes, itemSize: 1 },
+        aTint: { array: tints, itemSize: 3 },
+    });
+
+    const mat = createKelpClusterMaterial(uniforms.uTime);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.name = 'ocean-kelp';
+    mesh.frustumCulled = false;
+    mesh.renderOrder = -70;
+    return mesh;
 }
 
-/**
- * Create glow texture for jellyfish
- */
-function createJellyfishGlowTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 128;
-    const ctx = canvas.getContext('2d');
+// Bioluminescent jellyfish — a SINGLE instanced billboard impostor system. Previously
+// each jelly was a THREE.Group of (Sphere24x16 dome + Sphere16x12 core + Sprite glow)
+// with its own three materials (~3 draws + 3 programs each → ~72 draws for the field)
+// plus a per-frame CPU loop walking every group to drift + pulse it. Now ALL jellies
+// share ONE NodeMaterial drawn as instanced camera-facing quads; the impostor mask
+// folds the dome + core + glow into one quad, and the drift/pulse run in the shader
+// from a per-instance phase + uTime — so the update loop never touches them again.
+function createBioluminescentJellyfish(uniforms, count, corridor) {
+    // Saturated bioluminescent palette (electric cyan, luminous blue, magenta, green,
+    // pale cyan) — unchanged from the old per-jelly MeshBasicMaterial colours so each
+    // jelly still reads as a true light source on the teal→indigo gradient.
+    const jellyColors = [
+        new THREE.Color(0x00ffff), // Electric cyan
+        new THREE.Color(0x1188ff), // Deep luminous blue
+        new THREE.Color(0xff44dd), // Magenta glow
+        new THREE.Color(0x44ffbb), // Bioluminescent green
+        new THREE.Color(0x66ddff), // Pale cyan
+    ];
 
-    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
-    gradient.addColorStop(0.2, 'rgba(200, 255, 255, 0.6)');
-    gradient.addColorStop(0.5, 'rgba(100, 200, 255, 0.2)');
-    gradient.addColorStop(1, 'rgba(0, 100, 150, 0)');
+    const positions = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const colors = new Float32Array(count * 3);
+    const phases = new Float32Array(count);
 
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < count; i += 1) {
+        // String the jellies UP the corridor (evenly spaced t + jitter) at a mid lateral
+        // radius so the climbing camera passes a procession of glowing jellies. Fall back
+        // to the legacy scatter only in the pilot harness.
+        if (corridor?.ok) {
+            const t = (i + Math.random() * 0.7) / count;
+            const c = corridor.sample(t, 18 + Math.random() * 34, 14);
+            positions[i * 3] = c.x;
+            positions[i * 3 + 1] = c.y;
+            positions[i * 3 + 2] = c.z;
+        } else {
+            positions[i * 3] = (Math.random() - 0.5) * 120;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 35;
+            positions[i * 3 + 2] = -15 - Math.random() * 70;
+        }
 
-    return new THREE.CanvasTexture(canvas);
+        // BIGGER jellies so they read as the chapter's signature creatures (was *3.2 off a
+        // 0.8..2.3 radius). Fewer + larger glowing bells beats a scatter of tiny dots.
+        const size = 1.4 + Math.random() * 2.2;
+        sizes[i] = size * 3.6;
+
+        const color = jellyColors[Math.floor(Math.random() * jellyColors.length)];
+        colors[i * 3] = color.r;
+        colors[i * 3 + 1] = color.g;
+        colors[i * 3 + 2] = color.b;
+
+        // Per-instance phase desyncs the in-shader drift + pulse (replaces the old
+        // userData {t, speed, pulsePhase}).
+        phases[i] = Math.random() * Math.PI * 2;
+    }
+
+    const geo = makeQuadInstancedGeometry(count, {
+        aBase: { array: positions, itemSize: 3 },
+        aSize: { array: sizes, itemSize: 1 },
+        aColor: { array: colors, itemSize: 3 },
+        aPhase: { array: phases, itemSize: 1 },
+    });
+
+    const mat = createJellyfishMaterial(uniforms.uTime);
+    const mesh = new THREE.Mesh(geo, mat);
+    // Keep the historical name so getObjectByName('jellyfish-group') (and any external
+    // lookup) still resolves; the update loop now reads it from cached userData.
+    mesh.name = 'jellyfish-group';
+    mesh.frustumCulled = false;
+    mesh.renderOrder = -50;
+    return mesh;
 }
 
-// Reuse simple particles
-function createBubbleParticles(uniforms, count) {
-    const geo = new THREE.BufferGeometry();
-    const pos = new Float32Array(count * 3);
+// Bubbles — instanced billboard quads (THREE.Points renders as 1px on WebGPU).
+function createBubbleParticles(uniforms, count, corridor) {
+    const positions = new Float32Array(count * 3);
     const speed = new Float32Array(count);
 
     for (let i = 0; i < count; i++) {
-        pos[i * 3] = (Math.random() - 0.5) * 120;
-        pos[i * 3 + 1] = (Math.random() - 0.5) * 40;
-        pos[i * 3 + 2] = -10 - Math.random() * 50;
+        if (corridor?.ok) {
+            const t = Math.random();
+            const c = corridor.sample(t, 14 + Math.random() * 40, 20);
+            positions[i * 3] = c.x;
+            positions[i * 3 + 1] = c.y;
+            positions[i * 3 + 2] = c.z;
+        } else {
+            positions[i * 3] = (Math.random() - 0.5) * 120;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 40;
+            positions[i * 3 + 2] = -10 - Math.random() * 50;
+        }
         speed[i] = 1.0 + Math.random() * 3.0;
     }
 
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('speed', new THREE.BufferAttribute(speed, 1));
+    const geo = makeQuadInstancedGeometry(count, {
+        aBase: { array: positions, itemSize: 3 },
+    });
+    // Keep a plain `position` attribute view of the per-instance bases so the update
+    // loop can rise/recycle bubbles exactly like the old THREE.Points geometry did.
+    const baseAttr = geo.getAttribute('aBase');
+    // Recycle window tracks the corridor: bubbles rise toward the surface and wrap to the
+    // abyss, so they keep streaming through whatever stretch the camera is climbing (the
+    // old fixed -20..20 window left the corridor mostly bubble-free once it climbed past).
+    const riseTop = corridor?.ok ? 92 : 20;
+    const riseBottom = corridor?.ok ? -92 : -20;
+    geo.userData = { speed, riseTop, riseBottom };
 
-    // Create circular bubble texture
+    // Create circular bubble texture (canvas map preserved)
     const bubbleTexture = createCircularTexture(0.9, 0.3);
 
-    const mat = new THREE.PointsMaterial({
-        map: bubbleTexture,
-        color: 0xaaddff,
-        size: 0.8,
-        transparent: true,
-        opacity: 0.6,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        sizeAttenuation: true,
-    });
+    // World-size from the old pixel size (0.8 → small world quad).
+    const center = attribute('aBase', 'vec3');
+    const sprite = texture(bubbleTexture, uv());
 
-    const points = new THREE.Points(geo, mat);
-    points.name = 'bubbles';
-    return points;
+    const mat = new THREE.MeshBasicNodeMaterial();
+    mat.positionNode = billboardWorld(center, 0.8);
+    mat.colorNode = sprite.rgb.mul(vec3(0.667, 0.867, 1.0)); // tint ≈ 0xaaddff
+    mat.opacityNode = sprite.a.mul(0.6);
+    mat.transparent = true;
+    mat.depthWrite = false;
+    mat.blending = THREE.AdditiveBlending;
+    mat.side = THREE.DoubleSide;
+
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.name = 'bubbles';
+    mesh.frustumCulled = false;
+    // Expose the per-instance base attribute so updateDeepOceanEnvironment can
+    // read/write the per-bubble Y (the billboard center) and flag it for re-upload.
+    mesh.userData.baseAttribute = baseAttr;
+    return mesh;
 }
 
 /**
@@ -577,27 +588,39 @@ function createCircularTexture(innerOpacity = 1.0, outerOpacity = 0) {
     return new THREE.CanvasTexture(canvas);
 }
 
-function createPlanktonParticles(uniforms, count) {
-    const geo = new THREE.BufferGeometry();
-    const pos = new Float32Array(count * 3);
+function createPlanktonParticles(uniforms, count, corridor) {
+    const positions = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
     const colors = new Float32Array(count * 3);
 
-    // Bioluminescent plankton colors
+    // Bioluminescent plankton colors (more saturated cyan/green/magenta sparks so the
+    // motes pop as drifting bioluminescence rather than a pale haze).
     const planktonColors = [
-        new THREE.Color(0x00ffaa), // Cyan-green
-        new THREE.Color(0x00ddff), // Light blue
-        new THREE.Color(0x88ffcc), // Soft green
-        new THREE.Color(0xaaffff), // Pale cyan
+        new THREE.Color(0x00ffbb), // Cyan-green spark
+        new THREE.Color(0x00ccff), // Electric blue
+        new THREE.Color(0x66ffaa), // Vivid green
+        new THREE.Color(0xff66dd), // Magenta mote
     ];
 
     for (let i = 0; i < count; i++) {
-        pos[i * 3] = (Math.random() - 0.5) * 150;
-        pos[i * 3 + 1] = (Math.random() - 0.5) * 50;
-        pos[i * 3 + 2] = -10 - Math.random() * 70;
+        // Fill the corridor cross-section the camera flies through (close + mid lateral
+        // radii) all the way UP the chapter, so the motes drift in the sightline as a
+        // dense bioluminescent field rather than a flat far-away haze.
+        if (corridor?.ok) {
+            const t = Math.random();
+            const c = corridor.sample(t, 8 + Math.random() * 46, 16);
+            positions[i * 3] = c.x;
+            positions[i * 3 + 1] = c.y;
+            positions[i * 3 + 2] = c.z;
+        } else {
+            positions[i * 3] = (Math.random() - 0.5) * 150;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 50;
+            positions[i * 3 + 2] = -10 - Math.random() * 70;
+        }
 
-        // Random sizes
-        sizes[i] = 0.15 + Math.random() * 0.3;
+        // BIGGER motes so they read as drifting sparks (was 0.15..0.45). Closer ones are
+        // larger so the field has depth; the additive cost stays bounded (capped count).
+        sizes[i] = 0.3 + Math.random() * 0.6;
 
         // Random color from palette
         const color = planktonColors[Math.floor(Math.random() * planktonColors.length)];
@@ -606,27 +629,36 @@ function createPlanktonParticles(uniforms, count) {
         colors[i * 3 + 2] = color.b;
     }
 
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-    // Create circular plankton texture
-    const planktonTexture = createCircularTexture(1.0, 0.1);
-
-    const mat = new THREE.PointsMaterial({
-        map: planktonTexture,
-        size: 0.4,
-        transparent: true,
-        opacity: 0.8,
-        blending: THREE.AdditiveBlending,
-        vertexColors: true,
-        sizeAttenuation: true,
-        depthWrite: false,
+    const geo = makeQuadInstancedGeometry(count, {
+        aBase: { array: positions, itemSize: 3 },
+        aSize: { array: sizes, itemSize: 1 },
+        aColor: { array: colors, itemSize: 3 },
     });
 
-    const points = new THREE.Points(geo, mat);
-    points.name = 'plankton';
-    return points;
+    // Create circular plankton texture (canvas map preserved)
+    const planktonTexture = createCircularTexture(1.0, 0.1);
+
+    const center = attribute('aBase', 'vec3');
+    const aSize = attribute('aSize', 'float');
+    const aColor = attribute('aColor', 'vec3');
+    const sprite = texture(planktonTexture, uv());
+
+    const mat = new THREE.MeshBasicNodeMaterial();
+    // Scale per-particle world size by the old global size (0.4) + per-particle size.
+    mat.positionNode = billboardWorld(center, aSize.add(0.4));
+    // Brighter, tighter bioluminescent pops: lift the core gain and the alpha so the
+    // motes read as crisp drifting sparks. Small additive quads — no frame blowout.
+    mat.colorNode = sprite.rgb.mul(aColor).mul(1.55);
+    mat.opacityNode = sprite.a.mul(0.95);
+    mat.transparent = true;
+    mat.depthWrite = false;
+    mat.blending = THREE.AdditiveBlending;
+    mat.side = THREE.DoubleSide;
+
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.name = 'plankton';
+    mesh.frustumCulled = false;
+    return mesh;
 }
 
 export function updateDeepOceanEnvironment(group, delta, time) {
@@ -635,34 +667,43 @@ export function updateDeepOceanEnvironment(group, delta, time) {
         uniforms.uTime.value = time;
     }
 
-    // Update jellies with pulsing animation
-    const jellies = group.getObjectByName('jellyfish-group');
-    if (jellies) {
-        jellies.children.forEach((j) => {
-            const { userData } = j;
+    // Jellyfish now drift + pulse entirely in their instanced shader (from aPhase +
+    // uTime), so there is no per-jelly CPU loop and no scene-walk for them anymore.
 
-            // Gentle floating motion
-            j.position.y += Math.sin(time * userData.speed + userData.t) * delta * 0.5;
-            j.position.x += Math.cos(time * 0.3 + userData.t) * delta * 0.3;
-            j.position.z += Math.sin(time * 0.2 + userData.t * 0.5) * delta * 0.2;
+    // Animated set pieces are cached on userData at create time — no per-frame
+    // getObjectByName scene-walk. (Falls back to a lookup only if a caller built the
+    // group through some path that skipped the cache, to stay API-safe.)
+    if (!group.userData.animated) {
+        group.userData.animated = {
+            godRays: group.getObjectByName('god-rays-tsl'),
+            bubbles: group.getObjectByName('bubbles'),
+        };
+    }
+    const { animated } = group.userData;
 
-            // Pulsing scale animation (gentle breathing effect)
-            const pulse = 1 + Math.sin(time * 1.5 + userData.pulsePhase) * 0.1;
-            j.scale.setScalar(pulse);
+    // Drift the god-ray shafts slowly so the light feels alive (the per-ray
+    // driftPhase desyncs them); internal shimmer/volume already animate via uTime.
+    const { godRays } = animated;
+    if (godRays) {
+        godRays.children.forEach((ray) => {
+            const phase = ray.userData.driftPhase || 0;
+            ray.rotation.z = (ray.userData.baseRotZ ??= ray.rotation.z)
+                + Math.sin(time * 0.15 + phase) * 0.03;
         });
     }
 
-    // Update bubbles
-    const bubbles = group.getObjectByName('bubbles');
-    if (bubbles) {
-        const pos = bubbles.geometry.attributes.position.array;
-        const speed = bubbles.geometry.attributes.speed.array;
-
+    // Update bubbles — rise the per-instance base Y and recycle, then flag the
+    // instanced attribute for upload (billboard quads read aBase as their center).
+    const { bubbles } = animated;
+    const baseAttr = bubbles?.userData?.baseAttribute;
+    if (bubbles && baseAttr) {
+        const pos = baseAttr.array;
+        const { speed, riseTop = 20, riseBottom = -20 } = bubbles.geometry.userData;
         for (let i = 0; i < speed.length; i++) {
             pos[i * 3 + 1] += speed[i] * delta;
-            if (pos[i * 3 + 1] > 20) pos[i * 3 + 1] = -20;
+            if (pos[i * 3 + 1] > riseTop) pos[i * 3 + 1] = riseBottom;
         }
-        bubbles.geometry.attributes.position.needsUpdate = true;
+        baseAttr.needsUpdate = true;
     }
 }
 

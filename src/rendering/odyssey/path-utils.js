@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 
 export const ODYSSEY_PATH_CURVE_TYPE = 'catmullrom';
