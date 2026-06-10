@@ -369,14 +369,245 @@ body.start-modal-open .cs-tetro-block {
 body.start-modal-open .game-mode-card[data-mode="single"]:hover .cs-tetro-block,
 body.start-modal-open .game-mode-card[data-mode="single"].gamepad-focused .cs-tetro-block,
 body.start-modal-open .game-mode-card[data-mode="single"]:focus-visible .cs-tetro-block {
-    animation: cs-tetro-assemble 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
-    animation-delay: calc(var(--i) * 0.07s);
+    animation-name: cs-tetro-assemble, cs-tetro-hover-stack;
+    animation-duration: 0.52s, 1.25s;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1), ease-in-out;
+    animation-delay: calc(var(--i) * 0.06s), calc(0.48s + var(--i) * 0.07s);
+    animation-iteration-count: 1, infinite;
+    animation-fill-mode: both, none;
 }
 
 @keyframes cs-tetro-assemble {
     0%   { transform: translateY(-7px); opacity: 0; }
     55%  { transform: translateY(1px);  opacity: 1; }
     100% { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes cs-tetro-hover-stack {
+    0%, 100% { transform: translateY(0) scale(1); opacity: 1; }
+    38%      { transform: translateY(-4px) scale(1.06); opacity: 1; }
+    68%      { transform: translateY(1px) scale(0.99); opacity: 0.92; }
+}
+
+/* --- Local MP: player icons sync up like a ready check --- */
+body.start-modal-open .cs-local-player--primary {
+    animation: cs-local-primary-idle 4.6s ease-in-out infinite;
+}
+
+body.start-modal-open .cs-local-player--secondary {
+    animation: cs-local-secondary-idle 4.6s ease-in-out infinite;
+}
+
+body.start-modal-open .cs-local-link {
+    opacity: 0.42;
+    stroke-dasharray: 0.38 0.62;
+    stroke-dashoffset: 0;
+    animation: cs-local-link-idle 3.8s ease-in-out infinite;
+}
+
+@keyframes cs-local-primary-idle {
+    0%, 100% { transform: translateX(0); }
+    50%      { transform: translateX(-0.6px); }
+}
+
+@keyframes cs-local-secondary-idle {
+    0%, 100% { transform: translateX(0); }
+    50%      { transform: translateX(0.7px); }
+}
+
+@keyframes cs-local-link-idle {
+    0%, 100% { opacity: 0.28; stroke-dashoffset: 0; }
+    50%      { opacity: 0.72; stroke-dashoffset: -0.45; }
+}
+
+body.start-modal-open .game-mode-card[data-mode="local-multiplayer"]:hover .cs-local-player--primary,
+body.start-modal-open .game-mode-card[data-mode="local-multiplayer"].gamepad-focused .cs-local-player--primary,
+body.start-modal-open .game-mode-card[data-mode="local-multiplayer"]:focus-visible .cs-local-player--primary {
+    animation: cs-local-primary-ready 0.62s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+body.start-modal-open .game-mode-card[data-mode="local-multiplayer"]:hover .cs-local-player--secondary,
+body.start-modal-open .game-mode-card[data-mode="local-multiplayer"].gamepad-focused .cs-local-player--secondary,
+body.start-modal-open .game-mode-card[data-mode="local-multiplayer"]:focus-visible .cs-local-player--secondary {
+    animation: cs-local-secondary-ready 0.62s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+body.start-modal-open .game-mode-card[data-mode="local-multiplayer"]:hover .cs-local-link,
+body.start-modal-open .game-mode-card[data-mode="local-multiplayer"].gamepad-focused .cs-local-link,
+body.start-modal-open .game-mode-card[data-mode="local-multiplayer"]:focus-visible .cs-local-link {
+    animation: cs-local-link-ready 0.62s ease-out both;
+}
+
+@keyframes cs-local-primary-ready {
+    0%   { transform: translateX(-4px) scale(0.96); opacity: 0.72; }
+    65%  { transform: translateX(0.8px) scale(1.05); opacity: 1; }
+    100% { transform: translateX(0) scale(1); opacity: 1; }
+}
+
+@keyframes cs-local-secondary-ready {
+    0%   { transform: translateX(4px) scale(0.96); opacity: 0.72; }
+    65%  { transform: translateX(-0.8px) scale(1.05); opacity: 1; }
+    100% { transform: translateX(0) scale(1); opacity: 1; }
+}
+
+@keyframes cs-local-link-ready {
+    0%   { opacity: 0; stroke-dashoffset: 1; }
+    55%  { opacity: 1; stroke-dashoffset: 0; }
+    100% { opacity: 0.7; stroke-dashoffset: -0.2; }
+}
+
+/* --- Online MP: globe signal orbit, calm when Steam-gated --- */
+body.start-modal-open .cs-online-globe {
+    animation: cs-online-globe-idle 5.4s ease-in-out infinite;
+}
+
+body.start-modal-open .cs-online-orbit {
+    opacity: 0.46;
+    stroke-dasharray: 0.18 0.82;
+    stroke-dashoffset: 0;
+    animation: cs-online-orbit-idle 5s linear infinite;
+}
+
+body.start-modal-open .cs-online-packet {
+    fill: currentColor;
+    stroke: none !important;
+    opacity: 0.66;
+    transform: scale(0.86);
+    animation: cs-online-packet-idle 5s ease-in-out infinite;
+}
+
+@keyframes cs-online-globe-idle {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    50%      { transform: rotate(-3deg) scale(1.02); }
+}
+
+@keyframes cs-online-orbit-idle {
+    from { stroke-dashoffset: 0; }
+    to   { stroke-dashoffset: -1; }
+}
+
+@keyframes cs-online-packet-idle {
+    0%, 100% { opacity: 0.35; transform: scale(0.72); }
+    50%      { opacity: 0.92; transform: scale(1); }
+}
+
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"].steam-disabled .cs-online-globe,
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"].steam-disabled .cs-online-orbit,
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"].steam-disabled .cs-online-packet {
+    animation: none;
+}
+
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"].steam-disabled .cs-online-orbit,
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"].steam-disabled .cs-online-packet {
+    opacity: 0.22;
+}
+
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"]:not(.steam-disabled):hover .cs-online-globe,
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"]:not(.steam-disabled).gamepad-focused .cs-online-globe,
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"]:not(.steam-disabled):focus-visible .cs-online-globe {
+    animation: cs-online-globe-scan 0.68s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"]:not(.steam-disabled):hover .cs-online-orbit,
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"]:not(.steam-disabled).gamepad-focused .cs-online-orbit,
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"]:not(.steam-disabled):focus-visible .cs-online-orbit {
+    opacity: 0.95;
+    animation-duration: 0.9s;
+}
+
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"]:not(.steam-disabled):hover .cs-online-packet,
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"]:not(.steam-disabled).gamepad-focused .cs-online-packet,
+body.start-modal-open .game-mode-card[data-mode="online-multiplayer"]:not(.steam-disabled):focus-visible .cs-online-packet {
+    animation: cs-online-packet-ping 0.7s ease-out both;
+}
+
+@keyframes cs-online-globe-scan {
+    0%   { transform: rotate(-8deg) scale(0.96); }
+    62%  { transform: rotate(4deg) scale(1.06); }
+    100% { transform: rotate(0deg) scale(1); }
+}
+
+@keyframes cs-online-packet-ping {
+    0%   { opacity: 0; transform: translate(-3px, 2px) scale(0.45); }
+    60%  { opacity: 1; transform: translate(0, 0) scale(1.35); }
+    100% { opacity: 0.75; transform: translate(0, 0) scale(0.92); }
+}
+
+/* --- Serenity: lotus breathes open instead of sitting static --- */
+body.start-modal-open .cs-serenity-breath-ring {
+    opacity: 0.16;
+    animation: cs-serenity-ring-idle 4.4s ease-in-out infinite;
+}
+
+body.start-modal-open .cs-serenity-petal--left {
+    animation: cs-serenity-left-idle 5.2s ease-in-out infinite;
+}
+
+body.start-modal-open .cs-serenity-petal--right {
+    animation: cs-serenity-right-idle 5.2s ease-in-out infinite;
+}
+
+@keyframes cs-serenity-ring-idle {
+    0%, 100% { opacity: 0.10; transform: scale(0.86); }
+    50%      { opacity: 0.32; transform: scale(1.05); }
+}
+
+@keyframes cs-serenity-left-idle {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    50%      { transform: translateX(-0.5px) rotate(-2deg); }
+}
+
+@keyframes cs-serenity-right-idle {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    50%      { transform: translateX(0.5px) rotate(2deg); }
+}
+
+body.start-modal-open .game-mode-card[data-mode="serenity"]:hover .cs-serenity-breath-ring,
+body.start-modal-open .game-mode-card[data-mode="serenity"].gamepad-focused .cs-serenity-breath-ring,
+body.start-modal-open .game-mode-card[data-mode="serenity"]:focus-visible .cs-serenity-breath-ring {
+    animation: cs-serenity-ring-bloom 1.25s ease-out infinite;
+}
+
+body.start-modal-open .game-mode-card[data-mode="serenity"]:hover .cs-serenity-petal--center,
+body.start-modal-open .game-mode-card[data-mode="serenity"].gamepad-focused .cs-serenity-petal--center,
+body.start-modal-open .game-mode-card[data-mode="serenity"]:focus-visible .cs-serenity-petal--center {
+    animation: cs-serenity-center-bloom 0.78s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+body.start-modal-open .game-mode-card[data-mode="serenity"]:hover .cs-serenity-petal--left,
+body.start-modal-open .game-mode-card[data-mode="serenity"].gamepad-focused .cs-serenity-petal--left,
+body.start-modal-open .game-mode-card[data-mode="serenity"]:focus-visible .cs-serenity-petal--left {
+    animation: cs-serenity-left-bloom 0.78s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+body.start-modal-open .game-mode-card[data-mode="serenity"]:hover .cs-serenity-petal--right,
+body.start-modal-open .game-mode-card[data-mode="serenity"].gamepad-focused .cs-serenity-petal--right,
+body.start-modal-open .game-mode-card[data-mode="serenity"]:focus-visible .cs-serenity-petal--right {
+    animation: cs-serenity-right-bloom 0.78s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cs-serenity-ring-bloom {
+    0%   { opacity: 0.12; transform: scale(0.72); }
+    70%  { opacity: 0.36; transform: scale(1.16); }
+    100% { opacity: 0; transform: scale(1.24); }
+}
+
+@keyframes cs-serenity-center-bloom {
+    0%   { transform: translateY(2px) scale(0.88); opacity: 0.75; }
+    70%  { transform: translateY(-1px) scale(1.06); opacity: 1; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes cs-serenity-left-bloom {
+    0%   { transform: translate(1.5px, 1px) rotate(5deg); opacity: 0.72; }
+    70%  { transform: translate(-1.6px, -0.4px) rotate(-5deg); opacity: 1; }
+    100% { transform: translateX(0) rotate(0deg); opacity: 1; }
+}
+
+@keyframes cs-serenity-right-bloom {
+    0%   { transform: translate(-1.5px, 1px) rotate(-5deg); opacity: 0.72; }
+    70%  { transform: translate(1.6px, -0.4px) rotate(5deg); opacity: 1; }
+    100% { transform: translateX(0) rotate(0deg); opacity: 1; }
 }
 
 /* --- Infinity: stroke traces the loop forever --- */
@@ -598,6 +829,13 @@ body.start-modal-open .main-menu-player-card .mmpc-avatar-container {
 
     /* Bespoke icons: hold their resting pose, no looping/draw-on motion */
     body.start-modal-open .cs-tetro-block,
+    body.start-modal-open .cs-local-player,
+    body.start-modal-open .cs-local-link,
+    body.start-modal-open .cs-online-globe,
+    body.start-modal-open .cs-online-orbit,
+    body.start-modal-open .cs-online-packet,
+    body.start-modal-open .cs-serenity-breath-ring,
+    body.start-modal-open .cs-serenity-petal,
     body.start-modal-open .cs-infinity-path,
     body.start-modal-open .cs-ascent-path,
     body.start-modal-open .cs-ascent-dot {

@@ -1464,6 +1464,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 slot.grid = gs.boardGrid || gs.grid;
                 slot.currentPiece = gs.currentPiece;
                 slot.nextPieces = gs.nextPieces;
+                slot.blindTimers = gs.blindTimers;
 
                 // Apply interpolation if available
                 const interpolated = this.snapshotInterpolator.getInterpolatedState(p.steamId, renderTime);
@@ -2249,6 +2250,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this._initBoardJuice();
 
         window.move = (dir) => {
+            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
+            if (gameState?.hitStopRemaining > 0) return false;
             this.ffaGameState?.sendInput('move', { direction: dir });
             // Board juice: nudge + tilt on move
             if (this.boardJuice) {
@@ -2258,6 +2261,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         };
 
         window.rotate = (dir) => {
+            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
+            if (gameState?.hitStopRemaining > 0) return;
             this.ffaGameState?.sendInput('rotate', { direction: dir });
             // Board juice: tilt on rotate
             if (this.boardJuice) {
@@ -2266,10 +2271,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         };
 
         window.softDrop = () => {
+            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
+            if (gameState?.hitStopRemaining > 0) return false;
             this.ffaGameState?.sendInput('drop', { type: 'soft' });
         };
 
         window.hardDrop = () => {
+            const gameState = this.mainBoardScene?.gameState || this.ffaGameState?.players?.get(this.steamNetworking?.steamId)?.gameState;
+            if (gameState?.hitStopRemaining > 0) return;
             this.ffaGameState?.sendInput('drop', { type: 'hard' });
             // Board juice: dip + bounce on hard drop
             if (this.boardJuice) {

@@ -298,7 +298,15 @@ async function captureClimb(win) {
 
 async function run() {
     await mkdir(ARTIFACT_DIR, { recursive: true });
-    devServerProcess = startDevServer();
+    // Reuse an already-running dev server (e.g. `npm run dev` on 5173) when reachable;
+    // only spawn our own otherwise (avoids a Windows `spawn('npm')` startup failure).
+    let serverAlreadyUp = false;
+    try { serverAlreadyUp = (await fetch(DEV_SERVER_BASE_URL)).ok; } catch { serverAlreadyUp = false; }
+    if (serverAlreadyUp) {
+        console.log(`[capture] using existing dev server at ${DEV_SERVER_BASE_URL}`);
+    } else {
+        devServerProcess = startDevServer();
+    }
     await waitForServer(DEV_SERVER_BASE_URL);
 
     const win = createWindow();

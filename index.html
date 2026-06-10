@@ -78,6 +78,7 @@
     <link rel="stylesheet" href="/styles/multiplayer-ui.css">
     <link rel="stylesheet" href="/styles/lobby-styles.css">
     <link rel="stylesheet" href="/styles/match-config-styles.css">
+    <link rel="stylesheet" href="/styles/cosmic-select.css">
     <link rel="stylesheet" href="/styles/serenity-hub.css">
     <link rel="stylesheet" href="/styles/custom-cursor.css">
     <link rel="stylesheet" href="/styles/cosmic-tokens.css">
@@ -113,6 +114,44 @@
                 <feGaussianBlur in="goo" stdDeviation="1.5" result="smoothGoo" />
                 <feComposite in="SourceGraphic" in2="smoothGoo" operator="atop" />
             </filter>
+            <symbol id="cs-settings-icon-gear" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3.1" />
+                <path d="M12 3.3v2.2M12 18.5v2.2M3.3 12h2.2M18.5 12h2.2" />
+                <path d="M5.85 5.85l1.55 1.55M16.6 16.6l1.55 1.55M18.15 5.85 16.6 7.4M7.4 16.6l-1.55 1.55" />
+                <path d="M8.35 5.6 6.7 6.7l.55 2.25M15.65 5.6l1.65 1.1-.55 2.25M8.35 18.4 6.7 17.3l.55-2.25M15.65 18.4l1.65-1.1-.55-2.25" />
+            </symbol>
+            <symbol id="cs-settings-icon-keyboard" viewBox="0 0 24 24">
+                <rect x="3.5" y="6.5" width="17" height="11" rx="2.2" />
+                <path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 13.6h.01M10.2 13.6h6.8" />
+            </symbol>
+            <symbol id="cs-settings-icon-gamepad" viewBox="0 0 24 24">
+                <path d="M7.2 9.1h9.6c2.4 0 3.9 1.7 4.3 4.2l.3 2.4c.2 1.6-.7 2.7-2 2.7-.8 0-1.5-.4-2.2-1.2l-1-1.1H7.8l-1 1.1c-.7.8-1.4 1.2-2.2 1.2-1.3 0-2.2-1.1-2-2.7l.3-2.4c.4-2.5 1.9-4.2 4.3-4.2Z" />
+                <path d="M7.2 12.1v3.1M5.7 13.7h3M15.6 13.2h.01M18.1 14.6h.01" />
+            </symbol>
+            <symbol id="cs-settings-icon-lotus" viewBox="0 0 24 24">
+                <path d="M12 5.3c-1.6 1.3-2.5 3.1-2.5 5.2 0 1.2.4 2.4 1 3.3" />
+                <path d="M12 5.3c1.6 1.3 2.5 3.1 2.5 5.2 0 1.2-.4 2.4-1 3.3" />
+                <path d="M7.4 9.6c-1.3.7-2.4 1.8-3 3.4 1.3.3 2.8.1 4.1-.7" />
+                <path d="M16.6 9.6c1.3.7 2.4 1.8 3 3.4-1.3.3-2.8.1-4.1-.7" />
+                <path d="M4.1 16.9c2.4 1.7 5 2.5 7.9 2.5s5.5-.8 7.9-2.5" />
+                <path d="M7.5 15.8c1.2-1.1 2.7-1.7 4.5-1.7s3.3.6 4.5 1.7" />
+            </symbol>
+            <symbol id="cs-settings-icon-sprout" viewBox="0 0 24 24">
+                <path d="M12 20V9.4" />
+                <path d="M12 13.1c-3.1-.2-5.2-1.6-6.2-4.1 2.9-.5 5 .5 6.2 2.9" />
+                <path d="M12 11.2c.7-3.1 2.6-4.9 5.8-5.4.4 3.1-1.4 5.2-5.8 6.4" />
+                <path d="M7.7 20h8.6" />
+            </symbol>
+            <symbol id="cs-settings-icon-target" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="7.5" />
+                <circle cx="12" cy="12" r="3.1" />
+                <path d="M12 2.7v3M12 18.3v3M2.7 12h3M18.3 12h3" />
+            </symbol>
+            <symbol id="cs-settings-icon-tip" viewBox="0 0 24 24">
+                <path d="M9 18h6M10 21h4" />
+                <path d="M8.2 14.1a5.2 5.2 0 1 1 7.6 0c-.8.8-1.2 1.5-1.35 2.35h-4.9c-.15-.85-.55-1.55-1.35-2.35Z" />
+                <path d="M12 6.4v3.1" />
+            </symbol>
             <!-- Clip path removed to allow dynamic sizing -->
         </defs>
     </svg>
@@ -1368,12 +1407,17 @@
 
             <div class="game-mode-card" data-mode="local-multiplayer" id="local-multiplayer-card-btn" tabindex="0">
                 <div class="mode-card-icon">
-                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="9" cy="7" r="4"></circle>
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    <svg class="cs-icon cs-icon--local-mp" viewBox="0 0 24 24" width="48" height="48" fill="none"
+                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <g class="cs-local-player cs-local-player--primary">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                        </g>
+                        <g class="cs-local-player cs-local-player--secondary">
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </g>
+                        <path class="cs-local-link" pathLength="1" d="M11.7 12.4c1.5-1 3.1-1 4.6 0"></path>
                     </svg>
                 </div>
                 <h2 class="mode-card-title">Local MP</h2>
@@ -1383,13 +1427,19 @@
 
             <div class="game-mode-card" data-mode="online-multiplayer" id="online-multiplayer-card-btn" tabindex="0">
                 <div class="mode-card-icon">
-                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="2" y1="12" x2="22" y2="12"></line>
-                        <path
-                            d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
-                        </path>
+                    <svg class="cs-icon cs-icon--online-mp" viewBox="0 0 24 24" width="48" height="48" fill="none"
+                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <g class="cs-online-globe">
+                            <circle class="cs-online-outline" cx="12" cy="12" r="10"></circle>
+                            <line class="cs-online-equator" x1="2" y1="12" x2="22" y2="12"></line>
+                            <path class="cs-online-meridian"
+                                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
+                            </path>
+                        </g>
+                        <ellipse class="cs-online-orbit" pathLength="1" cx="12" cy="12" rx="8.4" ry="3.1"
+                            transform="rotate(-26 12 12)"></ellipse>
+                        <circle class="cs-online-packet" cx="19.2" cy="8.1" r="1" fill="currentColor" stroke="none">
+                        </circle>
                     </svg>
                 </div>
                 <h2 class="mode-card-title">Online MP</h2>
@@ -1399,11 +1449,15 @@
 
             <div class="game-mode-card" data-mode="serenity" id="serenity-card-btn" tabindex="0">
                 <div class="mode-card-icon">
-                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 2.5c0 0-4 5.5-4 9.5 0 2.5 1.5 4.5 4 4.5 2.5 0 4-2 4-4.5 0-4-4-9.5-4-9.5z" />
-                        <path d="M12 16.5c0 0-6-2-8-6 0-2.5 1.5-4.5 3.5-4.5 2 0 4.5 3.5 4.5 3.5" />
-                        <path d="M12 16.5c0 0 6-2 8-6 0-2.5-1.5-4.5-3.5-4.5-2 0-4.5 3.5-4.5 3.5" />
+                    <svg class="cs-icon cs-icon--serenity" viewBox="0 0 24 24" width="48" height="48" fill="none"
+                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle class="cs-serenity-breath-ring" cx="12" cy="12" r="8.7"></circle>
+                        <path class="cs-serenity-petal cs-serenity-petal--center"
+                            d="M12 2.5c0 0-4 5.5-4 9.5 0 2.5 1.5 4.5 4 4.5 2.5 0 4-2 4-4.5 0-4-4-9.5-4-9.5z" />
+                        <path class="cs-serenity-petal cs-serenity-petal--left"
+                            d="M12 16.5c0 0-6-2-8-6 0-2.5 1.5-4.5 3.5-4.5 2 0 4.5 3.5 4.5 3.5" />
+                        <path class="cs-serenity-petal cs-serenity-petal--right"
+                            d="M12 16.5c0 0 6-2 8-6 0-2.5-1.5-4.5-3.5-4.5-2 0-4.5 3.5-4.5 3.5" />
                     </svg>
                 </div>
                 <h2 class="mode-card-title">Serenity</h2>
@@ -1776,7 +1830,12 @@
                     <div
                         style="margin-top: 20px; padding: 15px; background: rgba(100, 200, 255, 0.1); border-radius: 8px; border-left: 3px solid #64c8ff;">
                         <p style="margin: 0; color: rgba(255, 255, 255, 0.9); font-size: 14px;">
-                            <strong>💡 Tip:</strong> Changes will apply immediately. Some settings like display mode
+                            <strong class="settings-tip-label">
+                                <svg class="cs-settings-icon settings-tip-icon" aria-hidden="true">
+                                    <use href="#cs-settings-icon-tip"></use>
+                                </svg>
+                                Tip:
+                            </strong> Changes will apply immediately. Some settings like display mode
                             may
                             require a moment to take effect.
                         </p>
@@ -1927,7 +1986,9 @@
                                 <h3 class="controls-nav-heading">Overview</h3>
                                 <div class="controls-subtabs">
                                     <button class="controls-subtab active" data-subtab="general">
-                                        <span class="controls-subtab-icon">⚙️</span>
+                                        <span class="controls-subtab-icon" aria-hidden="true">
+                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-gear"></use></svg>
+                                        </span>
                                         <span class="controls-subtab-label">General</span>
                                     </button>
                                 </div>
@@ -1936,15 +1997,21 @@
                                 <h3 class="controls-nav-heading">Keyboard</h3>
                                 <div class="controls-subtabs">
                                     <button class="controls-subtab" data-subtab="player1">
-                                        <span class="controls-subtab-icon">⌨️</span>
+                                        <span class="controls-subtab-icon" aria-hidden="true">
+                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-keyboard"></use></svg>
+                                        </span>
                                         <span class="controls-subtab-label">Player 1 Keys</span>
                                     </button>
                                     <button class="controls-subtab" data-subtab="player2">
-                                        <span class="controls-subtab-icon">⌨️</span>
+                                        <span class="controls-subtab-icon" aria-hidden="true">
+                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-keyboard"></use></svg>
+                                        </span>
                                         <span class="controls-subtab-label">Player 2 Keys</span>
                                     </button>
                                     <button class="controls-subtab" data-subtab="serenity-keyboard">
-                                        <span class="controls-subtab-icon">🧘</span>
+                                        <span class="controls-subtab-icon" aria-hidden="true">
+                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-lotus"></use></svg>
+                                        </span>
                                         <span class="controls-subtab-label">Serenity Mode Keys</span>
                                     </button>
                                 </div>
@@ -1953,31 +2020,41 @@
                                 <h3 class="controls-nav-heading">Gamepads</h3>
                                 <div class="controls-subtabs">
                                     <button class="controls-subtab" data-subtab="gamepad1">
-                                        <span class="controls-subtab-icon">🎮</span>
+                                        <span class="controls-subtab-icon" aria-hidden="true">
+                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-gamepad"></use></svg>
+                                        </span>
                                         <span class="controls-subtab-label">Player 1</span>
                                         <span class="controls-status-dot controller-1"
                                             data-controller-status="1"></span>
                                     </button>
                                     <button class="controls-subtab" data-subtab="gamepad2">
-                                        <span class="controls-subtab-icon">🎮</span>
+                                        <span class="controls-subtab-icon" aria-hidden="true">
+                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-gamepad"></use></svg>
+                                        </span>
                                         <span class="controls-subtab-label">Player 2</span>
                                         <span class="controls-status-dot controller-2"
                                             data-controller-status="2"></span>
                                     </button>
                                     <button class="controls-subtab" data-subtab="gamepad3">
-                                        <span class="controls-subtab-icon">🎮</span>
+                                        <span class="controls-subtab-icon" aria-hidden="true">
+                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-gamepad"></use></svg>
+                                        </span>
                                         <span class="controls-subtab-label">Player 3</span>
                                         <span class="controls-status-dot controller-3"
                                             data-controller-status="3"></span>
                                     </button>
                                     <button class="controls-subtab" data-subtab="gamepad4">
-                                        <span class="controls-subtab-icon">🎮</span>
+                                        <span class="controls-subtab-icon" aria-hidden="true">
+                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-gamepad"></use></svg>
+                                        </span>
                                         <span class="controls-subtab-label">Player 4</span>
                                         <span class="controls-status-dot controller-4"
                                             data-controller-status="4"></span>
                                     </button>
                                     <button class="controls-subtab" data-subtab="serenity-gamepad">
-                                        <span class="controls-subtab-icon">🧘</span>
+                                        <span class="controls-subtab-icon" aria-hidden="true">
+                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-lotus"></use></svg>
+                                        </span>
                                         <span class="controls-subtab-label">Serenity Mode</span>
 
                                     </button>
@@ -1993,7 +2070,12 @@
                         <div class="controls-content">
                             <div class="controls-subtab-content active" id="controls-general">
                                 <div class="controls-section">
-                                    <h4 class="controls-section-title">🎮 System-Wide Control Settings</h4>
+                                    <h4 class="controls-section-title">
+                                        <svg class="cs-settings-icon controls-title-icon" aria-hidden="true">
+                                            <use href="#cs-settings-icon-gamepad"></use>
+                                        </svg>
+                                        <span>System-Wide Control Settings</span>
+                                    </h4>
                                     <div class="settings-grid">
                                         <div class="setting">
                                             <label for="gamepad-enabled">Gamepad Support:</label>
@@ -2034,116 +2116,100 @@
                                     </p>
                                 </div>
                                 <div class="controls-info-box">
-                                    <strong>💡 Tip:</strong> Use Detect Controllers whenever you plug in a new pad
+                                    <strong>
+                                        <svg class="cs-settings-icon controls-tip-icon" aria-hidden="true">
+                                            <use href="#cs-settings-icon-tip"></use>
+                                        </svg>
+                                        Tip:
+                                    </strong> Use Detect Controllers whenever you plug in a new pad
                                     or
                                     wake a wireless controller to refresh status indicators.
                                 </div>
                             </div>
 
                             <div class="controls-subtab-content" id="controls-serenity-gamepad">
-                                <div class="serenity-controls-header">
-                                    <h3>🎮 Serenity Mode Gamepad Controls</h3>
-                                    <p class="controls-description">Relaxed navigation and playback tools tailored
-                                        for a
-                                        controller.</p>
-                                </div>
-
-                                <div class="controls-section">
-                                    <h4 class="controls-section-title">🌸 Core Actions (Always Available)</h4>
-                                    <div class="settings-grid">
-                                        <div class="setting">
-                                            <label>Toggle Serenity Hub:</label>
-                                            <div class="gamepad-display readonly">Y (Triangle)</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Toggle Breathing Guide:</label>
-                                            <div class="gamepad-display readonly">X (Square)</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Random Theme:</label>
-                                            <div class="gamepad-display readonly">L3 (L-Stick Click)</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Toggle Fullscreen:</label>
-                                            <div class="gamepad-display readonly">R3 (R-Stick Click)</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Exploration Mode (Infinity):</label>
-                                            <div class="gamepad-display readonly">Hold R3 + R-Stick</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Previous Music Track:</label>
-                                            <div class="gamepad-display readonly">LB (L1)</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Next Music Track:</label>
-                                            <div class="gamepad-display readonly">RB (R1)</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Volume Down:</label>
-                                            <div class="gamepad-display readonly">LT (L2)</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Volume Up:</label>
-                                            <div class="gamepad-display readonly">RT (R2)</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Toggle Button Hints:</label>
-                                            <div class="gamepad-display readonly">Select (Share)</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Open Settings Menu:</label>
-                                            <div class="gamepad-display readonly">Start (Options)</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Next Breathing Technique:</label>
-                                            <div class="gamepad-display readonly">D-Pad Down</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Previous Breathing Technique:</label>
-                                            <div class="gamepad-display readonly">D-Pad Up</div>
-                                        </div>
+                                <div class="settings-grid">
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-toggleHub">Toggle Serenity Hub:</label>
+                                        <div id="gamepad-serenity-toggleHub" class="gamepad-input key-input"
+                                            tabindex="0">Y (Triangle)</div>
                                     </div>
-                                </div>
-
-                                <div class="controls-section">
-                                    <h4 class="controls-section-title">🎯 Hub Navigation (When Hub is Open)</h4>
-                                    <div class="settings-grid">
-                                        <div class="setting">
-                                            <label>Confirm Selection:</label>
-                                            <div class="gamepad-display readonly">A (Cross)</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Close Hub:</label>
-                                            <div class="gamepad-display readonly">B (Circle)</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Switch Tab Left:</label>
-                                            <div class="gamepad-display readonly">D-Left / L-Stick Left</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Switch Tab Right:</label>
-                                            <div class="gamepad-display readonly">D-Right / L-Stick Right</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Navigate Up:</label>
-                                            <div class="gamepad-display readonly">D-Up / L-Stick Up</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Navigate Down:</label>
-                                            <div class="gamepad-display readonly">D-Down / L-Stick Down</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Scroll Content:</label>
-                                            <div class="gamepad-display readonly">R-Stick Up/Down</div>
-                                        </div>
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-toggleBreathing">Toggle Breathing Guide:</label>
+                                        <div id="gamepad-serenity-toggleBreathing" class="gamepad-input key-input"
+                                            tabindex="0">X (Square)</div>
                                     </div>
-                                </div>
-
-                                <div class="controls-info-box">
-                                    <strong>💡 Tip:</strong> Press <kbd>Select</kbd> while in Serenity Mode to see
-                                    an
-                                    overlay of all available controls!
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-randomTheme">Random Theme:</label>
+                                        <div id="gamepad-serenity-randomTheme" class="gamepad-input key-input"
+                                            tabindex="0">L3</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-toggleFullscreen">Toggle Fullscreen:</label>
+                                        <div id="gamepad-serenity-toggleFullscreen" class="gamepad-input key-input"
+                                            tabindex="0">R3</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-previousTrack">Previous Track / Tab Left:</label>
+                                        <div id="gamepad-serenity-previousTrack" class="gamepad-input key-input"
+                                            tabindex="0">LB (L1)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-nextTrack">Next Track / Tab Right:</label>
+                                        <div id="gamepad-serenity-nextTrack" class="gamepad-input key-input"
+                                            tabindex="0">RB (R1)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-volumeDown">Volume Down:</label>
+                                        <div id="gamepad-serenity-volumeDown" class="gamepad-input key-input"
+                                            tabindex="0">LT (L2)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-volumeUp">Volume Up:</label>
+                                        <div id="gamepad-serenity-volumeUp" class="gamepad-input key-input"
+                                            tabindex="0">RT (R2)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-toggleControlHints">Toggle Button Hints:</label>
+                                        <div id="gamepad-serenity-toggleControlHints" class="gamepad-input key-input"
+                                            tabindex="0">Select (Share)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-openSettings">Open Settings Menu:</label>
+                                        <div id="gamepad-serenity-openSettings" class="gamepad-input key-input"
+                                            tabindex="0">Start (Options)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-previousBreathingTechnique">Prev Technique /
+                                            Up:</label>
+                                        <div id="gamepad-serenity-previousBreathingTechnique"
+                                            class="gamepad-input key-input" tabindex="0">D-Up</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-nextBreathingTechnique">Next Technique / Down:</label>
+                                        <div id="gamepad-serenity-nextBreathingTechnique"
+                                            class="gamepad-input key-input" tabindex="0">D-Down</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-navigateLeft">Navigate Left:</label>
+                                        <div id="gamepad-serenity-navigateLeft" class="gamepad-input key-input"
+                                            tabindex="0">D-Left</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-navigateRight">Navigate Right:</label>
+                                        <div id="gamepad-serenity-navigateRight" class="gamepad-input key-input"
+                                            tabindex="0">D-Right</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-confirmSelection">Confirm Selection:</label>
+                                        <div id="gamepad-serenity-confirmSelection" class="gamepad-input key-input"
+                                            tabindex="0">A (Cross)</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="gamepad-serenity-closeHub">Close Hub:</label>
+                                        <div id="gamepad-serenity-closeHub" class="gamepad-input key-input"
+                                            tabindex="0">B (Circle)</div>
+                                    </div>
                                 </div>
 
                                 <div class="controls-subtab-actions">
@@ -2153,76 +2219,39 @@
                             </div>
 
                             <div class="controls-subtab-content" id="controls-serenity-keyboard">
-                                <div class="serenity-controls-header">
-                                    <h3>⌨️ Serenity Mode Keyboard Controls</h3>
-                                    <p class="controls-description">Keyboard shortcuts for maintaining calm flow and
-                                        quick adjustments.</p>
-                                </div>
-
-                                <div class="controls-section">
-                                    <h4 class="controls-section-title">🌸 Core Actions (Always Available)</h4>
-                                    <div class="settings-grid">
-                                        <div class="setting">
-                                            <label>Toggle Serenity Hub:</label>
-                                            <div class="gamepad-display readonly">H</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Toggle Breathing Guide:</label>
-                                            <div class="gamepad-display readonly">Space</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Cycle Breathing Technique:</label>
-                                            <div class="gamepad-display readonly">T</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Random Theme:</label>
-                                            <div class="gamepad-display readonly">B</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Toggle Fullscreen:</label>
-                                            <div class="gamepad-display readonly">F</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Toggle Control Hints:</label>
-                                            <div class="gamepad-display readonly">/ or ?</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Exit to Menu:</label>
-                                            <div class="gamepad-display readonly">ESC</div>
+                                <div class="settings-grid">
+                                    <div class="setting">
+                                        <label for="key-serenity-toggleHub">Toggle Serenity Hub:</label>
+                                        <div id="key-serenity-toggleHub" class="key-input" tabindex="0">h</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-serenity-toggleBreathing">Toggle Breathing Guide:</label>
+                                        <div id="key-serenity-toggleBreathing" class="key-input" tabindex="0">Space
                                         </div>
                                     </div>
-                                </div>
-
-                                <div class="controls-section">
-                                    <h4 class="controls-section-title">🎯 Hub Navigation (When Hub is Open)</h4>
-                                    <div class="settings-grid">
-                                        <div class="setting">
-                                            <label>Select Item:</label>
-                                            <div class="gamepad-display readonly">Click</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Close Hub:</label>
-                                            <div class="gamepad-display readonly">H or ESC</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Switch Tabs:</label>
-                                            <div class="gamepad-display readonly">Click Tab Button</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Scroll Content:</label>
-                                            <div class="gamepad-display readonly">Mouse Wheel</div>
-                                        </div>
-                                        <div class="setting">
-                                            <label>Navigate Lists:</label>
-                                            <div class="gamepad-display readonly">Mouse / Click</div>
+                                    <div class="setting">
+                                        <label for="key-serenity-cycleBreathingTechnique">Cycle Breathing
+                                            Technique:</label>
+                                        <div id="key-serenity-cycleBreathingTechnique" class="key-input" tabindex="0">t
                                         </div>
                                     </div>
-                                </div>
-
-                                <div class="controls-info-box">
-                                    <strong>💡 Tip:</strong> Press <kbd>/</kbd> while in Serenity Mode to see an
-                                    overlay
-                                    of all available keyboard controls!
+                                    <div class="setting">
+                                        <label for="key-serenity-randomTheme">Random Theme:</label>
+                                        <div id="key-serenity-randomTheme" class="key-input" tabindex="0">b</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-serenity-toggleFullscreen">Toggle Fullscreen:</label>
+                                        <div id="key-serenity-toggleFullscreen" class="key-input" tabindex="0">f</div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-serenity-toggleControlHints">Toggle Control Hints:</label>
+                                        <div id="key-serenity-toggleControlHints" class="key-input" tabindex="0">/
+                                        </div>
+                                    </div>
+                                    <div class="setting">
+                                        <label for="key-serenity-exitToMenu">Exit to Menu:</label>
+                                        <div id="key-serenity-exitToMenu" class="key-input" tabindex="0">Escape</div>
+                                    </div>
                                 </div>
 
                                 <div class="controls-subtab-actions">

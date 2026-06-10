@@ -11,6 +11,10 @@ import {
     createMountainPeaksEnvironment,
     updateMountainPeaksEnvironment,
 } from '../../src/rendering/odyssey/chapter-environments/mountain-peaks.js';
+import {
+    MOUNTAIN_SHADING,
+    resolveMountainTreatment,
+} from '../../src/rendering/odyssey/chapter-environments/shared/mountain-language.js';
 import { ODYSSEY_PATH_DATA } from '../../src/rendering/odyssey/path-data.js';
 
 describe('resolveChapterBlendState', () => {
@@ -67,25 +71,30 @@ describe('resolveChapterBlendState', () => {
 });
 
 describe('Chapter 3 to 4 ground continuity', () => {
-    it('builds a muted foothill bridge instead of the old flat snow-floor seam', () => {
+    it('builds a continuous foothill skirt (ramp) instead of the old flat snow-floor seam', () => {
         const environment = createSurfaceWorldEnvironment();
-        const bridgeUniforms = environment.userData.foothillBridge.material.uniforms;
-        const previewLayerOpacities = environment.userData.auroraPreview.children.map(
-            (mesh) => mesh.material.uniforms.uLayerOpacity.value,
-        );
+        const bridge = environment.userData.foothillBridge;
+        // WebGPU/TSL: the skirt's uniforms are TSL nodes tagged on userData.odysseyUniforms
+        // (NodeMaterials expose no `material.uniforms` map). The canonical mountain language
+        // bakes snow/rock/fog into the colorNode, so per-channel colour uniforms no longer
+        // exist per-mesh — what we assert is the unified contract: the skirt is present, is a
+        // depth-writing ramp, exposes the live snow-blend + opacity drivers, and the old flat
+        // snow-floor seam is gone.
+        const bridgeUniforms = bridge.userData.odysseyUniforms;
 
-        expect(environment.userData.foothillBridge).toBeTruthy();
+        expect(bridge).toBeTruthy();
         expect(environment.getObjectByName('foothill-bridge')).toBeTruthy();
         expect(environment.getObjectByName('mountain-snow-floor')).toBeFalsy();
         expect(environment.userData.auroraPreview?.children).toHaveLength(3);
-        expect(previewLayerOpacities).toEqual([0.35, 0.25, 0.18]);
         expect(bridgeUniforms.uSnowBlend).toBeTruthy();
-        expect(environment.userData.foothillBridge.material.depthWrite).toBe(true);
-        expect(bridgeUniforms.uGrassColor.value.getHex()).toBe(0x5f8a58);
-        expect(bridgeUniforms.uTundraColor.value.getHex()).toBe(0x7b7468);
-        expect(bridgeUniforms.uSnowColor.value.getHex()).toBe(0xdce5ea);
-        expect(bridgeUniforms.uShadowColor.value.getHex()).toBe(0x5d6670);
-        expect(bridgeUniforms.uFogColor.value.getHex()).toBe(0xd9e3e7);
+        expect(typeof bridgeUniforms.uSnowBlend.value).toBe('number');
+        expect(bridgeUniforms.uOpacity).toBeTruthy();
+        expect(bridge.material.depthWrite).toBe(true);
+
+        // GATE THE LEAK: the alpine pieces (distant range + skirt) are tracked separately so
+        // they can be ramped in only on the Surface→Mountains approach (never in Deep Ocean).
+        expect(environment.userData.alpineElements).toContain(bridge);
+        expect(environment.userData.alpineOpacityUniformTargets.length).toBeGreaterThan(0);
     });
 
     it('keeps Chapter 4 grounded before the alpine look fully takes over', () => {
@@ -97,28 +106,36 @@ describe('Chapter 3 to 4 ground continuity', () => {
         const fullAnchors = environment.userData.aurora.children
             .slice(0, 3)
             .map((mesh) => mesh.position.toArray());
-        const mainPeakUniforms = environment.userData.mainPeaks.children[0].material.uniforms;
-        const apronUniforms = environment.userData.foothillApron.children[0].material.uniforms;
+        // WebGPU/TSL + ONE mountain language: per-channel colour uniforms are baked into the
+        // colorNode from the canonical treatment (shared/mountain-language.js), so meshes no
+        // longer expose `material.uniforms.uSnowColor` etc. We assert the unified contract:
+        // both the hero peaks and the foothill apron resolve from the SAME palette (heroes on
+        // the cool pole, apron pulled toward neutral with a higher snow line), and each mesh
+        // still carries the live transition/opacity/snow-blend drivers on userData.tslUniforms.
+        const mainPeakUniforms = environment.userData.mainPeaks.children[0].userData.tslUniforms;
+        const apronUniforms = environment.userData.foothillApron.children[0].userData.tslUniforms;
+        const heroTreatment = resolveMountainTreatment({ coolTemp: 1.0 });
+        const apronTreatment = resolveMountainTreatment({
+            coolTemp: 0.72,
+            snowLine: MOUNTAIN_SHADING.snowLineFoothill,
+        });
 
         expect(environment.userData.foothillApron?.children).toHaveLength(3);
         expect(apronZ).toEqual([-600, -860, -710]);
         expect(fullAnchors).toEqual(previewAnchors);
-        expect(mainPeakUniforms.uSnowColor.value.getHex()).toBe(0xc7d6e0);
-        expect(mainPeakUniforms.uSnowColorWarm.value.getHex()).toBe(0xbfc9d3);
-        expect(mainPeakUniforms.uRockColor.value.getHex()).toBe(0x465463);
-        expect(mainPeakUniforms.uRockColorWarm.value.getHex()).toBe(0x667789);
-        expect(mainPeakUniforms.uFogColor.value.getHex()).toBe(0x314252);
-        expect(mainPeakUniforms.uFogColorWarm.value.getHex()).toBe(0x91adc2);
-        expect(mainPeakUniforms.uSnowLine.value).toBe(0.5);
-        expect(mainPeakUniforms.uRimColor.value.getHex()).toBe(0x5f8098);
-        expect(mainPeakUniforms.uRimPower.value).toBe(4.8);
-        expect(mainPeakUniforms.uBaseMistStrength.value).toBe(0.45);
-        expect(mainPeakUniforms.uBaseFadeStart.value).toBe(0.02);
-        expect(mainPeakUniforms.uBaseFadeEnd.value).toBe(0.1);
-        expect(apronUniforms.uSnowLine.value).toBe(0.7);
-        expect(apronUniforms.uBaseMistStrength.value).toBe(0.22);
-        expect(apronUniforms.uBaseFadeStart.value).toBe(0.08);
-        expect(apronUniforms.uBaseFadeEnd.value).toBe(0.22);
+        // Hero peaks ride the cool pole; the apron pulls toward neutral grey-blue (its rock is
+        // warmer/greyer — higher red channel — than the saturated cool hero rock).
+        expect(heroTreatment.snowLine).toBe(MOUNTAIN_SHADING.snowLine);
+        expect(apronTreatment.snowLine).toBe(MOUNTAIN_SHADING.snowLineFoothill);
+        expect(apronTreatment.snowLine).toBeGreaterThan(heroTreatment.snowLine);
+        expect(Math.floor(apronTreatment.rock / 65536) % 256)
+            .toBeGreaterThan(Math.floor(heroTreatment.rock / 65536) % 256);
+        // Each peak/apron mesh exposes the live drivers (transition + opacity + snow blend).
+        expect(mainPeakUniforms.uTransition).toBeTruthy();
+        expect(mainPeakUniforms.uOpacity).toBeTruthy();
+        expect(mainPeakUniforms.uSnowBlend).toBeTruthy();
+        expect(apronUniforms.uTransition).toBeTruthy();
+        expect(apronUniforms.uOpacity).toBeTruthy();
 
         camera.position.y = environment.userData.yStart;
         updateMountainPeaksEnvironment(environment, 1 / 60, 0, camera, 0.352);

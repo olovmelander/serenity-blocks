@@ -5,6 +5,7 @@
  */
 
 import { processAutoDrop } from '../game.js';
+import { decrementBlindTimers } from '../blind.js';
 
 /**
  * Unified game loop manager for multiplayer
@@ -158,6 +159,20 @@ export class UnifiedMultiplayerLoop {
         for (let i = 0; i < this.players.length; i++) {
             const player = this.players[i];
             const { state } = player;
+
+            // Skip if game is over or player is explicitly dead
+            if (state.isGameOver === true || state.isAlive === false) {
+                continue;
+            }
+
+            // Tick down active blind blackout timers (delta is in ms, we need seconds)
+            decrementBlindTimers(state, delta / 1000);
+
+            // Handle hit-stop decrement and freeze
+            if (state.hitStopRemaining > 0) {
+                state.hitStopRemaining = Math.max(0, state.hitStopRemaining - delta);
+                continue;
+            }
 
             // Skip if player is processing physics or has no current piece
             if (state.isProcessingPhysics || !state.currentPiece) {

@@ -758,6 +758,23 @@ export class GarbageQueue {
         return blinds;
     }
 
+    /**
+     * Drain any leading blind / full_blind entries. Unlike takePendingBlindEntries
+     * (which only matches 'blind'), this also takes 'full_blind' so a blind attack
+     * at the head of the queue is consumed and no longer blocks the line burst
+     * behind it. Returns the drained entries (each still carries its `duration`).
+     */
+    takePendingBlindBurst() {
+        const blinds = [];
+        while (
+            this.entries.length > 0
+            && (this.entries[0].type === 'blind' || this.entries[0].type === 'full_blind')
+        ) {
+            blinds.push(this.entries.shift());
+        }
+        return blinds;
+    }
+
     dequeueLineBurst() {
         if (this.entries.length === 0) {
             return [];

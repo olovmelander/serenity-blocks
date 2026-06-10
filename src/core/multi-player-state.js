@@ -47,6 +47,15 @@ export const PLAYER_COLORS = [
 ];
 
 /**
+ * Team colors are the SAME palette indexed by team id: Team A=0 Blue, B=1 Red,
+ * C=2 Green, D=3 Amber. Exported under a team-centric name so the local match
+ * config modal and the engine share ONE source of truth — when two players are
+ * on the same team they resolve to the same color object, and the setup card,
+ * board border, HUD dot and garbage all align by construction.
+ */
+export const TEAM_COLORS = PLAYER_COLORS;
+
+/**
  * Multi-player game state that manages 2-4 players
  */
 export class MultiPlayerState {
@@ -458,21 +467,14 @@ export class MultiPlayerState {
      * Assign player colors based on match configuration
      */
     _assignPlayerColors() {
-        if (this.matchConfig?.isTeamMode) {
-            const teamColors = [PLAYER_COLORS[0], PLAYER_COLORS[1]];
-            this.playerColors = this.players.map((_, index) => {
-                const teamId = this.matchConfig?.playerTeams?.[index];
-                const resolvedTeamId = teamId === 0 || teamId === 1
-                    ? teamId
-                    : index % teamColors.length;
-                return teamColors[resolvedTeamId] || teamColors[0];
-            });
-            return;
-        }
-
-        this.playerColors = this.players.map((_, index) => (
-            PLAYER_COLORS[index % PLAYER_COLORS.length] || PLAYER_COLORS[0]
-        ));
+        // Color is always team-driven. Each player's team defaults to its own
+        // index (P1=A, P2=B, P3=C, P4=D), so an all-distinct config reproduces
+        // the classic per-player FFA colors with zero regression; players who
+        // share a team resolve to the same color object.
+        this.playerColors = this.players.map((_, index) => {
+            const teamId = this.matchConfig?.playerTeams?.[index] ?? index;
+            return TEAM_COLORS[teamId % TEAM_COLORS.length] || TEAM_COLORS[0];
+        });
     }
 
     /**
@@ -653,13 +655,12 @@ export class MultiPlayerState {
             return;
         }
 
-        // Get attacker's color for garbage blocks
+        // Get attacker's color for garbage blocks. The garbage cell is stamped
+        // with the attacker's (team) color so it renders in that color on the
+        // victim board; the team field uses the raw team id (no 2-team clamp).
         const attackerColor = this.getPlayerColor(playerIndex);
-        const teamId = this.matchConfig?.isTeamMode
-            ? this.matchConfig?.playerTeams?.[playerIndex]
-            : null;
         const resolvedTeamId = this.matchConfig?.isTeamMode
-            ? (teamId === 0 || teamId === 1 ? teamId : playerIndex % 2)
+            ? (this.matchConfig?.playerTeams?.[playerIndex] ?? playerIndex)
             : null;
 
         const context = {
@@ -710,12 +711,14 @@ export class MultiPlayerState {
                 if (entry.type === 'full_blind') {
                     targetQueue.enqueue({
                         type: 'full_blind',
+                        duration: entry.duration,
                         sourcePlayerId: playerIndex,
                         attackId,
                     });
                 } else if (entry.type === 'blind') {
                     targetQueue.enqueue({
                         type: 'blind',
+                        duration: entry.duration,
                         sourcePlayerId: playerIndex,
                         attackId,
                     });
@@ -935,7 +938,7 @@ export class MultiPlayerState {
      */
     endMatchByTeam(teamId) {
         this.isGameOver = true;
-        this.winner = `Team ${teamId === 0 ? 'A' : 'B'}`;
+        this.winner = `Team ${String.fromCharCode(65 + teamId)}`;
         console.log(`[MultiPlayerState] 🏆 ${this.winner} wins the match!`);
     }
 

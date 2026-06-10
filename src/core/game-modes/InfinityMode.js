@@ -374,6 +374,7 @@ export class InfinityMode extends BaseGameMode {
             const origRotate = this._originalRotate;
 
             window.move = (dir) => {
+                if (this.gameState?.hitStopRemaining > 0) return false;
                 const result = origMove?.(dir);
                 if (juice && !juice.disabled) {
                     juice.nudge(dir * 1.5, 0);
@@ -383,6 +384,7 @@ export class InfinityMode extends BaseGameMode {
             };
 
             window.rotate = (dir) => {
+                if (this.gameState?.hitStopRemaining > 0) return;
                 const result = origRotate?.(dir);
                 if (juice && !juice.disabled) {
                     juice.tilt(dir === 'left' ? -0.3 : 0.3);
@@ -880,12 +882,13 @@ export class InfinityMode extends BaseGameMode {
             onRotate: () => this.deps.soundManager.sfxPlayer.playRotate(),
             onLineClear: (lineCount, ...rest) => {
                 const clearedRows = Array.isArray(rest[2]) ? rest[2] : [];
+                const cascadeCount = rest[3] ?? 1;
                 // Play sound effects
-                this.deps.soundManager.sfxPlayer.playLineClear();
+                this.deps.soundManager.sfxPlayer.playLineClear(cascadeCount);
 
                 // Emit event for theme reactions
                 console.log('[Infinity] Emitting LINE_CLEAR event, count:', lineCount);
-                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount, clearedRows });
+                eventBus.emit(EVENTS.LINE_CLEAR, { lineCount, clearedRows, cascadeCount });
 
                 // Track combo stats for infinity mode
                 if (this.gameState.infinityStats && this.gameState.comboState) {
@@ -905,10 +908,40 @@ export class InfinityMode extends BaseGameMode {
                     console.log(`[Infinity] Line clear: depth=${comboDepth}, complexity=${comboComplexity}, maxDepth=${this.gameState.infinityStats.maxComboDepth}, maxComplexity=${this.gameState.infinityStats.maxComboComplexity}`);
                 }
             },
+            onTSpin: (lineCount) => {
+                eventBus.emit(EVENTS.TSPIN, { lineCount, source: 'infinity' });
+                this.deps.soundManager.sfxPlayer.playTSpin?.();
+                const boardScene = this._getBoardScene();
+                if (boardScene?.sharedEffects?.playTSpinEffect) {
+                    boardScene.sharedEffects.playTSpinEffect(lineCount);
+                }
+            },
+            onB2B: () => {
+                eventBus.emit(EVENTS.B2B, { active: true, source: 'infinity' });
+                this.deps.soundManager.sfxPlayer.playB2B?.();
+                const boardScene = this._getBoardScene();
+                if (boardScene?.sharedEffects?.playB2BChange) {
+                    boardScene.sharedEffects.playB2BChange(true);
+                }
+            },
+            onPerfectClear: (depth, perfectClearBonus) => {
+                eventBus.emit(EVENTS.PERFECT_CLEAR, { depth, perfectClearBonus, source: 'infinity' });
+                this.deps.soundManager.sfxPlayer.playPerfectClear?.();
+                const boardScene = this._getBoardScene();
+                if (boardScene?.sharedEffects?.playPerfectClear) {
+                    boardScene.sharedEffects.playPerfectClear(depth);
+                }
+            },
             onLevelUp: () => {
                 // Level up disabled in infinity mode, but keep callback for compatibility
             },
             onHardDrop: (dropData) => {
+                const settings = this.deps.settingsManager?.get() || {};
+                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                if (!prefersReducedMotion && this.gameState) {
+                    this.gameState.hitStopRemaining = Math.max(this.gameState.hitStopRemaining || 0, 30);
+                }
+
                 this.lastDropWasHard = true;
                 this.suppressFollowUntilLock = true;
 
@@ -991,6 +1024,22 @@ export class InfinityMode extends BaseGameMode {
             },
             // Line clear impact (camera shake and particles)
             onLineClearImpact: (lineCount, _cascadeCount) => {
+                const settings = this.deps.settingsManager?.get() || {};
+                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                if (!prefersReducedMotion && this.gameState) {
+                    const boardScene = this._getBoardScene();
+                    let hitStop = 0;
+                    if (boardScene?.sharedEffects) {
+                        const tier = boardScene.sharedEffects.getClearTier(lineCount);
+                        hitStop = tier?.hitStop || 0;
+                    } else if (lineCount >= 4) {
+                        hitStop = 70;
+                    }
+                    if (hitStop > 0) {
+                        this.gameState.hitStopRemaining = hitStop;
+                    }
+                }
+
                 const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.playLineClearImpact) {
                     boardScene.playLineClearImpact(lineCount);
@@ -1060,6 +1109,20 @@ export class InfinityMode extends BaseGameMode {
                 // Reset hard drop tracking flags after handling the lock event
                 this.lastDropWasHard = false;
                 this.suppressFollowUntilLock = false;
+            },
+            onPerfectClear: (depth, perfectClearBonus) => {
+                const settings = this.deps.settingsManager?.get() || {};
+                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                if (!prefersReducedMotion && this.gameState) {
+                    this.gameState.hitStopRemaining = 110;
+                }
+
+                eventBus.emit(EVENTS.PERFECT_CLEAR, { depth, perfectClearBonus });
+
+                const boardScene = this._getBoardScene();
+                if (boardScene?.sharedEffects?.playPerfectClear) {
+                    boardScene.sharedEffects.playPerfectClear(depth);
+                }
             },
             // Update camera during each gravity step to follow falling blocks
             onGravityStep: () => {
@@ -1417,7 +1480,7 @@ export class InfinityMode extends BaseGameMode {
 
         const { cameraSettings } = this.boardScene;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
-        const board = this.gameState.board;
+        const { board } = this.gameState;
         const maxCameraRow = Math.max(0, board.length - visibleRows);
         const { currentPiece } = this.gameState;
 

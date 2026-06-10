@@ -5,7 +5,7 @@
  * Supports follow mode, free mode, and focused node viewing.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import {
     ODYSSEY_ACTS,
@@ -23,6 +23,218 @@ const ACT_TRAVEL_SPEEDS = Object.freeze({
     [ODYSSEY_ACTS.BEYOND]: 4.2,
     [ODYSSEY_ACTS.TRANSCENDENCE]: 7.0,
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UNIT A7-CAMERA — Per-chapter framing overrides (data-driven, easy to tweak)
+//
+// All biases are expressed in the camera's PATH-FRAME basis so they ride the
+// spline cleanly regardless of world orientation:
+//   • forward  → along the travel tangent (+ pushes the look target down-path)
+//   • right    → path "right" (rule-of-thirds yaw; + biases toward screen-right)
+//   • up       → path "up"/gravity-blended normal (+ raises the look target)
+// Camera-position nudges (camRight / camUp / camForward) reframe the eye itself so
+// the hero / set piece sits in frame instead of the void. Keep heroes off
+// dead-centre (rule-of-thirds) and lerp between chapters via FRAMING_BLEND_RATE.
+//
+// Defaults (all zero) preserve the legacy framing for any chapter not listed.
+// ═══════════════════════════════════════════════════════════════════════════════
+const DEFAULT_CHAPTER_FRAMING = Object.freeze({
+    // Look-target bias in path-frame units.
+    lookForward: 0,
+    lookRight: 0,
+    lookUp: 0,
+    // Eye/position bias in path-frame units.
+    camRight: 0,
+    camUp: 0,
+    camForward: 0,
+    // Earth-Core descent: scales the legacy straight-down look offset
+    // (0 = forward-looking, 1 = original top-down). Only chapter 1 uses this.
+    downLookScale: 1,
+});
+
+const CHAPTER_FRAMING_OVERRIDES = Object.freeze({
+    // 1 — Earth Core (origin): kill the top-down lava shaft. Drop the downward
+    // look to a low 3/4 "descending into the core" angle, raise the look target,
+    // and push the eye up + back a touch so the magma horizon and charred crust
+    // read ahead instead of a vertical well over void.
+    1: Object.freeze({
+        // Strengthened from the first pass (still read too top-down on capture):
+        // near-eliminate the downward look and lean the aim forward + up so the
+        // magma-horizon band (added in the Earth Core set-piece pass) reads ahead.
+        downLookScale: 0.26,
+        lookForward: 6.0,
+        lookUp: 2.0,
+        camUp: 3.4,
+        camForward: -2.2,
+    }),
+    // 2 — Deep Ocean (origin) 🏆 FLAGSHIP: REVEAL the true vertical so the dive
+    // reads bright caustic ceiling above -> teal mid -> indigo abyss below. The
+    // STATIC entry below is the mid-act baseline (used to seed _activeFraming and as
+    // the resolveChapterFraming fallback); the live three-act arc (early tilt UP,
+    // mid level-to-leviathan biased left, late tilt DOWN) is applied per in-chapter
+    // progress in resolveChapter2Framing()/updateChapterFraming() so a static camera
+    // table can still stage a vertical reveal across the chapter.
+    2: Object.freeze({
+        lookRight: -4.0,
+        lookUp: 1.0,
+    }),
+    // 3 — Surface (living): the Great Tree HERO landmark sits off the LEFT of the path
+    // (~x=40 from the path, biased -X in the env). Small lookAt bias toward it at the
+    // hero beat so the eye returns to the landmark (mirrors BH singularity / Urban
+    // spire). Kept gentle — the act stays open and forward; the tree is the anchor, not
+    // a hard re-aim. The live hero-beat strengthening rides resolveChapter3Framing().
+    3: Object.freeze({
+        lookForward: 2.0,
+        lookRight: -1.6,
+        lookUp: 1.2,
+    }),
+    // 4 — Mountains (living): favour the three-peak "V" with the path leading up
+    // to the node. Slightly lower eye + look up the path toward the summit.
+    4: Object.freeze({
+        lookForward: 3.0,
+        lookUp: 3.4,
+        camUp: -1.6,
+        camForward: -1.0,
+    }),
+    // 5 — Sky (beyond): make the on-camera Mie SUN the hero. Aim UP-and-RIGHT so the
+    // baked sun (sky-drift exposes group.userData.uniforms.uSunDir / SKY_DRIFT_SUN_DIR,
+    // realigned to read on this aim) sits upper-right of frame, with the cool aurora
+    // curtain arching the upper-left. Lift the eye so the bright/hazy cloud cathedral
+    // opens above the horizon haze band (open BEYOND beat — no down-look).
+    5: Object.freeze({
+        lookUp: 3.0,
+        lookRight: 2.0,
+        camUp: 1.5,
+    }),
+    // 6 — Space (beyond): hero gas giant sits up-and-left of the dead-ahead black
+    // hole. Bias yaw left + lift so the planet rides the left third of frame. The yaw
+    // bias was softened (-5.0 -> -3.2) so the galaxy/triad on the RIGHT third stops
+    // getting shoved off the right edge (the env marches it inward via uApproach).
+    6: Object.freeze({
+        lookRight: -3.2,
+        lookUp: 2.4,
+        camRight: 2.6,
+        camUp: 1.0,
+    }),
+    // 7 — Black Hole (transcendence): preserve the strong entry composition — keep
+    // the accretion disk biased off dead-centre (slightly low-right) for the run.
+    7: Object.freeze({
+        lookRight: 3.2,
+        lookUp: -1.4,
+        camRight: -1.6,
+        camUp: 1.4,
+    }),
+    // 8 — Urban Encore (transcendence): city spire / neon hero sits to one side;
+    // bias the aim toward it instead of the empty wet avenue ahead.
+    8: Object.freeze({
+        // Finale: the city canyon + megastructure spire are re-centred on the path
+        // (improve pass), so look forward + up the corridor toward them and pull the
+        // eye back/up for the reveal instead of biasing off to one empty side.
+        lookForward: 5.0,
+        lookRight: 1.5,
+        lookUp: 2.5,
+        camForward: -3.0,
+        camUp: 1.5,
+    }),
+});
+
+// Exponential blend rate (per second) for easing between per-chapter framings.
+const FRAMING_BLEND_RATE = 2.4;
+
+function resolveChapterFraming(chapterId) {
+    return {
+        ...DEFAULT_CHAPTER_FRAMING,
+        ...(CHAPTER_FRAMING_OVERRIDES[chapterId] || {}),
+    };
+}
+
+// ── Chapter 2 Deep Ocean — three-act vertical-reveal arc ──────────────────────────
+// The single most important Deep Ocean fix: with one level camera the dive only ever
+// sees the gradient's pale-teal mid-band. Stage a vertical reveal as a function of the
+// camera's progress WITHIN chapter 2:
+//   • EARLY  (0.0): tilt UP toward the shimmering surface / god-rays   = "light far above"
+//   • MID    (0.5): level toward the leviathan, biased to the left third (hero off-centre)
+//   • LATE   (1.0): tilt DOWN toward the glowing reef / indigo abyss   = the dive-out
+// Each keyframe is a full framing record (DEFAULT + overrides) so the lerp is total and
+// never leaks another chapter's bias. Smoothstep-crossfaded between the three acts; the
+// result still flows through the SAME _activeFraming seam-lerp path as every chapter.
+const CHAPTER_2_ARC = Object.freeze({
+    early: Object.freeze({
+        ...DEFAULT_CHAPTER_FRAMING,
+        lookUp: 6.0,
+        lookForward: 3.0,
+        camUp: 2.0,
+    }),
+    mid: Object.freeze({
+        ...DEFAULT_CHAPTER_FRAMING,
+        lookRight: -4.0,
+        lookUp: 1.0,
+    }),
+    late: Object.freeze({
+        ...DEFAULT_CHAPTER_FRAMING,
+        lookUp: -6.0,
+        camUp: -2.0,
+    }),
+});
+
+const CHAPTER_2_FRAMING_KEYS = Object.freeze([
+    'lookForward', 'lookRight', 'lookUp', 'camRight', 'camUp', 'camForward', 'downLookScale',
+]);
+
+/**
+ * Resolve the chapter-2 framing for an in-chapter progress (0=entry, 1=exit) by
+ * crossfading the early/mid/late acts. Returns a full framing record (no allocation of
+ * a new closure path — a plain object is fine; this runs once per frame only in ch2).
+ * @param {number} t in-chapter progress 0..1
+ * @returns {object} framing record
+ */
+function resolveChapter2Framing(t) {
+    const clamped = THREE.MathUtils.clamp(t, 0, 1);
+    // early -> mid over [0, 0.5], mid -> late over [0.5, 1].
+    const toMid = THREE.MathUtils.smoothstep(clamped, 0.0, 0.5);
+    const toLate = THREE.MathUtils.smoothstep(clamped, 0.5, 1.0);
+    const out = { ...DEFAULT_CHAPTER_FRAMING };
+    for (let i = 0; i < CHAPTER_2_FRAMING_KEYS.length; i += 1) {
+        const key = CHAPTER_2_FRAMING_KEYS[i];
+        const earlyToMid = THREE.MathUtils.lerp(CHAPTER_2_ARC.early[key], CHAPTER_2_ARC.mid[key], toMid);
+        out[key] = THREE.MathUtils.lerp(earlyToMid, CHAPTER_2_ARC.late[key], toLate);
+    }
+    return out;
+}
+
+// ── Chapter 3 Surface — hero-tree beat strengthening ──────────────────────────────
+// Chapter 3's static override (CHAPTER_FRAMING_OVERRIDES[3]) is a gentle baseline bias
+// toward the Great Tree landmark (off the left of the path). At the HERO BEAT (mid-
+// chapter, ~0.35..0.65) strengthen that lookAt bias so the eye clearly returns to the
+// tree, then relax it so the act-out craning toward the rising ridgeline (3->4) reads.
+// Returns a full framing record so the lerp is total (never leaks another chapter's bias).
+const CHAPTER_3_BASE = CHAPTER_FRAMING_OVERRIDES[3];
+function resolveChapter3Framing(t) {
+    // Hero-beat envelope: rises into the mid-chapter tree pass, eases back out.
+    const beat = THREE.MathUtils.smoothstep(t, 0.18, 0.42)
+        * (1 - THREE.MathUtils.smoothstep(t, 0.62, 0.86));
+    const out = { ...DEFAULT_CHAPTER_FRAMING, ...CHAPTER_3_BASE };
+    // Deepen the toward-the-tree yaw/pitch at the beat (additive on the baseline bias).
+    out.lookRight = (CHAPTER_3_BASE.lookRight ?? 0) - 2.2 * beat;
+    out.lookUp = (CHAPTER_3_BASE.lookUp ?? 0) + 0.8 * beat;
+    return out;
+}
+
+// ── Chapter 8 Urban — FINALE CRANE arc ────────────────────────────────────────────
+// Chapter 8's static override is the mid-act baseline. Over the LAST ~18% of the chapter
+// the camera CRANES up the igniting megastructure spire to reveal it firing past the top
+// of frame: camUp 1.5->6, lookUp 2.5->7, smoothstep-eased. The env exposes group.userData
+// .uReveal (ignition, driven by the urban env); this is the matching camera move. Returns
+// a full framing record so the lerp is total. Flows through the SAME _activeFraming path.
+const CHAPTER_8_BASE = CHAPTER_FRAMING_OVERRIDES[8];
+const CHAPTER_8_CRANE_START = 0.82; // last ~18%
+function resolveChapter8Framing(t) {
+    const crane = THREE.MathUtils.smoothstep(t, CHAPTER_8_CRANE_START, 1.0);
+    const out = { ...DEFAULT_CHAPTER_FRAMING, ...CHAPTER_8_BASE };
+    out.camUp = THREE.MathUtils.lerp(CHAPTER_8_BASE.camUp ?? 0, 6.0, crane);
+    out.lookUp = THREE.MathUtils.lerp(CHAPTER_8_BASE.lookUp ?? 0, 7.0, crane);
+    return out;
+}
 
 function buildChapterBoundaryPositions(chapterPositions) {
     const terminalTrimmed = chapterPositions[chapterPositions.length - 1] >= 1
@@ -90,7 +302,7 @@ export class OdysseyCameraController {
         this.seamBeat = null;
         this.vistaBeat = null;
         this.directorCamera = {
-            followDistance: 18,
+            followDistance: 28,
             fovBase: camera?.fov ?? 60,
             sway: 1,
             bob: 1,
@@ -105,9 +317,18 @@ export class OdysseyCameraController {
         this._frameNormal = new THREE.Vector3();
         this._frameRight = new THREE.Vector3();
 
+        // UNIT A7-CAMERA: smoothed per-chapter framing. `_activeFraming` is eased
+        // toward the resolved framing of the chapter under the camera so boundary
+        // changes never snap. Seeded from the start chapter so the first frame is
+        // already framed correctly.
+        this._activeFraming = resolveChapterFraming(this._getChapterAtProgress(this.currentPosition));
+        this._framingInitialized = false;
+
         // Configuration
         this.config = {
-            followOffset: new THREE.Vector3(0, -1.4, 18),
+            // Raised well ABOVE the path (was -1.4, slightly below) so the camera looks
+            // down on the journey at an elevated 3/4 angle; pulled back via followDistance.
+            followOffset: new THREE.Vector3(0, 7, 18),
             followLerpSpeed: 0.03,
             scrollSpeed: 0.15, // Reduced from 0.5
             focusDistance: 10,
@@ -710,6 +931,7 @@ export class OdysseyCameraController {
         // Update breathing time
         this.breatheTime += deltaTime;
         this.updateDirectorCamera(deltaTime);
+        this.updateChapterFraming(deltaTime);
 
         if (this.pathTravel?.active) {
             this.updatePathTravel();
@@ -784,10 +1006,14 @@ export class OdysseyCameraController {
         const cameraState = directorState?.camera;
         if (!cameraState) return;
 
+        // Ceiling raised 32 -> 44 so the per-act camera language can actually WIDEN to the
+        // BEYOND act (followDistance 42, the 4->5 "buoyant float") and the TRANSCENDENCE
+        // act (36, the 6->7 "gravitational inward pull"). The old 32 cap silently clamped
+        // both BEYOND/TRANSCENDENCE back to the LIVING framing — the act widen never read.
         this.directorCameraTarget.followDistance = THREE.MathUtils.clamp(
             cameraState.followDistance ?? this.directorCameraTarget.followDistance,
             10,
-            32,
+            44,
         );
         this.directorCameraTarget.fovBase = THREE.MathUtils.clamp(
             cameraState.fovBase ?? this.directorCameraTarget.fovBase,
@@ -814,6 +1040,61 @@ export class OdysseyCameraController {
         current.energy = THREE.MathUtils.lerp(current.energy, target.energy, lerp);
         current.beatPulse = THREE.MathUtils.lerp(current.beatPulse, target.beatPulse, lerp);
         this.cinematicConfig.baseFov = current.fovBase;
+    }
+
+    /**
+     * UNIT A7-CAMERA: ease the active per-chapter framing toward the chapter under
+     * the camera so set-piece / hero composition crossfades smoothly at seams.
+     * @param {number} deltaTime
+     */
+    /**
+     * In-chapter progress (0=chapter entry, 1=chapter exit) for the given chapter id
+     * at the current path progress. Used by the chapter-2 three-act vertical reveal.
+     * @param {number} chapterId
+     * @returns {number}
+     */
+    _getInChapterProgress(chapterId) {
+        const start = this.chapterPositions[chapterId - 1];
+        const end = this.chapterPositions[chapterId] ?? 1;
+        if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
+        return THREE.MathUtils.clamp((this.currentPosition - start) / (end - start), 0, 1);
+    }
+
+    updateChapterFraming(deltaTime) {
+        const chapterId = this._getChapterAtProgress(this.currentPosition);
+        // A few chapters stage a target framing that varies with the camera's progress
+        // THROUGH the chapter (a live act-arc), not a single static override:
+        //   • ch2 Deep Ocean — three-act vertical reveal (tilt up -> level -> tilt down)
+        //   • ch3 Surface     — hero-tree lookAt strengthening at the mid-chapter beat
+        //   • ch8 Urban        — finale CRANE up the igniting spire over the last ~18%
+        // Every other chapter uses its static override.
+        let target;
+        if (chapterId === 2) {
+            target = resolveChapter2Framing(this._getInChapterProgress(2));
+        } else if (chapterId === 3) {
+            target = resolveChapter3Framing(this._getInChapterProgress(3));
+        } else if (chapterId === 8) {
+            target = resolveChapter8Framing(this._getInChapterProgress(8));
+        } else {
+            target = resolveChapterFraming(chapterId);
+        }
+        const active = this._activeFraming;
+
+        // Snap on the very first frame (avoids a visible ease-in from defaults on load).
+        if (!this._framingInitialized) {
+            this._framingInitialized = true;
+            Object.assign(active, target);
+            return;
+        }
+
+        const lerp = 1 - Math.exp(-Math.max(0, deltaTime) * FRAMING_BLEND_RATE);
+        active.lookForward = THREE.MathUtils.lerp(active.lookForward, target.lookForward, lerp);
+        active.lookRight = THREE.MathUtils.lerp(active.lookRight, target.lookRight, lerp);
+        active.lookUp = THREE.MathUtils.lerp(active.lookUp, target.lookUp, lerp);
+        active.camRight = THREE.MathUtils.lerp(active.camRight, target.camRight, lerp);
+        active.camUp = THREE.MathUtils.lerp(active.camUp, target.camUp, lerp);
+        active.camForward = THREE.MathUtils.lerp(active.camForward, target.camForward, lerp);
+        active.downLookScale = THREE.MathUtils.lerp(active.downLookScale, target.downLookScale, lerp);
     }
 
     applyBaseFov(deltaTime) {
@@ -1212,12 +1493,16 @@ export class OdysseyCameraController {
         const vistaPullback = vistaWeight * (2.6 + this.directorCamera.followDistance * 0.08);
         const vistaLift = vistaWeight * 1.85;
 
+        // UNIT A7-CAMERA: smoothed per-chapter framing (path-frame biases).
+        const framing = this._activeFraming;
+
         const gravityBlend = THREE.MathUtils.clamp(1 - Math.abs(tangent.y) * 0.45, 0.35, 0.9);
         const cameraUp = normal.clone().lerp(PATH_FRAME_GRAVITY_UP, gravityBlend).normalize();
         const camPos = pathPoint.clone()
             .addScaledVector(tangent, -(this.directorCamera.followDistance + vistaPullback))
-            .addScaledVector(right, this.config.followOffset.x)
-            .addScaledVector(cameraUp, this.config.followOffset.y + vistaLift);
+            .addScaledVector(right, this.config.followOffset.x + framing.camRight)
+            .addScaledVector(cameraUp, this.config.followOffset.y + vistaLift + framing.camUp)
+            .addScaledVector(tangent, framing.camForward);
         if (forwardOffset > 0) {
             camPos.addScaledVector(tangent, forwardOffset * seamDirection);
         }
@@ -1237,6 +1522,14 @@ export class OdysseyCameraController {
         }
         const climbBias = THREE.MathUtils.clamp((tangent.y + 0.15) * 0.55, 0, 0.65);
         lookTarget.addScaledVector(cameraUp, climbBias * (2.5 + this.directorCamera.followDistance * 0.12));
+
+        // UNIT A7-CAMERA: per-chapter look-target re-aim (rule-of-thirds yaw/pitch
+        // + down-path bias) so the hero / set piece stays in frame, not the void.
+        lookTarget
+            .addScaledVector(tangent, framing.lookForward)
+            .addScaledVector(right, framing.lookRight)
+            .addScaledVector(cameraUp, framing.lookUp);
+
         lookTarget.add(this.getLookAtOffset(clampedPosition));
 
         return {
@@ -1280,7 +1573,12 @@ export class OdysseyCameraController {
             ? 1 - THREE.MathUtils.smoothstep(position, fadeStart, this.chapter1EndPosition)
             : 1;
 
-        return this.lookAtOffset.copy(CHAPTER_1_LOOK_DOWN).multiplyScalar(fade);
+        // UNIT A7-CAMERA: Earth Core no longer stares straight down a lava shaft.
+        // The smoothed framing's downLookScale collapses the legacy top-down offset
+        // to a gentle drop, leaving a low 3/4 forward "descending into the core" aim
+        // (the forward/up reframing is applied in computeFollowFrame).
+        const downScale = this._activeFraming?.downLookScale ?? 1;
+        return this.lookAtOffset.copy(CHAPTER_1_LOOK_DOWN).multiplyScalar(fade * downScale);
     }
 
     updateAnimation() {

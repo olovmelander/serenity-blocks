@@ -2031,7 +2031,9 @@ export class OdysseyMode extends BaseGameMode {
 
         const transitionResult = await this.journeyReturnTransition.play({
             departureAnchor,
-            arrivalAnchor: { x: 0.5, y: 0.5, radius: 0.14, onScreen: true },
+            arrivalAnchor: {
+                x: 0.5, y: 0.5, radius: 0.14, onScreen: true,
+            },
             palette,
             timings,
             qualityPreset,
@@ -2530,19 +2532,52 @@ export class OdysseyMode extends BaseGameMode {
             onRotate: () => this.deps.soundManager?.sfxPlayer?.playRotate(),
             onLineClear: (lineCount, ...rest) => {
                 const clearedRows = Array.isArray(rest[2]) ? rest[2] : [];
-                this.deps.soundManager?.sfxPlayer?.playLineClear();
+                const cascadeCount = rest[3] ?? 1;
+                this.deps.soundManager?.sfxPlayer?.playLineClear(cascadeCount);
                 // Metrics are tracked by hybridEngine.buildPhysicsCallbacks() wrapper
 
                 // Emit event
                 eventBus.emit(EVENTS.LINE_CLEAR, {
                     lineCount,
                     clearedRows,
+                    cascadeCount,
                     source: 'odyssey',
                     levelId: this.currentLevelId,
                 });
             },
+            onTSpin: (lineCount) => {
+                eventBus.emit(EVENTS.TSPIN, { lineCount, source: 'odyssey' });
+                this.deps.soundManager?.sfxPlayer?.playTSpin?.();
+                const boardScene = this._getBoardScene?.();
+                if (boardScene?.sharedEffects?.playTSpinEffect) {
+                    boardScene.sharedEffects.playTSpinEffect(lineCount);
+                }
+            },
+            onB2B: () => {
+                eventBus.emit(EVENTS.B2B, { active: true, source: 'odyssey' });
+                this.deps.soundManager?.sfxPlayer?.playB2B?.();
+                const boardScene = this._getBoardScene?.();
+                if (boardScene?.sharedEffects?.playB2BChange) {
+                    boardScene.sharedEffects.playB2BChange(true);
+                }
+            },
+            onPerfectClear: (depth, perfectClearBonus) => {
+                eventBus.emit(EVENTS.PERFECT_CLEAR, { depth, perfectClearBonus, source: 'odyssey' });
+                this.deps.soundManager?.sfxPlayer?.playPerfectClear?.();
+                const boardScene = this._getBoardScene?.();
+                if (boardScene?.sharedEffects?.playPerfectClear) {
+                    boardScene.sharedEffects.playPerfectClear(depth);
+                }
+                if (this.boardJuice) { this.boardJuice.dip(2); this.boardJuice.bounce(); }
+            },
             onLevelUp: () => this.deps.soundManager?.sfxPlayer?.playLevelUp(),
             onHardDrop: (dropData) => {
+                const settings = this.deps.settingsManager?.get() || {};
+                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                if (!prefersReducedMotion && this.gameState) {
+                    this.gameState.hitStopRemaining = Math.max(this.gameState.hitStopRemaining || 0, 30);
+                }
+
                 this.deps.soundManager?.sfxPlayer?.playDrop();
                 const boardScene = this._getBoardScene();
                 if (boardScene?.playHardDropEffect) {
@@ -2583,6 +2618,22 @@ export class OdysseyMode extends BaseGameMode {
                 }
             },
             onLineClearImpact: (lineCount, cascadeCount) => {
+                const settings = this.deps.settingsManager?.get() || {};
+                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                if (!prefersReducedMotion && this.gameState) {
+                    const boardScene = this._getBoardScene();
+                    let hitStop = 0;
+                    if (boardScene?.sharedEffects) {
+                        const tier = boardScene.sharedEffects.getClearTier(lineCount);
+                        hitStop = tier?.hitStop || 0;
+                    } else if (lineCount >= 4) {
+                        hitStop = 70;
+                    }
+                    if (hitStop > 0) {
+                        this.gameState.hitStopRemaining = hitStop;
+                    }
+                }
+
                 const boardScene = this._getBoardScene();
                 if (boardScene?.playLineClearImpact) {
                     boardScene.playLineClearImpact(lineCount, cascadeCount);
@@ -2610,6 +2661,20 @@ export class OdysseyMode extends BaseGameMode {
                 if (this.boardJuice) {
                     this.boardJuice.dip(1);
                     this.boardJuice.pulse(1.005);
+                }
+            },
+            onPerfectClear: (depth, perfectClearBonus) => {
+                const settings = this.deps.settingsManager?.get() || {};
+                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+                if (!prefersReducedMotion && this.gameState) {
+                    this.gameState.hitStopRemaining = 110;
+                }
+
+                eventBus.emit(EVENTS.PERFECT_CLEAR, { depth, perfectClearBonus });
+
+                const boardScene = this._getBoardScene();
+                if (boardScene?.sharedEffects?.playPerfectClear) {
+                    boardScene.sharedEffects.playPerfectClear(depth);
                 }
             },
             spawnPiece: () => {
@@ -3660,12 +3725,12 @@ export class OdysseyMode extends BaseGameMode {
     _formatObjective(primary) {
         if (!primary) return 'Complete the level';
         switch (primary.type) {
-            case 'lines': return `Clear ${primary.target} lines`;
-            case 'score': return `Score ${primary.target.toLocaleString()} points`;
-            case 'cascade': return `Trigger ${primary.target} cascades`;
-            case 'time': return `Clear in ${primary.target} seconds`;
-            case 'combo': return `Achieve ${primary.target}x combo`;
-            default: return `Complete: ${primary.type} (${primary.target})`;
+        case 'lines': return `Clear ${primary.target} lines`;
+        case 'score': return `Score ${primary.target.toLocaleString()} points`;
+        case 'cascade': return `Trigger ${primary.target} cascades`;
+        case 'time': return `Clear in ${primary.target} seconds`;
+        case 'combo': return `Achieve ${primary.target}x combo`;
+        default: return `Complete: ${primary.type} (${primary.target})`;
         }
     }
 
@@ -5148,37 +5213,37 @@ export class OdysseyMode extends BaseGameMode {
         let deltaRows = 0;
 
         switch (event.key) {
-            case 'ArrowUp':
-                deltaRows = -3;
-                event.preventDefault();
-                event.stopPropagation();
-                break;
-            case 'ArrowDown':
-                deltaRows = 3;
-                event.preventDefault();
-                event.stopPropagation();
-                break;
-            case 'ArrowLeft':
-            case 'ArrowRight':
-                event.preventDefault();
-                event.stopPropagation();
-                return;
-            case 'PageUp':
-                deltaRows = -10;
-                event.preventDefault();
-                event.stopPropagation();
-                break;
-            case 'PageDown':
-                deltaRows = 10;
-                event.preventDefault();
-                event.stopPropagation();
-                break;
-            case 'p':
-            case 'P':
-            case 'Escape':
-                return; // Let pause/settings propagate
-            default:
-                return;
+        case 'ArrowUp':
+            deltaRows = -3;
+            event.preventDefault();
+            event.stopPropagation();
+            break;
+        case 'ArrowDown':
+            deltaRows = 3;
+            event.preventDefault();
+            event.stopPropagation();
+            break;
+        case 'ArrowLeft':
+        case 'ArrowRight':
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        case 'PageUp':
+            deltaRows = -10;
+            event.preventDefault();
+            event.stopPropagation();
+            break;
+        case 'PageDown':
+            deltaRows = 10;
+            event.preventDefault();
+            event.stopPropagation();
+            break;
+        case 'p':
+        case 'P':
+        case 'Escape':
+            return; // Let pause/settings propagate
+        default:
+            return;
         }
 
         if (deltaRows !== 0 && this.boardScene.cameraSettings) {

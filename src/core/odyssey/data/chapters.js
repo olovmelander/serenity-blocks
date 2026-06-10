@@ -12,6 +12,13 @@ export const DEFAULT_BOARD_TRANSITION = Object.freeze({
     fxPreset: 'standard',
 });
 
+// NOTE: `arcBeats` and `targetDifficultyCurve` are documentation of design INTENT,
+// not the live driver. Actual gameplay difficulty is derived in difficulty-model.js
+// from the per-level `role`/`mechanicFocus`/`emotionalBeat` tags in levels.js
+// (LEVEL_PHASE2_TAGS). `arcBeats` must mirror those `role` tags — this is enforced by
+// the "chapter arcBeats stay in sync" assertion in odyssey-difficulty-balance.test.js.
+// `targetDifficultyCurve` is an indicative 1-10 sketch; the model computes the real
+// continuous scalar (metadata.difficultyModel.scalar) per level.
 export const CHAPTER_CONFIGS = [
     {
         id: 1,
@@ -217,8 +224,8 @@ export const CHAPTER_CONFIGS = [
         name: 'Space & Cosmic Expanse',
         subtitle: 'Push into the void',
         levelRange: [36, 44],
-        arcBeats: ['arrival', 'teach', 'reinforce', 'test', 'test', 'test', 'boss', 'test', 'boss'],
-        targetDifficultyCurve: [8, 8, 8, 9, 10, 9, 10, 9, 10],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'test', 'test', 'test', 'boss', 'release', 'boss'],
+        targetDifficultyCurve: [8, 8, 8, 9, 10, 9, 10, 7, 10],
 
         themes: {
             primary: ['galaxy', 'cosmic-noir', 'supernova', 'blood-moon', 'astral-weave', 'stellar-velocity', 'cosmic-chimes', 'black-hole'],

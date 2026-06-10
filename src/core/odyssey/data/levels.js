@@ -23,6 +23,8 @@
  * See ODYSSEY_MODE_IMPLEMENTATION_PLAN.md for full schema
  */
 
+import { deriveOdysseyLevelTuning } from './difficulty-model.js';
+
 // Phase 2 keeps the original authored list intact and composes the shipped campaign
 // from the base data plus the tuning overrides defined below.
 const BASE_LEVEL_CONFIGS = [
@@ -3974,6 +3976,7 @@ const BASE_LEVEL_CONFIGS = [
     },
 ];
 
+/* eslint-disable object-curly-newline -- Compact one-row pacing table. */
 const LEVEL_PHASE2_TAGS = Object.freeze({
     1: { role: 'arrival', mechanicFocus: 'lines', emotionalBeat: 'wonder', victoryLapPolicy: 'none' },
     2: { role: 'teach', mechanicFocus: 'cascade', emotionalBeat: 'wonder', victoryLapPolicy: 'none' },
@@ -4017,7 +4020,7 @@ const LEVEL_PHASE2_TAGS = Object.freeze({
     40: { role: 'test', mechanicFocus: 'score', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
     41: { role: 'test', mechanicFocus: 'sprint', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
     42: { role: 'boss', mechanicFocus: 'hybrid', emotionalBeat: 'panic', victoryLapPolicy: 'none' },
-    43: { role: 'test', mechanicFocus: 'lines', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
+    43: { role: 'release', mechanicFocus: 'lines', emotionalBeat: 'release', victoryLapPolicy: 'none' },
     44: { role: 'boss', mechanicFocus: 'cascade', emotionalBeat: 'transcendence', victoryLapPolicy: 'showcase' },
     45: { role: 'arrival', mechanicFocus: 'score', emotionalBeat: 'awe', victoryLapPolicy: 'none' },
     46: { role: 'reinforce', mechanicFocus: 'hybrid', emotionalBeat: 'flow', victoryLapPolicy: 'none' },
@@ -4031,10 +4034,15 @@ const LEVEL_PHASE2_TAGS = Object.freeze({
     54: { role: 'encore', mechanicFocus: 'hybrid', emotionalBeat: 'tension', victoryLapPolicy: 'none' },
     55: { role: 'encore', mechanicFocus: 'hybrid', emotionalBeat: 'transcendence', victoryLapPolicy: 'showcase' },
 });
+/* eslint-enable object-curly-newline */
 
 const LEVEL_PHASE2_OVERRIDES = Object.freeze({
     1: {
+        // Full triple authored so the derived "more lines" tiers don't outrank the
+        // hand-tuned time/quality tiers (keeps 1<=2<=3 monotonic on the lines axis).
         stars: {
+            one: { lines: 20 },
+            two: { lines: 20, time: 150 },
             three: { lines: 20, time: 120, bonuses: 1 },
         },
         metadata: {
@@ -4043,7 +4051,15 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
     },
     2: {
+        // First cascade teach: hold the gentle authored target (3) instead of the
+        // model's floor-rounded 4 so 1*/2*/3* stay monotonic.
+        victory: {
+            primary: {
+                target: 3,
+            },
+        },
         stars: {
+            one: { cascades: 3 },
             two: { cascades: 3, maxCascadeDepth: 2 },
             three: { cascades: 4, maxCascadeDepth: 3 },
         },
@@ -4052,7 +4068,15 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
     },
     3: {
+        // Cascade reinforce: tiers share the count (4) and escalate on chain depth.
+        victory: {
+            primary: {
+                target: 4,
+            },
+        },
         stars: {
+            one: { cascades: 4 },
+            two: { cascades: 4, maxCascadeDepth: 2 },
             three: { cascades: 4, maxCascadeDepth: 3 },
         },
         metadata: {
@@ -4061,7 +4085,14 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
     },
     5: {
         isChapterEnd: true,
+        victory: {
+            primary: {
+                target: 40,
+            },
+        },
         stars: {
+            one: { lines: 40 },
+            two: { lines: 40, cascades: 2 },
             three: { lines: 40, cascades: 3, bonuses: 1 },
         },
         metadata: {
@@ -4193,15 +4224,15 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
     12: {
         mechanics: {
             speed: {
-                startLevel: 5,
+                startLevel: 3,
             },
             pieces: {
-                previewCount: 5,
+                previewCount: 6,
             },
         },
         victory: {
             primary: {
-                target: 40,
+                target: 32,
             },
             failure: {
                 type: 'top-out',
@@ -4215,14 +4246,14 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             active: [],
         },
         stars: {
-            one: { lines: 40 },
-            two: { lines: 40, time: 180 },
-            three: { lines: 40, time: 135, bonuses: 1 },
+            one: { lines: 32 },
+            two: { lines: 32, time: 190 },
+            three: { lines: 32, time: 145, bonuses: 1 },
         },
         metadata: {
             description: 'You break into daylight at the forest edge. This is a reset: breathe, stack cleanly, and enjoy the wider horizon.',
-            difficulty: 4,
-            estimatedTime: 170,
+            difficulty: 3,
+            estimatedTime: 160,
             tip: 'Use the gentler opener to rebuild rhythm before the chapter starts mixing mechanics again.',
         },
     },
@@ -4307,15 +4338,15 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         isChapterEnd: false,
         mechanics: {
             board: {
-                startingRows: 4,
+                startingRows: 2,
             },
             speed: {
-                startLevel: 7,
+                startLevel: 5,
             },
         },
         victory: {
             primary: {
-                target: 25000,
+                target: 22000,
             },
             failure: {
                 type: 'top-out',
@@ -4330,13 +4361,13 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             active: ['combo-multiplier'],
         },
         stars: {
-            one: { score: 25000 },
-            two: { score: 35000, cascades: 4 },
-            three: { score: 50000, cascades: 6, tetrises: 6 },
+            one: { score: 22000 },
+            two: { score: 30000, cascades: 3 },
+            three: { score: 42000, cascades: 5, tetrises: 5 },
         },
         metadata: {
             description: 'The foothills rise ahead, still touched by evening color. Build momentum before the real climb begins.',
-            difficulty: 6,
+            difficulty: 5,
             estimatedTime: 190,
             tip: 'Treat the opening stack as scaffolding. Clear it cleanly, then turn the board into safe score routes.',
         },
@@ -4416,12 +4447,12 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         isChapterEnd: false,
         mechanics: {
             speed: {
-                startLevel: 9,
+                startLevel: 7,
             },
         },
         victory: {
             primary: {
-                target: 38000,
+                target: 34000,
             },
             failure: {
                 type: 'top-out',
@@ -4436,13 +4467,13 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             active: ['gravity-cascade', 'combo-multiplier'],
         },
         stars: {
-            one: { score: 38000 },
-            two: { score: 52000, cascades: 8 },
-            three: { score: 70000, cascades: 10, tetrises: 8 },
+            one: { score: 34000 },
+            two: { score: 47000, cascades: 7 },
+            three: { score: 62000, cascades: 9, tetrises: 7 },
         },
         metadata: {
             description: 'The mountain finally falls away beneath you. Glide into open sky and learn the new floating rhythm.',
-            difficulty: 7,
+            difficulty: 6,
             estimatedTime: 220,
             tip: 'Use the extra height to smooth the board before you cash in on big score turns.',
         },
@@ -4591,26 +4622,30 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
     43: {
         mechanics: {
             speed: {
-                startLevel: 11,
+                startLevel: 8,
             },
             pieces: {
-                previewCount: 4,
+                previewCount: 5,
             },
         },
         victory: {
             primary: {
-                target: 60,
+                target: 42,
+            },
+            failure: {
+                type: 'top-out',
+                value: null,
             },
         },
         stars: {
-            one: { lines: 60 },
-            two: { lines: 60, time: 170 },
-            three: { lines: 60, time: 120, bonuses: 1 },
+            one: { lines: 42 },
+            two: { lines: 42, time: 190 },
+            three: { lines: 42, time: 135, bonuses: 1 },
         },
         metadata: {
-            difficulty: 9,
-            description: 'The gate to singularity strips the journey down to pure control. There is nowhere to hide sloppy play.',
-            tip: 'This level is cleaner, not easier. Every wasted move compounds by the end.',
+            difficulty: 7,
+            description: 'The gate to singularity opens into a rare pocket of quiet. Re-center before the final pull.',
+            tip: 'Use this release beat to lower the stack and rebuild a clean well before the chapter finale.',
         },
     },
     44: {
@@ -4638,8 +4673,66 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
     },
     48: {
+        mechanics: {
+            board: {
+                startingRows: 10,
+            },
+            speed: {
+                fixedDropInterval: 500,
+            },
+            pieces: {
+                previewCount: 4,
+            },
+        },
+        victory: {
+            primary: {
+                target: 22,
+            },
+            failure: {
+                type: 'top-out',
+                value: null,
+            },
+        },
+        modifiers: {
+            active: ['gravity-cascade', 'combo-multiplier'],
+        },
+        stars: {
+            one: { cascades: 22 },
+            two: { cascades: 24, maxCascadeDepth: 6 },
+            three: { cascades: 28, maxCascadeDepth: 8 },
+        },
         metadata: {
+            difficulty: 9,
             tip: 'Use the full height, but do not overbuild. The best storm boards are structured, not chaotic.',
+        },
+    },
+    49: {
+        mechanics: {
+            speed: {
+                startLevel: 12,
+            },
+            pieces: {
+                previewCount: 3,
+            },
+        },
+        victory: {
+            primary: {
+                target: 60,
+            },
+            failure: {
+                type: 'time',
+                value: 180,
+            },
+        },
+        stars: {
+            one: { lines: 60 },
+            two: { lines: 60, tetrises: 10 },
+            three: { lines: 60, tetrises: 14, time: 115 },
+        },
+        metadata: {
+            difficulty: 9,
+            estimatedTime: 150,
+            tip: 'This is still a speed wall, but it is no longer a marathon. Compress the target with Tetrises and keep the stack low.',
         },
     },
     50: {
@@ -4649,6 +4742,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             },
             speed: {
                 startLevel: 11,
+                levelProgression: false,
                 fixedDropInterval: 500,
             },
             pieces: {
@@ -4676,6 +4770,57 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             difficulty: 8,
             estimatedTime: 130,
             tip: 'Do not race the board. Let each cascade finish before you commit to the next shape.',
+        },
+    },
+    51: {
+        mechanics: {
+            baseMode: 'infinity',
+            board: {
+                rows: 100,
+                startingRows: 30,
+            },
+            speed: {
+                startLevel: 12,
+                levelProgression: false,
+                fixedDropInterval: 500,
+            },
+            pieces: {
+                previewCount: 5,
+            },
+        },
+        victory: {
+            primary: {
+                type: 'score',
+                target: 250000,
+            },
+            failure: {
+                type: 'time',
+                value: 480,
+            },
+            bonuses: [
+                { type: 'max-cascade-depth', target: 10, description: 'Trigger a 10-chain cascade' },
+                { type: 'cascade', target: 30, description: 'Trigger 30 cascades' },
+                { type: 'tetris-count', target: 20, description: 'Clear 20 Tetrises' },
+                { type: 'combo', target: 18, description: 'Reach 18x combo' },
+            ],
+        },
+        modifiers: {
+            active: ['gravity-cascade', 'combo-multiplier'],
+        },
+        stars: {
+            one: { score: 250000 },
+            two: {
+                score: 350000, cascades: 25, maxCascadeDepth: 6,
+            },
+            three: {
+                score: 500000, cascades: 35, maxCascadeDepth: 10, combo: 18,
+            },
+        },
+        metadata: {
+            difficulty: 10,
+            estimatedTime: 420,
+            description: 'The final abstract challenge. Build epic towers on a 100-row board and trigger legendary cascades.',
+            tip: 'Use the full height of the board. The bigger the tower, the greater the cascade!',
         },
     },
     52: {
@@ -4708,8 +4853,12 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         stars: {
             one: { score: 160000 },
-            two: { score: 200000, cascades: 20, combo: 10 },
-            three: { score: 260000, cascades: 25, maxCascadeDepth: 7, combo: 12 },
+            two: {
+                score: 200000, cascades: 20, combo: 10,
+            },
+            three: {
+                score: 260000, cascades: 25, maxCascadeDepth: 7, combo: 12,
+            },
         },
     },
 });
@@ -4743,8 +4892,10 @@ function mergeConfig(baseConfig, overrideConfig) {
 }
 
 export const LEVEL_CONFIGS = BASE_LEVEL_CONFIGS.map((level) => {
-    const taggedLevel = mergeConfig(level, LEVEL_PHASE2_TAGS[level.id]);
-    return mergeConfig(taggedLevel, LEVEL_PHASE2_OVERRIDES[level.id]);
+    const tags = LEVEL_PHASE2_TAGS[level.id];
+    const taggedLevel = mergeConfig(level, tags);
+    const derivedLevel = mergeConfig(taggedLevel, deriveOdysseyLevelTuning(level.id, tags, level));
+    return mergeConfig(derivedLevel, LEVEL_PHASE2_OVERRIDES[level.id]);
 });
 
 // Helper functions for level access

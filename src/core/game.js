@@ -19,6 +19,7 @@ import { processPhysics } from './physics.js';
 import { piecePool } from '../utils/object-pool.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { createInfinityGrid } from './infinity-grid.js';
+import { createBlindTimers } from './blind.js';
 
 function resolveActiveTetrominoColor(shapeKey) {
     const defaultColor = COLORS[shapeKey] || '#808080';
@@ -109,11 +110,11 @@ function hasLockedCells(grid) {
     return false;
 }
 
-function cloneShape(shape) {
+export function cloneShape(shape) {
     return shape.map((row) => row.slice());
 }
 
-function rotateShapeMatrix(shape, dir = 'right') {
+export function rotateShapeMatrix(shape, dir = 'right') {
     if (dir === 'right') {
         return shape[0].map((_, i) => shape.map((row) => row[i]).reverse());
     }
@@ -123,16 +124,16 @@ function rotateShapeMatrix(shape, dir = 'right') {
     return shape.map((row) => row.slice().reverse()).reverse();
 }
 
-const ROTATION_STEP = {
+export const ROTATION_STEP = {
     right: 1,
     left: -1,
     flip: 2,
 };
 
-const ROTATION_NAMES = ['0', 'R', '2', 'L'];
-const LEGACY_WALL_KICKS = [[0, 0], [1, 0], [-1, 0], [2, 0], [-2, 0]];
+export const ROTATION_NAMES = ['0', 'R', '2', 'L'];
+export const LEGACY_WALL_KICKS = [[0, 0], [1, 0], [-1, 0], [2, 0], [-2, 0]];
 
-const JLSTZ_KICKS = {
+export const JLSTZ_KICKS = {
     '0>R': [[0, 0], [-1, 0], [-1, 1], [0, -2], [-1, -2]],
     'R>0': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
     'R>2': [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
@@ -143,7 +144,7 @@ const JLSTZ_KICKS = {
     '0>L': [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
 };
 
-const I_KICKS = {
+export const I_KICKS = {
     '0>R': [[0, 0], [-2, 0], [1, 0], [-2, -1], [1, 2]],
     'R>0': [[0, 0], [2, 0], [-1, 0], [2, 1], [-1, -2]],
     'R>2': [[0, 0], [-1, 0], [2, 0], [-1, 2], [2, -1]],
@@ -402,6 +403,8 @@ export class GameState {
         this.isProcessingPhysics = false;
         this.isStopped = false;
         this.isAlive = true; // For multiplayer: tracks if player is still in the round
+        this.lastMoveWasRotation = false;
+        this.b2bActive = false;
 
         // Victory Lap System (Odyssey Mode)
         this.goalComplete = false; // True when primary goal is met
@@ -452,10 +455,7 @@ export class GameState {
         this.comboState = createComboState();
 
         // Store ongoing blind timers for attacks that affect visibility
-        this.blindTimers = {
-            field: 0,
-            pending: 0,
-        };
+        this.blindTimers = createBlindTimers();
 
         // Deterministic sequence counter for outbound garbage attacks
         this.garbageAttackSequence = 0;
@@ -496,6 +496,8 @@ export class GameState {
         this.hitStopRemaining = 0;
         this.isProcessingPhysics = false;
         this.isAlive = true;
+        this.lastMoveWasRotation = false;
+        this.b2bActive = false;
         this.inputQueue = null;
         this.startTime = Date.now();
         this.boardCache = null;
@@ -512,10 +514,7 @@ export class GameState {
         }
         this.lastPlacedPieceX = [];
         this.comboState = createComboState();
-        this.blindTimers = {
-            field: 0,
-            pending: 0,
-        };
+        this.blindTimers = createBlindTimers();
         this.garbageAttackSequence = 0;
         this.handicap = 2;
         this.handicaps = {};
@@ -639,6 +638,7 @@ export function move(gameState, dir, playSoundCallback, addTrailCallback) {
         if (addTrailCallback) addTrailCallback(gameState.currentPiece);
 
         gameState.currentPiece.x += dir;
+        gameState.lastMoveWasRotation = false;
         if (playSoundCallback) playSoundCallback();
         invalidateGhostCache(gameState);
         maybeResetLockDelay(gameState, wasGrounded);
@@ -689,6 +689,7 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
                 if (playSoundCallback) playSoundCallback();
                 invalidateGhostCache(gameState);
                 maybeResetLockDelay(gameState, wasGrounded);
+                gameState.lastMoveWasRotation = true;
                 return true;
             }
         }
@@ -731,6 +732,7 @@ export function rotate(gameState, dir = 'right', playSoundCallback, addTrailCall
             if (playSoundCallback) playSoundCallback();
             invalidateGhostCache(gameState);
             maybeResetLockDelay(gameState, wasGrounded);
+            gameState.lastMoveWasRotation = true;
             return true;
         }
     }
@@ -774,6 +776,7 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks, options 
         gameState.currentPiece.y + 1,
     )) {
         gameState.currentPiece.y++;
+        gameState.lastMoveWasRotation = false;
         // Quadra: No points for soft drop - only line clears and time-based lock bonus
         if (!preserveDropCounter) {
             gameState.dropCounter = 0;
@@ -873,6 +876,9 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
         gameState.currentPiece.y++;
         distance++;
     }
+    if (distance > 0) {
+        gameState.lastMoveWasRotation = false;
+    }
     const endY = gameState.currentPiece.y;
 
     if (physicsCallbacks?.onHardDrop) {
@@ -963,6 +969,26 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     comboState.sourceColor = themedColor;
     comboState.sourcePiece = lockedPieceSnapshot.shapeKey;
     comboState.sequence = gameState.garbageAttackSequence++;
+    // T-spin 3-corner detection: must be a T-piece, last action must have been a rotation,
+    // and at least 3 of the 4 diagonal corners of the 3×3 bounding box must be filled.
+    comboState.tSpin = false;
+    if (lockedPieceSnapshot.shapeKey === 'T' && gameState.lastMoveWasRotation) {
+        const tx = lockedPieceSnapshot.x;
+        const ty = lockedPieceSnapshot.y;
+        const boardH = gameState.boardGrid?.length ?? (ROWS + HIDDEN_ROWS);
+        const corners = [[tx, ty], [tx + 2, ty], [tx, ty + 2], [tx + 2, ty + 2]];
+        let filledCorners = 0;
+        for (const [cx, cy] of corners) {
+            if (cx < 0 || cx >= COLS || cy < 0 || cy >= boardH) {
+                filledCorners++;
+            } else if (gameState.boardGrid[cy]?.[cx] !== null) {
+                filledCorners++;
+            }
+        }
+        if (filledCorners >= 3) {
+            comboState.tSpin = true;
+        }
+    }
     gameState.comboState = comboState;
 
     // Add piece to locked pieces with unique ID

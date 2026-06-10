@@ -92,6 +92,27 @@ runTest('Delta: Stats Change', () => {
     assertEquals(decoded.players[0].name, 'Player p1', 'Name preserved from baseline');
 });
 
+runTest('Delta: Blind Timers Change', () => {
+    const baseline = {
+        players: [createPlayer('p1', 100, 10)],
+        gamePhase: 'playing',
+        tick: 100
+    };
+    baseline.players[0].blindTimers = { field: 0, fieldMax: 0, pending: 0, pendingMax: 0 };
+
+    const current = JSON.parse(JSON.stringify(baseline));
+    current.tick = 101;
+    current.players[0].blindTimers = { field: 4.5, fieldMax: 6.0, pending: 0, pendingMax: 0 };
+
+    const buffer = encoder.encodeDeltaSnapshot(current, baseline);
+    console.log(`   Delta size (blind timers change): ${buffer.byteLength} bytes`);
+
+    const decoded = decoder.decodeDeltaSnapshot(buffer, baseline);
+    assert(decoded.players[0].blindTimers !== undefined, 'blindTimers decoded');
+    assertEquals(decoded.players[0].blindTimers.field, 4.5, 'field timer matched');
+    assertEquals(decoded.players[0].blindTimers.fieldMax, 6.0, 'fieldMax timer matched');
+});
+
 runTest('Delta: Grid Change', () => {
     const baseline = {
         players: [createPlayer('p1', 100, 10)],

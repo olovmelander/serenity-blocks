@@ -27,7 +27,7 @@ export default defineConfig({
     open: false,  // Don't auto-open browser (we're using Electron)
     host: true,
     watch: {
-      ignored: ['**/three_js_example_repo/**'],
+      ignored: ['**/three_js_example_repo/**', '**/artifacts/**'],
     },
   },
 

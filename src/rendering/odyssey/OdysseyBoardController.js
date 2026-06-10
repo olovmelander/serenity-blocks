@@ -5,21 +5,19 @@
  * Renders the 3D Odyssey path with themed level nodes.
  */
 
-import * as THREE from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import * as THREE from 'three/webgpu';
 import { OdysseyPathRenderer } from './OdysseyPathRenderer.js';
 import { LevelNodeManager } from './LevelNodeManager.js';
 import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
-import { PostProcessingStack } from './effects/PostProcessingStack.js';
+import { OdysseyTslPipeline } from './odyssey-post/odyssey-tsl-pipeline.js';
 import { OdysseyDirector } from './composition/OdysseyDirector.js';
 import { OdysseyAudioReactor } from './composition/OdysseyAudioReactor.js';
 import { OdysseyAtmosphere } from './composition/OdysseyAtmosphere.js';
+import { OdysseyCorridorField } from './composition/odyssey-corridor-field.js';
 import { OdysseyDebugOverlay, isOdysseyAAADebugEnabled } from './composition/odyssey-debug-overlay.js';
-import { OdysseyFallbackPipeline } from './odyssey-post/odyssey-post-fallback.js';
+import { OdysseyAdaptiveQuality } from './composition/OdysseyAdaptiveQuality.js';
 import { ChapterThresholdDirector, getOdysseyThresholdProfile } from './transitions/ChapterThresholdDirector.js';
 import { getChapterProfile } from './chapter-environments/shared/chapter-profile.js';
 import { resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
@@ -35,7 +33,20 @@ import {
     normalizeWheelDeltaToPixels,
     shouldCaptureWheelEvent,
 } from '../../utils/wheel-routing.js';
-import { computeScenePixelRatio } from '../../utils/desktop-performance-policy.js';
+import {
+    computeScenePixelRatio,
+    evaluateDynamicResolutionAdjustment,
+} from '../../utils/desktop-performance-policy.js';
+
+// Dynamic-resolution (DRS) tuning. The odyssey board pins a static pixel ratio at
+// init/resize; here we wire the existing frame-time policy so render scale sheds under
+// load and recovers when headroom returns. The policy itself enforces 6s-down/12s-up
+// cooldowns + a 0.5..1.25 clamp, so we only need a rolling frame-time window + a 1Hz
+// evaluation tick (NEVER per-frame — re-allocating the scene RT every frame can black-frame).
+const ODYSSEY_MAX_PIXEL_RATIO = 1.2; // QW3: lowered 1.5 -> 1.2; the heavy grade/grain masks it.
+const DRS_FRAME_WINDOW = 60; // rolling frames used for the p95/p99 estimate.
+const DRS_EVAL_INTERVAL_MS = 1000; // evaluate at ~1Hz (policy cooldowns gate actual changes).
+const DRS_TARGET_FRAME_RATE = 60;
 
 /**
  * Quality presets for the Odyssey Board
@@ -177,6 +188,11 @@ export class OdysseyBoardController {
         this.editorMode = !!options.editorMode;
         this.layoutOverride = options.layoutOverride || null;
         this.cinematicJourneyActive = options.cinematicJourneyActive !== false;
+        // Master gate for the adaptive-quality controller. Default on; callers (or a future
+        // settings toggle) can pass `adaptiveQuality:false` to pin the preset quality and let
+        // the user's manual quality choice stand untouched. The Tier-1/2 post knobs only make
+        // sense with the cinematic post stack, so the loop also gates on cinematicJourneyActive.
+        this.adaptiveQualityEnabled = options.adaptiveQuality !== false;
         this.debugOverlayActive = false;
         const globalSoundManager = typeof window !== 'undefined' ? window.soundManager : null;
         this.soundManager = options.soundManager || globalSoundManager || null;
@@ -199,6 +215,7 @@ export class OdysseyBoardController {
         this.audioReactor = null;
         this.debugOverlay = null;
         this.atmosphere = null; // Director-driven global atmosphere.
+        this.corridorField = null; // Parallax mid/far corridor depth filler (void fix).
         this.thresholdDirector = null; // Authored chapter breaches.
 
         // Enhanced post-processing
@@ -235,6 +252,42 @@ export class OdysseyBoardController {
         // Interaction/performance tracking
         this.lastInteractionAt = performance.now();
         this.backgroundLoadQuietWindowMs = 700;
+
+        // ── Adaptive quality (Wave 2). One controller owns the whole degrade ladder:
+        // Tier 0 resolution (subsumes the old inline QW2 DRS call — there is no longer a
+        // second competing resolution controller), Tier 1 bloom, Tier 2 post extras. It
+        // reacts to MEASURED frame time, sheds cheapest-first, restores slowest-first, with
+        // hysteresis. `_drs` is kept ONLY as the live render-scale the resize paths read
+        // (initRenderer / onResize / _applyRenderScale); the controller is the brain and the
+        // single source of truth for whether/when the scale changes. `renderScale` here is
+        // the per-preset CEILING; the controller rides between it and the policy floor.
+        this._drs = {
+            renderScale: 1, // current live render scale (1 = full per-tier odyssey cap).
+            baselineRenderScale: 1, // ceiling the adaptive controller rides back up to.
+        };
+        this.adaptiveQuality = new OdysseyAdaptiveQuality({
+            enabled: this.adaptiveQualityEnabled,
+            targetFrameRate: DRS_TARGET_FRAME_RATE,
+            windowSize: DRS_FRAME_WINDOW,
+            evalIntervalMs: DRS_EVAL_INTERVAL_MS,
+            baselineRenderScale: this._drs.baselineRenderScale,
+            renderScale: this._drs.renderScale,
+            evaluateResolution: evaluateDynamicResolutionAdjustment,
+        });
+        // Reused ctx for the per-frame adaptive update (NO per-frame allocation). applyRenderScale
+        // is bound once; pipeline is refreshed lazily in the loop (it is built after this).
+        this._adaptiveCtx = {
+            applyRenderScale: (scale) => this._applyRenderScale(scale),
+            pipeline: null,
+        };
+
+        // ── Per-frame work gating / throttle state (Batch5).
+        // Position-derived work (visibility/blend-state/corridor parallax) is throttled to
+        // ~30Hz when the camera is settled and no seam is active; time-driven uniform ticks
+        // (env.update / pathRenderer / atmosphere drift) stay at 60Hz.
+        this.positionWorkIntervalMs = 33; // ~30Hz cap for position-derived work when settled.
+        this.lastPositionWorkAtMs = 0;
+        this.lastActiveChapter = 1; // last resolved active chapter (gates BH ch7 work).
         this.cameraSettledThreshold = 0.0008;
         this.globalEnvProgressThreshold = 0.0005;
         this.globalEnvMaxIntervalMs = 33;
@@ -299,7 +352,7 @@ export class OdysseyBoardController {
         this.qualityName = quality;
 
         // ─── Step 1: Lightweight Three.js shell (very fast) ───
-        this.initRenderer();
+        await this.initRenderer();
         this.initScene();
         this.initCamera();
         this.createStarfield();
@@ -399,7 +452,7 @@ export class OdysseyBoardController {
 
         this.setupPostProcessing();
         this.setupLighting();
-        this.setupDirector();
+        await this.setupDirector();
         this._applyChapterMusic(1, { reason: 'odyssey-board-initial' });
 
         await this._yieldToMain();
@@ -410,6 +463,11 @@ export class OdysseyBoardController {
 
         // ─── Step 7: Interaction + start render loop ───
         this.setupInteraction();
+
+        // Replay the whole journey once (behind the loader) so first-visit per-chapter costs
+        // (compile-through-post, GPU upload, first update(), the breach) are paid now, not on
+        // the first live transition into each new chapter.
+        await this._warmUpJourney();
 
         this.isActive = true;
         this.animate();
@@ -541,10 +599,14 @@ export class OdysseyBoardController {
             // Temporarily force visibility for shader compilation, then restore.
             group.visible = true;
 
+            // Structural: TARGETED compile of just this chapter's group instead of the whole
+            // scene. compileAsync(scene, camera) rebuilds every resident chapter's pipelines
+            // (redundant work that grows with 8 chapters); the 3rd `targetScene` arg restricts
+            // compilation to `group`, so each prewarm only builds that chapter's pipelines.
             if (typeof this.renderer.compileAsync === 'function') {
-                await this.renderer.compileAsync(this.scene, this.camera);
+                await this.renderer.compileAsync(this.scene, this.camera, group);
             } else if (typeof this.renderer.compile === 'function') {
-                this.renderer.compile(this.scene, this.camera);
+                this.renderer.compile(this.scene, this.camera, group);
             }
 
             env.prewarmed = true;
@@ -559,22 +621,136 @@ export class OdysseyBoardController {
         }
     }
 
-    initRenderer() {
+    /**
+     * Generic shader/pipeline prewarm for ANY scene group (not just chapter envs).
+     * Temporarily makes the group visible + frustum-uncullable, runs a TARGETED
+     * compileAsync so every material pipeline in it is built during load, then restores
+     * its prior state. Used for the seam-only breach + the corridor field, whose pipelines
+     * would otherwise compile on the FIRST chapter transition (the first-transition hitch).
+     */
+    async _prewarmGroup(group, label = 'group') {
+        if (!group || !this.renderer || !this.scene || !this.camera) return;
+        const previousVisibility = group.visible;
+        // Force EVERY descendant visible + frustum-uncullable during compile: groups like
+        // the corridor field toggle per-chapter sub-groups by .visible, and compileAsync
+        // skips invisible objects — so we must reveal them all to build every pipeline.
+        const overrides = [];
+        group.traverse((child) => {
+            if (child === group) return;
+            overrides.push({ child, visible: child.visible, frustumCulled: child.frustumCulled });
+            child.visible = true;
+            if (child.isMesh || child.isPoints || child.isLine || child.isSprite) {
+                child.frustumCulled = false;
+            }
+        });
+        try {
+            group.visible = true;
+            if (typeof this.renderer.compileAsync === 'function') {
+                await this.renderer.compileAsync(this.scene, this.camera, group);
+            } else if (typeof this.renderer.compile === 'function') {
+                this.renderer.compile(this.scene, this.camera, group);
+            }
+            console.log(`[OdysseyBoard] Prewarmed ${label} shaders`);
+        } catch (error) {
+            console.warn(`[OdysseyBoard] Shader prewarm failed for ${label}:`, error);
+        } finally {
+            group.visible = previousVisibility;
+            overrides.forEach(({ child, visible, frustumCulled }) => {
+                child.visible = visible;
+                child.frustumCulled = frustumCulled;
+            });
+        }
+    }
+
+    /**
+     * THE first-visit hitch fix. We render through a post PassNode (HalfFloat/MRT target),
+     * but renderer.compileAsync only warms DIRECT-to-screen pipelines — so each chapter's
+     * materials genuinely recompiled the first time they rendered THROUGH post (first visit),
+     * then cached (smooth after). Here, during load, we reveal ALL content (every chapter env
+     * + corridor + breach, frustum-uncullable) and run a few real renders through the post
+     * path so every pipeline is built against the actual target now, not on first transition.
+     * Also exercises the ch7 lensing post-variant (it swaps outputNode on Black Hole entry).
+     */
+    async _warmUpPipelines() {
+        const stack = this.postProcessingStack;
+        if (!stack || typeof stack.render !== 'function' || !this.environmentManager) return;
+        const pp = stack.postProcessing;
+        const renderOnce = async () => {
+            if (pp && typeof pp.renderAsync === 'function') {
+                await pp.renderAsync();
+            } else {
+                stack.render();
+            }
+        };
+        const overrides = [];
+        const reveal = (group) => {
+            if (!group) return;
+            group.traverse((child) => {
+                if (child === group) return;
+                overrides.push({ child, visible: child.visible, frustumCulled: child.frustumCulled });
+                child.visible = true;
+                if (child.isMesh || child.isPoints || child.isLine || child.isSprite) {
+                    child.frustumCulled = false;
+                }
+            });
+        };
+        this.environmentManager.environments?.forEach?.((env) => reveal(env?.group));
+        reveal(this.corridorField?.group);
+        reveal(this.thresholdDirector?.group);
+        try {
+            // Pass 1: compile every chapter/corridor/breach pipeline through the real post target.
+            await renderOnce();
+            // Pass 2/3: warm both post output-node variants (default + ch7 lensing/CA spike).
+            if (typeof stack.update === 'function') {
+                stack.update(1 / 60, { activeChapter: 7, seamProgress: 0.5, energy: 0.5 });
+                await renderOnce();
+                stack.update(1 / 60, { activeChapter: 1, seamProgress: 0 });
+                await renderOnce();
+            }
+            console.log('[OdysseyBoard] Warmed post-path pipelines (all chapters + corridor + breach + ch7 variant)');
+        } catch (error) {
+            console.warn('[OdysseyBoard] Pipeline warm-up render failed:', error);
+        } finally {
+            overrides.forEach(({ child, visible, frustumCulled }) => {
+                child.visible = visible;
+                child.frustumCulled = frustumCulled;
+            });
+        }
+    }
+
+    async initRenderer() {
         const pixelRatio = computeScenePixelRatio({
-            renderScale: 1,
+            renderScale: this._drs.renderScale,
             devicePixelRatio: window.devicePixelRatio || 1,
-            maxPixelRatio: 1.5,
+            maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO, // QW3: 1.5 -> 1.2.
             sceneType: 'odyssey',
         });
-        this.renderer = new THREE.WebGLRenderer({
-            antialias: true,
+        // WebGPU with automatic WebGL2 fallback (one TSL codebase runs on both backends).
+        // ?forceWebGL=1 forces the WebGL2 backend for QA/parity testing.
+        const forceWebGL = new URLSearchParams(window.location.search).get('forceWebGL') === '1';
+        this.renderer = new THREE.WebGPURenderer({
+            // QW1: scene-pass MSAA dropped (antialias:false). Edges are softened by the post
+            // graph (ACES + grade + grain); MSAA on a full-res HalfFloat scene RT was a ~4×
+            // sample multiplier on the heaviest pass. Biggest steady-state GPU win.
+            antialias: false,
             alpha: true,
+            forceWebGL,
             powerPreference: 'high-performance',
+            // Batch0: enable GPU timestamp tracking so renderer.info.render.timestamp is
+            // populated (resolved after each render below). Harmless if the backend lacks it.
+            trackTimestamp: true,
         });
+        await this.renderer.init();
+        this.isWebGPU = this.renderer.backend?.isWebGPUBackend === true;
+        this.isWebGL = this.renderer.backend?.isWebGLBackend === true;
+        // Tonemapping happens in the TSL post graph (manual ACES) → renderer stays linear.
+        this.renderer.toneMapping = THREE.NoToneMapping;
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
         this.renderer.setPixelRatio(pixelRatio);
         this.renderer.setClearColor(0x050510, 1);
         this.container.appendChild(this.renderer.domElement);
+        console.log(`[OdysseyBoard] Renderer backend: ${this.isWebGPU ? 'WebGPU' : 'WebGL2 (fallback)'}`);
     }
 
     initScene() {
@@ -600,33 +776,26 @@ export class OdysseyBoardController {
         this.debugOverlayActive = isOdysseyAAADebugEnabled();
         this.aaaPostActive = this.cinematicJourneyActive;
         try {
-            this.postProcessingStack = this.aaaPostActive
-                ? new OdysseyFallbackPipeline(this.renderer, this.scene, this.camera, this.qualityName)
-                : new PostProcessingStack(this.renderer, this.scene, this.camera, this.qualityName);
-
-            // Keep reference to composer for resize handling
-            this.composer = this.postProcessingStack.composer;
-            this.bloomPass = this.postProcessingStack.passes.bloom || null;
-
-            console.log(
-                `[OdysseyBoard] ${this.aaaPostActive ? 'OdysseyFallbackPipeline (cinematic)' : 'PostProcessingStack'}`
-                + ` initialized (${this.qualityName})`,
-            );
+            // WebGPU TSL post graph: bloom + ACES + per-chapter grade + CA + vignette + grain.
+            // API-compatible with the old PostProcessingStack (update/render/resize/seam/dispose).
+            this.postProcessingStack = new OdysseyTslPipeline(this.renderer, this.scene, this.camera, {
+                // Tamed from the preset default: the additive path/node glow was blowing out
+                // to pure white (see journey audit). Lower strength + higher threshold so only
+                // genuinely bright emitters bloom and the scene keeps its colour/contrast.
+                bloomStrength: 0.32,
+                bloomThreshold: 0.85,
+                bloomRadius: 0.7,
+            });
+            this.postProcessingStack.setSize(this.container.clientWidth, this.container.clientHeight);
+            this.composer = null;
+            this.bloomPass = null;
+            console.log(`[OdysseyBoard] OdysseyTslPipeline initialized (${this.qualityName})`);
         } catch (error) {
             this.aaaPostActive = false;
-            // Fallback to basic bloom if PostProcessingStack fails
-            console.warn('[OdysseyBoard] PostProcessingStack failed, falling back to basic bloom:', error);
-            this.composer = new EffectComposer(this.renderer);
-            this.composer.addPass(new RenderPass(this.scene, this.camera));
-
-            const bloomPass = new UnrealBloomPass(
-                new THREE.Vector2(this.container.clientWidth, this.container.clientHeight),
-                this.qualityPreset.bloomStrength || 0.5,
-                0.4,
-                0.85,
-            );
-            this.bloomPass = bloomPass;
-            this.composer.addPass(bloomPass);
+            this.postProcessingStack = null;
+            this.composer = null;
+            // No post: render the scene directly (renderFrame falls through to renderer.render).
+            console.warn('[OdysseyBoard] OdysseyTslPipeline failed; rendering without post:', error);
         }
     }
 
@@ -658,7 +827,7 @@ export class OdysseyBoardController {
      * Set up the cinematic Odyssey spine: the director (conductor), the audio
      * reactor, and the optional debug overlay (?odysseyAAA=1).
      */
-    setupDirector() {
+    async setupDirector() {
         try {
             this.director = new OdysseyDirector({
                 chapterPositions: this.presentationLayout?.chapterPositions,
@@ -671,11 +840,20 @@ export class OdysseyBoardController {
             // ambient (it still detects chapter changes for the FOV pulse).
             if (this.aaaPostActive) {
                 this.atmosphere = new OdysseyAtmosphere(this.scene, this.renderer);
+                // Parallax mid/far depth filler so the corridor between chapter set pieces
+                // is never empty void (reads chapter-profile + path-utils; one cohesive rig).
+                this.corridorField = new OdysseyCorridorField(this.scene);
                 this.environmentManager?.setAtmosphereOwned(true);
                 this.thresholdDirector = new ChapterThresholdDirector(this.scene, this.pathRenderer?.pathCurve, {
                     chapterPositions: this.presentationLayout?.chapterPositions,
                     qualityName: this.qualityName,
                 });
+                // FIRST-TRANSITION HITCH FIX: the corridor field + the seam-only breach are
+                // NOT chapter env groups, so the per-chapter prewarm misses them and their
+                // WebGPU pipelines compile on the FIRST transition (lag once, smooth after).
+                // Compile them here during load instead.
+                await this._prewarmGroup(this.corridorField?.group, 'corridor field');
+                await this._prewarmGroup(this.thresholdDirector?.group, 'threshold breach');
             }
 
             if (this.debugOverlayActive) {
@@ -687,6 +865,7 @@ export class OdysseyBoardController {
             this.director = null;
             this.audioReactor = null;
             this.debugOverlay = null;
+            this.corridorField = null;
             this.thresholdDirector = null;
         }
     }
@@ -747,13 +926,15 @@ export class OdysseyBoardController {
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
         const material = new THREE.PointsMaterial({
-            size: 2.0, // Increased size for soft texture
+            // No `map`: on WebGPU a PointsMaterial map samples the point uv, which a
+            // THREE.Points geometry lacks ("uv not found" warning every frame). Solid
+            // additive vertex-coloured points read fine for a distant starfield.
+            size: 2.0,
             vertexColors: true,
             sizeAttenuation: true,
             transparent: true,
             opacity: 0.8,
             blending: THREE.AdditiveBlending,
-            map: this.createGlobalParticleTexture(),
             depthWrite: false,
         });
 
@@ -970,9 +1151,9 @@ export class OdysseyBoardController {
         const width = this.container.clientWidth;
         const height = this.container.clientHeight;
         const pixelRatio = computeScenePixelRatio({
-            renderScale: 1,
+            renderScale: this._drs.renderScale, // respect the live DRS scale (QW2/QW3).
             devicePixelRatio: window.devicePixelRatio || 1,
-            maxPixelRatio: 1.5,
+            maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
             sceneType: 'odyssey',
         });
 
@@ -988,6 +1169,64 @@ export class OdysseyBoardController {
         } else if (this.composer) {
             this.composer.setSize(width, height);
         }
+    }
+
+    /**
+     * QW2 — apply a new DRS render scale: recompute the odyssey pixel ratio and resize the
+     * post stack to match. Called by the debounced DRS evaluator (never per-frame) and is the
+     * hook Wave 2's adaptive-quality controller drives for its "Tier 0" resolution response.
+     * @param {number} renderScale
+     * @private
+     */
+    _applyRenderScale(renderScale) {
+        if (!this.renderer) return;
+        this._drs.renderScale = renderScale;
+        const width = this.container?.clientWidth || 1;
+        const height = this.container?.clientHeight || 1;
+        const pixelRatio = computeScenePixelRatio({
+            renderScale,
+            devicePixelRatio: window.devicePixelRatio || 1,
+            maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
+            sceneType: 'odyssey',
+        });
+        this.renderer.setPixelRatio(pixelRatio);
+        if (this.postProcessingStack?.resize) {
+            this.postProcessingStack.resize(width, height);
+        } else if (this.composer?.setSize) {
+            this.composer.setSize(width, height);
+        }
+    }
+
+    /**
+     * Wave 2 — drive the adaptive-quality controller from the frame loop. Record this frame's
+     * wall-clock time into the controller's rolling window (allocation-free) and tick it; the
+     * controller self-throttles to ~1Hz and applies any tier change via the reused ctx (Tier 0
+     * resolution → this._applyRenderScale; Tier 1 bloom / Tier 2 post extras → the pipeline
+     * knobs). Safe + cheap to call every frame. Gated on the cinematic post stack being active
+     * (the Tier-1/2 knobs are cinematic-pipeline-only) and on the master enable flag — when
+     * disabled this is a no-op and the user's manual quality preset stands untouched.
+     * @param {number} frameMs this frame time in milliseconds.
+     * @private
+     */
+    _tickAdaptiveQuality(frameMs) {
+        if (!this.adaptiveQuality || !this.adaptiveQualityEnabled || !this.cinematicJourneyActive) return;
+        this.adaptiveQuality.recordFrame(frameMs);
+        // Refresh the (cheap) pipeline reference each tick — the post stack is built after the
+        // controller and can be torn down / re-created; ctx is reused so this is alloc-free.
+        this._adaptiveCtx.pipeline = this.postProcessingStack;
+        this.adaptiveQuality.update(performance.now(), this._adaptiveCtx);
+    }
+
+    /**
+     * Batch0 — resolve GPU timestamp queries so renderer.info.render.timestamp is populated
+     * for the debug overlay. Fire-and-forget; guarded for backends/builds without the API.
+     * @private
+     */
+    _resolveRenderTimestamps() {
+        const { renderer } = this;
+        if (typeof renderer?.resolveTimestampsAsync !== 'function') return;
+        const renderType = THREE.TimestampQuery?.RENDER ?? 'render';
+        renderer.resolveTimestampsAsync(renderType).catch(() => {});
     }
 
     checkHover() {
@@ -1147,29 +1386,50 @@ export class OdysseyBoardController {
         this.nodeManager?.update(delta, this.cinematicJourneyActive ? (directorState?.node?.focalPulse ?? 0) : 0);
         this.layoutEditor?.update(delta);
 
-        // Drive the conductor from camera position + audio.
+        // Drive the conductor from camera position + audio (time-driven — every frame).
         this.atmosphere?.update(this.camera, directorState);
         this.debugOverlay?.update(directorState, audioState);
 
+        // ── Batch5: decouple POSITION-DERIVED work from the 60Hz uniform tick.
+        // When the camera is settled and no chapter seam is active, the camera-position-
+        // dependent work (corridor parallax, visibility/blend-state, boundary preload,
+        // global-environment grade) produces no visible change between frames, so throttle
+        // it to ~30Hz. Time-driven uniform ticks (env.update drift, atmosphere, path, nodes)
+        // continue every frame above/below this gate. During motion or a seam it runs every
+        // frame as before (correctness at transitions is preserved).
+        const nowMs = performance.now();
+        const inSeam = blendState?.inSeam === true || this.activeSeamBoundaryId !== null;
+        const settled = this._isCameraSettled() && !inSeam;
+        const runPositionWork = !settled
+            || (nowMs - this.lastPositionWorkAtMs) >= this.positionWorkIntervalMs;
+
+        if (runPositionWork) {
+            this.lastPositionWorkAtMs = nowMs;
+            // Parallax corridor depth: cross-fade by active progress, drift, follow camera.
+            this.corridorField?.update(this.camera, cameraProgress, delta);
+        }
+
         // Update chapter environments based on camera position
         if (this.environmentManager && this.camera) {
-            this._ensureBoundaryAssets(cameraProgress);
-            this._handleChapterSeam(cameraProgress, blendState);
-            this.environmentManager.updateVisibility(cameraProgress, { mode: 'progress', blendState });
+            if (runPositionWork) {
+                this._ensureBoundaryAssets(cameraProgress);
+                this._handleChapterSeam(cameraProgress, blendState);
+                this.environmentManager.updateVisibility(cameraProgress, { mode: 'progress', blendState });
 
-            const nowMs = performance.now();
-            const progressDelta = Number.isFinite(this.lastGlobalEnvUpdateProgress)
-                ? Math.abs(cameraProgress - this.lastGlobalEnvUpdateProgress)
-                : Infinity;
-            const shouldUpdateGlobalEnvironment = progressDelta > this.globalEnvProgressThreshold
-                || (nowMs - this.lastGlobalEnvUpdateTime) >= this.globalEnvMaxIntervalMs;
+                const progressDelta = Number.isFinite(this.lastGlobalEnvUpdateProgress)
+                    ? Math.abs(cameraProgress - this.lastGlobalEnvUpdateProgress)
+                    : Infinity;
+                const shouldUpdateGlobalEnvironment = progressDelta > this.globalEnvProgressThreshold
+                    || (nowMs - this.lastGlobalEnvUpdateTime) >= this.globalEnvMaxIntervalMs;
 
-            if (shouldUpdateGlobalEnvironment) {
-                this.environmentManager.updateGlobalEnvironment(cameraProgress);
-                this.lastGlobalEnvUpdateTime = nowMs;
-                this.lastGlobalEnvUpdateProgress = cameraProgress;
+                if (shouldUpdateGlobalEnvironment) {
+                    this.environmentManager.updateGlobalEnvironment(cameraProgress);
+                    this.lastGlobalEnvUpdateTime = nowMs;
+                    this.lastGlobalEnvUpdateProgress = cameraProgress;
+                }
             }
 
+            // Time-driven uniform tick (animated material uniforms) — always 60Hz.
             this.environmentManager.update(
                 delta,
                 this.camera,
@@ -1178,12 +1438,35 @@ export class OdysseyBoardController {
             );
         }
 
+        // Track the active chapter (used to gate ch7-only Black Hole per-frame work below).
+        if (blendState && Number.isFinite(blendState.activeChapter)) {
+            this.lastActiveChapter = blendState.activeChapter;
+        }
+
         // Rotate stars slowly
         if (this.stars) {
             this.stars.rotation.y += delta * 0.01;
         }
 
         this.thresholdDirector?.update(delta, this.camera, directorState);
+
+        // B4 / Batch5: feed the Black Hole (ch7) screen-space lensing centre to the post
+        // pipeline — but ONLY when the BH chapter is relevant. The lens centre projection
+        // (getWorldDirection-derived world pos → NDC) is ch7-specific work; chapters 1-6/8
+        // must not pay it. We gate on activeChapter===7 OR the 6→7 / 7→8 seam (source or
+        // target chapter is 7), matching the window where the BH env is on-screen and its
+        // lensWorldPos is being maintained. The pipeline still smooths/decays the centre on
+        // exit via its internal lerp + the per-frame _lensActive reset.
+        const bhRelevant = this.lastActiveChapter === 7
+            || (blendState?.inSeam === true
+                && (blendState.sourceChapter === 7 || blendState.targetChapter === 7));
+        if (bhRelevant && this.postProcessingStack?.setLensTarget && this.cinematicJourneyActive) {
+            const bhGroup = this.environmentManager?.environments?.get(7)?.group;
+            const lensWorldPos = bhGroup?.userData?.lensWorldPos;
+            if (lensWorldPos) {
+                this.postProcessingStack.setLensTarget(lensWorldPos);
+            }
+        }
 
         // Update and render via PostProcessingStack.
         // When the cinematic pipeline is active it consumes director state (exposure/grade/
@@ -1195,6 +1478,89 @@ export class OdysseyBoardController {
             this.composer.render();
         } else {
             this.renderer.render(this.scene, this.camera);
+        }
+
+        // Batch0: resolve GPU timestamps so the debug overlay can read render.info.timestamp.
+        this._resolveRenderTimestamps();
+
+        // Wave 2: feed this frame's wall-clock time into the adaptive-quality controller. It
+        // records every frame and self-throttles its evaluation to ~1Hz; the resolution policy's
+        // cooldowns gate any actual resolution change (never resizes per-frame), and bloom/post
+        // tiers only shed once resolution is pinned at its floor under sustained pressure.
+        if (!this._isWarmingUp) {
+            this._tickAdaptiveQuality(delta * 1000);
+            // Freeze diagnostics (debug-overlay only, ?odysseyAAA=1): log any large hitch + what
+            // changed, so a remaining stall can be classified — a jump in geometries/textures =
+            // GPU upload; no jump = compile/CPU. Gated so it never spams/over-heads normal runs.
+            if (this.debugOverlayActive && delta > 0.05 && this.renderer?.info) {
+                const { memory, render } = this.renderer.info;
+                console.warn(
+                    `[OdysseyPerf] hitch ${(delta * 1000).toFixed(0)}ms @${cameraProgress.toFixed(3)} `
+                    + `ch${this.lastActiveChapter ?? '?'} | geom ${memory?.geometries} tex ${memory?.textures} `
+                    + `draws ${render?.drawCalls} tris ${render?.triangles}`,
+                );
+            }
+        }
+    }
+
+    /**
+     * THE robust first-visit fix: replay the real renderFrame() path across the whole journey
+     * (progress 0→1) during load, so EVERY one-time per-chapter cost the live scroll triggers —
+     * pipeline compile through the post PassNode, GPU geometry/texture upload, the chapter's
+     * first-frame update() work, the breach at each seam, and the seam post-variant — happens
+     * NOW (behind the loader), not on the first live transition. Sound is muted and all transient
+     * state (camera position, seam, breach, time) is restored afterwards.
+     */
+    async _warmUpJourney() {
+        const cc = this.cameraController;
+        if (!cc || this._isWarmingUp || typeof this.renderFrame !== 'function') return;
+        const savedPos = cc.currentPosition;
+        const savedTarget = cc.targetPosition;
+        const savedTime = this.time;
+        const savedSeam = this.activeSeamBoundaryId;
+        const savedSound = this.soundManager;
+        this._isWarmingUp = true;
+        this.soundManager = null; // mute music/stingers during the scrub
+        try {
+            // Build the warm-up step list: ~40 even steps PLUS each chapter boundary ±0.02.
+            // Even spacing alone can step OVER a narrow chapter's seam (e.g. 7→8 into Urban at
+            // ~0.944 sits between 0.917 and 0.958), so that seam's crossfade + neon-snap breach
+            // + the incoming chapter's first update() never get exercised → a first-entry hitch.
+            // Explicitly sampling each boundary guarantees every seam crossing is warmed.
+            const boundaries = this.presentationLayout?.chapterPositions || [];
+            const stepSet = new Set();
+            const EVEN = 40;
+            for (let i = 0; i <= EVEN; i += 1) stepSet.add(i / EVEN);
+            boundaries.forEach((b) => {
+                if (Number.isFinite(b) && b > 0.001 && b < 0.999) {
+                    stepSet.add(Math.max(0, b - 0.02));
+                    stepSet.add(b);
+                    stepSet.add(Math.min(1, b + 0.02));
+                }
+            });
+            const steps = [...stepSet].sort((a, b) => a - b);
+            for (let i = 0; i < steps.length; i += 1) {
+                cc.currentPosition = steps[i];
+                cc.targetPosition = steps[i];
+                this.renderFrame(1 / 60);
+                if (i % 3 === 0) {
+                    // eslint-disable-next-line no-await-in-loop
+                    await this._yieldToMain();
+                }
+            }
+            console.log('[OdysseyBoard] Journey warm-up complete (every chapter + seam exercised through the real render path)');
+        } catch (error) {
+            console.warn('[OdysseyBoard] Journey warm-up failed:', error);
+        } finally {
+            this._isWarmingUp = false;
+            this.soundManager = savedSound;
+            this.time = savedTime;
+            this.activeSeamBoundaryId = savedSeam;
+            cc.currentPosition = savedPos;
+            cc.targetPosition = savedTarget;
+            this.thresholdDirector?.clearSeamPhase?.();
+            // Re-settle visible chapters for the real start position.
+            this.environmentManager?.updateVisibility?.(savedPos ?? 0, { mode: 'progress' });
         }
     }
 
@@ -1382,9 +1748,9 @@ export class OdysseyBoardController {
 
         if (boundaryId) {
             const { transition } = resolvedBlendState;
-            const seamIntensity = transition.fxPreset === 'heavy'
-                ? 1.15
-                : (transition.fxPreset === 'neon' ? 1.0 : 0.9);
+            let seamIntensity = 0.9;
+            if (transition.fxPreset === 'heavy') seamIntensity = 1.15;
+            else if (transition.fxPreset === 'neon') seamIntensity = 1.0;
             const envelope = THREE.MathUtils.clamp(
                 resolvedBlendState.seamEnvelope ?? Math.sin((resolvedBlendState.rawSeamProgress || 0) * Math.PI),
                 0,
@@ -1585,6 +1951,8 @@ export class OdysseyBoardController {
         this.debugOverlay = null;
         this.atmosphere?.dispose?.();
         this.atmosphere = null;
+        this.corridorField?.dispose?.();
+        this.corridorField = null;
         this.thresholdDirector?.dispose?.();
         this.thresholdDirector = null;
         this.audioReactor?.dispose?.();

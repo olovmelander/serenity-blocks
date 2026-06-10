@@ -1342,6 +1342,93 @@ export class SharedEffects {
     }
 
     /**
+     * T-spin celebration: floaty "T-SPIN" banner + swirling vortex particles.
+     * @param {number} [lineCount=0] - Lines cleared with the T-spin (0 = T-spin mini/zero).
+     */
+    playTSpinEffect(lineCount = 0) {
+        const boardWidth = this.scene.cols * this.scene.blockSize;
+        const boardHeight = this.scene.rows * this.scene.blockSize;
+        const centerX = boardWidth / 2;
+        const centerY = boardHeight / 2;
+
+        // Banner label — "T-SPIN" for zero lines, "T-SPIN SINGLE/DOUBLE/TRIPLE" for 1-3.
+        const labels = ['T-SPIN', 'T-SPIN\nSINGLE', 'T-SPIN\nDOUBLE', 'T-SPIN\nTRIPLE'];
+        const label = labels[Math.min(lineCount, 3)];
+
+        const text = this.scene.add.text(centerX, centerY * 0.75, label, {
+            fontSize: lineCount >= 2 ? '34px' : '28px',
+            fontFamily: 'Orbitron',
+            color: '#cc88ff',
+            stroke: '#220044',
+            strokeThickness: 5,
+            fontStyle: 'bold',
+            align: 'center',
+            backgroundColor: 'transparent',
+        });
+        this._trackText(text);
+        text.setOrigin(0.5);
+        text.setScrollFactor(0);
+        text.setDepth(55);
+
+        this.scene.tweens.add({
+            targets: text,
+            scale: { from: 0.7, to: 1.2 },
+            alpha: { from: 1, to: 0 },
+            y: text.y - 55,
+            duration: 1000,
+            ease: 'Cubic.easeOut',
+            onComplete: () => text.destroy(),
+        });
+
+        // Swirl: expanding ring in purple/violet.
+        this.createShockwaveRing(centerX, centerY, 0xcc44ff, 1);
+        this._boardEdgePulse(0xaa33ff, 0.35);
+
+        // Brief screen flash in purple.
+        if (!this._reducedMotion()) {
+            this._screenFlash(0x9900ff, 0.22, 20, 200, 48);
+        }
+    }
+
+    /**
+     * Back-to-Back indicator: a charged "B2B" banner that pops in.
+     * @param {boolean} [active=true] - Whether a B2B was just scored (always true when called).
+     */
+    playB2BChange(active = true) {
+        if (!active) return;
+
+        const boardWidth = this.scene.cols * this.scene.blockSize;
+        const boardHeight = this.scene.rows * this.scene.blockSize;
+
+        const text = this.scene.add.text(boardWidth / 2, boardHeight * 0.18, 'BACK-TO-BACK', {
+            fontSize: '24px',
+            fontFamily: 'Orbitron',
+            color: '#ffdd44',
+            stroke: '#553300',
+            strokeThickness: 4,
+            fontStyle: 'bold',
+            backgroundColor: 'transparent',
+        });
+        this._trackText(text);
+        text.setOrigin(0.5);
+        text.setScrollFactor(0);
+        text.setDepth(54);
+
+        this.scene.tweens.add({
+            targets: text,
+            scale: { from: 0.6, to: 1.1 },
+            alpha: { from: 1, to: 0 },
+            y: text.y - 35,
+            duration: 900,
+            ease: 'Back.easeOut',
+            onComplete: () => text.destroy(),
+        });
+
+        // Gold edge pulse.
+        this._boardEdgePulse(0xffcc00, 0.4);
+    }
+
+    /**
      * Cleanup all active particle systems, graphics, text, and timers
      * Should be called when effects are no longer needed
      */

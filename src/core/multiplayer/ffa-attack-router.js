@@ -244,7 +244,13 @@ export class FFAAttackRouter {
             return;
         }
 
-        if (totalLines <= 0) {
+        // Blind / Full Blind carry a visual effect even with zero garbage lines,
+        // so they must bypass the line-count guard (parity with local mode).
+        if (
+            totalLines <= 0
+            && attack.attackType !== ATTACK_TYPES.BLIND
+            && attack.attackType !== ATTACK_TYPES.FULL_BLIND
+        ) {
             return; // No attack (too small)
         }
 

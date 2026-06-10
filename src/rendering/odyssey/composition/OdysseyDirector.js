@@ -16,7 +16,7 @@
  * no-op visually. Phases 1–7 progressively read this state.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { CHAPTER_CONFIGS } from '../../../core/odyssey/data/chapters.js';
 import { resolveChapterBlendState } from '../ChapterEnvironmentManager.js';
 import {

@@ -1,3 +1,4 @@
+/* eslint-disable import/no-unresolved */
 /**
  * @fileoverview ChapterThresholdDirector
  *
@@ -7,7 +8,13 @@
  * the player crosses a boundary.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import {
+    createVeilMaterialTSL,
+    createRingMaterialTSL,
+    createParticleMaterialTSL,
+    createParticleGeometry,
+} from './chapter-threshold-director.tsl.js';
 
 const DEFAULT_PROFILE = Object.freeze({
     id: '1-2',
@@ -105,19 +112,6 @@ export function getOdysseyThresholdProfile(boundaryId) {
     return ODYSSEY_THRESHOLD_PROFILES[boundaryId] || DEFAULT_PROFILE;
 }
 
-function makeUniforms() {
-    return {
-        uTime: { value: 0 },
-        uProgress: { value: 0 },
-        uIntensity: { value: 0 },
-        uKind: { value: 0 },
-        uPrimary: { value: new THREE.Color(DEFAULT_PROFILE.primary) },
-        uSecondary: { value: new THREE.Color(DEFAULT_PROFILE.secondary) },
-        uParticle: { value: new THREE.Color(DEFAULT_PROFILE.particle) },
-        uDirection: { value: 1 },
-    };
-}
-
 function easeOutCubic(t) {
     const inv = 1 - THREE.MathUtils.clamp(t, 0, 1);
     return 1 - inv * inv * inv;
@@ -126,186 +120,6 @@ function easeOutCubic(t) {
 function envelope(t) {
     const clamped = THREE.MathUtils.clamp(t, 0, 1);
     return Math.sin(clamped * Math.PI);
-}
-
-function createVeilMaterial(uniforms) {
-    return new THREE.ShaderMaterial({
-        uniforms,
-        transparent: true,
-        depthWrite: false,
-        depthTest: true,
-        blending: THREE.AdditiveBlending,
-        side: THREE.DoubleSide,
-        vertexShader: `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: `
-            uniform float uTime;
-            uniform float uProgress;
-            uniform float uIntensity;
-            uniform float uKind;
-            uniform vec3 uPrimary;
-            uniform vec3 uSecondary;
-            varying vec2 vUv;
-
-            float hash21(vec2 p) {
-                vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-                p3 += dot(p3, p3.yzx + 33.33);
-                return fract((p3.x + p3.y) * p3.z);
-            }
-
-            float noise(vec2 p) {
-                vec2 i = floor(p);
-                vec2 f = fract(p);
-                f = f * f * (3.0 - 2.0 * f);
-                float a = hash21(i);
-                float b = hash21(i + vec2(1.0, 0.0));
-                float c = hash21(i + vec2(0.0, 1.0));
-                float d = hash21(i + vec2(1.0, 1.0));
-                return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-            }
-
-            void main() {
-                vec2 uv = vUv * 2.0 - 1.0;
-                float r = length(uv);
-                float band = 0.0;
-                float mist = noise(vUv * vec2(8.0, 5.0) + vec2(uTime * 0.18, -uTime * 0.11));
-                float wave = sin((vUv.y + uProgress * 0.7) * 34.0 + uTime * 2.4);
-
-                if (uKind < 0.5) {
-                    float quench = smoothstep(-0.55, 0.45, uv.y + wave * 0.045);
-                    band = mix(mist, 1.0 - mist, quench) * (1.0 - smoothstep(0.25, 1.1, r));
-                } else if (uKind < 1.5) {
-                    float waterline = 1.0 - smoothstep(0.0, 0.18, abs(uv.y - (uProgress - 0.45) * 0.7));
-                    band = waterline + pow(1.0 - smoothstep(0.15, 1.0, r), 2.0) * 0.55;
-                } else if (uKind < 2.5) {
-                    float ridge = smoothstep(-0.55, 0.4, uv.y + abs(uv.x) * 0.45);
-                    band = ridge * (0.45 + mist * 0.8);
-                } else if (uKind < 3.5) {
-                    float split = smoothstep(0.08, 0.85, abs(uv.x) + uProgress * 0.55);
-                    band = (1.0 - split) * 0.7 + pow(1.0 - smoothstep(0.1, 1.05, r), 2.0);
-                } else if (uKind < 4.5) {
-                    float rim = 1.0 - smoothstep(0.02, 0.16, abs(r - (0.34 + uProgress * 0.38)));
-                    band = rim + step(0.955, hash21(floor(vUv * 70.0))) * 0.55;
-                } else if (uKind < 5.5) {
-                    float lens = 1.0 - smoothstep(0.02, 0.18, abs(r - (0.28 + uProgress * 0.52)));
-                    band = lens * (0.8 + wave * 0.2) + mist * 0.22;
-                } else {
-                    float scan = step(0.5, fract(vUv.y * 38.0 - uTime * 6.0));
-                    float snap = 1.0 - smoothstep(0.0, 0.92, r);
-                    band = snap * (0.85 + scan * 0.45);
-                }
-
-                float alpha = clamp(band * uIntensity * (1.0 - smoothstep(0.78, 1.28, r)), 0.0, 0.92);
-                vec3 color = mix(uPrimary, uSecondary, smoothstep(-0.4, 0.8, uv.y) + mist * 0.18);
-                gl_FragColor = vec4(color * (1.0 + uIntensity * 0.75), alpha);
-            }
-        `,
-    });
-}
-
-function createRingMaterial(uniforms) {
-    return new THREE.ShaderMaterial({
-        uniforms,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        vertexShader: `
-            varying vec2 vUv;
-            void main() {
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: `
-            uniform float uTime;
-            uniform float uProgress;
-            uniform float uIntensity;
-            uniform float uKind;
-            uniform vec3 uPrimary;
-            uniform vec3 uSecondary;
-            varying vec2 vUv;
-
-            void main() {
-                float scan = sin((vUv.x * 24.0) - uTime * (2.4 + uKind * 0.22));
-                float edge = smoothstep(0.08, 0.5, vUv.y) * smoothstep(0.95, 0.45, vUv.y);
-                float pulse = 0.55 + 0.45 * scan;
-                vec3 color = mix(uPrimary, uSecondary, smoothstep(0.0, 1.0, vUv.x + uProgress * 0.2));
-                float alpha = edge * (0.35 + pulse * 0.65) * uIntensity;
-                gl_FragColor = vec4(color * (1.35 + uIntensity), alpha);
-            }
-        `,
-    });
-}
-
-function createParticleMaterial(uniforms) {
-    return new THREE.ShaderMaterial({
-        uniforms,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        vertexShader: `
-            attribute float aSeed;
-            uniform float uTime;
-            uniform float uProgress;
-            uniform float uIntensity;
-            uniform float uDirection;
-            varying float vSeed;
-            void main() {
-                vSeed = aSeed;
-                vec3 p = position;
-                float burst = smoothstep(0.0, 1.0, uProgress);
-                float swirl = sin(uTime * 2.0 + aSeed * 6.2831) * 0.38;
-                p.xy *= 0.45 + burst * (1.7 + aSeed * 1.25);
-                p.x += swirl * burst;
-                p.y += (burst - 0.5) * uDirection * (1.2 + aSeed);
-                p.z += sin(aSeed * 31.0 + uTime) * 0.55 * burst;
-
-                vec4 mv = modelViewMatrix * vec4(p, 1.0);
-                gl_PointSize = (8.0 + aSeed * 18.0) * uIntensity * (300.0 / max(1.0, -mv.z));
-                gl_Position = projectionMatrix * mv;
-            }
-        `,
-        fragmentShader: `
-            uniform float uIntensity;
-            uniform vec3 uParticle;
-            varying float vSeed;
-            void main() {
-                vec2 p = gl_PointCoord * 2.0 - 1.0;
-                float r = dot(p, p);
-                if (r > 1.0) discard;
-                float core = pow(1.0 - r, 2.4);
-                float sparkle = 0.75 + 0.25 * sin(vSeed * 41.0);
-                gl_FragColor = vec4(uParticle * (1.0 + uIntensity * 0.8), core * uIntensity * sparkle);
-            }
-        `,
-    });
-}
-
-function createParticleGeometry(count = 180) {
-    const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(count * 3);
-    const seeds = new Float32Array(count);
-
-    for (let i = 0; i < count; i += 1) {
-        const seed = (i + 0.5) / count;
-        const theta = seed * Math.PI * 2 * 17.0;
-        const radius = 1.3 + ((((i * 37) % 101) / 101) * 3.6);
-        const z = (((i * 53) % 97) / 97 - 0.5) * 1.8;
-        const idx = i * 3;
-        positions[idx] = Math.cos(theta) * radius;
-        positions[idx + 1] = Math.sin(theta) * radius * 0.72;
-        positions[idx + 2] = z;
-        seeds[i] = seed;
-    }
-
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
-    return geometry;
 }
 
 export class ChapterThresholdDirector {
@@ -317,33 +131,39 @@ export class ChapterThresholdDirector {
         this.time = 0;
         this.active = null;
 
-        this.uniforms = makeUniforms();
         this.group = new THREE.Group();
         this.group.name = 'odyssey-threshold-director';
         this.group.visible = false;
         this.group.renderOrder = 80;
 
-        this.veil = new THREE.Mesh(
-            new THREE.PlaneGeometry(32, 20, 1, 1),
-            createVeilMaterial(this.uniforms),
-        );
+        // TSL/WebGPU materials. The veil builder constructs the shared uniform set
+        // (TSL uniform() nodes expose .value get/set + .value.set() for colors, exactly
+        // like the old THREE uniforms), which the ring + particles then share so a single
+        // uTime/uProgress/etc. clock drives all three. trigger()/setSeamPhase()/update()
+        // keep mutating this.uniforms.*.value unchanged.
+        const veil = createVeilMaterialTSL();
+        this.uniforms = veil.uniforms;
+        this.veil = veil.mesh;
         this.veil.name = 'threshold-veil';
         this.veil.frustumCulled = false;
         this.group.add(this.veil);
 
-        this.ring = new THREE.Mesh(
-            new THREE.TorusGeometry(6.2, 0.075, 14, 144),
-            createRingMaterial(this.uniforms),
-        );
+        const ring = createRingMaterialTSL(this.uniforms.uTime, this.uniforms);
+        this.ring = ring.mesh;
         this.ring.name = 'threshold-ring';
         this.ring.frustumCulled = false;
         this.group.add(this.ring);
 
         const particleCount = this.qualityName === 'Minimal' || this.qualityName === 'Low' ? 96 : 180;
-        this.particles = new THREE.Points(
-            createParticleGeometry(particleCount),
-            createParticleMaterial(this.uniforms),
-        );
+        const particles = createParticleMaterialTSL(this.uniforms.uTime, this.uniforms);
+        // createParticleMaterialTSL builds a 180-instance geometry by default; rebuild on the
+        // quality-resolved count (mirrors createThresholdBreachPilotTSL's override).
+        if (particleCount !== 180) {
+            particles.geometry.dispose();
+            particles.geometry = createParticleGeometry(particleCount);
+            particles.mesh.geometry = particles.geometry;
+        }
+        this.particles = particles.mesh;
         this.particles.name = 'threshold-particles';
         this.particles.frustumCulled = false;
         this.group.add(this.particles);

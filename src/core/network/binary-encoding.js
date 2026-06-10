@@ -13,7 +13,7 @@ import { COLORS, SHAPES } from '../constants.js';
 // Magic bytes for format identification
 const BINARY_MAGIC = 0x5342_4E45; // "SBNE" - Serenity Blocks Network Encoding
 const DELTA_MAGIC = 0x5342_4E44; // "SBND" - Serenity Blocks Network Delta
-const FORMAT_VERSION = 1;
+const FORMAT_VERSION = 2;
 
 // Delta Change Flags (Bitmask)
 const DELTA_FLAGS = {
@@ -23,6 +23,7 @@ const DELTA_FLAGS = {
     NEXT: 1 << 3, // Next pieces
     GARBAGE: 1 << 4, // Garbage queue
     DROPS: 1 << 5, // Drop counters
+    BLIND: 1 << 6, // Blind timers state
 };
 
 // Cell types mapping (4 bits = 16 values)
@@ -220,6 +221,14 @@ export class BinaryEncoder {
             mask |= DELTA_FLAGS.GRID;
         }
 
+        // Blind check
+        if (current.blindTimers?.field !== baseline.blindTimers?.field
+            || current.blindTimers?.fieldMax !== baseline.blindTimers?.fieldMax
+            || current.blindTimers?.pending !== baseline.blindTimers?.pending
+            || current.blindTimers?.pendingMax !== baseline.blindTimers?.pendingMax) {
+            mask |= DELTA_FLAGS.BLIND;
+        }
+
         // Write Mask
         view.setUint8(offset++, mask);
 
@@ -261,6 +270,10 @@ export class BinaryEncoder {
             for (let i = 0; i < Math.min(garbageEntries.length, 255); i++) {
                 offset = this._encodeGarbageEntry(buffer, view, offset, garbageEntries[i]);
             }
+        }
+
+        if (mask & DELTA_FLAGS.BLIND) {
+            offset = this._encodeBlindTimers(view, offset, current.blindTimers);
         }
 
         return offset;
@@ -354,6 +367,9 @@ export class BinaryEncoder {
         // to save ~200+ bytes per player
         view.setUint8(offset++, 0); // lockedPieces count = 0
 
+        // === BLIND TIMERS (8 bytes) ===
+        offset = this._encodeBlindTimers(view, offset, player.blindTimers);
+
         return offset;
     }
 
@@ -394,46 +410,6 @@ export class BinaryEncoder {
         return CELL_TYPE_MAP.get(type) || CELL_TYPE_MAP.get(type.toLowerCase()) || 0;
     }
 
-    _decodeCell(cellTypeIndex) {
-        if (cellTypeIndex <= 0) return null;
-        const encodedType = CELL_TYPES[cellTypeIndex] || 'empty';
-        let type = encodedType;
-        if (encodedType === 'garbage') {
-            type = 'GARBAGE';
-        } else if (encodedType === 'clean_garbage') {
-            type = 'CLEAN_GARBAGE';
-        }
-        return {
-            type,
-            shapeKey: type,
-            color: COLORS[type] || COLORS.GARBAGE || '#808080',
-        };
-    }
-
-    _reconstructLockedPiecesFromGrid(grid) {
-        if (!Array.isArray(grid)) return [];
-
-        const pieces = [];
-        for (let y = 0; y < grid.length; y += 1) {
-            const row = grid[y];
-            if (!Array.isArray(row)) continue;
-            for (let x = 0; x < row.length; x += 1) {
-                const cell = row[x];
-                if (!cell) continue;
-                pieces.push({
-                    type: cell.type,
-                    shapeKey: cell.shapeKey || cell.type,
-                    shape: [[1]],
-                    x,
-                    y,
-                    color: cell.color || COLORS[cell.type] || COLORS.GARBAGE,
-                    pieceId: `grid-${y}-${x}`,
-                });
-            }
-        }
-        return pieces;
-    }
-
     /**
      * Encode a piece (5 bytes)
      */
@@ -458,17 +434,36 @@ export class BinaryEncoder {
         return offset;
     }
 
+    _encodeBlindTimers(view, offset, blindTimers) {
+        const bt = blindTimers || {};
+        const fieldCentis = Math.min(65535, Math.round((bt.field || 0) * 100));
+        const fieldMaxCentis = Math.min(65535, Math.round((bt.fieldMax || 0) * 100));
+        const pendingCentis = Math.min(65535, Math.round((bt.pending || 0) * 100));
+        const pendingMaxCentis = Math.min(65535, Math.round((bt.pendingMax || 0) * 100));
+
+        view.setUint16(offset, fieldCentis, true); offset += 2;
+        view.setUint16(offset, fieldMaxCentis, true); offset += 2;
+        view.setUint16(offset, pendingCentis, true); offset += 2;
+        view.setUint16(offset, pendingMaxCentis, true); offset += 2;
+
+        return offset;
+    }
+
     /**
-     * Encode a garbage entry (6 bytes)
+     * Encode a garbage entry (7 bytes)
      */
     _encodeGarbageEntry(buffer, view, offset, entry) {
         if (!entry) {
-            for (let i = 0; i < 6; i++) view.setUint8(offset + i, 0);
-            return offset + 6;
+            for (let i = 0; i < 7; i++) view.setUint8(offset + i, 0);
+            return offset + 7;
         }
 
-        // Type: 0 = line, 1 = other
-        view.setUint8(offset++, entry.type === 'line' ? 0 : 1);
+        // Type: 0 = line, 1 = blind, 2 = full_blind, 3 = other
+        let typeVal = 3;
+        if (entry.type === 'line') typeVal = 0;
+        else if (entry.type === 'blind') typeVal = 1;
+        else if (entry.type === 'full_blind') typeVal = 2;
+        view.setUint8(offset++, typeVal);
 
         // Attacker ID hash (4 bytes) - Use simple hash for compact encoding
         const attackerHash = this._hashString(entry.attackerId || '');
@@ -476,6 +471,10 @@ export class BinaryEncoder {
 
         // Hole mask (1 byte) - 10 bits packed, use lower 8 bits
         view.setUint8(offset++, (entry.holeMask || 0) & 0xFF);
+
+        // Duration (1 byte) - encoded in deciseconds (Math.round(entry.duration * 10))
+        const durationVal = Math.min(255, Math.round((entry.duration || 0) * 10));
+        view.setUint8(offset++, durationVal);
 
         return offset;
     }
@@ -766,6 +765,13 @@ export class BinaryDecoder {
             p.garbageEntries = garbageEntries;
         }
 
+        // Blind
+        if (mask & DELTA_FLAGS.BLIND) {
+            const result = this._decodeBlindTimers(view, offset);
+            p.blindTimers = result.timers;
+            offset = result.offset;
+        }
+
         return { player: p, offset };
     }
 
@@ -833,6 +839,11 @@ export class BinaryDecoder {
         }
         const lockedPieces = this._reconstructLockedPiecesFromGrid(grid);
 
+        // === BLIND TIMERS (8 bytes) ===
+        const blindResult = this._decodeBlindTimers(view, offset);
+        const blindTimers = blindResult.timers;
+        offset = blindResult.offset;
+
         return {
             player: {
                 steamId: steamId.value,
@@ -851,6 +862,7 @@ export class BinaryDecoder {
                 nextPieces,
                 garbageEntries,
                 lockedPieces,
+                blindTimers,
             },
             offset,
         };
@@ -945,14 +957,35 @@ export class BinaryDecoder {
         };
     }
 
+    _decodeBlindTimers(view, offset) {
+        this._assertAvailable(view, offset, 8, 'blind timers');
+        const field = view.getUint16(offset, true) / 100; offset += 2;
+        const fieldMax = view.getUint16(offset, true) / 100; offset += 2;
+        const pending = view.getUint16(offset, true) / 100; offset += 2;
+        const pendingMax = view.getUint16(offset, true) / 100; offset += 2;
+
+        return {
+            timers: { field, fieldMax, pending, pendingMax },
+            offset
+        };
+    }
+
     /**
      * Decode a garbage entry
      */
     _decodeGarbageEntry(buffer, view, offset) {
-        this._assertAvailable(view, offset, 6, 'garbage entry');
-        const type = view.getUint8(offset++) === 0 ? 'line' : 'other';
+        this._assertAvailable(view, offset, 7, 'garbage entry');
+        const typeVal = view.getUint8(offset++);
+        let type = 'other';
+        if (typeVal === 0) type = 'line';
+        else if (typeVal === 1) type = 'blind';
+        else if (typeVal === 2) type = 'full_blind';
+
         const attackerHash = view.getUint32(offset, true); offset += 4;
         const holeMask = view.getUint8(offset++);
+        
+        const durationVal = view.getUint8(offset++);
+        const duration = durationVal / 10;
 
         // Try to resolve attacker ID from cache
         const attackerId = this._attackerIdCache.get(attackerHash) || `unknown_${attackerHash}`;
@@ -962,6 +995,7 @@ export class BinaryDecoder {
                 type,
                 attackerId,
                 holeMask,
+                duration,
             },
             offset,
         };

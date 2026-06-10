@@ -9,7 +9,7 @@
  * loaded eagerly; remaining chapters load in background chunks.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import {
     CHAPTER_CONFIGS,
     DEFAULT_BOARD_TRANSITION,
@@ -121,30 +121,207 @@ async function loadChapterModule(chapterId) {
 
 const OPACITY_APPLY_EPSILON = 0.01;
 
+// ── Ecotone (overlap-band) transition tuning ────────────────────────────────────
+// A6: replace the hard portal cut (chapter fades out → black/fogged void → next
+// chapter fades in) with a real OVERLAP WINDOW where adjacent biomes are co-present.
+// The window is derived per-boundary from the ADJACENT chapter spans so it scales
+// with the layout (short chapters get a proportionally short overlap). ECOTONE_SPAN_
+// FRACTION is the fraction of the *smaller* adjacent chapter span that the overlap
+// reaches across on EACH side of the boundary (≈ the "last ~12% of N co-present with
+// first ~12% of N+1" target). The window is clamped so neighbouring ecotones never
+// collide and is always a strict superset of the narrow fog seamWidth.
+// PERF (transition lag): the overlap window is the stretch where BOTH chapters +
+// both corridor fields + the breach all render at once (the dominant per-seam cost,
+// amplified by the always-on light rig). Tightened from 0.18/0.085 → 0.11/0.055 so the
+// double-render stretch is ~35% shorter; the fog colour/density lerp + the per-seam
+// carried-element ramps still bridge the boundary so it reads as a blend, not a cut.
+const ECOTONE_SPAN_FRACTION = 0.11; // fraction of the smaller adjacent chapter span, per side
+const ECOTONE_MAX_HALF_WIDTH = 0.055; // absolute arc-length cap per side (safety)
+const ECOTONE_NEIGHBOUR_CLEARANCE = 0.45; // never reach past ~half-way to the next boundary
+
+// ── B7 SEAM ACT-ARCS — per-boundary "carried element" + early-ignite ramps ──────────
+// These complement the ecotone opacity crossfade (above) and the fog colour/density lerp
+// (updateGlobalEnvironment) with a small set of TARGETED per-seam ramps the §4 transition
+// table calls for. They are pure data-derived scalars (no per-frame allocation) applied to
+// reachable env hooks (env-group opacity boost + group.userData scalar drivers the env /
+// post can read). They are ADDITIVE: where no driver applies the legacy crossfade is used.
+//
+// 5->6 (the WORST seam): ignite Space's crisp starfield EARLY across the last ~8% of Sky so
+//   that by Space-01 the black vacuum + sharp stars read immediately (no "pink soup in
+//   space"). The fog itself dissolves via the widened 5->6 seamWidth (chapter-profile);
+//   here we pull the Space (ch6) env opacity FORWARD so the stars are already up at the seam.
+const SEAM_56_STAR_IGNITE_BAND = 0.08; // fraction of Sky's span before the boundary to pre-light Space
+// 7->8 afterglow: the singularity's core glow "becomes" the first neon — pull the Urban
+//   (ch8) env opacity slightly FORWARD into the tail of Black Hole so the neon city resolves
+//   out of the BH afterglow rather than snapping in.
+const SEAM_78_AFTERGLOW_BAND = 0.05; // fraction of BH's span before the boundary to pre-seed neon
+// Journey end: over the last ~18% of the FINAL chapter (aligned with the urban finale crane
+//   + spire ignition window) expose a graceful 0->1 end ramp on the finale env's userData
+//   (consumed for the exposure bleed / beacon hold) so the journey EASES out — a slow bleed
+//   to the luminous payoff, never a hard cut at progress=1.
+const JOURNEY_END_BAND = 0.18;
+
+// SEAM 5->6 COLOUR ("the color changes to darker space with a pop"). The fog/sky COLOUR is
+// normally lerped only across the NARROW content seam (seamWidth 0.03), so the whole Sky
+// violet -> Space near-black change is crammed into ~0.06 of progress and reads as a snap.
+// For the 5->6 boundary ONLY we drive the COLOUR lerp over a WIDER, smootherstep'd window
+// centred on the boundary — WITHOUT widening the ecotone/content seam (so no extra double-
+// render cost; only the per-frame colour scalar changes). Density keeps its existing front-
+// loaded evaporation; the wider window applies to colour + ambient only.
+const SEAM_56_COLOUR_HALF_WIDTH = 0.07; // per-side progress window for the 5->6 colour lerp
+
 function smootherstep01(value) {
     const t = THREE.MathUtils.clamp(value, 0, 1);
     return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
+function smoothstep01(value) {
+    const t = THREE.MathUtils.clamp(value, 0, 1);
+    return t * t * (3 - 2 * t);
+}
+
+/**
+ * Resolve the half-width (arc-length, per side) of the ecotone overlap band centred on
+ * the boundary between `chapterId` and `chapterId + 1`. Scales with the smaller adjacent
+ * chapter span, is capped, kept clear of neighbouring boundaries, and is never narrower
+ * than the configured fog seamWidth (so the content crossfade is a strict superset).
+ */
+function resolveEcotoneHalfWidth(chapterId, chapterPositions, seamWidth) {
+    const boundaryPosition = chapterPositions[chapterId];
+    const prevBoundary = chapterPositions[chapterId - 1] ?? 0;
+    const nextBoundary = chapterPositions[chapterId + 1] ?? 1;
+    if (!Number.isFinite(boundaryPosition)) return Math.max(0.001, seamWidth || 0.001);
+
+    const spanBefore = boundaryPosition - prevBoundary;
+    const spanAfter = nextBoundary - boundaryPosition;
+    const smallerSpan = Math.max(0.001, Math.min(spanBefore, spanAfter));
+
+    let halfWidth = smallerSpan * ECOTONE_SPAN_FRACTION;
+    halfWidth = Math.min(halfWidth, ECOTONE_MAX_HALF_WIDTH);
+    // Keep clear of the previous/next boundary so adjacent ecotones never overlap.
+    halfWidth = Math.min(
+        halfWidth,
+        spanBefore * ECOTONE_NEIGHBOUR_CLEARANCE,
+        spanAfter * ECOTONE_NEIGHBOUR_CLEARANCE,
+    );
+    // Always a superset of the fog seam so both biomes are co-present at least as wide
+    // as the colour lerp.
+    return Math.max(halfWidth, seamWidth || 0.001);
+}
+
+// QW7: per-chapter board transitions are static-per-chapterId (two object spreads each
+// call in the original). resolveChapterBlendState / resolveEcotoneOverlap called this
+// ~25-50× per resolve, ~2×/frame — the largest per-frame transient-alloc source. Cache
+// the merged object ONCE per chapterId in a frozen table and return the cached instance.
+// The returned object is frozen so callers can't mutate the shared cache; getBlendState
+// consumers only read `.seamWidth`/etc. Misses (unknown chapterId) fall back to a freshly
+// built object (still frozen) and are cached for next time.
+const _chapterBoardTransitionCache = new Map();
+
 export function getChapterBoardTransition(chapterId) {
-    return {
+    const cached = _chapterBoardTransitionCache.get(chapterId);
+    if (cached) return cached;
+
+    const transition = Object.freeze({
         ...DEFAULT_BOARD_TRANSITION,
         ...getChapterTransitionForChapter(chapterId),
-    };
+    });
+    _chapterBoardTransitionCache.set(chapterId, transition);
+    return transition;
+}
+
+/**
+ * A6: Compute the ECOTONE overlap weights for a progress value. Independent of the narrow
+ * fog seam, this finds the boundary whose (wider) ecotone window contains `progress` and
+ * derives two arc-length weights: wN = smoothstep(1→0) for the outgoing chapter and
+ * wN1 = smoothstep(0→1) for the incoming chapter, so both biomes are visibly co-present
+ * across the band rather than dipping to nothing between localized set pieces.
+ *
+ * Returns a per-chapter `weights` map and metadata, or `null` outside every ecotone.
+ *
+ * GC: accepts an optional preallocated `weightsScratch` map (zeroed here each call) so the
+ * hot per-frame caller can avoid allocating a fresh `{}` every resolve. The map escapes in
+ * the returned object (stored as `ecotoneWeights`), so each independent caller must supply
+ * its OWN scratch — never share one map across two concurrently-live blend states. When no
+ * scratch is given (default), a fresh object is allocated (backward-compatible).
+ */
+function resolveEcotoneOverlap(
+    clampedProgress,
+    chapterConfigs,
+    chapterPositions,
+    weightsScratch = null,
+) {
+    const chapterCount = chapterConfigs.length;
+
+    for (let chapterId = 1; chapterId < chapterCount; chapterId += 1) {
+        const boundaryPosition = chapterPositions[chapterId];
+        if (!Number.isFinite(boundaryPosition)) continue;
+
+        const transition = getChapterBoardTransition(chapterId);
+        const seamWidth = Math.max(0.001, transition.seamWidth || DEFAULT_BOARD_TRANSITION.seamWidth);
+        const halfWidth = resolveEcotoneHalfWidth(chapterId, chapterPositions, seamWidth);
+        const start = boundaryPosition - halfWidth;
+        const end = boundaryPosition + halfWidth;
+
+        if (clampedProgress < start || clampedProgress > end) continue;
+
+        // Linear position across the window → smoothstep both directions.
+        const tRaw = THREE.MathUtils.clamp((clampedProgress - start) / (end - start), 0, 1);
+        const wN1 = smoothstep01(tRaw); // incoming chapter rises 0→1
+        const wN = smoothstep01(1 - tRaw); // outgoing chapter falls 1→0
+
+        const weights = weightsScratch || {};
+        for (let id = 1; id <= chapterCount; id += 1) weights[id] = 0;
+        weights[chapterId] = wN;
+        weights[chapterId + 1] = wN1;
+
+        return {
+            weights,
+            boundaryId: `${chapterId}-${chapterId + 1}`,
+            sourceChapter: chapterId,
+            targetChapter: chapterId + 1,
+            wN,
+            wN1,
+            t: tRaw,
+            halfWidth,
+            start,
+            end,
+        };
+    }
+
+    return null;
 }
 
 export function resolveChapterBlendState(
     progress,
     chapterConfigs = CHAPTER_CONFIGS,
     chapterPositions = CHAPTER_POSITIONS,
+    scratch = null,
 ) {
     const clampedProgress = THREE.MathUtils.clamp(progress ?? 0, 0, 1);
-    const weights = {};
     const chapterCount = chapterConfigs.length;
+    // GC: the returned `weights` and `ecotoneWeights` maps escape (stored on the caller's
+    // _resolvedBlendState and read across the frame). An optional `scratch` lets the hot
+    // per-frame caller reuse two owned maps instead of allocating two fresh `{}` per call.
+    // Two DISTINCT maps are required (weights vs ecotoneWeights are both live in the result).
+    // Each independent caller must pass its OWN scratch — never share across live states.
+    const weights = scratch?.weights || {};
+    const ecotoneScratch = scratch?.ecotoneWeights || null;
 
     for (let chapterId = 1; chapterId <= chapterCount; chapterId += 1) {
         weights[chapterId] = 0;
     }
+
+    // A6: the ecotone overlap is wider than the fog seam and is the source of truth for
+    // the content/env-opacity crossfade (so both biomes are on screen together). It is
+    // computed independently of `inSeam` and falls back to the narrow `weights` map below.
+    const ecotone = resolveEcotoneOverlap(
+        clampedProgress,
+        chapterConfigs,
+        chapterPositions,
+        ecotoneScratch,
+    );
+    const ecotoneWeights = ecotone ? ecotone.weights : null;
 
     for (let chapterId = 1; chapterId < chapterCount; chapterId += 1) {
         const boundaryPosition = chapterPositions[chapterId];
@@ -190,6 +367,8 @@ export function resolveChapterBlendState(
             seamEnd,
             transition,
             weights,
+            ecotone,
+            ecotoneWeights,
         };
     }
 
@@ -220,6 +399,8 @@ export function resolveChapterBlendState(
         seamEnd: null,
         transition: getChapterBoardTransition(activeChapter),
         weights,
+        ecotone,
+        ecotoneWeights,
     };
 }
 
@@ -246,6 +427,28 @@ export class ChapterEnvironmentManager {
         this.environmentGroup.name = 'chapter-environments';
         this.scene.add(this.environmentGroup);
 
+        // QW4 — PERSISTENT LIGHT RIG. The dominant "buggy at transitions" hitch came from the
+        // active LIGHT SET changing at every seam: toggling group.visible on a group that
+        // contains lights removes those lights from the renderer's light collection, which
+        // nulls LightsNode._lightNodes and forces customCacheKey to re-resolve EVERY lit
+        // material (a multi-ms→100s-of-ms pipeline recompile right at the boundary).
+        //
+        // Fix: at chapter load we REPARENT each chapter's THREE.Light(s) into this single,
+        // never-hidden rig (preserving world placement) and crossfade their INTENSITY by the
+        // chapter blend weight instead. The active light SET is then constant for the whole
+        // journey, so no seam recompile. Renderable meshes/particles stay .visible-toggled.
+        // Per-chapter light COUNT cuts are handled elsewhere (QW9 etc.); this only changes
+        // WHERE the lights live and HOW they fade, not how many there are.
+        this.persistentLightRig = new THREE.Group();
+        this.persistentLightRig.name = 'odyssey-persistent-light-rig';
+        this.persistentLightRig.visible = true; // never hidden — keeps the light set constant
+        this.environmentGroup.add(this.persistentLightRig);
+        // Scratch matrix/vector reused when baking a reparented light's world placement.
+        this._lightReparentMatrix = new THREE.Matrix4();
+        this._lightReparentPos = new THREE.Vector3();
+        this._lightReparentQuat = new THREE.Quaternion();
+        this._lightReparentScale = new THREE.Vector3();
+
         // Active environment references
         this.environments = new Map(); // chapterId -> { group, update }
         this.ambientLights = new Set();
@@ -267,8 +470,12 @@ export class ChapterEnvironmentManager {
         // Chapter change callback (for camera FOV pulse integration)
         this.onChapterChangeCallback = null;
 
-        // When true, OdysseyAtmosphere owns fog/clear/ambient (P2). We still run
-        // chapter-change detection here (for the FOV pulse) but skip the visual writes.
+        // When true, OdysseyAtmosphere owns the dome/clear/ambient/light rig (P2).
+        // Scene FOG (color + density) is ALWAYS owned here — the per-chapter
+        // chapter-profile lerp is the single source of truth for fog so the camera
+        // never crosses an uncoloured void. When owned we still skip the clear-color
+        // and ambient writes (the atmosphere rig drives those) and run chapter-change
+        // detection for the FOV pulse.
         this.atmosphereOwned = false;
 
         // Quality settings
@@ -281,7 +488,17 @@ export class ChapterEnvironmentManager {
         this._fogColorScratch = new THREE.Color();
         this._ambientColorScratch = new THREE.Color();
         this._blendColorScratch = new THREE.Color();
-        this._resolvedBlendState = resolveChapterBlendState(0, CHAPTER_CONFIGS, this.chapterPositions);
+        // GC: owned weight maps reused by the instance's INTERNAL recompute paths
+        // (constructor / setChapterPositions / the updateVisibility fallback). The public
+        // getBlendState() still allocates fresh maps so its returned snapshot never aliases
+        // a second consumer. Two distinct maps (weights + ecotoneWeights both live at once).
+        this._blendStateScratch = { weights: {}, ecotoneWeights: {} };
+        this._resolvedBlendState = resolveChapterBlendState(
+            0,
+            CHAPTER_CONFIGS,
+            this.chapterPositions,
+            this._blendStateScratch,
+        );
 
         console.log('[ChapterEnvironmentManager] Created');
     }
@@ -295,8 +512,10 @@ export class ChapterEnvironmentManager {
     }
 
     /**
-     * When owned, OdysseyAtmosphere drives fog/clear/ambient; updateGlobalEnvironment
-     * keeps detecting chapter changes (FOV pulse) but skips its own visual writes.
+     * When owned, OdysseyAtmosphere drives the dome/clear-color/ambient/light rig and
+     * updateGlobalEnvironment skips those writes. Scene FOG (color + density) is always
+     * driven here from the chapter-profile lerp regardless of ownership, so exactly one
+     * place sets scene.fog per frame. Chapter-change detection (FOV pulse) always runs.
      * @param {boolean} owned
      */
     setAtmosphereOwned(owned) {
@@ -340,18 +559,20 @@ export class ChapterEnvironmentManager {
             if (typeof material.opacity === 'number') {
                 if (material.userData.baseOpacity === undefined) {
                     material.userData.baseOpacity = material.opacity;
+                    // QW5: record the authored transparent flag, then force transparent=true
+                    // PERMANENTLY at build. The crossfade now drives ONLY material.opacity —
+                    // it never flips .transparent mid-fade, so the cached pipeline is never
+                    // invalidated (no needsUpdate=true recompile at the seam). One pipeline
+                    // build happens here at construct time instead of a hitch per crossfade.
                     material.userData.baseTransparent = material.transparent;
                     material.userData.lastTransparent = material.transparent;
+                    material.transparent = true;
                 }
                 materialTargets.push(material);
             }
         };
 
         group.traverse((child) => {
-            if (child.isAmbientLight) {
-                this.registerAmbientLight(child);
-            }
-
             if (!child.material) return;
             if (Array.isArray(child.material)) {
                 child.material.forEach(collectMaterial);
@@ -361,6 +582,85 @@ export class ChapterEnvironmentManager {
         });
 
         return { uniformTargets, materialTargets };
+    }
+
+    /**
+     * QW4 — reparent every THREE.Light in a freshly-built chapter group into the persistent
+     * light rig so the active light SET never changes at a seam (no LightsNode cache-key churn,
+     * no per-material recompile hitch). World placement is preserved by baking the light's
+     * transform relative to the rig's parent (environmentGroup). The original chapter-group
+     * userData references (e.g. lavaLight, accentLights) stay valid — it is the SAME Light
+     * instance, only its parent changes — so each chapter's update() keeps animating its lights
+     * by absolute intensity assignment; the crossfade is applied AFTER update() as a weight
+     * multiply (see _applyLightCrossfade), which is non-compounding because chapter updates
+     * rewrite intensity from scratch each frame.
+     *
+     * @param {THREE.Group} group chapter group (already added under environmentGroup)
+     * @returns {Array<{light: THREE.Light, baseIntensity: number}>} rig-managed lights
+     */
+    _reparentChapterLights(group) {
+        const rigLights = [];
+        const lights = [];
+        // Collect first; reparenting mutates the tree, so don't reparent mid-traverse.
+        group.traverse((child) => {
+            if (child.isLight) lights.push(child);
+        });
+
+        // Ensure world matrices are current so baked placement is accurate.
+        this.environmentGroup.updateMatrixWorld(true);
+
+        for (const light of lights) {
+            const baseIntensity = light.intensity;
+            // Bake the light's transform into the rig's local space: rigLocal =
+            // inverse(rigParentWorld) * lightWorld. The rig sits at the origin under
+            // environmentGroup, so this preserves the on-screen position/orientation.
+            light.updateWorldMatrix(true, false);
+            this._lightReparentMatrix
+                .copy(this.persistentLightRig.matrixWorld)
+                .invert()
+                .multiply(light.matrixWorld);
+            this._lightReparentMatrix.decompose(
+                this._lightReparentPos,
+                this._lightReparentQuat,
+                this._lightReparentScale,
+            );
+
+            this.persistentLightRig.add(light); // detaches from chapter group
+            light.position.copy(this._lightReparentPos);
+            light.quaternion.copy(this._lightReparentQuat);
+            light.scale.copy(this._lightReparentScale);
+
+            // Remember the authored full-strength intensity so a light that its chapter
+            // update never touches (static) can be reset to base each frame without drift.
+            light.userData.rigBaseIntensity = baseIntensity;
+            rigLights.push({ light, baseIntensity });
+        }
+
+        return rigLights;
+    }
+
+    /**
+     * QW4 — apply the per-chapter blend weight to a chapter's rig lights. Run AFTER the
+     * chapter's update() (which rewrites animated intensities from scratch) so the weight is
+     * a clean multiply that never compounds. For a chapter whose update did NOT run this frame
+     * (hidden / weight 0) the light is driven to 0 directly. Pure arithmetic, no allocation.
+     *
+     * @param {Array<{light: THREE.Light}>} rigLights
+     * @param {number} weight 0..1 chapter blend weight
+     * @param {boolean} updated whether the chapter's update() ran this frame
+     */
+    _applyLightCrossfade(rigLights, weight, updated) {
+        if (!rigLights || rigLights.length === 0) return;
+        const w = THREE.MathUtils.clamp(weight, 0, 1);
+        for (const entry of rigLights) {
+            const { light } = entry;
+            // If the chapter didn't animate this frame, restore the authored base before
+            // scaling so a static light scales from its full value (no per-frame drift).
+            const fullStrength = updated
+                ? light.intensity
+                : (light.userData.rigBaseIntensity ?? entry.baseIntensity);
+            light.intensity = fullStrength * w;
+        }
     }
 
     /**
@@ -405,16 +705,25 @@ export class ChapterEnvironmentManager {
         this.environmentGroup.add(group);
 
         const opacityTargets = this._collectOpacityTargets(group);
+        // QW4: pull this chapter's lights into the always-resident rig so the seam never
+        // changes the active light set (no recompile hitch). Must run after the group is
+        // parented under environmentGroup so the baked world placement is correct.
+        const rigLights = this._reparentChapterLights(group);
 
         this.environments.set(chapterId, {
             group,
             update: def.update,
             config: def.config,
             opacityTargets,
+            rigLights,
             lastOpacity: null,
             lastVisible: false,
             prewarmed: false,
         });
+
+        // The chapter starts hidden → drive its rig lights to 0 so reparented lights don't
+        // illuminate the scene before the chapter is on screen.
+        this._applyLightCrossfade(rigLights, 0, false);
 
         console.log(`[ChapterEnvironmentManager] Created chapter ${chapterId} environment`);
         return group;
@@ -478,6 +787,55 @@ export class ChapterEnvironmentManager {
     }
 
     /**
+     * B7 — early-ignite opacity boost for a chapter near a seam where the §4 transition
+     * calls for the INCOMING biome to read BEFORE the boundary (a carried element / early
+     * reveal). Returns a 0..1 boost that is Math.max'd into the chapter's crossfade opacity
+     * so the env never DIMS — it only appears earlier. Pure arithmetic, no allocation.
+     *
+     *  • ch6 Space — ignite the starfield across the last ~8% of Sky (5->6, the worst seam)
+     *  • ch8 Urban — seed the neon city across the last ~5% of Black Hole (7->8 afterglow)
+     *
+     * @param {number} chapterId incoming chapter id
+     * @param {number} progress current path progress (0..1)
+     * @returns {number} early-ignite boost 0..1
+     */
+    _seamInBoostFor(chapterId, progress) {
+        // Generic helper: ramp 0->1 as `progress` crosses the last `band` of the OUTGOING
+        // chapter (chapterId-1) up to the boundary at chapterPositions[chapterId-1].
+        const ramp = (band) => {
+            const boundary = this.chapterPositions[chapterId - 1];
+            const prevBoundary = this.chapterPositions[chapterId - 2] ?? 0;
+            if (!Number.isFinite(boundary) || !Number.isFinite(prevBoundary)) return 0;
+            const span = boundary - prevBoundary;
+            if (span <= 0) return 0;
+            const start = boundary - span * band;
+            return smoothstep01((progress - start) / Math.max(1e-5, boundary - start));
+        };
+
+        if (chapterId === 6) return ramp(SEAM_56_STAR_IGNITE_BAND);
+        if (chapterId === 8) return ramp(SEAM_78_AFTERGLOW_BAND);
+        return 0;
+    }
+
+    /**
+     * B7 — graceful journey-end ramp (0->1) over the last `JOURNEY_END_BAND` of the FINAL
+     * chapter. Written onto the finale env group's userData so the urban env / post can hold
+     * the beacon + bleed exposure (the §3 ch8 "graceful fade, not a hard cut"). No allocation.
+     * @param {number} progress current path progress (0..1)
+     */
+    _applyJourneyEndDriver(progress) {
+        const lastChapterId = this.chapterPositions.length - 1; // positions = [s1..sN, 1]
+        const env = this.environments.get(lastChapterId);
+        if (!env?.group) return;
+        const end = this.chapterPositions[lastChapterId] ?? 1; // == 1 (journey end)
+        const prevBoundary = this.chapterPositions[lastChapterId - 1] ?? (end - JOURNEY_END_BAND);
+        const span = Math.max(1e-5, end - prevBoundary);
+        const start = end - span * JOURNEY_END_BAND;
+        const journeyEnd = smoothstep01((progress - start) / Math.max(1e-5, end - start));
+        env.group.userData.journeyEnd = journeyEnd;
+    }
+
+    /**
      * Update environment visibility based on camera Y position
      * @param {number} cameraY - Current camera Y position
      */
@@ -490,14 +848,37 @@ export class ChapterEnvironmentManager {
                 this.cameraProgress,
                 CHAPTER_CONFIGS,
                 this.chapterPositions,
+                this._blendStateScratch,
             );
         } else {
             this.cameraY = position ?? 0;
         }
 
+        // A6: the env-opacity / content crossfade reads the WIDER ecotone overlap weights
+        // when present (both adjacent biomes co-present across the band) and falls back to
+        // the narrow seam weights for any chapter not participating in the active ecotone.
+        // The fog colour/density lerp (updateGlobalEnvironment) still uses the narrow seam.
+        const ecotoneWeights = this._resolvedBlendState.ecotoneWeights || null;
+
         this.environments.forEach((env, chapterId) => {
+            let progressOpacity = this._resolvedBlendState.weights?.[chapterId] || 0;
+            if (ecotoneWeights && ecotoneWeights[chapterId] !== undefined
+                && (chapterId === this._resolvedBlendState.ecotone.sourceChapter
+                    || chapterId === this._resolvedBlendState.ecotone.targetChapter)) {
+                progressOpacity = ecotoneWeights[chapterId];
+            }
+
+            // B7 SEAM EARLY-IGNITE: for seams where the §4 plan wants the incoming biome to
+            // read BEFORE the boundary (5->6 Space starfield, 7->8 Urban neon afterglow),
+            // pull the incoming env opacity FORWARD. Math.max so it only ever appears EARLIER
+            // (never dims the existing crossfade). Progress mode only.
+            if (mode === 'progress') {
+                const seamInBoost = this._seamInBoostFor(chapterId, this.cameraProgress);
+                if (seamInBoost > progressOpacity) progressOpacity = seamInBoost;
+            }
+
             const opacity = mode === 'progress'
-                ? THREE.MathUtils.clamp(this._resolvedBlendState.weights?.[chapterId] || 0, 0, 1)
+                ? THREE.MathUtils.clamp(progressOpacity, 0, 1)
                 : THREE.MathUtils.clamp(
                     env.group.position.y >= (this.cameraY ?? 0) ? 1 : 0,
                     0,
@@ -522,6 +903,11 @@ export class ChapterEnvironmentManager {
             env.lastOpacity = opacity;
             env.lastVisible = isVisible;
         });
+
+        // B7 — graceful journey-end ramp on the finale env (held by urban env / post).
+        if (mode === 'progress') {
+            this._applyJourneyEndDriver(this.cameraProgress);
+        }
     }
 
     getBlendState(progress = this.cameraProgress) {
@@ -538,6 +924,7 @@ export class ChapterEnvironmentManager {
             this.cameraProgress,
             CHAPTER_CONFIGS,
             this.chapterPositions,
+            this._blendStateScratch,
         );
     }
 
@@ -569,24 +956,19 @@ export class ChapterEnvironmentManager {
         for (const material of opacityTargets.materialTargets) {
             if (material.userData.baseOpacity === undefined) {
                 material.userData.baseOpacity = material.opacity;
+                // QW5: fade-eligible materials are made transparent:true permanently at
+                // build (_collectOpacityTargets). Mirror that for any material that slipped
+                // in without pre-recording, so we still never need to flip the flag here.
                 material.userData.baseTransparent = material.transparent;
                 material.userData.lastTransparent = material.transparent;
-            }
-
-            material.opacity = material.userData.baseOpacity * clampedOpacity;
-
-            if (clampedOpacity < 1) {
                 material.transparent = true;
-            } else {
-                // Restore original transparency state when fully opaque
-                material.transparent = material.userData.baseTransparent;
             }
 
-            // Update material needsUpdate if transparency changed
-            if (material.transparent !== material.userData.lastTransparent) {
-                material.needsUpdate = true;
-                material.userData.lastTransparent = material.transparent;
-            }
+            // QW5: drive ONLY the opacity. The .transparent flag stays true for the lifetime
+            // of the material, so the GPU pipeline is never invalidated mid-crossfade — this
+            // removes the per-seam recompile hitch that came from flipping .transparent +
+            // setting needsUpdate=true while fading.
+            material.opacity = material.userData.baseOpacity * clampedOpacity;
         }
     }
 
@@ -635,10 +1017,19 @@ export class ChapterEnvironmentManager {
     update(delta, camera = null, cameraProgress = null, directorState = null) {
         this.time += delta;
 
-        // Update each visible environment
+        // Update each visible environment, then QW4-crossfade its rig lights by the SAME
+        // opacity the visibility pass applied to the chapter's meshes (env.lastOpacity), so
+        // the lights fade in lock-step with the biome without ever leaving the active light
+        // set. Running the crossfade AFTER env.update() makes it a clean non-compounding
+        // multiply (chapter updates rewrite intensity from scratch).
         this.environments.forEach((env) => {
-            if (env.group.visible && env.update) {
+            const updated = !!(env.group.visible && env.update);
+            if (updated) {
                 env.update(env.group, delta, this.time, camera, cameraProgress, directorState);
+            }
+            if (env.rigLights && env.rigLights.length > 0) {
+                const weight = env.lastOpacity ?? (env.group.visible ? 1 : 0);
+                this._applyLightCrossfade(env.rigLights, weight, updated);
             }
         });
 
@@ -657,20 +1048,43 @@ export class ChapterEnvironmentManager {
 
     /**
      * Update global environment (fog, background) based on camera progress
+     *
+     * QW6: accepts an optional precomputed `blendState` so the per-frame caller can pass the
+     * SAME state already resolved for updateVisibility (the board resolves it once via
+     * getBlendState and hands it to updateVisibility). When omitted, reuse the cached
+     * `_resolvedBlendState` that updateVisibility set this frame if it matches `progress`;
+     * only as a last resort do we recompute. This collapses the previous 2× resolve/frame
+     * (the heaviest GC source at seams) to a single resolve.
      * @param {number} progress - Camera progress (0-1)
+     * @param {object|null} [blendState] - precomputed blend state for this progress (QW6)
      */
-    updateGlobalEnvironment(progress) {
-        const blendState = resolveChapterBlendState(progress, CHAPTER_CONFIGS, this.chapterPositions);
-        const currentChapterId = blendState.sourceChapter;
-        const nextChapterId = blendState.targetChapter;
-        const t = blendState.seamProgress;
+    updateGlobalEnvironment(progress, blendState = null) {
+        let resolved = blendState;
+        if (!resolved) {
+            const cached = this._resolvedBlendState;
+            // Reuse the state updateVisibility resolved this frame when it is for the same
+            // progress (cameraProgress is clamped+stored there). Otherwise resolve once into
+            // owned scratch (no fresh allocation) — never the previous double resolve.
+            const clamped = THREE.MathUtils.clamp(progress ?? 0, 0, 1);
+            resolved = (cached && this.cameraProgress === clamped)
+                ? cached
+                : resolveChapterBlendState(
+                    progress,
+                    CHAPTER_CONFIGS,
+                    this.chapterPositions,
+                    this._blendStateScratch,
+                );
+        }
+        const currentChapterId = resolved.sourceChapter;
+        const nextChapterId = resolved.targetChapter;
+        const t = resolved.seamProgress;
 
         // ═══════════════════════════════════════════════════════════════════
         // Chapter Change Detection - Trigger callback for FOV pulse
         // ═══════════════════════════════════════════════════════════════════
-        if (blendState.activeChapter !== this.currentChapter) {
+        if (resolved.activeChapter !== this.currentChapter) {
             const previousChapter = this.currentChapter;
-            this.currentChapter = blendState.activeChapter;
+            this.currentChapter = resolved.activeChapter;
 
             console.log(`[ChapterEnvironmentManager] Chapter changed: ${previousChapter} → ${this.currentChapter}`);
 
@@ -680,10 +1094,11 @@ export class ChapterEnvironmentManager {
             }
         }
 
-        // P2: when OdysseyAtmosphere owns the global look, it drives fog/clear/ambient
-        // from director state. We still ran chapter-change detection above (FOV pulse).
-        if (this.atmosphereOwned) return;
-
+        // Scene FOG is owned here unconditionally (single source of truth — the
+        // chapter-profile atmosphere lerp). When OdysseyAtmosphere owns the rig it
+        // still drives the dome/clear-color/ambient/lights, so those writes are gated
+        // by `atmosphereOwned` below — but the fog color/density always comes from this
+        // per-chapter lerp so the camera never crosses an uncoloured void.
         const currentConfig = this.chapterEnvironmentById.get(currentChapterId);
         const nextConfig = this.chapterEnvironmentById.get(nextChapterId);
 
@@ -722,7 +1137,16 @@ export class ChapterEnvironmentManager {
             this._blendColorScratch.set(nextAmbientLight);
             ambientLight.lerp(this._blendColorScratch, blend);
 
-            fogDensity = THREE.MathUtils.lerp(currentFogDensity, nextFogDensity, blend);
+            // B7 5->6 (the WORST seam): the violet atmospheric "soup" must EVAPORATE into
+            // vacuum AHEAD of the colour crossfade so it doesn't read as "pink soup in
+            // space". Front-load the DENSITY blend (pow < 1) on the 5->6 boundary only so
+            // density rushes toward Space's near-zero early, while the COLOUR still lerps
+            // linearly (the lavender survives only as the first distant nebula tint, not as
+            // ambient volumetric fog). Every other seam keeps the linear density lerp.
+            const densityBlend = (currentChapterId === 5 && nextChapterId === 6)
+                ? blend ** 0.45
+                : blend;
+            fogDensity = THREE.MathUtils.lerp(currentFogDensity, nextFogDensity, densityBlend);
             ambientIntensity = THREE.MathUtils.lerp(
                 currentAmbientIntensity,
                 nextAmbientIntensity,
@@ -730,13 +1154,50 @@ export class ChapterEnvironmentManager {
             );
         }
 
-        // Apply to scene
+        // SEAM 5->6 WIDE COLOUR LERP: override the fog/sky/ambient COLOUR with a wider,
+        // smootherstep'd Sky(5)->Space(6) ramp centred on the 5-6 boundary so the violet
+        // atmosphere dissolves to the near-black vacuum gradually instead of snapping inside
+        // the narrow content seam. Decoupled from the ecotone (no extra double-render); the
+        // DENSITY keeps its front-loaded evaporation (driven above) so this only smooths hue.
+        const boundary56 = this.chapterPositions[5];
+        if (Number.isFinite(boundary56)) {
+            const colourStart = boundary56 - SEAM_56_COLOUR_HALF_WIDTH;
+            const colourEnd = boundary56 + SEAM_56_COLOUR_HALF_WIDTH;
+            const p = this.cameraProgress;
+            if (p >= colourStart && p <= colourEnd) {
+                const sky5 = this.chapterEnvironmentById.get(5);
+                const space6 = this.chapterEnvironmentById.get(6);
+                if (sky5 && space6) {
+                    const colourBlend = smootherstep01(
+                        (p - colourStart) / (colourEnd - colourStart),
+                    );
+                    skyColor.set(sky5.skyColor)
+                        .lerp(this._blendColorScratch.set(space6.skyColor), colourBlend);
+                    fogColor.set(sky5.fogColor)
+                        .lerp(this._blendColorScratch.set(space6.fogColor), colourBlend);
+                    ambientLight.set(sky5.ambientLight)
+                        .lerp(this._blendColorScratch.set(space6.ambientLight), colourBlend);
+                    ambientIntensity = THREE.MathUtils.lerp(
+                        sky5.ambientIntensity,
+                        space6.ambientIntensity,
+                        colourBlend,
+                    );
+                }
+            }
+        }
+
+        // Apply scene FOG — the single source of truth, written every frame
+        // regardless of ownership (chapter-profile lerp drives colour + density).
         if (this.scene.fog instanceof THREE.FogExp2) {
             this.scene.fog.color.copy(fogColor);
             this.scene.fog.density = fogDensity;
         } else {
-            this.scene.fog = new THREE.FogExp2(fogColor, fogDensity);
+            this.scene.fog = new THREE.FogExp2(fogColor.clone(), fogDensity);
         }
+
+        // When the atmosphere rig is active it owns clear-color + ambient/lights, so
+        // skip those writes here to avoid double-driving them. Fog stays ours (above).
+        if (this.atmosphereOwned) return;
 
         // Apply background color if renderer is available
         if (this.renderer) {
@@ -759,6 +1220,16 @@ export class ChapterEnvironmentManager {
      */
     dispose() {
         this.environments.forEach((env) => {
+            // QW4: this chapter's lights were reparented into the persistent rig — remove and
+            // dispose them there (they are no longer children of env.group).
+            if (env.rigLights) {
+                for (const entry of env.rigLights) {
+                    const { light } = entry;
+                    this.persistentLightRig.remove(light);
+                    if (typeof light.dispose === 'function') light.dispose();
+                }
+                env.rigLights.length = 0;
+            }
             env.group.traverse((child) => {
                 if (child.geometry) child.geometry.dispose();
                 if (child.material) {
@@ -774,6 +1245,9 @@ export class ChapterEnvironmentManager {
 
         this.environments.clear();
         this.ambientLights.clear();
+        if (this.persistentLightRig) {
+            this.environmentGroup.remove(this.persistentLightRig);
+        }
         this.scene.remove(this.environmentGroup);
 
         console.log('[ChapterEnvironmentManager] Disposed');
