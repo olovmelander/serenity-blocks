@@ -21,6 +21,9 @@
 import * as THREE from 'three/webgpu';
 import {
     attribute,
+    float,
+    mix,
+    mod,
     uniform,
     uv,
     texture,
@@ -40,6 +43,9 @@ import {
     createCreatureSilhouetteMaterial,
     createKelpClusterMaterial,
     createJellyfishMaterial,
+    createVentGlowTSL,
+    createSkylightPaneMaterial,
+    createPearlGateTSL,
 } from './deep-ocean.tsl.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 
@@ -160,9 +166,19 @@ export function createDeepOceanEnvironment(options = {}) {
     group.userData.yStart = DEEP_OCEAN_CONFIG.yStart;
     group.userData.yEnd = DEEP_OCEAN_CONFIG.yEnd;
 
-    // Shared time uniform — a TSL uniform() node so it can feed the .tsl.js builders
-    // while still being ticked via .value in the update loop (same surface as before).
-    const uniforms = { uTime: uniform(0) };
+    // Shared uniforms — TSL uniform() nodes ticked via .value in the update loop.
+    // uDepth (0 at the chapter foot → 1 at the surface breach) scripts the creative
+    // plan's depth ladder: darker-before-lighter water, god-ray density, the caustic
+    // ceiling's approach, the entry vent glow, and the exit skylight panes.
+    // uOpacity is the manager-driven ecotone crossfade bridge shared by every fading
+    // material in the chapter (exposed via material.uniforms so _collectOpacityTargets
+    // reaches TSL opacityNode materials — the seam-bleed fix).
+    const uniforms = {
+        uTime: uniform(0),
+        uDepth: uniform(0),
+        uOpacity: uniform(1),
+        uSteamEntry: uniform(1),
+    };
     group.userData.uniforms = uniforms;
 
     const chapterRange = getChapterPathRange(2);
@@ -187,24 +203,31 @@ export function createDeepOceanEnvironment(options = {}) {
         : { x: 0, y: chapterCenterY, z: 0 };
     const corridor = createCorridorSampler(anchor);
 
-    // 1. Ocean Gradient Background (TSL NodeMaterial)
-    const oceanGradient = createOceanGradientTSL();
+    // 1. Ocean Gradient Background (TSL NodeMaterial) — uDepth scripts the ladder.
+    const oceanGradient = createOceanGradientTSL({ uDepth: uniforms.uDepth });
     group.add(oceanGradient.mesh);
 
-    // 2. Water Surface (Looking up) — TSL NodeMaterial, shares uTime
-    const waterSurface = createWaterSurfaceTSL(uniforms.uTime, surfaceOffsetY);
+    // 2. Water Surface (Looking up) — brightens + fills the frame on the final approach.
+    const waterSurface = createWaterSurfaceTSL(uniforms.uTime, surfaceOffsetY, {
+        uDepth: uniforms.uDepth,
+        uOpacity: uniforms.uOpacity,
+    });
     group.add(waterSurface.mesh);
 
     // 3. Volumetric God Rays — TSL NodeMaterial, shares uTime. The cones are re-placed
     // ALONG the corridor (createGodRaysTSL stations them in local space, then we shift the
-    // whole group up the path) so 2-3 shafts cross the climbing camera's sightline.
-    const rays = createGodRaysTSL(uniforms.uTime);
+    // whole group up the path) so 2-3 shafts cross the climbing camera's sightline. Light
+    // density narrates the ascent (uDepth) and warms slightly at the breach.
+    const rays = createGodRaysTSL(uniforms.uTime, {
+        uDepth: uniforms.uDepth,
+        uOpacity: uniforms.uOpacity,
+    });
     placeGodRaysAlongCorridor(rays.group, corridor);
     group.add(rays.group);
 
     // 3b. Far seabed silhouette — the abyssal floor far below the path, fading into
     // murk. Placed well under the chapter center so it anchors the bottom of the frame.
-    const seabed = createSeabedTSL(uniforms.uTime);
+    const seabed = createSeabedTSL(uniforms.uTime, { uOpacity: uniforms.uOpacity });
     seabed.mesh.position.set(0, -70, -40);
     group.add(seabed.mesh);
 
@@ -212,18 +235,62 @@ export function createDeepOceanEnvironment(options = {}) {
     const kelp = createKelpClusters(uniforms, 26);
     group.add(kelp);
 
-    // 3d. Far creature silhouettes (whales / rays / jellyfish) strung DOWN the corridor at
-    // multiple depths so the frame reads with layered life as the camera climbs; the hero
-    // leviathan crosses the mid-act sightline.
-    const creatures = createCreatureSilhouettes(uniforms, 9, corridor);
+    // 3d. Creature layer (creative plan assets 1 + 5): instances 1–3 are the HERO MANTA
+    // TRIO — choreographed banked crossings at progress stations ~0.22/0.52/0.82, sized
+    // 35–55 so a wing silhouette actually reads — while instance 0 is the leviathan,
+    // DEMOTED to one extreme-distance background crossing (a scale cue, never competing
+    // with the mantas). The rest stay small distant whales/rays/jellies.
+    const creatures = createCreatureSilhouettes(uniforms, 10, corridor);
     group.add(creatures);
 
-    // 4. Bioluminescent Jellyfish — FEWER + BIGGER + brighter, distributed ALONG the
-    // corridor so the camera passes a string of glowing jellies (was a scatter cloud the
-    // climbing camera mostly missed).
-    const jellyfishCount = Math.max(6, Math.floor((options.particleCount || 500) / 36));
+    // 3e. Hydrothermal vent glow (creative plan asset 9) — Chapter 1's drowned First
+    // Heart, refracted and wobbling below the camera for the chapter's first few
+    // percent. Entry-only (uDepth-gated in the material).
+    const ventGlow = createVentGlowTSL(uniforms.uTime, {
+        uDepth: uniforms.uDepth,
+        uOpacity: uniforms.uOpacity,
+    });
+    const ventSeat = corridor.ok ? corridor.sample(0.02, 3) : { x: 0, y: -70, z: -20 };
+    ventGlow.mesh.position.set(ventSeat.x, ventSeat.y - 14, ventSeat.z);
+    ventGlow.mesh.scale.set(30, 30, 1);
+    group.add(ventGlow.mesh);
+    group.userData.ventGlow = ventGlow.mesh;
+
+    // 3f. Fractured SKYLIGHT PANES (creative plan Transition Out) — refracted patches
+    // of the Chapter 3 sky just under the wave surface, fading in across the last ~12%
+    // of the climb so the breach is built up over ~8 seconds instead of popping.
+    const panes = createSkylightPanes(uniforms, corridor, surfaceOffsetY);
+    group.add(panes);
+    group.userData.skylightPanes = panes;
+
+    // 3g. THE PEARL GATE (creative plan asset 4) — the nacreous threshold ON the rail
+    // at ~0.68 progress that the camera passes through, replacing the unlit black torus
+    // read. Oriented to face along the path tangent like the chapter markers.
+    const gate = createPearlGateTSL(uniforms.uTime, { uOpacity: uniforms.uOpacity });
+    if (corridor.ok) {
+        const gateSeat = corridor.sample(0.68, 0);
+        const gateAhead = corridor.sample(0.72, 0);
+        gate.mesh.position.set(gateSeat.x, gateSeat.y, gateSeat.z);
+        const gateDir = new THREE.Vector3(
+            gateAhead.x - gateSeat.x,
+            gateAhead.y - gateSeat.y,
+            gateAhead.z - gateSeat.z,
+        ).normalize();
+        gate.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), gateDir);
+    } else {
+        gate.mesh.position.set(0, 6, -42);
+    }
+    group.add(gate.mesh);
+    group.userData.pearlGate = gate.mesh;
+
+    // 4. Bioluminescent Jellyfish — the PROCESSION (creative plan asset 2): 6–10 large
+    // bells strung up the corridor at 18–40u lateral, never on the rail line, with the
+    // magenta bells biased to the darkest stretch (progress 0.1–0.35) where they own
+    // the frame.
+    const jellyfishCount = Math.max(6, Math.min(10, Math.floor((options.particleCount || 500) / 36)));
     const jellyfish = createBioluminescentJellyfish(uniforms, jellyfishCount, corridor);
     group.add(jellyfish);
+    group.userData.jellyfish = jellyfish;
 
     // 5. Bubbles — count trimmed further (fewer, brighter motes read as life, not flat
     // speckle noise; the flat additive murk was the chapter's #1 wash offender, and
@@ -244,6 +311,7 @@ export function createDeepOceanEnvironment(options = {}) {
         corridor,
     );
     group.add(plankton);
+    group.userData.plankton = plankton;
 
     // Anchor the whole ocean volume to the path's FULL center (x,y,z), not just Y, so
     // the god-ray cones, water ceiling and particle field stay wrapped around the path
@@ -255,6 +323,12 @@ export function createDeepOceanEnvironment(options = {}) {
         group.position.y = chapterCenterY;
     }
     group.userData.waterSurfaceY = waterSurfaceY;
+
+    // Record the chapter's spline t-span so update() can map global camera progress
+    // to the local 0→1 ascent (uDepth) with no per-frame allocation.
+    const chapterPositions = getActiveOdysseyChapterPositions();
+    group.userData.chapterTStart = chapterPositions?.[1] ?? 0.125;
+    group.userData.chapterTEnd = chapterPositions?.[2] ?? 0.25;
 
     // Cache the per-frame animated set pieces on userData at create time so the update
     // loop never re-walks the scene graph (was 3× getObjectByName/frame). Jellyfish now
@@ -312,27 +386,65 @@ function createCreatureSilhouettes(uniforms, count, corridor) {
     const jellyTint = new THREE.Color(0x2a6cff);
     const leviathanTint = new THREE.Color(0x081a2e);
 
+    const phases = new Float32Array(count);
+    const mantaTint = new THREE.Color(0x0c2238);
+
+    // Hero manta pass stations (creative plan asset 1): progress ~0.22 / 0.52 / 0.82,
+    // each entering off-axis and crossing the corridor 20–35u ahead of the camera's
+    // sightline on a banked arc (the arc itself runs in the material from aPhase).
+    // Pass two sits in the god-ray band (rays are stationed t 0.15–0.9), so the middle
+    // crossing is backlit — the chapter's trailer frame.
+    const mantaPasses = [
+        { t: 0.22, size: 38, phase: 0.0 },
+        { t: 0.52, size: 52, phase: 2.1 },
+        { t: 0.82, size: 44, phase: 4.2 },
+    ];
+
     for (let i = 0; i < count; i += 1) {
         if (i === 0) {
-            // THE HERO: one colossal leviathan crossing the MID-ACT sightline. Placed at a
-            // corridor station ~halfway up the chapter, pushed ~55u ahead of that station
-            // (down-path) so the climbing camera sees it crossing the frame off-centre. The
-            // material adds the slow lateral X traverse + flank-marking pulse.
+            // The leviathan, DEMOTED (creative plan asset 5): one extreme-distance
+            // crossing at ~0.45 progress, below and beyond the manta layer — a scale
+            // cue on the far side of the water column, never a competing silhouette.
             if (corridor?.ok) {
-                const c = corridor.sample(0.5, 18);
+                const c = corridor.sample(0.45, 30);
                 positions[0] = c.x - 12;
-                positions[1] = c.y - 6;
-                positions[2] = c.z - 45; // ahead of the station, down the corridor
+                positions[1] = c.y - 18;
+                positions[2] = c.z - 110; // far beyond the manta layer
             } else {
                 positions[0] = -28;
-                positions[1] = -8;
-                positions[2] = -55;
+                positions[1] = -20;
+                positions[2] = -120;
             }
             shapes[0] = 3;
-            sizes[0] = 84; // aSize ~70-90 (vs 26 for the old generic whale)
+            sizes[0] = 70;
+            phases[0] = 0;
             tints[0] = leviathanTint.r;
             tints[1] = leviathanTint.g;
             tints[2] = leviathanTint.b;
+            continue;
+        }
+
+        if (i <= mantaPasses.length) {
+            // HERO MANTA TRIO: shape 4, sized 35–55, seated tight on the corridor so
+            // the banked arc (±46u lateral in the material) carries each one across
+            // the visible frustum 20–35u ahead of the camera.
+            const pass = mantaPasses[i - 1];
+            if (corridor?.ok) {
+                const c = corridor.sample(pass.t, 6);
+                positions[i * 3] = c.x;
+                positions[i * 3 + 1] = c.y + 4;
+                positions[i * 3 + 2] = c.z - 28; // ahead of the station, in the sightline
+            } else {
+                positions[i * 3] = 0;
+                positions[i * 3 + 1] = i * 8 - 8;
+                positions[i * 3 + 2] = -30 - i * 10;
+            }
+            shapes[i] = 4;
+            sizes[i] = pass.size;
+            phases[i] = pass.phase;
+            tints[i * 3] = mantaTint.r;
+            tints[i * 3 + 1] = mantaTint.g;
+            tints[i * 3 + 2] = mantaTint.b;
             continue;
         }
 
@@ -358,10 +470,11 @@ function createCreatureSilhouettes(uniforms, count, corridor) {
         else if (r < 0.75) shape = 1; // ray
         shapes[i] = shape;
 
-        // Small distant whales/rays/jellies (the hero owns the foreground scale).
+        // Small distant whales/rays/jellies (the heroes own the foreground scale).
         const baseSizes = [18, 14, 8];
         const base = baseSizes[shape];
         sizes[i] = base + Math.random() * base * 0.5;
+        phases[i] = Math.random() * Math.PI * 2;
 
         const tintByShape = [whaleTint, rayTint, jellyTint];
         const tint = tintByShape[shape];
@@ -375,9 +488,10 @@ function createCreatureSilhouettes(uniforms, count, corridor) {
         aSize: { array: sizes, itemSize: 1 },
         aShape: { array: shapes, itemSize: 1 },
         aTint: { array: tints, itemSize: 3 },
+        aPhase: { array: phases, itemSize: 1 },
     });
 
-    const mat = createCreatureSilhouetteMaterial(uniforms.uTime);
+    const mat = createCreatureSilhouetteMaterial(uniforms.uTime, { uOpacity: uniforms.uOpacity });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = 'ocean-creatures';
     mesh.frustumCulled = false;
@@ -429,7 +543,7 @@ function createKelpClusters(uniforms, count) {
         aTint: { array: tints, itemSize: 3 },
     });
 
-    const mat = createKelpClusterMaterial(uniforms.uTime);
+    const mat = createKelpClusterMaterial(uniforms.uTime, { uOpacity: uniforms.uOpacity });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = 'ocean-kelp';
     mesh.frustumCulled = false;
@@ -462,12 +576,12 @@ function createBioluminescentJellyfish(uniforms, count, corridor) {
     const phases = new Float32Array(count);
 
     for (let i = 0; i < count; i += 1) {
-        // String the jellies UP the corridor (evenly spaced t + jitter) at a mid lateral
-        // radius so the climbing camera passes a procession of glowing jellies. Fall back
-        // to the legacy scatter only in the pilot harness.
+        // String the jellies UP the corridor (evenly spaced t + jitter) at 18–40u
+        // lateral — never on the rail line — so the climbing camera passes a procession
+        // of glowing bells. Fall back to the legacy scatter only in the pilot harness.
+        const t = (i + Math.random() * 0.7) / count;
         if (corridor?.ok) {
-            const t = (i + Math.random() * 0.7) / count;
-            const c = corridor.sample(t, 18 + Math.random() * 34, 14);
+            const c = corridor.sample(t, 18 + Math.random() * 22, 10);
             positions[i * 3] = c.x;
             positions[i * 3 + 1] = c.y;
             positions[i * 3 + 2] = c.z;
@@ -482,7 +596,16 @@ function createBioluminescentJellyfish(uniforms, count, corridor) {
         const size = 1.4 + Math.random() * 2.2;
         sizes[i] = size * 3.6;
 
-        const color = jellyColors[Math.floor(Math.random() * jellyColors.length)];
+        // Magenta bells own the darkest stretch (t < 0.35, the abyssal twilight act);
+        // elsewhere the cyan/blue/green family carries the procession.
+        const magenta = jellyColors[2];
+        let color;
+        if (t < 0.35 && Math.random() < 0.6) {
+            color = magenta;
+        } else {
+            const cool = [jellyColors[0], jellyColors[1], jellyColors[3], jellyColors[4]];
+            color = cool[Math.floor(Math.random() * cool.length)];
+        }
         colors[i * 3] = color.r;
         colors[i * 3 + 1] = color.g;
         colors[i * 3 + 2] = color.b;
@@ -499,7 +622,7 @@ function createBioluminescentJellyfish(uniforms, count, corridor) {
         aPhase: { array: phases, itemSize: 1 },
     });
 
-    const mat = createJellyfishMaterial(uniforms.uTime);
+    const mat = createJellyfishMaterial(uniforms.uTime, { uOpacity: uniforms.uOpacity });
     const mesh = new THREE.Mesh(geo, mat);
     // Keep the historical name so getObjectByName('jellyfish-group') (and any external
     // lookup) still resolves; the update loop now reads it from cached userData.
@@ -552,11 +675,12 @@ function createBubbleParticles(uniforms, count, corridor) {
     const mat = new THREE.MeshBasicNodeMaterial();
     mat.positionNode = billboardWorld(center, 0.8);
     mat.colorNode = sprite.rgb.mul(vec3(0.667, 0.867, 1.0)); // tint ≈ 0xaaddff
-    mat.opacityNode = sprite.a.mul(0.6);
+    mat.opacityNode = sprite.a.mul(0.6).mul(uniforms.uOpacity);
     mat.transparent = true;
     mat.depthWrite = false;
     mat.blending = THREE.AdditiveBlending;
     mat.side = THREE.DoubleSide;
+    mat.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = 'bubbles';
@@ -592,6 +716,7 @@ function createPlanktonParticles(uniforms, count, corridor) {
     const positions = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
     const colors = new Float32Array(count * 3);
+    const drifts = new Float32Array(count * 2); // (speed, phase) per mote
 
     // Bioluminescent plankton colors (more saturated cyan/green/magenta sparks so the
     // motes pop as drifting bioluminescence rather than a pale haze).
@@ -602,13 +727,34 @@ function createPlanktonParticles(uniforms, count, corridor) {
         new THREE.Color(0xff66dd), // Magenta mote
     ];
 
+    // CREATIVE PLAN asset 3 — three explicit DEPTH TIERS so the field reads with
+    // parallax instead of uniform snow:
+    //   near  (lateral <12u):  large, soft, DIM, fast parallax drift
+    //   mid   (12–30u):        medium, the brightest tier
+    //   far   (>30u):          small, sharp, faint
+    // Tier brightness is baked into aColor (net budget ~40% below the old 1.55×0.95).
+    const TIERS = [
+        {
+            weight: 0.3, latMin: 4, latMax: 12, sizeMin: 0.55, sizeMax: 0.9, gain: 0.5, speed: 2.4,
+        },
+        {
+            weight: 0.45, latMin: 12, latMax: 30, sizeMin: 0.3, sizeMax: 0.55, gain: 0.85, speed: 1.4,
+        },
+        {
+            weight: 0.25, latMin: 30, latMax: 54, sizeMin: 0.16, sizeMax: 0.3, gain: 0.4, speed: 0.7,
+        },
+    ];
+
     for (let i = 0; i < count; i++) {
-        // Fill the corridor cross-section the camera flies through (close + mid lateral
-        // radii) all the way UP the chapter, so the motes drift in the sightline as a
-        // dense bioluminescent field rather than a flat far-away haze.
+        const roll = Math.random();
+        let tier = TIERS[2];
+        if (roll < TIERS[0].weight) tier = TIERS[0];
+        else if (roll < TIERS[0].weight + TIERS[1].weight) tier = TIERS[1];
+
+        const lateral = tier.latMin + Math.random() * (tier.latMax - tier.latMin);
         if (corridor?.ok) {
             const t = Math.random();
-            const c = corridor.sample(t, 8 + Math.random() * 46, 16);
+            const c = corridor.sample(t, lateral, 16);
             positions[i * 3] = c.x;
             positions[i * 3 + 1] = c.y;
             positions[i * 3 + 2] = c.z;
@@ -618,21 +764,24 @@ function createPlanktonParticles(uniforms, count, corridor) {
             positions[i * 3 + 2] = -10 - Math.random() * 70;
         }
 
-        // BIGGER motes so they read as drifting sparks (was 0.15..0.45). Closer ones are
-        // larger so the field has depth; the additive cost stays bounded (capped count).
-        sizes[i] = 0.3 + Math.random() * 0.6;
+        sizes[i] = tier.sizeMin + Math.random() * (tier.sizeMax - tier.sizeMin);
 
-        // Random color from palette
+        // Tier gain baked into the colour so near motes are soft/dim and mid motes
+        // carry the brightness — far-tier sparks sit well under the bloom threshold.
         const color = planktonColors[Math.floor(Math.random() * planktonColors.length)];
-        colors[i * 3] = color.r;
-        colors[i * 3 + 1] = color.g;
-        colors[i * 3 + 2] = color.b;
+        colors[i * 3] = color.r * tier.gain;
+        colors[i * 3 + 1] = color.g * tier.gain;
+        colors[i * 3 + 2] = color.b * tier.gain;
+
+        drifts[i * 2] = tier.speed * (0.8 + Math.random() * 0.4);
+        drifts[i * 2 + 1] = Math.random() * 26.0;
     }
 
     const geo = makeQuadInstancedGeometry(count, {
         aBase: { array: positions, itemSize: 3 },
         aSize: { array: sizes, itemSize: 1 },
         aColor: { array: colors, itemSize: 3 },
+        aDrift: { array: drifts, itemSize: 2 },
     });
 
     // Create circular plankton texture (canvas map preserved)
@@ -641,19 +790,33 @@ function createPlanktonParticles(uniforms, count, corridor) {
     const center = attribute('aBase', 'vec3');
     const aSize = attribute('aSize', 'float');
     const aColor = attribute('aColor', 'vec3');
+    const aDrift = attribute('aDrift', 'vec2');
     const sprite = texture(planktonTexture, uv());
+
+    // ONE GLOBAL CURRENT (creative plan motion language): every mote drifts diagonally
+    // up-corridor along the same vector — the chapter's pointer toward the surface —
+    // wrapped over a 26u span so the field flows forever with zero per-frame CPU.
+    const currentDir = vec3(0.3, 0.85, 0.25);
+    const driftDist = mod(
+        uniforms.uTime.mul(aDrift.x).add(aDrift.y),
+        float(26.0),
+    ).sub(13.0);
+    const driftedCenter = center.add(currentDir.mul(driftDist));
 
     const mat = new THREE.MeshBasicNodeMaterial();
     // Scale per-particle world size by the old global size (0.4) + per-particle size.
-    mat.positionNode = billboardWorld(center, aSize.add(0.4));
-    // Brighter, tighter bioluminescent pops: lift the core gain and the alpha so the
-    // motes read as crisp drifting sparks. Small additive quads — no frame blowout.
-    mat.colorNode = sprite.rgb.mul(aColor).mul(1.55);
-    mat.opacityNode = sprite.a.mul(0.95);
+    mat.positionNode = billboardWorld(driftedCenter, aSize.add(0.4));
+    // Gains cut from 1.55/0.95 (creative plan: the old uniform-brightness soup lifted
+    // the whole frame): tier gain lives in aColor, the global multipliers drop so the
+    // value structure survives and only the mid tier reads bright.
+    const steamTint = vec3(0.72, 0.9, 1.0).mul(0.68);
+    mat.colorNode = sprite.rgb.mul(mix(aColor, steamTint, uniforms.uSteamEntry));
+    mat.opacityNode = sprite.a.mul(0.62).mul(uniforms.uOpacity);
     mat.transparent = true;
     mat.depthWrite = false;
     mat.blending = THREE.AdditiveBlending;
     mat.side = THREE.DoubleSide;
+    mat.uniforms = { uOpacity: uniforms.uOpacity }; // ecotone crossfade bridge
 
     const mesh = new THREE.Mesh(geo, mat);
     mesh.name = 'plankton';
@@ -661,10 +824,72 @@ function createPlanktonParticles(uniforms, count, corridor) {
     return mesh;
 }
 
-export function updateDeepOceanEnvironment(group, delta, time) {
+// Fractured skylight panes — instanced quads just under the wave surface near the
+// chapter's end (the 2→3 surface-breach buildup). Geometry here, material in the
+// .tsl.js builder (uDepth-gated reveal across the last ~12% of the climb).
+function createSkylightPanes(uniforms, corridor, surfaceOffsetY) {
+    const count = 6;
+    const positions = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const seeds = new Float32Array(count);
+
+    for (let i = 0; i < count; i += 1) {
+        if (corridor?.ok) {
+            const t = 0.9 + (i / count) * 0.08;
+            const c = corridor.sample(t, 6 + Math.random() * 14);
+            positions[i * 3] = c.x;
+            positions[i * 3 + 1] = surfaceOffsetY - 3 - Math.random() * 5;
+            positions[i * 3 + 2] = c.z;
+        } else {
+            positions[i * 3] = (Math.random() - 0.5) * 60;
+            positions[i * 3 + 1] = surfaceOffsetY - 4;
+            positions[i * 3 + 2] = -10 - Math.random() * 30;
+        }
+        sizes[i] = 10 + Math.random() * 8;
+        seeds[i] = Math.random();
+    }
+
+    const geo = makeQuadInstancedGeometry(count, {
+        aBase: { array: positions, itemSize: 3 },
+        aSize: { array: sizes, itemSize: 1 },
+        aSeed: { array: seeds, itemSize: 1 },
+    });
+    const mat = createSkylightPaneMaterial(uniforms.uTime, {
+        uDepth: uniforms.uDepth,
+        uOpacity: uniforms.uOpacity,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.name = 'skylight-panes';
+    mesh.frustumCulled = false;
+    mesh.renderOrder = -45;
+    return mesh;
+}
+
+// `camera` is part of the ChapterEnvironmentManager update contract (kept for API
+// parity); `cameraProgress` drives the uDepth ascent ladder.
+// eslint-disable-next-line no-unused-vars, max-len
+export function updateDeepOceanEnvironment(group, delta, time, camera = null, cameraProgress = null) {
     const { uniforms } = group.userData;
     if (uniforms?.uTime) {
         uniforms.uTime.value = time;
+    }
+
+    // Ascent ladder — map GLOBAL camera progress to this chapter's local 0→1 (uDepth)
+    // so the water column brightens, the god-rays multiply, the vent glow dies at the
+    // entry, and the skylight panes build before the breach.
+    if (uniforms?.uDepth && cameraProgress != null) {
+        const tStart = group.userData.chapterTStart ?? 0.125;
+        const tEnd = group.userData.chapterTEnd ?? 0.25;
+        const span = Math.max(tEnd - tStart, 1e-4);
+        const depth = THREE.MathUtils.clamp((cameraProgress - tStart) / span, 0, 1);
+        uniforms.uDepth.value = depth;
+        if (uniforms.uSteamEntry) {
+            uniforms.uSteamEntry.value = 1 - THREE.MathUtils.smoothstep(depth, 0.02, 0.14);
+        }
+    }
+
+    if (group.userData.jellyfish) {
+        group.userData.jellyfish.visible = (uniforms?.uSteamEntry?.value ?? 0) < 0.18;
     }
 
     // Jellyfish now drift + pulse entirely in their instanced shader (from aPhase +
@@ -694,13 +919,17 @@ export function updateDeepOceanEnvironment(group, delta, time) {
 
     // Update bubbles — rise the per-instance base Y and recycle, then flag the
     // instanced attribute for upload (billboard quads read aBase as their center).
+    // Creative plan Transition Out: the streams ACCELERATE toward the surface across
+    // the final act, becoming the pearl-bubble rush of the breach.
     const { bubbles } = animated;
     const baseAttr = bubbles?.userData?.baseAttribute;
     if (bubbles && baseAttr) {
+        const depthValue = uniforms?.uDepth ? uniforms.uDepth.value : 0;
+        const breachRush = 1 + 1.6 * THREE.MathUtils.smoothstep(depthValue, 0.8, 1);
         const pos = baseAttr.array;
         const { speed, riseTop = 20, riseBottom = -20 } = bubbles.geometry.userData;
         for (let i = 0; i < speed.length; i++) {
-            pos[i * 3 + 1] += speed[i] * delta;
+            pos[i * 3 + 1] += speed[i] * breachRush * delta;
             if (pos[i * 3 + 1] > riseTop) pos[i * 3 + 1] = riseBottom;
         }
         baseAttr.needsUpdate = true;

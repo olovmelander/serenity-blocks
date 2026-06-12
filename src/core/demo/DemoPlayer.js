@@ -1,13 +1,54 @@
 /**
  * @fileoverview Demo Player for Serenity Blocks
- * Replays recorded demos with frame-perfect timing
+ * Replays demos with one authoritative simulation clock.
  */
 
 import { seededRandom } from '../../utils/helpers.js';
 import {
-    GameState, gameLoop, updateGame, spawnPiece, fillBag, move, rotate, softDrop, hardDrop,
+    updateGame, fillBag, move, rotate, softDrop, hardDrop,
 } from '../game.js';
 import { LEVEL_SPEEDS } from '../constants.js';
+import { DEMO_CHECKPOINT_INTERVAL_FRAMES, DEMO_TICK_MS } from './DemoRecorder.js';
+import {
+    captureGameStateSnapshot,
+    isStableDemoCheckpointSnapshot,
+    isStableDemoCheckpointState,
+    restoreGameStateSnapshot,
+} from './demo-state.js';
+
+const SPEED_CHOICES = [0.5, 1, 2, 4];
+
+function nowMs() {
+    return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function nearestPlaybackSpeed(speed) {
+    const numeric = Number(speed);
+    if (!Number.isFinite(numeric)) return 1;
+    const clamped = clamp(numeric, SPEED_CHOICES[0], SPEED_CHOICES[SPEED_CHOICES.length - 1]);
+    return SPEED_CHOICES.reduce((best, choice) => (
+        Math.abs(choice - clamped) < Math.abs(best - clamped) ? choice : best
+    ), SPEED_CHOICES[0]);
+}
+
+function requestNextFrame(callback) {
+    if (typeof requestAnimationFrame === 'function') {
+        return requestAnimationFrame(callback);
+    }
+    return setTimeout(() => callback(nowMs()), 16);
+}
+
+function cancelNextFrame(id) {
+    if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(id);
+    } else {
+        clearTimeout(id);
+    }
+}
 
 export class DemoPlayer {
     constructor(dependencies) {
@@ -15,442 +56,454 @@ export class DemoPlayer {
         this.demo = null;
         this.isPlaying = false;
         this.isPaused = false;
+        this.isSeeking = false;
         this.playbackSpeed = 1.0;
         this.currentInputIndex = 0;
-        this.startTime = 0;
-        this.pauseTime = 0;
+        this.playheadMs = 0;
+        this.lastWallTime = 0;
+        this.lastSimulatedTime = 0;
         this.gameState = null;
         this.animationId = null;
         this.onPlaybackEnd = null;
-        this.callbacks = null; // Store callbacks for actions
+        this.callbacks = null;
+        this.tickMs = DEMO_TICK_MS;
+        this.checkpoints = [];
+        this.lastCheckpointFrame = 0;
+        this.seekToken = 0;
     }
 
     /**
-     * Load a demo for playback
+     * Load a demo for playback.
      * @param {Object} demoData - The demo JSON object
      * @returns {boolean} True if loaded successfully
      */
     loadDemo(demoData) {
-        if (!demoData || !demoData.version || !demoData.inputs) {
+        if (!demoData || !Array.isArray(demoData.inputs)) {
             console.error('[DemoPlayer] Invalid demo data');
             return false;
         }
 
-        this.demo = demoData;
+        this.demo = this._normalizeDemo(demoData);
+        this.tickMs = this.demo.sim.tickMs;
         this.currentInputIndex = 0;
+        this.playheadMs = 0;
+        this.lastSimulatedTime = 0;
+        this.checkpoints = [...(this.demo.checkpoints || [])];
+        this.lastCheckpointFrame = 0;
         console.log('[DemoPlayer] Demo loaded:', this.demo.metadata);
         return true;
     }
 
     /**
-     * Start playback
-     * @param {Object} callbacks - Game callbacks (draw, updateStats, etc.)
-     * @param {Object} gameState - Game state instance to use (should be fresh)
+     * Start playback.
+     * @param {Object} callbacks - Game callbacks
+     * @param {Object} gameState - Game state instance to use
      */
     startPlayback(callbacks, gameState) {
-        if (!this.demo) return;
+        if (!this.demo || !gameState) return;
+
+        this._cancelScheduledFrame();
 
         this.gameState = gameState;
-        this.callbacks = callbacks;
+        this.callbacks = callbacks || {};
+        this._mutedCallbacks = null;
         this.isPlaying = true;
         this.isPaused = false;
-        this.currentInputIndex = 0;
+        this.isSeeking = false;
         this.playbackSpeed = 1.0;
+        this.playheadMs = 0;
+        this.lastWallTime = nowMs();
+        this.currentInputIndex = 0;
+        this.seekToken++;
 
-        // Initialize RNG with recorded seed
-        const { seed } = this.demo.initialState;
-        this.gameState.randomGenerator = seededRandom(seed);
+        this._resetState();
+        this._captureRuntimeCheckpoint(true);
 
-        // Restore initial level
-        this.gameState.level = this.demo.initialState.level || 1;
-        if (Number.isFinite(this.demo.initialState.dropInterval)) {
-            this.gameState.dropInterval = this.demo.initialState.dropInterval;
-        }
+        if (this.callbacks.updateStats) this.callbacks.updateStats();
+        if (this.callbacks.onStart) this.callbacks.onStart();
 
-        // Setup time
-        this.startTime = performance.now();
-        // CRITICAL: Initialize lastTime to 0 because we will feed 'elapsedTime' (starting at 0)
-        // to updateGame, ensuring deterministic physics steps regardless of real-world start time.
-        this.gameState.lastTime = 0;
-        this.lastSimulatedTime = 0;
-
-        // Initialize bag and spawn first piece
-        fillBag(this.gameState.nextPieces, this.gameState.randomGenerator);
-
-        if (callbacks.spawnPiece) callbacks.spawnPiece();
-        if (callbacks.updateStats) callbacks.updateStats();
-        if (callbacks.onStart) callbacks.onStart();
-
-        // Start input processing loop
         this._loop();
         console.log('[DemoPlayer] Playback started');
     }
 
-    /**
-     * Pause playback
-     */
     pausePlayback() {
         if (!this.isPlaying || this.isPaused) return;
+        this._syncPlayhead();
         this.isPaused = true;
-        this.pauseTime = performance.now();
         if (this.gameState) this.gameState.isPaused = true;
     }
 
-    /**
-     * Resume playback
-     */
     resumePlayback() {
         if (!this.isPlaying || !this.isPaused) return;
+        this.lastWallTime = nowMs();
         this.isPaused = false;
-        // Adjust start time to account for pause duration
-        const pauseDuration = performance.now() - this.pauseTime;
-        this.startTime += pauseDuration;
-        if (this.gameState) {
-            this.gameState.isPaused = false;
-            // We don't reset lastTime here because we are using elapsedTime derived from startTime
-        }
+        if (this.gameState) this.gameState.isPaused = false;
     }
 
     /**
-     * Set playback speed
-     * @param {number} speed - Speed multiplier (e.g. 0.5, 1.0, 2.0)
+     * Set playback speed while preserving the current playhead.
+     * @param {number} speed - Speed multiplier
      */
     setPlaybackSpeed(speed) {
-        this.playbackSpeed = Math.max(0.1, Math.min(speed, 10.0));
+        this._syncPlayhead();
+        this.playbackSpeed = nearestPlaybackSpeed(speed);
+        this.lastWallTime = nowMs();
+        return this.playbackSpeed;
     }
 
-    /**
-     * Stop playback
-     */
-    stopPlayback() {
+    stopPlayback(options = {}) {
+        const { notify = true } = options;
         this.isPlaying = false;
         this.isPaused = false;
-        if (this.animationId) {
-            cancelAnimationFrame(this.animationId);
-            this.animationId = null;
+        this.isSeeking = false;
+        this.seekToken++;
+
+        this._cancelScheduledFrame();
+
+        if (this.gameState) {
+            this.gameState.isReplay = false;
+            this.gameState.isSeeking = false;
+            this.gameState.suppressExternalInput = false;
         }
-        if (this.onPlaybackEnd) {
+
+        if (notify && this.onPlaybackEnd) {
             this.onPlaybackEnd();
         }
     }
 
-    /**
-     * Get current playback time in milliseconds
-     * @returns {number}
-     */
     getCurrentTime() {
-        if (!this.isPlaying) return 0;
-        if (this.isPaused) {
-            return (this.pauseTime - this.startTime) * this.playbackSpeed;
-        }
-        return (performance.now() - this.startTime) * this.playbackSpeed;
+        this._syncPlayhead();
+        return this.playheadMs || 0;
     }
 
-    /**
-     * Get total duration of the demo in milliseconds
-     * @returns {number}
-     */
     getDuration() {
         return this.demo?.metadata?.duration || 0;
     }
 
-    /**
-     * Main playback loop (input scheduler)
-     * @private
-     */
-    async _loop() {
-        if (!this.isPlaying) return;
-
-        if (!this.isPaused) {
-            const currentTime = performance.now();
-            // Calculate target game time (scaled by speed)
-            const targetTime = (currentTime - this.startTime) * this.playbackSpeed;
-
-            // Catch up simulation to target time, stepping through inputs
-            while (this.lastSimulatedTime < targetTime) {
-                // Bail out immediately if stopped or game ended mid-loop;
-                // updateGame is a no-op after isGameOver but lockPiece chains
-                // can still advance state if we keep iterating.
-                if (!this.isPlaying || this.gameState?.isGameOver) break;
-
-                // Determine the time of the next input
-                let nextInputTime = Infinity;
-                if (this.currentInputIndex < this.demo.inputs.length) {
-                    nextInputTime = this.demo.inputs[this.currentInputIndex].t;
-                }
-
-                // Determine our next step: either the target time or the next input time
-                // We clamp to targetTime so we don't run ahead of real time
-                const stepTime = Math.min(targetTime, nextInputTime);
-
-                // Ensure we make at least a tiny step to avoid infinite loops if times are identical
-                // but strictly speaking, if stepTime == lastSimulatedTime, we just process the input.
-
-                // 1. Advance physics to the step time
-                if (stepTime > this.lastSimulatedTime) {
-                    updateGame(stepTime, this.gameState, this.callbacks);
-                    this.lastSimulatedTime = stepTime;
-
-                    // CRITICAL: Wait for any async physics (locking/clearing) triggered by updateGame
-                    if (this.gameState.latestPhysicsPromise) {
-                        await this.gameState.latestPhysicsPromise;
-                        this.gameState.latestPhysicsPromise = null;
-                    }
-                }
-
-                // 2. If we reached an input time, apply it
-                if (this.currentInputIndex < this.demo.inputs.length
-                    && this.lastSimulatedTime >= nextInputTime) {
-                    const input = this.demo.inputs[this.currentInputIndex];
-                    this._applyInput(input);
-
-                    // CRITICAL: Wait for any async physics triggered by input
-                    if (this.gameState.latestPhysicsPromise) {
-                        await this.gameState.latestPhysicsPromise;
-                        this.gameState.latestPhysicsPromise = null;
-                    }
-
-                    this.currentInputIndex++;
-
-                    // IMPORTANT: If we processed an input, we loop again.
-                    // This allows multiple inputs at the same timestamp to be processed
-                    // before advancing physics further, or allows physics to run immediately after.
-                    continue;
-                }
-
-                // If we reached targetTime and no inputs are pending at this exact time, we are done for this frame
-                if (this.lastSimulatedTime >= targetTime) {
-                    break;
-                }
-            }
-
-            // Check if demo ended
-            if (this.currentInputIndex >= this.demo.inputs.length && !this.gameState.currentPiece && !this.gameState.isProcessingPhysics) {
-                if (this.lastSimulatedTime > this.demo.metadata.duration + 1000) {
-                    this.stopPlayback();
-                    return;
-                }
-            }
-        }
-
-        if (this.isPlaying) {
-            this.animationId = requestAnimationFrame(() => this._loop());
-        }
-    }
-
-    /**
-     * Apply a recorded input to the game state
-     * @private
-     */
-    _applyInput(input) {
-        const { a: action, d: data } = input;
-
-        // Use muted callbacks if seeking to avoid sound spam and visual glitches
-        const effectiveCallbacks = this.isSeeking ? this._getMutedCallbacks() : this.callbacks;
-
-        const physicsCallbacks = effectiveCallbacks.physicsCallbacks || {};
-        const playDropCallback = effectiveCallbacks.playDropCallback || (() => { });
-        const playSoundCallback = effectiveCallbacks.playSoundCallback || (() => { }); // For move/rotate
-        const addTrailCallback = effectiveCallbacks.addTrailCallback || (() => { });
-
-        switch (action) {
-        case 'move':
-            move(this.gameState, data, playSoundCallback, addTrailCallback);
-            break;
-        case 'rotate':
-            rotate(this.gameState, data, playSoundCallback, addTrailCallback);
-            break;
-        case 'softDrop':
-            softDrop(this.gameState, playDropCallback, physicsCallbacks);
-            break;
-        case 'hardDrop':
-            hardDrop(this.gameState, playDropCallback, physicsCallbacks);
-            break;
-        }
-    }
-
-    /**
-     * Seek to a specific time in the demo
-     * @param {number} targetTime - Time in milliseconds
-     */
     async seek(targetTime) {
         if (!this.demo || !this.gameState) return;
 
-        targetTime = Math.max(0, Math.min(targetTime, this.getDuration()));
+        this._cancelScheduledFrame();
+        const token = ++this.seekToken;
+        const targetMs = clamp(Number(targetTime) || 0, 0, this.getDuration());
+        const wasPaused = this.isPaused;
 
-        // 1. Reset Game State
-        this._resetState();
-        this.gameState.lastTime = 0;
-        this.lastSimulatedTime = 0;
-
-        // 2. Fast-forward inputs AND simulate time (gravity)
+        this._syncPlayhead();
         this.isSeeking = true;
-        this.gameState.isSeeking = true; // Flag for physics to skip delays
-        this.currentInputIndex = 0;
+        this.gameState.isSeeking = true;
+        this.gameState.isReplay = true;
+        this.gameState.suppressExternalInput = true;
+        this.gameState.isPaused = false;
 
-        // Use muted callbacks for seeking
-        const callbacks = this._getMutedCallbacks();
-
-        // Catch up simulation to target time, stepping through inputs
-        while (this.lastSimulatedTime < targetTime) {
-            // Determine the time of the next input
-            let nextInputTime = Infinity;
-            if (this.currentInputIndex < this.demo.inputs.length) {
-                nextInputTime = this.demo.inputs[this.currentInputIndex].t;
-            }
-
-            // Determine our next step
-            const stepTime = Math.min(targetTime, nextInputTime);
-
-            // 1. Advance physics to the step time
-            if (stepTime > this.lastSimulatedTime) {
-                updateGame(stepTime, this.gameState, callbacks);
-                this.lastSimulatedTime = stepTime;
-
-                // CRITICAL: Wait for any async physics (locking/clearing) triggered by updateGame
-                if (this.gameState.latestPhysicsPromise) {
-                    await this.gameState.latestPhysicsPromise;
-                    this.gameState.latestPhysicsPromise = null;
-                }
-            }
-
-            // 2. If we reached an input time, apply it
-            if (this.currentInputIndex < this.demo.inputs.length
-                && this.lastSimulatedTime >= nextInputTime) {
-                const input = this.demo.inputs[this.currentInputIndex];
-                this._applyInput(input);
-
-                // CRITICAL: Wait for any async physics triggered by input (e.g. hard drop)
-                if (this.gameState.latestPhysicsPromise) {
-                    await this.gameState.latestPhysicsPromise;
-                    this.gameState.latestPhysicsPromise = null;
-                }
-
-                this.currentInputIndex++;
-                continue;
-            }
-
-            if (this.lastSimulatedTime >= targetTime) {
-                break;
-            }
-        }
-
-        // Update start time to match the seek position
-        const now = performance.now();
-        if (this.isPaused) {
-            this.pauseTime = now;
-            this.startTime = now - (targetTime / this.playbackSpeed);
+        const checkpoint = this._findCheckpoint(targetMs);
+        if (checkpoint) {
+            restoreGameStateSnapshot(this.gameState, checkpoint.state, {
+                seed: this.demo.initialState.seed,
+                isReplay: true,
+                isSeeking: true,
+                suppressExternalInput: true,
+            });
+            this.currentInputIndex = checkpoint.inputIndex || 0;
+            this.lastSimulatedTime = checkpoint.t || 0;
         } else {
-            this.startTime = now - (targetTime / this.playbackSpeed);
+            this._resetState();
         }
 
-        this.isSeeking = false;
-        this.gameState.isSeeking = false;
+        await this._advanceTo(targetMs, { muted: true, seeking: true, token });
+        if (token !== this.seekToken) return;
 
-        // 3. Force update of stats/visuals
-        if (this.callbacks.updateStats) this.callbacks.updateStats();
+        this.playheadMs = targetMs;
+        this.lastWallTime = nowMs();
+        this.isSeeking = false;
+        this.isPaused = wasPaused;
+        this.gameState.isSeeking = false;
+        this.gameState.isPaused = wasPaused;
         this.gameState.forceDraw = true;
+
+        if (this.callbacks.updateStats) this.callbacks.updateStats();
+        if (this.callbacks.drawCallback) this.callbacks.drawCallback();
+        if (this.isPlaying && !this.isPaused) {
+            this._scheduleLoop();
+        }
     }
 
-    /**
-     * Simulate game loop (gravity) for a duration
-     * @private
-     */
-    async _simulateGameLoop(duration) {
-        let remaining = duration;
-        const mutedCallbacks = this._getMutedCallbacks();
-        const { physicsCallbacks } = mutedCallbacks;
+    async _loop() {
+        if (!this.isPlaying) return;
+        const token = this.seekToken;
 
-        while (remaining > 0) {
-            // If physics is running, wait for it
-            if (this.gameState.isProcessingPhysics) {
-                if (this.gameState.latestPhysicsPromise) {
-                    await this.gameState.latestPhysicsPromise;
-                    this.gameState.latestPhysicsPromise = null;
-                }
-                // Physics is "instant" in seek mode, so we don't consume 'remaining' time waiting for it
-                // But we check again to ensure state is clean
+        if (!this.isPaused) {
+            this._syncPlayhead();
+            const targetTime = clamp(this.playheadMs, 0, this.getDuration());
+            const fastForward = this.playbackSpeed > 1.01;
+
+            if (this.gameState) {
+                this.gameState.isSeeking = fastForward;
+            }
+
+            await this._advanceTo(targetTime, {
+                muted: fastForward,
+                seeking: fastForward,
+                token,
+            });
+
+            if (token !== this.seekToken || !this.isPlaying) return;
+
+            if (this.gameState) {
+                this.gameState.isSeeking = false;
+            }
+
+            if (this._hasReachedReplayEnd()) {
+                this.playheadMs = Math.min(this.playheadMs, this.getDuration());
+                this.stopPlayback();
+                return;
+            }
+        }
+
+        this._scheduleLoop();
+    }
+
+    _hasReachedReplayEnd() {
+        const duration = this.getDuration();
+        if (!Number.isFinite(duration) || duration <= 0) return false;
+        return this.playheadMs >= duration - Math.max(1, this.tickMs);
+    }
+
+    _scheduleLoop() {
+        if (!this.isPlaying || this.animationId) return;
+        this.animationId = requestNextFrame(() => {
+            this.animationId = null;
+            this._loop();
+        });
+    }
+
+    _cancelScheduledFrame() {
+        if (!this.animationId) return;
+        cancelNextFrame(this.animationId);
+        this.animationId = null;
+    }
+
+    async _advanceTo(targetTime, options = {}) {
+        const {
+            muted = false,
+            seeking = false,
+            token = this.seekToken,
+        } = options;
+        const callbacks = muted || seeking ? this._getMutedCallbacks() : this.callbacks;
+        const epsilon = 0.0001;
+
+        while (this.isPlaying && token === this.seekToken && this.lastSimulatedTime + epsilon < targetTime) {
+            if (this.gameState?.isGameOver) break;
+
+            const nextInput = this.demo.inputs[this.currentInputIndex];
+            const nextInputTime = nextInput ? nextInput.t : Infinity;
+
+            if (nextInput && nextInputTime <= this.lastSimulatedTime + epsilon) {
+                await this._applyInput(nextInput, callbacks, { muted: muted || seeking });
+                this.currentInputIndex++;
+                await this._waitForPhysics();
+                this._captureRuntimeCheckpoint();
                 continue;
             }
 
-            // If no piece, we can't drop.
-            if (!this.gameState.currentPiece) {
-                // If we are here, likely waiting for spawn or game over.
-                // Consume remaining time
-                remaining = 0;
+            const stepTime = Math.min(
+                targetTime,
+                nextInputTime,
+                this.lastSimulatedTime + this.tickMs,
+            );
+
+            if (stepTime <= this.lastSimulatedTime + epsilon) {
                 break;
             }
 
-            // Calculate time until next auto-drop
-            const timeToDrop = this.gameState.dropInterval - this.gameState.dropCounter;
+            this.gameState.isSeeking = seeking;
+            updateGame(stepTime, this.gameState, callbacks);
+            this.lastSimulatedTime = stepTime;
+            await this._waitForPhysics();
+            this._captureRuntimeCheckpoint();
+        }
 
-            // Step is the smaller of remaining time or time to next drop
-            // We add a small epsilon (1ms) to ensure we cross the threshold if we reach it
-            const step = Math.min(remaining, timeToDrop + 0.1);
+        while (
+            this.isPlaying
+            && token === this.seekToken
+            && this.currentInputIndex < this.demo.inputs.length
+            && this.demo.inputs[this.currentInputIndex].t <= targetTime + epsilon
+        ) {
+            const input = this.demo.inputs[this.currentInputIndex];
+            if (input.t > this.lastSimulatedTime + epsilon) break;
+            await this._applyInput(input, callbacks, { muted: muted || seeking });
+            this.currentInputIndex++;
+            await this._waitForPhysics();
+            this._captureRuntimeCheckpoint();
+        }
+    }
 
-            // Advance counters
-            this.gameState.dropCounter += step;
-            remaining -= step;
+    async _applyInput(input, callbacks, options = {}) {
+        const action = input.a;
+        const data = input.d;
 
-            // Trigger drop if threshold reached
-            if (this.gameState.dropCounter >= this.gameState.dropInterval) {
-                // softDrop returns true if moved, false if locked
-                // We use muted callbacks
-                softDrop(this.gameState, () => { }, physicsCallbacks);
+        this.gameState.simTimeMs = input.t;
+        this.gameState.simFrame = input.f;
 
-                // If it locked, isProcessingPhysics will be true.
-                if (this.gameState.isProcessingPhysics && this.gameState.latestPhysicsPromise) {
-                    await this.gameState.latestPhysicsPromise;
-                    this.gameState.latestPhysicsPromise = null;
-                }
+        if (typeof callbacks.applyCommand === 'function') {
+            return callbacks.applyCommand(
+                { type: action, value: data, a: action, d: data },
+                {
+                    record: false,
+                    muted: Boolean(options.muted),
+                    callbacks,
+                },
+            );
+        }
+
+        const physicsCallbacks = callbacks.physicsCallbacks || {};
+        const playDropCallback = callbacks.playDropCallback || (() => { });
+        const playSoundCallback = callbacks.playSoundCallback || (() => { });
+        const addTrailCallback = callbacks.addTrailCallback || (() => { });
+
+        switch (action) {
+        case 'move':
+            return move(this.gameState, data, playSoundCallback, addTrailCallback);
+        case 'rotate':
+            return rotate(this.gameState, data, playSoundCallback, addTrailCallback);
+        case 'softDrop':
+            return softDrop(this.gameState, playDropCallback, physicsCallbacks);
+        case 'hardDrop':
+            return hardDrop(this.gameState, playDropCallback, physicsCallbacks);
+        default:
+            return false;
+        }
+    }
+
+    async _waitForPhysics() {
+        if (!this.gameState?.latestPhysicsPromise) return;
+
+        try {
+            await this.gameState.latestPhysicsPromise;
+        } catch (error) {
+            console.warn('[DemoPlayer] Physics rejected during replay:', error);
+        } finally {
+            this.gameState.latestPhysicsPromise = null;
+            this.gameState.isProcessingPhysics = false;
+            if (this.gameState.isReplay && Number.isFinite(this.gameState.simTimeMs)) {
+                this.lastSimulatedTime = Math.max(
+                    this.lastSimulatedTime || 0,
+                    this.gameState.simTimeMs,
+                );
             }
         }
     }
 
-    /**
-     * Reset game state to initial conditions
-     * @private
-     */
-    /**
-     * Reset game state to initial conditions
-     * @private
-     */
     _resetState() {
         if (!this.gameState || !this.demo) return;
 
-        // Use the robust reset from GameState to clear everything (including boardGrid)
         this.gameState.reset();
+        this.gameState.simTickMs = this.tickMs;
+        this.gameState.simTimeMs = 0;
+        this.gameState.simFrame = 0;
+        this.gameState.lastTime = 0;
+        this.gameState.isReplay = true;
+        this.gameState.isSeeking = false;
+        this.gameState.suppressExternalInput = true;
 
-        // Restore Demo Specifics
         const { seed } = this.demo.initialState;
         this.gameState.randomGenerator = seededRandom(seed);
 
-        // Restore Level & Speed
         this.gameState.level = this.demo.initialState.level || 1;
+        if (Number.isFinite(this.demo.initialState.dropInterval)) {
+            this.gameState.dropInterval = this.demo.initialState.dropInterval;
+        } else {
+            const speedIndex = Math.min(this.gameState.level - 1, LEVEL_SPEEDS.length - 1);
+            this.gameState.dropInterval = LEVEL_SPEEDS[speedIndex];
+        }
 
-        // Recalculate drop interval for the level
-        // Note: LEVEL_SPEEDS is 0-indexed for level 1
-        const speedIndex = Math.min(this.gameState.level - 1, LEVEL_SPEEDS.length - 1);
-        this.gameState.dropInterval = LEVEL_SPEEDS[speedIndex];
-
-        // Refill bag (reset() cleared it and set default RNG)
         fillBag(this.gameState.nextPieces, this.gameState.randomGenerator);
-
-        // Spawn first piece
-        // We use the muted callback version if we are about to seek, but _resetState is called inside seek.
-        // We should just call the spawnPiece logic.
         if (this.callbacks.spawnPiece) {
             this.callbacks.spawnPiece();
         }
+
+        this.currentInputIndex = 0;
+        this.lastSimulatedTime = 0;
     }
 
-    /**
-     * Get callbacks with muted sounds/effects for seeking
-     * @private
-     */
+    _syncPlayhead() {
+        if (!this.isPlaying || this.isPaused || this.isSeeking) return;
+
+        const now = nowMs();
+        if (!this.lastWallTime) {
+            this.lastWallTime = now;
+            return;
+        }
+
+        const elapsed = Math.max(0, now - this.lastWallTime);
+        this.playheadMs = clamp(
+            this.playheadMs + (elapsed * this.playbackSpeed),
+            0,
+            this.getDuration(),
+        );
+        this.lastWallTime = now;
+    }
+
+    _captureRuntimeCheckpoint(force = false) {
+        if (!this.gameState) return;
+        if (!isStableDemoCheckpointState(this.gameState)) return;
+
+        const frame = Math.max(0, Math.round((this.lastSimulatedTime || 0) / this.tickMs));
+        const nextInput = this.demo.inputs[this.currentInputIndex];
+        if (!force && nextInput && nextInput.f <= frame) {
+            return;
+        }
+
+        if (!force && frame - this.lastCheckpointFrame < DEMO_CHECKPOINT_INTERVAL_FRAMES) {
+            return;
+        }
+
+        const checkpoint = {
+            f: frame,
+            t: Math.round(frame * this.tickMs),
+            inputIndex: this.currentInputIndex,
+            state: captureGameStateSnapshot(this.gameState),
+            runtime: true,
+        };
+
+        this._upsertCheckpoint(checkpoint);
+        this.lastCheckpointFrame = frame;
+    }
+
+    _upsertCheckpoint(checkpoint) {
+        if (!checkpoint?.state) return;
+
+        const existingIndex = this.checkpoints.findIndex((entry) => (
+            entry.f === checkpoint.f && entry.inputIndex === checkpoint.inputIndex
+        ));
+        if (existingIndex >= 0) {
+            this.checkpoints[existingIndex] = checkpoint;
+        } else {
+            this.checkpoints.push(checkpoint);
+        }
+        this.checkpoints.sort((a, b) => (a.f - b.f) || ((a.inputIndex || 0) - (b.inputIndex || 0)));
+    }
+
+    _findCheckpoint(targetMs) {
+        const targetFrame = Math.floor(targetMs / this.tickMs);
+        let best = null;
+
+        for (const checkpoint of this.checkpoints) {
+            if (!checkpoint?.state || checkpoint.f > targetFrame) continue;
+            if (!best || checkpoint.f > best.f || (
+                checkpoint.f === best.f
+                && (checkpoint.inputIndex || 0) > (best.inputIndex || 0)
+            )) {
+                best = checkpoint;
+            }
+        }
+
+        return best;
+    }
+
     _getMutedCallbacks() {
         if (!this._mutedCallbacks) {
             const originalPhysics = this.callbacks.physicsCallbacks || {};
+            const replayTiming = this.callbacks.replayTimingCallbacks || {};
             this._mutedCallbacks = {
                 ...this.callbacks,
                 playSoundCallback: () => { },
@@ -462,18 +515,91 @@ export class DemoPlayer {
                     onRotate: () => { },
                     onLineClear: () => { },
                     onLevelUp: () => { },
-                    onHardDrop: () => { },
+                    onHardDrop: (...args) => replayTiming.onHardDrop?.(...args),
                     triggerCombo: () => { },
                     triggerCascadeWave: () => { },
                     triggerFlash: () => { },
-                    onLineClearImpact: () => { },
+                    onLineClearImpact: (...args) => replayTiming.onLineClearImpact?.(...args),
                     triggerBackgroundPulse: () => { },
+                    onPerfectClear: (...args) => replayTiming.onPerfectClear?.(...args),
                     onPieceLock: () => { },
-                    // Keep spawnPiece as it affects game state
                     spawnPiece: originalPhysics.spawnPiece,
                 },
             };
         }
         return this._mutedCallbacks;
+    }
+
+    _normalizeDemo(demoData) {
+        const tickMs = Number(demoData.sim?.tickMs) || DEMO_TICK_MS;
+        const inputs = demoData.inputs
+            .map((input, index) => {
+                const frame = Number.isFinite(input.f)
+                    ? Math.max(0, Math.round(input.f))
+                    : Math.max(0, Math.round((Number(input.t) || 0) / tickMs));
+                return {
+                    ...input,
+                    f: frame,
+                    t: Math.round(frame * tickMs),
+                    a: input.a,
+                    _order: index,
+                };
+            })
+            .filter((input) => input.a)
+            .sort((a, b) => (a.f - b.f) || (a._order - b._order))
+            .map(({ _order, ...input }) => input);
+
+        const lastInputFrame = inputs.reduce((max, input) => Math.max(max, input.f), 0);
+        const metadataDurationFrames = Number(demoData.metadata?.durationFrames);
+        const metadataDuration = Number(demoData.metadata?.duration);
+        const durationFrames = Math.max(
+            Number.isFinite(demoData.sim?.durationFrames) ? demoData.sim.durationFrames : 0,
+            Number.isFinite(metadataDurationFrames) ? metadataDurationFrames : 0,
+            Number.isFinite(metadataDuration) ? Math.round(metadataDuration / tickMs) : 0,
+            lastInputFrame,
+        );
+        const duration = Number.isFinite(metadataDuration)
+            ? Math.max(metadataDuration, Math.round(durationFrames * tickMs))
+            : Math.round(durationFrames * tickMs);
+
+        const checkpoints = Array.isArray(demoData.checkpoints)
+            ? demoData.checkpoints
+                .filter((checkpoint) => (
+                    checkpoint?.state
+                    && isStableDemoCheckpointSnapshot(checkpoint.state)
+                ))
+                .map((checkpoint) => {
+                    const frame = Number.isFinite(checkpoint.f)
+                        ? Math.max(0, Math.round(checkpoint.f))
+                        : Math.max(0, Math.round((Number(checkpoint.t) || 0) / tickMs));
+                    const inputIndex = Number.isFinite(checkpoint.inputIndex)
+                        ? checkpoint.inputIndex
+                        : inputs.findIndex((input) => input.f > frame);
+                    return {
+                        ...checkpoint,
+                        f: frame,
+                        t: Math.round(frame * tickMs),
+                        inputIndex: inputIndex < 0 ? inputs.length : inputIndex,
+                    };
+                })
+                .sort((a, b) => (a.f - b.f) || ((a.inputIndex || 0) - (b.inputIndex || 0)))
+            : [];
+
+        return {
+            ...demoData,
+            version: demoData.version || '1.0',
+            sim: {
+                tickMs,
+                startFrame: demoData.sim?.startFrame || 0,
+                durationFrames,
+            },
+            inputs,
+            checkpoints,
+            metadata: {
+                ...(demoData.metadata || {}),
+                duration,
+                durationFrames,
+            },
+        };
     }
 }

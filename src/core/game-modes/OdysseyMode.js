@@ -153,6 +153,7 @@ export class OdysseyMode extends BaseGameMode {
         this.boardViewReadyPromise = null;
         this.chapterArrivalCueTimer = null;
         this.isTallBoard = false;
+        this._boardBuildPromise = null;
     }
 
     /**
@@ -3141,7 +3142,7 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     /**
-     * Smoothly remove the cinematic loading overlay (crossfade to 3D board)
+     * Smoothly remove the cinematic loading overlay (crossfade to 3D board).
      * @private
      */
     _dismissCinematicLoadingOverlay() {
@@ -3165,7 +3166,9 @@ export class OdysseyMode extends BaseGameMode {
         const {
             focusLevelId = this.selectedLevelId,
             keepBoardLocked = false,
-            minOverlayDisplayMs = 5000,
+            // Startup optimization: was 5000 — the board init itself is the pacing now, the
+            // overlay floor only guards against a jarringly instant flash on warm re-entries.
+            minOverlayDisplayMs = 1500,
             showLoadingOverlay = true,
         } = options;
 
@@ -3206,20 +3209,51 @@ export class OdysseyMode extends BaseGameMode {
             }
 
             await this._dismissCinematicLoadingOverlay();
+            // Startup trace: the user-perceived "board visible" moment (overlay fully gone).
+            if (this._overlayShownAt) {
+                console.log(`[OdysseyStartup] board visible ${Date.now() - this._overlayShownAt}ms after overlay show`);
+            }
         }
 
         return true;
     }
 
     /**
-     * Initialize the Three.js Odyssey Board
+     * Initialize the Three.js Odyssey Board (build if needed, then reveal).
      * @private
      */
     async _initializeOdysseyBoard() {
-        if (this.boardController) {
-            return; // Already initialized
-        }
+        await this._buildOdysseyBoard();
+        this._revealOdysseyBoard();
+    }
 
+    /**
+     * Build the board controller exactly once; duplicate activation calls share the
+     * same in-flight promise.
+     * @private
+     */
+    async _buildOdysseyBoard() {
+        if (this.boardController) {
+            return; // Already built
+        }
+        if (this._boardBuildPromise) {
+            await this._boardBuildPromise;
+            return;
+        }
+        this._boardBuildPromise = this._runOdysseyBoardBuild();
+        try {
+            await this._boardBuildPromise;
+        } finally {
+            this._boardBuildPromise = null;
+        }
+    }
+
+    /**
+     * The actual board construction. This is only called from real Odyssey activation,
+     * after the Odyssey loading overlay is already visible.
+     * @private
+     */
+    async _runOdysseyBoardBuild() {
         // Create container for the 3D board
         let boardContainer = document.getElementById('odyssey-board-3d');
         if (!boardContainer) {
@@ -3267,10 +3301,6 @@ export class OdysseyMode extends BaseGameMode {
 
         // Initialize the board
         await this.boardController.initialize(levelData, progressData, presentationLayout);
-        if (this.deps?.soundManager?.musicTrack) {
-            this.boardTrackKey = this.deps.soundManager.musicTrack;
-            this.boardTrackWasPlaying = !this.deps.soundManager.isMuted;
-        }
 
         // Connect level selection callback - now shows info panel first
         // Click once to select (shows info), click again or use Play button to enter
@@ -3313,6 +3343,25 @@ export class OdysseyMode extends BaseGameMode {
             this._showChapterArrivalCue(arrival);
         };
 
+        console.log('[Odyssey] Three.js board initialized');
+    }
+
+    /**
+     * Bring a built board on screen, create the info overlay, and pre-init the warp transition.
+     * @private
+     */
+    _revealOdysseyBoard() {
+        const boardContainer = document.getElementById('odyssey-board-3d');
+        if (boardContainer) {
+            boardContainer.style.visibility = '';
+            boardContainer.style.pointerEvents = 'auto';
+        }
+
+        if (this.deps?.soundManager?.musicTrack) {
+            this.boardTrackKey = this.deps.soundManager.musicTrack;
+            this.boardTrackWasPlaying = !this.deps.soundManager.isMuted;
+        }
+
         // Create the info overlay (header + level panel)
         this._createBoardInfoOverlay();
 
@@ -3320,8 +3369,6 @@ export class OdysseyMode extends BaseGameMode {
         if (this.transitionManager) {
             this.transitionManager.preInitWarp();
         }
-
-        console.log('[Odyssey] Three.js board initialized');
     }
 
     /**

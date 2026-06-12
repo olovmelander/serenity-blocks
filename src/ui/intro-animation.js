@@ -7,6 +7,54 @@
 import { INTRO_PHASES } from './intro-visual-config.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 
+const INTRO_TETROMINO_BLOCKED_POINTER_SELECTOR = [
+    'a[href]',
+    'button',
+    'input',
+    'textarea',
+    'select',
+    'label[for]',
+    'summary',
+    '[contenteditable="true"]',
+    '[role="button"]',
+    '[role="tab"]',
+    '[role="menuitem"]',
+    '[role="option"]',
+    '[role="switch"]',
+    '[role="radio"]',
+    '[role="checkbox"]',
+    '[role="combobox"]',
+    '[role="link"]',
+    '[data-cursor-interactive="true"]',
+    '.game-mode-card',
+    '.main-menu-player-card',
+    '.floating-settings-btn',
+    '.serenity-hub-icon',
+    '.replays-icon',
+    '.highscores-icon',
+    '.cosmic-select__trigger',
+    '.cosmic-select__option',
+    '.cosmic-select__listbox',
+    '.cosmic-segmented__seg',
+].join(', ');
+
+function isElementVisible(element) {
+    if (!element) return false;
+    const style = typeof window !== 'undefined'
+        ? window.getComputedStyle?.(element)
+        : null;
+    if (style?.display === 'none' || style?.visibility === 'hidden') return false;
+    return element.getClientRects?.().length > 0;
+}
+
+function hasBlockingIntroModal() {
+    if (typeof document === 'undefined') return false;
+    if (document.body?.classList.contains('serenity-hub-open')) return true;
+
+    const modals = document.querySelectorAll('.modal.visible, [role="dialog"].visible');
+    return Array.from(modals).some((modal) => modal.id !== 'start-modal' && isElementVisible(modal));
+}
+
 export class IntroAnimation {
     constructor() {
         this.container = null;
@@ -36,8 +84,10 @@ export class IntroAnimation {
         this.menuLayoutTrackingInstalled = false;
         this.menuLayoutResizeObserver = null;
         this.menuLayoutObservedElement = null;
+        this.tetrominoPointerListenerInstalled = false;
         this.boundMenuLayoutUpdate = this.scheduleMenuLogoLayoutUpdate.bind(this);
         this.boundMenuModalChange = this.handleMenuModalChange.bind(this);
+        this.boundIntroTetrominoPointerDown = this.handleIntroTetrominoPointerDown.bind(this);
         const params = typeof window !== 'undefined'
             ? new URLSearchParams(window.location.search)
             : new URLSearchParams();
@@ -97,7 +147,7 @@ export class IntroAnimation {
         if (this.threeRenderer) {
             const pulse = this.getMusicPulse();
             this.threeRenderer.setAudioPulse?.(pulse);
-            this.threeRenderer.update();
+            this.threeRenderer.update(typeof time === 'number' ? time / 1000 : undefined);
             const menuLogoActive = Boolean(this.container?.querySelector('.intro-title-container.shrink-to-logo'));
             if (this.isActive || this.container?.classList?.contains('background-only') || menuLogoActive) {
                 this.syncTitleBounds(time);
@@ -539,6 +589,7 @@ export class IntroAnimation {
         document.body.appendChild(this.container);
         this.setupMenuLogoLayoutTracking();
         this.syncTitleBounds(performance.now());
+        this.installTetrominoPointerListener();
     }
 
     /**
@@ -608,6 +659,82 @@ export class IntroAnimation {
                 }
             }
         }, 100);
+    }
+
+    installTetrominoPointerListener() {
+        if (this.tetrominoPointerListenerInstalled || typeof window === 'undefined') {
+            return;
+        }
+
+        window.addEventListener('pointerdown', this.boundIntroTetrominoPointerDown, {
+            capture: true,
+            passive: true,
+        });
+        this.tetrominoPointerListenerInstalled = true;
+    }
+
+    removeTetrominoPointerListener() {
+        if (!this.tetrominoPointerListenerInstalled || typeof window === 'undefined') {
+            return;
+        }
+
+        window.removeEventListener('pointerdown', this.boundIntroTetrominoPointerDown, true);
+        this.tetrominoPointerListenerInstalled = false;
+    }
+
+    shouldHandleTetrominoPointer(event) {
+        if (!event
+            || this.isActive
+            || !this.isAnimating
+            || !this.container
+            || !document.body.contains(this.container)
+            || !this.threeRenderer?.triggerTetrominoBounceAt) {
+            return false;
+        }
+
+        if (event.isPrimary === false || (Number.isInteger(event.button) && event.button !== 0)) {
+            return false;
+        }
+
+        if (hasBlockingIntroModal()) {
+            return false;
+        }
+
+        const pathTarget = typeof event.composedPath === 'function'
+            ? event.composedPath()[0]
+            : event.target;
+        const target = pathTarget instanceof Element ? pathTarget : null;
+        if (!target) {
+            return true;
+        }
+
+        if (target.closest(INTRO_TETROMINO_BLOCKED_POINTER_SELECTOR)) {
+            return false;
+        }
+
+        const modal = target.closest('.modal.visible, [role="dialog"].visible');
+        if (modal && modal.id !== 'start-modal') {
+            return false;
+        }
+
+        return true;
+    }
+
+    handleIntroTetrominoPointerDown(event) {
+        if (!this.shouldHandleTetrominoPointer(event)) {
+            return;
+        }
+
+        try {
+            const result = this.threeRenderer.triggerTetrominoBounceAt(event.clientX, event.clientY);
+            if (result && typeof result.catch === 'function') {
+                result.catch((error) => {
+                    console.warn('[IntroAnimation] Tetromino click bounce failed:', error);
+                });
+            }
+        } catch (error) {
+            console.warn('[IntroAnimation] Tetromino click bounce failed:', error);
+        }
     }
 
     /**
@@ -757,6 +884,7 @@ export class IntroAnimation {
         }
 
         this.threeRenderer?.setBackgroundMode?.(true);
+        this.installTetrominoPointerListener();
         this.setRendererPhase(INTRO_PHASES.DISMISS);
 
         // Signal completion near the midpoint of the warp to mask theme loading hitch.
@@ -797,6 +925,7 @@ export class IntroAnimation {
         this.isActive = false;
         this.isAnimating = false;
         this.hasCompleted = true;
+        this.removeTetrominoPointerListener();
 
         // Remove event listeners if still attached
         if (this.container) {
@@ -856,6 +985,7 @@ export class IntroAnimation {
      */
     skip() {
         this.clearPhaseTimers();
+        this.removeTetrominoPointerListener();
         if (this.container) {
             this.container.classList.add('hidden');
         }
@@ -885,6 +1015,7 @@ export class IntroAnimation {
      */
     reset() {
         this.clearPhaseTimers();
+        this.removeTetrominoPointerListener();
         this.hasCompleted = false;
         this.isActive = false;
         this.isAnimating = false;
@@ -948,6 +1079,7 @@ export class IntroAnimation {
                 this.setRendererPhase(INTRO_PHASES.MENU_BG, true);
                 this.startRenderLoop();
             }
+            this.installTetrominoPointerListener();
             return;
         }
 
@@ -1017,6 +1149,7 @@ export class IntroAnimation {
         this.setupMenuLogoLayoutTracking();
         this.scheduleMenuLogoLayoutUpdate();
         this.syncTitleBounds(performance.now());
+        this.installTetrominoPointerListener();
 
         // Trigger animations
         requestAnimationFrame(() => {

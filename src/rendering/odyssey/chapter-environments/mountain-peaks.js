@@ -19,17 +19,28 @@
 import * as THREE from 'three/webgpu';
 import {
     attribute,
+    clamp,
     float,
+    length,
+    mix,
     mod,
+    normalWorld,
+    oneMinus,
+    positionLocal,
+    positionWorld,
+    pow,
     sin,
+    smoothstep,
     uniform,
     uv,
+    vec2,
     vec3,
-    texture as textureNode,
 } from 'three/tsl';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
     getActiveOdysseyChapterPositions,
     getChapterPathRange,
+    getOdysseyPathPointAt,
 } from '../path-utils.js';
 import { createMountainAuroraBackdrop } from './shared/mountain-aurora.js';
 import {
@@ -262,10 +273,68 @@ export function createMountainPeaksEnvironment(options = {}) {
     // absolute offset (baseY - sink) rather than a per-frame accumulation.
     mountains.userData.seamBaseY = mountains.position.y;
 
+    // 2b. FAR SECOND RANGE (creative plan asset 6): one more foothill-language ridge
+    // plane behind the heroes so atmospheric perspective recedes through THREE planes
+    // (near cornice → hero peaks → far range), heavier mist so it hazes into the sky.
+    const SECOND_RANGE_BASE = Object.freeze({
+        baseMistStrength: 0.5, baseFadeStart: 0.1, baseFadeEnd: 0.3,
+    });
+    [
+        {
+            size: 1500,
+            height: 430,
+            position: new THREE.Vector3(-220, (centerMountainY - chapterCenterY) - 40, -1120),
+            seed: 7.77,
+        },
+        {
+            size: 1380,
+            height: 360,
+            position: new THREE.Vector3(300, (centerMountainY - chapterCenterY) - 55, -1180),
+            seed: 64.2,
+        },
+    ].forEach((config) => {
+        const farRidge = createFBMMountain(uTransition, {
+            ...config,
+            treatment: FOOTHILL_APRON_TREATMENT,
+            base: SECOND_RANGE_BASE,
+            isHero: false,
+        }, opacityTargets);
+        farRidge.renderOrder = -3;
+        massif.add(farRidge);
+    });
+
+    // 2c. SUMMIT BANNER PLUME (creative plan asset 2): a wind-shed streamer ribbon off
+    // the hero summit's lee side — the single best "danger + wind + altitude" signal —
+    // backlit rose by uSummitGlow at the climax.
+    const heroCrownLocalY = (centerMountainY - chapterCenterY) + 690;
+    const plume = createBannerPlume(uTimeNode, uSummitGlow, heroCrownLocalY, opacityTargets);
+    massif.add(plume);
+    group.userData.bannerPlume = plume;
+
+    // 2d. Prayer-flag line + cairns + summit cross (creative plan assets 3–4): the
+    // chapter's human-scale and cultural focal cues, placed from the live spline.
+    const groupCenterForProps = chapterRange?.center
+        ? { x: chapterRange.center.x, y: chapterCenterY, z: chapterRange.center.z }
+        : { x: 0, y: chapterCenterY, z: 0 };
+    const flagLine = createPrayerFlagLine(uTimeNode, groupCenterForProps, opacityTargets);
+    group.add(flagLine);
+    group.userData.prayerFlags = flagLine;
+    const waymarks = createCairnsAndCross(groupCenterForProps, heroCrownLocalY, opacityTargets);
+    group.add(waymarks);
+    group.userData.waymarks = waymarks;
+
+    // 2e. EAGLES (creative plan asset 5): two-three soaring raptors crossing the lane —
+    // the held middle composition's motion accent. Animated in update (no allocation).
+    const eagles = createEagles(3);
+    group.add(eagles);
+    group.userData.eagles = eagles;
+
     // 3. Shader Aurora Curtains
     // Lift the curtain opacities a touch so the aurora colour reads more strongly against
     // the now-deeper twilight sky (without flattening it into a wash). Defaults were
-    // [1.0, 0.8, 0.8, 0.6]; the back/wide curtain stays subtle.
+    // [1.0, 0.8, 0.8, 0.6]; the back/wide curtain stays subtle. NOTE: the live opacity is
+    // CAPPED in the update loop (faint preview → faint readable arc at the seam) so
+    // Chapter 5's staged aurora ramp inherits this exact level — see the 4→5 seam block.
     const aurora = createMountainAuroraBackdrop(uniforms, {
         name: 'mountain-aurora',
         layerOpacities: [1.0, 0.95, 0.95, 0.7],
@@ -285,10 +354,9 @@ export function createMountainPeaksEnvironment(options = {}) {
     // this node instead of rewriting + re-uploading the InstancedBufferAttribute each frame.
     group.userData.snowTimeUniform = snow.userData.snowTimeUniform;
 
-    // 5. Stars
-    const stars = createStars(uniforms, 1000);
-    group.add(stars);
-    group.userData.stars = stars;
+    // (Stars REMOVED per the creative plan: Chapter 4 is a banded stratospheric dusk and
+    // Chapter 5 opens starless — stars are Chapter 6's identity. The old 1000-star shell
+    // was part of the washed lilac read and leaked "space" into the alpine act.)
 
     // Lighting — lower, cooler ambient so shadowed faces stay deep blue (more contrast),
     // and a brighter, crisper moon key so snow caps pop as bright silhouettes.
@@ -362,76 +430,263 @@ function createSkyBackground(uTransition) {
     return mesh;
 }
 
-function createParticleTexture() {
-    if (typeof document === 'undefined') return null;
-    const canvas = document.createElement('canvas');
-    canvas.width = 32;
-    canvas.height = 32;
-    const ctx = canvas.getContext('2d');
-
-    // Soft circle gradient
-    const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-    grad.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
-    grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
-    grad.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
-
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 32, 32);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    return texture;
-}
-
-function createStars(uniforms, count) {
-    // Build the same spherical-shell star layout as the original Points cloud, but
-    // gather only the accepted points (cos(phi) >= 0) so the instanced quad count is exact.
-    const positions = [];
-    const sizes = [];
-
-    for (let i = 0; i < count; i++) {
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
-        const r = 250 + Math.random() * 50;
-
-        if (Math.cos(phi) < 0) continue;
-
-        positions.push(
-            r * Math.sin(phi) * Math.cos(theta),
-            r * Math.cos(phi),
-            r * Math.sin(phi) * Math.sin(theta),
-        );
-        sizes.push(0.5 + Math.random() * 1.5);
+/**
+ * SUMMIT BANNER PLUME (creative plan asset 2): instanced billboard streamers shedding
+ * off the hero summit's lee (right) side like Everest's banner cloud — a constantly
+ * streaming white plume that backlights rose (#F59478 family) as uSummitGlow climaxes.
+ */
+function createBannerPlume(uTimeNode, uSummitGlow, crownLocalY, opacityTargets) {
+    const count = 26;
+    const along = new Float32Array(count);
+    const seeds = new Float32Array(count);
+    for (let i = 0; i < count; i += 1) {
+        along[i] = i / (count - 1);
+        seeds[i] = Math.random();
     }
-
-    const instanceCount = sizes.length;
-    const basePositions = new Float32Array(positions);
-    const aSize = new Float32Array(sizes);
-
-    const geometry = makeQuadInstancedGeometry(instanceCount, {
-        aBase: { array: basePositions, itemSize: 3 },
-        aSize: { array: aSize, itemSize: 1 },
+    const geometry = makeQuadInstancedGeometry(count, {
+        aAlong: { array: along, itemSize: 1 },
+        aSeed: { array: seeds, itemSize: 1 },
     });
 
-    // Round particle sprite (same soft-circle canvas the Points version used).
-    const map = createParticleTexture();
+    const uOpacity = uniform(1);
+    const aAlong = attribute('aAlong', 'float');
+    const aSeed = attribute('aSeed', 'float');
 
+    // Streamer path: shed from the crown, stretching +x (lee side) and sagging slightly
+    // as it dissipates, with a slow billow so the plume visibly streams.
+    const billow = sin(uTimeNode.mul(1.3).add(aAlong.mul(9.0)).add(aSeed.mul(6.0)));
+    const px = aAlong.mul(95.0).add(12.0).add(billow.mul(4.0));
+    const py = float(crownLocalY).add(billow.mul(3.0)).sub(aAlong.mul(16.0)).add(aSeed.mul(6.0));
+    const pz = float(-680.0).add(aSeed.sub(0.5).mul(26.0));
+    const sizeNode = aAlong.mul(13.0).add(6.0);
     const material = new THREE.MeshBasicNodeMaterial();
+    material.positionNode = billboardWorld(vec3(px, py, pz), sizeNode);
+
+    const r = uv().sub(0.5).length().mul(2.0);
+    const puff = pow(clamp(oneMinus(r), 0.0, 1.0), 1.6);
+    // White spindrift cloud, backlit rose at the climax (capped — controlled bloom only
+    // on the summit ignite itself, never the plume).
+    const plumeColor = mix(vec3(0.9, 0.94, 0.99), vec3(0.96, 0.62, 0.49), uSummitGlow.mul(0.7));
+    material.colorNode = plumeColor;
+    material.opacityNode = puff
+        .mul(oneMinus(aAlong.mul(0.85)))
+        .mul(0.34)
+        .mul(uOpacity);
     material.transparent = true;
     material.depthWrite = false;
+    material.blending = THREE.NormalBlending;
+    material.side = THREE.DoubleSide;
 
-    // Billboard each quad at its base position; convert the old ~2px PointsMaterial size +
-    // per-point size variation (0.5..2.0) into a small world-space half-extent.
-    const worldSize = attribute('aSize', 'float').mul(0.45);
-    material.positionNode = billboardWorld(attribute('aBase', 'vec3'), worldSize);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'summit-banner-plume';
+    mesh.frustumCulled = false;
+    pushOpacityTarget(opacityTargets, uOpacity);
+    return mesh;
+}
 
-    const sprite = textureNode(map, uv());
-    material.colorNode = sprite.rgb.mul(new THREE.Color(0xffffff));
-    material.opacityNode = sprite.a.mul(0.8);
+/**
+ * PRAYER-FLAG LINE (creative plan asset 3): one catenary cord crossing the lane at
+ * ~two-thirds chapter progress, strung with sun-bleached lung-ta flags in the
+ * traditional five-color order, vertex-rippled by the shared wind.
+ */
+function createPrayerFlagLine(uTimeNode, groupCenter, opacityTargets) {
+    const flagGroup = new THREE.Group();
+    flagGroup.name = 'prayer-flag-line';
+    const positions = getActiveOdysseyChapterPositions();
+    const tA = positions?.[3];
+    const tB = positions?.[4];
+    if (!Number.isFinite(tA) || !Number.isFinite(tB)) return flagGroup;
 
-    const stars = new THREE.Mesh(geometry, material);
-    stars.name = 'mountain-stars';
-    stars.frustumCulled = false;
-    return stars;
+    const p0 = getOdysseyPathPointAt(THREE.MathUtils.lerp(tA, tB, 0.66));
+    const p1 = getOdysseyPathPointAt(THREE.MathUtils.lerp(tA, tB, 0.7));
+    const dirX = p1.x - p0.x;
+    const dirZ = p1.z - p0.z;
+    const len = Math.hypot(dirX, dirZ) || 1;
+    const rightX = -dirZ / len;
+    const rightZ = dirX / len;
+    const baseY = (p0.y - groupCenter.y) + 5.2;
+    const ax = (p0.x - groupCenter.x) + rightX * 11;
+    const az = (p0.z - groupCenter.z) + rightZ * 11;
+    const bx = (p0.x - groupCenter.x) - rightX * 11;
+    const bz = (p0.z - groupCenter.z) - rightZ * 11;
+
+    // Catenary cord (sagging line) across the lane, slightly above the rail.
+    const cordPoints = [];
+    for (let i = 0; i <= 8; i += 1) {
+        const t = i / 8;
+        cordPoints.push(new THREE.Vector3(
+            THREE.MathUtils.lerp(ax, bx, t),
+            baseY - Math.sin(t * Math.PI) * 2.4,
+            THREE.MathUtils.lerp(az, bz, t),
+        ));
+    }
+    const curve = new THREE.CatmullRomCurve3(cordPoints);
+    const uOpacity = uniform(1);
+    const cordMaterial = new THREE.MeshBasicNodeMaterial();
+    cordMaterial.colorNode = vec3(0.07, 0.07, 0.09);
+    cordMaterial.opacityNode = uOpacity;
+    cordMaterial.transparent = true;
+    flagGroup.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.06, 5, false), cordMaterial));
+
+    // Flags: lung-ta order (blue/white/red/green/yellow), desaturated ~30% so they read
+    // sun-bleached and authentic — the chapter's only saturation besides alpenglow.
+    const flagCount = 22;
+    const bleach = new THREE.Color(0x9a948c);
+    const lungTa = [0x2e5fa3, 0xf5f0e6, 0xc0392b, 0x2e7d4f, 0xe3b428]
+        .map((hex) => new THREE.Color(hex).lerp(bleach, 0.3));
+    const flagColors = new Float32Array(flagCount * 3);
+    for (let i = 0; i < flagCount; i += 1) {
+        const c = lungTa[i % lungTa.length];
+        flagColors[i * 3] = c.r;
+        flagColors[i * 3 + 1] = c.g;
+        flagColors[i * 3 + 2] = c.b;
+    }
+    const flagGeometry = new THREE.PlaneGeometry(1.5, 1.05);
+    flagGeometry.translate(0.75, -0.52, 0); // hang from the cord-attached edge
+    flagGeometry.setAttribute('aFlag', new THREE.InstancedBufferAttribute(flagColors, 3));
+
+    const flagMaterial = new THREE.MeshBasicNodeMaterial();
+    // Free edge ripples in the shared wind; the attached edge stays pinned.
+    const ripple = sin(uTimeNode.mul(2.8).add(positionWorld.x.mul(1.7)))
+        .mul(0.24)
+        .mul(uv().x);
+    flagMaterial.positionNode = positionLocal.add(vec3(0.0, 0.0, ripple));
+    flagMaterial.colorNode = attribute('aFlag', 'vec3').mul(uv().y.mul(0.25).add(0.75));
+    flagMaterial.opacityNode = uOpacity;
+    flagMaterial.transparent = true;
+    flagMaterial.side = THREE.DoubleSide;
+
+    const flags = new THREE.InstancedMesh(flagGeometry, flagMaterial, flagCount);
+    const dummy = new THREE.Object3D();
+    const xAxis = new THREE.Vector3(1, 0, 0);
+    const tangent = new THREE.Vector3();
+    for (let i = 0; i < flagCount; i += 1) {
+        const t = (i + 0.5) / flagCount;
+        curve.getPointAt(t, dummy.position);
+        curve.getTangentAt(t, tangent);
+        dummy.quaternion.setFromUnitVectors(xAxis, tangent);
+        dummy.updateMatrix();
+        flags.setMatrixAt(i, dummy.matrix);
+    }
+    flags.instanceMatrix.needsUpdate = true;
+    flagGroup.add(flags);
+
+    pushOpacityTarget(opacityTargets, uOpacity);
+    flagGroup.traverse((child) => { child.frustumCulled = false; });
+    return flagGroup;
+}
+
+/**
+ * CAIRNS + SUMMIT CROSS (creative plan asset 4): stacked-stone waypoints within ~15
+ * units of the rail at the chapter's first and last thirds, and a Gipfelkreuz
+ * silhouette on the hero summit crown — the destination that resolves at the climax.
+ */
+function createCairnsAndCross(groupCenter, crownLocalY, opacityTargets) {
+    const group = new THREE.Group();
+    group.name = 'alpine-waymarks';
+    const uOpacity = uniform(1);
+
+    // Dark stacked stone with snow dusting on up-faces; silhouette-first.
+    const stoneMaterial = new THREE.MeshBasicNodeMaterial();
+    const snowDust = pow(clamp(normalWorld.y, 0.0, 1.0), 2.0).mul(0.8);
+    stoneMaterial.colorNode = mix(vec3(0.07, 0.11, 0.17), vec3(0.86, 0.9, 0.96), snowDust);
+    stoneMaterial.opacityNode = uOpacity;
+    stoneMaterial.transparent = true;
+    stoneMaterial.side = THREE.FrontSide;
+
+    const buildCairn = (scale) => {
+        const stones = [];
+        const tiers = [1.6, 1.25, 0.95, 0.65, 0.4];
+        let y = 0;
+        tiers.forEach((r) => {
+            const stone = new THREE.IcosahedronGeometry(r * scale, 0);
+            stone.scale(1, 0.62, 1);
+            y += r * scale * 0.66;
+            stone.translate((Math.random() - 0.5) * 0.2 * scale, y, (Math.random() - 0.5) * 0.2 * scale);
+            y += r * scale * 0.45;
+            stones.push(stone);
+        });
+        const merged = mergeGeometries(stones, false);
+        stones.forEach((s) => s.dispose());
+        return merged;
+    };
+
+    const positions = getActiveOdysseyChapterPositions();
+    const tA = positions?.[3];
+    const tB = positions?.[4];
+    if (Number.isFinite(tA) && Number.isFinite(tB)) {
+        [
+            { ft: 0.18, side: 9 },
+            { ft: 0.78, side: -12 },
+        ].forEach(({ ft, side }) => {
+            const pt = getOdysseyPathPointAt(THREE.MathUtils.lerp(tA, tB, ft));
+            const cairn = new THREE.Mesh(buildCairn(1.0), stoneMaterial);
+            cairn.position.set(
+                (pt.x - groupCenter.x) + side,
+                (pt.y - groupCenter.y) - 2.4,
+                (pt.z - groupCenter.z) - 4,
+            );
+            group.add(cairn);
+        });
+    }
+
+    // Gipfelkreuz on the hero crown: mythic-scale thin cross so the silhouette resolves
+    // against the sky at the summit-ignite climax (z -680 needs real size to read).
+    const post = new THREE.BoxGeometry(1.2, 30, 1.2);
+    post.translate(0, 15, 0);
+    const arm = new THREE.BoxGeometry(11, 1.2, 1.2);
+    arm.translate(0, 22, 0);
+    const crossGeometry = mergeGeometries([post, arm], false);
+    post.dispose();
+    arm.dispose();
+    const cross = new THREE.Mesh(crossGeometry, stoneMaterial);
+    cross.position.set(0, crownLocalY - 6, -680);
+    group.add(cross);
+
+    pushOpacityTarget(opacityTargets, uOpacity);
+    group.traverse((child) => { child.frustumCulled = false; });
+    return group;
+}
+
+/**
+ * EAGLES (creative plan asset 5): two-three soaring raptors — slotted-wingtip
+ * silhouettes wheeling across the lane every few seconds. Animated in update().
+ */
+function createEagles(count = 3) {
+    const group = new THREE.Group();
+    group.name = 'mountain-eagles';
+
+    const wingGeo = new THREE.BufferGeometry();
+    const s = 2.4;
+    const verts = new Float32Array([
+        0.0, -0.05, -1.1, 0.0, 0.02, 1.3, -0.2, 0.08, 0.12,
+        -0.12, 0.05, 0.16, -2.5, 0.5, -0.12, -0.4, -0.04, -0.38,
+        0.12, 0.05, 0.16, 0.4, -0.04, -0.38, 2.5, 0.5, -0.12,
+    ]);
+    for (let i = 0; i < verts.length; i += 1) verts[i] *= s;
+    wingGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+    wingGeo.computeVertexNormals();
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    // Near-black raptor silhouette (#0D0B09) with faintly sun-warmed wingtips.
+    const tipWarm = smoothstep(2.5, 5.5, length(vec2(positionLocal.x, positionLocal.z)));
+    material.colorNode = mix(vec3(0.051, 0.043, 0.035), vec3(0.32, 0.2, 0.12), tipWarm.mul(0.6));
+    material.side = THREE.DoubleSide;
+
+    for (let i = 0; i < count; i += 1) {
+        const eagle = new THREE.Mesh(wingGeo, material);
+        eagle.userData = {
+            speed: 0.12 + Math.random() * 0.18,
+            radius: 60 + Math.random() * 90,
+            height: 26 + Math.random() * 46,
+            offset: Math.random() * Math.PI * 2,
+            flap: 1.6 + Math.random() * 1.4, // soaring: slow, occasional beats
+            lane: -260 - Math.random() * 220,
+        };
+        group.add(eagle);
+    }
+    group.traverse((child) => { child.frustumCulled = false; });
+    return group;
 }
 
 /**
@@ -531,41 +786,54 @@ function createSnow(uniforms, count) {
         aSway: { array: sway, itemSize: 2 },
     });
 
-    // Reuse soft-circle sprite texture.
-    const map = createParticleTexture();
-
     const material = new THREE.MeshBasicNodeMaterial();
     material.transparent = true;
     material.depthWrite = false;
 
-    // GPU-side drift (perf §5.3): the snowflake center is derived from uTime in the shader
-    // instead of a per-frame JS loop + InstancedBufferAttribute.needsUpdate re-upload. The
-    // falling motion mods over the same [-10, 100) window as the old CPU wrap so the look
-    // (density, loop point, gentle horizontal sway) is preserved.
+    // SPINDRIFT (creative plan asset 1 — "snow lacks presence"): the field is rebuilt as
+    // wind-SHEARED streaks, not dots. One persistent wind vector (left-to-right, slightly
+    // downhill) owns the motion: every flake travels with the wind (wrapped) while it
+    // falls, speed and streak length scale with ALTITUDE (high motes whip jet-stream
+    // fast, low motes drift), and a slow gust pulse breathes through the sway. All from
+    // uTime on the GPU — zero per-frame CPU, no attribute re-upload (perf §5.3 holds).
     const uTime = uniform(0);
     const aBase = attribute('aBase', 'vec3');
     const aFall = attribute('aFall', 'float');
     const aSway = attribute('aSway', 'vec2');
 
+    const altitudeT = clamp(aBase.y.add(10.0).div(110.0), 0.0, 1.0);
+    const windSpeed = altitudeT.mul(26.0).add(8.0);
+
     // y: fall + wrap into [-10, 100). mod() returns [0, span); shift back to the window.
     const fallen = aBase.y.sub(SNOW_Y_MIN).sub(uTime.mul(aFall));
     const yPos = mod(fallen, float(SNOW_Y_SPAN)).add(SNOW_Y_MIN);
-    // x/z: a bounded sine sway (the old per-frame x/z velocity was a tiny gentle walk;
-    // a uTime sine reads the same as drifting flakes without unbounded accumulation).
+    // x: travel WITH the wind, wrapped over the field span so the stream never ends.
+    const xDrift = mod(aBase.x.add(100.0).add(uTime.mul(windSpeed)), 200.0).sub(100.0);
+    // Gust pulse breathes through the lateral sway (never through the wrap speed).
+    const gust = pow(sin(uTime.mul(0.35)).mul(0.5).add(0.5), 2.0).mul(0.8).add(0.6);
     const swayPhase = aSway.x;
-    const swayAmp = aSway.y;
+    const swayAmp = aSway.y.mul(gust);
     const swayX = sin(uTime.mul(0.6).add(swayPhase)).mul(swayAmp);
     const swayZ = sin(uTime.mul(0.45).add(swayPhase.mul(1.7))).mul(swayAmp.mul(0.6));
-    const center = vec3(aBase.x.add(swayX), yPos, aBase.z.add(swayZ));
+    const center = vec3(xDrift.add(swayX), yPos, aBase.z.add(swayZ));
 
-    // Original Points size 0.8 -> small world-space half-extent.
-    material.positionNode = billboardWorld(center, 0.8);
+    // Larger quads carry the streaks; higher flakes get longer ones.
+    material.positionNode = billboardWorld(center, altitudeT.mul(1.2).add(0.9));
 
-    // Slightly cooler, dimmer flakes so the dense snowfield adds depth without piling up
-    // into a near-white atmospheric wash.
-    const sprite = textureNode(map, uv());
-    material.colorNode = sprite.rgb.mul(new THREE.Color(0xdfe9f2));
-    material.opacityNode = sprite.a.mul(0.6);
+    // Streak mask: the quad uv rotated to the wind angle, compressed across the wind so
+    // each flake reads as a wind-sheared STREAK (length scales with altitude).
+    const WIND_COS = Math.cos(-0.16);
+    const WIND_SIN = Math.sin(-0.16);
+    const p0 = uv().sub(0.5);
+    const px = p0.x.mul(WIND_COS).sub(p0.y.mul(WIND_SIN));
+    const pyr = p0.x.mul(WIND_SIN).add(p0.y.mul(WIND_COS));
+    const stretch = altitudeT.mul(3.4).add(2.2);
+    const streakD = length(vec2(px.mul(2.0), pyr.mul(2.0).mul(stretch)));
+    const streak = pow(clamp(oneMinus(streakD), 0.0, 1.0), 1.5);
+
+    // Cool spindrift crystals (sun-tinted would fight the dusk key; kept cool-bright).
+    material.colorNode = vec3(0.87, 0.91, 0.95);
+    material.opacityNode = streak.mul(0.55);
 
     const snow = new THREE.Mesh(geometry, material);
     snow.name = 'mountain-snow';
@@ -654,13 +922,39 @@ export function updateMountainPeaksEnvironment(group, delta, time, camera, camer
         uniform2.value = 1;
     });
 
+    // 4→5 SEAM (creative plan Transition Out): the aurora is the NEXT chapter's promise.
+    // Hold the curtains at a faint preview through the chapter, brightening only into
+    // the seam to a faint READABLE arc — capped well below the authored full-strength
+    // opacities, because that arc is exactly the level Chapter 5's staged ramp (faint at
+    // ~10%, hero by ~35%) inherits. A full-blaze exit here would make Ch5's entry read
+    // as a regression.
+    const auroraRamp = 0.22 + seamExit * 0.2;
     const auroraOpacityUniformTargets = group.userData.auroraOpacityUniformTargets || [];
     auroraOpacityUniformTargets.forEach((uniform2) => {
         const baseOpacity = typeof uniform2.__odysseyBaseOpacity === 'number'
             ? uniform2.__odysseyBaseOpacity
             : uniform2.value;
-        uniform2.value = baseOpacity;
+        uniform2.value = baseOpacity * auroraRamp;
     });
+
+    // Eagles: slow soaring circles crossing the lane (the held middle composition's
+    // motion accent), banked into the turn with an occasional wing beat.
+    const { eagles } = group.userData;
+    if (eagles) {
+        eagles.children.forEach((eagle) => {
+            const ud = eagle.userData;
+            const t = time * ud.speed + ud.offset;
+            eagle.position.set(
+                Math.cos(t) * ud.radius,
+                ud.height + Math.sin(t * 1.3) * 6,
+                ud.lane + Math.sin(t) * ud.radius * 0.45,
+            );
+            const soarFlap = 0.82 + Math.abs(Math.sin(time * ud.flap)) * 0.4;
+            eagle.scale.set(1.7, 1.7 * soarFlap, 1.7);
+            eagle.rotation.y = -t + Math.PI / 2;
+            eagle.rotation.z = Math.sin(t) * 0.3;
+        });
+    }
 
     // Snow drift (perf §5.3): the per-frame CPU integration + InstancedBufferAttribute
     // re-upload (~1000 flakes × 3 floats every frame) is gone — the TSL material derives

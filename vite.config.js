@@ -131,7 +131,18 @@ export default defineConfig({
     // Keep dependency crawling scoped to the actual app entry. The vendored
     // Three.js repo ships extra HTML pages that reference optional example deps.
     entries: ['index.html'],
-    include: ['phaser'],
+    include: [
+      'phaser',
+      'three',
+      'three/webgpu',
+      'three/tsl',
+      'three/addons/tsl/display/BloomNode.js',
+      'three/addons/utils/BufferGeometryUtils.js',
+      'three/addons/postprocessing/EffectComposer.js',
+      'three/addons/postprocessing/RenderPass.js',
+      'three/addons/postprocessing/UnrealBloomPass.js',
+      'three/addons/postprocessing/ShaderPass.js'
+    ],
     // Exclude Electron/Node.js modules from browser bundling
     exclude: ['steamworks.js', 'electron'],
   },

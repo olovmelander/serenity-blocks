@@ -77,15 +77,22 @@ async function bootstrapOdyssey(win) {
                 return false;
             };
 
+            console.log('[capture-inject] Waiting for gameModeManager...');
             if (!await waitFor(() => !!window.serenityBlocks?.gameModeManager)) {
+                console.log('[capture-inject] gameModeManager not ready');
                 return { ok: false, reason: 'gameModeManager not ready' };
             }
+            console.log('[capture-inject] gameModeManager found!');
 
             const gm = window.serenityBlocks.gameModeManager;
             try {
+                console.log('[capture-inject] Activating odyssey mode...');
                 if (gm.getCurrentModeId?.() !== 'odyssey') await gm.activateMode('odyssey');
+                console.log('[capture-inject] Starting odyssey mode...');
                 if (!gm.getCurrentMode?.()?.isRunning) await gm.startCurrentMode?.();
+                console.log('[capture-inject] Odyssey mode started!');
             } catch (error) {
+                console.log('[capture-inject] activate failed: ' + error);
                 return { ok: false, reason: 'activate failed: ' + (error?.message || error) };
             }
 
@@ -178,7 +185,19 @@ async function run() {
     });
 
     console.log(`[capture] loading dev server at ${DEV_SERVER_URL}...`);
-    await win.loadURL(DEV_SERVER_URL);
+    win.loadURL(DEV_SERVER_URL);
+    
+    // Wait for the game to start rendering rather than waiting for loadURL which can hang
+    await new Promise(resolve => {
+        const checkInterval = setInterval(async () => {
+            const isReady = await execute(win, '!!window.serenityBlocks');
+            if (isReady) {
+                clearInterval(checkInterval);
+                resolve();
+            }
+        }, 500);
+    });
+
     const boot = await bootstrapOdyssey(win);
     if (!boot?.ok) throw new Error(`Bootstrap failed: ${boot?.reason}`);
     console.log('[capture] Odyssey booted successfully');

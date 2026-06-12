@@ -188,8 +188,10 @@ export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
 
     // World half-extents: the disc reads as a colossal sun far down the canyon. Two
     // instances share ONE mesh — index 0 = soft halo (wider, dimmer), index 1 = disc.
-    const SUN_RADIUS = 240;
-    const HALO_RADIUS = 470;
+    // Creative plan ch8 item 1 (sun visibility): radius raised 240 → 320 so the disc
+    // subtends ~25–30% of frame height from mid-chapter at its -1180 station.
+    const SUN_RADIUS = 320;
+    const HALO_RADIUS = 560;
     const count = 2;
     const bases = new Float32Array(count * 3); // both at the group origin (group is placed)
     const sizes = new Float32Array(count);
@@ -295,6 +297,83 @@ export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
     };
 }
 
+// ── Skyline silhouette cards + horizon haze (creative plan ch8 item 2) ─────────────
+//
+// Flat near-black roofline cards placed between the Retrosun and the last tower rank
+// so the sun rises BEHIND a city that reads kilometres deep — jagged rooflines,
+// setbacks and antenna spikes, partially occluding the disc. No bloom; uOpacity
+// exposed (material.uniforms) so the ecotone crossfade reaches the cards.
+export function createSkylineSilhouetteTSL(uTime = uniform(0), { seedOffset = 0, lift = 0 } = {}) {
+    const uOpacity = uniform(1);
+    const vUv = uv();
+    // The silhouette is static; uTime stays in the signature for builder uniformity
+    // and is referenced as a no-op so the shared clock contract holds.
+    const t0 = uTime.mul(0.0);
+    // Blocky roofline: per-column heights hashed over ~26 columns, a narrower second
+    // tier (setbacks), and antenna spikes on ~15% of blocks.
+    const col = vUv.x.mul(26.0).add(t0).floor();
+    const roofH = hash21(vec2(col, 3.7 + seedOffset)).mul(0.42).add(0.18);
+    const tier2 = hash21(vec2(col, 9.1 + seedOffset)).mul(0.2);
+    const cx = fract(vUv.x.mul(26.0));
+    const setback = step(0.25, cx).mul(step(cx, 0.75));
+    const roof = step(vUv.y, roofH).max(step(vUv.y, roofH.add(tier2)).mul(setback));
+    const spike = step(0.85, hash21(vec2(col, 17.3 + seedOffset)))
+        .mul(step(cx.sub(0.5).abs(), 0.03))
+        .mul(step(vUv.y, roofH.add(tier2).add(0.22)));
+    const mask = roof.max(spike);
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    // Near-black silhouette; `lift` nudges the nearer card faintly blue so the two
+    // ranks separate (#0A0F1F near, #07050F far — never RGB 0,0,0).
+    material.colorNode = vec3(0.027 + lift, 0.02 + lift * 1.4, 0.059 + lift * 2.2);
+    material.opacityNode = mask.mul(uOpacity);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
+
+    const geometry = new THREE.PlaneGeometry(1700, 300, 1, 1);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'skyline-silhouette';
+    mesh.frustumCulled = false;
+    return {
+        mesh, material, geometry, uniforms: { uOpacity },
+    };
+}
+
+// The magenta-violet HORIZON HAZE band — the chapter's missing mid-value layer: lifts
+// the void's black floor behind the skyline and fakes kilometres of city light
+// pollution (#C600FF bridging into #580E91, per the Outrun gradient rule).
+export function createHorizonHazeTSL(uTime = uniform(0)) {
+    const uOpacity = uniform(1);
+    const vUv = uv();
+    // The haze is static; uTime stays in the signature for builder uniformity.
+    const t0 = uTime.mul(0.0);
+    const colorNode = mix(
+        vec3(0.345, 0.055, 0.569), // cyber grape #580E91
+        vec3(0.776, 0.0, 1.0), // deep magenta #C600FF
+        oneMinus(vUv.y).mul(0.8).add(t0),
+    );
+    const band = smoothstep(0.0, 0.25, vUv.y).mul(oneMinus(smoothstep(0.55, 1.0, vUv.y)));
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = colorNode.mul(0.5);
+    material.opacityNode = band.mul(0.5).mul(uOpacity);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.blending = THREE.NormalBlending;
+    material.uniforms = { uOpacity }; // ecotone crossfade bridge
+
+    const geometry = new THREE.PlaneGeometry(1800, 260, 1, 1);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'horizon-haze-band';
+    mesh.frustumCulled = false;
+    return {
+        mesh, material, geometry, uniforms: { uOpacity },
+    };
+}
+
 // ── Procedural lit-window facade (additive-read interior glow; bloom-eligible) ────
 
 /**
@@ -328,12 +407,20 @@ function createFacadeMaterial(uTime, uEnergy) {
         .mul(step(f.y, 0.9));
 
     const r = hash21(cell.add(seed));
-    const on = step(0.42, r); // some windows dark
+    // WINDOW VALUE TIERS (creative plan ch8 item 3 — the bi-modal salt-and-pepper fix):
+    // ~25% dark, ~55% DIM AMBIENT at a quarter intensity (under the bloom threshold),
+    // ~15% mid, and only ~5% full-bright accent rows. The facades become the dark mass
+    // the Retrosun needs behind them — light as punctuation, not confetti.
+    const lit = step(0.25, r);
+    const dimBand = oneMinus(step(0.8, r)); // r in [0.25, 0.8) → dim ambient
+    const midBand = step(0.8, r).mul(oneMinus(step(0.95, r)));
+    const brightBand = step(0.95, r);
+    const on = lit.mul(dimBand.mul(0.25).add(midBand.mul(0.6)).add(brightBand));
     const flick = sin(uTime.mul(r.mul(3.0).add(0.6)).add(r.mul(40.0))).mul(0.28).add(0.72);
 
-    // Window colour: cyan/magenta with occasional warm interior.
+    // Window colour: cyan/magenta; the warm-cream interior demoted to ≤5% (plan).
     let wcolor = mix(uColorA, uColorB, step(0.5, fract(r.mul(7.31))));
-    wcolor = mix(wcolor, vec3(1.0, 0.82, 0.5), step(0.86, r));
+    wcolor = mix(wcolor, vec3(1.0, 0.82, 0.5), step(0.95, r));
 
     const base = vec3(0.018, 0.022, 0.045);
     // Fresnel edge sheen — view-space normal vs. direction to camera.

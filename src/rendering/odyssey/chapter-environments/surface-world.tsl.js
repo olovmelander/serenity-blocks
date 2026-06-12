@@ -39,6 +39,7 @@ import {
     fract,
     length,
     max,
+    min,
     mix,
     normalize,
     normalView,
@@ -160,7 +161,18 @@ function getTerrainHeight(x, z) {
  * @param {object} uTime shared time uniform (uniform(0)) — unused by the shader but
  *   shared for parity with the live material's uniform set.
  */
-export function createSkyBackgroundTSL(uTime = uniform(0)) {
+// Shared season gates (creative plan Ch3 item 6): one uSeason scalar (0 at the breach →
+// 1 at the Mountains seam) scripts the chapter's spring→autumn→winter arc THROUGH LIGHT —
+// the sky bands, the sun, the key light, and the particle stories all ride it.
+function seasonAutumnT(uSeason) {
+    return smoothstep(0.38, 0.6, uSeason).mul(oneMinus(smoothstep(0.72, 0.92, uSeason)));
+}
+function seasonWinterT(uSeason) {
+    return smoothstep(0.68, 0.92, uSeason);
+}
+
+export function createSkyBackgroundTSL(uTime = uniform(0), options = {}) {
+    const uSeason = options.uSeason ?? uniform(0);
     // VISUAL POLISH (de-wash): the live sky read as a flat grey-blue band because the
     // mid-azure swallowed the whole near-horizontal frame and every value sat low-sat.
     // Re-graded as a REAL blue golden-hour dome (richer, more saturated bands pulled up
@@ -182,18 +194,31 @@ export function createSkyBackgroundTSL(uTime = uniform(0)) {
     const dir = normalize(positionWorld);
     const h = max(dir.y, 0.0);
 
+    // Season-scripted bands (plan item 6): autumn warms and deepens the horizon; winter
+    // cools every band toward the #B4BBDD lavender pole and dims the golden read — the
+    // season must arrive as a LIGHT change, never a prop swap.
+    const autumnT = seasonAutumnT(uSeason);
+    const winterT = seasonWinterT(uSeason);
+    const horizonCol = mix(
+        mix(uHorizon, vec3(0.94, 0.63, 0.33), autumnT.mul(0.45)),
+        vec3(0.706, 0.733, 0.867), // #B4BBDD lavender (himalayan dawn pole)
+        winterT.mul(0.85),
+    );
+    const midCol = mix(uMid, vec3(0.55, 0.61, 0.78), winterT.mul(0.7));
+    const zenithCol = mix(uZenith, vec3(0.2, 0.27, 0.48), winterT.mul(0.6));
+
     // Two-stage vertical grade: warm horizon -> SATURATED mid azure (fast, low band) then
     // mid -> deep zenith (pulled up harder so the upper frame reads as real BLUE, not a
     // pale grey wash). The lower pow exponent lifts saturated blue earlier up the dome.
     const horizonBand = smoothstep(0.0, 0.16, h); // warm hugs the horizon line
     const zenithBand = pow(h, float(0.5)); // pull saturated blue up into the dome
-    let sky = mix(uHorizon, uMid, horizonBand);
-    sky = mix(sky, uZenith, zenithBand);
+    let sky = mix(horizonCol, midCol, horizonBand);
+    sky = mix(sky, zenithCol, zenithBand);
 
     // Warm ground-haze band hugging the horizon line (very low, soft): warms the waterline
     // so the act-in vista reads golden-hour, not a cold flat stripe.
     const groundHaze = oneMinus(smoothstep(0.0, 0.085, h));
-    sky = mix(sky, uHaze, groundHaze.mul(0.34));
+    sky = mix(sky, mix(uHaze, vec3(0.78, 0.8, 0.88), winterT.mul(0.8)), groundHaze.mul(0.34));
 
     // Readable golden SUN toward the warm horizon (low + slightly right of forward). A tight
     // bright core + a wider golden halo (sky-children sun discipline) so the sun READS as the
@@ -203,8 +228,11 @@ export function createSkyBackgroundTSL(uTime = uniform(0)) {
     const sunDot = dot(dir, sunDir);
     const sunCore = pow(smoothstep(0.9955, 1.0, sunDot), float(1.6)).mul(0.9);
     const sunHalo = pow(smoothstep(0.80, 1.0, sunDot), float(2.4)).mul(0.40);
-    sky = mix(sky, uSunCore, sunCore);
-    sky = sky.add(uSunGlow.mul(sunHalo)).add(t0);
+    // Winter cools and dims the in-dome sun (the pale #DCE8FF disc of the snow line).
+    const domeSunCore = mix(uSunCore, vec3(0.863, 0.91, 1.0), winterT.mul(0.8));
+    const domeSunGlow = mix(uSunGlow, vec3(0.74, 0.82, 0.94), winterT.mul(0.8));
+    sky = mix(sky, domeSunCore, sunCore.mul(oneMinus(winterT.mul(0.3))));
+    sky = sky.add(domeSunGlow.mul(sunHalo).mul(oneMinus(winterT.mul(0.4)))).add(t0);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = sky;
@@ -248,7 +276,11 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15) 
     // far bank), a low Fresnel base with a strong rim that picks up a WARM golden sky, plus a
     // bright SUN-PATH sparkle column running toward the sun (the SwedishForestWater "sun path"
     // with shimmer). Caustics tinted toward aqua, not white, so the water stays a real colour.
-    const uDeep = uniform(new THREE.Color(0x0e7a96)); // Deep saturated river teal (near/toe)
+    // Creative plan Ch3 item 3 (water read): deeper toe so the body reads BLUE-GREEN
+    // against the gold, saturated aqua caustics, and a doubled sun-path column so the
+    // golden glitter survives ACES — water must carry two colors at once (blue-green
+    // body in the troughs, sky gold on the sun-facing facets).
+    const uDeep = uniform(new THREE.Color(0x0a5f78)); // Deepened saturated river teal (near/toe)
     const uShallow = uniform(new THREE.Color(0x46d8c8)); // Bright clear aqua (far/shallow)
     const uSkyWarm = uniform(new THREE.Color(0xffd9a0)); // Warm golden-hour sky reflection
     const uSunPath = uniform(new THREE.Color(0xffd27a)); // Warm sun-path column colour
@@ -282,7 +314,7 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15) 
     // into brighter shallows. Elevation adds a touch of crest brightening.
     const depthT = smoothstep(0.15, 0.9, vUv.y).add(vElevation.mul(0.05));
     let color = mix(uDeep, uShallow, depthT);
-    color = color.add(vec3(0.32, 0.74, 0.78).mul(caustics).mul(0.32));
+    color = color.add(vec3(0.18, 0.8, 0.72).mul(caustics).mul(0.4));
 
     // Fresnel: low base + strong rim (SwedishForestWater rf0~0.1, pow 6). The grazing angle
     // picks up a WARM golden sky reflection (not cool white) so the river catches the low sun.
@@ -299,7 +331,10 @@ export function createOceanSurfaceTSL(uTime = uniform(0), surfaceOffsetY = -15) 
     const sparkle = sin(vPosition.z.mul(0.7).add(uTime.mul(1.6))).mul(0.5).add(0.5)
         .mul(sin(vPosition.x.mul(0.4).add(uTime.mul(1.1))).mul(0.5).add(0.5));
     sunPath = sunPath.mul(sparkle.mul(0.6).add(0.5));
-    color = color.add(uSunPath.mul(sunPath).mul(0.55));
+    // Doubled column weight (0.55 → 1.05) so the broken gold glitter survives ACES;
+    // capped just below the bloom threshold so the river glitters, never blows white.
+    color = color.add(uSunPath.mul(sunPath).mul(1.05));
+    color = min(color, vec3(0.88, 0.84, 0.7));
 
     // Edge fade — softer/longer so the river banks dissolve into the carved channel
     // instead of ending on a hard rectangular lip.
@@ -379,10 +414,17 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     // high — so the hills read green rather than the old pale wash. A subtle blue-green
     // variation by ground noise breaks the plastic uniformity.
     const grassColorLow = vec3(0.26, 0.78, 0.16); // Vivid lit spring green
-    const grassColorHigh = vec3(0.05, 0.42, 0.14); // Deep saturated forest green
+    // Creative plan Ch3 item 1: shaded pole pulled toward #0D3A16 so tree silhouettes
+    // separate from the ground in grayscale (the collapsed-value fix).
+    const grassColorHigh = vec3(0.05, 0.23, 0.09); // Deep shaded forest green (#0D3A16 family)
     const grassColor = mix(grassColorLow, grassColorHigh, smoothstep(5.0, 30.0, relHeight));
 
     let color = mix(sandColor, grassColor, sandAmount);
+
+    // Creative plan Ch3 item 3: a dark WET-SAND band in the 1–2 height units above the
+    // water clamp, so every shoreline reads as a crisp dark line between land and water.
+    const wetBand = oneMinus(smoothstep(1.0, 2.6, relHeight));
+    color = mix(color, vec3(0.23, 0.18, 0.12), wetBand.mul(0.85));
 
     // Subtle ground noise to break up the plastic look + add green tonal variation.
     const groundNoise = fract(
@@ -410,7 +452,9 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     const sunAz = vec2(-0.62, -0.71);
     const shadowPhase = dot(vPosition.xz, sunAz).mul(0.045);
     const longShadow = sin(shadowPhase).mul(0.5).add(0.5);
-    color = color.mul(longShadow.mul(0.12).add(0.88));
+    // Strengthened banding amplitude (0.12 → 0.2, plan item 1) — the raking light must
+    // carve readable value structure into the valley, not a faint shimmer.
+    color = color.mul(longShadow.mul(0.2).add(0.8));
 
     // Distance fog (pushed back AND thinned so distant terrain keeps its color instead
     // of dissolving into white). Fog tint is a real SATURATED sky blue, not a pale wash, and
@@ -825,7 +869,23 @@ export function createGrassTuftsTSL(uTime = uniform(0), count = 760) {
 
 // A few low-poly trees: merged trunk (cylinder) + two stacked canopy cones. Denser + more
 // varied than before, with richer greens, per-instance tint and a warm golden-hour rim.
-export function createTreesTSL(uTime = uniform(0), count = 40) {
+// Shared clustered-placement helper (creative plan item 5): trees grow in STANDS, never
+// uniform stamping. Picks a handful of land cluster hearts, then scatters instances
+// around them — rejection-sampled against the same land gate as before.
+function pickTreeClusters(clusterCount, landGate) {
+    const clusters = [];
+    let guard = 0;
+    while (clusters.length < clusterCount && guard < clusterCount * 60) {
+        guard += 1;
+        const x = (Math.random() - 0.5) * 300;
+        const z = (Math.random() - 0.5) * 300;
+        if (landGate(x, z)) clusters.push({ x, z });
+    }
+    return clusters;
+}
+
+export function createTreesTSL(uTime = uniform(0), count = 40, options = {}) {
+    const uSeason = options.uSeason ?? uniform(0);
     const trunk = new THREE.CylinderGeometry(0.55, 0.9, 7, 6, 1);
     const canopyLow = new THREE.ConeGeometry(4.2, 6.5, 7, 1);
     const canopyHigh = new THREE.ConeGeometry(2.9, 5.5, 7, 1);
@@ -836,16 +896,19 @@ export function createTreesTSL(uTime = uniform(0), count = 40) {
     ]);
     geometry.setAttribute('aTint', new THREE.InstancedBufferAttribute(buildTintArray(count, 0.26), 3));
 
-    // VISUAL POLISH (de-wash): trunk brown below, RICH saturated foliage green above (lush,
-    // not the old pale flat triangle), height-graded + per-instance tint. A warm rim gilds
-    // the grazing canopy edge (golden-hour backlight) so the trees pop against the sky.
+    // Crown gradient (plan item 5, sakura discipline): a darker shadow underbelly so each
+    // tree has a glowing top and a dark belly that separates from the ground in grayscale.
     const isTrunk = oneMinus(smoothstep(6.0, 7.2, positionLocal.y));
     const tint = attribute('aTint', 'vec3');
-    const foliage = mix(
-        vec3(0.05, 0.34, 0.11), // shaded inner foliage
+    const crownGrade = smoothstep(7.0, 16.0, positionLocal.y);
+    let foliage = mix(
+        vec3(0.04, 0.24, 0.1), // shadow underbelly (#0D3A16 family)
         vec3(0.32, 0.72, 0.22), // vivid sunlit canopy
-        smoothstep(7.0, 16.0, positionLocal.y),
-    ).mul(tint);
+        crownGrade,
+    );
+    // Autumn recolor (plan item 6): deciduous foliage ages rust→gold with the season.
+    const autumnFoliage = mix(vec3(0.55, 0.27, 0.1), vec3(0.91, 0.69, 0.29), crownGrade);
+    foliage = mix(foliage, autumnFoliage, seasonAutumnT(uSeason)).mul(tint);
     const bark = vec3(0.34, 0.22, 0.12);
     let colorNode = mix(foliage, bark, isTrunk);
     // Warm golden-hour rim on the grazing canopy edge (capped, foliage only, never white).
@@ -859,19 +922,86 @@ export function createTreesTSL(uTime = uniform(0), count = 40) {
 
     const mesh = new THREE.InstancedMesh(geometry, material, count);
     const dummy = new THREE.Object3D();
+    const landGate = (x, z) => getTerrainHeight(x, z) >= 6.0 && Math.abs(x) > 14;
+    const clusters = pickTreeClusters(8, landGate);
     let n = 0;
     let guard = 0;
-    while (n < count && guard < count * 12) {
+    while (n < count && guard < count * 16) {
         guard += 1;
-        const x = (Math.random() - 0.5) * 300;
-        const z = (Math.random() - 0.5) * 300;
+        // Clustered placement: jitter around a stand heart, fall back to open scatter.
+        const heart = clusters.length ? clusters[guard % clusters.length] : null;
+        const x = heart ? heart.x + (Math.random() - 0.5) * 64 : (Math.random() - 0.5) * 300;
+        const z = heart ? heart.z + (Math.random() - 0.5) * 64 : (Math.random() - 0.5) * 300;
         const h = getTerrainHeight(x, z);
         // Trees only on solid higher ground, away from the immediate path center.
         if (h >= 6.0 && Math.abs(x) > 14) {
-            const s = 0.8 + Math.random() * 1.0;
+            // ≥2.5× scale spread (plan item 5): saplings through old growth.
+            const s = 0.55 + Math.random() * 1.45;
             dummy.position.set(x, h - 0.5, z);
             dummy.rotation.y = Math.random() * Math.PI;
             dummy.scale.set(s, s * (0.85 + Math.random() * 0.5), s);
+            dummy.updateMatrix();
+            mesh.setMatrixAt(n, dummy.matrix);
+            n += 1;
+        }
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.count = n;
+    mesh.position.y = -15;
+    mesh.frustumCulled = false;
+    return { mesh, material, geometry };
+}
+
+// Spruce stands (creative plan item 5): the second species — five overlapping canopy
+// cones on a short trunk (the swedish-forest merged-spruce grammar), darker and spikier
+// than the deciduous rounds so mixed stands read as forest, not uniform stamping.
+// Evergreen: no autumn recolor (the conifers hold their green into the snow).
+export function createSpruceTreesTSL(uTime = uniform(0), count = 22) {
+    const trunk = new THREE.CylinderGeometry(0.4, 0.7, 4.5, 6, 1);
+    const tier = (r, hgt) => new THREE.ConeGeometry(r, hgt, 7, 1);
+    const geometry = mergeOffsetGeometries([
+        { geo: trunk, offset: [0, 2.2, 0] },
+        { geo: tier(4.6, 5.5), offset: [0, 6.5, 0] },
+        { geo: tier(3.9, 5.2), offset: [0, 9.3, 0] },
+        { geo: tier(3.1, 4.8), offset: [0, 12.0, 0] },
+        { geo: tier(2.2, 4.2), offset: [0, 14.6, 0] },
+        { geo: tier(1.3, 3.6), offset: [0, 17.0, 0] },
+    ]);
+    geometry.setAttribute('aTint', new THREE.InstancedBufferAttribute(buildTintArray(count, 0.2), 3));
+
+    const isTrunk = oneMinus(smoothstep(3.8, 4.8, positionLocal.y));
+    const spruceGreen = mix(
+        vec3(0.03, 0.17, 0.09), // deep shaded spruce
+        vec3(0.13, 0.4, 0.18), // lit needle green
+        smoothstep(5.0, 18.0, positionLocal.y),
+    ).mul(attribute('aTint', 'vec3'));
+    const bark = vec3(0.28, 0.18, 0.11);
+    let colorNode = mix(spruceGreen, bark, isTrunk);
+    const rim = pow(oneMinus(max(dot(normalView, normalize(cameraPosition.sub(positionWorld))), 0.0)), 2.0);
+    colorNode = colorNode.add(vec3(1.0, 0.8, 0.46).mul(rim).mul(0.14).mul(oneMinus(isTrunk)));
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.positionNode = vegetationSwayNode(uTime, 0.25);
+    material.colorNode = colorNode;
+    material.side = THREE.FrontSide;
+
+    const mesh = new THREE.InstancedMesh(geometry, material, count);
+    const dummy = new THREE.Object3D();
+    const landGate = (x, z) => getTerrainHeight(x, z) >= 7.0 && Math.abs(x) > 18;
+    const clusters = pickTreeClusters(5, landGate);
+    let n = 0;
+    let guard = 0;
+    while (n < count && guard < count * 16) {
+        guard += 1;
+        const heart = clusters.length ? clusters[guard % clusters.length] : null;
+        const x = heart ? heart.x + (Math.random() - 0.5) * 52 : (Math.random() - 0.5) * 300;
+        const z = heart ? heart.z + (Math.random() - 0.5) * 52 : (Math.random() - 0.5) * 300;
+        const h = getTerrainHeight(x, z);
+        if (h >= 7.0 && Math.abs(x) > 18) {
+            const s = 0.6 + Math.random() * 1.3;
+            dummy.position.set(x, h - 0.4, z);
+            dummy.rotation.y = Math.random() * Math.PI;
+            dummy.scale.set(s, s * (0.9 + Math.random() * 0.45), s);
             dummy.updateMatrix();
             mesh.setMatrixAt(n, dummy.matrix);
             n += 1;
@@ -985,26 +1115,50 @@ export function createGreatTreeTSL(uTime = uniform(0)) {
     // The shared vegetation offset (props groups sit at terrainOffsetY then -15 baked in);
     // place the tree relative to the same -15 base the prop instancers use.
     mesh.position.set(anchor.x, anchor.y - 15, anchor.z);
+    // Creative plan asset 1: the hero must TRIPLE its visual presence — crown upscaled
+    // ~1.45× (base stays rooted; the scale origin is the trunk foot).
+    mesh.scale.set(1.45, 1.4, 1.45);
     mesh.frustumCulled = false;
     return { mesh, material, geometry };
 }
 
-// Falling-leaf billboards drifting off the Great Tree canopy (warm autumnal flecks).
-export function createFallingLeavesTSL(uTime = uniform(0), count = 60) {
+// Falling-leaf billboards: a near-tree halo PLUS a corridor-wide autumn story (creative
+// plan item 4). Every leaf is a SHAPED, feathered, TUMBLING teardrop alpha — never the
+// old crisp orange rectangle/disc — and the corridor-wide half is gated by uSeason so
+// leaves are the autumn act's particle story.
+export function createFallingLeavesTSL(uTime = uniform(0), count = 120, options = {}) {
+    const uSeason = options.uSeason ?? uniform(0);
+    const corridorPlacements = options.corridorPlacements ?? [];
     const anchor = getSurfaceGreatTreeAnchor();
     const bases = new Float32Array(count * 3);
     const randoms = new Float32Array(count);
     const sizes = new Float32Array(count);
     const colors = new Float32Array(count * 3);
+    const corridorFlags = new Float32Array(count);
     const palette = [
         new THREE.Color(0xe8b04a), // warm gold
         new THREE.Color(0xcf7a3a), // amber
+        new THREE.Color(0xb0502e), // rust
         new THREE.Color(0x7fae3a), // green-gold
     ];
+    const nearTreeCount = Math.min(count, Math.floor(count / 2));
     for (let i = 0; i < count; i += 1) {
-        bases[i * 3] = anchor.x + (Math.random() - 0.5) * 28;
-        bases[i * 3 + 1] = anchor.y + 20 + Math.random() * 28;
-        bases[i * 3 + 2] = anchor.z + (Math.random() - 0.5) * 24;
+        const corridorIdx = i - nearTreeCount;
+        if (i < nearTreeCount || corridorPlacements.length === 0) {
+            // Near-tree halo (denser than before — the hero's leaf-fall signature).
+            bases[i * 3] = anchor.x + (Math.random() - 0.5) * 34;
+            bases[i * 3 + 1] = anchor.y + 20 + Math.random() * 32;
+            bases[i * 3 + 2] = anchor.z + (Math.random() - 0.5) * 30;
+            corridorFlags[i] = 0;
+        } else {
+            // Corridor-wide autumn leaves, strung along the rail (placements sampled
+            // from the spline in surface-world.js).
+            const seat = corridorPlacements[corridorIdx % corridorPlacements.length];
+            bases[i * 3] = seat.x + (Math.random() - 0.5) * 10;
+            bases[i * 3 + 1] = seat.y + 4 + Math.random() * 12;
+            bases[i * 3 + 2] = seat.z + (Math.random() - 0.5) * 10;
+            corridorFlags[i] = 1;
+        }
         randoms[i] = Math.random();
         sizes[i] = 0.7 + Math.random() * 0.8;
         const col = palette[Math.floor(Math.random() * palette.length)];
@@ -1018,12 +1172,14 @@ export function createFallingLeavesTSL(uTime = uniform(0), count = 60) {
         aRandom: { array: randoms, itemSize: 1 },
         aSize: { array: sizes, itemSize: 1 },
         aColor: { array: colors, itemSize: 3 },
+        aCorridor: { array: corridorFlags, itemSize: 1 },
     });
 
     const aBase = attribute('aBase', 'vec3');
     const aRandom = attribute('aRandom', 'float');
     const aSize = attribute('aSize', 'float');
     const aColor = attribute('aColor', 'vec3');
+    const aCorridor = attribute('aCorridor', 'float');
 
     // Slow falling drift wrapping over a ~40-unit band, with a gentle lateral flutter.
     const fall = fract(uTime.mul(0.03).mul(aRandom.add(0.5)).add(aRandom)).mul(40.0);
@@ -1032,14 +1188,28 @@ export function createFallingLeavesTSL(uTime = uniform(0), count = 60) {
     const pz = aBase.z.add(cos(uTime.mul(0.5).add(aRandom.mul(7.0))).mul(2.5));
     const positionNode = billboardWorld(vec3(px, py, pz), aSize);
 
-    const r = uv().sub(0.5).length().mul(2.0);
-    const disc = oneMinus(smoothstep(0.55, 1.0, r));
+    // TUMBLING LEAF alpha (the squares-killer): rotate the quad uv over time, then mask
+    // a teardrop — an ellipse whose width tapers toward the tip — feathered to zero well
+    // inside the quad edge (sakura petal technique).
+    const spin = uTime.mul(aRandom.mul(1.6).add(0.7)).add(aRandom.mul(21.0));
+    const cs = cos(spin);
+    const sn = sin(spin);
+    const p0 = uv().sub(0.5);
+    const p = vec2(p0.x.mul(cs).sub(p0.y.mul(sn)), p0.x.mul(sn).add(p0.y.mul(cs)));
+    const widthTaper = max(float(0.3).mul(oneMinus(p.y.mul(1.1))), 0.06);
+    const leafR = length(vec2(p.x.div(widthTaper), p.y.div(0.46)));
+    const leaf = oneMinus(smoothstep(0.62, 1.0, leafR));
+
+    // Season gate: the near-tree halo always sheds a little; the corridor-wide story
+    // belongs to autumn only (one particle story at a time).
+    const autumnGate = smoothstep(0.36, 0.52, uSeason).mul(oneMinus(smoothstep(0.8, 0.93, uSeason)));
+    const gate = mix(max(autumnGate, float(0.55)), autumnGate, aCorridor);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
     material.colorNode = aColor;
-    material.opacityNode = disc.mul(0.85);
-    material.alphaTest = 0.2;
+    material.opacityNode = leaf.mul(0.9).mul(gate);
+    material.alphaTest = 0.15;
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
@@ -1122,10 +1292,11 @@ export function createWaterfallTSL(uTime = uniform(0)) {
     const sideFeather = oneMinus(smoothstep(0.32, 0.5, abs(vUv.x.sub(0.5))));
     const topFade = smoothstep(0.0, 0.12, vUv.y);
     const bottomFade = oneMinus(smoothstep(0.86, 1.0, vUv.y));
-    // Warm-lit crest -> cool water body (caps below white).
-    const ribbonColor = mix(vec3(0.62, 0.74, 0.80), vec3(0.78, 0.74, 0.62), smoothstep(0.6, 1.0, vUv.y));
+    // Warm-lit crest -> cool water body. Crests brightened toward #E8E2D0 (creative plan
+    // asset 2) so the falls bloom gently and read from 200 units down the corridor.
+    const ribbonColor = mix(vec3(0.62, 0.74, 0.80), vec3(0.91, 0.89, 0.82), smoothstep(0.55, 1.0, vUv.y));
     const ribbonAlpha = flow.mul(sideFeather).mul(topFade).mul(bottomFade)
-        .mul(0.5)
+        .mul(0.58)
         .mul(uOpacity);
 
     const ribbonMat = new THREE.MeshBasicNodeMaterial();
@@ -1177,7 +1348,8 @@ export function createWaterfallTSL(uTime = uniform(0)) {
 // Warm-amber pollen motes — instanced billboard quads with a radial alpha feather to 0
 // before the quad edge (additive, capped). These are the "warm-amber pollen" the brief
 // asks to keep, drifting in the golden-hour light.
-export function createPollenTSL(uTime = uniform(0), count = 260) {
+export function createPollenTSL(uTime = uniform(0), count = 260, options = {}) {
+    const uSeason = options.uSeason ?? uniform(0);
     const bases = new Float32Array(count * 3);
     const randoms = new Float32Array(count);
     const sizes = new Float32Array(count);
@@ -1213,13 +1385,63 @@ export function createPollenTSL(uTime = uniform(0), count = 260) {
     const r = uv().sub(0.5).length().mul(2.0);
     const feather = oneMinus(smoothstep(0.25, 1.0, r));
 
+    // Summer's particle story (one story at a time): pollen fades in after the petals
+    // and hands off to the autumn leaves.
+    const summerGate = smoothstep(0.16, 0.3, uSeason).mul(oneMinus(smoothstep(0.5, 0.66, uSeason)));
+
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
-    material.colorNode = vec3(1.0, 0.80, 0.42); // warm amber pollen
-    material.opacityNode = feather.mul(0.55).mul(uOpacity);
+    material.colorNode = vec3(1.0, 0.80, 0.42); // warm amber pollen (#FFAA44 firefly family)
+    material.opacityNode = feather.mul(0.55).mul(summerGate.mul(0.7).add(0.3)).mul(uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.frustumCulled = false;
+    return {
+        mesh, material, geometry, uniforms: { uOpacity },
+    };
+}
+
+// Slow winter snow motes (creative plan asset 9): the snow line's particle story — soft
+// white flecks gated to the chapter's final act so the world hushes as the key cools.
+export function createSnowMotesTSL(uTime = uniform(0), count = 220, options = {}) {
+    const uSeason = options.uSeason ?? uniform(0);
+    const uOpacity = uniform(1);
+    const bases = new Float32Array(count * 3);
+    const randoms = new Float32Array(count);
+    for (let i = 0; i < count; i += 1) {
+        bases[i * 3] = (Math.random() - 0.5) * 160;
+        bases[i * 3 + 1] = 10 + Math.random() * 50;
+        bases[i * 3 + 2] = (Math.random() - 0.5) * 140 - 60;
+        randoms[i] = Math.random();
+    }
+    const geometry = makeQuadInstancedGeometry(count, {
+        aBase: { array: bases, itemSize: 3 },
+        aRandom: { array: randoms, itemSize: 1 },
+    });
+
+    const aBase = attribute('aBase', 'vec3');
+    const aRandom = attribute('aRandom', 'float');
+
+    const fall = fract(uTime.mul(0.025).mul(aRandom.add(0.5)).add(aRandom)).mul(52.0);
+    const py = aBase.y.sub(fall).add(26.0);
+    const px = aBase.x.add(sin(uTime.mul(0.5).add(aRandom.mul(13.0))).mul(2.6));
+    const pz = aBase.z.add(cos(uTime.mul(0.4).add(aRandom.mul(8.0))).mul(2.0));
+    const positionNode = billboardWorld(vec3(px, py, pz), aRandom.mul(0.4).add(0.35));
+
+    const r = uv().sub(0.5).length().mul(2.0);
+    const feather = oneMinus(smoothstep(0.2, 1.0, r));
+    const winterGate = smoothstep(0.7, 0.88, uSeason);
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.positionNode = positionNode;
+    material.colorNode = vec3(0.95, 0.97, 1.0); // #F2F7FF snow
+    material.opacityNode = feather.mul(0.6).mul(winterGate).mul(uOpacity);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.blending = THREE.NormalBlending;
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.frustumCulled = false;
@@ -1284,11 +1506,14 @@ export function createBirdsTSL(count = 7) {
 // band + sun glow are. Additive but every term is CAPPED below 1.0 so ACES/bloom roll it
 // off into a glow rather than a clipped white hole (peak channel ≈ 0.85). One quad, no
 // per-frame allocation; uOpacity tagged so the surface fade collector drives it.
-export function createSunDiscTSL(uTime = uniform(0)) {
+export function createSunDiscTSL(uTime = uniform(0), options = {}) {
+    const uSeason = options.uSeason ?? uniform(0);
     const uOpacity = uniform(1);
-    const uCore = uniform(new THREE.Color(0xffeec0)); // warm soft core (not pure white)
-    const uCorona = uniform(new THREE.Color(0xffc66a)); // golden corona
-    const uHalo = uniform(new THREE.Color(0xff9e44)); // amber outer halo
+    const winterT = seasonWinterT(uSeason);
+    // Winter cools the disc toward #DCE8FF (the season arrives as light, not props).
+    const uCore = mix(uniform(new THREE.Color(0xffeec0)), vec3(0.863, 0.91, 1.0), winterT.mul(0.85));
+    const uCorona = mix(uniform(new THREE.Color(0xffc66a)), vec3(0.72, 0.8, 0.93), winterT.mul(0.85));
+    const uHalo = mix(uniform(new THREE.Color(0xff9e44)), vec3(0.6, 0.7, 0.88), winterT.mul(0.85));
 
     const centered = uv().sub(0.5);
     const dist = length(centered);
@@ -1348,7 +1573,8 @@ export function createSunDiscTSL(uTime = uniform(0)) {
 // 6. Sun Rays (additive golden volumetric beams; bloom-eligible)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function createSunRaysTSL(uTime = uniform(0)) {
+export function createSunRaysTSL(uTime = uniform(0), options = {}) {
+    const uSeason = options.uSeason ?? uniform(0);
     const uOpacity = uniform(1);
     const vUv = uv();
 
@@ -1361,8 +1587,10 @@ export function createSunRaysTSL(uTime = uniform(0)) {
     const alpha = edgeFade.mul(bottomFade).mul(topFade).mul(shimmer)
         .mul(beam.mul(0.1).add(0.1))
         // Dimmed: additive white rays were part of the blown upper frame. Pulled back so
-        // the god-rays accent the warm sky rather than veiling it white.
+        // the god-rays accent the warm sky rather than veiling it white. Winter thins
+        // the shafts further (plan item 6: the snow line is hushed, not golden).
         .mul(0.26)
+        .mul(oneMinus(seasonWinterT(uSeason).mul(0.45)))
         .mul(uOpacity);
 
     // Warm golden god-ray tint (matches the golden-hour sun, no neutral-white additive).
@@ -1678,6 +1906,191 @@ export function createMountainMistTSL(uTime = uniform(0)) {
 
     return {
         group, material, geometry, uniforms: { uOpacity },
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 10. Falu-red cabin + foreground pass-by layer (creative plan assets 3 + 7)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// The cabin is the chapter's human-scale cue: falu red #8B2F26 walls, white #F3EFE4
+// gable trim, a dark pyramid roof and one smoke wisp — promoted from hazed speck to
+// landmark at the treeline right of the path, mid-corridor.
+const SURFACE_CABIN_POS = { x: 56, z: -310 };
+
+function findCabinAnchor() {
+    // Search outward from the desired seat until the terrain offers solid land (h>=6),
+    // so layout edits never strand the cabin in the river.
+    for (let ring = 0; ring < 8; ring += 1) {
+        const x = SURFACE_CABIN_POS.x + ring * 9;
+        const z = SURFACE_CABIN_POS.z + ring * 6;
+        const h = getTerrainHeight(x, z);
+        if (h >= 6.0) return { x, y: h, z };
+    }
+    return {
+        x: SURFACE_CABIN_POS.x,
+        y: Math.max(getTerrainHeight(SURFACE_CABIN_POS.x, SURFACE_CABIN_POS.z), 6),
+        z: SURFACE_CABIN_POS.z,
+    };
+}
+
+export function createCabinTSL(uTime = uniform(0)) {
+    const uOpacity = uniform(1);
+    const group = new THREE.Group();
+    group.name = 'falu-cabin';
+
+    // Merged body: walls + pyramid roof + chimney (one draw call).
+    const walls = new THREE.BoxGeometry(7, 4.5, 5.5);
+    const roof = new THREE.ConeGeometry(5.6, 3.4, 4, 1);
+    roof.rotateY(Math.PI / 4);
+    const chimney = new THREE.BoxGeometry(0.9, 2.4, 0.9);
+    const geometry = mergeOffsetGeometries([
+        { geo: walls, offset: [0, 2.25, 0] },
+        { geo: roof, offset: [0, 6.1, 0] },
+        { geo: chimney, offset: [1.8, 6.6, 0.8] },
+    ]);
+
+    // Color by height bands: falu walls, white gable trim, dark shingle roof/chimney.
+    const py = positionLocal.y;
+    const falu = vec3(0.545, 0.184, 0.149); // #8B2F26
+    const trim = vec3(0.953, 0.937, 0.894); // #F3EFE4
+    const roofDark = vec3(0.2, 0.14, 0.11);
+    const trimBand = smoothstep(3.85, 4.05, py).mul(oneMinus(smoothstep(4.35, 4.55, py)));
+    let color = mix(falu, roofDark, smoothstep(4.45, 4.8, py));
+    color = mix(color, trim, trimBand);
+    // The same raking key the landscape uses, so the cabin sits in the scene's light.
+    const lightDir = normalize(vec3(-0.62, 0.34, -0.71));
+    const diff = max(dot(normalView, lightDir), 0.0);
+    color = color.mul(diff.mul(0.5).add(vec3(0.62, 0.68, 0.74).mul(0.5)));
+
+    const bodyMaterial = new THREE.MeshBasicNodeMaterial();
+    bodyMaterial.colorNode = color;
+    bodyMaterial.opacityNode = uOpacity;
+    bodyMaterial.transparent = true;
+    bodyMaterial.side = THREE.FrontSide;
+    const body = new THREE.Mesh(geometry, bodyMaterial);
+    group.add(body);
+
+    // One smoke wisp: a vertical billboard streamer rising off the chimney.
+    const wispUv = uv();
+    const wispNoise = snoise3(vec3(wispUv.x.mul(3.0), wispUv.y.mul(5.0).sub(uTime.mul(0.35)), uTime.mul(0.08)))
+        .mul(0.5).add(0.5);
+    const wispStrand = oneMinus(smoothstep(0.0, 0.3, abs(wispUv.x.sub(0.5).add(
+        sin(wispUv.y.mul(5.0).add(uTime.mul(0.6))).mul(0.12).mul(wispUv.y),
+    ))));
+    const wispAlpha = wispStrand.mul(wispNoise)
+        .mul(smoothstep(0.0, 0.15, wispUv.y))
+        .mul(oneMinus(smoothstep(0.6, 1.0, wispUv.y)))
+        .mul(0.4)
+        .mul(uOpacity);
+    const wispMaterial = new THREE.MeshBasicNodeMaterial();
+    wispMaterial.colorNode = vec3(0.82, 0.82, 0.84);
+    wispMaterial.opacityNode = wispAlpha;
+    wispMaterial.transparent = true;
+    wispMaterial.depthWrite = false;
+    wispMaterial.side = THREE.DoubleSide;
+    const wisp = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 9), wispMaterial);
+    wisp.position.set(1.8, 11.5, 0.8);
+    group.add(wisp);
+
+    const anchor = findCabinAnchor();
+    group.position.set(anchor.x, anchor.y - 15, anchor.z);
+    group.traverse((child) => { child.frustumCulled = false; });
+    return {
+        group, material: bodyMaterial, geometry, uniforms: { uOpacity },
+    };
+}
+
+// Foreground PASS-BY layer (creative plan asset 7 — "currently absent, build it"):
+// dark near-silhouette grass heads, reed plumes, and branch sweeps flanking the spline
+// 2–8 units off the rail for the whole chapter, sitting at the darkest value in frame
+// (#0E1F12) — the dark anchor the pastels need, and the speed cue for the rail ride.
+// Placements (chapter-local, sampled from the spline) come from surface-world.js.
+export function createForegroundPassByTSL(uTime = uniform(0), placements = [], options = {}) {
+    const count = Math.max(placements.length, 1);
+    const uOpacity = options.uOpacity ?? uniform(1);
+    const bases = new Float32Array(count * 3);
+    const seeds = new Float32Array(count);
+    const sizes = new Float32Array(count);
+    const shapes = new Float32Array(count);
+    for (let i = 0; i < count; i += 1) {
+        const seat = placements[i] ?? { x: 0, y: 0, z: -10 };
+        bases[i * 3] = seat.x;
+        bases[i * 3 + 1] = seat.y;
+        bases[i * 3 + 2] = seat.z;
+        seeds[i] = Math.random();
+        sizes[i] = 2.6 + Math.random() * 3.2;
+        shapes[i] = i % 3; // 0 grass head, 1 reed plume, 2 branch sweep
+    }
+    const geometry = makeQuadInstancedGeometry(count, {
+        aBase: { array: bases, itemSize: 3 },
+        aSeed: { array: seeds, itemSize: 1 },
+        aSize: { array: sizes, itemSize: 1 },
+        aShape: { array: shapes, itemSize: 1 },
+    });
+
+    const aBase = attribute('aBase', 'vec3');
+    const aSeed = attribute('aSeed', 'float');
+    const aSize = attribute('aSize', 'float');
+    const aShape = attribute('aShape', 'float');
+
+    const positionNode = billboardWorld(aBase, aSize);
+
+    // Mask-space breeze: shear the sampled u by height² so the silhouettes sway rooted.
+    const coord = uv();
+    const vv = coord.y;
+    const sway = sin(uTime.mul(1.1).add(aSeed.mul(9.0))).mul(0.06).mul(vv.mul(vv));
+    const u = coord.x.add(sway);
+
+    // Shape 0 — grass head: three thin blades fanning up from the base.
+    const blade = (cu, lean) => {
+        const bu = u.sub(cu).add(vv.mul(lean));
+        const w = mix(float(0.045), float(0.012), vv);
+        return oneMinus(smoothstep(0.0, 1.0, abs(bu).div(w)))
+            .mul(smoothstep(0.0, 0.06, vv))
+            .mul(oneMinus(smoothstep(0.8, 1.0, vv)));
+    };
+    const grassHead = max(
+        max(blade(float(0.36), float(0.1)), blade(float(0.5), float(-0.05))),
+        blade(float(0.64), float(0.13)),
+    );
+
+    // Shape 1 — reed plume: one stem + an elongated plume head near the top.
+    const stem = oneMinus(smoothstep(0.0, 0.02, abs(u.sub(0.5).add(vv.mul(0.06)))))
+        .mul(smoothstep(0.0, 0.05, vv))
+        .mul(oneMinus(smoothstep(0.66, 0.74, vv)));
+    const plumeR = length(vec2(u.sub(0.5).add(vv.mul(0.06)).div(0.085), vv.sub(0.76).div(0.16)));
+    const plume = oneMinus(smoothstep(0.6, 1.0, plumeR));
+    const reed = max(stem, plume);
+
+    // Shape 2 — branch sweep: a diagonal limb with two leaf lobes.
+    const limbT = abs(vv.sub(u.mul(0.85).add(0.05)));
+    const limb = oneMinus(smoothstep(0.0, 0.035, limbT)).mul(smoothstep(0.04, 0.2, u));
+    const lobeA = oneMinus(smoothstep(0.5, 1.0, length(vec2(u.sub(0.42).div(0.16), vv.sub(0.46).div(0.1)))));
+    const lobeB = oneMinus(smoothstep(0.5, 1.0, length(vec2(u.sub(0.72).div(0.14), vv.sub(0.72).div(0.09)))));
+    const branch = max(max(limb, lobeA), lobeB);
+
+    const isGrass = oneMinus(smoothstep(0.5, 0.51, aShape));
+    const isReed = smoothstep(0.5, 0.51, aShape).mul(oneMinus(smoothstep(1.5, 1.51, aShape)));
+    const isBranch = smoothstep(1.5, 1.51, aShape);
+    const mask = grassHead.mul(isGrass).add(reed.mul(isReed)).add(branch.mul(isBranch));
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.positionNode = positionNode;
+    // The darkest value in frame (#0E1F12), faintly lifted at the tips so it reads as
+    // backlit silhouette, not a hole.
+    material.colorNode = vec3(0.055, 0.122, 0.071).mul(vv.mul(0.35).add(0.75));
+    material.opacityNode = mask.mul(uOpacity);
+    material.alphaTest = 0.3;
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'foreground-pass-by';
+    mesh.frustumCulled = false;
+    return {
+        mesh, material, geometry, uniforms: { uOpacity },
     };
 }
 

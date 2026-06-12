@@ -236,6 +236,16 @@ function shouldLockGroundedPiece(gameState) {
         || gameState.lockResetCount >= getLockResetLimit(gameState);
 }
 
+function getGameplayTimeMs(gameState) {
+    const simTime = Number(gameState?.simTimeMs);
+    if (Number.isFinite(simTime)) return simTime;
+
+    const lastTime = Number(gameState?.lastTime);
+    if (Number.isFinite(lastTime)) return lastTime;
+
+    return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
 function applyBufferedInputs(gameState) {
     if (!gameState?.inputQueue) return;
 
@@ -387,6 +397,9 @@ export class GameState {
         this.dropInterval = LEVEL_SPEEDS[0];
         this.dropCounter = 0;
         this.lastTime = 0;
+        this.simTickMs = 1000 / 60;
+        this.simTimeMs = 0;
+        this.simFrame = 0;
         this.startTime = Date.now();
         this.piecesPlaced = 0;
         this.lockDelay = options.lockDelay ?? LOCK_DELAY_MS;
@@ -403,6 +416,9 @@ export class GameState {
         this.isProcessingPhysics = false;
         this.isStopped = false;
         this.isAlive = true; // For multiplayer: tracks if player is still in the round
+        this.isReplay = false;
+        this.isSeeking = false;
+        this.suppressExternalInput = false;
         this.lastMoveWasRotation = false;
         this.b2bActive = false;
 
@@ -483,6 +499,9 @@ export class GameState {
         this.linesUntilNextLevel = 15; // Quadra: 15 lines per level
         this.dropInterval = LEVEL_SPEEDS[0];
         this.dropCounter = 0;
+        this.lastTime = 0;
+        this.simTimeMs = 0;
+        this.simFrame = 0;
         this.piecesPlaced = 0;
         this.pieceCounts = {
             I: 0, J: 0, L: 0, O: 0, S: 0, T: 0, Z: 0,
@@ -496,6 +515,9 @@ export class GameState {
         this.hitStopRemaining = 0;
         this.isProcessingPhysics = false;
         this.isAlive = true;
+        this.isReplay = false;
+        this.isSeeking = false;
+        this.suppressExternalInput = false;
         this.lastMoveWasRotation = false;
         this.b2bActive = false;
         this.inputQueue = null;
@@ -582,8 +604,8 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     invalidateGhostCache(gameState);
     resetLockState(gameState);
 
-    // Track when piece spawned for Quadra time-based lock bonus
-    gameState.pieceSpawnTime = performance.now();
+    // Track when piece spawned for Quadra time-based lock bonus.
+    gameState.pieceSpawnTime = getGameplayTimeMs(gameState);
 
     // Reset drop counter for new piece (CRITICAL for gravity!)
     gameState.dropCounter = 0;
@@ -860,7 +882,7 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
         || gameState.isProcessingPhysics
         || gameState.isPaused
         || gameState.isGameOver
-    ) return;
+    ) return false;
 
     invalidateGhostCache(gameState);
 
@@ -893,6 +915,7 @@ export function hardDrop(gameState, playDropCallback, physicsCallbacks) {
     // Quadra: No points for hard drop distance - only line clears and time-based lock bonus
     resetLockState(gameState);
     lockPiece(gameState, playDropCallback, physicsCallbacks);
+    return true;
 }
 
 /**
@@ -910,9 +933,10 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks) {
     // Quadra-style time-based lock bonus: max(0, 100-frames)/2
     // Faster piece placements earn more points (up to 50 for instant lock)
     // One frame ≈ 16.67ms at 60fps
-    if (gameState.pieceSpawnTime) {
-        const timeHeldMs = performance.now() - gameState.pieceSpawnTime;
-        const framesElapsed = timeHeldMs / 16.67;
+    if (Number.isFinite(gameState.pieceSpawnTime)) {
+        const timeHeldMs = getGameplayTimeMs(gameState) - gameState.pieceSpawnTime;
+        const frameMs = Number(gameState.simTickMs) || (1000 / 60);
+        const framesElapsed = Math.max(0, timeHeldMs) / frameMs;
         const lockBonus = Math.max(0, Math.floor((100 - framesElapsed) / 2));
         gameState.score += lockBonus;
     }
@@ -1057,11 +1081,12 @@ const MAX_CONCURRENT_LOOPS = 2; // Allow 1-2 loops max (safety margin)
  * @param {GameState} gameState - Current game state
  * @param {Object} callbacks - Callbacks for draw, stats, sound, physics
  */
-export function updateGame(time, gameState, callbacks) {
+export function updateGame(time, gameState, callbacks = {}) {
     const {
         drawCallback, updateStatsCallback, playDropCallback, physicsCallbacks,
-    } = callbacks;
+    } = callbacks || {};
     const monitoring = performanceMonitor && performanceMonitor.enabled;
+    const safeTime = Number.isFinite(time) ? time : gameState?.lastTime || 0;
 
     if (monitoring) {
         performanceMonitor.updateStart();
@@ -1076,8 +1101,17 @@ export function updateGame(time, gameState, callbacks) {
 
     // PERFORMANCE FIX: Process game logic only when not paused
     if (!gameState.isPaused) {
-        const delta = time - gameState.lastTime;
-        gameState.lastTime = time;
+        const previousTime = Number.isFinite(gameState.lastTime) ? gameState.lastTime : safeTime;
+        const delta = Math.max(0, safeTime - previousTime);
+        gameState.lastTime = safeTime;
+
+        if (gameState.isReplay) {
+            gameState.simTimeMs = safeTime;
+        } else {
+            gameState.simTimeMs = (Number(gameState.simTimeMs) || 0) + delta;
+        }
+        const tickMs = Number(gameState.simTickMs) || (1000 / 60);
+        gameState.simFrame = Math.max(0, Math.round((gameState.simTimeMs || 0) / tickMs));
 
         if (gameState.hitStopRemaining > 0) {
             gameState.hitStopRemaining = Math.max(0, gameState.hitStopRemaining - delta);
@@ -1092,11 +1126,15 @@ export function updateGame(time, gameState, callbacks) {
         // Phase 3: Advance input repeat (DAS/ARR) using the same authoritative
         // delta as gravity, so input timing is frame-rate independent and unified
         // under one simulation clock.
-        if (window.inputController) {
+        const shouldPollExternalInput = !gameState.suppressExternalInput
+            && !gameState.isReplay
+            && !gameState.isSeeking
+            && typeof window !== 'undefined';
+        if (shouldPollExternalInput && window.inputController) {
             window.inputController.updateDAS(delta);
         }
-        if (window.gamepadController) {
-            window.gamepadController.advanceGameplayInput(time);
+        if (shouldPollExternalInput && window.gamepadController) {
+            window.gamepadController.advanceGameplayInput(safeTime);
         }
 
         // Auto drop (fixed-step accumulator for frame-rate independent gravity timing)
@@ -1230,7 +1268,7 @@ export function pauseGame(gameState) {
     if (gameState.isGameOver) return;
     gameState.isPaused = true;
     // Phase 3: Clear input repeat timers to prevent burst moves on resume
-    if (window.inputController) {
+    if (typeof window !== 'undefined' && window.inputController) {
         window.inputController.clearTimers();
     }
 }
@@ -1244,7 +1282,7 @@ export function resumeGame(gameState) {
     gameState.isPaused = false;
     gameState.lastTime = performance.now();
     // Phase 3: Clear stale input repeat accumulators to prevent burst moves
-    if (window.inputController) {
+    if (typeof window !== 'undefined' && window.inputController) {
         window.inputController.clearTimers();
     }
 }

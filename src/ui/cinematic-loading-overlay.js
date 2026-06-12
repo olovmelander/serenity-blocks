@@ -255,6 +255,8 @@ function _createRing(size, opacity, duration, delay) {
         border: `1px solid rgba(100, 140, 255, ${opacity})`,
         borderRadius: '50%',
         animation: `cinematic-ring-pulse ${duration}s ease-in-out ${delay}s infinite`,
+        // Promote to a compositor layer so the pulse survives main-thread loading work.
+        willChange: 'transform, opacity',
         pointerEvents: 'none',
         zIndex: '1',
     });
@@ -447,6 +449,7 @@ function _createOverlayElement(title) {
             background: `hsla(${hue}, 80%, 80%, ${brightness})`,
             boxShadow: `0 0 ${size * 3}px hsla(${hue}, 80%, 70%, 0.5)`,
             animation: `cinematic-star-drift ${4 + Math.random() * 6}s linear ${Math.random() * 3}s infinite`,
+            willChange: 'transform, opacity',
             pointerEvents: 'none',
         });
         starField.appendChild(star);
@@ -476,7 +479,11 @@ function _createOverlayElement(title) {
         letterSpacing: '1.2em',
         paddingLeft: '1.2em',
         color: 'rgba(200, 220, 255, 0.95)',
+        // Static glow (the keyframe only pulses opacity — compositor-driven, so the
+        // title keeps breathing even while loading work blocks the main thread).
+        textShadow: '0 0 30px rgba(100, 140, 255, 0.4), 0 0 70px rgba(100, 140, 255, 0.15)',
         animation: 'cinematic-title-glow 3s ease-in-out infinite',
+        willChange: 'opacity',
         zIndex: '2',
         userSelect: 'none',
         position: 'relative',
@@ -501,6 +508,7 @@ function _createOverlayElement(title) {
             background: 'rgba(160, 190, 255, 0.7)',
             boxShadow: '0 0 8px rgba(120, 160, 255, 0.4)',
             animation: `cinematic-dot-bounce 1.4s ease-in-out ${d * 0.2}s infinite`,
+            willChange: 'transform, opacity',
         });
         dotsContainer.appendChild(dot);
     }
@@ -603,18 +611,12 @@ function _injectKeyframes() {
             90% { opacity: 1; }
             100% { transform: translateY(-100vh) translateX(20px); opacity: 0; }
         }
+        /* Compositor-only: text-shadow is a PAINT property (main thread), so animating it
+           froze the whole overlay whenever loading work blocked the main thread. The glow
+           is now a static shadow on the element; only opacity (compositable) pulses. */
         @keyframes cinematic-title-glow {
-            0%, 100% {
-                text-shadow: 0 0 30px rgba(100, 140, 255, 0.3), 0 0 60px rgba(100, 140, 255, 0.1);
-                opacity: 0.9;
-            }
-            50% {
-                text-shadow:
-                    0 0 40px rgba(100, 140, 255, 0.5),
-                    0 0 80px rgba(100, 140, 255, 0.2),
-                    0 0 120px rgba(100, 140, 255, 0.1);
-                opacity: 1;
-            }
+            0%, 100% { opacity: 0.82; }
+            50% { opacity: 1; }
         }
         @keyframes cinematic-dot-bounce {
             0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }

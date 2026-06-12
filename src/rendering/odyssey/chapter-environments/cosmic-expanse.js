@@ -85,15 +85,19 @@ export const COSMIC_EXPANSE_CONFIG = {
 // destination omen, the galaxy the upper-right far anchor. Module-scoped scratch keeps
 // the per-frame lerps allocation-free.
 const APPROACH = {
-    // Black hole: the destination omen — centred ahead, rides the upper third, LOOMS
-    // larger + nearer. Bigger end scale (2.4→3.0) + a touch of +X lead so it sits ahead
-    // of the advancing camera instead of sliding off the bottom edge.
+    // Black hole: the destination omen. CREATIVE PLAN (hero re-aim, highest leverage):
+    // the camera's forward look runs (+0.7, +0.5, −0.25) — the rail's vanishing point is
+    // UP-RIGHT — but the hole used to march at x=0, so for ~15 frames the rail led the
+    // eye into empty black while the hero sat centre-left. The march now LEADS +X so
+    // the hole rides the rail's vanishing point through the whole act.
     bhScaleA: 1.25,
     bhScaleB: 3.0,
+    bhXa: 14,
+    bhXb: 130,
     bhZa: -900,
     bhZb: -640,
     bhYa: 20,
-    bhYb: 70,
+    bhYb: 105,
     // Gas giant: a BIG foreground hero in the lower-left of the forward view. Leads in
     // +X/+Y so it tracks with the camera (stays framed) while pulling NEARER (−640→−470)
     // and growing hard (radius 28→62, group scale 1.35→2.2) — the dominant near hero the
@@ -104,13 +108,13 @@ const APPROACH = {
     planetB: {
         x: -40, y: 90, z: -470, s: 62 / 28,
     },
-    // Galaxy: the upper-right far anchor. Leads inward toward frame + grows so it reads as
-    // a real bright spiral, not a pinprick ((150,150,-820)/120 → (120,170,-720)/175).
+    // Galaxy: the upper-right far anchor — HOLDS the upper-right (the same side the
+    // rail travels) so the "empty" half of frame always owns a focal.
     galaxyA: {
         x: 150, y: 150, z: -820, s: 120,
     },
     galaxyB: {
-        x: 120, y: 170, z: -720, s: 175,
+        x: 175, y: 185, z: -720, s: 175,
     },
 };
 
@@ -175,7 +179,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // never sits as a tiny dot on the bottom edge — the #1 Space hero fix). Initial pose
     // matches APPROACH.*A so the first frame / smoke test agrees with the march.
     const blackHole = createBlackHole(uniforms);
-    blackHole.position.set(0, APPROACH.bhYa, APPROACH.bhZa);
+    blackHole.position.set(APPROACH.bhXa, APPROACH.bhYa, APPROACH.bhZa);
     blackHole.rotation.x = -1.12;
     blackHole.scale.setScalar(APPROACH.bhScaleA);
     group.add(blackHole);
@@ -270,6 +274,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
             zSpan: 500,
             alphaBase: 0.06,
             driftScale: 0.25,
+            detailOctaves: 4,
             name: 'nebula-volume-far',
         },
     );
@@ -327,6 +332,29 @@ export function createCosmicExpanseEnvironment(options = {}) {
     group.add(nebulaPillar);
     group.userData.nebulaPillar = nebulaPillar;
 
+    // 2f. ASTEROID GARLAND (creative plan asset 4): 12 dark silhouette rocks crossing
+    // the corridor diagonally through the dead-air stretch (progress 0.35–0.65 of the
+    // travel), staged UP-RIGHT of the rail with the hero march. Orange accretion rim
+    // toward the hole + violet fill come free from the chapter's two lights. Two or
+    // three pass within ~30 units of the camera corridor for genuine scale shock.
+    const asteroids = createAsteroidGarland();
+    group.add(asteroids);
+    group.userData.asteroids = asteroids;
+
+    // 2g. AURORA→FILAMENT BRIDGE (creative plan asset 8, Transition In beat 3): the
+    // final aurora curtains carried INTO the chapter — stretched filaments that recolor
+    // green → crimson (#3DFF8E → #C71F37 → #E8485C) across the entry and dissolve by
+    // ~18% local progress, becoming the first crimson nebula filaments.
+    const filamentBridge = createAuroraFilamentBridge(uniforms);
+    group.add(filamentBridge);
+    group.userData.filamentBridge = filamentBridge;
+
+    // 2h. STREAK-MOTE TIER (creative plan asset 6): a sparse rail-hugging tier of
+    // slightly elongated quads that sell forward speed through the long middle act.
+    const streakMotes = createStreakMotes(uniforms, 90);
+    group.add(streakMotes);
+    group.userData.streakMotes = streakMotes;
+
     // Lighting (ominous accretion key)
     setupCosmicLighting(group);
 
@@ -378,6 +406,9 @@ function createNebulaVolume(uniforms, count, opts = {}) {
         zSpan = 520,
         alphaBase = 0.10,
         driftScale = 1.0,
+        // Creative plan item 6 (far-nebula blockiness, frames 10/12): the far tier's
+        // huge sprites under-sample the FBM at 3 octaves, so the deep tier requests 4.
+        detailOctaves = 3,
         name = 'nebula-volume-points',
     } = opts;
 
@@ -460,10 +491,10 @@ function createNebulaVolume(uniforms, count, opts = {}) {
     const sp3 = vec3(p.mul(4.2).add(warp).add(seed), time.mul(0.03));
     // Gas body: thresholded FBM so the wisp has dark internal voids, not a solid fill.
     // 3 octaves — enough for fibrous structure without the full 5-octave fragment cost.
-    const bodyRaw = fbm3(sp3, 3);
+    const bodyRaw = fbm3(sp3, detailOctaves);
     const body = smoothstep(0.32, 0.78, bodyRaw);
-    // Fibrous strands: ridged crests give the twisting filament structure (3 octaves).
-    const strandRaw = ridged3(sp3.mul(0.9).add(4.0), 3);
+    // Fibrous strands: ridged crests give the twisting filament structure.
+    const strandRaw = ridged3(sp3.mul(0.9).add(4.0), detailOctaves);
     const strand = smoothstep(0.40, 0.80, strandRaw);
     // Hot incandescent strand cores (blood-moon volume highlight) — only the brightest
     // crest tips light up, kept small + warm so the cloud has bright filament cores.
@@ -832,6 +863,164 @@ function createCosmicDust(uniforms, count, opts = {}) {
     return points;
 }
 
+// Shared scratch for the asteroid tumble (zero per-frame allocation).
+const _asteroidDummy = new THREE.Object3D();
+
+/**
+ * ASTEROID GARLAND (creative plan asset 4): 12 instanced dark rocks, 4–18 units,
+ * strung diagonally up-right across the corridor between the mid-act stations. A lit
+ * MeshStandardMaterial silhouette — the orange accretion key (diskLight) rims the
+ * holeward edges, the violet rim directional fills the far sides. Per-rock tumble
+ * data lives in userData; update() rewrites the instance matrices with a shared dummy.
+ */
+function createAsteroidGarland() {
+    const count = 12;
+    const geometry = new THREE.IcosahedronGeometry(1, 1);
+    const material = new THREE.MeshStandardMaterial({
+        color: 0x0b0e18,
+        roughness: 0.95,
+        metalness: 0.05,
+    });
+    const mesh = new THREE.InstancedMesh(geometry, material, count);
+    mesh.name = 'asteroid-garland';
+    mesh.frustumCulled = false;
+
+    const seats = new Float32Array(count * 3);
+    const scales = new Float32Array(count);
+    const spins = new Float32Array(count * 3);
+    for (let i = 0; i < count; i += 1) {
+        const t = i / (count - 1);
+        // Diagonal garland: low-left near → high-right far (with the hero march), a few
+        // pulled tight to the corridor (within ~30u) for the close passes.
+        const tight = i % 4 === 0;
+        seats[i * 3] = THREE.MathUtils.lerp(-30, 150, t) + (Math.random() - 0.5) * 30;
+        seats[i * 3 + 1] = THREE.MathUtils.lerp(-16, 96, t) + (Math.random() - 0.5) * 24;
+        seats[i * 3 + 2] = THREE.MathUtils.lerp(-180, -520, t)
+            + (tight ? 60 : (Math.random() - 0.5) * 60);
+        scales[i] = tight ? 4 + Math.random() * 4 : 6 + Math.random() * 12;
+        spins[i * 3] = (Math.random() - 0.5) * 0.3;
+        spins[i * 3 + 1] = (Math.random() - 0.5) * 0.3;
+        spins[i * 3 + 2] = (Math.random() - 0.5) * 0.3;
+        _asteroidDummy.position.set(seats[i * 3], seats[i * 3 + 1], seats[i * 3 + 2]);
+        _asteroidDummy.rotation.set(0, 0, 0);
+        _asteroidDummy.scale.setScalar(scales[i]);
+        _asteroidDummy.updateMatrix();
+        mesh.setMatrixAt(i, _asteroidDummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.userData.seats = seats;
+    mesh.userData.scales = scales;
+    mesh.userData.spins = spins;
+    return mesh;
+}
+
+/**
+ * AURORA→FILAMENT BRIDGE (creative plan Transition In): three stretched curtain
+ * filaments at the chapter entry, recoloring green → crimson as the first ~12% of the
+ * chapter elapses and dissolving by ~18% — the sky has become interstellar gas.
+ */
+function createAuroraFilamentBridge(uniforms) {
+    const group = new THREE.Group();
+    group.name = 'aurora-filament-bridge';
+    const { uTime, uApproach } = uniforms;
+
+    const vUv = uv();
+    const strands = pow(sin(vUv.x.mul(42.0).add(uTime.mul(1.2))).mul(0.5).add(0.5), 2.0)
+        .mul(0.7)
+        .add(0.3);
+    // Recolor completes across the first ~12% of the chapter; the filaments stretch as
+    // they recolor (handled by the plane scale below) and are gone by ~18%.
+    const recolor = clamp(uApproach.mul(8.0), 0.0, 1.0);
+    const green = vec3(0.24, 1.0, 0.56); // #3DFF8E (Ch5's last aurora green)
+    const crimson = mix(vec3(0.78, 0.12, 0.22), vec3(0.91, 0.28, 0.36), strands); // #C71F37→#E8485C
+    const color = mix(green, crimson, recolor);
+    const vertical = smoothstep(0.0, 0.3, vUv.y).mul(smoothstep(1.0, 0.2, vUv.y));
+    const alive = oneMinus(smoothstep(0.12, 0.18, uApproach));
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = color.mul(strands.add(0.4));
+    material.opacityNode = vertical.mul(strands).mul(0.5).mul(alive);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.blending = THREE.AdditiveBlending;
+    material.userData.emitsBloom = true;
+
+    [
+        {
+            x: -60, y: 70, z: -140, w: 460, h: 92, rotZ: 0.05,
+        },
+        {
+            x: 40, y: 84, z: -220, w: 540, h: 88, rotZ: -0.04,
+        },
+        {
+            x: -10, y: 92, z: -320, w: 500, h: 80, rotZ: 0.03,
+        },
+    ].forEach((cfg) => {
+        const filament = new THREE.Mesh(new THREE.PlaneGeometry(cfg.w, cfg.h, 1, 1), material);
+        filament.position.set(cfg.x, cfg.y, cfg.z);
+        filament.rotation.z = cfg.rotZ;
+        // Stretched horizontally — curtains elongating into filaments.
+        filament.scale.set(1.3, 0.85, 1);
+        filament.renderOrder = -9;
+        filament.frustumCulled = false;
+        group.add(filament);
+    });
+    return group;
+}
+
+/**
+ * STREAK-MOTE TIER (creative plan asset 6): rail-hugging elongated additive quads
+ * whose streak mask runs along the travel diagonal — the forward-speed cue through
+ * the long middle act. GPU-driven wrap (no per-frame CPU).
+ */
+function createStreakMotes(uniforms, count) {
+    const bases = new Float32Array(count * 3);
+    const seeds = new Float32Array(count);
+    for (let i = 0; i < count; i += 1) {
+        bases[i * 3] = (Math.random() - 0.5) * 110;
+        bases[i * 3 + 1] = (Math.random() - 0.5) * 70;
+        bases[i * 3 + 2] = -60 - Math.random() * 520;
+        seeds[i] = Math.random() * Math.PI * 2;
+    }
+    const geometry = makeQuadInstancedGeometry(count, {
+        aBase: { array: bases, itemSize: 3 },
+        aSeed: { array: seeds, itemSize: 1 },
+    });
+
+    const { uTime } = uniforms;
+    const aBase = attribute('aBase', 'vec3');
+    const aSeed = attribute('aSeed', 'float');
+
+    // Rush toward the camera (+Z wrap over the corridor span) so the streaks sell speed.
+    const travel = mod(aBase.z.add(600.0).add(uTime.mul(46.0)).add(aSeed.mul(600.0)), 600.0);
+    const center = vec3(aBase.x, aBase.y, travel.sub(620.0));
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.positionNode = billboardWorld(center, 2.6);
+    // Elongated streak mask along the travel diagonal (fixed angle in quad space).
+    const STREAK_COS = Math.cos(-0.5);
+    const STREAK_SIN = Math.sin(-0.5);
+    const p0 = uv().sub(0.5);
+    const px = p0.x.mul(STREAK_COS).sub(p0.y.mul(STREAK_SIN));
+    const py = p0.x.mul(STREAK_SIN).add(p0.y.mul(STREAK_COS));
+    const streak = pow(
+        clamp(oneMinus(length(vec2(px.mul(2.0), py.mul(7.0)))), 0.0, 1.0),
+        1.4,
+    );
+    material.colorNode = vec3(0.56, 0.69, 0.94); // cool starlight streak (#8FB0FF family)
+    material.opacityNode = streak.mul(0.34);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.blending = THREE.AdditiveBlending;
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'cosmic-streak-motes';
+    mesh.frustumCulled = false;
+    return mesh;
+}
+
 function createDistantGalaxy(uniforms) {
     // Sharp, persistent spiral-galaxy/quasar billboard — a crisp deep-space focal anchor
     // up-right of the hero. B-COMPOSE marches it inward toward frame + grows it as the
@@ -897,7 +1086,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         const bhScale = THREE.MathUtils.lerp(APPROACH.bhScaleA, APPROACH.bhScaleB, ease);
         blackHole.scale.setScalar(bhScale);
         blackHole.position.set(
-            0,
+            THREE.MathUtils.lerp(APPROACH.bhXa, APPROACH.bhXb, ease),
             THREE.MathUtils.lerp(APPROACH.bhYa, APPROACH.bhYb, ease),
             THREE.MathUtils.lerp(APPROACH.bhZa, APPROACH.bhZb, ease),
         );
@@ -962,6 +1151,25 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     const { diskLight } = group.userData;
     if (diskLight) {
         diskLight.intensity = 1.0 + Math.sin(time * 0.7) * 0.25 + (uniforms?.uEnergy?.value ?? 0) * 0.4;
+    }
+
+    // Asteroid garland: slow per-rock tumble (shared dummy — zero allocation). Twelve
+    // matrix rewrites per frame is negligible; the rocks otherwise hold their stations.
+    const { asteroids } = group.userData;
+    if (asteroids?.userData?.seats) {
+        const { seats, scales, spins } = asteroids.userData;
+        for (let i = 0; i < scales.length; i += 1) {
+            _asteroidDummy.position.set(seats[i * 3], seats[i * 3 + 1], seats[i * 3 + 2]);
+            _asteroidDummy.rotation.set(
+                time * spins[i * 3],
+                time * spins[i * 3 + 1],
+                time * spins[i * 3 + 2],
+            );
+            _asteroidDummy.scale.setScalar(scales[i]);
+            _asteroidDummy.updateMatrix();
+            asteroids.setMatrixAt(i, _asteroidDummy.matrix);
+        }
+        asteroids.instanceMatrix.needsUpdate = true;
     }
 }
 

@@ -100,49 +100,58 @@ export class MusicTab {
 
                 <!-- Volume Controls Section -->
                 <div class="volume-section">
-                    <button class="mute-btn ${this.soundManager.isMuted ? 'muted' : ''}" id="mute-toggle">
-                        <span class="mute-icon">${csIcon(this.soundManager.isMuted ? 'mute' : 'volume', 18)}</span>
-                        <span class="mute-text">${this.soundManager.isMuted ? 'Unmute' : 'Mute'}</span>
-                    </button>
+                    <div class="volume-controls-stack">
+                        <div class="volume-control">
+                            <label class="volume-label">
+                                <span class="volume-icon">${csIcon('note', 16)}</span>
+                                Music Volume
+                            </label>
+                            <div class="volume-slider-container">
+                                <input
+                                    type="range"
+                                    class="volume-slider"
+                                    id="music-volume"
+                                    min="0"
+                                    max="100"
+                                    value="${Math.round(this.soundManager.musicVolume * 100)}"
+                                >
+                                <span class="volume-value" id="music-volume-value">
+                                    ${Math.round(this.soundManager.musicVolume * 100)}%
+                                </span>
+                            </div>
+                        </div>
 
-                    <div class="volume-control">
-                        <label class="volume-label">
-                            <span class="volume-icon">${csIcon('note', 16)}</span>
-                            Music Volume
-                        </label>
-                        <div class="volume-slider-container">
-                            <input
-                                type="range"
-                                class="volume-slider"
-                                id="music-volume"
-                                min="0"
-                                max="100"
-                                value="${Math.round(this.soundManager.musicVolume * 100)}"
-                            >
-                            <span class="volume-value" id="music-volume-value">
-                                ${Math.round(this.soundManager.musicVolume * 100)}%
-                            </span>
+                        <div class="volume-control">
+                            <label class="volume-label">
+                                <span class="volume-icon">${csIcon('volume', 16)}</span>
+                                SFX Volume
+                            </label>
+                            <div class="volume-slider-container">
+                                <input
+                                    type="range"
+                                    class="volume-slider"
+                                    id="sfx-volume"
+                                    min="0"
+                                    max="100"
+                                    value="${Math.round(this.soundManager.sfxVolume * 100)}"
+                                >
+                                <span class="volume-value" id="sfx-volume-value">
+                                    ${Math.round(this.soundManager.sfxVolume * 100)}%
+                                </span>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="volume-control">
-                        <label class="volume-label">
-                            <span class="volume-icon">${csIcon('volume', 16)}</span>
-                            SFX Volume
-                        </label>
-                        <div class="volume-slider-container">
-                            <input
-                                type="range"
-                                class="volume-slider"
-                                id="sfx-volume"
-                                min="0"
-                                max="100"
-                                value="${Math.round(this.soundManager.sfxVolume * 100)}"
-                            >
-                            <span class="volume-value" id="sfx-volume-value">
-                                ${Math.round(this.soundManager.sfxVolume * 100)}%
-                            </span>
-                        </div>
+                    <div class="volume-actions">
+                        <button
+                            class="mute-btn ${this.soundManager.isMuted ? 'muted' : ''}"
+                            id="mute-toggle"
+                            aria-pressed="${this.soundManager.isMuted ? 'true' : 'false'}"
+                            title="${this.soundManager.isMuted ? 'Unmute' : 'Mute'}"
+                        >
+                            <span class="mute-icon">${csIcon(this.soundManager.isMuted ? 'mute' : 'volume', 18)}</span>
+                            <span class="mute-text">${this.soundManager.isMuted ? 'Unmute' : 'Mute'}</span>
+                        </button>
                     </div>
                 </div>
 
@@ -209,9 +218,23 @@ export class MusicTab {
             nextBtn.addEventListener('click', () => this.nextTrack());
         }
 
+        const setVolumeDragActive = (slider) => {
+            const clearDrag = () => document.body.classList.remove('serenity-volume-dragging');
+
+            slider.addEventListener('pointerdown', () => {
+                document.body.classList.add('serenity-volume-dragging');
+                document.addEventListener('pointerup', clearDrag, { once: true });
+                document.addEventListener('pointercancel', clearDrag, { once: true });
+                window.addEventListener('blur', clearDrag, { once: true });
+            });
+
+            slider.addEventListener('blur', clearDrag);
+        };
+
         // Music volume slider
         const musicVolumeSlider = document.getElementById('music-volume');
         if (musicVolumeSlider) {
+            setVolumeDragActive(musicVolumeSlider);
             musicVolumeSlider.addEventListener('input', (e) => {
                 const volume = parseInt(e.target.value) / 100;
                 this.soundManager.setMusicVolume(volume);
@@ -225,6 +248,7 @@ export class MusicTab {
         // SFX volume slider
         const sfxVolumeSlider = document.getElementById('sfx-volume');
         if (sfxVolumeSlider) {
+            setVolumeDragActive(sfxVolumeSlider);
             sfxVolumeSlider.addEventListener('input', (e) => {
                 const volume = parseInt(e.target.value) / 100;
                 this.soundManager.setSFXVolume(volume);
@@ -325,18 +349,24 @@ export class MusicTab {
     toggleMute() {
         const isMuted = this.soundManager.toggleMute();
         const muteBtn = document.getElementById('mute-toggle');
+        if (!muteBtn) return;
+
         const muteIcon = muteBtn.querySelector('.mute-icon');
         const muteText = muteBtn.querySelector('.mute-text');
 
         if (isMuted) {
             muteBtn.classList.add('muted');
-            muteIcon.innerHTML = csIcon('mute', 18);
-            muteText.textContent = 'Unmute';
+            muteBtn.setAttribute('aria-pressed', 'true');
+            muteBtn.title = 'Unmute';
+            if (muteIcon) muteIcon.innerHTML = csIcon('mute', 18);
+            if (muteText) muteText.textContent = 'Unmute';
             this.updateVinylAnimation(false);
         } else {
             muteBtn.classList.remove('muted');
-            muteIcon.innerHTML = csIcon('volume', 18);
-            muteText.textContent = 'Mute';
+            muteBtn.setAttribute('aria-pressed', 'false');
+            muteBtn.title = 'Mute';
+            if (muteIcon) muteIcon.innerHTML = csIcon('volume', 18);
+            if (muteText) muteText.textContent = 'Mute';
             this.updateVinylAnimation(true);
         }
     }

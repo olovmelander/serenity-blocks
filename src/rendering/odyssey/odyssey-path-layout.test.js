@@ -155,7 +155,10 @@ describe('odyssey path layout', () => {
             },
         };
 
-        updateSurfaceWorldEnvironment(group, 0, 1, camera, 0.204);
+        // Probe PAST the chapter-entry ramp (the creative plan fades all surface
+        // elements in across the first ~7% of Chapter 3 so the landscape slab cannot
+        // pop at the breach) — this test verifies the progress-based probing itself.
+        updateSurfaceWorldEnvironment(group, 0, 1, camera, 0.24);
 
         expect(element.visible).toBe(true);
         expect(uniform.value).toBeGreaterThan(0.9);

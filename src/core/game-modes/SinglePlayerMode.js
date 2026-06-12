@@ -241,13 +241,28 @@ export class SinglePlayerMode extends BaseGameMode {
                     ...this._getPhysicsCallbacks(),
                     spawnPiece: () => {
                         console.log('[SinglePlayer] Demo spawnPiece called');
-                        spawnPiece(this.gameState);
+                        spawnPiece(
+                            this.gameState,
+                            () => this._refreshNextQueue(),
+                            undefined,
+                        );
                         this._refreshNextQueue();
                     },
+                    applyCommand: (command, options = {}) => this._applyCommand(command, {
+                        ...options,
+                        record: false,
+                    }),
                     updateStats: statsCallback, // For DemoPlayer direct calls
                     updateStatsCallback: statsCallback, // For updateGame() in game.js
                     drawCallback,
                     onStart: () => { },
+                    replayTimingCallbacks: {
+                        onHardDrop: () => this._applyHardDropTiming(),
+                        onLineClearImpact: (lineCount, cascadeCount) => (
+                            this._applyLineClearImpactTiming(lineCount, cascadeCount)
+                        ),
+                        onPerfectClear: () => this._applyPerfectClearTiming(),
+                    },
                     playDropCallback: () => this.deps.soundManager.sfxPlayer.playDrop(),
                     playSoundCallback: () => { },
                     addTrailCallback: () => { },
@@ -271,13 +286,11 @@ export class SinglePlayerMode extends BaseGameMode {
         // FORCE TRUE to ensure buttons appear while debugging settings
         const shouldRecord = true; // settings.autoRecordDemos !== false;
 
+        let recordingSeed = null;
         if (shouldRecord) {
             console.log('[SinglePlayer] Auto-recording enabled');
-            this.isRecording = true;
-            const seed = Date.now(); // Generate seed
-            this.gameState.randomGenerator = seededRandom(seed);
-            this.demoRecorder.startRecording(this.gameState, settings, seed);
-            console.log('[SinglePlayer] Recording started with seed:', seed, 'isRecording:', this.isRecording);
+            recordingSeed = Date.now(); // Generate seed
+            this.gameState.randomGenerator = seededRandom(recordingSeed);
         } else {
             this.isRecording = false;
         }
@@ -306,6 +319,12 @@ export class SinglePlayerMode extends BaseGameMode {
             () => this._refreshNextQueue(),
             () => this._handleGameOver(),
         );
+
+        if (shouldRecord) {
+            this.demoRecorder.startRecording(this.gameState, settings, recordingSeed);
+            this.isRecording = true;
+            console.log('[SinglePlayer] Recording started with seed:', recordingSeed, 'isRecording:', this.isRecording);
+        }
 
         // Draw initial UI
         this._refreshNextQueue();
@@ -404,6 +423,9 @@ export class SinglePlayerMode extends BaseGameMode {
                 score: this.gameState?.score,
                 lines: this.gameState?.lines,
                 level: this.gameState?.level,
+                durationMs: this.gameState?.simTimeMs,
+                durationFrames: this.gameState?.simFrame,
+                piecesPlaced: this.gameState?.piecesPlaced,
             });
             this.lastRecordedDemo = demo;
             this.isRecording = false;
@@ -507,100 +529,126 @@ export class SinglePlayerMode extends BaseGameMode {
             rotate: window.rotate,
             hardDrop: window.hardDrop,
             softDrop: window.softDrop,
+            singlePlayerCommandDispatcher: window.singlePlayerCommandDispatcher,
         };
 
         // Replace with mode-specific functions that use THIS mode's physics callbacks
         // Initialize BoardJuice for reactive board motion
         this._initBoardJuice();
 
-        window.move = (dir) => {
-            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return false;
+        window.move = (dir) => this._applyCommand({ type: 'move', value: dir });
 
-            const moved = coreMove(
-                this.gameState,
-                dir,
-                () => this.deps.soundManager.sfxPlayer.playMove(),
-                () => { }, // addPieceTrail - no trail for now
-            );
+        window.rotate = (dir) => this._applyCommand({ type: 'rotate', value: dir });
 
-            // Board juice: nudge + tilt on move, smaller on wall hit
-            if (this.boardJuice) {
-                if (moved) {
-                    this.boardJuice.nudge(dir * 1.5, 0);
-                    this.boardJuice.tilt(dir * 0.4);
+        window.hardDrop = () => this._applyCommand({ type: 'hardDrop' });
+
+        window.softDrop = () => this._applyCommand({ type: 'softDrop' });
+
+        window.singlePlayerCommandDispatcher = (command, options = {}) => this._applyCommand(command, options);
+
+        console.log('[SinglePlayer] Input functions hooked successfully');
+    }
+
+    _normalizeCommand(command) {
+        return {
+            type: command?.type || command?.a || command?.action,
+            value: command?.value ?? command?.d ?? command?.data ?? null,
+        };
+    }
+
+    _queueBufferedCommand(type, value) {
+        if (!this.gameState || (type !== 'move' && type !== 'rotate')) return false;
+
+        const queued = { type, dir: value };
+        if (Array.isArray(this.gameState.inputQueue)) {
+            if (this.gameState.inputQueue.length >= 4) return false;
+            this.gameState.inputQueue.push(queued);
+            return true;
+        }
+
+        if (this.gameState.inputQueue) {
+            this.gameState.inputQueue = [this.gameState.inputQueue, queued].slice(0, 4);
+            return true;
+        }
+
+        this.gameState.inputQueue = queued;
+        return true;
+    }
+
+    _recordAcceptedCommand(type, value, options = {}) {
+        if (options.record === false || !this.isRecording || !this.demoRecorder) return;
+        this.demoRecorder.recordCommand({ a: type, d: value }, this.gameState);
+    }
+
+    _applyCommand(command, options = {}) {
+        const { type, value } = this._normalizeCommand(command);
+        if (!type || !this.gameState) return false;
+
+        const replayCommand = options.record === false || this.gameState.isReplay;
+        if (this.isPlayingDemo && !replayCommand) return false;
+        if (
+            this.gameState.isPaused
+            || this.gameState.isGameOver
+            || this.gameState.hitStopRemaining > 0
+        ) {
+            return false;
+        }
+
+        if (this.gameState.isProcessingPhysics) {
+            const queued = this._queueBufferedCommand(type, value);
+            if (queued) {
+                this._recordAcceptedCommand(type, value, options);
+            }
+            return queued;
+        }
+
+        const muted = Boolean(options.muted);
+        const suppliedCallbacks = options.callbacks || {};
+        const physicsCallbacks = suppliedCallbacks.physicsCallbacks || this._getPhysicsCallbacks();
+        const playDropCallback = suppliedCallbacks.playDropCallback
+            || (muted ? (() => { }) : (() => this.deps.soundManager.sfxPlayer.playDrop()));
+        const playSoundCallback = suppliedCallbacks.playSoundCallback || null;
+        const moveSound = playSoundCallback || (muted ? (() => { }) : (() => this.deps.soundManager.sfxPlayer.playMove()));
+        const rotateSound = playSoundCallback || (muted ? (() => { }) : (() => this.deps.soundManager.sfxPlayer.playRotate()));
+        const addTrailCallback = suppliedCallbacks.addTrailCallback || (() => { });
+
+        let accepted = false;
+
+        if (type === 'move') {
+            accepted = coreMove(this.gameState, value, moveSound, addTrailCallback);
+            if (this.boardJuice && !muted) {
+                if (accepted) {
+                    this.boardJuice.nudge(value * 1.5, 0);
+                    this.boardJuice.tilt(value * 0.4);
                 } else {
-                    this.boardJuice.nudge(dir * 0.8, 0);
+                    this.boardJuice.nudge(value * 0.8, 0);
                 }
             }
-
-            // Record input
-            if (this.isRecording) {
-                this.demoRecorder.recordInput('move', dir);
+        } else if (type === 'rotate') {
+            accepted = coreRotate(this.gameState, value, rotateSound, addTrailCallback);
+            if (accepted && this.boardJuice && !muted) {
+                this.boardJuice.tilt(value === 'left' ? -0.3 : 0.3);
             }
-
-            return moved;
-        };
-
-        window.rotate = (dir) => {
-            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return;
-
-            coreRotate(
-                this.gameState,
-                dir,
-                () => this.deps.soundManager.sfxPlayer.playRotate(),
-                () => { }, // addPieceTrail
-            );
-
-            // Board juice: tilt on rotate
-            if (this.boardJuice) {
-                this.boardJuice.tilt(dir === 'left' ? -0.3 : 0.3);
-            }
-
-            // Record input
-            if (this.isRecording) {
-                this.demoRecorder.recordInput('rotate', dir);
-            }
-        };
-
-        window.hardDrop = () => {
-            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return;
-
-            // Board juice: dip + bounce on hard drop
-            if (this.boardJuice) {
+        } else if (type === 'hardDrop') {
+            accepted = coreHardDrop(this.gameState, playDropCallback, physicsCallbacks);
+            if (accepted && this.boardJuice && !muted) {
                 this.boardJuice.dip(3);
                 this.boardJuice.bounce();
             }
+        } else if (type === 'softDrop') {
+            const beforeProcessing = this.gameState.isProcessingPhysics;
+            const beforePiece = this.gameState.currentPiece;
+            const moved = coreSoftDrop(this.gameState, playDropCallback, physicsCallbacks);
+            accepted = Boolean(moved)
+                || (!beforeProcessing && this.gameState.isProcessingPhysics)
+                || (beforePiece && beforePiece !== this.gameState.currentPiece);
+        }
 
-            coreHardDrop(
-                this.gameState,
-                () => this.deps.soundManager.sfxPlayer.playDrop(),
-                this._getPhysicsCallbacks(),
-            );
+        if (accepted) {
+            this._recordAcceptedCommand(type, value, options);
+        }
 
-            // Record input
-            if (this.isRecording) {
-                this.demoRecorder.recordInput('hardDrop');
-            }
-        };
-
-        window.softDrop = () => {
-            if (this.isPlayingDemo || !this.gameState || this.gameState.isPaused || this.gameState.isGameOver || this.gameState.hitStopRemaining > 0) return false;
-
-            const dropped = coreSoftDrop(
-                this.gameState,
-                () => this.deps.soundManager.sfxPlayer.playDrop(),
-                this._getPhysicsCallbacks(), // ← USE MODE'S PHYSICS CALLBACKS!
-            );
-
-            // Record input
-            if (this.isRecording) {
-                this.demoRecorder.recordInput('softDrop');
-            }
-
-            return dropped;
-        };
-
-        console.log('[SinglePlayer] Input functions hooked successfully');
+        return accepted;
     }
 
     /**
@@ -654,6 +702,10 @@ export class SinglePlayerMode extends BaseGameMode {
             if (now - this.lastStatsUpdateTime >= this.statsUpdateInterval) {
                 this.lastStatsUpdateTime = now;
                 updateStats(this.gameState);
+            }
+
+            if (this.isRecording) {
+                this.demoRecorder.recordCheckpoint(this.gameState);
             }
 
             const settings = this.deps.settingsManager.get();
@@ -729,6 +781,40 @@ export class SinglePlayerMode extends BaseGameMode {
         this.usingHybridLoop = false;
     }
 
+    _prefersReducedMotion() {
+        const settings = this.deps.settingsManager.get();
+        return settings.reducedMotion
+            || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+    }
+
+    _applyHardDropTiming() {
+        if (!this._prefersReducedMotion() && this.gameState) {
+            this.gameState.hitStopRemaining = Math.max(this.gameState.hitStopRemaining || 0, 30);
+        }
+    }
+
+    _applyLineClearImpactTiming(lineCount) {
+        if (this._prefersReducedMotion() || !this.gameState) return;
+
+        const boardScene = this._getBoardScene();
+        let hitStop = 0;
+        if (boardScene?.sharedEffects) {
+            const tier = boardScene.sharedEffects.getClearTier(lineCount);
+            hitStop = tier?.hitStop || 0;
+        } else if (lineCount >= 4) {
+            hitStop = 70;
+        }
+        if (hitStop > 0) {
+            this.gameState.hitStopRemaining = hitStop;
+        }
+    }
+
+    _applyPerfectClearTiming() {
+        if (!this._prefersReducedMotion() && this.gameState) {
+            this.gameState.hitStopRemaining = 110;
+        }
+    }
+
     /**
      * Get physics callbacks for sound effects and piece spawning
      * @private
@@ -764,11 +850,7 @@ export class SinglePlayerMode extends BaseGameMode {
             },
             onLevelUp: () => this.deps.soundManager.sfxPlayer.playLevelUp(),
             onHardDrop: (dropData) => {
-                const settings = this.deps.settingsManager.get();
-                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if (!prefersReducedMotion && this.gameState) {
-                    this.gameState.hitStopRemaining = Math.max(this.gameState.hitStopRemaining || 0, 30);
-                }
+                this._applyHardDropTiming();
 
                 this.deps.soundManager.sfxPlayer.playDrop();
                 const boardScene = this._getBoardScene();
@@ -808,21 +890,7 @@ export class SinglePlayerMode extends BaseGameMode {
             },
             // Camera shake + particle impact
             onLineClearImpact: (lineCount, cascadeCount) => {
-                const settings = this.deps.settingsManager.get();
-                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if (!prefersReducedMotion && this.gameState) {
-                    const boardScene = this._getBoardScene();
-                    let hitStop = 0;
-                    if (boardScene?.sharedEffects) {
-                        const tier = boardScene.sharedEffects.getClearTier(lineCount);
-                        hitStop = tier?.hitStop || 0;
-                    } else if (lineCount >= 4) {
-                        hitStop = 70;
-                    }
-                    if (hitStop > 0) {
-                        this.gameState.hitStopRemaining = hitStop;
-                    }
-                }
+                this._applyLineClearImpactTiming(lineCount);
 
                 const boardScene = this._getBoardScene();
                 if (boardScene && boardScene.playLineClearImpact) {
@@ -846,11 +914,7 @@ export class SinglePlayerMode extends BaseGameMode {
             },
             // Perfect clear / all-clear celebration (flagship moment)
             onPerfectClear: (depth, perfectClearBonus) => {
-                const settings = this.deps.settingsManager.get();
-                const prefersReducedMotion = settings.reducedMotion || (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-                if (!prefersReducedMotion && this.gameState) {
-                    this.gameState.hitStopRemaining = 110;
-                }
+                this._applyPerfectClearTiming();
 
                 eventBus.emit(EVENTS.PERFECT_CLEAR, { depth, perfectClearBonus });
                 this.deps.soundManager.sfxPlayer.playPerfectClear?.();
@@ -887,7 +951,7 @@ export class SinglePlayerMode extends BaseGameMode {
                 spawnPiece(
                     this.gameState,
                     () => this._refreshNextQueue(),
-                    () => this._handleGameOver(),
+                    this.isPlayingDemo ? undefined : () => this._handleGameOver(),
                 );
             },
         };
@@ -919,6 +983,10 @@ export class SinglePlayerMode extends BaseGameMode {
         console.log('[SinglePlayer] _handleGameOver() called!');
         console.log('[SinglePlayer] Game over!');
         console.log('[SinglePlayer] isPlayingDemo:', this.isPlayingDemo);
+
+        if (this.isPlayingDemo && (this.demoPlayer?.isSeeking || this.gameState?.isSeeking)) {
+            return;
+        }
 
         // Prevent re-entry if already processing
         if (this.isProcessingGameOver) return;
@@ -1010,7 +1078,9 @@ export class SinglePlayerMode extends BaseGameMode {
             return;
         }
 
-        const durationMs = Date.now() - (this.gameState.startTime || Date.now());
+        const durationMs = Number.isFinite(this.gameState.simTimeMs)
+            ? this.gameState.simTimeMs
+            : Date.now() - (this.gameState.startTime || Date.now());
         const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
         const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
 

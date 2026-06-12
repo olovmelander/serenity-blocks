@@ -361,6 +361,40 @@ export class OdysseyTslPipeline {
     }
 
     /**
+     * STARTUP WARM-UP: build + render every output-node variant this tier can reach so
+     * the canvas-format quad pipelines (lean / ch7-lens, with / without bloom) compile
+     * behind the loading overlay instead of on their first live edge-trigger (ch7 entry,
+     * dark-chapter bloom detach). The lens branch is pure post — it compiles fine with
+     * no ch7 content on screen (its uniforms idle at their no-op defaults). Restores the
+     * previously active variant afterwards (re-bind of a cached node — no recompile).
+     * @param {Function|null} yieldFn optional async yield between renders (keeps the
+     *   loading overlay animating)
+     */
+    async warmOutputVariants(yieldFn = null) {
+        const savedKey = this._activeVariantKey;
+        const bloomStates = this.bloomNode ? [true, false] : [false];
+        const warmed = new Set();
+        /* eslint-disable no-await-in-loop */
+        for (const withLens of [false, true]) {
+            for (const withBloom of bloomStates) {
+                const key = OdysseyTslPipeline._variantKey(withLens, withBloom);
+                if (warmed.has(key)) continue;
+                warmed.add(key);
+                this._selectVariant(withLens, withBloom);
+                this.postProcessing.render();
+                if (yieldFn) await yieldFn();
+            }
+        }
+        /* eslint-enable no-await-in-loop */
+        // Restore the variant that was live before the warm-up (cached — no recompile).
+        if (savedKey && savedKey !== this._activeVariantKey) {
+            const [lensFlag, bloomFlag] = savedKey.split('|');
+            this._selectVariant(lensFlag === '1', bloomFlag === '1');
+            this.postProcessing.render();
+        }
+    }
+
+    /**
      * Select (building + caching on first use) the output-node variant for the given
      * feature flags and bind it to postProcessing. Edge-triggered: a no-op (no recompile)
      * when the requested variant is already active, so it is safe to call every frame.

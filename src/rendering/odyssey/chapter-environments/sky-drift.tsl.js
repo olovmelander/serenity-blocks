@@ -93,8 +93,14 @@ export const SKY_DRIFT_SUN_DIR = new THREE.Vector3(0.34, 0.30, -0.88).normalize(
  * sane). The sun direction drives a faint god-ray hint via the cloud strata, not
  * here. No stars — that is the Space chapter's identity.
  */
-export function createSkyGradientTSL() {
+export function createSkyGradientTSL(options = {}) {
     const uOpacity = uniform(1.0);
+    // duskProgress (creative plan ch5): ONE scalar scripts the whole chapter as a
+    // continuous dusk — Act I "Summit Exhale" (warm, sun low), Act II "Aurora
+    // Ascendancy" (indigo, the dark backstop the aurora needs), Act III "Edge of Air"
+    // (near-black zenith, noctilucent blue). The capture proved additive curtains over
+    // a bright lavender field wash to white — the dome itself must darken.
+    const uDusk = options.uDusk ?? uniform(0);
     // The sun reads on the DEFAULT forward aim so it is the on-camera hero (no off-
     // screen space objects to anchor against). Shared with the sun-glow sprite + the
     // god-ray fans via SKY_DRIFT_SUN_DIR so the lighting is coherent.
@@ -104,39 +110,41 @@ export function createSkyGradientTSL() {
     // t in [0,1] from horizon (0) to zenith (1).
     const t = dir.y.mul(0.5).add(0.5);
 
-    // STRENGTHENED vertical gradient — bands spread wide so the dome has real
-    // orientation (the old bands sat too close and the master grade flattened them
-    // further into one lavender wash). Warm hazy horizon → periwinkle mid → deep
-    // warm-violet zenith. All channels < ~0.86 so nothing baseline-blows-out; the
-    // additive heroes (sun glow, god-rays, aurora) provide the bright accents.
-    const zenith = vec3(0.24, 0.20, 0.42); // deep warm-violet up high
-    const midSky = vec3(0.55, 0.52, 0.74); // periwinkle band
-    const horizon = vec3(0.86, 0.74, 0.70); // warm hazy horizon glow
+    // duskProgress-scripted bands: Act I warm-violet dusk → Act III deep indigo.
+    const actT = smoothstep(0.15, 0.85, uDusk);
+    const zenith = mix(vec3(0.29, 0.25, 0.48), vec3(0.055, 0.078, 0.19), actT); // → #0E1430
+    const midSky = mix(vec3(0.55, 0.52, 0.74), vec3(0.106, 0.165, 0.42), actT); // → #1B2A6B
+    const horizon = mix(vec3(1.0, 0.8, 0.64), vec3(0.42, 0.44, 0.66), actT); // #FFCCA3 → #6B6FA8
 
     // Two steepened stops (0→0.30, 0.30→1.0) give a crisp horizon band + a real
     // value run from horizon to zenith.
     const lowBand = mix(horizon, midSky, smoothstep(0.0, 0.30, t));
     let color = mix(lowBand, zenith, smoothstep(0.30, 1.0, t));
 
-    // Mie sun (the HERO): forward-scatter halo + a soft capped disc + a broad aureole
-    // so the sun reads as a warm anchor, not a smear. cosTheta = dot(viewDir, sunDir).
+    // Painterly FBM break (sky-children sky-dome discipline) so the gradient never
+    // reads as a clean ramp — a faint cloudy mottle riding the dome.
+    const domeBreak = fbm2(vec2(dir.x.mul(3.2).add(dir.z.mul(1.7)), dir.y.mul(4.1)));
+    color = color.add(vec3(0.035, 0.032, 0.05).mul(domeBreak));
+
+    // Mie sun (the Act I HERO): forward-scatter halo + a soft capped disc + a broad
+    // aureole. The sun is gone by ~55% of the dusk (the aurora inherits the frame).
+    const sunAlive = oneMinus(smoothstep(0.32, 0.55, uDusk));
     const cosTheta = clamp(dot(dir, uSunDir), -1.0, 1.0);
     const mu = max(cosTheta, 0.0);
     const halo = pow(mu, float(5.0)).mul(0.7); // broad warm bloom (boosted)
     const aureole = pow(mu, float(2.0)).mul(0.18); // wide soft aureole around the sun
     const disc = smoothstep(0.985, 0.9995, cosTheta).mul(0.9); // bright core (capped)
-    const sunCore = vec3(1.0, 0.82, 0.55); // warm sun core
-    color = color.add(sunCore.mul(halo.add(aureole).add(disc)));
+    const sunCore = vec3(1.0, 0.82, 0.55); // warm sun core (#FFB866 family)
+    color = color.add(sunCore.mul(halo.add(aureole).add(disc)).mul(sunAlive));
 
     // Gentle horizon haze lift toward the sun azimuth so the lower frame feels warm
-    // and atmospheric rather than evenly pale.
-    const horizonLift = smoothstep(0.35, 0.0, abs(dir.y)).mul(mu).mul(0.14);
+    // and atmospheric rather than evenly pale (dies with the sun).
+    const horizonLift = smoothstep(0.35, 0.0, abs(dir.y)).mul(mu).mul(0.14).mul(sunAlive);
     color = color.add(vec3(0.95, 0.78, 0.66).mul(horizonLift));
 
-    // Hard ceiling so the dome alone can never reach white — raised on the warm side
-    // so the boosted sun disc can reach ~0.92 (ACES rolls it off downstream) while
-    // the cool zenith stays well sub-white.
-    color = color.min(vec3(0.92, 0.86, 0.90));
+    // Hard ceiling so the dome alone can never reach white — and the ceiling itself
+    // falls with dusk so Act II/III genuinely DARKEN (the aurora's dark backstop).
+    color = color.min(mix(vec3(0.92, 0.86, 0.90), vec3(0.42, 0.45, 0.6), actT));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
@@ -149,7 +157,7 @@ export function createSkyGradientTSL() {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = -100;
     return {
-        mesh, material, geometry, uniforms: { uOpacity, uSunDir },
+        mesh, material, geometry, uniforms: { uOpacity, uSunDir, uDusk },
     };
 }
 
@@ -251,9 +259,15 @@ export function createCloudSheetTSL(uTime, {
     scale = 2.3,
     drift = 0.012,
     backScatter = 0.0,
+    dusk = null,
 } = {}) {
-    const uTint = uniform(new THREE.Color(tintHex));
-    const uLit = uniform(new THREE.Color(litHex));
+    const uDusk = dusk ?? uniform(0);
+    // duskProgress shifts the strata to MOONLIT: silver-blue tops over ink-shadowed
+    // undersides (#8FA3C8 / #1A2238) so the sheets nearest the path carry the dark
+    // value anchor Act II needs — the marble can never go light-on-light again.
+    const duskT = smoothstep(0.25, 0.7, uDusk);
+    const uTint = mix(uniform(new THREE.Color(tintHex)), vec3(0.102, 0.133, 0.22), duskT.mul(0.75));
+    const uLit = mix(uniform(new THREE.Color(litHex)), vec3(0.56, 0.64, 0.78), duskT.mul(0.8));
     // Per-sheet sun back-scatter (0..1): how much this stratum faces the sun, computed
     // CPU-side from the sheet world normal · sun dir. Brightens the sun-facing
     // underside warm so the strata read as lit volume, not flat cards.
@@ -278,8 +292,9 @@ export function createCloudSheetTSL(uTime, {
     // PERF (overdraw batch): tightened the feather radius 0.52 → 0.42 so each sheet's
     // shaded footprint shrinks ~35% in area (fewer pixels touched per layer) — with 6
     // bigger/denser sheets the field still reads as a mass while overdraw drops.
+    // Tightened further (0.42 → 0.38) for the frames 22–23 card corners.
     const centered = vUv.sub(0.5);
-    const edge = smoothstep(0.42, 0.0, length(centered));
+    const edge = smoothstep(0.38, 0.0, length(centered));
 
     // Silver-lining rim: a thin bright band along the dense cloud edges toward the lit
     // tint (the cloud's sunlit fringe). Built from the gradient of the density mask
@@ -337,7 +352,7 @@ function sheetBackScatter(rot) {
  * span the full travel volume so the dolly never sees an empty pale gap. The radial
  * feather (createCloudSheetTSL) is also tightened so each sheet covers fewer pixels.
  */
-export function createCloudStrataTSL(uTime) {
+export function createCloudStrataTSL(uTime, options = {}) {
     const group = new THREE.Group();
     group.name = 'cloud-strata';
     // [posX, posY, posZ, rotX, rotY, rotZ, scale, tintHex, litHex, coverage, fbmScale]
@@ -362,6 +377,7 @@ export function createCloudStrataTSL(uTime) {
             scale: cfg[10],
             drift: 0.009 + i * 0.0012,
             backScatter: sheetBackScatter(rot),
+            dusk: options.uDusk ?? null,
         });
         sheet.mesh.position.set(cfg[0], cfg[1], cfg[2]);
         sheet.mesh.rotation.set(rot[0], rot[1], rot[2]);
@@ -384,12 +400,15 @@ export function createCloudStrataTSL(uTime) {
  * @param {number} stripeFreq stripe count along width (varies per shaft for variety)
  * @param {number} phase animation phase offset
  */
-export function createGodRayFanTSL(uTime = uniform(0), stripeFreq = 22, phase = 0) {
+export function createGodRayFanTSL(uTime = uniform(0), stripeFreq = 22, phase = 0, options = {}) {
+    const uDusk = options.uDusk ?? uniform(0);
     const vUv = uv();
     const centered = vUv.sub(0.5);
 
     // Tight radial mask → a contained shaft, feathered to 0 before the quad edge.
-    const radial = smoothstep(0.46, 0.0, length(centered.mul(vec2(0.7, 1.05))));
+    // Tightened (0.46→0.40, x-feather 0.7→0.62) so an OBLIQUE view can never reveal a
+    // straight plane edge (the frames 09/10/13 billboard seams from the capture).
+    const radial = smoothstep(0.40, 0.0, length(centered.mul(vec2(0.62, 1.0))));
     // Animated bright stripes raking along the shaft (the volumetric god-ray look).
     const stripes = pow(max(0.0, sin(vUv.x.mul(stripeFreq).add(uTime.mul(0.2)).add(phase))), 3.0).mul(0.22);
     // Warm sun colour fading toward the far (top) end of the shaft.
@@ -398,9 +417,11 @@ export function createGodRayFanTSL(uTime = uniform(0), stripeFreq = 22, phase = 
     const lengthFade = smoothstep(1.0, 0.1, vUv.y).mul(0.6).add(0.4);
 
     const material = new THREE.MeshBasicNodeMaterial();
-    // Low additive floor (0.16) keeps the shaft visible without a bright core.
+    // Low additive floor (0.16) keeps the shaft visible without a bright core. The
+    // fans belong to the Act I sun: they die with it as the dusk deepens.
+    const fanAlive = oneMinus(smoothstep(0.3, 0.55, uDusk));
     material.colorNode = color.mul(stripes.add(0.16));
-    material.opacityNode = radial.mul(lengthFade).mul(0.18);
+    material.opacityNode = radial.mul(lengthFade).mul(0.18).mul(fanAlive);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
@@ -420,7 +441,7 @@ export function createGodRayFanTSL(uTime = uniform(0), stripeFreq = 22, phase = 
  * distance; the live chapter parents this group at the sun anchor. Replaces the lone
  * far-behind shaft. Returns { mesh: group, group, parts } so the caller can tick.
  */
-export function createCloudBreakShaftTSL(uTime = uniform(0)) {
+export function createCloudBreakShaftTSL(uTime = uniform(0), options = {}) {
     const group = new THREE.Group();
     group.name = 'cloud-break-light-shaft';
 
@@ -440,7 +461,7 @@ export function createCloudBreakShaftTSL(uTime = uniform(0)) {
     ];
     const parts = [];
     fans.forEach((cfg) => {
-        const fan = createGodRayFanTSL(uTime, cfg.freq, cfg.phase);
+        const fan = createGodRayFanTSL(uTime, cfg.freq, cfg.phase, options);
         fan.mesh.position.set(...cfg.pos);
         fan.mesh.rotation.set(...cfg.rot);
         fan.mesh.scale.setScalar(cfg.s);
@@ -471,23 +492,37 @@ export function createCloudBreakShaftTSL(uTime = uniform(0)) {
  * @param {number} colorB  right hue (violet)
  * @param {Object} opts width/height/segments/bow/colorMid/colorHi/intensity
  */
+// NOTE: the legacy positional colorA/colorB args (and options colorMid/colorHi) are
+// accepted for signature compatibility but SUPERSEDED by the physically-ordered stack
+// below — real aurora curtains wear pink at the hem and crimson at the crown, never a
+// randomized hue run (creative plan ch5 art direction).
+// eslint-disable-next-line no-unused-vars
 export function createAuroraRibbonTSL(uTime, colorA = 0x2effd6, colorB = 0x9a4cff, {
     width = 520, height = 120, segments = 96, bow = 0.0,
-    colorMid = 0x44ff8c, colorHi = 0xc24cff, intensity = 1.0,
+    intensity = 1.0,
     // SEAM 5->6: a shared 0..1 fade the curtains multiply into their alpha so the aurora can
     // recede gracefully across the Sky→Space hand-off (defaults to a private full-on uniform
     // when the caller supplies none, so standalone/pilot use is unchanged).
     opacity = null,
+    // duskProgress: stages the aurora (faint arc ~10%, hero ~35%, corona spike ~80%).
+    dusk = null,
 } = {}) {
     const uOpacity = opacity ?? uniform(1);
-    const uColorA = uniform(new THREE.Color(colorA)); // teal (left/low)
-    const uColorMid = uniform(new THREE.Color(colorMid)); // green (centre band)
-    const uColorB = uniform(new THREE.Color(colorB)); // violet (right)
-    const uColorHi = uniform(new THREE.Color(colorHi)); // magenta (top band)
+    const uDusk = dusk ?? uniform(0.5);
+    // PHYSICALLY-ORDERED color stack (creative plan: never randomize the vertical
+    // order): magenta-pink nitrogen hem at the BASE, yellow-green foot, green oxygen
+    // body, crimson high-oxygen caps fading at the TOP. The legacy colorA/colorB
+    // arguments are kept for signature compatibility but the stack below owns the look.
+    const uHem = uniform(new THREE.Color(0xff5fb0)); // nitrogen hem (base)
+    const uFoot = uniform(new THREE.Color(0x9cff57)); // bright yellow-green foot
+    const uBody = uniform(new THREE.Color(0x3dff8e)); // oxygen green body
+    const uBodyDim = uniform(new THREE.Color(0x1e9e64)); // dim body wash
+    const uCap = uniform(new THREE.Color(0xc71f37)); // crimson cap
+    const uCapFade = uniform(new THREE.Color(0x6e1030)); // cap fade-out
+    const uAccent = uniform(new THREE.Color(0x5b3bff)); // blue-violet edge accent
 
     // Vertex wobble + a gentle ARC bow across the upper frame (the hero curtain
     // arches rather than hanging flat). bow lifts the ribbon ends down/up parabolically.
-    // A slow large-scale sway makes the whole curtain ripple like a real aurora.
     const posL = positionLocal;
     const arcX = posL.x.div(width); // ~[-0.5, 0.5]
     const arc = arcX.mul(arcX).mul(-bow); // parabolic dip toward the edges
@@ -497,38 +532,47 @@ export function createAuroraRibbonTSL(uTime, colorA = 0x2effd6, colorB = 0x9a4cf
     const displaced = vec3(posL.x, posL.y.add(wobble).add(arc), posL.z);
 
     const vUv = uv();
-    // Three interfering curtain frequencies that DRIFT horizontally over time → the
-    // characteristic vertical aurora strands that shimmer and slide along the curtain.
-    const flow = uTime.mul(0.12);
-    const c1 = sin(vUv.x.mul(48.0).add(uTime.mul(0.7))).mul(0.5).add(0.5);
-    const c2 = sin(vUv.x.mul(91.0).sub(uTime.mul(0.5))).mul(0.5).add(0.5);
-    const c3 = sin(vUv.x.mul(23.0).add(uTime.mul(0.33))).mul(0.5).add(0.5);
+    // Substorm signature (creative plan): the drapery FOLDS race along the arc ~10×
+    // faster than the arc itself drifts — fold frequencies ride fast time terms while
+    // the hue/arc drift stays slow.
+    const c1 = sin(vUv.x.mul(48.0).add(uTime.mul(1.5))).mul(0.5).add(0.5);
+    const c2 = sin(vUv.x.mul(91.0).sub(uTime.mul(1.1))).mul(0.5).add(0.5);
+    const c3 = sin(vUv.x.mul(23.0).add(uTime.mul(0.66))).mul(0.5).add(0.5);
     const curtain = c1.mul(0.5).add(c2.mul(0.32)).add(c3.mul(0.28));
     // Soft top/bottom feather so the forward ribbons read as flowing curtains; the
-    // base is denser (aurora foot) and fades up toward the magenta crown.
+    // base is denser (aurora foot) and fades up toward the crimson crown.
     const vertical = smoothstep(0.0, 0.30, vUv.y).mul(smoothstep(1.0, 0.18, vUv.y));
-    // Sharper strands + a lifted floor so the curtain is an ever-present luminous veil.
-    const strands = pow(curtain, 2.0).mul(0.7).add(0.34);
+    const strands = pow(curtain, 2.0).mul(0.7).add(0.3);
 
-    // Horizontal hue run: teal (left) → green (centre) → violet (right), with a slow
-    // time drift so the bands slide. Then push the TOP of the curtain toward magenta
-    // (green-low / magenta-high), the signature aurora vertical colour split.
-    const hx = clamp(vUv.x.add(sin(flow).mul(0.12)), 0.0, 1.0);
-    const lowHue = mix(mix(uColorA, uColorMid, smoothstep(0.0, 0.5, hx)), uColorB, smoothstep(0.5, 1.0, hx));
-    const crown = smoothstep(0.45, 1.0, vUv.y);
-    const color = mix(lowHue, uColorHi, crown.mul(0.6));
+    // The vertical color stack (fixed order, never randomized): hem → foot → body →
+    // crimson caps. Horizontal strand brightness washes between the dim and bright
+    // body greens so the curtain reads as rippling light, not a flat gradient.
+    const bodyWash = mix(uBodyDim, uBody, strands);
+    let color = mix(uHem, uFoot, smoothstep(0.04, 0.2, vUv.y));
+    color = mix(color, bodyWash, smoothstep(0.18, 0.4, vUv.y));
+    color = mix(color, uCap, smoothstep(0.62, 0.84, vUv.y));
+    color = mix(color, uCapFade, smoothstep(0.84, 1.0, vUv.y));
+    // Blue-violet accent only on the sharpest, most energetic lower edges.
+    const hemBand = smoothstep(0.16, 0.02, vUv.y);
+    color = color.add(uAccent.mul(pow(curtain, 4.0)).mul(hemBand).mul(0.4));
+
+    // STAGED intensity (creative plan): faint arc by ~10% of the dusk, readable hero
+    // by ~35%, a zenith-corona spike around ~80%, receding only in the last act.
+    const stage = smoothstep(0.06, 0.35, uDusk).mul(0.85).add(0.15);
+    const corona = smoothstep(0.7, 0.8, uDusk).mul(oneMinus(smoothstep(0.86, 0.96, uDusk)));
+    const staged = stage.add(corona.mul(0.5));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = displaced;
-    // Boost the ribbon core and lift the strand floor so the HERO aurora reads as a
-    // saturated, luminous curtain. Hard-capped at 0.95 so it never blows white even
-    // where ribbons overlap (additive). `intensity` scales the brighter foreground
-    // hero up and the depth/echo curtains down.
-    material.colorNode = min(color.mul(strands.add(0.55)).mul(float(1.55).mul(intensity)), vec3(0.95));
-    // Opacity floor lifted so the curtain is visible even in the dim strand troughs —
-    // an EVER-PRESENT veil, not a flicker. Still capped soft for the additive stack. The
-    // shared uOpacity lets the chapter fade the whole curtain out across the 5->6 seam.
-    material.opacityNode = vertical.mul(strands.mul(0.7).add(0.22)).mul(float(0.6).mul(intensity))
+    // Hard-capped at 0.95 so ribbons never blow white even where they overlap
+    // (additive). `intensity` scales the foreground hero up, depth curtains down.
+    material.colorNode = min(
+        color.mul(strands.add(0.55)).mul(float(1.55).mul(intensity)).mul(staged),
+        vec3(0.95),
+    );
+    material.opacityNode = vertical.mul(strands.mul(0.7).add(0.22))
+        .mul(float(0.6).mul(intensity))
+        .mul(staged)
         .mul(uOpacity);
     material.transparent = true;
     material.depthWrite = false;
@@ -543,7 +587,7 @@ export function createAuroraRibbonTSL(uTime, colorA = 0x2effd6, colorB = 0x9a4cf
         material,
         geometry,
         uniforms: {
-            uColorA, uColorMid, uColorB, uColorHi, uOpacity,
+            uHem, uFoot, uBody, uCap, uAccent, uOpacity, uDusk,
         },
     };
 }
@@ -565,34 +609,36 @@ export function createAuroraRibbonTSL(uTime, colorA = 0x2effd6, colorB = 0x9a4cf
  * Additive but each ribbon is hard-capped < 0.95 and the foreground hero/back curtains
  * carry different `intensity` so overlap never blows to white.
  */
-export function createAuroraRibbonsTSL(uTime) {
+export function createAuroraRibbonsTSL(uTime, options = {}) {
     const group = new THREE.Group();
     group.name = 'aurora-ribbons';
     // SEAM 5->6: ONE shared fade uniform across all curtains so the whole aurora can recede
     // gracefully across the Sky→Space hand-off (instead of blinking out when the group hides).
     const uOpacity = uniform(1);
+    // duskProgress (shared with the dome): stages every curtain together — faint arc by
+    // ~10%, hero by ~35%, corona spike ~80% (staged in createAuroraRibbonTSL).
+    const uDusk = options.uDusk ?? uniform(0.5);
     // [x, y, z, colorA, colorB, rotX, rotZ, scale, width, height, bow, colorMid, colorHi, intensity]
     const configs = [
-        // ENTRY hero — large + near so the curtain greets the camera the instant the
-        // chapter opens (teal→green→violet, magenta crown). Slightly left of centre.
+        // ENTRY arc — present from the chapter's first frames (faint until ~10%).
         [-40, 70, -120, 0x2effd6, 0x9a4cff, -0.20, 0.04, 1.0, 600, 132, 78,
             0x44ff8c, 0xd24cff, 1.0],
-        // MID hero — the widest sweep, arcing the whole upper frame mid-chapter.
-        [30, 84, -300, 0x3cffe0, 0x8a4cff, -0.18, -0.04, 1.12, 680, 128, 90,
+        // MID HERO — repositioned to STRADDLE THE PATH (creative plan item 3): the
+        // widest sweep arching directly over the rail so the camera flies UNDER the
+        // curtain's brightest fold mid-chapter.
+        [0, 58, -310, 0x3cffe0, 0x8a4cff, -0.18, -0.04, 1.12, 680, 128, 90,
             0x52ff96, 0xc24cff, 0.96],
-        // High cool back curtain for depth (further + higher, cooler teal→indigo).
+        // High cool back curtain for depth (further + higher).
         [-20, 96, -240, 0x5cf0ff, 0x6a5cff, -0.14, 0.07, 1.1, 560, 104, 64,
             0x4ce0ff, 0xb05cff, 0.7],
         // LATE hero — keeps a bold curtain ahead through the back half of the chapter
         // so the aurora is present right to the Sky→Space hand-off.
         [10, 76, -500, 0x2cffd0, 0xa24cff, -0.16, -0.05, 1.2, 640, 124, 84,
             0x40ff8c, 0xcc4cff, 0.92],
-        // Far back curtain — a softer cool veil deep in the corridor for parallax depth.
+        // Far back curtain — a softer veil deep in the corridor for parallax depth.
         [-30, 100, -640, 0x66f0ff, 0x7a5cff, -0.12, 0.05, 1.3, 600, 100, 60,
             0x58e8ff, 0xb868ff, 0.6],
-        // Lower warm-GROUNDED echo — its base picks up the warm sun tint (teal→amber) so
-        // one curtain "grounds" toward the sun without breaking the cool identity. Kept
-        // dim so the warm note is a hint, not a second hero.
+        // Lower grounded echo near the sun side (dim — a hint, not a second hero).
         [40, 40, -200, 0x3affd0, 0xffb066, 0.12, -0.04, 0.9, 460, 84, 44,
             0x6effb0, 0xff9a6a, 0.5],
     ];
@@ -606,6 +652,7 @@ export function createAuroraRibbonsTSL(uTime) {
             colorHi: cfg[12],
             intensity: cfg[13],
             opacity: uOpacity,
+            dusk: uDusk,
         });
         ribbon.mesh.position.set(cfg[0], cfg[1], cfg[2]);
         ribbon.mesh.rotation.set(cfg[5], 0, cfg[6]);
@@ -616,7 +663,7 @@ export function createAuroraRibbonsTSL(uTime) {
     });
     // Expose the shared fade uniform on the group so the chapter update can drive the 5->6 recede.
     group.userData.auroraOpacityUniform = uOpacity;
-    return { group, parts, uniforms: { uOpacity } };
+    return { group, parts, uniforms: { uOpacity, uDusk } };
 }
 
 // ── Near-foreground cloud wisps (additive speed/altitude streaks; bloom-eligible) ──
@@ -714,6 +761,198 @@ export function createSkyWispTSL(uTime = uniform(0), count = 360) {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'sky-drift-wisps';
     mesh.frustumCulled = true;
+    return { mesh, material, geometry };
+}
+
+// ── Lenticular landmark cloud (Act II stationary scale object; NO bloom) ──────────
+//
+// Creative plan asset 5: one stacked-disc lens cloud mid-right of the path around
+// 45–55% — the stationary landmark that kills the 14–18 dead stretch. Smooth stacked
+// ellipse discs, moonlit silver tops over shadowed bases; classic standing-wave cloud.
+export function createLenticularCloudTSL(uTime = uniform(0), options = {}) {
+    const uDusk = options.uDusk ?? uniform(0.5);
+    const group = new THREE.Group();
+    group.name = 'lenticular-landmark';
+
+    const vUv = uv();
+    const centered = vUv.sub(0.5);
+    // Smooth lens profile: a wide flat ellipse, alpha densest at the core. A slow FBM
+    // breath keeps the edge organic while the cloud itself STAYS STILL (its stillness
+    // against the streaming wisps is the landmark read).
+    const lens = smoothstep(0.5, 0.12, length(centered.mul(vec2(1.0, 2.6))));
+    const breath = fbm2(vUv.mul(3.0).add(uTime.mul(0.006))).mul(0.25).add(0.85);
+    // Moonlit silver top over a shadowed base; deepens with dusk.
+    const duskT = smoothstep(0.2, 0.7, uDusk);
+    const top = mix(vec3(0.78, 0.74, 0.7), vec3(0.56, 0.64, 0.78), duskT);
+    const base = mix(vec3(0.42, 0.42, 0.56), vec3(0.1, 0.13, 0.22), duskT);
+    const color = mix(base, top, smoothstep(0.25, 0.8, vUv.y));
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = color;
+    material.opacityNode = lens.mul(breath).mul(0.62);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.blending = THREE.NormalBlending;
+
+    // Three stacked discs, shrinking upward — the classic lenticular "pile of plates".
+    const geometry = new THREE.PlaneGeometry(190, 60, 1, 1);
+    [
+        { y: 0, s: 1.0 },
+        { y: 16, s: 0.74 },
+        { y: 29, s: 0.5 },
+    ].forEach((tier) => {
+        const disc = new THREE.Mesh(geometry, material);
+        disc.position.y = tier.y;
+        disc.scale.setScalar(tier.s);
+        disc.renderOrder = -12;
+        group.add(disc);
+    });
+    group.traverse((child) => { child.frustumCulled = false; });
+    return { group, material, geometry };
+}
+
+// ── Noctilucent veil (Act III "last clouds"; additive, bloom-eligible) ─────────────
+//
+// Creative plan asset 7: electric blue-white herringbone filaments high overhead in
+// the last ~15% of the dusk — sunlit while the world below is dark, so they read as
+// self-luminous threads: the threshold to space.
+export function createNoctilucentVeilTSL(uTime = uniform(0), options = {}) {
+    const uDusk = options.uDusk ?? uniform(1);
+    const vUv = uv();
+
+    // Herringbone/cross-hatch wave pattern: two interfering diagonal wave trains,
+    // FBM-broken so the filaments read organic.
+    const waveA = sin(vUv.x.mul(40.0).add(vUv.y.mul(26.0)).add(uTime.mul(0.18)));
+    const waveB = sin(vUv.x.mul(34.0).sub(vUv.y.mul(30.0)).sub(uTime.mul(0.14)));
+    const herring = pow(clamp(waveA.mul(waveB), 0.0, 1.0), 1.6);
+    const breakup = fbm2(vUv.mul(5.0).add(uTime.mul(0.01))).mul(0.5).add(0.5);
+    const filaments = herring.mul(smoothstep(0.3, 0.75, breakup));
+
+    const centered = vUv.sub(0.5);
+    const edge = smoothstep(0.48, 0.1, length(centered));
+    // Only exists across the final act (the "last clouds" before vacuum).
+    const reveal = smoothstep(0.8, 0.94, uDusk);
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = mix(vec3(0.62, 0.85, 1.0), vec3(0.75, 0.91, 1.0), herring); // #9FD8FF→#BFE8FF
+    material.opacityNode = filaments.mul(edge).mul(reveal).mul(0.5);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.blending = THREE.AdditiveBlending;
+    material.userData.emitsBloom = true;
+
+    const geometry = new THREE.PlaneGeometry(900, 520, 1, 1);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'noctilucent-veil';
+    mesh.frustumCulled = false;
+    return { mesh, material, geometry };
+}
+
+// ── Ice spindrift crystals (near-camera altitude streaks; additive) ────────────────
+//
+// Creative plan asset 6: instanced ice-crystal quads streaking past the camera, tinted
+// by the act (warm sun-catch early, aurora-cool late). Same GPU recycle as the wisps.
+export function createIceCrystalsTSL(uTime = uniform(0), count = 160, options = {}) {
+    const uDusk = options.uDusk ?? uniform(0.5);
+    const bases = new Float32Array(count * 3);
+    const speeds = new Float32Array(count);
+    const seeds = new Float32Array(count);
+    for (let i = 0; i < count; i += 1) {
+        bases[i * 3] = (Math.random() - 0.5) * 200;
+        bases[i * 3 + 1] = (Math.random() - 0.5) * 120 + 10;
+        bases[i * 3 + 2] = -30 - Math.random() * 170;
+        speeds[i] = 0.9 + Math.random() * 1.4;
+        seeds[i] = Math.random() * Math.PI * 2;
+    }
+    const geometry = makeQuadInstancedGeometry(count, {
+        aBase: { array: bases, itemSize: 3 },
+        aSpeed: { array: speeds, itemSize: 1 },
+        aSeed: { array: seeds, itemSize: 1 },
+    });
+
+    const aBase = attribute('aBase', 'vec3');
+    const aSpeed = attribute('aSpeed', 'float');
+    const aSeed = attribute('aSeed', 'float');
+
+    const travel = mod(
+        aBase.z.add(WISP_SPAN).add(uTime.mul(aSpeed).mul(80.0)).add(aSeed.mul(float(WISP_SPAN))),
+        float(WISP_SPAN),
+    );
+    const center = vec3(
+        aBase.x.add(sin(uTime.mul(0.7).add(aSeed)).mul(3.0)),
+        aBase.y,
+        travel.add(WISP_FAR),
+    );
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.positionNode = billboardWorld(center, 0.7);
+    // Crystals catch the act's light: warm sun-glint early, aurora green-cool late.
+    const crystalTint = mix(vec3(1.0, 0.88, 0.7), vec3(0.55, 0.95, 0.8), smoothstep(0.3, 0.6, uDusk));
+    material.colorNode = crystalTint;
+    const dist = length(uv().sub(0.5));
+    const sparkle = pow(oneMinus(dist.mul(2.0)).max(0.0), 3.0);
+    const twinkle = sin(uTime.mul(2.4).add(aSeed.mul(7.0))).mul(0.4).add(0.6);
+    material.opacityNode = sparkle.mul(twinkle).mul(0.5);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.blending = THREE.AdditiveBlending;
+    material.userData.emitsBloom = true;
+
+    geometry.boundingSphere = new THREE.Sphere(
+        new THREE.Vector3(0, 10, (WISP_FAR + WISP_NEAR) / 2),
+        320,
+    );
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'sky-drift-ice-crystals';
+    mesh.frustumCulled = true;
+    return { mesh, material, geometry };
+}
+
+// ── Dark foreground wisps (the near-field VALUE anchor; NO bloom) ───────────────────
+//
+// Creative plan asset 8: a handful of SHADOWED cloud shreds crossing the lower frame —
+// the near-black ingredient the lavender wash never had. NormalBlending so they truly
+// darken the frame.
+export function createDarkWispsTSL(uTime = uniform(0), count = 10) {
+    const bases = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const seeds = new Float32Array(count);
+    for (let i = 0; i < count; i += 1) {
+        bases[i * 3] = (Math.random() - 0.5) * 260;
+        bases[i * 3 + 1] = -34 - Math.random() * 26; // the lower frame band
+        bases[i * 3 + 2] = -40 - Math.random() * 180;
+        sizes[i] = 34 + Math.random() * 40;
+        seeds[i] = Math.random() * Math.PI * 2;
+    }
+    const geometry = makeQuadInstancedGeometry(count, {
+        aBase: { array: bases, itemSize: 3 },
+        aSize: { array: sizes, itemSize: 1 },
+        aSeed: { array: seeds, itemSize: 1 },
+    });
+
+    const aBase = attribute('aBase', 'vec3');
+    const aSize = attribute('aSize', 'float');
+    const aSeed = attribute('aSeed', 'float');
+
+    const drift = sin(uTime.mul(0.06).add(aSeed)).mul(14.0);
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.positionNode = billboardWorld(vec3(aBase.x.add(drift), aBase.y, aBase.z), aSize);
+    material.colorNode = vec3(0.08, 0.1, 0.17); // ink-shadow shred (#1A2238 family)
+    const dist = length(uv().sub(0.5));
+    const shred = pow(oneMinus(dist.mul(2.0)).max(0.0), 1.4);
+    const breakup = fbm2(uv().mul(3.4).add(aSeed)).mul(0.5).add(0.5);
+    material.opacityNode = shred.mul(smoothstep(0.3, 0.7, breakup)).mul(0.5);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.blending = THREE.NormalBlending;
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'sky-drift-dark-wisps';
+    mesh.frustumCulled = false;
     return { mesh, material, geometry };
 }
 

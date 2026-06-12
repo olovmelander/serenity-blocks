@@ -19,7 +19,13 @@
  */
 
 import * as THREE from 'three/webgpu';
-import { uniform } from 'three/tsl';
+import {
+    mix,
+    sin,
+    uniform,
+    uv,
+    vec3,
+} from 'three/tsl';
 import { getChapterPathRange } from '../path-utils.js';
 import {
     createVoidDomeTSL,
@@ -211,6 +217,36 @@ function createDistantBackgroundHole(uniforms) {
     lensShell.name = 'distant-lensing-shell';
     group.add(lensShell);
 
+    // LENSED FOLD ARCS (creative plan asset 2 — the Gargantua signature): light from
+    // the disk's FAR side bent over the top and under the bottom of the shadow. Without
+    // this fold the composition reads as Saturn, not a lensed black hole. Two thin
+    // curved additive bands carrying the disk ramp (#FFF4CF → #FF2EA8), end-feathered;
+    // they live in this group so the camera-lock orientation caps the shadow every
+    // frame. Tagged emitsBloom — these are sanctioned hot accents.
+    const foldArcMaterial = new THREE.MeshBasicNodeMaterial();
+    const arcU = uv().x; // runs along the arc
+    const endFeather = sin(arcU.mul(Math.PI)); // fades to 0 at both arc ends
+    const foldRamp = mix(vec3(1.0, 0.957, 0.812), vec3(1.0, 0.18, 0.66), arcU);
+    foldArcMaterial.colorNode = foldRamp.mul(endFeather);
+    foldArcMaterial.opacityNode = endFeather.mul(0.62);
+    foldArcMaterial.transparent = true;
+    foldArcMaterial.depthWrite = false;
+    foldArcMaterial.blending = THREE.AdditiveBlending;
+    foldArcMaterial.side = THREE.DoubleSide;
+    foldArcMaterial.userData.emitsBloom = true;
+
+    const FOLD_SWEEP = Math.PI * 0.78;
+    const foldGeometry = new THREE.TorusGeometry(82, 5.5, 10, 64, FOLD_SWEEP);
+    const topFold = new THREE.Mesh(foldGeometry, foldArcMaterial);
+    topFold.rotation.z = Math.PI / 2 - FOLD_SWEEP / 2; // bows OVER the shadow top
+    topFold.name = 'lensed-fold-top';
+    group.add(topFold);
+    const bottomFold = new THREE.Mesh(foldGeometry, foldArcMaterial);
+    bottomFold.rotation.z = -Math.PI / 2 - FOLD_SWEEP / 2; // bows UNDER the shadow
+    bottomFold.name = 'lensed-fold-bottom';
+    group.add(bottomFold);
+    group.userData.foldArcs = [topFold, bottomFold];
+
     return group;
 }
 
@@ -383,6 +419,15 @@ function createInfallStreams() {
         depthWrite: false,
     }));
     group.userData.sharedStreamMaterials = streamMaterials;
+    // Sheath palette (pink/cyan/gold glow envelopes — creative plan asset 8).
+    const sheathMaterials = [0xff4ec8, 0x6ae8ff, 0xffcf6e].map((color) => new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.16,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+    }));
+    group.userData.sharedSheathMaterials = sheathMaterials;
 
     // B2 REWORK: spiral the 9 streams tangentially INWARD to the group's LOCAL origin
     // (0,0,0) so the whole group can be camera-locked onto the distant hero's screen-
@@ -420,6 +465,17 @@ function createInfallStreams() {
         );
         mesh.userData.spin = (index % 2 === 0 ? 1 : -1) * (0.015 + index * 0.002);
         group.add(mesh);
+
+        // GLOW SHEATH (creative plan asset 8): a wider, very soft additive tube around
+        // each stream so the 16–23 "calligraphic swirls" read as LUMINOUS RIBBONS WITH
+        // MASS, not sub-pixel wireframes. Shares the parent's spin (child of nothing —
+        // added as its own mesh with the same userData.spin so both rotate in step).
+        const sheath = new THREE.Mesh(
+            new THREE.TubeGeometry(curve, 56, 2.6, 8, false),
+            sheathMaterials[index % colors.length],
+        );
+        sheath.userData.spin = mesh.userData.spin;
+        group.add(sheath);
     }
 
     return group;
@@ -486,7 +542,12 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     group.userData.accretionGlowRings = accretionGlowRings;
 
     // Drifting violet dust hugging the corridor (re-centred on the camera in update()).
-    const { mesh: corridorDust } = createCorridorDustTSL(uniforms.uTime);
+    // Creative plan: 3–4× perceived density through the 07–23 midsection — count scales
+    // with the quality preset (default lifted 460 → 900, capped 1100 in the builder).
+    const dustCount = options.particleCount
+        ? Math.min(1100, Math.floor(options.particleCount * 1.8))
+        : 900;
+    const { mesh: corridorDust } = createCorridorDustTSL(uniforms.uTime, dustCount);
     corridorDust.name = 'corridor-violet-dust';
     group.add(corridorDust);
     group.userData.corridorDust = corridorDust;
@@ -508,7 +569,9 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     // (default ~520, hard-capped at 900 in the builder) so high-quality tiers add density
     // and low tiers stay light — no per-frame CPU (motion is GPU-side). update() parents
     // it onto the locked hero each frame so the embers always wreathe the on-screen hole.
-    const emberCount = options.particleCount ? Math.floor(options.particleCount * 1.04) : 520;
+    // Creative plan asset 5 ("denser infall particles"): raised toward the 900 cap on
+    // High/Ultra presets (multiplier 1.04 → 1.6, default 520 → 700).
+    const emberCount = options.particleCount ? Math.floor(options.particleCount * 1.6) : 700;
     const { mesh: infallEmbers } = createInfallEmberFieldTSL(uniforms.uTime, emberCount);
     group.add(infallEmbers);
     group.userData.infallEmbers = infallEmbers;

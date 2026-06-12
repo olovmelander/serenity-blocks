@@ -2574,7 +2574,13 @@ class SerenityBlocks {
         });
 
         const savedMode = this.settingsManager?.get()?.gameMode || GAME_MODES.SINGLE_PLAYER;
-        if (!isPackagedWindowsSafeMode()) {
+        if (savedMode === GAME_MODES.ODYSSEY) {
+            performanceMonitor.recordEvent('startup_mode_warmup_skipped', {
+                safeMode: false,
+                mode: savedMode,
+                reason: 'odyssey-loads-on-start',
+            });
+        } else if (!isPackagedWindowsSafeMode()) {
             this.scheduleDeferredStartupTask('warm-selected-mode', async () => {
                 await this.gameModeManager.preloadMode(savedMode);
             }, {
@@ -3599,6 +3605,10 @@ class SerenityBlocks {
 
         const enqueueSinglePlayerCommand = (command) => {
             const execute = () => {
+                if (typeof window.singlePlayerCommandDispatcher === 'function') {
+                    return window.singlePlayerCommandDispatcher(command);
+                }
+
                 if (this.gameState?.isProcessingPhysics) {
                     if (command.type === 'move' || command.type === 'rotate') {
                         const queued = {
